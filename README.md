@@ -48,15 +48,15 @@
 ```bash
 docker build \
   -f Dockerfile-base \
-  -t zhishu-base:local \
-  -t zhishu-python-pg:local \
+  -t shuzhi-base:latest \
+  -t shuzhi-python-pg:latest \
   .
 
 docker buildx build \
   --load \
   --tag zhishu:latest \
-  --build-arg ZHISHU_BASE_IMAGE=zhishu-base:local \
-  --build-arg ZHISHU_RUNTIME_IMAGE=zhishu-python-pg:local \
+  --build-arg SHUZHI_BUILD_BASE_IMAGE=shuzhi-base:latest \
+  --build-arg SHUZHI_RUNTIME_IMAGE=shuzhi-python-pg:latest \
   --build-arg VITE_API_BASE_URL=./api/v1 \
   --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
   .

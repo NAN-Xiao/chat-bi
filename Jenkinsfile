@@ -20,9 +20,9 @@ pipeline {
     GIT_URL = 'https://github.com/NAN-Xiao/chat-bi.git'
     APP_HOME = '/home/chat-bi'
     CONTAINER_NAME = 'chat-bi'
-    IMAGE_REPOSITORY = 'zhishu'
-    ZHISHU_BASE_IMAGE = 'zhishu-base:local'
-    ZHISHU_RUNTIME_IMAGE = 'zhishu-python-pg:local'
+    IMAGE_REPOSITORY = 'shuzhi'
+    SHUZHI_BUILD_BASE_IMAGE = 'shuzhi-base:latest'
+    SHUZHI_RUNTIME_IMAGE = 'shuzhi-python-pg:latest'
     FRONTEND_HOST = '10.1.5.28'
     NGINX_PORT = '80'
     NGINX_ROOT = '/home/chat-bi/nginx/html'
@@ -74,7 +74,7 @@ pipeline {
           echo "Python 依赖类型：${PYTHON_DEPENDENCY_EXTRA:-cpu}"
           echo "是否清理旧版本镜像：${CLEAN_OLD_IMAGES:-false}"
           echo "悬空镜像将在构建完成后自动清理。"
-          if ! mkdir -p "$APP_HOME" "$APP_HOME/data/zhishu/excel" "$APP_HOME/data/zhishu/file" "$APP_HOME/data/zhishu/images" "$APP_HOME/data/zhishu/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
+          if ! mkdir -p "$APP_HOME" "$APP_HOME/data/shuzhi/excel" "$APP_HOME/data/shuzhi/file" "$APP_HOME/data/shuzhi/images" "$APP_HOME/data/shuzhi/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
             exit 1
           fi
@@ -86,57 +86,68 @@ pipeline {
           fi
 
           set +x
+          install_conf_runtime="$(mktemp)"
+          tr -d '\r' < "$INSTALL_CONF_FILE" > "$install_conf_runtime"
           set -a
-          . "$INSTALL_CONF_FILE"
+          . "$install_conf_runtime"
           set +a
-          : "${ZHISHU_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_API_PORTS}"
-          : "${ZHISHU_WORKER_IDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_WORKER_IDS}"
-          : "${ZHISHU_CACHE_TYPE:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_CACHE_TYPE}"
-          : "${ZHISHU_REDIS_HOST:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_REDIS_HOST}"
-          : "${ZHISHU_REDIS_PORT:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_REDIS_PORT}"
-          : "${ZHISHU_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS}"
-          : "${ZHISHU_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS}"
+          rm -f "$install_conf_runtime"
+          : "${SHUZHI_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_API_PORTS}"
+          : "${SHUZHI_WORKER_IDS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_WORKER_IDS}"
+          : "${SHUZHI_CACHE_TYPE:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_CACHE_TYPE}"
+          : "${SHUZHI_REDIS_HOST:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_REDIS_HOST}"
+          : "${SHUZHI_REDIS_PORT:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_REDIS_PORT}"
+          : "${SHUZHI_DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS}"
+          : "${SHUZHI_DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY}"
+          : "${SHUZHI_DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS}"
+          : "${SHUZHI_DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS}"
+          : "${SHUZHI_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS}"
+          : "${SHUZHI_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS}"
           {
-            echo "PROJECT_NAME=星通智数"
-            echo "POSTGRES_SERVER=${ZHISHU_DB_HOST}"
-            echo "POSTGRES_PORT=${ZHISHU_DB_PORT}"
-            echo "POSTGRES_DB=${ZHISHU_DB_DB}"
-            echo "POSTGRES_USER=${ZHISHU_DB_USER}"
-            echo "POSTGRES_PASSWORD=${ZHISHU_DB_PASSWORD}"
-            echo "SECRET_KEY=${ZHISHU_SECRET_KEY}"
-            echo "DEFAULT_PWD=${ZHISHU_DEFAULT_PWD}"
+            echo "PROJECT_NAME=星通数智"
+            echo "POSTGRES_SERVER=${SHUZHI_DB_HOST}"
+            echo "POSTGRES_PORT=${SHUZHI_DB_PORT}"
+            echo "POSTGRES_DB=${SHUZHI_DB_DB}"
+            echo "POSTGRES_USER=${SHUZHI_DB_USER}"
+            echo "POSTGRES_PASSWORD=${SHUZHI_DB_PASSWORD}"
+            echo "SECRET_KEY=${SHUZHI_SECRET_KEY}"
+            echo "DEFAULT_PWD=${SHUZHI_DEFAULT_PWD}"
             echo "FRONTEND_HOST=http://${FRONTEND_HOST}"
-            echo "BACKEND_CORS_ORIGINS=${ZHISHU_CORS_ORIGINS}"
-            echo "SERVER_IMAGE_HOST=${ZHISHU_SERVER_IMAGE_HOST}"
-            echo "LOG_LEVEL=${ZHISHU_LOG_LEVEL}"
+            echo "BACKEND_CORS_ORIGINS=${SHUZHI_CORS_ORIGINS}"
+            echo "SERVER_IMAGE_HOST=${SHUZHI_SERVER_IMAGE_HOST}"
+            echo "LOG_LEVEL=${SHUZHI_LOG_LEVEL}"
             echo "SQL_DEBUG=false"
-            echo "BASE_DIR=/opt/zhishu"
-            echo "UPLOAD_DIR=/opt/zhishu/data/file"
-            echo "EXCEL_PATH=/opt/zhishu/data/excel"
-            echo "MCP_IMAGE_PATH=/opt/zhishu/images"
-            echo "LOG_DIR=/opt/zhishu/app/logs"
+            echo "BASE_DIR=/opt/shuzhi"
+            echo "UPLOAD_DIR=/opt/shuzhi/data/file"
+            echo "EXCEL_PATH=/opt/shuzhi/data/excel"
+            echo "MCP_IMAGE_PATH=/opt/shuzhi/images"
+            echo "LOG_DIR=/opt/shuzhi/app/logs"
             echo "LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
-            echo "AUTO_MIGRATE_ON_STARTUP=false"
-            echo "CACHE_TYPE=${ZHISHU_CACHE_TYPE}"
-            echo "REDIS_HOST=${ZHISHU_REDIS_HOST}"
-            echo "REDIS_PORT=${ZHISHU_REDIS_PORT}"
-            echo "REDIS_DB=${ZHISHU_REDIS_DB}"
-            echo "REDIS_USERNAME=${ZHISHU_REDIS_USERNAME}"
-            echo "REDIS_PASSWORD=${ZHISHU_REDIS_PASSWORD}"
-            echo "REDIS_SSL=${ZHISHU_REDIS_SSL}"
-            echo "REDIS_KEY_PREFIX=${ZHISHU_REDIS_KEY_PREFIX}"
-            echo "TASK_QUEUE_NAME=${ZHISHU_TASK_QUEUE_NAME}"
-            echo "TASK_QUEUE_RESULT_TTL_SECONDS=${ZHISHU_TASK_QUEUE_RESULT_TTL_SECONDS}"
-            echo "TASK_QUEUE_POLL_TIMEOUT_SECONDS=${ZHISHU_TASK_QUEUE_POLL_TIMEOUT_SECONDS}"
-            echo "TASK_QUEUE_MAX_ATTEMPTS=${ZHISHU_TASK_QUEUE_MAX_ATTEMPTS}"
-            echo "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS=${ZHISHU_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS}"
-            echo "TASK_QUEUE_REQUEUE_INTERVAL_SECONDS=${ZHISHU_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS}"
-            echo "EMBEDDING_MODEL=${ZHISHU_EMBEDDING_MODEL}"
-            echo "EMBEDDING_API_BASE_URL=${ZHISHU_EMBEDDING_API_BASE_URL}"
-            echo "EMBEDDING_API_KEY=${ZHISHU_EMBEDDING_API_KEY}"
-            echo "MCP_ENABLED=${ZHISHU_MCP_ENABLED}"
-            echo "ACCESS_TOKEN_EXPIRE_MINUTES=${ZHISHU_ACCESS_TOKEN_EXPIRE_MINUTES}"
-            echo "CONTEXT_PATH=${ZHISHU_CONTEXT_PATH}"
+            echo "AUTO_RUN_MIGRATIONS=false"
+            echo "CACHE_TYPE=${SHUZHI_CACHE_TYPE}"
+            echo "REDIS_HOST=${SHUZHI_REDIS_HOST}"
+            echo "REDIS_PORT=${SHUZHI_REDIS_PORT}"
+            echo "REDIS_DB=${SHUZHI_REDIS_DB}"
+            echo "REDIS_USERNAME=${SHUZHI_REDIS_USERNAME}"
+            echo "REDIS_PASSWORD=${SHUZHI_REDIS_PASSWORD}"
+            echo "REDIS_SSL=${SHUZHI_REDIS_SSL}"
+            echo "REDIS_KEY_PREFIX=${SHUZHI_REDIS_KEY_PREFIX}"
+            echo "DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS=${SHUZHI_DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS}"
+            echo "DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY=${SHUZHI_DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY}"
+            echo "DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS=${SHUZHI_DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS}"
+            echo "DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS=${SHUZHI_DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS}"
+            echo "TASK_QUEUE_NAME=${SHUZHI_TASK_QUEUE_NAME}"
+            echo "TASK_QUEUE_RESULT_TTL_SECONDS=${SHUZHI_TASK_QUEUE_RESULT_TTL_SECONDS}"
+            echo "TASK_QUEUE_POLL_TIMEOUT_SECONDS=${SHUZHI_TASK_QUEUE_POLL_TIMEOUT_SECONDS}"
+            echo "TASK_QUEUE_MAX_ATTEMPTS=${SHUZHI_TASK_QUEUE_MAX_ATTEMPTS}"
+            echo "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS=${SHUZHI_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS}"
+            echo "TASK_QUEUE_REQUEUE_INTERVAL_SECONDS=${SHUZHI_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS}"
+            echo "EMBEDDING_MODEL=${SHUZHI_EMBEDDING_MODEL}"
+            echo "EMBEDDING_API_BASE_URL=${SHUZHI_EMBEDDING_API_BASE_URL}"
+            echo "EMBEDDING_API_KEY=${SHUZHI_EMBEDDING_API_KEY}"
+            echo "MCP_ENABLED=${SHUZHI_MCP_ENABLED}"
+            echo "ACCESS_TOKEN_EXPIRE_MINUTES=${SHUZHI_ACCESS_TOKEN_EXPIRE_MINUTES}"
+            echo "CONTEXT_PATH=${SHUZHI_CONTEXT_PATH}"
           } > "$RUNTIME_ENV_FILE"
           chmod 600 "$RUNTIME_ENV_FILE"
           set -x
@@ -151,8 +162,8 @@ pipeline {
           set -eux
           docker build \
             -f Dockerfile-base \
-            --tag "$ZHISHU_BASE_IMAGE" \
-            --tag "$ZHISHU_RUNTIME_IMAGE" \
+            --tag "$SHUZHI_BUILD_BASE_IMAGE" \
+            --tag "$SHUZHI_RUNTIME_IMAGE" \
             .
         '''
       }
@@ -168,8 +179,8 @@ pipeline {
             --tag "$IMAGE" \
             --build-arg BUILD_AT="$BUILD_AT" \
             --build-arg GITHUB_COMMIT="$GITHUB_COMMIT" \
-            --build-arg ZHISHU_BASE_IMAGE="$ZHISHU_BASE_IMAGE" \
-            --build-arg ZHISHU_RUNTIME_IMAGE="$ZHISHU_RUNTIME_IMAGE" \
+            --build-arg SHUZHI_BUILD_BASE_IMAGE="$SHUZHI_BUILD_BASE_IMAGE" \
+            --build-arg SHUZHI_RUNTIME_IMAGE="$SHUZHI_RUNTIME_IMAGE" \
             --build-arg VITE_API_BASE_URL="$FRONTEND_API_BASE_URL" \
             --build-arg PYTHON_DEPENDENCY_EXTRA="$PYTHON_DEPENDENCY_EXTRA" \
             .
@@ -182,13 +193,16 @@ pipeline {
         sh '''
           set -eux
           set +x
+          install_conf_runtime="$(mktemp)"
+          tr -d '\r' < "$INSTALL_CONF_FILE" > "$install_conf_runtime"
           set -a
-          . "$INSTALL_CONF_FILE"
+          . "$install_conf_runtime"
           set +a
-          : "${ZHISHU_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_API_PORTS}"
+          rm -f "$install_conf_runtime"
+          : "${SHUZHI_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_API_PORTS}"
           set -x
           DOLLAR='$'
-          api_ports="$ZHISHU_API_PORTS"
+          api_ports="$SHUZHI_API_PORTS"
           cat > "$APP_HOME/chat-bi-nginx.conf" <<EOF
 upstream chat_bi_backend {
     least_conn;
@@ -260,14 +274,17 @@ EOF
         sh '''
           set -eux
           set +x
+          install_conf_runtime="$(mktemp)"
+          tr -d '\r' < "$INSTALL_CONF_FILE" > "$install_conf_runtime"
           set -a
-          . "$INSTALL_CONF_FILE"
+          . "$install_conf_runtime"
           set +a
-          : "${ZHISHU_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_API_PORTS}"
-          : "${ZHISHU_WORKER_IDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_WORKER_IDS}"
+          rm -f "$install_conf_runtime"
+          : "${SHUZHI_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_API_PORTS}"
+          : "${SHUZHI_WORKER_IDS:?请在 $INSTALL_CONF_FILE 中配置 SHUZHI_WORKER_IDS}"
           set -x
-          api_ports="$ZHISHU_API_PORTS"
-          worker_ids="$ZHISHU_WORKER_IDS"
+          api_ports="$SHUZHI_API_PORTS"
+          worker_ids="$SHUZHI_WORKER_IDS"
 
           cat > "$APP_HOME/chat-bi-deploy.env" <<EOF
 APP_HOME=$APP_HOME
@@ -294,10 +311,10 @@ EOF
               -e APP_ROLE=api \
               -e API_PORT="$api_port" \
               -p "127.0.0.1:${api_port}:${api_port}" \
-              -v "$APP_HOME/data/zhishu/excel:/opt/zhishu/data/excel" \
-              -v "$APP_HOME/data/zhishu/file:/opt/zhishu/data/file" \
-              -v "$APP_HOME/data/zhishu/images:/opt/zhishu/images" \
-              -v "$APP_HOME/data/zhishu/logs:/opt/zhishu/app/logs" \
+              -v "$APP_HOME/data/shuzhi/excel:/opt/shuzhi/data/excel" \
+              -v "$APP_HOME/data/shuzhi/file:/opt/shuzhi/data/file" \
+              -v "$APP_HOME/data/shuzhi/images:/opt/shuzhi/images" \
+              -v "$APP_HOME/data/shuzhi/logs:/opt/shuzhi/app/logs" \
               "$IMAGE"
           done
 
@@ -309,10 +326,10 @@ EOF
               --env-file "$RUNTIME_ENV_FILE" \
               -e APP_ROLE=worker \
               -e WORKER_ID="$worker_id" \
-              -v "$APP_HOME/data/zhishu/excel:/opt/zhishu/data/excel" \
-              -v "$APP_HOME/data/zhishu/file:/opt/zhishu/data/file" \
-              -v "$APP_HOME/data/zhishu/images:/opt/zhishu/images" \
-              -v "$APP_HOME/data/zhishu/logs:/opt/zhishu/app/logs" \
+              -v "$APP_HOME/data/shuzhi/excel:/opt/shuzhi/data/excel" \
+              -v "$APP_HOME/data/shuzhi/file:/opt/shuzhi/data/file" \
+              -v "$APP_HOME/data/shuzhi/images:/opt/shuzhi/images" \
+              -v "$APP_HOME/data/shuzhi/logs:/opt/shuzhi/app/logs" \
               "$IMAGE"
           done
 
@@ -368,7 +385,7 @@ EOF
 
           rm -rf "$nginx_tmp" "$nginx_backup"
           mkdir -p "$nginx_tmp"
-          docker cp "$tmp_container:/opt/zhishu/frontend/dist/." "$nginx_tmp"
+          docker cp "$tmp_container:/opt/shuzhi/frontend/dist/." "$nginx_tmp"
           test -f "$nginx_tmp/index.html"
 
           if [ -d "$NGINX_ROOT" ]; then
@@ -480,7 +497,7 @@ EOF
               docker logs --tail=300 "$container" || true
             done
         echo "应用日志目录最近 300 行日志："
-        for log_file in "$APP_HOME"/data/zhishu/logs/*.log; do
+        for log_file in "$APP_HOME"/data/shuzhi/logs/*.log; do
           if [ -f "$log_file" ]; then
             echo "===== $log_file ====="
             tail -n 300 "$log_file"

@@ -1,4 +1,4 @@
-# 星通智数 Docker 发布文档
+# 星通数智 Docker 发布文档
 
 本文档基于当前仓库的 `Dockerfile`、`Jenkinsfile`、`start.sh`、`docker-compose.yaml` 和 `installer` 脚本整理，说明 Docker 镜像构建、运行、发布、回滚与排障流程。
 
@@ -8,12 +8,12 @@
 
 | 文件 | 当前定位 | 注意事项 |
 | --- | --- | --- |
-| `Dockerfile` | 当前 Docker 应用镜像构建主入口 | 运行目录为 `/opt/zhishu` |
+| `Dockerfile` | 当前 Docker 应用镜像构建主入口 | 运行目录为 `/opt/shuzhi` |
 | `Dockerfile-base` | 构建本地基础镜像 | 可作为 `Dockerfile` 的基础镜像来源 |
 | `start.sh` | 容器入口脚本 | 通过 `APP_ROLE` 控制容器角色 |
 | `Jenkinsfile` | 当前推荐的 Docker 发布主线 | 构建镜像、执行迁移、重启 systemd 管理的 Docker 实例、发布前端静态文件 |
-| `docker-compose.yaml` | 单容器本地/简易部署参考 | 使用 `/opt/zhishu` 路径 |
-| `installer/zhishu/docker-compose.yml` | 历史安装包模板 | 使用前需要校准镜像名、端口和环境变量 |
+| `docker-compose.yaml` | 单容器本地/简易部署参考 | 使用 `/opt/shuzhi` 路径 |
+| `installer/shuzhi/docker-compose.yml` | 历史安装包模板 | 使用前需要校准镜像名、端口和环境变量 |
 | `deploy/systemd/*.service` | 历史非 Docker systemd 模板 | 直接运行 Python 虚拟环境，不是当前 Jenkins Docker 发布方式 |
 
 推荐生产发布路径：
@@ -21,7 +21,7 @@
 ```text
 Git 分支
   -> Jenkins 拉取代码
-  -> docker buildx 构建 zhishu:<tag>
+  -> docker buildx 构建 shuzhi:<tag>
   -> docker run APP_ROLE=migrate 执行 Alembic 迁移
   -> systemd 重启 API / worker Docker 实例
   -> 从镜像中复制 frontend/dist 到 Nginx 静态目录
@@ -34,8 +34,8 @@ Git 分支
 
 | 阶段 | 作用 |
 | --- | --- |
-| `zhishu-ui-builder` | 安装前端依赖并执行 `npm run build` |
-| `zhishu-builder` | 使用 `uv sync` 安装后端 Python 依赖，并复制后端代码和前端构建产物 |
+| `shuzhi-ui-builder` | 安装前端依赖并执行 `npm run build` |
+| `shuzhi-builder` | 使用 `uv sync` 安装后端 Python 依赖，并复制后端代码和前端构建产物 |
 | `ssr-builder` | 构建 G2 SSR 图片服务运行目录 |
 | runtime | 基于 PostgreSQL/Python 运行镜像，复制应用、SSR 和入口脚本 |
 
@@ -54,12 +54,12 @@ Git 分支
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `ZHISHU_BASE_IMAGE` | `zhishu-base:local` | 前端、后端、SSR 构建阶段基础镜像 |
-| `ZHISHU_RUNTIME_IMAGE` | `zhishu-python-pg:local` | 最终运行镜像 |
+| `SHUZHI_BUILD_BASE_IMAGE` | `shuzhi-base:latest` | 前端、后端、SSR 构建阶段基础镜像 |
+| `SHUZHI_RUNTIME_IMAGE` | `shuzhi-python-pg:latest` | 最终运行镜像 |
 | `VITE_API_BASE_URL` | `./api/v1` | 前端构建时的 API 基础路径 |
 | `PYTHON_DEPENDENCY_EXTRA` | `cpu` | Python 可选依赖集合，默认使用 CPU 版依赖 |
 
-注意：README 中旧示例使用过 `BASE_IMAGE` / `RUNTIME_IMAGE`，历史安装包里也会出现旧命名，但当前 `Dockerfile` 的实际参数名是 `ZHISHU_BASE_IMAGE` / `ZHISHU_RUNTIME_IMAGE`。
+注意：README 中旧示例使用过 `BASE_IMAGE` / `RUNTIME_IMAGE`，历史安装包里也会出现旧命名，但当前 `Dockerfile` 的实际参数名是 `SHUZHI_BUILD_BASE_IMAGE` / `SHUZHI_RUNTIME_IMAGE`。
 
 ## 四、本地构建
 
@@ -70,13 +70,13 @@ export DOCKER_BUILDKIT=1
 
 docker build \
   -f Dockerfile-base \
-  -t zhishu-base:local \
-  -t zhishu-python-pg:local \
+  -t shuzhi-base:latest \
+  -t shuzhi-python-pg:latest \
   .
 
 docker buildx build \
   --load \
-  --tag zhishu:local \
+  --tag shuzhi:local \
   --build-arg VITE_API_BASE_URL=./api/v1 \
   --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
   .
@@ -84,27 +84,27 @@ docker buildx build \
 
 ### 4.2 覆盖基础镜像
 
-如果有内网镜像仓库，可以通过 `ZHISHU_BASE_IMAGE` / `ZHISHU_RUNTIME_IMAGE` 覆盖基础镜像来源：
+如果有内网镜像仓库，可以通过 `SHUZHI_BUILD_BASE_IMAGE` / `SHUZHI_RUNTIME_IMAGE` 覆盖基础镜像来源：
 
 ```bash
 docker buildx build \
   --load \
-  --tag zhishu:local \
-  --build-arg ZHISHU_BASE_IMAGE=registry.example.com/zhishu-base:latest \
-  --build-arg ZHISHU_RUNTIME_IMAGE=registry.example.com/zhishu-python-pg:latest \
+  --tag shuzhi:local \
+  --build-arg SHUZHI_BUILD_BASE_IMAGE=registry.example.com/shuzhi-base:latest \
+  --build-arg SHUZHI_RUNTIME_IMAGE=registry.example.com/shuzhi-python-pg:latest \
   --build-arg VITE_API_BASE_URL=./api/v1 \
   --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
   .
 ```
 
-`Dockerfile-base` 只有一个最终镜像阶段，默认的 `zhishu-base:local` 和 `zhishu-python-pg:local` 两个 tag 指向同一个本地基础镜像，分别供 `ZHISHU_BASE_IMAGE` 和 `ZHISHU_RUNTIME_IMAGE` 引用。
+`Dockerfile-base` 只有一个最终镜像阶段，默认的 `shuzhi-base:latest` 和 `shuzhi-python-pg:latest` 两个 tag 指向同一个本地基础镜像，分别供 `SHUZHI_BUILD_BASE_IMAGE` 和 `SHUZHI_RUNTIME_IMAGE` 引用。
 
 ## 五、单容器运行
 
 单容器模式适合本地验证或小规模试运行。它会在同一个容器中启动 PostgreSQL、迁移、G2 SSR、可选 MCP 和 API。
 
 ```bash
-mkdir -p data/zhishu/{excel,file,images,logs} data/postgresql
+mkdir -p data/shuzhi/{excel,file,images,logs} data/postgresql
 
 docker run -d \
   --name chat-bi \
@@ -114,21 +114,21 @@ docker run -d \
   -e APP_ROLE=all \
   -e POSTGRES_SERVER=localhost \
   -e POSTGRES_PORT=5432 \
-  -e POSTGRES_DB=zhishu_bi \
+  -e POSTGRES_DB=shuzhi_bi \
   -e POSTGRES_USER=root \
   -e POSTGRES_PASSWORD='Password123@pg' \
-  -e PROJECT_NAME='星通智数' \
+  -e PROJECT_NAME='星通数智' \
   -e DEFAULT_PWD='elex@123' \
   -e FRONTEND_HOST='http://localhost:8000' \
   -e BACKEND_CORS_ORIGINS='http://localhost:8000,http://127.0.0.1:8000' \
   -e SERVER_IMAGE_HOST='http://localhost:8001/images/' \
   -e MCP_ENABLED=false \
-  -v "$PWD/data/zhishu/excel:/opt/zhishu/data/excel" \
-  -v "$PWD/data/zhishu/file:/opt/zhishu/data/file" \
-  -v "$PWD/data/zhishu/images:/opt/zhishu/images" \
-  -v "$PWD/data/zhishu/logs:/opt/zhishu/app/logs" \
+  -v "$PWD/data/shuzhi/excel:/opt/shuzhi/data/excel" \
+  -v "$PWD/data/shuzhi/file:/opt/shuzhi/data/file" \
+  -v "$PWD/data/shuzhi/images:/opt/shuzhi/images" \
+  -v "$PWD/data/shuzhi/logs:/opt/shuzhi/app/logs" \
   -v "$PWD/data/postgresql:/var/lib/postgresql/data" \
-  zhishu:local
+  shuzhi:local
 ```
 
 访问：
@@ -181,11 +181,11 @@ G2 SSR：可单独运行，或由单容器/all 模式后台启动
 | `FRONTEND_HOST` | 前端访问地址 |
 | `BACKEND_CORS_ORIGINS` | 后端 CORS 白名单 |
 | `SERVER_IMAGE_HOST` | 图片访问地址 |
-| `BASE_DIR` | 应用基础目录，Docker 内建议 `/opt/zhishu` |
-| `UPLOAD_DIR` | 文件上传目录，Docker 内建议 `/opt/zhishu/data/file` |
-| `EXCEL_PATH` | Excel 目录，Docker 内建议 `/opt/zhishu/data/excel` |
-| `MCP_IMAGE_PATH` | 图片目录，Docker 内建议 `/opt/zhishu/images` |
-| `LOG_DIR` | 日志目录，Docker 内建议 `/opt/zhishu/app/logs` |
+| `BASE_DIR` | 应用基础目录，Docker 内建议 `/opt/shuzhi` |
+| `UPLOAD_DIR` | 文件上传目录，Docker 内建议 `/opt/shuzhi/data/file` |
+| `EXCEL_PATH` | Excel 目录，Docker 内建议 `/opt/shuzhi/data/excel` |
+| `MCP_IMAGE_PATH` | 图片目录，Docker 内建议 `/opt/shuzhi/images` |
+| `LOG_DIR` | 日志目录，Docker 内建议 `/opt/shuzhi/app/logs` |
 | `CACHE_TYPE` | 缓存类型；多副本生产建议 `redis` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis 连接配置 |
 | `TASK_QUEUE_*` | Redis 任务队列配置 |
@@ -228,7 +228,7 @@ Jenkins 发布阶段：
 6. 使用 `docker run --rm -e APP_ROLE=migrate` 执行数据库迁移。
 7. 停止旧单容器实例和旧 MCP 容器。
 8. 通过 SSH 重启宿主机预配置的 `chat-bi-api@端口.service` 和 `chat-bi-worker@编号.service`。
-9. 从镜像复制 `/opt/zhishu/frontend/dist` 到 Nginx 静态目录。
+9. 从镜像复制 `/opt/shuzhi/frontend/dist` 到 Nginx 静态目录。
 10. 根据参数清理旧镜像、退出容器和悬空镜像。
 
 ## 九、生产发布前检查清单
@@ -245,13 +245,13 @@ docker system df
 确认 `installer/install.conf` 中关键配置：
 
 ```bash
-ZHISHU_API_PORTS="8000 8002"
-ZHISHU_WORKER_IDS="1 2"
-ZHISHU_CACHE_TYPE="redis"
-ZHISHU_REDIS_HOST=10.1.5.28
-ZHISHU_DB_HOST=10.1.5.28
-ZHISHU_DB_DB=zhishu_bi
-ZHISHU_MCP_ENABLED=false
+SHUZHI_API_PORTS="8000 8002"
+SHUZHI_WORKER_IDS="1 2"
+SHUZHI_CACHE_TYPE="redis"
+SHUZHI_REDIS_HOST=10.1.5.28
+SHUZHI_DB_HOST=10.1.5.28
+SHUZHI_DB_DB=shuzhi_bi
+SHUZHI_MCP_ENABLED=false
 ```
 
 多副本发布必须使用 Redis：
@@ -291,10 +291,10 @@ ExecStart=/usr/bin/docker run --rm \
   -e API_HOST=0.0.0.0 \
   -e API_PORT=%i \
   -p 127.0.0.1:%i:%i \
-  -v ${APP_HOME}/data/zhishu/excel:/opt/zhishu/data/excel \
-  -v ${APP_HOME}/data/zhishu/file:/opt/zhishu/data/file \
-  -v ${APP_HOME}/data/zhishu/images:/opt/zhishu/images \
-  -v ${APP_HOME}/data/zhishu/logs:/opt/zhishu/app/logs \
+  -v ${APP_HOME}/data/shuzhi/excel:/opt/shuzhi/data/excel \
+  -v ${APP_HOME}/data/shuzhi/file:/opt/shuzhi/data/file \
+  -v ${APP_HOME}/data/shuzhi/images:/opt/shuzhi/images \
+  -v ${APP_HOME}/data/shuzhi/logs:/opt/shuzhi/app/logs \
   ${IMAGE}
 ExecStop=/usr/bin/docker stop chat-bi-api-%i
 Restart=always
@@ -321,10 +321,10 @@ ExecStart=/usr/bin/docker run --rm \
   --env-file ${RUNTIME_ENV_FILE} \
   -e APP_ROLE=worker \
   -e WORKER_INSTANCE=%i \
-  -v ${APP_HOME}/data/zhishu/excel:/opt/zhishu/data/excel \
-  -v ${APP_HOME}/data/zhishu/file:/opt/zhishu/data/file \
-  -v ${APP_HOME}/data/zhishu/images:/opt/zhishu/images \
-  -v ${APP_HOME}/data/zhishu/logs:/opt/zhishu/app/logs \
+  -v ${APP_HOME}/data/shuzhi/excel:/opt/shuzhi/data/excel \
+  -v ${APP_HOME}/data/shuzhi/file:/opt/shuzhi/data/file \
+  -v ${APP_HOME}/data/shuzhi/images:/opt/shuzhi/images \
+  -v ${APP_HOME}/data/shuzhi/logs:/opt/shuzhi/app/logs \
   ${IMAGE}
 ExecStop=/usr/bin/docker stop chat-bi-worker-%i
 Restart=always
@@ -347,7 +347,7 @@ sudo systemctl enable chat-bi-worker@1.service chat-bi-worker@2.service
 Jenkins 会把前端构建产物从镜像中复制出来：
 
 ```bash
-docker cp "$tmp_container:/opt/zhishu/frontend/dist/." "$nginx_tmp"
+docker cp "$tmp_container:/opt/shuzhi/frontend/dist/." "$nginx_tmp"
 ```
 
 并原子替换：
@@ -368,7 +368,7 @@ Jenkins 还会生成参考配置：
 /etc/nginx/conf.d/chat-bi.conf
 ```
 
-API upstream 来自 `ZHISHU_API_PORTS`：
+API upstream 来自 `SHUZHI_API_PORTS`：
 
 ```nginx
 upstream chat_bi_backend {
@@ -414,7 +414,7 @@ tar -czf /home/chat-bi/nginx/html-$(date +%Y%m%d_%H%M%S).tar.gz -C /home/chat-bi
 数据库迁移不可简单依赖镜像回滚自动逆转。生产发布前应先备份系统库：
 
 ```bash
-pg_dump -h 10.1.5.28 -p 5432 -U root -Fc zhishu_bi > zhishu_bi-before-release.dump
+pg_dump -h 10.1.5.28 -p 5432 -U root -Fc shuzhi_bi > shuzhi_bi-before-release.dump
 ```
 
 如需回滚数据库，应按 Alembic 迁移内容和备份策略单独评估。
@@ -426,17 +426,17 @@ pg_dump -h 10.1.5.28 -p 5432 -U root -Fc zhishu_bi > zhishu_bi-before-release.du
 检查：
 
 ```bash
-docker images zhishu-base
-docker images zhishu-python-pg
+docker images shuzhi-base
+docker images shuzhi-python-pg
 ```
 
 如果不存在，先执行：
 
 ```bash
-docker build -f Dockerfile-base -t zhishu-base:local -t zhishu-python-pg:local .
+docker build -f Dockerfile-base -t shuzhi-base:latest -t shuzhi-python-pg:latest .
 ```
 
-如果使用内网镜像仓库，通过 `ZHISHU_BASE_IMAGE` / `ZHISHU_RUNTIME_IMAGE` 覆盖。
+如果使用内网镜像仓库，通过 `SHUZHI_BUILD_BASE_IMAGE` / `SHUZHI_RUNTIME_IMAGE` 覆盖。
 
 ### 13.2 前端 API 地址不对
 
@@ -469,7 +469,7 @@ docker logs chat-bi-migrate
 如果容器已自动删除，需要从 Jenkins 失败日志或应用日志中查看：
 
 ```bash
-tail -n 300 /home/chat-bi/data/zhishu/logs/*.log
+tail -n 300 /home/chat-bi/data/shuzhi/logs/*.log
 ```
 
 ### 13.5 systemd 服务启动失败
@@ -497,12 +497,12 @@ API 端口是否被占用
 当前 Docker 镜像内部路径是：
 
 ```text
-/opt/zhishu
+/opt/shuzhi
 ```
 
 历史草稿或旧发布脚本里仍可能出现和当前路径不一致的旧路径。
 
-使用 Docker 发布时，容器内挂载目标应以 `/opt/zhishu` 为准；宿主机目录当前 Jenkins 使用 `/home/chat-bi`。
+使用 Docker 发布时，容器内挂载目标应以 `/opt/shuzhi` 为准；宿主机目录当前 Jenkins 使用 `/home/chat-bi`。
 
 ## 十四、建议改进项
 

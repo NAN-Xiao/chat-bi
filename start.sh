@@ -37,7 +37,7 @@ start_worker() {
 }
 
 start_postgres_if_needed() {
-  if [ "${ZHISHU_EMBEDDED_POSTGRES:-false}" = "true" ] || [ "$APP_ROLE" = "all" ]; then
+  if [ "${SHUZHI_EMBEDDED_POSTGRES:-${ZHISHU_EMBEDDED_POSTGRES:-false}}" = "true" ] || [ "$APP_ROLE" = "all" ]; then
     /usr/local/bin/docker-entrypoint.sh postgres &
     wait-for-it 127.0.0.1:5432 --timeout=120 --strict -- echo -e "\033[1;32mPostgreSQL started.\033[0m"
   fi
