@@ -860,7 +860,7 @@ async function submitReportPrompt() {
   reportController.value = controller
   const question = [
     nextQuestion,
-    '请解读当前看板报表区域，重点说明关键发现、异常点、可能原因和后续建议。回答要综合当前区域内图表数据，保持简洁。',
+    '请解读当前看板报表区域。少复述数据，多给判断：每条结论都要说明这个信号意味着什么、有什么风险或当前还不能判断什么；建议必须对应可见数据里的具体信号。回答要综合当前区域内图表数据，保持简洁。',
   ].join('\n')
   reportPromptText.value = ''
   const messages: AnalysisAssistantMessage[] = [{ role: 'user', content: question }]
