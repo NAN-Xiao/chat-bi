@@ -1962,15 +1962,45 @@ def _execute_dashboard_chart_sql(
             sql = _build_dashboard_pivot_sql(sql, datasource, pivot)
         except Exception as exc:
             return _failed_chart_result(f"{exc}")
+    started_at = time.perf_counter()
     result = execute_user_query(
         session=session,
         current_user=current_user,
         datasource_id=datasource_id,
         sql=sql,
         origin_column=True,
+        query_timeout=settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS,
+        close_system_transaction_before_query=True,
+        include_execution_meta=True,
     )
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    execution_meta = result.pop("_execution_meta", None)
     if result.get("status") != "failed":
         result["refreshed_at"] = int(time.time() * 1000)
+        executed_sql = execution_meta.get("executed_sql") if isinstance(execution_meta, dict) else sql
+        execution_time_ms = (
+            execution_meta.get("execution_time_ms")
+            if isinstance(execution_meta, dict)
+            else elapsed_ms
+        )
+        AppLogUtil.info(
+            "Dashboard SQL executed: "
+            f"datasource_id={datasource_id}, "
+            f"tenant_id={_current_tenant_id(current_user)}, "
+            f"user_id={getattr(current_user, 'id', None)}, "
+            f"execution_time_ms={execution_time_ms}, "
+            f"sql={executed_sql}"
+        )
+    else:
+        AppLogUtil.warning(
+            "Dashboard SQL execution failed: "
+            f"datasource_id={datasource_id}, "
+            f"tenant_id={_current_tenant_id(current_user)}, "
+            f"user_id={getattr(current_user, 'id', None)}, "
+            f"execution_time_ms={elapsed_ms}, "
+            f"message={result.get('message')}, "
+            f"sql={sql}"
+        )
     if _dashboard_pivot_enabled(pivot) and result.get("status") == "failed":
         friendly_message = _dashboard_pivot_date_cast_error(str(result.get("message") or ""), pivot)
         if friendly_message:

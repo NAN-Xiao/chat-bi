@@ -8,6 +8,7 @@ learning-docs/
 /playwright/.cache/
 *.lock
 *-lock.json
+!/backend/uv.lock
 components.d.ts
 
 # Byte-compiled / optimized / DLL files

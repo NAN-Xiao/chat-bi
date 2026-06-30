@@ -20,6 +20,7 @@ from common.utils.crypto import (
 
 
 CONFIGURED_LEGACY_AES_KEY = b"LegacyTestKey123"
+SQLBOT_LEGACY_AES_KEY = b"SQLBot1234567890"
 OLD_BRAND_LEGACY_AES_KEY = bytes([90, 104, 105, 115, 104, 117, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48])
 
 
@@ -79,6 +80,18 @@ def test_datasource_configuration_reads_configured_legacy_aes_key(monkeypatch):
     monkeypatch.setattr(settings, "LEGACY_CONFIG_AES_KEYS", f"base64:{base64.b64encode(CONFIGURED_LEGACY_AES_KEY).decode('utf-8')}")
     plain = '{"host":"db.example.com","password":"secret"}'
     legacy = _legacy_ecb_encrypt_with_key(plain, CONFIGURED_LEGACY_AES_KEY)
+
+    assert aes_decrypt(legacy) == plain
+
+    encrypted = encrypt_datasource_configuration(legacy)
+
+    assert encrypted.startswith("fernet:v1:")
+    assert aes_decrypt(encrypted) == plain
+
+
+def test_datasource_configuration_reads_sqlbot_legacy_aes_key():
+    plain = '{"host":"127.0.0.1","database":"slg_bi_mock"}'
+    legacy = _legacy_ecb_encrypt_with_key(plain, SQLBOT_LEGACY_AES_KEY)
 
     assert aes_decrypt(legacy) == plain
 

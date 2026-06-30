@@ -13,6 +13,7 @@ from common.core.config import settings
 _AES_KEY = b"Shuzhi1234567890"
 _BUILTIN_LEGACY_AES_KEYS = (
     bytes([90, 104, 105, 115, 104, 117, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48]),
+    b"SQLBot1234567890",
 )
 _FERNET_PREFIX = "fernet:v1:"
 _AES_KEY_SIZES = {16, 24, 32}

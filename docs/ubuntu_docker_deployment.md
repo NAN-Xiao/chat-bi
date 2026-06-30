@@ -79,7 +79,7 @@ newgrp docker
 
 ## 4. 准备项目目录
 
-推荐统一部署到 `/opt/shuzhi/SQLBot`：
+推荐统一部署到 `/opt/shuzhi/chat-bi`：
 
 ```bash
 sudo mkdir -p /opt/shuzhi
@@ -90,23 +90,23 @@ cd /opt/shuzhi
 如果服务器可以访问 Git 仓库：
 
 ```bash
-git clone <你的仓库地址> SQLBot
-cd SQLBot
+git clone <你的仓库地址> chat-bi
+cd chat-bi
 ```
 
 如果服务器不能访问 Git，可以在本地打包后上传：
 
 ```bash
-tar -czf SQLBot.tar.gz SQLBot
-scp SQLBot.tar.gz user@服务器IP:/opt/shuzhi/
+tar -czf chat-bi.tar.gz chat-bi
+scp chat-bi.tar.gz user@服务器IP:/opt/shuzhi/
 ```
 
 服务器解压：
 
 ```bash
 cd /opt/shuzhi
-tar -xzf SQLBot.tar.gz
-cd SQLBot
+tar -xzf chat-bi.tar.gz
+cd chat-bi
 ```
 
 ## 5. 构建 Docker 镜像
@@ -114,7 +114,7 @@ cd SQLBot
 当前项目需要先构建基础镜像，再构建应用镜像：
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 
 export DOCKER_BUILDKIT=1
 
@@ -123,12 +123,20 @@ docker build -f Dockerfile-base \
   -t shuzhi-python-pg:latest \
   .
 
-docker build -t shuzhi:latest .
+docker buildx build \
+  --load \
+  -t shuzhi:latest \
+  --build-arg SHUZHI_BUILD_BASE_IMAGE=shuzhi-base:latest \
+  --build-arg SHUZHI_RUNTIME_IMAGE=shuzhi-python-pg:latest \
+  --build-arg VITE_API_BASE_URL=./api/v1 \
+  --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
+  .
 ```
 
 说明：
 
 - `Dockerfile-base` 会安装 Python、Node.js、PostgreSQL 基础环境和数据库驱动。
+- 上面两个本地基础镜像 tag 指向同一个构建结果，分别供 `SHUZHI_BUILD_BASE_IMAGE` 和 `SHUZHI_RUNTIME_IMAGE` 引用。
 - `Dockerfile` 会构建前端、后端依赖和图表 SSR 服务。
 - 首次构建耗时较长，通常需要数分钟到数十分钟，取决于服务器网络和 CPU。
 
@@ -206,7 +214,7 @@ services:
 ## 7. 创建持久化目录
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 
 mkdir -p data/shuzhi/excel
 mkdir -p data/shuzhi/file
@@ -300,7 +308,7 @@ password: docker-compose.local.yaml 中 POSTGRES_PASSWORD 的值
 进入项目目录：
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 ```
 
 查看服务：
@@ -350,7 +358,7 @@ docker exec -it shuzhi bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0
 升级前先备份，至少备份 `data/` 和 `docker-compose.local.yaml`。
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 
 tar -czf shuzhi-data-before-upgrade-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
 ```
@@ -371,7 +379,14 @@ docker build -f Dockerfile-base \
   -t shuzhi-python-pg:latest \
   .
 
-docker build -t shuzhi:latest .
+docker buildx build \
+  --load \
+  -t shuzhi:latest \
+  --build-arg SHUZHI_BUILD_BASE_IMAGE=shuzhi-base:latest \
+  --build-arg SHUZHI_RUNTIME_IMAGE=shuzhi-python-pg:latest \
+  --build-arg VITE_API_BASE_URL=./api/v1 \
+  --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
+  .
 ```
 
 重启容器：
@@ -394,7 +409,7 @@ docker logs --tail=200 shuzhi
 停止服务后备份最稳：
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 
 docker compose -f docker-compose.local.yaml down
 tar -czf shuzhi-full-data-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
@@ -406,7 +421,7 @@ docker compose -f docker-compose.local.yaml up -d
 服务运行时也可以做逻辑备份：
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 
 docker exec -e PGPASSWORD='你的POSTGRES_PASSWORD' shuzhi \
   pg_dump -h 127.0.0.1 -U root -d shuzhi_bi \
@@ -422,7 +437,7 @@ cp data/shuzhi/logs/shuzhi_bi.dump ./shuzhi_bi-$(date +%F-%H%M%S).dump
 旧服务器：
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 
 docker compose -f docker-compose.local.yaml down
 tar -czf shuzhi-migrate-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
@@ -431,13 +446,13 @@ tar -czf shuzhi-migrate-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
 传到新服务器：
 
 ```bash
-scp shuzhi-migrate-*.tar.gz user@新服务器IP:/opt/shuzhi/SQLBot/
+scp shuzhi-migrate-*.tar.gz user@新服务器IP:/opt/shuzhi/chat-bi/
 ```
 
 新服务器先按本文档安装 Docker、准备代码并构建镜像，然后恢复数据：
 
 ```bash
-cd /opt/shuzhi/SQLBot
+cd /opt/shuzhi/chat-bi
 tar -xzf shuzhi-migrate-*.tar.gz
 docker compose -f docker-compose.local.yaml up -d
 ```

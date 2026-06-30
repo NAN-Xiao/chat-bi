@@ -2,6 +2,8 @@
 脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
 from dataclasses import dataclass
+import inspect
+import time
 from typing import Any
 
 from apps.datasource.crud.permission import (
@@ -41,6 +43,7 @@ class QueryExecutionResult:
     requested_sql: str
     executed_sql: str
     tables: set[str]
+    execution_time_ms: int
 
 
 def _failed_query_result(message: str, error_type: str | None = None) -> dict[str, Any]:
@@ -109,6 +112,51 @@ def _normalize_query_result(result: dict[str, Any], origin_column: bool) -> dict
     if data:
         result["fields"] = list(data[0].keys())
     return result
+
+
+def _copy_datasource_for_query(datasource: CoreDatasource) -> CoreDatasource:
+    """
+    是什么：_copy_datasource_for_query 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：复制数据源对象，避免关闭系统库事务后继续依赖会话绑定对象。
+    """
+    if hasattr(datasource, "model_dump"):
+        try:
+            return CoreDatasource(**datasource.model_dump())
+        except Exception:
+            pass
+    return datasource
+
+
+def _execute_after_validation(
+        ds: CoreDatasource | AssistantOutDsSchema,
+        sql: str,
+        *,
+        origin_column: bool,
+        query_timeout: int | None = None,
+) -> dict[str, Any]:
+    """
+    是什么：_execute_after_validation 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：调用底层 SQL 执行器，并在执行器支持时传递查询超时时间。
+    """
+    if query_timeout and query_timeout > 0:
+        try:
+            signature = inspect.signature(_unsafe_exec_sql_after_validation)
+            params = signature.parameters
+            accepts_timeout = "query_timeout" in params or any(
+                param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
+            )
+        except (TypeError, ValueError):
+            accepts_timeout = True
+        if accepts_timeout:
+            return _unsafe_exec_sql_after_validation(
+                ds=ds,
+                sql=sql,
+                origin_column=origin_column,
+                query_timeout=query_timeout,
+            )
+    return _unsafe_exec_sql_after_validation(ds=ds, sql=sql, origin_column=origin_column)
 
 
 def prepare_query_sql(
@@ -199,6 +247,8 @@ def execute_user_query_or_raise(
         origin_column: bool = False,
         apply_row_permissions: bool = True,
         validate_columns: bool = True,
+        query_timeout: int | None = None,
+        close_system_transaction_before_query: bool = False,
 ) -> QueryExecutionResult:
     """
     是什么：execute_user_query_or_raise 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -219,14 +269,28 @@ def execute_user_query_or_raise(
         apply_row_permissions=apply_row_permissions,
         validate_columns=validate_columns,
     )
-    result = _unsafe_exec_sql_after_validation(ds=datasource, sql=executed_sql, origin_column=origin_column)
+    datasource_for_query = _copy_datasource_for_query(datasource)
+    if close_system_transaction_before_query:
+        try:
+            session.rollback()
+        except Exception as exc:
+            AppLogUtil.warning(f"Failed to close system DB read transaction before datasource query: {exc}")
+    started_at = time.perf_counter()
+    result = _execute_after_validation(
+        ds=datasource_for_query,
+        sql=executed_sql,
+        origin_column=origin_column,
+        query_timeout=query_timeout,
+    )
+    execution_time_ms = int((time.perf_counter() - started_at) * 1000)
     result = _normalize_query_result(result, origin_column)
     return QueryExecutionResult(
         result=result,
-        datasource=datasource,
+        datasource=datasource_for_query,
         requested_sql=sql,
         executed_sql=executed_sql,
         tables=tables,
+        execution_time_ms=execution_time_ms,
     )
 
 
@@ -280,7 +344,9 @@ def execute_external_user_query_or_raise(
         raise ValueError("SQL 解析失败，无法确认查询表范围")
     _validate_allowed_tables(actual_tables, allowed_tables)
 
-    result = _unsafe_exec_sql_after_validation(ds=datasource, sql=sql, origin_column=origin_column)
+    started_at = time.perf_counter()
+    result = _execute_after_validation(ds=datasource, sql=sql, origin_column=origin_column)
+    execution_time_ms = int((time.perf_counter() - started_at) * 1000)
     result = _normalize_query_result(result, origin_column)
     return QueryExecutionResult(
         result=result,
@@ -288,6 +354,7 @@ def execute_external_user_query_or_raise(
         requested_sql=scope_sql or sql,
         executed_sql=sql,
         tables=actual_tables,
+        execution_time_ms=execution_time_ms,
     )
 
 
@@ -301,6 +368,9 @@ def execute_user_query(
         origin_column: bool = False,
         apply_row_permissions: bool = True,
         validate_columns: bool = True,
+        query_timeout: int | None = None,
+        close_system_transaction_before_query: bool = False,
+        include_execution_meta: bool = False,
 ) -> dict[str, Any]:
     """
     是什么：execute_user_query 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -326,14 +396,24 @@ def execute_user_query(
             origin_column=origin_column,
             apply_row_permissions=apply_row_permissions,
             validate_columns=validate_columns,
+            query_timeout=query_timeout,
+            close_system_transaction_before_query=close_system_transaction_before_query,
         )
-        return {
+        result = {
             "status": "success",
             "fields": query_result.result.get("fields", []),
             "data": query_result.result.get("data", []),
             "message": "",
             "sql": query_result.result.get("sql"),
         }
+        if include_execution_meta:
+            result["_execution_meta"] = {
+                "requested_sql": query_result.requested_sql,
+                "executed_sql": query_result.executed_sql,
+                "execution_time_ms": query_result.execution_time_ms,
+                "tables": sorted(query_result.tables),
+            }
+        return result
     except Exception as exc:
         AppLogUtil.error(f"User query execution failed: {exc}")
         message = safe_query_error_message(current_user, f"{exc}")

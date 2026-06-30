@@ -2,11 +2,13 @@ ARG PYTHON_BASE_IMAGE=python:3.11-slim-bookworm
 ARG POSTGRES_BASE_IMAGE=postgres:17.6
 ARG LICENSE_VALIDATOR_URL=
 ARG DM_DRIVER_ARCHIVE_URL=
+ARG NODE_VERSION=18.20.8
 
 FROM ${PYTHON_BASE_IMAGE} AS python-builder
 FROM ${POSTGRES_BASE_IMAGE}
 ARG LICENSE_VALIDATOR_URL=
 ARG DM_DRIVER_ARCHIVE_URL=
+ARG NODE_VERSION=18.20.8
 
 # python environment
 COPY --from=python-builder /usr/local /usr/local
@@ -20,7 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wait-for-it \
     build-essential \
     curl \
-    gnupg \
+    ca-certificates \
+    xz-utils \
     gcc \
     g++ \
     libcairo2-dev \
@@ -28,9 +31,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev \
     libgif-dev \
     librsvg2-dev \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && curl -qL https://www.npmjs.com/install.sh | sh - \
-    && apt-get install -y nodejs \
+    && case "$(dpkg --print-architecture)" in \
+      amd64) node_arch="x64" ;; \
+      arm64) node_arch="arm64" ;; \
+      *) echo "Unsupported Node.js architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.tar.xz \
+    && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
+    && rm -f /tmp/node.tar.xz \
+    && node --version \
+    && npm --version \
     && if [ -n "$LICENSE_VALIDATOR_URL" ]; then curl -L --connect-timeout 60 -m 1800 "$LICENSE_VALIDATOR_URL" | sh; fi \
     && rm -rf /var/lib/apt/lists/* \
     && chmod g+xr /usr/bin/ld.so \
@@ -41,7 +51,7 @@ ENV DB_CLIENT=/opt/shuzhi/db_client
 ENV LD_LIBRARY_PATH="${DB_CLIENT}/oracle_instant_client:${LD_LIBRARY_PATH}"
 ARG TARGETARCH
 RUN apt-get update && \
-    apt-get install -y unzip libaio1 && \
+    (apt-get install -y unzip libaio1t64 || apt-get install -y unzip libaio1) && \
     mkdir -p ${DB_CLIENT} && \
     if [ "$TARGETARCH" = "amd64" ]; then \
       echo "Building for x86_64"; \
@@ -57,7 +67,7 @@ RUN apt-get update && \
 
 # Download DM library
 ENV DM_HOME=/opt/dmdbms
-ENV LD_LIBRARY_PATH=$DM_HOME/bin:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH="${DM_HOME}/bin:${LD_LIBRARY_PATH}"
 RUN if [ -n "$DM_DRIVER_ARCHIVE_URL" ]; then \
       curl -L -o dm.zip "$DM_DRIVER_ARCHIVE_URL" && \
       mkdir -p $DM_HOME/bin && \

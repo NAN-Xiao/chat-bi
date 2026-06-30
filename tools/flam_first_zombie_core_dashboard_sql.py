@@ -42,27 +42,18 @@ def _json_text(alias: str, obj: str, key: str) -> str:
 
 
 SQL_GIFT_PURCHASE = f"""
-WITH pay_events AS (
-    SELECT e.uid,
-           COALESCE(
-               {_json_text("e", "ext", "payId")},
-               {_json_text("e", "ext", "rechargeId")},
-               {_json_text("e", "ext", "productId")},
-               {_json_text("e", "ext", "goodsId")},
-               e.event
-           ) AS gift_name
-    FROM `event` e
-    WHERE e.dt BETWEEN {_date_expr(30)} AND {_date_expr()}
-      AND e.event IN ({PAY_EVENTS})
-      AND e.prod = {PROD_ID}
-)
-SELECT gift_name AS `购买礼包名`,
-       COUNT(*) AS `购买次数`,
-       COUNT(DISTINCT uid) AS `购买人数`
-FROM pay_events
-GROUP BY gift_name
+SELECT
+    {_json_text("e", "personal", "productid")} AS `购买礼包ID`,
+    COUNT(*) AS `购买次数`,
+    COUNT(DISTINCT e.uid) AS `购买人数`
+FROM `event` e
+WHERE e.dt BETWEEN {_date_expr(30)} AND {_date_expr()}
+  AND e.prod = {PROD_ID}
+  AND e.event = 'ServerPayLog'
+  AND {_json_text("e", "personal", "productid")} IS NOT NULL
+GROUP BY `购买礼包ID`
 ORDER BY `购买次数` DESC
-LIMIT 50
+LIMIT 1000;
 """.strip()
 
 SQL_ONBOARDING_FUNNEL = f"""
@@ -124,8 +115,8 @@ CORE_ONLY_VIEW_SQL: dict[str, ViewSql] = {
     "551d465e59fa454ba97ff9ef0ad0dd2a": ViewSql(
         "礼包购买情况",
         "table",
-        ("购买礼包名", "购买次数", "购买人数"),
-        columns=("购买礼包名", "购买次数", "购买人数"),
+        ("购买礼包ID", "购买次数", "购买人数"),
+        columns=("购买礼包ID", "购买次数", "购买人数"),
         sql=SQL_GIFT_PURCHASE,
     ),
     "73cfeb49a58a44799e5a91371fbe296d": ViewSql(

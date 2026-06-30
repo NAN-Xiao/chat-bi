@@ -1,11 +1,14 @@
 # Build shuzhi
 ARG SHUZHI_BUILD_BASE_IMAGE=shuzhi-base:latest
 ARG SHUZHI_RUNTIME_IMAGE=shuzhi-python-pg:latest
+ARG VITE_API_BASE_URL=./api/v1
 
 FROM --platform=${BUILDPLATFORM} ${SHUZHI_BUILD_BASE_IMAGE} AS shuzhi-ui-builder
+ARG VITE_API_BASE_URL=./api/v1
 ENV SHUZHI_HOME=/opt/shuzhi
 ENV APP_HOME=${SHUZHI_HOME}/app
 ENV UI_HOME=${SHUZHI_HOME}/frontend
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
@@ -15,6 +18,7 @@ RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
 FROM ${SHUZHI_BUILD_BASE_IMAGE} AS shuzhi-builder
+ARG PYTHON_DEPENDENCY_EXTRA=cpu
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
 ENV SHUZHI_HOME=/opt/shuzhi
@@ -32,18 +36,17 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 WORKDIR ${APP_HOME}
 
 COPY  --from=shuzhi-ui-builder ${UI_HOME} ${UI_HOME}
-# Install dependencies
-RUN test -f "./uv.lock" && \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=backend/uv.lock,target=uv.lock \
-    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
+COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
+# Install dependencies from the committed lockfile so CI does not resolve
+# fresh dependency candidates on every image build.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --extra "${PYTHON_DEPENDENCY_EXTRA}" --no-install-project
 
 COPY ./backend ${APP_HOME}
 
 # Final sync to ensure all dependencies are installed
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --extra cpu
+    uv sync --locked --no-dev --extra "${PYTHON_DEPENDENCY_EXTRA}"
 
 # Build g2-ssr
 FROM ${SHUZHI_BUILD_BASE_IMAGE} AS ssr-builder
@@ -71,6 +74,10 @@ FROM ${SHUZHI_RUNTIME_IMAGE}
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
+
+# 复用基础镜像中已安装的 Oracle Instant Client，避免 CI 依赖私有 zip 构建资产。
+ENV ORACLE_CLIENT_PATH=/opt/shuzhi/db_client/oracle_instant_client
+ENV LD_LIBRARY_PATH=${ORACLE_CLIENT_PATH}:${LD_LIBRARY_PATH}
 
 # This runtime image is the all-in-one evaluation image. It starts PostgreSQL
 # from start.sh and carries development database defaults for first-run demos.
@@ -100,6 +107,6 @@ EXPOSE 3000 8000 8001 5432
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import os, urllib.request; p=os.environ.get('CONTEXT_PATH','').strip('/'); urllib.request.urlopen('http://localhost:8000/' + ((p + '/') if p else '') + 'health', timeout=3)" || exit 1
+    CMD python3 -c "import os, urllib.request; port=os.environ.get('API_PORT','8000'); p=os.environ.get('CONTEXT_PATH','').strip('/'); urllib.request.urlopen(f'http://localhost:{port}/' + ((p + '/') if p else '') + 'health', timeout=3)" || exit 1
 
 ENTRYPOINT ["sh", "start.sh"]

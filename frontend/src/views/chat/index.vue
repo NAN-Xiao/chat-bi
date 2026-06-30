@@ -466,7 +466,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat'
+import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
 import ChartAnswer from './answer/ChartAnswer.vue'
 import AnalysisAnswer from './answer/AnalysisAnswer.vue'
@@ -572,6 +572,7 @@ const loading = ref<boolean>(false)
 const chatList = ref<Array<ChatInfo>>([])
 const appearanceStore = useAppearanceStoreWithOut()
 const workspaceContextSwitching = ref(false)
+const currentChatStoragePrefix = 'chat.currentChat.'
 
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
@@ -635,6 +636,62 @@ const resetChatContext = () => {
   selectedDataSkillId.value = null
 }
 
+function currentChatStorageKey(datasourceId = datasourceContext.datasourceId || currentChat.value.datasource) {
+  return `${currentChatStoragePrefix}${userStore.getUid || 'default'}.${
+    userStore.getTenantId || 'default'
+  }.${datasourceId || 'default'}`
+}
+
+function rememberCurrentChat(chatId?: number) {
+  const datasourceId = currentChat.value.datasource || datasourceContext.datasourceId
+  if (!chatId || !datasourceId) {
+    return
+  }
+  sessionStorage.setItem(currentChatStorageKey(datasourceId), String(chatId))
+}
+
+function forgetCurrentChat(datasourceId = datasourceContext.datasourceId || currentChat.value.datasource) {
+  sessionStorage.removeItem(currentChatStorageKey(datasourceId))
+}
+
+async function loadChatById(chatId?: number) {
+  if (!chatId) {
+    return
+  }
+  const res = await chatApi.get(chatId)
+  const info = chatApi.toChatInfo(res)
+  if (!info) {
+    return
+  }
+  currentChat.value = info
+  currentChatId.value = info.id
+  rememberCurrentChat(info.id)
+  if (!chatList.value.some((chat) => Number(chat.id) === Number(info.id))) {
+    chatList.value.unshift(info)
+  }
+  onClickHistory(info)
+}
+
+async function restoreCurrentChatFromSession() {
+  if (currentChatId.value !== undefined || props.startChatDsId) {
+    return
+  }
+  const storedChatId = Number(sessionStorage.getItem(currentChatStorageKey()))
+  if (!storedChatId || !chatList.value.some((chat) => Number(chat.id) === storedChatId)) {
+    return
+  }
+
+  loading.value = true
+  try {
+    await loadChatById(storedChatId)
+  } catch (error) {
+    console.error('Restore current chat failed:', error)
+    forgetCurrentChat()
+  } finally {
+    loading.value = false
+  }
+}
+
 let scrollTime: any
 let scrollingTime: any
 let scrollTopVal = 0
@@ -685,6 +742,7 @@ const handleScroll = (val: any) => {
 }
 
 const createNewChatSimple = async () => {
+  forgetCurrentChat()
   currentChat.value = new ChatInfo()
   currentChatId.value = undefined
   await createNewChat()
@@ -718,6 +776,7 @@ const createNewChat = async () => {
     })
     return
   }
+  forgetCurrentChat()
   goEmpty()
   if (!isCompletePage.value && !selectAssistantDs.value) {
     currentChat.value = new ChatInfo()
@@ -727,35 +786,37 @@ const createNewChat = async () => {
   chatCreatorRef.value?.showDs()
 }
 
-function getChatList(callback?: () => void) {
+async function getChatList(callback?: () => void) {
   const requestTenantId = userStore.getTenantId || 'default'
   const requestDatasourceId = datasourceContext.datasourceId
   loading.value = true
-  chatApi
-    .list(requestDatasourceId)
-    .then((res) => {
-      if (
-        (userStore.getTenantId || 'default') !== requestTenantId ||
-        datasourceContext.datasourceId !== requestDatasourceId
-      ) {
-        return
-      }
-      chatList.value = chatApi.toChatInfoList(res || [])
-    })
-    .finally(() => {
-      if (
-        (userStore.getTenantId || 'default') === requestTenantId &&
-        datasourceContext.datasourceId === requestDatasourceId
-      ) {
-        loading.value = false
-      }
-      if (callback && typeof callback === 'function') {
-        callback()
-      }
-    })
+  try {
+    const res = await chatApi.list(requestDatasourceId)
+    if (
+      (userStore.getTenantId || 'default') !== requestTenantId ||
+      datasourceContext.datasourceId !== requestDatasourceId
+    ) {
+      return
+    }
+    chatList.value = chatApi.toChatInfoList(res || [])
+    await restoreCurrentChatFromSession()
+  } finally {
+    if (
+      (userStore.getTenantId || 'default') === requestTenantId &&
+      datasourceContext.datasourceId === requestDatasourceId
+    ) {
+      loading.value = false
+    }
+    if (callback && typeof callback === 'function') {
+      callback()
+    }
+  }
 }
 
 function onClickHistory(chat: ChatInfo) {
+  if (chat?.id) {
+    rememberCurrentChat(chat.id)
+  }
   scrollToBottom()
   forEach(chat?.records, (record: ChatRecord) => {
     // getChatData(record.id)
@@ -766,6 +827,9 @@ function onClickHistory(chat: ChatInfo) {
 }
 
 function onChatDeleted(id: number) {
+  if (Number(sessionStorage.getItem(currentChatStorageKey())) === Number(id)) {
+    forgetCurrentChat()
+  }
   console.info('deleted', id)
 }
 
@@ -794,6 +858,7 @@ function onChatCreatedQuick(chat: ChatInfo) {
   chatList.value.unshift(chat)
   currentChatId.value = chat.id
   currentChat.value = chat
+  rememberCurrentChat(chat.id)
   onChatCreated(chat)
 }
 
@@ -990,7 +1055,34 @@ const sendMessage = async (
   currentRecord.chart = ''
 
   currentChat.value.records.push(currentRecord)
+  rememberCurrentChat(currentChatId.value)
   inputMessage.value = ''
+
+  try {
+    const task = await questionApi.startTask({
+      question: currentRecord.question,
+      chat_id: currentChatId.value,
+      custom_prompt_id: currentRecord.custom_prompt_id,
+      data_skill_id: currentRecord.data_skill_id,
+    })
+    const currentRecordIndex = currentChat.value.records.indexOf(currentRecord)
+    if (task.record_id) {
+      currentRecord.id = task.record_id
+      if (currentRecordIndex >= 0) {
+        currentChat.value.records[currentRecordIndex].id = task.record_id
+      }
+    }
+    currentRecord.task_id = task.task_id
+    if (currentRecordIndex >= 0) {
+      currentChat.value.records[currentRecordIndex].task_id = task.task_id
+    }
+  } catch (error) {
+    currentRecord.error = `${currentRecord.error ? `${currentRecord.error}\n` : ''}Error:${error}`
+    loading.value = false
+    isTyping.value = false
+    console.error('Start chat task failed:', error)
+    return
+  }
 
   nextTick(async () => {
     if (!isCompletePage.value && innerRef.value) {

@@ -4,7 +4,7 @@
 import asyncio
 import io
 import traceback
-from typing import Optional, List
+from typing import Any, Optional, List
 
 import orjson
 import pandas as pd
@@ -21,13 +21,18 @@ from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user,
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
     ChatInfo, Chat, ChatFinishStep, ChatQuestionBase
 from apps.chat.task.llm import LLMService
+from apps.chat.task_events import bind_chat_record_task, get_chat_record_task_id, get_chat_task_events
 from apps.datasource.crud.permission import has_datasource_access
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.tenant_usage import check_tenant_usage_quota
+from apps.system.crud.user import is_platform_admin
 from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
+from common.core.task_queue import enqueue_task, get_task
+from common.core.task_registry import register_builtin_tasks
 from common.core.tenant_rate_limiter import consume_tenant_rate_limit, resolve_tenant_rate_limit
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
@@ -612,6 +617,165 @@ def find_base_question(record_id: int, session: SessionDep, current_user: Curren
         return find_base_question(rec_regenerate_record_id, session, current_user)
     else:
         return rec_question
+
+
+def _serialize_current_assistant(current_assistant: CurrentAssistant) -> dict[str, Any] | None:
+    if current_assistant is None:
+        return None
+    if hasattr(current_assistant, "model_dump"):
+        return current_assistant.model_dump()
+    if hasattr(current_assistant, "dict"):
+        return current_assistant.dict()
+    return None
+
+
+def _can_read_chat_task(task: dict[str, Any], current_user: CurrentUser) -> bool:
+    if int(task.get("tenant_id")) != _current_tenant_id(current_user):
+        return False
+    created_by = task.get("created_by")
+    if created_by is not None and int(created_by) == int(current_user.id):
+        return True
+    tenant_role = normalize_tenant_role(
+        getattr(current_user, "workspace_role", None)
+        or getattr(current_user, "tenant_role", None)
+    )
+    return is_platform_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
+
+
+@router.post("/question/task", summary=f"{PLACEHOLDER_PREFIX}ask_question")
+@require_permissions(permission=AppPermission(type='chat', keyExpression="request_question.chat_id"))
+async def start_question_task(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestionBase,
+                              current_assistant: CurrentAssistant,
+                              finish_step: int = Query(
+                                  ChatFinishStep.GENERATE_CHART.value,
+                                  description="Smart Q&A execution stop step. Defaults to full chart generation.",
+                              )):
+    limited_response = await _tenant_rate_limit_response(session, current_user, "chat", stream=False)
+    if limited_response is not None:
+        return limited_response
+
+    register_builtin_tasks()
+    tenant_id = _current_tenant_id(current_user)
+    question = ChatQuestion(
+        chat_id=request_question.chat_id,
+        question=request_question.question,
+        custom_prompt_id=request_question.custom_prompt_id,
+        data_skill_id=request_question.data_skill_id,
+    )
+    from apps.chat.tasks import _resolve_chat_question
+
+    try:
+        question = _resolve_chat_question(session, current_user, {
+            "chat_id": question.chat_id,
+            "question": question.question,
+            "custom_prompt_id": question.custom_prompt_id,
+            "data_skill_id": question.data_skill_id,
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    llm_service = await LLMService.create(session, current_user, question, current_assistant, embedding=True)
+    record = llm_service.init_record(session=session)
+    try:
+        task = await enqueue_task(
+            "chat.smart_qa",
+            {
+                "question": question.question,
+                "chat_id": question.chat_id,
+                "custom_prompt_id": question.custom_prompt_id,
+                "data_skill_id": question.data_skill_id,
+                "regenerate_record_id": question.regenerate_record_id,
+                "finish_step": _parse_chat_finish_step(finish_step).value,
+                "embedding": True,
+                "return_img": True,
+                "tenant_id": tenant_id,
+                "user_id": current_user.id,
+                "record_id": record.id,
+                "language": getattr(current_user, "language", "zh-CN"),
+                "tenant_role": (
+                    getattr(current_user, "workspace_role", None)
+                    or getattr(current_user, "tenant_role", None)
+                    or "member"
+                ),
+                "assistant": _serialize_current_assistant(current_assistant),
+            },
+            created_by=current_user.id,
+            tenant_id=tenant_id,
+        )
+    except Exception as exc:
+        llm_service.save_error(session, str(exc))
+        llm_service.finish(session)
+        raise
+    await bind_chat_record_task(tenant_id, record.id, task["id"])
+    return {
+        "task_id": task["id"],
+        "record_id": record.id,
+        "status": task["status"],
+    }
+
+
+@router.get("/question/task/{task_id}/events", summary=f"{PLACEHOLDER_PREFIX}ask_question")
+async def get_question_task_events(current_user: CurrentUser,
+                                   task_id: str = Path(..., description="Smart Q&A task id"),
+                                   offset: int = Query(0, ge=0),
+                                   limit: int = Query(100, ge=1, le=500)):
+    task = await get_task(task_id, tenant_id=_current_tenant_id(current_user))
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not _can_read_chat_task(task, current_user):
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    event_page = await get_chat_task_events(
+        _current_tenant_id(current_user),
+        task_id,
+        offset=offset,
+        limit=limit,
+    )
+    return {
+        "task_id": task_id,
+        "status": task.get("status"),
+        "error": task.get("error"),
+        "result": task.get("result"),
+        **event_page,
+    }
+
+
+@router.get("/record/{chat_record_id}/task", summary=f"{PLACEHOLDER_PREFIX}get_chat_record_task")
+async def get_chat_record_task(session: SessionDep, current_user: CurrentUser,
+                               chat_record_id: int = Path(..., description="Chat record id")):
+    tenant_id = _current_tenant_id(current_user)
+    stmt = select(
+        ChatRecord.id,
+        ChatRecord.tenant_id,
+        ChatRecord.create_by,
+        ChatRecord.finish,
+    ).where(
+        and_(
+            ChatRecord.id == chat_record_id,
+            ChatRecord.create_by == current_user.id,
+            ChatRecord.tenant_id == tenant_id,
+        )
+    )
+    record = session.execute(stmt).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Chat record not found")
+    if record.finish:
+        return {"task_id": None, "status": "succeeded"}
+
+    task_id = await get_chat_record_task_id(tenant_id, chat_record_id)
+    if not task_id:
+        return {"task_id": None, "status": None}
+
+    task = await get_task(task_id, tenant_id=tenant_id)
+    if task is None:
+        return {"task_id": None, "status": None}
+    if not _can_read_chat_task(task, current_user):
+        raise HTTPException(status_code=403, detail="Permission denied")
+    return {
+        "task_id": task_id,
+        "status": task.get("status"),
+        "error": task.get("error"),
+        "result": task.get("result"),
+    }
 
 
 @router.post("/question", summary=f"{PLACEHOLDER_PREFIX}ask_question")

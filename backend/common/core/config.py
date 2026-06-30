@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY: int = 2
     DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS: float = 1.0
     DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS: float = 8.0
+    DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS: int = 60
 
     SHUZHI_REDIS_URL: str | None = None
     REDIS_URL: str | None = None
@@ -284,6 +285,7 @@ class Settings(BaseSettings):
     DS_EMBEDDING_COUNT: int = 10
 
     ORACLE_CLIENT_PATH: str = '/opt/shuzhi/db_client/oracle_instant_client'
+    ORACLE_THICK_MODE_ENABLED: bool = False
 
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',

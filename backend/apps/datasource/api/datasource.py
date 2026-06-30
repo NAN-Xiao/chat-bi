@@ -482,17 +482,19 @@ def _datasource_list_items(
         can_platform_manage_project = is_platform_admin(user) and not is_platform_workspace_delegate(user)
         can_manage_tenant_projects = _can_manage_tenant_projects(user)
         can_manage_metadata = _can_manage_datasource_metadata(user)
+        configuration = None
+        if can_platform_manage_project:
+            try:
+                configuration = decrypt_datasource_configuration_for_output(datasource.configuration)
+            except ValueError:
+                AppLogUtil.error(f"Datasource {datasource.id} configuration cannot be decrypted")
         item = {
             "id": datasource.id,
             "name": datasource.name,
             "description": datasource.description,
             "type": datasource.type,
             "type_name": datasource.type_name,
-            "configuration": (
-                decrypt_datasource_configuration_for_output(datasource.configuration)
-                if can_platform_manage_project
-                else None
-            ),
+            "configuration": configuration,
             "create_time": datasource.create_time,
             "create_by": datasource.create_by,
             "status": datasource.status,

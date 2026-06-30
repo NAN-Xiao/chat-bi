@@ -45,6 +45,21 @@
 Prepare a Linux server, install [Docker](https://docs.docker.com/get-docker/), and execute the following one-click installation script:
 
 ```bash
+docker build \
+  -f Dockerfile-base \
+  -t shuzhi-base:latest \
+  -t shuzhi-python-pg:latest \
+  .
+
+docker buildx build \
+  --load \
+  --tag zhishu:latest \
+  --build-arg SHUZHI_BUILD_BASE_IMAGE=shuzhi-base:latest \
+  --build-arg SHUZHI_RUNTIME_IMAGE=shuzhi-python-pg:latest \
+  --build-arg VITE_API_BASE_URL=./api/v1 \
+  --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
+  .
+
 docker run -d \
   --name shuzhi \
   --restart unless-stopped \
