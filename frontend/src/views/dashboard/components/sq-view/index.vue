@@ -36,6 +36,7 @@ import {
   resolveInsightDisplay,
 } from '@/views/chat/component/chartInsight.ts'
 import { axisValue } from '@/views/chat/component/BaseChart.ts'
+import { toNullableNumber } from '@/views/chat/component/charts/utils.ts'
 import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
 import ICON_COLUMN from '@/assets/svg/chart/icon_dashboard_outlined.svg'
 import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
@@ -172,6 +173,7 @@ function getResultFields(result: any) {
 type RefreshDataOptions = {
   silent?: boolean
   forceRefresh?: boolean
+  blocking?: boolean
 }
 
 function clampChartLoadingProgress(progress: unknown) {
@@ -317,6 +319,7 @@ const activePivotGroupDimension = computed(() =>
 )
 const pivotHasGroup = computed(() => Boolean(activePivotGroupField.value))
 const pivotRangeEnabled = computed(() => props.viewInfo?.pivot?.range_enabled !== false)
+const pivotTimeRangeActive = computed(() => pivotRangeEnabled.value && pivotState.range !== 'source')
 const pivotClientFilterOnly = computed(() => props.viewInfo?.pivot?.client_filter_only === true)
 const pivotEnabled = computed(() => {
   if (props.showPosition === 'multiplexing') {
@@ -338,6 +341,9 @@ const pivotGranularityLabel = computed(
   () =>
     pivotGranularityOptions.value.find((item) => item.value === pivotState.granularity)?.label ||
     t('dashboard.pivot_day')
+)
+const pivotModeLabel = computed(() =>
+  pivotTimeRangeActive.value ? t('dashboard.pivot_select_time') : pivotGranularityLabel.value
 )
 const currentPivotTimeAxis = computed<ChartAxis | undefined>(() =>
   axisForField(props.viewInfo?.chart?.xAxis, pivotTimeField.value) ||
@@ -372,6 +378,28 @@ const renderSeries = computed<ChartAxis[]>(() => {
 const pivotGroupValueFilterEnabled = computed(
   () => pivotEnabled.value && pivotHasGroup.value && pivotState.groupEnabled && Boolean(activePivotGroupField.value)
 )
+function hasRenderableMetricValue(value: unknown) {
+  return toNullableNumber(value) !== null
+}
+
+function hasRenderableMetricRow(row: Record<string, any>, metricFields: string[]) {
+  if (metricFields.length === 0) {
+    return true
+  }
+  return metricFields.some((field) => hasRenderableMetricValue(row?.[field]))
+}
+
+const renderableChartData = computed(() => {
+  const rows = rawChartData.value
+  if (!pivotEnabled.value) {
+    return rows
+  }
+  const metricFields = renderYAxis.value.map((axis) => axis.value).filter(Boolean)
+  if (metricFields.length === 0) {
+    return rows
+  }
+  return rows.filter((row: Record<string, any>) => hasRenderableMetricRow(row, metricFields))
+})
 const configuredPivotGroupValues = computed(() =>
   unique(Array.isArray(props.viewInfo?.pivot?.group_values) ? props.viewInfo.pivot.group_values : [])
 )
@@ -383,7 +411,7 @@ const pivotGroupValueOptions = computed<PivotGroupValueOption[]>(() => {
   const configuredSet = new Set(configured)
   const counts = new Map<string, number>()
   const field = activePivotGroupField.value
-  rawChartData.value.forEach((row: Record<string, any>) => {
+  renderableChartData.value.forEach((row: Record<string, any>) => {
     const value = normalizePivotGroupValue(row?.[field])
     if (!value || (configuredSet.size > 0 && !configuredSet.has(value))) {
       return
@@ -438,18 +466,19 @@ const filteredPivotGroupValueOptions = computed(() => {
   return pivotGroupValueOptions.value.filter((option) => option.label.toLowerCase().includes(keyword))
 })
 const displayData = computed(() => {
+  const rows = renderableChartData.value
   if (!pivotGroupValueFilterEnabled.value) {
-    return rawChartData.value
+    return rows
   }
   if (configuredPivotGroupValues.value.length === 0 && pivotGroupValueState.mode === 'all') {
-    return rawChartData.value
+    return rows
   }
   const selected = selectedPivotGroupValueSet.value
   if (selected.size === 0) {
     return []
   }
   const field = activePivotGroupField.value
-  return rawChartData.value.filter((row: Record<string, any>) =>
+  return rows.filter((row: Record<string, any>) =>
     selected.has(normalizePivotGroupValue(row?.[field]))
   )
 })
@@ -646,6 +675,7 @@ const pivotCalendarDays = computed(() => {
 function applyPivotCustomRange(start: string, end: string) {
   const range = normalizeRange(start, end)
   pivotCalendarDraftStart.value = ''
+  pivotState.granularity = 'day'
   pivotState.range = 'custom'
   pivotState.customStart = range.start
   pivotState.customEnd = range.end
@@ -678,6 +708,7 @@ function isPivotQuickRangeActive(option: PivotQuickRange) {
 function selectPivotCalendarDate(value: string) {
   if (!pivotCalendarDraftStart.value || (pivotState.range === 'custom' && pivotState.customStart && pivotState.customEnd)) {
     pivotCalendarDraftStart.value = value
+    pivotState.granularity = 'day'
     pivotState.range = 'custom'
     pivotState.customStart = value
     pivotState.customEnd = ''
@@ -702,6 +733,9 @@ function detectedPivotGranularity(): PivotGranularity {
 }
 
 function initialPivotGranularity(pivot: any): PivotGranularity {
+  if (pivot?.range && pivot.range !== 'source') {
+    return 'day'
+  }
   const configured = normalizePivotGranularity(pivot?.granularity, 'day')
   const detected = detectedPivotGranularity()
   if ((!pivot?.granularity || (configured === 'day' && detected !== 'day')) && pivot?.range !== 'custom') {
@@ -867,7 +901,7 @@ function schedulePivotRefresh() {
   }
   pivotRefreshTimer = window.setTimeout(() => {
     pivotRefreshTimer = undefined
-    void refreshData({ silent: true, forceRefresh: true })
+    void refreshData({ silent: true, forceRefresh: true, blocking: true })
   }, 120)
 }
 
@@ -947,6 +981,7 @@ async function previewChartSqlWithCacheFallback(payload: any, forceRefresh = fal
 async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
   const forceRefresh = options.forceRefresh !== false
+  const blocking = options.blocking === true || !silent
   if (!props.viewInfo?.datasource) {
     if (!silent) {
       ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
@@ -974,7 +1009,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
   setChartLoadingProgress(0, !silent)
   startRefreshProgress()
   const requestSeq = ++refreshRequestSeq
-  if (!silent) {
+  if (blocking) {
     blockingRefreshLoading.value = true
     blockingRefreshRequestSeq = requestSeq
   }
@@ -1071,10 +1106,15 @@ async function refreshData(options: RefreshDataOptions = {}) {
 
 function setPivotGranularity(value: string) {
   pivotState.granularity = normalizePivotGranularity(value)
+  pivotCalendarDraftStart.value = ''
+  pivotState.range = 'source'
+  pivotState.customStart = ''
+  pivotState.customEnd = ''
   schedulePivotRefresh()
 }
 
 function setPivotRange(value: string) {
+  pivotState.granularity = 'day'
   pivotState.range = value
   if (value !== 'custom') {
     pivotState.customStart = ''
@@ -1484,7 +1524,7 @@ defineExpose({
         popper-class="dashboard-pivot-popper"
       >
         <template #reference>
-          <button class="pivot-chip pivot-link" type="button">{{ pivotGranularityLabel }}</button>
+          <button class="pivot-chip pivot-link" type="button">{{ pivotModeLabel }}</button>
         </template>
         <div class="pivot-time-panel">
           <div class="pivot-menu">
@@ -1493,7 +1533,7 @@ defineExpose({
               :key="option.value"
               type="button"
               class="pivot-menu-item"
-              :class="{ active: pivotState.granularity === option.value }"
+              :class="{ active: !pivotTimeRangeActive && pivotState.granularity === option.value }"
               @click="setPivotGranularity(option.value)"
             >
               {{ option.label }}
@@ -1510,7 +1550,7 @@ defineExpose({
               <button
                 type="button"
                 class="pivot-menu-item with-arrow"
-                :class="{ active: pivotState.range !== 'source' }"
+                :class="{ active: pivotTimeRangeActive }"
               >
                 <span>{{ t('dashboard.pivot_select_time') }}</span>
                 <el-icon size="14" class="pivot-menu-arrow">

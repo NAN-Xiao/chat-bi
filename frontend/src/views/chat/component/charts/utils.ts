@@ -89,6 +89,17 @@ export function formatNumber(value: any): string | number {
   return sign + formattedInt + decPart
 }
 
+export function formatTooltipValue(value: any, suffix = ''): string {
+  if (isBlankValue(value)) {
+    return '-'
+  }
+  const formatted = formatNumber(value)
+  if (isBlankValue(formatted)) {
+    return '-'
+  }
+  return `${formatted}${suffix}`
+}
+
 export function isIdentifierAxis(axis?: Pick<ChartAxis, 'name' | 'value'> | null): boolean {
   const label = axisLabel(axis)
   const value = String(axis?.value || '').trim()
@@ -131,7 +142,7 @@ export function toNumber(value: any): number {
 }
 
 function isBlankValue(value: any): boolean {
-  return value === null || value === undefined || value === ''
+  return value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
 }
 
 export function toNullableNumber(value: any, multiplier = 1): number | null {
@@ -384,9 +395,13 @@ export function processGroupedMultiQuotaData(
       }
       const isPercent = isPercentAxis(quota, data)
       const multiplier = isPercent ? getPercentMultiplier(quota, data) : 1
-      _data[AUTO_VALUE_FIELD] = isPercent
+      const metricValue = isPercent
         ? toNullableNumber(datum[quota.value], multiplier)
         : datum[quota.value]
+      if (isBlankValue(metricValue)) {
+        return
+      }
+      _data[AUTO_VALUE_FIELD] = metricValue
       _data[AUTO_SERIES_FIELD] = groupName
         ? `${groupName} / ${metricNameMap[quota.value]}`
         : metricNameMap[quota.value]
@@ -423,9 +438,13 @@ export function processMultiQuotaData(
       const quotaAxis = y.find((axis) => axis.value === quota)
       const isPercent = quotaAxis ? isPercentAxis(quotaAxis, data) : false
       const multiplier = quotaAxis && isPercent ? getPercentMultiplier(quotaAxis, data) : 1
-      _data[AUTO_VALUE_FIELD] = isPercent
+      const metricValue = isPercent
         ? toNullableNumber(datum[quota], multiplier)
         : datum[quota]
+      if (isBlankValue(metricValue)) {
+        return
+      }
+      _data[AUTO_VALUE_FIELD] = metricValue
       _data[AUTO_SERIES_FIELD] = _map[quota]
       _data[AUTO_PERCENT_FIELD] = isPercent
       _list.push(_data)
@@ -593,7 +612,7 @@ export function buildMixedUnitComboOptions(
         labels: countLabels,
         tooltip: (datum: ChartData) => ({
           name: datum[seriesField],
-          value: String(formatNumber(datum[countValueField])),
+          value: formatTooltipValue(datum[countValueField]),
         }),
       },
       {
@@ -620,7 +639,7 @@ export function buildMixedUnitComboOptions(
         labels: percentLabels,
         tooltip: (datum: ChartData) => ({
           name: datum[seriesField],
-          value: `${formatNumber(datum[percentValueField])}%`,
+          value: formatTooltipValue(datum[percentValueField], '%'),
         }),
       },
     ],

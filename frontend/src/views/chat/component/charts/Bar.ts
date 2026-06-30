@@ -4,6 +4,7 @@ import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
   formatNumber,
+  formatTooltipValue,
   getAxesWithFilter,
   processGroupedMultiQuotaData,
   processMultiQuotaData,
@@ -140,12 +141,12 @@ export class Bar extends BaseG2Chart {
         if (series.length > 0) {
           return {
             name: data[series[0].value],
-            value: `${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`,
+            value: formatTooltipValue(data[y[0].value], _data.isPercent ? '%' : ''),
           }
         } else {
           return {
             name: axisLabel(y[0]),
-            value: `${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`,
+            value: formatTooltipValue(data[y[0].value], _data.isPercent ? '%' : ''),
           }
         }
       },

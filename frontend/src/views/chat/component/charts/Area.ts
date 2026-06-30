@@ -6,6 +6,7 @@ import {
   buildMixedUnitData,
   checkIsPercent,
   formatNumber,
+  formatTooltipValue,
   getAxesWithFilter,
   processGroupedMultiQuotaData,
   processMultiQuotaData,
@@ -145,12 +146,12 @@ export class Area extends BaseG2Chart {
         if (series.length > 0) {
           return {
             name: datum[series[0].value],
-            value: `${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
+            value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
           }
         }
         return {
           name: axisLabel(y[0]),
-          value: `${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
+          value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
         }
       },
     } as G2Spec)
