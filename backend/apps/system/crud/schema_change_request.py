@@ -20,6 +20,11 @@ IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
 
 def clean_optional_text(value: str | None, max_len: int | None = None) -> str | None:
+    """
+    是什么：clean_optional_text 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     cleaned = (value or "").strip()
     if not cleaned:
         return None
@@ -27,6 +32,11 @@ def clean_optional_text(value: str | None, max_len: int | None = None) -> str | 
 
 
 def validate_identifier(value: str | None, label: str) -> str:
+    """
+    是什么：validate_identifier 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     cleaned = (value or "").strip()
     if not IDENTIFIER_RE.fullmatch(cleaned):
         raise ValueError(f"{label} must start with a letter or underscore and contain only letters, numbers, and underscores")
@@ -34,6 +44,11 @@ def validate_identifier(value: str | None, label: str) -> str:
 
 
 def normalize_change_type(value: str | None) -> str:
+    """
+    是什么：normalize_change_type 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (value or "").strip().lower()
     if normalized not in SCHEMA_CHANGE_TYPES:
         raise ValueError("Schema change type is invalid")
@@ -41,6 +56,11 @@ def normalize_change_type(value: str | None) -> str:
 
 
 def normalize_field_payload(fields: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """
+    是什么：normalize_field_payload 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized_fields: list[dict[str, Any]] = []
     for index, field in enumerate(fields or []):
         field_name = validate_identifier(field.get("field_name"), f"Field #{index + 1} name")
@@ -76,6 +96,11 @@ def create_schema_change_request(
         request_comment: str | None = None,
         source_table_name: str | None = None,
 ) -> TenantSchemaChangeRequestModel:
+    """
+    是什么：create_schema_change_request 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     normalized_type = normalize_change_type(change_type)
     normalized_table_name = validate_identifier(table_name, "Table name")
     payload = {
@@ -113,6 +138,11 @@ def list_schema_change_requests(
         datasource_id: int | None = None,
         limit: int = 20,
 ) -> list[TenantSchemaChangeRequestModel]:
+    """
+    是什么：list_schema_change_requests 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = (
         select(TenantSchemaChangeRequestModel)
         .where(TenantSchemaChangeRequestModel.tenant_id == int(tenant_id))
@@ -125,6 +155,11 @@ def list_schema_change_requests(
 
 
 def parse_schema_change_payload(row: TenantSchemaChangeRequestModel) -> dict[str, Any]:
+    """
+    是什么：parse_schema_change_payload 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     try:
         parsed = json.loads(row.payload or "{}")
     except json.JSONDecodeError:

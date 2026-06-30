@@ -21,11 +21,21 @@ USER_TYPE_TO_PANDAS = {
 
 
 def infer_field_type(dtype) -> str:
+    """
+    是什么：infer_field_type 是 backend/apps/datasource/utils/excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 infer_field_type 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     dtype_str = str(dtype)
     return FIELD_TYPE_MAP.get(dtype_str, 'string')
 
 
 def parse_excel_preview(save_path: str, max_rows: int = 10):
+    """
+    是什么：parse_excel_preview 是 backend/apps/datasource/utils/excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     sheets_data = []
     if save_path.endswith(".csv"):
         df = pd.read_csv(save_path, engine='c')

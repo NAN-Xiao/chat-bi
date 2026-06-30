@@ -9,6 +9,11 @@ from apps.system.models.system_model import SysArgModel
 
 
 async def get_group_args(session: SessionDep, flag: str | None = None) -> list[SysArgModel]:
+    """
+    是什么：get_group_args 是 backend/apps/system/crud/parameter_manage.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     stmt = select(SysArgModel).order_by(SysArgModel.sort_no, SysArgModel.pkey)
     if flag:
         stmt = stmt.where(SysArgModel.pkey.startswith(f"{flag}."))
@@ -20,6 +25,11 @@ async def save_group_args(
     sys_args: list[SysArgModel],
     file_mapping: dict[str, str] | None = None,
 ) -> None:
+    """
+    是什么：save_group_args 是 backend/apps/system/crud/parameter_manage.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     file_mapping = file_mapping or {}
     keys = [item.pkey for item in sys_args if item.pkey]
     if not keys:
@@ -51,14 +61,29 @@ async def save_group_args(
         session.add(row)
 
 async def get_parameter_args(session: SessionDep) -> list[SysArgModel]:
+    """
+    是什么：get_parameter_args 是 backend/apps/system/crud/parameter_manage.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     group_args = await get_group_args(session=session)
     return [x for x in group_args if not x.pkey.startswith('appearance.')]
 
 async def get_groups(session: SessionDep, flag: str) -> list[SysArgModel]:
+    """
+    是什么：get_groups 是 backend/apps/system/crud/parameter_manage.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     group_args = await get_group_args(session=session, flag=flag)
     return group_args
 
 async def save_parameter_args(session: SessionDep, request: Request):
+    """
+    是什么：save_parameter_args 是 backend/apps/system/crud/parameter_manage.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     allow_file_mapping = {
         """ "test_logo": { "types": [".jpg", ".jpeg", ".png"], "size": 5 * 1024 * 1024 } """
     }

@@ -28,6 +28,11 @@ admin_router = APIRouter(tags=["system_authentication"], prefix="/system/auth/fe
 
 
 def _requested_tenant_id(request: Request, state_payload: dict | None = None) -> int | None:
+    """
+    是什么：_requested_tenant_id 是 backend/apps/system/api/sso.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _requested_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     state_tenant_id = (state_payload or {}).get("tenant_id")
     if state_tenant_id:
         return int(state_tenant_id)
@@ -46,6 +51,11 @@ async def feishu_login_status(
     redirect: str | None = Query(default=None, max_length=1000),
     tenant_id: int | None = Query(default=None),
 ) -> FeishuLoginStatusDTO:
+    """
+    是什么：feishu_login_status 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 feishu_login_status 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     authorize_url = build_feishu_authorize_url(session, redirect=redirect, tenant_id=tenant_id)
     return FeishuLoginStatusDTO(enabled=bool(authorize_url), authorize_url=authorize_url)
 
@@ -56,6 +66,11 @@ async def feishu_login_callback(
     request: Request,
     callback: FeishuCallbackRequest,
 ) -> Token:
+    """
+    是什么：feishu_login_callback 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 feishu_login_callback 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     try:
         state_payload = parse_feishu_state(callback.state)
         config = get_enabled_feishu_config(session)
@@ -93,10 +108,20 @@ async def feishu_login_callback(
 @admin_router.get("", response_model=FeishuSsoConfigDTO)
 @require_permissions(permission=AppPermission(role=["platform_admin"]))
 async def get_feishu_config(session: SessionDep) -> FeishuSsoConfigDTO:
+    """
+    是什么：get_feishu_config 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     return get_feishu_sso_config(session)
 
 
 @admin_router.put("", response_model=FeishuSsoConfigDTO)
 @require_permissions(permission=AppPermission(role=["platform_admin"]))
 async def save_feishu_config(session: SessionDep, editor: FeishuSsoConfigEditor) -> FeishuSsoConfigDTO:
+    """
+    是什么：save_feishu_config 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     return upsert_feishu_sso_config(session, editor)

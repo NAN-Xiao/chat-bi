@@ -8,6 +8,11 @@ from fastapi.responses import StreamingResponse
 
 
 async def get_assistant_info(**kwargs):
+    """
+    是什么：get_assistant_info 是 backend/apps/system/api/assistant.py 中的异步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     from apps.system.crud.assistant import get_assistant_info as get_cached_assistant_info
 
     return await get_cached_assistant_info(**kwargs)
@@ -58,20 +63,40 @@ PUBLIC_CONFIGURATION_KEYS = {
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
+    """
+    是什么：_current_tenant_id 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _current_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return require_tenant_id(getattr(current_user, "tenant_id", None))
 
 
 def _can_manage_all_assistants(current_user: CurrentUser) -> bool:
+    """
+    是什么：_can_manage_all_assistants 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _can_manage_all_assistants 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
 
 
 def _tenant_scoped_assistant_statement(statement, current_user: CurrentUser):
+    """
+    是什么：_tenant_scoped_assistant_statement 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _tenant_scoped_assistant_statement 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if _can_manage_all_assistants(current_user):
         return statement
     return statement.where(AssistantModel.tenant_id == _current_tenant_id(current_user))
 
 
 def _get_manageable_assistant(session: SessionDep, current_user: CurrentUser, assistant_id: int) -> AssistantModel:
+    """
+    是什么：_get_manageable_assistant 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     db_model = session.get(AssistantModel, assistant_id)
     if not db_model:
         raise HTTPException(status_code=404, detail=f"AssistantModel with id {assistant_id} not found")
@@ -87,6 +112,11 @@ def _get_manageable_assistant(session: SessionDep, current_user: CurrentUser, as
 
 
 def _model_tenant_id(db_model: AssistantModel) -> int:
+    """
+    是什么：_model_tenant_id 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _model_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     tenant_id = getattr(db_model, "tenant_id", None)
     if tenant_id in (None, ""):
         raise HTTPException(status_code=403, detail="Assistant tenant is required")
@@ -94,10 +124,20 @@ def _model_tenant_id(db_model: AssistantModel) -> int:
 
 
 def _assistant_tenant_id(current_assistant: CurrentAssistant) -> int:
+    """
+    是什么：_assistant_tenant_id 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _assistant_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return require_tenant_id(getattr(current_assistant, "tenant_id", None))
 
 
 def _public_assistant_info(db_model: AssistantModel, include_certificate: bool = False) -> AssistantPublicInfo:
+    """
+    是什么：_public_assistant_info 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _public_assistant_info 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     data = db_model.model_dump(exclude={"app_secret"})
     try:
         configuration = json.loads(data.get("configuration") or "{}")
@@ -117,26 +157,36 @@ def _public_assistant_info(db_model: AssistantModel, include_certificate: bool =
 
 @router.get("/info/{id}", include_in_schema=False)
 async def info(request: Request, response: Response, session: SessionDep, trans: Trans, id: int) -> AssistantPublicInfo:
+    """
+    是什么：info 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 info 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not id:
         raise Exception('miss assistant id')
     db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         raise RuntimeError(f"assistant application not exist")
     db_model = AssistantModel.model_validate(db_model)
-    
+
     origin = request.headers.get("origin") or get_origin_from_referer(request)
     if not origin:
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
     origin = origin.rstrip('/')
     if not origin_match_domain(origin, db_model.domain):
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
-    
+
     response.headers["Access-Control-Allow-Origin"] = origin
     return _public_assistant_info(db_model, include_certificate=True)
 
 
 @router.get("/app/{appId}", include_in_schema=False)
 async def getApp(request: Request, response: Response, session: SessionDep, trans: Trans, appId: str) -> AssistantPublicInfo:
+    """
+    是什么：getApp 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     if not appId:
         raise Exception('miss assistant appId')
     db_model = session.exec(select(AssistantModel).where(AssistantModel.app_id == appId)).first()
@@ -149,13 +199,18 @@ async def getApp(request: Request, response: Response, session: SessionDep, tran
     origin = origin.rstrip('/')
     if not origin_match_domain(origin, db_model.domain):
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
-    
+
     response.headers["Access-Control-Allow-Origin"] = origin
     return _public_assistant_info(db_model, include_certificate=True)
 
 
 @router.get("/validator", response_model=AssistantValidator, include_in_schema=False)
 async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query(None), online: Optional[bool] = Query(False)):
+    """
+    是什么：validator 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 validator 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not id:
         raise Exception('miss assistant id')
 
@@ -165,7 +220,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     db_model = AssistantModel.model_validate(db_model)
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    # Keep the query parameter for frontend compatibility, but do not treat it as an auth signal.
+    # 保留查询参数用于兼容前端，但不要把它当作认证信号。
     _ = online
     assistantDict = {
         "id": virtual,
@@ -182,6 +237,11 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
 
 @router.get('/picture/{file_id}', summary=f"{PLACEHOLDER_PREFIX}assistant_picture_api", description=f"{PLACEHOLDER_PREFIX}assistant_picture_api")
 async def picture(file_id: str = Path(description="file_id")):
+    """
+    是什么：picture 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 picture 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     file_path = AppFileUtils.get_file_path(file_id=file_id)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -192,6 +252,11 @@ async def picture(file_id: str = Path(description="file_id")):
         media_type = "image/jpeg"
 
     def iterfile():
+        """
+        是什么：iterfile 是 backend/apps/system/api/assistant.py 中的同步函数。
+        谁调用：由外层函数 picture 在执行内部流程时调用。
+        做了什么：围绕 iterfile 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         with open(file_path, mode="rb") as f:
             yield from f
 
@@ -200,10 +265,20 @@ async def picture(file_id: str = Path(description="file_id")):
 
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 async def clear_ui_cache(id: int):
+    """
+    是什么：clear_ui_cache 是 backend/apps/system/api/assistant.py 中的异步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     pass
 
 @router.get("/ds", include_in_schema=False, response_model=list[dict])
 async def ds(session: SessionDep, current_assistant: CurrentAssistant):
+    """
+    是什么：ds 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 ds 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if current_assistant.type == 0:
         online = current_assistant.online
         configuration = current_assistant.configuration
@@ -255,10 +330,15 @@ async def ds(session: SessionDep, current_assistant: CurrentAssistant):
             for ds in out_ds_instance.ds_list
             if get_db_type(ds.type)
         ]
-        
+
     return None
 
 def get_db_type(type):
+    """
+    是什么：get_db_type 是 backend/apps/system/api/assistant.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     try:
         db = DB.get_db(type)
         return db.db_name
@@ -275,6 +355,11 @@ def get_db_type(type):
 )
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query(session: SessionDep, current_user: CurrentUser):
+    """
+    是什么：query 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = (
         select(AssistantModel)
         .where(AssistantModel.type != 4)
@@ -294,6 +379,11 @@ async def query(session: SessionDep, current_user: CurrentUser):
 )
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query_advanced_application(session: SessionDep, current_user: CurrentUser):
+    """
+    是什么：query_advanced_application 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = (
         select(AssistantModel)
         .where(AssistantModel.type == 1)
@@ -312,6 +402,11 @@ async def query_advanced_application(session: SessionDep, current_user: CurrentU
 @require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def add(request: Request, session: SessionDep, current_user: CurrentUser, creator: AssistantBase):
+    """
+    是什么：add 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     return await save(request, session, creator, tenant_id=_current_tenant_id(current_user))
 
 
@@ -325,6 +420,11 @@ async def add(request: Request, session: SessionDep, current_user: CurrentUser, 
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, resource_id_expr="editor.id"))
 async def update(request: Request, session: SessionDep, current_user: CurrentUser, editor: AssistantDTO):
+    """
+    是什么：update 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     id = editor.id
     db_model = _get_manageable_assistant(session, current_user, id)
     update_data = editor.model_dump(exclude_unset=True, exclude={"id"})
@@ -342,6 +442,11 @@ async def update(request: Request, session: SessionDep, current_user: CurrentUse
     dependencies=[Depends(require_chatbi_business_user)],
 )
 async def get_one(session: SessionDep, current_user: CurrentUser, id: int = Path(description="ID")) -> AssistantPublicInfo:
+    """
+    是什么：get_one 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     db_model = _get_manageable_assistant(session, current_user, id)
     return _public_assistant_info(db_model)
 
@@ -356,6 +461,11 @@ async def get_one(session: SessionDep, current_user: CurrentUser, id: int = Path
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.APPLICATION, resource_id_expr="id"))
 async def delete(request: Request, session: SessionDep, current_user: CurrentUser, id: int = Path(description="ID")):
+    """
+    是什么：delete 是 backend/apps/system/api/assistant.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     db_model = _get_manageable_assistant(session, current_user, id)
     session.delete(db_model)
     session.commit()

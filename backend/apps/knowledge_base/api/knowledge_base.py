@@ -31,10 +31,20 @@ KNOWLEDGE_FILE_MAX_BYTES = 50 * 1024 * 1024
 
 
 def _now() -> datetime:
+    """
+    是什么：_now 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _now 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     return datetime.now()
 
 
 def _parse_scope(value: Optional[str]) -> KnowledgeBaseVisibilityScopeEnum:
+    """
+    是什么：_parse_scope 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：解析、转换或格式化后端业务相关数据，生成后续流程可使用的结构。
+    """
     try:
         return KnowledgeBaseVisibilityScopeEnum(value or KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value)
     except ValueError as exc:
@@ -42,10 +52,20 @@ def _parse_scope(value: Optional[str]) -> KnowledgeBaseVisibilityScopeEnum:
 
 
 def _is_global_platform_admin(current_user: CurrentUser) -> bool:
+    """
+    是什么：_is_global_platform_admin 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _is_global_platform_admin 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     return is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
 
 
 def _can_manage_workspace_public(current_user: CurrentUser) -> bool:
+    """
+    是什么：_can_manage_workspace_public 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _can_manage_workspace_public 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     if _is_global_platform_admin(current_user):
         return False
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
@@ -53,12 +73,22 @@ def _can_manage_workspace_public(current_user: CurrentUser) -> bool:
 
 
 def _scope_tenant_id(current_user: CurrentUser, scope: KnowledgeBaseVisibilityScopeEnum) -> int:
+    """
+    是什么：_scope_tenant_id 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _scope_tenant_id 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         return DEFAULT_TENANT_ID
     return require_current_tenant_id(current_user)
 
 
 def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibilityScopeEnum) -> None:
+    """
+    是什么：_require_scope_manage 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：校验后端业务相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         if not _is_global_platform_admin(current_user):
             raise HTTPException(status_code=403, detail="Only SaaS admin can maintain SaaS knowledge base")
@@ -69,6 +99,11 @@ def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibil
 
 
 def _require_record_manage(current_user: CurrentUser, record: KnowledgeBase) -> None:
+    """
+    是什么：_require_record_manage 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：校验后端业务相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     scope = _parse_scope(record.visibility_scope)
     if int(record.tenant_id) != _scope_tenant_id(current_user, scope):
         raise HTTPException(status_code=404, detail="Knowledge base not found")
@@ -76,6 +111,11 @@ def _require_record_manage(current_user: CurrentUser, record: KnowledgeBase) -> 
 
 
 def _can_manage_record(current_user: CurrentUser, record: KnowledgeBase) -> bool:
+    """
+    是什么：_can_manage_record 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _can_manage_record 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     try:
         _require_record_manage(current_user, record)
         return True
@@ -84,6 +124,11 @@ def _can_manage_record(current_user: CurrentUser, record: KnowledgeBase) -> bool
 
 
 def _serialize_record(current_user: CurrentUser, record: KnowledgeBase) -> KnowledgeBaseItem:
+    """
+    是什么：_serialize_record 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：解析、转换或格式化后端业务相关数据，生成后续流程可使用的结构。
+    """
     return KnowledgeBaseItem(
         id=int(record.id),
         tenant_id=int(record.tenant_id),
@@ -106,6 +151,11 @@ def _serialize_record(current_user: CurrentUser, record: KnowledgeBase) -> Knowl
 
 
 async def _save_upload(file: UploadFile) -> tuple[str, str, str]:
+    """
+    是什么：_save_upload 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：创建、初始化或组装后端业务相关对象和数据，并返回或写入对应状态。
+    """
     file_ext = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
     _, file_id = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
     save_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, file_id)
@@ -127,6 +177,11 @@ async def list_knowledge_base(
     visibility_scope: Optional[str] = Query(None),
     keyword: Optional[str] = Query(None),
 ):
+    """
+    是什么：list_knowledge_base 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    """
     scope = _parse_scope(visibility_scope)
     filters = [
         KnowledgeBase.visibility_scope == scope.value,
@@ -165,6 +220,11 @@ async def save_knowledge_base(
     visibility_scope: str = Form(KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value),
     file: Optional[UploadFile] = File(None),
 ):
+    """
+    是什么：save_knowledge_base 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：创建、初始化或组装后端业务相关对象和数据，并返回或写入对应状态。
+    """
     clean_name = name.strip()
     if not clean_name:
         raise HTTPException(status_code=400, detail="Knowledge base name is required")
@@ -244,6 +304,11 @@ async def save_knowledge_base(
 
 @router.delete("/{id}")
 async def delete_knowledge_base(session: SessionDep, current_user: CurrentUser, id: int):
+    """
+    是什么：delete_knowledge_base 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：删除或清理后端业务相关数据、缓存或临时状态。
+    """
     record = session.get(KnowledgeBase, int(id))
     if not record:
         raise HTTPException(status_code=404, detail="Knowledge base not found")

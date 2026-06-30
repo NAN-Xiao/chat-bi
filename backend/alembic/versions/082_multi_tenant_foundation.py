@@ -1,9 +1,8 @@
-"""082_multi_tenant_foundation
+"""迁移脚本：082_multi_tenant_foundation
 
-Revision ID: f2a3b4c5d6e7
-Revises: e1f2a3b4c5d6
-Create Date: 2026-06-18 00:00:00.000000
-
+迁移版本 ID： f2a3b4c5d6e7
+上一版本： e1f2a3b4c5d6
+创建时间： 2026-06-18 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
@@ -18,15 +17,30 @@ DEFAULT_TENANT_ID = 1
 
 
 def _has_table(table_name: str) -> bool:
+    """
+    是什么：_has_table 是 backend/alembic/versions/082_multi_tenant_foundation.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_table 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return table_name in sa.inspect(op.get_bind()).get_table_names()
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
+    """
+    是什么：_has_column 是 backend/alembic/versions/082_multi_tenant_foundation.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_column 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     inspector = sa.inspect(op.get_bind())
     return any(column["name"] == column_name for column in inspector.get_columns(table_name))
 
 
 def upgrade():
+    """
+    是什么：upgrade 是 backend/alembic/versions/082_multi_tenant_foundation.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not _has_table("sys_tenant"):
         op.create_table(
             "sys_tenant",
@@ -88,6 +102,11 @@ def upgrade():
 
 
 def downgrade():
+    """
+    是什么：downgrade 是 backend/alembic/versions/082_multi_tenant_foundation.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if _has_table("sys_tenant_user"):
         op.drop_index("idx_sys_tenant_user_user_id", table_name="sys_tenant_user")
         op.drop_index("idx_sys_tenant_user_tenant_id", table_name="sys_tenant_user")

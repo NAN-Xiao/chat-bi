@@ -12,6 +12,11 @@ from common.core.deps import CurrentUser, SessionDep
 
 
 def supports_datasource_tenant_binding(session: SessionDep) -> bool:
+    """
+    是什么：supports_datasource_tenant_binding 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 supports_datasource_tenant_binding 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return inspect(session.connection()).has_table(CoreDatasourceTenantBinding.__tablename__)
     except Exception:
@@ -19,20 +24,40 @@ def supports_datasource_tenant_binding(session: SessionDep) -> bool:
 
 
 def _binding_table_exists(session: SessionDep) -> bool:
+    """
+    是什么：_binding_table_exists 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     return supports_datasource_tenant_binding(session)
 
 
 def datasource_tenant_binding_has_rows(session: SessionDep) -> bool:
+    """
+    是什么：datasource_tenant_binding_has_rows 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 datasource_tenant_binding_has_rows 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if not _binding_table_exists(session):
         return False
     return session.exec(select(CoreDatasourceTenantBinding.id).limit(1)).first() is not None
 
 
 def datasource_tenant_binding_active(session: SessionDep) -> bool:
+    """
+    是什么：datasource_tenant_binding_active 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 datasource_tenant_binding_active 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return datasource_tenant_binding_has_rows(session)
 
 
 def _table_exists(session: SessionDep, table_name: str) -> bool:
+    """
+    是什么：_table_exists 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _table_exists 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return inspect(session.connection()).has_table(table_name)
     except Exception:
@@ -40,6 +65,11 @@ def _table_exists(session: SessionDep, table_name: str) -> bool:
 
 
 def get_bound_datasource_id_for_tenant(session: SessionDep, tenant_id: int | None) -> int | None:
+    """
+    是什么：get_bound_datasource_id_for_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if tenant_id is None or int(tenant_id) == DEFAULT_TENANT_ID:
         return None
     if datasource_tenant_binding_active(session):
@@ -58,11 +88,21 @@ def get_bound_datasource_id_for_tenant(session: SessionDep, tenant_id: int | Non
 
 
 def list_bound_datasource_ids_for_tenant(session: SessionDep, tenant_id: int | None) -> set[int]:
+    """
+    是什么：list_bound_datasource_ids_for_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     datasource_id = get_bound_datasource_id_for_tenant(session, tenant_id)
     return {datasource_id} if datasource_id is not None else set()
 
 
 def list_bound_tenant_ids_for_datasource(session: SessionDep, datasource_id: int | None) -> list[int]:
+    """
+    是什么：list_bound_tenant_ids_for_datasource 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if datasource_id is None:
         return []
     if datasource_tenant_binding_active(session):
@@ -78,6 +118,11 @@ def list_bound_tenant_ids_for_datasource(session: SessionDep, datasource_id: int
 
 
 def datasource_bound_to_tenant(session: SessionDep, datasource_id: int, tenant_id: int | None) -> bool:
+    """
+    是什么：datasource_bound_to_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 datasource_bound_to_tenant 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if tenant_id is None:
         return False
     if datasource_tenant_binding_active(session):
@@ -92,6 +137,11 @@ def datasource_bound_to_tenant(session: SessionDep, datasource_id: int, tenant_i
 
 
 def list_datasource_binding_rows(session: SessionDep, tenant_ids: list[int] | None = None):
+    """
+    是什么：list_datasource_binding_rows 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if datasource_tenant_binding_active(session):
         statement = (
             select(
@@ -122,6 +172,11 @@ def _delete_datasource_users(
         *,
         tenant_id: int | None = None,
 ) -> None:
+    """
+    是什么：_delete_datasource_users 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
     if not ids:
         return
@@ -141,6 +196,11 @@ def clear_datasource_workspace_permissions(
         *,
         tenant_id: int | None = None,
 ) -> None:
+    """
+    是什么：clear_datasource_workspace_permissions 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
     if not ids:
         return
@@ -154,6 +214,11 @@ def bind_datasource_to_tenant(
         datasource: CoreDatasource,
         tenant_id: int | None,
 ) -> CoreDatasource:
+    """
+    是什么：bind_datasource_to_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     target_tenant_id = int(tenant_id or DEFAULT_TENANT_ID)
 
     if target_tenant_id != DEFAULT_TENANT_ID:
@@ -241,6 +306,11 @@ def bind_tenant_to_datasource(
         tenant_id: int,
         datasource_id: int | None,
 ) -> CoreDatasource | None:
+    """
+    是什么：bind_tenant_to_datasource 是 backend/apps/datasource/crud/binding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     target_tenant_id = int(tenant_id)
     if target_tenant_id == DEFAULT_TENANT_ID:
         raise HTTPException(status_code=400, detail="默认工作空间不能绑定数据源")

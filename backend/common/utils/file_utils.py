@@ -14,12 +14,22 @@ _UPLOAD_CHUNK_SIZE = 1024 * 1024
 class AppFileUtils:
     @staticmethod
     def _base_dir() -> Path:
+        """
+        是什么：AppFileUtils._base_dir 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 _base_dir 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         base_dir = Path(settings.UPLOAD_DIR)
         base_dir.mkdir(parents=True, exist_ok=True)
         return base_dir
 
     @staticmethod
     def split_filename_and_flag(filename: str) -> tuple[str, str]:
+        """
+        是什么：AppFileUtils.split_filename_and_flag 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 split_filename_and_flag 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         if not filename:
             raise ValueError("filename is required")
         if "," not in filename:
@@ -33,6 +43,11 @@ class AppFileUtils:
         file_types: Iterable[str] | None = None,
         limit_file_size: int | None = None,
     ) -> None:
+        """
+        是什么：AppFileUtils.check_file 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：校验通用工具相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         suffix = Path(file.filename or "").suffix.lower()
         if file_types and suffix not in {item.lower() for item in file_types}:
             raise ValueError(f"Unsupported file type: {suffix}")
@@ -49,6 +64,11 @@ class AppFileUtils:
 
     @staticmethod
     def _normalize_extensions(file_types: Iterable[str]) -> set[str]:
+        """
+        是什么：AppFileUtils._normalize_extensions 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        """
         return {
             item.lower() if item.startswith(".") else f".{item.lower()}"
             for item in file_types
@@ -56,6 +76,11 @@ class AppFileUtils:
 
     @staticmethod
     def validate_extension(filename: str | None, file_types: Iterable[str]) -> str:
+        """
+        是什么：AppFileUtils.validate_extension 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：校验通用工具相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         suffix = Path(filename or "").suffix.lower()
         if suffix not in AppFileUtils._normalize_extensions(file_types):
             allowed = "/".join(sorted(AppFileUtils._normalize_extensions(file_types)))
@@ -64,6 +89,11 @@ class AppFileUtils:
 
     @staticmethod
     def safe_upload_name(filename: str | None, file_types: Iterable[str]) -> tuple[str, str]:
+        """
+        是什么：AppFileUtils.safe_upload_name 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 safe_upload_name 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         suffix = AppFileUtils.validate_extension(filename, file_types)
         raw_name = os.path.basename(filename or "")
         stem = Path(raw_name).stem
@@ -75,6 +105,11 @@ class AppFileUtils:
 
     @staticmethod
     def safe_path(base_dir: str | Path, filename: str, *, required_suffix: str | None = None) -> Path:
+        """
+        是什么：AppFileUtils.safe_path 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 safe_path 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         safe_name = os.path.basename(filename or "")
         if not safe_name:
             raise HTTPException(status_code=400, detail="filename is required")
@@ -97,6 +132,11 @@ class AppFileUtils:
         *,
         limit_file_size: int | None = None,
     ) -> bytes:
+        """
+        是什么：AppFileUtils.read_upload_limited 是 backend/common/utils/file_utils.py 中的异步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+        """
         limit = limit_file_size if limit_file_size is not None else settings.MAX_UPLOAD_BYTES
         chunks: list[bytes] = []
         total_size = 0
@@ -116,6 +156,11 @@ class AppFileUtils:
 
     @staticmethod
     async def upload(file: UploadFile) -> str:
+        """
+        是什么：AppFileUtils.upload 是 backend/common/utils/file_utils.py 中的异步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 upload 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         suffix = Path(file.filename or "").suffix.lower()
         file_id = f"{uuid.uuid4().hex}{suffix}"
         file_path = AppFileUtils.get_file_path(file_id)
@@ -128,6 +173,11 @@ class AppFileUtils:
 
     @staticmethod
     def get_file_path(file_id: str) -> str:
+        """
+        是什么：AppFileUtils.get_file_path 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+        """
         if not file_id:
             raise ValueError("file_id is required")
         safe_name = os.path.basename(file_id)
@@ -135,6 +185,11 @@ class AppFileUtils:
 
     @staticmethod
     def delete_file(file_id: str | None) -> None:
+        """
+        是什么：AppFileUtils.delete_file 是 backend/common/utils/file_utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：删除或清理通用工具相关数据、缓存或临时状态。
+        """
         if not file_id:
             return
         try:

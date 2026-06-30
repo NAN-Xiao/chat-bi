@@ -13,6 +13,11 @@ TENANT_PUBLIC_ID_DIGITS = "23456789"
 
 
 def generate_tenant_public_id() -> str:
+    """
+    是什么：generate_tenant_public_id 是 backend/apps/system/models/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：基于输入上下文生成系统管理相关结果，并保存或返回给调用方。
+    """
     body = "".join(secrets.choice(TENANT_PUBLIC_ID_ALPHABET) for _ in range(8))
     if not any(char.isdigit() for char in body):
         index = secrets.randbelow(len(body))

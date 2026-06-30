@@ -21,24 +21,44 @@ from common.utils.file_utils import AppFileUtils
 
 class RowValidator:
     def __init__(self, success: bool = False, row=list[str], error_info: dict = None):
+        """
+        是什么：RowValidator.__init__ 是 backend/apps/system/crud/user_excel.py 中的同步方法。
+        谁调用：由创建 RowValidator 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.success = success
         self.row = row
         self.dict_data = {}
         self.error_info = error_info or {}
 class CellValidator:
     def __init__(self, success: bool = False, value: str | int | list = None, message: str = ""):
+        """
+        是什么：CellValidator.__init__ 是 backend/apps/system/crud/user_excel.py 中的同步方法。
+        谁调用：由创建 CellValidator 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.success = success
         self.value = value
         self.message = message
-        
+
 class UploadResultDTO(BaseModel):
     successCount: int
     errorCount: int
     dataKey: str | None = None
-    
+
 
 async def downTemplate(trans):
+    """
+    是什么：downTemplate 是 backend/apps/system/crud/user_excel.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 downTemplate 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+        谁调用：由外层函数 downTemplate 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         data = {
             trans('i18n_user.account'): ['shuzhi1', 'shuzhi2'],
             trans('i18n_user.name'): ['shuzhi_employee1', 'shuzhi_employee2'],
@@ -51,7 +71,7 @@ async def downTemplate(trans):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
             df.to_excel(writer, sheet_name='Sheet1', index=False)
-            
+
             workbook = writer.book
             worksheet = writer.sheets['Sheet1']
 
@@ -64,17 +84,17 @@ async def downTemplate(trans):
                 'border': 0,
                 'text_wrap': False,
             })
-            
+
             for i, col in enumerate(df.columns):
                 max_length = max(
                     len(str(col).encode('utf-8')) * 1.1,
                     (df[col].astype(str)).apply(len).max()
                 )
                 worksheet.set_column(i, i, max_length + 12)
-                
+
                 worksheet.write(0, i, col, header_format)
-            
-            
+
+
             worksheet.set_row(0, 30)
             for row in range(1, len(df) + 1):
                 worksheet.set_row(row, 25)
@@ -86,18 +106,23 @@ async def downTemplate(trans):
     return StreamingResponse(result, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 async def batchUpload(session: SessionDep, trans, file) -> UploadResultDTO:
+    """
+    是什么：batchUpload 是 backend/apps/system/crud/user_excel.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 batchUpload 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
     AppFileUtils.validate_extension(getattr(file, "filename", None), ALLOWED_EXTENSIONS)
-    
-    # Support FastAPI UploadFile (async read) and file-like objects.
+
+    # 支持 FastAPI 上传文件（异步读取）和类文件对象。
     NA_VALUES = ['', 'NA', 'N/A', 'NULL']
     df = None
-    # If file provides an async read (UploadFile), read bytes first
+    # 如果文件提供异步读取能力（上传文件），则先读取字节。
     if hasattr(file, 'read') and asyncio.iscoroutinefunction(getattr(file, 'read')):
         content = await AppFileUtils.read_upload_limited(file)
         df = pd.read_excel(io.BytesIO(content), sheet_name=0, na_values=NA_VALUES)
     else:
-        # If it's a Starlette UploadFile-like with a .file attribute, use that
+        # 如果是带 .file 属性的 Starlette 上传文件对象，则使用该属性。
         if hasattr(file, 'file'):
             fobj = file.file
             try:
@@ -106,7 +131,7 @@ async def batchUpload(session: SessionDep, trans, file) -> UploadResultDTO:
                 pass
             df = pd.read_excel(fobj, sheet_name=0, na_values=NA_VALUES)
         else:
-            # fallback: assume a path or file-like object
+            # 兜底：按路径或类文件对象处理。
             try:
                 file.seek(0)
             except Exception:
@@ -134,7 +159,7 @@ async def batchUpload(session: SessionDep, trans, file) -> UploadResultDTO:
         user_po_list = [UserModel.model_validate(row) for row in success_list]
         session.add_all(user_po_list)
         session.commit()
-    return result    
+    return result
 
 
 def validate_unique_users(
@@ -143,6 +168,11 @@ def validate_unique_users(
     success_rows: list[RowValidator],
     error_list: list[RowValidator],
 ) -> None:
+    """
+    是什么：validate_unique_users 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     account_index = 0
     name_index = 1
     accounts = [str(row.dict_data.get("account") or "").strip() for row in success_rows]
@@ -175,6 +205,11 @@ def validate_unique_users(
             error_list.append(row)
 
 def get_i18n_head_list():
+    """
+    是什么：get_i18n_head_list 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     return [
         'i18n_user.account',
         'i18n_user.name',
@@ -185,6 +220,11 @@ def get_i18n_head_list():
     ]
 
 def validate_head(trans, head_i18n_list: list[str], head_list: list):
+    """
+    是什么：validate_head 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if len(head_list) != len(head_i18n_list):
         return False
     for i in range(len(head_i18n_list)):
@@ -195,6 +235,11 @@ def validate_head(trans, head_i18n_list: list[str], head_list: list):
 
 
 def validate_row(trans, head_i18n_list: list[str], row):
+    """
+    是什么：validate_row 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     validator = RowValidator(success=True, row=[], error_info={})
     for i in range(len(head_i18n_list)):
         col_name = trans(head_i18n_list[i])
@@ -211,11 +256,16 @@ def validate_row(trans, head_i18n_list: list[str], row):
     return validator
 
 def generate_error_file(error_list: list[RowValidator], head_list: list[str]) -> str:
-    # If no errors, return empty string
+    # 如果没有错误，则返回空字符串。
+    """
+    是什么：generate_error_file 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：基于输入上下文生成系统管理相关结果，并保存或返回给调用方。
+    """
     if not error_list:
         return ""
 
-    # Build DataFrame from error rows (only include rows that had errors)
+    # 根据错误行构建数据表（只包含有错误的行）。
     df_rows = [err.row for err in error_list]
     df = pd.DataFrame(df_rows, columns=head_list)
 
@@ -229,7 +279,7 @@ def generate_error_file(error_list: list[RowValidator], head_list: list[str]) ->
         workbook = writer.book
         worksheet = writer.sheets['Errors']
 
-        # header format similar to downTemplate
+        # 表头格式与下载模板保持相近。
         header_format = workbook.add_format({
             'bold': True,
             'font_size': 12,
@@ -240,7 +290,7 @@ def generate_error_file(error_list: list[RowValidator], head_list: list[str]) ->
             'text_wrap': False,
         })
 
-        # apply header format and column widths
+        # 应用表头格式和列宽。
         for i, col in enumerate(df.columns):
             max_length = max(
                 len(str(col).encode('utf-8')) * 1.1,
@@ -255,8 +305,8 @@ def generate_error_file(error_list: list[RowValidator], head_list: list[str]) ->
 
         red_format = workbook.add_format({'font_color': 'red'})
 
-        # Add comments and set red font for each erroneous cell.
-        # Note: pandas wrote header at row 0, data starts from row 1 in the sheet.
+        # 为每个错误单元格添加批注并设置红色字体。
+        # 注意：pandas 将表头写在第 0 行，工作表数据从第 1 行开始。
         for sheet_row_idx, err in enumerate(error_list, start=1):
             for col_idx, message in err.error_info.items():
                 if message:
@@ -268,7 +318,7 @@ def generate_error_file(error_list: list[RowValidator], head_list: list[str]) ->
                         cell_value = None
                     worksheet.write(sheet_row_idx, col_idx, cell_value, red_format)
 
-    # register temp file in map and return an opaque file id
+    # 将临时文件登记到映射中，并返回不透明文件 ID。
     file_id = uuid.uuid4().hex
     with _TEMP_FILE_LOCK:
         _TEMP_FILE_MAP[file_id] = tmp_name
@@ -277,10 +327,10 @@ def generate_error_file(error_list: list[RowValidator], head_list: list[str]) ->
 
 
 def download_error_file(file_id: str) -> FileResponse:
-    """Return a FileResponse for the given generated file id.
-
-    Look up the actual temp path from the internal map. Only files
-    created by `generate_error_file` are allowed.
+    """
+    是什么：download_error_file 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 download_error_file 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
     """
     if not file_id:
         raise HTTPException(400, "file_id required")
@@ -291,7 +341,7 @@ def download_error_file(file_id: str) -> FileResponse:
     if not file_path:
         raise HTTPException(404, "File not found")
 
-    # ensure file is inside tempdir
+    # 确保文件位于临时目录内。
     tempdir = tempfile.gettempdir()
     try:
         common = os.path.commonpath([tempdir, os.path.abspath(file_path)])
@@ -311,19 +361,49 @@ def download_error_file(file_id: str) -> FileResponse:
     )
 
 def validate_account(value: str) -> CellValidator:
+    """
+    是什么：validate_account 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     return CellValidator(True, value, None)
 def validate_name(value: str) -> CellValidator:
-    return CellValidator(True, value, None)  
+    """
+    是什么：validate_name 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
+    return CellValidator(True, value, None)
 def validate_email(value: str) -> CellValidator:
+    """
+    是什么：validate_email 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     return CellValidator(True, value, None)
 def validate_status(value: str) -> CellValidator:
+    """
+    是什么：validate_status 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if value == '已启用': return CellValidator(True, 1, None)
     if value == '已禁用': return CellValidator(True, 0, None)
     return CellValidator(False, None, "状态只能是已启用或已禁用")
 def validate_origin(value: str) -> CellValidator:
+    """
+    是什么：validate_origin 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if value == '本地创建': return CellValidator(True, 0, None)
     return CellValidator(False, None, "不支持当前来源")
 def validate_platform_id(value: str) -> CellValidator:
+    """
+    是什么：validate_platform_id 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     return CellValidator(True, value, None)
 
 _method_cache = {
@@ -332,27 +412,37 @@ _method_cache = {
     'validate_email': validate_email,
     'validate_status': validate_status,
     'validate_origin': validate_origin,
-    'validate_platform_user_id': validate_platform_id,   
+    'validate_platform_user_id': validate_platform_id,
 }
 _module = sys.modules[__name__]
 def dynamic_call(method_name: str, *args, **kwargs):
+    """
+    是什么：dynamic_call 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 dynamic_call 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if method_name in _method_cache:
         return _method_cache[method_name](*args, **kwargs)
-    
+
     if hasattr(_module, method_name):
         func = getattr(_module, method_name)
         _method_cache[method_name] = func
         return func(*args, **kwargs)
-    
+
     raise AttributeError(f"Function '{method_name}' not found")
 
 
-# Map of file_id -> temp path for generated error files
+# 生成错误文件的文件 ID 到临时路径映射。
 _TEMP_FILE_MAP: dict[str, str] = {}
 _TEMP_FILE_LOCK = threading.Lock()
 
 
 def _cleanup_temp_files():
+    """
+    是什么：_cleanup_temp_files 是 backend/apps/system/crud/user_excel.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     with _TEMP_FILE_LOCK:
         for fid, path in list(_TEMP_FILE_MAP.items()):
             try:
@@ -364,9 +454,9 @@ def _cleanup_temp_files():
 
 
 atexit.register(_cleanup_temp_files)
-    
 
 
 
-    
-   
+
+
+

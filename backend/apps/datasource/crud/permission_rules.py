@@ -51,16 +51,31 @@ ds_permission_table = Table(
 
 
 def _now() -> datetime.datetime:
+    """
+    是什么：_now 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _now 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return datetime.datetime.now()
 
 
 def _row_to_obj(row: Any) -> SimpleNamespace | None:
+    """
+    是什么：_row_to_obj 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _row_to_obj 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if row is None:
         return None
     return SimpleNamespace(**dict(row))
 
 
 def _parse_json(value: Any, fallback: Any) -> Any:
+    """
+    是什么：_parse_json 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     if value in (None, ""):
         return fallback
     if isinstance(value, (list, dict)):
@@ -72,21 +87,41 @@ def _parse_json(value: Any, fallback: Any) -> Any:
 
 
 def parse_json_list(value: Any) -> list:
+    """
+    是什么：parse_json_list 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     parsed = _parse_json(value, [])
     return parsed if isinstance(parsed, list) else []
 
 
 def _json_text(value: Any, fallback: Any) -> str:
+    """
+    是什么：_json_text 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _json_text 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     parsed = _parse_json(value, fallback)
     return json.dumps(parsed, ensure_ascii=False)
 
 
 def normalize_rule_scope(value: Any) -> str:
+    """
+    是什么：normalize_rule_scope 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     normalized = str(value or RULE_SCOPE_TENANT).strip().upper()
     return normalized if normalized in RULE_SCOPES else RULE_SCOPE_TENANT
 
 
 def _rule_tenant_id(value: Any) -> int:
+    """
+    是什么：_rule_tenant_id 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _rule_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return int(value or DEFAULT_RULE_TENANT_ID)
     except (TypeError, ValueError):
@@ -94,6 +129,11 @@ def _rule_tenant_id(value: Any) -> int:
 
 
 def _int_list(value: Any) -> list[int]:
+    """
+    是什么：_int_list 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _int_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     result: list[int] = []
     for item in parse_json_list(value):
         try:
@@ -104,6 +144,11 @@ def _int_list(value: Any) -> list[int]:
 
 
 def _rule_values(rule_data: dict[str, Any], permission_ids: list[int]) -> dict[str, Any]:
+    """
+    是什么：_rule_values 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _rule_values 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     scope = normalize_rule_scope(rule_data.get("scope"))
     tenant_id = DEFAULT_RULE_TENANT_ID if scope == RULE_SCOPE_PLATFORM else _rule_tenant_id(rule_data.get("tenant_id"))
     return {
@@ -119,6 +164,11 @@ def _rule_values(rule_data: dict[str, Any], permission_ids: list[int]) -> dict[s
 
 
 def _permission_values(permission_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：_permission_values 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _permission_values 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     permission_type = permission_data.get("type") or "row"
     return {
         "name": permission_data.get("name") or "",
@@ -143,6 +193,11 @@ def list_permission_records(
     permission_type: str | None = None,
     enable: bool | None = None,
 ) -> list[SimpleNamespace]:
+    """
+    是什么：list_permission_records 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     conditions = []
     if ids is not None:
         if not ids:
@@ -172,6 +227,11 @@ def list_rule_records(
     include_platform: bool = False,
     scope: str | None = None,
 ) -> list[SimpleNamespace]:
+    """
+    是什么：list_rule_records 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     stmt = select(ds_rules_table)
     conditions = []
     if enable is not None:
@@ -198,6 +258,11 @@ def list_rule_records(
 
 
 def get_rule_record(session: SessionDep, rule_id: int) -> SimpleNamespace | None:
+    """
+    是什么：get_rule_record 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     row = session.execute(
         select(ds_rules_table).where(ds_rules_table.c.id == rule_id)
     ).mappings().first()
@@ -205,6 +270,11 @@ def get_rule_record(session: SessionDep, rule_id: int) -> SimpleNamespace | None
 
 
 def _existing_permission_ids(session: SessionDep, ids: list[int]) -> set[int]:
+    """
+    是什么：_existing_permission_ids 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _existing_permission_ids 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if not ids:
         return set()
     rows = session.execute(
@@ -214,11 +284,21 @@ def _existing_permission_ids(session: SessionDep, ids: list[int]) -> set[int]:
 
 
 def trans_record_to_dto(session: SessionDep, record: SimpleNamespace) -> SimpleNamespace:
+    """
+    是什么：trans_record_to_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 trans_record_to_dto 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     dto = permission_record_to_dict(session, record)
     return SimpleNamespace(**dto)
 
 
 def permission_record_to_dict(session: SessionDep, record: SimpleNamespace) -> dict[str, Any]:
+    """
+    是什么：permission_record_to_dict 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 permission_record_to_dict 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = session.get(CoreDatasource, record.ds_id) if record.ds_id else None
     table = session.get(CoreTable, record.table_id) if record.table_id else None
     permission_list = parse_json_list(record.permissions)
@@ -244,6 +324,11 @@ def permission_record_to_dict(session: SessionDep, record: SimpleNamespace) -> d
 
 
 def rule_record_to_dict(session: SessionDep, rule: SimpleNamespace) -> dict[str, Any]:
+    """
+    是什么：rule_record_to_dict 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 rule_record_to_dict 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     permission_ids = _int_list(rule.permission_list)
     permission_records = list_permission_records(session, ids=permission_ids)
     permission_map = {int(permission.id): permission for permission in permission_records}
@@ -271,10 +356,20 @@ def rule_record_to_dict(session: SessionDep, rule: SimpleNamespace) -> dict[str,
 
 
 def list_rule_dtos(session: SessionDep) -> list[dict[str, Any]]:
+    """
+    是什么：list_rule_dtos 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     return [rule_record_to_dict(session, rule) for rule in list_rule_records(session)]
 
 
 def get_rule_dto(session: SessionDep, rule_id: int) -> dict[str, Any] | None:
+    """
+    是什么：get_rule_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     rule = get_rule_record(session, rule_id)
     if rule is None:
         return None
@@ -282,6 +377,11 @@ def get_rule_dto(session: SessionDep, rule_id: int) -> dict[str, Any] | None:
 
 
 def save_rule_dto(session: SessionDep, rule_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：save_rule_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     rule_id = rule_data.get("id")
     old_rule = get_rule_record(session, int(rule_id)) if rule_id else None
     old_permission_ids = _int_list(old_rule.permission_list) if old_rule else []
@@ -347,6 +447,11 @@ def save_rule_dto(session: SessionDep, rule_data: dict[str, Any]) -> dict[str, A
 
 
 def delete_rule_dto(session: SessionDep, rule_id: int) -> None:
+    """
+    是什么：delete_rule_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     rule = get_rule_record(session, rule_id)
     if rule is None:
         return
@@ -363,6 +468,11 @@ def delete_permission_records_for_datasources(
     *,
     tenant_id: int | None = None,
 ) -> None:
+    """
+    是什么：delete_permission_records_for_datasources 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
     if not ids:
         return
@@ -404,10 +514,20 @@ def delete_permission_records_for_datasources(
 
 
 def list_rule_user_ids(session: SessionDep, rule: SimpleNamespace) -> list[int]:
+    """
+    是什么：list_rule_user_ids 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     return _int_list(rule.user_list)
 
 
 def list_users_by_ids(session: SessionDep, user_ids: list[int]) -> list[UserModel]:
+    """
+    是什么：list_users_by_ids 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if not user_ids:
         return []
     return session.query(UserModel).filter(UserModel.id.in_(user_ids)).all()

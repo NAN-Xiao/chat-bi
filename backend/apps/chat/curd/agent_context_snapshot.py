@@ -9,6 +9,11 @@ AGENT_CONTEXT_SNAPSHOT_VERSION = 1
 
 
 def _text_digest(value: str | None) -> str | None:
+    """
+    是什么：_text_digest 是 backend/apps/chat/curd/agent_context_snapshot.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _text_digest 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     text = (value or "").strip()
     if not text:
         return None
@@ -16,6 +21,11 @@ def _text_digest(value: str | None) -> str | None:
 
 
 def _text_length(value: str | None) -> int:
+    """
+    是什么：_text_length 是 backend/apps/chat/curd/agent_context_snapshot.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _text_length 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return len((value or "").strip())
 
 
@@ -33,6 +43,11 @@ def build_agent_context_snapshot(
     ai_model_name: str | None = None,
     target_scope: str | None = None,
 ) -> dict[str, Any]:
+    """
+    是什么：build_agent_context_snapshot 是 backend/apps/chat/curd/agent_context_snapshot.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     return {
         "version": AGENT_CONTEXT_SNAPSHOT_VERSION,
         "captured_at": datetime.utcnow().isoformat(timespec="seconds"),

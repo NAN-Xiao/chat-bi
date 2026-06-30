@@ -10,6 +10,11 @@ from common.utils.utils import AppLogUtil
 
 
 def _allowed_cors_origins() -> set[str]:
+    """
+    是什么：_allowed_cors_origins 是 backend/common/core/response_middleware.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验核心配置和基础设施相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     origins = {origin.rstrip("/") for origin in settings.all_cors_origins if origin}
     for instance in ResponseMiddleware.instances:
         origins.update(
@@ -21,6 +26,11 @@ def _allowed_cors_origins() -> set[str]:
 
 
 def cors_headers_for_request(request: Request) -> dict[str, str]:
+    """
+    是什么：cors_headers_for_request 是 backend/common/core/response_middleware.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 cors_headers_for_request 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     origin = request.headers.get("origin")
     if not origin:
         return {}
@@ -34,12 +44,22 @@ def cors_headers_for_request(request: Request) -> dict[str, str]:
 
 
 def _safe_http_exception_content(exc: HTTPException):
+    """
+    是什么：_safe_http_exception_content 是 backend/common/core/response_middleware.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _safe_http_exception_content 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     if exc.status_code >= 500:
         return "Internal server error"
     return exc.detail
 
 
 def _add_security_headers(response):
+    """
+    是什么：_add_security_headers 是 backend/common/core/response_middleware.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装核心配置和基础设施相关对象和数据，并返回或写入对应状态。
+    """
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
@@ -52,16 +72,31 @@ class ResponseMiddleware(BaseHTTPMiddleware):
     instances = []
 
     def __init__(self, app, allow_origins: list[str] | None = None):
+        """
+        是什么：ResponseMiddleware.__init__ 是 backend/common/core/response_middleware.py 中的同步方法。
+        谁调用：由创建 ResponseMiddleware 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         super().__init__(app)
         self.allow_origins = allow_origins or ["'self'"]
         ResponseMiddleware.instances.append(self)
 
     def update_allow_origins(self, new_allow_origins: list[str] | None = None):
+        """
+        是什么：ResponseMiddleware.update_allow_origins 是 backend/common/core/response_middleware.py 中的同步方法。
+        谁调用：由持有 ResponseMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：更新核心配置和基础设施相关状态、配置或持久化数据，并保持后续流程可继续使用。
+        """
         if not new_allow_origins:
             return
         self.allow_origins = list(set(self.allow_origins + new_allow_origins))
 
     async def dispatch(self, request, call_next):
+        """
+        是什么：ResponseMiddleware.dispatch 是 backend/common/core/response_middleware.py 中的异步方法。
+        谁调用：由 Starlette/FastAPI 中间件链在处理每个请求时调用。
+        做了什么：执行核心配置和基础设施主流程，协调下游服务并处理结果或异常。
+        """
         response = await call_next(request)
         _add_security_headers(response)
 
@@ -138,6 +173,11 @@ class ResponseMiddleware(BaseHTTPMiddleware):
 class exception_handler:
     @staticmethod
     async def http_exception_handler(request: Request, exc: HTTPException):
+        """
+        是什么：exception_handler.http_exception_handler 是 backend/common/core/response_middleware.py 中的异步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 http_exception_handler 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         AppLogUtil.error(f"HTTP Exception: {exc.detail}", exc_info=True)
         return _add_security_headers(JSONResponse(
             status_code=exc.status_code,
@@ -147,6 +187,11 @@ class exception_handler:
 
     @staticmethod
     async def global_exception_handler(request: Request, exc: Exception):
+        """
+        是什么：exception_handler.global_exception_handler 是 backend/common/core/response_middleware.py 中的异步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 global_exception_handler 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         AppLogUtil.error(f"Unhandled Exception: {str(exc)}", exc_info=True)
         return _add_security_headers(JSONResponse(
             status_code=500,

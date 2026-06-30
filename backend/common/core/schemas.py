@@ -24,6 +24,11 @@ class Token(SQLModel):
 
 class XOAuth2PasswordBearer(OAuth2PasswordBearer):
     async def __call__(self, request: Request) -> str | None:
+        """
+        是什么：XOAuth2PasswordBearer.__call__ 是 backend/common/core/schemas.py 中的异步方法。
+        谁调用：由 Python 运行时、框架协议或相关内置操作按需调用。
+        做了什么：实现 Python 协议方法，使对象可以参与对应的语言级操作。
+        """
         authorization = request.headers.get(settings.TOKEN_KEY)
         if request.headers.get(settings.ASSISTANT_TOKEN_KEY):
             authorization = request.headers.get(settings.ASSISTANT_TOKEN_KEY)

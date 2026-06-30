@@ -15,6 +15,11 @@ from common.utils.file_utils import AppFileUtils
 
 
 def _decode_markdown(path: Path) -> str:
+    """
+    是什么：_decode_markdown 是 backend/apps/knowledge_base/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _decode_markdown 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     data = path.read_bytes()
     for encoding in ("utf-8-sig", "utf-8"):
         try:
@@ -25,10 +30,20 @@ def _decode_markdown(path: Path) -> str:
 
 
 def _local_name(tag: str) -> str:
+    """
+    是什么：_local_name 是 backend/apps/knowledge_base/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _local_name 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
 def _paragraph_text(paragraph: ET.Element) -> str:
+    """
+    是什么：_paragraph_text 是 backend/apps/knowledge_base/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _paragraph_text 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     parts: list[str] = []
     for node in paragraph.iter():
         name = _local_name(node.tag)
@@ -42,6 +57,11 @@ def _paragraph_text(paragraph: ET.Element) -> str:
 
 
 def _decode_docx(path: Path) -> str:
+    """
+    是什么：_decode_docx 是 backend/apps/knowledge_base/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _decode_docx 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    """
     with zipfile.ZipFile(path) as archive:
         try:
             document_xml = archive.read("word/document.xml")
@@ -58,6 +78,11 @@ def _decode_docx(path: Path) -> str:
 
 
 def _extract_content(record: KnowledgeBase) -> str:
+    """
+    是什么：_extract_content 是 backend/apps/knowledge_base/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化后端业务相关数据，生成后续流程可使用的结构。
+    """
     if not record.file_id:
         raise ValueError("Knowledge base file is missing")
     path = Path(AppFileUtils.get_file_path(record.file_id))
@@ -78,6 +103,11 @@ def _extract_content(record: KnowledgeBase) -> str:
 
 @task_handler("knowledge_base.process_document")
 def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：process_knowledge_base_document 是 backend/apps/knowledge_base/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行后端业务主流程，协调下游服务并处理结果或异常。
+    """
     record_id = int(payload["id"])
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
 

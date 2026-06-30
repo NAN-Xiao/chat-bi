@@ -22,6 +22,11 @@ i18n = I18n()
 
 
 def _int_list(value: Any) -> list[int]:
+    """
+    是什么：_int_list 是 backend/apps/datasource/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _int_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if not value:
         return []
     return [int(item) for item in value]
@@ -29,6 +34,11 @@ def _int_list(value: Any) -> list[int]:
 
 @task_handler("datasource.sync_fields")
 def sync_fields_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：sync_fields_task 是 backend/apps/datasource/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     table_id = int(payload["table_id"])
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     lang = payload.get("lang") or "zh-CN"
@@ -50,6 +60,11 @@ def sync_fields_task(payload: dict[str, Any]) -> dict[str, Any]:
 
 @task_handler("datasource.table_embedding")
 def table_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：table_embedding_task 是 backend/apps/datasource/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 table_embedding_task 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     ids = _int_list(payload.get("ids"))
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     save_table_embedding(session_maker, ids, tenant_id=tenant_id)
@@ -58,6 +73,11 @@ def table_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
 
 @task_handler("datasource.datasource_embedding")
 def datasource_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：datasource_embedding_task 是 backend/apps/datasource/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 datasource_embedding_task 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     ids = _int_list(payload.get("ids"))
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     save_ds_embedding(session_maker, ids, tenant_id=tenant_id)
@@ -66,6 +86,11 @@ def datasource_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
 
 @task_handler("datasource.fill_empty_table_and_ds_embedding")
 def fill_empty_table_and_ds_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：fill_empty_table_and_ds_embedding_task 是 backend/apps/datasource/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 fill_empty_table_and_ds_embedding_task 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     run_fill_empty_table_and_ds_embedding(session_maker, tenant_id=tenant_id)
     return {"status": "completed", "tenant_id": tenant_id}

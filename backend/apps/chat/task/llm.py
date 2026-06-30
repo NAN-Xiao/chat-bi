@@ -62,10 +62,20 @@ from apps.system.models.system_model import SysArgModel
 
 
 def _can_manage_platform_prompt_runtime(user) -> bool:
+    """
+    是什么：_can_manage_platform_prompt_runtime 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_manage_platform_prompt_runtime 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return bool(user is not None and is_platform_admin(user) and not is_platform_workspace_delegate(user))
 
 
 def _can_manage_tenant_prompt_runtime(user) -> bool:
+    """
+    是什么：_can_manage_tenant_prompt_runtime 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_manage_tenant_prompt_runtime 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if user is None or _can_manage_platform_prompt_runtime(user):
         return False
     if is_system_admin(user):
@@ -99,14 +109,29 @@ class DataSkillSqlValidationError(SingleMessageError):
 
 
 def _is_app_system_message(message: dict[str, Any]) -> bool:
+    """
+    是什么：_is_app_system_message 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_app_system_message 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return message.get(APP_SYSTEM_MESSAGE_KEY) is True
 
 
 def _message_has_app_system_flag(message: BaseMessage) -> bool:
+    """
+    是什么：_message_has_app_system_flag 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _message_has_app_system_flag 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return getattr(message, APP_SYSTEM_MESSAGE_KEY, False) is True
 
 
 def _serialize_prompt_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+    """
+    是什么：_serialize_prompt_messages 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     return [
         {
             "type": msg.type,
@@ -118,6 +143,11 @@ def _serialize_prompt_messages(messages: list[BaseMessage]) -> list[dict[str, An
 
 
 def _normalize_rule_terms(value: Any) -> list[str]:
+    """
+    是什么：_normalize_rule_terms 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if value in (None, ""):
         return []
     if isinstance(value, str):
@@ -128,6 +158,11 @@ def _normalize_rule_terms(value: Any) -> list[str]:
 
 
 def _extract_data_skill_sql_validation_rules(data_skill: str = "") -> list[dict[str, Any]]:
+    """
+    是什么：_extract_data_skill_sql_validation_rules 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if not data_skill or not data_skill.strip():
         return []
 
@@ -149,6 +184,11 @@ def _extract_data_skill_sql_validation_rules(data_skill: str = "") -> list[dict[
 
 
 def _rule_matches_question(rule: dict[str, Any], question: str) -> bool:
+    """
+    是什么：_rule_matches_question 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _rule_matches_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     terms = [term.lower() for term in _normalize_rule_terms(rule.get("match") or rule.get("when"))]
     if not terms:
         return True
@@ -157,6 +197,11 @@ def _rule_matches_question(rule: dict[str, Any], question: str) -> bool:
 
 
 def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
+    """
+    是什么：_rule_allowed_by_question 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _rule_allowed_by_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     terms = [term.lower() for term in _normalize_rule_terms(rule.get("allow_when"))]
     if not terms:
         return False
@@ -165,6 +210,11 @@ def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
 
 
 def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = "") -> str | None:
+    """
+    是什么：_data_skill_sql_validation_error 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _data_skill_sql_validation_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not sql:
         return None
 
@@ -206,6 +256,11 @@ def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = 
 
 
 def _decode_relaxed_json_string(value: str) -> str:
+    """
+    是什么：_decode_relaxed_json_string 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _decode_relaxed_json_string 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     result: list[str] = []
     index = 0
     while index < len(value):
@@ -232,6 +287,11 @@ def _decode_relaxed_json_string(value: str) -> str:
 
 
 def _extract_relaxed_json_string_field(text: str, field_name: str) -> str | None:
+    """
+    是什么：_extract_relaxed_json_string_field 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"', text)
     if not match:
         return None
@@ -247,6 +307,11 @@ def _extract_relaxed_json_string_field(text: str, field_name: str) -> str | None
 
 
 def _extract_relaxed_json_array_field(text: str, field_name: str) -> list[Any] | None:
+    """
+    是什么：_extract_relaxed_json_array_field 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     match = re.search(rf'"{re.escape(field_name)}"\s*:\s*', text)
     if not match:
         return None
@@ -259,6 +324,11 @@ def _extract_relaxed_json_array_field(text: str, field_name: str) -> list[Any] |
 
 
 def _extract_relaxed_simple_json_string_field(text: str, field_name: str) -> str | None:
+    """
+    是什么：_extract_relaxed_simple_json_string_field 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"((?:\\.|[^"\\])*)"', text)
     if not match:
         return None
@@ -266,6 +336,11 @@ def _extract_relaxed_simple_json_string_field(text: str, field_name: str) -> str
 
 
 def _parse_relaxed_sql_answer_data(text: str) -> dict[str, Any] | None:
+    """
+    是什么：_parse_relaxed_sql_answer_data 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     success_match = re.search(r'"success"\s*:\s*(true|false)', text)
     if not success_match:
         return None
@@ -301,6 +376,11 @@ def _parse_relaxed_sql_answer_data(text: str) -> dict[str, Any] | None:
 
 
 def _parse_sql_answer_data(text: str) -> dict[str, Any]:
+    """
+    是什么：_parse_sql_answer_data 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     json_str = extract_nested_json(text)
     if json_str is not None:
         try:
@@ -318,24 +398,49 @@ def _parse_sql_answer_data(text: str) -> dict[str, Any]:
 
 
 def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional[str]:
+    """
+    是什么：_get_temp_sql_text 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     if not dynamic_sql_result:
         return None
     return dynamic_sql_result.get(APP_TEMP_SQL_TEXT_KEY)
 
 
 def _remove_temp_sql_text(dynamic_sql_result: dict[str, Any]) -> None:
+    """
+    是什么：_remove_temp_sql_text 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    """
     dynamic_sql_result.pop(APP_TEMP_SQL_TEXT_KEY, None)
 
 
 def _normalize_chart_field_name(value: Any) -> str:
+    """
+    是什么：_normalize_chart_field_name 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     return str(value or "").strip().strip('`"[]').lower()
 
 
 def _clean_chart_value(value: Any) -> str:
+    """
+    是什么：_clean_chart_value 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    """
     return str(value or "").strip().strip('`"[]')
 
 
 def _sanitize_chart_axis_binding(axis_item: Any) -> None:
+    """
+    是什么：_sanitize_chart_axis_binding 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sanitize_chart_axis_binding 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not isinstance(axis_item, dict):
         return
     value = _clean_chart_value(axis_item.get("value") or axis_item.get("name"))
@@ -345,6 +450,11 @@ def _sanitize_chart_axis_binding(axis_item: Any) -> None:
 
 
 def _sanitize_chart_bindings(chart: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：_sanitize_chart_bindings 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sanitize_chart_bindings 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     for column in chart.get("columns") or []:
         _sanitize_chart_axis_binding(column)
 
@@ -373,6 +483,11 @@ def _sanitize_chart_bindings(chart: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_chart_numeric_value(value: Any) -> bool:
+    """
+    是什么：_is_chart_numeric_value 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_chart_numeric_value 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if value is None or isinstance(value, bool):
         return False
     if isinstance(value, (int, float, Decimal)):
@@ -393,6 +508,11 @@ def _is_chart_numeric_value(value: Any) -> bool:
 
 
 def _chart_axis_values(chart: dict[str, Any]) -> set[str]:
+    """
+    是什么：_chart_axis_values 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _chart_axis_values 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     values: set[str] = set()
     chart_type = str(chart.get("type") or "").lower()
     for column in chart.get("columns") or []:
@@ -425,6 +545,11 @@ def _chart_axis_values(chart: dict[str, Any]) -> set[str]:
 
 
 def _build_complete_table_chart(fields: list[Any], title: str | None = None) -> dict[str, Any]:
+    """
+    是什么：_build_complete_table_chart 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     columns = []
     for field in fields or []:
         field_name = str(field)
@@ -437,6 +562,11 @@ def _build_complete_table_chart(fields: list[Any], title: str | None = None) -> 
 
 
 def _is_rate_metric_field(field: str) -> bool:
+    """
+    是什么：_is_rate_metric_field 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_rate_metric_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     normalized = _normalize_chart_field_name(field)
     return any(
         token in normalized
@@ -456,6 +586,11 @@ def _is_rate_metric_field(field: str) -> bool:
 
 
 def _is_average_metric_field(field: str) -> bool:
+    """
+    是什么：_is_average_metric_field 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_average_metric_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     normalized = _normalize_chart_field_name(field)
     return any(
         token in normalized
@@ -474,6 +609,11 @@ def _is_average_metric_field(field: str) -> bool:
 
 
 def _is_supporting_metric_field(field: str) -> bool:
+    """
+    是什么：_is_supporting_metric_field 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_supporting_metric_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     normalized = _normalize_chart_field_name(field)
     return any(
         token in normalized
@@ -496,6 +636,11 @@ def _is_supporting_metric_field(field: str) -> bool:
 
 
 def _is_numeric_dimension_field(field: str) -> bool:
+    """
+    是什么：_is_numeric_dimension_field 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_numeric_dimension_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     normalized = _normalize_chart_field_name(field)
     return any(
         token in normalized
@@ -519,6 +664,11 @@ def _is_numeric_dimension_field(field: str) -> bool:
 
 
 def _is_supporting_only_gap(covered_metrics: list[str], missing_metrics: list[str]) -> bool:
+    """
+    是什么：_is_supporting_only_gap 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_supporting_only_gap 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not covered_metrics or not missing_metrics:
         return False
     return any(_is_rate_metric_field(field) or _is_average_metric_field(field) for field in covered_metrics) and all(
@@ -531,6 +681,11 @@ def _is_funnel_supporting_metric_gap(
     covered_metrics: list[str],
     missing_metrics: list[str],
 ) -> bool:
+    """
+    是什么：_is_funnel_supporting_metric_gap 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_funnel_supporting_metric_gap 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if str(chart.get("type") or "").lower() != "funnel" or not covered_metrics or not missing_metrics:
         return False
 
@@ -541,6 +696,11 @@ def _is_funnel_supporting_metric_gap(
         return False
 
     def is_funnel_primary(field: str) -> bool:
+        """
+        是什么：is_funnel_primary 是 backend/apps/chat/task/llm.py 中的同步函数。
+        谁调用：由外层函数 _is_funnel_supporting_metric_gap 在执行内部流程时调用。
+        做了什么：围绕 is_funnel_primary 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         normalized = _normalize_chart_field_name(field)
         return any(
             token in normalized
@@ -557,6 +717,11 @@ def _is_funnel_supporting_metric_gap(
         )
 
     def is_funnel_auxiliary(field: str) -> bool:
+        """
+        是什么：is_funnel_auxiliary 是 backend/apps/chat/task/llm.py 中的同步函数。
+        谁调用：由外层函数 _is_funnel_supporting_metric_gap 在执行内部流程时调用。
+        做了什么：围绕 is_funnel_auxiliary 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         normalized = _normalize_chart_field_name(field)
         return any(
             token in normalized
@@ -589,7 +754,11 @@ def _ensure_chart_covers_metric_fields(
     fields: list[Any] | None,
     rows: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
-    """Avoid silently reducing a multi-metric answer to a single-metric chart."""
+    """
+    是什么：_ensure_chart_covers_metric_fields 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if chart.get("type") == "table" or not fields or not rows:
         return chart
 
@@ -663,6 +832,11 @@ class LLMService:
     def __init__(self, session: Session, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
                  embedding: bool = False, config: LLMConfig = None):
+        """
+        是什么：LLMService.__init__ 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由创建 LLMService 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.sql_message = []
         self.chart_message = []
         self.generate_sql_logs = []
@@ -691,7 +865,7 @@ class LLMService:
                         f"当前用户无权访问项目 {chat_question.datasource_id}")
                 chat.datasource = _ds.id
                 chat.engine_type = _ds.type_name
-                # save chat
+                # 保存聊天记录
                 session.add(chat)
                 session.flush()
                 session.refresh(chat)
@@ -701,7 +875,7 @@ class LLMService:
             use_dynamic_assistant_ds = current_assistant and current_assistant.type in dynamic_ds_types
             if not use_dynamic_assistant_ds and not has_datasource_access(session, current_user, chat.datasource):
                 raise SingleMessageError(f"当前用户无权访问项目 {chat.datasource}")
-            # Get available datasource
+            # 获取可用数据源
             if use_dynamic_assistant_ds:
                 self.out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
                 ds = self.out_ds_instance.get_ds(chat.datasource)
@@ -727,7 +901,7 @@ class LLMService:
         self.chat_question = chat_question
         self.config = config
         if no_reasoning:
-            # only work while using qwen
+            # 仅在使用通义千问模型时生效
             if self.config.additional_params:
                 if self.config.additional_params.get('extra_body'):
                     if self.config.additional_params.get('extra_body').get('enable_thinking'):
@@ -736,11 +910,11 @@ class LLMService:
         self.chat_question.ai_modal_id = self.config.model_id
         self.chat_question.ai_modal_name = self.config.model_name
 
-        # Create LLM instance through factory
+        # 通过工厂创建大语言模型实例
         llm_instance = LLMFactory.create_llm(self.config)
         self.llm = llm_instance.llm
 
-        # get last_execute_sql_error
+        # 获取上一次 SQL 执行错误
         last_execute_sql_error = get_last_execute_sql_error(session, self.chat_question.chat_id)
         if last_execute_sql_error:
             self.chat_question.error_msg = f'''<error-msg>
@@ -751,6 +925,11 @@ class LLMService:
 
     @classmethod
     async def create(cls, *args, **kwargs):
+        """
+        是什么：LLMService.create 是 backend/apps/chat/task/llm.py 中的异步方法。
+        谁调用：由类本身、子类或框架按照类方法约定调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         specialized_model_id = None
         _ai_model_list = []
         if args[3]:
@@ -806,6 +985,11 @@ class LLMService:
         return instance
 
     def is_running(self, timeout=0.5):
+        """
+        是什么：LLMService.is_running 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 is_running 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         try:
             r = concurrent.futures.wait([self.future], timeout)
             if len(r.not_done) > 0:
@@ -817,12 +1001,17 @@ class LLMService:
 
     def init_messages(self, session: Session):
 
+        """
+        是什么：LLMService.init_messages 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         self.table_name_list = self.choose_table_schema(session)
 
         last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
             self.generate_sql_logs) > 0 else []
         if self.chat_question.regenerate_record_id:
-            # filter record before regenerate_record_id
+            # 根据重新生成记录 ID 过滤历史记录
             _temp_log = next(
                 filter(lambda obj: obj.pid == self.chat_question.regenerate_record_id, self.generate_sql_logs), None)
             last_sql_messages: List[dict[str, Any]] = _temp_log.messages if _temp_log else []
@@ -833,7 +1022,7 @@ class LLMService:
         count_limit = self.base_message_round_count_limit
 
         self.sql_message = []
-        # add sys prompt
+        # 添加系统提示词
         _system_templates = self.chat_question.sql_sys_question(self.ds.type, self.enable_sql_row_limit)
         self.sql_message.append(SystemPromptMessage(content=_system_templates['system']))
         self.sql_message.append(HumanPromptMessage(content=_system_templates['rules']))
@@ -867,7 +1056,7 @@ class LLMService:
         last_chart_messages: List[dict[str, Any]] = self.generate_chart_logs[-1].messages if len(
             self.generate_chart_logs) > 0 else []
         if self.chat_question.regenerate_record_id:
-            # filter record before regenerate_record_id
+            # 根据重新生成记录 ID 过滤历史记录
             _temp_log = next(
                 filter(lambda obj: obj.pid == self.chat_question.regenerate_record_id, self.generate_chart_logs), None)
             last_chart_messages: List[dict[str, Any]] = _temp_log.messages if _temp_log else []
@@ -878,7 +1067,7 @@ class LLMService:
         count_chart_limit = self.base_message_round_count_limit
 
         self.chart_message = []
-        # add sys prompt
+        # 添加系统提示词
         _chart_system_templates = self.chat_question.chart_sys_question()
         self.chart_message.append(SystemPromptMessage(content=_chart_system_templates['system']))
         self.chart_message.append(HumanPromptMessage(content=_chart_system_templates['rules']))
@@ -896,6 +1085,11 @@ class LLMService:
                     self.chart_message.append(_msg)
 
     def init_record(self, session: Session) -> ChatRecord:
+        """
+        是什么：LLMService.init_record 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         self.record = save_question(session=session, current_user=self.current_user, question=self.chat_question)
         return self.record
 
@@ -905,6 +1099,11 @@ class LLMService:
             target_scope: CustomPromptTargetScopeEnum,
             surface: str = "smart_qa",
     ) -> None:
+        """
+        是什么：LLMService.save_agent_context_snapshot 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         if not self.record:
             return
         datasource_id = getattr(self.ds, "id", None) if self.ds else getattr(self.chat_question, "datasource_id", None)
@@ -924,19 +1123,44 @@ class LLMService:
         save_agent_context_snapshot(session, self.record.id, snapshot)
 
     def get_record(self):
+        """
+        是什么：LLMService.get_record 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        """
         return self.record
 
     def set_record(self, record: ChatRecord):
+        """
+        是什么：LLMService.set_record 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+        """
         self.record = record
 
     def set_articles_number(self, articles_number: int):
+        """
+        是什么：LLMService.set_articles_number 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+        """
         self.articles_number = articles_number
 
     def get_fields_from_chart(self, _session: Session):
+        """
+        是什么：LLMService.get_fields_from_chart 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        """
         chart_info = get_chart_config(_session, self.record.id)
         return format_chart_fields(chart_info)
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, ds_id: int = None):
+        """
+        是什么：LLMService.filter_custom_prompts 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 filter_custom_prompts 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         if not self.chat_question.custom_prompt_id:
             self.chat_question.custom_prompt = ""
             return
@@ -972,6 +1196,11 @@ class LLMService:
             ds_id: int = None,
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
     ):
+        """
+        是什么：LLMService.filter_data_skills 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 filter_data_skills 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         calculate_ds_id = ds_id
         if self.current_assistant:
             if self.current_assistant.type == 1:
@@ -1003,13 +1232,28 @@ class LLMService:
             ds_id: int = None,
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
     ):
+        """
+        是什么：LLMService.load_data_skills 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        """
         self.filter_data_skills(_session, ds_id, target_scope)
 
     def load_tracking_config(self, _session: Session):
+        """
+        是什么：LLMService.load_tracking_config 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        """
         tenant_id = require_current_tenant_id(self.current_user)
         self.chat_question.tracking_config, _ = find_tracking_prompt_context(_session, tenant_id)
 
     def choose_table_schema(self, _session: Session):
+        """
+        是什么：LLMService.choose_table_schema 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 choose_table_schema 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         self.current_logs[OperationEnum.CHOOSE_TABLE] = start_log(session=_session,
                                                                   operate=OperationEnum.CHOOSE_TABLE,
                                                                   record_id=self.record.id,
@@ -1021,7 +1265,7 @@ class LLMService:
             ds=self.ds,
             question=self.chat_question.question)
 
-        # Get sample data for all tables
+        # 获取所有表的样例数据
         if not self.out_ds_instance:
             self.chat_question.sample_data = get_tables_sample_data(
                 session=_session,
@@ -1035,6 +1279,11 @@ class LLMService:
         return tables
 
     def generate_analysis(self, _session: Session):
+        """
+        是什么：LLMService.generate_analysis 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
         data = get_chat_chart_data(_session, self.record.id)
@@ -1085,6 +1334,11 @@ class LLMService:
                                            answer=orjson.dumps({'content': full_analysis_text}).decode())
 
     def generate_predict(self, _session: Session):
+        """
+        是什么：LLMService.generate_predict 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
         data = get_chat_chart_data(_session, self.record.id)
@@ -1133,7 +1387,12 @@ class LLMService:
 
     def generate_recommend_questions_task(self, _session: Session):
 
-        # get schema
+        # 获取结构信息
+        """
+        是什么：LLMService.generate_recommend_questions_task 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         if self.ds and not self.chat_question.db_schema:
             self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
                 self.ds.id, self.chat_question.question) if self.out_ds_instance else get_table_schema(
@@ -1142,7 +1401,7 @@ class LLMService:
                 question=self.chat_question.question,
                 embedding=False)
 
-            # Get sample data for all tables
+            # 获取所有表的样例数据
             # if not self.out_ds_instance:
             #     self.chat_question.sample_data = get_tables_sample_data(
             #         session=_session,
@@ -1192,6 +1451,11 @@ class LLMService:
         yield {'recommended_question': self.record.recommended_question}
 
     def select_datasource(self, _session: Session):
+        """
+        是什么：LLMService.select_datasource 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        """
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemPromptMessage(self.chat_question.datasource_sys_question()))
         if self.current_assistant and self.current_assistant.type != 4:
@@ -1209,7 +1473,7 @@ class LLMService:
         if not _ds_list:
             raise SingleMessageError('当前没有可用项目，请联系管理员创建或分配项目')
         ignore_auto_select = _ds_list and len(_ds_list) == 1
-        # ignore auto select ds
+        # 忽略自动选择数据源
 
         full_thinking_text = ''
         full_text = ''
@@ -1288,7 +1552,7 @@ class LLMService:
 
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
-                # save chat
+                # 保存聊天记录
                 with _session.begin_nested():
                     # 为了能继续记日志，先单独处理下事务
                     try:
@@ -1330,7 +1594,12 @@ class LLMService:
             raise _error
 
     def generate_sql(self, _session: Session, append_question: bool = True):
-        # append current question
+        # 追加当前问题
+        """
+        是什么：LLMService.generate_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         if append_question:
             self.sql_message.append(HumanMessage(
                 self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -1364,6 +1633,11 @@ class LLMService:
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
     def generate_sql_text(self, _session: Session, append_question: bool = True) -> str:
+        """
+        是什么：LLMService.generate_sql_text 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         full_sql_text = ''
         for chunk in self.generate_sql(_session, append_question=append_question):
             full_sql_text += chunk.get('content') or ''
@@ -1375,6 +1649,11 @@ class LLMService:
             in_chat: bool,
             append_question: bool = True,
     ):
+        """
+        是什么：LLMService.generate_sql_text_streaming_reasoning 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         full_sql_text = ''
         for chunk in self.generate_sql(_session, append_question=append_question):
             full_sql_text += chunk.get('content') or ''
@@ -1387,6 +1666,11 @@ class LLMService:
         return full_sql_text
 
     def regenerate_sql_after_validation_error(self, _session: Session, message: str) -> str:
+        """
+        是什么：LLMService.regenerate_sql_after_validation_error 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 regenerate_sql_after_validation_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         repair_message = (
             "<error-msg>\n"
             f"{message}\n"
@@ -1403,6 +1687,11 @@ class LLMService:
             message: str,
             in_chat: bool,
     ):
+        """
+        是什么：LLMService.regenerate_sql_after_validation_error_streaming_reasoning 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 regenerate_sql_after_validation_error_streaming_reasoning 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         repair_message = (
             "<error-msg>\n"
             f"{message}\n"
@@ -1418,6 +1707,11 @@ class LLMService:
         ))
 
     def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
+        """
+        是什么：LLMService.generate_with_sub_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
         self.chat_question.sql = sql
         self.chat_question.sub_query = sub_query
@@ -1455,6 +1749,11 @@ class LLMService:
         return full_dynamic_text
 
     def generate_assistant_dynamic_sql(self, _session: Session, sql, tables: List):
+        """
+        是什么：LLMService.generate_assistant_dynamic_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         ds: AssistantOutDsSchema = self.ds
         sub_query = []
         result_dict = {}
@@ -1470,6 +1769,11 @@ class LLMService:
         return result_dict
 
     def build_table_filter(self, session: Session, sql: str, filters: list):
+        """
+        是什么：LLMService.build_table_filter 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         filter = json.dumps(filters, ensure_ascii=False)
         self.chat_question.sql = sql
         self.chat_question.filter = filter
@@ -1506,6 +1810,11 @@ class LLMService:
         return full_filter_text
 
     def generate_filter(self, _session: Session, sql: str, tables: List):
+        """
+        是什么：LLMService.generate_filter 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         filters = get_row_permission_filters(session=_session, current_user=self.current_user, ds=self.ds,
                                              tables=tables)
         if not filters:
@@ -1513,6 +1822,11 @@ class LLMService:
         return self.build_table_filter(session=_session, sql=sql, filters=filters)
 
     def generate_assistant_filter(self, _session: Session, sql, tables: List):
+        """
+        是什么：LLMService.generate_assistant_filter 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         ds: AssistantOutDsSchema = self.ds
         filters = []
         for table in ds.tables:
@@ -1523,7 +1837,12 @@ class LLMService:
         return self.build_table_filter(session=_session, sql=sql, filters=filters)
 
     def generate_chart(self, _session: Session, chart_type: Optional[str] = '', schema: Optional[str] = ''):
-        # append current question
+        # 追加当前问题
+        """
+        是什么：LLMService.generate_chart 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question(chart_type, schema)))
 
         self.current_logs[OperationEnum.GENERATE_CHART] = start_log(session=_session,
@@ -1554,6 +1873,11 @@ class LLMService:
                                                                   token_usage=token_usage)
 
     def check_sql(self, session: Session, res: str, operate: OperationEnum) -> tuple[str, Optional[list]]:
+        """
+        是什么：LLMService.check_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         log = self.current_logs[operate]
 
         try:
@@ -1593,6 +1917,11 @@ class LLMService:
 
     @staticmethod
     def get_chart_type_from_sql_answer(res: str) -> Optional[str]:
+        """
+        是什么：LLMService.get_chart_type_from_sql_answer 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        """
         chart_type: Optional[str]
         try:
             data = _parse_sql_answer_data(res)
@@ -1608,6 +1937,11 @@ class LLMService:
 
     @staticmethod
     def get_brief_from_sql_answer(res: str) -> Optional[str]:
+        """
+        是什么：LLMService.get_brief_from_sql_answer 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        """
         brief: Optional[str]
         try:
             data = _parse_sql_answer_data(res)
@@ -1622,6 +1956,11 @@ class LLMService:
         return brief
 
     def check_save_sql(self, session: Session, res: str, operate: OperationEnum) -> str:
+        """
+        是什么：LLMService.check_save_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         sql, *_ = self.check_sql(session=session, res=res, operate=operate)
         save_sql(session=session, sql=sql, record_id=self.record.id)
 
@@ -1630,6 +1969,11 @@ class LLMService:
         return sql
 
     def save_checked_sql(self, session: Session, sql: str) -> str:
+        """
+        是什么：LLMService.save_checked_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         save_sql(session=session, sql=sql, record_id=self.record.id)
         self.chat_question.sql = sql
         return sql
@@ -1641,6 +1985,11 @@ class LLMService:
         result: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
 
+        """
+        是什么：LLMService.check_save_chart 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         json_str = extract_nested_json(res)
         if json_str is None:
             raise SingleMessageError(orjson.dumps({'message': 'Cannot parse chart config from answer',
@@ -1681,6 +2030,11 @@ class LLMService:
 
     def check_save_predict_data(self, session: Session, res: str) -> bool:
 
+        """
+        是什么：LLMService.check_save_predict_data 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         json_str = extract_nested_json(res)
 
         if not json_str:
@@ -1694,9 +2048,19 @@ class LLMService:
         return True
 
     def save_error(self, session: Session, message: str):
+        """
+        是什么：LLMService.save_error 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         return save_error_message(session=session, record_id=self.record.id, message=message)
 
     def save_sql_data(self, session: Session, data_obj: Dict[str, Any]):
+        """
+        是什么：LLMService.save_sql_data 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         try:
             data_result = data_obj.get('data')
             limit = 1000
@@ -1715,11 +2079,21 @@ class LLMService:
             raise e
 
     def save_permission_denied_data(self, session: Session) -> dict[str, Any]:
+        """
+        是什么：LLMService.save_permission_denied_data 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        """
         data_obj = permission_denied_result(PERMISSION_DENIED_RESULT_MESSAGE)
         self.save_sql_data(session=session, data_obj=data_obj)
         return data_obj
 
     def finish(self, session: Session):
+        """
+        是什么：LLMService.finish 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：完成或关闭聊天和 Agent流程，释放资源并记录最终状态。
+        """
         return finish_record(session=session, record_id=self.record.id)
 
     def execute_sql(
@@ -1729,14 +2103,10 @@ class LLMService:
             scope_sql: str | None = None,
             scope_allowed_tables: list[str] | set[str] | None = None,
     ):
-        """Execute SQL query
-
-        Args:
-            ds: Data source instance
-            sql: SQL query statement
-
-        Returns:
-            Query results
+        """
+        是什么：LLMService.execute_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
         """
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
@@ -1764,6 +2134,11 @@ class LLMService:
                 raise AppDBError(err)
 
     def pop_chunk(self):
+        """
+        是什么：LLMService.pop_chunk 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 pop_chunk 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         try:
             chunk = self.chunk_list.pop(0)
             return chunk
@@ -1771,6 +2146,11 @@ class LLMService:
             return None
 
     def await_result(self):
+        """
+        是什么：LLMService.await_result 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+        """
         idle_rounds = 0
         max_idle_rounds = max(1, settings.LLM_REQUEST_TIMEOUT * 2)
         started_at = time.monotonic()
@@ -1820,6 +2200,11 @@ class LLMService:
 
     def run_task_async(self, in_chat: bool = True, stream: bool = True,
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
+        """
+        是什么：LLMService.run_task_async 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         if in_chat:
             stream = True
         self.stream_keepalive_enabled = bool(in_chat and stream)
@@ -1827,11 +2212,21 @@ class LLMService:
 
     def run_task_cache(self, in_chat: bool = True, stream: bool = True,
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
+        """
+        是什么：LLMService.run_task_cache 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         for chunk in self.run_task(in_chat, stream, finish_step, return_img):
             self.chunk_list.append(chunk)
 
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
+        """
+        是什么：LLMService.run_task 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         AppLogUtil.info(
             f"Smart Q&A using LangGraph runner for record {getattr(self.record, 'id', None)}"
         )
@@ -1846,14 +2241,29 @@ class LLMService:
         )
 
     def run_recommend_questions_task_async(self):
+        """
+        是什么：LLMService.run_recommend_questions_task_async 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         self.stream_keepalive_enabled = True
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
     def run_recommend_questions_task_cache(self):
+        """
+        是什么：LLMService.run_recommend_questions_task_cache 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         for chunk in self.run_recommend_questions_task():
             self.chunk_list.append(chunk)
 
     def run_recommend_questions_task(self):
+        """
+        是什么：LLMService.run_recommend_questions_task 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         try:
             _session = session_maker()
             res = self.generate_recommend_questions_task(_session)
@@ -1874,15 +2284,30 @@ class LLMService:
 
     def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord,
                                            in_chat: bool = True, stream: bool = True):
+        """
+        是什么：LLMService.run_analysis_or_predict_task_async 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         self.set_record(save_analysis_predict_record(session, base_record, action_type))
         self.stream_keepalive_enabled = bool(in_chat and stream)
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, in_chat, stream)
 
     def run_analysis_or_predict_task_cache(self, action_type: str, in_chat: bool = True, stream: bool = True):
+        """
+        是什么：LLMService.run_analysis_or_predict_task_cache 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         for chunk in self.run_analysis_or_predict_task(action_type, in_chat, stream):
             self.chunk_list.append(chunk)
 
     def run_analysis_or_predict_task(self, action_type: str, in_chat: bool = True, stream: bool = True):
+        """
+        是什么：LLMService.run_analysis_or_predict_task 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        """
         AppLogUtil.info(
             f"Chart insight using LangGraph runner for record {getattr(self.record, 'id', None)}"
         )
@@ -1896,6 +2321,11 @@ class LLMService:
         )
 
     def validate_history_ds(self, session: Session):
+        """
+        是什么：LLMService.validate_history_ds 是 backend/apps/chat/task/llm.py 中的同步方法。
+        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         _ds = self.ds
         if not self.current_assistant or self.current_assistant.type == 4:
             try:
@@ -1917,23 +2347,19 @@ class LLMService:
 
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
-    """Execute SQL query using SQLDatabase
-
-    Args:
-        db: SQLDatabase instance
-        sql: SQL query statement
-
-    Returns:
-        str: Query results formatted as string
+    """
+    是什么：execute_sql_with_db 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
     """
     try:
-        # Execute query
+        # 执行查询
         result = db.run(sql)
 
         if not result:
             return "Query executed successfully but returned no results."
 
-        # Format results
+        # 格式化结果
         return str(result)
 
     except Exception as e:
@@ -1943,6 +2369,11 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
 
 
 def format_chart_data_for_agent_prompt(data: dict[str, Any]) -> str:
+    """
+    是什么：format_chart_data_for_agent_prompt 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if isinstance(data, dict) and data.get("status") == "failed":
         payload = {
             "status": data.get("status"),
@@ -1957,6 +2388,11 @@ def format_chart_data_for_agent_prompt(data: dict[str, Any]) -> str:
 
 
 def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
+    """
+    是什么：request_picture 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 request_picture 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     file_name = f'c_{chat_id}_r_{record_id}'
 
     columns = chart.get('columns') if chart.get('columns') else []
@@ -1971,7 +2407,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
         x = axis_data.get('x')
         y = axis_data.get('y')
         series = axis_data.get('series')
-        # 获取multi-quota字段列表
+        # 获取多指标字段列表
         if axis_data.get('multi-quota') and 'value' in axis_data.get('multi-quota'):
             multi_quota_fields = axis_data.get('multi-quota').get('value', [])
             multi_quota_name = axis_data.get('multi-quota').get('name') or '指标类型'
@@ -1991,7 +2427,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
                     'value': y_item.get('value') or y_item.get('name'),
                     'type': 'y'
                 }
-                # 如果是multi-quota字段，添加标志
+                # 如果是多指标字段，则添加标志
                 if y_item.get('value') in multi_quota_fields:
                     y_obj['multi-quota'] = True
                 axis.append(y_obj)
@@ -2019,6 +2455,11 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
 
 def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = None):
+    """
+    是什么：get_token_usage 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     try:
         if chunk.usage_metadata:
             if token_usage is None:
@@ -2036,6 +2477,11 @@ def process_stream(res: Iterator[BaseMessageChunk],
                    start_tag: str = settings.DEFAULT_REASONING_CONTENT_START,
                    end_tag: str = settings.DEFAULT_REASONING_CONTENT_END
                    ):
+    """
+    是什么：process_stream 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    """
     if token_usage is None:
         token_usage = {}
     in_thinking_block = False  # 标记是否在思考过程块中
@@ -2048,19 +2494,19 @@ def process_stream(res: Iterator[BaseMessageChunk],
         content = chunk.content
         output_content = ''  # 实际要输出的内容
 
-        # 检查additional_kwargs中的reasoning_content
+        # 检查附加参数中的思考内容
         if 'reasoning_content' in chunk.additional_kwargs:
             reasoning_content = chunk.additional_kwargs.get('reasoning_content', '')
             if reasoning_content is None:
                 reasoning_content = ''
 
-            # 累积additional_kwargs中的思考内容到current_thinking
+            # 将附加参数中的思考内容累积到当前思考文本
             current_thinking += reasoning_content
             reasoning_content_chunk = reasoning_content
 
-        # 只有当current_thinking不是空字符串时才跳过标签解析
+        # 只有当当前思考文本不是空字符串时才跳过标签解析
         if not in_thinking_block and current_thinking.strip() != '':
-            output_content = content  # 正常输出content
+            output_content = content  # 正常输出内容
             yield {
                 'content': output_content,
                 'reasoning_content': reasoning_content_chunk
@@ -2129,6 +2575,11 @@ def process_stream(res: Iterator[BaseMessageChunk],
 
 
 def get_lang_name(lang: str):
+    """
+    是什么：get_lang_name 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     if not lang:
         return '简体中文'
     normalized = lang.lower()
@@ -2142,7 +2593,11 @@ def get_lang_name(lang: str):
 
 
 def get_last_conversation_rounds(messages, rounds=settings.GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT):
-    """获取最后N轮对话，处理不完整对话的情况"""
+    """
+    是什么：get_last_conversation_rounds 是 backend/apps/chat/task/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     if not messages or rounds <= 0:
         return []
 
@@ -2161,7 +2616,7 @@ def get_last_conversation_rounds(messages, rounds=settings.GENERATE_SQL_QUERY_HI
         # 如果用户消息数少于等于需要的轮数，从第一个用户消息开始
         start_index = human_indices[0]
     else:
-        # 否则，从倒数第N个用户消息开始
+        # 否则，从倒数第 N 个用户消息开始
         start_index = human_indices[-rounds]
 
     return messages[start_index:]

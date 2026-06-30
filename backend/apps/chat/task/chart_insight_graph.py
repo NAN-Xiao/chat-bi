@@ -58,10 +58,20 @@ class ChartInsightGraphState(TypedDict, total=False):
 
 
 def _observe_node(node: str, handler):
+    """
+    是什么：_observe_node 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _observe_node 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return observe_node(WORKFLOW_CONFIG, node, handler)
 
 
 def _emit_record_metadata(state: ChartInsightGraphState) -> dict[str, Any]:
+    """
+    是什么：_emit_record_metadata 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     return _emit_workflow_record_metadata(
         state,
         include_question_in_chat=False,
@@ -70,6 +80,11 @@ def _emit_record_metadata(state: ChartInsightGraphState) -> dict[str, Any]:
 
 
 def _generate_analysis(state: ChartInsightGraphState) -> dict[str, Any]:
+    """
+    是什么：_generate_analysis 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+    """
     service = state["service"]
     in_chat = state["in_chat"]
     stream = state["stream"]
@@ -98,6 +113,11 @@ def _generate_analysis(state: ChartInsightGraphState) -> dict[str, Any]:
 
 
 def _generate_predict(state: ChartInsightGraphState) -> dict[str, Any]:
+    """
+    是什么：_generate_predict 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+    """
     service = state["service"]
     in_chat = state["in_chat"]
     json_result = state["json_result"]
@@ -124,6 +144,11 @@ def _generate_predict(state: ChartInsightGraphState) -> dict[str, Any]:
 
 
 def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
+    """
+    是什么：_finalize_predict 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _finalize_predict 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     service = state["service"]
     in_chat = state["in_chat"]
     stream = state["stream"]
@@ -191,10 +216,20 @@ def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
 
 
 def _route_action(state: ChartInsightGraphState) -> str:
+    """
+    是什么：_route_action 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _route_action 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return "generate_analysis" if state["action_type"] == "analysis" else "generate_predict"
 
 
 def _build_graph():
+    """
+    是什么：_build_graph 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     graph = StateGraph(ChartInsightGraphState)
     graph.add_node("emit_record_metadata", _observe_node("emit_record_metadata", _emit_record_metadata))
     graph.add_node("generate_analysis", _observe_node("generate_analysis", _generate_analysis))
@@ -218,6 +253,11 @@ def run_chart_insight_graph(
     in_chat: bool = True,
     stream: bool = True,
 ):
+    """
+    是什么：run_chart_insight_graph 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    """
     json_result: dict[str, Any] = {"success": True}
     initial_state: ChartInsightGraphState = {
         "service": service,

@@ -94,6 +94,11 @@ path = settings.EXCEL_PATH
 
 
 def _tenant_excel_path(current_user: CurrentUser) -> str:
+    """
+    是什么：_tenant_excel_path 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _tenant_excel_path 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     tenant_id = (
         DEFAULT_TENANT_ID
         if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
@@ -105,6 +110,11 @@ def _tenant_excel_path(current_user: CurrentUser) -> str:
 
 
 def _can_manage_tenant_projects(user: CurrentUser) -> bool:
+    """
+    是什么：_can_manage_tenant_projects 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _can_manage_tenant_projects 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     tenant_role = normalize_tenant_role(getattr(user, "tenant_role", None))
     return (
         is_platform_workspace_delegate(user)
@@ -113,17 +123,32 @@ def _can_manage_tenant_projects(user: CurrentUser) -> bool:
 
 
 def _can_manage_datasource_metadata(user: CurrentUser) -> bool:
+    """
+    是什么：_can_manage_datasource_metadata 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _can_manage_datasource_metadata 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return (
         is_platform_admin(user) and not is_platform_workspace_delegate(user)
     ) or is_platform_workspace_delegate(user)
 
 
 def _require_platform_project_admin(user: CurrentUser) -> None:
+    """
+    是什么：_require_platform_project_admin 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not is_platform_admin(user):
         raise HTTPException(status_code=403, detail="Only SaaS admin can manage projects")
 
 
 def _require_schema_metadata_admin(user: CurrentUser) -> None:
+    """
+    是什么：_require_schema_metadata_admin 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if is_platform_admin(user) or can_manage_workspace_scope(user):
         return
     raise HTTPException(status_code=403, detail="Only workspace admin can view datasource schema metadata")
@@ -249,6 +274,11 @@ class DatasourceBindingItem(BaseModel):
 
 
 def _tenant_name_map(session: SessionDep, tenant_ids) -> dict[int, str]:
+    """
+    是什么：_tenant_name_map 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _tenant_name_map 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     ids = {int(tenant_id) for tenant_id in tenant_ids if tenant_id not in (None, "")}
     if not ids:
         return {}
@@ -265,6 +295,11 @@ def _tenant_name_map(session: SessionDep, tenant_ids) -> dict[int, str]:
 
 
 def _datasource_binding_item(session: SessionDep, datasource: CoreDatasource) -> DatasourceBindingItem:
+    """
+    是什么：_datasource_binding_item 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _datasource_binding_item 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     tenant_ids = list_bound_tenant_ids_for_datasource(session, int(datasource.id))
     tenant_id = tenant_ids[0] if tenant_ids else None
     tenant_name = None
@@ -279,6 +314,11 @@ def _datasource_binding_item(session: SessionDep, datasource: CoreDatasource) ->
 
 
 def _coerce_tenant_id(value) -> int | None:
+    """
+    是什么：_coerce_tenant_id 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _coerce_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         if value in (None, ""):
             return None
@@ -292,6 +332,11 @@ def _metadata_tenant_id(
         datasource: CoreDatasource,
         user: CurrentUser | None = None,
 ) -> int | None:
+    """
+    是什么：_metadata_tenant_id 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _metadata_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     user_tenant_id = current_tenant_id(user)
     if user_tenant_id is not None and datasource_bound_to_tenant(session, int(datasource.id), user_tenant_id):
         return int(user_tenant_id)
@@ -299,6 +344,11 @@ def _metadata_tenant_id(
 
 
 def _current_user_id(user: CurrentUser | None) -> int | None:
+    """
+    是什么：_current_user_id 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _current_user_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return _coerce_tenant_id(getattr(user, "id", None))
 
 
@@ -309,6 +359,11 @@ def _apply_schema_comments(
         fields_by_table: dict[int, list[CoreField]] | None = None,
         user: CurrentUser | None = None,
 ) -> None:
+    """
+    是什么：_apply_schema_comments 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _apply_schema_comments 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     tenant_id = _metadata_tenant_id(session, datasource, user)
     table_comments = table_comment_map(session, tenant_id, [table.table_name for table in tables])
     for table in tables:
@@ -339,6 +394,11 @@ def _apply_schema_comments(
 
 
 def _schema_change_item(row) -> DatasourceSchemaChangeItem:
+    """
+    是什么：_schema_change_item 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _schema_change_item 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return DatasourceSchemaChangeItem(
         id=int(row.id),
         tenant_id=int(row.tenant_id),
@@ -361,6 +421,11 @@ def _datasource_list_items(
         user: CurrentUser,
         datasources: list[CoreDatasource],
 ) -> list[dict[str, Any]]:
+    """
+    是什么：_datasource_list_items 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _datasource_list_items 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     binding_map = {
         int(datasource.id): list_bound_tenant_ids_for_datasource(session, int(datasource.id))
         for datasource in datasources
@@ -422,6 +487,11 @@ def _datasource_list_items(
             description=f"{PLACEHOLDER_PREFIX}ds_list_description")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def datasource_list(session: SessionDep, user: CurrentUser):
+    """
+    是什么：datasource_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 datasource_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _require_platform_project_admin(user)
     datasources = get_datasource_list(session=session, user=user)
     return _datasource_list_items(session, user, datasources)
@@ -429,6 +499,11 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
 
 @router.get("/accessible/list", response_model=List[DatasourceListItem], include_in_schema=False)
 async def accessible_datasource_list(session: SessionDep, user: CurrentUser):
+    """
+    是什么：accessible_datasource_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 accessible_datasource_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     ensure_chatbi_business_user(user)
     datasources = get_datasource_list(session=session, user=user)
     return _datasource_list_items(session, user, datasources)
@@ -451,6 +526,11 @@ async def datasource_users(
         user: CurrentUser,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
+    """
+    是什么：datasource_users 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 datasource_users 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = get_ds(session, id, user)
     if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -486,6 +566,11 @@ async def update_datasource_user_api(
         data: DatasourceUserUpdate,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")
 ):
+    """
+    是什么：update_datasource_user_api 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     datasource = get_ds(session, id, user)
     if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -518,6 +603,11 @@ async def get_datasource(
         user: CurrentUser,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
+    """
+    是什么：get_datasource 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     datasource = get_ds(session, id, user)
     if datasource is None:
         return None
@@ -543,6 +633,11 @@ async def schema_metadata(
         user: CurrentUser,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
+    """
+    是什么：schema_metadata 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 schema_metadata 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _require_schema_metadata_admin(user)
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -601,6 +696,11 @@ async def schema_change_list(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
         limit: int = 20,
 ):
+    """
+    是什么：schema_change_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 schema_change_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _require_schema_metadata_admin(user)
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -627,6 +727,11 @@ async def submit_schema_change(
         data: DatasourceSchemaChangeCreate,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
+    """
+    是什么：submit_schema_change 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 submit_schema_change 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _require_schema_metadata_admin(user)
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -681,6 +786,11 @@ async def datasource_binding(
         user: CurrentUser,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
+    """
+    是什么：datasource_binding 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 datasource_binding 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _require_platform_project_admin(user)
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -696,6 +806,11 @@ async def update_datasource_binding(
         data: DatasourceBindingUpdate,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
+    """
+    是什么：update_datasource_binding 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     _require_platform_project_admin(user)
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -707,7 +822,17 @@ async def update_datasource_binding(
 @router.post("/check", response_model=bool, summary=f"{PLACEHOLDER_PREFIX}ds_check")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
+    """
+    是什么：check 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 check 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         return check_status(session, trans, ds, True)
 
     return await asyncio.to_thread(inner)
@@ -717,7 +842,17 @@ async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
 @require_permissions(permission=AppPermission(type='ds', keyExpression="ds_id"))
 async def check_by_id(session: SessionDep, trans: Trans,
                       ds_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：check_by_id 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 check_by_id 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         return check_status_by_id(session, trans, ds_id, True)
 
     return await asyncio.to_thread(inner)
@@ -727,6 +862,11 @@ async def check_by_id(session: SessionDep, trans: Trans,
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.DATASOURCE, result_id_expr="id"))
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDatasource):
+    """
+    是什么：add 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     return await create_ds(session, trans, user, ds)
 
 
@@ -734,11 +874,21 @@ async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDa
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, tables: List[CoreTable],
                         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：choose_tables 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 choose_tables 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = get_ds(session, id, user)
     if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
 
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 choose_tables 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         chooseTables(session, trans, id, tables)
 
     await asyncio.to_thread(inner)
@@ -749,7 +899,17 @@ async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, ta
 @system_log(
     LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATASOURCE, resource_id_expr="ds.id"))
 async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
+    """
+    是什么：update 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 update 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         return update_ds(session, trans, user, ds)
 
     return await asyncio.to_thread(inner)
@@ -760,12 +920,22 @@ async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreD
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATASOURCE, resource_id_expr="id",
                       ))
 async def delete(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"), name: str = None):
+    """
+    是什么：delete 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     return await delete_ds(session, id, user)
 
 
 @router.post("/getTables/{id}", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_tables(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：get_tables 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     return getTables(session, id)
@@ -774,14 +944,29 @@ async def get_tables(session: SessionDep, user: CurrentUser, id: int = Path(...,
 @router.post("/getTablesByConf", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
+    """
+    是什么：get_tables_by_conf 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     try:
         def inner():
+            """
+            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+            谁调用：由外层函数 get_tables_by_conf 在执行内部流程时调用。
+            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            """
             return getTablesByDs(session, ds)
 
         return await asyncio.to_thread(inner)
     except Exception as e:
-        # check ds status
+        # 检查数据源状态
         def inner():
+            """
+            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+            谁调用：由外层函数 get_tables_by_conf 在执行内部流程时调用。
+            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            """
             return check_status(session, trans, ds, True)
 
         status = await asyncio.to_thread(inner)
@@ -793,14 +978,29 @@ async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
 @router.post("/getSchemaByConf", response_model=List[str], summary=f"{PLACEHOLDER_PREFIX}ds_get_schema")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
+    """
+    是什么：get_schema_by_conf 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     try:
         def inner():
+            """
+            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+            谁调用：由外层函数 get_schema_by_conf 在执行内部流程时调用。
+            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            """
             return get_schema(ds)
 
         return await asyncio.to_thread(inner)
     except Exception as e:
-        # check ds status
+        # 检查数据源状态
         def inner():
+            """
+            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+            谁调用：由外层函数 get_schema_by_conf 在执行内部流程时调用。
+            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            """
             return check_status(session, trans, ds, True)
 
         status = await asyncio.to_thread(inner)
@@ -816,6 +1016,11 @@ async def get_fields(session: SessionDep,
                      user: CurrentUser,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                      table_name: str = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_name")):
+    """
+    是什么：get_fields 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     return getFields(session, id, table_name)
@@ -826,6 +1031,11 @@ async def get_fields(session: SessionDep,
 async def sync_fields(session: SessionDep,
                       current_user: CurrentUser,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
+    """
+    是什么：sync_fields 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     table = session.get(CoreTable, id)
     if table is None or get_ds(session, table.ds_id, current_user) is None:
         raise HTTPException(status_code=404, detail="数据表不存在")
@@ -845,6 +1055,11 @@ async def sync_fields(session: SessionDep,
 @router.post("/tableList/{id}", response_model=List[CoreTable], summary=f"{PLACEHOLDER_PREFIX}ds_table_list")
 @require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
 async def table_list(session: SessionDep, current_user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：table_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 table_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _require_schema_metadata_admin(current_user)
     datasource = get_ds(session, id, current_user)
     if datasource is None:
@@ -864,6 +1079,11 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
 @require_permissions(permission=AppPermission(role=['admin'], type='table', keyExpression="id"))
 async def field_list(session: SessionDep, current_user: CurrentUser, field: FieldObj,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
+    """
+    是什么：field_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 field_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _require_schema_metadata_admin(current_user)
     table = session.get(CoreTable, id)
     if table is None:
@@ -883,6 +1103,11 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
 @router.post("/editLocalComment", include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
+    """
+    是什么：edit_local 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 edit_local 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = get_ds(session, data.table.ds_id, user) if data.table else None
     if not data.table or datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -897,6 +1122,11 @@ async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
 @router.post("/editTable", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_table")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
+    """
+    是什么：edit_table 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 edit_table 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = get_ds(session, table.ds_id, user)
     if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -911,6 +1141,11 @@ async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
 @router.post("/editField", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_field")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
+    """
+    是什么：edit_field 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 edit_field 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = get_ds(session, field.ds_id, user)
     if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -926,15 +1161,25 @@ async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
 @require_permissions(permission=AppPermission(role=['platform_admin'], type='ds', keyExpression="id"))
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, data: TableObj,
                        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：preview_data 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 preview_data 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if is_platform_workspace_delegate(current_user):
         raise HTTPException(status_code=403, detail="SaaS workspace delegate cannot preview datasource rows")
 
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 preview_data 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         try:
             return preview(session, current_user, id, data)
         except Exception as e:
             ds = get_ds(session, id, current_user)
-            # check ds status
+            # 检查数据源状态
             status = check_status(session, trans, ds, True)
             if status:
                 AppLogUtil.error(f"Preview failed: {e}")
@@ -943,15 +1188,25 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
     return await asyncio.to_thread(inner)
 
 
-# not used
+# 暂未使用
 @router.post("/fieldEnum/{id}", include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def field_enum(session: SessionDep, user: CurrentUser, id: int):
+    """
+    是什么：field_enum 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 field_enum 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     field = session.get(CoreField, id)
     if field is None or get_ds(session, field.ds_id, user) is None:
         raise HTTPException(status_code=404, detail="字段不存在")
 
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 field_enum 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         return fieldEnum(session, user, id)
 
     return await asyncio.to_thread(inner)
@@ -1021,7 +1276,7 @@ async def field_enum(session: SessionDep, user: CurrentUser, id: int):
 #     return await asyncio.to_thread(inner)
 
 
-# deprecated
+# 已废弃
 @router.post("/uploadExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_excel")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def upload_excel(
@@ -1029,6 +1284,11 @@ async def upload_excel(
         current_user: CurrentUser,
         file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel"),
 ):
+    """
+    是什么：upload_excel 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 upload_excel 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
     tenant_path = _tenant_excel_path(current_user)
@@ -1038,6 +1298,11 @@ async def upload_excel(
         f.write(await AppFileUtils.read_upload_limited(file))
 
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 upload_excel 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         sheets = []
         engine = get_engine_conn()
         if filename.endswith(".csv"):
@@ -1062,7 +1327,12 @@ async def upload_excel(
 
 
 def insert_pg(df, tableName, engine):
-    # fix field type
+    # 修正字段类型
+    """
+    是什么：insert_pg 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     for i in range(len(df.dtypes)):
         if str(df.dtypes[i]) == 'uint64':
             df[str(df.columns[i])] = df[str(df.columns[i])].astype('string')
@@ -1076,12 +1346,12 @@ def insert_pg(df, tableName, engine):
             if_exists='replace',
             index=False
         )
-        # trans csv
+        # 转换 CSV
         output = StringIO()
         df.to_csv(output, sep='\t', header=False, index=False)
         # output.seek(0)
 
-        # pg copy
+        # PostgreSQL COPY 导入
         query = sql.SQL("COPY {} FROM STDIN WITH CSV DELIMITER E'\t'").format(
             sql.Identifier(tableName)
         )
@@ -1106,6 +1376,11 @@ f_c_col = "字段备注"
 @router.get("/exportDsSchema/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_export_ds_schema")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：export_ds_schema 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 export_ds_schema 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if id != 0 and get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     # {
@@ -1116,7 +1391,12 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
     #     'c2':[], column2 data
     # }
     def inner():
-        if id == 0:  # download template
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 export_ds_schema 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
+        if id == 0:  # 下载模板
             df_list = [
                 {'sheet': t_sheet, 'c0_h': t_s_col, 'c1_h': t_n_col, 'c2_h': t_c_col, 'c0': ["数据表1", "数据表2"],
                  'c1': ["user", "score"],
@@ -1166,7 +1446,7 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
                     df_fields['c2'].append(field.custom_comment)
                 df_list.append(df_fields)
 
-        # build dataframe and export
+        # 构建数据表并导出
         output = io.BytesIO()
 
         with (pd.ExcelWriter(output, engine='xlsxwriter') as writer):
@@ -1197,6 +1477,11 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                            file: UploadFile = File(...)):
+    """
+    是什么：upload_ds_schema 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 upload_ds_schema 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = get_ds(session, id, user)
     if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -1223,11 +1508,11 @@ async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 
         # print(field_sheets)
 
-        # sheet table mapping
+        # 工作表与表的映射
         sheet_table_map = {}
 
-        # get data and update
-        # update table comment
+        # 获取数据并更新
+        # 更新表注释
         affected_table_ids: set[int] = set()
         metadata_tenant_id = _metadata_tenant_id(session, datasource, user)
         current_user_id = _current_user_id(user)
@@ -1248,11 +1533,11 @@ async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
                     existing_table.custom_comment = table[t_c_col]
                     session.add(existing_table)
 
-        # update field comment
+        # 更新字段注释
         if field_sheets and len(field_sheets) > 0:
             for fields in field_sheets:
                 if len(fields['data']) > 0:
-                    # get table id
+                    # 获取表 ID
                     table_name = sheet_table_map.get(fields['sheet_name'])
                     table = session.query(CoreTable).filter(
                         and_(CoreTable.ds_id == id, CoreTable.table_name == table_name)).first()
@@ -1288,6 +1573,11 @@ async def parse_excel(
         current_user: CurrentUser,
         file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel"),
 ):
+    """
+    是什么：parse_excel 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
     tenant_path = _tenant_excel_path(current_user)
@@ -1297,6 +1587,11 @@ async def parse_excel(
         f.write(await AppFileUtils.read_upload_limited(file))
 
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 parse_excel 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         sheets_data = parse_excel_preview(save_path)
         return {
             "filePath": filename,
@@ -1309,12 +1604,22 @@ async def parse_excel(
 @router.post("/importToDb", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_import_to_db")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def import_to_db(session: SessionDep, trans: Trans, current_user: CurrentUser, import_req: ImportRequest):
+    """
+    是什么：import_to_db 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 import_to_db 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     safe_file_name = os.path.basename(import_req.filePath or "")
     save_path = str(AppFileUtils.safe_path(_tenant_excel_path(current_user), safe_file_name))
     if not os.path.exists(save_path):
         raise HTTPException(400, "File not found")
 
     def inner():
+        """
+        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+        谁调用：由外层函数 import_to_db 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         engine = get_engine_conn()
         results = []
 
@@ -1372,7 +1677,12 @@ async def import_to_db(session: SessionDep, trans: Trans, current_user: CurrentU
     return await asyncio.to_thread(inner)
 
 
-# only allow chinese, a-z, A-Z, 0-9
+# 仅允许中文、英文字母和数字
 def filter_string(text):
+    """
+    是什么：filter_string 是 backend/apps/datasource/api/datasource.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 filter_string 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9]'
     return re.sub(pattern, '', text)

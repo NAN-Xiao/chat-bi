@@ -48,8 +48,8 @@ import {
   withResolvedMetricSemantics,
 } from '@/views/dashboard/utils/metricSemantics.ts'
 import { inferPivotDimensions, type PivotDimension } from '@/views/dashboard/utils/pivotDimensions.ts'
-import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
-const { t } = useI18n()
+import { ArrowLeft, ArrowRight, Search } from '@element-plus/icons-vue'
+const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
@@ -74,6 +74,39 @@ type PivotQuickRange = {
   offset?: number
   range?: string
 }
+type PivotGroupValueSelectionMode = 'all' | 'custom'
+type PivotGroupValueOption = {
+  value: string
+  label: string
+  count: number
+}
+const dashboardTextFallbacks = {
+  'zh-CN': {
+    pivot_group_search: '请输入搜索',
+    pivot_group_no_match: '无匹配分组',
+    pivot_group_select_all: '全选',
+    pivot_group_select_none: '全不选',
+  },
+  'zh-TW': {
+    pivot_group_search: '請輸入搜尋',
+    pivot_group_no_match: '無符合分組',
+    pivot_group_select_all: '全選',
+    pivot_group_select_none: '全不選',
+  },
+  en: {
+    pivot_group_search: 'Search',
+    pivot_group_no_match: 'No matching groups',
+    pivot_group_select_all: 'Select all',
+    pivot_group_select_none: 'Select none',
+  },
+  'ko-KR': {
+    pivot_group_search: '검색어 입력',
+    pivot_group_no_match: '일치하는 그룹 없음',
+    pivot_group_select_all: '전체 선택',
+    pivot_group_select_none: '전체 해제',
+  },
+} as const
+type DashboardTextKey = keyof typeof dashboardTextFallbacks['zh-CN']
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const renderChart = () => {
@@ -100,6 +133,33 @@ function unique(values: Array<string | undefined | null>) {
         .map((value) => `${value}`)
     )
   )
+}
+
+function normalizePivotGroupValue(value: unknown) {
+  if (value === undefined || value === null) {
+    return ''
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString()
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch (_error) {
+      return `${value}`
+    }
+  }
+  return `${value}`.trim()
+}
+
+function dashboardText(key: DashboardTextKey) {
+  const fullKey = `dashboard.${key}`
+  const value = t(fullKey)
+  if (value && value !== fullKey) {
+    return value
+  }
+  const localeKey = String(locale.value || 'zh-CN') as keyof typeof dashboardTextFallbacks
+  return (dashboardTextFallbacks[localeKey] || dashboardTextFallbacks['zh-CN'])[key]
 }
 
 function getResultFields(result: any) {
@@ -170,6 +230,19 @@ const pivotState = reactive({
   groupEnabled: true,
   groupField: '',
 })
+const pivotGroupValueSearch = ref('')
+const pivotGroupValueState = reactive<{
+  key: string
+  mode: PivotGroupValueSelectionMode
+  selectedValues: string[]
+}>({
+  key: '',
+  mode: 'all',
+  selectedValues: [],
+})
+const rawChartData = computed(() =>
+  Array.isArray(props.viewInfo?.data?.data) ? props.viewInfo.data.data : []
+)
 
 function normalizeAxisList(list: any): ChartAxis[] {
   return Array.isArray(list) ? list : []
@@ -244,6 +317,7 @@ const activePivotGroupDimension = computed(() =>
 )
 const pivotHasGroup = computed(() => Boolean(activePivotGroupField.value))
 const pivotRangeEnabled = computed(() => props.viewInfo?.pivot?.range_enabled !== false)
+const pivotClientFilterOnly = computed(() => props.viewInfo?.pivot?.client_filter_only === true)
 const pivotEnabled = computed(() => {
   if (props.showPosition === 'multiplexing') {
     return false
@@ -294,6 +368,90 @@ const renderSeries = computed<ChartAxis[]>(() => {
       : []
   }
   return normalizeAxisList(props.viewInfo?.chart?.series)
+})
+const pivotGroupValueFilterEnabled = computed(
+  () => pivotEnabled.value && pivotHasGroup.value && pivotState.groupEnabled && Boolean(activePivotGroupField.value)
+)
+const configuredPivotGroupValues = computed(() =>
+  unique(Array.isArray(props.viewInfo?.pivot?.group_values) ? props.viewInfo.pivot.group_values : [])
+)
+const pivotGroupValueOptions = computed<PivotGroupValueOption[]>(() => {
+  if (!pivotGroupValueFilterEnabled.value) {
+    return []
+  }
+  const configured = configuredPivotGroupValues.value
+  const configuredSet = new Set(configured)
+  const counts = new Map<string, number>()
+  const field = activePivotGroupField.value
+  rawChartData.value.forEach((row: Record<string, any>) => {
+    const value = normalizePivotGroupValue(row?.[field])
+    if (!value || (configuredSet.size > 0 && !configuredSet.has(value))) {
+      return
+    }
+    counts.set(value, (counts.get(value) || 0) + 1)
+  })
+  configured.forEach((value) => {
+    if (value && !counts.has(value)) {
+      counts.set(value, 0)
+    }
+  })
+  const values = configured.length > 0 ? configured.map((value) => [value, counts.get(value) || 0] as [string, number]) : Array.from(counts.entries())
+  return values
+    .map(([value, count]) => ({
+      value,
+      label: value,
+      count,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }))
+})
+const pivotGroupValueTotal = computed(() => pivotGroupValueOptions.value.length)
+const selectedPivotGroupValueSet = computed(() => {
+  if (pivotGroupValueState.mode === 'all') {
+    return new Set(pivotGroupValueOptions.value.map((option) => option.value))
+  }
+  return new Set(pivotGroupValueState.selectedValues)
+})
+const pivotGroupValueSelectedCount = computed(() => {
+  if (!pivotGroupValueFilterEnabled.value) {
+    return 0
+  }
+  if (pivotGroupValueState.mode === 'all') {
+    return pivotGroupValueTotal.value
+  }
+  const available = new Set(pivotGroupValueOptions.value.map((option) => option.value))
+  return pivotGroupValueState.selectedValues.filter((value) => available.has(value)).length
+})
+const pivotGroupValueAllSelected = computed(
+  () => pivotGroupValueTotal.value > 0 && pivotGroupValueSelectedCount.value === pivotGroupValueTotal.value
+)
+const pivotGroupValuePartiallySelected = computed(
+  () => pivotGroupValueSelectedCount.value > 0 && pivotGroupValueSelectedCount.value < pivotGroupValueTotal.value
+)
+const pivotGroupValueLabel = computed(() =>
+  `${t('dashboard.pivot_group')} (${pivotGroupValueSelectedCount.value}/${pivotGroupValueTotal.value})`
+)
+const filteredPivotGroupValueOptions = computed(() => {
+  const keyword = pivotGroupValueSearch.value.trim().toLowerCase()
+  if (!keyword) {
+    return pivotGroupValueOptions.value
+  }
+  return pivotGroupValueOptions.value.filter((option) => option.label.toLowerCase().includes(keyword))
+})
+const displayData = computed(() => {
+  if (!pivotGroupValueFilterEnabled.value) {
+    return rawChartData.value
+  }
+  if (configuredPivotGroupValues.value.length === 0 && pivotGroupValueState.mode === 'all') {
+    return rawChartData.value
+  }
+  const selected = selectedPivotGroupValueSet.value
+  if (selected.size === 0) {
+    return []
+  }
+  const field = activePivotGroupField.value
+  return rawChartData.value.filter((row: Record<string, any>) =>
+    selected.has(normalizePivotGroupValue(row?.[field]))
+  )
 })
 const renderMultiQuotaName = computed(() => props.viewInfo.chart?.multiQuotaName)
 const pivotRangeLabel = computed(() => {
@@ -506,8 +664,84 @@ function defaultPivotAggregation() {
   return defaultPivotAggregationForAxes(chartMetricAxes.value, props.viewInfo?.data?.data || [])
 }
 
+function resetPivotGroupValueSelection(mode: PivotGroupValueSelectionMode = 'all') {
+  pivotGroupValueState.mode = mode
+  pivotGroupValueState.selectedValues = mode === 'all'
+    ? pivotGroupValueOptions.value.map((option) => option.value)
+    : []
+}
+
+function syncPivotGroupValueSelection() {
+  const key = `${props.viewInfo?.id || ''}:${activePivotGroupField.value}`
+  const optionValues = pivotGroupValueOptions.value.map((option) => option.value)
+  if (!pivotGroupValueFilterEnabled.value || optionValues.length === 0) {
+    pivotGroupValueState.key = key
+    pivotGroupValueState.mode = 'all'
+    pivotGroupValueState.selectedValues = []
+    pivotGroupValueSearch.value = ''
+    return
+  }
+  if (pivotGroupValueState.key !== key) {
+    pivotGroupValueState.key = key
+    pivotGroupValueState.mode = 'all'
+    pivotGroupValueState.selectedValues = optionValues
+    pivotGroupValueSearch.value = ''
+    return
+  }
+  if (pivotGroupValueState.mode === 'all') {
+    pivotGroupValueState.selectedValues = optionValues
+    return
+  }
+  const available = new Set(optionValues)
+  pivotGroupValueState.selectedValues = pivotGroupValueState.selectedValues.filter((value) => available.has(value))
+}
+
+function isPivotGroupValueSelected(value: string) {
+  return selectedPivotGroupValueSet.value.has(value)
+}
+
+function setPivotGroupValueChecked(value: string, checked: boolean) {
+  const selected = new Set(
+    pivotGroupValueState.mode === 'all'
+      ? pivotGroupValueOptions.value.map((option) => option.value)
+      : pivotGroupValueState.selectedValues
+  )
+  if (checked) {
+    selected.add(value)
+  } else {
+    selected.delete(value)
+  }
+  pivotGroupValueState.mode =
+    selected.size === pivotGroupValueTotal.value && pivotGroupValueTotal.value > 0 ? 'all' : 'custom'
+  pivotGroupValueState.selectedValues =
+    pivotGroupValueState.mode === 'all' ? pivotGroupValueOptions.value.map((option) => option.value) : Array.from(selected)
+  chartRenderVersion.value += 1
+}
+
+function togglePivotGroupValue(value: string, event: Event) {
+  setPivotGroupValueChecked(value, Boolean((event.target as HTMLInputElement | null)?.checked))
+}
+
+function toggleAllPivotGroupValues(event: Event) {
+  if (Boolean((event.target as HTMLInputElement | null)?.checked)) {
+    selectAllPivotGroupValues()
+  } else {
+    clearPivotGroupValues()
+  }
+}
+
+function selectAllPivotGroupValues() {
+  resetPivotGroupValueSelection('all')
+  chartRenderVersion.value += 1
+}
+
+function clearPivotGroupValues() {
+  resetPivotGroupValueSelection('custom')
+  chartRenderVersion.value += 1
+}
+
 function getPivotPayload() {
-  if (!pivotEnabled.value) {
+  if (!pivotEnabled.value || pivotClientFilterOnly.value) {
     return undefined
   }
   return {
@@ -551,9 +785,10 @@ function syncPivotStateFromView(force = false) {
   pivotState.groupEnabled =
     typeof pivot.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(pivotState.groupField)
   if (pivotEnabled.value) {
+    const pivotPayload = getPivotPayload()
     props.viewInfo.pivot = {
       ...pivot,
-      ...getPivotPayload(),
+      ...(pivotPayload || {}),
     }
   }
 }
@@ -566,13 +801,19 @@ function schedulePivotRefresh() {
     return
   }
   if (props.viewInfo?.pivot) {
+    const pivotPayload = getPivotPayload()
     props.viewInfo.pivot = {
       ...props.viewInfo.pivot,
-      ...getPivotPayload(),
+      ...(pivotPayload || {}),
     }
   }
   if (pivotRefreshTimer) {
     window.clearTimeout(pivotRefreshTimer)
+  }
+  if (pivotClientFilterOnly.value) {
+    chartRenderVersion.value += 1
+    scheduleRenderChart()
+    return
   }
   pivotRefreshTimer = window.setTimeout(() => {
     pivotRefreshTimer = undefined
@@ -792,16 +1033,6 @@ function setPivotRange(value: string) {
   schedulePivotRefresh()
 }
 
-function selectPivotGroupField(field: string) {
-  if (field) {
-    pivotState.groupField = field
-    pivotState.groupEnabled = true
-  } else {
-    pivotState.groupEnabled = false
-  }
-  schedulePivotRefresh()
-}
-
 function startRefreshProgress() {
   stopRefreshProgress()
   progressTimer = window.setInterval(() => {
@@ -826,7 +1057,7 @@ function cleanExportFilename(name?: string) {
 }
 
 function collectExportFields() {
-  const rows = Array.isArray(props.viewInfo?.data?.data) ? props.viewInfo.data.data : []
+  const rows = displayData.value
   const chart = chartRef.value as any
   const excelData = chart?.getExcelData?.()
   return unique([
@@ -851,7 +1082,7 @@ function htmlCell(value: any) {
 }
 
 function exportTableData() {
-  const rows = Array.isArray(props.viewInfo?.data?.data) ? props.viewInfo.data.data : []
+  const rows = displayData.value
   const fields = collectExportFields()
   if (!rows.length || !fields.length) {
     ElMessage.warning(t('dashboard.chart_export_no_data'))
@@ -961,10 +1192,10 @@ const chartType = computed<ChartTypes>({
 const isDashboardSurface = computed(() => props.showPosition !== 'multiplexing')
 const showInsightHeader = computed(() => {
   const type = chartType.value
-  return type !== 'table' && type !== 'metric' && props.viewInfo.data?.data?.length > 0
+  return type !== 'table' && type !== 'metric' && displayData.value.length > 0
 })
 const insightColumns = computed(() =>
-  buildInsightColumns(props.viewInfo.data?.data, [
+  buildInsightColumns(displayData.value, [
     ...renderXAxis.value,
     ...renderYAxis.value,
     ...renderSeries.value,
@@ -974,7 +1205,7 @@ const insightColumns = computed(() =>
 const insightDisplay = computed(() =>
   resolveInsightDisplay({
     chartType: chartType.value,
-    data: props.viewInfo.data?.data,
+    data: displayData.value,
     x: renderXAxis.value,
     y: renderYAxis.value,
     series: renderSeries.value,
@@ -996,8 +1227,7 @@ const chartLoading = computed(
     props.viewInfo?.status === 'loading'
 )
 const hasRenderedChartData = computed(() => {
-  const rows = props.viewInfo?.data?.data
-  return Array.isArray(rows) && rows.length > 0
+  return displayData.value.length > 0
 })
 const showFullChartLoading = computed(
   () => chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)
@@ -1089,12 +1319,26 @@ watch(
     props.viewInfo?.data?.fields?.length,
     props.viewInfo?.fields?.length,
     props.viewInfo?.pivot,
+    activePivotGroupField.value,
+    pivotGroupValueTotal.value,
   ],
   () => {
     syncPivotStateFromView()
+    syncPivotGroupValueSelection()
     void recoverStaleLoadingState()
   },
   { immediate: true }
+)
+
+watch(
+  () => [
+    pivotGroupValueState.mode,
+    pivotGroupValueState.selectedValues.join('\u0001'),
+    displayData.value.length,
+  ],
+  () => {
+    scheduleRenderChart()
+  }
 )
 
 function onTypeChange(val: any) {
@@ -1282,7 +1526,7 @@ defineExpose({
         v-if="pivotHasGroup"
         trigger="click"
         placement="bottom-start"
-        width="180"
+        width="206"
         popper-class="dashboard-pivot-popper"
       >
         <template #reference>
@@ -1291,28 +1535,56 @@ defineExpose({
             class="pivot-chip pivot-group-chip"
             :class="{ active: pivotState.groupEnabled }"
           >
-            {{ pivotState.groupEnabled ? activePivotGroupDimension?.label || t('dashboard.pivot_grouped') : t('dashboard.pivot_ungrouped') }}
+            {{ pivotState.groupEnabled ? pivotGroupValueLabel : t('dashboard.pivot_ungrouped') }}
           </button>
         </template>
-        <div class="pivot-menu">
-          <button
-            v-for="dimension in pivotDimensions"
-            :key="dimension.field"
-            type="button"
-            class="pivot-menu-item"
-            :class="{ active: pivotState.groupEnabled && activePivotGroupField === dimension.field }"
-            @click="selectPivotGroupField(dimension.field)"
+        <div class="pivot-group-value-panel">
+          <el-input
+            v-model="pivotGroupValueSearch"
+            class="pivot-group-search"
+            :placeholder="dashboardText('pivot_group_search')"
+            size="small"
+            clearable
           >
-            {{ dimension.label }}
-          </button>
-          <button
-            type="button"
-            class="pivot-menu-item"
-            :class="{ active: !pivotState.groupEnabled }"
-            @click="selectPivotGroupField('')"
-          >
-            {{ t('dashboard.pivot_ungrouped') }}
-          </button>
+            <template #prefix>
+              <el-icon size="14">
+                <Search />
+              </el-icon>
+            </template>
+          </el-input>
+          <div class="pivot-group-value-toolbar">
+            <label class="pivot-group-value-item pivot-group-value-all">
+              <input
+                type="checkbox"
+                :checked="pivotGroupValueAllSelected"
+                :indeterminate="pivotGroupValuePartiallySelected"
+                @change="toggleAllPivotGroupValues"
+              />
+              <span class="pivot-group-value-label">
+                {{ dashboardText('pivot_group_select_all') }}
+              </span>
+            </label>
+            <button class="pivot-clear-btn" type="button" @click="clearPivotGroupValues">
+              {{ dashboardText('pivot_group_select_none') }}
+            </button>
+          </div>
+          <div class="pivot-group-value-list">
+            <label
+              v-for="option in filteredPivotGroupValueOptions"
+              :key="option.value"
+              class="pivot-group-value-item"
+            >
+              <input
+                type="checkbox"
+                :checked="isPivotGroupValueSelected(option.value)"
+                @change="togglePivotGroupValue(option.value, $event)"
+              />
+              <span class="pivot-group-value-label">{{ option.label }}</span>
+            </label>
+            <div v-if="filteredPivotGroupValueOptions.length === 0" class="pivot-group-value-empty">
+              {{ dashboardText('pivot_group_no_match') }}
+            </div>
+          </div>
         </div>
       </el-popover>
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
@@ -1338,7 +1610,7 @@ defineExpose({
         :x="renderXAxis"
         :y="renderYAxis"
         :series="renderSeries"
-        :data="viewInfo.data?.data"
+        :data="displayData"
         :sql="viewInfo.sql"
         :insight="viewInfo.chart?.insight"
       />
@@ -1362,7 +1634,7 @@ defineExpose({
           :x="renderXAxis"
           :y="renderYAxis"
           :series="renderSeries"
-          :data="viewInfo.data?.data"
+          :data="displayData"
           :sql="viewInfo.sql"
           :insight="viewInfo.chart?.insight"
           :featured-side="isFeaturedSideInsight"
@@ -1376,7 +1648,7 @@ defineExpose({
           :x="renderXAxis"
           :y="renderYAxis"
           :series="renderSeries"
-          :data="viewInfo.data?.data"
+          :data="displayData"
           :multi-quota-name="renderMultiQuotaName"
           :show-label="showLabel"
         />
@@ -1860,6 +2132,92 @@ defineExpose({
 
 :global(.dashboard-pivot-popper .pivot-clear-btn:hover) {
   background: rgba(51, 112, 255, 0.12);
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-panel) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 190px;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-search .ed-input__wrapper),
+:global(.dashboard-pivot-popper .pivot-group-search .el-input__wrapper) {
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px rgba(31, 35, 41, 0.08) inset;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-toolbar) {
+  align-items: center;
+  border-bottom: 1px solid rgba(31, 35, 41, 0.08);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-toolbar .pivot-group-value-all) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-list) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 236px;
+  min-height: 34px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-item) {
+  align-items: center;
+  border-radius: 6px;
+  color: rgba(31, 35, 41, 1);
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 6px;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-item:hover) {
+  background: rgba(31, 35, 41, 0.06);
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-item input) {
+  accent-color: var(--ed-color-primary, #2f6bff);
+  flex: 0 0 auto;
+  height: 14px;
+  margin: 0;
+  width: 14px;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-label) {
+  flex: 1 1 auto;
+  font-size: 13px;
+  line-height: 18px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-empty) {
+  color: rgba(100, 106, 115, 1);
+  font-size: 12px;
+  line-height: 30px;
+  padding: 0 6px;
+}
+
+:global(.dashboard-pivot-popper .pivot-group-value-footer) {
+  align-items: center;
+  border-top: 1px solid rgba(31, 35, 41, 0.08);
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  padding-top: 8px;
 }
 
 .chart-show-area {

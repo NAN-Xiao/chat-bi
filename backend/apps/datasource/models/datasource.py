@@ -95,7 +95,7 @@ class CoreField(SQLModel, table=True):
     field_index: int = Field(sa_column=Column(BigInteger()))
 
 
-# datasource create obj
+# 数据源创建对象
 class CreateDatasource(BaseModel):
     id: int = None
     name: str = ''
@@ -112,6 +112,11 @@ class CreateDatasource(BaseModel):
 
 class RecommendedProblemResponse:
     def __init__(self, datasource_id, recommended_config, questions):
+        """
+        是什么：RecommendedProblemResponse.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
+        谁调用：由创建 RecommendedProblemResponse 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.datasource_id = datasource_id
         self.recommended_config = recommended_config
         self.questions = questions
@@ -129,18 +134,23 @@ class RecommendedProblemBase(BaseModel):
 
 class RecommendedProblemBaseChat:
     def __init__(self, content):
+        """
+        是什么：RecommendedProblemBaseChat.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
+        谁调用：由创建 RecommendedProblemBaseChat 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.content = content
 
     content: List[str] = []
 
 
-# edit local saved table and fields
+# 编辑本地保存的表和字段
 class TableObj(BaseModel):
     table: CoreTable = None
     fields: List[CoreField] = []
 
 
-# datasource config info
+# 数据源配置信息
 class DatasourceConf(BaseModel):
     host: str = ''
     port: int = 0
@@ -158,6 +168,11 @@ class DatasourceConf(BaseModel):
     ssl: bool = False
 
     def to_dict(self):
+        """
+        是什么：DatasourceConf.to_dict 是 backend/apps/datasource/models/datasource.py 中的同步方法。
+        谁调用：由持有 DatasourceConf 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 to_dict 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         return {
             "host": self.host,
             "port": self.port,
@@ -178,6 +193,11 @@ class DatasourceConf(BaseModel):
 
 class TableSchema:
     def __init__(self, attr1, attr2=None):
+        """
+        是什么：TableSchema.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
+        谁调用：由创建 TableSchema 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.tableName = attr1
         self.tableComment = attr2 if attr2 is None or isinstance(attr2, str) else attr2.decode("utf-8")
 
@@ -192,6 +212,11 @@ class TableSchemaResponse(BaseModel):
 
 class ColumnSchema:
     def __init__(self, attr1, attr2, attr3):
+        """
+        是什么：ColumnSchema.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
+        谁调用：由创建 ColumnSchema 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.fieldName = attr1
         self.fieldType = attr2
         self.fieldComment = attr3 if attr3 is None or isinstance(attr3, str) else attr3.decode("utf-8")
@@ -209,6 +234,11 @@ class ColumnSchemaResponse(BaseModel):
 
 class TableAndFields:
     def __init__(self, schema, table, fields):
+        """
+        是什么：TableAndFields.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
+        谁调用：由创建 TableAndFields 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.schema = schema
         self.table = table
         self.fields = fields

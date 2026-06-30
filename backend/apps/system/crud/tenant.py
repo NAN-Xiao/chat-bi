@@ -96,6 +96,11 @@ class TenantContext(BaseModel):
 
 
 def normalize_tenant_role(role: str | None) -> str:
+    """
+    是什么：normalize_tenant_role 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     value = (role or "").strip().lower()
     if value in {TENANT_ROLE_OWNER, TENANT_ROLE_ADMIN, TENANT_ROLE_MEMBER}:
         return value
@@ -103,11 +108,21 @@ def normalize_tenant_role(role: str | None) -> str:
 
 
 def normalize_application_type(application_type: str | None) -> str:
+    """
+    是什么：normalize_application_type 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (application_type or "").strip().lower()
     return normalized if normalized in TENANT_APPLICATION_TYPES else TENANT_APPLICATION_TYPE_CREATE
 
 
 def normalize_application_role(role: str | None, application_type: str | None = None) -> str:
+    """
+    是什么：normalize_application_role 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = normalize_tenant_role(role)
     normalized_type = normalize_application_type(application_type)
     if normalized_type == TENANT_APPLICATION_TYPE_CREATE:
@@ -116,16 +131,31 @@ def normalize_application_role(role: str | None, application_type: str | None = 
 
 
 def normalize_application_status(status: str | None) -> str:
+    """
+    是什么：normalize_application_status 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (status or "").strip().lower()
     return normalized if normalized in TENANT_APPLICATION_STATUSES else TENANT_APPLICATION_STATUS_PENDING
 
 
 def normalize_domain_status(status: str | None) -> str:
+    """
+    是什么：normalize_domain_status 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (status or "").strip().lower()
     return normalized if normalized in TENANT_DOMAIN_STATUSES else TENANT_DOMAIN_STATUS_PENDING
 
 
 def normalize_domain(domain: str | None) -> str:
+    """
+    是什么：normalize_domain 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (domain or "").strip().lower().lstrip("@")
     if not normalized or "." not in normalized or any(part == "" for part in normalized.split(".")):
         raise ValueError("Tenant domain is invalid")
@@ -133,6 +163,11 @@ def normalize_domain(domain: str | None) -> str:
 
 
 def normalize_data_request_type(request_type: str | None) -> str:
+    """
+    是什么：normalize_data_request_type 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (request_type or "").strip().lower()
     if normalized not in TENANT_DATA_REQUEST_TYPES:
         raise ValueError("Tenant data request type is invalid")
@@ -140,24 +175,49 @@ def normalize_data_request_type(request_type: str | None) -> str:
 
 
 def normalize_subscription_status(status: str | None) -> str:
+    """
+    是什么：normalize_subscription_status 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (status or "").strip().lower()
     return normalized if normalized in TENANT_SUBSCRIPTION_STATUSES else TENANT_SUBSCRIPTION_ACTIVE
 
 
 def normalize_billing_mode(mode: str | None) -> str:
+    """
+    是什么：normalize_billing_mode 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     normalized = (mode or "").strip().lower()
     return normalized if normalized in BILLING_MODES else BILLING_MODE_MANUAL
 
 
 def subscription_blocks_high_cost_features(status: str | None) -> bool:
+    """
+    是什么：subscription_blocks_high_cost_features 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 subscription_blocks_high_cost_features 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return normalize_subscription_status(status) in TENANT_SUBSCRIPTION_BLOCKING_STATUSES
 
 
 def _user_is_system_admin(user) -> bool:
+    """
+    是什么：_user_is_system_admin 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _user_is_system_admin 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return (getattr(user, "system_role", "") or "").strip().lower() == SYSTEM_ROLE_SYSTEM_ADMIN
 
 
 def _user_is_platform_admin(user) -> bool:
+    """
+    是什么：_user_is_platform_admin 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _user_is_platform_admin 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return (getattr(user, "system_role", "") or "").strip().lower() in {
         SYSTEM_ROLE_SYSTEM_ADMIN,
         SYSTEM_ROLE_COLLAB_ADMIN,
@@ -165,6 +225,11 @@ def _user_is_platform_admin(user) -> bool:
 
 
 def ensure_default_tenant(session: Session) -> TenantModel:
+    """
+    是什么：ensure_default_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     tenant = session.get(TenantModel, DEFAULT_TENANT_ID)
     if tenant:
         ensure_tenant_public_id(session, tenant)
@@ -183,6 +248,11 @@ def ensure_default_tenant(session: Session) -> TenantModel:
 
 
 def sample_workspace_role_for_user(user) -> str:
+    """
+    是什么：sample_workspace_role_for_user 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 sample_workspace_role_for_user 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     system_role = (getattr(user, "system_role", "") or "").strip().lower()
     if system_role == SYSTEM_ROLE_SYSTEM_ADMIN:
         return TENANT_ROLE_OWNER
@@ -192,6 +262,11 @@ def sample_workspace_role_for_user(user) -> str:
 
 
 def _ensure_sample_workspace_state(session: Session) -> tuple[TenantModel, bool]:
+    """
+    是什么：_ensure_sample_workspace_state 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     tenant = session.exec(select(TenantModel).where(TenantModel.name == SAMPLE_TENANT_NAME)).first()
     changed = False
     if tenant is None:
@@ -233,11 +308,21 @@ def _ensure_sample_workspace_state(session: Session) -> tuple[TenantModel, bool]
 
 
 def ensure_sample_workspace(session: Session) -> TenantModel:
+    """
+    是什么：ensure_sample_workspace 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     tenant, _changed = _ensure_sample_workspace_state(session)
     return tenant
 
 
 def _user_has_active_primary_tenant(session: Session, user_id: int) -> bool:
+    """
+    是什么：_user_has_active_primary_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _user_has_active_primary_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return session.exec(
         select(TenantUserModel.id).where(
             TenantUserModel.user_id == int(user_id),
@@ -248,6 +333,11 @@ def _user_has_active_primary_tenant(session: Session, user_id: int) -> bool:
 
 
 def ensure_user_sample_workspace_membership(session: Session, user) -> TenantUserModel | None:
+    """
+    是什么：ensure_user_sample_workspace_membership 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     user_id = getattr(user, "id", None)
     if not user_id:
         return None
@@ -288,10 +378,20 @@ def ensure_user_sample_workspace_membership(session: Session, user) -> TenantUse
 
 
 def _clean_optional_text(value: str | None) -> str | None:
+    """
+    是什么：_clean_optional_text 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     return (value or "").strip() or None
 
 
 def _email_domain(email: str | None) -> str | None:
+    """
+    是什么：_email_domain 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _email_domain 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     value = (email or "").strip().lower()
     if "@" not in value:
         return None
@@ -299,6 +399,11 @@ def _email_domain(email: str | None) -> str | None:
 
 
 def _table_exists(session: Session, table_name: str) -> bool:
+    """
+    是什么：_table_exists 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _table_exists 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return inspect(session.connection()).has_table(table_name)
     except Exception:
@@ -306,6 +411,11 @@ def _table_exists(session: Session, table_name: str) -> bool:
 
 
 def generate_unique_tenant_public_id(session: Session) -> str:
+    """
+    是什么：generate_unique_tenant_public_id 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：基于输入上下文生成系统管理相关结果，并保存或返回给调用方。
+    """
     for _attempt in range(20):
         public_id = generate_tenant_public_id()
         exists = session.exec(select(TenantModel.id).where(TenantModel.public_id == public_id)).first()
@@ -315,6 +425,11 @@ def generate_unique_tenant_public_id(session: Session) -> str:
 
 
 def ensure_tenant_public_id(session: Session, tenant: TenantModel | None) -> TenantModel | None:
+    """
+    是什么：ensure_tenant_public_id 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if tenant is None or getattr(tenant, "public_id", None):
         return tenant
     tenant.public_id = generate_unique_tenant_public_id(session)
@@ -337,6 +452,11 @@ def create_tenant(
     billing_email: str | None = None,
     subscription_note: str | None = None,
 ) -> TenantModel:
+    """
+    是什么：create_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     normalized_name = name.strip()
     if not normalized_name:
         raise ValueError("Tenant name is required")
@@ -360,6 +480,11 @@ def create_tenant(
 
 
 def tenant_name_exists(session: Session, name: str) -> bool:
+    """
+    是什么：tenant_name_exists 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 tenant_name_exists 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     normalized_name = name.strip()
     if not normalized_name:
         return False
@@ -374,6 +499,11 @@ def create_tenant_domain(
     requested_by_user_id: int | None = None,
     auto_join_role: str = TENANT_ROLE_MEMBER,
 ) -> TenantDomainModel:
+    """
+    是什么：create_tenant_domain 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     tenant = session.get(TenantModel, int(tenant_id))
     if not tenant:
         raise ValueError("Tenant does not exist")
@@ -401,6 +531,11 @@ def create_tenant_domain(
 
 
 def list_tenant_domains(session: Session, *, tenant_id: int | None = None, include_disabled: bool = True) -> list[TenantDomainModel]:
+    """
+    是什么：list_tenant_domains 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = select(TenantDomainModel).order_by(TenantDomainModel.domain)
     if tenant_id is not None:
         statement = statement.where(TenantDomainModel.tenant_id == int(tenant_id))
@@ -417,6 +552,11 @@ def review_tenant_domain(
     reviewed_by_user_id: int,
     auto_join_role: str = TENANT_ROLE_MEMBER,
 ) -> TenantDomainModel:
+    """
+    是什么：review_tenant_domain 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 review_tenant_domain 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     row = session.get(TenantDomainModel, int(domain_id))
     if not row:
         raise ValueError("Tenant domain does not exist")
@@ -434,6 +574,11 @@ def review_tenant_domain(
 
 
 def auto_assign_tenants_by_email_domain(session: Session, user) -> list[TenantUserModel]:
+    """
+    是什么：auto_assign_tenants_by_email_domain 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 auto_assign_tenants_by_email_domain 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     email_domain = _email_domain(getattr(user, "email", None))
     user_id = getattr(user, "id", None)
     if not email_domain or not user_id:
@@ -460,6 +605,11 @@ def auto_assign_tenants_by_email_domain(session: Session, user) -> list[TenantUs
 
 
 def list_tenants(session: Session, *, include_disabled: bool = False) -> list[TenantModel]:
+    """
+    是什么：list_tenants 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = select(TenantModel).order_by(TenantModel.name, TenantModel.id)
     if not include_disabled:
         statement = statement.where(TenantModel.status == 1)
@@ -469,6 +619,11 @@ def list_tenants(session: Session, *, include_disabled: bool = False) -> list[Te
 
 
 def get_active_tenant(session: Session, tenant_id: int | None = None) -> TenantModel | None:
+    """
+    是什么：get_active_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     if tenant_id:
         tenant = session.get(TenantModel, int(tenant_id))
         ensure_tenant_public_id(session, tenant)
@@ -477,6 +632,11 @@ def get_active_tenant(session: Session, tenant_id: int | None = None) -> TenantM
 
 
 def search_active_tenants(session: Session, *, keyword: str, limit: int = 20) -> list[TenantModel]:
+    """
+    是什么：search_active_tenants 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     normalized = (keyword or "").strip().lower()
     if not normalized:
         return []
@@ -510,6 +670,11 @@ def update_tenant(
     billing_email: str | None = None,
     subscription_note: str | None = None,
 ) -> TenantModel:
+    """
+    是什么：update_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     tenant = session.get(TenantModel, tenant_id)
     if not tenant:
         raise ValueError("Tenant does not exist")
@@ -530,6 +695,11 @@ def update_tenant(
 
 
 def set_tenant_status(session: Session, *, tenant_id: int, status: int) -> TenantModel:
+    """
+    是什么：set_tenant_status 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     if status not in {0, 1}:
         raise ValueError("Tenant status must be 0 or 1")
     tenant = session.get(TenantModel, tenant_id)
@@ -547,6 +717,11 @@ def set_tenant_status(session: Session, *, tenant_id: int, status: int) -> Tenan
 
 
 def delete_tenant(session: Session, *, tenant_id: int) -> TenantModel:
+    """
+    是什么：delete_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     tenant = session.get(TenantModel, tenant_id)
     if not tenant or int(tenant.status) == TENANT_STATUS_DELETED:
         raise ValueError("Tenant does not exist")
@@ -562,6 +737,11 @@ def delete_tenant(session: Session, *, tenant_id: int) -> TenantModel:
 
 
 def get_tenant_security_policy(session: Session, *, tenant_id: int) -> TenantSecurityPolicyModel | None:
+    """
+    是什么：get_tenant_security_policy 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     if not _table_exists(session, TenantSecurityPolicyModel.__tablename__):
         return None
     return session.exec(
@@ -576,6 +756,11 @@ def upsert_tenant_security_policy(
     sso_required: bool = False,
     session_timeout_minutes: int | None = None,
 ) -> TenantSecurityPolicyModel:
+    """
+    是什么：upsert_tenant_security_policy 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 upsert_tenant_security_policy 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     tenant = session.get(TenantModel, int(tenant_id))
     if not tenant:
         raise ValueError("Tenant does not exist")
@@ -601,6 +786,11 @@ def upsert_tenant_security_policy(
 
 
 def validate_tenant_security_policy(session: Session, *, tenant_id: int, user) -> None:
+    """
+    是什么：validate_tenant_security_policy 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     policy = get_tenant_security_policy(session, tenant_id=int(tenant_id))
     if not policy:
         return
@@ -618,6 +808,11 @@ def create_tenant_data_request(
     request_type: str,
     reason: str | None = None,
 ) -> TenantDataRequestModel:
+    """
+    是什么：create_tenant_data_request 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     tenant = session.get(TenantModel, int(tenant_id))
     if not tenant:
         raise ValueError("Tenant does not exist")
@@ -639,6 +834,11 @@ def list_tenant_data_requests(
     tenant_id: int | None = None,
     status: str | None = None,
 ) -> list[TenantDataRequestModel]:
+    """
+    是什么：list_tenant_data_requests 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = select(TenantDataRequestModel).order_by(TenantDataRequestModel.create_time.desc())
     if tenant_id is not None:
         statement = statement.where(TenantDataRequestModel.tenant_id == int(tenant_id))
@@ -648,6 +848,11 @@ def list_tenant_data_requests(
 
 
 def build_tenant_export_manifest(session: Session, *, tenant_id: int) -> dict:
+    """
+    是什么：build_tenant_export_manifest 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     inspector = inspect(session.connection())
     tables = []
     for table_name in inspector.get_table_names():
@@ -681,6 +886,11 @@ def review_tenant_data_request(
     approved: bool,
     review_comment: str | None = None,
 ) -> TenantDataRequestModel:
+    """
+    是什么：review_tenant_data_request 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 review_tenant_data_request 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     row = session.get(TenantDataRequestModel, int(request_id))
     if not row:
         raise ValueError("Tenant data request does not exist")
@@ -709,6 +919,11 @@ def complete_tenant_data_request(
     completed_by_user_id: int,
     complete_comment: str | None = None,
 ) -> TenantDataRequestModel:
+    """
+    是什么：complete_tenant_data_request 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 complete_tenant_data_request 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     row = session.get(TenantDataRequestModel, int(request_id))
     if not row:
         raise ValueError("Tenant data request does not exist")
@@ -738,6 +953,11 @@ def create_tenant_application(
     requested_role: str = TENANT_ROLE_OWNER,
     reason: str | None = None,
 ) -> TenantApplicationModel:
+    """
+    是什么：create_tenant_application 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     normalized_type = normalize_application_type(application_type)
     if normalized_type == TENANT_APPLICATION_TYPE_INVITE:
         raise ValueError("Tenant invitation must be created with invitation API")
@@ -810,6 +1030,11 @@ def create_tenant_invitation(
     requested_role: str = TENANT_ROLE_MEMBER,
     reason: str | None = None,
 ) -> TenantApplicationModel:
+    """
+    是什么：create_tenant_invitation 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     tenant = get_active_tenant(session, tenant_id=tenant_id)
     if not tenant:
         raise ValueError("Tenant does not exist or is disabled")
@@ -851,6 +1076,11 @@ def list_tenant_applications(
     application_type: str | None = None,
     status: str | None = None,
 ) -> list[TenantApplicationModel]:
+    """
+    是什么：list_tenant_applications 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = select(TenantApplicationModel).order_by(TenantApplicationModel.create_time.desc())
     if applicant_user_id is not None:
         statement = statement.where(TenantApplicationModel.applicant_user_id == int(applicant_user_id))
@@ -873,6 +1103,11 @@ def approve_tenant_application(
     review_comment: str | None = None,
     allowed_types: set[str] | None = None,
 ) -> tuple[TenantApplicationModel, TenantModel]:
+    """
+    是什么：approve_tenant_application 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 approve_tenant_application 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     application = session.get(TenantApplicationModel, application_id)
     if not application:
         raise ValueError("Tenant application does not exist")
@@ -936,6 +1171,11 @@ def reject_tenant_application(
     review_comment: str | None = None,
     allowed_types: set[str] | None = None,
 ) -> TenantApplicationModel:
+    """
+    是什么：reject_tenant_application 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 reject_tenant_application 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     application = session.get(TenantApplicationModel, application_id)
     if not application:
         raise ValueError("Tenant application does not exist")
@@ -964,6 +1204,11 @@ def cancel_tenant_application(
     review_comment: str | None = None,
     allowed_types: set[str] | None = None,
 ) -> TenantApplicationModel:
+    """
+    是什么：cancel_tenant_application 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 cancel_tenant_application 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     application = session.get(TenantApplicationModel, application_id)
     if not application:
         raise ValueError("Tenant application does not exist")
@@ -990,6 +1235,11 @@ def list_user_tenant_memberships(
     *,
     include_default: bool = False,
 ) -> list[tuple[TenantModel, TenantUserModel]]:
+    """
+    是什么：list_user_tenant_memberships 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     statement = (
         select(TenantModel, TenantUserModel)
         .join(TenantUserModel, TenantUserModel.tenant_id == TenantModel.id)
@@ -1006,6 +1256,11 @@ def list_user_tenant_memberships(
 
 
 def user_belongs_to_tenant(session: Session, user_id: int, tenant_id: int | None) -> bool:
+    """
+    是什么：user_belongs_to_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 user_belongs_to_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not tenant_id:
         return False
     return session.exec(
@@ -1018,6 +1273,11 @@ def user_belongs_to_tenant(session: Session, user_id: int, tenant_id: int | None
 
 
 def get_tenant_membership(session: Session, user_id: int, *, tenant_id: int) -> TenantUserModel | None:
+    """
+    是什么：get_tenant_membership 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     return session.exec(
         select(TenantUserModel).where(
             TenantUserModel.user_id == int(user_id),
@@ -1028,6 +1288,11 @@ def get_tenant_membership(session: Session, user_id: int, *, tenant_id: int) -> 
 
 
 def count_active_tenant_owners(session: Session, *, tenant_id: int) -> int:
+    """
+    是什么：count_active_tenant_owners 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 count_active_tenant_owners 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     owners = session.exec(
         select(TenantUserModel.id).where(
             TenantUserModel.tenant_id == int(tenant_id),
@@ -1039,6 +1304,11 @@ def count_active_tenant_owners(session: Session, *, tenant_id: int) -> int:
 
 
 def remove_user_from_tenant(session: Session, user_id: int, *, tenant_id: int) -> TenantUserModel:
+    """
+    是什么：remove_user_from_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     membership = get_tenant_membership(session, user_id, tenant_id=tenant_id)
     if not membership:
         raise ValueError("User does not belong to tenant")
@@ -1052,6 +1322,11 @@ def remove_user_from_tenant(session: Session, user_id: int, *, tenant_id: int) -
 
 
 def leave_tenant(session: Session, user_id: int, *, tenant_id: int) -> TenantUserModel:
+    """
+    是什么：leave_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 leave_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if int(tenant_id) == DEFAULT_TENANT_ID:
         raise ValueError("Default tenant cannot be left")
     membership = get_tenant_membership(session, user_id, tenant_id=tenant_id)
@@ -1070,6 +1345,11 @@ def leave_tenant(session: Session, user_id: int, *, tenant_id: int) -> TenantUse
 
 
 def transfer_tenant_owner(session: Session, *, tenant_id: int, target_user_id: int) -> TenantUserModel:
+    """
+    是什么：transfer_tenant_owner 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 transfer_tenant_owner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     target_membership = get_tenant_membership(session, target_user_id, tenant_id=tenant_id)
     if not target_membership:
         raise ValueError("Target user does not belong to tenant")
@@ -1101,6 +1381,11 @@ def assign_user_to_tenant(
     role: str = TENANT_ROLE_MEMBER,
     is_primary: bool = False,
 ) -> TenantUserModel:
+    """
+    是什么：assign_user_to_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 assign_user_to_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     tenant = session.get(TenantModel, tenant_id) if tenant_id else ensure_default_tenant(session)
     if not tenant:
         raise ValueError("Tenant does not exist")
@@ -1129,6 +1414,11 @@ def assign_user_to_tenant(
 
 
 def ensure_user_default_membership(session: Session, user) -> TenantContext:
+    """
+    是什么：ensure_user_default_membership 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     role = TENANT_ROLE_OWNER if _user_is_system_admin(user) else TENANT_ROLE_MEMBER
     membership = assign_user_to_tenant(
         session,
@@ -1152,6 +1442,11 @@ def _tenant_context_from_membership(
     tenant: TenantModel,
     membership: TenantUserModel,
 ) -> TenantContext:
+    """
+    是什么：_tenant_context_from_membership 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_context_from_membership 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     ensure_tenant_public_id(session, tenant)
     return TenantContext(
         id=int(tenant.id),
@@ -1162,6 +1457,11 @@ def _tenant_context_from_membership(
 
 
 def _fallback_user_tenant_context(session: Session, user) -> TenantContext | None:
+    """
+    是什么：_fallback_user_tenant_context 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _fallback_user_tenant_context 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     memberships = list_user_tenant_memberships(session, int(user.id))
     if not memberships:
         return None
@@ -1182,6 +1482,11 @@ def resolve_current_tenant(
     requested_tenant_id: int | None = None,
     platform_workspace_delegate: bool = False,
 ) -> TenantContext | None:
+    """
+    是什么：resolve_current_tenant 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 resolve_current_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not user or not getattr(user, "id", None):
         raise PermissionError("Authenticated user is required to resolve tenant")
 
@@ -1255,6 +1560,11 @@ def resolve_current_tenant(
 
 
 def attach_tenant_context(user, tenant: TenantContext | None, *, platform_workspace_delegate: bool = False):
+    """
+    是什么：attach_tenant_context 是 backend/apps/system/crud/tenant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 attach_tenant_context 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     user_copy = user.model_copy(deep=True) if hasattr(user, "model_copy") else user
     is_platform_admin = _user_is_platform_admin(user_copy)
     user_copy.global_role = "platform_admin" if is_platform_admin else "normal_user"

@@ -1,5 +1,5 @@
-# Author: Junjun
-# Date: 2025/7/16
+# 作者：Junjun
+# 日期：2025/7/16
 
 from enum import Enum
 from typing import List
@@ -12,6 +12,11 @@ class ConnectType(Enum):
     py_driver = ('py_driver')
 
     def __init__(self, type_name):
+        """
+        是什么：ConnectType.__init__ 是 backend/apps/db/constant.py 中的同步方法。
+        谁调用：由创建 ConnectType 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.type_name = type_name
 
 
@@ -32,6 +37,11 @@ class DB(Enum):
 
     def __init__(self, type, db_name, prefix, suffix, connect_type: ConnectType, template_name: str,
                  illegalParams: List[str]):
+        """
+        是什么：DB.__init__ 是 backend/apps/db/constant.py 中的同步方法。
+        谁调用：由创建 DB 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.type = type
         self.db_name = db_name
         self.prefix = prefix
@@ -42,6 +52,11 @@ class DB(Enum):
 
     @classmethod
     def get_db(cls, type, default_if_none=False):
+        """
+        是什么：DB.get_db 是 backend/apps/db/constant.py 中的同步方法。
+        谁调用：由类本身、子类或框架按照类方法约定调用。
+        做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+        """
         for db in cls:
             """ if db.type == type: """
             if equals_ignore_case(db.type, type):

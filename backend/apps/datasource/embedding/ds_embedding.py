@@ -1,5 +1,5 @@
-﻿# Author: Junjun
-# Date: 2025/9/18
+﻿# 作者：Junjun
+# 日期：2025/9/18
 import json
 import time
 import traceback
@@ -18,6 +18,11 @@ from common.utils.utils import AppLogUtil
 def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, out_ds: AssistantOutDs,
                      question: str,
                      current_assistant: Optional[CurrentAssistant] = None):
+    """
+    是什么：get_ds_embedding 是 backend/apps/datasource/embedding/ds_embedding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     _list = []
     if current_assistant and current_assistant.type == 1:
         if out_ds.ds_list:

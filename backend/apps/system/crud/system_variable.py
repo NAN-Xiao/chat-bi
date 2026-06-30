@@ -1,5 +1,5 @@
-# Author: Junjun
-# Date: 2026/1/26
+# 作者：Junjun
+# 日期：2026/1/26
 import datetime
 from typing import List
 
@@ -21,16 +21,31 @@ VARIABLE_TYPE_CUSTOM = "custom"
 
 
 def _current_tenant_id(user: CurrentUser | None) -> int:
+    """
+    是什么：_current_tenant_id 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _current_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if _is_platform_operation(user):
         return DEFAULT_TENANT_ID
     return require_current_tenant_id(user)
 
 
 def _is_platform_operation(user: CurrentUser) -> bool:
+    """
+    是什么：_is_platform_operation 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_platform_operation 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return is_platform_admin(user) and not is_platform_workspace_delegate(user)
 
 
 def _visible_variable_condition(user: CurrentUser):
+    """
+    是什么：_visible_variable_condition 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _visible_variable_condition 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if _is_platform_operation(user):
         return or_(
             SystemVariable.type == VARIABLE_TYPE_SYSTEM,
@@ -49,6 +64,11 @@ def _visible_variable_condition(user: CurrentUser):
 
 
 def _custom_variable_condition(user: CurrentUser):
+    """
+    是什么：_custom_variable_condition 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _custom_variable_condition 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if _is_platform_operation(user):
         return SystemVariable.type == VARIABLE_TYPE_PLATFORM
     return and_(
@@ -59,6 +79,11 @@ def _custom_variable_condition(user: CurrentUser):
 
 
 def _apply_scope(stmt, user: CurrentUser, include_system: bool = True):
+    """
+    是什么：_apply_scope 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _apply_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     condition = _visible_variable_condition(user)
     if not include_system:
         condition = and_(condition, SystemVariable.type != VARIABLE_TYPE_SYSTEM)
@@ -66,6 +91,11 @@ def _apply_scope(stmt, user: CurrentUser, include_system: bool = True):
 
 
 def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentUser) -> None:
+    """
+    是什么：_assert_custom_variable_access 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _assert_custom_variable_access 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if record is None:
         raise HTTPException(status_code=404, detail="变量不存在")
     if record.type == VARIABLE_TYPE_SYSTEM:
@@ -81,6 +111,11 @@ def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentU
 
 
 def _variable_response(data: SystemVariable, user: CurrentUser) -> dict:
+    """
+    是什么：_variable_response 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _variable_response 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     editable = False
     if _is_platform_operation(user):
         editable = data.type == VARIABLE_TYPE_PLATFORM
@@ -97,6 +132,11 @@ def _variable_response(data: SystemVariable, user: CurrentUser) -> dict:
 
 
 def save(session: SessionDep, user: CurrentUser, trans: Trans, variable: SystemVariable):
+    """
+    是什么：save 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     if variable.id is None:
         if _is_platform_operation(user):
             variable.type = VARIABLE_TYPE_PLATFORM
@@ -129,6 +169,11 @@ def save(session: SessionDep, user: CurrentUser, trans: Trans, variable: SystemV
 
 
 def delete(session: SessionDep, user: CurrentUser, ids: List[int]):
+    """
+    是什么：delete 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     if not ids:
         return True
     rows = session.query(SystemVariable).filter(SystemVariable.id.in_(ids)).all()
@@ -140,6 +185,11 @@ def delete(session: SessionDep, user: CurrentUser, ids: List[int]):
 
 
 def list_all(session: SessionDep, trans: Trans, user: CurrentUser, variable: SystemVariable):
+    """
+    是什么：list_all 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     search_name = getattr(variable, "name", None) if variable else None
     if search_name is None:
         stmt = select(SystemVariable).order_by(SystemVariable.type.desc(), SystemVariable.name.asc())
@@ -158,6 +208,11 @@ def list_all(session: SessionDep, trans: Trans, user: CurrentUser, variable: Sys
 
 
 async def list_page(session: SessionDep, trans: Trans, user: CurrentUser, pageNum: int, pageSize: int, variable: SystemVariable):
+    """
+    是什么：list_page 是 backend/apps/system/crud/system_variable.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
     filters = {}
@@ -187,6 +242,11 @@ async def list_page(session: SessionDep, trans: Trans, user: CurrentUser, pageNu
 
 
 def checkName(session: SessionDep, trans: Trans, user: CurrentUser, variable: SystemVariable):
+    """
+    是什么：checkName 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     tenant_id = (
         int(getattr(variable, "tenant_id"))
         if getattr(variable, "tenant_id", None) not in (None, "")
@@ -210,6 +270,11 @@ def checkName(session: SessionDep, trans: Trans, user: CurrentUser, variable: Sy
 
 
 def checkValue(session: SessionDep, trans: Trans, values: List):
-    # values: [{"variableId":1,"variableValues":["a","b"]}]
+    # 取值示例：[{"variableId":1,"variableValues":["a","b"]}]
 
+    """
+    是什么：checkValue 是 backend/apps/system/crud/system_variable.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     pass

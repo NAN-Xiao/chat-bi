@@ -32,14 +32,29 @@ DEFAULT_TASK_TENANT_ID = 1
 
 
 def utc_now() -> str:
+    """
+    是什么：utc_now 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 utc_now 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return datetime.now(timezone.utc).isoformat()
 
 
 def _json_dumps(value: Any) -> str:
+    """
+    是什么：_json_dumps 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _json_dumps 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
 
 
 def _json_loads(value: bytes | str | None) -> dict[str, Any] | None:
+    """
+    是什么：_json_loads 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _json_loads 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     if value is None:
         return None
     if isinstance(value, bytes):
@@ -48,20 +63,40 @@ def _json_loads(value: bytes | str | None) -> dict[str, Any] | None:
 
 
 def _queue_key(queue_name: str | None = None) -> str:
+    """
+    是什么：_queue_key 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _queue_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return redis_key("task", "queue", queue_name or settings.TASK_QUEUE_NAME)
 
 
 def _processing_key(queue_name: str | None = None) -> str:
+    """
+    是什么：_processing_key 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行核心配置和基础设施主流程，协调下游服务并处理结果或异常。
+    """
     return redis_key("task", "processing", queue_name or settings.TASK_QUEUE_NAME)
 
 
 def _normalize_tenant_id(tenant_id: int | str | None) -> int:
+    """
+    是什么：_normalize_tenant_id 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+    """
     if tenant_id in (None, ""):
         return DEFAULT_TASK_TENANT_ID
     return int(tenant_id)
 
 
 def _record_task_usage(tenant_id: int | str | None, metric: str, *, success: bool | None = None) -> None:
+    """
+    是什么：_record_task_usage 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _record_task_usage 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     record_tenant_usage_detached(
         tenant_id=_normalize_tenant_id(tenant_id),
         metric=metric,
@@ -73,6 +108,11 @@ def _record_task_usage(tenant_id: int | str | None, metric: str, *, success: boo
 
 
 def _tenant_pending_key(tenant_id: int | str | None, queue_name: str | None = None) -> str:
+    """
+    是什么：_tenant_pending_key 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_pending_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return tenant_redis_key(
         _normalize_tenant_id(tenant_id),
         "task",
@@ -83,6 +123,11 @@ def _tenant_pending_key(tenant_id: int | str | None, queue_name: str | None = No
 
 
 def _tenant_processing_key(tenant_id: int | str | None, queue_name: str | None = None) -> str:
+    """
+    是什么：_tenant_processing_key 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_processing_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return tenant_redis_key(
         _normalize_tenant_id(tenant_id),
         "task",
@@ -93,22 +138,47 @@ def _tenant_processing_key(tenant_id: int | str | None, queue_name: str | None =
 
 
 def _task_key(task_id: str, tenant_id: int | str | None = None) -> str:
+    """
+    是什么：_task_key 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _task_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return tenant_redis_key(_normalize_tenant_id(tenant_id), "task", "item", task_id)
 
 
 def _legacy_task_key(task_id: str) -> str:
+    """
+    是什么：_legacy_task_key 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _legacy_task_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return redis_key("task", "item", task_id)
 
 
 def _task_tenant_index_key(task_id: str) -> str:
+    """
+    是什么：_task_tenant_index_key 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _task_tenant_index_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return redis_key("task", "tenant", task_id)
 
 
 def _decode_redis_value(value: bytes | str) -> str:
+    """
+    是什么：_decode_redis_value 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _decode_redis_value 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return value.decode("utf-8") if isinstance(value, bytes) else value
 
 
 def _parse_utc(value: str | None) -> datetime | None:
+    """
+    是什么：_parse_utc 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+    """
     if not value:
         return None
     try:
@@ -121,11 +191,21 @@ def _parse_utc(value: str | None) -> datetime | None:
 
 
 def current_task_context() -> dict[str, Any] | None:
+    """
+    是什么：current_task_context 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 current_task_context 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     context = _current_task_context.get()
     return dict(context) if context else None
 
 
 def current_task_tenant_id(default: int | None = DEFAULT_TASK_TENANT_ID) -> int | None:
+    """
+    是什么：current_task_tenant_id 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 current_task_tenant_id 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     context = _current_task_context.get()
     if not context:
         return default
@@ -136,7 +216,17 @@ def current_task_tenant_id(default: int | None = DEFAULT_TASK_TENANT_ID) -> int 
 
 
 def task_handler(name: str):
+    """
+    是什么：task_handler 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 task_handler 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     def decorator(func: TaskHandler):
+        """
+        是什么：decorator 是 backend/common/core/task_queue.py 中的同步函数。
+        谁调用：由外层函数 task_handler 在执行内部流程时调用。
+        做了什么：围绕 decorator 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         if name in _task_handlers:
             raise ValueError(f"Task handler already registered: {name}")
         _task_handlers[name] = func
@@ -146,6 +236,11 @@ def task_handler(name: str):
 
 
 def registered_task_names() -> list[str]:
+    """
+    是什么：registered_task_names 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 registered_task_names 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return sorted(_task_handlers)
 
 
@@ -158,6 +253,11 @@ async def enqueue_task(
     queue_name: str | None = None,
     max_attempts: int | None = None,
 ) -> dict[str, Any]:
+    """
+    是什么：enqueue_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 enqueue_task 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     if name not in _task_handlers:
         raise ValueError(f"Unknown task handler: {name}")
 
@@ -228,6 +328,11 @@ async def _enqueue_task_and_log(
     queue_name: str | None = None,
     max_attempts: int | None = None,
 ) -> dict[str, Any] | None:
+    """
+    是什么：_enqueue_task_and_log 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _enqueue_task_and_log 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return await enqueue_task(
             name,
@@ -251,6 +356,11 @@ def enqueue_task_detached(
     queue_name: str | None = None,
     max_attempts: int | None = None,
 ) -> dict[str, Any] | None:
+    """
+    是什么：enqueue_task_detached 是 backend/common/core/task_queue.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 enqueue_task_detached 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     coroutine = _enqueue_task_and_log(
         name,
         payload,
@@ -269,6 +379,11 @@ def enqueue_task_detached(
 
 
 async def get_task(task_id: str, *, tenant_id: int | str | None = None) -> dict[str, Any] | None:
+    """
+    是什么：get_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    """
     client = get_redis_client()
     raw_index_tenant_id = await client.get(_task_tenant_index_key(task_id))
     indexed_tenant_id = _decode_redis_value(raw_index_tenant_id) if raw_index_tenant_id is not None else None
@@ -290,26 +405,51 @@ async def get_task(task_id: str, *, tenant_id: int | str | None = None) -> dict[
 
 
 async def queue_size(queue_name: str | None = None) -> int:
+    """
+    是什么：queue_size 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 queue_size 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     client = get_redis_client()
     return int(await client.llen(_queue_key(queue_name)))
 
 
 async def processing_size(queue_name: str | None = None) -> int:
+    """
+    是什么：processing_size 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行核心配置和基础设施主流程，协调下游服务并处理结果或异常。
+    """
     client = get_redis_client()
     return int(await client.llen(_processing_key(queue_name)))
 
 
 async def tenant_queue_size(tenant_id: int | str | None, queue_name: str | None = None) -> int:
+    """
+    是什么：tenant_queue_size 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 tenant_queue_size 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     client = get_redis_client()
     return int(await client.llen(_tenant_pending_key(tenant_id, queue_name)))
 
 
 async def tenant_processing_size(tenant_id: int | str | None, queue_name: str | None = None) -> int:
+    """
+    是什么：tenant_processing_size 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 tenant_processing_size 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     client = get_redis_client()
     return int(await client.llen(_tenant_processing_key(tenant_id, queue_name)))
 
 
 async def _push_pending_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    """
+    是什么：_push_pending_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _push_pending_task 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     client = get_redis_client()
     pending_key = _tenant_pending_key(tenant_id, queue_name)
     await client.lrem(pending_key, 0, task_id)
@@ -317,10 +457,20 @@ async def _push_pending_task(task_id: str, tenant_id: int | str | None, queue_na
 
 
 async def _remove_pending_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    """
+    是什么：_remove_pending_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理核心配置和基础设施相关数据、缓存或临时状态。
+    """
     await get_redis_client().lrem(_tenant_pending_key(tenant_id, queue_name), 0, task_id)
 
 
 async def _push_processing_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    """
+    是什么：_push_processing_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _push_processing_task 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     client = get_redis_client()
     processing_key = _tenant_processing_key(tenant_id, queue_name)
     await client.lrem(processing_key, 0, task_id)
@@ -328,10 +478,20 @@ async def _push_processing_task(task_id: str, tenant_id: int | str | None, queue
 
 
 async def _remove_processing_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    """
+    是什么：_remove_processing_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理核心配置和基础设施相关数据、缓存或临时状态。
+    """
     await get_redis_client().lrem(_tenant_processing_key(tenant_id, queue_name), 0, task_id)
 
 
 async def _tenant_processing_limit_reached(tenant_id: int | str | None, queue_name: str | None = None) -> bool:
+    """
+    是什么：_tenant_processing_limit_reached 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_processing_limit_reached 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     limit = int(settings.TASK_QUEUE_MAX_PROCESSING_PER_TENANT or 0)
     if limit <= 0:
         return False
@@ -339,6 +499,11 @@ async def _tenant_processing_limit_reached(tenant_id: int | str | None, queue_na
 
 
 async def task_queue_health(queue_name: str | None = None) -> dict[str, Any]:
+    """
+    是什么：task_queue_health 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 task_queue_health 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     try:
         client = get_redis_client()
         await client.ping()
@@ -362,6 +527,11 @@ async def task_queue_health(queue_name: str | None = None) -> dict[str, Any]:
 
 
 async def _save_task(task: dict[str, Any]) -> None:
+    """
+    是什么：_save_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装核心配置和基础设施相关对象和数据，并返回或写入对应状态。
+    """
     client = get_redis_client()
     resolved_tenant_id = _normalize_tenant_id(task.get("tenant_id"))
     task["tenant_id"] = resolved_tenant_id
@@ -378,6 +548,11 @@ async def _save_task(task: dict[str, Any]) -> None:
 
 
 async def _claim_task(queue_name: str | None = None, *, timeout: int | None = None) -> str | None:
+    """
+    是什么：_claim_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _claim_task 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     client = get_redis_client()
     queue = queue_name or settings.TASK_QUEUE_NAME
     timeout_seconds = settings.TASK_QUEUE_POLL_TIMEOUT_SECONDS if timeout is None else timeout
@@ -407,6 +582,11 @@ async def _claim_task(queue_name: str | None = None, *, timeout: int | None = No
 
 
 async def _ack_task(task_id: str, queue_name: str | None = None) -> None:
+    """
+    是什么：_ack_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _ack_task 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     task = await get_task(task_id)
     await get_redis_client().lrem(_processing_key(queue_name), 0, task_id)
     if task is not None:
@@ -414,6 +594,11 @@ async def _ack_task(task_id: str, queue_name: str | None = None) -> None:
 
 
 async def _run_handler(name: str, payload: dict[str, Any], task: dict[str, Any] | None = None) -> Any:
+    """
+    是什么：_run_handler 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行核心配置和基础设施主流程，协调下游服务并处理结果或异常。
+    """
     handler = _task_handlers.get(name)
     if handler is None:
         raise ValueError(f"Unknown task handler: {name}")
@@ -433,6 +618,11 @@ async def run_task(
     worker_name: str | None = None,
     queue_name: str | None = None,
 ) -> dict[str, Any] | None:
+    """
+    是什么：run_task 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行核心配置和基础设施主流程，协调下游服务并处理结果或异常。
+    """
     task = await get_task(task_id)
     if task is None:
         AppLogUtil.warning(f"Skip missing queued task: {task_id}")
@@ -493,6 +683,11 @@ async def recover_stale_tasks(
     queue_name: str | None = None,
     stale_after_seconds: int | None = None,
 ) -> dict[str, int]:
+    """
+    是什么：recover_stale_tasks 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 recover_stale_tasks 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     client = get_redis_client()
     queue = queue_name or settings.TASK_QUEUE_NAME
     timeout_seconds = (
@@ -562,6 +757,11 @@ async def worker_loop(
     worker_name: str | None = None,
     stop_event: asyncio.Event | None = None,
 ) -> None:
+    """
+    是什么：worker_loop 是 backend/common/core/task_queue.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 worker_loop 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     queue = queue_name or settings.TASK_QUEUE_NAME
     worker = worker_name or f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
     AppLogUtil.info(f"Task worker started: worker={worker} queue={queue}")

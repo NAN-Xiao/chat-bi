@@ -8,6 +8,11 @@ from apps.chat.models.chat_model import AxisObj
 class DataFormat:
     @staticmethod
     def safe_convert_to_string(df):
+        """
+        是什么：DataFormat.safe_convert_to_string 是 backend/common/utils/data_format.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 safe_convert_to_string 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         df_copy = df.copy()
 
         for col in df_copy.columns:
@@ -21,10 +26,10 @@ class DataFormat:
 
     @staticmethod
     def normalize_qualified_sql_column_keys(row: dict) -> dict:
-        """Add unqualified keys for names like ``alias.column`` (Hive/MySQL return shape).
-
-        Chart bindings use the bare column name (``table_name``) while drivers may return
-        ``_u2.table_name``. Only adds ``short`` when absent to avoid clobbering real duplicates.
+        """
+        是什么：DataFormat.normalize_qualified_sql_column_keys 是 backend/common/utils/data_format.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
         """
         if not row:
             return row
@@ -40,6 +45,11 @@ class DataFormat:
 
     @staticmethod
     def normalize_qualified_sql_column_keys_in_object_array(obj_array: list) -> list:
+        """
+        是什么：DataFormat.normalize_qualified_sql_column_keys_in_object_array 是 backend/common/utils/data_format.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        """
         if not obj_array:
             return obj_array
         return [
@@ -49,10 +59,18 @@ class DataFormat:
 
     @staticmethod
     def convert_large_numbers_in_object_array(obj_array, int_threshold=1e15, float_threshold=1e10):
-        """处理对象数组，将每个对象中的大数字转换为字符串"""
+        """
+        是什么：DataFormat.convert_large_numbers_in_object_array 是 backend/common/utils/data_format.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        """
 
         def format_float_without_scientific(value):
-            """格式化浮点数，避免科学记数法"""
+            """
+            是什么：DataFormat.format_float_without_scientific 是 backend/common/utils/data_format.py 中的同步方法。
+            谁调用：由外层函数 convert_large_numbers_in_object_array 在执行内部流程时调用。
+            做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+            """
             if value == 0:
                 return "0"
             formatted = str(Decimal(str(value)))
@@ -61,7 +79,11 @@ class DataFormat:
             return formatted
 
         def process_object(obj):
-            """处理单个对象"""
+            """
+            是什么：DataFormat.process_object 是 backend/common/utils/data_format.py 中的同步方法。
+            谁调用：由外层函数 convert_large_numbers_in_object_array 在执行内部流程时调用。
+            做了什么：执行通用工具主流程，协调下游服务并处理结果或异常。
+            """
             if not isinstance(obj, dict):
                 return obj
 
@@ -86,7 +108,11 @@ class DataFormat:
             return processed_obj
 
         def process_item(item):
-            """处理数组中的项目"""
+            """
+            是什么：DataFormat.process_item 是 backend/common/utils/data_format.py 中的同步方法。
+            谁调用：由外层函数 convert_large_numbers_in_object_array 在执行内部流程时调用。
+            做了什么：执行通用工具主流程，协调下游服务并处理结果或异常。
+            """
             if isinstance(item, dict):
                 return process_object(item)
             return item
@@ -95,6 +121,11 @@ class DataFormat:
 
     @staticmethod
     def convert_object_array_for_pandas(column_list: list, data_list: list):
+        """
+        是什么：DataFormat.convert_object_array_for_pandas 是 backend/common/utils/data_format.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        """
         _fields_list = []
         for field_idx, field in enumerate(column_list):
             _fields_list.append(field.name)
@@ -110,6 +141,11 @@ class DataFormat:
 
     @staticmethod
     def convert_data_fields_for_pandas(chart: dict, fields: list, data: list):
+        """
+        是什么：DataFormat.convert_data_fields_for_pandas 是 backend/common/utils/data_format.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        """
         _fields = {}
         if chart.get('columns'):
             for _column in chart.get('columns'):
@@ -149,6 +185,11 @@ class DataFormat:
     def format_pd_data(column_list: list, data_list: list, col_formats: dict = None):
         # 预处理数据并记录每列的格式类型
         # 格式类型：'text'（文本）、'number'（数字）、'default'（默认）
+        """
+        是什么：DataFormat.format_pd_data 是 backend/common/utils/data_format.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        """
         _fields_list = []
 
         if col_formats is None:

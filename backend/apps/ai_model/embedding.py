@@ -28,6 +28,11 @@ _embedding_model: dict[str, Optional[Embeddings]] = {}
 
 
 def _normalize_api_base_url(raw_url: Optional[str]) -> Optional[str]:
+    """
+    是什么：_normalize_api_base_url 是 backend/apps/ai_model/embedding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化模型接入相关数据，生成后续流程可使用的结构。
+    """
     if raw_url is None:
         return None
     url = raw_url.strip().rstrip("/")
@@ -39,6 +44,11 @@ def _normalize_api_base_url(raw_url: Optional[str]) -> Optional[str]:
 
 
 def _load_default_ai_model_connection() -> tuple[Optional[str], Optional[str]]:
+    """
+    是什么：_load_default_ai_model_connection 是 backend/apps/ai_model/embedding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+    """
     if not settings.EMBEDDING_USE_DEFAULT_AI_MODEL_CONFIG:
         return None, None
 
@@ -55,6 +65,11 @@ def _load_default_ai_model_connection() -> tuple[Optional[str], Optional[str]]:
 
 
 def _build_default_config() -> EmbeddingModelInfo:
+    """
+    是什么：_build_default_config 是 backend/apps/ai_model/embedding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+    """
     api_base_url = settings.EMBEDDING_API_BASE_URL
     api_key = settings.EMBEDDING_API_KEY
 
@@ -74,6 +89,11 @@ def _build_default_config() -> EmbeddingModelInfo:
 
 
 def _normalize_vector(vector: list[float]) -> list[float]:
+    """
+    是什么：_normalize_vector 是 backend/apps/ai_model/embedding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化模型接入相关数据，生成后续流程可使用的结构。
+    """
     norm = math.sqrt(sum(value * value for value in vector))
     if norm <= 0:
         return vector
@@ -82,6 +102,11 @@ def _normalize_vector(vector: list[float]) -> list[float]:
 
 class OpenAICompatibleEmbeddings(Embeddings):
     def __init__(self, config: EmbeddingModelInfo):
+        """
+        是什么：OpenAICompatibleEmbeddings.__init__ 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由创建 OpenAICompatibleEmbeddings 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         if not config.api_base_url:
             raise ValueError("Embedding API base URL is not configured")
         if not config.api_key:
@@ -91,12 +116,22 @@ class OpenAICompatibleEmbeddings(Embeddings):
 
     @staticmethod
     def _build_embeddings_url(api_base_url: str) -> str:
+        """
+        是什么：OpenAICompatibleEmbeddings._build_embeddings_url 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+        """
         base_url = api_base_url.rstrip("/")
         if base_url.endswith("/embeddings"):
             return base_url
         return f"{base_url}/embeddings"
 
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """
+        是什么：OpenAICompatibleEmbeddings._embed_batch 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由持有 OpenAICompatibleEmbeddings 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _embed_batch 的语义处理模型接入相关逻辑，并把结果返回或写入状态。
+        """
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
             "Content-Type": "application/json",
@@ -140,6 +175,11 @@ class OpenAICompatibleEmbeddings(Embeddings):
         return vectors
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """
+        是什么：OpenAICompatibleEmbeddings.embed_documents 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由持有 OpenAICompatibleEmbeddings 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 embed_documents 的语义处理模型接入相关逻辑，并把结果返回或写入状态。
+        """
         if not texts:
             return []
 
@@ -151,18 +191,33 @@ class OpenAICompatibleEmbeddings(Embeddings):
         return vectors
 
     def embed_query(self, text: str) -> list[float]:
+        """
+        是什么：OpenAICompatibleEmbeddings.embed_query 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由持有 OpenAICompatibleEmbeddings 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 embed_query 的语义处理模型接入相关逻辑，并把结果返回或写入状态。
+        """
         return self.embed_documents([text])[0]
 
 
 class EmbeddingModelCache:
     @staticmethod
     def _new_instance(config: Optional[EmbeddingModelInfo] = None) -> Embeddings:
+        """
+        是什么：EmbeddingModelCache._new_instance 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+        """
         if settings.EMBEDDING_PROVIDER != "openai":
             raise ValueError(f"Unsupported embedding provider: {settings.EMBEDDING_PROVIDER}")
         return OpenAICompatibleEmbeddings(config or _build_default_config())
 
     @staticmethod
     def _get_lock(key: str):
+        """
+        是什么：EmbeddingModelCache._get_lock 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+        """
         lock = locks.get(key)
         if lock is None:
             with _lock:
@@ -178,6 +233,11 @@ class EmbeddingModelCache:
         key: Optional[str] = None,
         config: Optional[EmbeddingModelInfo] = None,
     ) -> Embeddings:
+        """
+        是什么：EmbeddingModelCache.get_model 是 backend/apps/ai_model/embedding.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+        """
         resolved_config = config or _build_default_config()
         resolved_key = key or (
             f"{settings.EMBEDDING_PROVIDER}:"

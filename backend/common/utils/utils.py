@@ -22,9 +22,14 @@ from common.core import security
 
 
 class SafeRotatingFileHandler(RotatingFileHandler):
-    """Keep Windows log rollover contention from flooding stderr."""
+    """避免 Windows 日志轮转竞争刷满标准错误输出。"""
 
     def doRollover(self):
+        """
+        是什么：SafeRotatingFileHandler.doRollover 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由持有 SafeRotatingFileHandler 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 doRollover 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         try:
             super().doRollover()
         except OSError as exc:
@@ -39,6 +44,11 @@ class SafeRotatingFileHandler(RotatingFileHandler):
 
 
 def generate_password_reset_token(email: str) -> str:
+    """
+    是什么：generate_password_reset_token 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：基于输入上下文生成通用工具相关结果，并保存或返回给调用方。
+    """
     delta = timedelta(hours=settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS)
     now = datetime.now(timezone.utc)
     expires = now + delta
@@ -52,6 +62,11 @@ def generate_password_reset_token(email: str) -> str:
 
 
 def verify_password_reset_token(token: str) -> str | None:
+    """
+    是什么：verify_password_reset_token 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验通用工具相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     try:
         decoded_token = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
@@ -62,16 +77,26 @@ def verify_password_reset_token(token: str) -> str | None:
 
 
 def deepcopy_ignore_extra(src, dest):
+    """
+    是什么：deepcopy_ignore_extra 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 deepcopy_ignore_extra 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     import copy
     for attr in vars(src):
         if hasattr(dest, attr):
             src_value = getattr(src, attr)
-            dest_value = copy.deepcopy(src_value)  # deep copy
+            dest_value = copy.deepcopy(src_value)  # 深拷贝
             setattr(dest, attr, dest_value)
     return dest
 
 
 def extract_nested_json(text):
+    """
+    是什么：extract_nested_json 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+    """
     stack = []
     start_index = -1
     results = []
@@ -98,6 +123,11 @@ def extract_nested_json(text):
     return None
 
 def string_to_numeric_hash(text: str, bits: Optional[int] = 64) -> int:
+    """
+    是什么：string_to_numeric_hash 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 string_to_numeric_hash 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     hash_bytes = hashlib.sha256(text.encode()).digest()
     hash_num = int.from_bytes(hash_bytes, byteorder='big')
     max_bigint = 2**63 - 1
@@ -106,12 +136,17 @@ def string_to_numeric_hash(text: str, bits: Optional[int] = 64) -> int:
 
 def setup_logging():
     # 确保日志目录存在
+    """
+    是什么：setup_logging 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新通用工具相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     log_dir = Path(settings.LOG_DIR)
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_format = str(settings.LOG_FORMAT or "").strip()
     if log_format.lower() == "json":
-        # Fall back to a safe plain-text formatter when env config uses "json".
+        # 当环境配置使用 "json" 时，回退到安全的纯文本格式化器。
         log_format = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
     # 避免重复初始化时累加处理器
@@ -121,12 +156,12 @@ def setup_logging():
 
     # 日志格式
     formatter = logging.Formatter(log_format)
-    
+
     # 控制台日志
     console_handler = logging.StreamHandler()
     console_handler.setLevel(settings.LOG_LEVEL)
     console_handler.setFormatter(formatter)
-    
+
     # 文件日志处理器
     file_handlers = {
         'debug': logging.DEBUG,
@@ -134,13 +169,13 @@ def setup_logging():
         'warn': logging.WARNING,
         'error': logging.ERROR
     }
-    
+
     # 主日志记录器
     root_logger.setLevel(logging.DEBUG)  # 设置最低级别
-    
+
     # 添加控制台处理器
     root_logger.addHandler(console_handler)
-    
+
     # 为每个级别创建文件处理器
     for level_name, level in file_handlers.items():
         file_path = log_dir / f"{level_name}.log"
@@ -152,7 +187,7 @@ def setup_logging():
         )
         handler.setLevel(level)
         handler.setFormatter(formatter)
-        
+
         # 添加过滤器只处理特定级别日志
         if level_name == 'debug':
             handler.addFilter(lambda record: record.levelno == logging.DEBUG)
@@ -162,14 +197,14 @@ def setup_logging():
             handler.addFilter(lambda record: record.levelno == logging.WARNING)
         elif level_name == 'error':
             handler.addFilter(lambda record: record.levelno >= logging.ERROR)
-        
+
         root_logger.addHandler(handler)
-    
-    # SQL日志特殊处理
+
+    # SQL 日志特殊处理
     if settings.LOG_LEVEL == "DEBUG" and settings.SQL_DEBUG:
         sql_logger = logging.getLogger('sqlalchemy.engine')
         sql_logger.setLevel(logging.DEBUG)
-        
+
         sql_handler = SafeRotatingFileHandler(
             log_dir / "sql.log",
             maxBytes=10 * 1024 * 1024,
@@ -178,23 +213,38 @@ def setup_logging():
         )
         sql_handler.setFormatter(formatter)
         sql_logger.addHandler(sql_handler)
-        
+
 setup_logging()
 
 
 class CallerLogger(logging.Logger):
     def __init__(self, logger: logging.Logger):
+        """
+        是什么：CallerLogger.__init__ 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由创建 CallerLogger 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.logger = logger
         super().__init__(logger.name, logger.level)
 
     def _log(self, level, msg, args, exc_info=None, extra=None, stacklevel=3):
+        """
+        是什么：CallerLogger._log 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由持有 CallerLogger 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _log 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         if self.logger.isEnabledFor(level):
             self.logger._log(level, msg, args, exc_info=exc_info, extra=extra, stacklevel=stacklevel)
 
 class AppLogUtil:
-    
+
     @staticmethod
     def _get_logger() -> logging.Logger:
+        """
+        是什么：AppLogUtil._get_logger 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+        """
         frame = inspect.currentframe()
         try:
             caller_frame = frame.f_back.f_back
@@ -202,51 +252,86 @@ class AppLogUtil:
             return CallerLogger(logging.getLogger(module_name))
         finally:
             del frame
-        
+
 
     @staticmethod
     def debug(msg: str, *args, **kwargs):
+        """
+        是什么：AppLogUtil.debug 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 debug 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.DEBUG):
             logger._log(logging.DEBUG, msg, args, **kwargs)
 
     @staticmethod
     def info(msg: str, *args, **kwargs):
+        """
+        是什么：AppLogUtil.info 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 info 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.INFO):
             logger._log(logging.INFO, msg, args, **kwargs)
 
     @staticmethod
     def warning(msg: str, *args, **kwargs):
+        """
+        是什么：AppLogUtil.warning 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 warning 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.WARNING):
             logger._log(logging.WARNING, msg, args, **kwargs)
 
     @staticmethod
     def error(msg: str, *args, exc_info: Optional[bool] = None, **kwargs):
+        """
+        是什么：AppLogUtil.error 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 error 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.ERROR):
             logger._log(
-                logging.ERROR, 
-                msg, 
-                args, 
+                logging.ERROR,
+                msg,
+                args,
                 exc_info=exc_info if exc_info is not None else True,
                 **kwargs
             )
 
     @staticmethod
     def exception(msg: str, *args, **kwargs):
+        """
+        是什么：AppLogUtil.exception 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 exception 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.ERROR):
             logger._log(logging.ERROR, msg, args, exc_info=True, **kwargs)
 
     @staticmethod
     def critical(msg: str, *args, **kwargs):
+        """
+        是什么：AppLogUtil.critical 是 backend/common/utils/utils.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：围绕 critical 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.CRITICAL):
             logger._log(logging.CRITICAL, msg, args, **kwargs)
-            
+
 def prepare_for_orjson(data):
+    """
+    是什么：prepare_for_orjson 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 prepare_for_orjson 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     if not data:
         return data
     if isinstance(data, bytes):
@@ -257,9 +342,14 @@ def prepare_for_orjson(data):
         return [prepare_for_orjson(item) for item in data]
     else:
         return data
-        
-    
+
+
 def prepare_model_arg(origin_arg: str):
+    """
+    是什么：prepare_model_arg 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 prepare_model_arg 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     if not isinstance(origin_arg, str):
         return origin_arg
     if not origin_arg.strip()[0] in {'{', '['}:
@@ -268,12 +358,17 @@ def prepare_model_arg(origin_arg: str):
         return json.loads(origin_arg)
     except:
         return origin_arg
-    
+
 def get_origin_from_referer(request: Request):
+    """
+    是什么：get_origin_from_referer 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+    """
     referer = request.headers.get("referer")
     if not referer:
         return None
-    
+
     try:
         parsed = urlparse(referer)
         if not parsed.scheme or not parsed.hostname:
@@ -283,24 +378,34 @@ def get_origin_from_referer(request: Request):
             if (parsed.scheme == "http" and port != 80) or \
                (parsed.scheme == "https" and port != 443):
                 return f"{parsed.scheme}://{parsed.hostname}:{port}"
-        
+
         return f"{parsed.scheme}://{parsed.hostname}"
     except Exception as e:
         AppLogUtil.error(f"解析 Referer 出错: {e}")
         return referer
 
 def origin_match_domain(origin: str, domain: str) -> bool:
+    """
+    是什么：origin_match_domain 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 origin_match_domain 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     if not origin or not domain:
         return False
     origin_normalized = origin.rstrip('/')
-    
+
     for d in re.split(r'[,;]', domain):
         if d.strip().rstrip('/') == origin_normalized:
             return True
-    
+
     return False
 
 def get_domain_list(domain: str) -> list[str]:
+    """
+    是什么：get_domain_list 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+    """
     domains = []
     if not domain:
         return domains
@@ -309,9 +414,14 @@ def get_domain_list(domain: str) -> list[str]:
         if d_clean:
             domains.append(d_clean)
     return domains
-    
+
 
 def equals_ignore_case(str1: str, *args: str) -> bool:
+    """
+    是什么：equals_ignore_case 是 backend/common/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 equals_ignore_case 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     if str1 is None:
         return None in args
     for arg in args:

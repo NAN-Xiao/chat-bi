@@ -8,6 +8,11 @@ from apps.chat.task.llm import _parse_sql_answer_data
 
 
 def test_parse_sql_answer_data_accepts_strict_json() -> None:
+    """
+    是什么：test_parse_sql_answer_data_accepts_strict_json 是 backend/tests/test_llm_sql_answer_parser.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     payload = {
         "success": True,
         "sql": 'SELECT "p"."channel" AS "渠道"',
@@ -26,6 +31,11 @@ def test_parse_sql_answer_data_accepts_strict_json() -> None:
 
 
 def test_parse_sql_answer_data_recovers_postgres_identifier_quotes() -> None:
+    """
+    是什么：test_parse_sql_answer_data_recovers_postgres_identifier_quotes 是 backend/tests/test_llm_sql_answer_parser.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     llm_answer = (
         '{"success":true,"sql":"SELECT \\"p"."channel\\" AS \\"渠道\\", '
         'SUM(\\"fp\\".\\"net_revenue_usd\\") AS \\"净收入\\" '
@@ -51,5 +61,10 @@ def test_parse_sql_answer_data_recovers_postgres_identifier_quotes() -> None:
 
 
 def test_parse_sql_answer_data_rejects_non_json_text() -> None:
+    """
+    是什么：test_parse_sql_answer_data_rejects_non_json_text 是 backend/tests/test_llm_sql_answer_parser.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     with pytest.raises(ValueError):
         _parse_sql_answer_data("SELECT 1")

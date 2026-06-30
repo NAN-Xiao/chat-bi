@@ -300,7 +300,7 @@ class QueryDashboard(BaseDashboard):
     include_data: bool = True
 
 
-# dashboard create obj
+# 仪表盘创建对象
 class CreateDashboard(QueryDashboard):
     canvas_style_data: str =''
     component_data: str = ''
@@ -310,12 +310,14 @@ class CreateDashboard(QueryDashboard):
 
 class DashboardPivotRequest(BaseModel):
     enabled: bool = False
+    client_filter_only: bool = False
     time_field: str = ''
     metric_field: str = ''
     metric_fields: List[str] = Field(default_factory=list)
     metric_aggregations: Dict[str, Literal["sum", "avg", "min", "max", "count"]] = Field(default_factory=dict)
     group_field: str = ''
     group_enabled: bool = True
+    group_values: List[str] = Field(default_factory=list)
     dimensions: List[Dict[str, Any]] = Field(default_factory=list)
     range_enabled: bool = True
     granularity: Literal["day", "week", "month"] = "day"

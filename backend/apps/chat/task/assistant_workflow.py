@@ -32,20 +32,40 @@ class AssistantWorkflowConfig:
 
 
 def record_id(service: Any) -> Any:
+    """
+    是什么：record_id 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 record_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return getattr(getattr(service, "record", None), "id", None)
 
 
 def workflow_attr(workflow_key: str, name: str) -> str:
+    """
+    是什么：workflow_attr 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 workflow_attr 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return f"_{workflow_key}_graph_{name}"
 
 
 def new_workflow_run_id(service: Any, run_id_prefix: str) -> str:
+    """
+    是什么：new_workflow_run_id 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     current_record_id = record_id(service)
     record_part = str(current_record_id) if current_record_id is not None else "unknown"
     return f"{run_id_prefix}-{record_part}-{uuid.uuid4().hex[:12]}"
 
 
 def init_workflow_run(service: Any, workflow_key: str, run_id_prefix: str) -> str:
+    """
+    是什么：init_workflow_run 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     run_id = new_workflow_run_id(service, run_id_prefix)
     setattr(service, workflow_attr(workflow_key, "run_id"), run_id)
     setattr(service, workflow_attr(workflow_key, "trace"), [])
@@ -55,6 +75,11 @@ def init_workflow_run(service: Any, workflow_key: str, run_id_prefix: str) -> st
 
 
 def classify_workflow_error(error: BaseException) -> str:
+    """
+    是什么：classify_workflow_error 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 classify_workflow_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if isinstance(error, SingleMessageError):
         return "single_message"
     if isinstance(error, AppDBConnectionError):
@@ -76,6 +101,11 @@ def log_workflow_event(
     node: str | None = None,
     **extra: Any,
 ) -> None:
+    """
+    是什么：log_workflow_event 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 log_workflow_event 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     payload: dict[str, Any] = {
         "workflow": workflow_key,
         "event": event,
@@ -93,6 +123,11 @@ def append_workflow_trace(
     workflow_key: str,
     entry: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    """
+    是什么：append_workflow_trace 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 append_workflow_trace 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     service = state["service"]
     existing_trace = state.get("graph_trace")
     if existing_trace is None:
@@ -110,7 +145,17 @@ def observe_workflow_node(
     node: str,
     handler: WorkflowNode,
 ) -> WorkflowNode:
+    """
+    是什么：observe_workflow_node 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 observe_workflow_node 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     def _wrapped(state: WorkflowState) -> dict[str, Any]:
+        """
+        是什么：_wrapped 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+        谁调用：由外层函数 observe_workflow_node 在执行内部流程时调用。
+        做了什么：围绕 _wrapped 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         service = state["service"]
         run_id = (
             state.get("graph_run_id")
@@ -193,6 +238,11 @@ def observe_node(
     node: str,
     handler: WorkflowNode,
 ) -> WorkflowNode:
+    """
+    是什么：observe_node 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 observe_node 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return observe_workflow_node(
         workflow_key=config.workflow_key,
         run_id_prefix=config.run_id_prefix,
@@ -208,6 +258,11 @@ def emit_record_metadata(
     include_question_in_chat: bool,
     include_regenerate_id: bool,
 ) -> dict[str, Any]:
+    """
+    是什么：emit_record_metadata 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     service = state["service"]
     in_chat = state["in_chat"]
     stream = state["stream"]
@@ -239,6 +294,11 @@ def format_workflow_error(
     log_prefix: str,
     include_db_error_types: bool = False,
 ) -> str:
+    """
+    是什么：format_workflow_error 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if isinstance(error, SingleMessageError):
         error_msg = str(error)
         AppLogUtil.info(f"{log_prefix} user-visible error record_id={record_id(service)}: {error_msg}")
@@ -276,6 +336,11 @@ def run_assistant_workflow(
     format_error: WorkflowErrorFormatter | None = None,
     session_scope_factory: Callable[[], Any] | None = None,
 ) -> Iterator[Any]:
+    """
+    是什么：run_assistant_workflow 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    """
     json_result = initial_state.setdefault("json_result", {"success": True})
     graph_run_id = init_workflow_run(service, config.workflow_key, config.run_id_prefix)
     initial_state["graph_run_id"] = graph_run_id
@@ -347,6 +412,11 @@ def run_assistant_workflow(
 
 
 def consume_generator_return(generator: Any, on_chunk: Callable[[Any], None]) -> Any:
+    """
+    是什么：consume_generator_return 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 consume_generator_return 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     while True:
         try:
             chunk = next(generator)
@@ -357,6 +427,11 @@ def consume_generator_return(generator: Any, on_chunk: Callable[[Any], None]) ->
 
 @contextmanager
 def session_scope() -> Iterator[Session]:
+    """
+    是什么：session_scope 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 session_scope 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     from apps.chat.task.llm import session_maker
 
     session = session_maker()

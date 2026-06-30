@@ -13,6 +13,11 @@ from common.core.response_middleware import ResponseMiddleware
 
 
 def dynamic_upgrade_cors(request: Request, session: Session):
+    """
+    是什么：dynamic_upgrade_cors 是 backend/apps/system/crud/assistant_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 dynamic_upgrade_cors 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time)).all()
     seen = set()
     unique_domains = []
@@ -42,6 +47,11 @@ def dynamic_upgrade_cors(request: Request, session: Session):
             instance.update_allow_origins(updated_origins)
 
 async def save(request: Request, session: Session, creator: AssistantBase, tenant_id: int | None = None):
+    """
+    是什么：save 是 backend/apps/system/crud/assistant_manage.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     db_model = AssistantModel.model_validate(creator.model_dump(exclude_unset=True))
     db_model.tenant_id = require_tenant_id(tenant_id)
     db_model.create_time = get_timestamp()

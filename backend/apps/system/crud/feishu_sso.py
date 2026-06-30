@@ -47,14 +47,29 @@ class FeishuIdentity(BaseModel):
 
 
 def _clean_text(value: str | None, default: str = "") -> str:
+    """
+    是什么：_clean_text 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     return (value or default or "").strip()
 
 
 def _default_redirect_uri() -> str:
+    """
+    是什么：_default_redirect_uri 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _default_redirect_uri 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return f"{settings.FRONTEND_HOST.rstrip('/')}/#/login"
 
 
 def _default_config() -> dict[str, Any]:
+    """
+    是什么：_default_config 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _default_config 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return {
         "app_id": "",
         "app_secret": None,
@@ -69,6 +84,11 @@ def _default_config() -> dict[str, Any]:
 
 
 def _load_config(row: AuthenticationModel | None, *, decrypt_secret: bool = False) -> dict[str, Any]:
+    """
+    是什么：_load_config 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     config = _default_config()
     if row and row.config:
         try:
@@ -83,6 +103,11 @@ def _load_config(row: AuthenticationModel | None, *, decrypt_secret: bool = Fals
 
 
 def _find_row(session: Session) -> AuthenticationModel | None:
+    """
+    是什么：_find_row 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     return session.exec(
         select(AuthenticationModel).where(
             AuthenticationModel.type == FEISHU_AUTH_TYPE,
@@ -92,6 +117,11 @@ def _find_row(session: Session) -> AuthenticationModel | None:
 
 
 def _secret_is_mask(value: str | None) -> bool:
+    """
+    是什么：_secret_is_mask 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _secret_is_mask 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if value is None:
         return True
     stripped = value.strip()
@@ -99,6 +129,11 @@ def _secret_is_mask(value: str | None) -> bool:
 
 
 def _has_configured_secret(config: dict[str, Any]) -> bool:
+    """
+    是什么：_has_configured_secret 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_configured_secret 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return bool(_clean_text(decrypt_sensitive_text(config.get("app_secret"))))
     except ValueError:
@@ -106,15 +141,30 @@ def _has_configured_secret(config: dict[str, Any]) -> bool:
 
 
 def _is_http_url(value: str | None) -> bool:
+    """
+    是什么：_is_http_url 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_http_url 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     parsed = urlparse(_clean_text(value))
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _scope_items(value: str | None) -> set[str]:
+    """
+    是什么：_scope_items 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _scope_items 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return {item for item in _clean_text(value).split() if item}
 
 
 def _is_config_valid(config: dict[str, Any], *, enable: bool) -> bool:
+    """
+    是什么：_is_config_valid 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_config_valid 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     scope_items = _scope_items(config.get("scope"))
     return bool(
         enable
@@ -134,6 +184,11 @@ def _is_config_valid(config: dict[str, Any], *, enable: bool) -> bool:
 
 
 def _validate_enabled_config(config: dict[str, Any], *, enable: bool) -> None:
+    """
+    是什么：_validate_enabled_config 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not enable:
         return
 
@@ -174,6 +229,11 @@ def _validate_enabled_config(config: dict[str, Any], *, enable: bool) -> None:
 
 
 def _to_dto(row: AuthenticationModel | None) -> FeishuSsoConfigDTO:
+    """
+    是什么：_to_dto 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _to_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     config = _load_config(row, decrypt_secret=False)
     secret_configured = _has_configured_secret(config)
     return FeishuSsoConfigDTO(
@@ -195,10 +255,20 @@ def _to_dto(row: AuthenticationModel | None) -> FeishuSsoConfigDTO:
 
 
 def get_feishu_sso_config(session: Session) -> FeishuSsoConfigDTO:
+    """
+    是什么：get_feishu_sso_config 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     return _to_dto(_find_row(session))
 
 
 def upsert_feishu_sso_config(session: Session, editor: FeishuSsoConfigEditor) -> FeishuSsoConfigDTO:
+    """
+    是什么：upsert_feishu_sso_config 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 upsert_feishu_sso_config 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     row = _find_row(session)
     existing_config = _load_config(row, decrypt_secret=False)
     config = _default_config()
@@ -243,15 +313,30 @@ def upsert_feishu_sso_config(session: Session, editor: FeishuSsoConfigEditor) ->
 
 
 def _base64_urlsafe(data: bytes) -> str:
+    """
+    是什么：_base64_urlsafe 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _base64_urlsafe 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
 
 
 def _sign_state(raw_payload: str) -> str:
+    """
+    是什么：_sign_state 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sign_state 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     digest = hmac.new(settings.SECRET_KEY.encode("utf-8"), raw_payload.encode("utf-8"), hashlib.sha256).digest()
     return _base64_urlsafe(digest)
 
 
 def create_feishu_state(*, redirect: str | None = None, tenant_id: int | None = None) -> str:
+    """
+    是什么：create_feishu_state 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     payload: dict[str, Any] = {
         "provider": FEISHU_AUTH_NAME,
         "ts": get_timestamp(),
@@ -266,6 +351,11 @@ def create_feishu_state(*, redirect: str | None = None, tenant_id: int | None = 
 
 
 def parse_feishu_state(state: str) -> dict[str, Any]:
+    """
+    是什么：parse_feishu_state 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     prefix = f"{FEISHU_AUTH_NAME}:"
     if not state or not state.startswith(prefix) or "." not in state:
         raise ValueError("Invalid Feishu login state")
@@ -287,6 +377,11 @@ def build_feishu_authorize_url(
     redirect: str | None = None,
     tenant_id: int | None = None,
 ) -> str | None:
+    """
+    是什么：build_feishu_authorize_url 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     row = _find_row(session)
     dto = _to_dto(row)
     if not dto.enable or not dto.valid:
@@ -303,6 +398,11 @@ def build_feishu_authorize_url(
 
 
 def get_enabled_feishu_config(session: Session) -> dict[str, Any]:
+    """
+    是什么：get_enabled_feishu_config 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     row = _find_row(session)
     dto = _to_dto(row)
     if not dto.enable or not dto.valid:
@@ -311,6 +411,11 @@ def get_enabled_feishu_config(session: Session) -> dict[str, Any]:
 
 
 def _extract_response_data(payload: dict[str, Any], *, context: str) -> dict[str, Any]:
+    """
+    是什么：_extract_response_data 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     code = payload.get("code", 0)
     if code not in (0, "0", None):
         raise ValueError(payload.get("msg") or payload.get("message") or f"Feishu {context} failed")
@@ -319,6 +424,11 @@ def _extract_response_data(payload: dict[str, Any], *, context: str) -> dict[str
 
 
 async def _post_json(url: str, data: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """
+    是什么：_post_json 是 backend/apps/system/crud/feishu_sso.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _post_json 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(url, json=data, headers=headers)
@@ -329,6 +439,11 @@ async def _post_json(url: str, data: dict[str, Any], headers: dict[str, str] | N
 
 
 async def _get_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """
+    是什么：_get_json 是 backend/apps/system/crud/feishu_sso.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url, headers=headers)
@@ -339,6 +454,11 @@ async def _get_json(url: str, headers: dict[str, str] | None = None) -> dict[str
 
 
 async def _exchange_authen_v1_token(config: dict[str, Any], code: str) -> str:
+    """
+    是什么：_exchange_authen_v1_token 是 backend/apps/system/crud/feishu_sso.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _exchange_authen_v1_token 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     tenant_payload = await _post_json(
         _clean_text(config.get("tenant_access_token_url"), DEFAULT_FEISHU_TENANT_ACCESS_TOKEN_URL),
         {
@@ -368,6 +488,11 @@ async def _exchange_authen_v1_token(config: dict[str, Any], code: str) -> str:
 
 
 async def _exchange_oauth_v2_token(config: dict[str, Any], code: str) -> str:
+    """
+    是什么：_exchange_oauth_v2_token 是 backend/apps/system/crud/feishu_sso.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _exchange_oauth_v2_token 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     token_payload = await _post_json(
         _clean_text(config.get("token_url"), DEFAULT_FEISHU_TOKEN_URL),
         {
@@ -386,6 +511,11 @@ async def _exchange_oauth_v2_token(config: dict[str, Any], code: str) -> str:
 
 
 async def fetch_feishu_identity(config: dict[str, Any], code: str) -> FeishuIdentity:
+    """
+    是什么：fetch_feishu_identity 是 backend/apps/system/crud/feishu_sso.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     mode = config.get("token_mode") if config.get("token_mode") in {"oauth_v2", "authen_v1"} else "oauth_v2"
     access_token = (
         await _exchange_authen_v1_token(config, code)
@@ -419,6 +549,11 @@ async def fetch_feishu_identity(config: dict[str, Any], code: str) -> FeishuIden
 
 
 def _find_platform_binding(session: Session, identity: FeishuIdentity) -> UserPlatformModel | None:
+    """
+    是什么：_find_platform_binding 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     candidates = {identity.platform_uid}
     for item in (identity.open_id, identity.union_id, identity.user_id):
         if item:
@@ -432,16 +567,31 @@ def _find_platform_binding(session: Session, identity: FeishuIdentity) -> UserPl
 
 
 def _find_user_by_email(session: Session, email: str | None) -> UserModel | None:
+    """
+    是什么：_find_user_by_email 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     if not email:
         return None
     return session.exec(select(UserModel).where(func.lower(UserModel.email) == email.lower())).first()
 
 
 def _value_exists(session: Session, field, value: str) -> bool:
+    """
+    是什么：_value_exists 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _value_exists 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return session.exec(select(UserModel.id).where(field == value)).first() is not None
 
 
 def _unique_user_value(session: Session, field, base: str, fallback: str) -> str:
+    """
+    是什么：_unique_user_value 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _unique_user_value 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     cleaned = _clean_text(base) or fallback
     cleaned = cleaned[:100]
     if not _value_exists(session, field, cleaned):
@@ -458,6 +608,11 @@ def _unique_user_value(session: Session, field, base: str, fallback: str) -> str
 
 
 def _bind_platform(session: Session, *, user_id: int, identity: FeishuIdentity) -> None:
+    """
+    是什么：_bind_platform 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     existing = _find_platform_binding(session, identity)
     if existing:
         existing.uid = int(user_id)
@@ -474,6 +629,11 @@ def _bind_platform(session: Session, *, user_id: int, identity: FeishuIdentity) 
 
 
 def bind_or_create_feishu_user(session: Session, identity: FeishuIdentity) -> BaseUserDTO:
+    """
+    是什么：bind_or_create_feishu_user 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     binding = _find_platform_binding(session, identity)
     if binding:
         user = session.get(UserModel, int(binding.uid))
@@ -506,4 +666,9 @@ def bind_or_create_feishu_user(session: Session, identity: FeishuIdentity) -> Ba
 
 
 def token_expires_delta() -> timedelta:
+    """
+    是什么：token_expires_delta 是 backend/apps/system/crud/feishu_sso.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 token_expires_delta 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

@@ -27,6 +27,11 @@ from common.utils.embedding_threads import run_save_custom_prompt_skill_embeddin
 
 
 def _normalize_type(custom_prompt_type: CustomPromptTypeEnum | str | None) -> CustomPromptTypeEnum:
+    """
+    是什么：_normalize_type 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if isinstance(custom_prompt_type, CustomPromptTypeEnum):
         return custom_prompt_type
     try:
@@ -38,6 +43,11 @@ def _normalize_type(custom_prompt_type: CustomPromptTypeEnum | str | None) -> Cu
 def _normalize_target_scope(
         target_scope: CustomPromptTargetScopeEnum | str | None,
 ) -> CustomPromptTargetScopeEnum:
+    """
+    是什么：_normalize_target_scope 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if isinstance(target_scope, CustomPromptTargetScopeEnum):
         return target_scope
     if target_scope in (None, ""):
@@ -52,6 +62,11 @@ def _ensure_target_scope_allowed(
         prompt_type: CustomPromptTypeEnum,
         target_scope: CustomPromptTargetScopeEnum,
 ) -> None:
+    """
+    是什么：_ensure_target_scope_allowed 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if (
         target_scope == CustomPromptTargetScopeEnum.REPORT_INTERPRETATION
         and prompt_type != CustomPromptTypeEnum.DATA_SKILL
@@ -64,6 +79,11 @@ def _normalize_platform_generic_scope(
         specific_ds: bool,
         datasource_ids: list[int],
 ) -> tuple[int | None, bool, list[int]]:
+    """
+    是什么：_normalize_platform_generic_scope 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
         return DEFAULT_TENANT_ID, False, []
     return None, specific_ds, datasource_ids
@@ -72,6 +92,11 @@ def _normalize_platform_generic_scope(
 def _normalize_visibility_scope(
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None,
 ) -> CustomPromptVisibilityScopeEnum:
+    """
+    是什么：_normalize_visibility_scope 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if isinstance(visibility_scope, CustomPromptVisibilityScopeEnum):
         return visibility_scope
     if visibility_scope in (None, ""):
@@ -83,6 +108,11 @@ def _normalize_visibility_scope(
 
 
 def _normalize_ids(datasource_ids: Optional[list[int]]) -> list[int]:
+    """
+    是什么：_normalize_ids 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     result: list[int] = []
     if isinstance(datasource_ids, str):
         try:
@@ -98,6 +128,11 @@ def _normalize_ids(datasource_ids: Optional[list[int]]) -> list[int]:
 
 
 def _normalize_ai_model_id(ai_model_id: Optional[int | str]) -> Optional[int]:
+    """
+    是什么：_normalize_ai_model_id 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     if ai_model_id in (None, ""):
         return None
     try:
@@ -107,6 +142,11 @@ def _normalize_ai_model_id(ai_model_id: Optional[int | str]) -> Optional[int]:
 
 
 def _datasource_name_map(session: SessionDep, datasource_ids: list[int]) -> dict[int, str]:
+    """
+    是什么：_datasource_name_map 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _datasource_name_map 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not datasource_ids:
         return {}
     rows = session.execute(
@@ -116,6 +156,11 @@ def _datasource_name_map(session: SessionDep, datasource_ids: list[int]) -> dict
 
 
 def _ai_model_name_map(session: SessionDep, ai_model_ids: list[int]) -> dict[int, str]:
+    """
+    是什么：_ai_model_name_map 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _ai_model_name_map 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not ai_model_ids:
         return {}
     rows = session.execute(
@@ -125,6 +170,11 @@ def _ai_model_name_map(session: SessionDep, ai_model_ids: list[int]) -> dict[int
 
 
 def _require_ai_model(session: SessionDep, ai_model_id: Optional[int]) -> Optional[int]:
+    """
+    是什么：_require_ai_model 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if ai_model_id is None:
         return None
     if not session.get(AiModelDetail, ai_model_id):
@@ -139,6 +189,11 @@ def ensure_custom_prompt_owner(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
 ):
+    """
+    是什么：ensure_custom_prompt_owner 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC and can_manage_platform_public:
         return
@@ -153,6 +208,11 @@ def ensure_custom_prompt_owner(
 
 
 def _is_owner(row: CustomPrompt, current_user_id: Optional[int]) -> bool:
+    """
+    是什么：_is_owner 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_owner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return (
         current_user_id is not None
         and row.create_by is not None
@@ -167,6 +227,11 @@ def _can_manage_row(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
 ) -> bool:
+    """
+    是什么：_can_manage_row 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_manage_row 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
         return can_manage_platform_public
@@ -182,6 +247,11 @@ def _row_visible_to_current_user(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
 ) -> bool:
+    """
+    是什么：_row_visible_to_current_user 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _row_visible_to_current_user 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
     visible = bool(row.visible) if row.visible is not None else True
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
@@ -197,6 +267,11 @@ def _prompt_visible(
         can_manage_all: bool,
         can_manage_public: bool = False,
 ) -> bool:
+    """
+    是什么：_prompt_visible 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _prompt_visible 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
         return True
@@ -215,6 +290,11 @@ def _to_info(
         can_manage_platform_public: bool = False,
         user_enabled: Optional[bool] = True,
 ) -> CustomPromptInfo:
+    """
+    是什么：_to_info 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _to_info 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     datasource_ids = _normalize_ids(row.datasource_ids)
     ds_names = ds_names or {}
     ai_model_id = _normalize_ai_model_id(row.ai_model_id)
@@ -259,6 +339,11 @@ def _to_option(
         row: CustomPrompt,
         ai_model_names: Optional[dict[int, str]] = None,
 ) -> CustomPromptOption:
+    """
+    是什么：_to_option 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _to_option 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     ai_model_id = _normalize_ai_model_id(row.ai_model_id)
     ai_model_names = ai_model_names or {}
     return CustomPromptOption(
@@ -275,6 +360,11 @@ def _to_option(
 
 
 def _access_conditions(accessible_datasource_ids: Optional[set[int]], include_global: bool = True):
+    """
+    是什么：_access_conditions 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _access_conditions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if accessible_datasource_ids is None:
         return []
     conditions = []
@@ -290,6 +380,11 @@ def _access_conditions(accessible_datasource_ids: Optional[set[int]], include_gl
 
 
 def _tenant_public_visibility_condition():
+    """
+    是什么：_tenant_public_visibility_condition 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_public_visibility_condition 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return or_(
         CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
         CustomPrompt.visibility_scope.is_(None),
@@ -297,10 +392,20 @@ def _tenant_public_visibility_condition():
 
 
 def _platform_public_visibility_condition():
+    """
+    是什么：_platform_public_visibility_condition 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_public_visibility_condition 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
 
 
 def _visible_flag_condition():
+    """
+    是什么：_visible_flag_condition 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _visible_flag_condition 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return or_(CustomPrompt.visible == True, CustomPrompt.visible.is_(None))
 
 
@@ -310,6 +415,11 @@ def _display_visible_condition(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
 ):
+    """
+    是什么：_display_visible_condition 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _display_visible_condition 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     visible_flag = _visible_flag_condition()
     platform_condition = _platform_public_visibility_condition()
     if not can_manage_platform_public:
@@ -327,6 +437,11 @@ def _display_visible_condition(
 
 
 def _source_order_expression():
+    """
+    是什么：_source_order_expression 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _source_order_expression 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return case(
         (CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value, 0),
         (CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value, 2),
@@ -335,6 +450,11 @@ def _source_order_expression():
 
 
 def _split_legacy_data_skill_condition():
+    """
+    是什么：_split_legacy_data_skill_condition 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _split_legacy_data_skill_condition 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return or_(
         CustomPrompt.prompt.contains("<!-- data-skill-source:terminology:"),
         CustomPrompt.prompt.contains("<!-- data-skill-source:data-training:"),
@@ -345,12 +465,22 @@ def _split_legacy_data_skill_condition():
 
 
 def _apply_hidden_generated_skill_filter(stmt, prompt_type: CustomPromptTypeEnum):
+    """
+    是什么：_apply_hidden_generated_skill_filter 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _apply_hidden_generated_skill_filter 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if prompt_type != CustomPromptTypeEnum.DATA_SKILL:
         return stmt
     return stmt.where(~_split_legacy_data_skill_condition())
 
 
 def _tenant_id(tenant_id: int | str | None) -> int:
+    """
+    是什么：_tenant_id 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return require_tenant_id(tenant_id)
 
 
@@ -359,12 +489,22 @@ def _schedule_skill_embedding_after_commit(
         prompt_id: int,
         tenant_id: int | None,
 ) -> None:
+    """
+    是什么：_schedule_skill_embedding_after_commit 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _schedule_skill_embedding_after_commit 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     pending = session.info.setdefault("custom_prompt_skill_embedding_after_commit", {})
     pending[int(prompt_id)] = int(tenant_id) if tenant_id is not None else None
     if session.info.get("custom_prompt_skill_embedding_listener_registered"):
         return
 
     def _enqueue(_session):
+        """
+        是什么：_enqueue 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+        谁调用：由外层函数 _schedule_skill_embedding_after_commit 在执行内部流程时调用。
+        做了什么：围绕 _enqueue 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         queued = _session.info.pop("custom_prompt_skill_embedding_after_commit", {})
         _session.info.pop("custom_prompt_skill_embedding_listener_registered", None)
         _session.info.pop("custom_prompt_skill_embedding_rollback_listener_registered", None)
@@ -375,6 +515,11 @@ def _schedule_skill_embedding_after_commit(
             run_save_custom_prompt_skill_embeddings(queued_ids, tenant_id=queued_tenant_id)
 
     def _clear(_session):
+        """
+        是什么：_clear 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+        谁调用：由外层函数 _schedule_skill_embedding_after_commit 在执行内部流程时调用。
+        做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+        """
         _session.info.pop("custom_prompt_skill_embedding_after_commit", None)
         _session.info.pop("custom_prompt_skill_embedding_listener_registered", None)
         _session.info.pop("custom_prompt_skill_embedding_rollback_listener_registered", None)
@@ -387,6 +532,11 @@ def _schedule_skill_embedding_after_commit(
 
 
 def _mark_skill_embedding_stale_if_needed(row: CustomPrompt, prompt_type: CustomPromptTypeEnum) -> bool:
+    """
+    是什么：_mark_skill_embedding_stale_if_needed 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _mark_skill_embedding_stale_if_needed 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if prompt_type != CustomPromptTypeEnum.DATA_SKILL:
         if getattr(row, "embedding", None) or getattr(row, "embedding_signature", None):
             row.embedding = None
@@ -402,6 +552,11 @@ def _mark_skill_embedding_stale_if_needed(row: CustomPrompt, prompt_type: Custom
 
 
 def _private_visibility_condition(current_user_id: Optional[int]):
+    """
+    是什么：_private_visibility_condition 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _private_visibility_condition 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if current_user_id is None:
         return False
     return and_(
@@ -416,6 +571,11 @@ def _visible_conditions(
         can_manage_all: bool,
         include_global: bool = True,
 ):
+    """
+    是什么：_visible_conditions 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _visible_conditions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     platform_condition = _platform_public_visibility_condition()
 
     if can_manage_all:
@@ -449,6 +609,11 @@ def _build_query(
         platform_only: bool = False,
         effective_only: bool = False,
 ):
+    """
+    是什么：_build_query 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     prompt_type = _normalize_type(custom_prompt_type)
     resolved_tenant_id = _tenant_id(tenant_id)
     private_condition = _private_visibility_condition(current_user_id)
@@ -514,6 +679,11 @@ def _build_query(
 
 
 def _target_scope_condition(target_scope: CustomPromptTargetScopeEnum | str):
+    """
+    是什么：_target_scope_condition 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _target_scope_condition 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     normalized_scope = _normalize_target_scope(target_scope)
     conditions = [
         CustomPrompt.target_scope == normalized_scope.value,
@@ -529,6 +699,11 @@ def _user_enabled_map(
         prompt_ids: list[int],
         current_user_id: Optional[int],
 ) -> dict[int, bool]:
+    """
+    是什么：_user_enabled_map 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _user_enabled_map 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not prompt_ids or current_user_id is None:
         return {}
     rows = session.execute(
@@ -544,6 +719,11 @@ def _user_enabled_map(
 
 
 def _apply_user_enabled_filter(stmt, current_user_id: Optional[int]):
+    """
+    是什么：_apply_user_enabled_filter 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _apply_user_enabled_filter 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if current_user_id is None:
         return stmt
     disabled_for_user = select(CustomPromptUserPreference.custom_prompt_id).where(
@@ -566,6 +746,11 @@ def list_custom_prompt_options(
         tenant_id: int | None = None,
         platform_only: bool = False,
 ) -> list[CustomPromptOption]:
+    """
+    是什么：list_custom_prompt_options 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     resolved_tenant_id = _tenant_id(tenant_id)
     private_condition = _private_visibility_condition(current_user_id)
     visibility_conditions = [
@@ -631,6 +816,11 @@ def page_custom_prompts(
         platform_only: bool = False,
         effective_only: bool = False,
 ):
+    """
+    是什么：page_custom_prompts 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 page_custom_prompts 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     stmt = _build_query(
         custom_prompt_type=custom_prompt_type,
         name=name,
@@ -699,6 +889,11 @@ def get_all_custom_prompts(
         platform_only: bool = False,
         effective_only: bool = False,
 ) -> list[CustomPromptInfo]:
+    """
+    是什么：get_all_custom_prompts 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = _build_query(
         custom_prompt_type=custom_prompt_type,
         name=name,
@@ -753,6 +948,11 @@ def get_custom_prompt(
         can_manage_platform_public: bool = False,
         tenant_id: int | None = None,
 ) -> CustomPromptInfo:
+    """
+    是什么：get_custom_prompt 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     row = session.get(CustomPrompt, prompt_id)
     if not row:
         raise HTTPException(status_code=404, detail="Custom prompt not found")
@@ -797,6 +997,11 @@ def create_custom_prompt(
         current_user_id: Optional[int] = None,
         tenant_id: int | None = None,
 ) -> int:
+    """
+    是什么：create_custom_prompt 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not info.name or not info.name.strip():
         raise HTTPException(status_code=400, detail="Prompt name is required")
     if not info.prompt or not info.prompt.strip():
@@ -877,6 +1082,11 @@ def update_custom_prompt(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
 ) -> int:
+    """
+    是什么：update_custom_prompt 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     if not info.id:
         return create_custom_prompt(session, info, current_user_id, tenant_id)
     row = session.get(CustomPrompt, int(info.id))
@@ -977,6 +1187,11 @@ def delete_custom_prompts(
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
 ):
+    """
+    是什么：delete_custom_prompts 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    """
     normalized_ids = _normalize_ids(ids)
     if not normalized_ids:
         return
@@ -1018,6 +1233,11 @@ def batch_create_custom_prompts(
         current_user_id: Optional[int] = None,
         tenant_id: int | None = None,
 ):
+    """
+    是什么：batch_create_custom_prompts 是 backend/apps/chat/curd/custom_prompt_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 batch_create_custom_prompts 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     failed_records = []
     success_count = 0
     seen: set[tuple[str, str, str]] = set()

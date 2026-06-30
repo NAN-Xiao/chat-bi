@@ -13,6 +13,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def parse_cors(v: Any) -> list[str] | str:
+    """
+    是什么：parse_cors 是 backend/common/core/config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+    """
     if isinstance(v, str) and not v.startswith("["):
         return [i.strip() for i in v.split(",")]
     elif isinstance(v, list | str):
@@ -22,7 +27,7 @@ def parse_cors(v: Any) -> list[str] | str:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        # Use top level .env file (one level above ./backend/)
+        # 使用顶层 .env 文件（位于 ./backend/ 上一级）。
         env_file="../.env",
         env_ignore_empty=True,
         extra="ignore",
@@ -31,10 +36,10 @@ class Settings(BaseSettings):
     APP_ENV: Literal["development", "test", "production"] = "development"
     PRODUCTION_CHECKS_ENABLED: bool = True
     AUTO_RUN_MIGRATIONS: bool = False
-    #CONTEXT_PATH: str = "/shuzhi"
+    # CONTEXT_PATH: str = "/shuzhi"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
-    # 60 minutes * 24 hours * 8 days = 8 days
+    # 60 分钟 * 24 小时 * 8 天 = 8 天
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     FRONTEND_HOST: str = "http://localhost:5173"
     LOCAL_DEV_FRONTEND_HOSTS: tuple[str, ...] = (
@@ -50,6 +55,11 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def all_cors_origins(self) -> list[str]:
+        """
+        是什么：Settings.all_cors_origins 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 all_cors_origins 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         origins = [
             *[str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS],
             self.FRONTEND_HOST,
@@ -61,6 +71,11 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def API_V1_STR(self) -> str:
+        """
+        是什么：Settings.API_V1_STR 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 API_V1_STR 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         return self.CONTEXT_PATH + "/api/v1"
 
     SHUZHI_DB_HOST: str = "10.1.5.28"
@@ -98,7 +113,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024
 
     CACHE_TYPE: Literal["redis", "memory", "none"] = "redis"
-    CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
+    CACHE_REDIS_URL: str | None = None  # Redis 地址示例："redis://[[username]:[password]]@localhost:6379/0"。
     CACHE_REDIS_PREFIX: str = "shuzhi-cache"
 
     DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS: int = 3600
@@ -132,18 +147,23 @@ class Settings(BaseSettings):
     TASK_QUEUE_MAX_PENDING_PER_TENANT: int = 0
     TASK_QUEUE_MAX_PROCESSING_PER_TENANT: int = 0
 
-    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+    LOG_LEVEL: str = "INFO"  # 日志级别：DEBUG、INFO、WARNING、ERROR。
     LOG_DIR: str = "logs"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
     SQL_DEBUG: bool = False
     BASE_DIR: str = "/opt/shuzhi"
     SCRIPT_DIR: str = f"{BASE_DIR}/scripts"
     UPLOAD_DIR: str = "/opt/shuzhi/data/file"
-    SHUZHI_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
+    SHUZHI_KEY_EXPIRED: int = 100  # 许可证密钥过期时间戳，0 表示永不过期。
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn | str:
+        """
+        是什么：Settings.SQLALCHEMY_DATABASE_URI 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 SQLALCHEMY_DATABASE_URI 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         if self.SHUZHI_DB_URL:
             return self.SHUZHI_DB_URL
         # return MultiHostUrl.build(
@@ -163,22 +183,47 @@ class Settings(BaseSettings):
 
     @property
     def core_db_host(self) -> str:
+        """
+        是什么：Settings.core_db_host 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 core_db_host 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         return self.SHUZHI_DB_HOST
 
     @property
     def core_db_port(self) -> int:
+        """
+        是什么：Settings.core_db_port 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 core_db_port 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         return self.SHUZHI_DB_PORT
 
     @property
     def core_db_user(self) -> str:
+        """
+        是什么：Settings.core_db_user 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 core_db_user 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         return self.SHUZHI_DB_USER
 
     @property
     def core_db_password(self) -> str:
+        """
+        是什么：Settings.core_db_password 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 core_db_password 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         return self.SHUZHI_DB_PASSWORD
 
     @property
     def core_db_name(self) -> str:
+        """
+        是什么：Settings.core_db_name 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 core_db_name 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         return self.SHUZHI_DB_DB
 
     MCP_IMAGE_PATH: str = '/opt/shuzhi/images'
@@ -254,7 +299,11 @@ class Settings(BaseSettings):
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:
-        """将字符串形式的布尔值转换为Python布尔值"""
+        """
+        是什么：Settings.lowercase_bool 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
+        做了什么：围绕 lowercase_bool 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         if isinstance(v, str):
             v_lower = v.lower().strip()
             if v_lower == 'true':
@@ -266,6 +315,11 @@ class Settings(BaseSettings):
     @field_validator('CACHE_TYPE', mode='before')
     @classmethod
     def lowercase_cache_type(cls, v: Any) -> Any:
+        """
+        是什么：Settings.lowercase_cache_type 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
+        做了什么：围绕 lowercase_cache_type 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         if v is None:
             return "none"
         if isinstance(v, str):
@@ -278,6 +332,11 @@ class Settings(BaseSettings):
     @field_validator('APP_ENV', mode='before')
     @classmethod
     def normalize_app_env(cls, v: Any) -> Any:
+        """
+        是什么：Settings.normalize_app_env 是 backend/common/core/config.py 中的同步方法。
+        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
+        做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+        """
         if isinstance(v, str):
             value = v.lower().strip()
             return "production" if value == "prod" else value

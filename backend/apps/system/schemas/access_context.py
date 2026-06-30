@@ -21,14 +21,29 @@ class AccessContext:
 
     @property
     def is_global_platform(self) -> bool:
+        """
+        是什么：AccessContext.is_global_platform 是 backend/apps/system/schemas/access_context.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 is_global_platform 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         return self.is_platform_admin and not self.is_platform_workspace_delegate
 
     @property
     def can_manage_platform_scope(self) -> bool:
+        """
+        是什么：AccessContext.can_manage_platform_scope 是 backend/apps/system/schemas/access_context.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 can_manage_platform_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         return self.is_global_platform
 
     @property
     def can_manage_workspace_scope(self) -> bool:
+        """
+        是什么：AccessContext.can_manage_workspace_scope 是 backend/apps/system/schemas/access_context.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 can_manage_workspace_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         if self.is_platform_workspace_delegate:
             return self.has_workspace_context
         if self.is_global_platform:
@@ -37,6 +52,11 @@ class AccessContext:
 
     @property
     def management_scope(self) -> SemanticRecordScopeEnum:
+        """
+        是什么：AccessContext.management_scope 是 backend/apps/system/schemas/access_context.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 management_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         return (
             SemanticRecordScopeEnum.PLATFORM
             if self.is_global_platform
@@ -45,6 +65,11 @@ class AccessContext:
 
     @property
     def management_tenant_id(self) -> int:
+        """
+        是什么：AccessContext.management_tenant_id 是 backend/apps/system/schemas/access_context.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 management_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         if self.is_global_platform:
             return DEFAULT_TENANT_ID
         if not self.has_workspace_context:
@@ -53,6 +78,11 @@ class AccessContext:
 
 
 def current_tenant_id(current_user: Any | None) -> int | None:
+    """
+    是什么：current_tenant_id 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 current_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if current_user is None:
         return None
     tenant_id = getattr(current_user, "tenant_id", None)
@@ -65,6 +95,11 @@ def current_tenant_id(current_user: Any | None) -> int | None:
 
 
 def require_tenant_id(tenant_id: Any | None) -> int:
+    """
+    是什么：require_tenant_id 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if tenant_id is None or tenant_id == "":
         raise HTTPException(status_code=403, detail=WORKSPACE_CONTEXT_REQUIRED_MESSAGE)
     try:
@@ -74,12 +109,22 @@ def require_tenant_id(tenant_id: Any | None) -> int:
 
 
 def require_current_tenant_id(current_user: Any | None) -> int:
+    """
+    是什么：require_current_tenant_id 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if current_user is None:
         raise HTTPException(status_code=403, detail=WORKSPACE_CONTEXT_REQUIRED_MESSAGE)
     return require_tenant_id(getattr(current_user, "tenant_id", None))
 
 
 def resolve_access_context(current_user: Any | None) -> AccessContext:
+    """
+    是什么：resolve_access_context 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 resolve_access_context 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     raw_tenant_id = getattr(current_user, "tenant_id", None) if current_user is not None else None
     tenant_role = (
         getattr(current_user, "workspace_role", None)
@@ -95,24 +140,54 @@ def resolve_access_context(current_user: Any | None) -> AccessContext:
 
 
 def is_global_platform_context(current_user: Any | None) -> bool:
+    """
+    是什么：is_global_platform_context 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 is_global_platform_context 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return resolve_access_context(current_user).is_global_platform
 
 
 def has_workspace_context(current_user: Any | None) -> bool:
+    """
+    是什么：has_workspace_context 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 has_workspace_context 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return resolve_access_context(current_user).has_workspace_context
 
 
 def can_manage_platform_scope(current_user: Any | None) -> bool:
+    """
+    是什么：can_manage_platform_scope 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 can_manage_platform_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return resolve_access_context(current_user).can_manage_platform_scope
 
 
 def can_manage_workspace_scope(current_user: Any | None) -> bool:
+    """
+    是什么：can_manage_workspace_scope 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 can_manage_workspace_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return resolve_access_context(current_user).can_manage_workspace_scope
 
 
 def management_scope(current_user: Any | None) -> SemanticRecordScopeEnum:
+    """
+    是什么：management_scope 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 management_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return resolve_access_context(current_user).management_scope
 
 
 def management_tenant_id(current_user: Any | None) -> int:
+    """
+    是什么：management_tenant_id 是 backend/apps/system/schemas/access_context.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 management_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return resolve_access_context(current_user).management_tenant_id

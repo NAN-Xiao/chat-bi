@@ -65,6 +65,11 @@ from common.utils.tree_utils import build_tree_generic
 
 
 def _first_scalar_value(value: Any):
+    """
+    是什么：_first_scalar_value 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _first_scalar_value 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if value is None:
         return None
     if hasattr(value, "_mapping"):
@@ -76,6 +81,11 @@ def _first_scalar_value(value: Any):
 
 
 def _dashboard_chart_has_materialized_result(item: dict) -> bool:
+    """
+    是什么：_dashboard_chart_has_materialized_result 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_chart_has_materialized_result 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     data_obj = item.get('data') if isinstance(item.get('data'), dict) else {}
     rows = data_obj.get('data')
     data_fields = data_obj.get('fields')
@@ -88,6 +98,11 @@ def _dashboard_chart_has_materialized_result(item: dict) -> bool:
 
 
 def _normalize_persisted_dashboard_chart_state(canvas_view_obj: dict) -> dict:
+    """
+    是什么：_normalize_persisted_dashboard_chart_state 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化仪表盘相关数据，生成后续流程可使用的结构。
+    """
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
@@ -103,6 +118,11 @@ def _normalize_persisted_dashboard_chart_state(canvas_view_obj: dict) -> dict:
 
 
 def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | bytes | None:
+    """
+    是什么：_sanitize_canvas_view_info 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sanitize_canvas_view_info 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not canvas_view_info:
         return canvas_view_info
     try:
@@ -116,14 +136,29 @@ def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | by
 
 
 def _user_id(current_user: CurrentUser) -> str:
+    """
+    是什么：_user_id 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _user_id 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return str(current_user.id)
 
 
 def _now() -> int:
+    """
+    是什么：_now 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _now 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return int(time.time())
 
 
 def _smallint_flag(value: Any, default: int = 0) -> int:
+    """
+    是什么：_smallint_flag 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _smallint_flag 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if value is None:
         return default
     return 1 if bool(value) else 0
@@ -166,6 +201,11 @@ _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL = 0.0
 
 class DashboardSqlPreviewCacheKey:
     def __init__(self, tenant_id: int, user_id: str, datasource_id: int, fingerprint: str):
+        """
+        是什么：DashboardSqlPreviewCacheKey.__init__ 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步方法。
+        谁调用：由创建 DashboardSqlPreviewCacheKey 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.tenant_id = tenant_id
         self.user_id = user_id
         self.datasource_id = datasource_id
@@ -173,18 +213,38 @@ class DashboardSqlPreviewCacheKey:
 
     @property
     def memory_key(self) -> str:
+        """
+        是什么：DashboardSqlPreviewCacheKey.memory_key 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 memory_key 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+        """
         return f"{self.tenant_id}:{self.user_id}:{self.datasource_id}:{self.fingerprint}"
 
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
+    """
+    是什么：_current_tenant_id 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _current_tenant_id 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return require_current_tenant_id(current_user)
 
 
 def _same_tenant(current_user: CurrentUser | None, record) -> bool:
+    """
+    是什么：_same_tenant 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _same_tenant 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return int(getattr(record, "tenant_id")) == _current_tenant_id(current_user)
 
 
 def _workspace_admin_user_ids(session: SessionDep, current_user: CurrentUser) -> set[str]:
+    """
+    是什么：_workspace_admin_user_ids 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _workspace_admin_user_ids 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     try:
         rows = session.exec(
             select(TenantUserModel.user_id).where(
@@ -201,6 +261,11 @@ def _workspace_admin_user_ids(session: SessionDep, current_user: CurrentUser) ->
 
 
 def _workspace_delegate_asset_owner_id(session: SessionDep, current_user: CurrentUser) -> str:
+    """
+    是什么：_workspace_delegate_asset_owner_id 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _workspace_delegate_asset_owner_id 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not is_platform_workspace_delegate(current_user):
         return _user_id(current_user)
     tenant_id = _current_tenant_id(current_user)
@@ -233,10 +298,20 @@ def _workspace_delegate_asset_owner_id(session: SessionDep, current_user: Curren
 
 
 def _asset_operator_id(session: SessionDep, current_user: CurrentUser) -> str:
+    """
+    是什么：_asset_operator_id 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _asset_operator_id 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return _workspace_delegate_asset_owner_id(session, current_user)
 
 
 def _platform_delegate_visible_creator_ids(session: SessionDep, current_user: CurrentUser) -> set[str]:
+    """
+    是什么：_platform_delegate_visible_creator_ids 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_delegate_visible_creator_ids 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     visible_ids = _workspace_admin_user_ids(session, current_user)
     visible_ids.add(_workspace_delegate_asset_owner_id(session, current_user))
     visible_ids.add(_user_id(current_user))
@@ -244,10 +319,20 @@ def _platform_delegate_visible_creator_ids(session: SessionDep, current_user: Cu
 
 
 def _is_workspace_admin_owned_dashboard(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_is_workspace_admin_owned_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_workspace_admin_owned_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return str(dashboard.create_by) in _platform_delegate_visible_creator_ids(session, current_user)
 
 
 def _is_platform_admin_context(current_user: CurrentUser | None) -> bool:
+    """
+    是什么：_is_platform_admin_context 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_platform_admin_context 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     workspace_status = getattr(current_user, "workspace_status", None)
     tenant_id = getattr(current_user, "tenant_id", None)
     return bool(
@@ -258,22 +343,42 @@ def _is_platform_admin_context(current_user: CurrentUser | None) -> bool:
 
 
 def _tenant_not_found(detail: str):
+    """
+    是什么：_tenant_not_found 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_not_found 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     raise HTTPException(status_code=404, detail=detail)
 
 
 def _can_edit_datasource_dashboard(session: SessionDep, current_user: CurrentUser, datasource_id: int | None) -> bool:
+    """
+    是什么：_can_edit_datasource_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_edit_datasource_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if datasource_id is None:
         return is_system_admin(current_user)
     return has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_EDITOR)
 
 
 def _can_create_datasource_dashboard(session: SessionDep, current_user: CurrentUser, datasource_id: int | None) -> bool:
+    """
+    是什么：_can_create_datasource_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_create_datasource_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if datasource_id is None:
         return is_system_admin(current_user)
     return has_datasource_access(session, current_user, datasource_id)
 
 
 def _supports_datasource_editor_role_lookup(session: SessionDep) -> bool:
+    """
+    是什么：_supports_datasource_editor_role_lookup 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _supports_datasource_editor_role_lookup 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     try:
         inspector = inspect(session.connection())
         return inspector.has_table(CoreDatasource.__tablename__) and inspector.has_table("core_datasource_user")
@@ -286,6 +391,11 @@ def _dashboard_list_visibility_filter(
         current_user: CurrentUser,
         datasource_id: int | None,
 ):
+    """
+    是什么：_dashboard_list_visibility_filter 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_list_visibility_filter 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if is_platform_workspace_delegate(current_user):
         return _platform_delegate_visible_dashboard_filter(session, current_user)
     if is_system_admin(current_user):
@@ -302,6 +412,11 @@ def _platform_delegate_visible_dashboard_filter(
         session: SessionDep,
         current_user: CurrentUser,
 ):
+    """
+    是什么：_platform_delegate_visible_dashboard_filter 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_delegate_visible_dashboard_filter 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     visible_creator_ids = _platform_delegate_visible_creator_ids(session, current_user)
     return or_(
         CoreDashboard.is_default == 1,
@@ -311,6 +426,11 @@ def _platform_delegate_visible_dashboard_filter(
 
 
 def _is_public_dashboard_for_delegate(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_is_public_dashboard_for_delegate 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_public_dashboard_for_delegate 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if dashboard.is_default:
         return True
     if dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE:
@@ -321,12 +441,22 @@ def _is_public_dashboard_for_delegate(session: SessionDep, current_user: Current
 
 
 def _is_published_workspace_dashboard(dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_is_published_workspace_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_published_workspace_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if dashboard.status in DASHBOARD_DRAFT_STATUSES:
         return False
     return bool(dashboard.is_default) or dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE
 
 
 def _can_edit_dashboard(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_can_edit_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_edit_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not _same_tenant(current_user, dashboard):
         return False
     if is_platform_workspace_delegate(current_user):
@@ -347,14 +477,29 @@ def _can_edit_dashboard(session: SessionDep, current_user: CurrentUser, dashboar
 
 
 def _can_share_dashboard(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_can_share_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_share_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return _can_edit_dashboard(session, current_user, dashboard)
 
 
 def _can_set_default_dashboard(current_user: CurrentUser) -> bool:
+    """
+    是什么：_can_set_default_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_set_default_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return can_manage_workspace_scope(current_user)
 
 
 def _can_manage_default_dashboard(current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_can_manage_default_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_manage_default_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not _same_tenant(current_user, dashboard):
         return False
     if is_platform_workspace_delegate(current_user):
@@ -367,12 +512,22 @@ def _can_manage_default_dashboard(current_user: CurrentUser, dashboard: CoreDash
 
 
 def _can_view_legacy_dashboard(current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_can_view_legacy_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_view_legacy_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not _same_tenant(current_user, dashboard):
         return False
     return is_system_admin(current_user) or str(dashboard.create_by) == _user_id(current_user)
 
 
 def _can_view_dashboard_resource(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_can_view_dashboard_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _can_view_dashboard_resource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not _same_tenant(current_user, dashboard):
         return False
     if is_platform_workspace_delegate(current_user):
@@ -397,6 +552,11 @@ def _require_create_permission(
         datasource_id: int | None,
         parent_id: str | None = None,
 ):
+    """
+    是什么：_require_create_permission 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not _can_create_datasource_dashboard(session, current_user, datasource_id):
         raise HTTPException(status_code=403, detail="Project access is required to create dashboards")
     if not parent_id or parent_id == "root":
@@ -410,26 +570,51 @@ def _require_create_permission(
 
 
 def _require_edit_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
+    """
+    是什么：_require_edit_permission 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not _can_edit_dashboard(session, current_user, dashboard):
         raise HTTPException(status_code=403, detail="You do not have permission to modify this dashboard")
 
 
 def _require_share_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
+    """
+    是什么：_require_share_permission 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not _can_share_dashboard(session, current_user, dashboard):
         raise HTTPException(status_code=403, detail="You do not have permission to share this dashboard")
 
 
 def _require_set_default_permission(current_user: CurrentUser):
+    """
+    是什么：_require_set_default_permission 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not _can_set_default_dashboard(current_user):
         raise HTTPException(status_code=403, detail="Only workspace admin can set default dashboards")
 
 
 def _require_platform_delegate(current_user: CurrentUser):
+    """
+    是什么：_require_platform_delegate 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not is_platform_workspace_delegate(current_user):
         raise HTTPException(status_code=403, detail="Only SaaS delegate can use this dashboard operation")
 
 
 def _normalize_datasource_id(datasource) -> int | None:
+    """
+    是什么：_normalize_datasource_id 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化仪表盘相关数据，生成后续流程可使用的结构。
+    """
     if datasource is None or datasource == "":
         return None
     try:
@@ -439,6 +624,11 @@ def _normalize_datasource_id(datasource) -> int | None:
 
 
 def _ensure_datasource_access(session: SessionDep, current_user: CurrentUser, datasource, required: bool = False) -> int | None:
+    """
+    是什么：_ensure_datasource_access 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     datasource_id = _normalize_datasource_id(datasource)
     if datasource_id is None:
         if required:
@@ -452,6 +642,11 @@ def _ensure_datasource_access(session: SessionDep, current_user: CurrentUser, da
 
 
 def _check_dashboard_view_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
+    """
+    是什么：_check_dashboard_view_permission 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if dashboard.datasource:
         _ensure_datasource_access(session, current_user, dashboard.datasource)
         return
@@ -464,6 +659,11 @@ def _load_dashboard_or_404(
         dashboard_id: str,
         current_user: CurrentUser | None = None,
 ) -> CoreDashboard:
+    """
+    是什么：_load_dashboard_or_404 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     record = session.get(CoreDashboard, dashboard_id)
     if not record or record.delete_flag == 1 or record.status in DASHBOARD_DRAFT_STATUSES:
         raise HTTPException(status_code=404, detail="Dashboard does not exist")
@@ -477,6 +677,11 @@ def _load_platform_template_or_404(
         template_id: str,
         current_user: CurrentUser,
 ) -> CoreDashboard:
+    """
+    是什么：_load_platform_template_or_404 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     if not (_is_platform_admin_context(current_user) or is_platform_workspace_delegate(current_user)):
         raise HTTPException(status_code=403, detail="Only SaaS admin can use dashboard templates")
     record = session.get(CoreDashboard, template_id)
@@ -496,6 +701,11 @@ def _load_shared_dashboard_or_404(
         share_id: str,
         current_user: CurrentUser | None = None,
 ) -> CoreDashboardShare:
+    """
+    是什么：_load_shared_dashboard_or_404 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     record = session.get(CoreDashboardShare, share_id)
     if not record or record.delete_flag == 1:
         raise HTTPException(status_code=404, detail="Shared dashboard does not exist")
@@ -507,6 +717,11 @@ def _load_shared_dashboard_or_404(
 
 
 def _active_workspace_member_share_creator_filter(current_user: CurrentUser):
+    """
+    是什么：_active_workspace_member_share_creator_filter 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _active_workspace_member_share_creator_filter 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return CoreDashboardShare.create_by.in_(
         select(cast(TenantUserModel.user_id, String)).where(
             and_(
@@ -522,6 +737,11 @@ def _share_created_by_active_workspace_member(
         current_user: CurrentUser,
         share: CoreDashboardShare,
 ) -> bool:
+    """
+    是什么：_share_created_by_active_workspace_member 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _share_created_by_active_workspace_member 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not share.create_by:
         return False
     try:
@@ -539,6 +759,11 @@ def _share_created_by_active_workspace_member(
 
 
 def _parse_canvas_view_info(canvas_view_info: str | bytes | None) -> dict:
+    """
+    是什么：_parse_canvas_view_info 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化仪表盘相关数据，生成后续流程可使用的结构。
+    """
     if not canvas_view_info:
         return {}
     try:
@@ -548,6 +773,11 @@ def _parse_canvas_view_info(canvas_view_info: str | bytes | None) -> dict:
 
 
 def _parse_canvas_component_data(component_data: str | bytes | None) -> list:
+    """
+    是什么：_parse_canvas_component_data 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化仪表盘相关数据，生成后续流程可使用的结构。
+    """
     if not component_data:
         return []
     try:
@@ -558,11 +788,21 @@ def _parse_canvas_component_data(component_data: str | bytes | None) -> list:
 
 
 def _new_canvas_id(prefix: str | None = None) -> str:
+    """
+    是什么：_new_canvas_id 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装仪表盘相关对象和数据，并返回或写入对应状态。
+    """
     value = uuid.uuid4().hex
     return f"{prefix}_{value}" if prefix else value
 
 
 def _clone_canvas_component_tree(items: list, id_map: dict[str, str]) -> None:
+    """
+    是什么：_clone_canvas_component_tree 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _clone_canvas_component_tree 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -601,6 +841,11 @@ def _clone_dashboard_canvas_payload(
         canvas_style_data: str | bytes | None,
         canvas_view_info: str | bytes | None,
 ) -> tuple[str, str, str]:
+    """
+    是什么：_clone_dashboard_canvas_payload 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _clone_dashboard_canvas_payload 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     component_data_obj = _parse_canvas_component_data(component_data)
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     id_map: dict[str, str] = {}
@@ -640,6 +885,11 @@ def _clone_dashboard_canvas_payload_for_datasource(
         canvas_view_info: str | bytes | None,
         datasource_id: int | None,
 ) -> tuple[str, str, str]:
+    """
+    是什么：_clone_dashboard_canvas_payload_for_datasource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _clone_dashboard_canvas_payload_for_datasource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
         component_data,
         canvas_style_data,
@@ -660,6 +910,11 @@ def _copy_dashboard_canvas_payload_without_rekey(
         canvas_view_info: str | bytes | None,
         datasource_id: int | None = None,
 ) -> tuple[str, str, str]:
+    """
+    是什么：_copy_dashboard_canvas_payload_without_rekey 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _copy_dashboard_canvas_payload_without_rekey 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     component_data_obj = _parse_canvas_component_data(component_data)
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     if datasource_id is not None:
@@ -674,6 +929,11 @@ def _copy_dashboard_canvas_payload_without_rekey(
 
 
 def _canvas_uses_datasource(record: CoreDashboard, datasource_id: int) -> bool:
+    """
+    是什么：_canvas_uses_datasource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _canvas_uses_datasource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     canvas_view_obj = _parse_canvas_view_info(record.canvas_view_info)
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
@@ -688,6 +948,11 @@ def _canvas_uses_datasource(record: CoreDashboard, datasource_id: int) -> bool:
 
 
 def _infer_canvas_datasource(record: CoreDashboard) -> int | None:
+    """
+    是什么：_infer_canvas_datasource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _infer_canvas_datasource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     canvas_view_obj = _parse_canvas_view_info(record.canvas_view_info)
     datasource_ids = set()
     for item in canvas_view_obj.values():
@@ -705,18 +970,33 @@ def _infer_canvas_datasource(record: CoreDashboard) -> int | None:
 
 
 def _effective_dashboard_datasource(record: CoreDashboard) -> int | None:
+    """
+    是什么：_effective_dashboard_datasource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _effective_dashboard_datasource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if record.datasource is not None:
         return record.datasource
     return _infer_canvas_datasource(record)
 
 
 def _dashboard_matches_datasource(record: CoreDashboard, datasource_id: int) -> bool:
+    """
+    是什么：_dashboard_matches_datasource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_matches_datasource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if record.datasource == datasource_id:
         return True
     return record.datasource is None and _canvas_uses_datasource(record, datasource_id)
 
 
 def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: int | None = None) -> int | None:
+    """
+    是什么：_chart_datasource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _chart_datasource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     item_datasource = _normalize_datasource_id(item.get('datasource'))
     if item_datasource is None:
         item_datasource = fallback_datasource if fallback_datasource is not None else record.datasource
@@ -737,10 +1017,20 @@ _PIVOT_RANGE_DAYS = {
 
 
 def _normalize_datasource_type(ds_type: str | None) -> str:
+    """
+    是什么：_normalize_datasource_type 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化仪表盘相关数据，生成后续流程可使用的结构。
+    """
     return str(ds_type or "").strip().lower()
 
 
 def _dashboard_sql_dialect(ds_type: str | None) -> str | None:
+    """
+    是什么：_dashboard_sql_dialect 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_dialect 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     dialect = get_sqlglot_dialect(ds_type)
     if dialect:
         return dialect
@@ -757,6 +1047,11 @@ def _dashboard_sql_dialect(ds_type: str | None) -> str | None:
 
 
 def _quote_dashboard_identifier(name: str, ds_type: str | None) -> str:
+    """
+    是什么：_quote_dashboard_identifier 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _quote_dashboard_identifier 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     value = str(name or "").strip()
     dialect = _dashboard_sql_dialect(ds_type)
     if dialect in {"mysql", "hive"}:
@@ -767,10 +1062,20 @@ def _quote_dashboard_identifier(name: str, ds_type: str | None) -> str:
 
 
 def _dashboard_pivot_column(field_name: str, ds_type: str | None, alias: str = "pivot_src") -> str:
+    """
+    是什么：_dashboard_pivot_column 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_pivot_column 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return f"{_quote_dashboard_identifier(alias, ds_type)}.{_quote_dashboard_identifier(field_name, ds_type)}"
 
 
 def _dashboard_date_cast(column_sql: str, ds_type: str | None, *, timestamp: bool = False) -> str:
+    """
+    是什么：_dashboard_date_cast 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_date_cast 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     ds_key = _normalize_datasource_type(ds_type)
     if ds_key in {"mysql", "doris", "starrocks"}:
         return f"CAST({column_sql} AS DATETIME)" if timestamp else f"DATE({column_sql})"
@@ -786,6 +1091,11 @@ def _dashboard_date_cast(column_sql: str, ds_type: str | None, *, timestamp: boo
 
 
 def _dashboard_period_expr(column_sql: str, ds_type: str | None, granularity: str) -> str:
+    """
+    是什么：_dashboard_period_expr 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_period_expr 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     ds_key = _normalize_datasource_type(ds_type)
     if ds_key in {"mysql", "doris", "starrocks"}:
         date_expr = _dashboard_date_cast(column_sql, ds_type)
@@ -824,6 +1134,11 @@ def _dashboard_period_expr(column_sql: str, ds_type: str | None, granularity: st
 
 
 def _dashboard_date_literal(value: str, ds_type: str | None) -> str:
+    """
+    是什么：_dashboard_date_literal 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_date_literal 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     escaped = value.replace("'", "''")
     ds_key = _normalize_datasource_type(ds_type)
     if ds_key in {"mysql", "doris", "starrocks"}:
@@ -840,6 +1155,11 @@ def _dashboard_date_literal(value: str, ds_type: str | None) -> str:
 
 
 def _dashboard_date_subtract_expr(date_expr: str, ds_type: str | None, days: int) -> str:
+    """
+    是什么：_dashboard_date_subtract_expr 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_date_subtract_expr 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if days <= 0:
         return date_expr
     ds_key = _normalize_datasource_type(ds_type)
@@ -857,6 +1177,11 @@ def _dashboard_date_subtract_expr(date_expr: str, ds_type: str | None, days: int
 
 
 def _dashboard_custom_date_value(value: Any) -> str:
+    """
+    是什么：_dashboard_custom_date_value 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_custom_date_value 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     text = str(value or "").strip()
     if len(text) >= 10:
         text = text[:10]
@@ -868,6 +1193,11 @@ def _dashboard_custom_date_value(value: Any) -> str:
 
 
 def _trim_dashboard_sql(sql: str) -> str:
+    """
+    是什么：_trim_dashboard_sql 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _trim_dashboard_sql 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     value = str(sql or "").strip()
     while value.endswith(";"):
         value = value[:-1].rstrip()
@@ -875,12 +1205,22 @@ def _trim_dashboard_sql(sql: str) -> str:
 
 
 def _dashboard_pivot_value(pivot: Any, key: str, default: Any = None) -> Any:
+    """
+    是什么：_dashboard_pivot_value 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_pivot_value 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if isinstance(pivot, dict):
         return pivot.get(key, default)
     return getattr(pivot, key, default)
 
 
 def _dashboard_pivot_metric_fields(pivot: Any | None) -> list[str]:
+    """
+    是什么：_dashboard_pivot_metric_fields 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_pivot_metric_fields 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     values = _dashboard_pivot_value(pivot, "metric_fields", []) or []
     if not isinstance(values, list):
         values = []
@@ -893,6 +1233,11 @@ def _dashboard_pivot_metric_fields(pivot: Any | None) -> list[str]:
 
 
 def _dashboard_pivot_metric_aggregations(pivot: Any | None) -> dict[str, str]:
+    """
+    是什么：_dashboard_pivot_metric_aggregations 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_pivot_metric_aggregations 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     value = _dashboard_pivot_value(pivot, "metric_aggregations", {}) or {}
     if not isinstance(value, dict):
         return {}
@@ -906,10 +1251,24 @@ def _dashboard_pivot_metric_aggregations(pivot: Any | None) -> dict[str, str]:
 
 
 def _dashboard_pivot_enabled(pivot: Any | None) -> bool:
-    return bool(pivot is not None and _dashboard_pivot_value(pivot, "enabled", False))
+    """
+    是什么：_dashboard_pivot_enabled 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_pivot_enabled 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
+    return bool(
+        pivot is not None
+        and _dashboard_pivot_value(pivot, "enabled", False)
+        and not _dashboard_pivot_value(pivot, "client_filter_only", False)
+    )
 
 
 def _dashboard_pivot_date_cast_error(message: str, pivot: Any | None) -> str | None:
+    """
+    是什么：_dashboard_pivot_date_cast_error 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_pivot_date_cast_error 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     text = str(message or "")
     lowered = text.lower()
     mentions_date = "date" in lowered or "timestamp" in lowered or "日期" in text
@@ -929,6 +1288,11 @@ def _dashboard_pivot_date_cast_error(message: str, pivot: Any | None) -> str | N
 
 
 def _dashboard_limit_clause(ds_type: str | None) -> str:
+    """
+    是什么：_dashboard_limit_clause 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_limit_clause 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     ds_key = _normalize_datasource_type(ds_type)
     if ds_key in {"oracle", "dm", "sqlserver", "sql server", "sql_server"}:
         return ""
@@ -936,6 +1300,11 @@ def _dashboard_limit_clause(ds_type: str | None) -> str:
 
 
 def _build_dashboard_pivot_sql(sql: str, datasource: CoreDatasource, pivot: Any | None) -> str:
+    """
+    是什么：_build_dashboard_pivot_sql 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装仪表盘相关对象和数据，并返回或写入对应状态。
+    """
     if not _dashboard_pivot_enabled(pivot):
         return sql
     time_field = str(_dashboard_pivot_value(pivot, "time_field", "") or "").strip()
@@ -1044,6 +1413,11 @@ def _build_dashboard_pivot_sql(sql: str, datasource: CoreDatasource, pivot: Any 
 
 
 def _failed_chart_result(message: str, error_type: str | None = None) -> dict[str, Any]:
+    """
+    是什么：_failed_chart_result 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _failed_chart_result 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     result = {
         'status': 'failed',
         'data': [],
@@ -1063,6 +1437,11 @@ def _dashboard_chart_permission_failure(
         sql: str,
         pivot: Any | None = None,
 ) -> dict[str, Any] | None:
+    """
+    是什么：_dashboard_chart_permission_failure 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_chart_permission_failure 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     datasource = session.get(CoreDatasource, datasource_id)
     if datasource is None:
         return _failed_chart_result("项目不存在")
@@ -1089,31 +1468,66 @@ def _dashboard_chart_permission_failure(
 
 
 def _dashboard_sql_preview_cache_ttl() -> int:
+    """
+    是什么：_dashboard_sql_preview_cache_ttl 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_cache_ttl 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return max(0, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS", 60) or 0))
 
 
 def _dashboard_sql_preview_max_cache_entries() -> int:
+    """
+    是什么：_dashboard_sql_preview_max_cache_entries 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_max_cache_entries 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return max(0, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_CACHE_MAX_ENTRIES", 512) or 0))
 
 
 def _dashboard_sql_preview_result_has_rows(result: dict[str, Any] | None) -> bool:
+    """
+    是什么：_dashboard_sql_preview_result_has_rows 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_result_has_rows 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     data = result.get("data") if isinstance(result, dict) else None
     return isinstance(data, list) and len(data) > 0
 
 
 def _dashboard_sql_preview_datasource_concurrency() -> int:
+    """
+    是什么：_dashboard_sql_preview_datasource_concurrency 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_datasource_concurrency 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return max(1, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY", 2) or 2))
 
 
 def _dashboard_sql_preview_wait_timeout() -> float:
+    """
+    是什么：_dashboard_sql_preview_wait_timeout 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_wait_timeout 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return max(0.0, float(getattr(settings, "DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS", 1.0) or 0))
 
 
 def _dashboard_sql_preview_dedupe_wait_timeout() -> float:
+    """
+    是什么：_dashboard_sql_preview_dedupe_wait_timeout 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_dedupe_wait_timeout 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return max(0.0, float(getattr(settings, "DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS", 8.0) or 0))
 
 
 def _dashboard_sql_preview_pivot_payload(pivot: Any | None) -> Any | None:
+    """
+    是什么：_dashboard_sql_preview_pivot_payload 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_pivot_payload 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if pivot is None:
         return None
     if hasattr(pivot, "model_dump"):
@@ -1129,6 +1543,11 @@ def _dashboard_sql_preview_cache_key(
         sql: str,
         pivot: Any | None,
 ) -> DashboardSqlPreviewCacheKey:
+    """
+    是什么：_dashboard_sql_preview_cache_key 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_cache_key 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     tenant_id = _current_tenant_id(current_user)
     user_id = _user_id(current_user)
     payload = {
@@ -1149,10 +1568,20 @@ def _dashboard_sql_preview_cache_key(
 
 
 def _dashboard_sql_preview_redis_enabled() -> bool:
+    """
+    是什么：_dashboard_sql_preview_redis_enabled 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_redis_enabled 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return (getattr(settings, "CACHE_TYPE", "memory") or "memory").lower() == "redis"
 
 
 def _dashboard_sql_preview_redis_client() -> Redis | None:
+    """
+    是什么：_dashboard_sql_preview_redis_client 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_redis_client 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not _dashboard_sql_preview_redis_enabled():
         return None
     global _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT, _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED
@@ -1183,6 +1612,11 @@ def _dashboard_sql_preview_redis_client() -> Redis | None:
 
 
 def _dashboard_sql_preview_redis_key(cache_key: DashboardSqlPreviewCacheKey) -> str:
+    """
+    是什么：_dashboard_sql_preview_redis_key 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_redis_key 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return user_redis_key(
         cache_key.tenant_id,
         cache_key.user_id,
@@ -1199,6 +1633,11 @@ def _dashboard_sql_preview_memory_get(
         *,
         allow_expired: bool = False,
 ) -> dict[str, Any] | None:
+    """
+    是什么：_dashboard_sql_preview_memory_get 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_memory_get 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0:
         return None
@@ -1224,6 +1663,11 @@ def _dashboard_sql_preview_memory_get(
 
 
 def _dashboard_sql_preview_memory_set(cache_key: DashboardSqlPreviewCacheKey, result: dict[str, Any]) -> None:
+    """
+    是什么：_dashboard_sql_preview_memory_set 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_memory_set 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     ttl = _dashboard_sql_preview_cache_ttl()
     max_entries = _dashboard_sql_preview_max_cache_entries()
     if (
@@ -1247,6 +1691,11 @@ def _dashboard_sql_preview_cache_get(
         *,
         allow_expired: bool = False,
 ) -> dict[str, Any] | None:
+    """
+    是什么：_dashboard_sql_preview_cache_get 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_cache_get 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0:
         return None
@@ -1272,6 +1721,11 @@ def _dashboard_sql_preview_cache_get(
 
 
 def _dashboard_sql_preview_cache_set(cache_key: DashboardSqlPreviewCacheKey, result: dict[str, Any]) -> None:
+    """
+    是什么：_dashboard_sql_preview_cache_set 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_cache_set 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0 or result.get("status") == "failed" or not _dashboard_sql_preview_result_has_rows(result):
         return
@@ -1297,6 +1751,11 @@ def _dashboard_sql_preview_cache_set(cache_key: DashboardSqlPreviewCacheKey, res
 
 
 def _dashboard_sql_preview_inflight_lock(cache_key: DashboardSqlPreviewCacheKey) -> Lock:
+    """
+    是什么：_dashboard_sql_preview_inflight_lock 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_inflight_lock 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     memory_key = cache_key.memory_key
     with _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK:
         lock = _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(memory_key)
@@ -1307,6 +1766,11 @@ def _dashboard_sql_preview_inflight_lock(cache_key: DashboardSqlPreviewCacheKey)
 
 
 def _dashboard_sql_preview_release_inflight_lock(cache_key: DashboardSqlPreviewCacheKey, lock: Lock) -> None:
+    """
+    是什么：_dashboard_sql_preview_release_inflight_lock 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_release_inflight_lock 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     memory_key = cache_key.memory_key
     with _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK:
         if _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(memory_key) is lock:
@@ -1314,6 +1778,11 @@ def _dashboard_sql_preview_release_inflight_lock(cache_key: DashboardSqlPreviewC
 
 
 def _dashboard_sql_preview_datasource_semaphore(datasource_id: int) -> BoundedSemaphore:
+    """
+    是什么：_dashboard_sql_preview_datasource_semaphore 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_sql_preview_datasource_semaphore 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     with _DASHBOARD_SQL_PREVIEW_DATASOURCE_SEMAPHORES_LOCK:
         semaphore = _DASHBOARD_SQL_PREVIEW_DATASOURCE_SEMAPHORES.get(datasource_id)
         if semaphore is None:
@@ -1323,6 +1792,11 @@ def _dashboard_sql_preview_datasource_semaphore(datasource_id: int) -> BoundedSe
 
 
 def _normalize_dashboard_refresh_policy(value: Any) -> dict[str, Any]:
+    """
+    是什么：_normalize_dashboard_refresh_policy 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化仪表盘相关数据，生成后续流程可使用的结构。
+    """
     policy = dict(DASHBOARD_REFRESH_POLICY_DEFAULT)
     if not isinstance(value, dict):
         return policy
@@ -1345,6 +1819,11 @@ def _normalize_dashboard_refresh_policy(value: Any) -> dict[str, Any]:
 
 
 def _extract_dashboard_refresh_policy_from_text(text_value: str | None) -> dict[str, Any] | None:
+    """
+    是什么：_extract_dashboard_refresh_policy_from_text 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化仪表盘相关数据，生成后续流程可使用的结构。
+    """
     if not text_value:
         return None
     policy: dict[str, Any] | None = None
@@ -1359,6 +1838,11 @@ def _extract_dashboard_refresh_policy_from_text(text_value: str | None) -> dict[
 
 
 def _custom_prompt_datasource_id_values(value: Any) -> list[str]:
+    """
+    是什么：_custom_prompt_datasource_id_values 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _custom_prompt_datasource_id_values 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if value in (None, ""):
         return []
     if isinstance(value, str):
@@ -1376,6 +1860,11 @@ def _dashboard_refresh_policy_from_skills(
         current_user: CurrentUser,
         datasource_id: int | None,
 ) -> dict[str, Any]:
+    """
+    是什么：_dashboard_refresh_policy_from_skills 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_refresh_policy_from_skills 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if datasource_id is None:
         return dict(DASHBOARD_REFRESH_POLICY_DEFAULT)
     try:
@@ -1454,6 +1943,11 @@ def _execute_dashboard_chart_sql(
         sql: str,
         pivot: Any | None = None,
 ) -> dict[str, Any]:
+    """
+    是什么：_execute_dashboard_chart_sql 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行仪表盘主流程，协调下游服务并处理结果或异常。
+    """
     if _dashboard_pivot_enabled(pivot):
         datasource = session.get(CoreDatasource, datasource_id)
         if datasource is None:
@@ -1481,6 +1975,11 @@ def _execute_dashboard_chart_sql(
 
 
 def _clear_dashboard_chart_data(item: dict) -> None:
+    """
+    是什么：_clear_dashboard_chart_data 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    """
     if not isinstance(item.get('data'), dict):
         item['data'] = {}
     item['data']['data'] = []
@@ -1493,6 +1992,11 @@ def _clear_dashboard_chart_data(item: dict) -> None:
 
 
 def _mark_dashboard_chart_snapshot_ready(item: dict) -> None:
+    """
+    是什么：_mark_dashboard_chart_snapshot_ready 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _mark_dashboard_chart_snapshot_ready 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not isinstance(item.get('data'), dict):
         item['data'] = {}
     item['data']['data'] = item['data'].get('data') if isinstance(item['data'].get('data'), list) else []
@@ -1507,6 +2011,11 @@ def _mark_dashboard_chart_snapshot_ready(item: dict) -> None:
 
 
 def _apply_dashboard_chart_result(item: dict, data_result: dict[str, Any]) -> None:
+    """
+    是什么：_apply_dashboard_chart_result 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _apply_dashboard_chart_result 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not isinstance(item.get('data'), dict):
         item['data'] = {}
     fields = data_result.get('fields', [])
@@ -1526,6 +2035,11 @@ def _apply_dashboard_chart_result(item: dict, data_result: dict[str, Any]) -> No
 
 
 def _clear_dashboard_payload_results(canvas_view_info: str | bytes | None) -> str:
+    """
+    是什么：_clear_dashboard_payload_results 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    """
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     for item in canvas_view_obj.values():
         if isinstance(item, dict):
@@ -1534,18 +2048,33 @@ def _clear_dashboard_payload_results(canvas_view_info: str | bytes | None) -> st
 
 
 def _clear_dashboard_template_datasource(canvas_view_info: str | bytes | None) -> str:
+    """
+    是什么：_clear_dashboard_template_datasource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    """
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     _clear_dashboard_template_datasource_obj(canvas_view_obj)
     return orjson.dumps(canvas_view_obj).decode()
 
 
 def _clear_dashboard_template_datasource_obj(canvas_view_obj: dict) -> None:
+    """
+    是什么：_clear_dashboard_template_datasource_obj 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    """
     for item in canvas_view_obj.values():
         if isinstance(item, dict):
             item["datasource"] = None
 
 
 def _prepare_dashboard_template_canvas_view_info(canvas_view_info: str | bytes | None) -> str:
+    """
+    是什么：_prepare_dashboard_template_canvas_view_info 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _prepare_dashboard_template_canvas_view_info 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
@@ -1557,6 +2086,11 @@ def _prepare_dashboard_template_canvas_view_info(canvas_view_info: str | bytes |
 
 
 def _remark_value(remark: str | None, key: str) -> str | None:
+    """
+    是什么：_remark_value 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _remark_value 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not remark:
         return None
     prefix = f"{key}="
@@ -1568,6 +2102,11 @@ def _remark_value(remark: str | None, key: str) -> str | None:
 
 
 def _optional_int(value: Any) -> int | None:
+    """
+    是什么：_optional_int 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _optional_int 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if value in (None, ""):
         return None
     try:
@@ -1577,6 +2116,11 @@ def _optional_int(value: Any) -> int | None:
 
 
 def _template_source_dashboard_id(template: CoreDashboard) -> str | None:
+    """
+    是什么：_template_source_dashboard_id 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _template_source_dashboard_id 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     source_dashboard_id = _remark_value(template.remark, "source_dashboard_id")
     if source_dashboard_id:
         return source_dashboard_id
@@ -1587,6 +2131,11 @@ def _template_source_dashboard_id(template: CoreDashboard) -> str | None:
 
 
 def _platform_template_source_context(session: SessionDep, template: CoreDashboard) -> dict[str, Any]:
+    """
+    是什么：_platform_template_source_context 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_template_source_context 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     source_dashboard_id = _template_source_dashboard_id(template)
     source_tenant_id = _optional_int(_remark_value(template.remark, "source_tenant_id"))
     source_datasource_id = _optional_int(_remark_value(template.remark, "source_datasource_id"))
@@ -1617,6 +2166,11 @@ def _platform_template_source_context(session: SessionDep, template: CoreDashboa
 
 
 def _platform_template_needs_snapshot_repair(template: CoreDashboard) -> bool:
+    """
+    是什么：_platform_template_needs_snapshot_repair 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_template_needs_snapshot_repair 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if template.datasource is not None:
         return True
     if template.content_id not in (None, "", "0"):
@@ -1637,6 +2191,11 @@ def _platform_template_needs_snapshot_repair(template: CoreDashboard) -> bool:
 
 
 def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: CoreDashboard) -> None:
+    """
+    是什么：_repair_platform_template_snapshot_if_needed 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _repair_platform_template_snapshot_if_needed 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not _platform_template_needs_snapshot_repair(template):
         return
     source_id = _template_source_dashboard_id(template)
@@ -1667,6 +2226,11 @@ def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: 
 
 
 def _user_name(session: SessionDep, user_id) -> str | None:
+    """
+    是什么：_user_name 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _user_name 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not user_id:
         return None
     try:
@@ -1681,6 +2245,11 @@ def _user_name(session: SessionDep, user_id) -> str | None:
 
 def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser, dashboard: CreateDashboard,
                                  bound_datasource: int | None):
+    """
+    是什么：_validate_canvas_datasources 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     canvas_view_obj = _parse_canvas_view_info(dashboard.canvas_view_info)
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
@@ -1700,10 +2269,20 @@ def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser,
 
 
 def _active_share_filter():
+    """
+    是什么：_active_share_filter 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _active_share_filter 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return or_(CoreDashboardShare.delete_flag == 0, CoreDashboardShare.delete_flag.is_(None))
 
 
 def _active_dashboard_filter():
+    """
+    是什么：_active_dashboard_filter 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _active_dashboard_filter 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return and_(
         or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
         or_(CoreDashboard.status.is_(None), CoreDashboard.status.notin_(DASHBOARD_DRAFT_STATUSES)),
@@ -1711,6 +2290,11 @@ def _active_dashboard_filter():
 
 
 def _platform_template_source_remark(source: CoreDashboard) -> str:
+    """
+    是什么：_platform_template_source_remark 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_template_source_remark 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return (
         f"source_dashboard_id={source.id};"
         f"source_tenant_id={source.tenant_id};"
@@ -1719,6 +2303,11 @@ def _platform_template_source_remark(source: CoreDashboard) -> str:
 
 
 def _dashboard_created_from_template_remark(template: CoreDashboard) -> str:
+    """
+    是什么：_dashboard_created_from_template_remark 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_created_from_template_remark 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     parts = [f"source_template_id={template.id}"]
     for key in ("source_dashboard_id", "source_tenant_id", "source_datasource_id"):
         value = _remark_value(template.remark, key)
@@ -1732,6 +2321,11 @@ def _platform_templates_for_source_dashboard(
         source_dashboard_id: str | None,
         include_deleted: bool = False,
 ) -> list[CoreDashboard]:
+    """
+    是什么：_platform_templates_for_source_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_templates_for_source_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not source_dashboard_id:
         return []
     filters = [
@@ -1767,6 +2361,11 @@ def _platform_template_for_source_dashboard(
         session: SessionDep,
         source_dashboard_id: str | None,
 ) -> CoreDashboard | None:
+    """
+    是什么：_platform_template_for_source_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _platform_template_for_source_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     templates = _platform_templates_for_source_dashboard(session, source_dashboard_id)
     return templates[0] if templates else None
 
@@ -1776,6 +2375,11 @@ def _workspace_dashboard_created_from_template(
         user: CurrentUser,
         template: CoreDashboard,
 ) -> CoreDashboard | None:
+    """
+    是什么：_workspace_dashboard_created_from_template 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _workspace_dashboard_created_from_template 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     source_dashboard_id = _template_source_dashboard_id(template)
     template_ids = {str(template.id)}
     for source_template in _platform_templates_for_source_dashboard(session, source_dashboard_id):
@@ -1823,6 +2427,11 @@ def _active_dashboard_share_map_for_user(
         current_user: CurrentUser,
         dashboard_ids: list[str],
 ) -> dict[str, CoreDashboardShare]:
+    """
+    是什么：_active_dashboard_share_map_for_user 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _active_dashboard_share_map_for_user 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not dashboard_ids:
         return {}
     statement = (
@@ -1853,6 +2462,11 @@ def _active_share_for_source(
         source_dashboard_id: str,
         source_view_id: str | None = None,
 ) -> CoreDashboardShare | None:
+    """
+    是什么：_active_share_for_source 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _active_share_for_source 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     filters = [
         _active_share_filter(),
         CoreDashboardShare.tenant_id == _current_tenant_id(current_user),
@@ -1875,6 +2489,11 @@ def _active_share_for_source(
 def _share_source_key(
         share: CoreDashboardShare,
 ) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+    """
+    是什么：_share_source_key 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _share_source_key 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return (
         str(getattr(share, "tenant_id")),
         str(share.create_by) if share.create_by is not None else None,
@@ -1885,6 +2504,11 @@ def _share_source_key(
 
 
 def _active_shares_for_same_source(session: SessionDep, share: CoreDashboardShare) -> list[CoreDashboardShare]:
+    """
+    是什么：_active_shares_for_same_source 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _active_shares_for_same_source 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     filters = [
         _active_share_filter(),
         CoreDashboardShare.tenant_id == int(share.tenant_id),
@@ -1901,6 +2525,11 @@ def _active_shares_for_same_source(session: SessionDep, share: CoreDashboardShar
 
 
 def _share_can_delete(current_user: CurrentUser, share: CoreDashboardShare) -> bool:
+    """
+    是什么：_share_can_delete 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _share_can_delete 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     return _same_tenant(current_user, share) and (
         is_system_admin(current_user) or str(share.create_by) == _user_id(current_user)
     )
@@ -1914,6 +2543,11 @@ def _dashboard_base_response(
         active_share: CoreDashboardShare | None = None,
         platform_template_context: bool = False,
 ) -> DashboardBaseResponse:
+    """
+    是什么：_dashboard_base_response 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_base_response 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     can_edit = (
         True
         if platform_template_context and _is_platform_admin_context(current_user)
@@ -1982,6 +2616,11 @@ def _dashboard_base_response(
 
 
 def _share_can_use(session: SessionDep, current_user: CurrentUser, share: CoreDashboardShare) -> bool:
+    """
+    是什么：_share_can_use 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _share_can_use 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not _same_tenant(current_user, share):
         return False
     datasource_id = _normalize_datasource_id(share.datasource)
@@ -1991,6 +2630,11 @@ def _share_can_use(session: SessionDep, current_user: CurrentUser, share: CoreDa
 
 
 def _datasource_name(session: SessionDep, datasource_id: int | None) -> str | None:
+    """
+    是什么：_datasource_name 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _datasource_name 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if datasource_id is None:
         return None
     try:
@@ -2001,6 +2645,11 @@ def _datasource_name(session: SessionDep, datasource_id: int | None) -> str | No
 
 
 def _share_chart_snapshot(record: CoreDashboard, source_view_id: str) -> tuple[str, str, str]:
+    """
+    是什么：_share_chart_snapshot 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _share_chart_snapshot 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not source_view_id:
         raise HTTPException(status_code=400, detail="Shared chart source_view_id is required")
     component_data_obj = orjson.loads(record.component_data or "[]")
@@ -2025,6 +2674,11 @@ def _load_share_preview_payload(
         current_user: CurrentUser,
         share: CoreDashboardShare,
 ) -> dict[str, Any]:
+    """
+    是什么：_load_share_preview_payload 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     datasource_id = _normalize_datasource_id(share.datasource)
     can_use = _share_can_use(session, current_user, share)
     result_dict = {
@@ -2085,6 +2739,11 @@ def _load_share_preview_payload(
 
 
 def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
+    """
+    是什么：list_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     filters = [
         _active_dashboard_filter(),
         CoreDashboard.tenant_id == _current_tenant_id(current_user),
@@ -2151,6 +2810,11 @@ def _dashboard_payload(
         platform_template_context: bool = False,
         include_data: bool = True,
 ):
+    """
+    是什么：_dashboard_payload 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _dashboard_payload 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     effective_datasource = None if platform_template_context else _effective_dashboard_datasource(record)
     if dashboard is not None and dashboard.datasource is not None and effective_datasource is not None:
         request_datasource = _normalize_datasource_id(dashboard.datasource)
@@ -2236,6 +2900,11 @@ def _dashboard_payload(
 
 
 def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
+    """
+    是什么：load_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     record = _load_dashboard_or_404(session, dashboard.id, current_user)
     if not _can_view_dashboard_resource(session, current_user, record):
         raise HTTPException(status_code=404, detail="Dashboard does not exist")
@@ -2249,6 +2918,11 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
 
 
 def list_default_resources(session: SessionDep, current_user: CurrentUser):
+    """
+    是什么：list_default_resources 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     statement = (
         select(CoreDashboard)
         .where(
@@ -2277,6 +2951,11 @@ def list_default_resources(session: SessionDep, current_user: CurrentUser):
 
 
 def load_default_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
+    """
+    是什么：load_default_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     record = _load_dashboard_or_404(session, dashboard.id, current_user)
     if not record.is_default:
         raise HTTPException(status_code=404, detail="Default dashboard does not exist")
@@ -2290,6 +2969,11 @@ def load_default_resource(session: SessionDep, dashboard: QueryDashboard, curren
 
 
 def copy_default_resource(session: SessionDep, user: CurrentUser, request: DashboardDefaultCopyRequest):
+    """
+    是什么：copy_default_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 copy_default_resource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     source = _load_dashboard_or_404(session, request.dashboard_id, user)
     if source.node_type != "leaf" or not source.is_default:
         raise HTTPException(status_code=404, detail="Default dashboard does not exist")
@@ -2343,6 +3027,11 @@ def copy_default_resource(session: SessionDep, user: CurrentUser, request: Dashb
 
 
 def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
+    """
+    是什么：get_create_base_info 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     new_id = uuid.uuid4().hex
     record = CoreDashboard(**dashboard.model_dump(exclude={"include_data"}))
     record.id = new_id
@@ -2356,6 +3045,11 @@ def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
 
 
 def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
+    """
+    是什么：create_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装仪表盘相关对象和数据，并返回或写入对应状态。
+    """
     is_default_folder = bool(dashboard.is_default) and dashboard.node_type == "folder"
     if is_default_folder:
         _require_set_default_permission(user)
@@ -2381,6 +3075,11 @@ def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDas
 
 
 def update_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
+    """
+    是什么：update_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     record = _load_dashboard_or_404(session, dashboard.id, user)
     _require_edit_permission(session, user, record)
     if record.datasource:
@@ -2395,6 +3094,11 @@ def update_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDash
 
 
 def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
+    """
+    是什么：create_canvas 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装仪表盘相关对象和数据，并返回或写入对应状态。
+    """
     dashboard.datasource = _ensure_datasource_access(session, user, dashboard.datasource, required=True)
     _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
     _validate_canvas_datasources(session, user, dashboard, dashboard.datasource)
@@ -2415,6 +3119,11 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
 
 
 def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
+    """
+    是什么：update_canvas 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     record = _load_dashboard_or_404(session, dashboard.id, user)
     _require_edit_permission(session, user, record)
     request_datasource = _normalize_datasource_id(dashboard.datasource)
@@ -2438,6 +3147,11 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
 
 
 def move_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
+    """
+    是什么：move_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 move_resource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     record = _load_dashboard_or_404(session, dashboard.id, user)
     _require_edit_permission(session, user, record)
     target_pid = dashboard.pid or "root"
@@ -2462,6 +3176,11 @@ def move_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDashbo
 
 
 def set_default_resource(session: SessionDep, user: CurrentUser, request: DashboardDefaultRequest):
+    """
+    是什么：set_default_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     _require_set_default_permission(user)
     record = _load_dashboard_or_404(session, request.dashboard_id, user)
     if record.node_type != "leaf":
@@ -2513,6 +3232,11 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
 
 
 def sort_default_resources(session: SessionDep, user: CurrentUser, request: DashboardDefaultSortRequest):
+    """
+    是什么：sort_default_resources 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 sort_default_resources 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     _require_set_default_permission(user)
     ordered_ids = [str(item) for item in request.ordered_ids if item]
     if not ordered_ids:
@@ -2547,6 +3271,11 @@ def sort_default_resources(session: SessionDep, user: CurrentUser, request: Dash
 
 
 def _would_create_dashboard_cycle(record_by_id: dict[str, CoreDashboard], child_id: str, target_pid: str) -> bool:
+    """
+    是什么：_would_create_dashboard_cycle 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _would_create_dashboard_cycle 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     seen = {child_id}
     current_pid = target_pid
     while current_pid and current_pid != "root":
@@ -2561,6 +3290,11 @@ def _would_create_dashboard_cycle(record_by_id: dict[str, CoreDashboard], child_
 
 
 def reorder_resources(session: SessionDep, user: CurrentUser, request: DashboardReorderRequest):
+    """
+    是什么：reorder_resources 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 reorder_resources 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not request.items:
         raise HTTPException(status_code=400, detail="items is required")
 
@@ -2640,6 +3374,11 @@ def copy_dashboard_to_platform_template(
         dashboard_id: str,
         name: str = "",
 ):
+    """
+    是什么：copy_dashboard_to_platform_template 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 copy_dashboard_to_platform_template 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     _require_platform_delegate(user)
     source = _load_dashboard_or_404(session, dashboard_id, user)
     if source.node_type != "leaf" or not _is_public_dashboard_for_delegate(session, user, source):
@@ -2698,6 +3437,11 @@ def copy_dashboard_to_platform_template(
 
 
 def list_platform_dashboard_templates(session: SessionDep, user: CurrentUser):
+    """
+    是什么：list_platform_dashboard_templates 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     if not (_is_platform_admin_context(user) or is_platform_workspace_delegate(user)):
         raise HTTPException(status_code=403, detail="Only SaaS admin can list dashboard templates")
     statement = (
@@ -2734,6 +3478,11 @@ def load_platform_dashboard_template(
         template_id: str,
         include_data: bool = False,
 ):
+    """
+    是什么：load_platform_dashboard_template 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     template = _load_platform_template_or_404(session, template_id, user)
     _repair_platform_template_snapshot_if_needed(session, template)
     return _dashboard_payload(
@@ -2751,6 +3500,11 @@ def update_platform_dashboard_template(
         user: CurrentUser,
         dashboard: CreateDashboard,
 ):
+    """
+    是什么：update_platform_dashboard_template 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     if not _is_platform_admin_context(user):
         raise HTTPException(status_code=403, detail="Only SaaS admin can edit dashboard templates")
     template = _load_platform_template_or_404(session, dashboard.id, user)
@@ -2809,6 +3563,11 @@ def delete_platform_dashboard_template(
         user: CurrentUser,
         template_id: str,
 ):
+    """
+    是什么：delete_platform_dashboard_template 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    """
     if not _is_platform_admin_context(user):
         raise HTTPException(status_code=403, detail="Only SaaS admin can delete dashboard templates")
     template = _load_platform_template_or_404(session, template_id, user)
@@ -2826,6 +3585,11 @@ def _copy_single_platform_template_to_workspace_dashboard(
         template_id: str,
         name: str = "",
 ):
+    """
+    是什么：_copy_single_platform_template_to_workspace_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _copy_single_platform_template_to_workspace_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     template = _load_platform_template_or_404(session, template_id, user)
     _repair_platform_template_snapshot_if_needed(session, template)
     target_datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(user))
@@ -2885,6 +3649,11 @@ def copy_platform_template_to_workspace_dashboard(
         name: str = "",
         template_ids: list[str] | None = None,
 ):
+    """
+    是什么：copy_platform_template_to_workspace_dashboard 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 copy_platform_template_to_workspace_dashboard 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     _require_platform_delegate(user)
     requested_template_ids = [
         str(item).strip()
@@ -2921,6 +3690,11 @@ def copy_platform_template_to_workspace_dashboard(
 
 
 def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashboard) -> bool:
+    """
+    是什么：validate_name 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not dashboard.opt:
         raise ValueError("opt is required")
     datasource_id = _normalize_datasource_id(dashboard.datasource)
@@ -2974,6 +3748,11 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
 
 
 def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id: str):
+    """
+    是什么：delete_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    """
     coreDashboard = _load_dashboard_or_404(session, resource_id, current_user)
     _require_edit_permission(session, current_user, coreDashboard)
     if coreDashboard.datasource:
@@ -2987,6 +3766,11 @@ def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id:
 
 
 def preview_sql(session: SessionDep, current_user: CurrentUser, request: DashboardSqlPreview):
+    """
+    是什么：preview_sql 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 preview_sql 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     if not request.sql or not request.sql.strip():
         return {
             "status": "failed",
@@ -3052,6 +3836,11 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
 
 
 def share_resource(session: SessionDep, user: CurrentUser, request: DashboardShareRequest):
+    """
+    是什么：share_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 share_resource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     record = _load_dashboard_or_404(session, request.dashboard_id, user)
     _require_share_permission(session, user, record)
     datasource_id = _effective_dashboard_datasource(record)
@@ -3121,6 +3910,11 @@ def share_resource(session: SessionDep, user: CurrentUser, request: DashboardSha
 
 
 def list_shared_resources(session: SessionDep, current_user: CurrentUser, query: DashboardShareListQuery):
+    """
+    是什么：list_shared_resources 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     filters = [
         _active_share_filter(),
         CoreDashboardShare.tenant_id == _current_tenant_id(current_user),
@@ -3165,11 +3959,21 @@ def list_shared_resources(session: SessionDep, current_user: CurrentUser, query:
 
 
 def load_shared_resource(session: SessionDep, current_user: CurrentUser, query: SharedDashboardQuery):
+    """
+    是什么：load_shared_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    """
     share = _load_shared_dashboard_or_404(session, query.id, current_user)
     return _load_share_preview_payload(session, current_user, share)
 
 
 def delete_shared_resource(session: SessionDep, current_user: CurrentUser, query: SharedDashboardQuery):
+    """
+    是什么：delete_shared_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    """
     share = _load_shared_dashboard_or_404(session, query.id, current_user)
     if not _share_can_delete(current_user, share):
         raise HTTPException(status_code=403, detail="You do not have permission to delete this shared dashboard")
@@ -3185,6 +3989,11 @@ def delete_shared_resource(session: SessionDep, current_user: CurrentUser, query
 
 
 def use_shared_resource(session: SessionDep, user: CurrentUser, request: SharedDashboardUseRequest):
+    """
+    是什么：use_shared_resource 是 backend/apps/dashboard/crud/dashboard_service.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 use_shared_resource 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    """
     share = _load_shared_dashboard_or_404(session, request.id, user)
     datasource_id = _normalize_datasource_id(share.datasource)
     if datasource_id is None or not _share_can_use(session, user, share):

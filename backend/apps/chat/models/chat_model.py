@@ -22,7 +22,11 @@ from apps.template.select_datasource.generator import get_datasource_template
 
 
 def enum_values(enum_class: type[Enum]) -> list:
-    """Get values for enum."""
+    """
+    是什么：enum_values 是 backend/apps/chat/models/chat_model.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 enum_values 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return [status.value for status in enum_class]
 
 
@@ -30,7 +34,7 @@ class TypeEnum(Enum):
     CHAT = "0"
 
 
-#     TODO other usage
+#     待办：其他用法
 
 class OperationEnum(Enum):
     GENERATE_SQL = '0'
@@ -62,7 +66,7 @@ class QuickCommand(Enum):
     PREDICT_DATA = '/predict'
 
 
-#     TODO choose table / check connection / generate description
+#     待办：选表 / 检查连接 / 生成描述
 
 class ChatLog(SQLModel, table=True):
     __tablename__ = "chat_log"
@@ -97,11 +101,11 @@ class Chat(SQLModel, table=True):
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     brief: str = Field(max_length=64, nullable=True)
-    chat_type: str = Field(max_length=20, default="chat")  # chat, datasource
+    chat_type: str = Field(max_length=20, default="chat")  # 聊天与数据源
     datasource: int = Field(sa_column=Column(BigInteger, nullable=True))
     engine_type: str = Field(max_length=64)
     origin: Optional[int] = Field(
-        sa_column=Column(Integer, nullable=False, default=0))  # 0: default, 1: mcp, 2: assistant
+        sa_column=Column(Integer, nullable=False, default=0))  # 0：默认，1：MCP，2：助手
     brief_generate: bool = Field(default=False)
     recommended_question_answer: str = Field(sa_column=Column(Text, nullable=True))
     recommended_question: str = Field(sa_column=Column(Text, nullable=True))
@@ -179,14 +183,14 @@ class ChatRecordResult(BaseModel):
     analysis_reasoning_content: Optional[str] = None
     predict_reasoning_content: Optional[str] = None
     duration: Optional[float] = None  # 耗时字段（单位：秒）
-    total_tokens: Optional[int] = None  # token总消耗
+    total_tokens: Optional[int] = None  # 令牌总消耗
 
 
 class CreateChat(BaseModel):
     id: int = None
     question: str = None
     datasource: int = None
-    origin: Optional[int] = 0  # 0是页面上，mcp是1，小助手是2
+    origin: Optional[int] = 0  # 0 表示页面来源，1 表示 MCP，2 表示小助手
 
 
 class RenameChat(BaseModel):
@@ -216,7 +220,7 @@ class ChatLogHistoryItem(BaseModel):
     start_time: Optional[datetime] = None
     finish_time: Optional[datetime] = None
     duration: Optional[float] = None  # 耗时字段（单位：秒）
-    total_tokens: Optional[int] = None  # token总消耗
+    total_tokens: Optional[int] = None  # 令牌总消耗
     operate: Optional[str] = None
     local_operation: Optional[bool] = False
     message: Optional[str | dict | list] = None
@@ -227,14 +231,14 @@ class ChatLogHistory(BaseModel):
     start_time: Optional[datetime] = None
     finish_time: Optional[datetime] = None
     duration: Optional[float] = None  # 耗时字段（单位：秒）
-    total_tokens: Optional[int] = None  # token总消耗
+    total_tokens: Optional[int] = None  # 令牌总消耗
     steps: List[ChatLogHistoryItem | dict] = []
 
 
 class AiModelQuestion(BaseModel):
     question: str = None
     ai_modal_id: int = None
-    ai_modal_name: str = None  # Specific model name
+    ai_modal_name: str = None  # 具体模型名称
     engine: str = ""
     db_schema: str = ""
     sql: str = ""
@@ -255,6 +259,11 @@ class AiModelQuestion(BaseModel):
     shuzhi_name: str = "星通数智"
 
     def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):
+        """
+        是什么：AiModelQuestion.sql_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 sql_sys_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         templates: dict[str, str] = {}
         _sql_template = get_sql_example_template(db_type)
         _base_template = get_sql_template()
@@ -300,6 +309,11 @@ class AiModelQuestion(BaseModel):
         return templates
 
     def sql_user_question(self, current_time: str, change_title: bool):
+        """
+        是什么：AiModelQuestion.sql_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 sql_user_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         _question = self.question
         if self.regenerate_record_id:
             _question = get_sql_template()['regenerate_hint'] + self.question
@@ -309,6 +323,11 @@ class AiModelQuestion(BaseModel):
                                                  change_title=change_title)
 
     def chart_sys_question(self):
+        """
+        是什么：AiModelQuestion.chart_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 chart_sys_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         templates: dict[str, str] = {
             'system': get_chart_template()['system'].format(lang=self.lang, shuzhi_name=self.shuzhi_name),
             'rules': get_chart_template()['generate_rules'].format(lang=self.lang)
@@ -316,51 +335,116 @@ class AiModelQuestion(BaseModel):
         return templates
 
     def chart_user_question(self, chart_type: Optional[str] = '', schema: Optional[str] = ''):
+        """
+        是什么：AiModelQuestion.chart_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 chart_user_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_chart_template()['user'].format(lang=self.lang, sql=self.sql, question=self.question, rule=self.rule,
                                                    chart_type=chart_type, schema=schema, data_skill=self.data_skill)
 
     def analysis_sys_question(self):
+        """
+        是什么：AiModelQuestion.analysis_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 analysis_sys_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_analysis_template()['system'].format(lang=self.lang, terminologies="",
                                                         custom_prompt=self.custom_prompt,
                                                         data_skill=self.data_skill,
                                                         shuzhi_name=self.shuzhi_name)
 
     def analysis_user_question(self):
+        """
+        是什么：AiModelQuestion.analysis_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 analysis_user_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_analysis_template()['user'].format(fields=self.fields, data=self.data)
 
     def predict_sys_question(self):
+        """
+        是什么：AiModelQuestion.predict_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         return get_predict_template()['system'].format(lang=self.lang, custom_prompt=self.custom_prompt,
                                                        data_skill=self.data_skill,
                                                        shuzhi_name=self.shuzhi_name)
 
     def predict_user_question(self):
+        """
+        是什么：AiModelQuestion.predict_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         return get_predict_template()['user'].format(fields=self.fields, data=self.data)
 
     def datasource_sys_question(self):
+        """
+        是什么：AiModelQuestion.datasource_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 datasource_sys_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_datasource_template()['system'].format(lang=self.lang, shuzhi_name=self.shuzhi_name)
 
     def datasource_user_question(self, datasource_list: str = "[]"):
+        """
+        是什么：AiModelQuestion.datasource_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 datasource_user_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_datasource_template()['user'].format(lang=self.lang, question=self.question, data=datasource_list)
 
     def guess_sys_question(self, articles_number: int = 4):
+        """
+        是什么：AiModelQuestion.guess_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         return get_guess_question_template()['system'].format(lang=self.lang, articles_number=articles_number,
                                                               shuzhi_name=self.shuzhi_name)
 
     def guess_user_question(self, old_questions: str = "[]"):
+        """
+        是什么：AiModelQuestion.guess_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        """
         return get_guess_question_template()['user'].format(question=self.question, schema=self.db_schema,
                                                             old_questions=old_questions)
 
     def filter_sys_question(self):
+        """
+        是什么：AiModelQuestion.filter_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 filter_sys_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_permissions_template()['system'].format(lang=self.lang, engine=self.engine,
                                                            shuzhi_name=self.shuzhi_name)
 
     def filter_user_question(self):
+        """
+        是什么：AiModelQuestion.filter_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 filter_user_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter)
 
     def dynamic_sys_question(self):
+        """
+        是什么：AiModelQuestion.dynamic_sys_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 dynamic_sys_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_dynamic_template()['system'].format(lang=self.lang, engine=self.engine, shuzhi_name=self.shuzhi_name)
 
     def dynamic_user_question(self):
+        """
+        是什么：AiModelQuestion.dynamic_user_question 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由持有 AiModelQuestion 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 dynamic_user_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_dynamic_template()['user'].format(sql=self.sql, sub_query=self.sub_query)
 
 
@@ -422,6 +506,11 @@ class SystemPromptMessage(SystemMessage):
     def __init__(
             self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
     ) -> None:
+        """
+        是什么：SystemPromptMessage.__init__ 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由创建 SystemPromptMessage 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         super().__init__(content=content, **kwargs)
 
 
@@ -431,6 +520,11 @@ class HumanPromptMessage(HumanMessage):
     def __init__(
             self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
     ) -> None:
+        """
+        是什么：HumanPromptMessage.__init__ 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由创建 HumanPromptMessage 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         super().__init__(content=content, **kwargs)
 
 
@@ -440,4 +534,9 @@ class AIPromptMessage(AIMessage):
     def __init__(
             self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
     ) -> None:
+        """
+        是什么：AIPromptMessage.__init__ 是 backend/apps/chat/models/chat_model.py 中的同步方法。
+        谁调用：由创建 AIPromptMessage 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         super().__init__(content=content, **kwargs)

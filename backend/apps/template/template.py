@@ -14,7 +14,11 @@ SQL_TEMPLATES_DIR = TEMPLATES_DIR / 'sql_examples'
 
 @cache
 def _load_template_file(file_path: Path):
-    """内部函数：加载并解析YAML文件"""
+    """
+    是什么：_load_template_file 是 backend/apps/template/template.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询模板生成相关数据，整理后返回给调用方。
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f)
@@ -25,12 +29,21 @@ def _load_template_file(file_path: Path):
 
 
 def get_base_template():
-    """获取基础模板（自动缓存）"""
+    """
+    是什么：get_base_template 是 backend/apps/template/template.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询模板生成相关数据，整理后返回给调用方。
+    """
     return _load_template_file(BASE_TEMPLATE_PATH)
 
 
 def get_sql_template(db_type: Union[str, DB]):
     # 处理输入参数
+    """
+    是什么：get_sql_template 是 backend/apps/template/template.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询模板生成相关数据，整理后返回给调用方。
+    """
     if isinstance(db_type, str):
         # 如果是字符串，查找对应的枚举值，找不到则使用默认的 DB.pg
         db_enum = DB.get_db(db_type, default_if_none=True)
@@ -46,7 +59,11 @@ def get_sql_template(db_type: Union[str, DB]):
 
 
 def get_all_sql_templates():
-    """获取所有支持的数据库模板"""
+    """
+    是什么：get_all_sql_templates 是 backend/apps/template/template.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询模板生成相关数据，整理后返回给调用方。
+    """
     templates = {}
     for db in DB:
         try:
@@ -58,7 +75,11 @@ def get_all_sql_templates():
 
 
 def reload_all_templates():
-    """清空所有模板缓存"""
+    """
+    是什么：reload_all_templates 是 backend/apps/template/template.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 reload_all_templates 的语义处理模板生成相关逻辑，并把结果返回或写入状态。
+    """
     _load_template_file.cache_clear()
 
 

@@ -1,9 +1,8 @@
-"""112_expand_saas_data_skills
+"""迁移脚本：112_expand_saas_data_skills
 
-Revision ID: d4f6a7b8c9e0
-Revises: c9d12e7f4a6b
-Create Date: 2026-06-22 00:00:00.000000
-
+迁移版本 ID： d4f6a7b8c9e0
+上一版本： c9d12e7f4a6b
+创建时间： 2026-06-22 00:00:00.000000
 """
 from __future__ import annotations
 
@@ -931,33 +930,68 @@ ORDER BY f.business_date;
 
 
 def _bind():
+    """
+    是什么：_bind 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据库迁移相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     return op.get_bind()
 
 
 def _inspector():
+    """
+    是什么：_inspector 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _inspector 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return sa.inspect(_bind())
 
 
 def _has_table(table_name: str) -> bool:
+    """
+    是什么：_has_table 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_table 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return table_name in _inspector().get_table_names()
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
+    """
+    是什么：_has_column 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_column 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not _has_table(table_name):
         return False
     return any(column["name"] == column_name for column in _inspector().get_columns(table_name))
 
 
 def _has_columns(table_name: str, column_names: tuple[str, ...]) -> bool:
+    """
+    是什么：_has_columns 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_columns 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return all(_has_column(table_name, column_name) for column_name in column_names)
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
+    """
+    是什么：_contains_any 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _contains_any 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     lowered = text.lower()
     return any(keyword.lower() in lowered for keyword in keywords)
 
 
 def _fetch_platform_terms() -> list[dict[str, Any]]:
+    """
+    是什么：_fetch_platform_terms 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    """
     if not _has_columns("terminology", ("id", "scope", "pid", "word", "enabled")):
         return []
     rows = _bind().execute(
@@ -991,6 +1025,11 @@ def _fetch_platform_terms() -> list[dict[str, Any]]:
 
 
 def _fetch_platform_sql_rows() -> list[dict[str, Any]]:
+    """
+    是什么：_fetch_platform_sql_rows 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    """
     if not _has_columns("data_training", ("id", "scope", "question", "description", "enabled")):
         return []
     rows = _bind().execute(
@@ -1020,11 +1059,21 @@ def _fetch_platform_sql_rows() -> list[dict[str, Any]]:
 
 
 def _source_terms(theme: dict[str, Any], terms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    是什么：_source_terms 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _source_terms 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     wanted = set(str(item) for item in theme.get("term_words", ()))
     return [term for term in terms if str(term.get("word") or "") in wanted]
 
 
 def _source_sql_rows(theme: dict[str, Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    是什么：_source_sql_rows 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _source_sql_rows 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     keywords = tuple(str(item) for item in theme.get("sql_keywords", ()))
     if not keywords:
         return []
@@ -1036,6 +1085,11 @@ def _source_sql_rows(theme: dict[str, Any], rows: list[dict[str, Any]]) -> list[
 
 
 def _source_summary(source_terms: list[dict[str, Any]], source_sql_rows: list[dict[str, Any]]) -> str:
+    """
+    是什么：_source_summary 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _source_summary 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     term_names = "、".join(str(term.get("word") or "") for term in source_terms if term.get("word"))
     sql_questions = "；".join(str(row.get("question") or "") for row in source_sql_rows if row.get("question"))
     lines = []
@@ -1055,6 +1109,11 @@ def _render_prompt(
         source_terms: list[dict[str, Any]],
         source_sql_rows: list[dict[str, Any]],
 ) -> str:
+    """
+    是什么：_render_prompt 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据库迁移相关数据，生成后续流程可使用的结构。
+    """
     rules = "\n".join(f"- {item}" for item in theme["rules"])
     sql_examples = tuple(SAAS_SQL_EXAMPLES.get(str(theme["slug"]), ()))
     sql_section = ""
@@ -1092,6 +1151,11 @@ def _upsert_skill(
         description: str,
         prompt: str,
 ) -> None:
+    """
+    是什么：_upsert_skill 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _upsert_skill 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     bind = _bind()
     update_stmt = sa.text(
         """
@@ -1170,6 +1234,11 @@ def _upsert_skill(
 
 
 def _disable_old_saas_theme_skills() -> None:
+    """
+    是什么：_disable_old_saas_theme_skills 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _disable_old_saas_theme_skills 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not _has_columns("custom_prompt", ("type", "visibility_scope", "prompt", "active")):
         return
     _bind().execute(
@@ -1187,6 +1256,11 @@ def _disable_old_saas_theme_skills() -> None:
 
 
 def _create_saas_20_skills() -> None:
+    """
+    是什么：_create_saas_20_skills 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装数据库迁移相关对象和数据，并返回或写入对应状态。
+    """
     if not _has_columns(
         "custom_prompt",
         (
@@ -1228,11 +1302,21 @@ def _create_saas_20_skills() -> None:
 
 
 def upgrade() -> None:
+    """
+    是什么：upgrade 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     _disable_old_saas_theme_skills()
     _create_saas_20_skills()
 
 
 def downgrade() -> None:
+    """
+    是什么：downgrade 是 backend/alembic/versions/112_expand_saas_data_skills.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not _has_columns("custom_prompt", ("type", "visibility_scope", "prompt", "active")):
         return
     bind = _bind()

@@ -20,6 +20,11 @@ from common.core.db import engine
 
 
 def _user_tenant_id(user: Optional[UserInfoDTO]) -> int:
+    """
+    是什么：_user_tenant_id 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _user_tenant_id 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
+    """
     if is_platform_workspace_delegate(user):
         return DEFAULT_TENANT_ID
     try:
@@ -30,6 +35,11 @@ def _user_tenant_id(user: Optional[UserInfoDTO]) -> int:
 
 
 def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -> List[Dict[str, str]]:
+    """
+    是什么：get_resource_name_by_id_and_module 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询审计日志相关数据，整理后返回给调用方。
+    """
     from common.audit.schemas.log_utils import build_resource_union_query
 
     resource_union_query = build_resource_union_query()
@@ -67,25 +77,25 @@ class LogConfig(BaseModel):
     operation_detail: str = None
     module: Optional[str] = None
 
-    # Extract the expression of resource ID from the parameters
+    # 从参数中提取资源 ID 的表达式
     resource_id_expr: Optional[str] = None
 
-    # Extract the expression for resource ID from the returned result
+    # 从返回结果中提取资源 ID 的表达式
     result_id_expr: Optional[str] = None
 
-    # Extract the expression for resource name or other info from the returned result
+    # 从返回结果中提取资源名称或其他信息的表达式
     remark_expr: Optional[str] = None
 
-    # Is it only recorded upon success
+    # 是否仅在成功时记录
     save_on_success_only: bool = False
 
-    # Whether to ignore errors (i.e. record them as successful even when they occur)
+    # 是否忽略错误（发生错误时仍按成功记录）
     ignore_errors: bool = False
 
-    # Whether to extract request parameters
+    # 是否提取请求参数
     extract_params: bool = True
 
-    # Delay recording (if the resource ID needs to be extracted from the result, it can be set to True)
+    # 延迟记录（如果需要从结果中提取资源 ID，可设置为 True）
     delay_logging: bool = False
 
 
@@ -108,6 +118,11 @@ class SystemLogger:
             remark: Optional[str] = None,
             tenant_id: Optional[int] = None
     ):
+        """
+        是什么：SystemLogger.create_log 是 backend/common/audit/schemas/logger_decorator.py 中的异步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：创建、初始化或组装审计日志相关对象和数据，并返回或写入对应状态。
+        """
         try:
             log = SystemLog(
                 tenant_id=tenant_id or _user_tenant_id(user),
@@ -137,19 +152,23 @@ class SystemLogger:
 
     @staticmethod
     def get_client_info(request: Request) -> Dict[str, Optional[str]]:
-        """Obtain client information"""
+        """
+        是什么：SystemLogger.get_client_info 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询审计日志相关数据，整理后返回给调用方。
+        """
         ip_address = None
         user_agent = None
 
         if request:
-            # Obtain IP address
+            # 获取 IP 地址
             if request.client:
                 ip_address = request.client.host
-            # Attempt to obtain the real IP from X-Forwarded-For
+            # 尝试从 X-Forwarded-For 获取真实 IP
             if "x-forwarded-for" in request.headers:
                 ip_address = request.headers["x-forwarded-for"].split(",")[0].strip()
 
-            # Get User Agent
+            # 获取用户代理
             user_agent = request.headers.get("user-agent")
 
         return {
@@ -160,11 +179,9 @@ class SystemLogger:
     @staticmethod
     def extract_value_from_object(expression: str, obj: Any):
         """
-        Extract values from objects based on expressions
-        support:
-        -Object attribute: 'user. id'
-        -Dictionary key: 'data ['id'] '
-        -List index: 'items [0]. id'
+        是什么：SystemLogger.extract_value_from_object 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
         """
         if not expression or obj is None:
             return None
@@ -173,7 +190,7 @@ class SystemLogger:
             return obj
 
         try:
-            # Handling point separated attribute access
+            # 处理点分隔属性访问
             parts = expression.split('.')
             current = obj
 
@@ -181,14 +198,14 @@ class SystemLogger:
                 if not current:
                     return None
 
-                # Handle dictionary key access, such as data ['id ']
+                # 处理字典键访问，例如 data['id']
                 if '[' in part and ']' in part:
                     import re
-                    # Extract key names, such as data ['id '] ->key='id'
+                    # 提取键名，例如 data['id'] -> key='id'
                     match = re.search(r"\[['\"]?([^\]'\"\]]+)['\"]?\]", part)
                     if match:
                         key = match.group(1)
-                        # Get Object Part
+                        # 获取对象部分
                         obj_part = part.split('[')[0]
                         if hasattr(current, obj_part):
                             current = getattr(current, obj_part)
@@ -197,7 +214,7 @@ class SystemLogger:
                         else:
                             return None
 
-                        # Get key value
+                        # 获取键值
                         if isinstance(current, dict) and key in current:
                             current = current[key]
                         elif hasattr(current, key):
@@ -213,7 +230,7 @@ class SystemLogger:
                     else:
                         return None
 
-                # Process list indexes, such as items.0.id
+                # 处理列表索引，例如 items.0.id
                 elif part.isdigit() and isinstance(current, (list, tuple)):
                     index = int(part)
                     if 0 <= index < len(current):
@@ -221,7 +238,7 @@ class SystemLogger:
                     else:
                         return None
 
-                # Normal attribute access
+                # 普通属性访问
                 else:
                     if hasattr(current, part):
                         current = getattr(current, part)
@@ -239,24 +256,28 @@ class SystemLogger:
     def extract_resource_id(
             expression: Optional[str],
             source: Any,
-            source_type: str = "args"  # args, kwargs, result
+            source_type: str = "args"  # 位置参数、关键字参数、结果
     ):
-        """Extract resource IDs from different sources"""
+        """
+        是什么：SystemLogger.extract_resource_id 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
+        """
         if not expression:
             return None
 
         try:
             if source_type == "result":
-                # Extract directly from the result object
+                # 直接从结果对象中提取
                 return SystemLogger.extract_value_from_object(expression, source)
 
             elif source_type == "args":
-                # Extract from function parameters
+                # 从函数参数中提取
                 if isinstance(source, tuple) and len(source) > 0:
-                    # The first element is the function itself
+                    # 第一个元素是函数自身
                     func_args = source[0] if isinstance(source[0], tuple) else source
 
-                    # Processing args [index] expression
+                    # 处理 args[index] 表达式
                     if expression.startswith("args["):
                         import re
                         pattern = r"args\[(\d+)\]"
@@ -267,26 +288,26 @@ class SystemLogger:
                                 value = func_args[index]
                                 return value if value is not None else None
 
-                    # Process attribute expressions
+                    # 处理属性表达式
                     return SystemLogger.extract_value_from_object(expression, func_args)
                 elif isinstance(source, dict):
-                        # Simple parameter name
+                        # 简单参数名
                         if expression in source:
                             value = source[expression]
                             return value if value is not None else None
 
-                        # complex expression
+                        # 复杂表达式
                         return SystemLogger.extract_value_from_object(expression, source)
 
             elif source_type == "kwargs":
-                # Extract from keyword parameters
+                # 从关键字参数中提取
                 if isinstance(source, dict):
-                    # Simple parameter name
+                    # 简单参数名
                     if expression in source:
                         value = source[expression]
                         return value if value is not None else None
 
-                    # complex expression
+                    # 复杂表达式
                     return SystemLogger.extract_value_from_object(expression, source)
 
             return None
@@ -300,34 +321,38 @@ class SystemLogger:
             func_args: any,
             func_kwargs: dict
     ):
-        """Extract values from function parameters"""
+        """
+        是什么：SystemLogger.extract_from_function_params 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
+        """
         if not expression:
             return None
 
-        # Attempt to extract from location parameters
+        # 尝试从位置参数中提取
         result = SystemLogger.extract_resource_id(expression, func_args, "args")
         if result:
             return result
 
-        # Attempt to extract from keyword parameters
+        # 尝试从关键字参数中提取
         result = SystemLogger.extract_resource_id(expression, func_kwargs, "kwargs")
         if result:
             return result
 
-        # Attempt to encapsulate parameters as objects for extraction
+        # 尝试将参数封装为对象后提取
         try:
             if func_args:
-                # Create a dictionary containing all parameters
+                # 创建包含所有参数的字典
                 params_dict = {}
 
-                # Add location parameters
+                # 添加位置参数
                 for i, arg in enumerate(func_args):
                     params_dict[f"arg_{i}"] = arg
 
-                # Add keyword parameters
+                # 添加关键字参数
                 params_dict.update(func_kwargs)
 
-                # Attempt to extract from the dictionary
+                # 尝试从字典中提取
                 return SystemLogger.extract_resource_id(expression, params_dict, "kwargs")
         except:
             pass
@@ -336,7 +361,11 @@ class SystemLogger:
 
     @staticmethod
     def get_current_user(request: Optional[Request]):
-        """Retrieve current user information from the request"""
+        """
+        是什么：SystemLogger.get_current_user 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询审计日志相关数据，整理后返回给调用方。
+        """
         if not request:
             return None
         try:
@@ -350,22 +379,26 @@ class SystemLogger:
 
     @staticmethod
     def extract_request_params(request: Optional[Request]):
-        """Extract request parameters"""
+        """
+        是什么：SystemLogger.extract_request_params 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
+        """
         if not request:
             return None
 
         try:
             params = {}
 
-            # query parameters
+            # 查询参数
             if request.query_params:
                 params["query"] = dict(request.query_params)
 
-            # path parameter
+            # 路径参数
             if request.path_params:
                 params["path"] = dict(request.path_params)
 
-            # Head information (sensitive information not recorded)
+            # 请求头信息（不记录敏感信息）
             headers = {}
             for key, value in request.headers.items():
                 if key.lower() not in ["authorization", "cookie", "set-cookie"]:
@@ -373,7 +406,7 @@ class SystemLogger:
             if headers:
                 params["headers"] = headers
 
-            # Request Body - Only records Content Type and Size
+            # 请求体：仅记录内容类型和大小
             content_type = request.headers.get("content-type", "")
             content_length = request.headers.get("content-length")
             params["body_info"] = {
@@ -400,9 +433,13 @@ class SystemLogger:
             opt_type_ref : OperationType = None,
             resource_info_list : Optional[List] = None,
     ) -> Optional[SystemLog]:
-        """Create log records"""
+        """
+        是什么：SystemLogger.create_log_record 是 backend/common/audit/schemas/logger_decorator.py 中的异步方法。
+        谁调用：由类本身、子类或框架按照类方法约定调用。
+        做了什么：创建、初始化或组装审计日志相关对象和数据，并返回或写入对应状态。
+        """
         try:
-            # Obtain user information
+            # 获取用户信息
             user_info = cls.get_current_user(request)
             user_id = user_info.id if user_info else -1
             user_name = user_info.name if user_info else '-1'
@@ -410,14 +447,14 @@ class SystemLogger:
                 user_id = resource_id
                 user_name = resource_name
 
-            # Obtain client information
+            # 获取客户端信息
             client_info = cls.get_client_info(request)
-            # Get request parameters
+            # 获取请求参数
             request_params = None
             if config.extract_params:
                 request_params = cls.extract_request_params(request)
 
-            # Create log object
+            # 创建日志对象
             log = SystemLog(
                 tenant_id=_user_tenant_id(user_info),
                 operation_type=opt_type_ref if opt_type_ref else config.operation_type,
@@ -479,23 +516,27 @@ class SystemLogger:
 
 def system_log(config: Union[LogConfig, Dict]):
     """
-    System log annotation decorator, supports extracting resource IDs from returned results
-
-    Usage example:
-    @system_log({
-    "operation_type": OperationType.CREATE,
-    Operation_detail ":" Create User ",
-    "module": "user",
-    'result_id_expr ':' id '# Extract the id field from the returned result
-    })
+    是什么：system_log 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 system_log 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
     """
     # If a dictionary is passed in, convert it to a LogConfig object
     if isinstance(config, dict):
         config = LogConfig(**config)
 
     def decorator(func: Callable) -> Callable:
+        """
+        是什么：decorator 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
+        谁调用：由外层函数 system_log 在执行内部流程时调用。
+        做了什么：围绕 decorator 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
+        """
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
+            """
+            是什么：async_wrapper 是 backend/common/audit/schemas/logger_decorator.py 中的异步函数。
+            谁调用：由外层函数 decorator 在执行内部流程时调用。
+            做了什么：围绕 async_wrapper 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
+            """
             start_time = time.time()
             status = OperationStatus.SUCCESS
             error_message = None
@@ -508,14 +549,14 @@ def system_log(config: Union[LogConfig, Dict]):
             result = None
 
             try:
-                # Get current request
+                # 获取当前请求
                 request = RequestContext.get_request()
                 func_signature = inspect.signature(func)
                 bound_args = func_signature.bind(*args, **kwargs)
                 bound_args.apply_defaults()
                 unified_kwargs = dict(bound_args.arguments)
 
-                # Step 1: Attempt to extract the resource ID from the parameters
+                # 第一步：尝试从参数中提取资源 ID
                 if config.resource_id_expr:
                     resource_id = SystemLogger.extract_from_function_params(
                         config.resource_id_expr,
@@ -553,9 +594,9 @@ def system_log(config: Union[LogConfig, Dict]):
                     opt_type_ref = OperationType.UPDATE if resource_id is not None else OperationType.CREATE
                 else:
                     opt_type_ref = config.operation_type
-                # Execute the original function
+                # 执行原始函数
                 result = await func(*args, **kwargs)
-                # Step 2: If the resource ID is configured to be extracted from the results and has not been extracted before
+                # 第二步：若配置为从结果中提取资源 ID 且此前未提取到，则从结果中提取。
                 if config.result_id_expr and not resource_id and result:
                     resource_id = SystemLogger.extract_resource_id(
                         config.result_id_expr,
@@ -583,9 +624,9 @@ def system_log(config: Union[LogConfig, Dict]):
                 if config.save_on_success_only and status == OperationStatus.FAILED:
                     return
 
-                # Calculate execution time
+                # 计算执行时间
                 execution_time = int((time.time() - start_time) * 1000)
-                # Asynchronous creation of log records
+                # 异步创建日志记录
                 try:
                     await SystemLogger.create_log_record(
                         config=config,
@@ -604,6 +645,11 @@ def system_log(config: Union[LogConfig, Dict]):
 
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
+            """
+            是什么：sync_wrapper 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
+            谁调用：由外层函数 decorator 在执行内部流程时调用。
+            做了什么：更新审计日志相关状态、配置或持久化数据，并保持后续流程可继续使用。
+            """
             start_time = time.time()
             status = OperationStatus.SUCCESS
             error_message = None
@@ -614,14 +660,14 @@ def system_log(config: Union[LogConfig, Dict]):
             result = None
 
             try:
-                # Get current request
+                # 获取当前请求
                 request = RequestContext.get_request()
                 func_signature = inspect.signature(func)
                 bound_args = func_signature.bind(*args, **kwargs)
                 bound_args.apply_defaults()
                 unified_kwargs = dict(bound_args.arguments)
 
-                # Extract resource ID from parameters
+                # 从参数中提取资源 ID
                 if config.resource_id_expr:
                     resource_id = SystemLogger.extract_from_function_params(
                         config.resource_id_expr,
@@ -629,15 +675,15 @@ def system_log(config: Union[LogConfig, Dict]):
                         kwargs
                     )
 
-                # Obtain client information
+                # 获取客户端信息
                 if config.operation_type == OperationType.DELETE:
                     with Session(engine) as session:
                         resource_info_list = get_resource_name_by_id_and_module(session, resource_id, config.module)
 
-                # Execute the original function
+                # 执行原始函数
                 result = func(*args, **kwargs)
 
-                # Extract resource ID from the results
+                # 从结果中提取资源 ID
                 if config.result_id_expr and not resource_id and result:
                     resource_id = SystemLogger.extract_resource_id(
                         config.result_id_expr,
@@ -665,7 +711,7 @@ def system_log(config: Union[LogConfig, Dict]):
 
                 execution_time = int((time.time() - start_time) * 1000)
 
-                # In the synchronous version, we still create logs asynchronously
+                # 在同步版本中仍然异步创建日志。
                 import asyncio
                 try:
                     loop = asyncio.get_event_loop()
@@ -696,7 +742,7 @@ def system_log(config: Union[LogConfig, Dict]):
                 except Exception as log_error:
                     print(f"[SystemLogger] Log creation failed: {log_error}")
 
-        # Return appropriate wrapper based on function type
+        # 根据函数类型返回合适的包装器
         if inspect.iscoroutinefunction(func):
             return async_wrapper
         else:

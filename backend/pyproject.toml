@@ -14,7 +14,7 @@ dependencies = [
     "httpx<1.0.0,>=0.25.1",
     "psycopg[binary]<4.0.0,>=3.1.13",
     "sqlmodel<1.0.0,>=0.0.21",
-    # Pin bcrypt until passlib supports the latest
+    # 固定 bcrypt 版本，直到 passlib 支持最新版。
     "bcrypt==4.0.1",
     "pydantic-settings<3.0.0,>=2.14.2",
     "sentry-sdk[fastapi]<2.0.0,>=1.40.6",
@@ -145,5 +145,5 @@ ignore = [
 ]
 
 [tool.ruff.lint.pyupgrade]
-# Preserve types, even if a file imports `from __future__ import annotations`.
+# 即使文件导入 `from __future__ import annotations`，也保留类型信息。
 keep-runtime-typing = true

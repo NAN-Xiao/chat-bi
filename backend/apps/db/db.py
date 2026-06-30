@@ -51,12 +51,22 @@ except Exception as e:
 
 
 def get_uri(ds: CoreDatasource) -> str:
+    """
+    是什么：get_uri 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
     return get_uri_from_config(ds.type, conf)
 
 
 def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
+    """
+    是什么：get_uri_from_config 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     db_url: str
     if equals_ignore_case(type, "mysql"):
         checkParams(conf.extraJdbc, DB.mysql.illegalParams)
@@ -96,6 +106,11 @@ def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
 
 
 def get_extra_config(conf: DatasourceConf):
+    """
+    是什么：get_extra_config 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     config_dict = {}
     if conf.extraJdbc:
         config_arr = conf.extraJdbc.split("&")
@@ -109,9 +124,14 @@ def get_extra_config(conf: DatasourceConf):
 
 
 def get_origin_connect(type: str, conf: DatasourceConf):
+    """
+    是什么：get_origin_connect 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     extra_config_dict = get_extra_config(conf)
     if equals_ignore_case(type, "sqlServer"):
-        # none or true, set tds_version = 7.0
+        # 为空或 true 时，将 tds_version 设置为 7.0。
         if conf.lowVersion is None or conf.lowVersion:
             return pymssql.connect(
                 server=conf.host,
@@ -120,7 +140,7 @@ def get_origin_connect(type: str, conf: DatasourceConf):
                 password=conf.password,
                 database=conf.database,
                 timeout=conf.timeout,
-                tds_version='7.0',  # options: '4.2', '7.0', '8.0' ...,
+                tds_version='7.0',  # 可选值：'4.2'、'7.0'、'8.0' 等。
                 **extra_config_dict
             )
         else:
@@ -135,8 +155,13 @@ def get_origin_connect(type: str, conf: DatasourceConf):
             )
 
 
-# use sqlalchemy
+# 使用 SQLAlchemy
 def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
+    """
+    是什么：get_engine 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
     if conf.timeout is None:
@@ -156,17 +181,22 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
                                poolclass=NullPool)
     elif equals_ignore_case(ds.type, 'oracle'):
         engine = create_engine(get_uri(ds), poolclass=NullPool)
-    elif equals_ignore_case(ds.type, 'mysql'):  # mysql
+    elif equals_ignore_case(ds.type, 'mysql'):  # MySQL
         ssl_mode = {"require": True} if conf.ssl else None
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout, "ssl": ssl_mode},
                                poolclass=NullPool)
-    else:  # ck
+    else:  # ClickHouse
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
     return engine
 
 
 def get_session(ds: CoreDatasource | AssistantOutDsSchema):
     # engine = get_engine(ds) if isinstance(ds, CoreDatasource) else get_ds_engine(ds)
+    """
+    是什么：get_session 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 30)
         ds.configuration = out_conf
@@ -178,6 +208,11 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema):
 
 
 def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDsSchema, is_raise: bool = False):
+    """
+    是什么：check_connection 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 10)
         ds.configuration = out_conf
@@ -288,6 +323,11 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
 
 
 def get_version(ds: CoreDatasource | AssistantOutDsSchema):
+    """
+    是什么：get_version 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     version = ''
     if isinstance(ds, CoreDatasource):
         conf = DatasourceConf(
@@ -339,6 +379,11 @@ def get_version(ds: CoreDatasource | AssistantOutDsSchema):
 
 
 def get_schema(ds: CoreDatasource):
+    """
+    是什么：get_schema 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
@@ -390,6 +435,11 @@ def get_schema(ds: CoreDatasource):
 
 
 def get_tables(ds: CoreDatasource):
+    """
+    是什么：get_tables 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
     db = DB.get_db(ds.type)
@@ -450,6 +500,11 @@ def get_tables(ds: CoreDatasource):
 
 
 def get_fields(ds: CoreDatasource, table_name: str = None):
+    """
+    是什么：get_fields 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
     db = DB.get_db(ds.type)
@@ -511,14 +566,10 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
 
 def convert_value(value, datetime_format='space'):
     """
-        将Python值转换为JSON可序列化的类型
-
-        :param value: 要转换的值
-        :param datetime_format: 日期时间格式
-            'iso' - 2024-01-15T14:30:45 (ISO标准，带T)
-            'space' - 2024-01-15 14:30:45 (空格分隔，更常见)
-            'auto' - 自动选择
-        """
+    是什么：convert_value 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据库访问相关数据，生成后续流程可使用的结构。
+    """
     if value is None:
         return None
         # 处理 bytes 类型（包括 BIT 字段）
@@ -583,15 +634,14 @@ def convert_value(value, datetime_format='space'):
 
 
 def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
-    """Low-level datasource execution adapter.
-
-    Do not call this from user-facing analysis code. Route user SQL through
-    apps.datasource.crud.query_executor so datasource/table/field/row
-    permissions and audit-friendly normalization are applied first.
+    """
+    是什么：_unsafe_exec_sql_after_validation 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _unsafe_exec_sql_after_validation 的语义处理数据库访问相关逻辑，并把结果返回或写入状态。
     """
     while sql.endswith(';'):
         sql = sql[:-1]
-    # check execute sql only contain read operations
+    # 检查待执行 SQL 是否只包含读取操作
     is_safe, error_reason = check_sql_read(sql, ds)
     if not is_safe:
         raise ValueError(f"SQL can only contain read operations: {error_reason}")
@@ -706,7 +756,7 @@ def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema,
             with hive.connect(host=conf.host, port=conf.port, username=conf.username,
                               database=conf.database, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
-                    # Hive uses backticks for identifiers; normalize quoted identifiers as a compatibility fallback.
+                    # Hive 使用反引号标识符；这里规范化带引号标识符作为兼容兜底。
                     hive_sql = re.sub(r'"([A-Za-z_][A-Za-z0-9_]*)"', r'`\1`', sql)
                     cursor.execute(hive_sql)
                     res = cursor.fetchall()
@@ -724,7 +774,11 @@ def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema,
 
 
 def get_sqlglot_dialect(ds_type: str) -> str:
-    """根据数据源类型获取 sqlglot dialect"""
+    """
+    是什么：get_sqlglot_dialect 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     if equals_ignore_case(ds_type, 'mysql', 'doris', 'starrocks'):
         return 'mysql'
     elif equals_ignore_case(ds_type, 'sqlServer'):
@@ -759,7 +813,11 @@ DANGEROUS_PATTERNS = [
 
 
 def get_dangerous_functions(ds_type: str) -> set:
-    """获取危险函数（通用 + 特定数据源）"""
+    """
+    是什么：get_dangerous_functions 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    """
     functions = COMMON_DANGEROUS_FUNCTIONS.copy()
     ds_key = ds_type.lower() if ds_type else ''
     if ds_key in DS_SPECIFIC_DANGEROUS_FUNCTIONS:
@@ -768,10 +826,14 @@ def get_dangerous_functions(ds_type: str) -> set:
 
 
 def check_dangerous_functions(statements: list, ds_type: str) -> bool:
-    """检查是否使用了危险函数，返回 True 表示安全"""
+    """
+    是什么：check_dangerous_functions 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     dangerous_functions = get_dangerous_functions(ds_type)
     dangerous_functions_upper = {f.upper() for f in dangerous_functions}
-    
+
     for stmt in statements:
         if stmt:
             for func in stmt.find_all(exp.Anonymous):
@@ -782,8 +844,9 @@ def check_dangerous_functions(statements: list, ds_type: str) -> bool:
 
 def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple[bool, str]:
     """
-    检查 SQL 是否为安全的只读查询
-    返回: (是否安全, 错误原因)
+    是什么：check_sql_read 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
     """
     try:
         normalized_sql = sql.strip().lstrip("(").strip()
@@ -849,6 +912,11 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
 
 
 def checkParams(extraParams: str, illegalParams: List[str]):
+    """
+    是什么：checkParams 是 backend/apps/db/db.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     kvs = extraParams.split('&')
     for kv in kvs:
         if kv and '=' in kv:

@@ -1,4 +1,4 @@
-# alembic/env.py
+# 文件：alembic/env.py
 import sys
 from os.path import abspath, dirname
 
@@ -9,14 +9,14 @@ import os
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# 这是 Alembic 配置对象，提供
+# 对当前 .ini 配置文件中各项值的访问能力。
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# 解析 Python 日志配置文件。
+# 这一行用于初始化日志记录器。
 
-# add your model's MetaData object here
+# 在这里添加模型的 MetaData 对象
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
@@ -36,27 +36,26 @@ from apps.system.models.system_model import SQLModel
 
 target_metadata = SQLModel.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
+# env.py 所需的其他配置值
+# 可以通过以下方式获取：
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
 
 def get_url():
+    """
+    是什么：get_url 是 backend/alembic/env.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    """
     return str(settings.SQLALCHEMY_DATABASE_URI)
 
 
 def run_migrations_offline():
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
+    """
+    是什么：run_migrations_offline 是 backend/alembic/env.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行数据库迁移主流程，协调下游服务并处理结果或异常。
     """
     url = get_url()
     context.configure(
@@ -68,11 +67,10 @@ def run_migrations_offline():
 
 
 def run_migrations_online():
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
+    """
+    是什么：run_migrations_online 是 backend/alembic/env.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行数据库迁移主流程，协调下游服务并处理结果或异常。
     """
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_url()

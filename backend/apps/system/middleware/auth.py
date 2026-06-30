@@ -52,10 +52,20 @@ class TokenMiddleware(BaseHTTPMiddleware):
 
 
     def __init__(self, app):
+        """
+        是什么：TokenMiddleware.__init__ 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由创建 TokenMiddleware 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         super().__init__(app)
 
     async def dispatch(self, request, call_next):
 
+        """
+        是什么：TokenMiddleware.dispatch 是 backend/apps/system/middleware/auth.py 中的异步方法。
+        谁调用：由 Starlette/FastAPI 中间件链在处理每个请求时调用。
+        做了什么：执行系统管理主流程，协调下游服务并处理结果或异常。
+        """
         if self.is_options(request) or whiteUtils.is_whitelisted(request.url.path):
             return await call_next(request)
         assistantTokenKey = settings.ASSISTANT_TOKEN_KEY
@@ -85,7 +95,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 return self._with_tenant_context_headers(request, response)
             message = trans('i18n_permission.authenticate_invalid', msg = validator[1])
             return JSONResponse(message, status_code=401, headers=cors_headers_for_request(request))
-        #validate pass
+        # 校验通过
         tokenkey = settings.TOKEN_KEY
         token = request.headers.get(tokenkey)
         validate_pass, data = await self.validateToken(request, token, trans)
@@ -98,6 +108,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         return JSONResponse(message, status_code=401, headers=cors_headers_for_request(request))
 
     def is_options(self, request: Request):
+        """
+        是什么：TokenMiddleware.is_options 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 is_options 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         return request.method == "OPTIONS"
 
     def _tenant_id_from_request(
@@ -107,6 +122,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         *,
         allow_header_override: bool = True,
     ) -> int | None:
+        """
+        是什么：TokenMiddleware._tenant_id_from_request 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _tenant_id_from_request 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         if not allow_header_override:
             return token_tenant_id
         raw = request.headers.get("X-SHUZHI-TENANT-ID")
@@ -118,6 +138,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return token_tenant_id
 
     def _with_tenant_context_headers(self, request: Request, response):
+        """
+        是什么：TokenMiddleware._with_tenant_context_headers 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _with_tenant_context_headers 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         tenant = getattr(request.state, "current_tenant", None)
         user = getattr(request.state, "current_user", None)
         tenant_id = getattr(tenant, "id", None) or getattr(user, "tenant_id", None)
@@ -141,6 +166,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         return response
 
     def _apply_session_auth_origin(self, user: UserInfoDTO, auth_origin: int | None) -> UserInfoDTO:
+        """
+        是什么：TokenMiddleware._apply_session_auth_origin 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _apply_session_auth_origin 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         if auth_origin is None:
             return user
         user.origin = int(auth_origin)
@@ -155,6 +185,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         *,
         allow_header_tenant_override: bool = True,
     ) -> UserInfoDTO:
+        """
+        是什么：TokenMiddleware._attach_tenant 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _attach_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         platform_workspace_delegate = (
             request.headers.get("X-SHUZHI-PLATFORM-WORKSPACE-DELEGATE") == "1"
             and is_platform_admin(user)
@@ -186,6 +221,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         )
 
     def _assistant_tenant_id_from_payload(self, payload: dict, assistant_info: AssistantModel) -> int:
+        """
+        是什么：TokenMiddleware._assistant_tenant_id_from_payload 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _assistant_tenant_id_from_payload 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         assistant_tenant_id = require_tenant_id(getattr(assistant_info, "tenant_id", None))
         payload_tenant_id = payload.get("tenant_id")
         if payload_tenant_id and int(payload_tenant_id) != assistant_tenant_id:
@@ -199,6 +239,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         user: UserInfoDTO,
         assistant_info: AssistantModel,
     ) -> UserInfoDTO:
+        """
+        是什么：TokenMiddleware._attach_assistant_tenant 是 backend/apps/system/middleware/auth.py 中的同步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 _attach_assistant_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         tenant_id = require_tenant_id(getattr(assistant_info, "tenant_id", None))
         try:
             tenant = get_active_tenant(session, tenant_id=tenant_id)
@@ -224,6 +269,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         return attach_tenant_context(user, context)
 
     async def validateAskToken(self, request: Request, askToken: str | None, trans: I18n):
+        """
+        是什么：TokenMiddleware.validateAskToken 是 backend/apps/system/middleware/auth.py 中的异步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         if not askToken:
             return False, "Miss Token[X-SHUZHI-ASK-TOKEN]!"
         schema, param = get_authorization_scheme_param(askToken)
@@ -286,6 +336,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return False, e
 
     async def validateToken(self, request: Request, token: str | None, trans: I18n):
+        """
+        是什么：TokenMiddleware.validateToken 是 backend/apps/system/middleware/auth.py 中的异步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         if not token:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(token)
@@ -321,6 +376,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
 
 
     async def validateAssistant(self, request: Request, assistantToken: str | None, trans: I18n) -> tuple[any]:
+        """
+        是什么：TokenMiddleware.validateAssistant 是 backend/apps/system/middleware/auth.py 中的异步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         if not assistantToken:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(assistantToken)
@@ -354,6 +414,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return False, e
 
     async def validateEmbedded(self, request: Request, param: str, trans: I18n) -> tuple[any]:
+        """
+        是什么：TokenMiddleware.validateEmbedded 是 backend/apps/system/middleware/auth.py 中的异步方法。
+        谁调用：由持有 TokenMiddleware 实例的业务代码、框架回调或测试代码调用。
+        做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         try:
             unverified_payload: dict = jwt.decode(
                 param,
@@ -400,6 +465,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return False, e
 
 def xor_decrypt(encrypted_str: str, key: int = 0xABCD1234) -> int:
+    """
+    是什么：xor_decrypt 是 backend/apps/system/middleware/auth.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 xor_decrypt 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     encrypted_bytes = base64.urlsafe_b64decode(encrypted_str)
     hex_str = encrypted_bytes.hex()
     encrypted_num = int(hex_str, 16)

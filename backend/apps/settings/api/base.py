@@ -16,7 +16,9 @@ path = settings.EXCEL_PATH
 @router.post("/download-fail-info", summary=f"{PLACEHOLDER_PREFIX}download-fail-info")
 async def download_excel(req: FileRequest):
     """
-    根据文件路径下载 Excel 文件
+    是什么：download_excel 是 backend/apps/settings/api/base.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 download_excel 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
     """
     filename = os.path.basename(req.file or "")
     file_path = AppFileUtils.safe_path(path, filename, required_suffix="_error.xlsx")

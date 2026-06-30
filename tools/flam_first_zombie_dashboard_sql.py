@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 TENANT_ID = 7477202383789887488
@@ -54,6 +55,9 @@ class ViewSql:
     y_axis: tuple[str, ...] = ()
     columns: tuple[str, ...] = ()
     sql: str = ""
+    series_axis: tuple[str, ...] = ()
+    pivot: dict[str, Any] | None = None
+    y_axis_semantics: dict[str, dict[str, str]] | None = None
 
 
 DISPLAY_NAMES = {
@@ -107,6 +111,11 @@ PLATFORM_EXPR_E = (
     + _json_text("e", "deviceinfo", "_platform")
     + ", "
     + _json_text("e", "userinfo", "_platformType")
+    + ", '未知')"
+)
+COUNTRY_EXPR_E = (
+    "COALESCE("
+    + _json_text("e", "userinfo", "country")
     + ", '未知')"
 )
 
@@ -353,13 +362,53 @@ WITH pay_event_users AS (
 """.strip()
 
 SQL_ARPU_ARPPU = f"""
-{SQL_DAILY_REVENUE_BASE}
+WITH pay_event_users AS (
+    SELECT e.dt,
+           e.uid,
+           {COUNTRY_EXPR_E} AS country
+    FROM `event` e
+    WHERE {_dt_between("e", 30)}
+      AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
+    GROUP BY e.dt, e.uid, country
+), user_pay_delta AS (
+    SELECT pe.dt,
+           pe.country,
+           pe.uid,
+           GREATEST({_pay_value("u")} - COALESCE({_pay_value("p")}, 0), 0) AS pay_amount
+    FROM pay_event_users pe
+    JOIN `user` u
+      ON u.dt = pe.dt
+     AND u.uid = pe.uid
+     AND u.prod = {PROD_ID}
+    LEFT JOIN `user` p
+      ON p.uid = pe.uid
+     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+     AND p.prod = {PROD_ID}
+), daily_pay AS (
+    SELECT dt,
+           country,
+           ROUND(SUM(pay_amount), 2) AS pay_amount,
+           COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS pay_users
+    FROM user_pay_delta
+    GROUP BY dt, country
+), daily_active AS (
+    SELECT e.dt,
+           {COUNTRY_EXPR_E} AS country,
+           COUNT(DISTINCT e.uid) AS active_users
+    FROM `event` e
+    WHERE {_dt_between("e", 30)}
+      AND e.event IN ({LOGIN_EVENTS})
+      AND e.prod = {PROD_ID}
+    GROUP BY e.dt, country
+)
 SELECT STR_TO_DATE(CAST(d.dt AS CHAR), '%Y%m%d') AS `日期`,
+       d.country AS `国家`,
        ROUND(COALESCE(p.pay_amount, 0) / NULLIF(d.active_users, 0), 2) AS `ARPU`,
        ROUND(COALESCE(p.pay_amount, 0) / NULLIF(p.pay_users, 0), 2) AS `ARPPU`
 FROM daily_active d
-LEFT JOIN daily_pay p ON p.dt = d.dt
-ORDER BY d.dt
+LEFT JOIN daily_pay p ON p.dt = d.dt AND p.country = d.country
+ORDER BY d.dt, d.country
 """.strip()
 
 SQL_PAYMENT_OVERVIEW = f"""
@@ -572,7 +621,38 @@ VIEW_SQL: dict[str, ViewSql] = {
     "f39bac6b01784ca5b92c60ffe4348756": ViewSql("核心看板", "各渠道新增留存", "table", ("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), columns=("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), sql=SQL_CHANNEL_RETENTION),
     "63e03c7e2ad34ad58321892998497a85": ViewSql("渠道分析", "各渠道新增留存", "table", ("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), columns=("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), sql=SQL_CHANNEL_RETENTION),
     "6391d385e5084c0f86351ae088d3c336": ViewSql("付费概览", "新增用户30日LTV", "table", ("cohort_date", "new_users", "ltv_1d", "ltv_3d", "ltv_7d", "ltv_14d", "ltv_30d"), columns=("cohort_date", "new_users", "ltv_1d", "ltv_3d", "ltv_7d", "ltv_14d", "ltv_30d"), sql=SQL_LTV_7D),
-    "6fce0cfb227b47828b41fd3c5cc736d5": ViewSql("核心看板", "ARPU与ARPPU", "line", ("日期", "ARPU", "ARPPU"), ("日期",), ("ARPU", "ARPPU"), sql=SQL_ARPU_ARPPU),
+    "6fce0cfb227b47828b41fd3c5cc736d5": ViewSql(
+        "核心看板",
+        "ARPU与ARPPU",
+        "line",
+        ("日期", "国家", "ARPU", "ARPPU"),
+        ("日期",),
+        ("ARPU", "ARPPU"),
+        ("日期", "国家", "ARPU", "ARPPU"),
+        SQL_ARPU_ARPPU,
+        ("国家",),
+        {
+            "enabled": True,
+            "client_filter_only": True,
+            "time_field": "日期",
+            "metric_field": "ARPU",
+            "metric_fields": ["ARPU", "ARPPU"],
+            "metric_aggregations": {"ARPU": "avg", "ARPPU": "avg"},
+            "group_field": "国家",
+            "group_enabled": True,
+            "dimensions": [{"field": "国家", "label": "国家"}],
+            "range_enabled": False,
+            "granularity": "day",
+            "range": "source",
+            "custom_start": "",
+            "custom_end": "",
+            "aggregation": "avg",
+        },
+        {
+            "ARPU": {"metricType": "average", "pivotAggregation": "avg"},
+            "ARPPU": {"metricType": "average", "pivotAggregation": "avg"},
+        },
+    ),
     "f75122a83c84441381fe77a551f69a28": ViewSql("付费概览", "付费情况", "table", ("日期", "付费用户数", "付费总额", "ARPU", "ARPPU", "付费渗透率"), columns=("日期", "付费用户数", "付费总额", "ARPU", "ARPPU", "付费渗透率"), sql=SQL_PAYMENT_OVERVIEW),
     "20a42bea9bcf4bc5b1bddfff187a874d": ViewSql("付费概览", "日充值总次数", "line", ("日期", "充值次数"), ("日期",), ("充值次数",), sql=SQL_DAILY_PAY_EVENT_COUNT),
     "01b402cb5b5f4c95bc457cf505a2ecc7": ViewSql("付费概览", "日充值用户数", "line", ("日期", "日充值用户数", "日新增充值用户数"), ("日期",), ("日充值用户数", "日新增充值用户数"), sql=SQL_DAILY_PAY_USERS),
