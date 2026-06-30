@@ -302,10 +302,15 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
         currentRecord.error = eventPage.error
         emits('error', currentRecord.id)
       } else if (eventPage.status === 'succeeded') {
+        const finishAlreadyNotified =
+          currentRecord.finish || _currentChat.value.records[index.value]?.finish
         currentRecord.finish = true
         _currentChat.value.records[index.value].finish = true
         await refreshCurrentRecord(currentRecord.id)
         getChatData(currentRecord.id)
+        if (!finishAlreadyNotified) {
+          emits('finish', currentRecord.id)
+        }
       }
       _loading.value = false
       break
@@ -424,6 +429,10 @@ async function restoreRecordTask() {
     return
   }
   if (props.message?.record?.id && props.message?.record?.finish) {
+    if (props.loading) {
+      _loading.value = false
+      emits('finish', props.message.record.id)
+    }
     getChatData(props.message.record.id)
     return
   }
@@ -448,6 +457,7 @@ async function restoreRecordTask() {
       if (latestRecord?.finish) {
         _loading.value = false
         getChatData(latestRecord.id)
+        emits('finish', latestRecord.id)
         return
       }
       if (latestRecord?.error) {
