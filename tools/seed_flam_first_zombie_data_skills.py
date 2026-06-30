@@ -397,13 +397,14 @@ LIMIT 24
 - 适用于核心看板 `礼包购买情况`、礼包/商品购买结构、购买次数、购买人数和付费事件商品分布。
 
 ## SQL 口径
-- 礼包购买来自 `event` 事件明细表中的付费成功/回调事件：`PayBuyRet`,`PayBuyRetBenifit`,`PayBuyRetSandBox`,`PayFinish`,`ServerPayLog`,`ep_pay_purchase_finish`,`ep_pay_update_db_finish`。
-- 礼包名/商品 ID 优先从 `ext.payId` 取，其次 `ext.rechargeId`、`ext.productId`、`ext.goodsId`；都缺失时回退为事件名，避免整行丢失。
-- `购买次数` 统计付费事件行数；`购买人数` 统计去重 `uid`。
+- 核心看板 `礼包购买情况` 当前使用 `event='ServerPayLog'` 作为落地口径。
+- `购买礼包ID` 取 `personal.productid`：`NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')), '')`；该字段为空的支付事件不进入礼包排行。
+- `购买次数` 统计符合条件的 `ServerPayLog` 事件行数；`购买人数` 统计去重 `uid`。
 - 历史窗口遵循 `flam 历史看板日期窗口口径`：优先使用 `CURDATE()` 派生最近 30 天 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
-- 不要漏掉 `ep_pay_update_db_finish`，否则会低估部分实时/支付链路事件。
+- 生成核心看板 `礼包购买情况` 的 SQL 时，不要再使用 `ext.payId` / `ext.rechargeId` / `ext.productId` / `ext.goodsId` 作为该组件的礼包标识。
+- 不要把所有付费事件集合混入该组件；当前看板组件已经收敛为 `ServerPayLog` + `personal.productid`。
 - 不要把 `user.pay.paytotal` 差分结果按礼包拆分；`paytotal` 是累计金额快照，不包含礼包 ID。
 
 ## 持久看板 SQL
@@ -455,6 +456,7 @@ LIMIT 24
 ## SQL 口径
 - 当前态指标使用 `user` 用户日表的当前日前一完整分区，固定过滤 `prod = 110000038`，避免为取最新分区扫描大视图。
 - 等级取 `lastinfo.level`，按最新分区上的 `uid` 去重统计。
+- 核心看板 `当前等级分布` 当前使用 3 级一个分桶：`0-2`、`3-5`、`6-8`、...、`27-29`、`30+`；空等级按 0 归入 `0-2`。
 - 当前快照分布不是一段时间内的累计去重；不要把最近 30 天所有用户日合并后统计等级分布。
 
 ## 持久看板 SQL

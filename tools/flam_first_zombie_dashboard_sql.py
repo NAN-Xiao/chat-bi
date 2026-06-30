@@ -592,18 +592,35 @@ ORDER BY MIN(COALESCE(CAST({_json_text("u", "lastinfo", "level")} AS DECIMAL(18,
 """.strip()
 
 SQL_CURRENT_LEVEL_DISTRIBUTION = f"""
-SELECT CASE
-         WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)), 0) < 10 THEN '0-9'
-         WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)), 0) < 20 THEN '10-19'
-         WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)), 0) < 30 THEN '20-29'
-         ELSE '30+'
-       END AS `等级区间`,
-       COUNT(DISTINCT u.uid) AS `用户数`
-FROM `user` u
-WHERE u.dt = {_date_window_start_expr(1)}
-  AND u.prod = {PROD_ID}
-GROUP BY `等级区间`
-ORDER BY MIN(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)), 0))
+WITH user_level AS (
+    SELECT
+        u.uid,
+        COALESCE(
+            CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)),
+            0
+        ) AS level_value
+    FROM `user` u
+    WHERE u.dt = {_date_window_start_expr(1)}
+      AND u.prod = {PROD_ID}
+)
+SELECT
+    CASE
+        WHEN level_value >= 30 THEN '30+'
+        ELSE CONCAT(FLOOR(level_value / 3) * 3, '-', FLOOR(level_value / 3) * 3 + 2)
+    END AS `等级区间`,
+    COUNT(DISTINCT uid) AS `用户数`
+FROM user_level
+GROUP BY
+    CASE
+        WHEN level_value >= 30 THEN 999
+        ELSE FLOOR(level_value / 3)
+    END,
+    `等级区间`
+ORDER BY
+    CASE
+        WHEN `等级区间` = '30+' THEN 999
+        ELSE CAST(SUBSTRING_INDEX(`等级区间`, '-', 1) AS SIGNED)
+    END;
 """.strip()
 
 
