@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本是测试文件，用来验证对应功能在常见情况下能按预期工作。
+"""
 from __future__ import annotations
 
 import asyncio
@@ -19,9 +22,9 @@ from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 
 def _user() -> UserInfoDTO:
     """
-    是什么：_user 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _user 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_user 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return UserInfoDTO(
         id=1001,
@@ -38,9 +41,9 @@ def _user() -> UserInfoDTO:
 
 def _assistant() -> AssistantHeader:
     """
-    是什么：_assistant 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _assistant 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_assistant 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return AssistantHeader(
         id=3001,
@@ -53,9 +56,9 @@ def _assistant() -> AssistantHeader:
 
 async def _response_body(response) -> str:
     """
-    是什么：_response_body 是 backend/tests/test_chat_api_sse.py 中的异步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _response_body 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_response_body 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     chunks: list[str] = []
     async for chunk in response.body_iterator:
@@ -68,9 +71,9 @@ async def _response_body(response) -> str:
 
 async def _sse_events(response) -> list[dict[str, Any]]:
     """
-    是什么：_sse_events 是 backend/tests/test_chat_api_sse.py 中的异步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _sse_events 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_sse_events 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     body = await _response_body(response)
     events: list[dict[str, Any]] = []
@@ -82,14 +85,17 @@ async def _sse_events(response) -> list[dict[str, Any]]:
 
 
 class FakeLLMService:
+    """
+    类说明：FakeLLMService 把测试的一组操作放在一起，对外提供更容易调用的业务能力。
+    """
     instances: list[FakeLLMService] = []
     create_calls: list[dict[str, Any]] = []
 
     def __init__(self, *, chunks: list[Any] | None = None) -> None:
         """
-        是什么：FakeLLMService.__init__ 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：FakeLLMService.__init__ 是 FakeLLMService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.chunks = chunks or [
             'data:{"type":"id","id":9001}\n\n',
@@ -104,9 +110,9 @@ class FakeLLMService:
     @classmethod
     async def create(cls, session, current_user, request_question, current_assistant=None, *args, **kwargs):
         """
-        是什么：FakeLLMService.create 是 backend/tests/test_chat_api_sse.py 中的异步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeLLMService.create 是 FakeLLMService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         cls.create_calls.append({
             "session": session,
@@ -120,9 +126,9 @@ class FakeLLMService:
 
     def init_record(self, *, session):
         """
-        是什么：FakeLLMService.init_record 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeLLMService.init_record 是 FakeLLMService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         self.init_record_calls.append(session)
 
@@ -135,9 +141,9 @@ class FakeLLMService:
         return_img: bool,
     ) -> None:
         """
-        是什么：FakeLLMService.run_task_async 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：执行测试场景主流程，协调下游服务并处理结果或异常。
+        是什么：FakeLLMService.run_task_async 是 FakeLLMService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试的主要流程跑起来，一步步调用需要的处理。
         """
         self.run_task_async_calls.append({
             "in_chat": in_chat,
@@ -155,9 +161,9 @@ class FakeLLMService:
         stream: bool,
     ) -> None:
         """
-        是什么：FakeLLMService.run_analysis_or_predict_task_async 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：执行测试场景主流程，协调下游服务并处理结果或异常。
+        是什么：FakeLLMService.run_analysis_or_predict_task_async 是 FakeLLMService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试的主要流程跑起来，一步步调用需要的处理。
         """
         self.run_analysis_async_calls.append({
             "session": session,
@@ -179,9 +185,9 @@ class FakeLLMService:
 
     def await_result(self):
         """
-        是什么：FakeLLMService.await_result 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：组织测试场景的流式输出或异步等待，把事件和结果传递给调用方。
+        是什么：FakeLLMService.await_result 是 FakeLLMService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试处理过程中的消息或结果一段段传出去。
         """
         yield from self.chunks
 
@@ -189,18 +195,18 @@ class FakeLLMService:
 @pytest.fixture(autouse=True)
 def _patch_common_api_dependencies(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：_patch_common_api_dependencies 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _patch_common_api_dependencies 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_patch_common_api_dependencies 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     FakeLLMService.instances = []
     FakeLLMService.create_calls = []
 
     async def _allow_request(*_args, **_kwargs):
         """
-        是什么：_allow_request 是 backend/tests/test_chat_api_sse.py 中的异步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：校验测试场景相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：_allow_request 是一段测试代码，用来确认测试的某个场景没有问题。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：检查测试里的数据、权限或配置是否合法，不对就及时拦住。
         """
         return None
 
@@ -211,9 +217,9 @@ def _patch_common_api_dependencies(monkeypatch: pytest.MonkeyPatch):
 
 def test_question_answer_stream_sse_and_finish_step() -> None:
     """
-    是什么：test_question_answer_stream_sse_and_finish_step 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_question_answer_stream_sse_and_finish_step 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     response = asyncio.run(
         chat_api.question_answer_inner(
@@ -246,9 +252,9 @@ def test_question_answer_stream_sse_and_finish_step() -> None:
 
 def test_question_answer_invalid_finish_step_returns_400() -> None:
     """
-    是什么：test_question_answer_invalid_finish_step_returns_400 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_question_answer_invalid_finish_step_returns_400 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     with pytest.raises(chat_api.HTTPException) as exc:
         chat_api._parse_chat_finish_step(999)
@@ -259,17 +265,17 @@ def test_question_answer_invalid_finish_step_returns_400() -> None:
 
 def test_stream_sql_non_stream_json_status() -> None:
     """
-    是什么：test_stream_sql_non_stream_json_status 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_stream_sql_non_stream_json_status 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeLLMService(chunks=[{"success": False, "message": "boom"}])
 
     async def _create(*_args, **_kwargs):
         """
-        是什么：_create 是 backend/tests/test_chat_api_sse.py 中的异步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：_create 是一段测试代码，用来确认测试的某个场景没有问题。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         return service
 
@@ -296,9 +302,9 @@ def test_stream_sql_non_stream_json_status() -> None:
 
 def test_assistant_context_is_passed_to_llm_service() -> None:
     """
-    是什么：test_assistant_context_is_passed_to_llm_service 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_assistant_context_is_passed_to_llm_service 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     assistant = _assistant()
 
@@ -322,11 +328,14 @@ def test_assistant_context_is_passed_to_llm_service() -> None:
 
 
 class FakeAnalysisResult:
+    """
+    类说明：FakeAnalysisResult 把测试相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __iter__(self):
         """
-        是什么：FakeAnalysisResult.__iter__ 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：返回迭代器对象，让调用方可以按协议遍历数据。
+        是什么：FakeAnalysisResult.__iter__ 是 FakeAnalysisResult 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：让这个对象能配合 Python 的特殊用法工作。
         """
         yield SimpleNamespace(
             id=7701,
@@ -346,20 +355,23 @@ class FakeAnalysisResult:
 
 
 class FakeAnalysisSession:
+    """
+    类说明：FakeAnalysisSession 把测试相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def execute(self, stmt):
         """
-        是什么：FakeAnalysisSession.execute 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：执行测试场景主流程，协调下游服务并处理结果或异常。
+        是什么：FakeAnalysisSession.execute 是 FakeAnalysisSession 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试的主要流程跑起来，一步步调用需要的处理。
         """
         return FakeAnalysisResult()
 
 
 def test_analysis_api_streams_sse_events(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    是什么：test_analysis_api_streams_sse_events 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_analysis_api_streams_sse_events 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     monkeypatch.setattr(chat_api, "get_chart_data_with_user", lambda *args, **kwargs: {"fields": [], "data": []})
 
@@ -385,9 +397,9 @@ def test_analysis_api_streams_sse_events(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_predict_api_non_stream_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    是什么：test_predict_api_non_stream_json 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_predict_api_non_stream_json 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     monkeypatch.setattr(chat_api, "get_chart_data_with_user", lambda *args, **kwargs: {"fields": [], "data": []})
 
@@ -415,9 +427,9 @@ def test_predict_api_non_stream_json(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_analysis_api_invalid_action_returns_stream_error() -> None:
     """
-    是什么：test_analysis_api_invalid_action_returns_stream_error 是 backend/tests/test_chat_api_sse.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_analysis_api_invalid_action_returns_stream_error 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     response = asyncio.run(
         chat_api.analysis_or_predict(

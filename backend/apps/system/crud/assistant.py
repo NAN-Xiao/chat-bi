@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 import json
 import re
 import urllib
@@ -26,9 +29,9 @@ from common.core.response_middleware import ResponseMiddleware
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
 async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
     """
-    是什么：get_assistant_info 是 backend/apps/system/crud/assistant.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_assistant_info 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     db_model = session.get(AssistantModel, assistant_id)
     return db_model
@@ -36,9 +39,9 @@ async def get_assistant_info(*, session: Session, assistant_id: int) -> Assistan
 
 def get_assistant_user(*, id: int):
     """
-    是什么：get_assistant_user 是 backend/apps/system/crud/assistant.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_assistant_user 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     return UserInfoDTO(id=id, account="shuzhi-inner-assistant", name="shuzhi-inner-assistant",
                        email="shuzhi-inner-assistant@shuzhi.com")
@@ -46,9 +49,9 @@ def get_assistant_user(*, id: int):
 
 def get_assistant_ds(session: Session, llm_service) -> list[dict]:
     """
-    是什么：get_assistant_ds 是 backend/apps/system/crud/assistant.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_assistant_ds 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     assistant: AssistantHeader = llm_service.current_assistant
     type = assistant.type
@@ -95,9 +98,9 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
 
 def init_dynamic_cors(app: FastAPI):
     """
-    是什么：init_dynamic_cors 是 backend/apps/system/crud/assistant.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：init_dynamic_cors 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     try:
         with Session(engine) as session:
@@ -133,6 +136,9 @@ def init_dynamic_cors(app: FastAPI):
 
 
 class AssistantOutDs:
+    """
+    类说明：AssistantOutDs 把系统管理相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     assistant: AssistantHeader
     ds_list: Optional[list[AssistantOutDsSchema]] = None
     certificate: Optional[str] = None
@@ -140,9 +146,9 @@ class AssistantOutDs:
 
     def __init__(self, assistant: AssistantHeader):
         """
-        是什么：AssistantOutDs.__init__ 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由创建 AssistantOutDs 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：AssistantOutDs.__init__ 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：创建 AssistantOutDs 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.assistant = assistant
         self.ds_list = None
@@ -153,9 +159,9 @@ class AssistantOutDs:
     # @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_DS, keyExpression="current_user.id")
     def get_ds_from_api(self):
         """
-        是什么：AssistantOutDs.get_ds_from_api 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：AssistantOutDs.get_ds_from_api 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AssistantOutDs 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         config: dict[any] = json.loads(self.assistant.configuration)
         endpoint: str = config['endpoint']
@@ -194,9 +200,9 @@ class AssistantOutDs:
 
     def get_first_element(self, text: str):
         """
-        是什么：AssistantOutDs.get_first_element 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：AssistantOutDs.get_first_element 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AssistantOutDs 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         parts = re.split(r'[,;]', text.strip())
         first_domain = parts[0].strip()
@@ -204,9 +210,9 @@ class AssistantOutDs:
 
     def get_complete_endpoint(self, endpoint: str) -> str | None:
         """
-        是什么：AssistantOutDs.get_complete_endpoint 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：AssistantOutDs.get_complete_endpoint 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AssistantOutDs 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         if endpoint.startswith("http://") or endpoint.startswith("https://"):
             return endpoint
@@ -222,9 +228,9 @@ class AssistantOutDs:
 
     def get_simple_ds_list(self):
         """
-        是什么：AssistantOutDs.get_simple_ds_list 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：AssistantOutDs.get_simple_ds_list 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AssistantOutDs 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         if self.ds_list:
             return [{'id': ds.id, 'name': ds.name, 'description': ds.comment} for ds in self.ds_list]
@@ -234,9 +240,9 @@ class AssistantOutDs:
     def get_db_schema(self, ds_id: int, question: str = '', embedding: bool = True,
                       table_list: list[str] = None) -> tuple[str, list]:
         """
-        是什么：AssistantOutDs.get_db_schema 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：AssistantOutDs.get_db_schema 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AssistantOutDs 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         ds = self.get_ds(ds_id)
         schema_str = ""
@@ -284,9 +290,9 @@ class AssistantOutDs:
 
     def get_ds(self, ds_id: int, trans: Trans = None):
         """
-        是什么：AssistantOutDs.get_ds 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：AssistantOutDs.get_ds 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AssistantOutDs 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         if self.ds_list:
             for ds in self.ds_list:
@@ -299,9 +305,9 @@ class AssistantOutDs:
 
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         """
-        是什么：AssistantOutDs.convert2schema 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
-        做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+        是什么：AssistantOutDs.convert2schema 是 AssistantOutDs 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AssistantOutDs 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         id_marker: str = ''
         attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema', 'mode']
@@ -331,21 +337,24 @@ class AssistantOutDs:
 
 
 class AssistantOutDsFactory:
+    """
+    类说明：AssistantOutDsFactory 把系统管理相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     @staticmethod
     def get_instance(assistant: AssistantHeader) -> AssistantOutDs:
         """
-        是什么：AssistantOutDsFactory.get_instance 是 backend/apps/system/crud/assistant.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：AssistantOutDsFactory.get_instance 是 AssistantOutDsFactory 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         return AssistantOutDs(assistant)
 
 
 def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = 30) -> str:
     """
-    是什么：get_out_ds_conf 是 backend/apps/system/crud/assistant.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_out_ds_conf 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     conf = {
         "host": ds.host or '',

@@ -1,4 +1,7 @@
-﻿import datetime
+﻿"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
+import datetime
 import json
 from typing import List
 
@@ -40,9 +43,9 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
 
 def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreDatasource]:
     """
-    是什么：get_datasource_list 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_datasource_list 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if is_platform_admin(user) and not is_platform_workspace_delegate(user):
         return session.exec(select(CoreDatasource).order_by(CoreDatasource.name)).all()
@@ -58,9 +61,9 @@ def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreData
 
 def get_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
     """
-    是什么：get_ds 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_ds 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     statement = select(CoreDatasource).where(CoreDatasource.id == id)
     tenant_id = None if is_platform_admin(user) and not is_platform_workspace_delegate(user) else current_tenant_id(user)
@@ -72,9 +75,9 @@ def get_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
 
 def check_status_by_id(session: SessionDep, trans: Trans, ds_id: int, is_raise: bool = False):
     """
-    是什么：check_status_by_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_status_by_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     ds = session.get(CoreDatasource, ds_id)
     if ds is None:
@@ -86,18 +89,18 @@ def check_status_by_id(session: SessionDep, trans: Trans, ds_id: int, is_raise: 
 
 def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise: bool = False):
     """
-    是什么：check_status 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_status 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     return check_connection(trans, ds, is_raise)
 
 
 def _datasource_tenant_id(session: SessionDep, ds_id: int | None) -> int | None:
     """
-    是什么：_datasource_tenant_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _datasource_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_tenant_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if ds_id is None:
         return None
@@ -106,9 +109,9 @@ def _datasource_tenant_id(session: SessionDep, ds_id: int | None) -> int | None:
 
 def _coerce_tenant_id(value) -> int | None:
     """
-    是什么：_coerce_tenant_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _coerce_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_coerce_tenant_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         if value in (None, ""):
@@ -125,9 +128,9 @@ def _schema_metadata_tenant_id(
         tenant_id: int | None = None,
 ) -> int | None:
     """
-    是什么：_schema_metadata_tenant_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _schema_metadata_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_schema_metadata_tenant_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     explicit_tenant_id = _coerce_tenant_id(tenant_id)
     if explicit_tenant_id is not None and datasource_bound_to_tenant(session, int(ds.id), explicit_tenant_id):
@@ -146,9 +149,9 @@ def _apply_workspace_comments_to_tables(
         tables: list[CoreTable],
 ) -> list[CoreTable]:
     """
-    是什么：_apply_workspace_comments_to_tables 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _apply_workspace_comments_to_tables 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_apply_workspace_comments_to_tables 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     comments = table_comment_map(session, tenant_id, [table.table_name for table in tables])
     for table in tables:
@@ -166,9 +169,9 @@ def _apply_workspace_comments_to_fields(
         fields: list[CoreField],
 ) -> list[CoreField]:
     """
-    是什么：_apply_workspace_comments_to_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _apply_workspace_comments_to_fields 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_apply_workspace_comments_to_fields 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     comments = field_comment_map(
         session,
@@ -186,9 +189,9 @@ def _apply_workspace_comments_to_fields(
 
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     """
-    是什么：check_name 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_name 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     tenant_id = None if is_platform_admin(user) and not is_platform_workspace_delegate(user) else current_tenant_id(user)
     filters = [CoreDatasource.name == ds.name]
@@ -208,9 +211,9 @@ def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDat
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.id")
 async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
     """
-    是什么：create_ds 是 backend/apps/datasource/crud/datasource.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：create_ds 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
@@ -241,9 +244,9 @@ async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create
 
 def chooseTables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTable]):
     """
-    是什么：chooseTables 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 chooseTables 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：chooseTables 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     check_status(session, trans, ds, True)
@@ -253,9 +256,9 @@ def chooseTables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTa
 
 def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     """
-    是什么：update_ds 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_ds 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     ds.id = int(ds.id)
     check_name(session, trans, user, ds)
@@ -280,9 +283,9 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
 
 def update_ds_recommended_config(session: SessionDep, datasource_id: int, recommended_config: int):
     """
-    是什么：update_ds_recommended_config 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_ds_recommended_config 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == datasource_id)).first()
     record.recommended_config = recommended_config
@@ -292,9 +295,9 @@ def update_ds_recommended_config(session: SessionDep, datasource_id: int, recomm
 
 async def delete_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
     """
-    是什么：delete_ds 是 backend/apps/datasource/crud/datasource.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：delete_ds 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     term = get_ds(session, id, user)
     if term is None:
@@ -320,9 +323,9 @@ async def delete_ds(session: SessionDep, id: int, user: CurrentUser | None = Non
 
 def getTables(session: SessionDep, id: int):
     """
-    是什么：getTables 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：getTables 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
     tables = get_tables(ds)
@@ -332,9 +335,9 @@ def getTables(session: SessionDep, id: int):
 def getTablesByDs(session: SessionDep, ds: CoreDatasource):
     # check_status(session, ds, True)
     """
-    是什么：getTablesByDs 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：getTablesByDs 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     tables = get_tables(ds)
     return tables
@@ -342,9 +345,9 @@ def getTablesByDs(session: SessionDep, ds: CoreDatasource):
 
 def getFields(session: SessionDep, id: int, table_name: str):
     """
-    是什么：getFields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：getFields 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
     fields = get_fields(ds, table_name)
@@ -353,9 +356,9 @@ def getFields(session: SessionDep, id: int, table_name: str):
 
 def getFieldsByDs(session: SessionDep, ds: CoreDatasource, table_name: str):
     """
-    是什么：getFieldsByDs 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：getFieldsByDs 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     fields = get_fields(ds, table_name)
     return fields
@@ -370,9 +373,9 @@ def sync_single_fields(
         tenant_id: int | None = None,
 ):
     """
-    是什么：sync_single_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：sync_single_fields 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     table_query = session.query(CoreTable).filter(CoreTable.id == id)
     if tenant_id is not None:
@@ -409,9 +412,9 @@ def sync_single_fields(
 
 def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable]):
     """
-    是什么：sync_table 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：sync_table 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     id_list = []
     for item in tables:
@@ -458,9 +461,9 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
 
 def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, fields: List[ColumnSchema]):
     """
-    是什么：sync_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：sync_fields 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     id_list = []
     for index, item in enumerate(fields):
@@ -500,9 +503,9 @@ def update_table_and_fields(
         tenant_id: int | None = None,
 ):
     """
-    是什么：update_table_and_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_table_and_fields 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     update_table(session, data.table)
     metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, data.table.ds_id)
@@ -536,9 +539,9 @@ def updateTable(
         tenant_id: int | None = None,
 ):
     """
-    是什么：updateTable 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：updateTable 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     update_table(session, table)
 
@@ -562,9 +565,9 @@ def updateField(
         tenant_id: int | None = None,
 ):
     """
-    是什么：updateField 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：updateField 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     update_field(session, field)
 
@@ -586,9 +589,9 @@ def updateField(
 
 def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
     """
-    是什么：preview 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 preview 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：preview 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     # check_status(session, ds, True)
@@ -684,9 +687,9 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
 
 def fieldEnum(session: SessionDep, current_user: CurrentUser, id: int):
     """
-    是什么：fieldEnum 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 fieldEnum 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：fieldEnum 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     field = session.query(CoreField).filter(CoreField.id == id).first()
     if field is None:
@@ -714,9 +717,9 @@ def fieldEnum(session: SessionDep, current_user: CurrentUser, id: int):
 
 def updateNum(session: SessionDep, ds: CoreDatasource):
     """
-    是什么：updateNum 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：updateNum 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     all_tables = get_tables(ds) if ds.type != 'excel' else json.loads(aes_decrypt(ds.configuration)).get('sheets')
     selected_tables = get_tables_by_ds_id(session, ds.id)
@@ -733,9 +736,9 @@ def updateNum(session: SessionDep, ds: CoreDatasource):
 
 def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> List[TableAndFields]:
     """
-    是什么：get_table_obj_by_ds 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_table_obj_by_ds 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     _list: List = []
     if ds is None or not has_datasource_access(session, current_user, ds.id):
@@ -779,9 +782,9 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
 
 def get_table_sample_data(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, table_name: str, fields: list) -> str:
     """
-    是什么：get_table_sample_data 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_table_sample_data 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if not fields:
         return ""
@@ -847,9 +850,9 @@ def get_table_sample_data(session: SessionDep, current_user: CurrentUser, ds: Co
 def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource,
                            table_list: list[str] = None) -> str:
     """
-    是什么：get_tables_sample_data 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_tables_sample_data 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if is_normal_user(current_user):
         return ""
@@ -871,9 +874,9 @@ def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: C
 
 def _relation_id(value) -> int | None:
     """
-    是什么：_relation_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _relation_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_relation_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return int(value)
@@ -884,9 +887,9 @@ def _relation_id(value) -> int | None:
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
                      embedding: bool = True, table_list: list[str] = None) -> tuple[str, list]:
     """
-    是什么：get_table_schema 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_table_schema 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     schema_str = ""
     table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)

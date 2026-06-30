@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装聊天问数据和 Agent的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 import json
 import re
 from enum import Enum
@@ -16,6 +19,9 @@ from common.utils.utils import AppLogUtil
 
 
 class CustomPromptTypeEnum(str, Enum):
+    """
+    类说明：CustomPromptTypeEnum 收拢聊天问数据和 Agent里固定的可选值，避免代码里到处写零散字符串。
+    """
     GENERATE_SQL = "GENERATE_SQL"
     ANALYSIS = "ANALYSIS"
     PREDICT_DATA = "PREDICT_DATA"
@@ -23,6 +29,9 @@ class CustomPromptTypeEnum(str, Enum):
 
 
 class CustomPromptTargetScopeEnum(str, Enum):
+    """
+    类说明：CustomPromptTargetScopeEnum 收拢聊天问数据和 Agent里固定的可选值，避免代码里到处写零散字符串。
+    """
     SMART_QA = "SMART_QA"
     ANALYSIS_ASSISTANT = "ANALYSIS_ASSISTANT"
     REPORT_INTERPRETATION = "REPORT_INTERPRETATION"
@@ -30,6 +39,9 @@ class CustomPromptTargetScopeEnum(str, Enum):
 
 
 class CustomPromptVisibilityScopeEnum(str, Enum):
+    """
+    类说明：CustomPromptVisibilityScopeEnum 收拢聊天问数据和 Agent里固定的可选值，避免代码里到处写零散字符串。
+    """
     PLATFORM_PUBLIC = "PLATFORM_PUBLIC"
     ADMIN_PUBLIC = "ADMIN_PUBLIC"
     USER_PRIVATE = "USER_PRIVATE"
@@ -37,9 +49,9 @@ class CustomPromptVisibilityScopeEnum(str, Enum):
 
 def _normalize_prompt_id(prompt_id: Optional[int | str]) -> Optional[int]:
     """
-    是什么：_normalize_prompt_id 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_prompt_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if prompt_id in (None, ""):
         return None
@@ -53,9 +65,9 @@ def _normalize_target_scope(
         target_scope: Optional[CustomPromptTargetScopeEnum | str],
 ) -> CustomPromptTargetScopeEnum:
     """
-    是什么：_normalize_target_scope 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_target_scope 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if isinstance(target_scope, CustomPromptTargetScopeEnum):
         return target_scope
@@ -67,9 +79,9 @@ def _normalize_target_scope(
 
 def _xml_text(value: Optional[str]) -> str:
     """
-    是什么：_xml_text 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _xml_text 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_xml_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return (
         (value or "")
@@ -81,9 +93,9 @@ def _xml_text(value: Optional[str]) -> str:
 
 def _datasource_id_values(value) -> list[str]:
     """
-    是什么：_datasource_id_values 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _datasource_id_values 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_id_values 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value in (None, ""):
         return []
@@ -99,9 +111,9 @@ def _datasource_id_values(value) -> list[str]:
 
 def _prompt_log_text(name: str, description: str, system_prompt: str, label: str = "补充提示词") -> str:
     """
-    是什么：_prompt_log_text 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _prompt_log_text 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_prompt_log_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parts = [f"名称：{name}"]
     if description:
@@ -112,9 +124,9 @@ def _prompt_log_text(name: str, description: str, system_prompt: str, label: str
 
 def _scope_label(visibility_scope: str | None) -> str:
     """
-    是什么：_scope_label 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _scope_label 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_scope_label 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
         return "platform-generic"
@@ -125,9 +137,9 @@ def _scope_label(visibility_scope: str | None) -> str:
 
 def _scope_runtime_notice(visibility_scope: str | None, prompt_type: str = "Agent") -> str:
     """
-    是什么：_scope_runtime_notice 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _scope_runtime_notice 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_scope_runtime_notice 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
         return (
@@ -151,9 +163,9 @@ def _scope_runtime_notice(visibility_scope: str | None, prompt_type: str = "Agen
 
 def _source_order_sql(alias: str = "") -> str:
     """
-    是什么：_source_order_sql 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _source_order_sql 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_source_order_sql 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     prefix = f"{alias}." if alias else ""
     return (
@@ -166,9 +178,9 @@ def _source_order_sql(alias: str = "") -> str:
 
 def _is_split_legacy_data_skill(row) -> bool:
     """
-    是什么：_is_split_legacy_data_skill 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_split_legacy_data_skill 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_split_legacy_data_skill 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     prompt = row.get("prompt") or ""
     return (
@@ -185,9 +197,9 @@ def _is_split_legacy_data_skill(row) -> bool:
 
 def _skill_match_terms(question: str) -> set[str]:
     """
-    是什么：_skill_match_terms 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _skill_match_terms 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_skill_match_terms 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     text = (question or "").lower()
     terms = {item for item in re.findall(r"[a-zA-Z][a-zA-Z0-9_]{1,}", text)}
@@ -220,9 +232,9 @@ def _skill_match_terms(question: str) -> set[str]:
 
 def _score_data_skill(skill: dict[str, Any], question: str) -> int:
     """
-    是什么：_score_data_skill 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _score_data_skill 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_score_data_skill 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     terms = _skill_match_terms(question)
     if not terms:
@@ -247,9 +259,9 @@ def _score_data_skill(skill: dict[str, Any], question: str) -> int:
 
 def _estimated_skill_chars(skill: dict[str, Any]) -> int:
     """
-    是什么：_estimated_skill_chars 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _estimated_skill_chars 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_estimated_skill_chars 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return (
         len(skill.get("name") or "")
@@ -264,9 +276,9 @@ def _select_ranked_data_skills(
         skill_rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """
-    是什么：_select_ranked_data_skills 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：_select_ranked_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     positive = [item for item in scored if item[0] > 0]
     if not positive:
@@ -283,17 +295,17 @@ def _select_ranked_data_skills(
 
     def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
         """
-        是什么：skill_key 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 _select_ranked_data_skills 在执行内部流程时调用。
-        做了什么：围绕 skill_key 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：skill_key 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 _select_ranked_data_skills 跑到对应步骤时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
 
     def add_skill(item: tuple[float, int, dict[str, Any]]) -> bool:
         """
-        是什么：add_skill 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 _select_ranked_data_skills 在执行内部流程时调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：add_skill 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 _select_ranked_data_skills 跑到对应步骤时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         nonlocal used_chars
         _score, _index, skill = item
@@ -312,9 +324,9 @@ def _select_ranked_data_skills(
 
     def drop_lowest_platform_skill() -> bool:
         """
-        是什么：drop_lowest_platform_skill 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 _select_ranked_data_skills 在执行内部流程时调用。
-        做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+        是什么：drop_lowest_platform_skill 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 _select_ranked_data_skills 跑到对应步骤时会调用它。
+        做了什么：把聊天问数据和 Agent不再需要的数据、缓存或临时内容清理掉。
         """
         nonlocal used_chars
         platform_indexes = [
@@ -353,9 +365,9 @@ def _select_ranked_data_skills(
 
 def _queue_stale_skill_embeddings(skill_rows: list[dict[str, Any]]) -> None:
     """
-    是什么：_queue_stale_skill_embeddings 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _queue_stale_skill_embeddings 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_queue_stale_skill_embeddings 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not settings.EMBEDDING_ENABLED:
         return
@@ -391,9 +403,9 @@ def _rank_auto_data_skills_by_embedding(
         question: str | None,
 ) -> list[dict[str, Any]] | None:
     """
-    是什么：_rank_auto_data_skills_by_embedding 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rank_auto_data_skills_by_embedding 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_rank_auto_data_skills_by_embedding 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not question or not question.strip() or not settings.EMBEDDING_ENABLED:
         return None
@@ -442,9 +454,9 @@ def _rank_auto_data_skills_by_embedding(
 
     def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
         """
-        是什么：skill_key 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 _rank_auto_data_skills_by_embedding 在执行内部流程时调用。
-        做了什么：围绕 skill_key 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：skill_key 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 _rank_auto_data_skills_by_embedding 跑到对应步骤时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
 
@@ -460,9 +472,9 @@ def _rank_auto_data_skills_by_embedding(
 
     def add(skill: dict[str, Any]) -> bool:
         """
-        是什么：add 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 _rank_auto_data_skills_by_embedding 在执行内部流程时调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：add 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 _rank_auto_data_skills_by_embedding 跑到对应步骤时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         key = skill_key(skill)
         if key in seen:
@@ -495,9 +507,9 @@ def _rank_auto_data_skills_by_embedding(
 
 def _rank_auto_data_skills_by_keyword(skill_rows: list[dict[str, Any]], question: str | None) -> list[dict[str, Any]]:
     """
-    是什么：_rank_auto_data_skills_by_keyword 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rank_auto_data_skills_by_keyword 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_rank_auto_data_skills_by_keyword 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not question or not question.strip():
         return skill_rows
@@ -511,9 +523,9 @@ def _rank_auto_data_skills_by_keyword(skill_rows: list[dict[str, Any]], question
 
 def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | None) -> list[dict[str, Any]]:
     """
-    是什么：_rank_auto_data_skills 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rank_auto_data_skills 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_rank_auto_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     embedding_ranked = _rank_auto_data_skills_by_embedding(skill_rows, question)
     if embedding_ranked is not None:
@@ -534,9 +546,9 @@ def find_custom_prompts(
         can_manage_platform_public: bool = False,
 ) -> tuple[str, list[str], Optional[int]]:
     """
-    是什么：find_custom_prompts 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：find_custom_prompts 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     normalized_prompt_id = _normalize_prompt_id(prompt_id)
     if normalized_prompt_id is None:
@@ -660,9 +672,9 @@ def find_data_skills(
         can_manage_platform_public: bool = False,
 ) -> tuple[str, list[str], Optional[int]]:
     """
-    是什么：find_data_skills 是 backend/apps/chat/curd/custom_prompt.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：find_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     normalized_skill_id = _normalize_prompt_id(skill_id)
     normalized_scope = _normalize_target_scope(target_scope)

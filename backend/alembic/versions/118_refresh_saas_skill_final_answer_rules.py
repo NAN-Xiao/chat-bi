@@ -1,8 +1,5 @@
-"""迁移脚本：118_refresh_saas_skill_final_answer_rules
-
-迁移版本 ID： c8d7e6f5a4b3
-上一版本： b7c6d5e4f3a2
-创建时间： 2026-06-22 00:00:00.000000
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
 """
 from __future__ import annotations
 
@@ -20,9 +17,9 @@ depends_on = None
 
 def _load_saas_skills_module():
     """
-    是什么：_load_saas_skills_module 是 backend/alembic/versions/118_refresh_saas_skill_final_answer_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    是什么：_load_saas_skills_module 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移需要的数据找出来，整理成后面好用的样子。
     """
     module_path = Path(__file__).with_name("112_expand_saas_data_skills.py")
     spec = importlib.util.spec_from_file_location("saas_skill_revision_112", module_path)
@@ -36,9 +33,9 @@ def _load_saas_skills_module():
 
 def upgrade() -> None:
     """
-    是什么：upgrade 是 backend/alembic/versions/118_refresh_saas_skill_final_answer_rules.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：upgrade 是这个迁移脚本的数据库升级步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前升级。
     """
     saas_skills = _load_saas_skills_module()
     saas_skills._create_saas_20_skills()
@@ -46,8 +43,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """
-    是什么：downgrade 是 backend/alembic/versions/118_refresh_saas_skill_final_answer_rules.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：downgrade 是这个迁移脚本的数据库回滚步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前回滚。
     """
     return None

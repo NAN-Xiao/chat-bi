@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -12,18 +15,18 @@ _DEVELOPMENT_DEFAULT_PASSWORDS = {"Shuzhi@123456", "elex@123"}
 
 def _env_present(name: str) -> bool:
     """
-    是什么：_env_present 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _env_present 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_env_present 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return bool(os.environ.get(name))
 
 
 def _host_from_origin(origin: str) -> str:
     """
-    是什么：_host_from_origin 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _host_from_origin 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_host_from_origin 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parsed = urlsplit(origin)
     return parsed.hostname or ""
@@ -31,18 +34,18 @@ def _host_from_origin(origin: str) -> str:
 
 def _is_local_origin(origin: str) -> bool:
     """
-    是什么：_is_local_origin 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_local_origin 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_is_local_origin 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _host_from_origin(origin).lower() in _LOCAL_HOSTS
 
 
 def _redis_url_has_auth(url: str | None) -> bool:
     """
-    是什么：_redis_url_has_auth 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _redis_url_has_auth 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_redis_url_has_auth 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not url:
         return False
@@ -52,9 +55,9 @@ def _redis_url_has_auth(url: str | None) -> bool:
 
 def _is_absolute_path(value: str) -> bool:
     """
-    是什么：_is_absolute_path 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_absolute_path 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_is_absolute_path 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return bool(value) and (
         Path(value).is_absolute()
@@ -65,9 +68,9 @@ def _is_absolute_path(value: str) -> bool:
 
 def _configured_cors_origins() -> list[str]:
     """
-    是什么：_configured_cors_origins 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _configured_cors_origins 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_configured_cors_origins 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     origins = settings.BACKEND_CORS_ORIGINS
     if isinstance(origins, str):
@@ -77,9 +80,9 @@ def _configured_cors_origins() -> list[str]:
 
 def validate_production_settings() -> list[str]:
     """
-    是什么：validate_production_settings 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验核心配置和基础设施相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_production_settings 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查后端基础能力里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if settings.APP_ENV != "production":
         return []
@@ -184,9 +187,9 @@ def validate_production_settings() -> list[str]:
 
 def init_observability() -> None:
     """
-    是什么：init_observability 是 backend/common/core/production.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装核心配置和基础设施相关对象和数据，并返回或写入对应状态。
+    是什么：init_observability 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存后端基础能力需要的东西，让后续流程能继续往下走。
     """
     if not settings.SENTRY_DSN:
         return

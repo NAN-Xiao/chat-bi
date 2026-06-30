@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import json
 from pathlib import Path
 from typing import Dict, Any
@@ -6,11 +9,14 @@ from fastapi import Request
 
 
 class I18n:
+    """
+    类说明：I18n 把通用工具相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, locale_dir: str = "locales"):
         """
-        是什么：I18n.__init__ 是 backend/common/utils/locale.py 中的同步方法。
-        谁调用：由创建 I18n 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：I18n.__init__ 是 I18n 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：创建 I18n 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.locale_dir = Path(locale_dir)
         self.translations: Dict[str, Dict[str, Any]] = {}
@@ -18,9 +24,9 @@ class I18n:
 
     def load_translations(self):
         """
-        是什么：I18n.load_translations 是 backend/common/utils/locale.py 中的同步方法。
-        谁调用：由持有 I18n 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+        是什么：I18n.load_translations 是 I18n 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 I18n 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把通用工具需要的数据找出来，整理成后面好用的样子。
         """
         if not self.locale_dir.exists():
             self.locale_dir.mkdir()
@@ -32,9 +38,9 @@ class I18n:
 
     def get_language(self, request: Request = None, lang: str = None) -> str:
         """
-        是什么：I18n.get_language 是 backend/common/utils/locale.py 中的同步方法。
-        谁调用：由持有 I18n 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+        是什么：I18n.get_language 是 I18n 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 I18n 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把通用工具需要的数据找出来，整理成后面好用的样子。
         """
         primary_lang: str | None = None
         if lang is not None:
@@ -47,19 +53,22 @@ class I18n:
 
     def __call__(self, request: Request = None, lang: str = None) -> 'I18nHelper':
         """
-        是什么：I18n.__call__ 是 backend/common/utils/locale.py 中的同步方法。
-        谁调用：由 Python 运行时、框架协议或相关内置操作按需调用。
-        做了什么：实现 Python 协议方法，使对象可以参与对应的语言级操作。
+        是什么：I18n.__call__ 是 I18n 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：Python 在需要这个特殊行为时会自动调用它。
+        做了什么：让这个对象能配合 Python 的特殊用法工作。
         """
         return I18nHelper(self, request, lang)
 
 
 class I18nHelper:
+    """
+    类说明：I18nHelper 把通用工具相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, i18n: I18n, request: Request = None, lang: str = None):
         """
-        是什么：I18nHelper.__init__ 是 backend/common/utils/locale.py 中的同步方法。
-        谁调用：由创建 I18nHelper 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：I18nHelper.__init__ 是 I18nHelper 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：创建 I18nHelper 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.i18n = i18n
         self.request = request
@@ -67,9 +76,9 @@ class I18nHelper:
 
     def _get_nested_translation(self, data: Dict[str, Any], key_path: str) -> str:
         """
-        是什么：I18nHelper._get_nested_translation 是 backend/common/utils/locale.py 中的同步方法。
-        谁调用：由持有 I18nHelper 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+        是什么：I18nHelper._get_nested_translation 是 I18nHelper 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 I18nHelper 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把通用工具需要的数据找出来，整理成后面好用的样子。
         """
         keys = key_path.split('.')
         current = data
@@ -84,9 +93,9 @@ class I18nHelper:
 
     def __call__(self, arg_key: str, **kwargs) -> str:
         """
-        是什么：I18nHelper.__call__ 是 backend/common/utils/locale.py 中的同步方法。
-        谁调用：由 Python 运行时、框架协议或相关内置操作按需调用。
-        做了什么：实现 Python 协议方法，使对象可以参与对应的语言级操作。
+        是什么：I18nHelper.__call__ 是 I18nHelper 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：Python 在需要这个特殊行为时会自动调用它。
+        做了什么：让这个对象能配合 Python 的特殊用法工作。
         """
         lang_data = self.i18n.translations.get(self.lang, {})
         text = self._get_nested_translation(lang_data, arg_key)

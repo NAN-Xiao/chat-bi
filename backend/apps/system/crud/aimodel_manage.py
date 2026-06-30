@@ -1,4 +1,7 @@
-﻿from sqlmodel import Session, select
+﻿"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
+from sqlmodel import Session, select
 
 from apps.system.models.system_model import AiModelDetail, AiModelBrief
 from common.core.db import engine
@@ -7,9 +10,9 @@ from common.utils.utils import AppLogUtil
 
 async def async_model_info():
     """
-    是什么：async_model_info 是 backend/apps/system/crud/aimodel_manage.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 async_model_info 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：async_model_info 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     with Session(engine) as session:
         model_list = session.exec(select(AiModelDetail)).all()
@@ -30,9 +33,9 @@ async def async_model_info():
 
 def get_ai_model_list(session: Session, with_default: bool = True):
     """
-    是什么：get_ai_model_list 是 backend/apps/system/crud/aimodel_manage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_ai_model_list 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     where_condition = True
     if with_default:

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义数据源用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 from datetime import datetime
 from typing import List, Optional
 
@@ -8,6 +11,9 @@ from sqlmodel import SQLModel, Field
 
 
 class CoreDatasource(SQLModel, table=True):
+    """
+    类说明：CoreDatasource 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "core_datasource"
     __table_args__ = (
         Index("idx_core_datasource_tenant_id", "tenant_id"),
@@ -30,6 +36,9 @@ class CoreDatasource(SQLModel, table=True):
 
 
 class CoreDatasourceUser(SQLModel, table=True):
+    """
+    类说明：CoreDatasourceUser 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "core_datasource_user"
     __table_args__ = (
         UniqueConstraint("ds_id", "user_id", name="uq_core_datasource_user_ds_user"),
@@ -46,6 +55,9 @@ class CoreDatasourceUser(SQLModel, table=True):
 
 
 class CoreDatasourceTenantBinding(SQLModel, table=True):
+    """
+    类说明：CoreDatasourceTenantBinding 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "core_datasource_tenant_binding"
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_core_datasource_tenant_binding_tenant"),
@@ -61,6 +73,9 @@ class CoreDatasourceTenantBinding(SQLModel, table=True):
 
 
 class CoreTable(SQLModel, table=True):
+    """
+    类说明：CoreTable 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "core_table"
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
     ds_id: int = Field(sa_column=Column(BigInteger()))
@@ -72,6 +87,9 @@ class CoreTable(SQLModel, table=True):
 
 
 class DsRecommendedProblem(SQLModel, table=True):
+    """
+    类说明：DsRecommendedProblem 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "ds_recommended_problem"
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
     datasource_id: int = Field(sa_column=Column(BigInteger()))
@@ -83,6 +101,9 @@ class DsRecommendedProblem(SQLModel, table=True):
 
 
 class CoreField(SQLModel, table=True):
+    """
+    类说明：CoreField 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "core_field"
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
     ds_id: int = Field(sa_column=Column(BigInteger()))
@@ -97,6 +118,9 @@ class CoreField(SQLModel, table=True):
 
 # 数据源创建对象
 class CreateDatasource(BaseModel):
+    """
+    类说明：CreateDatasource 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: int = None
     name: str = ''
     description: str = ''
@@ -111,11 +135,14 @@ class CreateDatasource(BaseModel):
 
 
 class RecommendedProblemResponse:
+    """
+    类说明：RecommendedProblemResponse 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     def __init__(self, datasource_id, recommended_config, questions):
         """
-        是什么：RecommendedProblemResponse.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
-        谁调用：由创建 RecommendedProblemResponse 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：RecommendedProblemResponse.__init__ 是 RecommendedProblemResponse 里的一个步骤，帮它完成数据源相关的一件事。
+        谁调用：创建 RecommendedProblemResponse 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.datasource_id = datasource_id
         self.recommended_config = recommended_config
@@ -127,17 +154,23 @@ class RecommendedProblemResponse:
 
 
 class RecommendedProblemBase(BaseModel):
+    """
+    类说明：RecommendedProblemBase 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     datasource_id: int = None
     recommended_config: int = None
     problemInfo: List[DsRecommendedProblem] = []
 
 
 class RecommendedProblemBaseChat:
+    """
+    类说明：RecommendedProblemBaseChat 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     def __init__(self, content):
         """
-        是什么：RecommendedProblemBaseChat.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
-        谁调用：由创建 RecommendedProblemBaseChat 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：RecommendedProblemBaseChat.__init__ 是 RecommendedProblemBaseChat 里的一个步骤，帮它完成数据源相关的一件事。
+        谁调用：创建 RecommendedProblemBaseChat 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.content = content
 
@@ -146,12 +179,18 @@ class RecommendedProblemBaseChat:
 
 # 编辑本地保存的表和字段
 class TableObj(BaseModel):
+    """
+    类说明：TableObj 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     table: CoreTable = None
     fields: List[CoreField] = []
 
 
 # 数据源配置信息
 class DatasourceConf(BaseModel):
+    """
+    类说明：DatasourceConf 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     host: str = ''
     port: int = 0
     username: str = ''
@@ -169,9 +208,9 @@ class DatasourceConf(BaseModel):
 
     def to_dict(self):
         """
-        是什么：DatasourceConf.to_dict 是 backend/apps/datasource/models/datasource.py 中的同步方法。
-        谁调用：由持有 DatasourceConf 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 to_dict 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：DatasourceConf.to_dict 是 DatasourceConf 里的一个步骤，帮它完成数据源相关的一件事。
+        谁调用：拿到 DatasourceConf 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return {
             "host": self.host,
@@ -192,11 +231,14 @@ class DatasourceConf(BaseModel):
 
 
 class TableSchema:
+    """
+    类说明：TableSchema 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     def __init__(self, attr1, attr2=None):
         """
-        是什么：TableSchema.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
-        谁调用：由创建 TableSchema 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：TableSchema.__init__ 是 TableSchema 里的一个步骤，帮它完成数据源相关的一件事。
+        谁调用：创建 TableSchema 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.tableName = attr1
         self.tableComment = attr2 if attr2 is None or isinstance(attr2, str) else attr2.decode("utf-8")
@@ -206,16 +248,22 @@ class TableSchema:
 
 
 class TableSchemaResponse(BaseModel):
+    """
+    类说明：TableSchemaResponse 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     tableName: str = ''
     tableComment: str | None = ''
 
 
 class ColumnSchema:
+    """
+    类说明：ColumnSchema 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     def __init__(self, attr1, attr2, attr3):
         """
-        是什么：ColumnSchema.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
-        谁调用：由创建 ColumnSchema 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：ColumnSchema.__init__ 是 ColumnSchema 里的一个步骤，帮它完成数据源相关的一件事。
+        谁调用：创建 ColumnSchema 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.fieldName = attr1
         self.fieldType = attr2
@@ -227,17 +275,23 @@ class ColumnSchema:
 
 
 class ColumnSchemaResponse(BaseModel):
+    """
+    类说明：ColumnSchemaResponse 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     fieldName: str | None = ''
     fieldType: str | None = ''
     fieldComment: str | None = ''
 
 
 class TableAndFields:
+    """
+    类说明：TableAndFields 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     def __init__(self, schema, table, fields):
         """
-        是什么：TableAndFields.__init__ 是 backend/apps/datasource/models/datasource.py 中的同步方法。
-        谁调用：由创建 TableAndFields 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：TableAndFields.__init__ 是 TableAndFields 里的一个步骤，帮它完成数据源相关的一件事。
+        谁调用：创建 TableAndFields 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.schema = schema
         self.table = table
@@ -249,25 +303,40 @@ class TableAndFields:
 
 
 class FieldObj(BaseModel):
+    """
+    类说明：FieldObj 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     fieldName: str | None
 
 
 class PreviewResponse(BaseModel):
+    """
+    类说明：PreviewResponse 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     fields: List | None = []
     data: List | None = []
     sql: str | None = ''
 
 
 class FieldInfo(BaseModel):
+    """
+    类说明：FieldInfo 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     fieldName: object
     fieldType: str
 
 
 class SheetFields(BaseModel):
+    """
+    类说明：SheetFields 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     sheetName: str
     fields: List[FieldInfo]
 
 
 class ImportRequest(BaseModel):
+    """
+    类说明：ImportRequest 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     filePath: str
     sheets: List[SheetFields]

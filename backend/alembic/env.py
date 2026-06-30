@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
+"""
 # 文件：alembic/env.py
 import sys
 from os.path import abspath, dirname
@@ -44,18 +47,18 @@ target_metadata = SQLModel.metadata
 
 def get_url():
     """
-    是什么：get_url 是 backend/alembic/env.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    是什么：get_url 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移需要的数据找出来，整理成后面好用的样子。
     """
     return str(settings.SQLALCHEMY_DATABASE_URI)
 
 
 def run_migrations_offline():
     """
-    是什么：run_migrations_offline 是 backend/alembic/env.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行数据库迁移主流程，协调下游服务并处理结果或异常。
+    是什么：run_migrations_offline 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移的主要流程跑起来，一步步调用需要的处理。
     """
     url = get_url()
     context.configure(
@@ -68,9 +71,9 @@ def run_migrations_offline():
 
 def run_migrations_online():
     """
-    是什么：run_migrations_online 是 backend/alembic/env.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行数据库迁移主流程，协调下游服务并处理结果或异常。
+    是什么：run_migrations_online 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移的主要流程跑起来，一步步调用需要的处理。
     """
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_url()

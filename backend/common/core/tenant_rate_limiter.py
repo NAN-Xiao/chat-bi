@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import json
 import time
 from dataclasses import dataclass
@@ -15,6 +18,9 @@ WINDOW_SECONDS = 60
 
 @dataclass
 class TenantRateLimitState:
+    """
+    类说明：TenantRateLimitState 把后端基础能力相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     allowed: bool
     action: str
     limit: int
@@ -34,9 +40,9 @@ _ACTION_LIMIT_KEYS = {
 
 def _tenant_id(value: int | str | None) -> int:
     """
-    是什么：_tenant_id 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _tenant_id 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_id 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value in (None, ""):
         raise ValueError("Tenant context is required")
@@ -48,9 +54,9 @@ def _tenant_id(value: int | str | None) -> int:
 
 def _window(now: int | None = None) -> tuple[int, int]:
     """
-    是什么：_window 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _window 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_window 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     current = int(time.time()) if now is None else int(now)
     window_id = current // WINDOW_SECONDS
@@ -60,9 +66,9 @@ def _window(now: int | None = None) -> tuple[int, int]:
 
 def _limit_for_action(action: str) -> int:
     """
-    是什么：_limit_for_action 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _limit_for_action 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_limit_for_action 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     normalized = str(action or "").strip().lower()
     if normalized == "chat":
@@ -76,9 +82,9 @@ def _limit_for_action(action: str) -> int:
 
 def _parse_plan_overrides() -> dict[str, Any]:
     """
-    是什么：_parse_plan_overrides 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+    是什么：_parse_plan_overrides 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     raw = (settings.TENANT_RATE_LIMIT_PLAN_OVERRIDES or "").strip()
     if not raw:
@@ -93,9 +99,9 @@ def _parse_plan_overrides() -> dict[str, Any]:
 
 def _plan_limit(plan: str | None, action: str) -> int | None:
     """
-    是什么：_plan_limit 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _plan_limit 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_plan_limit 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     plan_key = (plan or "default").strip().lower() or "default"
     action_key = str(action or "").strip().lower() or "llm"
@@ -116,9 +122,9 @@ def _plan_limit(plan: str | None, action: str) -> int | None:
 
 def resolve_tenant_rate_limit(session: Any, tenant_id: int | str | None, action: str) -> int:
     """
-    是什么：resolve_tenant_rate_limit 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 resolve_tenant_rate_limit 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：resolve_tenant_rate_limit 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     resolved_tenant_id = _tenant_id(tenant_id)
     plan = "default"
@@ -137,9 +143,9 @@ def resolve_tenant_rate_limit(session: Any, tenant_id: int | str | None, action:
 
 def _memory_prune(current_window: int) -> None:
     """
-    是什么：_memory_prune 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _memory_prune 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_memory_prune 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     expired = [key for key in _memory_counters if key[2] < current_window]
     for key in expired:
@@ -148,9 +154,9 @@ def _memory_prune(current_window: int) -> None:
 
 def _state(action: str, limit: int, used: int, retry_after_seconds: int) -> TenantRateLimitState:
     """
-    是什么：_state 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _state 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_state 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return TenantRateLimitState(
         allowed=used <= limit,
@@ -169,9 +175,9 @@ async def consume_tenant_rate_limit(
     limit: int | None = None,
 ) -> TenantRateLimitState:
     """
-    是什么：consume_tenant_rate_limit 是 backend/common/core/tenant_rate_limiter.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 consume_tenant_rate_limit 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：consume_tenant_rate_limit 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     resolved_limit = _limit_for_action(action) if limit is None else int(limit)
     if not settings.TENANT_RATE_LIMIT_ENABLED or resolved_limit <= 0:
@@ -208,8 +214,8 @@ async def consume_tenant_rate_limit(
 
 def reset_memory_tenant_rate_limiter() -> None:
     """
-    是什么：reset_memory_tenant_rate_limiter 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理核心配置和基础设施相关数据、缓存或临时状态。
+    是什么：reset_memory_tenant_rate_limiter 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力不再需要的数据、缓存或临时内容清理掉。
     """
     _memory_counters.clear()

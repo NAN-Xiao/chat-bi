@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端业务相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from fastapi import APIRouter
 
 from apps.analysis_assistant.api import analysis_assistant

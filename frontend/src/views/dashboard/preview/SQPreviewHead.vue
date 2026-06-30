@@ -97,6 +97,59 @@ function getAxisFields(items: any) {
   return items.map((item) => item?.name || item?.value)
 }
 
+function normalizeReportGroupValue(value: any) {
+  if (value === undefined || value === null) {
+    return ''
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString()
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch (_error) {
+      return `${value}`
+    }
+  }
+  return `${value}`.trim()
+}
+
+function rowsAfterStoredPivotFilters(viewInfo: any, rows: Record<string, any>[]) {
+  const pivot = viewInfo?.pivot || {}
+  const groupField = `${pivot.group_field || ''}`.trim()
+  const groupValues = Array.isArray(pivot.group_values)
+    ? unique(pivot.group_values.map(normalizeReportGroupValue))
+    : []
+  if (
+    pivot.enabled !== true ||
+    pivot.group_enabled === false ||
+    !groupField ||
+    groupValues.length === 0
+  ) {
+    return rows
+  }
+  const allowed = new Set(groupValues)
+  return rows.filter((row) => allowed.has(normalizeReportGroupValue(row?.[groupField])))
+}
+
+function visibleValueWhitelist(rows: Record<string, any>[], preferredFields: string[]) {
+  const fields = unique([
+    ...preferredFields,
+    ...rows.slice(0, 20).flatMap((row) => Object.keys(row || {})),
+  ]).slice(0, 12)
+  const lines = fields
+    .map((field) => {
+      const values = unique(
+        rows
+          .map((row) => normalizeReportGroupValue(row?.[field]))
+          .filter((value) => value !== '')
+      ).slice(0, 30)
+      return values.length ? `${field}: ${values.join(', ')}` : ''
+    })
+    .filter(Boolean)
+  return lines.length ? lines.join('\n') : '-'
+}
+
 function collectDashboardChartEntries(
   items: any[],
   path: string[] = [],
@@ -163,7 +216,9 @@ function buildSingleChartContext(
 ) {
   const viewInfo = entry.viewInfo || {}
   const chart = viewInfo.chart || {}
-  const rows = Array.isArray(viewInfo.data?.data) ? viewInfo.data.data.slice(0, 50) : []
+  const storedRows = Array.isArray(viewInfo.data?.data) ? viewInfo.data.data : []
+  const rows = rowsAfterStoredPivotFilters(viewInfo, storedRows)
+  const sampleRows = rows.slice(0, 50)
   const fields = unique([
     ...(Array.isArray(viewInfo.data?.fields) ? viewInfo.data.fields : []),
     ...(Array.isArray(viewInfo.fields) ? viewInfo.fields : []),
@@ -171,8 +226,19 @@ function buildSingleChartContext(
     ...getAxisFields(chart.xAxis),
     ...getAxisFields(chart.yAxis),
     ...getAxisFields(chart.series),
-    ...rows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
+    ...sampleRows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
   ])
+  const pivot = viewInfo.pivot || {}
+  const selectedGroupValues = Array.isArray(pivot.group_values)
+    ? unique(pivot.group_values.map(normalizeReportGroupValue))
+    : []
+  const whitelist = visibleValueWhitelist(sampleRows, fields)
+  const filterContext = [
+    `Current visible row scope: ${rows.length} rows after stored chart filters; stored source rows before filters: ${storedRows.length}.`,
+    pivot?.enabled
+      ? `Stored pivot/filter state: group field=${pivot.group_field || '-'}, group enabled=${pivot.group_enabled !== false ? 'true' : 'false'}, allowed groups=${selectedGroupValues.length ? selectedGroupValues.join(', ') : 'all/none'}.`
+      : 'Stored pivot/filter state: pivot disabled.',
+  ]
 
   return [
     `Chart ${index + 1}: ${getEntryTitle(entry, index)}`,
@@ -180,8 +246,9 @@ function buildSingleChartContext(
     `Chart type: ${chart.type || chart.sourceType || 'unknown'}`,
     `Datasource ID: ${viewInfo.datasource || '-'}`,
     `Fields: ${fields.join(', ') || '-'}`,
-    `SQL:\n${viewInfo.sql || '-'}`,
-    `Visible chart data sample, up to 50 rows:\n${JSON.stringify(rows, null, 2).slice(0, 8000)}`,
+    ...filterContext,
+    `Visible dimension/value whitelist. Do not mention any dimension value that is absent from this whitelist or the current visible sample:\n${whitelist}`,
+    `Current visible chart data sample, up to 50 rows:\n${JSON.stringify(sampleRows, null, 2).slice(0, 8000)}`,
   ].join('\n')
 }
 
@@ -196,7 +263,7 @@ function buildDashboardReportContext() {
     'Target component type: DASHBOARD',
     `Charts included in this dashboard: ${entries.length}`,
     chartContexts || 'No chart data was found in the current dashboard.',
-    'Interpret the whole dashboard. Include all charts listed above, including charts inside tabs or containers. Synthesize cross-chart findings, use the shown data first, keep the answer concise, and do not change dashboard configuration.',
+    'Interpret the whole dashboard. Include all charts listed above, including charts inside tabs or containers. Use only each chart current visible data sample and visible dimension/value whitelist as data facts; do not cite countries, channels, dates, or other dimension values that are not listed there. Synthesize cross-chart findings, keep the answer concise, and do not change dashboard configuration.',
   ].join('\n\n')
 }
 
@@ -354,7 +421,7 @@ async function submitReportPrompt() {
   reportController.value = controller
   const question = [
     nextQuestion,
-    '请对当前整张看板做综合解读，覆盖看板内所有图表，重点说明关键发现、异常点、图表间关系、可能原因和后续建议。回答要保持简洁。',
+    '请对当前整张看板做综合解读，覆盖看板内所有图表。少复述数据，多给判断：每条结论都要说明这个信号意味着什么、有什么风险、图表间是否相互印证或矛盾，以及当前还不能判断什么；建议必须对应可见数据里的具体信号。回答要保持简洁。',
   ].join('\n')
   reportPromptText.value = ''
   const messages: AnalysisAssistantMessage[] = [{ role: 'user', content: question }]

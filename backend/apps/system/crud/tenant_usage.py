@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 from datetime import date, datetime, timezone
 from dataclasses import dataclass
 import calendar
@@ -29,6 +32,9 @@ ACTION_METRICS = {
 
 @dataclass
 class TenantUsageQuotaState:
+    """
+    类说明：TenantUsageQuotaState 把系统管理相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     allowed: bool
     tenant_id: int
     plan: str
@@ -44,27 +50,27 @@ class TenantUsageQuotaState:
 
 def usage_metric_date(now: datetime | None = None) -> str:
     """
-    是什么：usage_metric_date 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 usage_metric_date 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：usage_metric_date 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return (now or datetime.now(timezone.utc)).date().isoformat()
 
 
 def _month_last_day(year: int, month: int) -> int:
     """
-    是什么：_month_last_day 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _month_last_day 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_month_last_day 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return calendar.monthrange(year, month)[1]
 
 
 def usage_window_dates(window: str, now: datetime | None = None) -> tuple[str, str, str]:
     """
-    是什么：usage_window_dates 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 usage_window_dates 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：usage_window_dates 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     current = now or datetime.now(timezone.utc)
     if window == "monthly":
@@ -80,9 +86,9 @@ def usage_window_dates(window: str, now: datetime | None = None) -> tuple[str, s
 
 def token_total(token_usage: Any) -> int:
     """
-    是什么：token_total 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 token_total 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：token_total 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(token_usage, dict):
         value = token_usage.get("total_tokens")
@@ -97,9 +103,9 @@ def token_total(token_usage: Any) -> int:
 
 def _chat_log_total_tokens_expr(session: Session):
     """
-    是什么：_chat_log_total_tokens_expr 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _chat_log_total_tokens_expr 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_chat_log_total_tokens_expr 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
@@ -131,9 +137,9 @@ def _chat_log_total_tokens_expr(session: Session):
 
 def _chat_log_token_key_expr(session: Session, key: str):
     """
-    是什么：_chat_log_token_key_expr 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _chat_log_token_key_expr 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_chat_log_token_key_expr 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
@@ -155,9 +161,9 @@ def _chat_log_token_key_expr(session: Session, key: str):
 
 def _datetime_to_millis(value) -> int:
     """
-    是什么：_datetime_to_millis 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _datetime_to_millis 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_datetime_to_millis 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value is None:
         return 0
@@ -171,9 +177,9 @@ def _datetime_to_millis(value) -> int:
 
 def _parse_iso_date(value: str | date | None) -> date | None:
     """
-    是什么：_parse_iso_date 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_iso_date 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if value is None or value == "":
         return None
@@ -187,9 +193,9 @@ def _parse_iso_date(value: str | date | None) -> date | None:
 
 def _table_exists(session: Session) -> bool:
     """
-    是什么：_table_exists 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _table_exists 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_table_exists 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return inspect(session.connection()).has_table(TenantUsageDailyModel.__tablename__)
@@ -199,18 +205,18 @@ def _table_exists(session: Session) -> bool:
 
 def _normalize_delta(value: int | None) -> int:
     """
-    是什么：_normalize_delta 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_delta 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     return max(0, int(value or 0))
 
 
 def _tenant_id(value: int | str | None) -> int:
     """
-    是什么：_tenant_id 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return int(value or DEFAULT_USAGE_TENANT_ID)
@@ -220,9 +226,9 @@ def _tenant_id(value: int | str | None) -> int:
 
 def _parse_quota_limits() -> dict[str, Any]:
     """
-    是什么：_parse_quota_limits 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_quota_limits 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     raw = (settings.TENANT_USAGE_QUOTA_PLAN_LIMITS or "").strip()
     if not raw:
@@ -237,9 +243,9 @@ def _parse_quota_limits() -> dict[str, Any]:
 
 def _quota_limit_for_plan(plan: str | None, action: str, window: str) -> int | None:
     """
-    是什么：_quota_limit_for_plan 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _quota_limit_for_plan 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_quota_limit_for_plan 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     limits = _parse_quota_limits()
     plan_key = (plan or "default").strip().lower() or "default"
@@ -263,9 +269,9 @@ def _quota_limit_for_plan(plan: str | None, action: str, window: str) -> int | N
 
 def _insert_for_dialect(session: Session):
     """
-    是什么：_insert_for_dialect 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：_insert_for_dialect 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
@@ -288,9 +294,9 @@ def record_tenant_usage(
     task_count: int = 0,
 ) -> bool:
     """
-    是什么：record_tenant_usage 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 record_tenant_usage 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：record_tenant_usage 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not settings.TENANT_USAGE_METERING_ENABLED:
         return False
@@ -355,9 +361,9 @@ def record_tenant_usage(
 
 def record_tenant_usage_detached(**kwargs) -> bool:
     """
-    是什么：record_tenant_usage_detached 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 record_tenant_usage_detached 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：record_tenant_usage_detached 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not settings.TENANT_USAGE_METERING_ENABLED:
         return False
@@ -384,9 +390,9 @@ def list_tenant_usage_daily(
     limit: int = 500,
 ) -> list[TenantUsageDailyModel]:
     """
-    是什么：list_tenant_usage_daily 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：list_tenant_usage_daily 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     if not _table_exists(session):
         return []
@@ -414,9 +420,9 @@ def list_tenant_usage_by_user(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """
-    是什么：list_tenant_usage_by_user 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：list_tenant_usage_by_user 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     try:
         inspector = inspect(session.connection())
@@ -506,9 +512,9 @@ def list_tenant_usage_by_model(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """
-    是什么：list_tenant_usage_by_model 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：list_tenant_usage_by_model 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     try:
         inspector = inspect(session.connection())
@@ -609,9 +615,9 @@ def sum_tenant_usage(
     field: str = "request_count",
 ) -> int:
     """
-    是什么：sum_tenant_usage 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 sum_tenant_usage 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：sum_tenant_usage 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not metrics or not _table_exists(session):
         return 0
@@ -629,9 +635,9 @@ def sum_tenant_usage(
 
 def resolve_tenant_plan(session: Session | None, tenant_id: int | str | None) -> str:
     """
-    是什么：resolve_tenant_plan 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 resolve_tenant_plan 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：resolve_tenant_plan 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     resolved_tenant_id = _tenant_id(tenant_id)
     try:
@@ -647,9 +653,9 @@ def resolve_tenant_plan(session: Session | None, tenant_id: int | str | None) ->
 
 def resolve_tenant_subscription_status(session: Session | None, tenant_id: int | str | None) -> str:
     """
-    是什么：resolve_tenant_subscription_status 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 resolve_tenant_subscription_status 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：resolve_tenant_subscription_status 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     resolved_tenant_id = _tenant_id(tenant_id)
     try:
@@ -673,9 +679,9 @@ def check_tenant_usage_quota(
     now: datetime | None = None,
 ) -> TenantUsageQuotaState:
     """
-    是什么：check_tenant_usage_quota 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_tenant_usage_quota 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     resolved_tenant_id = _tenant_id(tenant_id)
     action_key = (action or "").strip().lower()
@@ -768,9 +774,9 @@ def check_tenant_usage_quota(
 
 def check_tenant_usage_quota_detached(*, tenant_id: int | str | None, action: str) -> TenantUsageQuotaState:
     """
-    是什么：check_tenant_usage_quota_detached 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_tenant_usage_quota_detached 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     resolved_tenant_id = _tenant_id(tenant_id)
     try:

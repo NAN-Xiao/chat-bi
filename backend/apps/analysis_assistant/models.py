@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放分析助手相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from datetime import datetime
 from typing import Optional
 
@@ -8,6 +11,9 @@ from sqlmodel import Field as SQLModelField, SQLModel
 
 
 class AnalysisAssistantConversation(SQLModel, table=True):
+    """
+    类说明：AnalysisAssistantConversation 把分析助手相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     __tablename__ = "analysis_assistant_conversation"
     __table_args__ = (
         Index("idx_analysis_assistant_conversation_tenant_user", "tenant_id", "create_by"),
@@ -32,6 +38,9 @@ class AnalysisAssistantConversation(SQLModel, table=True):
 
 
 class AnalysisAssistantConversationMessage(BaseModel):
+    """
+    类说明：AnalysisAssistantConversationMessage 把分析助手相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     role: str
     content: str = ""
     plan: dict | None = None
@@ -44,6 +53,9 @@ class AnalysisAssistantConversationMessage(BaseModel):
 
 
 class AnalysisAssistantConversationSave(BaseModel):
+    """
+    类说明：AnalysisAssistantConversationSave 把分析助手相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: Optional[int] = None
     title: Optional[str] = None
     datasource_id: Optional[int] = None
@@ -54,6 +66,9 @@ class AnalysisAssistantConversationSave(BaseModel):
 
 
 class AnalysisAssistantConversationSummary(BaseModel):
+    """
+    类说明：AnalysisAssistantConversationSummary 把分析助手相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: int
     title: str
     datasource_id: Optional[int] = None
@@ -66,4 +81,7 @@ class AnalysisAssistantConversationSummary(BaseModel):
 
 
 class AnalysisAssistantConversationDetail(AnalysisAssistantConversationSummary):
+    """
+    类说明：AnalysisAssistantConversationDetail 把分析助手相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     messages: list[dict] = PydanticField(default_factory=list)

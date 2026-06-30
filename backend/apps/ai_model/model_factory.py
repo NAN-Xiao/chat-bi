@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放AI 模型相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from functools import lru_cache
 import json
 from abc import ABC, abstractmethod
@@ -21,7 +24,9 @@ from langchain_openai import AzureChatOpenAI
 # from langchain_community.llms import Tongyi, VLLM
 
 class LLMConfig(BaseModel):
-    """大语言模型基础配置类"""
+    """
+    类说明：LLMConfig 放AI 模型的配置项，让后续流程能按同一套规则运行。
+    """
     model_id: Optional[int] = None
     model_type: str  # 模型类型：openai/tongyi/vllm 等。
     model_name: str  # 具体模型名称
@@ -30,13 +35,16 @@ class LLMConfig(BaseModel):
     additional_params: Dict[str, Any] = {}
 
     class Config:
+        """
+        类说明：Config 放AI 模型的配置项，让后续流程能按同一套规则运行。
+        """
         frozen = True
 
     def __hash__(self):
         """
-        是什么：LLMConfig.__hash__ 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由 Python 运行时、框架协议或相关内置操作按需调用。
-        做了什么：实现 Python 协议方法，使对象可以参与对应的语言级操作。
+        是什么：LLMConfig.__hash__ 是 LLMConfig 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：Python 在需要这个特殊行为时会自动调用它。
+        做了什么：让这个对象能配合 Python 的特殊用法工作。
         """
         if hasattr(self, 'additional_params') and isinstance(self.additional_params, dict):
             hashable_params = frozenset((k, tuple(v) if isinstance(v, (list, dict)) else v)
@@ -55,13 +63,15 @@ class LLMConfig(BaseModel):
 
 
 class BaseLLM(ABC):
-    """大语言模型抽象基类"""
+    """
+    类说明：BaseLLM 把AI 模型相关的数据和行为放在一起，便于其他代码直接复用。
+    """
 
     def __init__(self, config: LLMConfig):
         """
-        是什么：BaseLLM.__init__ 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由创建 BaseLLM 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：BaseLLM.__init__ 是 BaseLLM 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：创建 BaseLLM 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.config = config
         self._llm = self._init_llm()
@@ -69,28 +79,31 @@ class BaseLLM(ABC):
     @abstractmethod
     def _init_llm(self) -> BaseChatModel:
         """
-        是什么：BaseLLM._init_llm 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由持有 BaseLLM 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+        是什么：BaseLLM._init_llm 是 BaseLLM 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 BaseLLM 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存AI 模型需要的东西，让后续流程能继续往下走。
         """
         pass
 
     @property
     def llm(self) -> BaseChatModel:
         """
-        是什么：BaseLLM.llm 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 llm 的语义处理模型接入相关逻辑，并把结果返回或写入状态。
+        是什么：BaseLLM.llm 是 BaseLLM 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把AI 模型里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return self._llm
 
 
 class OpenAIvLLM(BaseLLM):
+    """
+    类说明：OpenAIvLLM 把AI 模型相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def _init_llm(self) -> VLLMOpenAI:
         """
-        是什么：OpenAIvLLM._init_llm 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由持有 OpenAIvLLM 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+        是什么：OpenAIvLLM._init_llm 是 OpenAIvLLM 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 OpenAIvLLM 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存AI 模型需要的东西，让后续流程能继续往下走。
         """
         return VLLMOpenAI(
             openai_api_key=self.config.api_key or 'Empty',
@@ -102,11 +115,14 @@ class OpenAIvLLM(BaseLLM):
 
 
 class OpenAIAzureLLM(BaseLLM):
+    """
+    类说明：OpenAIAzureLLM 把AI 模型相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def _init_llm(self) -> AzureChatOpenAI:
         """
-        是什么：OpenAIAzureLLM._init_llm 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由持有 OpenAIAzureLLM 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+        是什么：OpenAIAzureLLM._init_llm 是 OpenAIAzureLLM 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 OpenAIAzureLLM 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存AI 模型需要的东西，让后续流程能继续往下走。
         """
         api_version = self.config.additional_params.get("api_version")
         deployment_name = self.config.additional_params.get("deployment_name")
@@ -128,11 +144,14 @@ class OpenAIAzureLLM(BaseLLM):
 
 
 class OpenAILLM(BaseLLM):
+    """
+    类说明：OpenAILLM 把AI 模型相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def _init_llm(self) -> BaseChatModel:
         """
-        是什么：OpenAILLM._init_llm 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由持有 OpenAILLM 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+        是什么：OpenAILLM._init_llm 是 OpenAILLM 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 OpenAILLM 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存AI 模型需要的东西，让后续流程能继续往下走。
         """
         return BaseChatOpenAI(
             model=self.config.model_name,
@@ -146,15 +165,17 @@ class OpenAILLM(BaseLLM):
 
     def generate(self, prompt: str) -> str:
         """
-        是什么：OpenAILLM.generate 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由持有 OpenAILLM 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成模型接入相关结果，并保存或返回给调用方。
+        是什么：OpenAILLM.generate 是 OpenAILLM 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 OpenAILLM 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成AI 模型的结果，比如答案、SQL、图表或建议。
         """
         return self.llm.invoke(prompt)
 
 
 class LLMFactory:
-    """大语言模型工厂类"""
+    """
+    类说明：LLMFactory 把AI 模型相关的数据和行为放在一起，便于其他代码直接复用。
+    """
 
     _llm_types: Dict[str, Type[BaseLLM]] = {
         "openai": OpenAILLM,
@@ -167,9 +188,9 @@ class LLMFactory:
     @lru_cache(maxsize=32)
     def create_llm(cls, config: LLMConfig) -> BaseLLM:
         """
-        是什么：LLMFactory.create_llm 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由类本身、子类或框架按照类方法约定调用。
-        做了什么：创建、初始化或组装模型接入相关对象和数据，并返回或写入对应状态。
+        是什么：LLMFactory.create_llm 是 LLMFactory 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：需要通过类本身做这件事时，代码会调用它。
+        做了什么：创建或保存AI 模型需要的东西，让后续流程能继续往下走。
         """
         llm_class = cls._llm_types.get(config.model_type)
         if not llm_class:
@@ -179,18 +200,18 @@ class LLMFactory:
     @classmethod
     def register_llm(cls, model_type: str, llm_class: Type[BaseLLM]):
         """
-        是什么：LLMFactory.register_llm 是 backend/apps/ai_model/model_factory.py 中的同步方法。
-        谁调用：由类本身、子类或框架按照类方法约定调用。
-        做了什么：围绕 register_llm 的语义处理模型接入相关逻辑，并把结果返回或写入状态。
+        是什么：LLMFactory.register_llm 是 LLMFactory 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：需要通过类本身做这件事时，代码会调用它。
+        做了什么：把AI 模型里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         cls._llm_types[model_type] = llm_class
 
 
 def _normalize_api_base_url(raw_url: Optional[str]) -> Optional[str]:
     """
-    是什么：_normalize_api_base_url 是 backend/apps/ai_model/model_factory.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化模型接入相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_api_base_url 是一个可以复用的小步骤，负责AI 模型相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把AI 模型的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if raw_url is None:
         return None
@@ -222,9 +243,9 @@ def _normalize_api_base_url(raw_url: Optional[str]) -> Optional[str]:
 
 async def get_default_config(custom_model_id: Optional[int] = None) -> LLMConfig:
     """
-    是什么：get_default_config 是 backend/apps/ai_model/model_factory.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+    是什么：get_default_config 是一个可以复用的小步骤，负责AI 模型相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把AI 模型需要的数据找出来，整理成后面好用的样子。
     """
     with Session(engine) as session:
         db_model: AiModelDetail | None = None

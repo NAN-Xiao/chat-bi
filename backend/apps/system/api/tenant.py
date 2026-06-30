@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
@@ -143,18 +146,18 @@ router = APIRouter(tags=["system_tenant"], prefix="/system/tenant")
 
 def _enum_value(value):
     """
-    是什么：_enum_value 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _enum_value 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_enum_value 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return getattr(value, "value", value)
 
 
 def _audit_user_name(current_user: CurrentUser) -> str | None:
     """
-    是什么：_audit_user_name 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _audit_user_name 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_audit_user_name 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return (
         getattr(current_user, "name", None)
@@ -165,18 +168,18 @@ def _audit_user_name(current_user: CurrentUser) -> str | None:
 
 def _model_fields_set(model) -> set[str]:
     """
-    是什么：_model_fields_set 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _model_fields_set 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_model_fields_set 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return set(getattr(model, "model_fields_set", None) or getattr(model, "__fields_set__", set()) or set())
 
 
 def _audit_tenant_id(current_user: CurrentUser, tenant_id: int | None = None) -> int:
     """
-    是什么：_audit_tenant_id 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _audit_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_audit_tenant_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         return DEFAULT_TENANT_ID
@@ -188,9 +191,9 @@ def _audit_tenant_id(current_user: CurrentUser, tenant_id: int | None = None) ->
 
 def _audit_request_info() -> tuple[str | None, str | None, str | None, str | None]:
     """
-    是什么：_audit_request_info 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _audit_request_info 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_audit_request_info 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         request = RequestContext.get_request()
@@ -209,9 +212,9 @@ def _audit_request_info() -> tuple[str | None, str | None, str | None, str | Non
 
 def _application_audit_remark(application: TenantApplicationModel) -> str:
     """
-    是什么：_application_audit_remark 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _application_audit_remark 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_application_audit_remark 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parts = [
         f"type={application.application_type}",
@@ -227,9 +230,9 @@ def _application_audit_remark(application: TenantApplicationModel) -> str:
 
 def _application_audit_tenant_id(current_user: CurrentUser, application: TenantApplicationModel) -> int:
     """
-    是什么：_application_audit_tenant_id 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _application_audit_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_application_audit_tenant_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _audit_tenant_id(current_user, application.tenant_id)
 
@@ -247,9 +250,9 @@ def _write_tenant_audit(
     remark: str | None = None,
 ) -> None:
     """
-    是什么：_write_tenant_audit 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _write_tenant_audit 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_write_tenant_audit 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ip_address, user_agent, request_method, request_path = _audit_request_info()
     session.add(
@@ -275,9 +278,9 @@ def _write_tenant_audit(
 
 def _require_platform_admin(current_user: CurrentUser) -> None:
     """
-    是什么：_require_platform_admin 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_platform_admin 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not is_platform_admin(current_user):
         raise HTTPException(status_code=403, detail="Only SaaS admin can manage tenants")
@@ -285,9 +288,9 @@ def _require_platform_admin(current_user: CurrentUser) -> None:
 
 def _require_current_tenant_admin(current_user: CurrentUser) -> None:
     """
-    是什么：_require_current_tenant_admin 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_current_tenant_admin 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if is_platform_admin(current_user):
         if is_platform_workspace_delegate(current_user):
@@ -300,9 +303,9 @@ def _require_current_tenant_admin(current_user: CurrentUser) -> None:
 
 def _require_current_tenant_owner(current_user: CurrentUser) -> None:
     """
-    是什么：_require_current_tenant_owner 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_current_tenant_owner 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if is_platform_admin(current_user):
         if is_platform_workspace_delegate(current_user):
@@ -315,9 +318,9 @@ def _require_current_tenant_owner(current_user: CurrentUser) -> None:
 
 def _non_platform_member_filter(session: SessionDep):
     """
-    是什么：_non_platform_member_filter 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _non_platform_member_filter 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_non_platform_member_filter 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not _table_exists(session, UserModel.__tablename__):
         return []
@@ -326,9 +329,9 @@ def _non_platform_member_filter(session: SessionDep):
 
 def _table_exists(session: SessionDep, table_name: str) -> bool:
     """
-    是什么：_table_exists 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _table_exists 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_table_exists 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return inspect(session.connection()).has_table(table_name)
@@ -338,9 +341,9 @@ def _table_exists(session: SessionDep, table_name: str) -> bool:
 
 def _remove_tenant_project_permissions(session: SessionDep, *, tenant_id: int, user_id: int) -> None:
     """
-    是什么：_remove_tenant_project_permissions 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：_remove_tenant_project_permissions 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     if not _table_exists(session, CoreDatasource.__tablename__) or not _table_exists(
         session,
@@ -360,9 +363,9 @@ def _remove_tenant_project_permissions(session: SessionDep, *, tenant_id: int, u
 
 def _tenant_owner_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
     """
-    是什么：_tenant_owner_map 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_owner_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_owner_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not tenant_ids or not _table_exists(session, UserModel.__tablename__):
         return {}
@@ -400,9 +403,9 @@ def _tenant_owner_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, d
 
 def _tenant_bound_datasource_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
     """
-    是什么：_tenant_bound_datasource_map 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_bound_datasource_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_bound_datasource_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ids = [int(tenant_id) for tenant_id in tenant_ids if int(tenant_id) != DEFAULT_TENANT_ID]
     if not ids or not _table_exists(session, CoreDatasource.__tablename__):
@@ -424,9 +427,9 @@ def _tenant_bound_datasource_map(session: SessionDep, tenant_ids: list[int]) -> 
 
 def _tenant_bound_datasource_id(session: SessionDep, tenant_id: int) -> int | None:
     """
-    是什么：_tenant_bound_datasource_id 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_bound_datasource_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_bound_datasource_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if int(tenant_id) == DEFAULT_TENANT_ID or not _table_exists(session, CoreDatasource.__tablename__):
         return None
@@ -441,9 +444,9 @@ def _scope_member_datasource_payload_to_bound_datasource(
     datasource_role_map: dict[int, str] | None = None,
 ) -> tuple[list[int] | None, dict[int, str] | None]:
     """
-    是什么：_scope_member_datasource_payload_to_bound_datasource 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _scope_member_datasource_payload_to_bound_datasource 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_scope_member_datasource_payload_to_bound_datasource 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if datasource_ids is None:
         return None, datasource_role_map
@@ -473,9 +476,9 @@ def _scope_member_datasource_payload_to_bound_datasource(
 
 def _tenant_member_stats_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
     """
-    是什么：_tenant_member_stats_map 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_member_stats_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_member_stats_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ids = [int(tenant_id) for tenant_id in tenant_ids]
     if not ids:
@@ -514,9 +517,9 @@ def _tenant_member_stats_map(session: SessionDep, tenant_ids: list[int]) -> dict
 
 def _tenant_public_id(tenant: TenantModel | None) -> str:
     """
-    是什么：_tenant_public_id 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_public_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_public_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if tenant is None:
         return ""
@@ -525,9 +528,9 @@ def _tenant_public_id(tenant: TenantModel | None) -> str:
 
 def _tenant_public_id_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, str]:
     """
-    是什么：_tenant_public_id_map 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_public_id_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_public_id_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ids = [int(tenant_id) for tenant_id in tenant_ids if tenant_id is not None]
     if not ids:
@@ -551,9 +554,9 @@ def _tenant_dto(
     join_time: int | None = None,
 ) -> TenantDTO:
     """
-    是什么：_tenant_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     owner = owner or {}
     datasource = datasource or {}
@@ -594,9 +597,9 @@ def _tenant_dto(
 
 def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int | None]]) -> list[TenantDTO]:
     """
-    是什么：_tenant_dto_list 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_dto_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_dto_list 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for tenant, _role, _join_time in rows:
         ensure_tenant_public_id(session, tenant)
@@ -619,9 +622,9 @@ def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int
 
 def _tenant_admin_dto(session: SessionDep, tenant: TenantModel) -> TenantDTO:
     """
-    是什么：_tenant_admin_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_admin_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_admin_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ensure_tenant_public_id(session, tenant)
     tenant_id = int(tenant.id)
@@ -639,9 +642,9 @@ def _tenant_admin_dto(session: SessionDep, tenant: TenantModel) -> TenantDTO:
 
 def _usage_dto(row) -> TenantUsageDailyDTO:
     """
-    是什么：_usage_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _usage_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_usage_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return TenantUsageDailyDTO(
         tenant_id=int(row.tenant_id),
@@ -658,27 +661,27 @@ def _usage_dto(row) -> TenantUsageDailyDTO:
 
 def _usage_user_dto(row: dict) -> TenantUsageUserDTO:
     """
-    是什么：_usage_user_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _usage_user_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_usage_user_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return TenantUsageUserDTO(**row)
 
 
 def _usage_model_dto(row: dict) -> TenantUsageModelDTO:
     """
-    是什么：_usage_model_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _usage_model_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_usage_model_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return TenantUsageModelDTO(**row)
 
 
 def _timestamp_to_millis(value) -> int:
     """
-    是什么：_timestamp_to_millis 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _timestamp_to_millis 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_timestamp_to_millis 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value in (None, ""):
         return 0
@@ -692,9 +695,9 @@ def _timestamp_to_millis(value) -> int:
 
 def _millis_to_datetime(value: int | None) -> datetime | None:
     """
-    是什么：_millis_to_datetime 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _millis_to_datetime 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_millis_to_datetime 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value in (None, ""):
         return None
@@ -706,9 +709,9 @@ def _millis_to_datetime(value: int | None) -> datetime | None:
 
 def _platform_date_key_from_millis(value: int | None) -> str | None:
     """
-    是什么：_platform_date_key_from_millis 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _platform_date_key_from_millis 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_platform_date_key_from_millis 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parsed = _millis_to_datetime(value)
     return parsed.strftime("%Y-%m-%d") if parsed else None
@@ -716,9 +719,9 @@ def _platform_date_key_from_millis(value: int | None) -> str | None:
 
 def _platform_date_key_from_usage(value: str | None) -> str | None:
     """
-    是什么：_platform_date_key_from_usage 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _platform_date_key_from_usage 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_platform_date_key_from_usage 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     raw = (value or "").strip()
     return raw[:10] if raw else None
@@ -726,18 +729,18 @@ def _platform_date_key_from_usage(value: str | None) -> str | None:
 
 def _platform_start_millis(value: datetime) -> int:
     """
-    是什么：_platform_start_millis 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _platform_start_millis 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_platform_start_millis 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return int(value.timestamp() * 1000)
 
 
 def _platform_count(session: SessionDep, statement) -> int:
     """
-    是什么：_platform_count 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _platform_count 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_platform_count 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return int(session.exec(statement).one() or 0)
@@ -747,9 +750,9 @@ def _platform_count(session: SessionDep, statement) -> int:
 
 def _overview_event_title(row: SystemLog) -> str:
     """
-    是什么：_overview_event_title 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _overview_event_title 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_overview_event_title 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     detail = (getattr(row, "operation_detail", None) or "").strip()
     if detail:
@@ -770,9 +773,9 @@ def _overview_event_title(row: SystemLog) -> str:
 
 def _overview_event_description(row: SystemLog) -> str | None:
     """
-    是什么：_overview_event_description 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _overview_event_description 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_overview_event_description 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     resource_name = (getattr(row, "resource_name", None) or "").strip()
     remark = (getattr(row, "remark", None) or "").strip()
@@ -787,9 +790,9 @@ def _overview_event_description(row: SystemLog) -> str | None:
 
 def _application_user_map(session: SessionDep, user_ids: list[int]) -> dict[int, dict]:
     """
-    是什么：_application_user_map 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _application_user_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_application_user_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not user_ids or not _table_exists(session, UserModel.__tablename__):
         return {}
@@ -816,9 +819,9 @@ def _application_dto(
     include_user_email: bool = True,
 ) -> TenantApplicationDTO:
     """
-    是什么：_application_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _application_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_application_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     applicant = applicant or {}
     inviter = inviter or {}
@@ -855,9 +858,9 @@ def _application_dto_list(
     include_user_email: bool = True,
 ) -> list[TenantApplicationDTO]:
     """
-    是什么：_application_dto_list 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _application_dto_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_application_dto_list 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     user_ids = {
         int(application.applicant_user_id)
@@ -890,9 +893,9 @@ def _application_dto_list(
 
 def _domain_dto(row: TenantDomainModel) -> TenantDomainDTO:
     """
-    是什么：_domain_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _domain_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_domain_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return TenantDomainDTO(
         id=int(row.id),
@@ -910,9 +913,9 @@ def _domain_dto(row: TenantDomainModel) -> TenantDomainDTO:
 
 def _security_policy_dto(row: TenantSecurityPolicyModel | None, tenant_id: int) -> TenantSecurityPolicyDTO:
     """
-    是什么：_security_policy_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _security_policy_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_security_policy_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if row is None:
         return TenantSecurityPolicyDTO(
@@ -933,9 +936,9 @@ def _security_policy_dto(row: TenantSecurityPolicyModel | None, tenant_id: int) 
 
 def _data_request_dto(row: TenantDataRequestModel) -> TenantDataRequestDTO:
     """
-    是什么：_data_request_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _data_request_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_data_request_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return TenantDataRequestDTO(
         id=int(row.id),
@@ -957,9 +960,9 @@ def _data_request_dto(row: TenantDataRequestModel) -> TenantDataRequestDTO:
 
 def _tenant_member_dto(session: SessionDep, current_user: CurrentUser, user: UserModel, membership: TenantUserModel) -> TenantMemberDTO:
     """
-    是什么：_tenant_member_dto 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_member_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_member_dto 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     bound_datasource_id = _tenant_bound_datasource_id(session, int(membership.tenant_id))
     datasource_roles = list_user_datasource_roles(session, int(user.id), current_user)
@@ -990,9 +993,9 @@ def _require_manageable_tenant_member(
     user_id: int,
 ) -> tuple[UserModel, TenantUserModel]:
     """
-    是什么：_require_manageable_tenant_member 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_manageable_tenant_member 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     user = session.get(UserModel, int(user_id))
     membership = get_tenant_membership(session, int(user_id), tenant_id=int(tenant_id))
@@ -1017,9 +1020,9 @@ def _assign_existing_user_to_current_tenant(
     datasource_role_map: dict[int, str] | None = None,
 ) -> tuple[UserModel, TenantUserModel]:
     """
-    是什么：_assign_existing_user_to_current_tenant 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _assign_existing_user_to_current_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_assign_existing_user_to_current_tenant 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     normalized_account = (account or "").strip()
     user = session.exec(select(UserModel).where(UserModel.account == normalized_account)).first()
@@ -1058,9 +1061,9 @@ def _assign_existing_user_to_current_tenant(
 
 def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserModel | None:
     """
-    是什么：_resolve_owner_user 是 backend/apps/system/api/tenant.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _resolve_owner_user 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_resolve_owner_user 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if creator.owner_user_id:
         user = session.get(UserModel, int(creator.owner_user_id))
@@ -1104,9 +1107,9 @@ def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserMode
 @router.get("/current", response_model=TenantDTO)
 async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
     """
-    是什么：current_tenant 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 current_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：current_tenant 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = _tenant_bound_datasource_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
     tenant = session.get(TenantModel, int(current_tenant.id))
@@ -1126,9 +1129,9 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
 @router.get("/list", response_model=list[TenantDTO])
 async def tenant_list(session: SessionDep, current_user: CurrentUser):
     """
-    是什么：tenant_list 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_list 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         tenant_id = getattr(current_user, "tenant_id", None)
@@ -1154,9 +1157,9 @@ async def search_tenants(
     limit: int = Query(20, ge=1, le=50),
 ):
     """
-    是什么：search_tenants 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：search_tenants 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     limit_value = limit if isinstance(limit, int) else 20
     tenants = search_active_tenants(session, keyword=keyword, limit=limit_value)
@@ -1181,9 +1184,9 @@ async def platform_overview(
     days: int = Query(7, ge=7, le=90),
 ):
     """
-    是什么：platform_overview 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 platform_overview 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：platform_overview 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     if is_platform_workspace_delegate(current_user):
@@ -1553,9 +1556,9 @@ async def platform_overview(
 @router.get("/admin/list", response_model=list[TenantDTO])
 async def admin_tenant_list(session: SessionDep, current_user: CurrentUser):
     """
-    是什么：admin_tenant_list 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 admin_tenant_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：admin_tenant_list 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     if is_platform_workspace_delegate(current_user):
@@ -1579,9 +1582,9 @@ async def admin_tenant_member_list(
     keyword: str | None = Query(None, max_length=100),
 ):
     """
-    是什么：admin_tenant_member_list 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 admin_tenant_member_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：admin_tenant_member_list 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     if is_platform_workspace_delegate(current_user):
@@ -1626,9 +1629,9 @@ async def admin_tenant_owner_candidates(
     limit: int = Query(20, ge=1, le=50),
 ):
     """
-    是什么：admin_tenant_owner_candidates 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 admin_tenant_owner_candidates 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：admin_tenant_owner_candidates 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     if is_platform_workspace_delegate(current_user):
@@ -1699,9 +1702,9 @@ async def admin_transfer_tenant_owner(
     dto: TenantOwnerTransfer,
 ):
     """
-    是什么：admin_transfer_tenant_owner 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 admin_transfer_tenant_owner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：admin_transfer_tenant_owner 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     if is_platform_workspace_delegate(current_user):
@@ -1761,9 +1764,9 @@ async def tenant_usage(
     limit: int = Query(500, ge=1, le=5000),
 ):
     """
-    是什么：tenant_usage 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_usage 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_usage 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         scoped_tenant_id = int(current_tenant.id)
@@ -1798,9 +1801,9 @@ async def tenant_usage_by_user(
     limit: int = Query(100, ge=1, le=500),
 ):
     """
-    是什么：tenant_usage_by_user 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_usage_by_user 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_usage_by_user 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         scoped_tenant_id = int(current_tenant.id)
@@ -1834,9 +1837,9 @@ async def tenant_usage_by_model(
     limit: int = Query(100, ge=1, le=500),
 ):
     """
-    是什么：tenant_usage_by_model 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_usage_by_model 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_usage_by_model 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         scoped_tenant_id = int(current_tenant.id)
@@ -1869,9 +1872,9 @@ async def tenant_overview(
     days: int = Query(7, ge=7, le=30),
 ):
     """
-    是什么：tenant_overview 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_overview 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_overview 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user):
         raise HTTPException(status_code=403, detail="SaaS admin does not have tenant overview")
@@ -2239,9 +2242,9 @@ async def tenant_member_list(
     keyword: str | None = Query(None, max_length=100),
 ):
     """
-    是什么：tenant_member_list 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_member_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_member_list 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     statement = (
@@ -2279,9 +2282,9 @@ async def add_tenant_member(
     creator: TenantMemberCreator,
 ):
     """
-    是什么：add_tenant_member 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：add_tenant_member 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     _require_current_tenant_admin(current_user)
     try:
@@ -2319,9 +2322,9 @@ async def bulk_add_tenant_members(
     creator: TenantBulkMemberCreator,
 ):
     """
-    是什么：bulk_add_tenant_members 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 bulk_add_tenant_members 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：bulk_add_tenant_members 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     results: list[TenantBulkMemberResult] = []
@@ -2367,9 +2370,9 @@ async def update_tenant_member(
     editor: TenantMemberEditor,
 ):
     """
-    是什么：update_tenant_member 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_tenant_member 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     _require_current_tenant_admin(current_user)
     user, membership = _require_manageable_tenant_member(
@@ -2417,9 +2420,9 @@ async def remove_tenant_member(
     user_id: int,
 ):
     """
-    是什么：remove_tenant_member 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：remove_tenant_member 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     _require_current_tenant_admin(current_user)
     user, membership = _require_manageable_tenant_member(
@@ -2458,9 +2461,9 @@ async def submit_tenant_application(
     creator: TenantApplicationCreator,
 ):
     """
-    是什么：submit_tenant_application 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 submit_tenant_application 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：submit_tenant_application 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         application = create_tenant_application(
@@ -2496,9 +2499,9 @@ async def my_tenant_applications(
     status: str | None = None,
 ):
     """
-    是什么：my_tenant_applications 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 my_tenant_applications 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：my_tenant_applications 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     applications = list_tenant_applications(
         session,
@@ -2515,9 +2518,9 @@ async def cancel_my_tenant_application(
     application_id: int,
 ):
     """
-    是什么：cancel_my_tenant_application 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 cancel_my_tenant_application 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：cancel_my_tenant_application 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     application = session.get(TenantApplicationModel, application_id)
     if (
@@ -2558,9 +2561,9 @@ async def admin_tenant_applications(
     status: str | None = None,
 ):
     """
-    是什么：admin_tenant_applications 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 admin_tenant_applications 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：admin_tenant_applications 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     applications = list_tenant_applications(
@@ -2579,9 +2582,9 @@ async def review_tenant_application(
     dto: TenantApplicationReview,
 ):
     """
-    是什么：review_tenant_application 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 review_tenant_application 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：review_tenant_application 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     try:
@@ -2625,9 +2628,9 @@ async def tenant_join_applications(
     status: str | None = None,
 ):
     """
-    是什么：tenant_join_applications 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_join_applications 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_join_applications 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     applications = list_tenant_applications(
@@ -2648,9 +2651,9 @@ async def review_tenant_join_application(
     dto: TenantApplicationReview,
 ):
     """
-    是什么：review_tenant_join_application 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 review_tenant_join_application 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：review_tenant_join_application 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     application = session.get(TenantApplicationModel, application_id)
@@ -2701,9 +2704,9 @@ async def invite_tenant_member(
     creator: TenantInvitationCreator,
 ):
     """
-    是什么：invite_tenant_member 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 invite_tenant_member 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：invite_tenant_member 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     user = session.exec(select(UserModel).where(UserModel.account == creator.account.strip())).first()
@@ -2744,9 +2747,9 @@ async def bulk_invite_tenant_members(
     creator: TenantBulkInviteCreator,
 ):
     """
-    是什么：bulk_invite_tenant_members 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 bulk_invite_tenant_members 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：bulk_invite_tenant_members 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     results: list[TenantBulkInviteResult] = []
@@ -2808,9 +2811,9 @@ async def tenant_invitations(
     status: str | None = None,
 ):
     """
-    是什么：tenant_invitations 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_invitations 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_invitations 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     applications = list_tenant_applications(
@@ -2829,9 +2832,9 @@ async def my_tenant_invitations(
     status: str | None = None,
 ):
     """
-    是什么：my_tenant_invitations 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 my_tenant_invitations 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：my_tenant_invitations 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     applications = list_tenant_applications(
         session,
@@ -2850,9 +2853,9 @@ async def transfer_current_tenant_owner(
     dto: TenantOwnerTransfer,
 ):
     """
-    是什么：transfer_current_tenant_owner 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 transfer_current_tenant_owner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：transfer_current_tenant_owner 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_owner(current_user)
     target_user = session.get(UserModel, int(dto.target_user_id))
@@ -2896,9 +2899,9 @@ async def respond_tenant_invitation(
     dto: TenantApplicationReview,
 ):
     """
-    是什么：respond_tenant_invitation 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 respond_tenant_invitation 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：respond_tenant_invitation 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     application = session.get(TenantApplicationModel, application_id)
     if (
@@ -2948,9 +2951,9 @@ async def cancel_tenant_invitation(
     application_id: int,
 ):
     """
-    是什么：cancel_tenant_invitation 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 cancel_tenant_invitation 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：cancel_tenant_invitation 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     application = session.get(TenantApplicationModel, application_id)
@@ -2992,9 +2995,9 @@ async def bind_tenant_domain(
     creator: TenantDomainCreator,
 ):
     """
-    是什么：bind_tenant_domain 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：bind_tenant_domain 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     _require_current_tenant_admin(current_user)
     try:
@@ -3028,9 +3031,9 @@ async def tenant_domain_list(
     current_tenant: CurrentTenant,
 ):
     """
-    是什么：tenant_domain_list 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_domain_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_domain_list 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     return [_domain_dto(row) for row in list_tenant_domains(session, tenant_id=int(current_tenant.id))]
@@ -3043,9 +3046,9 @@ async def admin_tenant_domain_list(
     tenant_id: int | None = None,
 ):
     """
-    是什么：admin_tenant_domain_list 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 admin_tenant_domain_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：admin_tenant_domain_list 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     return [_domain_dto(row) for row in list_tenant_domains(session, tenant_id=tenant_id)]
@@ -3059,9 +3062,9 @@ async def review_domain_binding(
     dto: TenantDomainReview,
 ):
     """
-    是什么：review_domain_binding 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 review_domain_binding 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：review_domain_binding 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     try:
@@ -3095,9 +3098,9 @@ async def tenant_security_policy(
     current_tenant: CurrentTenant,
 ):
     """
-    是什么：tenant_security_policy 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_security_policy 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_security_policy 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_current_tenant_admin(current_user)
     return _security_policy_dto(
@@ -3114,9 +3117,9 @@ async def update_tenant_security_policy(
     editor: TenantSecurityPolicyEditor,
 ):
     """
-    是什么：update_tenant_security_policy 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_tenant_security_policy 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     _require_current_tenant_admin(current_user)
     try:
@@ -3150,9 +3153,9 @@ async def submit_tenant_data_request(
     creator: TenantDataRequestCreator,
 ):
     """
-    是什么：submit_tenant_data_request 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 submit_tenant_data_request 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：submit_tenant_data_request 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if creator.request_type in {TENANT_DATA_REQUEST_TYPE_CANCEL, TENANT_DATA_REQUEST_TYPE_DELETE}:
         _require_current_tenant_owner(current_user)
@@ -3191,9 +3194,9 @@ async def tenant_data_request_list(
     tenant_id: int | None = None,
 ):
     """
-    是什么：tenant_data_request_list 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 tenant_data_request_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_data_request_list 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         scoped_tenant_id = int(current_tenant.id)
@@ -3220,9 +3223,9 @@ async def review_data_request(
     dto: TenantDataRequestReview,
 ):
     """
-    是什么：review_data_request 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 review_data_request 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：review_data_request 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     try:
@@ -3257,9 +3260,9 @@ async def complete_data_request(
     dto: TenantDataRequestComplete,
 ):
     """
-    是什么：complete_data_request 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 complete_data_request 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：complete_data_request 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     try:
@@ -3292,9 +3295,9 @@ async def leave_joined_tenant(
     tenant_id: int,
 ):
     """
-    是什么：leave_joined_tenant 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 leave_joined_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：leave_joined_tenant 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_admin(current_user):
         raise HTTPException(status_code=403, detail="SaaS administrator cannot leave tenant from this endpoint")
@@ -3332,9 +3335,9 @@ async def _update_tenant_datasource_binding(
     editor: TenantDatasourceBindingEditor,
 ) -> TenantDTO:
     """
-    是什么：_update_tenant_datasource_binding 是 backend/apps/system/api/tenant.py 中的异步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：_update_tenant_datasource_binding 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     _require_platform_admin(current_user)
     tenant = session.get(TenantModel, int(tenant_id))
@@ -3364,9 +3367,9 @@ async def update_tenant_datasource_binding(
     editor: TenantDatasourceBindingEditor,
 ):
     """
-    是什么：update_tenant_datasource_binding 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_tenant_datasource_binding 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     return await _update_tenant_datasource_binding(session, current_user, tenant_id, editor)
 
@@ -3379,9 +3382,9 @@ async def update_tenant_legacy_project_binding(
     editor: TenantDatasourceBindingEditor,
 ):
     """
-    是什么：update_tenant_legacy_project_binding 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_tenant_legacy_project_binding 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     return await _update_tenant_datasource_binding(session, current_user, tenant_id, editor)
 
@@ -3389,9 +3392,9 @@ async def update_tenant_legacy_project_binding(
 @router.post("", response_model=TenantDTO)
 async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: TenantCreator):
     """
-    是什么：add_tenant 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：add_tenant 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     _require_platform_admin(current_user)
     try:
@@ -3448,9 +3451,9 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
 @router.put("/{tenant_id}", response_model=TenantDTO)
 async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id: int, editor: TenantEditor):
     """
-    是什么：edit_tenant 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 edit_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：edit_tenant 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
     editor_fields = _model_fields_set(editor)
@@ -3494,9 +3497,9 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
 @router.patch("/{tenant_id}/status", response_model=TenantDTO)
 async def update_tenant_status(session: SessionDep, current_user: CurrentUser, tenant_id: int, dto: TenantStatus):
     """
-    是什么：update_tenant_status 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_tenant_status 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     _require_platform_admin(current_user)
     try:
@@ -3520,9 +3523,9 @@ async def update_tenant_status(session: SessionDep, current_user: CurrentUser, t
 @router.delete("/{tenant_id}", response_model=TenantDTO)
 async def remove_tenant(session: SessionDep, current_user: CurrentUser, tenant_id: int):
     """
-    是什么：remove_tenant 是 backend/apps/system/api/tenant.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：remove_tenant 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     _require_platform_admin(current_user)
     try:

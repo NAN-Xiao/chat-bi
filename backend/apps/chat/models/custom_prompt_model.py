@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义聊天问数据和 Agent用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 from datetime import datetime
 from typing import Optional
 
@@ -14,6 +17,9 @@ from apps.chat.curd.custom_prompt import (
 
 
 class CustomPrompt(SQLModel, table=True):
+    """
+    类说明：CustomPrompt 表示聊天问数据和 Agent里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "custom_prompt"
 
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
@@ -45,6 +51,9 @@ class CustomPrompt(SQLModel, table=True):
 
 
 class CustomPromptUserPreference(SQLModel, table=True):
+    """
+    类说明：CustomPromptUserPreference 表示聊天问数据和 Agent里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "custom_prompt_user_preference"
     __table_args__ = (
         UniqueConstraint("custom_prompt_id", "user_id", name="uq_custom_prompt_user_preference_prompt_user"),
@@ -61,6 +70,9 @@ class CustomPromptUserPreference(SQLModel, table=True):
 
 
 class CustomPromptInfo(BaseModel):
+    """
+    类说明：CustomPromptInfo 表示聊天问数据和 Agent里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: Optional[int] = None
     tenant_id: Optional[int] = None
     type: Optional[CustomPromptTypeEnum] = None
@@ -85,6 +97,9 @@ class CustomPromptInfo(BaseModel):
 
 
 class CustomPromptOption(BaseModel):
+    """
+    类说明：CustomPromptOption 表示聊天问数据和 Agent里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: int
     type: Optional[CustomPromptTypeEnum] = None
     name: Optional[str] = None

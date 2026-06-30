@@ -1,8 +1,5 @@
-"""迁移脚本：123_remove_user_knowledge_base
-
-迁移版本 ID： 6c9d2e4f8a10
-上一版本： 2f4a6c8e0b13
-创建时间： 2026-06-23 00:00:00.000000
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
 """
 from __future__ import annotations
 
@@ -18,9 +15,9 @@ depends_on = None
 
 def upgrade() -> None:
     """
-    是什么：upgrade 是 backend/alembic/versions/123_remove_user_knowledge_base.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：upgrade 是这个迁移脚本的数据库升级步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前升级。
     """
     op.execute("DELETE FROM knowledge_base WHERE visibility_scope = 'USER_PRIVATE'")
     op.alter_column(
@@ -34,9 +31,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """
-    是什么：downgrade 是 backend/alembic/versions/123_remove_user_knowledge_base.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：downgrade 是这个迁移脚本的数据库回滚步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前回滚。
     """
     op.alter_column(
         "knowledge_base",

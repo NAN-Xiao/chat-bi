@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from urllib.parse import urlparse
 
 import requests
@@ -6,9 +9,9 @@ from requests.exceptions import RequestException, Timeout
 
 def verify_url(url: str, timeout: int = 5) -> tuple[bool, str]:
     """
-    是什么：verify_url 是 backend/common/utils/http_utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验通用工具相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：verify_url 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查通用工具里的数据、权限或配置是否合法，不对就及时拦住。
     """
     try:
         parsed = urlparse(url)

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端业务的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -32,18 +35,18 @@ KNOWLEDGE_FILE_MAX_BYTES = 50 * 1024 * 1024
 
 def _now() -> datetime:
     """
-    是什么：_now 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _now 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：_now 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return datetime.now()
 
 
 def _parse_scope(value: Optional[str]) -> KnowledgeBaseVisibilityScopeEnum:
     """
-    是什么：_parse_scope 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化后端业务相关数据，生成后续流程可使用的结构。
+    是什么：_parse_scope 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把后端业务的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     try:
         return KnowledgeBaseVisibilityScopeEnum(value or KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value)
@@ -53,18 +56,18 @@ def _parse_scope(value: Optional[str]) -> KnowledgeBaseVisibilityScopeEnum:
 
 def _is_global_platform_admin(current_user: CurrentUser) -> bool:
     """
-    是什么：_is_global_platform_admin 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _is_global_platform_admin 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：_is_global_platform_admin 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
 
 
 def _can_manage_workspace_public(current_user: CurrentUser) -> bool:
     """
-    是什么：_can_manage_workspace_public 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_workspace_public 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_workspace_public 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _is_global_platform_admin(current_user):
         return False
@@ -74,9 +77,9 @@ def _can_manage_workspace_public(current_user: CurrentUser) -> bool:
 
 def _scope_tenant_id(current_user: CurrentUser, scope: KnowledgeBaseVisibilityScopeEnum) -> int:
     """
-    是什么：_scope_tenant_id 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _scope_tenant_id 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：_scope_tenant_id 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         return DEFAULT_TENANT_ID
@@ -85,9 +88,9 @@ def _scope_tenant_id(current_user: CurrentUser, scope: KnowledgeBaseVisibilitySc
 
 def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibilityScopeEnum) -> None:
     """
-    是什么：_require_scope_manage 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验后端业务相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_scope_manage 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查后端业务里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         if not _is_global_platform_admin(current_user):
@@ -100,9 +103,9 @@ def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibil
 
 def _require_record_manage(current_user: CurrentUser, record: KnowledgeBase) -> None:
     """
-    是什么：_require_record_manage 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验后端业务相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_record_manage 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查后端业务里的数据、权限或配置是否合法，不对就及时拦住。
     """
     scope = _parse_scope(record.visibility_scope)
     if int(record.tenant_id) != _scope_tenant_id(current_user, scope):
@@ -112,9 +115,9 @@ def _require_record_manage(current_user: CurrentUser, record: KnowledgeBase) -> 
 
 def _can_manage_record(current_user: CurrentUser, record: KnowledgeBase) -> bool:
     """
-    是什么：_can_manage_record 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_record 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_record 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         _require_record_manage(current_user, record)
@@ -125,9 +128,9 @@ def _can_manage_record(current_user: CurrentUser, record: KnowledgeBase) -> bool
 
 def _serialize_record(current_user: CurrentUser, record: KnowledgeBase) -> KnowledgeBaseItem:
     """
-    是什么：_serialize_record 是 backend/apps/knowledge_base/api/knowledge_base.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化后端业务相关数据，生成后续流程可使用的结构。
+    是什么：_serialize_record 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把后端业务的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     return KnowledgeBaseItem(
         id=int(record.id),
@@ -152,9 +155,9 @@ def _serialize_record(current_user: CurrentUser, record: KnowledgeBase) -> Knowl
 
 async def _save_upload(file: UploadFile) -> tuple[str, str, str]:
     """
-    是什么：_save_upload 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：创建、初始化或组装后端业务相关对象和数据，并返回或写入对应状态。
+    是什么：_save_upload 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：创建或保存后端业务需要的东西，让后续流程能继续往下走。
     """
     file_ext = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
     _, file_id = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
@@ -178,9 +181,9 @@ async def list_knowledge_base(
     keyword: Optional[str] = Query(None),
 ):
     """
-    是什么：list_knowledge_base 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    是什么：list_knowledge_base 是一个接口入口，负责接住后端业务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把后端业务需要的数据找出来，整理成后面好用的样子。
     """
     scope = _parse_scope(visibility_scope)
     filters = [
@@ -221,9 +224,9 @@ async def save_knowledge_base(
     file: Optional[UploadFile] = File(None),
 ):
     """
-    是什么：save_knowledge_base 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装后端业务相关对象和数据，并返回或写入对应状态。
+    是什么：save_knowledge_base 是一个接口入口，负责接住后端业务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存后端业务需要的东西，让后续流程能继续往下走。
     """
     clean_name = name.strip()
     if not clean_name:
@@ -305,9 +308,9 @@ async def save_knowledge_base(
 @router.delete("/{id}")
 async def delete_knowledge_base(session: SessionDep, current_user: CurrentUser, id: int):
     """
-    是什么：delete_knowledge_base 是 backend/apps/knowledge_base/api/knowledge_base.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理后端业务相关数据、缓存或临时状态。
+    是什么：delete_knowledge_base 是一个接口入口，负责接住后端业务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把后端业务不再需要的数据、缓存或临时内容清理掉。
     """
     record = session.get(KnowledgeBase, int(id))
     if not record:

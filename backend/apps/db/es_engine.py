@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放数据库连接相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 # 作者：Junjun
 # 日期：2025/9/9
 
@@ -13,9 +16,9 @@ from common.error import SingleMessageError
 
 def get_es_auth(conf: DatasourceConf):
     """
-    是什么：get_es_auth 是 backend/apps/db/es_engine.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_es_auth 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     username = f"{conf.username}"
     password = f"{conf.password}"
@@ -31,9 +34,9 @@ def get_es_auth(conf: DatasourceConf):
 
 def get_es_connect(conf: DatasourceConf):
     """
-    是什么：get_es_connect 是 backend/apps/db/es_engine.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_es_connect 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     es_client = Elasticsearch(
         [conf.host],  # ES 地址
@@ -48,9 +51,9 @@ def get_es_connect(conf: DatasourceConf):
 # 获取表列表
 def get_es_index(conf: DatasourceConf):
     """
-    是什么：get_es_index 是 backend/apps/db/es_engine.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_es_index 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     es_client = get_es_connect(conf)
     indices = es_client.cat.indices(format="json")
@@ -71,9 +74,9 @@ def get_es_index(conf: DatasourceConf):
 # 获取字段列表
 def get_es_fields(conf: DatasourceConf, table_name: str):
     """
-    是什么：get_es_fields 是 backend/apps/db/es_engine.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_es_fields 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     es_client = get_es_connect(conf)
     index_name = table_name
@@ -125,9 +128,9 @@ def get_es_fields(conf: DatasourceConf, table_name: str):
 
 def get_es_data_by_http(conf: DatasourceConf, sql: str):
     """
-    是什么：get_es_data_by_http 是 backend/apps/db/es_engine.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_es_data_by_http 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     url = conf.host
     while url.endswith('/'):

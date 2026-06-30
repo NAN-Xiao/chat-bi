@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义系统管理用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 import secrets
 
 from sqlalchemy import BigInteger, Boolean, Column, Index, String, Text, UniqueConstraint
@@ -14,9 +17,9 @@ TENANT_PUBLIC_ID_DIGITS = "23456789"
 
 def generate_tenant_public_id() -> str:
     """
-    是什么：generate_tenant_public_id 是 backend/apps/system/models/tenant.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成系统管理相关结果，并保存或返回给调用方。
+    是什么：generate_tenant_public_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成系统管理的结果，比如答案、SQL、图表或建议。
     """
     body = "".join(secrets.choice(TENANT_PUBLIC_ID_ALPHABET) for _ in range(8))
     if not any(char.isdigit() for char in body):
@@ -26,6 +29,9 @@ def generate_tenant_public_id() -> str:
 
 
 class TenantModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant"
     __table_args__ = (
         UniqueConstraint("public_id", name="uq_sys_tenant_public_id"),
@@ -59,6 +65,9 @@ class TenantModel(SnowflakeBase, table=True):
 
 
 class TenantUserModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantUserModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_user"
     __table_args__ = (
         UniqueConstraint("tenant_id", "user_id", name="uq_sys_tenant_user_tenant_user"),
@@ -76,6 +85,9 @@ class TenantUserModel(SnowflakeBase, table=True):
 
 
 class TenantApplicationModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantApplicationModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_application"
     __table_args__ = (
         Index("idx_sys_tenant_application_applicant", "applicant_user_id"),
@@ -102,6 +114,9 @@ class TenantApplicationModel(SnowflakeBase, table=True):
 
 
 class TenantDomainModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantDomainModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_domain"
     __table_args__ = (
         UniqueConstraint("domain", name="uq_sys_tenant_domain_domain"),
@@ -121,6 +136,9 @@ class TenantDomainModel(SnowflakeBase, table=True):
 
 
 class TenantSecurityPolicyModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantSecurityPolicyModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_security_policy"
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_sys_tenant_security_policy_tenant_id"),
@@ -135,6 +153,9 @@ class TenantSecurityPolicyModel(SnowflakeBase, table=True):
 
 
 class TenantTrackingConfigModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantTrackingConfigModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_tracking_config"
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_sys_tenant_tracking_config_tenant_id"),
@@ -158,6 +179,9 @@ class TenantTrackingConfigModel(SnowflakeBase, table=True):
 
 
 class TenantTrackingTableModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantTrackingTableModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_tracking_table"
     __table_args__ = (
         UniqueConstraint("tenant_id", "table_name", name="uq_sys_tenant_tracking_table_name"),
@@ -177,6 +201,9 @@ class TenantTrackingTableModel(SnowflakeBase, table=True):
 
 
 class TenantTrackingFieldModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantTrackingFieldModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_tracking_field"
     __table_args__ = (
         UniqueConstraint("tenant_id", "table_name", "field_name", name="uq_sys_tenant_tracking_field_name"),
@@ -203,6 +230,9 @@ class TenantTrackingFieldModel(SnowflakeBase, table=True):
 
 
 class TenantSchemaTableModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantSchemaTableModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_schema_table"
     __table_args__ = (
         UniqueConstraint("tenant_id", "table_name", name="uq_sys_tenant_schema_table_name"),
@@ -219,6 +249,9 @@ class TenantSchemaTableModel(SnowflakeBase, table=True):
 
 
 class TenantSchemaFieldModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantSchemaFieldModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_schema_field"
     __table_args__ = (
         UniqueConstraint("tenant_id", "table_name", "field_name", name="uq_sys_tenant_schema_field_name"),
@@ -237,6 +270,9 @@ class TenantSchemaFieldModel(SnowflakeBase, table=True):
 
 
 class TenantSchemaChangeRequestModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantSchemaChangeRequestModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_schema_change_request"
     __table_args__ = (
         Index("idx_sys_tenant_schema_change_request_tenant_id", "tenant_id"),
@@ -261,6 +297,9 @@ class TenantSchemaChangeRequestModel(SnowflakeBase, table=True):
 
 
 class TenantDataRequestModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantDataRequestModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_data_request"
     __table_args__ = (
         Index("idx_sys_tenant_data_request_tenant_id", "tenant_id"),

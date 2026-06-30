@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放聊天问数据和 Agent里较长或较复杂的处理流程，把一次任务分成可维护的步骤。
+"""
 from __future__ import annotations
 
 import time
@@ -26,6 +29,9 @@ WorkflowErrorFormatter = Callable[[BaseException], str]
 
 @dataclass(frozen=True)
 class AssistantWorkflowConfig:
+    """
+    类说明：AssistantWorkflowConfig 放聊天问数据和 Agent的配置项，让后续流程能按同一套规则运行。
+    """
     workflow_key: str
     run_id_prefix: str
     log_prefix: str
@@ -33,27 +39,27 @@ class AssistantWorkflowConfig:
 
 def record_id(service: Any) -> Any:
     """
-    是什么：record_id 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 record_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：record_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return getattr(getattr(service, "record", None), "id", None)
 
 
 def workflow_attr(workflow_key: str, name: str) -> str:
     """
-    是什么：workflow_attr 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 workflow_attr 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：workflow_attr 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return f"_{workflow_key}_graph_{name}"
 
 
 def new_workflow_run_id(service: Any, run_id_prefix: str) -> str:
     """
-    是什么：new_workflow_run_id 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：new_workflow_run_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     current_record_id = record_id(service)
     record_part = str(current_record_id) if current_record_id is not None else "unknown"
@@ -62,9 +68,9 @@ def new_workflow_run_id(service: Any, run_id_prefix: str) -> str:
 
 def init_workflow_run(service: Any, workflow_key: str, run_id_prefix: str) -> str:
     """
-    是什么：init_workflow_run 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：init_workflow_run 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     run_id = new_workflow_run_id(service, run_id_prefix)
     setattr(service, workflow_attr(workflow_key, "run_id"), run_id)
@@ -76,9 +82,9 @@ def init_workflow_run(service: Any, workflow_key: str, run_id_prefix: str) -> st
 
 def classify_workflow_error(error: BaseException) -> str:
     """
-    是什么：classify_workflow_error 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 classify_workflow_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：classify_workflow_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(error, SingleMessageError):
         return "single_message"
@@ -102,9 +108,9 @@ def log_workflow_event(
     **extra: Any,
 ) -> None:
     """
-    是什么：log_workflow_event 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 log_workflow_event 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：log_workflow_event 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     payload: dict[str, Any] = {
         "workflow": workflow_key,
@@ -124,9 +130,9 @@ def append_workflow_trace(
     entry: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """
-    是什么：append_workflow_trace 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 append_workflow_trace 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：append_workflow_trace 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     service = state["service"]
     existing_trace = state.get("graph_trace")
@@ -146,15 +152,15 @@ def observe_workflow_node(
     handler: WorkflowNode,
 ) -> WorkflowNode:
     """
-    是什么：observe_workflow_node 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 observe_workflow_node 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：observe_workflow_node 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     def _wrapped(state: WorkflowState) -> dict[str, Any]:
         """
-        是什么：_wrapped 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-        谁调用：由外层函数 observe_workflow_node 在执行内部流程时调用。
-        做了什么：围绕 _wrapped 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：_wrapped 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 observe_workflow_node 跑到对应步骤时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         service = state["service"]
         run_id = (
@@ -239,9 +245,9 @@ def observe_node(
     handler: WorkflowNode,
 ) -> WorkflowNode:
     """
-    是什么：observe_node 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 observe_node 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：observe_node 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return observe_workflow_node(
         workflow_key=config.workflow_key,
@@ -259,9 +265,9 @@ def emit_record_metadata(
     include_regenerate_id: bool,
 ) -> dict[str, Any]:
     """
-    是什么：emit_record_metadata 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：emit_record_metadata 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -295,9 +301,9 @@ def format_workflow_error(
     include_db_error_types: bool = False,
 ) -> str:
     """
-    是什么：format_workflow_error 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：format_workflow_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if isinstance(error, SingleMessageError):
         error_msg = str(error)
@@ -337,9 +343,9 @@ def run_assistant_workflow(
     session_scope_factory: Callable[[], Any] | None = None,
 ) -> Iterator[Any]:
     """
-    是什么：run_assistant_workflow 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：run_assistant_workflow 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     json_result = initial_state.setdefault("json_result", {"success": True})
     graph_run_id = init_workflow_run(service, config.workflow_key, config.run_id_prefix)
@@ -413,9 +419,9 @@ def run_assistant_workflow(
 
 def consume_generator_return(generator: Any, on_chunk: Callable[[Any], None]) -> Any:
     """
-    是什么：consume_generator_return 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 consume_generator_return 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：consume_generator_return 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     while True:
         try:
@@ -428,9 +434,9 @@ def consume_generator_return(generator: Any, on_chunk: Callable[[Any], None]) ->
 @contextmanager
 def session_scope() -> Iterator[Session]:
     """
-    是什么：session_scope 是 backend/apps/chat/task/assistant_workflow.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 session_scope 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：session_scope 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     from apps.chat.task.llm import session_maker
 

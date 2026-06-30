@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
 from datetime import timedelta
 from typing import Annotated
 
@@ -27,9 +30,9 @@ router = APIRouter(tags=["login"], prefix="/login")
 
 def _requested_tenant_id(request: Request) -> int | None:
     """
-    是什么：_requested_tenant_id 是 backend/apps/system/api/login.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _requested_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_requested_tenant_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     raw = request.headers.get("X-SHUZHI-TENANT-ID")
     if not raw:
@@ -52,9 +55,9 @@ async def local_login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> Token:
     """
-    是什么：local_login 是 backend/apps/system/api/login.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 local_login 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：local_login 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     origin_account = await shuzhi_decrypt(form_data.username)
     origin_pwd = await shuzhi_decrypt(form_data.password)
@@ -83,8 +86,8 @@ async def local_login(
 @router.post("/logout")
 async def logout(_session: SessionDep, _request: Request, _dto: LogoutSchema):
     """
-    是什么：logout 是 backend/apps/system/api/login.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 logout 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：logout 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return None

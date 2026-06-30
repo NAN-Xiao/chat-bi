@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端业务的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
 import os
 
 from fastapi import APIRouter, HTTPException
@@ -16,9 +19,9 @@ path = settings.EXCEL_PATH
 @router.post("/download-fail-info", summary=f"{PLACEHOLDER_PREFIX}download-fail-info")
 async def download_excel(req: FileRequest):
     """
-    是什么：download_excel 是 backend/apps/settings/api/base.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 download_excel 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：download_excel 是一个接口入口，负责接住后端业务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     filename = os.path.basename(req.file or "")
     file_path = AppFileUtils.safe_path(path, filename, required_suffix="_error.xlsx")

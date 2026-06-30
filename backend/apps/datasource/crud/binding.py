@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 import datetime
 
 from fastapi import HTTPException
@@ -13,9 +16,9 @@ from common.core.deps import CurrentUser, SessionDep
 
 def supports_datasource_tenant_binding(session: SessionDep) -> bool:
     """
-    是什么：supports_datasource_tenant_binding 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 supports_datasource_tenant_binding 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：supports_datasource_tenant_binding 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return inspect(session.connection()).has_table(CoreDatasourceTenantBinding.__tablename__)
@@ -25,18 +28,18 @@ def supports_datasource_tenant_binding(session: SessionDep) -> bool:
 
 def _binding_table_exists(session: SessionDep) -> bool:
     """
-    是什么：_binding_table_exists 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：_binding_table_exists 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     return supports_datasource_tenant_binding(session)
 
 
 def datasource_tenant_binding_has_rows(session: SessionDep) -> bool:
     """
-    是什么：datasource_tenant_binding_has_rows 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 datasource_tenant_binding_has_rows 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_tenant_binding_has_rows 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not _binding_table_exists(session):
         return False
@@ -45,18 +48,18 @@ def datasource_tenant_binding_has_rows(session: SessionDep) -> bool:
 
 def datasource_tenant_binding_active(session: SessionDep) -> bool:
     """
-    是什么：datasource_tenant_binding_active 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 datasource_tenant_binding_active 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_tenant_binding_active 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return datasource_tenant_binding_has_rows(session)
 
 
 def _table_exists(session: SessionDep, table_name: str) -> bool:
     """
-    是什么：_table_exists 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _table_exists 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_table_exists 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return inspect(session.connection()).has_table(table_name)
@@ -66,9 +69,9 @@ def _table_exists(session: SessionDep, table_name: str) -> bool:
 
 def get_bound_datasource_id_for_tenant(session: SessionDep, tenant_id: int | None) -> int | None:
     """
-    是什么：get_bound_datasource_id_for_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_bound_datasource_id_for_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if tenant_id is None or int(tenant_id) == DEFAULT_TENANT_ID:
         return None
@@ -89,9 +92,9 @@ def get_bound_datasource_id_for_tenant(session: SessionDep, tenant_id: int | Non
 
 def list_bound_datasource_ids_for_tenant(session: SessionDep, tenant_id: int | None) -> set[int]:
     """
-    是什么：list_bound_datasource_ids_for_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_bound_datasource_ids_for_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     datasource_id = get_bound_datasource_id_for_tenant(session, tenant_id)
     return {datasource_id} if datasource_id is not None else set()
@@ -99,9 +102,9 @@ def list_bound_datasource_ids_for_tenant(session: SessionDep, tenant_id: int | N
 
 def list_bound_tenant_ids_for_datasource(session: SessionDep, datasource_id: int | None) -> list[int]:
     """
-    是什么：list_bound_tenant_ids_for_datasource 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_bound_tenant_ids_for_datasource 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if datasource_id is None:
         return []
@@ -119,9 +122,9 @@ def list_bound_tenant_ids_for_datasource(session: SessionDep, datasource_id: int
 
 def datasource_bound_to_tenant(session: SessionDep, datasource_id: int, tenant_id: int | None) -> bool:
     """
-    是什么：datasource_bound_to_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 datasource_bound_to_tenant 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_bound_to_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if tenant_id is None:
         return False
@@ -138,9 +141,9 @@ def datasource_bound_to_tenant(session: SessionDep, datasource_id: int, tenant_i
 
 def list_datasource_binding_rows(session: SessionDep, tenant_ids: list[int] | None = None):
     """
-    是什么：list_datasource_binding_rows 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_datasource_binding_rows 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if datasource_tenant_binding_active(session):
         statement = (
@@ -173,9 +176,9 @@ def _delete_datasource_users(
         tenant_id: int | None = None,
 ) -> None:
     """
-    是什么：_delete_datasource_users 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：_delete_datasource_users 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
     if not ids:
@@ -197,9 +200,9 @@ def clear_datasource_workspace_permissions(
         tenant_id: int | None = None,
 ) -> None:
     """
-    是什么：clear_datasource_workspace_permissions 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：clear_datasource_workspace_permissions 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
     if not ids:
@@ -215,9 +218,9 @@ def bind_datasource_to_tenant(
         tenant_id: int | None,
 ) -> CoreDatasource:
     """
-    是什么：bind_datasource_to_tenant 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：bind_datasource_to_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     target_tenant_id = int(tenant_id or DEFAULT_TENANT_ID)
 
@@ -307,9 +310,9 @@ def bind_tenant_to_datasource(
         datasource_id: int | None,
 ) -> CoreDatasource | None:
     """
-    是什么：bind_tenant_to_datasource 是 backend/apps/datasource/crud/binding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：bind_tenant_to_datasource 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     target_tenant_id = int(tenant_id)
     if target_tenant_id == DEFAULT_TENANT_ID:

@@ -1,6 +1,5 @@
 """
-安全配置模块。
-集中管理星通数智应用的安全设置和最佳实践。
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
 
 from pydantic import BaseModel, Field
@@ -8,7 +7,9 @@ from typing import Optional
 
 
 class SecurityConfig(BaseModel):
-    """安全配置项。"""
+    """
+    类说明：SecurityConfig 放后端基础能力的配置项，让后续流程能按同一套规则运行。
+    """
 
     # SSL/TLS 设置
     verify_ssl_certificates: bool = Field(
@@ -126,18 +127,18 @@ DEFAULT_SECURITY_CONFIG = SecurityConfig()
 
 def get_security_config() -> SecurityConfig:
     """
-    是什么：get_security_config 是 backend/common/core/security_config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    是什么：get_security_config 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力需要的数据找出来，整理成后面好用的样子。
     """
     return DEFAULT_SECURITY_CONFIG
 
 
 def validate_password_strength(password: str, config: SecurityConfig = DEFAULT_SECURITY_CONFIG) -> tuple[bool, str]:
     """
-    是什么：validate_password_strength 是 backend/common/core/security_config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验核心配置和基础设施相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_password_strength 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查后端基础能力里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if len(password) < config.min_password_length:
         return False, f"Password must be at least {config.min_password_length} characters long"

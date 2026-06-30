@@ -1,9 +1,15 @@
+"""
+脚本说明：这个脚本定义仪表盘用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index
 from typing import Any, Optional, List, Literal, Dict
 from pydantic import BaseModel
 
 class CoreDashboard(SQLModel, table=True):
+    """
+    类说明：CoreDashboard 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "core_dashboard"
     __table_args__ = (
         Index("idx_core_dashboard_tenant_id", "tenant_id"),
@@ -138,6 +144,9 @@ class CoreDashboard(SQLModel, table=True):
 
 
 class CoreDashboardShare(SQLModel, table=True):
+    """
+    类说明：CoreDashboardShare 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "core_dashboard_share"
     __table_args__ = (
         Index("idx_core_dashboard_share_tenant_id", "tenant_id"),
@@ -223,6 +232,9 @@ class CoreDashboardShare(SQLModel, table=True):
 
 
 class DashboardBaseResponse(BaseModel):
+    """
+    类说明：DashboardBaseResponse 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: Optional[str] = None
     tenant_id: Optional[int] = None
     name: Optional[str] = None
@@ -258,6 +270,9 @@ class DashboardBaseResponse(BaseModel):
 
 
 class DashboardShareListResponse(BaseModel):
+    """
+    类说明：DashboardShareListResponse 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: Optional[str] = None
     tenant_id: Optional[int] = None
     name: Optional[str] = None
@@ -275,10 +290,16 @@ class DashboardShareListResponse(BaseModel):
     preview_image: Optional[str] = None
 
 class DashboardResponse(CoreDashboard):
+    """
+    类说明：DashboardResponse 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     update_name: Optional[str] = None
     create_name: Optional[str] = None
 
 class BaseDashboard(BaseModel):
+    """
+    类说明：BaseDashboard 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: str = ''
     tenant_id: Optional[int] = None
     name: str = ''
@@ -296,12 +317,18 @@ class BaseDashboard(BaseModel):
     sort: Optional[int] = 0
 
 class QueryDashboard(BaseDashboard):
+    """
+    类说明：QueryDashboard 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     opt: str = ''
     include_data: bool = True
 
 
 # 仪表盘创建对象
 class CreateDashboard(QueryDashboard):
+    """
+    类说明：CreateDashboard 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     canvas_style_data: str =''
     component_data: str = ''
     canvas_view_info: str = ''
@@ -309,6 +336,9 @@ class CreateDashboard(QueryDashboard):
 
 
 class DashboardPivotRequest(BaseModel):
+    """
+    类说明：DashboardPivotRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     enabled: bool = False
     client_filter_only: bool = False
     time_field: str = ''
@@ -328,6 +358,9 @@ class DashboardPivotRequest(BaseModel):
 
 
 class DashboardSqlPreview(BaseModel):
+    """
+    类说明：DashboardSqlPreview 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     datasource: int
     sql: str = ''
     pivot: Optional[DashboardPivotRequest] = None
@@ -336,41 +369,65 @@ class DashboardSqlPreview(BaseModel):
 
 
 class DashboardDefaultRequest(BaseModel):
+    """
+    类说明：DashboardDefaultRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     dashboard_id: str
     is_default: bool = True
 
 
 class DashboardDefaultSortRequest(BaseModel):
+    """
+    类说明：DashboardDefaultSortRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     ordered_ids: List[str]
 
 
 class DashboardOrderItem(BaseModel):
+    """
+    类说明：DashboardOrderItem 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: str
     pid: str = "root"
     sort: int = 0
 
 
 class DashboardReorderRequest(BaseModel):
+    """
+    类说明：DashboardReorderRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     scope: Literal["default", "my"] = "my"
     items: List[DashboardOrderItem]
 
 
 class DashboardDefaultCopyRequest(BaseModel):
+    """
+    类说明：DashboardDefaultCopyRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     dashboard_id: str
 
 
 class DashboardPlatformTemplateCopyRequest(BaseModel):
+    """
+    类说明：DashboardPlatformTemplateCopyRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     dashboard_id: str
     name: str = ''
 
 
 class DashboardPlatformTemplateUseRequest(BaseModel):
+    """
+    类说明：DashboardPlatformTemplateUseRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     template_id: str = ''
     template_ids: List[str] = Field(default_factory=list)
     name: str = ''
 
 
 class DashboardShareRequest(BaseModel):
+    """
+    类说明：DashboardShareRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     dashboard_id: str
     share_type: Literal["dashboard", "chart"] = "dashboard"
     name: str = ''
@@ -382,18 +439,30 @@ class DashboardShareRequest(BaseModel):
 
 
 class DashboardShareListQuery(BaseModel):
+    """
+    类说明：DashboardShareListQuery 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     keyword: str = ''
 
 
 class SharedDashboardQuery(BaseModel):
+    """
+    类说明：SharedDashboardQuery 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: str
 
 
 class SharedDashboardUseRequest(BaseModel):
+    """
+    类说明：SharedDashboardUseRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: str
 
 
 class DashboardDeliveryCreateRequest(BaseModel):
+    """
+    类说明：DashboardDeliveryCreateRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     target_tenant_id: Optional[int | str] = None
     target_tenant_public_id: str = ''
     target_datasource_id: Optional[int] = None
@@ -403,6 +472,9 @@ class DashboardDeliveryCreateRequest(BaseModel):
 
 
 class DashboardDeliveryChartUpdateRequest(BaseModel):
+    """
+    类说明：DashboardDeliveryChartUpdateRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     draft_dashboard_id: str
     view_id: str
     sql: str = ''
@@ -410,10 +482,16 @@ class DashboardDeliveryChartUpdateRequest(BaseModel):
 
 
 class DashboardDeliveryOrderUpdateRequest(BaseModel):
+    """
+    类说明：DashboardDeliveryOrderUpdateRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     ordered_dashboard_ids: List[str]
 
 
 class DashboardDeliveryCanvasUpdateRequest(BaseModel):
+    """
+    类说明：DashboardDeliveryCanvasUpdateRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     draft_dashboard_id: str
     name: str = ''
     component_data: str = ''
@@ -422,10 +500,16 @@ class DashboardDeliveryCanvasUpdateRequest(BaseModel):
 
 
 class DashboardDeliveryPublishRequest(BaseModel):
+    """
+    类说明：DashboardDeliveryPublishRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     publish_as_default: bool = True
 
 
 class DashboardDeliverySqlPreview(BaseModel):
+    """
+    类说明：DashboardDeliverySqlPreview 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     target_tenant_id: Optional[int | str] = None
     target_tenant_public_id: str = ''
     target_datasource_id: Optional[int] = None

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放聊天问数据和 Agent里较长或较复杂的处理流程，把一次任务分成可维护的步骤。
+"""
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -15,18 +18,18 @@ from common.utils.utils import AppLogUtil
 
 def emit(payload: Any) -> None:
     """
-    是什么：emit 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：emit 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     get_stream_writer()(payload)
 
 
 def sse(payload: dict[str, Any]) -> str:
     """
-    是什么：sse 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 sse 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：sse 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return "data:" + orjson.dumps(payload).decode() + "\n\n"
 
@@ -40,9 +43,9 @@ def emit_stream_text(
     emit_plain_text: bool = False,
 ) -> str:
     """
-    是什么：emit_stream_text 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：emit_stream_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     full_text = ""
     for chunk in chunks:
@@ -66,9 +69,9 @@ def emit_markdown_table(
     empty_message: str,
 ) -> None:
     """
-    是什么：emit_markdown_table 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：emit_markdown_table 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     if not data or not fields:
         emit(empty_message + "\n\n")
@@ -95,9 +98,9 @@ def emit_permission_denied_response(
     include_reason: bool = False,
 ) -> dict[str, Any]:
     """
-    是什么：emit_permission_denied_response 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：emit_permission_denied_response 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     if in_chat:
         if emit_sql and formatted_sql:
@@ -143,9 +146,9 @@ def emit_chart_image(
     error_message: str = "generate or fetch chart picture error.\n\n",
 ) -> str | None:
     """
-    是什么：emit_chart_image 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：emit_chart_image 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     if chart.get("type") == "table" or not return_img:
         return None

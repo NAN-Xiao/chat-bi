@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义系统管理用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 from sqlalchemy import BigInteger, Column, Index, String, UniqueConstraint
 from sqlmodel import Field
 
@@ -6,6 +9,9 @@ from common.utils.time import get_timestamp
 
 
 class TenantUsageDailyModel(SnowflakeBase, table=True):
+    """
+    类说明：TenantUsageDailyModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_tenant_usage_daily"
     __table_args__ = (
         UniqueConstraint("tenant_id", "usage_date", "metric", name="uq_sys_tenant_usage_daily_key"),

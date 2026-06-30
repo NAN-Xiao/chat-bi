@@ -1,4 +1,7 @@
-﻿from collections import defaultdict
+﻿"""
+脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
+from collections import defaultdict
 
 from fastapi import APIRouter, File, HTTPException, Path, Query, UploadFile
 from sqlmodel import SQLModel, delete as sqlmodel_delete, or_, select
@@ -66,9 +69,9 @@ router = APIRouter(tags=["system_user"], prefix="/user")
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
     """
-    是什么：_current_tenant_id 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _current_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_current_tenant_id 是从当前用户里取租户 ID 的小工具。
+    谁调用：需要知道当前用户属于哪个租户的接口会调用它。
+    做了什么：把用户上下文里的租户 ID 取出来，方便后面做权限和数据隔离。
     """
     tenant_id = getattr(current_user, "tenant_id", None)
     if not tenant_id:
@@ -78,9 +81,9 @@ def _current_tenant_id(current_user: CurrentUser) -> int:
 
 def _require_user_in_current_tenant(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
     """
-    是什么：_require_user_in_current_tenant 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_user_in_current_tenant 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if is_platform_admin(current_user):
         return
@@ -90,9 +93,9 @@ def _require_user_in_current_tenant(session: SessionDep, current_user: CurrentUs
 
 def _get_user_tenant_role(session: SessionDep, user_id: int, tenant_id: int) -> str:
     """
-    是什么：_get_user_tenant_role 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：_get_user_tenant_role 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     membership = session.exec(
         select(TenantUserModel).where(
@@ -106,9 +109,9 @@ def _get_user_tenant_role(session: SessionDep, user_id: int, tenant_id: int) -> 
 
 def _get_user_visible_tenant_role(session: SessionDep, current_user: CurrentUser, user_id: int) -> str | None:
     """
-    是什么：_get_user_visible_tenant_role 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：_get_user_visible_tenant_role 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     if not is_platform_admin(current_user):
         return _get_user_tenant_role(session, user_id, _current_tenant_id(current_user))
@@ -132,9 +135,9 @@ def _get_user_visible_tenant_role(session: SessionDep, current_user: CurrentUser
 
 def _user_active_tenant_summary(session: SessionDep, user_ids: list[int]) -> dict[int, dict]:
     """
-    是什么：_user_active_tenant_summary 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _user_active_tenant_summary 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_user_active_tenant_summary 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not user_ids:
         return {}
@@ -172,9 +175,9 @@ def _normalize_editable_tenant_role(
     current_role: str | None = None,
 ) -> str:
     """
-    是什么：_normalize_editable_tenant_role 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_editable_tenant_role 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     normalized = normalize_tenant_role(role)
     if normalized == TENANT_ROLE_OWNER:
@@ -192,9 +195,9 @@ def _ensure_tenant_owner_manageable(
     requested_role: str | None = None,
 ) -> str:
     """
-    是什么：_ensure_tenant_owner_manageable 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_ensure_tenant_owner_manageable 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     current_role = _get_user_tenant_role(session, user_id, _current_tenant_id(current_user))
     if is_super_admin(current_user):
@@ -210,9 +213,9 @@ def _user_payload_data(
     current_model: UserModel | None = None,
 ) -> dict:
     """
-    是什么：_user_payload_data 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _user_payload_data 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_user_payload_data 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     exclude = {
         "project_ids",
@@ -238,36 +241,36 @@ def _user_payload_data(
 
 def _target_tenant_id_for_payload(current_user: CurrentUser, tenant_id: int | None = None) -> int:
     """
-    是什么：_target_tenant_id_for_payload 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _target_tenant_id_for_payload 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_target_tenant_id_for_payload 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return tenant_id if tenant_id and is_platform_admin(current_user) else _current_tenant_id(current_user)
 
 
 def _should_assign_tenant_from_payload(current_user: CurrentUser, tenant_id: int | None = None) -> bool:
     """
-    是什么：_should_assign_tenant_from_payload 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _should_assign_tenant_from_payload 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_should_assign_tenant_from_payload 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return not is_platform_admin(current_user) or tenant_id is not None
 
 
 def _clean_user_value(value: str | None) -> str:
     """
-    是什么：_clean_user_value 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：_clean_user_value 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     return (value or "").strip()
 
 
 def _normalize_user_identity(user_payload: UserCreator | UserEditor) -> None:
     """
-    是什么：_normalize_user_identity 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_user_identity 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     user_payload.account = _clean_user_value(user_payload.account)
     user_payload.name = _clean_user_value(user_payload.name)
@@ -276,18 +279,18 @@ def _normalize_user_identity(user_payload: UserCreator | UserEditor) -> None:
 
 def _existing_user_by_account(session: SessionDep, account: str) -> UserModel | None:
     """
-    是什么：_existing_user_by_account 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _existing_user_by_account 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_existing_user_by_account 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return session.exec(select(UserModel).where(UserModel.account == _clean_user_value(account))).first()
 
 
 def _existing_user_by_name(session: SessionDep, name: str, exclude_user_id: int | None = None) -> UserModel | None:
     """
-    是什么：_existing_user_by_name 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _existing_user_by_name 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_existing_user_by_name 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     statement = select(UserModel).where(UserModel.name == _clean_user_value(name))
     if exclude_user_id is not None:
@@ -302,9 +305,9 @@ def _require_unique_user_name(
     exclude_user_id: int | None = None,
 ) -> None:
     """
-    是什么：_require_unique_user_name 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_unique_user_name 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     normalized_name = _clean_user_value(name)
     if _existing_user_by_name(session, normalized_name, exclude_user_id=exclude_user_id):
@@ -318,9 +321,9 @@ async def _join_existing_user_to_tenant(
     creator: UserCreator,
 ):
     """
-    是什么：_join_existing_user_to_tenant 是 backend/apps/system/api/user.py 中的异步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _join_existing_user_to_tenant 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_join_existing_user_to_tenant 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_admin(current_user) and creator.tenant_id is None:
         raise Exception("User already exists")
@@ -349,9 +352,9 @@ async def _join_existing_user_to_tenant(
 
 def _remove_current_tenant_project_permissions(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
     """
-    是什么：_remove_current_tenant_project_permissions 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：_remove_current_tenant_project_permissions 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(current_user))
     if datasource_id is None:
@@ -366,9 +369,9 @@ def _remove_current_tenant_project_permissions(session: SessionDep, current_user
 
 def _delete_global_user(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
     """
-    是什么：_delete_global_user 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：_delete_global_user 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     user_model = get_db_user(session=session, user_id=user_id)
     if not user_model:
@@ -387,9 +390,9 @@ def _delete_global_user(session: SessionDep, current_user: CurrentUser, user_id:
 
 def _remove_user_from_current_tenant(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
     """
-    是什么：_remove_user_from_current_tenant 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：_remove_user_from_current_tenant 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     if is_platform_admin(current_user):
         _delete_global_user(session, current_user, user_id)
@@ -407,9 +410,9 @@ def _remove_user_from_current_tenant(session: SessionDep, current_user: CurrentU
 
 def _ensure_user_not_sole_active_owner(session: SessionDep, user_id: int) -> None:
     """
-    是什么：_ensure_user_not_sole_active_owner 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_ensure_user_not_sole_active_owner 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     owner_tenant_ids = session.exec(
         select(TenantUserModel.tenant_id).where(
@@ -451,9 +454,9 @@ def _ensure_user_not_sole_active_owner(session: SessionDep, user_id: int) -> Non
 @require_permissions(permission=AppPermission(role=['admin']))
 async def templateExcel(trans: Trans):
     """
-    是什么：templateExcel 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 templateExcel 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：templateExcel 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return await downTemplate(trans)
 
@@ -461,9 +464,9 @@ async def templateExcel(trans: Trans):
 @require_permissions(permission=AppPermission(role=['admin']))
 async def upload_excel(session: SessionDep, trans: Trans, _current_user: CurrentUser, file: UploadFile = File(...)):
     """
-    是什么：upload_excel 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 upload_excel 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：upload_excel 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return await batchUpload(session, trans, file)
 
@@ -472,18 +475,18 @@ async def upload_excel(session: SessionDep, trans: Trans, _current_user: Current
 @require_permissions(permission=AppPermission(role=['admin']))
 async def download_error(file_id: str):
     """
-    是什么：download_error 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 download_error 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：download_error 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return download_error_file(file_id)
 
 @router.get("/info", summary=f"{PLACEHOLDER_PREFIX}system_user_current_user", description=f"{PLACEHOLDER_PREFIX}system_user_current_user_desc")
 async def user_info(current_user: CurrentUser) -> UserInfoDTO:
     """
-    是什么：user_info 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 user_info 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：user_info 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return current_user
 
@@ -492,9 +495,9 @@ async def user_info(current_user: CurrentUser) -> UserInfoDTO:
 @require_permissions(permission=AppPermission(role=['admin']))
 async def default_pwd() -> str:
     """
-    是什么：default_pwd 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 default_pwd 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：default_pwd 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if settings.APP_ENV == "production":
         raise HTTPException(status_code=403, detail="Default password is not exposed in production")
@@ -512,9 +515,9 @@ async def pager(
     origins: list[int] | None = Query(None, description=f"{PLACEHOLDER_PREFIX}origin"),
 ):
     """
-    是什么：pager 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 pager 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：pager 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
@@ -597,9 +600,9 @@ async def pager(
 
 def format_user_dict(row) -> dict:
     """
-    是什么：format_user_dict 是 backend/apps/system/api/user.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：format_user_dict 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     result_dict = {}
     for item, key in zip(row, row._fields, strict=False):
@@ -614,9 +617,9 @@ def format_user_dict(row) -> dict:
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query(session: SessionDep, current_user: CurrentUser, _trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")) -> UserEditor:
     """
-    是什么：query 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：query 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     _require_user_in_current_tenant(session, current_user, id)
     db_user: UserModel = get_db_user(session = session, user_id = id)
@@ -647,17 +650,17 @@ async def query(session: SessionDep, current_user: CurrentUser, _trans: Trans, i
 ))
 async def user_create(session: SessionDep, current_user: CurrentUser, creator: UserCreator, trans: Trans):
     """
-    是什么：user_create 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 user_create 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：user_create 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return await create(session=session, current_user=current_user, creator=creator, trans=trans)
 
 async def create(session: SessionDep, current_user: CurrentUser, creator: UserCreator, trans: Trans):
     """
-    是什么：create 是 backend/apps/system/api/user.py 中的异步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：create 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     _normalize_user_identity(creator)
     existing_user = _existing_user_by_account(session, creator.account)
@@ -709,9 +712,9 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
 ))
 async def update(session: SessionDep, current_user: CurrentUser, editor: UserEditor, trans: Trans):
     """
-    是什么：update 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     _normalize_user_identity(editor)
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
@@ -775,9 +778,9 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
 ))
 async def delete(session: SessionDep, current_user: CurrentUser, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
     """
-    是什么：delete 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：delete 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     _remove_user_from_current_tenant(session, current_user, id)
 
@@ -786,9 +789,9 @@ async def delete(session: SessionDep, current_user: CurrentUser, id: int = Path(
 @system_log(LogConfig(operation_type=OperationType.DELETE,module=OperationModules.USER,resource_id_expr="id_list"))
 async def batch_del(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
     """
-    是什么：batch_del 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 batch_del 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：batch_del 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for id in id_list:
         _remove_user_from_current_tenant(session, current_user, id)
@@ -797,9 +800,9 @@ async def batch_del(session: SessionDep, current_user: CurrentUser, id_list: lis
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def langChange(session: SessionDep, current_user: CurrentUser, trans: Trans, language: UserLanguage):
     """
-    是什么：langChange 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 langChange 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：langChange 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     lang = language.language
     if lang not in ["zh-CN", "zh-TW", "en", "ko-KR"]:
@@ -815,9 +818,9 @@ async def langChange(session: SessionDep, current_user: CurrentUser, trans: Tran
 @system_log(LogConfig(operation_type=OperationType.RESET_PWD,module=OperationModules.USER,resource_id_expr="id"))
 async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
     """
-    是什么：pwdReset 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 pwdReset 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：pwdReset 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_user_in_current_tenant(session, current_user, id)
     if not is_platform_admin(current_user):
@@ -835,9 +838,9 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans,
 @system_log(LogConfig(operation_type=OperationType.UPDATE_PWD,module=OperationModules.USER,result_id_expr="id"))
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans, editor: PwdEditor):
     """
-    是什么：pwdUpdate 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 pwdUpdate 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：pwdUpdate 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     new_pwd = editor.new_pwd
     if not check_pwd_format(new_pwd):
@@ -857,9 +860,9 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans
 @system_log(LogConfig(operation_type=OperationType.UPDATE_STATUS,module=OperationModules.USER, resource_id_expr="statusDto.id"))
 async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Trans, statusDto: UserStatus):
     """
-    是什么：statusChange 是 backend/apps/system/api/user.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 statusChange 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：statusChange 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     status = statusDto.status
     if status not in [0, 1]:

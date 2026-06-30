@@ -1,4 +1,7 @@
-﻿from typing import List
+﻿"""
+脚本说明：这个脚本放仪表盘的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
+from typing import List
 
 import asyncio
 
@@ -49,9 +52,9 @@ platform_router = APIRouter(
 @router.post("/list_resource", summary=f"{PLACEHOLDER_PREFIX}list_resource_api")
 async def list_resource_api(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
     """
-    是什么：list_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：list_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return list_resource(session=session, dashboard=dashboard, current_user=current_user)
 
@@ -59,9 +62,9 @@ async def list_resource_api(session: SessionDep, dashboard: QueryDashboard, curr
 @router.post("/load_resource", summary=f"{PLACEHOLDER_PREFIX}load_resource_api")
 def load_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
     """
-    是什么：load_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的同步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：load_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return load_resource(session=session, dashboard=dashboard, current_user=current_user)
 
@@ -69,9 +72,9 @@ def load_resource_api(session: SessionDep, current_user: CurrentUser, dashboard:
 @router.get("/default/list", summary=f"{PLACEHOLDER_PREFIX}dashboard_default_list")
 async def list_default_resource_api(session: SessionDep, current_user: CurrentUser):
     """
-    是什么：list_default_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：list_default_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return list_default_resources(session=session, current_user=current_user)
 
@@ -79,9 +82,9 @@ async def list_default_resource_api(session: SessionDep, current_user: CurrentUs
 @router.post("/default/load", summary=f"{PLACEHOLDER_PREFIX}dashboard_default")
 def load_default_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
     """
-    是什么：load_default_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的同步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：load_default_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return load_default_resource(session=session, dashboard=dashboard, current_user=current_user)
 
@@ -94,9 +97,9 @@ def load_default_resource_api(session: SessionDep, current_user: CurrentUser, da
 ))
 async def copy_default_resource_api(session: SessionDep, user: CurrentUser, request: DashboardDefaultCopyRequest):
     """
-    是什么：copy_default_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 copy_default_resource_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：copy_default_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return copy_default_resource(session=session, user=user, request=request)
 
@@ -109,9 +112,9 @@ async def copy_default_resource_api(session: SessionDep, user: CurrentUser, requ
 ))
 async def set_default_resource_api(session: SessionDep, user: CurrentUser, request: DashboardDefaultRequest):
     """
-    是什么：set_default_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：set_default_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘相关的信息改成最新状态，并保存这些变化。
     """
     return set_default_resource(session=session, user=user, request=request)
 
@@ -123,9 +126,9 @@ async def set_default_resource_api(session: SessionDep, user: CurrentUser, reque
 ))
 async def sort_default_resource_api(session: SessionDep, user: CurrentUser, request: DashboardDefaultSortRequest):
     """
-    是什么：sort_default_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 sort_default_resource_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：sort_default_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return sort_default_resources(session=session, user=user, request=request)
 
@@ -137,9 +140,9 @@ async def sort_default_resource_api(session: SessionDep, user: CurrentUser, requ
 ))
 async def reorder_resource_api(session: SessionDep, user: CurrentUser, request: DashboardReorderRequest):
     """
-    是什么：reorder_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 reorder_resource_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：reorder_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return reorder_resources(session=session, user=user, request=request)
 
@@ -147,9 +150,9 @@ async def reorder_resource_api(session: SessionDep, user: CurrentUser, request: 
 @router.get("/platform-delegate/template/list", summary=f"{PLACEHOLDER_PREFIX}platform_dashboard_template_list")
 async def list_platform_dashboard_template_api(session: SessionDep, user: CurrentUser):
     """
-    是什么：list_platform_dashboard_template_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：list_platform_dashboard_template_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return list_platform_dashboard_templates(session=session, user=user)
 
@@ -157,9 +160,9 @@ async def list_platform_dashboard_template_api(session: SessionDep, user: Curren
 @platform_router.get("/list", summary=f"{PLACEHOLDER_PREFIX}platform_dashboard_template_list")
 async def list_platform_dashboard_template_admin_api(session: SessionDep, user: CurrentUser):
     """
-    是什么：list_platform_dashboard_template_admin_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：list_platform_dashboard_template_admin_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return list_platform_dashboard_templates(session=session, user=user)
 
@@ -167,9 +170,9 @@ async def list_platform_dashboard_template_admin_api(session: SessionDep, user: 
 @platform_router.post("/load", summary=f"{PLACEHOLDER_PREFIX}platform_dashboard_template_load")
 async def load_platform_dashboard_template_admin_api(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
     """
-    是什么：load_platform_dashboard_template_admin_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：load_platform_dashboard_template_admin_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return load_platform_dashboard_template(
         session=session,
@@ -187,9 +190,9 @@ async def load_platform_dashboard_template_admin_api(session: SessionDep, user: 
 ))
 async def update_platform_dashboard_template_admin_api(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     """
-    是什么：update_platform_dashboard_template_admin_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_platform_dashboard_template_admin_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘相关的信息改成最新状态，并保存这些变化。
     """
     return update_platform_dashboard_template(session=session, user=user, dashboard=dashboard)
 
@@ -203,9 +206,9 @@ async def update_platform_dashboard_template_admin_api(session: SessionDep, user
 ))
 async def delete_platform_dashboard_template_admin_api(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
     """
-    是什么：delete_platform_dashboard_template_admin_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    是什么：delete_platform_dashboard_template_admin_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘不再需要的数据、缓存或临时内容清理掉。
     """
     return delete_platform_dashboard_template(session=session, user=user, template_id=dashboard.id)
 
@@ -222,9 +225,9 @@ async def copy_dashboard_to_platform_template_api(
         request: DashboardPlatformTemplateCopyRequest,
 ):
     """
-    是什么：copy_dashboard_to_platform_template_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 copy_dashboard_to_platform_template_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：copy_dashboard_to_platform_template_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return copy_dashboard_to_platform_template(
         session=session,
@@ -246,9 +249,9 @@ async def copy_platform_template_to_workspace_dashboard_api(
         request: DashboardPlatformTemplateUseRequest,
 ):
     """
-    是什么：copy_platform_template_to_workspace_dashboard_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 copy_platform_template_to_workspace_dashboard_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：copy_platform_template_to_workspace_dashboard_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return copy_platform_template_to_workspace_dashboard(
         session=session,
@@ -262,9 +265,9 @@ async def copy_platform_template_to_workspace_dashboard_api(
 @router.post("/create_resource", response_model=BaseDashboard, summary=f"{PLACEHOLDER_PREFIX}create_resource_api")
 async def create_resource_api(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     """
-    是什么：create_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装仪表盘相关对象和数据，并返回或写入对应状态。
+    是什么：create_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存仪表盘需要的东西，让后续流程能继续往下走。
     """
     return create_resource(session, user, dashboard)
 
@@ -277,9 +280,9 @@ async def create_resource_api(session: SessionDep, user: CurrentUser, dashboard:
 ))
 async def update_resource_api(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
     """
-    是什么：update_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘相关的信息改成最新状态，并保存这些变化。
     """
     return update_resource(session=session, user=user, dashboard=dashboard)
 
@@ -292,9 +295,9 @@ async def update_resource_api(session: SessionDep, user: CurrentUser, dashboard:
 ))
 async def move_resource_api(session: SessionDep, user: CurrentUser, resource_id: str, dashboard: QueryDashboard):
     """
-    是什么：move_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 move_resource_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：move_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     dashboard.id = resource_id
     return move_resource(session=session, user=user, dashboard=dashboard)
@@ -309,9 +312,9 @@ async def move_resource_api(session: SessionDep, user: CurrentUser, resource_id:
 ))
 async def delete_resource_api(session: SessionDep, current_user: CurrentUser, resource_id: str, name: str):
     """
-    是什么：delete_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    是什么：delete_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘不再需要的数据、缓存或临时内容清理掉。
     """
     return delete_resource(session, current_user, resource_id)
 
@@ -324,9 +327,9 @@ async def delete_resource_api(session: SessionDep, current_user: CurrentUser, re
 ))
 async def create_canvas_api(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     """
-    是什么：create_canvas_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装仪表盘相关对象和数据，并返回或写入对应状态。
+    是什么：create_canvas_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存仪表盘需要的东西，让后续流程能继续往下走。
     """
     return create_canvas(session, user, dashboard)
 
@@ -339,9 +342,9 @@ async def create_canvas_api(session: SessionDep, user: CurrentUser, dashboard: C
 ))
 async def update_canvas_api(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     """
-    是什么：update_canvas_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新仪表盘相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_canvas_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘相关的信息改成最新状态，并保存这些变化。
     """
     return update_canvas(session, user, dashboard)
 
@@ -349,9 +352,9 @@ async def update_canvas_api(session: SessionDep, user: CurrentUser, dashboard: C
 @router.post("/check_name", summary=f"{PLACEHOLDER_PREFIX}check_name_api")
 async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
     """
-    是什么：check_name_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：校验仪表盘相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_name_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：检查仪表盘里的数据、权限或配置是否合法，不对就及时拦住。
     """
     return validate_name(session, user, dashboard)
 
@@ -360,9 +363,9 @@ async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: Quer
 @require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
 async def sql_preview_api(session: SessionDep, current_user: CurrentUser, request: DashboardSqlPreview):
     """
-    是什么：sql_preview_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 sql_preview_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：sql_preview_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return await asyncio.to_thread(
         preview_sql,
@@ -380,9 +383,9 @@ async def sql_preview_api(session: SessionDep, current_user: CurrentUser, reques
 ))
 async def share_resource_api(session: SessionDep, user: CurrentUser, request: DashboardShareRequest):
     """
-    是什么：share_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 share_resource_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：share_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return share_resource(session=session, user=user, request=request)
 
@@ -394,9 +397,9 @@ async def list_shared_resource_api(
         query: DashboardShareListQuery,
 ):
     """
-    是什么：list_shared_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：list_shared_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return list_shared_resources(session=session, current_user=current_user, query=query)
 
@@ -408,9 +411,9 @@ async def load_shared_resource_api(
         query: SharedDashboardQuery,
 ):
     """
-    是什么：load_shared_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询仪表盘相关数据，整理后返回给调用方。
+    是什么：load_shared_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     return load_shared_resource(session=session, current_user=current_user, query=query)
 
@@ -427,9 +430,9 @@ async def delete_shared_resource_api(
         query: SharedDashboardQuery,
 ):
     """
-    是什么：delete_shared_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理仪表盘相关数据、缓存或临时状态。
+    是什么：delete_shared_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘不再需要的数据、缓存或临时内容清理掉。
     """
     return delete_shared_resource(session=session, current_user=current_user, query=query)
 
@@ -446,8 +449,8 @@ async def use_shared_resource_api(
         request: SharedDashboardUseRequest,
 ):
     """
-    是什么：use_shared_resource_api 是 backend/apps/dashboard/api/dashboard_api.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 use_shared_resource_api 的语义处理仪表盘相关逻辑，并把结果返回或写入状态。
+    是什么：use_shared_resource_api 是一个接口入口，负责接住仪表盘相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return use_shared_resource(session=session, user=user, request=request)

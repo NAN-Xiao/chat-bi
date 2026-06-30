@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import re
 from functools import partial, wraps
 from inspect import signature
@@ -28,9 +31,9 @@ def custom_key_builder(
     keyExpression: Optional[str] = None,
 ) -> str | list[str]:
     """
-    是什么：custom_key_builder 是 backend/common/core/app_cache.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 custom_key_builder 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：custom_key_builder 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         base_key = f"{namespace}:{cacheName}:"
@@ -75,16 +78,16 @@ def cache(
     keyExpression: Optional[str] = None,
 ):
     """
-    是什么：cache 是 backend/common/core/app_cache.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 cache 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：cache 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     def decorator(func):
         # 预先生成键构建器
         """
-        是什么：decorator 是 backend/common/core/app_cache.py 中的同步函数。
-        谁调用：由外层函数 cache 在执行内部流程时调用。
-        做了什么：围绕 decorator 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：decorator 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+        谁调用：外层函数 cache 跑到对应步骤时会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         used_key_builder = partial(
             custom_key_builder,
@@ -95,9 +98,9 @@ def cache(
         @wraps(func)
         async def wrapper(*args, **kwargs):
             """
-            是什么：wrapper 是 backend/common/core/app_cache.py 中的异步函数。
-            谁调用：由外层函数 decorator 在执行内部流程时调用。
-            做了什么：围绕 wrapper 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+            是什么：wrapper 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+            谁调用：外层函数 decorator 跑到对应步骤时会调用它。
+            做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none" or not is_cache_initialized():
                 return await func(*args, **kwargs)
@@ -125,22 +128,22 @@ def clear_cache(
     keyExpression: Optional[str] = None,
 ):
     """
-    是什么：clear_cache 是 backend/common/core/app_cache.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理核心配置和基础设施相关数据、缓存或临时状态。
+    是什么：clear_cache 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力不再需要的数据、缓存或临时内容清理掉。
     """
     def decorator(func):
         """
-        是什么：decorator 是 backend/common/core/app_cache.py 中的同步函数。
-        谁调用：由外层函数 clear_cache 在执行内部流程时调用。
-        做了什么：围绕 decorator 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：decorator 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+        谁调用：外层函数 clear_cache 跑到对应步骤时会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         @wraps(func)
         async def wrapper(*args, **kwargs):
             """
-            是什么：wrapper 是 backend/common/core/app_cache.py 中的异步函数。
-            谁调用：由外层函数 decorator 在执行内部流程时调用。
-            做了什么：围绕 wrapper 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+            是什么：wrapper 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+            谁调用：外层函数 decorator 跑到对应步骤时会调用它。
+            做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none" or not is_cache_initialized():
                 return await func(*args, **kwargs)
@@ -166,9 +169,9 @@ def clear_cache(
 
 async def init_app_cache():
     """
-    是什么：init_app_cache 是 backend/common/core/app_cache.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装核心配置和基础设施相关对象和数据，并返回或写入对应状态。
+    是什么：init_app_cache 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存后端基础能力需要的东西，让后续流程能继续往下走。
     """
     cache_type: str = (settings.CACHE_TYPE or "none").lower()
     FastAPICache.reset()
@@ -187,9 +190,9 @@ async def init_app_cache():
 
 async def close_app_cache():
     """
-    是什么：close_app_cache 是 backend/common/core/app_cache.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：完成或关闭核心配置和基础设施流程，释放资源并记录最终状态。
+    是什么：close_app_cache 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力这次处理做收尾，记录结果并关掉不再需要的资源。
     """
     if (settings.CACHE_TYPE or "none").lower() == "redis":
         await close_redis_client()
@@ -197,9 +200,9 @@ async def close_app_cache():
 
 async def cache_health() -> dict:
     """
-    是什么：cache_health 是 backend/common/core/app_cache.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 cache_health 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：cache_health 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     cache_type: str = (settings.CACHE_TYPE or "none").lower()
     if cache_type == "redis":
@@ -219,9 +222,9 @@ async def cache_health() -> dict:
 def is_cache_initialized() -> bool:
     # 检查必要的属性是否存在
     """
-    是什么：is_cache_initialized 是 backend/common/core/app_cache.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 is_cache_initialized 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：is_cache_initialized 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not hasattr(FastAPICache, "_backend") or not hasattr(FastAPICache, "_prefix"):
         return False

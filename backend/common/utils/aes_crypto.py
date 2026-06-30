@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from typing import Optional
 
 import base64
@@ -12,9 +15,9 @@ simple_aes_iv_text = 'shuzhi_em_aes_iv'
 
 def _normalize_bytes(text: str, size: int) -> bytes:
     """
-    是什么：_normalize_bytes 是 backend/common/utils/aes_crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_bytes 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     raw = (text or "").encode("utf-8")
     if len(raw) >= size:
@@ -24,25 +27,25 @@ def _normalize_bytes(text: str, size: int) -> bytes:
 
 def shuzhi_aes_encrypt(text: str, key: Optional[str] = None) -> str:
     """
-    是什么：shuzhi_aes_encrypt 是 backend/common/utils/aes_crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 shuzhi_aes_encrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：shuzhi_aes_encrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return simple_aes_encrypt(text, key)
 
 def shuzhi_aes_decrypt(text: str, key: Optional[str] = None) -> str:
     """
-    是什么：shuzhi_aes_decrypt 是 backend/common/utils/aes_crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 shuzhi_aes_decrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：shuzhi_aes_decrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return simple_aes_decrypt(text, key)
 
 def simple_aes_encrypt(text: str, key: Optional[str] = None, ivtext: Optional[str] = None) -> str:
     """
-    是什么：simple_aes_encrypt 是 backend/common/utils/aes_crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 simple_aes_encrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：simple_aes_encrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     cipher = AES.new(
         _normalize_bytes(key or settings.SECRET_KEY[:32], 32),
@@ -54,9 +57,9 @@ def simple_aes_encrypt(text: str, key: Optional[str] = None, ivtext: Optional[st
 
 def simple_aes_decrypt(text: str, key: Optional[str] = None, ivtext: Optional[str] = None) -> str:
     """
-    是什么：simple_aes_decrypt 是 backend/common/utils/aes_crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 simple_aes_decrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：simple_aes_decrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     cipher = AES.new(
         _normalize_bytes(key or settings.SECRET_KEY[:32], 32),

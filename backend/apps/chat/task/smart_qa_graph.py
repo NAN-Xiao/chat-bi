@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放聊天问数据和 Agent里较长或较复杂的处理流程，把一次任务分成可维护的步骤。
+"""
 from __future__ import annotations
 
 from typing import Any, TypedDict
@@ -65,6 +68,9 @@ WORKFLOW_CONFIG = AssistantWorkflowConfig(WORKFLOW_KEY, RUN_ID_PREFIX, LOG_PREFI
 
 
 class SmartQAGraphState(TypedDict, total=False):
+    """
+    类说明：SmartQAGraphState 把聊天问数据和 Agent相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     service: Any
     in_chat: bool
     stream: bool
@@ -91,18 +97,18 @@ class SmartQAGraphState(TypedDict, total=False):
 
 def _observe_node(node: str, handler):
     """
-    是什么：_observe_node 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _observe_node 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_observe_node 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return observe_node(WORKFLOW_CONFIG, node, handler)
 
 
 def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
     """
-    是什么：_prepare_existing_context 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _prepare_existing_context 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_prepare_existing_context 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     service = state["service"]
 
@@ -124,9 +130,9 @@ def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _emit_record_metadata(state: SmartQAGraphState) -> dict[str, Any]:
     """
-    是什么：_emit_record_metadata 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：_emit_record_metadata 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     return _emit_workflow_record_metadata(
         state,
@@ -137,9 +143,9 @@ def _emit_record_metadata(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _ensure_datasource(state: SmartQAGraphState) -> dict[str, Any]:
     """
-    是什么：_ensure_datasource 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_ensure_datasource 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查聊天问数据和 Agent里的数据、权限或配置是否合法，不对就及时拦住。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -172,9 +178,9 @@ def _ensure_datasource(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _generate_sql(state: SmartQAGraphState) -> dict[str, Any]:
     """
-    是什么：_generate_sql 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+    是什么：_generate_sql 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -190,9 +196,9 @@ def _generate_sql(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     """
-    是什么：_prepare_sql 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _prepare_sql 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_prepare_sql 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     from apps.chat.task.llm import (
         APP_TEMP_SQL_TEXT_KEY,
@@ -376,9 +382,9 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
     """
-    是什么：_execute_sql 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：_execute_sql 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -459,9 +465,9 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
     """
-    是什么：_generate_chart 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+    是什么：_generate_chart 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -549,27 +555,27 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _should_continue_after_sql(state: SmartQAGraphState) -> str:
     """
-    是什么：_should_continue_after_sql 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _should_continue_after_sql 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_should_continue_after_sql 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return END if state.get("stop") else "execute_sql"
 
 
 def _should_continue_after_execute(state: SmartQAGraphState) -> str:
     """
-    是什么：_should_continue_after_execute 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _should_continue_after_execute 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_should_continue_after_execute 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return END if state.get("stop") else "generate_chart"
 
 
 def _build_graph():
     """
-    是什么：_build_graph 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：_build_graph 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     graph = StateGraph(SmartQAGraphState)
     graph.add_node("prepare_context", _observe_node("prepare_context", _prepare_existing_context))
@@ -602,9 +608,9 @@ def run_smart_qa_graph(
     return_img: bool = True,
 ):
     """
-    是什么：run_smart_qa_graph 是 backend/apps/chat/task/smart_qa_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：run_smart_qa_graph 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     json_result: dict[str, Any] = {"success": True}
     initial_state: SmartQAGraphState = {

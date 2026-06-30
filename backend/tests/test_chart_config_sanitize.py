@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本是测试文件，用来验证对应功能在常见情况下能按预期工作。
+"""
 from __future__ import annotations
 
 from common.utils.chart_config import sanitize_chart_display_names
@@ -5,9 +8,9 @@ from common.utils.chart_config import sanitize_chart_display_names
 
 def test_sanitize_chart_display_names_keeps_explicit_display_labels() -> None:
     """
-    是什么：test_sanitize_chart_display_names_keeps_explicit_display_labels 是 backend/tests/test_chart_config_sanitize.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_sanitize_chart_display_names_keeps_explicit_display_labels 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     canvas = {
         "view-1": {

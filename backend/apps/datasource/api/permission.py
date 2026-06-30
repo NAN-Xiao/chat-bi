@@ -1,4 +1,7 @@
-﻿from typing import Any
+﻿"""
+脚本说明：这个脚本放数据源的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -28,9 +31,9 @@ router = APIRouter(
 
 def _permission_belongs_to_current_tenant(session: SessionDep, user: CurrentUser, permission: dict[str, Any]) -> bool:
     """
-    是什么：_permission_belongs_to_current_tenant 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _permission_belongs_to_current_tenant 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_permission_belongs_to_current_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         datasource_id = int(permission.get("ds_id"))
@@ -45,9 +48,9 @@ def _datasource_visible_in_current_context(
         datasource_id: int,
 ) -> CoreDatasource | None:
     """
-    是什么：_datasource_visible_in_current_context 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _datasource_visible_in_current_context 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_visible_in_current_context 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = session.get(CoreDatasource, datasource_id)
     if datasource is None:
@@ -61,18 +64,18 @@ def _datasource_visible_in_current_context(
 
 def _rule_scope(rule: dict[str, Any]) -> str:
     """
-    是什么：_rule_scope 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _rule_scope 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return normalize_rule_scope(rule.get("scope"))
 
 
 def _rule_tenant_id(rule: dict[str, Any]) -> int:
     """
-    是什么：_rule_tenant_id 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _rule_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_tenant_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return int(rule.get("tenant_id") or DEFAULT_RULE_TENANT_ID)
@@ -82,9 +85,9 @@ def _rule_tenant_id(rule: dict[str, Any]) -> int:
 
 def _rule_visible_to_current_context(user: CurrentUser, rule: dict[str, Any]) -> bool:
     """
-    是什么：_rule_visible_to_current_context 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _rule_visible_to_current_context 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_visible_to_current_context 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     scope = _rule_scope(rule)
     if is_global_platform_context(user):
@@ -97,9 +100,9 @@ def _rule_visible_to_current_context(user: CurrentUser, rule: dict[str, Any]) ->
 
 def _can_manage_rule(user: CurrentUser, rule: dict[str, Any]) -> bool:
     """
-    是什么：_can_manage_rule 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_rule 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_rule 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     scope = _rule_scope(rule)
     if scope == RULE_SCOPE_PLATFORM:
@@ -112,9 +115,9 @@ def _can_manage_rule(user: CurrentUser, rule: dict[str, Any]) -> bool:
 
 def _filter_rule_for_current_context(session: SessionDep, user: CurrentUser, rule: dict[str, Any]) -> dict[str, Any] | None:
     """
-    是什么：_filter_rule_for_current_context 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _filter_rule_for_current_context 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_filter_rule_for_current_context 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not _rule_visible_to_current_context(user, rule):
         return None
@@ -137,9 +140,9 @@ def _filter_rule_for_current_context(session: SessionDep, user: CurrentUser, rul
 
 def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule_data: dict[str, Any]) -> None:
     """
-    是什么：_validate_permission_rule_scope 是 backend/apps/datasource/api/permission.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_validate_permission_rule_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     permissions = rule_data.get("permissions") or []
     if not permissions:
@@ -172,9 +175,9 @@ def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def p_list(session: SessionDep, user: CurrentUser):
     """
-    是什么：p_list 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 p_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：p_list 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     filtered_rules = []
     for rule in list_rule_dtos(session):
@@ -188,9 +191,9 @@ async def p_list(session: SessionDep, user: CurrentUser):
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def get(session: SessionDep, user: CurrentUser, id: int):
     """
-    是什么：get 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     rule = get_rule_dto(session, id)
     if rule is None:
@@ -205,9 +208,9 @@ async def get(session: SessionDep, user: CurrentUser, id: int):
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def save_rule(session: SessionDep, user: CurrentUser, ruleDTO: dict[str, Any]):
     """
-    是什么：save_rule 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：save_rule 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     rule_payload = dict(ruleDTO)
     rule_id = rule_payload.get("id")
@@ -238,9 +241,9 @@ async def save_rule(session: SessionDep, user: CurrentUser, ruleDTO: dict[str, A
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def delete(session: SessionDep, user: CurrentUser, id: int):
     """
-    是什么：delete 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：delete 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     rule = get_rule_dto(session, id)
     if rule is None or _filter_rule_for_current_context(session, user, rule) is None:

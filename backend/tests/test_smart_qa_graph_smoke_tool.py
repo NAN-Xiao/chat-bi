@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本是测试文件，用来验证对应功能在常见情况下能按预期工作。
+"""
 from __future__ import annotations
 
 import base64
@@ -10,9 +13,9 @@ import pytest
 
 def _load_smoke_tool():
     """
-    是什么：_load_smoke_tool 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+    是什么：_load_smoke_tool 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试需要的数据找出来，整理成后面好用的样子。
     """
     tool_path = Path(__file__).resolve().parents[2] / "tools" / "smart_qa_graph_smoke.py"
     spec = importlib.util.spec_from_file_location("smart_qa_graph_smoke", tool_path)
@@ -25,9 +28,9 @@ def _load_smoke_tool():
 
 def test_load_cases_accepts_custom_question_without_database() -> None:
     """
-    是什么：test_load_cases_accepts_custom_question_without_database 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_load_cases_accepts_custom_question_without_database 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -50,9 +53,9 @@ def test_load_cases_accepts_custom_question_without_database() -> None:
 
 def test_load_cases_requires_datasource_for_custom_question() -> None:
     """
-    是什么：test_load_cases_requires_datasource_for_custom_question 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_load_cases_requires_datasource_for_custom_question 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -62,9 +65,9 @@ def test_load_cases_requires_datasource_for_custom_question() -> None:
 
 def test_smoke_failed_allows_expected_permission_error_without_finish() -> None:
     """
-    是什么：test_smoke_failed_allows_expected_permission_error_without_finish 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_smoke_failed_allows_expected_permission_error_without_finish 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -80,9 +83,9 @@ def test_smoke_failed_allows_expected_permission_error_without_finish() -> None:
 
 def test_smoke_failed_rejects_unexpected_unfinished_result() -> None:
     """
-    是什么：test_smoke_failed_rejects_unexpected_unfinished_result 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_smoke_failed_rejects_unexpected_unfinished_result 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -98,9 +101,9 @@ def test_smoke_failed_rejects_unexpected_unfinished_result() -> None:
 
 def test_smoke_failed_rejects_step_or_expectation_violations() -> None:
     """
-    是什么：test_smoke_failed_rejects_step_or_expectation_violations 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_smoke_failed_rejects_step_or_expectation_violations 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -124,9 +127,9 @@ def test_smoke_failed_rejects_step_or_expectation_violations() -> None:
 
 def test_permission_fixture_legacy_alias_maps_to_column_deny() -> None:
     """
-    是什么：test_permission_fixture_legacy_alias_maps_to_column_deny 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_permission_fixture_legacy_alias_maps_to_column_deny 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -139,9 +142,9 @@ def test_permission_fixture_legacy_alias_maps_to_column_deny() -> None:
 
 def test_row_invalid_permission_tree_uses_invalid_operator() -> None:
     """
-    是什么：test_row_invalid_permission_tree_uses_invalid_operator 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_row_invalid_permission_tree_uses_invalid_operator 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -154,9 +157,9 @@ def test_row_invalid_permission_tree_uses_invalid_operator() -> None:
 
 def test_dynamic_assistant_payload_exposes_subquery_table() -> None:
     """
-    是什么：test_dynamic_assistant_payload_exposes_subquery_table 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_dynamic_assistant_payload_exposes_subquery_table 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 
@@ -173,9 +176,9 @@ def test_dynamic_assistant_payload_exposes_subquery_table() -> None:
 
 def test_assistant_certificate_header_is_url_quoted_base64_json() -> None:
     """
-    是什么：test_assistant_certificate_header_is_url_quoted_base64_json 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_assistant_certificate_header_is_url_quoted_base64_json 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     smoke = _load_smoke_tool()
 

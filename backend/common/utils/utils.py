@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import base64
 import errno
 import hashlib
@@ -22,13 +25,15 @@ from common.core import security
 
 
 class SafeRotatingFileHandler(RotatingFileHandler):
-    """避免 Windows 日志轮转竞争刷满标准错误输出。"""
+    """
+    类说明：SafeRotatingFileHandler 把通用工具相关的数据和行为放在一起，便于其他代码直接复用。
+    """
 
     def doRollover(self):
         """
-        是什么：SafeRotatingFileHandler.doRollover 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由持有 SafeRotatingFileHandler 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 doRollover 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：SafeRotatingFileHandler.doRollover 是 SafeRotatingFileHandler 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 SafeRotatingFileHandler 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         try:
             super().doRollover()
@@ -45,9 +50,9 @@ class SafeRotatingFileHandler(RotatingFileHandler):
 
 def generate_password_reset_token(email: str) -> str:
     """
-    是什么：generate_password_reset_token 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成通用工具相关结果，并保存或返回给调用方。
+    是什么：generate_password_reset_token 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成通用工具的结果，比如答案、SQL、图表或建议。
     """
     delta = timedelta(hours=settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS)
     now = datetime.now(timezone.utc)
@@ -63,9 +68,9 @@ def generate_password_reset_token(email: str) -> str:
 
 def verify_password_reset_token(token: str) -> str | None:
     """
-    是什么：verify_password_reset_token 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验通用工具相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：verify_password_reset_token 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查通用工具里的数据、权限或配置是否合法，不对就及时拦住。
     """
     try:
         decoded_token = jwt.decode(
@@ -78,9 +83,9 @@ def verify_password_reset_token(token: str) -> str | None:
 
 def deepcopy_ignore_extra(src, dest):
     """
-    是什么：deepcopy_ignore_extra 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 deepcopy_ignore_extra 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：deepcopy_ignore_extra 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     import copy
     for attr in vars(src):
@@ -93,9 +98,9 @@ def deepcopy_ignore_extra(src, dest):
 
 def extract_nested_json(text):
     """
-    是什么：extract_nested_json 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+    是什么：extract_nested_json 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     stack = []
     start_index = -1
@@ -124,9 +129,9 @@ def extract_nested_json(text):
 
 def string_to_numeric_hash(text: str, bits: Optional[int] = 64) -> int:
     """
-    是什么：string_to_numeric_hash 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 string_to_numeric_hash 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：string_to_numeric_hash 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     hash_bytes = hashlib.sha256(text.encode()).digest()
     hash_num = int.from_bytes(hash_bytes, byteorder='big')
@@ -137,9 +142,9 @@ def string_to_numeric_hash(text: str, bits: Optional[int] = 64) -> int:
 def setup_logging():
     # 确保日志目录存在
     """
-    是什么：setup_logging 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新通用工具相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：setup_logging 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具相关的信息改成最新状态，并保存这些变化。
     """
     log_dir = Path(settings.LOG_DIR)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -218,32 +223,38 @@ setup_logging()
 
 
 class CallerLogger(logging.Logger):
+    """
+    类说明：CallerLogger 把通用工具相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, logger: logging.Logger):
         """
-        是什么：CallerLogger.__init__ 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由创建 CallerLogger 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：CallerLogger.__init__ 是 CallerLogger 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：创建 CallerLogger 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.logger = logger
         super().__init__(logger.name, logger.level)
 
     def _log(self, level, msg, args, exc_info=None, extra=None, stacklevel=3):
         """
-        是什么：CallerLogger._log 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由持有 CallerLogger 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 _log 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：CallerLogger._log 是 CallerLogger 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 CallerLogger 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         if self.logger.isEnabledFor(level):
             self.logger._log(level, msg, args, exc_info=exc_info, extra=extra, stacklevel=stacklevel)
 
 class AppLogUtil:
 
+    """
+    类说明：AppLogUtil 把通用工具相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     @staticmethod
     def _get_logger() -> logging.Logger:
         """
-        是什么：AppLogUtil._get_logger 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+        是什么：AppLogUtil._get_logger 是 AppLogUtil 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具需要的数据找出来，整理成后面好用的样子。
         """
         frame = inspect.currentframe()
         try:
@@ -257,9 +268,9 @@ class AppLogUtil:
     @staticmethod
     def debug(msg: str, *args, **kwargs):
         """
-        是什么：AppLogUtil.debug 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：围绕 debug 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：AppLogUtil.debug 是 AppLogUtil 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.DEBUG):
@@ -268,9 +279,9 @@ class AppLogUtil:
     @staticmethod
     def info(msg: str, *args, **kwargs):
         """
-        是什么：AppLogUtil.info 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：围绕 info 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：AppLogUtil.info 是 AppLogUtil 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.INFO):
@@ -279,9 +290,9 @@ class AppLogUtil:
     @staticmethod
     def warning(msg: str, *args, **kwargs):
         """
-        是什么：AppLogUtil.warning 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：围绕 warning 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：AppLogUtil.warning 是 AppLogUtil 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.WARNING):
@@ -290,9 +301,9 @@ class AppLogUtil:
     @staticmethod
     def error(msg: str, *args, exc_info: Optional[bool] = None, **kwargs):
         """
-        是什么：AppLogUtil.error 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：围绕 error 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：AppLogUtil.error 是 AppLogUtil 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.ERROR):
@@ -307,9 +318,9 @@ class AppLogUtil:
     @staticmethod
     def exception(msg: str, *args, **kwargs):
         """
-        是什么：AppLogUtil.exception 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：围绕 exception 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：AppLogUtil.exception 是 AppLogUtil 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.ERROR):
@@ -318,9 +329,9 @@ class AppLogUtil:
     @staticmethod
     def critical(msg: str, *args, **kwargs):
         """
-        是什么：AppLogUtil.critical 是 backend/common/utils/utils.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：围绕 critical 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：AppLogUtil.critical 是 AppLogUtil 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.CRITICAL):
@@ -328,9 +339,9 @@ class AppLogUtil:
 
 def prepare_for_orjson(data):
     """
-    是什么：prepare_for_orjson 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 prepare_for_orjson 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：prepare_for_orjson 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not data:
         return data
@@ -346,9 +357,9 @@ def prepare_for_orjson(data):
 
 def prepare_model_arg(origin_arg: str):
     """
-    是什么：prepare_model_arg 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 prepare_model_arg 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：prepare_model_arg 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not isinstance(origin_arg, str):
         return origin_arg
@@ -361,9 +372,9 @@ def prepare_model_arg(origin_arg: str):
 
 def get_origin_from_referer(request: Request):
     """
-    是什么：get_origin_from_referer 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+    是什么：get_origin_from_referer 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具需要的数据找出来，整理成后面好用的样子。
     """
     referer = request.headers.get("referer")
     if not referer:
@@ -386,9 +397,9 @@ def get_origin_from_referer(request: Request):
 
 def origin_match_domain(origin: str, domain: str) -> bool:
     """
-    是什么：origin_match_domain 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 origin_match_domain 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：origin_match_domain 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not origin or not domain:
         return False
@@ -402,9 +413,9 @@ def origin_match_domain(origin: str, domain: str) -> bool:
 
 def get_domain_list(domain: str) -> list[str]:
     """
-    是什么：get_domain_list 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+    是什么：get_domain_list 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具需要的数据找出来，整理成后面好用的样子。
     """
     domains = []
     if not domain:
@@ -418,9 +429,9 @@ def get_domain_list(domain: str) -> list[str]:
 
 def equals_ignore_case(str1: str, *args: str) -> bool:
     """
-    是什么：equals_ignore_case 是 backend/common/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 equals_ignore_case 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：equals_ignore_case 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if str1 is None:
         return None in args

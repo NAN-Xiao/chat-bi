@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
 import json
 
 import httpx
@@ -32,9 +35,9 @@ router = APIRouter(tags=["system_model"], prefix="/system/aimodel")
 
 async def _encrypt_ai_model_secrets(data: dict) -> dict:
     """
-    是什么：_encrypt_ai_model_secrets 是 backend/apps/system/api/aimodel.py 中的异步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _encrypt_ai_model_secrets 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_encrypt_ai_model_secrets 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     encrypted = dict(data)
     for key in ("api_key", "api_domain"):
@@ -45,9 +48,9 @@ async def _encrypt_ai_model_secrets(data: dict) -> dict:
 
 def _chat_log_total_tokens_expr():
     """
-    是什么：_chat_log_total_tokens_expr 是 backend/apps/system/api/aimodel.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _chat_log_total_tokens_expr 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_chat_log_total_tokens_expr 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     token_usage_type = func.jsonb_typeof(ChatLog.token_usage)
     object_total_tokens = cast(
@@ -64,9 +67,9 @@ def _chat_log_total_tokens_expr():
 
 def _extract_remote_models(payload: object) -> list[AiModelRemoteModel]:
     """
-    是什么：_extract_remote_models 是 backend/apps/system/api/aimodel.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_extract_remote_models 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if isinstance(payload, dict):
         raw_models = payload.get("data") or payload.get("models") or []
@@ -96,9 +99,9 @@ def _extract_remote_models(payload: object) -> list[AiModelRemoteModel]:
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def list_remote_models(info: AiModelRemoteListRequest, trans: Trans):
     """
-    是什么：list_remote_models 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：list_remote_models 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     try:
         base_url = _normalize_api_base_url(info.api_domain)
@@ -131,15 +134,15 @@ async def list_remote_models(info: AiModelRemoteListRequest, trans: Trans):
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def check_llm(info: AiModelCreator, trans: Trans):
     """
-    是什么：check_llm 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_llm 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     async def generate():
         """
-        是什么：generate 是 backend/apps/system/api/aimodel.py 中的异步函数。
-        谁调用：由外层函数 check_llm 在执行内部流程时调用。
-        做了什么：基于输入上下文生成系统管理相关结果，并保存或返回给调用方。
+        是什么：generate 是一个可以复用的小步骤，负责系统管理相关的一件事。
+        谁调用：外层函数 check_llm 跑到对应步骤时会调用它。
+        做了什么：根据已有信息生成系统管理的结果，比如答案、SQL、图表或建议。
         """
         try:
             additional_params = {item.key: prepare_model_arg(item.val) for item in info.config_list if
@@ -170,9 +173,9 @@ async def check_llm(info: AiModelCreator, trans: Trans):
 @router.get("/default", include_in_schema=False)
 async def check_default(session: SessionDep, trans: Trans):
     """
-    是什么：check_default 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_default 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     db_model = session.exec(
         select(AiModelDetail).where(AiModelDetail.default_model)
@@ -187,9 +190,9 @@ async def check_default(session: SessionDep, trans: Trans):
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.AI_MODEL, resource_id_expr="id"))
 async def set_default(session: SessionDep, id: int = Path(description="ID")):
     """
-    是什么：set_default 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：set_default 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     db_model = session.get(AiModelDetail, id)
     if not db_model:
@@ -217,9 +220,9 @@ async def query(
         keyword: str | None = Query(default=None, max_length=255, description=f"{PLACEHOLDER_PREFIX}keyword")
 ):
     """
-    是什么：query 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：query 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     statement = (
         select(
@@ -273,9 +276,9 @@ async def get_model_by_id(
         id: int = Path(description="ID")
 ):
     """
-    是什么：get_model_by_id 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_model_by_id 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     db_model = session.get(AiModelDetail, id)
     if not db_model:
@@ -315,9 +318,9 @@ async def add_model(
         creator: AiModelCreator
 ):
     """
-    是什么：add_model 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：add_model 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     data = creator.model_dump(exclude_unset=True)
     data["config"] = json.dumps([item.model_dump(exclude_unset=True) for item in creator.config_list])
@@ -343,9 +346,9 @@ async def update_model(
         editor: AiModelEditor
 ):
     """
-    是什么：update_model 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_model 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     id = int(editor.id)
     data = editor.model_dump(exclude_unset=True)
@@ -369,9 +372,9 @@ async def delete_model(
         id: int = Path(description="ID")
 ):
     """
-    是什么：delete_model 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：delete_model 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     item = session.get(AiModelDetail, id)
     if item.default_model:
@@ -387,8 +390,8 @@ async def get_available_models(
         _current_user: CurrentUser
 ):
     """
-    是什么：get_available_models 是 backend/apps/system/api/aimodel.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_available_models 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     return get_ai_model_list(session, False)

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,18 +19,18 @@ _redis_url: str | None = None
 
 def _quote(value: str | None) -> str:
     """
-    是什么：_quote 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _quote 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_quote 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return urllib.parse.quote(value or "", safe="")
 
 
 def _format_host(host: str) -> str:
     """
-    是什么：_format_host 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+    是什么：_format_host 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if ":" in host and not host.startswith("["):
         return f"[{host}]"
@@ -36,9 +39,9 @@ def _format_host(host: str) -> str:
 
 def build_redis_url() -> str:
     """
-    是什么：build_redis_url 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装核心配置和基础设施相关对象和数据，并返回或写入对应状态。
+    是什么：build_redis_url 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存后端基础能力需要的东西，让后续流程能继续往下走。
     """
     if settings.SHUZHI_REDIS_URL:
         return settings.SHUZHI_REDIS_URL
@@ -57,9 +60,9 @@ def build_redis_url() -> str:
 
 def mask_redis_url(url: str) -> str:
     """
-    是什么：mask_redis_url 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 mask_redis_url 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：mask_redis_url 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parsed = urllib.parse.urlsplit(url)
     if not parsed.password:
@@ -75,9 +78,9 @@ def mask_redis_url(url: str) -> str:
 
 def get_redis_client() -> redis.Redis:
     """
-    是什么：get_redis_client 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    是什么：get_redis_client 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力需要的数据找出来，整理成后面好用的样子。
     """
     global _redis_client, _redis_pool, _redis_url
 
@@ -99,9 +102,9 @@ def get_redis_client() -> redis.Redis:
 
 async def ping_redis() -> bool:
     """
-    是什么：ping_redis 是 backend/common/core/redis_client.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 ping_redis 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：ping_redis 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     client = get_redis_client()
     return bool(await client.ping())
@@ -109,9 +112,9 @@ async def ping_redis() -> bool:
 
 async def close_redis_client() -> None:
     """
-    是什么：close_redis_client 是 backend/common/core/redis_client.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：完成或关闭核心配置和基础设施流程，释放资源并记录最终状态。
+    是什么：close_redis_client 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力这次处理做收尾，记录结果并关掉不再需要的资源。
     """
     global _redis_client, _redis_pool, _redis_url
 
@@ -127,9 +130,9 @@ async def close_redis_client() -> None:
 
 def redis_key(*parts: object) -> str:
     """
-    是什么：redis_key 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 redis_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：redis_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     suffix = ":".join(str(part).strip(":") for part in parts if part is not None and str(part) != "")
     return f"{settings.REDIS_KEY_PREFIX}:{suffix}" if suffix else settings.REDIS_KEY_PREFIX
@@ -137,18 +140,18 @@ def redis_key(*parts: object) -> str:
 
 def platform_redis_key(*parts: object) -> str:
     """
-    是什么：platform_redis_key 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 platform_redis_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：platform_redis_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return redis_key("platform", *parts)
 
 
 def tenant_redis_key(tenant_id: int | str | None, *parts: object) -> str:
     """
-    是什么：tenant_redis_key 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 tenant_redis_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：tenant_redis_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if tenant_id in (None, ""):
         raise ValueError("Tenant context is required for tenant-scoped Redis keys")
@@ -157,9 +160,9 @@ def tenant_redis_key(tenant_id: int | str | None, *parts: object) -> str:
 
 def user_redis_key(tenant_id: int | str | None, user_id: int | str | None, *parts: object) -> str:
     """
-    是什么：user_redis_key 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 user_redis_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：user_redis_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if user_id in (None, ""):
         raise ValueError("User context is required for user-scoped Redis keys")
@@ -168,9 +171,9 @@ def user_redis_key(tenant_id: int | str | None, user_id: int | str | None, *part
 
 def datasource_redis_key(tenant_id: int | str | None, datasource_id: int | str | None, *parts: object) -> str:
     """
-    是什么：datasource_redis_key 是 backend/common/core/redis_client.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 datasource_redis_key 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_redis_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if datasource_id in (None, ""):
         raise ValueError("Datasource context is required for datasource-scoped Redis keys")
@@ -185,9 +188,9 @@ async def redis_lock(
     blocking_timeout: int = 5,
 ) -> AsyncIterator[None]:
     """
-    是什么：redis_lock 是 backend/common/core/redis_client.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 redis_lock 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：redis_lock 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     client = get_redis_client()
     lock = client.lock(
@@ -210,9 +213,9 @@ async def redis_lock(
 
 async def redis_health() -> dict:
     """
-    是什么：redis_health 是 backend/common/core/redis_client.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 redis_health 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：redis_health 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     redis_url = _redis_url or build_redis_url()
     try:
