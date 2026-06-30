@@ -268,7 +268,7 @@ function applyChartResult(viewInfo: any, result: any) {
   viewInfo.fields = fields
   viewInfo.status = result?.status || 'success'
   viewInfo.message = result?.message || ''
-  if (viewInfo.status === 'failed' && hasPreviousSnapshot) {
+  if (viewInfo.status === 'failed' && hasPreviousSnapshot && !isPermissionDeniedResult(result)) {
     viewInfo.data.fields = previousDataFields
     viewInfo.data.data = previousData
     viewInfo.fields = previousFields
@@ -292,6 +292,10 @@ function isDashboardCacheMiss(result: any) {
 
 function isDashboardQueryBusy(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
+}
+
+function isPermissionDeniedResult(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'permission_denied'
 }
 
 function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {
@@ -562,7 +566,9 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
           return
         }
         if (result?.status === 'failed') {
-          if (isDashboardQueryBusy(result)) {
+          if (isPermissionDeniedResult(result)) {
+            applyChartResult(viewInfo, result)
+          } else if (isDashboardQueryBusy(result)) {
             keepChartSnapshotOrLoading(viewInfo)
             if (!hasUsableChartSnapshot(viewInfo)) {
               transientPendingCount += 1

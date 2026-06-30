@@ -37,7 +37,13 @@ from apps.datasource.crud.permission import (
 )
 from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
-from apps.datasource.crud.query_executor import execute_user_query
+from apps.datasource.crud.query_executor import (
+    execute_user_query,
+    safe_query_error_message,
+    safe_query_error_type,
+    validate_user_query_sql_or_raise,
+)
+from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import get_sqlglot_dialect
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
@@ -1049,6 +1055,38 @@ def _failed_chart_result(message: str, error_type: str | None = None) -> dict[st
     return result
 
 
+def _dashboard_chart_permission_failure(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int,
+        sql: str,
+        pivot: Any | None = None,
+) -> dict[str, Any] | None:
+    datasource = session.get(CoreDatasource, datasource_id)
+    if datasource is None:
+        return _failed_chart_result("项目不存在")
+    try:
+        validation_sql = (
+            _build_dashboard_pivot_sql(sql, datasource, pivot)
+            if _dashboard_pivot_enabled(pivot)
+            else sql
+        )
+        validate_user_query_sql_or_raise(
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            sql=validation_sql,
+        )
+    except Exception as exc:
+        message = f"{exc}"
+        error_type = safe_query_error_type(current_user, message)
+        return _failed_chart_result(
+            safe_query_error_message(current_user, message),
+            PERMISSION_DENIED_ERROR_TYPE if error_type else None,
+        )
+    return None
+
+
 def _dashboard_sql_preview_cache_ttl() -> int:
     return max(0, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS", 60) or 0))
 
@@ -1475,6 +1513,12 @@ def _apply_dashboard_chart_result(item: dict, data_result: dict[str, Any]) -> No
     item['data']['fields'] = fields
     item['status'] = data_result['status']
     item['message'] = data_result['message']
+    if data_result.get('error_type'):
+        item['error_type'] = data_result.get('error_type')
+        item['reason'] = data_result.get('reason') or data_result.get('message') or ''
+    else:
+        item.pop('error_type', None)
+        item.pop('reason', None)
     item['fields'] = fields
     item['dataState'] = 'failed' if item.get('status') == 'failed' else 'ready'
     item['loadingProgress'] = 100
@@ -1976,6 +2020,17 @@ def _dashboard_payload(
             item_datasource = _chart_datasource(record, item, effective_datasource)
         if item.get('sql') is not None:
             if not include_data:
+                if item_datasource is not None:
+                    permission_failure = _dashboard_chart_permission_failure(
+                        session,
+                        current_user,
+                        item_datasource,
+                        item['sql'],
+                        item.get("pivot"),
+                    )
+                    if permission_failure is not None:
+                        _apply_dashboard_chart_result(item, permission_failure)
+                        continue
                 _mark_dashboard_chart_snapshot_ready(item)
                 continue
             if item_datasource is None:

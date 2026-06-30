@@ -17,16 +17,23 @@ CHART_TYPES = {
 }
 
 
+def _axis_binding_has_distinct_display_name(value: dict[str, Any]) -> bool:
+    name = str(value.get("name") or "").strip()
+    bound_value = str(value.get("value") or "").strip()
+    return bool(name and bound_value and name != bound_value)
+
+
 def _sanitize_axis_binding(value: Any) -> Any:
     if isinstance(value, list):
         return [_sanitize_axis_binding(item) for item in value]
     if not isinstance(value, dict):
         return value
-    return {
+    sanitized = {
         key: _sanitize_axis_binding(item)
         for key, item in value.items()
-        if key != "name"
+        if key != "name" or _axis_binding_has_distinct_display_name(value)
     }
+    return sanitized
 
 
 def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
@@ -38,7 +45,6 @@ def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
         for key in ("x", "y", "series", "multi-quota"):
             if key in axis:
                 axis[key] = _sanitize_axis_binding(axis[key])
-    chart.pop("multiQuotaName", None)
     return chart
 
 

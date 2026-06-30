@@ -632,6 +632,10 @@ function isDashboardQueryBusy(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
 }
 
+function isPermissionDeniedResult(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'permission_denied'
+}
+
 async function previewChartSqlWithCacheFallback(payload: any, forceRefresh = false) {
   if (forceRefresh) {
     return dashboardApi.preview_sql({
@@ -715,7 +719,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
     props.viewInfo.message = result?.message || ''
     if (props.viewInfo.status === 'failed') {
       const queryBusyWithSnapshot = isDashboardQueryBusy(result) && hasPreviousShape
-      if (hasPreviousRows || queryBusyWithSnapshot) {
+      if (!isPermissionDeniedResult(result) && (hasPreviousRows || queryBusyWithSnapshot)) {
         props.viewInfo.data.fields = previousDataFields
         props.viewInfo.data.data = previousData
         props.viewInfo.fields = previousFields

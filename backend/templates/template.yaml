@@ -466,10 +466,10 @@ template:
           涉及业务指标、字段展示名、图表类型偏好、维度/指标映射或结果解释时，必须优先遵循本次选择的<Data-Skills>；旧版术语和SQL示例不会再单独提供，不能把未出现在<Data-Skills>或用户本次问题中的业务口径当作确定规则。
         </rule>
         <rule>
-          图表配置不需要生成 name 字段；字段 value 才是绑定 SQL 结果和前端展示的唯一字段，必须与 SQL 输出别名完全一致。如果 SQL 已经使用 `AS "付费人数"`，图表 value 就是“付费人数”。
+          默认不需要生成 name 字段；字段 value 才是绑定 SQL 结果的唯一字段，必须与 SQL 输出别名完全一致。如果 SQL 已经使用 `AS "付费人数"`，图表 value 就是“付费人数”。只有当<Data-Skills>明确说明当前数据源的中文/特殊字符 SQL 别名不稳定时，才允许 value 使用稳定英文别名，并额外用 name 填写{lang}展示名。
         </rule>
         <rule>
-          字段展示名必须通过 SQL 输出别名表达，并优先来自<Data-Skills>、schema 字段注释或用户原文里的业务术语；如果缺少明确业务术语，只能使用通用、可读的{lang}名称，例如“日期”“分类”“数量”“金额”“比例”等。
+          字段展示名优先通过 SQL 输出别名表达，并优先来自<Data-Skills>、schema 字段注释或用户原文里的业务术语；如果缺少明确业务术语，只能使用通用、可读的{lang}名称，例如“日期”“分类”“数量”“金额”“比例”等。若因数据源兼容性使用英文输出别名，图表 JSON 的 name 必须提供对应{lang}展示名。
         </rule>
         <rule>
           如果生成的是趋势类图表，且 SQL 结果中包含一个日期/时间字段、一个或多个数值指标字段，以及可用于拆分的离散分类字段，可以在 JSON 中补充 pivot 配置，供看板进行按日/周/月和分组维度切换。pivot 只能引用 SQL 结果已经输出的字段，不得臆造字段；结构为：{{"enabled":true,"time_field":"日期字段","metric_fields":["指标字段1","指标字段2"],"group_field":"默认分类字段，可为空","group_enabled":true,"dimensions":[{{"field":"分类字段","label":"展示名"}}],"range_enabled":true,"granularity":"day","range":"source"}}。如果 y 轴指标有语义差异，可在 y 轴字段上标注 metricType/pivotAggregation，或在 pivot.metric_aggregations 中按字段声明 sum/avg。
