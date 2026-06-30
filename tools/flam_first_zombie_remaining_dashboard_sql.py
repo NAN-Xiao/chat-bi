@@ -281,8 +281,8 @@ WITH bounds AS (
            u.uid,
            {CHANNEL_EXPR_U} AS channel,
            {_pay_value("u", "pay1")} AS pay1,
-           {_pay_value("u", "pay7")} AS pay7,
-           {_pay_value("u")} AS paytotal
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS d7_dt,
+           b.max_dt
     FROM `user` u
     JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt
     WHERE u.prod = {PROD_ID}
@@ -290,11 +290,19 @@ WITH bounds AS (
 )
 SELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,
        channel AS `渠道`,
-       COUNT(DISTINCT uid) AS `账号注册用户数`,
-       ROUND(SUM(pay1), 2) AS `首日付费金额`,
-       ROUND(SUM(pay7), 2) AS `7日累计付费金额`,
-       ROUND(SUM(paytotal), 2) AS `累计付费金额`
-FROM cohort
+       COUNT(DISTINCT c.uid) AS `账号注册用户数`,
+       ROUND(SUM(c.pay1), 2) AS `首日付费金额`,
+       ROUND(SUM(CASE WHEN d7.dt IS NOT NULL THEN {_pay_value("d7", "pay7")} END), 2) AS `7日累计付费金额`,
+       ROUND(SUM({_pay_value("latest")}), 2) AS `累计付费金额`
+FROM cohort c
+LEFT JOIN `user` d7
+  ON d7.uid = c.uid
+ AND d7.prod = {PROD_ID}
+ AND d7.dt = c.d7_dt
+LEFT JOIN `user` latest
+  ON latest.uid = c.uid
+ AND latest.prod = {PROD_ID}
+ AND latest.dt = c.max_dt
 GROUP BY cohort_dt, channel
 ORDER BY cohort_dt DESC, `累计付费金额` DESC
 LIMIT 300

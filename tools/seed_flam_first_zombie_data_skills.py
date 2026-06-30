@@ -344,13 +344,13 @@ LIMIT 24
     },
     {
         "name": "flam 付费与 LTV 口径",
-        "description": "flam / first_zombie 日付费、累计付费、ARPU/ARPPU、付费率、首付、近 7 日累充和 LTV SQL 生成规则。",
+        "description": "flam / first_zombie 日付费、累计付费、ARPU/ARPPU、付费率、首付、近 7 日累充和新增 cohort LTV SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:payment-ltv -->
 # flam 付费与 LTV 口径
 
 ## 适用范围
 - 仅适用于当前 flam 数据源 `first_zombie`，datasource_id=3。
-- 适用于付费概览、ARPU/ARPPU、日充值次数/人数、新增首日付费、累计付费、近 7 日累充、渠道付费、等级段付费和 7 日 LTV。
+- 适用于付费概览、ARPU/ARPPU、日充值次数/人数、新增首日付费、累计付费、近 7 日累充、渠道付费、等级段付费和新增 cohort LTV。
 
 ## 付费与累计
 - `user.pay.paytotal` 是用户截至该 `dt` 的累计付费快照，可用于累计付费金额、累计付费用户、当前等级段累计人均付费等快照指标。
@@ -366,7 +366,11 @@ LIMIT 24
 ## 留存与 LTV
 - 留存和 LTV 必须先固定注册 cohort，再在后续用户日记录中读取 `remain` 或 `pay` 累计窗口字段。
 - `remain.remain1 = 1` 表示 D1 留存，`remain3 = 1`、`remain7 = 1` 分别表示 D3/D7 留存。
-- `pay.pay1/pay2/pay3/pay7` 表示注册后当日/第1日/第2日/第7日累计付费窗口。新增首日付费金额固定取注册日快照行的 `pay.pay1` 求和，不要从后续快照 `MAX(pay1)`；7 日 LTV 要以注册 cohort 人数为分母，并只展示 D7 成熟 cohort。
+- `pay.pay1/pay2/pay3/pay7/pay14/pay30` 表示注册后 1/2/3/7/14/30 日累计付费窗口；在不同生命周期日的快照中这些窗口会逐步成熟。
+- 新增首日付费金额固定取注册日快照行的 `pay.pay1` 求和，不要从后续快照 `MAX(pay1)`。
+- 新增 cohort LTV 表必须先固定注册 cohort 和分母，再按成熟生命周期日读取对应快照：1 日取注册日快照的 `pay1`，3 日取注册后第 2 天快照的 `pay3`，7 日取注册后第 6 天快照的 `pay7`，14 日取注册后第 13 天快照的 `pay14`，30 日取注册后第 29 天快照的 `pay30`。
+- 未成熟或业务库还没有对应生命周期快照的 LTV 单元格应返回 NULL/空值，不要把未成熟 cohort 当 0，也不要用注册日快照填充后续 LTV。
+- 当前 flam 业务库只有 `user` 与 `event` 两张业务表，注册归因 JSON 里可见媒体/广告系列信息，但没有真实买量成本字段；没有成本分母时不能把 LTV 或回收金额命名为真实 ROI。
 
 ## 图表字段
 - flam 的 MySQL/ADS 驱动对中文 SQL 别名和大小写返回不稳定时，优先保持看板图表配置的字段名与 SQL 返回字段完全一致。
@@ -468,12 +472,13 @@ LIMIT 24
 ## SQL 口径
 - 渠道投放注册必须先固定注册日 cohort：`user.userinfo.regdate = user.dt`，按 `uid` 去重。
 - 渠道归因取注册日快照行的 `adinfo.mediaSource`，缺失时用 `adinfo.campaignName`，仍缺失记为“未知”。
-- 首日付费金额固定读取注册日快照 `pay.pay1`；7 日累计付费读取注册日 cohort 的 `pay.pay7`；累计付费读取注册日快照可见的 `pay.paytotal`。
+- 首日付费金额固定读取注册日快照 `pay.pay1`；7 日累计付费读取注册日后第 6 天快照的 `pay.pay7`，未成熟时返回空值；累计付费读取当前日前一完整快照的 `pay.paytotal`。
 - 历史窗口优先使用 `CURDATE()` 派生最近 30 天 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
 - 不要用活跃事件行的渠道覆盖注册归因。
 - 不要从后续快照 `MAX(pay1)` 推导首日付费。
+- 不要从注册日快照读取 7 日累计付费或累计付费；注册日快照会让首日、7 日和累计金额错误地相同。
 
 ## 持久看板 SQL
 以下 SQL 是本 Data Skill 对投放/渠道注册付费组件的落地配置。

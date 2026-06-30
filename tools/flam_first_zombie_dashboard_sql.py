@@ -61,6 +61,11 @@ DISPLAY_NAMES = {
     "new_users": "新增用户数",
     "d1_retained_users": "次日留存用户数",
     "d1_retention_pct": "次日留存率",
+    "ltv_1d": "1日LTV",
+    "ltv_3d": "3日LTV",
+    "ltv_7d": "7日LTV",
+    "ltv_14d": "14日LTV",
+    "ltv_30d": "30日LTV",
 }
 
 
@@ -258,29 +263,54 @@ LIMIT 300
 
 SQL_LTV_7D = f"""
 WITH bounds AS (
-    SELECT {_date_window_start_expr(36)} AS start_dt,
-           {_date_window_start_expr(8)} AS end_dt
+    SELECT {_date_window_start_expr(30)} AS start_dt,
+           {_date_window_start_expr(1)} AS end_dt
 ), cohort AS (
     SELECT u.dt AS cohort_dt,
            u.uid,
-           {_pay_value("u", "pay1")} AS pay1,
-           {_pay_value("u", "pay2")} AS pay2,
-           {_pay_value("u", "pay3")} AS pay3,
-           {_pay_value("u", "pay7")} AS pay7
+           u.dt AS d1_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 2 DAY), '%Y%m%d') AS SIGNED) AS d3_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS d7_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 13 DAY), '%Y%m%d') AS SIGNED) AS d14_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS d30_dt
     FROM `user` u
     JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.end_dt
     WHERE u.prod = {PROD_ID}
       AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
+), cohort_size AS (
+    SELECT cohort_dt,
+           COUNT(DISTINCT uid) AS new_users
+    FROM cohort
+    GROUP BY cohort_dt
+), pay_windows AS (
+    SELECT c.cohort_dt,
+           COUNT(DISTINCT CASE WHEN s.dt = c.d1_dt THEN s.uid END) AS users_1d,
+           COUNT(DISTINCT CASE WHEN s.dt = c.d3_dt THEN s.uid END) AS users_3d,
+           COUNT(DISTINCT CASE WHEN s.dt = c.d7_dt THEN s.uid END) AS users_7d,
+           COUNT(DISTINCT CASE WHEN s.dt = c.d14_dt THEN s.uid END) AS users_14d,
+           COUNT(DISTINCT CASE WHEN s.dt = c.d30_dt THEN s.uid END) AS users_30d,
+           SUM(CASE WHEN s.dt = c.d1_dt THEN {_pay_value("s", "pay1")} END) AS pay_1d,
+           SUM(CASE WHEN s.dt = c.d3_dt THEN {_pay_value("s", "pay3")} END) AS pay_3d,
+           SUM(CASE WHEN s.dt = c.d7_dt THEN {_pay_value("s", "pay7")} END) AS pay_7d,
+           SUM(CASE WHEN s.dt = c.d14_dt THEN {_pay_value("s", "pay14")} END) AS pay_14d,
+           SUM(CASE WHEN s.dt = c.d30_dt THEN {_pay_value("s", "pay30")} END) AS pay_30d
+    FROM cohort c
+    LEFT JOIN `user` s
+      ON s.uid = c.uid
+     AND s.prod = {PROD_ID}
+     AND s.dt IN (c.d1_dt, c.d3_dt, c.d7_dt, c.d14_dt, c.d30_dt)
+    GROUP BY c.cohort_dt
 )
-SELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,
-       COUNT(DISTINCT uid) AS `用户注册用户数`,
-       ROUND(SUM(pay1) / NULLIF(COUNT(DISTINCT uid), 0), 2) AS `当日`,
-       ROUND(SUM(pay2) / NULLIF(COUNT(DISTINCT uid), 0), 2) AS `第1日`,
-       ROUND(SUM(pay3) / NULLIF(COUNT(DISTINCT uid), 0), 2) AS `第2日`,
-       ROUND(SUM(pay7) / NULLIF(COUNT(DISTINCT uid), 0), 2) AS `第7日`
-FROM cohort
-GROUP BY cohort_dt
-ORDER BY cohort_dt
+SELECT DATE_FORMAT(STR_TO_DATE(CAST(cs.cohort_dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS cohort_date,
+       cs.new_users,
+       ROUND(CASE WHEN pw.users_1d > 0 THEN pw.pay_1d / NULLIF(cs.new_users, 0) END, 4) AS ltv_1d,
+       ROUND(CASE WHEN pw.users_3d > 0 THEN pw.pay_3d / NULLIF(cs.new_users, 0) END, 4) AS ltv_3d,
+       ROUND(CASE WHEN pw.users_7d > 0 THEN pw.pay_7d / NULLIF(cs.new_users, 0) END, 4) AS ltv_7d,
+       ROUND(CASE WHEN pw.users_14d > 0 THEN pw.pay_14d / NULLIF(cs.new_users, 0) END, 4) AS ltv_14d,
+       ROUND(CASE WHEN pw.users_30d > 0 THEN pw.pay_30d / NULLIF(cs.new_users, 0) END, 4) AS ltv_30d
+FROM cohort_size cs
+JOIN pay_windows pw ON pw.cohort_dt = cs.cohort_dt
+ORDER BY cs.cohort_dt
 """.strip()
 
 SQL_DAILY_REVENUE_BASE = f"""
@@ -541,7 +571,7 @@ VIEW_SQL: dict[str, ViewSql] = {
     "f784452553f1426ea5097b092deb818a": ViewSql("新增看板", "新增首日付费金额", "line", ("日期", "新增首日付费金额"), ("日期",), ("新增首日付费金额",), sql=SQL_NEW_USERS_FIRST_DAY_PAY),
     "f39bac6b01784ca5b92c60ffe4348756": ViewSql("核心看板", "各渠道新增留存", "table", ("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), columns=("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), sql=SQL_CHANNEL_RETENTION),
     "63e03c7e2ad34ad58321892998497a85": ViewSql("渠道分析", "各渠道新增留存", "table", ("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), columns=("日期", "渠道", "用户注册用户数", "第1日", "第3日", "第7日"), sql=SQL_CHANNEL_RETENTION),
-    "6391d385e5084c0f86351ae088d3c336": ViewSql("付费概览", "7日LTV", "table", ("日期", "用户注册用户数", "当日", "第1日", "第2日", "第7日"), columns=("日期", "用户注册用户数", "当日", "第1日", "第2日", "第7日"), sql=SQL_LTV_7D),
+    "6391d385e5084c0f86351ae088d3c336": ViewSql("付费概览", "新增用户30日LTV", "table", ("cohort_date", "new_users", "ltv_1d", "ltv_3d", "ltv_7d", "ltv_14d", "ltv_30d"), columns=("cohort_date", "new_users", "ltv_1d", "ltv_3d", "ltv_7d", "ltv_14d", "ltv_30d"), sql=SQL_LTV_7D),
     "6fce0cfb227b47828b41fd3c5cc736d5": ViewSql("核心看板", "ARPU与ARPPU", "line", ("日期", "ARPU", "ARPPU"), ("日期",), ("ARPU", "ARPPU"), sql=SQL_ARPU_ARPPU),
     "f75122a83c84441381fe77a551f69a28": ViewSql("付费概览", "付费情况", "table", ("日期", "付费用户数", "付费总额", "ARPU", "ARPPU", "付费渗透率"), columns=("日期", "付费用户数", "付费总额", "ARPU", "ARPPU", "付费渗透率"), sql=SQL_PAYMENT_OVERVIEW),
     "20a42bea9bcf4bc5b1bddfff187a874d": ViewSql("付费概览", "日充值总次数", "line", ("日期", "充值次数"), ("日期",), ("充值次数",), sql=SQL_DAILY_PAY_EVENT_COUNT),

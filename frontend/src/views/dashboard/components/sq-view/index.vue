@@ -1019,13 +1019,6 @@ const showChartContent = computed(() => {
     props.viewInfo?.id
   )
 })
-const chartLoadingProgress = computed(() => {
-  const progress = Number(props.viewInfo?.loadingProgress ?? 0)
-  if (!Number.isFinite(progress)) {
-    return 0
-  }
-  return Math.max(0, Math.min(100, Math.round(progress)))
-})
 const insightDensity = computed(() => insightDisplay.value.density)
 const compactInsightHeader = computed(() => insightDensity.value !== 'regular')
 const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
@@ -1322,13 +1315,7 @@ defineExpose({
     </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="showFullChartLoading" class="chart-loading-info">
-        <el-progress
-          type="circle"
-          :percentage="chartLoadingProgress"
-          :width="92"
-          :stroke-width="7"
-          :show-text="true"
-        />
+        <div class="chart-loading-ring" aria-hidden="true"></div>
         <div class="chart-loading-text">{{ chartLoadingText }}</div>
       </div>
       <div v-else-if="viewInfo.status === 'failed'" class="error-info">
@@ -1357,8 +1344,8 @@ defineExpose({
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
         <div v-if="chartLoading" class="chart-refresh-overlay">
+          <span class="chart-loading-ring small" aria-hidden="true"></span>
           <span>{{ chartLoadingText }}</span>
-          <span>{{ chartLoadingProgress }}%</span>
         </div>
         <ChartInsightHeader
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
@@ -2014,23 +2001,20 @@ defineExpose({
   justify-content: center;
   gap: 14px;
   color: var(--workspace-text-primary, #1f2329);
+}
 
-  :deep(.ed-progress-circle__track),
-  :deep(.el-progress-circle__track) {
-    stroke: #eef1f5;
-  }
+.chart-loading-ring {
+  width: 56px;
+  height: 56px;
+  border: 5px solid #eef1f5;
+  border-top-color: var(--ed-color-primary, #2f6bff);
+  border-radius: 50%;
+  animation: chart-loading-spin 0.85s linear infinite;
 
-  :deep(.ed-progress-circle__path),
-  :deep(.el-progress-circle__path) {
-    stroke: var(--ed-color-primary, #2f6bff);
-  }
-
-  :deep(.ed-progress__text),
-  :deep(.el-progress__text) {
-    min-width: 46px;
-    color: var(--workspace-text-primary, #1f2329);
-    font-size: 20px !important;
-    font-weight: 700;
+  &.small {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
   }
 }
 
@@ -2038,5 +2022,11 @@ defineExpose({
   font-size: 13px;
   line-height: 20px;
   color: var(--workspace-text-secondary, #66758f);
+}
+
+@keyframes chart-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
