@@ -31,7 +31,7 @@ def _requested_tenant_id(request: Request, state_payload: dict | None = None) ->
     state_tenant_id = (state_payload or {}).get("tenant_id")
     if state_tenant_id:
         return int(state_tenant_id)
-    raw = request.headers.get("X-ZHISHU-TENANT-ID")
+    raw = request.headers.get("X-SHUZHI-TENANT-ID")
     if not raw:
         return None
     try:

@@ -62,7 +62,7 @@ const pageLogo = computed(() => {
             <icon_new_chat_outlined />
           </el-icon>
         </span>
-        {{ $t('qa.start_zhishu') }}
+        {{ $t('qa.start_shuzhi') }}
       </el-button>
     </div>
 

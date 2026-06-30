@@ -179,6 +179,7 @@ async def copy_platform_template_to_workspace_dashboard_api(
         session=session,
         user=user,
         template_id=request.template_id,
+        template_ids=request.template_ids,
         name=request.name,
     )
 

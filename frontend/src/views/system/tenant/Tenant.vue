@@ -1,5 +1,5 @@
 <template>
-  <div class="zhishu-table-container professional-container">
+  <div class="shuzhi-table-container professional-container">
     <div class="tool-left">
       <span class="page-title">{{ t('tenant.management') }}</span>
       <div class="search-bar">
@@ -24,7 +24,7 @@
       </div>
     </div>
 
-    <div class="zhishu-table_user">
+    <div class="shuzhi-table_user">
       <el-table :data="enterpriseRows" style="width: 100%">
         <el-table-column prop="name" :label="t('tenant.enterprise_user')" width="280">
           <template #default="scope">
@@ -480,6 +480,7 @@ import {
   PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY,
   PLATFORM_WORKSPACE_DELEGATE_TENANT_QUERY_KEY,
 } from '@/utils/platformWorkspaceDelegate'
+import { resolveManagementHome } from '@/utils/navigation'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -1092,7 +1093,11 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  if (userStore.isPlatformWorkspaceDelegate) {
+    await router.replace(resolveManagementHome(userStore))
+    return
+  }
   loadTenants()
   loadUsageSnapshot()
   loadApplications()
@@ -1100,7 +1105,7 @@ onMounted(() => {
 </script>
 
 <style lang="less" scoped>
-.zhishu-table-container {
+.shuzhi-table-container {
   width: 100%;
   height: 100%;
   position: relative;
@@ -1132,7 +1137,7 @@ onMounted(() => {
     }
   }
 
-  .zhishu-table_user {
+  .shuzhi-table_user {
     width: 100%;
     max-height: calc(100vh - 156px);
     overflow: auto;

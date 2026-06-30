@@ -1309,7 +1309,14 @@ async def platform_overview(
 async def admin_tenant_list(session: SessionDep, current_user: CurrentUser):
     _require_platform_admin(current_user)
     if is_platform_workspace_delegate(current_user):
-        raise HTTPException(status_code=403, detail="SaaS tenant management is only available in SaaS context")
+        tenant_id = getattr(current_user, "tenant_id", None)
+        if not tenant_id:
+            return []
+        tenant = get_active_tenant(session, tenant_id=int(tenant_id))
+        if not tenant:
+            return []
+        role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+        return _tenant_dto_list(session, [(tenant, role, None)])
     tenants = list_tenants(session, include_disabled=True)
     return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER, None) for tenant in tenants])
 

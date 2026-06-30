@@ -247,6 +247,12 @@ class DashboardBaseResponse(BaseModel):
     is_shared: Optional[bool] = False
     is_public: Optional[bool] = False
     can_copy_to_platform_template: Optional[bool] = False
+    source_dashboard_id: Optional[str] = None
+    source_dashboard_name: Optional[str] = None
+    source_tenant_id: Optional[int] = None
+    source_tenant_name: Optional[str] = None
+    source_datasource_id: Optional[int] = None
+    source_datasource_name: Optional[str] = None
     share_id: Optional[str] = None
     children: List['DashboardBaseResponse'] = []
 
@@ -357,7 +363,8 @@ class DashboardPlatformTemplateCopyRequest(BaseModel):
 
 
 class DashboardPlatformTemplateUseRequest(BaseModel):
-    template_id: str
+    template_id: str = ''
+    template_ids: List[str] = Field(default_factory=list)
     name: str = ''
 
 

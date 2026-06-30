@@ -34,12 +34,12 @@ def upgrade():
                 jsonb_agg(
                     CASE
                         WHEN jsonb_typeof(item.elem) = 'object'
-                             AND item.elem ? 'zhishu_system'
+                             AND item.elem ? 'shuzhi_system'
                              AND NOT item.elem ? 'app_system'
-                        THEN (item.elem - 'zhishu_system') || jsonb_build_object('app_system', item.elem -> 'zhishu_system')
+                        THEN (item.elem - 'shuzhi_system') || jsonb_build_object('app_system', item.elem -> 'shuzhi_system')
                         WHEN jsonb_typeof(item.elem) = 'object'
-                             AND item.elem ? 'zhishu_system'
-                        THEN item.elem - 'zhishu_system'
+                             AND item.elem ? 'shuzhi_system'
+                        THEN item.elem - 'shuzhi_system'
                         ELSE item.elem
                     END
                     ORDER BY item.ordinality
@@ -74,8 +74,8 @@ def downgrade():
                     CASE
                         WHEN jsonb_typeof(item.elem) = 'object'
                              AND item.elem ? 'app_system'
-                             AND NOT item.elem ? 'zhishu_system'
-                        THEN (item.elem - 'app_system') || jsonb_build_object('zhishu_system', item.elem -> 'app_system')
+                             AND NOT item.elem ? 'shuzhi_system'
+                        THEN (item.elem - 'app_system') || jsonb_build_object('shuzhi_system', item.elem -> 'app_system')
                         WHEN jsonb_typeof(item.elem) = 'object'
                              AND item.elem ? 'app_system'
                         THEN item.elem - 'app_system'

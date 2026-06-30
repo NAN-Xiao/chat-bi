@@ -1,7 +1,7 @@
 export type ThemeMode = 'dark' | 'light'
 
-export const THEME_STORAGE_KEY = 'zhishu-theme-mode'
-export const THEME_CHANGE_EVENT = 'zhishu-theme-change'
+export const THEME_STORAGE_KEY = 'shuzhi-theme-mode'
+export const THEME_CHANGE_EVENT = 'shuzhi-theme-change'
 // Dark mode is not production-ready yet. Keep the implementation for future restoration,
 // but force the running app to light mode while the public switch is disabled.
 export const COLOR_THEME_SWITCHING_ENABLED = false

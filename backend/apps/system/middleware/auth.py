@@ -39,11 +39,11 @@ from common.utils.utils import AppLogUtil, get_origin_from_referer
 from common.utils.whitelist import whiteUtils
 
 TENANT_CONTEXT_RESPONSE_HEADERS = {
-    "id": "X-ZHISHU-CURRENT-TENANT-ID",
-    "public_id": "X-ZHISHU-CURRENT-TENANT-PUBLIC-ID",
-    "name": "X-ZHISHU-CURRENT-TENANT-NAME",
-    "role": "X-ZHISHU-CURRENT-TENANT-ROLE",
-    "status": "X-ZHISHU-CURRENT-WORKSPACE-STATUS",
+    "id": "X-SHUZHI-CURRENT-TENANT-ID",
+    "public_id": "X-SHUZHI-CURRENT-TENANT-PUBLIC-ID",
+    "name": "X-SHUZHI-CURRENT-TENANT-NAME",
+    "role": "X-SHUZHI-CURRENT-TENANT-ROLE",
+    "status": "X-SHUZHI-CURRENT-WORKSPACE-STATUS",
 }
 
 
@@ -60,7 +60,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         assistantTokenKey = settings.ASSISTANT_TOKEN_KEY
         assistantToken = request.headers.get(assistantTokenKey)
-        askToken = request.headers.get("X-ZHISHU-ASK-TOKEN")
+        askToken = request.headers.get("X-SHUZHI-ASK-TOKEN")
         trans = await get_i18n(request)
         if askToken:
             validate_pass, data = await self.validateAskToken(request, askToken, trans)
@@ -78,7 +78,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if request.state.current_user and trans.lang:
                     request.state.current_user.language = trans.lang
                 request.state.assistant = validator[2]
-                origin = request.headers.get("X-ZHISHU-HOST-ORIGIN") or get_origin_from_referer(request)
+                origin = request.headers.get("X-SHUZHI-HOST-ORIGIN") or get_origin_from_referer(request)
                 if origin and validator[2]:
                     request.state.assistant.request_origin = origin
                 response = await call_next(request)
@@ -109,7 +109,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
     ) -> int | None:
         if not allow_header_override:
             return token_tenant_id
-        raw = request.headers.get("X-ZHISHU-TENANT-ID")
+        raw = request.headers.get("X-SHUZHI-TENANT-ID")
         if not raw:
             return token_tenant_id
         try:
@@ -156,7 +156,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         allow_header_tenant_override: bool = True,
     ) -> UserInfoDTO:
         platform_workspace_delegate = (
-            request.headers.get("X-ZHISHU-PLATFORM-WORKSPACE-DELEGATE") == "1"
+            request.headers.get("X-SHUZHI-PLATFORM-WORKSPACE-DELEGATE") == "1"
             and is_platform_admin(user)
         )
         requested_tenant_id = self._tenant_id_from_request(
@@ -225,7 +225,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
 
     async def validateAskToken(self, request: Request, askToken: str | None, trans: I18n):
         if not askToken:
-            return False, "Miss Token[X-ZHISHU-ASK-TOKEN]!"
+            return False, "Miss Token[X-SHUZHI-ASK-TOKEN]!"
         schema, param = get_authorization_scheme_param(askToken)
         if schema.lower() != "sk":
             return False, "Token schema error!"

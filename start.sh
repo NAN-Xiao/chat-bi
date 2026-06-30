@@ -1,5 +1,5 @@
-SSR_PATH=/opt/zhishu/g2-ssr
-APP_PATH=/opt/zhishu/app
+SSR_PATH=/opt/shuzhi/g2-ssr
+APP_PATH=/opt/shuzhi/app
 PM2_CMD_PATH=$SSR_PATH/node_modules/pm2/bin/pm2
 
 /usr/local/bin/docker-entrypoint.sh postgres &

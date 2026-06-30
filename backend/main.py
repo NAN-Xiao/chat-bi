@@ -47,11 +47,11 @@ async def lifespan(app: FastAPI):
         run_migrations()
     await init_app_cache()
     init_dynamic_cors(app)
-    AppLogUtil.info("✅ 星通智数 初始化完成")
+    AppLogUtil.info("✅ 星通数智 初始化完成")
     await async_model_info()  # 异步加密已有模型的密钥和地址
     yield
     await close_app_cache()
-    AppLogUtil.info("星通智数 应用关闭")
+    AppLogUtil.info("星通数智 应用关闭")
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -120,7 +120,7 @@ def generate_openapi_for_lang(lang: str) -> dict[str, Any]:
 
     # 1. create OpenAPI
     openapi_schema = get_openapi(
-        title="星通智数 API Document" if lang == "en" else "星通智数 API 文档",
+        title="星通数智 API Document" if lang == "en" else "星通数智 API 文档",
         version="1.0.0",
         routes=app.routes,
         tags=localized_tags
@@ -155,7 +155,7 @@ async def custom_swagger_ui(request: Request):
     from fastapi.openapi.docs import get_swagger_ui_html
     return get_swagger_ui_html(
         openapi_url=f"./openapi.json?lang={lang}",
-        title="星通智数 API Docs",
+        title="星通数智 API Docs",
         swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
         swagger_js_url="./swagger-ui-bundle.js",
         swagger_css_url="./swagger-ui.css",
@@ -191,8 +191,8 @@ mcp = None
 if settings.MCP_ENABLED and FastApiMCP is not None:
     mcp = FastApiMCP(
         app,
-        name="星通智数 MCP Server",
-        description="星通智数 MCP Server",
+        name="星通数智 MCP Server",
+        description="星通数智 MCP Server",
         describe_all_responses=True,
         describe_full_response_schema=True,
         include_operations=["mcp_datasource_list", "get_model_list", "mcp_question", "mcp_start", "mcp_assistant"]

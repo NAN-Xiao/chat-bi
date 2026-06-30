@@ -1,6 +1,6 @@
 # Ubuntu Docker 部署文档
 
-本文档用于将星通智数部署到 Ubuntu Linux 服务器。当前仓库已提供单容器体验镜像和 `docker-compose.yaml`，适合内网试用、演示和迁移验证；正式生产上线前建议进一步拆分为独立 PostgreSQL、Redis、Nginx、backend 和 worker。
+本文档用于将星通数智部署到 Ubuntu Linux 服务器。当前仓库已提供单容器体验镜像和 `docker-compose.yaml`，适合内网试用、演示和迁移验证；正式生产上线前建议进一步拆分为独立 PostgreSQL、Redis、Nginx、backend 和 worker。
 
 ## 1. 部署目标
 
@@ -21,10 +21,10 @@ http://服务器IP:8000/
 
 ```text
 data/postgresql          # 系统库数据
-data/zhishu/file         # 上传文件
-data/zhishu/excel        # Excel/CSV 相关文件
-data/zhishu/images       # 图片文件
-data/zhishu/logs         # 应用日志
+data/shuzhi/file         # 上传文件
+data/shuzhi/excel        # Excel/CSV 相关文件
+data/shuzhi/images       # 图片文件
+data/shuzhi/logs         # 应用日志
 ```
 
 ## 2. 服务器要求
@@ -79,12 +79,12 @@ newgrp docker
 
 ## 4. 准备项目目录
 
-推荐统一部署到 `/opt/zhishu/SQLBot`：
+推荐统一部署到 `/opt/shuzhi/SQLBot`：
 
 ```bash
-sudo mkdir -p /opt/zhishu
-sudo chown -R $USER:$USER /opt/zhishu
-cd /opt/zhishu
+sudo mkdir -p /opt/shuzhi
+sudo chown -R $USER:$USER /opt/shuzhi
+cd /opt/shuzhi
 ```
 
 如果服务器可以访问 Git 仓库：
@@ -98,13 +98,13 @@ cd SQLBot
 
 ```bash
 tar -czf SQLBot.tar.gz SQLBot
-scp SQLBot.tar.gz user@服务器IP:/opt/zhishu/
+scp SQLBot.tar.gz user@服务器IP:/opt/shuzhi/
 ```
 
 服务器解压：
 
 ```bash
-cd /opt/zhishu
+cd /opt/shuzhi
 tar -xzf SQLBot.tar.gz
 cd SQLBot
 ```
@@ -114,16 +114,16 @@ cd SQLBot
 当前项目需要先构建基础镜像，再构建应用镜像：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/shuzhi/SQLBot
 
 export DOCKER_BUILDKIT=1
 
 docker build -f Dockerfile-base \
-  -t zhishu-base:latest \
-  -t zhishu-python-pg:latest \
+  -t shuzhi-base:latest \
+  -t shuzhi-python-pg:latest \
   .
 
-docker build -t zhishu:latest .
+docker build -t shuzhi:latest .
 ```
 
 说明：
@@ -135,7 +135,7 @@ docker build -t zhishu:latest .
 构建完成后检查镜像：
 
 ```bash
-docker images | grep zhishu
+docker images | grep shuzhi
 ```
 
 ## 6. 准备 Compose 配置
@@ -166,9 +166,9 @@ nano docker-compose.local.yaml
 
 ```yaml
 services:
-  zhishu:
-    image: zhishu:latest
-    container_name: zhishu
+  shuzhi:
+    image: shuzhi:latest
+    container_name: shuzhi
     restart: always
     privileged: true
     ports:
@@ -177,11 +177,11 @@ services:
     environment:
       POSTGRES_SERVER: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: zhishu_bi
+      POSTGRES_DB: shuzhi_bi
       POSTGRES_USER: root
       POSTGRES_PASSWORD: 请改成强密码
 
-      PROJECT_NAME: "星通智数"
+      PROJECT_NAME: "星通数智"
       DEFAULT_PWD: "请改成强初始密码"
 
       MCP_ENABLED: "false"
@@ -206,12 +206,12 @@ services:
 ## 7. 创建持久化目录
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/shuzhi/SQLBot
 
-mkdir -p data/zhishu/excel
-mkdir -p data/zhishu/file
-mkdir -p data/zhishu/images
-mkdir -p data/zhishu/logs
+mkdir -p data/shuzhi/excel
+mkdir -p data/shuzhi/file
+mkdir -p data/shuzhi/images
+mkdir -p data/shuzhi/logs
 mkdir -p data/postgresql
 ```
 
@@ -230,7 +230,7 @@ docker ps
 查看启动日志：
 
 ```bash
-docker logs -f zhishu
+docker logs -f shuzhi
 ```
 
 看到 backend 启动并监听 `8000` 后，执行健康检查：
@@ -286,7 +286,7 @@ API Key 应在系统界面或生产环境变量中配置，不要写入 Git。
 系统库是：
 
 ```text
-PostgreSQL database: zhishu_bi
+PostgreSQL database: shuzhi_bi
 host: 容器内 localhost
 port: 5432
 user: root
@@ -300,7 +300,7 @@ password: docker-compose.local.yaml 中 POSTGRES_PASSWORD 的值
 进入项目目录：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/shuzhi/SQLBot
 ```
 
 查看服务：
@@ -312,7 +312,7 @@ docker compose -f docker-compose.local.yaml ps
 查看日志：
 
 ```bash
-docker logs -f zhishu
+docker logs -f shuzhi
 ```
 
 重启：
@@ -336,13 +336,13 @@ docker compose -f docker-compose.local.yaml up -d
 进入容器：
 
 ```bash
-docker exec -it zhishu bash
+docker exec -it shuzhi bash
 ```
 
 查看容器内数据库连接：
 
 ```bash
-docker exec -it zhishu bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select now();"'
+docker exec -it shuzhi bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select now();"'
 ```
 
 ## 12. 版本升级
@@ -350,9 +350,9 @@ docker exec -it zhishu bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0
 升级前先备份，至少备份 `data/` 和 `docker-compose.local.yaml`。
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/shuzhi/SQLBot
 
-tar -czf zhishu-data-before-upgrade-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
+tar -czf shuzhi-data-before-upgrade-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
 ```
 
 拉取新代码：
@@ -367,11 +367,11 @@ git pull
 export DOCKER_BUILDKIT=1
 
 docker build -f Dockerfile-base \
-  -t zhishu-base:latest \
-  -t zhishu-python-pg:latest \
+  -t shuzhi-base:latest \
+  -t shuzhi-python-pg:latest \
   .
 
-docker build -t zhishu:latest .
+docker build -t shuzhi:latest .
 ```
 
 重启容器：
@@ -384,7 +384,7 @@ docker compose -f docker-compose.local.yaml up -d
 
 ```bash
 curl http://127.0.0.1:8000/health
-docker logs --tail=200 zhishu
+docker logs --tail=200 shuzhi
 ```
 
 ## 13. 数据备份
@@ -394,10 +394,10 @@ docker logs --tail=200 zhishu
 停止服务后备份最稳：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/shuzhi/SQLBot
 
 docker compose -f docker-compose.local.yaml down
-tar -czf zhishu-full-data-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
+tar -czf shuzhi-full-data-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
 docker compose -f docker-compose.local.yaml up -d
 ```
 
@@ -406,13 +406,13 @@ docker compose -f docker-compose.local.yaml up -d
 服务运行时也可以做逻辑备份：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/shuzhi/SQLBot
 
-docker exec -e PGPASSWORD='你的POSTGRES_PASSWORD' zhishu \
-  pg_dump -h 127.0.0.1 -U root -d zhishu_bi \
-  -Fc -f /opt/zhishu/app/logs/zhishu_bi.dump
+docker exec -e PGPASSWORD='你的POSTGRES_PASSWORD' shuzhi \
+  pg_dump -h 127.0.0.1 -U root -d shuzhi_bi \
+  -Fc -f /opt/shuzhi/app/logs/shuzhi_bi.dump
 
-cp data/zhishu/logs/zhishu_bi.dump ./zhishu_bi-$(date +%F-%H%M%S).dump
+cp data/shuzhi/logs/shuzhi_bi.dump ./shuzhi_bi-$(date +%F-%H%M%S).dump
 ```
 
 建议每天至少做一次 PostgreSQL 逻辑备份，并定期把备份复制到另一台机器或对象存储。
@@ -422,23 +422,23 @@ cp data/zhishu/logs/zhishu_bi.dump ./zhishu_bi-$(date +%F-%H%M%S).dump
 旧服务器：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/shuzhi/SQLBot
 
 docker compose -f docker-compose.local.yaml down
-tar -czf zhishu-migrate-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
+tar -czf shuzhi-migrate-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
 ```
 
 传到新服务器：
 
 ```bash
-scp zhishu-migrate-*.tar.gz user@新服务器IP:/opt/zhishu/SQLBot/
+scp shuzhi-migrate-*.tar.gz user@新服务器IP:/opt/shuzhi/SQLBot/
 ```
 
 新服务器先按本文档安装 Docker、准备代码并构建镜像，然后恢复数据：
 
 ```bash
-cd /opt/zhishu/SQLBot
-tar -xzf zhishu-migrate-*.tar.gz
+cd /opt/shuzhi/SQLBot
+tar -xzf shuzhi-migrate-*.tar.gz
 docker compose -f docker-compose.local.yaml up -d
 ```
 
@@ -446,7 +446,7 @@ docker compose -f docker-compose.local.yaml up -d
 
 ```bash
 curl http://127.0.0.1:8000/health
-docker logs --tail=200 zhishu
+docker logs --tail=200 shuzhi
 ```
 
 如果服务器 IP 变了，记得修改：
@@ -472,7 +472,7 @@ sudo apt install -y nginx
 创建配置：
 
 ```bash
-sudo nano /etc/nginx/sites-available/zhishu.conf
+sudo nano /etc/nginx/sites-available/shuzhi.conf
 ```
 
 写入：
@@ -502,7 +502,7 @@ server {
 启用配置：
 
 ```bash
-sudo ln -sf /etc/nginx/sites-available/zhishu.conf /etc/nginx/sites-enabled/zhishu.conf
+sudo ln -sf /etc/nginx/sites-available/shuzhi.conf /etc/nginx/sites-enabled/shuzhi.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -550,7 +550,7 @@ docs/single_tenant_production_readiness.md
 
 ```bash
 docker ps -a
-docker logs --tail=300 zhishu
+docker logs --tail=300 shuzhi
 ```
 
 端口被占用：
@@ -563,13 +563,13 @@ sudo ss -lntp | grep -E ':8000|:8001'
 
 ```bash
 curl -v http://127.0.0.1:8000/health
-docker logs --tail=300 zhishu
+docker logs --tail=300 shuzhi
 ```
 
 数据库异常：
 
 ```bash
-docker exec -it zhishu bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
+docker exec -it shuzhi bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
 ```
 
 前端能打开但问答失败：
@@ -582,7 +582,7 @@ docker exec -it zhishu bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0
 查看最近日志：
 
 ```bash
-docker logs --tail=300 zhishu
-tail -n 300 data/zhishu/logs/*.log
+docker logs --tail=300 shuzhi
+tail -n 300 data/shuzhi/logs/*.log
 ```
 

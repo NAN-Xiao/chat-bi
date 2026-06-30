@@ -1,8 +1,8 @@
 #!/bin/bash
 
-ZHISHU_BASE=/opt
+SHUZHI_BASE=/opt
 
-read -r -p "即将卸载星通智数服务，包括删除运行目录、数据及相关镜像，是否继续? [Y/n] " input
+read -r -p "即将卸载星通数智服务，包括删除运行目录、数据及相关镜像，是否继续? [Y/n] " input
 
 case $input in
    [yY][eE][sS]|[yY])
@@ -18,34 +18,34 @@ case $input in
       ;;
 esac
 
-echo "停止星通智数服务"
+echo "停止星通数智服务"
 sctl stop >/dev/null 2>&1
 
 if [ -f /usr/bin/sctl ]; then
-   # 获取已安装的星通智数运行目录
-   ZHISHU_BASE=$(grep "^ZHISHU_BASE=" /usr/bin/sctl | cut -d'=' -f2)
+   # 获取已安装的星通数智运行目录
+   SHUZHI_BASE=$(grep "^SHUZHI_BASE=" /usr/bin/sctl | cut -d'=' -f2)
 fi
 
-ZHISHU_IMAGE_REPOSITORY=zhishu
-if [ -f ${ZHISHU_BASE}/zhishu/.env ]; then
+SHUZHI_IMAGE_REPOSITORY=shuzhi
+if [ -f ${SHUZHI_BASE}/shuzhi/.env ]; then
    set -a
-   source ${ZHISHU_BASE}/zhishu/.env
+   source ${SHUZHI_BASE}/shuzhi/.env
    set +a
 fi
 
-# 清理星通智数相关镜像
+# 清理星通数智相关镜像
 if test ! -z "$(docker images -f dangling=true -q)"; then
    echo "清理虚悬镜像"
    docker rmi $(docker images -f dangling=true -q)
 fi
 
-zhishu_images=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -F "${ZHISHU_IMAGE_REPOSITORY}:")
-if test -n "$zhishu_images"; then
-   echo "清理星通智数镜像"
-   echo "$zhishu_images" | xargs -r docker rmi
+shuzhi_images=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -F "${SHUZHI_IMAGE_REPOSITORY}:")
+if test -n "$shuzhi_images"; then
+   echo "清理星通数智镜像"
+   echo "$shuzhi_images" | xargs -r docker rmi
 fi
 
-# 清理星通智数运行目录及命令行工具 sctl
-rm -rf ${ZHISHU_BASE}/zhishu /usr/bin/sctl
+# 清理星通数智运行目录及命令行工具 sctl
+rm -rf ${SHUZHI_BASE}/shuzhi /usr/bin/sctl
 
-echo "星通智数服务卸载完成"
+echo "星通数智服务卸载完成"

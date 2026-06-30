@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from apps.system.models.system_model import AiModelDetail
 from common.core.config import settings
 from common.core.db import engine
-from common.utils.crypto import zhishu_decrypt_sync
+from common.utils.crypto import shuzhi_decrypt_sync
 
 
 class EmbeddingModelInfo(BaseModel):
@@ -49,8 +49,8 @@ def _load_default_ai_model_connection() -> tuple[Optional[str], Optional[str]]:
         if not db_model:
             return None, None
 
-        api_base_url = zhishu_decrypt_sync(db_model.api_domain)
-        api_key = zhishu_decrypt_sync(db_model.api_key)
+        api_base_url = shuzhi_decrypt_sync(db_model.api_domain)
+        api_key = shuzhi_decrypt_sync(db_model.api_key)
         return api_base_url, api_key
 
 

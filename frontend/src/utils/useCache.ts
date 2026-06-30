@@ -6,7 +6,7 @@ const getPathPrefix = () => {
   const pathname = window.location.pathname
   // eslint-disable-next-line no-useless-escape
   const match = pathname.match(/^\/([^\/]+)/)
-  return match ? `${match[1]}_` : 'zhishu_v1_'
+  return match ? `${match[1]}_` : 'shuzhi_v1_'
 }
 
 export const useCache = (type: CacheType = 'localStorage') => {

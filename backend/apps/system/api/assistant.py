@@ -169,7 +169,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     _ = online
     assistantDict = {
         "id": virtual,
-        "account": 'zhishu-inner-assistant',
+        "account": 'shuzhi-inner-assistant',
         "assistant_id": id,
         "assistant_online": False,
         "tenant_id": _model_tenant_id(db_model),

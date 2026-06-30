@@ -40,9 +40,9 @@ class UploadResultDTO(BaseModel):
 async def downTemplate(trans):
     def inner():
         data = {
-            trans('i18n_user.account'): ['zhishu1', 'zhishu2'],
-            trans('i18n_user.name'): ['zhishu_employee1', 'zhishu_employee2'],
-            trans('i18n_user.email'): ['employee1@zhishu.com', 'employee2@zhishu.com'],
+            trans('i18n_user.account'): ['shuzhi1', 'shuzhi2'],
+            trans('i18n_user.name'): ['shuzhi_employee1', 'shuzhi_employee2'],
+            trans('i18n_user.email'): ['employee1@shuzhi.com', 'employee2@shuzhi.com'],
             trans('i18n_user.status'): [trans('i18n_user.status_enabled'), trans('i18n_user.status_disabled')],
             trans('i18n_user.origin'): [trans('i18n_user.local_creation'), trans('i18n_user.local_creation')],
             trans('i18n_user.platform_user_id'): [None, None],

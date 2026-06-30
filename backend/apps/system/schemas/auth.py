@@ -8,8 +8,8 @@ class LocalLoginSchema(BaseModel):
     password: str
     
 class CacheNamespace(Enum):
-    AUTH_INFO = "zhishu:auth"
-    EMBEDDED_INFO = "zhishu:embedded"
+    AUTH_INFO = "shuzhi:auth"
+    EMBEDDED_INFO = "shuzhi:embedded"
     def __str__(self):
         return self.value
 class CacheName(Enum):

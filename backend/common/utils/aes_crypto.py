@@ -7,7 +7,7 @@ from Crypto.Util.Padding import pad, unpad
 
 from common.core.config import settings
 
-simple_aes_iv_text = 'zhishu_em_aes_iv'
+simple_aes_iv_text = 'shuzhi_em_aes_iv'
 
 
 def _normalize_bytes(text: str, size: int) -> bytes:
@@ -17,10 +17,10 @@ def _normalize_bytes(text: str, size: int) -> bytes:
     return raw.ljust(size, b"\0")
 
 
-def zhishu_aes_encrypt(text: str, key: Optional[str] = None) -> str:
+def shuzhi_aes_encrypt(text: str, key: Optional[str] = None) -> str:
     return simple_aes_encrypt(text, key)
 
-def zhishu_aes_decrypt(text: str, key: Optional[str] = None) -> str:
+def shuzhi_aes_decrypt(text: str, key: Optional[str] = None) -> str:
     return simple_aes_decrypt(text, key)
 
 def simple_aes_encrypt(text: str, key: Optional[str] = None, ivtext: Optional[str] = None) -> str:

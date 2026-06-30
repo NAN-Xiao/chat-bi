@@ -134,15 +134,15 @@ async def init_app_cache():
     FastAPICache.reset()
     if cache_type == "memory":
         FastAPICache.init(InMemoryBackend())
-        AppLogUtil.info("星通智数使用内存缓存, 仅支持单进程模式")
+        AppLogUtil.info("星通数智使用内存缓存, 仅支持单进程模式")
     elif cache_type == "redis":
         from fastapi_cache.backends.redis import RedisBackend
         redis_client = get_redis_client()
         await ping_redis()
         FastAPICache.init(RedisBackend(redis_client), prefix=settings.CACHE_REDIS_PREFIX)
-        AppLogUtil.info(f"星通智数使用Redis缓存, 可使用多进程模式: {mask_redis_url(build_redis_url())}")
+        AppLogUtil.info(f"星通数智使用Redis缓存, 可使用多进程模式: {mask_redis_url(build_redis_url())}")
     else:
-        AppLogUtil.warning("星通智数未启用缓存, 可使用多进程模式")
+        AppLogUtil.warning("星通数智未启用缓存, 可使用多进程模式")
     
 
 async def close_app_cache():

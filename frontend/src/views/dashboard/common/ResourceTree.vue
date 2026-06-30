@@ -1022,12 +1022,13 @@ const operation = async (opt: string, data: SQTreeNode) => {
 }
 
 const baseInfoChangeFinish = (result?: any) => {
-  if (result?.opt === 'newLeaf' && result?.resourceId) {
-    selectedNodeKey.value = result.resourceId
+  const createdResourceId = result?.resourceId || result?.resourceIds?.[0]
+  if (result?.opt === 'newLeaf' && createdResourceId) {
+    selectedNodeKey.value = createdResourceId
     returnMounted.value = true
     syncDashboardRoute({
-      id: result.resourceId,
-      raw_id: result.resourceId,
+      id: createdResourceId,
+      raw_id: createdResourceId,
       pid: result.pid || 'root',
       name: result.name || '',
       leaf: true,

@@ -5,7 +5,7 @@ import { tenantApi, type TenantInfo } from '@/api/tenant'
 import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
-import { getCurrentRouter, getQueryString, getZhishuAddr, isPlatform } from '@/utils/utils'
+import { getCurrentRouter, getQueryString, getShuzhiAddr, isPlatform } from '@/utils/utils'
 import {
   clearPlatformWorkspaceDelegateContext,
   isPlatformWorkspaceDelegateSession,
@@ -184,7 +184,7 @@ export const UserStore = defineStore('user', {
         isPlatform()
       ) {
         const currentPath = getCurrentRouter()
-        let logout_url = getZhishuAddr() + '#/login'
+        let logout_url = getShuzhiAddr() + '#/login'
         if (currentPath) {
           logout_url += `?redirect=${currentPath}`
         }

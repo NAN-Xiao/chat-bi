@@ -1,4 +1,4 @@
-"""Seed 统一业务口径 Data Skills into the 星通智数系统库。
+"""Seed 统一业务口径 Data Skills into the 星通数智系统库。
 
 - 不修改任何应用代码，只向系统库 custom_prompt 写入 DATA_SKILL 配置。
 - 幂等：重复运行不会产生重复记录，已存在记录会更新到最新口径。

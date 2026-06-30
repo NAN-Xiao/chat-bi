@@ -1,6 +1,6 @@
 # B2B Multi-Tenant ChatBI Architecture
 
-This document records the current product direction for 星通智数 as a commercial B2B ChatBI SaaS.
+This document records the current product direction for 星通数智 as a commercial B2B ChatBI SaaS.
 
 ## Product Scope
 

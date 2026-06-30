@@ -153,7 +153,7 @@ def test_ask_token_cannot_override_api_key_bound_tenant(monkeypatch):
     )
     request = Request({
         "type": "http",
-        "headers": [(b"x-zhishu-tenant-id", b"20")],
+        "headers": [(b"x-shuzhi-tenant-id", b"20")],
     })
 
     middleware = auth_middleware.TokenMiddleware(app=None)

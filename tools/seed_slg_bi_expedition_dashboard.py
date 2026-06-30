@@ -2,7 +2,7 @@
 
 Targets:
 - BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
-- App system database: core ZHISHU_DB_* settings from the repo .env
+- App system database: core SHUZHI_DB_* settings from the repo .env
 
 This keeps the mock data at event/detail level. The new fact_expeditions table
 stores one row per expedition, traceable to player/session/event time. No

@@ -337,7 +337,7 @@ def test_tenant_overview_active_members_include_owner_admin_and_member():
 
 def test_local_login_sets_resolved_tenant_on_request_state(monkeypatch):
     request = SimpleNamespace(
-        headers={"X-ZHISHU-TENANT-ID": "200"},
+        headers={"X-SHUZHI-TENANT-ID": "200"},
         state=SimpleNamespace(),
         client=SimpleNamespace(host="127.0.0.1"),
     )
@@ -706,6 +706,27 @@ def test_platform_admin_tenant_list_includes_member_stats():
         assert tenant.admin_count == 2
         assert tenant.member_count == 1
         assert tenant.owner_user_id == 100
+
+
+def test_platform_workspace_delegate_admin_tenant_list_is_scoped():
+    engine = _engine()
+    current_user = SimpleNamespace(
+        id=1,
+        system_role="system_admin",
+        tenant_id=200,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=300, name="Tenant C", status=1, plan="basic"))
+        session.commit()
+
+        tenants = asyncio.run(tenant_api.admin_tenant_list(session, current_user))
+
+        assert [tenant.id for tenant in tenants] == [200]
+        assert tenants[0].name == "Tenant B"
+        assert tenants[0].role == "owner"
 
 
 def test_platform_admin_platform_overview_aggregates_saas_scope():

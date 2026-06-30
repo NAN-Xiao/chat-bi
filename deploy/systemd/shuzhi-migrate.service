@@ -1,0 +1,15 @@
+[Unit]
+Description=星通数智 database migration
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=shuzhi
+Group=shuzhi
+WorkingDirectory=/opt/shuzhi/backend
+EnvironmentFile=/etc/shuzhi/shuzhi.env
+ExecStart=/opt/shuzhi/backend/.venv/bin/python -m scripts.db_migrate
+
+[Install]
+WantedBy=multi-user.target

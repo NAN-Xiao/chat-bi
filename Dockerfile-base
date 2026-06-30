@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chmod g+x /usr/local/bin/python*
 
 # Download Oracle instant client
-ENV DB_CLIENT=/opt/zhishu/db_client
+ENV DB_CLIENT=/opt/shuzhi/db_client
 ENV LD_LIBRARY_PATH="${DB_CLIENT}/oracle_instant_client:${LD_LIBRARY_PATH}"
 ARG TARGETARCH
 RUN apt-get update && \

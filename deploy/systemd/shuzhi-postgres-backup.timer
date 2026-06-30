@@ -1,11 +1,11 @@
 [Unit]
-Description=Run 星通智数 PostgreSQL backup daily
+Description=Run 星通数智 PostgreSQL backup daily
 
 [Timer]
 OnCalendar=*-*-* 02:30:00
 RandomizedDelaySec=1800
 Persistent=true
-Unit=zhishu-postgres-backup.service
+Unit=shuzhi-postgres-backup.service
 
 [Install]
 WantedBy=timers.target

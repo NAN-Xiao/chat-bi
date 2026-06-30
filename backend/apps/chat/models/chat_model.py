@@ -252,7 +252,7 @@ class AiModelQuestion(BaseModel):
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
     sample_data: str = ""
-    zhishu_name: str = "星通智数"
+    shuzhi_name: str = "星通数智"
 
     def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):
         templates: dict[str, str] = {}
@@ -273,9 +273,9 @@ class AiModelQuestion(BaseModel):
             'example_answer_3']
 
         templates['system'] = _base_template['system'].format(lang=self.lang, process_check=_process_check,
-                                                              zhishu_name=self.zhishu_name)
+                                                              shuzhi_name=self.shuzhi_name)
         templates['rules'] = _base_template['generate_rules'].format(lang=self.lang,
-                                                                     zhishu_name=self.zhishu_name,
+                                                                     shuzhi_name=self.shuzhi_name,
                                                                      base_sql_rules=_base_sql_rules,
                                                                      basic_sql_examples=_sql_examples,
                                                                      example_engine=_example_engine,
@@ -310,7 +310,7 @@ class AiModelQuestion(BaseModel):
 
     def chart_sys_question(self):
         templates: dict[str, str] = {
-            'system': get_chart_template()['system'].format(lang=self.lang, zhishu_name=self.zhishu_name),
+            'system': get_chart_template()['system'].format(lang=self.lang, shuzhi_name=self.shuzhi_name),
             'rules': get_chart_template()['generate_rules'].format(lang=self.lang)
         }
         return templates
@@ -323,7 +323,7 @@ class AiModelQuestion(BaseModel):
         return get_analysis_template()['system'].format(lang=self.lang, terminologies="",
                                                         custom_prompt=self.custom_prompt,
                                                         data_skill=self.data_skill,
-                                                        zhishu_name=self.zhishu_name)
+                                                        shuzhi_name=self.shuzhi_name)
 
     def analysis_user_question(self):
         return get_analysis_template()['user'].format(fields=self.fields, data=self.data)
@@ -331,20 +331,20 @@ class AiModelQuestion(BaseModel):
     def predict_sys_question(self):
         return get_predict_template()['system'].format(lang=self.lang, custom_prompt=self.custom_prompt,
                                                        data_skill=self.data_skill,
-                                                       zhishu_name=self.zhishu_name)
+                                                       shuzhi_name=self.shuzhi_name)
 
     def predict_user_question(self):
         return get_predict_template()['user'].format(fields=self.fields, data=self.data)
 
     def datasource_sys_question(self):
-        return get_datasource_template()['system'].format(lang=self.lang, zhishu_name=self.zhishu_name)
+        return get_datasource_template()['system'].format(lang=self.lang, shuzhi_name=self.shuzhi_name)
 
     def datasource_user_question(self, datasource_list: str = "[]"):
         return get_datasource_template()['user'].format(lang=self.lang, question=self.question, data=datasource_list)
 
     def guess_sys_question(self, articles_number: int = 4):
         return get_guess_question_template()['system'].format(lang=self.lang, articles_number=articles_number,
-                                                              zhishu_name=self.zhishu_name)
+                                                              shuzhi_name=self.shuzhi_name)
 
     def guess_user_question(self, old_questions: str = "[]"):
         return get_guess_question_template()['user'].format(question=self.question, schema=self.db_schema,
@@ -352,13 +352,13 @@ class AiModelQuestion(BaseModel):
 
     def filter_sys_question(self):
         return get_permissions_template()['system'].format(lang=self.lang, engine=self.engine,
-                                                           zhishu_name=self.zhishu_name)
+                                                           shuzhi_name=self.shuzhi_name)
 
     def filter_user_question(self):
         return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter)
 
     def dynamic_sys_question(self):
-        return get_dynamic_template()['system'].format(lang=self.lang, engine=self.engine, zhishu_name=self.zhishu_name)
+        return get_dynamic_template()['system'].format(lang=self.lang, engine=self.engine, shuzhi_name=self.shuzhi_name)
 
     def dynamic_user_question(self):
         return get_dynamic_template()['user'].format(sql=self.sql, sub_query=self.sub_query)

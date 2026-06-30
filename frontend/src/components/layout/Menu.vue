@@ -210,10 +210,10 @@ const routerList = computed(() => {
 <template>
   <el-menu
     :default-active="activeMenu"
-    class="el-menu-demo zhishu-layout-menu"
+    class="el-menu-demo shuzhi-layout-menu"
     :class="{
       'ed-menu-vertical': props.mode === 'vertical',
-      'zhishu-layout-menu-horizontal': props.mode === 'horizontal',
+      'shuzhi-layout-menu-horizontal': props.mode === 'horizontal',
     }"
     :mode="props.mode"
     :collapse="props.mode === 'vertical' ? props.collapse : false"
@@ -301,7 +301,7 @@ const routerList = computed(() => {
       color: inherit !important;
     }
 
-    .zhishu-menu-line-icon {
+    .shuzhi-menu-line-icon {
       color: inherit !important;
 
       path,
@@ -318,7 +318,7 @@ const routerList = computed(() => {
       }
     }
 
-    svg:not(.zhishu-menu-line-icon) path {
+    svg:not(.shuzhi-menu-line-icon) path {
       fill: currentColor !important;
     }
   }
@@ -376,7 +376,7 @@ const routerList = computed(() => {
   }
 }
 
-.zhishu-layout-menu-horizontal {
+.shuzhi-layout-menu-horizontal {
   --top-nav-height: 52px;
   --ed-menu-item-height: var(--top-nav-height);
   --ed-menu-bg-color: transparent;
@@ -446,12 +446,12 @@ const routerList = computed(() => {
     }
 
     .menu-line-icon-wrapper,
-    .zhishu-menu-line-icon {
+    .shuzhi-menu-line-icon {
       width: 16px !important;
       height: 16px !important;
     }
 
-    .zhishu-menu-line-icon {
+    .shuzhi-menu-line-icon {
       color: inherit !important;
 
       path,

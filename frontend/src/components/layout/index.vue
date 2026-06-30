@@ -4,7 +4,7 @@
       class="main-menu"
       :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }"
     >
-      <div class="logo" @click="goHome">星通智数</div>
+      <div class="logo" @click="goHome">星通数智</div>
       <el-menu
         v-if="!topLayout || !showSubmenu"
         :default-active="activeMenu"
@@ -225,10 +225,10 @@ const goHome = async () => {
 }
 const switchLayout = () => {
   topLayout.value = !topLayout.value
-  wsCache.set('zhishu-topbar-layout', topLayout.value)
+  wsCache.set('shuzhi-topbar-layout', topLayout.value)
 }
 onMounted(() => {
-  topLayout.value = wsCache.get('zhishu-topbar-layout') || true
+  topLayout.value = wsCache.get('shuzhi-topbar-layout') || true
 })
 </script>
 

@@ -23,7 +23,7 @@ from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import CurrentUser, SessionDep, Trans
-from common.utils.crypto import zhishu_decrypt, zhishu_encrypt
+from common.utils.crypto import shuzhi_decrypt, shuzhi_encrypt
 from common.utils.time import get_timestamp
 from common.utils.utils import AppLogUtil, prepare_model_arg
 
@@ -34,7 +34,7 @@ async def _encrypt_ai_model_secrets(data: dict) -> dict:
     encrypted = dict(data)
     for key in ("api_key", "api_domain"):
         if key in encrypted and encrypted[key] is not None:
-            encrypted[key] = await zhishu_encrypt(encrypted[key])
+            encrypted[key] = await shuzhi_encrypt(encrypted[key])
     return encrypted
 
 
@@ -241,9 +241,9 @@ async def get_model_by_id(
     data = AiModelDetail.model_validate(db_model).model_dump(exclude_unset=True)
     try:
         if db_model.api_key:
-            data["api_key"] = await zhishu_decrypt(db_model.api_key)
+            data["api_key"] = await shuzhi_decrypt(db_model.api_key)
         if db_model.api_domain:
-            data["api_domain"] = await zhishu_decrypt(db_model.api_domain)
+            data["api_domain"] = await shuzhi_decrypt(db_model.api_domain)
     except ValueError as exc:
         raise HTTPException(
             status_code=500,

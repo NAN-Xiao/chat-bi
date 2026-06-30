@@ -96,11 +96,11 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:POSTGRES_DB = $appSystemDbName
     $env:POSTGRES_USER = "root"
     $env:POSTGRES_PASSWORD = "Password123@pg"
-    $env:ZHISHU_DB_HOST = $appSystemDbHost
-    $env:ZHISHU_DB_PORT = [string]$appSystemDbPort
-    $env:ZHISHU_DB_DB = $appSystemDbName
-    $env:ZHISHU_DB_USER = "root"
-    $env:ZHISHU_DB_PASSWORD = "Password123@pg"
+    $env:SHUZHI_DB_HOST = $appSystemDbHost
+    $env:SHUZHI_DB_PORT = [string]$appSystemDbPort
+    $env:SHUZHI_DB_DB = $appSystemDbName
+    $env:SHUZHI_DB_USER = "root"
+    $env:SHUZHI_DB_PASSWORD = "Password123@pg"
     $env:SECRET_KEY = "y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s"
 
     $env:FRONTEND_HOST = $FrontendHost
@@ -116,7 +116,7 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
         ) -join ","
     }
 
-    $env:BASE_DIR = "$runtimeRootForEnv/zhishu"
+    $env:BASE_DIR = "$runtimeRootForEnv/shuzhi"
     $env:UPLOAD_DIR = "$runtimeRootForEnv/file"
     $env:MCP_IMAGE_PATH = "$runtimeRootForEnv/images"
     $env:EXCEL_PATH = "$runtimeRootForEnv/excel"
@@ -128,8 +128,8 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     if ($ResolvedCacheType -eq "redis") {
         $env:REDIS_HOST = $RedisHost
         $env:REDIS_PORT = [string]$RedisPort
-        $env:ZHISHU_REDIS_HOST = $RedisHost
-        $env:ZHISHU_REDIS_PORT = [string]$RedisPort
+        $env:SHUZHI_REDIS_HOST = $RedisHost
+        $env:SHUZHI_REDIS_PORT = [string]$RedisPort
     }
 }
 

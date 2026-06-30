@@ -11,6 +11,7 @@ from orjson import orjson
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import String, case, cast, select, and_, or_, text, func, inspect
+from sqlalchemy.exc import SQLAlchemyError
 
 from apps.dashboard.models.dashboard_model import (
     CoreDashboard,
@@ -48,7 +49,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import get_sqlglot_dialect
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.user import UserModel
-from apps.system.models.tenant import TenantUserModel
+from apps.system.models.tenant import TenantModel, TenantUserModel
 from apps.system.crud.tenant import TENANT_ROLE_ADMIN, TENANT_ROLE_OWNER
 from apps.system.crud.user import is_platform_workspace_delegate, is_system_admin
 from common.core.config import settings
@@ -1566,6 +1567,55 @@ def _remark_value(remark: str | None, key: str) -> str | None:
     return None
 
 
+def _optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _template_source_dashboard_id(template: CoreDashboard) -> str | None:
+    source_dashboard_id = _remark_value(template.remark, "source_dashboard_id")
+    if source_dashboard_id:
+        return source_dashboard_id
+    content_id = getattr(template, "content_id", None)
+    if content_id not in (None, "", "0"):
+        return str(content_id)
+    return None
+
+
+def _platform_template_source_context(session: SessionDep, template: CoreDashboard) -> dict[str, Any]:
+    source_dashboard_id = _template_source_dashboard_id(template)
+    source_tenant_id = _optional_int(_remark_value(template.remark, "source_tenant_id"))
+    source_datasource_id = _optional_int(_remark_value(template.remark, "source_datasource_id"))
+    source_dashboard_name = None
+
+    source_dashboard = session.get(CoreDashboard, source_dashboard_id) if source_dashboard_id else None
+    if source_dashboard:
+        source_dashboard_name = source_dashboard.name
+        source_tenant_id = source_tenant_id or _optional_int(source_dashboard.tenant_id)
+        source_datasource_id = source_datasource_id or _effective_dashboard_datasource(source_dashboard)
+
+    source_tenant_name = None
+    if source_tenant_id is not None:
+        try:
+            tenant = session.get(TenantModel, source_tenant_id)
+            source_tenant_name = tenant.name if tenant else None
+        except SQLAlchemyError:
+            source_tenant_name = None
+
+    return {
+        "source_dashboard_id": source_dashboard_id,
+        "source_dashboard_name": source_dashboard_name,
+        "source_tenant_id": source_tenant_id,
+        "source_tenant_name": source_tenant_name,
+        "source_datasource_id": source_datasource_id,
+        "source_datasource_name": _datasource_name(session, source_datasource_id),
+    }
+
+
 def _platform_template_needs_snapshot_repair(template: CoreDashboard) -> bool:
     if template.datasource is not None:
         return True
@@ -1589,7 +1639,7 @@ def _platform_template_needs_snapshot_repair(template: CoreDashboard) -> bool:
 def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: CoreDashboard) -> None:
     if not _platform_template_needs_snapshot_repair(template):
         return
-    source_id = _remark_value(template.remark, "source_dashboard_id")
+    source_id = _template_source_dashboard_id(template)
     source = session.get(CoreDashboard, source_id) if source_id else None
     if source and source.delete_flag != 1 and source.node_type == "leaf":
         component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
@@ -1600,8 +1650,11 @@ def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: 
         template.component_data = component_data
         template.canvas_style_data = canvas_style_data
         template.canvas_view_info = _prepare_dashboard_template_canvas_view_info(canvas_view_info)
+        template.remark = _platform_template_source_remark(source)
     else:
         template.canvas_view_info = _prepare_dashboard_template_canvas_view_info(template.canvas_view_info)
+        if source_id and not _remark_value(template.remark, "source_dashboard_id"):
+            template.remark = f"{template.remark + ';' if template.remark else ''}source_dashboard_id={source_id}"
     template.tenant_id = DEFAULT_TENANT_ID
     template.source = DASHBOARD_SOURCE_PLATFORM_TEMPLATE
     template.datasource = None
@@ -1655,6 +1708,114 @@ def _active_dashboard_filter():
         or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
         or_(CoreDashboard.status.is_(None), CoreDashboard.status.notin_(DASHBOARD_DRAFT_STATUSES)),
     )
+
+
+def _platform_template_source_remark(source: CoreDashboard) -> str:
+    return (
+        f"source_dashboard_id={source.id};"
+        f"source_tenant_id={source.tenant_id};"
+        f"source_datasource_id={_effective_dashboard_datasource(source) or ''}"
+    )
+
+
+def _dashboard_created_from_template_remark(template: CoreDashboard) -> str:
+    parts = [f"source_template_id={template.id}"]
+    for key in ("source_dashboard_id", "source_tenant_id", "source_datasource_id"):
+        value = _remark_value(template.remark, key)
+        if value:
+            parts.append(f"{key}={value}")
+    return ";".join(parts)
+
+
+def _platform_templates_for_source_dashboard(
+        session: SessionDep,
+        source_dashboard_id: str | None,
+        include_deleted: bool = False,
+) -> list[CoreDashboard]:
+    if not source_dashboard_id:
+        return []
+    filters = [
+        CoreDashboard.tenant_id == DEFAULT_TENANT_ID,
+        CoreDashboard.source == DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+        CoreDashboard.node_type == "leaf",
+        or_(
+            CoreDashboard.remark.like(f"%source_dashboard_id={source_dashboard_id}%"),
+            CoreDashboard.content_id == str(source_dashboard_id),
+        ),
+    ]
+    if include_deleted:
+        filters.append(or_(CoreDashboard.status.is_(None), CoreDashboard.status.notin_(DASHBOARD_DRAFT_STATUSES)))
+    else:
+        filters.extend([
+            _active_dashboard_filter(),
+            CoreDashboard.status == DASHBOARD_STATUS_ACTIVE,
+        ])
+    statement = (
+        select(CoreDashboard)
+        .where(and_(*filters))
+        .order_by(CoreDashboard.create_time.asc(), CoreDashboard.update_time.asc())
+    )
+    candidates = session.exec(statement).scalars().all()
+    return [
+        item
+        for item in candidates
+        if _template_source_dashboard_id(item) == str(source_dashboard_id)
+    ]
+
+
+def _platform_template_for_source_dashboard(
+        session: SessionDep,
+        source_dashboard_id: str | None,
+) -> CoreDashboard | None:
+    templates = _platform_templates_for_source_dashboard(session, source_dashboard_id)
+    return templates[0] if templates else None
+
+
+def _workspace_dashboard_created_from_template(
+        session: SessionDep,
+        user: CurrentUser,
+        template: CoreDashboard,
+) -> CoreDashboard | None:
+    source_dashboard_id = _template_source_dashboard_id(template)
+    template_ids = {str(template.id)}
+    for source_template in _platform_templates_for_source_dashboard(session, source_dashboard_id):
+        template_ids.add(str(source_template.id))
+
+    remark_filters = [
+        CoreDashboard.remark.like(f"%source_template_id={template_id}%")
+        for template_id in template_ids
+    ]
+    if source_dashboard_id:
+        remark_filters.append(CoreDashboard.remark.like(f"%source_dashboard_id={source_dashboard_id}%"))
+    if not remark_filters:
+        return None
+
+    statement = (
+        select(CoreDashboard)
+        .where(
+            and_(
+                _active_dashboard_filter(),
+                CoreDashboard.tenant_id == _current_tenant_id(user),
+                CoreDashboard.node_type == "leaf",
+                or_(CoreDashboard.source.is_(None), CoreDashboard.source != DASHBOARD_SOURCE_PLATFORM_TEMPLATE),
+                or_(*remark_filters),
+            )
+        )
+        .order_by(CoreDashboard.create_time.asc(), CoreDashboard.update_time.asc())
+    )
+    candidates = session.exec(statement).scalars().all()
+    for candidate in candidates:
+        candidate_source_dashboard_id = _remark_value(candidate.remark, "source_dashboard_id")
+        if source_dashboard_id and candidate_source_dashboard_id == source_dashboard_id:
+            return candidate
+        candidate_template_id = _remark_value(candidate.remark, "source_template_id")
+        if candidate_template_id in template_ids:
+            return candidate
+        if source_dashboard_id and candidate_template_id:
+            source_template = session.get(CoreDashboard, candidate_template_id)
+            if source_template and _template_source_dashboard_id(source_template) == source_dashboard_id:
+                return candidate
+    return None
 
 
 def _active_dashboard_share_map_for_user(
@@ -1780,6 +1941,11 @@ def _dashboard_base_response(
         and record.node_type == "leaf"
         and _is_public_dashboard_for_delegate(session, current_user, record)
     )
+    source_context = (
+        _platform_template_source_context(session, record)
+        if platform_template_context or record.source == DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+        else {}
+    )
     return DashboardBaseResponse(
         id=record.id,
         tenant_id=record.tenant_id,
@@ -1805,6 +1971,12 @@ def _dashboard_base_response(
         is_shared=active_share is not None,
         is_public=is_public,
         can_copy_to_platform_template=can_copy_to_platform_template,
+        source_dashboard_id=source_context.get("source_dashboard_id"),
+        source_dashboard_name=source_context.get("source_dashboard_name"),
+        source_tenant_id=source_context.get("source_tenant_id"),
+        source_tenant_name=source_context.get("source_tenant_name"),
+        source_datasource_id=source_context.get("source_datasource_id"),
+        source_datasource_name=source_context.get("source_datasource_name"),
         share_id=active_share.id if active_share else None,
     )
 
@@ -1821,7 +1993,10 @@ def _share_can_use(session: SessionDep, current_user: CurrentUser, share: CoreDa
 def _datasource_name(session: SessionDep, datasource_id: int | None) -> str | None:
     if datasource_id is None:
         return None
-    datasource = session.get(CoreDatasource, datasource_id)
+    try:
+        datasource = session.get(CoreDatasource, datasource_id)
+    except SQLAlchemyError:
+        return None
     return datasource.name if datasource else None
 
 
@@ -1997,6 +2172,8 @@ def _dashboard_payload(
     updater = _user_name(session, record.update_by)
     result_dict['create_name'] = creator
     result_dict['update_name'] = updater
+    if platform_template_context:
+        result_dict.update(_platform_template_source_context(session, record))
     if platform_template_context:
         result_dict['can_edit'] = _is_platform_admin_context(current_user)
         result_dict['can_share'] = False
@@ -2468,6 +2645,10 @@ def copy_dashboard_to_platform_template(
     if source.node_type != "leaf" or not _is_public_dashboard_for_delegate(session, user, source):
         raise HTTPException(status_code=404, detail="Dashboard does not exist")
 
+    existing_template = _platform_template_for_source_dashboard(session, source.id)
+    if existing_template:
+        raise HTTPException(status_code=400, detail="该看板已复制为平台模板")
+
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
         source.component_data,
         source.canvas_style_data,
@@ -2491,7 +2672,7 @@ def copy_dashboard_to_platform_template(
         mobile_layout=source.mobile_layout or 0,
         status=DASHBOARD_STATUS_ACTIVE,
         source=DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
-        remark=f"source_dashboard_id={source.id};source_tenant_id={source.tenant_id}",
+        remark=_platform_template_source_remark(source),
         self_watermark_status=source.self_watermark_status or 0,
         is_default=0,
         sort=0,
@@ -2639,18 +2820,21 @@ def delete_platform_dashboard_template(
     return True
 
 
-def copy_platform_template_to_workspace_dashboard(
+def _copy_single_platform_template_to_workspace_dashboard(
         session: SessionDep,
         user: CurrentUser,
         template_id: str,
         name: str = "",
 ):
-    _require_platform_delegate(user)
     template = _load_platform_template_or_404(session, template_id, user)
     _repair_platform_template_snapshot_if_needed(session, template)
     target_datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(user))
     if target_datasource_id is not None:
         _ensure_datasource_access(session, user, target_datasource_id, required=True)
+    existing_dashboard = _workspace_dashboard_created_from_template(session, user, template)
+    if existing_dashboard:
+        return _dashboard_base_response(session, user, existing_dashboard, target_datasource_id)
+
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload_for_datasource(
         template.component_data,
         template.canvas_style_data,
@@ -2675,7 +2859,7 @@ def copy_platform_template_to_workspace_dashboard(
         mobile_layout=template.mobile_layout or 0,
         status=DASHBOARD_STATUS_ACTIVE,
         source=None,
-        remark=f"source_template_id={template.id}",
+        remark=_dashboard_created_from_template_remark(template),
         self_watermark_status=template.self_watermark_status or 0,
         is_default=0,
         sort=0,
@@ -2692,6 +2876,48 @@ def copy_platform_template_to_workspace_dashboard(
     session.commit()
     session.refresh(record)
     return _dashboard_base_response(session, user, record, target_datasource_id)
+
+
+def copy_platform_template_to_workspace_dashboard(
+        session: SessionDep,
+        user: CurrentUser,
+        template_id: str,
+        name: str = "",
+        template_ids: list[str] | None = None,
+):
+    _require_platform_delegate(user)
+    requested_template_ids = [
+        str(item).strip()
+        for item in (template_ids or [])
+        if str(item).strip()
+    ]
+    if not requested_template_ids and template_id:
+        requested_template_ids = [str(template_id).strip()]
+    if not requested_template_ids:
+        raise HTTPException(status_code=400, detail="Dashboard template is required")
+
+    seen_ids: set[str] = set()
+    unique_template_ids: list[str] = []
+    for item in requested_template_ids:
+        if item in seen_ids:
+            continue
+        seen_ids.add(item)
+        unique_template_ids.append(item)
+
+    results = []
+    result_ids: set[str] = set()
+    for item in unique_template_ids:
+        result = _copy_single_platform_template_to_workspace_dashboard(
+            session=session,
+            user=user,
+            template_id=item,
+            name=name if len(unique_template_ids) == 1 else "",
+        )
+        if result.id in result_ids:
+            continue
+        result_ids.add(result.id)
+        results.append(result)
+    return results[0] if len(unique_template_ids) == 1 else results
 
 
 def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashboard) -> bool:

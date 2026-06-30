@@ -27,11 +27,11 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
-    PROJECT_NAME: str = "星通智数"
+    PROJECT_NAME: str = "星通数智"
     APP_ENV: Literal["development", "test", "production"] = "development"
     PRODUCTION_CHECKS_ENABLED: bool = True
     AUTO_RUN_MIGRATIONS: bool = False
-    #CONTEXT_PATH: str = "/zhishu"
+    #CONTEXT_PATH: str = "/shuzhi"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
     # 60 minutes * 24 hours * 8 days = 8 days
@@ -63,22 +63,22 @@ class Settings(BaseSettings):
     def API_V1_STR(self) -> str:
         return self.CONTEXT_PATH + "/api/v1"
 
-    ZHISHU_DB_HOST: str = "10.1.5.28"
-    ZHISHU_DB_PORT: int = 5432
-    ZHISHU_DB_DB: str = "zhishu_bi"
-    ZHISHU_DB_USER: str = "root"
-    ZHISHU_DB_PASSWORD: str = "Password123@pg"
+    SHUZHI_DB_HOST: str = "10.1.5.28"
+    SHUZHI_DB_PORT: int = 5432
+    SHUZHI_DB_DB: str = "zhishu_bi"
+    SHUZHI_DB_USER: str = "root"
+    SHUZHI_DB_PASSWORD: str = "Password123@pg"
     POSTGRES_SERVER: str = ''
     POSTGRES_PORT: int | None = None
     POSTGRES_USER: str = ''
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = ""
-    ZHISHU_DB_URL: str = ''
-    # ZHISHU_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/zhishu'
+    SHUZHI_DB_URL: str = ''
+    # SHUZHI_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/shuzhi'
 
-    TOKEN_KEY: str = "X-ZHISHU-TOKEN"
+    TOKEN_KEY: str = "X-SHUZHI-TOKEN"
     DEFAULT_PWD: str = "elex@123"
-    ASSISTANT_TOKEN_KEY: str = "X-ZHISHU-ASSISTANT-TOKEN"
+    ASSISTANT_TOKEN_KEY: str = "X-SHUZHI-ASSISTANT-TOKEN"
     SENSITIVE_CONFIG_ENCRYPTION_KEY: str | None = None
     DATASOURCE_CONFIG_ENCRYPTION_KEY: str | None = None
     LEGACY_CONFIG_AES_KEYS: str = ""
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
 
     CACHE_TYPE: Literal["redis", "memory", "none"] = "redis"
     CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
-    CACHE_REDIS_PREFIX: str = "zhishu-cache"
+    CACHE_REDIS_PREFIX: str = "shuzhi-cache"
 
     DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS: int = 3600
     DASHBOARD_SQL_PREVIEW_CACHE_MAX_ENTRIES: int = 512
@@ -107,10 +107,10 @@ class Settings(BaseSettings):
     DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS: float = 1.0
     DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS: float = 8.0
 
-    ZHISHU_REDIS_URL: str | None = None
+    SHUZHI_REDIS_URL: str | None = None
     REDIS_URL: str | None = None
-    ZHISHU_REDIS_HOST: str = "10.1.5.28"
-    ZHISHU_REDIS_PORT: int = 6379
+    SHUZHI_REDIS_HOST: str = "10.1.5.28"
+    SHUZHI_REDIS_PORT: int = 6379
     REDIS_HOST: str = ""
     REDIS_PORT: int | None = None
     REDIS_DB: int = 0
@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     REDIS_CONNECT_TIMEOUT: float = 3.0
     REDIS_HEALTH_CHECK_INTERVAL: int = 30
     REDIS_MAX_CONNECTIONS: int = 100
-    REDIS_KEY_PREFIX: str = "zhishu"
+    REDIS_KEY_PREFIX: str = "shuzhi"
 
     TASK_QUEUE_NAME: str = "default"
     TASK_QUEUE_RESULT_TTL_SECONDS: int = 60 * 60 * 24
@@ -136,16 +136,16 @@ class Settings(BaseSettings):
     LOG_DIR: str = "logs"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
     SQL_DEBUG: bool = False
-    BASE_DIR: str = "/opt/zhishu"
+    BASE_DIR: str = "/opt/shuzhi"
     SCRIPT_DIR: str = f"{BASE_DIR}/scripts"
-    UPLOAD_DIR: str = "/opt/zhishu/data/file"
-    ZHISHU_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
+    UPLOAD_DIR: str = "/opt/shuzhi/data/file"
+    SHUZHI_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn | str:
-        if self.ZHISHU_DB_URL:
-            return self.ZHISHU_DB_URL
+        if self.SHUZHI_DB_URL:
+            return self.SHUZHI_DB_URL
         # return MultiHostUrl.build(
         #     scheme="postgresql+psycopg",
         #     username=urllib.parse.quote(self.core_db_user),
@@ -163,26 +163,26 @@ class Settings(BaseSettings):
 
     @property
     def core_db_host(self) -> str:
-        return self.ZHISHU_DB_HOST
+        return self.SHUZHI_DB_HOST
 
     @property
     def core_db_port(self) -> int:
-        return self.ZHISHU_DB_PORT
+        return self.SHUZHI_DB_PORT
 
     @property
     def core_db_user(self) -> str:
-        return self.ZHISHU_DB_USER
+        return self.SHUZHI_DB_USER
 
     @property
     def core_db_password(self) -> str:
-        return self.ZHISHU_DB_PASSWORD
+        return self.SHUZHI_DB_PASSWORD
 
     @property
     def core_db_name(self) -> str:
-        return self.ZHISHU_DB_DB
+        return self.SHUZHI_DB_DB
 
-    MCP_IMAGE_PATH: str = '/opt/zhishu/images'
-    EXCEL_PATH: str = '/opt/zhishu/data/excel'
+    MCP_IMAGE_PATH: str = '/opt/shuzhi/images'
+    EXCEL_PATH: str = '/opt/shuzhi/data/excel'
     MCP_ENABLED: bool = False
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str = 'http://YOUR_SERVE_IP:MCP_PORT/images/'
@@ -217,7 +217,7 @@ class Settings(BaseSettings):
 
     # 安全配置：是否允许元数据查询（SHOW/DESCRIBE/DESC/EXPLAIN）
     # 默认关闭，防止通过元数据查询泄露数据库结构
-    ZHISHU_ALLOW_METADATA_QUERIES: bool = False
+    SHUZHI_ALLOW_METADATA_QUERIES: bool = False
 
     PARSE_REASONING_BLOCK_ENABLED: bool = True
     DEFAULT_REASONING_CONTENT_START: str = '<think>'
@@ -232,7 +232,7 @@ class Settings(BaseSettings):
     TABLE_EMBEDDING_COUNT: int = 10
     DS_EMBEDDING_COUNT: int = 10
 
-    ORACLE_CLIENT_PATH: str = '/opt/zhishu/db_client/oracle_instant_client'
+    ORACLE_CLIENT_PATH: str = '/opt/shuzhi/db_client/oracle_instant_client'
 
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',

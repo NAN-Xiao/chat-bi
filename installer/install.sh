@@ -29,13 +29,13 @@ function check_and_prepare_env_params() {
     if [ -f /usr/bin/sctl ]; then
         echo "当前版本： $(sctl version | head -n 1)"
 
-        # 获取已安装的星通智数运行目录
-        ZHISHU_BASE=$(grep "^ZHISHU_BASE=" /usr/bin/sctl | cut -d'=' -f2)
-        ZHISHU_BASE_OLD=${ZHISHU_BASE}
-        sed -i -e "s#ZHISHU_BASE=.*#ZHISHU_BASE=${ZHISHU_BASE}#g" sctl
+        # 获取已安装的星通数智运行目录
+        SHUZHI_BASE=$(grep "^SHUZHI_BASE=" /usr/bin/sctl | cut -d'=' -f2)
+        SHUZHI_BASE_OLD=${SHUZHI_BASE}
+        sed -i -e "s#SHUZHI_BASE=.*#SHUZHI_BASE=${SHUZHI_BASE}#g" sctl
         \cp sctl /usr/local/bin && chmod +x /usr/local/bin/sctl
 
-        log_content "停止星通智数服务"
+        log_content "停止星通数智服务"
         sctl stop
 
         INSTALL_TYPE='upgrade'
@@ -43,17 +43,17 @@ function check_and_prepare_env_params() {
 
     set -a
     source ${CURRENT_DIR}/install.conf
-    if [[ ${ZHISHU_BASE_OLD} ]];then
-        ZHISHU_BASE=${ZHISHU_BASE_OLD}
-        export ZHISHU_BASE=${ZHISHU_BASE_OLD}
+    if [[ ${SHUZHI_BASE_OLD} ]];then
+        SHUZHI_BASE=${SHUZHI_BASE_OLD}
+        export SHUZHI_BASE=${SHUZHI_BASE_OLD}
     fi
-    if [[ -d ${ZHISHU_BASE} ]] && [[ -f ${ZHISHU_BASE}/zhishu/.env ]]; then
-        source $ZHISHU_BASE/zhishu/.env
+    if [[ -d ${SHUZHI_BASE} ]] && [[ -f ${SHUZHI_BASE}/shuzhi/.env ]]; then
+        source $SHUZHI_BASE/shuzhi/.env
         INSTALL_TYPE='upgrade'
         log_content "升级安装"
     else
         INSTALL_TYPE='install'
-        mkdir -p ${ZHISHU_BASE}
+        mkdir -p ${SHUZHI_BASE}
         log_content "全新安装"
     fi
     set +a
@@ -61,39 +61,39 @@ function check_and_prepare_env_params() {
 
 function set_run_base_path() {
     log_title "设置运行目录"
-    ZHISHU_RUN_BASE=$ZHISHU_BASE/zhishu
-    CONF_FOLDER=${ZHISHU_RUN_BASE}/conf
-    TEMPLATES_FOLDER=${ZHISHU_RUN_BASE}/templates
-    log_content "运行目录 $ZHISHU_RUN_BASE"
+    SHUZHI_RUN_BASE=$SHUZHI_BASE/shuzhi
+    CONF_FOLDER=${SHUZHI_RUN_BASE}/conf
+    TEMPLATES_FOLDER=${SHUZHI_RUN_BASE}/templates
+    log_content "运行目录 $SHUZHI_RUN_BASE"
     log_content "配置文件目录 $CONF_FOLDER"
 }
 
-function prepare_zhishu_run_base() {
+function prepare_shuzhi_run_base() {
     log_title "初始化运行目录"
     cd ${CURRENT_DIR}
-    mkdir -p ${ZHISHU_RUN_BASE}
+    mkdir -p ${SHUZHI_RUN_BASE}
     log_content "复制安装文件到运行目录"
-    cp -r ./zhishu/* ${ZHISHU_RUN_BASE}/
+    cp -r ./shuzhi/* ${SHUZHI_RUN_BASE}/
 
-    cd ${ZHISHU_RUN_BASE}
-    env | grep ZHISHU_ >.env
+    cd ${SHUZHI_RUN_BASE}
+    env | grep SHUZHI_ >.env
 
-    mkdir -p ${ZHISHU_RUN_BASE}/conf
-    mkdir -p ${ZHISHU_RUN_BASE}/data/zhishu/{excel,images,logs}
+    mkdir -p ${SHUZHI_RUN_BASE}/conf
+    mkdir -p ${SHUZHI_RUN_BASE}/data/shuzhi/{excel,images,logs}
 
-    if [ "${ZHISHU_EXTERNAL_DB}" = "false" ]; then
-        mkdir -p ${ZHISHU_RUN_BASE}/data/postgresql
-        export ZHISHU_DB_PORT=5432
+    if [ "${SHUZHI_EXTERNAL_DB}" = "false" ]; then
+        mkdir -p ${SHUZHI_RUN_BASE}/data/postgresql
+        export SHUZHI_DB_PORT=5432
     else
         sed -i -e "/^    depends_on/,+2d" docker-compose.yml
     fi
 
     log_content "调整配置文件参数"
-    cd ${ZHISHU_RUN_BASE}
+    cd ${SHUZHI_RUN_BASE}
     cp -r ${TEMPLATES_FOLDER}/* ${CONF_FOLDER}
 
     cd ${TEMPLATES_FOLDER}
-    templates_files=( zhishu.conf )
+    templates_files=( shuzhi.conf )
     for i in ${templates_files[@]}; do
        if [ -f $i ]; then
            envsubst < $i > ${CONF_FOLDER}/$i
@@ -105,7 +105,7 @@ function update_sctl() {
     log_title "安装 sctl 命令行工具"
     log_content "安装至 /usr/local/bin/sctl & /usr/bin/sctl"
     cd ${CURRENT_DIR}
-    sed -i -e "s#ZHISHU_BASE=.*#ZHISHU_BASE=${ZHISHU_BASE}#g" sctl
+    sed -i -e "s#SHUZHI_BASE=.*#SHUZHI_BASE=${SHUZHI_BASE}#g" sctl
     \cp sctl /usr/local/bin && chmod +x /usr/local/bin/sctl
     if [ ! -f /usr/bin/sctl ]; then
         ln -s /usr/local/bin/sctl /usr/bin/sctl 2>/dev/null
@@ -122,10 +122,10 @@ function prepare_system_settings() {
 
     if which firewall-cmd >/dev/null 2>&1; then
         if systemctl is-active firewalld &>/dev/null ;then
-            log_content "开启防火墙端口 ${ZHISHU_WEB_PORT}"
-            firewall-cmd --zone=public --add-port=${ZHISHU_WEB_PORT}/tcp --permanent
-            log_content "开启防火墙端口 ${ZHISHU_MCP_PORT}"
-            firewall-cmd --zone=public --add-port=${ZHISHU_MCP_PORT}/tcp --permanent
+            log_content "开启防火墙端口 ${SHUZHI_WEB_PORT}"
+            firewall-cmd --zone=public --add-port=${SHUZHI_WEB_PORT}/tcp --permanent
+            log_content "开启防火墙端口 ${SHUZHI_MCP_PORT}"
+            firewall-cmd --zone=public --add-port=${SHUZHI_MCP_PORT}/tcp --permanent
             firewall-cmd --reload
         else
             log_content "防火墙未开启，忽略端口开放"
@@ -230,10 +230,10 @@ function install_docker_compose() {
 }
 
 function load_images() {
-    log_title "加载星通智数镜像"
+    log_title "加载星通数智镜像"
     cd ${CURRENT_DIR}
 
-    for i in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep -F "${ZHISHU_IMAGE_REPOSITORY}:"); do
+    for i in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep -F "${SHUZHI_IMAGE_REPOSITORY}:"); do
        current_images[${#current_images[@]}]=${i##*/}
     done
 
@@ -248,24 +248,24 @@ function load_images() {
            fi
        done
     else
-       ZHISHUVERSION=$(cat ${CURRENT_DIR}/zhishu/templates/version)
-       if [[ -n "${ZHISHU_INSTALL_LOG_URL}" ]]; then
-          curl -sfL "${ZHISHU_INSTALL_LOG_URL}" | sh -s zhishu ${INSTALL_TYPE} ${ZHISHUVERSION}
+       SHUZHIVERSION=$(cat ${CURRENT_DIR}/shuzhi/templates/version)
+       if [[ -n "${SHUZHI_INSTALL_LOG_URL}" ]]; then
+          curl -sfL "${SHUZHI_INSTALL_LOG_URL}" | sh -s shuzhi ${INSTALL_TYPE} ${SHUZHIVERSION}
        fi
     fi
 }
 
-function start_zhishu() {
-    log_title "启动星通智数服务"
+function start_shuzhi() {
+    log_title "启动星通数智服务"
     sctl reload 2>&1 | tee -a ${CURRENT_DIR}/install.log
     if [[ $? -ne 0 ]]; then
-        log_content "星通智数服务启动失败，请检查日志"
+        log_content "星通数智服务启动失败，请检查日志"
         exit 1
     fi
     echo
     if [[ $INSTALL_TYPE != "upgrade" ]];then
        echo -e "======================= 安装完成 =======================\n" 2>&1 | tee -a ${CURRENT_DIR}/install.log
-       echo -e "系统登录信息如下:\n\t访问地址: http://服务器IP:$ZHISHU_WEB_PORT\n\t用户名: admin\n\t初始密码: $ZHISHU_DEFAULT_PWD" 2>&1 | tee -a ${CURRENT_DIR}/install.log
+       echo -e "系统登录信息如下:\n\t访问地址: http://服务器IP:$SHUZHI_WEB_PORT\n\t用户名: admin\n\t初始密码: $SHUZHI_DEFAULT_PWD" 2>&1 | tee -a ${CURRENT_DIR}/install.log
     else
        echo -e "======================= 升级完成 =======================\n" 2>&1 | tee -a ${CURRENT_DIR}/install.log
     fi
@@ -274,13 +274,13 @@ function start_zhishu() {
 function main() {
     check_and_prepare_env_params
     set_run_base_path
-    prepare_zhishu_run_base
+    prepare_shuzhi_run_base
     update_sctl
     prepare_system_settings
     install_docker
     install_docker_compose
     load_images
-    start_zhishu
+    start_shuzhi
 }
 
 main

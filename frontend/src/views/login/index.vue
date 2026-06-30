@@ -26,7 +26,7 @@
     </header>
 
     <div v-if="!isLoginFormPage" class="home-announcement-strip">
-      <span>星通智数 SaaS 主页</span>
+      <span>星通数智 SaaS 主页</span>
       <strong>用 ChatBI、语义层和数据看板，把可信分析带给每个团队。</strong>
       <button type="button" @click="goLoginPage">进入工作台</button>
     </div>
@@ -49,7 +49,7 @@
                 <span></span>
                 <span></span>
                 <span></span>
-                <b>星通智数 · Smart Q&amp;A</b>
+                <b>星通数智 · Smart Q&amp;A</b>
               </div>
               <div class="account-login-screen-body">
                 <aside>
@@ -284,7 +284,7 @@
           <span>AI 分析工作台</span>
           <h2>让 AI 在正确的数据上下文里回答业务问题</h2>
           <p>
-            星通智数把数据源权限、字段元数据和 Data Skills 放在同一条路径上，
+            星通数智把数据源权限、字段元数据和 Data Skills 放在同一条路径上，
             让自然语言问数更接近真实业务场景中的数据治理方式。
           </p>
           <div class="home-ai-badges">
@@ -310,7 +310,7 @@
           <span>语义层</span>
           <h2>把指标口径和查询范式沉淀成团队共享资产</h2>
           <p>
-            星通智数优先通过数据源范围、字段元数据、Data Skills 和推荐问题来约束分析行为，
+            星通数智优先通过数据源范围、字段元数据、Data Skills 和推荐问题来约束分析行为，
             让 Smart Q&amp;A、分析助手和看板都沿用同一套可信上下文。
           </p>
         </div>
@@ -456,7 +456,7 @@ const loginBg = computed(() => {
   return appearanceStore.getLogin
 })
 
-const productName = computed(() => appearanceStore.name || '星通智数')
+const productName = computed(() => appearanceStore.name || '星通数智')
 
 const productSlogan = computed(() => {
   if (appearanceStore.getShowSlogan && appearanceStore.slogan) {
@@ -2593,7 +2593,7 @@ onMounted(async () => {
   }
 }
 
-:deep(.zhishu-other-login) {
+:deep(.shuzhi-other-login) {
   height: auto;
   min-height: 0;
 }

@@ -7,7 +7,10 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from common.core.config import settings
 
-_AES_KEY = b"Zhishu1234567890"
+_AES_KEY = b"Shuzhi1234567890"
+_BUILTIN_LEGACY_AES_KEYS = (
+    bytes([90, 104, 105, 115, 104, 117, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48]),
+)
 _FERNET_PREFIX = "fernet:v1:"
 _AES_KEY_SIZES = {16, 24, 32}
 
@@ -67,7 +70,7 @@ def _decode_legacy_key_token(token: str) -> bytes | None:
 
 def get_legacy_config_aes_keys() -> tuple[bytes, ...]:
     raw_value = settings.LEGACY_CONFIG_AES_KEYS or ""
-    keys: list[bytes] = []
+    keys: list[bytes] = list(_BUILTIN_LEGACY_AES_KEYS)
     for token in raw_value.split(","):
         token = token.strip()
         if not token:
@@ -129,17 +132,17 @@ def decrypt_sensitive_text(text: str | None) -> str | None:
         return text
 
 
-def zhishu_decrypt_sync(text: str | None) -> str | None:
+def shuzhi_decrypt_sync(text: str | None) -> str | None:
     return decrypt_sensitive_text(text)
 
 
-async def zhishu_decrypt(text: str | None) -> str | None:
-    return zhishu_decrypt_sync(text)
+async def shuzhi_decrypt(text: str | None) -> str | None:
+    return shuzhi_decrypt_sync(text)
 
 
-async def zhishu_encrypt(text: str | None) -> str | None:
+async def shuzhi_encrypt(text: str | None) -> str | None:
     return encrypt_sensitive_text(text)
 
 
-def legacy_zhishu_encrypt_for_tests(text: str) -> str:
+def legacy_shuzhi_encrypt_for_tests(text: str) -> str:
     return _legacy_ecb_encrypt(text)

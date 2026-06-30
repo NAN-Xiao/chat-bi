@@ -141,8 +141,8 @@ async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
 @router.post("/mcp_assistant", operation_id="mcp_assistant")
 async def mcp_assistant(session: SessionDep, chat: McpAssistant):
     session_user = BaseUserDTO(**{
-        "id": -1, "account": 'zhishu-mcp-assistant', "assistant_id": -1, "password": '', "language": "zh-CN",
-        "name": "zhishu-mcp-assistant", "email": "zhishu-mcp-assistant@zhishu.com"
+        "id": -1, "account": 'shuzhi-mcp-assistant', "assistant_id": -1, "password": '', "language": "zh-CN",
+        "name": "shuzhi-mcp-assistant", "email": "shuzhi-mcp-assistant@shuzhi.com"
     })
     # session_user: UserModel = get_db_user(session=session, user_id=1)
     c = create_chat(session, session_user, CreateChat(origin=1), False)

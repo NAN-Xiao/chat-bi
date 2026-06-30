@@ -32,7 +32,7 @@ interface AppearanceState {
   fontList?: Array<{ name: string; id: string; isDefault: boolean }>
 }
 
-const DEFAULT_BRAND_NAME = '星通智数'
+const DEFAULT_BRAND_NAME = '星通数智'
 const DEFAULT_THEME_COLOR = '#2563EB'
 
 export const useAppearanceStore = defineStore('appearanceStore', {

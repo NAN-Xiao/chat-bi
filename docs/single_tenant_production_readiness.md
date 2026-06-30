@@ -39,10 +39,10 @@
 - 企业 owner/admin 已纳入本租户数据源管理员、Data Skills 管理员和自定义 Agent 管理员模型；普通成员默认可访问当前工作空间绑定数据源，访问范围受表/字段/行权限规则约束。
 - 数据源 Excel/CSV 临时导入文件已按租户目录隔离，避免共享 `EXCEL_PATH` 下通过文件名跨租户引用临时文件。
 - 登录失败限流支持 Redis，开发环境可回退进程内存；生产仍要求 `CACHE_TYPE=redis`。
-- 生产 PostgreSQL 备份脚本与 systemd timer 已提供：`deploy/scripts/zhishu-postgres-backup.sh`、
-  `deploy/systemd/zhishu-postgres-backup.service`、`deploy/systemd/zhishu-postgres-backup.timer`。
-- 生产日志轮转配置已提供：`deploy/logrotate/zhishu`，覆盖 `/opt/zhishu/logs/*.log`、
-  `/var/log/nginx/zhishu.*.log` 和 `/var/log/redis/zhishu-redis.log`。
+- 生产 PostgreSQL 备份脚本与 systemd timer 已提供：`deploy/scripts/shuzhi-postgres-backup.sh`、
+  `deploy/systemd/shuzhi-postgres-backup.service`、`deploy/systemd/shuzhi-postgres-backup.timer`。
+- 生产日志轮转配置已提供：`deploy/logrotate/shuzhi`，覆盖 `/opt/shuzhi/logs/*.log`、
+  `/var/log/nginx/shuzhi.*.log` 和 `/var/log/redis/shuzhi-redis.log`。
 - 全局异常处理隐藏 5xx 内部错误细节，并补充基础安全响应头。
 - ASK token 和 embedded token 不再信任未验签 payload 中的关键身份字段。
 - Excel/CSV 上传统一限制扩展名、文件名和最大大小，下载错误文件限制在指定目录内。
@@ -91,23 +91,23 @@ APP_ENV=production python -m scripts.db_migrate
 - 环境变量模板：`deploy/env.production.example`
 - Redis 模板：`deploy/redis/redis.production.conf.template`
 - Nginx 模板：`deploy/nginx/nginx.production.conf.template`
-- logrotate 模板：`deploy/logrotate/zhishu`
-- systemd API：`deploy/systemd/zhishu-api.service`
-- systemd API 多副本：`deploy/systemd/zhishu-api@.service`
-- systemd 数据库迁移：`deploy/systemd/zhishu-migrate.service`
-- systemd worker：`deploy/systemd/zhishu-worker.service`
-- systemd worker 多实例：`deploy/systemd/zhishu-worker@.service`
-- systemd PostgreSQL 备份：`deploy/systemd/zhishu-postgres-backup.service`
-- systemd PostgreSQL 定时器：`deploy/systemd/zhishu-postgres-backup.timer`
+- logrotate 模板：`deploy/logrotate/shuzhi`
+- systemd API：`deploy/systemd/shuzhi-api.service`
+- systemd API 多副本：`deploy/systemd/shuzhi-api@.service`
+- systemd 数据库迁移：`deploy/systemd/shuzhi-migrate.service`
+- systemd worker：`deploy/systemd/shuzhi-worker.service`
+- systemd worker 多实例：`deploy/systemd/shuzhi-worker@.service`
+- systemd PostgreSQL 备份：`deploy/systemd/shuzhi-postgres-backup.service`
+- systemd PostgreSQL 定时器：`deploy/systemd/shuzhi-postgres-backup.timer`
 
 ## 备份恢复
 
 本地 Windows 可继续使用 `tools/postgres-backup-local.ps1`。生产 Linux 使用
-`deploy/scripts/zhishu-postgres-backup.sh`，默认从 `/etc/zhishu/zhishu.env` 读取数据库连接信息。
+`deploy/scripts/shuzhi-postgres-backup.sh`，默认从 `/etc/shuzhi/shuzhi.env` 读取数据库连接信息。
 先确认环境变量中已配置：
 
 ```bash
-BACKUP_DIR=/var/backups/zhishu/postgres
+BACKUP_DIR=/var/backups/shuzhi/postgres
 BACKUP_RETENTION_DAYS=14
 PG_DUMP_BIN=pg_dump
 PG_RESTORE_BIN=pg_restore
@@ -116,26 +116,26 @@ PG_RESTORE_BIN=pg_restore
 部署时安装脚本和 timer：
 
 ```bash
-install -o root -g root -m 0755 deploy/scripts/zhishu-postgres-backup.sh /opt/zhishu/deploy/scripts/zhishu-postgres-backup.sh
-install -o root -g root -m 0644 deploy/systemd/zhishu-postgres-backup.service /etc/systemd/system/zhishu-postgres-backup.service
-install -o root -g root -m 0644 deploy/systemd/zhishu-postgres-backup.timer /etc/systemd/system/zhishu-postgres-backup.timer
-install -o zhishu -g zhishu -m 0700 -d /var/backups/zhishu/postgres
+install -o root -g root -m 0755 deploy/scripts/shuzhi-postgres-backup.sh /opt/shuzhi/deploy/scripts/shuzhi-postgres-backup.sh
+install -o root -g root -m 0644 deploy/systemd/shuzhi-postgres-backup.service /etc/systemd/system/shuzhi-postgres-backup.service
+install -o root -g root -m 0644 deploy/systemd/shuzhi-postgres-backup.timer /etc/systemd/system/shuzhi-postgres-backup.timer
+install -o shuzhi -g shuzhi -m 0700 -d /var/backups/shuzhi/postgres
 systemctl daemon-reload
 ```
 
 手动生成一次备份：
 
 ```bash
-systemctl start zhishu-postgres-backup.service
-systemctl status zhishu-postgres-backup.service --no-pager
-ls -lh /var/backups/zhishu/postgres
+systemctl start shuzhi-postgres-backup.service
+systemctl status shuzhi-postgres-backup.service --no-pager
+ls -lh /var/backups/shuzhi/postgres
 ```
 
 确认手动备份成功后再启用每天定时备份：
 
 ```bash
-systemctl enable --now zhishu-postgres-backup.timer
-systemctl list-timers zhishu-postgres-backup.timer
+systemctl enable --now shuzhi-postgres-backup.timer
+systemctl list-timers shuzhi-postgres-backup.timer
 ```
 
 恢复演练必须在非生产库执行：
@@ -144,11 +144,11 @@ systemctl list-timers zhishu-postgres-backup.timer
 PGPASSWORD="$POSTGRES_PASSWORD" "$PG_RESTORE_BIN" \
   -h 127.0.0.1 \
   -p 5432 \
-  -U zhishu \
-  -d zhishu_bi_restore \
+  -U shuzhi \
+  -d shuzhi_bi_restore \
   --clean \
   --if-exists \
-  /var/backups/zhishu/postgres/zhishu_bi-YYYYMMDDTHHMMSSZ.dump
+  /var/backups/shuzhi/postgres/shuzhi_bi-YYYYMMDDTHHMMSSZ.dump
 ```
 
 验收标准：
@@ -164,23 +164,23 @@ PGPASSWORD="$POSTGRES_PASSWORD" "$PG_RESTORE_BIN" \
 单机生产可以先跑 2-3 个 API 副本和 1-2 个 worker。示例：
 
 ```bash
-systemctl start zhishu-api@8000
-systemctl start zhishu-api@8002
-systemctl start zhishu-worker@1
-systemctl start zhishu-worker@2
+systemctl start shuzhi-api@8000
+systemctl start shuzhi-api@8002
+systemctl start shuzhi-worker@1
+systemctl start shuzhi-worker@2
 ```
 
 也可以继续使用固定单副本服务：
 
 ```bash
-systemctl start zhishu-api
-systemctl start zhishu-worker
+systemctl start shuzhi-api
+systemctl start shuzhi-worker
 ```
 
 验收动作：
 
 - Nginx upstream 至少配置两个 backend，`/ready` 连续访问都返回 `200`。
-- `AUTO_RUN_MIGRATIONS=false`，上线前只通过 `zhishu-migrate.service` 或 `python -m scripts.db_migrate` 执行一次迁移。
+- `AUTO_RUN_MIGRATIONS=false`，上线前只通过 `shuzhi-migrate.service` 或 `python -m scripts.db_migrate` 执行一次迁移。
 - `CACHE_TYPE=redis`，`/ready` 中 cache 状态为 `ok`。
 - 创建一个 `system.ping` 任务，worker 能消费并返回 `succeeded`。
 - 在任务 running 时停掉 worker，超过 `TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS` 后，新 worker 能恢复任务或按最大重试次数标记失败。
@@ -191,26 +191,26 @@ systemctl start zhishu-worker
 生产部署时安装 logrotate 配置：
 
 ```bash
-install -o root -g root -m 0644 deploy/logrotate/zhishu /etc/logrotate.d/zhishu
-logrotate -d /etc/logrotate.d/zhishu
+install -o root -g root -m 0644 deploy/logrotate/shuzhi /etc/logrotate.d/shuzhi
+logrotate -d /etc/logrotate.d/shuzhi
 ```
 
 确认路径与生产实际一致：
 
-- 应用日志：`/opt/zhishu/logs/*.log`，由后端 `LOG_DIR` 控制。
-- Nginx 日志：`/var/log/nginx/zhishu.access.log`、`/var/log/nginx/zhishu.error.log`。
-- Redis 日志：`/var/log/redis/zhishu-redis.log`。
+- 应用日志：`/opt/shuzhi/logs/*.log`，由后端 `LOG_DIR` 控制。
+- Nginx 日志：`/var/log/nginx/shuzhi.access.log`、`/var/log/nginx/shuzhi.error.log`。
+- Redis 日志：`/var/log/redis/shuzhi-redis.log`。
 
-上线验收时至少执行一次 dry-run；如果生产路径改过，要先调整 `deploy/logrotate/zhishu` 再安装。
+上线验收时至少执行一次 dry-run；如果生产路径改过，要先调整 `deploy/logrotate/shuzhi` 再安装。
 真实轮转由系统 logrotate 定时任务触发，也可以在维护窗口手动执行：
 
 ```bash
-logrotate -f /etc/logrotate.d/zhishu
+logrotate -f /etc/logrotate.d/shuzhi
 ```
 
 验收标准：
 
-- `logrotate -d /etc/logrotate.d/zhishu` 不报错。
+- `logrotate -d /etc/logrotate.d/shuzhi` 不报错。
 - 日志文件轮转后服务不需要重启，仍能继续写入当前日志。
 - 磁盘使用率纳入监控，备份目录和日志目录至少设置一个告警阈值。
 
@@ -224,7 +224,7 @@ logrotate -f /etc/logrotate.d/zhishu
 - 后端测试：`python -m pytest -q` 通过；前端：`npm run build` 通过。
 - 依赖审计：`npm audit --omit=dev` 和 `pip-audit` 无高危生产阻断漏洞。
 - 生产配置：`APP_ENV=production python scripts/production_check.py` 返回 `Production settings check passed.`。
-- 数据库迁移：`APP_ENV=production python -m scripts.db_migrate` 或 `systemctl start zhishu-migrate` 在启动 API 副本前成功完成，且 `AUTO_RUN_MIGRATIONS=false`。
+- 数据库迁移：`APP_ENV=production python -m scripts.db_migrate` 或 `systemctl start shuzhi-migrate` 在启动 API 副本前成功完成，且 `AUTO_RUN_MIGRATIONS=false`。
 - 健康检查：`GET /health` 返回 `200`；`GET /ready` 返回 `200`，且 cache 为 Redis `ok`。
 - Redis：`CACHE_TYPE=redis`，登录限流、租户限流、任务队列和任务状态均使用 Redis，不允许生产使用进程内存兜底。
 - 密钥：`SECRET_KEY`、`SENSITIVE_CONFIG_ENCRYPTION_KEY`、数据库密码、Redis 密码、模型 API Key 均来自生产环境变量，且不是开发默认值。
@@ -262,7 +262,7 @@ logrotate -f /etc/logrotate.d/zhishu
 - 停掉一个 worker 后，超时任务能恢复到 pending 或最终 failed。
 - 配置 `TASK_QUEUE_MAX_PENDING_PER_TENANT` 和 `TASK_QUEUE_MAX_PROCESSING_PER_TENANT`，验证单个租户不能占满队列或 worker。
 - PostgreSQL 备份文件实际生成，`.sha256` 校验通过，并恢复到非生产库成功。
-- `logrotate -d /etc/logrotate.d/zhishu` 通过，日志和备份目录有磁盘使用率告警。
+- `logrotate -d /etc/logrotate.d/shuzhi` 通过，日志和备份目录有磁盘使用率告警。
 - 应用、Nginx、Redis、PostgreSQL、worker 的日志纳入采集；至少配置 5xx、登录失败激增、Redis 不可用、worker 积压、磁盘空间、备份失败告警。
 
 ### P2 体验与限制验收

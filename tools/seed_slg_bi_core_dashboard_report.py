@@ -1,7 +1,7 @@
 """Create the SLG BI Mock core dashboard report.
 
 This script writes chart layout/configuration into the app system database
-(`zhishu_bi` from core ZHISHU_DB_* settings) and reads preview data from the detail-level
+(`zhishu_bi` from core SHUZHI_DB_* settings) and reads preview data from the detail-level
 tracking database (`slg_bi_mock` on 127.0.0.1:5432).
 
 It does not create aggregate tables, snapshot tables, or analysis views.

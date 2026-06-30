@@ -240,7 +240,7 @@ const modelTypeText = (row: Model) => {
 </script>
 
 <template>
-  <div class="zhishu-table-container professional-container">
+  <div class="shuzhi-table-container professional-container">
     <div class="tool-left">
       <span class="page-title">{{ t('model.ai_model_configuration') }}</span>
       <div class="search-bar">
@@ -380,7 +380,7 @@ const modelTypeText = (row: Model) => {
 </template>
 
 <style lang="less" scoped>
-.zhishu-table-container {
+.shuzhi-table-container {
   width: 100%;
   height: 100%;
   position: relative;

@@ -7,7 +7,7 @@ from common.core.config import settings
 from common.utils.utils import AppLogUtil
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
-_DEVELOPMENT_DEFAULT_PASSWORDS = {"Zhishu@123456", "elex@123"}
+_DEVELOPMENT_DEFAULT_PASSWORDS = {"Shuzhi@123456", "elex@123"}
 
 
 def _env_present(name: str) -> bool:
@@ -70,7 +70,7 @@ def validate_production_settings() -> list[str]:
             "AUTO_RUN_MIGRATIONS must be false in production; run database migrations as a separate release step."
         )
 
-    redis_url = settings.ZHISHU_REDIS_URL
+    redis_url = settings.SHUZHI_REDIS_URL
     if not settings.REDIS_PASSWORD and not _redis_url_has_auth(redis_url):
         errors.append("Redis must require authentication through REDIS_PASSWORD, REDIS_URL, or CACHE_REDIS_URL.")
 
@@ -90,8 +90,8 @@ def validate_production_settings() -> list[str]:
         errors.append("LOG_LEVEL must not be DEBUG in production.")
     if settings.SQL_DEBUG:
         errors.append("SQL_DEBUG must be false in production.")
-    if settings.ZHISHU_ALLOW_METADATA_QUERIES:
-        errors.append("ZHISHU_ALLOW_METADATA_QUERIES must stay false in production.")
+    if settings.SHUZHI_ALLOW_METADATA_QUERIES:
+        errors.append("SHUZHI_ALLOW_METADATA_QUERIES must stay false in production.")
     if settings.TASK_QUEUE_MAX_ATTEMPTS < 2:
         errors.append("TASK_QUEUE_MAX_ATTEMPTS should be at least 2 in production.")
     if settings.TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS <= 0:

@@ -4,7 +4,7 @@ import { request } from '@/utils/request.ts'
 import { formatArg } from '@/utils/utils.ts'
 
 interface ChatConfig {
-  zhishu_name: string
+  shuzhi_name: string
   expand_thinking_block: boolean
   limit_rows: boolean
   show_sql: boolean
@@ -14,7 +14,7 @@ interface ChatConfig {
 export const chatConfigStore = defineStore('chatConfigStore', {
   state: (): ChatConfig => {
     return {
-      zhishu_name: '星通智数',
+      shuzhi_name: '星通数智',
       expand_thinking_block: false,
       limit_rows: true,
       show_sql: true,
@@ -22,8 +22,8 @@ export const chatConfigStore = defineStore('chatConfigStore', {
     }
   },
   getters: {
-    getZhishuName(): string {
-      return this.zhishu_name
+    getShuzhiName(): string {
+      return this.shuzhi_name
     },
     getExpandThinkingBlock(): boolean {
       return this.expand_thinking_block
@@ -55,9 +55,9 @@ export const chatConfigStore = defineStore('chatConfigStore', {
             if (item.pkey === 'chat.limit_rows') {
               this.limit_rows = formatArg(item.pval)
             }
-            if (item.pkey === 'chat.zhishu_name') {
+            if (item.pkey === 'chat.shuzhi_name') {
               if (item.pval && item.pval.trim().length > 0) {
-                this.zhishu_name = item.pval
+                this.shuzhi_name = item.pval
               }
             }
           })

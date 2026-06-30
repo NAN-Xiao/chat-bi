@@ -2,7 +2,7 @@
 
 Targets:
 - BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
-- App system database: core ZHISHU_DB_* settings from the repo .env
+- App system database: core SHUZHI_DB_* settings from the repo .env
 
 This keeps the mock data at tracking/detail level:
 - dim_player.current_city_level describes each player's current main-city level;

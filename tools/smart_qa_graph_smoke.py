@@ -109,7 +109,7 @@ def _login(base_url: str, username: str, password: str) -> dict[str, str]:
     )
     response.raise_for_status()
     token = response.json()["data"]["access_token"]
-    return {"X-ZHISHU-TOKEN": f"Bearer {token}"}
+    return {"X-SHUZHI-TOKEN": f"Bearer {token}"}
 
 
 def _load_current_user(system_db_url: str, username: str) -> dict[str, Any]:
@@ -249,8 +249,8 @@ def _temporary_dynamic_assistant_fixture(
             response.raise_for_status()
             token = response.json()["data"]["token"]
             yield {
-                "X-ZHISHU-ASSISTANT-TOKEN": f"Assistant {token}",
-                "X-ZHISHU-ASSISTANT-CERTIFICATE": _assistant_certificate_header(),
+                "X-SHUZHI-ASSISTANT-TOKEN": f"Assistant {token}",
+                "X-SHUZHI-ASSISTANT-CERTIFICATE": _assistant_certificate_header(),
             }
         finally:
             with engine.begin() as connection:
@@ -630,7 +630,7 @@ def main() -> int:
     parser.add_argument("--system-db-url", default=DEFAULT_SYSTEM_DB_URL)
     parser.add_argument("--username", default="xiaonan")
     parser.add_argument("--password", default="elex@123")
-    parser.add_argument("--tenant-id", type=int, help="Optional X-ZHISHU-TENANT-ID header for workspace selection.")
+    parser.add_argument("--tenant-id", type=int, help="Optional X-SHUZHI-TENANT-ID header for workspace selection.")
     parser.add_argument("--case", action="append", choices=[case["name"] for case in DEFAULT_CASES])
     parser.add_argument("--datasource", type=int, help="Run one custom case against this datasource id.")
     parser.add_argument("--question", help="Run one custom case with this question.")
@@ -718,7 +718,7 @@ def main() -> int:
 
     with headers_context as headers, fixture_context:
         if args.tenant_id is not None and not args.dynamic_assistant_fixture:
-            headers["X-ZHISHU-TENANT-ID"] = str(args.tenant_id)
+            headers["X-SHUZHI-TENANT-ID"] = str(args.tenant_id)
         for case in cases:
             result = _run_case(
                 args.base_url,

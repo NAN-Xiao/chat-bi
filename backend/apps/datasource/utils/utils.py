@@ -6,7 +6,7 @@ from Crypto.Util.Padding import pad, unpad
 
 from common.utils.crypto import decrypt_sensitive_text, encrypt_sensitive_text, get_legacy_config_aes_keys
 
-key = b"Zhishu1234567890"
+key = b"Shuzhi1234567890"
 _FERNET_PREFIX = "fernet:v1:"
 
 

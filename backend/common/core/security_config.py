@@ -1,6 +1,6 @@
 """
 Security Configuration Module
-Centralized security settings and best practices for the 星通智数 application
+Centralized security settings and best practices for the 星通数智 application
 """
 
 from pydantic import BaseModel, Field

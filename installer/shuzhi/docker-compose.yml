@@ -1,0 +1,28 @@
+# Installer compose for evaluation/demo packages.
+#
+# Render conf/shuzhi.conf with strong private values before exposing this stack
+# outside a trusted test network. Production deployments should follow the
+# repository production baseline instead of relying on the all-in-one container
+# defaults.
+services:
+  shuzhi:
+    image: ${SHUZHI_IMAGE_REPOSITORY}:SHUZHI_TAG
+    container_name: shuzhi
+    restart: always
+    privileged: true
+    networks:
+      - shuzhi-network
+    ports:
+      - ${SHUZHI_WEB_PORT}:8000
+      - ${SHUZHI_MCP_PORT}:8001
+    env_file:
+      - conf/shuzhi.conf
+    volumes:
+      - ./data/shuzhi/excel:/opt/shuzhi/data/excel
+      - ./data/shuzhi/file:/opt/shuzhi/data/file
+      - ./data/shuzhi/images:/opt/shuzhi/images
+      - ./data/shuzhi/logs:/opt/shuzhi/app/logs
+      - ./data/postgresql:/var/lib/postgresql/data
+
+networks:
+  shuzhi-network:

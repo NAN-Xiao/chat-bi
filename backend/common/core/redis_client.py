@@ -25,8 +25,8 @@ def _format_host(host: str) -> str:
 
 
 def build_redis_url() -> str:
-    if settings.ZHISHU_REDIS_URL:
-        return settings.ZHISHU_REDIS_URL
+    if settings.SHUZHI_REDIS_URL:
+        return settings.SHUZHI_REDIS_URL
 
     scheme = "rediss" if settings.REDIS_SSL else "redis"
     auth = ""
@@ -35,8 +35,8 @@ def build_redis_url() -> str:
     elif settings.REDIS_PASSWORD:
         auth = f":{_quote(settings.REDIS_PASSWORD)}@"
 
-    host = _format_host(settings.ZHISHU_REDIS_HOST)
-    port = settings.ZHISHU_REDIS_PORT
+    host = _format_host(settings.SHUZHI_REDIS_HOST)
+    port = settings.SHUZHI_REDIS_PORT
     return f"{scheme}://{auth}{host}:{port}/{settings.REDIS_DB}"
 
 

@@ -2,7 +2,7 @@
 
 Targets:
 - BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
-- App system database: core ZHISHU_DB_* settings from the repo .env
+- App system database: core SHUZHI_DB_* settings from the repo .env
 
 The dataset stays at tracking/detail level. New-user, channel, OS, retention,
 and first-day payment metrics are computed from dim_player, fact_sessions,

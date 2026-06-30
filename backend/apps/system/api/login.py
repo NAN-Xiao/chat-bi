@@ -18,7 +18,7 @@ from common.core.config import settings
 from common.core.deps import SessionDep, Trans
 from common.core.schemas import Token
 from common.core.security import create_access_token
-from common.utils.crypto import zhishu_decrypt
+from common.utils.crypto import shuzhi_decrypt
 
 from ..crud.user import authenticate
 
@@ -26,7 +26,7 @@ router = APIRouter(tags=["login"], prefix="/login")
 
 
 def _requested_tenant_id(request: Request) -> int | None:
-    raw = request.headers.get("X-ZHISHU-TENANT-ID")
+    raw = request.headers.get("X-SHUZHI-TENANT-ID")
     if not raw:
         return None
     try:
@@ -46,8 +46,8 @@ async def local_login(
     request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> Token:
-    origin_account = await zhishu_decrypt(form_data.username)
-    origin_pwd = await zhishu_decrypt(form_data.password)
+    origin_account = await shuzhi_decrypt(form_data.username)
+    origin_pwd = await shuzhi_decrypt(form_data.password)
     user: BaseUserDTO = authenticate(session=session, account=origin_account, password=origin_pwd)
     if not user:
         raise HTTPException(status_code=400, detail=trans('i18n_login.account_pwd_error'))
