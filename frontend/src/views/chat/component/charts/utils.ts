@@ -38,6 +38,24 @@ const AVERAGE_KEYWORDS = [
   '客单',
 ]
 
+const CJK_IDENTIFIER_PATTERN =
+  /(账号|账户|用户|玩家|角色|区服|服务器|订单|商品|产品|渠道|设备|会话|事件|项目|记录|租户|工作空间)\s*id/i
+
+const CJK_IDENTIFIER_KEYWORDS = [
+  '编号',
+  '编码',
+  '代码',
+  '号码',
+  '单号',
+  '序列号',
+  '标识',
+]
+
+const EN_IDENTIFIER_TOKEN_PATTERN =
+  /(^|[\s_.:/-])(id|uid|uuid|guid|code|key|no)([\s_.:/-]|$)/i
+
+const EN_IDENTIFIER_SUFFIX_PATTERN = /(Id|ID|Uid|UID|UUID|Guid|GUID|Code|Key|No)$/
+
 /**
  * 为数值添加千分符，保持原有小数位数不变
  * 纯字符串处理，避免精度丢失
@@ -69,6 +87,32 @@ export function formatNumber(value: any): string | number {
   const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
   return sign + formattedInt + decPart
+}
+
+export function isIdentifierAxis(axis?: Pick<ChartAxis, 'name' | 'value'> | null): boolean {
+  const label = axisLabel(axis)
+  const value = String(axis?.value || '').trim()
+  const text = `${label} ${value}`
+
+  if (CJK_IDENTIFIER_PATTERN.test(text)) {
+    return true
+  }
+
+  if (CJK_IDENTIFIER_KEYWORDS.some((keyword) => text.includes(keyword))) {
+    return true
+  }
+
+  return EN_IDENTIFIER_TOKEN_PATTERN.test(text) || EN_IDENTIFIER_SUFFIX_PATTERN.test(value)
+}
+
+export function formatValueByAxis(
+  value: any,
+  axis?: Pick<ChartAxis, 'name' | 'value'> | null
+): string | number {
+  if (isIdentifierAxis(axis)) {
+    return value
+  }
+  return formatNumber(value)
 }
 
 export function toNumber(value: any): number {

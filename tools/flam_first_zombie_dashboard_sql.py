@@ -444,9 +444,9 @@ WITH pay_users AS (
     LEFT JOIN baseline b ON b.uid = l.uid
     WHERE GREATEST(l.paytotal - COALESCE(b.paytotal, 0), 0) > 0
 )
-SELECT uid AS `账号ID`,
+SELECT CAST(uid AS CHAR) AS `账号ID`,
        channel_name AS `来源渠道`,
-       server_id AS `区服ID`,
+       CAST(server_id AS CHAR) AS `区服ID`,
        pay_amount AS `付费总额`
 FROM ranked
 ORDER BY pay_amount DESC
