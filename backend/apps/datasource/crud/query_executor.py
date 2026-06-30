@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import time
 from typing import Any
 
 from apps.datasource.crud.permission import (
@@ -35,6 +36,7 @@ class QueryExecutionResult:
     requested_sql: str
     executed_sql: str
     tables: set[str]
+    execution_time_ms: int
 
 
 def _failed_query_result(message: str, error_type: str | None = None) -> dict[str, Any]:
@@ -221,12 +223,14 @@ def execute_user_query_or_raise(
             session.rollback()
         except Exception as exc:
             AppLogUtil.warning(f"Failed to close system DB read transaction before datasource query: {exc}")
+    started_at = time.perf_counter()
     result = _unsafe_exec_sql_after_validation(
         ds=datasource_for_query,
         sql=executed_sql,
         origin_column=origin_column,
         query_timeout=query_timeout,
     )
+    execution_time_ms = int((time.perf_counter() - started_at) * 1000)
     result = _normalize_query_result(result, origin_column)
     return QueryExecutionResult(
         result=result,
@@ -234,6 +238,7 @@ def execute_user_query_or_raise(
         requested_sql=sql,
         executed_sql=executed_sql,
         tables=tables,
+        execution_time_ms=execution_time_ms,
     )
 
 
@@ -287,7 +292,9 @@ def execute_external_user_query_or_raise(
         raise ValueError("SQL 解析失败，无法确认查询表范围")
     _validate_allowed_tables(actual_tables, allowed_tables)
 
+    started_at = time.perf_counter()
     result = _unsafe_exec_sql_after_validation(ds=datasource, sql=sql, origin_column=origin_column)
+    execution_time_ms = int((time.perf_counter() - started_at) * 1000)
     result = _normalize_query_result(result, origin_column)
     return QueryExecutionResult(
         result=result,
@@ -295,6 +302,7 @@ def execute_external_user_query_or_raise(
         requested_sql=scope_sql or sql,
         executed_sql=sql,
         tables=actual_tables,
+        execution_time_ms=execution_time_ms,
     )
 
 
@@ -310,6 +318,7 @@ def execute_user_query(
         validate_columns: bool = True,
         query_timeout: int | None = None,
         close_system_transaction_before_query: bool = False,
+        include_execution_meta: bool = False,
 ) -> dict[str, Any]:
     """
     是什么：execute_user_query 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
@@ -338,13 +347,21 @@ def execute_user_query(
             query_timeout=query_timeout,
             close_system_transaction_before_query=close_system_transaction_before_query,
         )
-        return {
+        result = {
             "status": "success",
             "fields": query_result.result.get("fields", []),
             "data": query_result.result.get("data", []),
             "message": "",
             "sql": query_result.result.get("sql"),
         }
+        if include_execution_meta:
+            result["_execution_meta"] = {
+                "requested_sql": query_result.requested_sql,
+                "executed_sql": query_result.executed_sql,
+                "execution_time_ms": query_result.execution_time_ms,
+                "tables": sorted(query_result.tables),
+            }
+        return result
     except Exception as exc:
         AppLogUtil.error(f"User query execution failed: {exc}")
         message = safe_query_error_message(current_user, f"{exc}")
