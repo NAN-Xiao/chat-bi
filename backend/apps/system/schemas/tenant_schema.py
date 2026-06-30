@@ -1,9 +1,15 @@
+"""
+脚本说明：这个脚本定义系统管理的输入输出结构，帮接口和业务代码统一数据格式。
+"""
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class TenantDTO(BaseModel):
+    """
+    类说明：TenantDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: int
     public_id: str
     name: str
@@ -35,6 +41,9 @@ class TenantDTO(BaseModel):
 
 
 class TenantSearchDTO(BaseModel):
+    """
+    类说明：TenantSearchDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: int
     public_id: str
     name: str
@@ -45,6 +54,9 @@ class TenantSearchDTO(BaseModel):
 
 
 class TenantCreator(BaseModel):
+    """
+    类说明：TenantCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     name: str = Field(min_length=1, max_length=255)
     plan: str = Field(default="default", max_length=64)
     subscription_status: str = Field(default="active", max_length=32)
@@ -63,6 +75,9 @@ class TenantCreator(BaseModel):
 
 
 class TenantEditor(BaseModel):
+    """
+    类说明：TenantEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     name: str = Field(min_length=1, max_length=255)
     plan: str = Field(default="default", max_length=64)
     subscription_status: str = Field(default="active", max_length=32)
@@ -77,19 +92,31 @@ class TenantEditor(BaseModel):
 
 
 class TenantStatus(BaseModel):
+    """
+    类说明：TenantStatus 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     status: int = Field(ge=0, le=1)
 
 
 class TenantDatasourceBindingEditor(BaseModel):
+    """
+    类说明：TenantDatasourceBindingEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     datasource_id: Optional[int] = None
 
 
 class TenantOwnerTransfer(BaseModel):
+    """
+    类说明：TenantOwnerTransfer 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     target_user_id: int = Field(gt=0)
     reason: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TenantOwnerCandidateDTO(BaseModel):
+    """
+    类说明：TenantOwnerCandidateDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     user_id: int
     account: str
     name: Optional[str] = None
@@ -99,6 +126,9 @@ class TenantOwnerCandidateDTO(BaseModel):
 
 
 class TenantApplicationCreator(BaseModel):
+    """
+    类说明：TenantApplicationCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     model_config = ConfigDict(extra="forbid")
 
     application_type: Literal["create", "join"] = "create"
@@ -109,17 +139,26 @@ class TenantApplicationCreator(BaseModel):
 
 
 class TenantInvitationCreator(BaseModel):
+    """
+    类说明：TenantInvitationCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     account: str = Field(min_length=1, max_length=100)
     requested_role: Literal["admin", "member"] = "member"
     reason: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TenantApplicationReview(BaseModel):
+    """
+    类说明：TenantApplicationReview 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     approved: bool
     review_comment: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TenantApplicationDTO(BaseModel):
+    """
+    类说明：TenantApplicationDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: int
     application_type: str = "create"
     applicant_user_id: int
@@ -145,16 +184,25 @@ class TenantApplicationDTO(BaseModel):
 
 
 class TenantDomainCreator(BaseModel):
+    """
+    类说明：TenantDomainCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     domain: str = Field(min_length=3, max_length=255)
     auto_join_role: Literal["admin", "member"] = "member"
 
 
 class TenantDomainReview(BaseModel):
+    """
+    类说明：TenantDomainReview 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     status: Literal["verified", "disabled"]
     auto_join_role: Literal["admin", "member"] = "member"
 
 
 class TenantDomainDTO(BaseModel):
+    """
+    类说明：TenantDomainDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: int
     tenant_id: int
     domain: str
@@ -168,11 +216,17 @@ class TenantDomainDTO(BaseModel):
 
 
 class TenantSecurityPolicyEditor(BaseModel):
+    """
+    类说明：TenantSecurityPolicyEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     sso_required: bool = False
     session_timeout_minutes: Optional[int] = Field(default=None, ge=5, le=10080)
 
 
 class TenantSecurityPolicyDTO(TenantSecurityPolicyEditor):
+    """
+    类说明：TenantSecurityPolicyDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: Optional[int] = None
     tenant_id: int
     create_time: int = 0
@@ -180,6 +234,9 @@ class TenantSecurityPolicyDTO(TenantSecurityPolicyEditor):
 
 
 class TenantTrackingTableBase(BaseModel):
+    """
+    类说明：TenantTrackingTableBase 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     table_name: str = Field(min_length=1, max_length=255)
     table_comment: Optional[str] = Field(default=None, max_length=4000)
     table_role: Optional[str] = Field(default=None, max_length=64)
@@ -188,6 +245,9 @@ class TenantTrackingTableBase(BaseModel):
 
 
 class TenantTrackingTableDTO(TenantTrackingTableBase):
+    """
+    类说明：TenantTrackingTableDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: Optional[int] = None
     tenant_id: int = 0
     create_by: Optional[int] = None
@@ -197,6 +257,9 @@ class TenantTrackingTableDTO(TenantTrackingTableBase):
 
 
 class TenantTrackingFieldBase(BaseModel):
+    """
+    类说明：TenantTrackingFieldBase 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     table_name: str = Field(min_length=1, max_length=255)
     field_name: str = Field(min_length=1, max_length=255)
     field_comment: Optional[str] = Field(default=None, max_length=4000)
@@ -211,6 +274,9 @@ class TenantTrackingFieldBase(BaseModel):
 
 
 class TenantTrackingFieldDTO(TenantTrackingFieldBase):
+    """
+    类说明：TenantTrackingFieldDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: Optional[int] = None
     tenant_id: int = 0
     create_by: Optional[int] = None
@@ -220,6 +286,9 @@ class TenantTrackingFieldDTO(TenantTrackingFieldBase):
 
 
 class TenantTrackingConfigBase(BaseModel):
+    """
+    类说明：TenantTrackingConfigBase 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     enabled: bool = True
     default_event_table: Optional[str] = Field(default=None, max_length=255)
     default_subject_field: Optional[str] = Field(default=None, max_length=255)
@@ -234,10 +303,16 @@ class TenantTrackingConfigBase(BaseModel):
 
 
 class TenantTrackingConfigEditor(TenantTrackingConfigBase):
+    """
+    类说明：TenantTrackingConfigEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     pass
 
 
 class TenantTrackingConfigDTO(TenantTrackingConfigBase):
+    """
+    类说明：TenantTrackingConfigDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: Optional[int] = None
     tenant_id: int
     tables: list[TenantTrackingTableDTO] = Field(default_factory=list)
@@ -249,20 +324,32 @@ class TenantTrackingConfigDTO(TenantTrackingConfigBase):
 
 
 class TenantDataRequestCreator(BaseModel):
+    """
+    类说明：TenantDataRequestCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     request_type: Literal["cancel", "export", "delete"]
     reason: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TenantDataRequestReview(BaseModel):
+    """
+    类说明：TenantDataRequestReview 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     approved: bool
     review_comment: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TenantDataRequestComplete(BaseModel):
+    """
+    类说明：TenantDataRequestComplete 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     complete_comment: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TenantDataRequestDTO(BaseModel):
+    """
+    类说明：TenantDataRequestDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: int
     tenant_id: int
     request_type: str
@@ -280,12 +367,18 @@ class TenantDataRequestDTO(BaseModel):
 
 
 class TenantBulkInviteCreator(BaseModel):
+    """
+    类说明：TenantBulkInviteCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     accounts: list[str] = Field(min_length=1, max_length=200)
     requested_role: Literal["admin", "member"] = "member"
     reason: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TenantBulkInviteResult(BaseModel):
+    """
+    类说明：TenantBulkInviteResult 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     account: str
     status: str
     message: Optional[str] = None
@@ -293,6 +386,9 @@ class TenantBulkInviteResult(BaseModel):
 
 
 class TenantMemberDTO(BaseModel):
+    """
+    类说明：TenantMemberDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     user_id: int
     account: str
     name: Optional[str] = None
@@ -305,6 +401,9 @@ class TenantMemberDTO(BaseModel):
 
 
 class TenantMemberCreator(BaseModel):
+    """
+    类说明：TenantMemberCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     account: str = Field(min_length=1, max_length=100)
     member_remark: Optional[str] = Field(default=None, max_length=255)
     tenant_role: Literal["admin", "member"] = "member"
@@ -313,6 +412,9 @@ class TenantMemberCreator(BaseModel):
 
 
 class TenantMemberEditor(BaseModel):
+    """
+    类说明：TenantMemberEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     member_remark: Optional[str] = Field(default=None, max_length=255)
     tenant_role: Literal["admin", "member"] = "member"
     project_ids: Optional[list[int]] = None
@@ -320,11 +422,17 @@ class TenantMemberEditor(BaseModel):
 
 
 class TenantBulkMemberCreator(BaseModel):
+    """
+    类说明：TenantBulkMemberCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     accounts: list[str] = Field(min_length=1, max_length=200)
     tenant_role: Literal["admin", "member"] = "member"
 
 
 class TenantBulkMemberResult(BaseModel):
+    """
+    类说明：TenantBulkMemberResult 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     account: str
     status: str
     message: Optional[str] = None
@@ -332,6 +440,9 @@ class TenantBulkMemberResult(BaseModel):
 
 
 class TenantOverviewSummaryDTO(BaseModel):
+    """
+    类说明：TenantOverviewSummaryDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     member_total: int = 0
     active_member_count: int = 0
     datasource_total: int = 0
@@ -340,6 +451,9 @@ class TenantOverviewSummaryDTO(BaseModel):
 
 
 class TenantOverviewTrendPointDTO(BaseModel):
+    """
+    类说明：TenantOverviewTrendPointDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     date: str
     active_member_count: int = 0
     activity_count: int = 0
@@ -347,16 +461,25 @@ class TenantOverviewTrendPointDTO(BaseModel):
 
 
 class TenantOverviewAssetItemDTO(BaseModel):
+    """
+    类说明：TenantOverviewAssetItemDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     key: str
     count: int = 0
 
 
 class TenantOverviewRoleItemDTO(BaseModel):
+    """
+    类说明：TenantOverviewRoleItemDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     role: str
     count: int = 0
 
 
 class TenantOverviewTodoDTO(BaseModel):
+    """
+    类说明：TenantOverviewTodoDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     key: str
     level: str = "normal"
     count: Optional[int] = None
@@ -364,6 +487,9 @@ class TenantOverviewTodoDTO(BaseModel):
 
 
 class TenantOverviewEventDTO(BaseModel):
+    """
+    类说明：TenantOverviewEventDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: str
     title: str
     description: Optional[str] = None
@@ -374,6 +500,9 @@ class TenantOverviewEventDTO(BaseModel):
 
 
 class TenantOverviewMemberActivityDTO(BaseModel):
+    """
+    类说明：TenantOverviewMemberActivityDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     user_id: int
     account: Optional[str] = None
     name: Optional[str] = None
@@ -382,6 +511,9 @@ class TenantOverviewMemberActivityDTO(BaseModel):
 
 
 class TenantOverviewDTO(BaseModel):
+    """
+    类说明：TenantOverviewDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     tenant_id: int
     tenant_public_id: Optional[str] = None
     tenant_name: str
@@ -396,6 +528,9 @@ class TenantOverviewDTO(BaseModel):
 
 
 class PlatformOverviewSummaryDTO(BaseModel):
+    """
+    类说明：PlatformOverviewSummaryDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     tenant_total: int = 0
     active_tenant_count: int = 0
     disabled_tenant_count: int = 0
@@ -424,6 +559,9 @@ class PlatformOverviewSummaryDTO(BaseModel):
 
 
 class PlatformOverviewTrendPointDTO(BaseModel):
+    """
+    类说明：PlatformOverviewTrendPointDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     date: str
     tenant_created_count: int = 0
     user_created_count: int = 0
@@ -434,12 +572,18 @@ class PlatformOverviewTrendPointDTO(BaseModel):
 
 
 class PlatformOverviewDistributionItemDTO(BaseModel):
+    """
+    类说明：PlatformOverviewDistributionItemDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     key: str
     label: Optional[str] = None
     count: int = 0
 
 
 class PlatformOverviewTenantUsageDTO(BaseModel):
+    """
+    类说明：PlatformOverviewTenantUsageDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     tenant_id: int
     tenant_public_id: Optional[str] = None
     tenant_name: Optional[str] = None
@@ -449,6 +593,9 @@ class PlatformOverviewTenantUsageDTO(BaseModel):
 
 
 class PlatformOverviewModelUsageDTO(BaseModel):
+    """
+    类说明：PlatformOverviewModelUsageDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     model_id: Optional[int] = None
     model_name: str
     request_count: int = 0
@@ -456,6 +603,9 @@ class PlatformOverviewModelUsageDTO(BaseModel):
 
 
 class PlatformOverviewRecentTenantDTO(BaseModel):
+    """
+    类说明：PlatformOverviewRecentTenantDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: int
     public_id: str
     name: str
@@ -468,6 +618,9 @@ class PlatformOverviewRecentTenantDTO(BaseModel):
 
 
 class PlatformOverviewDTO(BaseModel):
+    """
+    类说明：PlatformOverviewDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     days: int = 7
     summary: PlatformOverviewSummaryDTO
     tenant_trend: list[PlatformOverviewTrendPointDTO] = []

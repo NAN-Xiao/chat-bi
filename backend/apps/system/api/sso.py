@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from apps.system.crud.feishu_sso import (
@@ -29,9 +32,9 @@ admin_router = APIRouter(tags=["system_authentication"], prefix="/system/auth/fe
 
 def _requested_tenant_id(request: Request, state_payload: dict | None = None) -> int | None:
     """
-    是什么：_requested_tenant_id 是 backend/apps/system/api/sso.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _requested_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_requested_tenant_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     state_tenant_id = (state_payload or {}).get("tenant_id")
     if state_tenant_id:
@@ -52,9 +55,9 @@ async def feishu_login_status(
     tenant_id: int | None = Query(default=None),
 ) -> FeishuLoginStatusDTO:
     """
-    是什么：feishu_login_status 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 feishu_login_status 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：feishu_login_status 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     authorize_url = build_feishu_authorize_url(session, redirect=redirect, tenant_id=tenant_id)
     return FeishuLoginStatusDTO(enabled=bool(authorize_url), authorize_url=authorize_url)
@@ -67,9 +70,9 @@ async def feishu_login_callback(
     callback: FeishuCallbackRequest,
 ) -> Token:
     """
-    是什么：feishu_login_callback 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 feishu_login_callback 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：feishu_login_callback 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         state_payload = parse_feishu_state(callback.state)
@@ -109,9 +112,9 @@ async def feishu_login_callback(
 @require_permissions(permission=AppPermission(role=["platform_admin"]))
 async def get_feishu_config(session: SessionDep) -> FeishuSsoConfigDTO:
     """
-    是什么：get_feishu_config 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_feishu_config 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     return get_feishu_sso_config(session)
 
@@ -120,8 +123,8 @@ async def get_feishu_config(session: SessionDep) -> FeishuSsoConfigDTO:
 @require_permissions(permission=AppPermission(role=["platform_admin"]))
 async def save_feishu_config(session: SessionDep, editor: FeishuSsoConfigEditor) -> FeishuSsoConfigDTO:
     """
-    是什么：save_feishu_config 是 backend/apps/system/api/sso.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：save_feishu_config 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     return upsert_feishu_sso_config(session, editor)

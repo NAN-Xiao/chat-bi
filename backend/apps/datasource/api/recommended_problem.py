@@ -1,4 +1,7 @@
-﻿from fastapi import APIRouter
+﻿"""
+脚本说明：这个脚本放数据源的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
+from fastapi import APIRouter
 
 from fastapi import Depends, HTTPException
 
@@ -25,9 +28,9 @@ router = APIRouter(
 @require_permissions(permission=AppPermission(type='ds', keyExpression="ds_id"))
 async def datasource_recommended(session: SessionDep, _user: CurrentUser, ds_id: int):
     """
-    是什么：datasource_recommended 是 backend/apps/datasource/api/recommended_problem.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 datasource_recommended 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_recommended 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return get_datasource_recommended(session, ds_id)
 
@@ -36,9 +39,9 @@ async def datasource_recommended(session: SessionDep, _user: CurrentUser, ds_id:
 @require_permissions(permission=AppPermission(type='ds', keyExpression="ds_id"))
 async def datasource_recommended(session: SessionDep, _user: CurrentUser, ds_id: int):
     """
-    是什么：datasource_recommended 是 backend/apps/datasource/api/recommended_problem.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 datasource_recommended 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_recommended 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return get_datasource_recommended_base(session, ds_id)
 
@@ -50,9 +53,9 @@ async def datasource_recommended(session: SessionDep, _user: CurrentUser, ds_id:
               resource_id_expr="data_info.datasource_id"))
 async def datasource_recommended(session: SessionDep, user: CurrentUser, data_info: RecommendedProblemBase):
     """
-    是什么：datasource_recommended 是 backend/apps/datasource/api/recommended_problem.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 datasource_recommended 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_recommended 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not has_datasource_access(session, user, data_info.datasource_id):
         raise HTTPException(status_code=404, detail="项目不存在")

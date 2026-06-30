@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义操作日志的输入输出结构，帮接口和业务代码统一数据格式。
+"""
 from sqlalchemy import select, func
 from sqlalchemy.sql import Select
 from sqlalchemy import String, column, table, union_all
@@ -14,9 +17,9 @@ from sqlalchemy import literal_column
 
 def build_resource_union_query() -> Select:
     """
-    是什么：build_resource_union_query 是 backend/common/audit/schemas/log_utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装审计日志相关对象和数据，并返回或写入对应状态。
+    是什么：build_resource_union_query 是一个可以复用的小步骤，负责操作日志相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存操作日志需要的东西，让后续流程能继续往下走。
     """
     # 创建各个子查询，每个查询都包含模块字段
 

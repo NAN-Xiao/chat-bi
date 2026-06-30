@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import base64
 from hashlib import sha256
 
@@ -17,9 +20,9 @@ _AES_KEY_SIZES = {16, 24, 32}
 
 def _encryption_secret() -> str:
     """
-    是什么：_encryption_secret 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _encryption_secret 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_encryption_secret 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return (
         settings.SENSITIVE_CONFIG_ENCRYPTION_KEY
@@ -30,9 +33,9 @@ def _encryption_secret() -> str:
 
 def _fernet() -> Fernet:
     """
-    是什么：_fernet 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _fernet 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_fernet 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     derived = base64.urlsafe_b64encode(sha256(_encryption_secret().encode("utf-8")).digest())
     return Fernet(derived)
@@ -40,9 +43,9 @@ def _fernet() -> Fernet:
 
 def _legacy_ecb_encrypt(text: str) -> str:
     """
-    是什么：_legacy_ecb_encrypt 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _legacy_ecb_encrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_legacy_ecb_encrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     cipher = AES.new(_AES_KEY, AES.MODE_ECB)
     encrypted = cipher.encrypt(pad((text or "").encode("utf-8"), AES.block_size))
@@ -51,18 +54,18 @@ def _legacy_ecb_encrypt(text: str) -> str:
 
 def _valid_aes_key(key: bytes) -> bytes | None:
     """
-    是什么：_valid_aes_key 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _valid_aes_key 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_valid_aes_key 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return key if len(key) in _AES_KEY_SIZES else None
 
 
 def _decode_legacy_key_token(token: str) -> bytes | None:
     """
-    是什么：_decode_legacy_key_token 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _decode_legacy_key_token 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_decode_legacy_key_token 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if token.startswith("base64:"):
         try:
@@ -95,9 +98,9 @@ def _decode_legacy_key_token(token: str) -> bytes | None:
 
 def get_legacy_config_aes_keys() -> tuple[bytes, ...]:
     """
-    是什么：get_legacy_config_aes_keys 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询通用工具相关数据，整理后返回给调用方。
+    是什么：get_legacy_config_aes_keys 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具需要的数据找出来，整理成后面好用的样子。
     """
     raw_value = settings.LEGACY_CONFIG_AES_KEYS or ""
     keys: list[bytes] = list(_BUILTIN_LEGACY_AES_KEYS)
@@ -113,9 +116,9 @@ def get_legacy_config_aes_keys() -> tuple[bytes, ...]:
 
 def _legacy_ecb_decrypt_with_key(text: str, key: bytes) -> str:
     """
-    是什么：_legacy_ecb_decrypt_with_key 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _legacy_ecb_decrypt_with_key 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_legacy_ecb_decrypt_with_key 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     cipher = AES.new(key, AES.MODE_ECB)
     decrypted = cipher.decrypt(base64.b64decode(text))
@@ -124,9 +127,9 @@ def _legacy_ecb_decrypt_with_key(text: str, key: bytes) -> str:
 
 def _legacy_ecb_decrypt(text: str) -> str:
     """
-    是什么：_legacy_ecb_decrypt 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _legacy_ecb_decrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_legacy_ecb_decrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return _legacy_ecb_decrypt_with_key(text, _AES_KEY)
@@ -141,9 +144,9 @@ def _legacy_ecb_decrypt(text: str) -> str:
 
 def encrypt_sensitive_text(text: str | None) -> str | None:
     """
-    是什么：encrypt_sensitive_text 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 encrypt_sensitive_text 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：encrypt_sensitive_text 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if text is None:
         return None
@@ -159,9 +162,9 @@ def encrypt_sensitive_text(text: str | None) -> str | None:
 
 def decrypt_sensitive_text(text: str | None) -> str | None:
     """
-    是什么：decrypt_sensitive_text 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 decrypt_sensitive_text 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：decrypt_sensitive_text 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if text is None:
         return None
@@ -184,35 +187,35 @@ def decrypt_sensitive_text(text: str | None) -> str | None:
 
 def shuzhi_decrypt_sync(text: str | None) -> str | None:
     """
-    是什么：shuzhi_decrypt_sync 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 shuzhi_decrypt_sync 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：shuzhi_decrypt_sync 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return decrypt_sensitive_text(text)
 
 
 async def shuzhi_decrypt(text: str | None) -> str | None:
     """
-    是什么：shuzhi_decrypt 是 backend/common/utils/crypto.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 shuzhi_decrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：shuzhi_decrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return shuzhi_decrypt_sync(text)
 
 
 async def shuzhi_encrypt(text: str | None) -> str | None:
     """
-    是什么：shuzhi_encrypt 是 backend/common/utils/crypto.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 shuzhi_encrypt 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：shuzhi_encrypt 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return encrypt_sensitive_text(text)
 
 
 def legacy_shuzhi_encrypt_for_tests(text: str) -> str:
     """
-    是什么：legacy_shuzhi_encrypt_for_tests 是 backend/common/utils/crypto.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 legacy_shuzhi_encrypt_for_tests 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：legacy_shuzhi_encrypt_for_tests 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _legacy_ecb_encrypt(text)

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 from typing import Any
 
 
@@ -12,9 +15,9 @@ PERMISSION_DENIED_AGENT_GUIDANCE = (
 
 def looks_like_permission_scope_error(message: str) -> bool:
     """
-    是什么：looks_like_permission_scope_error 是 backend/apps/datasource/crud/permission_errors.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 looks_like_permission_scope_error 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：looks_like_permission_scope_error 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     text = str(message or "").lower()
     return any(marker in text for marker in (
@@ -35,9 +38,9 @@ def looks_like_permission_scope_error(message: str) -> bool:
 
 def permission_denied_result(message: str = PERMISSION_DENIED_RESULT_MESSAGE) -> dict[str, Any]:
     """
-    是什么：permission_denied_result 是 backend/apps/datasource/crud/permission_errors.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 permission_denied_result 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：permission_denied_result 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return {
         "status": "failed",

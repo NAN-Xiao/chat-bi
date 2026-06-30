@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 import datetime
 import json
 from types import SimpleNamespace
@@ -52,18 +55,18 @@ ds_permission_table = Table(
 
 def _now() -> datetime.datetime:
     """
-    是什么：_now 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _now 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_now 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return datetime.datetime.now()
 
 
 def _row_to_obj(row: Any) -> SimpleNamespace | None:
     """
-    是什么：_row_to_obj 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _row_to_obj 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_row_to_obj 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if row is None:
         return None
@@ -72,9 +75,9 @@ def _row_to_obj(row: Any) -> SimpleNamespace | None:
 
 def _parse_json(value: Any, fallback: Any) -> Any:
     """
-    是什么：_parse_json 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：_parse_json 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if value in (None, ""):
         return fallback
@@ -88,9 +91,9 @@ def _parse_json(value: Any, fallback: Any) -> Any:
 
 def parse_json_list(value: Any) -> list:
     """
-    是什么：parse_json_list 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：parse_json_list 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     parsed = _parse_json(value, [])
     return parsed if isinstance(parsed, list) else []
@@ -98,9 +101,9 @@ def parse_json_list(value: Any) -> list:
 
 def _json_text(value: Any, fallback: Any) -> str:
     """
-    是什么：_json_text 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _json_text 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_json_text 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parsed = _parse_json(value, fallback)
     return json.dumps(parsed, ensure_ascii=False)
@@ -108,9 +111,9 @@ def _json_text(value: Any, fallback: Any) -> str:
 
 def normalize_rule_scope(value: Any) -> str:
     """
-    是什么：normalize_rule_scope 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：normalize_rule_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     normalized = str(value or RULE_SCOPE_TENANT).strip().upper()
     return normalized if normalized in RULE_SCOPES else RULE_SCOPE_TENANT
@@ -118,9 +121,9 @@ def normalize_rule_scope(value: Any) -> str:
 
 def _rule_tenant_id(value: Any) -> int:
     """
-    是什么：_rule_tenant_id 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rule_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_tenant_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return int(value or DEFAULT_RULE_TENANT_ID)
@@ -130,9 +133,9 @@ def _rule_tenant_id(value: Any) -> int:
 
 def _int_list(value: Any) -> list[int]:
     """
-    是什么：_int_list 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _int_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_int_list 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     result: list[int] = []
     for item in parse_json_list(value):
@@ -145,9 +148,9 @@ def _int_list(value: Any) -> list[int]:
 
 def _rule_values(rule_data: dict[str, Any], permission_ids: list[int]) -> dict[str, Any]:
     """
-    是什么：_rule_values 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rule_values 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_values 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     scope = normalize_rule_scope(rule_data.get("scope"))
     tenant_id = DEFAULT_RULE_TENANT_ID if scope == RULE_SCOPE_PLATFORM else _rule_tenant_id(rule_data.get("tenant_id"))
@@ -165,9 +168,9 @@ def _rule_values(rule_data: dict[str, Any], permission_ids: list[int]) -> dict[s
 
 def _permission_values(permission_data: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：_permission_values 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _permission_values 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_permission_values 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     permission_type = permission_data.get("type") or "row"
     return {
@@ -194,9 +197,9 @@ def list_permission_records(
     enable: bool | None = None,
 ) -> list[SimpleNamespace]:
     """
-    是什么：list_permission_records 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_permission_records 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     conditions = []
     if ids is not None:
@@ -228,9 +231,9 @@ def list_rule_records(
     scope: str | None = None,
 ) -> list[SimpleNamespace]:
     """
-    是什么：list_rule_records 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_rule_records 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ds_rules_table)
     conditions = []
@@ -259,9 +262,9 @@ def list_rule_records(
 
 def get_rule_record(session: SessionDep, rule_id: int) -> SimpleNamespace | None:
     """
-    是什么：get_rule_record 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_rule_record 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     row = session.execute(
         select(ds_rules_table).where(ds_rules_table.c.id == rule_id)
@@ -271,9 +274,9 @@ def get_rule_record(session: SessionDep, rule_id: int) -> SimpleNamespace | None
 
 def _existing_permission_ids(session: SessionDep, ids: list[int]) -> set[int]:
     """
-    是什么：_existing_permission_ids 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _existing_permission_ids 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_existing_permission_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not ids:
         return set()
@@ -285,9 +288,9 @@ def _existing_permission_ids(session: SessionDep, ids: list[int]) -> set[int]:
 
 def trans_record_to_dto(session: SessionDep, record: SimpleNamespace) -> SimpleNamespace:
     """
-    是什么：trans_record_to_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 trans_record_to_dto 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：trans_record_to_dto 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     dto = permission_record_to_dict(session, record)
     return SimpleNamespace(**dto)
@@ -295,9 +298,9 @@ def trans_record_to_dto(session: SessionDep, record: SimpleNamespace) -> SimpleN
 
 def permission_record_to_dict(session: SessionDep, record: SimpleNamespace) -> dict[str, Any]:
     """
-    是什么：permission_record_to_dict 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 permission_record_to_dict 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：permission_record_to_dict 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = session.get(CoreDatasource, record.ds_id) if record.ds_id else None
     table = session.get(CoreTable, record.table_id) if record.table_id else None
@@ -325,9 +328,9 @@ def permission_record_to_dict(session: SessionDep, record: SimpleNamespace) -> d
 
 def rule_record_to_dict(session: SessionDep, rule: SimpleNamespace) -> dict[str, Any]:
     """
-    是什么：rule_record_to_dict 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 rule_record_to_dict 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：rule_record_to_dict 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     permission_ids = _int_list(rule.permission_list)
     permission_records = list_permission_records(session, ids=permission_ids)
@@ -357,18 +360,18 @@ def rule_record_to_dict(session: SessionDep, rule: SimpleNamespace) -> dict[str,
 
 def list_rule_dtos(session: SessionDep) -> list[dict[str, Any]]:
     """
-    是什么：list_rule_dtos 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_rule_dtos 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     return [rule_record_to_dict(session, rule) for rule in list_rule_records(session)]
 
 
 def get_rule_dto(session: SessionDep, rule_id: int) -> dict[str, Any] | None:
     """
-    是什么：get_rule_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_rule_dto 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     rule = get_rule_record(session, rule_id)
     if rule is None:
@@ -378,9 +381,9 @@ def get_rule_dto(session: SessionDep, rule_id: int) -> dict[str, Any] | None:
 
 def save_rule_dto(session: SessionDep, rule_data: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：save_rule_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：save_rule_dto 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     rule_id = rule_data.get("id")
     old_rule = get_rule_record(session, int(rule_id)) if rule_id else None
@@ -448,9 +451,9 @@ def save_rule_dto(session: SessionDep, rule_data: dict[str, Any]) -> dict[str, A
 
 def delete_rule_dto(session: SessionDep, rule_id: int) -> None:
     """
-    是什么：delete_rule_dto 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：delete_rule_dto 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     rule = get_rule_record(session, rule_id)
     if rule is None:
@@ -469,9 +472,9 @@ def delete_permission_records_for_datasources(
     tenant_id: int | None = None,
 ) -> None:
     """
-    是什么：delete_permission_records_for_datasources 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：delete_permission_records_for_datasources 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
     if not ids:
@@ -515,18 +518,18 @@ def delete_permission_records_for_datasources(
 
 def list_rule_user_ids(session: SessionDep, rule: SimpleNamespace) -> list[int]:
     """
-    是什么：list_rule_user_ids 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_rule_user_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     return _int_list(rule.user_list)
 
 
 def list_users_by_ids(session: SessionDep, user_ids: list[int]) -> list[UserModel]:
     """
-    是什么：list_users_by_ids 是 backend/apps/datasource/crud/permission_rules.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_users_by_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if not user_ids:
         return []

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装聊天问数据和 Agent的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 from __future__ import annotations
 
 import hashlib
@@ -10,9 +13,9 @@ AGENT_CONTEXT_SNAPSHOT_VERSION = 1
 
 def _text_digest(value: str | None) -> str | None:
     """
-    是什么：_text_digest 是 backend/apps/chat/curd/agent_context_snapshot.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _text_digest 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_text_digest 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     text = (value or "").strip()
     if not text:
@@ -22,9 +25,9 @@ def _text_digest(value: str | None) -> str | None:
 
 def _text_length(value: str | None) -> int:
     """
-    是什么：_text_length 是 backend/apps/chat/curd/agent_context_snapshot.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _text_length 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_text_length 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return len((value or "").strip())
 
@@ -44,9 +47,9 @@ def build_agent_context_snapshot(
     target_scope: str | None = None,
 ) -> dict[str, Any]:
     """
-    是什么：build_agent_context_snapshot 是 backend/apps/chat/curd/agent_context_snapshot.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：build_agent_context_snapshot 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     return {
         "version": AGENT_CONTEXT_SNAPSHOT_VERSION,

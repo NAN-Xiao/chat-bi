@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放聊天问数据和 Agent里较长或较复杂的处理流程，把一次任务分成可维护的步骤。
+"""
 from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
@@ -44,6 +47,9 @@ WORKFLOW_CONFIG = AssistantWorkflowConfig(WORKFLOW_KEY, RUN_ID_PREFIX, LOG_PREFI
 
 
 class ChartInsightGraphState(TypedDict, total=False):
+    """
+    类说明：ChartInsightGraphState 把聊天问数据和 Agent相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     service: Any
     action_type: ChartInsightAction
     in_chat: bool
@@ -59,18 +65,18 @@ class ChartInsightGraphState(TypedDict, total=False):
 
 def _observe_node(node: str, handler):
     """
-    是什么：_observe_node 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _observe_node 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_observe_node 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return observe_node(WORKFLOW_CONFIG, node, handler)
 
 
 def _emit_record_metadata(state: ChartInsightGraphState) -> dict[str, Any]:
     """
-    是什么：_emit_record_metadata 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    是什么：_emit_record_metadata 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
     """
     return _emit_workflow_record_metadata(
         state,
@@ -81,9 +87,9 @@ def _emit_record_metadata(state: ChartInsightGraphState) -> dict[str, Any]:
 
 def _generate_analysis(state: ChartInsightGraphState) -> dict[str, Any]:
     """
-    是什么：_generate_analysis 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+    是什么：_generate_analysis 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -114,9 +120,9 @@ def _generate_analysis(state: ChartInsightGraphState) -> dict[str, Any]:
 
 def _generate_predict(state: ChartInsightGraphState) -> dict[str, Any]:
     """
-    是什么：_generate_predict 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+    是什么：_generate_predict 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -145,9 +151,9 @@ def _generate_predict(state: ChartInsightGraphState) -> dict[str, Any]:
 
 def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
     """
-    是什么：_finalize_predict 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _finalize_predict 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_finalize_predict 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     service = state["service"]
     in_chat = state["in_chat"]
@@ -217,18 +223,18 @@ def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
 
 def _route_action(state: ChartInsightGraphState) -> str:
     """
-    是什么：_route_action 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _route_action 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_route_action 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return "generate_analysis" if state["action_type"] == "analysis" else "generate_predict"
 
 
 def _build_graph():
     """
-    是什么：_build_graph 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：_build_graph 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     graph = StateGraph(ChartInsightGraphState)
     graph.add_node("emit_record_metadata", _observe_node("emit_record_metadata", _emit_record_metadata))
@@ -254,9 +260,9 @@ def run_chart_insight_graph(
     stream: bool = True,
 ):
     """
-    是什么：run_chart_insight_graph 是 backend/apps/chat/task/chart_insight_graph.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：run_chart_insight_graph 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     json_result: dict[str, Any] = {"success": True}
     initial_state: ChartInsightGraphState = {

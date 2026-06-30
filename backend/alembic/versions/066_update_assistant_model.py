@@ -1,8 +1,5 @@
-"""迁移脚本：066_update_assistant_model
-
-迁移版本 ID： 8adc3a4919be
-上一版本： 8ff90df7871d
-创建时间： 2026-04-28 15:55:42.757276
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
 """
 from alembic import op
 import sqlalchemy as sa
@@ -19,9 +16,9 @@ depends_on = None
 def upgrade():
     # ### Alembic 自动生成的命令，请按需调整！###
     """
-    是什么：upgrade 是 backend/alembic/versions/066_update_assistant_model.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：upgrade 是这个迁移脚本的数据库升级步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前升级。
     """
     op.add_column('sys_assistant', sa.Column('enable_custom_model', sa.Boolean(), nullable=True))
     op.add_column('sys_assistant', sa.Column('custom_model', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=True))
@@ -30,9 +27,9 @@ def upgrade():
 
 def downgrade():
     """
-    是什么：downgrade 是 backend/alembic/versions/066_update_assistant_model.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：downgrade 是这个迁移脚本的数据库回滚步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前回滚。
     """
     op.drop_column('sys_assistant', 'custom_model')
     op.drop_column('sys_assistant', 'enable_custom_model')

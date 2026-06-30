@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 
 
 import asyncio
@@ -20,28 +23,37 @@ from common.utils.file_utils import AppFileUtils
 
 
 class RowValidator:
+    """
+    类说明：RowValidator 把系统管理相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, success: bool = False, row=list[str], error_info: dict = None):
         """
-        是什么：RowValidator.__init__ 是 backend/apps/system/crud/user_excel.py 中的同步方法。
-        谁调用：由创建 RowValidator 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：RowValidator.__init__ 是 RowValidator 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：创建 RowValidator 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.success = success
         self.row = row
         self.dict_data = {}
         self.error_info = error_info or {}
 class CellValidator:
+    """
+    类说明：CellValidator 把系统管理相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, success: bool = False, value: str | int | list = None, message: str = ""):
         """
-        是什么：CellValidator.__init__ 是 backend/apps/system/crud/user_excel.py 中的同步方法。
-        谁调用：由创建 CellValidator 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：CellValidator.__init__ 是 CellValidator 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：创建 CellValidator 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.success = success
         self.value = value
         self.message = message
 
 class UploadResultDTO(BaseModel):
+    """
+    类说明：UploadResultDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     successCount: int
     errorCount: int
     dataKey: str | None = None
@@ -49,15 +61,15 @@ class UploadResultDTO(BaseModel):
 
 async def downTemplate(trans):
     """
-    是什么：downTemplate 是 backend/apps/system/crud/user_excel.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 downTemplate 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：downTemplate 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     def inner():
         """
-        是什么：inner 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-        谁调用：由外层函数 downTemplate 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责系统管理相关的一件事。
+        谁调用：外层函数 downTemplate 跑到对应步骤时会调用它。
+        做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         data = {
             trans('i18n_user.account'): ['shuzhi1', 'shuzhi2'],
@@ -107,9 +119,9 @@ async def downTemplate(trans):
 
 async def batchUpload(session: SessionDep, trans, file) -> UploadResultDTO:
     """
-    是什么：batchUpload 是 backend/apps/system/crud/user_excel.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 batchUpload 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：batchUpload 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
     AppFileUtils.validate_extension(getattr(file, "filename", None), ALLOWED_EXTENSIONS)
@@ -169,9 +181,9 @@ def validate_unique_users(
     error_list: list[RowValidator],
 ) -> None:
     """
-    是什么：validate_unique_users 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_unique_users 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     account_index = 0
     name_index = 1
@@ -206,9 +218,9 @@ def validate_unique_users(
 
 def get_i18n_head_list():
     """
-    是什么：get_i18n_head_list 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_i18n_head_list 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     return [
         'i18n_user.account',
@@ -221,9 +233,9 @@ def get_i18n_head_list():
 
 def validate_head(trans, head_i18n_list: list[str], head_list: list):
     """
-    是什么：validate_head 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_head 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if len(head_list) != len(head_i18n_list):
         return False
@@ -236,9 +248,9 @@ def validate_head(trans, head_i18n_list: list[str], head_list: list):
 
 def validate_row(trans, head_i18n_list: list[str], row):
     """
-    是什么：validate_row 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_row 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     validator = RowValidator(success=True, row=[], error_info={})
     for i in range(len(head_i18n_list)):
@@ -258,9 +270,9 @@ def validate_row(trans, head_i18n_list: list[str], row):
 def generate_error_file(error_list: list[RowValidator], head_list: list[str]) -> str:
     # 如果没有错误，则返回空字符串。
     """
-    是什么：generate_error_file 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成系统管理相关结果，并保存或返回给调用方。
+    是什么：generate_error_file 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成系统管理的结果，比如答案、SQL、图表或建议。
     """
     if not error_list:
         return ""
@@ -328,9 +340,9 @@ def generate_error_file(error_list: list[RowValidator], head_list: list[str]) ->
 
 def download_error_file(file_id: str) -> FileResponse:
     """
-    是什么：download_error_file 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 download_error_file 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：download_error_file 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not file_id:
         raise HTTPException(400, "file_id required")
@@ -362,47 +374,47 @@ def download_error_file(file_id: str) -> FileResponse:
 
 def validate_account(value: str) -> CellValidator:
     """
-    是什么：validate_account 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_account 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     return CellValidator(True, value, None)
 def validate_name(value: str) -> CellValidator:
     """
-    是什么：validate_name 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_name 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     return CellValidator(True, value, None)
 def validate_email(value: str) -> CellValidator:
     """
-    是什么：validate_email 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_email 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     return CellValidator(True, value, None)
 def validate_status(value: str) -> CellValidator:
     """
-    是什么：validate_status 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_status 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if value == '已启用': return CellValidator(True, 1, None)
     if value == '已禁用': return CellValidator(True, 0, None)
     return CellValidator(False, None, "状态只能是已启用或已禁用")
 def validate_origin(value: str) -> CellValidator:
     """
-    是什么：validate_origin 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_origin 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if value == '本地创建': return CellValidator(True, 0, None)
     return CellValidator(False, None, "不支持当前来源")
 def validate_platform_id(value: str) -> CellValidator:
     """
-    是什么：validate_platform_id 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_platform_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     return CellValidator(True, value, None)
 
@@ -417,9 +429,9 @@ _method_cache = {
 _module = sys.modules[__name__]
 def dynamic_call(method_name: str, *args, **kwargs):
     """
-    是什么：dynamic_call 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 dynamic_call 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：dynamic_call 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if method_name in _method_cache:
         return _method_cache[method_name](*args, **kwargs)
@@ -439,9 +451,9 @@ _TEMP_FILE_LOCK = threading.Lock()
 
 def _cleanup_temp_files():
     """
-    是什么：_cleanup_temp_files 是 backend/apps/system/crud/user_excel.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：_cleanup_temp_files 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     with _TEMP_FILE_LOCK:
         for fid, path in list(_TEMP_FILE_MAP.items()):

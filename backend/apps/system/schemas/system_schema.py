@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义系统管理的输入输出结构，帮接口和业务代码统一数据格式。
+"""
 import re
 from typing import Literal, Optional,List
 
@@ -19,18 +22,30 @@ PWD_REGEX = re.compile(
 
 
 class UserStatus(BaseCreatorDTO):
+    """
+    类说明：UserStatus 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
 
 
 class UserLanguage(BaseModel):
+    """
+    类说明：UserLanguage 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     language: str = Field(description=f"{PLACEHOLDER_PREFIX}language")
 
 
 class BaseUser(BaseModel):
+    """
+    类说明：BaseUser 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     account: str = Field(min_length=1, max_length=100, description="用户账号")
 
 
 class BaseUserDTO(BaseUser, BaseCreatorDTO):
+    """
+    类说明：BaseUserDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     language: str = Field(pattern=r"^(zh-CN|zh-TW|en|ko-KR)$", default="zh-CN", description="用户语言")
     password: str
     status: int = 1
@@ -53,9 +68,9 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
 
     def to_dict(self):
         """
-        是什么：BaseUserDTO.to_dict 是 backend/apps/system/schemas/system_schema.py 中的同步方法。
-        谁调用：由持有 BaseUserDTO 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 to_dict 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        是什么：BaseUserDTO.to_dict 是 BaseUserDTO 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 BaseUserDTO 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         data = {
             "id": self.id,
@@ -68,9 +83,9 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
     @field_validator("language")
     def validate_language(cls, lang: str) -> str:
         """
-        是什么：BaseUserDTO.validate_language 是 backend/apps/system/schemas/system_schema.py 中的同步方法。
-        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
-        做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：BaseUserDTO.validate_language 是 BaseUserDTO 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：创建或校验数据对象时，Pydantic 会自动调用它。
+        做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
         """
         if not re.fullmatch(r"^(zh-CN|zh-TW|en|ko-KR)$", lang):
             raise ValueError("Language must be 'zh-CN', 'zh-TW', 'en', or 'ko-KR'")
@@ -78,6 +93,9 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
 
 
 class UserCreator(BaseUser):
+    """
+    类说明：UserCreator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     name: str = Field(min_length=1, max_length=100, description=f"{PLACEHOLDER_PREFIX}user_name")
     email: str = Field(min_length=1, max_length=100, description=f"{PLACEHOLDER_PREFIX}user_email")
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
@@ -97,12 +115,18 @@ class UserCreator(BaseUser):
 
 
 class UserEditor(UserCreator, BaseCreatorDTO):
+    """
+    类说明：UserEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     tenant_ids: Optional[list[int]] = Field(default_factory=list)
     tenant_names: Optional[list[str]] = Field(default_factory=list)
     tenant_roles: Optional[dict[str, str]] = Field(default_factory=dict)
 
 
 class UserGrid(UserEditor):
+    """
+    类说明：UserGrid 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     create_time: int = Field(description=f"{PLACEHOLDER_PREFIX}create_time")
     language: str = Field(default="zh-CN" ,description=f"{PLACEHOLDER_PREFIX}language") 
     # space_name: Optional[str] = None
@@ -117,11 +141,17 @@ globals()["UserWsEditor"] = create_model(
 
 
 class PwdEditor(BaseModel):
+    """
+    类说明：PwdEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     pwd: str = Field(description=f"{PLACEHOLDER_PREFIX}origin_pwd")
     new_pwd: str = Field(description=f"{PLACEHOLDER_PREFIX}new_pwd")
 
 
 class UserInfoDTO(UserEditor):
+    """
+    类说明：UserInfoDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     language: str = "zh-CN"
     weight: int = 0
     isAdmin: bool = False
@@ -140,6 +170,9 @@ class UserInfoDTO(UserEditor):
 
 
 class AssistantBase(BaseModel):
+    """
+    类说明：AssistantBase 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     name: str = Field(description=f"{PLACEHOLDER_PREFIX}model_name")
     domain: str = Field(description=f"{PLACEHOLDER_PREFIX}assistant_domain")
     type: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}assistant_type")  # 0普通小助手 1高级 4页面嵌入
@@ -150,14 +183,23 @@ class AssistantBase(BaseModel):
 
 
 class AssistantDTO(AssistantBase, BaseCreatorDTO):
+    """
+    类说明：AssistantDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     pass
 
 
 class AssistantPublicInfo(AssistantDTO):
+    """
+    类说明：AssistantPublicInfo 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     app_id: Optional[str] = None
 
 
 class AssistantHeader(AssistantDTO):
+    """
+    类说明：AssistantHeader 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     unique: Optional[str] = None
     certificate: Optional[str] = None
     online: bool = False
@@ -166,6 +208,9 @@ class AssistantHeader(AssistantDTO):
 
 
 class AssistantValidator(BaseModel):
+    """
+    类说明：AssistantValidator 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     valid: bool = False
     id_match: bool = False
     domain_match: bool = False
@@ -180,9 +225,9 @@ class AssistantValidator(BaseModel):
             **kwargs
     ):
         """
-        是什么：AssistantValidator.__init__ 是 backend/apps/system/schemas/system_schema.py 中的同步方法。
-        谁调用：由创建 AssistantValidator 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：AssistantValidator.__init__ 是 AssistantValidator 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：创建 AssistantValidator 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         super().__init__(
             valid=valid,
@@ -194,6 +239,9 @@ class AssistantValidator(BaseModel):
 
 
 class AssistantFieldSchema(BaseModel):
+    """
+    类说明：AssistantFieldSchema 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: Optional[int] = None
     name: Optional[str] = None
     type: Optional[str] = None
@@ -201,6 +249,9 @@ class AssistantFieldSchema(BaseModel):
 
 
 class AssistantTableSchema(BaseModel):
+    """
+    类说明：AssistantTableSchema 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: Optional[int] = None
     name: Optional[str] = None
     comment: Optional[str] = None
@@ -210,6 +261,9 @@ class AssistantTableSchema(BaseModel):
 
 
 class AssistantOutDsBase(BaseModel):
+    """
+    类说明：AssistantOutDsBase 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: Optional[int] = None
     name: str
     type: Optional[str] = None
@@ -220,6 +274,9 @@ class AssistantOutDsBase(BaseModel):
 
 
 class AssistantOutDsSchema(AssistantOutDsBase):
+    """
+    类说明：AssistantOutDsSchema 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     host: Optional[str] = None
     port: Optional[int] = None
     dataBase: Optional[str] = None
@@ -232,10 +289,16 @@ class AssistantOutDsSchema(AssistantOutDsBase):
 
 
 class ApikeyStatus(BaseModel):
+    """
+    类说明：ApikeyStatus 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     id: int = Field(description=f"{PLACEHOLDER_PREFIX}id")
     status: bool = Field(description=f"{PLACEHOLDER_PREFIX}status")
 
 class ApikeyGridItem(BaseCreatorDTO):
+    """
+    类说明：ApikeyGridItem 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     access_key: str = Field(description=f"Access Key")
     secret_key: str = Field(description=f"Secret Key")
     tenant_id: int = Field(default=1, description="Tenant ID")

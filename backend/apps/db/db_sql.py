@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放数据库连接相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 # 作者：Junjun
 # 日期：2025/8/20
 from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
@@ -6,9 +9,9 @@ from common.utils.utils import equals_ignore_case
 
 def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
     """
-    是什么：get_version_sql 是 backend/apps/db/db_sql.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_version_sql 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     if equals_ignore_case(ds.type, "mysql", "doris", "starrocks"):
         return """
@@ -40,9 +43,9 @@ def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
 
 def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''):
     """
-    是什么：get_table_sql 是 backend/apps/db/db_sql.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_table_sql 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     if equals_ignore_case(ds.type, "mysql"):
         return """
@@ -180,9 +183,9 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
 
 def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = None):
     """
-    是什么：get_field_sql 是 backend/apps/db/db_sql.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_field_sql 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     if equals_ignore_case(ds.type, "mysql"):
         sql1 = """

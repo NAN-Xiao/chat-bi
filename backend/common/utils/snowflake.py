@@ -1,11 +1,17 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import time
 import threading
 class SnowflakeGenerator:
+    """
+    类说明：SnowflakeGenerator 把通用工具相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, worker_id=0, datacenter_id=0):
         """
-        是什么：SnowflakeGenerator.__init__ 是 backend/common/utils/snowflake.py 中的同步方法。
-        谁调用：由创建 SnowflakeGenerator 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：SnowflakeGenerator.__init__ 是 SnowflakeGenerator 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：创建 SnowflakeGenerator 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.worker_id = worker_id
         self.datacenter_id = datacenter_id
@@ -31,17 +37,17 @@ class SnowflakeGenerator:
 
     def _current_time(self):
         """
-        是什么：SnowflakeGenerator._current_time 是 backend/common/utils/snowflake.py 中的同步方法。
-        谁调用：由持有 SnowflakeGenerator 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 _current_time 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：SnowflakeGenerator._current_time 是 SnowflakeGenerator 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 SnowflakeGenerator 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return int(time.time() * 1000)
 
     def _wait_next_millis(self, last_timestamp):
         """
-        是什么：SnowflakeGenerator._wait_next_millis 是 backend/common/utils/snowflake.py 中的同步方法。
-        谁调用：由持有 SnowflakeGenerator 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 _wait_next_millis 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：SnowflakeGenerator._wait_next_millis 是 SnowflakeGenerator 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 SnowflakeGenerator 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         timestamp = self._current_time()
         while timestamp <= last_timestamp:
@@ -50,9 +56,9 @@ class SnowflakeGenerator:
 
     def generate_id(self):
         """
-        是什么：SnowflakeGenerator.generate_id 是 backend/common/utils/snowflake.py 中的同步方法。
-        谁调用：由持有 SnowflakeGenerator 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成通用工具相关结果，并保存或返回给调用方。
+        是什么：SnowflakeGenerator.generate_id 是 SnowflakeGenerator 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：拿到 SnowflakeGenerator 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成通用工具的结果，比如答案、SQL、图表或建议。
         """
         with self.lock:
             timestamp = self._current_time()

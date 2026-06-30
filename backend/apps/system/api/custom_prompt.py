@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
 import asyncio
 import datetime
 import io
@@ -64,9 +67,9 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 
 def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
     """
-    是什么：_visible_datasource_ids 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _visible_datasource_ids 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_visible_datasource_ids 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _can_manage_platform_public_prompts(session, current_user):
         return None
@@ -75,9 +78,9 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
 
 def _can_manage_all_prompts(session: SessionDep, current_user: CurrentUser) -> bool:
     """
-    是什么：_can_manage_all_prompts 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_all_prompts 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_all_prompts 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         return False
@@ -92,9 +95,9 @@ def _can_manage_all_prompts(session: SessionDep, current_user: CurrentUser) -> b
 
 def _can_manage_platform_public_prompts(session: SessionDep, current_user: CurrentUser) -> bool:
     """
-    是什么：_can_manage_platform_public_prompts 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_platform_public_prompts 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_platform_public_prompts 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         return False
@@ -109,9 +112,9 @@ def _can_manage_platform_public_prompts(session: SessionDep, current_user: Curre
 
 def _can_manage_tenant_public_prompts(session: SessionDep, current_user: CurrentUser) -> bool:
     """
-    是什么：_can_manage_tenant_public_prompts 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_tenant_public_prompts 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_tenant_public_prompts 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _can_manage_platform_public_prompts(session, current_user):
         return False
@@ -123,9 +126,9 @@ def _can_manage_tenant_public_prompts(session: SessionDep, current_user: Current
 
 def _is_public_scope(value) -> bool:
     """
-    是什么：_is_public_scope 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _is_public_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_is_public_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, CustomPromptVisibilityScopeEnum):
         return value == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
@@ -134,9 +137,9 @@ def _is_public_scope(value) -> bool:
 
 def _is_platform_public_scope(value) -> bool:
     """
-    是什么：_is_platform_public_scope 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _is_platform_public_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_is_platform_public_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, CustomPromptVisibilityScopeEnum):
         return value == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC
@@ -145,9 +148,9 @@ def _is_platform_public_scope(value) -> bool:
 
 def _require_prompt_manage(session: SessionDep, current_user: CurrentUser, prompt: CustomPromptInfo | CustomPrompt):
     """
-    是什么：_require_prompt_manage 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_prompt_manage 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if _is_platform_public_scope(getattr(prompt, "visibility_scope", None)):
         if _can_manage_platform_public_prompts(session, current_user):
@@ -170,9 +173,9 @@ def _require_prompt_manage(session: SessionDep, current_user: CurrentUser, promp
 
 def _normalize_datasource_ids(value) -> list[int]:
     """
-    是什么：_normalize_datasource_ids 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_datasource_ids 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     result: list[int] = []
     for item in value or []:
@@ -185,9 +188,9 @@ def _normalize_datasource_ids(value) -> list[int]:
 
 def _is_user_private_scope(value) -> bool:
     """
-    是什么：_is_user_private_scope 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _is_user_private_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_is_user_private_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, CustomPromptVisibilityScopeEnum):
         return value == CustomPromptVisibilityScopeEnum.USER_PRIVATE
@@ -196,9 +199,9 @@ def _is_user_private_scope(value) -> bool:
 
 def _force_user_private_prompt(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     """
-    是什么：_force_user_private_prompt 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _force_user_private_prompt 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_force_user_private_prompt 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     info.visibility_scope = CustomPromptVisibilityScopeEnum.USER_PRIVATE
     info.specific_ds = False
@@ -207,9 +210,9 @@ def _force_user_private_prompt(session: SessionDep, current_user: CurrentUser, i
 
 def _validate_prompt_datasource_scope(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     """
-    是什么：_validate_prompt_datasource_scope 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_validate_prompt_datasource_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     datasource_ids = _normalize_datasource_ids(info.datasource_ids)
     if not info.specific_ds:
@@ -224,9 +227,9 @@ def _validate_prompt_datasource_scope(session: SessionDep, current_user: Current
 
 def _force_platform_public_prompt(info: CustomPromptInfo):
     """
-    是什么：_force_platform_public_prompt 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _force_platform_public_prompt 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_force_platform_public_prompt 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     info.tenant_id = DEFAULT_TENANT_ID
     info.visibility_scope = CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC
@@ -236,27 +239,27 @@ def _force_platform_public_prompt(info: CustomPromptInfo):
 
 def _workspace_tenant_id(current_user: CurrentUser) -> int:
     """
-    是什么：_workspace_tenant_id 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _workspace_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_workspace_tenant_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return require_current_tenant_id(current_user)
 
 
 def _operation_tenant_id(current_user: CurrentUser, *, platform_only: bool = False) -> int:
     """
-    是什么：_operation_tenant_id 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _operation_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_operation_tenant_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return DEFAULT_TENANT_ID if platform_only else _workspace_tenant_id(current_user)
 
 
 def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     """
-    是什么：_prepare_prompt_for_save 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _prepare_prompt_for_save 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_prepare_prompt_for_save 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -315,9 +318,9 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
 
 def _require_prompt_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
     """
-    是什么：_require_prompt_ids_admin 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_prompt_ids_admin 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not ids:
         return
@@ -340,9 +343,9 @@ def _require_prompt_ids_admin(session: SessionDep, current_user: CurrentUser, id
 
 def _parse_type(value: str) -> CustomPromptTypeEnum:
     """
-    是什么：_parse_type 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_type 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     try:
         return CustomPromptTypeEnum(value)
@@ -352,9 +355,9 @@ def _parse_type(value: str) -> CustomPromptTypeEnum:
 
 def _parse_target_scope(value: Optional[str]) -> CustomPromptTargetScopeEnum:
     """
-    是什么：_parse_target_scope 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_target_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if value in (None, ""):
         return CustomPromptTargetScopeEnum.SMART_QA
@@ -366,9 +369,9 @@ def _parse_target_scope(value: Optional[str]) -> CustomPromptTargetScopeEnum:
 
 def _parse_visibility_scope(value: Optional[str]) -> CustomPromptVisibilityScopeEnum | None:
     """
-    是什么：_parse_visibility_scope 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_visibility_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if value in (None, ""):
         return None
@@ -380,9 +383,9 @@ def _parse_visibility_scope(value: Optional[str]) -> CustomPromptVisibilityScope
 
 def _target_scope_export_value(value: Optional[CustomPromptTargetScopeEnum | str]) -> str:
     """
-    是什么：_target_scope_export_value 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _target_scope_export_value 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_target_scope_export_value 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not value:
         return CustomPromptTargetScopeEnum.SMART_QA.value
@@ -394,9 +397,9 @@ def _target_scope_export_value(value: Optional[CustomPromptTargetScopeEnum | str
 
 def _parse_target_scope_cell(value: str, trans: Trans) -> CustomPromptTargetScopeEnum:
     """
-    是什么：_parse_target_scope_cell 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_target_scope_cell 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     raw = (value or "").strip()
     if not raw:
@@ -416,18 +419,18 @@ def _parse_target_scope_cell(value: str, trans: Trans) -> CustomPromptTargetScop
 
 def _parse_active_cell(value: str) -> bool:
     """
-    是什么：_parse_active_cell 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_active_cell 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     return (value or "").strip().lower() in ["y", "yes", "true", "1", "active", "enabled", "已激活", "启用"]
 
 
 def _parse_visible_cell(value: str) -> bool:
     """
-    是什么：_parse_visible_cell 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_visible_cell 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     raw = (value or "").strip()
     if not raw:
@@ -437,9 +440,9 @@ def _parse_visible_cell(value: str) -> bool:
 
 def _split_query_ids(value) -> Optional[list[int]]:
     """
-    是什么：_split_query_ids 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _split_query_ids 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_split_query_ids 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value is None or value == "":
         return None
@@ -456,9 +459,9 @@ def _split_query_ids(value) -> Optional[list[int]]:
 
 def _query_ids(request: Request, key: str) -> Optional[list[int]]:
     """
-    是什么：_query_ids 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：_query_ids 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     return _split_query_ids(request.query_params.getlist(key))
 
@@ -472,9 +475,9 @@ async def options(
         datasource_id: Optional[int] = Query(None),
 ):
     """
-    是什么：options 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 options 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：options 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -508,9 +511,9 @@ async def pager(
         effective_only: bool = Query(False),
 ):
     """
-    是什么：pager 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 pager 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：pager 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -549,15 +552,15 @@ async def pager(
 @router.get("/template")
 async def excel_template(trans: Trans):
     """
-    是什么：excel_template 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 excel_template 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：excel_template 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     def inner():
         """
-        是什么：inner 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 excel_template 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责系统管理相关的一件事。
+        谁调用：外层函数 excel_template 跑到对应步骤时会调用它。
+        做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         data_list = [
             {
@@ -609,9 +612,9 @@ async def excel_template(trans: Trans):
 @router.get("/{prompt_id}")
 async def get_one(session: SessionDep, current_user: CurrentUser, prompt_id: int):
     """
-    是什么：get_one 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_one 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -644,9 +647,9 @@ async def set_activation(
         scope: str = Query("user"),
 ):
     """
-    是什么：set_activation 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：set_activation 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     prompt = session.get(CustomPrompt, prompt_id)
     if not prompt:
@@ -706,9 +709,9 @@ async def set_visibility(
         visible: bool = Query(...),
 ):
     """
-    是什么：set_visibility 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：set_visibility 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     prompt = session.get(CustomPrompt, prompt_id)
     if not prompt:
@@ -737,9 +740,9 @@ async def set_visibility(
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.PROMPT_WORDS, resource_id_expr="info.id", result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     """
-    是什么：create_or_update 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：create_or_update 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -767,9 +770,9 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, info:
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.PROMPT_WORDS, resource_id_expr="id_list"))
 async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
     """
-    是什么：delete 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：delete 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -798,9 +801,9 @@ async def export_excel(
         visibility_scope: Optional[str] = Query(None),
 ):
     """
-    是什么：export_excel 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 export_excel 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：export_excel 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -812,9 +815,9 @@ async def export_excel(
 
     def inner():
         """
-        是什么：inner 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 export_excel 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责系统管理相关的一件事。
+        谁调用：外层函数 export_excel 跑到对应步骤时会调用它。
+        做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         rows = get_all_custom_prompts(
             session,
@@ -878,9 +881,9 @@ async def upload_excel(
         file: UploadFile = File(...),
 ):
     """
-    是什么：upload_excel 是 backend/apps/system/api/custom_prompt.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 upload_excel 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：upload_excel 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_tenant_public = _can_manage_tenant_public_prompts(session, current_user)
@@ -897,9 +900,9 @@ async def upload_excel(
 
     def inner():
         """
-        是什么：inner 是 backend/apps/system/api/custom_prompt.py 中的同步函数。
-        谁调用：由外层函数 upload_excel 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责系统管理相关的一件事。
+        谁调用：外层函数 upload_excel 跑到对应步骤时会调用它。
+        做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         db_session = session_maker()
         try:

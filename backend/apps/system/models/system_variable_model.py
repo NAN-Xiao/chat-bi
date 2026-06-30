@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义系统管理用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 # 作者：Junjun
 # 日期：2026/1/26
 
@@ -10,6 +13,9 @@ from sqlmodel import SQLModel, Field
 
 
 class SystemVariable(SQLModel, table=True):
+    """
+    类说明：SystemVariable 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "system_variable"
     __table_args__ = (
         Index("idx_system_variable_tenant_id", "tenant_id"),

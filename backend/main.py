@@ -1,4 +1,7 @@
-﻿import os
+﻿"""
+脚本说明：这个脚本是后端应用的入口，负责创建 FastAPI、挂载路由、启动缓存和注册中间件。
+"""
+import os
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -42,9 +45,9 @@ else:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    是什么：lifespan 是 backend/main.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 lifespan 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：lifespan 是后端启动和关闭时会走的一段准备流程。
+    谁调用：FastAPI 启动应用和关闭应用时会自动调用它。
+    做了什么：启动时检查配置、准备缓存和模型信息，关闭时把缓存连接收好。
     """
     validate_production_settings()
     init_observability()
@@ -61,9 +64,9 @@ async def lifespan(app: FastAPI):
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     """
-    是什么：custom_generate_unique_id 是 backend/main.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 custom_generate_unique_id 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：custom_generate_unique_id 是给接口生成唯一名字的小工具。
+    谁调用：FastAPI 生成 OpenAPI 文档时会调用它。
+    做了什么：把接口分组和函数名拼在一起，让文档里的接口标识更好认。
     """
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
     return f"{tag}-{route.name}"
@@ -83,9 +86,9 @@ _openapi_cache: dict[str, dict[str, Any]] = {}
 # 替换占位符
 def replace_placeholders_in_schema(schema: dict[str, Any], trans: dict[str, str]) -> None:
     """
-    是什么：replace_placeholders_in_schema 是 backend/main.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 replace_placeholders_in_schema 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：replace_placeholders_in_schema 是用来替换接口文档占位符的小工具。
+    谁调用：生成不同语言的 OpenAPI 文档时会调用它。
+    做了什么：遍历文档内容，把 PLACEHOLDER 这类标记换成真正要展示的文字。
     """
     if isinstance(schema, dict):
         for key, value in schema.items():
@@ -104,9 +107,9 @@ def replace_placeholders_in_schema(schema: dict[str, Any], trans: dict[str, str]
 def get_language_from_request(request: Request) -> str:
     # 从查询参数 ?lang=zh 获取语言
     """
-    是什么：get_language_from_request 是 backend/main.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    是什么：get_language_from_request 是用来判断用户想看哪种语言文档的小工具。
+    谁调用：打开 OpenAPI 或 Swagger 文档时会调用它。
+    做了什么：优先看 URL 里的 lang，没有就再看浏览器语言，最后给出默认语言。
     """
     lang = request.query_params.get("lang")
     if lang in i18n_list:
@@ -120,9 +123,9 @@ def get_language_from_request(request: Request) -> str:
 
 def generate_openapi_for_lang(lang: str) -> dict[str, Any]:
     """
-    是什么：generate_openapi_for_lang 是 backend/main.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成后端业务相关结果，并保存或返回给调用方。
+    是什么：generate_openapi_for_lang 是按语言生成接口文档内容的小工具。
+    谁调用：用户请求 OpenAPI 文档时会调用它。
+    做了什么：把接口分组、描述和占位符换成对应语言，并把结果缓存起来。
     """
     if lang in _openapi_cache:
         return _openapi_cache[lang]
@@ -167,9 +170,9 @@ def generate_openapi_for_lang(lang: str) -> dict[str, Any]:
 @app.get(f"{settings.CONTEXT_PATH}/openapi.json", include_in_schema=False)
 async def custom_openapi(request: Request):
     """
-    是什么：custom_openapi 是 backend/main.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 custom_openapi 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：custom_openapi 是返回 OpenAPI JSON 文档的接口。
+    谁调用：浏览器或工具请求 OpenAPI 地址时，FastAPI 会调用它。
+    做了什么：按请求语言生成接口文档，然后以 JSON 形式返回。
     """
     lang = get_language_from_request(request)
     schema = generate_openapi_for_lang(lang)
@@ -179,9 +182,9 @@ async def custom_openapi(request: Request):
 @app.get(f"{settings.CONTEXT_PATH}/docs", include_in_schema=False)
 async def custom_swagger_ui(request: Request):
     """
-    是什么：custom_swagger_ui 是 backend/main.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 custom_swagger_ui 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：custom_swagger_ui 是打开 Swagger 页面的接口。
+    谁调用：用户访问文档页面时，FastAPI 会调用它。
+    做了什么：根据当前语言组装 Swagger 页面，让用户可以在浏览器里看接口。
     """
     lang = get_language_from_request(request)
     from fastapi.openapi.docs import get_swagger_ui_html
@@ -197,9 +200,9 @@ async def custom_swagger_ui(request: Request):
 @app.get(f"{settings.CONTEXT_PATH}/health", include_in_schema=False)
 async def health():
     """
-    是什么：health 是 backend/main.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 health 的语义处理后端业务相关逻辑，并把结果返回或写入状态。
+    是什么：health 是检查后端是否还活着的接口。
+    谁调用：健康检查工具、运维脚本或浏览器请求时会调用它。
+    做了什么：返回服务当前是否可用的简单信息。
     """
     return {"status": "ok", "service": settings.PROJECT_NAME}
 
@@ -207,9 +210,9 @@ async def health():
 @app.get(f"{settings.CONTEXT_PATH}/ready", include_in_schema=False)
 async def ready():
     """
-    是什么：ready 是 backend/main.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    是什么：ready 是检查后端准备好没有的接口。
+    谁调用：健康检查工具或部署系统确认服务可接流量时会调用它。
+    做了什么：检查缓存等关键依赖的状态，再告诉外部服务是否已经准备好。
     """
     cache = await cache_health()
     ok = cache.get("status") in {"ok", "disabled"}

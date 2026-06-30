@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放AI 模型相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from collections.abc import Iterator, Mapping
 from typing import Any, Optional, cast
 
@@ -24,9 +27,9 @@ def _convert_delta_to_message_chunk(
         _dict: Mapping[str, Any], default_class: type[BaseMessageChunk]
 ) -> BaseMessageChunk:
     """
-    是什么：_convert_delta_to_message_chunk 是 backend/apps/ai_model/openai/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化模型接入相关数据，生成后续流程可使用的结构。
+    是什么：_convert_delta_to_message_chunk 是一个可以复用的小步骤，负责AI 模型相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把AI 模型的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     id_ = _dict.get("id")
     role = cast(str, _dict.get("role"))
@@ -89,12 +92,15 @@ def _convert_delta_to_message_chunk(
 
 
 class BaseChatOpenAI(ChatOpenAI):
+    """
+    类说明：BaseChatOpenAI 把AI 模型相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     @property
     def _default_params(self) -> dict[str, Any]:
         """
-        是什么：BaseChatOpenAI._default_params 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 _default_params 的语义处理模型接入相关逻辑，并把结果返回或写入状态。
+        是什么：BaseChatOpenAI._default_params 是 BaseChatOpenAI 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把AI 模型里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         max_tokens = self.max_tokens
         params = super()._default_params
@@ -110,9 +116,9 @@ class BaseChatOpenAI(ChatOpenAI):
         **kwargs: Any,
     ) -> dict:
         """
-        是什么：BaseChatOpenAI._get_request_payload 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
-        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+        是什么：BaseChatOpenAI._get_request_payload 是 BaseChatOpenAI 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 BaseChatOpenAI 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把AI 模型需要的数据找出来，整理成后面好用的样子。
         """
         max_tokens = self.max_tokens
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
@@ -125,17 +131,17 @@ class BaseChatOpenAI(ChatOpenAI):
 
     def get_last_generation_info(self) -> dict[str, Any] | None:
         """
-        是什么：BaseChatOpenAI.get_last_generation_info 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
-        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+        是什么：BaseChatOpenAI.get_last_generation_info 是 BaseChatOpenAI 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 BaseChatOpenAI 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把AI 模型需要的数据找出来，整理成后面好用的样子。
         """
         return self.usage_metadata
 
     def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
         """
-        是什么：BaseChatOpenAI._stream 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
-        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
-        做了什么：组织模型接入的流式输出或异步等待，把事件和结果传递给调用方。
+        是什么：BaseChatOpenAI._stream 是 BaseChatOpenAI 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 BaseChatOpenAI 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把AI 模型处理过程中的消息或结果一段段传出去。
         """
         kwargs['stream_usage'] = True
         for chunk in super()._stream(*args, **kwargs):
@@ -150,9 +156,9 @@ class BaseChatOpenAI(ChatOpenAI):
         base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
         """
-        是什么：BaseChatOpenAI._convert_chunk_to_generation_chunk 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
-        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
-        做了什么：解析、转换或格式化模型接入相关数据，生成后续流程可使用的结构。
+        是什么：BaseChatOpenAI._convert_chunk_to_generation_chunk 是 BaseChatOpenAI 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 BaseChatOpenAI 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把AI 模型的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if chunk.get("type") == "content.delta":  # from beta.chat.completions.stream
             return None
@@ -212,9 +218,9 @@ class BaseChatOpenAI(ChatOpenAI):
         **kwargs: Any,
     ) -> BaseMessage:
         """
-        是什么：BaseChatOpenAI.invoke 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
-        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行模型接入主流程，协调下游服务并处理结果或异常。
+        是什么：BaseChatOpenAI.invoke 是 BaseChatOpenAI 里的一个步骤，帮它完成AI 模型相关的一件事。
+        谁调用：拿到 BaseChatOpenAI 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把AI 模型的主要流程跑起来，一步步调用需要的处理。
         """
         config = ensure_config(config)
         chat_result = cast(

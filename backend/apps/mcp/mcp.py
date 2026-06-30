@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放MCP 服务相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 # 作者：Junjun
 # 日期：2025/7/1
 import json
@@ -48,9 +51,9 @@ router = APIRouter(tags=["mcp"], prefix="/mcp")
 
 def get_user(session: SessionDep, token: str):
     """
-    是什么：get_user 是 backend/apps/mcp/mcp.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询MCP 服务相关数据，整理后返回给调用方。
+    是什么：get_user 是一个可以复用的小步骤，负责MCP 服务相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把MCP 服务需要的数据找出来，整理成后面好用的样子。
     """
     try:
         payload = jwt.decode(
@@ -81,9 +84,9 @@ def get_user(session: SessionDep, token: str):
 @router.post("/mcp_start", operation_id="mcp_start")
 async def mcp_start(session: SessionDep, chat: ChatStart):
     """
-    是什么：mcp_start 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 mcp_start 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    是什么：mcp_start 是一个接口入口，负责接住MCP 服务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把MCP 服务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     user: BaseUserDTO = authenticate(session=session, account=chat.username, password=chat.password)
     if not user:
@@ -101,9 +104,9 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
 @router.post("/mcp_ds_list", operation_id="mcp_datasource_list")
 async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
     """
-    是什么：datasource_list 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 datasource_list 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_list 是一个接口入口，负责接住MCP 服务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把MCP 服务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     session_user = get_user(session, mcp_ds.token)
     ds_list = get_datasource_list(session=session, user=session_user)
@@ -128,9 +131,9 @@ async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
 @router.post("/mcp_question", operation_id="mcp_question")
 async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
     """
-    是什么：mcp_question 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 mcp_question 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    是什么：mcp_question 是一个接口入口，负责接住MCP 服务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把MCP 服务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     session_user = get_user(session, chat.token)
     lang = chat.lang
@@ -161,9 +164,9 @@ async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
 @router.post("/mcp_assistant", operation_id="mcp_assistant")
 async def mcp_assistant(session: SessionDep, chat: McpAssistant):
     """
-    是什么：mcp_assistant 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 mcp_assistant 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    是什么：mcp_assistant 是一个接口入口，负责接住MCP 服务相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把MCP 服务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     session_user = BaseUserDTO(**{
         "id": -1, "account": 'shuzhi-mcp-assistant', "assistant_id": -1, "password": '', "language": "zh-CN",

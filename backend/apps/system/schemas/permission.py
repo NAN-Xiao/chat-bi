@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义系统管理的输入输出结构，帮接口和业务代码统一数据格式。
+"""
 from contextvars import ContextVar
 from functools import wraps
 from inspect import signature
@@ -18,15 +21,18 @@ from common.utils.locale import I18n
 i18n = I18n()
 
 class AppPermission(BaseModel):
+    """
+    类说明：AppPermission 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     role: Optional[list[str]] = None
     type: Optional[str] = None
     keyExpression: Optional[str] = None
 
 def _required_project_role(role_list: Optional[list[str]]) -> Optional[str]:
     """
-    是什么：_required_project_role 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_required_project_role 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not role_list:
         return None
@@ -38,27 +44,27 @@ def _required_project_role(role_list: Optional[list[str]]) -> Optional[str]:
 
 def _is_system_admin(current_user: UserInfoDTO) -> bool:
     """
-    是什么：_is_system_admin 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_system_admin 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_is_system_admin 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return is_system_admin(current_user)
 
 
 def _is_platform_admin(current_user: UserInfoDTO) -> bool:
     """
-    是什么：_is_platform_admin 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_platform_admin 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_is_platform_admin 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return is_platform_admin(current_user)
 
 
 def _is_tenant_admin(current_user: UserInfoDTO) -> bool:
     """
-    是什么：_is_tenant_admin 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_tenant_admin 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_is_tenant_admin 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
     return _is_platform_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
@@ -66,18 +72,18 @@ def _is_tenant_admin(current_user: UserInfoDTO) -> bool:
 
 def _has_admin_permission(current_user: UserInfoDTO) -> bool:
     """
-    是什么：_has_admin_permission 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_admin_permission 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_has_admin_permission 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _is_tenant_admin(current_user) or _is_system_admin(current_user)
 
 
 def _resource_is_empty(resource) -> bool:
     """
-    是什么：_resource_is_empty 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _resource_is_empty 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_resource_is_empty 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if resource is None or resource == "":
         return True
@@ -88,9 +94,9 @@ def _resource_is_empty(resource) -> bool:
 
 def _deny_permission(trans):
     """
-    是什么：_deny_permission 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _deny_permission 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_deny_permission 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     raise HTTPException(
         status_code=403,
@@ -100,9 +106,9 @@ def _deny_permission(trans):
 
 def _resolve_part(value, part: str):
     """
-    是什么：_resolve_part 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _resolve_part 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_resolve_part 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value is None:
         raise ValueError("resource path contains null value")
@@ -117,9 +123,9 @@ def _resolve_part(value, part: str):
 
 def _resolve_key_expression(func, args, kwargs, key_expression: str):
     """
-    是什么：_resolve_key_expression 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _resolve_key_expression 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_resolve_key_expression 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     expression = (key_expression or "").strip()
     if not expression:
@@ -159,9 +165,9 @@ async def check_project_permission(
         role_list: Optional[list[str]] = None,
 ) -> bool:
     """
-    是什么：check_project_permission 是 backend/apps/system/schemas/permission.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_project_permission 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if _has_admin_permission(current_user) and type not in {'ds', 'datasource', 'table', 'field'}:
         return True
@@ -232,22 +238,22 @@ async def check_project_permission(
  
 def require_permissions(permission: AppPermission):
     """
-    是什么：require_permissions 是 backend/apps/system/schemas/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：require_permissions 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     def decorator(func):
         """
-        是什么：decorator 是 backend/apps/system/schemas/permission.py 中的同步函数。
-        谁调用：由外层函数 require_permissions 在执行内部流程时调用。
-        做了什么：围绕 decorator 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        是什么：decorator 是一个可以复用的小步骤，负责系统管理相关的一件事。
+        谁调用：外层函数 require_permissions 跑到对应步骤时会调用它。
+        做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         @wraps(func)
         async def wrapper(*args, **kwargs):
             """
-            是什么：wrapper 是 backend/apps/system/schemas/permission.py 中的异步函数。
-            谁调用：由外层函数 decorator 在执行内部流程时调用。
-            做了什么：围绕 wrapper 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+            是什么：wrapper 是一个可以复用的小步骤，负责系统管理相关的一件事。
+            谁调用：外层函数 decorator 跑到对应步骤时会调用它。
+            做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             request = RequestContext.get_request()
             
@@ -303,22 +309,25 @@ def require_permissions(permission: AppPermission):
 
 class RequestContext:
     
+    """
+    类说明：RequestContext 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     _current_request: ContextVar[Request] = ContextVar("_current_request")
     @classmethod
     def set_request(cls, request: Request):
         """
-        是什么：RequestContext.set_request 是 backend/apps/system/schemas/permission.py 中的同步方法。
-        谁调用：由类本身、子类或框架按照类方法约定调用。
-        做了什么：更新系统管理相关状态、配置或持久化数据，并保持后续流程可继续使用。
+        是什么：RequestContext.set_request 是 RequestContext 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：需要通过类本身做这件事时，代码会调用它。
+        做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
         """
         return cls._current_request.set(request)
     
     @classmethod
     def get_request(cls) -> Request:
         """
-        是什么：RequestContext.get_request 是 backend/apps/system/schemas/permission.py 中的同步方法。
-        谁调用：由类本身、子类或框架按照类方法约定调用。
-        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        是什么：RequestContext.get_request 是 RequestContext 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：需要通过类本身做这件事时，代码会调用它。
+        做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
         """
         try:
             return cls._current_request.get()
@@ -331,19 +340,22 @@ class RequestContext:
     @classmethod
     def reset(cls, token):
         """
-        是什么：RequestContext.reset 是 backend/apps/system/schemas/permission.py 中的同步方法。
-        谁调用：由类本身、子类或框架按照类方法约定调用。
-        做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+        是什么：RequestContext.reset 是 RequestContext 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：需要通过类本身做这件事时，代码会调用它。
+        做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
         """
         cls._current_request.reset(token)
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     
+    """
+    类说明：RequestContextMiddleware 用来在请求进入接口前先做一层处理，比如登录、租户或响应格式。
+    """
     async def dispatch(self, request: Request, call_next):
         """
-        是什么：RequestContextMiddleware.dispatch 是 backend/apps/system/schemas/permission.py 中的异步方法。
-        谁调用：由持有 RequestContextMiddleware 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行系统管理主流程，协调下游服务并处理结果或异常。
+        是什么：RequestContextMiddleware.dispatch 是 RequestContextMiddleware 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 RequestContextMiddleware 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理的主要流程跑起来，一步步调用需要的处理。
         """
         token = RequestContext.set_request(request)
         try:

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义操作日志的输入输出结构，帮接口和业务代码统一数据格式。
+"""
 import time
 import functools
 import json
@@ -21,9 +24,9 @@ from common.core.db import engine
 
 def _user_tenant_id(user: Optional[UserInfoDTO]) -> int:
     """
-    是什么：_user_tenant_id 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _user_tenant_id 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
+    是什么：_user_tenant_id 是一个可以复用的小步骤，负责操作日志相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把操作日志里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(user):
         return DEFAULT_TENANT_ID
@@ -36,9 +39,9 @@ def _user_tenant_id(user: Optional[UserInfoDTO]) -> int:
 
 def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -> List[Dict[str, str]]:
     """
-    是什么：get_resource_name_by_id_and_module 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询审计日志相关数据，整理后返回给调用方。
+    是什么：get_resource_name_by_id_and_module 是一个可以复用的小步骤，负责操作日志相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把操作日志需要的数据找出来，整理成后面好用的样子。
     """
     from common.audit.schemas.log_utils import build_resource_union_query
 
@@ -73,6 +76,9 @@ def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -
     } for row in results]
 
 class LogConfig(BaseModel):
+    """
+    类说明：LogConfig 用来描述操作日志的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     operation_type: OperationType
     operation_detail: str = None
     module: Optional[str] = None
@@ -100,6 +106,9 @@ class LogConfig(BaseModel):
 
 
 class SystemLogger:
+    """
+    类说明：SystemLogger 用来描述操作日志的数据格式，让请求入参、返回结果和内部传值更清楚。
+    """
     @staticmethod
     async def create_log(
             session: Session,
@@ -119,9 +128,9 @@ class SystemLogger:
             tenant_id: Optional[int] = None
     ):
         """
-        是什么：SystemLogger.create_log 是 backend/common/audit/schemas/logger_decorator.py 中的异步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：创建、初始化或组装审计日志相关对象和数据，并返回或写入对应状态。
+        是什么：SystemLogger.create_log 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：创建或保存操作日志需要的东西，让后续流程能继续往下走。
         """
         try:
             log = SystemLog(
@@ -153,9 +162,9 @@ class SystemLogger:
     @staticmethod
     def get_client_info(request: Request) -> Dict[str, Optional[str]]:
         """
-        是什么：SystemLogger.get_client_info 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：读取或查询审计日志相关数据，整理后返回给调用方。
+        是什么：SystemLogger.get_client_info 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把操作日志需要的数据找出来，整理成后面好用的样子。
         """
         ip_address = None
         user_agent = None
@@ -179,9 +188,9 @@ class SystemLogger:
     @staticmethod
     def extract_value_from_object(expression: str, obj: Any):
         """
-        是什么：SystemLogger.extract_value_from_object 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
+        是什么：SystemLogger.extract_value_from_object 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把操作日志的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if not expression or obj is None:
             return None
@@ -259,9 +268,9 @@ class SystemLogger:
             source_type: str = "args"  # 位置参数、关键字参数、结果
     ):
         """
-        是什么：SystemLogger.extract_resource_id 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
+        是什么：SystemLogger.extract_resource_id 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把操作日志的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if not expression:
             return None
@@ -322,9 +331,9 @@ class SystemLogger:
             func_kwargs: dict
     ):
         """
-        是什么：SystemLogger.extract_from_function_params 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
+        是什么：SystemLogger.extract_from_function_params 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把操作日志的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if not expression:
             return None
@@ -362,9 +371,9 @@ class SystemLogger:
     @staticmethod
     def get_current_user(request: Optional[Request]):
         """
-        是什么：SystemLogger.get_current_user 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：读取或查询审计日志相关数据，整理后返回给调用方。
+        是什么：SystemLogger.get_current_user 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把操作日志需要的数据找出来，整理成后面好用的样子。
         """
         if not request:
             return None
@@ -380,9 +389,9 @@ class SystemLogger:
     @staticmethod
     def extract_request_params(request: Optional[Request]):
         """
-        是什么：SystemLogger.extract_request_params 是 backend/common/audit/schemas/logger_decorator.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化审计日志相关数据，生成后续流程可使用的结构。
+        是什么：SystemLogger.extract_request_params 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把操作日志的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if not request:
             return None
@@ -434,9 +443,9 @@ class SystemLogger:
             resource_info_list : Optional[List] = None,
     ) -> Optional[SystemLog]:
         """
-        是什么：SystemLogger.create_log_record 是 backend/common/audit/schemas/logger_decorator.py 中的异步方法。
-        谁调用：由类本身、子类或框架按照类方法约定调用。
-        做了什么：创建、初始化或组装审计日志相关对象和数据，并返回或写入对应状态。
+        是什么：SystemLogger.create_log_record 是 SystemLogger 里的一个步骤，帮它完成操作日志相关的一件事。
+        谁调用：需要通过类本身做这件事时，代码会调用它。
+        做了什么：创建或保存操作日志需要的东西，让后续流程能继续往下走。
         """
         try:
             # 获取用户信息
@@ -516,9 +525,9 @@ class SystemLogger:
 
 def system_log(config: Union[LogConfig, Dict]):
     """
-    是什么：system_log 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 system_log 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
+    是什么：system_log 是一个可以复用的小步骤，负责操作日志相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把操作日志里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     # If a dictionary is passed in, convert it to a LogConfig object
     if isinstance(config, dict):
@@ -526,16 +535,16 @@ def system_log(config: Union[LogConfig, Dict]):
 
     def decorator(func: Callable) -> Callable:
         """
-        是什么：decorator 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
-        谁调用：由外层函数 system_log 在执行内部流程时调用。
-        做了什么：围绕 decorator 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
+        是什么：decorator 是一个可以复用的小步骤，负责操作日志相关的一件事。
+        谁调用：外层函数 system_log 跑到对应步骤时会调用它。
+        做了什么：把操作日志里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
             """
-            是什么：async_wrapper 是 backend/common/audit/schemas/logger_decorator.py 中的异步函数。
-            谁调用：由外层函数 decorator 在执行内部流程时调用。
-            做了什么：围绕 async_wrapper 的语义处理审计日志相关逻辑，并把结果返回或写入状态。
+            是什么：async_wrapper 是一个可以复用的小步骤，负责操作日志相关的一件事。
+            谁调用：外层函数 decorator 跑到对应步骤时会调用它。
+            做了什么：把操作日志里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             start_time = time.time()
             status = OperationStatus.SUCCESS
@@ -646,9 +655,9 @@ def system_log(config: Union[LogConfig, Dict]):
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
             """
-            是什么：sync_wrapper 是 backend/common/audit/schemas/logger_decorator.py 中的同步函数。
-            谁调用：由外层函数 decorator 在执行内部流程时调用。
-            做了什么：更新审计日志相关状态、配置或持久化数据，并保持后续流程可继续使用。
+            是什么：sync_wrapper 是一个可以复用的小步骤，负责操作日志相关的一件事。
+            谁调用：外层函数 decorator 跑到对应步骤时会调用它。
+            做了什么：把操作日志相关的信息改成最新状态，并保存这些变化。
             """
             start_time = time.time()
             status = OperationStatus.SUCCESS

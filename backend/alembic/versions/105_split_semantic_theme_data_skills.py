@@ -1,8 +1,5 @@
-"""迁移脚本：105_split_semantic_theme_data_skills
-
-迁移版本 ID： f64b1e9c2a75
-上一版本： e42f8b6c1d9a
-创建时间： 2026-06-22 00:00:00.000000
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
 """
 from __future__ import annotations
 
@@ -202,18 +199,18 @@ EXCLUDED_PLATFORM_SQL_KEYWORDS: tuple[str, ...] = (
 
 def _has_table(table_name: str) -> bool:
     """
-    是什么：_has_table 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_table 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_table 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return table_name in sa.inspect(op.get_bind()).get_table_names()
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
     """
-    是什么：_has_column 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_column 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_column 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     inspector = sa.inspect(op.get_bind())
     return any(column["name"] == column_name for column in inspector.get_columns(table_name))
@@ -221,18 +218,18 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 def _has_columns(table_name: str, column_names: tuple[str, ...]) -> bool:
     """
-    是什么：_has_columns 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_columns 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_columns 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _has_table(table_name) and all(_has_column(table_name, column_name) for column_name in column_names)
 
 
 def _datasource_ids(value: Any) -> list[int]:
     """
-    是什么：_datasource_ids 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _datasource_ids 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_ids 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value in (None, ""):
         return []
@@ -254,9 +251,9 @@ def _datasource_ids(value: Any) -> list[int]:
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     """
-    是什么：_contains_any 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _contains_any 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_contains_any 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     lowered = text.lower()
     return any(keyword.lower() in lowered for keyword in keywords)
@@ -264,9 +261,9 @@ def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
 
 def _term_line(term: dict[str, Any]) -> str:
     """
-    是什么：_term_line 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _term_line 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_term_line 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     synonyms = (term.get("synonyms") or "").strip()
     description = (term.get("description") or "").strip()
@@ -280,9 +277,9 @@ def _term_line(term: dict[str, Any]) -> str:
 
 def _sql_block(row: dict[str, Any]) -> str:
     """
-    是什么：_sql_block 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sql_block 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_sql_block 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     description = (row.get("description") or "").strip()
     return (
@@ -294,9 +291,9 @@ def _sql_block(row: dict[str, Any]) -> str:
 
 def _dedupe_sql_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
-    是什么：_dedupe_sql_rows 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _dedupe_sql_rows 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_dedupe_sql_rows 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     result: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -311,9 +308,9 @@ def _dedupe_sql_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _theme_for_term(word: str, themes: tuple[dict[str, Any], ...]) -> str | None:
     """
-    是什么：_theme_for_term 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _theme_for_term 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_theme_for_term 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for theme in themes:
         if word in theme["term_words"]:
@@ -323,9 +320,9 @@ def _theme_for_term(word: str, themes: tuple[dict[str, Any], ...]) -> str | None
 
 def _theme_for_sql(question: str, description: str, themes: tuple[dict[str, Any], ...]) -> str | None:
     """
-    是什么：_theme_for_sql 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _theme_for_sql 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_theme_for_sql 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     theme_slugs = {str(theme["slug"]) for theme in themes}
     rules = (
@@ -347,9 +344,9 @@ def _theme_for_sql(question: str, description: str, themes: tuple[dict[str, Any]
 
 def _fetch_terms(platform: bool) -> list[dict[str, Any]]:
     """
-    是什么：_fetch_terms 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    是什么：_fetch_terms 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移需要的数据找出来，整理成后面好用的样子。
     """
     if not _has_columns(
         "terminology",
@@ -396,9 +393,9 @@ def _fetch_terms(platform: bool) -> list[dict[str, Any]]:
 
 def _fetch_sql_rows(platform: bool) -> list[dict[str, Any]]:
     """
-    是什么：_fetch_sql_rows 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    是什么：_fetch_sql_rows 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移需要的数据找出来，整理成后面好用的样子。
     """
     if not _has_columns("data_training", ("id", "tenant_id", "scope", "datasource", "question", "description", "enabled")):
         return []
@@ -429,9 +426,9 @@ def _fetch_sql_rows(platform: bool) -> list[dict[str, Any]]:
 
 def _datasource_and_tenant_maps() -> tuple[dict[int, dict[str, Any]], dict[int, str]]:
     """
-    是什么：_datasource_and_tenant_maps 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _datasource_and_tenant_maps 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_and_tenant_maps 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource_map: dict[int, dict[str, Any]] = {}
     tenant_map: dict[int, str] = {}
@@ -460,9 +457,9 @@ def _render_skill(
         sql_rows: list[dict[str, Any]],
 ) -> str:
     """
-    是什么：_render_skill 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据库迁移相关数据，生成后续流程可使用的结构。
+    是什么：_render_skill 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     term_section = "\n".join(_term_line(term) for term in terms) or "- 暂无匹配的旧版术语记录。"
     sql_section = "\n\n".join(_sql_block(row) for row in _dedupe_sql_rows(sql_rows)) or "- 暂无匹配的旧版 SQL 示例记录。"
@@ -498,9 +495,9 @@ def _upsert_skill(
         datasource_ids: list[int],
 ) -> None:
     """
-    是什么：_upsert_skill 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _upsert_skill 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_upsert_skill 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     bind = op.get_bind()
     update_stmt = sa.text(
@@ -587,9 +584,9 @@ def _upsert_skill(
 
 def _generate_platform_theme_skills() -> None:
     """
-    是什么：_generate_platform_theme_skills 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成数据库迁移相关结果，并保存或返回给调用方。
+    是什么：_generate_platform_theme_skills 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成数据库迁移的结果，比如答案、SQL、图表或建议。
     """
     terms = _fetch_terms(platform=True)
     sql_rows = [
@@ -639,9 +636,9 @@ def _generate_platform_theme_skills() -> None:
 
 def _generate_tenant_theme_skills() -> None:
     """
-    是什么：_generate_tenant_theme_skills 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：基于输入上下文生成数据库迁移相关结果，并保存或返回给调用方。
+    是什么：_generate_tenant_theme_skills 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：根据已有信息生成数据库迁移的结果，比如答案、SQL、图表或建议。
     """
     terms = _fetch_terms(platform=False)
     sql_rows = _fetch_sql_rows(platform=False)
@@ -716,9 +713,9 @@ def _generate_tenant_theme_skills() -> None:
 
 def _disable_old_generated_semantic_skills() -> None:
     """
-    是什么：_disable_old_generated_semantic_skills 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _disable_old_generated_semantic_skills 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_disable_old_generated_semantic_skills 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not _has_columns("custom_prompt", ("type", "prompt", "active")):
         return
@@ -741,9 +738,9 @@ def _disable_old_generated_semantic_skills() -> None:
 
 def upgrade() -> None:
     """
-    是什么：upgrade 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：upgrade 是这个迁移脚本的数据库升级步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前升级。
     """
     if not _has_columns(
         "custom_prompt",
@@ -771,8 +768,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """
-    是什么：downgrade 是 backend/alembic/versions/105_split_semantic_theme_data_skills.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：downgrade 是这个迁移脚本的数据库回滚步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前回滚。
     """
     pass

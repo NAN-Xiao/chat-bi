@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放数据源相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import base64
 import json
 
@@ -12,9 +15,9 @@ _FERNET_PREFIX = "fernet:v1:"
 
 def _is_plain_json(value: str) -> bool:
     """
-    是什么：_is_plain_json 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_plain_json 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_is_plain_json 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         json.loads(value)
@@ -25,9 +28,9 @@ def _is_plain_json(value: str) -> bool:
 
 def _legacy_aes_encrypt(data: str) -> str:
     """
-    是什么：_legacy_aes_encrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _legacy_aes_encrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_legacy_aes_encrypt 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     raw = bytes(data, "utf-8")
     cipher = AES.new(key, AES.MODE_ECB)
@@ -37,9 +40,9 @@ def _legacy_aes_encrypt(data: str) -> str:
 
 def _legacy_aes_decrypt(encrypted_data: str) -> str:
     """
-    是什么：_legacy_aes_decrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _legacy_aes_decrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_legacy_aes_decrypt 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     raw = base64.b64decode(encrypted_data)
     for candidate_key in (key, *get_legacy_config_aes_keys()):
@@ -55,18 +58,18 @@ def _legacy_aes_decrypt(encrypted_data: str) -> str:
 
 def aes_encrypt(data):
     """
-    是什么：aes_encrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 aes_encrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：aes_encrypt 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return encrypt_datasource_configuration(data)
 
 
 def aes_decrypt(encrypted_data):
     """
-    是什么：aes_decrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 aes_decrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：aes_decrypt 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if encrypted_data is None:
         return ""
@@ -79,9 +82,9 @@ def aes_decrypt(encrypted_data):
 
 def encrypt_datasource_configuration(configuration: str | bytes | None) -> str:
     """
-    是什么：encrypt_datasource_configuration 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 encrypt_datasource_configuration 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：encrypt_datasource_configuration 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if configuration is None:
         return ""
@@ -96,9 +99,9 @@ def encrypt_datasource_configuration(configuration: str | bytes | None) -> str:
 
 def decrypt_datasource_configuration_for_output(configuration: str | bytes | None) -> str | None:
     """
-    是什么：decrypt_datasource_configuration_for_output 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 decrypt_datasource_configuration_for_output 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：decrypt_datasource_configuration_for_output 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if configuration in (None, ""):
         return None
@@ -107,8 +110,8 @@ def decrypt_datasource_configuration_for_output(configuration: str | bytes | Non
 
 def legacy_aes_encrypt_for_tests(data: str) -> str:
     """
-    是什么：legacy_aes_encrypt_for_tests 是 backend/apps/datasource/utils/utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 legacy_aes_encrypt_for_tests 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：legacy_aes_encrypt_for_tests 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _legacy_aes_encrypt(data)

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放数据库连接相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import base64
 import json
 import os
@@ -52,9 +55,9 @@ except Exception as e:
 
 def get_uri(ds: CoreDatasource) -> str:
     """
-    是什么：get_uri 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_uri 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
@@ -63,9 +66,9 @@ def get_uri(ds: CoreDatasource) -> str:
 
 def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
     """
-    是什么：get_uri_from_config 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_uri_from_config 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     db_url: str
     if equals_ignore_case(type, "mysql"):
@@ -107,9 +110,9 @@ def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
 
 def get_extra_config(conf: DatasourceConf):
     """
-    是什么：get_extra_config 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_extra_config 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     config_dict = {}
     if conf.extraJdbc:
@@ -125,9 +128,9 @@ def get_extra_config(conf: DatasourceConf):
 
 def get_origin_connect(type: str, conf: DatasourceConf):
     """
-    是什么：get_origin_connect 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_origin_connect 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     extra_config_dict = get_extra_config(conf)
     if equals_ignore_case(type, "sqlServer"):
@@ -158,9 +161,9 @@ def get_origin_connect(type: str, conf: DatasourceConf):
 # 使用 SQLAlchemy
 def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
     """
-    是什么：get_engine 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_engine 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
@@ -193,9 +196,9 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
 def get_session(ds: CoreDatasource | AssistantOutDsSchema):
     # engine = get_engine(ds) if isinstance(ds, CoreDatasource) else get_ds_engine(ds)
     """
-    是什么：get_session 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_session 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 30)
@@ -209,9 +212,9 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema):
 
 def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDsSchema, is_raise: bool = False):
     """
-    是什么：check_connection 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_connection 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据库连接里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 10)
@@ -324,9 +327,9 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
 
 def get_version(ds: CoreDatasource | AssistantOutDsSchema):
     """
-    是什么：get_version 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_version 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     version = ''
     if isinstance(ds, CoreDatasource):
@@ -380,9 +383,9 @@ def get_version(ds: CoreDatasource | AssistantOutDsSchema):
 
 def get_schema(ds: CoreDatasource):
     """
-    是什么：get_schema 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_schema 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db = DB.get_db(ds.type)
@@ -436,9 +439,9 @@ def get_schema(ds: CoreDatasource):
 
 def get_tables(ds: CoreDatasource):
     """
-    是什么：get_tables 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_tables 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
@@ -501,9 +504,9 @@ def get_tables(ds: CoreDatasource):
 
 def get_fields(ds: CoreDatasource, table_name: str = None):
     """
-    是什么：get_fields 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_fields 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
@@ -566,9 +569,9 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
 
 def convert_value(value, datetime_format='space'):
     """
-    是什么：convert_value 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据库访问相关数据，生成后续流程可使用的结构。
+    是什么：convert_value 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if value is None:
         return None
@@ -635,9 +638,9 @@ def convert_value(value, datetime_format='space'):
 
 def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
     """
-    是什么：_unsafe_exec_sql_after_validation 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _unsafe_exec_sql_after_validation 的语义处理数据库访问相关逻辑，并把结果返回或写入状态。
+    是什么：_unsafe_exec_sql_after_validation 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     while sql.endswith(';'):
         sql = sql[:-1]
@@ -775,9 +778,9 @@ def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema,
 
 def get_sqlglot_dialect(ds_type: str) -> str:
     """
-    是什么：get_sqlglot_dialect 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_sqlglot_dialect 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     if equals_ignore_case(ds_type, 'mysql', 'doris', 'starrocks'):
         return 'mysql'
@@ -814,9 +817,9 @@ DANGEROUS_PATTERNS = [
 
 def get_dangerous_functions(ds_type: str) -> set:
     """
-    是什么：get_dangerous_functions 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库访问相关数据，整理后返回给调用方。
+    是什么：get_dangerous_functions 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     functions = COMMON_DANGEROUS_FUNCTIONS.copy()
     ds_key = ds_type.lower() if ds_type else ''
@@ -827,9 +830,9 @@ def get_dangerous_functions(ds_type: str) -> set:
 
 def check_dangerous_functions(statements: list, ds_type: str) -> bool:
     """
-    是什么：check_dangerous_functions 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_dangerous_functions 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据库连接里的数据、权限或配置是否合法，不对就及时拦住。
     """
     dangerous_functions = get_dangerous_functions(ds_type)
     dangerous_functions_upper = {f.upper() for f in dangerous_functions}
@@ -844,9 +847,9 @@ def check_dangerous_functions(statements: list, ds_type: str) -> bool:
 
 def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple[bool, str]:
     """
-    是什么：check_sql_read 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_sql_read 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据库连接里的数据、权限或配置是否合法，不对就及时拦住。
     """
     try:
         normalized_sql = sql.strip().lstrip("(").strip()
@@ -913,9 +916,9 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
 
 def checkParams(extraParams: str, illegalParams: List[str]):
     """
-    是什么：checkParams 是 backend/apps/db/db.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据库访问相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：checkParams 是一个可以复用的小步骤，负责数据库连接相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据库连接里的数据、权限或配置是否合法，不对就及时拦住。
     """
     kvs = extraParams.split('&')
     for kv in kvs:

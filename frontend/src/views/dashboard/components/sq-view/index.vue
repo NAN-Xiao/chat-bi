@@ -453,6 +453,56 @@ const displayData = computed(() => {
     selected.has(normalizePivotGroupValue(row?.[field]))
   )
 })
+
+function reportAxisFields(axes: ChartAxis[]) {
+  return axes.map((axis) => axis?.name || axis?.value).filter(Boolean).map((field) => `${field}`)
+}
+
+function getReportContextSnapshot() {
+  const rows = Array.isArray(displayData.value) ? displayData.value : []
+  const availableGroupValues = new Set(pivotGroupValueOptions.value.map((option) => option.value))
+  const selectedGroupValues = pivotGroupValueFilterEnabled.value
+    ? Array.from(selectedPivotGroupValueSet.value).filter((value) => availableGroupValues.has(value))
+    : []
+
+  return {
+    fields: unique([
+      ...(Array.isArray(props.viewInfo?.data?.fields) ? props.viewInfo.data.fields : []),
+      ...(Array.isArray(props.viewInfo?.fields) ? props.viewInfo.fields : []),
+      ...reportAxisFields(renderXAxis.value),
+      ...reportAxisFields(renderYAxis.value),
+      ...reportAxisFields(renderSeries.value),
+      ...rows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
+    ]),
+    data: rows,
+    totalRows: rows.length,
+    sourceRows: rawChartData.value.length,
+    axes: {
+      x: renderXAxis.value,
+      y: renderYAxis.value,
+      series: renderSeries.value,
+    },
+    pivot: pivotEnabled.value
+      ? {
+          enabled: true,
+          time_field: pivotTimeField.value,
+          granularity: pivotState.granularity,
+          range: pivotState.range,
+          custom_start: pivotState.customStart,
+          custom_end: pivotState.customEnd,
+          group_field: activePivotGroupField.value,
+          group_enabled: pivotState.groupEnabled,
+          selected_group_values: selectedGroupValues,
+          selected_group_count: pivotGroupValueFilterEnabled.value
+            ? pivotGroupValueSelectedCount.value
+            : 0,
+          total_group_count: pivotGroupValueFilterEnabled.value ? pivotGroupValueTotal.value : 0,
+        }
+      : {
+          enabled: false,
+        },
+  }
+}
 const renderMultiQuotaName = computed(() => props.viewInfo.chart?.multiQuotaName)
 const pivotRangeLabel = computed(() => {
   if (pivotState.range === 'custom' && (pivotState.customStart || pivotState.customEnd)) {
@@ -1385,6 +1435,7 @@ defineExpose({
   enlargeView,
   refreshData,
   exportTableData,
+  getReportContextSnapshot,
 })
 </script>
 

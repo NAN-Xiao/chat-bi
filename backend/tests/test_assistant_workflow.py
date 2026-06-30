@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本是测试文件，用来验证对应功能在常见情况下能按预期工作。
+"""
 from __future__ import annotations
 
 import json
@@ -17,18 +20,18 @@ from common.error import SingleMessageError
 @contextmanager
 def _fake_session_scope():
     """
-    是什么：_fake_session_scope 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _fake_session_scope 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_fake_session_scope 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     yield object()
 
 
 def _events(chunks: list[Any]) -> list[dict[str, Any]]:
     """
-    是什么：_events 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _events 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_events 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     events: list[dict[str, Any]] = []
     for chunk in chunks:
@@ -38,11 +41,14 @@ def _events(chunks: list[Any]) -> list[dict[str, Any]]:
 
 
 class FakeWorkflowGraph:
+    """
+    类说明：FakeWorkflowGraph 把测试相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, chunks: list[Any] | None = None, error: BaseException | None = None) -> None:
         """
-        是什么：FakeWorkflowGraph.__init__ 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：FakeWorkflowGraph.__init__ 是 FakeWorkflowGraph 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.chunks = chunks or []
         self.error = error
@@ -51,9 +57,9 @@ class FakeWorkflowGraph:
 
     def stream(self, initial_state: dict[str, Any], stream_mode: str):
         """
-        是什么：FakeWorkflowGraph.stream 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：组织测试场景的流式输出或异步等待，把事件和结果传递给调用方。
+        是什么：FakeWorkflowGraph.stream 是 FakeWorkflowGraph 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试处理过程中的消息或结果一段段传出去。
         """
         self.initial_state = initial_state
         self.stream_mode = stream_mode
@@ -63,11 +69,14 @@ class FakeWorkflowGraph:
 
 
 class FakeWorkflowService:
+    """
+    类说明：FakeWorkflowService 把测试的一组操作放在一起，对外提供更容易调用的业务能力。
+    """
     def __init__(self) -> None:
         """
-        是什么：FakeWorkflowService.__init__ 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：FakeWorkflowService.__init__ 是 FakeWorkflowService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.record = SimpleNamespace(
             id=1001,
@@ -79,34 +88,34 @@ class FakeWorkflowService:
 
     def get_record(self):
         """
-        是什么：FakeWorkflowService.get_record 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+        是什么：FakeWorkflowService.get_record 是 FakeWorkflowService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试需要的数据找出来，整理成后面好用的样子。
         """
         return self.record
 
     def trans(self, key: str):
         """
-        是什么：FakeWorkflowService.trans 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：围绕 trans 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        是什么：FakeWorkflowService.trans 是 FakeWorkflowService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return f"{key}: "
 
     def save_error(self, *, session, message: str):
         """
-        是什么：FakeWorkflowService.save_error 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeWorkflowService.save_error 是 FakeWorkflowService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         assert session is not None
         self.saved_errors.append(message)
 
     def finish(self, session):
         """
-        是什么：FakeWorkflowService.finish 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：完成或关闭测试场景流程，释放资源并记录最终状态。
+        是什么：FakeWorkflowService.finish 是 FakeWorkflowService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试这次处理做收尾，记录结果并关掉不再需要的资源。
         """
         assert session is not None
         self.finished = True
@@ -117,9 +126,9 @@ CONFIG = AssistantWorkflowConfig("unit_workflow", "unit", "Unit Workflow")
 
 def test_run_assistant_workflow_streams_chunks_and_finishes() -> None:
     """
-    是什么：test_run_assistant_workflow_streams_chunks_and_finishes 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_run_assistant_workflow_streams_chunks_and_finishes 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeWorkflowService()
     graph = FakeWorkflowGraph(["chunk-a", {"chunk": "b"}])
@@ -152,9 +161,9 @@ def test_run_assistant_workflow_streams_chunks_and_finishes() -> None:
 
 def test_run_assistant_workflow_formats_single_message_errors() -> None:
     """
-    是什么：test_run_assistant_workflow_formats_single_message_errors 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_run_assistant_workflow_formats_single_message_errors 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeWorkflowService()
     graph = FakeWorkflowGraph(error=SingleMessageError("visible failure"))
@@ -187,9 +196,9 @@ def test_run_assistant_workflow_formats_single_message_errors() -> None:
 
 def test_emit_record_metadata_for_smart_qa_shape(monkeypatch) -> None:
     """
-    是什么：test_emit_record_metadata_for_smart_qa_shape 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_emit_record_metadata_for_smart_qa_shape 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeWorkflowService()
     emitted: list[str] = []
@@ -216,9 +225,9 @@ def test_emit_record_metadata_for_smart_qa_shape(monkeypatch) -> None:
 
 def test_emit_record_metadata_for_chart_insight_shape(monkeypatch) -> None:
     """
-    是什么：test_emit_record_metadata_for_chart_insight_shape 是 backend/tests/test_assistant_workflow.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_emit_record_metadata_for_chart_insight_shape 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeWorkflowService()
     emitted: list[str] = []

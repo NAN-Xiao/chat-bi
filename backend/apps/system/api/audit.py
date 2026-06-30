@@ -1,4 +1,7 @@
-﻿from datetime import datetime
+﻿"""
+脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
+from datetime import datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Request
@@ -44,9 +47,9 @@ STATUS_NAMES = {
 
 def _split_values(value: str | None) -> list[str]:
     """
-    是什么：_split_values 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _split_values 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_split_values 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not value:
         return []
@@ -55,9 +58,9 @@ def _split_values(value: str | None) -> list[str]:
 
 def _query_filters(request: Request) -> dict[str, list[str] | str | None]:
     """
-    是什么：_query_filters 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：_query_filters 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     query = request.query_params
     return {
@@ -71,9 +74,9 @@ def _query_filters(request: Request) -> dict[str, list[str] | str | None]:
 
 def _parse_millis(value: str | None) -> datetime | None:
     """
-    是什么：_parse_millis 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_parse_millis 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if not value:
         return None
@@ -88,9 +91,9 @@ def _parse_millis(value: str | None) -> datetime | None:
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
     """
-    是什么：_current_tenant_id 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _current_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_current_tenant_id 是从当前用户里取租户 ID 的小工具。
+    谁调用：需要知道当前用户属于哪个租户的接口会调用它。
+    做了什么：把用户上下文里的租户 ID 取出来，方便后面做权限和数据隔离。
     """
     if is_super_admin(current_user) and not is_platform_workspace_delegate(current_user):
         return DEFAULT_TENANT_ID
@@ -99,9 +102,9 @@ def _current_tenant_id(current_user: CurrentUser) -> int:
 
 def _apply_tenant_scope(stmt, current_user: CurrentUser):
     """
-    是什么：_apply_tenant_scope 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _apply_tenant_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_apply_tenant_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_super_admin(current_user) and not is_platform_workspace_delegate(current_user):
         return stmt
@@ -110,9 +113,9 @@ def _apply_tenant_scope(stmt, current_user: CurrentUser):
 
 def _build_stmt(request: Request, current_user: CurrentUser):
     """
-    是什么：_build_stmt 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：_build_stmt 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     filters = _query_filters(request)
     stmt = _apply_tenant_scope(select(SystemLog), current_user)
@@ -163,9 +166,9 @@ def _build_stmt(request: Request, current_user: CurrentUser):
 
 def _format_row(log: SystemLog, resource_name: str | None = None) -> dict:
     """
-    是什么：_format_row 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：_format_row 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     operation_type = getattr(log.operation_type, "value", log.operation_type)
     operation_status = getattr(log.operation_status, "value", log.operation_status)
@@ -186,9 +189,9 @@ def _format_row(log: SystemLog, resource_name: str | None = None) -> dict:
 
 def _resource_name_map(session: SessionDep, log_ids: list[int]) -> dict[int, str]:
     """
-    是什么：_resource_name_map 是 backend/apps/system/api/audit.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _resource_name_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_resource_name_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not log_ids:
         return {}
@@ -207,9 +210,9 @@ def _resource_name_map(session: SessionDep, log_ids: list[int]) -> dict[int, str
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def page(session: SessionDep, request: Request, current_user: CurrentUser, page_num: int, page_size: int):
     """
-    是什么：page 是 backend/apps/system/api/audit.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 page 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：page 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     base_stmt = _build_stmt(request, current_user)
     total_count = session.exec(select(func.count()).select_from(base_stmt.subquery())).one()
@@ -230,9 +233,9 @@ async def page(session: SessionDep, request: Request, current_user: CurrentUser,
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def get_options():
     """
-    是什么：get_options 是 backend/apps/system/api/audit.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_options 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     return [{"id": item.value, "name": OPERATION_TYPE_NAMES.get(item.value, item.value)} for item in OperationType]
 
@@ -241,9 +244,9 @@ async def get_options():
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def users(session: SessionDep, current_user: CurrentUser):
     """
-    是什么：users 是 backend/apps/system/api/audit.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 users 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：users 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     stmt = select(UserModel.id, UserModel.name)
     if not is_super_admin(current_user) or is_platform_workspace_delegate(current_user):
@@ -264,9 +267,9 @@ async def users(session: SessionDep, current_user: CurrentUser):
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def export(session: SessionDep, request: Request, current_user: CurrentUser):
     """
-    是什么：export 是 backend/apps/system/api/audit.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 export 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：export 是一个接口入口，负责接住系统管理相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     logs = session.exec(_build_stmt(request, current_user).order_by(SystemLog.create_time.desc(), SystemLog.id.desc())).all()
     resource_map = _resource_name_map(session, [item.id for item in logs if item.id])

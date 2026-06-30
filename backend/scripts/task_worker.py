@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端脚本相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import asyncio
 import signal
 
@@ -10,9 +13,9 @@ from common.utils.utils import AppLogUtil
 
 async def main() -> None:
     """
-    是什么：main 是 backend/scripts/task_worker.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行脚本任务主流程，协调下游服务并处理结果或异常。
+    是什么：main 是一个可以复用的小步骤，负责后端脚本相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端脚本的主要流程跑起来，一步步调用需要的处理。
     """
     register_builtin_tasks()
     await init_app_cache()
@@ -20,9 +23,9 @@ async def main() -> None:
 
     def stop() -> None:
         """
-        是什么：stop 是 backend/scripts/task_worker.py 中的同步函数。
-        谁调用：由外层函数 main 在执行内部流程时调用。
-        做了什么：完成或关闭脚本任务流程，释放资源并记录最终状态。
+        是什么：stop 是一个可以复用的小步骤，负责后端脚本相关的一件事。
+        谁调用：外层函数 main 跑到对应步骤时会调用它。
+        做了什么：把后端脚本这次处理做收尾，记录结果并关掉不再需要的资源。
         """
         stop_event.set()
 

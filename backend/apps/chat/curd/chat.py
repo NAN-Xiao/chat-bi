@@ -1,4 +1,7 @@
-﻿import datetime
+﻿"""
+脚本说明：这个脚本封装聊天问数据和 Agent的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
+import datetime
 from decimal import Decimal
 from typing import List, Optional, Union, Dict, Any
 
@@ -49,27 +52,27 @@ CHAT_USAGE_METRICS = {
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
     """
-    是什么：_current_tenant_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _current_tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_current_tenant_id 是从当前用户里取租户 ID 的小工具。
+    谁调用：需要知道当前用户属于哪个租户的接口会调用它。
+    做了什么：把用户上下文里的租户 ID 取出来，方便后面做权限和数据隔离。
     """
     return require_current_tenant_id(current_user)
 
 
 def _same_tenant(row, current_user: CurrentUser | None) -> bool:
     """
-    是什么：_same_tenant 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _same_tenant 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_same_tenant 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return int(getattr(row, "tenant_id")) == _current_tenant_id(current_user)
 
 
 def _record_tenant_id(session: SessionDep, record_id: int | None) -> int | None:
     """
-    是什么：_record_tenant_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _record_tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_record_tenant_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not record_id:
         return None
@@ -79,9 +82,9 @@ def _record_tenant_id(session: SessionDep, record_id: int | None) -> int | None:
 
 def _chat_tenant_id(session: SessionDep, chat_id: int | None) -> int | None:
     """
-    是什么：_chat_tenant_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _chat_tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_chat_tenant_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not chat_id:
         return None
@@ -91,9 +94,9 @@ def _chat_tenant_id(session: SessionDep, chat_id: int | None) -> int | None:
 
 def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
     """
-    是什么：_record_chat_usage_from_log 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _record_chat_usage_from_log 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_record_chat_usage_from_log 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     metric = CHAT_USAGE_METRICS.get(log.operate)
     if not metric:
@@ -115,9 +118,9 @@ def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
 
 def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> dict[str, Any]:
     """
-    是什么：_failed_permission_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _failed_permission_data 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_failed_permission_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return {
         "status": "failed",
@@ -131,9 +134,9 @@ def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> d
 
 def _row_value(row, key: str):
     """
-    是什么：_row_value 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _row_value 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_row_value 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return getattr(row, key)
@@ -143,9 +146,9 @@ def _row_value(row, key: str):
 
 def _record_has_sensitive_artifacts(row) -> bool:
     """
-    是什么：_record_has_sensitive_artifacts 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _record_has_sensitive_artifacts 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_record_has_sensitive_artifacts 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return any(
         _row_value(row, key)
@@ -165,9 +168,9 @@ def _record_has_sensitive_artifacts(row) -> bool:
 
 def _record_allowed_by_current_permissions(session: SessionDep, current_user: CurrentUser, row) -> bool:
     """
-    是什么：_record_allowed_by_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _record_allowed_by_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_record_allowed_by_current_permissions 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not is_normal_user(current_user):
         return True
@@ -202,9 +205,9 @@ def _record_allowed_by_current_permissions(session: SessionDep, current_user: Cu
 
 def _record_requires_live_data_for_current_permissions(session: SessionDep, current_user: CurrentUser, row) -> bool:
     """
-    是什么：_record_requires_live_data_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _record_requires_live_data_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_record_requires_live_data_for_current_permissions 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not is_normal_user(current_user):
         return False
@@ -234,9 +237,9 @@ def _source_record_requires_live_data_for_current_permissions(
         source_record_id: int | None,
 ) -> bool:
     """
-    是什么：_source_record_requires_live_data_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _source_record_requires_live_data_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_source_record_requires_live_data_for_current_permissions 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not source_record_id:
         return False
@@ -256,9 +259,9 @@ def _source_record_requires_live_data_for_current_permissions(
 
 def _scrub_derived_cache_for_current_permissions(record: ChatRecordResult) -> ChatRecordResult:
     """
-    是什么：_scrub_derived_cache_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _scrub_derived_cache_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_scrub_derived_cache_for_current_permissions 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     record.analysis = None
     record.predict = None
@@ -271,9 +274,9 @@ def _scrub_derived_cache_for_current_permissions(record: ChatRecordResult) -> Ch
 
 def _scrub_record_for_current_permissions(record: ChatRecordResult) -> ChatRecordResult:
     """
-    是什么：_scrub_record_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _scrub_record_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_scrub_record_for_current_permissions 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     record.sql_answer = None
     record.sql = None
@@ -295,9 +298,9 @@ def _scrub_record_for_current_permissions(record: ChatRecordResult) -> ChatRecor
 
 def _public_log_message(current_user: CurrentUser, log: ChatLog, message):
     """
-    是什么：_public_log_message 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _public_log_message 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_public_log_message 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not is_normal_user(current_user):
         return message
@@ -315,9 +318,9 @@ def _public_log_message(current_user: CurrentUser, log: ChatLog, message):
 
 def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | None = None):
     """
-    是什么：get_chat_record_by_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_record_by_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     record: ChatRecord | None = None
 
@@ -341,9 +344,9 @@ def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | 
 
 def get_chat(session: SessionDep, chat_id: int) -> Chat:
     """
-    是什么：get_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     statement = select(Chat).where(Chat.id == chat_id)
     chat = session.exec(statement).scalars().first()
@@ -352,9 +355,9 @@ def get_chat(session: SessionDep, chat_id: int) -> Chat:
 
 def list_chats(session: SessionDep, current_user: CurrentUser, datasource_id: Optional[int] = None) -> List[Chat]:
     """
-    是什么：list_chats 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：list_chats 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     filters = [Chat.create_by == current_user.id, Chat.tenant_id == _current_tenant_id(current_user)]
     if datasource_id:
@@ -371,9 +374,9 @@ def list_chats(session: SessionDep, current_user: CurrentUser, datasource_id: Op
 
 def list_recent_questions(session: SessionDep, current_user: CurrentUser, datasource_id: int) -> List[str]:
     """
-    是什么：list_recent_questions 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：list_recent_questions 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     chat_records = (
         session.query(
@@ -397,9 +400,9 @@ def list_recent_questions(session: SessionDep, current_user: CurrentUser, dataso
 
 def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename_object: RenameChat) -> str:
     """
-    是什么：rename_chat_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：rename_chat_with_user 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent相关的信息改成最新状态，并保存这些变化。
     """
     chat = session.get(Chat, rename_object.id)
     if not chat:
@@ -419,9 +422,9 @@ def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename
 
 def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
     """
-    是什么：rename_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：rename_chat 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent相关的信息改成最新状态，并保存这些变化。
     """
     chat = session.get(Chat, rename_object.id)
     if not chat:
@@ -440,9 +443,9 @@ def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
 
 def delete_chat(session, chart_id) -> str:
     """
-    是什么：delete_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    是什么：delete_chat 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent不再需要的数据、缓存或临时内容清理掉。
     """
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
@@ -456,9 +459,9 @@ def delete_chat(session, chart_id) -> str:
 
 def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
     """
-    是什么：delete_chat_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    是什么：delete_chat_with_user 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent不再需要的数据、缓存或临时内容清理掉。
     """
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
@@ -473,9 +476,9 @@ def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
 
 def get_chart_config(session: SessionDep, chart_record_id: int):
     """
-    是什么：get_chart_config 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chart_config 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ChatRecord.chart).where(and_(ChatRecord.id == chart_record_id))
     res = session.execute(stmt)
@@ -489,18 +492,18 @@ def get_chart_config(session: SessionDep, chart_record_id: int):
 
 def _format_column(column: dict) -> str:
     """
-    是什么：_format_column 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_format_column 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     return column.get('value') or column.get('name') or ''
 
 
 def format_chart_fields(chart_info: dict) -> list:
     """
-    是什么：format_chart_fields 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：format_chart_fields 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     fields = []
 
@@ -531,9 +534,9 @@ def format_chart_fields(chart_info: dict) -> list:
 
 def get_last_execute_sql_error(session: SessionDep, chart_id: int):
     """
-    是什么：get_last_execute_sql_error 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_last_execute_sql_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ChatRecord.error).where(and_(ChatRecord.chat_id == chart_id)).order_by(
         ChatRecord.create_time.desc()).limit(1)
@@ -551,9 +554,9 @@ def get_last_execute_sql_error(session: SessionDep, chart_id: int):
 
 def format_json_data(origin_data: dict):
     """
-    是什么：format_json_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：format_json_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     result = {'fields': origin_data.get('fields') if origin_data.get('fields') else []}
     _list = origin_data.get('data') if origin_data.get('data') else []
@@ -568,9 +571,9 @@ def format_json_data(origin_data: dict):
 
 def format_json_list_data(origin_data: list[dict]):
     """
-    是什么：format_json_list_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：format_json_list_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     data = []
     for _data in origin_data if origin_data else []:
@@ -595,9 +598,9 @@ def format_json_list_data(origin_data: list[dict]):
 
 def get_chat_chart_config(session: SessionDep, chat_record_id: int):
     """
-    是什么：get_chat_chart_config 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_chart_config 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ChatRecord.chart).where(and_(ChatRecord.id == chat_record_id))
     res = session.execute(stmt)
@@ -611,9 +614,9 @@ def get_chat_chart_config(session: SessionDep, chat_record_id: int):
 
 def _loads_record_data(data: str | None):
     """
-    是什么：_loads_record_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：_loads_record_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     if not data:
         return None
@@ -625,9 +628,9 @@ def _loads_record_data(data: str | None):
 
 def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     """
-    是什么：get_chart_data_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chart_data_with_user 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(
         ChatRecord.datasource,
@@ -683,9 +686,9 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
 
 def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     """
-    是什么：get_chart_data_with_user_live 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chart_data_with_user_live 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(
         ChatRecord.id == chat_record_id,
@@ -699,9 +702,9 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     """
-    是什么：get_chat_chart_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_chart_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))
     res = session.execute(stmt)
@@ -715,9 +718,9 @@ def get_chat_chart_data(session: SessionDep, chat_record_id: int):
 
 def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     """
-    是什么：get_chat_predict_data_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_predict_data_with_user 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ChatRecord.predict_data, ChatRecord.predict_record_id).where(
         and_(
@@ -750,9 +753,9 @@ def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUs
 
 def get_chat_predict_data(session: SessionDep, chat_record_id: int):
     """
-    是什么：get_chat_predict_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_predict_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     stmt = select(ChatRecord.predict_data).where(and_(ChatRecord.id == chat_record_id))
     res = session.execute(stmt)
@@ -767,9 +770,9 @@ def get_chat_predict_data(session: SessionDep, chat_record_id: int):
 def get_chat_with_records_with_data(session: SessionDep, chart_id: int, current_user: CurrentUser,
                                     current_assistant: CurrentAssistant) -> ChatInfo:
     """
-    是什么：get_chat_with_records_with_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_with_records_with_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     return get_chat_with_records(session, chart_id, current_user, current_assistant, True)
 
@@ -781,9 +784,9 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                           current_assistant: CurrentAssistant, with_data: bool = False,
                           trans: Trans = None) -> ChatInfo:
     """
-    是什么：get_chat_with_records 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_with_records 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     chat = session.get(Chat, chart_id)
     if not chat:
@@ -1000,9 +1003,9 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
 def format_record(record: ChatRecordResult):
     """
-    是什么：format_record 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：format_record 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     _dict = record.model_dump()
 
@@ -1078,9 +1081,9 @@ def format_record(record: ChatRecordResult):
 def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user: CurrentUser,
                          without_steps: bool = False) -> ChatLogHistory:
     """
-    是什么：get_chat_log_history 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_log_history 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     # 1. 首先验证聊天记录存在且属于当前用户
     chat_record = session.get(ChatRecord, chat_record_id)
@@ -1193,9 +1196,9 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
 
 def get_chat_brief_generate(session: SessionDep, chat_id: int):
     """
-    是什么：get_chat_brief_generate 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_chat_brief_generate 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     chat = get_chat(session=session, chat_id=chat_id)
     if chat is not None and chat.brief_generate is not None:
@@ -1206,9 +1209,9 @@ def get_chat_brief_generate(session: SessionDep, chat_id: int):
 
 def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
     """
-    是什么：list_generate_sql_logs 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：list_generate_sql_logs 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     tenant_id = _chat_tenant_id(session, chart_id)
     if tenant_id is None:
@@ -1234,9 +1237,9 @@ def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
 
 def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
     """
-    是什么：list_generate_chart_logs 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：list_generate_chart_logs 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     tenant_id = _chat_tenant_id(session, chart_id)
     if tenant_id is None:
@@ -1263,9 +1266,9 @@ def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog
 def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat,
                 require_datasource: bool = True, current_assistant: CurrentAssistant = None) -> ChatInfo:
     """
-    是什么：create_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：create_chat 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not create_chat_obj.datasource and require_datasource:
         raise Exception("项目不能为空")
@@ -1345,9 +1348,9 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
 
 def save_question(session: SessionDep, current_user: CurrentUser, question: ChatQuestion) -> ChatRecord:
     """
-    是什么：save_question 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_question 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not question.chat_id:
         raise Exception("ChatId cannot be None")
@@ -1387,9 +1390,9 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
 
 def save_agent_context_snapshot(session: SessionDep, record_id: int, snapshot: dict | None) -> ChatRecord:
     """
-    是什么：save_agent_context_snapshot 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_agent_context_snapshot 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     record = session.get(ChatRecord, record_id)
     if not record:
@@ -1403,9 +1406,9 @@ def save_agent_context_snapshot(session: SessionDep, record_id: int, snapshot: d
 
 def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, action_type: str) -> ChatRecord:
     """
-    是什么：save_analysis_predict_record 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_analysis_predict_record 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     record = ChatRecord()
     record.tenant_id = int(base_record.tenant_id)
@@ -1442,9 +1445,9 @@ def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str =
               record_id: int = None, full_message: Union[list[dict], dict] = None,
               local_operation: bool = False) -> ChatLog:
     """
-    是什么：start_log 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：start_log 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
                   messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
@@ -1467,9 +1470,9 @@ def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], d
             reasoning_content: str = None,
             token_usage=None) -> ChatLog:
     """
-    是什么：end_log 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：完成或关闭聊天和 Agent流程，释放资源并记录最终状态。
+    是什么：end_log 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent这次处理做收尾，记录结果并关掉不再需要的资源。
     """
     if token_usage is None:
         token_usage = {}
@@ -1493,9 +1496,9 @@ def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], d
 
 def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
     """
-    是什么：trigger_log_error 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 trigger_log_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：trigger_log_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     log.error = True
     stmt = update(ChatLog).where(and_(ChatLog.id == log.id)).values(
@@ -1510,9 +1513,9 @@ def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
 
 def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
     """
-    是什么：save_sql_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_sql_answer 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1532,9 +1535,9 @@ def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRec
 
 def save_analysis_answer(session: SessionDep, record_id: int, answer: str = '') -> ChatRecord:
     """
-    是什么：save_analysis_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_analysis_answer 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1554,9 +1557,9 @@ def save_analysis_answer(session: SessionDep, record_id: int, answer: str = '') 
 
 def save_predict_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
     """
-    是什么：save_predict_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_predict_answer 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1577,9 +1580,9 @@ def save_predict_answer(session: SessionDep, record_id: int, answer: str) -> Cha
 def save_select_datasource_answer(session: SessionDep, record_id: int, answer: str,
                                   datasource: int = None, engine_type: str = None) -> ChatRecord:
     """
-    是什么：save_select_datasource_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_select_datasource_answer 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1614,9 +1617,9 @@ def save_select_datasource_answer(session: SessionDep, record_id: int, answer: s
 def save_recommend_question_answer(session: SessionDep, record_id: int,
                                    answer: dict = None, articles_number: Optional[int] = 4) -> ChatRecord:
     """
-    是什么：save_recommend_question_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_recommend_question_answer 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1659,9 +1662,9 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
 
 def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
     """
-    是什么：save_sql 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_sql 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1685,9 +1688,9 @@ def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
 
 def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
     """
-    是什么：save_chart_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_chart_answer 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1707,9 +1710,9 @@ def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatR
 
 def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
     """
-    是什么：save_chart 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_chart 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1732,9 +1735,9 @@ def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
 
 def save_predict_data(session: SessionDep, record_id: int, data: str = '') -> ChatRecord:
     """
-    是什么：save_predict_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_predict_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1757,9 +1760,9 @@ def save_predict_data(session: SessionDep, record_id: int, data: str = '') -> Ch
 
 def save_error_message(session: SessionDep, record_id: int, message: str) -> ChatRecord:
     """
-    是什么：save_error_message 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_error_message 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1794,9 +1797,9 @@ def save_error_message(session: SessionDep, record_id: int, message: str) -> Cha
 
 def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRecord:
     """
-    是什么：save_sql_exec_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_sql_exec_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1819,9 +1822,9 @@ def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRe
 
 def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
     """
-    是什么：finish_record 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：完成或关闭聊天和 Agent流程，释放资源并记录最终状态。
+    是什么：finish_record 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent这次处理做收尾，记录结果并关掉不再需要的资源。
     """
     if not record_id:
         raise Exception("Record id cannot be None")
@@ -1846,9 +1849,9 @@ def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
 
 def get_old_questions(session: SessionDep, datasource: int, current_user: CurrentUser = None):
     """
-    是什么：get_old_questions 是 backend/apps/chat/curd/chat.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_old_questions 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     records = []
     if not datasource:

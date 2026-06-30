@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义操作日志用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 from sqlmodel import Field, SQLModel,BigInteger
 from datetime import datetime
 from typing import Optional
@@ -29,10 +32,16 @@ _operation_module_values = {
 OperationModules = Enum("OperationModules", _operation_module_values, type=str)
 
 class OperationStatus(str, Enum):
+    """
+    类说明：OperationStatus 表示操作日志里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     SUCCESS = "success"
     FAILED = "failed"
 
 class OperationType(str, Enum):
+    """
+    类说明：OperationType 表示操作日志里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     CREATE = "create"
     DELETE = "delete"
     UPDATE = "update"
@@ -51,6 +60,9 @@ class OperationType(str, Enum):
     PREDICTION = "prediction"
 
 class SystemLogsResource(SQLModel, table=True):
+    """
+    类说明：SystemLogsResource 表示操作日志里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_logs_resource"
     id: Optional[int] = Field(default=None, primary_key=True)
     log_id: Optional[int] = Field(default=None,sa_type=BigInteger())
@@ -60,6 +72,9 @@ class SystemLogsResource(SQLModel, table=True):
 
 
 class SystemLog(SQLModel, table=True):
+    """
+    类说明：SystemLog 表示操作日志里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_logs"
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: Optional[int] = Field(default=1, sa_type=BigInteger())
@@ -82,6 +97,9 @@ class SystemLog(SQLModel, table=True):
 
 
 class SystemLogInfo(BaseModel):
+    """
+    类说明：SystemLogInfo 表示操作日志里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: str = Field(default=None)
     operation_type_name: str = Field(default=None)
     operation_detail_info: str = Field(default=None)
@@ -93,6 +111,9 @@ class SystemLogInfo(BaseModel):
     remark:  str = Field(default=None)
 
 class SystemLogInfoResult(BaseModel):
+    """
+    类说明：SystemLogInfoResult 表示操作日志里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: str = Field(default=None)
     operation_type_name: str = Field(default=None)
     operation_detail_info: str = Field(default=None)

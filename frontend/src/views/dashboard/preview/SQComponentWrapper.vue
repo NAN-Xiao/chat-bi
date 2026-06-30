@@ -580,6 +580,59 @@ function getAxisFields(items: any) {
   return items.map((item) => item?.name || item?.value)
 }
 
+function normalizeReportGroupValue(value: any) {
+  if (value === undefined || value === null) {
+    return ''
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString()
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch (_error) {
+      return `${value}`
+    }
+  }
+  return `${value}`.trim()
+}
+
+function rowsAfterStoredPivotFilters(viewInfo: any, rows: Record<string, any>[]) {
+  const pivot = viewInfo?.pivot || {}
+  const groupField = `${pivot.group_field || ''}`.trim()
+  const groupValues = Array.isArray(pivot.group_values)
+    ? unique(pivot.group_values.map(normalizeReportGroupValue))
+    : []
+  if (
+    pivot.enabled !== true ||
+    pivot.group_enabled === false ||
+    !groupField ||
+    groupValues.length === 0
+  ) {
+    return rows
+  }
+  const allowed = new Set(groupValues)
+  return rows.filter((row) => allowed.has(normalizeReportGroupValue(row?.[groupField])))
+}
+
+function visibleValueWhitelist(rows: Record<string, any>[], preferredFields: string[]) {
+  const fields = unique([
+    ...preferredFields,
+    ...rows.slice(0, 20).flatMap((row) => Object.keys(row || {})),
+  ]).slice(0, 12)
+  const lines = fields
+    .map((field) => {
+      const values = unique(
+        rows
+          .map((row) => normalizeReportGroupValue(row?.[field]))
+          .filter((value) => value !== '')
+      ).slice(0, 30)
+      return values.length ? `${field}: ${values.join(', ')}` : ''
+    })
+    .filter(Boolean)
+  return lines.length ? lines.join('\n') : '-'
+}
+
 function getActiveTabItem(tabConfig: any) {
   const tabs = Array.isArray(tabConfig?.propValue) ? tabConfig.propValue : []
   if (!tabs.length) {
@@ -642,6 +695,13 @@ function getEntryTitle(entry: { component: any; viewInfo: any; path: string[] },
   )
 }
 
+function getCurrentReportSnapshot(entry: { component: any; viewInfo: any; path: string[] }, index: number) {
+  if (index !== 0 || entry.component?.id !== props.configItem?.id) {
+    return null
+  }
+  return (component.value as any)?.getReportContextSnapshot?.() || null
+}
+
 function getReportDatasourceId() {
   const entries = getReportChartEntries()
   const datasource = entries.find((entry) => normalizeDatasourceId(entry.viewInfo?.datasource))
@@ -655,16 +715,44 @@ function buildSingleChartContext(
 ) {
   const viewInfo = entry.viewInfo || {}
   const chart = viewInfo.chart || {}
-  const rows = Array.isArray(viewInfo.data?.data) ? viewInfo.data.data.slice(0, 50) : []
+  const snapshot = getCurrentReportSnapshot(entry, index)
+  const snapshotRows = Array.isArray(snapshot?.data) ? snapshot.data : null
+  const storedRows = Array.isArray(viewInfo.data?.data) ? viewInfo.data.data : []
+  const rows = snapshotRows || rowsAfterStoredPivotFilters(viewInfo, storedRows)
+  const sampleRows = rows.slice(0, 50)
   const fields = unique([
+    ...(Array.isArray(snapshot?.fields) ? snapshot.fields : []),
     ...(Array.isArray(viewInfo.data?.fields) ? viewInfo.data.fields : []),
     ...(Array.isArray(viewInfo.fields) ? viewInfo.fields : []),
     ...getAxisFields(chart.columns),
     ...getAxisFields(chart.xAxis),
     ...getAxisFields(chart.yAxis),
     ...getAxisFields(chart.series),
-    ...rows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
+    ...sampleRows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
   ])
+  const pivot = snapshot?.pivot || viewInfo.pivot
+  const selectedGroupValues = Array.isArray(pivot?.selected_group_values)
+    ? pivot.selected_group_values
+    : Array.isArray(pivot?.group_values)
+      ? unique(pivot.group_values.map(normalizeReportGroupValue))
+      : []
+  const visibleRowsLabel = snapshotRows
+    ? `${snapshot.totalRows ?? rows.length} current visible rows after chart UI filters`
+    : `${rows.length} rows after stored chart filters`
+  const whitelist = visibleValueWhitelist(sampleRows, fields)
+  const filterContext = snapshotRows
+    ? [
+        `Current visible row scope: ${visibleRowsLabel}; source rows before UI filters: ${snapshot?.sourceRows ?? '-'}.`,
+        pivot?.enabled
+          ? `Current pivot/filter state: group field=${pivot.group_field || '-'}, group enabled=${pivot.group_enabled ? 'true' : 'false'}, selected groups=${selectedGroupValues.length ? selectedGroupValues.join(', ') : 'all/none'}, selected group count=${pivot.selected_group_count ?? '-'} of ${pivot.total_group_count ?? '-'}.`
+          : 'Current pivot/filter state: pivot disabled.',
+      ]
+    : [
+        `Current visible row scope: ${visibleRowsLabel}; stored source rows before filters: ${storedRows.length}.`,
+        pivot?.enabled
+          ? `Stored pivot/filter state: group field=${pivot.group_field || '-'}, group enabled=${pivot.group_enabled !== false ? 'true' : 'false'}, allowed groups=${selectedGroupValues.length ? selectedGroupValues.join(', ') : 'all/none'}.`
+          : 'Stored pivot/filter state: pivot disabled.',
+      ]
 
   return [
     `Chart ${index + 1}: ${getEntryTitle(entry, index)}`,
@@ -672,8 +760,9 @@ function buildSingleChartContext(
     `Chart type: ${chart.type || chart.sourceType || 'unknown'}`,
     `Datasource ID: ${viewInfo.datasource || '-'}`,
     `Fields: ${fields.join(', ') || '-'}`,
-    `SQL:\n${viewInfo.sql || '-'}`,
-    `Visible chart data sample, up to 50 rows:\n${JSON.stringify(rows, null, 2).slice(0, 8000)}`,
+    ...filterContext,
+    `Visible dimension/value whitelist. Do not mention any dimension value that is absent from this whitelist or the current visible sample:\n${whitelist}`,
+    `Current visible chart data sample, up to 50 rows:\n${JSON.stringify(sampleRows, null, 2).slice(0, 8000)}`,
   ].join('\n')
 }
 
@@ -688,7 +777,7 @@ function buildReportContext() {
     `Target component type: ${props.configItem?.component || 'unknown'}`,
     `Charts included in this target: ${entries.length}`,
     chartContexts || 'No chart data was found in the current report target.',
-    'Interpret only this dashboard report target. If it is a tab, use only the active tab charts listed above. Synthesize findings across all included charts, use the shown data first, keep the answer concise, and do not change dashboard configuration.',
+    'Interpret only this dashboard report target. If it is a tab, use only the active tab charts listed above. Use only the current visible chart data sample and visible dimension/value whitelist as data facts; do not cite countries, channels, dates, or other dimension values that are not listed there. Synthesize findings across all included charts, keep the answer concise, and do not change dashboard configuration.',
   ].join('\n\n')
 }
 

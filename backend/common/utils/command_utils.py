@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import re
 from typing import Optional, Tuple
 
@@ -6,9 +9,9 @@ from apps.chat.models.chat_model import QuickCommand
 
 def parse_quick_command(input_str: str) -> Tuple[Optional[QuickCommand], str, Optional[int], Optional[str]]:
     """
-    是什么：parse_quick_command 是 backend/common/utils/command_utils.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+    是什么：parse_quick_command 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
 
     # 获取所有命令值

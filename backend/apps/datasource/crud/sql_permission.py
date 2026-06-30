@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 from typing import Any
 
 import sqlglot
@@ -17,18 +20,18 @@ from common.core.deps import CurrentUser, SessionDep
 
 def normalize_identifier(value: str | None) -> str:
     """
-    是什么：normalize_identifier 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：normalize_identifier 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     return str(value or "").strip('"`[]').lower()
 
 
 def parse_sql_statements(sql: str, ds_type: str | None) -> list[exp.Expression]:
     """
-    是什么：parse_sql_statements 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：parse_sql_statements 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     dialect = get_sqlglot_dialect(ds_type)
     statements = [stmt for stmt in sqlglot.parse(sql, dialect=dialect) if stmt is not None]
@@ -39,9 +42,9 @@ def parse_sql_statements(sql: str, ds_type: str | None) -> list[exp.Expression]:
 
 def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
     """
-    是什么：extract_physical_tables 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：extract_physical_tables 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     tables: set[str] = set()
     for stmt in statements:
@@ -63,9 +66,9 @@ def build_permission_scope(
         datasource: CoreDatasource,
 ) -> dict[str, dict[str, Any]]:
     """
-    是什么：build_permission_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：build_permission_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     tables = session.query(CoreTable).filter(
         and_(CoreTable.ds_id == datasource.id, CoreTable.checked == True)
@@ -106,9 +109,9 @@ def build_permission_scope(
 
 def selected_table_aliases(select_expr: exp.Select, cte_names: set[str] | None = None) -> dict[str, str]:
     """
-    是什么：selected_table_aliases 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：selected_table_aliases 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     aliases: dict[str, str] = {}
     cte_names = cte_names or set()
@@ -133,9 +136,9 @@ def selected_table_aliases(select_expr: exp.Select, cte_names: set[str] | None =
 
 def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
     """
-    是什么：cte_output_columns 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 cte_output_columns 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：cte_output_columns 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     cte_columns: dict[str, set[str]] = {}
     for cte in statement.find_all(exp.CTE):
@@ -160,9 +163,9 @@ def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
 
 def _values_source_columns(select_expr: exp.Select) -> set[str]:
     """
-    是什么：_values_source_columns 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _values_source_columns 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_values_source_columns 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     from_expr = select_expr.args.get("from_")
     source = from_expr.this if from_expr is not None else None
@@ -183,9 +186,9 @@ def selected_cte_aliases(
         cte_columns: dict[str, set[str]] | None = None,
 ) -> dict[str, set[str]]:
     """
-    是什么：selected_cte_aliases 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：selected_cte_aliases 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     cte_columns = cte_columns or {}
     aliases: dict[str, set[str]] = {}
@@ -218,9 +221,9 @@ def _column_can_resolve(
         cte_aliases: dict[str, set[str]] | None = None,
 ) -> bool:
     """
-    是什么：_column_can_resolve 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _column_can_resolve 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_column_can_resolve 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     normalized_column = normalize_identifier(column_name)
     normalized_table = normalize_identifier(column_table)
@@ -262,9 +265,9 @@ def _column_can_resolve(
 
 def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> set[str]:
     """
-    是什么：_star_uses_table_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _star_uses_table_scope 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_star_uses_table_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parent = star.parent
     if isinstance(parent, exp.Column) and parent.table:
@@ -275,9 +278,9 @@ def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> 
 
 def _nearest_select(node: exp.Expression) -> exp.Select | None:
     """
-    是什么：_nearest_select 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _nearest_select 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_nearest_select 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     parent = node.parent
     while parent is not None:
@@ -289,18 +292,18 @@ def _nearest_select(node: exp.Expression) -> exp.Select | None:
 
 def _is_in_current_select_scope(node: exp.Expression, select_expr: exp.Select) -> bool:
     """
-    是什么：_is_in_current_select_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_in_current_select_scope 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_is_in_current_select_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _nearest_select(node) is select_expr
 
 
 def _select_output_aliases(select_expr: exp.Select) -> set[str]:
     """
-    是什么：_select_output_aliases 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：_select_output_aliases 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     aliases: set[str] = set()
     for item in select_expr.expressions:
@@ -316,9 +319,9 @@ def validate_sql_columns(
         current_user: CurrentUser,
 ) -> None:
     """
-    是什么：validate_sql_columns 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_sql_columns 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not is_normal_user(current_user):
         return
@@ -380,9 +383,9 @@ def validate_sql_scope(
         sql: str,
 ) -> tuple[list[exp.Expression], set[str], dict[str, dict[str, Any]]]:
     """
-    是什么：validate_sql_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_sql_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     statements = parse_sql_statements(sql, datasource.type)
     actual_tables = extract_physical_tables(statements)
@@ -405,9 +408,9 @@ def validate_sql_table_scope(
         sql: str,
 ) -> set[str]:
     """
-    是什么：validate_sql_table_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_sql_table_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     statements = parse_sql_statements(sql, datasource.type)
     actual_tables = extract_physical_tables(statements)
@@ -423,9 +426,9 @@ def validate_sql_table_scope(
 
 def parse_condition_expression(filter_sql: str, ds_type: str | None) -> exp.Expression:
     """
-    是什么：parse_condition_expression 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：parse_condition_expression 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     dialect = get_sqlglot_dialect(ds_type)
     wrapped_sql = f"select 1 where {filter_sql}"
@@ -442,9 +445,9 @@ def apply_row_permission_filters(
         filters: list[dict[str, Any]],
 ) -> str:
     """
-    是什么：apply_row_permission_filters 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 apply_row_permission_filters 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：apply_row_permission_filters 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     filter_by_table = {
         normalize_identifier(item.get("table")): str(item.get("filter") or "").strip()
@@ -464,9 +467,9 @@ def apply_row_permission_filters(
 
     def _rewrite_table(node: exp.Expression):
         """
-        是什么：_rewrite_table 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
-        谁调用：由外层函数 apply_row_permission_filters 在执行内部流程时调用。
-        做了什么：围绕 _rewrite_table 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：_rewrite_table 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 apply_row_permission_filters 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         if not isinstance(node, exp.Table):
             return node

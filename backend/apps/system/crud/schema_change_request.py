@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 import json
 import re
 from typing import Any
@@ -21,9 +24,9 @@ IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
 def clean_optional_text(value: str | None, max_len: int | None = None) -> str | None:
     """
-    是什么：clean_optional_text 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：clean_optional_text 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     cleaned = (value or "").strip()
     if not cleaned:
@@ -33,9 +36,9 @@ def clean_optional_text(value: str | None, max_len: int | None = None) -> str | 
 
 def validate_identifier(value: str | None, label: str) -> str:
     """
-    是什么：validate_identifier 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：validate_identifier 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     cleaned = (value or "").strip()
     if not IDENTIFIER_RE.fullmatch(cleaned):
@@ -45,9 +48,9 @@ def validate_identifier(value: str | None, label: str) -> str:
 
 def normalize_change_type(value: str | None) -> str:
     """
-    是什么：normalize_change_type 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：normalize_change_type 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     normalized = (value or "").strip().lower()
     if normalized not in SCHEMA_CHANGE_TYPES:
@@ -57,9 +60,9 @@ def normalize_change_type(value: str | None) -> str:
 
 def normalize_field_payload(fields: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     """
-    是什么：normalize_field_payload 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：normalize_field_payload 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     normalized_fields: list[dict[str, Any]] = []
     for index, field in enumerate(fields or []):
@@ -97,9 +100,9 @@ def create_schema_change_request(
         source_table_name: str | None = None,
 ) -> TenantSchemaChangeRequestModel:
     """
-    是什么：create_schema_change_request 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：create_schema_change_request 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     normalized_type = normalize_change_type(change_type)
     normalized_table_name = validate_identifier(table_name, "Table name")
@@ -139,9 +142,9 @@ def list_schema_change_requests(
         limit: int = 20,
 ) -> list[TenantSchemaChangeRequestModel]:
     """
-    是什么：list_schema_change_requests 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：list_schema_change_requests 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     statement = (
         select(TenantSchemaChangeRequestModel)
@@ -156,9 +159,9 @@ def list_schema_change_requests(
 
 def parse_schema_change_payload(row: TenantSchemaChangeRequestModel) -> dict[str, Any]:
     """
-    是什么：parse_schema_change_payload 是 backend/apps/system/crud/schema_change_request.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    是什么：parse_schema_change_payload 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     try:
         parsed = json.loads(row.payload or "{}")

@@ -1,8 +1,5 @@
-"""迁移脚本：121_remove_hidden_chart_display_names
-
-迁移版本 ID： f1a2b3c4d5e6
-上一版本： e0f1a2b3c4d5
-创建时间： 2026-06-23 00:00:00.000000
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
 """
 from __future__ import annotations
 
@@ -36,36 +33,36 @@ CHART_TYPES = {
 
 def _bind():
     """
-    是什么：_bind 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据库迁移相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：_bind 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移相关的信息改成最新状态，并保存这些变化。
     """
     return op.get_bind()
 
 
 def _inspector():
     """
-    是什么：_inspector 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _inspector 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_inspector 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return sa.inspect(_bind())
 
 
 def _has_table(table_name: str) -> bool:
     """
-    是什么：_has_table 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_table 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_table 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return table_name in _inspector().get_table_names()
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
     """
-    是什么：_has_column 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_column 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_column 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not _has_table(table_name):
         return False
@@ -74,9 +71,9 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 def _sanitize_axis_binding(value: Any) -> Any:
     """
-    是什么：_sanitize_axis_binding 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sanitize_axis_binding 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_sanitize_axis_binding 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, list):
         return [_sanitize_axis_binding(item) for item in value]
@@ -91,9 +88,9 @@ def _sanitize_axis_binding(value: Any) -> Any:
 
 def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：_sanitize_chart_object 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sanitize_chart_object 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_sanitize_chart_object 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for key in ("columns", "xAxis", "yAxis", "series"):
         if key in chart:
@@ -109,9 +106,9 @@ def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
 
 def _looks_like_chart_object(value: dict[str, Any]) -> bool:
     """
-    是什么：_looks_like_chart_object 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _looks_like_chart_object 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_looks_like_chart_object 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if any(key in value for key in ("axis", "xAxis", "yAxis", "series", "multiQuotaName")):
         return True
@@ -120,9 +117,9 @@ def _looks_like_chart_object(value: dict[str, Any]) -> bool:
 
 def _sanitize_chart_display_names(value: Any) -> Any:
     """
-    是什么：_sanitize_chart_display_names 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sanitize_chart_display_names 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_sanitize_chart_display_names 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, list):
         return [_sanitize_chart_display_names(item) for item in value]
@@ -143,9 +140,9 @@ def _sanitize_chart_display_names(value: Any) -> Any:
 
 def _load_json_text(value: Any) -> Any:
     """
-    是什么：_load_json_text 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据库迁移相关数据，整理后返回给调用方。
+    是什么：_load_json_text 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移需要的数据找出来，整理成后面好用的样子。
     """
     if value is None:
         return None
@@ -163,18 +160,18 @@ def _load_json_text(value: Any) -> Any:
 
 def _dump_json_text(value: Any) -> str:
     """
-    是什么：_dump_json_text 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _dump_json_text 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_dump_json_text 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def _clean_text_json_column(table_name: str, id_column: str, json_column: str) -> None:
     """
-    是什么：_clean_text_json_column 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据库迁移相关数据、缓存或临时状态。
+    是什么：_clean_text_json_column 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移不再需要的数据、缓存或临时内容清理掉。
     """
     if not (_has_column(table_name, id_column) and _has_column(table_name, json_column)):
         return
@@ -198,9 +195,9 @@ def _clean_text_json_column(table_name: str, id_column: str, json_column: str) -
 
 def _clean_jsonb_column(table_name: str, id_column: str, json_column: str) -> None:
     """
-    是什么：_clean_jsonb_column 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据库迁移相关数据、缓存或临时状态。
+    是什么：_clean_jsonb_column 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移不再需要的数据、缓存或临时内容清理掉。
     """
     if not (_has_column(table_name, id_column) and _has_column(table_name, json_column)):
         return
@@ -224,9 +221,9 @@ def _clean_jsonb_column(table_name: str, id_column: str, json_column: str) -> No
 
 def upgrade() -> None:
     """
-    是什么：upgrade 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：upgrade 是这个迁移脚本的数据库升级步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前升级。
     """
     _clean_text_json_column("core_dashboard", "id", "canvas_view_info")
     _clean_text_json_column("core_dashboard_share", "id", "canvas_view_info")
@@ -236,8 +233,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """
-    是什么：downgrade 是 backend/alembic/versions/121_remove_hidden_chart_display_names.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：downgrade 是这个迁移脚本的数据库回滚步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前回滚。
     """
     return None

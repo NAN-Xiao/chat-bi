@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import secrets
 import urllib.parse
 from typing import Annotated, Any, Literal
@@ -14,9 +17,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def parse_cors(v: Any) -> list[str] | str:
     """
-    是什么：parse_cors 是 backend/common/core/config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+    是什么：parse_cors 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if isinstance(v, str) and not v.startswith("["):
         return [i.strip() for i in v.split(",")]
@@ -26,6 +29,9 @@ def parse_cors(v: Any) -> list[str] | str:
 
 
 class Settings(BaseSettings):
+    """
+    类说明：Settings 把后端基础能力相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     model_config = SettingsConfigDict(
         # 使用顶层 .env 文件（位于 ./backend/ 上一级）。
         env_file="../.env",
@@ -56,9 +62,9 @@ class Settings(BaseSettings):
     @property
     def all_cors_origins(self) -> list[str]:
         """
-        是什么：Settings.all_cors_origins 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 all_cors_origins 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.all_cors_origins 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         origins = [
             *[str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS],
@@ -72,9 +78,9 @@ class Settings(BaseSettings):
     @property
     def API_V1_STR(self) -> str:
         """
-        是什么：Settings.API_V1_STR 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 API_V1_STR 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.API_V1_STR 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return self.CONTEXT_PATH + "/api/v1"
 
@@ -160,9 +166,9 @@ class Settings(BaseSettings):
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn | str:
         """
-        是什么：Settings.SQLALCHEMY_DATABASE_URI 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 SQLALCHEMY_DATABASE_URI 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.SQLALCHEMY_DATABASE_URI 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         if self.SHUZHI_DB_URL:
             return self.SHUZHI_DB_URL
@@ -184,45 +190,45 @@ class Settings(BaseSettings):
     @property
     def core_db_host(self) -> str:
         """
-        是什么：Settings.core_db_host 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 core_db_host 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.core_db_host 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return self.SHUZHI_DB_HOST
 
     @property
     def core_db_port(self) -> int:
         """
-        是什么：Settings.core_db_port 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 core_db_port 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.core_db_port 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return self.SHUZHI_DB_PORT
 
     @property
     def core_db_user(self) -> str:
         """
-        是什么：Settings.core_db_user 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 core_db_user 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.core_db_user 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return self.SHUZHI_DB_USER
 
     @property
     def core_db_password(self) -> str:
         """
-        是什么：Settings.core_db_password 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 core_db_password 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.core_db_password 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return self.SHUZHI_DB_PASSWORD
 
     @property
     def core_db_name(self) -> str:
         """
-        是什么：Settings.core_db_name 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
-        做了什么：围绕 core_db_name 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.core_db_name 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：其他代码像读取属性一样访问它时，Python 会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return self.SHUZHI_DB_DB
 
@@ -300,9 +306,9 @@ class Settings(BaseSettings):
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:
         """
-        是什么：Settings.lowercase_bool 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
-        做了什么：围绕 lowercase_bool 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.lowercase_bool 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：创建或校验数据对象时，Pydantic 会自动调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         if isinstance(v, str):
             v_lower = v.lower().strip()
@@ -316,9 +322,9 @@ class Settings(BaseSettings):
     @classmethod
     def lowercase_cache_type(cls, v: Any) -> Any:
         """
-        是什么：Settings.lowercase_cache_type 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
-        做了什么：围绕 lowercase_cache_type 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Settings.lowercase_cache_type 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：创建或校验数据对象时，Pydantic 会自动调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         if v is None:
             return "none"
@@ -333,9 +339,9 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_app_env(cls, v: Any) -> Any:
         """
-        是什么：Settings.normalize_app_env 是 backend/common/core/config.py 中的同步方法。
-        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
-        做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+        是什么：Settings.normalize_app_env 是 Settings 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：创建或校验数据对象时，Pydantic 会自动调用它。
+        做了什么：把后端基础能力的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if isinstance(v, str):
             value = v.lower().strip()

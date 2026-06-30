@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from decimal import Decimal
 
 import pandas as pd
@@ -6,12 +9,15 @@ from apps.chat.models.chat_model import AxisObj
 
 
 class DataFormat:
+    """
+    类说明：DataFormat 把通用工具相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     @staticmethod
     def safe_convert_to_string(df):
         """
-        是什么：DataFormat.safe_convert_to_string 是 backend/common/utils/data_format.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：围绕 safe_convert_to_string 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+        是什么：DataFormat.safe_convert_to_string 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         df_copy = df.copy()
 
@@ -27,9 +33,9 @@ class DataFormat:
     @staticmethod
     def normalize_qualified_sql_column_keys(row: dict) -> dict:
         """
-        是什么：DataFormat.normalize_qualified_sql_column_keys 是 backend/common/utils/data_format.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        是什么：DataFormat.normalize_qualified_sql_column_keys 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if not row:
             return row
@@ -46,9 +52,9 @@ class DataFormat:
     @staticmethod
     def normalize_qualified_sql_column_keys_in_object_array(obj_array: list) -> list:
         """
-        是什么：DataFormat.normalize_qualified_sql_column_keys_in_object_array 是 backend/common/utils/data_format.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        是什么：DataFormat.normalize_qualified_sql_column_keys_in_object_array 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         if not obj_array:
             return obj_array
@@ -60,16 +66,16 @@ class DataFormat:
     @staticmethod
     def convert_large_numbers_in_object_array(obj_array, int_threshold=1e15, float_threshold=1e10):
         """
-        是什么：DataFormat.convert_large_numbers_in_object_array 是 backend/common/utils/data_format.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        是什么：DataFormat.convert_large_numbers_in_object_array 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
 
         def format_float_without_scientific(value):
             """
-            是什么：DataFormat.format_float_without_scientific 是 backend/common/utils/data_format.py 中的同步方法。
-            谁调用：由外层函数 convert_large_numbers_in_object_array 在执行内部流程时调用。
-            做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+            是什么：DataFormat.format_float_without_scientific 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+            谁调用：外层函数 convert_large_numbers_in_object_array 跑到对应步骤时会调用它。
+            做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
             """
             if value == 0:
                 return "0"
@@ -80,9 +86,9 @@ class DataFormat:
 
         def process_object(obj):
             """
-            是什么：DataFormat.process_object 是 backend/common/utils/data_format.py 中的同步方法。
-            谁调用：由外层函数 convert_large_numbers_in_object_array 在执行内部流程时调用。
-            做了什么：执行通用工具主流程，协调下游服务并处理结果或异常。
+            是什么：DataFormat.process_object 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+            谁调用：外层函数 convert_large_numbers_in_object_array 跑到对应步骤时会调用它。
+            做了什么：把通用工具的主要流程跑起来，一步步调用需要的处理。
             """
             if not isinstance(obj, dict):
                 return obj
@@ -109,9 +115,9 @@ class DataFormat:
 
         def process_item(item):
             """
-            是什么：DataFormat.process_item 是 backend/common/utils/data_format.py 中的同步方法。
-            谁调用：由外层函数 convert_large_numbers_in_object_array 在执行内部流程时调用。
-            做了什么：执行通用工具主流程，协调下游服务并处理结果或异常。
+            是什么：DataFormat.process_item 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+            谁调用：外层函数 convert_large_numbers_in_object_array 跑到对应步骤时会调用它。
+            做了什么：把通用工具的主要流程跑起来，一步步调用需要的处理。
             """
             if isinstance(item, dict):
                 return process_object(item)
@@ -122,9 +128,9 @@ class DataFormat:
     @staticmethod
     def convert_object_array_for_pandas(column_list: list, data_list: list):
         """
-        是什么：DataFormat.convert_object_array_for_pandas 是 backend/common/utils/data_format.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        是什么：DataFormat.convert_object_array_for_pandas 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         _fields_list = []
         for field_idx, field in enumerate(column_list):
@@ -142,9 +148,9 @@ class DataFormat:
     @staticmethod
     def convert_data_fields_for_pandas(chart: dict, fields: list, data: list):
         """
-        是什么：DataFormat.convert_data_fields_for_pandas 是 backend/common/utils/data_format.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        是什么：DataFormat.convert_data_fields_for_pandas 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         _fields = {}
         if chart.get('columns'):
@@ -186,9 +192,9 @@ class DataFormat:
         # 预处理数据并记录每列的格式类型
         # 格式类型：'text'（文本）、'number'（数字）、'default'（默认）
         """
-        是什么：DataFormat.format_pd_data 是 backend/common/utils/data_format.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
+        是什么：DataFormat.format_pd_data 是 DataFormat 里的一个步骤，帮它完成通用工具相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把通用工具的原始内容拆开、转换或整理，变成程序更好处理的格式。
         """
         _fields_list = []
 

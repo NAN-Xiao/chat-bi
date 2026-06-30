@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -11,15 +14,18 @@ from common.utils.time import get_timestamp
 
 @dataclass(frozen=True)
 class SchemaFieldKey:
+    """
+    类说明：SchemaFieldKey 把系统管理相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     table_name: str
     field_name: str
 
 
 def clean_schema_comment(value: str | None) -> str | None:
     """
-    是什么：clean_schema_comment 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：clean_schema_comment 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     cleaned = (value or "").strip()
     return cleaned or None
@@ -27,9 +33,9 @@ def clean_schema_comment(value: str | None) -> str | None:
 
 def _table_names(values: Iterable[str | None]) -> list[str]:
     """
-    是什么：_table_names 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _table_names 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_table_names 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     names = sorted({str(value).strip() for value in values if str(value or "").strip()})
     return names
@@ -37,9 +43,9 @@ def _table_names(values: Iterable[str | None]) -> list[str]:
 
 def _field_keys(values: Iterable[SchemaFieldKey]) -> list[SchemaFieldKey]:
     """
-    是什么：_field_keys 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _field_keys 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_field_keys 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     keys = {
         SchemaFieldKey(str(value.table_name).strip(), str(value.field_name).strip())
@@ -51,9 +57,9 @@ def _field_keys(values: Iterable[SchemaFieldKey]) -> list[SchemaFieldKey]:
 
 def _has_table(session: Session, table_name: str) -> bool:
     """
-    是什么：_has_table 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_table 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_has_table 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return inspect(session.connection()).has_table(table_name)
@@ -63,27 +69,27 @@ def _has_table(session: Session, table_name: str) -> bool:
 
 def _supports_schema_tables(session: Session) -> bool:
     """
-    是什么：_supports_schema_tables 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _supports_schema_tables 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_supports_schema_tables 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _has_table(session, TenantSchemaTableModel.__tablename__)
 
 
 def _supports_schema_fields(session: Session) -> bool:
     """
-    是什么：_supports_schema_fields 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _supports_schema_fields 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_supports_schema_fields 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _has_table(session, TenantSchemaFieldModel.__tablename__)
 
 
 def table_comment_map(session: Session, tenant_id: int | None, table_names: Iterable[str | None]) -> dict[str, str]:
     """
-    是什么：table_comment_map 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 table_comment_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：table_comment_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     names = _table_names(table_names)
     if tenant_id is None or not names or not _supports_schema_tables(session):
@@ -106,9 +112,9 @@ def field_comment_map(
         field_keys: Iterable[SchemaFieldKey],
 ) -> dict[tuple[str, str], str]:
     """
-    是什么：field_comment_map 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 field_comment_map 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：field_comment_map 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     keys = _field_keys(field_keys)
     if tenant_id is None or not keys or not _supports_schema_fields(session):
@@ -137,9 +143,9 @@ def get_table_comment(
         fallback: str | None = None,
 ) -> str:
     """
-    是什么：get_table_comment 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_table_comment 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     table_name = (table_name or "").strip()
     if tenant_id is None or not table_name or not _supports_schema_tables(session):
@@ -163,9 +169,9 @@ def get_field_comment(
         fallback: str | None = None,
 ) -> str:
     """
-    是什么：get_field_comment 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：get_field_comment 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     table_name = (table_name or "").strip()
     field_name = (field_name or "").strip()
@@ -192,9 +198,9 @@ def save_table_comment(
         current_user_id: int | None = None,
 ) -> None:
     """
-    是什么：save_table_comment 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：save_table_comment 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     table_name = (table_name or "").strip()
     if tenant_id is None or not table_name or not _supports_schema_tables(session):
@@ -230,9 +236,9 @@ def save_field_comment(
         current_user_id: int | None = None,
 ) -> None:
     """
-    是什么：save_field_comment 是 backend/apps/system/crud/schema_metadata.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：save_field_comment 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     table_name = (table_name or "").strip()
     field_name = (field_name or "").strip()

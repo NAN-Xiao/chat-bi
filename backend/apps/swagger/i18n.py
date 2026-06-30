@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端业务相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 # 作者：Junjun
 # 日期：2025/12/11
 # i18n.py
@@ -19,9 +22,9 @@ _translations_cache: Dict[str, Dict[str, str]] = {}
 
 def load_translation(lang: str) -> Dict[str, str]:
     """
-    是什么：load_translation 是 backend/apps/swagger/i18n.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    是什么：load_translation 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端业务需要的数据找出来，整理成后面好用的样子。
     """
     if lang in _translations_cache:
         return _translations_cache[lang]
@@ -109,8 +112,8 @@ tags_metadata = [
 
 def get_translation(lang: str) -> Dict[str, str]:
     """
-    是什么：get_translation 是 backend/apps/swagger/i18n.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    是什么：get_translation 是一个可以复用的小步骤，负责后端业务相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端业务需要的数据找出来，整理成后面好用的样子。
     """
     return load_translation(lang)

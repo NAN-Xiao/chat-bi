@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 import hashlib
 import time
 from dataclasses import dataclass
@@ -12,6 +15,9 @@ from common.utils.utils import AppLogUtil
 
 @dataclass
 class LoginLimitState:
+    """
+    类说明：LoginLimitState 把后端基础能力相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     locked: bool
     attempts: int = 0
     retry_after_seconds: int = 0
@@ -23,9 +29,9 @@ _memory_locks: dict[str, float] = {}
 
 def _client_ip(request: Request | None) -> str:
     """
-    是什么：_client_ip 是 backend/common/core/login_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _client_ip 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_client_ip 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not request:
         return "unknown"
@@ -39,9 +45,9 @@ def _client_ip(request: Request | None) -> str:
 
 def login_limit_identity(account: str | None, request: Request | None) -> str:
     """
-    是什么：login_limit_identity 是 backend/common/core/login_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 login_limit_identity 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：login_limit_identity 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     raw = f"{_client_ip(request)}:{(account or '').strip().lower()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -49,9 +55,9 @@ def login_limit_identity(account: str | None, request: Request | None) -> str:
 
 def _memory_prune(now: float) -> None:
     """
-    是什么：_memory_prune 是 backend/common/core/login_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _memory_prune 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_memory_prune 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     expired_locks = [key for key, expires_at in _memory_locks.items() if expires_at <= now]
     for key in expired_locks:
@@ -67,9 +73,9 @@ def _memory_prune(now: float) -> None:
 
 async def _redis_lock_state(identity: str) -> LoginLimitState | None:
     """
-    是什么：_redis_lock_state 是 backend/common/core/login_rate_limiter.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _redis_lock_state 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：_redis_lock_state 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if (settings.CACHE_TYPE or "").lower() != "redis":
         return None
@@ -85,9 +91,9 @@ async def _redis_lock_state(identity: str) -> LoginLimitState | None:
 
 async def get_login_limit_state(identity: str) -> LoginLimitState:
     """
-    是什么：get_login_limit_state 是 backend/common/core/login_rate_limiter.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    是什么：get_login_limit_state 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力需要的数据找出来，整理成后面好用的样子。
     """
     if not settings.LOGIN_RATE_LIMIT_ENABLED:
         return LoginLimitState(False)
@@ -113,9 +119,9 @@ async def get_login_limit_state(identity: str) -> LoginLimitState:
 
 async def record_login_failure(identity: str) -> LoginLimitState:
     """
-    是什么：record_login_failure 是 backend/common/core/login_rate_limiter.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 record_login_failure 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    是什么：record_login_failure 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not settings.LOGIN_RATE_LIMIT_ENABLED:
         return LoginLimitState(False)
@@ -159,9 +165,9 @@ async def record_login_failure(identity: str) -> LoginLimitState:
 
 async def clear_login_failures(identity: str) -> None:
     """
-    是什么：clear_login_failures 是 backend/common/core/login_rate_limiter.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理核心配置和基础设施相关数据、缓存或临时状态。
+    是什么：clear_login_failures 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力不再需要的数据、缓存或临时内容清理掉。
     """
     if not settings.LOGIN_RATE_LIMIT_ENABLED:
         return
@@ -181,9 +187,9 @@ async def clear_login_failures(identity: str) -> None:
 
 def reset_memory_login_rate_limiter() -> None:
     """
-    是什么：reset_memory_login_rate_limiter 是 backend/common/core/login_rate_limiter.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理核心配置和基础设施相关数据、缓存或临时状态。
+    是什么：reset_memory_login_rate_limiter 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把后端基础能力不再需要的数据、缓存或临时内容清理掉。
     """
     _memory_failures.clear()
     _memory_locks.clear()

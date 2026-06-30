@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放聊天问数据和 Agent里较长或较复杂的处理流程，把一次任务分成可维护的步骤。
+"""
 import concurrent
 import json
 import os
@@ -63,18 +66,18 @@ from apps.system.models.system_model import SysArgModel
 
 def _can_manage_platform_prompt_runtime(user) -> bool:
     """
-    是什么：_can_manage_platform_prompt_runtime 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _can_manage_platform_prompt_runtime 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_platform_prompt_runtime 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return bool(user is not None and is_platform_admin(user) and not is_platform_workspace_delegate(user))
 
 
 def _can_manage_tenant_prompt_runtime(user) -> bool:
     """
-    是什么：_can_manage_tenant_prompt_runtime 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _can_manage_tenant_prompt_runtime 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_tenant_prompt_runtime 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if user is None or _can_manage_platform_prompt_runtime(user):
         return False
@@ -105,32 +108,35 @@ APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
 
 
 class DataSkillSqlValidationError(SingleMessageError):
+    """
+    类说明：DataSkillSqlValidationError 表示聊天问数据和 Agent过程里的特定错误，让上层能更准确地提示或处理。
+    """
     pass
 
 
 def _is_app_system_message(message: dict[str, Any]) -> bool:
     """
-    是什么：_is_app_system_message 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_app_system_message 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_app_system_message 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return message.get(APP_SYSTEM_MESSAGE_KEY) is True
 
 
 def _message_has_app_system_flag(message: BaseMessage) -> bool:
     """
-    是什么：_message_has_app_system_flag 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _message_has_app_system_flag 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_message_has_app_system_flag 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return getattr(message, APP_SYSTEM_MESSAGE_KEY, False) is True
 
 
 def _serialize_prompt_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     """
-    是什么：_serialize_prompt_messages 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_serialize_prompt_messages 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     return [
         {
@@ -144,9 +150,9 @@ def _serialize_prompt_messages(messages: list[BaseMessage]) -> list[dict[str, An
 
 def _normalize_rule_terms(value: Any) -> list[str]:
     """
-    是什么：_normalize_rule_terms 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_rule_terms 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if value in (None, ""):
         return []
@@ -159,9 +165,9 @@ def _normalize_rule_terms(value: Any) -> list[str]:
 
 def _extract_data_skill_sql_validation_rules(data_skill: str = "") -> list[dict[str, Any]]:
     """
-    是什么：_extract_data_skill_sql_validation_rules 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_extract_data_skill_sql_validation_rules 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if not data_skill or not data_skill.strip():
         return []
@@ -185,9 +191,9 @@ def _extract_data_skill_sql_validation_rules(data_skill: str = "") -> list[dict[
 
 def _rule_matches_question(rule: dict[str, Any], question: str) -> bool:
     """
-    是什么：_rule_matches_question 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rule_matches_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_matches_question 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     terms = [term.lower() for term in _normalize_rule_terms(rule.get("match") or rule.get("when"))]
     if not terms:
@@ -198,9 +204,9 @@ def _rule_matches_question(rule: dict[str, Any], question: str) -> bool:
 
 def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
     """
-    是什么：_rule_allowed_by_question 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rule_allowed_by_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_allowed_by_question 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     terms = [term.lower() for term in _normalize_rule_terms(rule.get("allow_when"))]
     if not terms:
@@ -211,9 +217,9 @@ def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
 
 def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = "") -> str | None:
     """
-    是什么：_data_skill_sql_validation_error 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _data_skill_sql_validation_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_data_skill_sql_validation_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not sql:
         return None
@@ -257,9 +263,9 @@ def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = 
 
 def _decode_relaxed_json_string(value: str) -> str:
     """
-    是什么：_decode_relaxed_json_string 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _decode_relaxed_json_string 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_decode_relaxed_json_string 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     result: list[str] = []
     index = 0
@@ -288,9 +294,9 @@ def _decode_relaxed_json_string(value: str) -> str:
 
 def _extract_relaxed_json_string_field(text: str, field_name: str) -> str | None:
     """
-    是什么：_extract_relaxed_json_string_field 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_extract_relaxed_json_string_field 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"', text)
     if not match:
@@ -308,9 +314,9 @@ def _extract_relaxed_json_string_field(text: str, field_name: str) -> str | None
 
 def _extract_relaxed_json_array_field(text: str, field_name: str) -> list[Any] | None:
     """
-    是什么：_extract_relaxed_json_array_field 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_extract_relaxed_json_array_field 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     match = re.search(rf'"{re.escape(field_name)}"\s*:\s*', text)
     if not match:
@@ -325,9 +331,9 @@ def _extract_relaxed_json_array_field(text: str, field_name: str) -> list[Any] |
 
 def _extract_relaxed_simple_json_string_field(text: str, field_name: str) -> str | None:
     """
-    是什么：_extract_relaxed_simple_json_string_field 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_extract_relaxed_simple_json_string_field 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"((?:\\.|[^"\\])*)"', text)
     if not match:
@@ -337,9 +343,9 @@ def _extract_relaxed_simple_json_string_field(text: str, field_name: str) -> str
 
 def _parse_relaxed_sql_answer_data(text: str) -> dict[str, Any] | None:
     """
-    是什么：_parse_relaxed_sql_answer_data 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_parse_relaxed_sql_answer_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     success_match = re.search(r'"success"\s*:\s*(true|false)', text)
     if not success_match:
@@ -377,9 +383,9 @@ def _parse_relaxed_sql_answer_data(text: str) -> dict[str, Any] | None:
 
 def _parse_sql_answer_data(text: str) -> dict[str, Any]:
     """
-    是什么：_parse_sql_answer_data 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_parse_sql_answer_data 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     json_str = extract_nested_json(text)
     if json_str is not None:
@@ -399,9 +405,9 @@ def _parse_sql_answer_data(text: str) -> dict[str, Any]:
 
 def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional[str]:
     """
-    是什么：_get_temp_sql_text 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：_get_temp_sql_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     if not dynamic_sql_result:
         return None
@@ -410,36 +416,36 @@ def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional
 
 def _remove_temp_sql_text(dynamic_sql_result: dict[str, Any]) -> None:
     """
-    是什么：_remove_temp_sql_text 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    是什么：_remove_temp_sql_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent不再需要的数据、缓存或临时内容清理掉。
     """
     dynamic_sql_result.pop(APP_TEMP_SQL_TEXT_KEY, None)
 
 
 def _normalize_chart_field_name(value: Any) -> str:
     """
-    是什么：_normalize_chart_field_name 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：_normalize_chart_field_name 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     return str(value or "").strip().strip('`"[]').lower()
 
 
 def _clean_chart_value(value: Any) -> str:
     """
-    是什么：_clean_chart_value 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    是什么：_clean_chart_value 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent不再需要的数据、缓存或临时内容清理掉。
     """
     return str(value or "").strip().strip('`"[]')
 
 
 def _sanitize_chart_axis_binding(axis_item: Any) -> None:
     """
-    是什么：_sanitize_chart_axis_binding 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sanitize_chart_axis_binding 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_sanitize_chart_axis_binding 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not isinstance(axis_item, dict):
         return
@@ -451,9 +457,9 @@ def _sanitize_chart_axis_binding(axis_item: Any) -> None:
 
 def _sanitize_chart_bindings(chart: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：_sanitize_chart_bindings 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sanitize_chart_bindings 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_sanitize_chart_bindings 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for column in chart.get("columns") or []:
         _sanitize_chart_axis_binding(column)
@@ -484,9 +490,9 @@ def _sanitize_chart_bindings(chart: dict[str, Any]) -> dict[str, Any]:
 
 def _is_chart_numeric_value(value: Any) -> bool:
     """
-    是什么：_is_chart_numeric_value 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_chart_numeric_value 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_chart_numeric_value 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value is None or isinstance(value, bool):
         return False
@@ -509,9 +515,9 @@ def _is_chart_numeric_value(value: Any) -> bool:
 
 def _chart_axis_values(chart: dict[str, Any]) -> set[str]:
     """
-    是什么：_chart_axis_values 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _chart_axis_values 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_chart_axis_values 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     values: set[str] = set()
     chart_type = str(chart.get("type") or "").lower()
@@ -546,9 +552,9 @@ def _chart_axis_values(chart: dict[str, Any]) -> set[str]:
 
 def _build_complete_table_chart(fields: list[Any], title: str | None = None) -> dict[str, Any]:
     """
-    是什么：_build_complete_table_chart 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：_build_complete_table_chart 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     columns = []
     for field in fields or []:
@@ -563,9 +569,9 @@ def _build_complete_table_chart(fields: list[Any], title: str | None = None) -> 
 
 def _is_rate_metric_field(field: str) -> bool:
     """
-    是什么：_is_rate_metric_field 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_rate_metric_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_rate_metric_field 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     normalized = _normalize_chart_field_name(field)
     return any(
@@ -587,9 +593,9 @@ def _is_rate_metric_field(field: str) -> bool:
 
 def _is_average_metric_field(field: str) -> bool:
     """
-    是什么：_is_average_metric_field 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_average_metric_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_average_metric_field 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     normalized = _normalize_chart_field_name(field)
     return any(
@@ -610,9 +616,9 @@ def _is_average_metric_field(field: str) -> bool:
 
 def _is_supporting_metric_field(field: str) -> bool:
     """
-    是什么：_is_supporting_metric_field 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_supporting_metric_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_supporting_metric_field 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     normalized = _normalize_chart_field_name(field)
     return any(
@@ -637,9 +643,9 @@ def _is_supporting_metric_field(field: str) -> bool:
 
 def _is_numeric_dimension_field(field: str) -> bool:
     """
-    是什么：_is_numeric_dimension_field 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_numeric_dimension_field 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_numeric_dimension_field 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     normalized = _normalize_chart_field_name(field)
     return any(
@@ -665,9 +671,9 @@ def _is_numeric_dimension_field(field: str) -> bool:
 
 def _is_supporting_only_gap(covered_metrics: list[str], missing_metrics: list[str]) -> bool:
     """
-    是什么：_is_supporting_only_gap 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_supporting_only_gap 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_supporting_only_gap 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not covered_metrics or not missing_metrics:
         return False
@@ -682,9 +688,9 @@ def _is_funnel_supporting_metric_gap(
     missing_metrics: list[str],
 ) -> bool:
     """
-    是什么：_is_funnel_supporting_metric_gap 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_funnel_supporting_metric_gap 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：_is_funnel_supporting_metric_gap 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if str(chart.get("type") or "").lower() != "funnel" or not covered_metrics or not missing_metrics:
         return False
@@ -697,9 +703,9 @@ def _is_funnel_supporting_metric_gap(
 
     def is_funnel_primary(field: str) -> bool:
         """
-        是什么：is_funnel_primary 是 backend/apps/chat/task/llm.py 中的同步函数。
-        谁调用：由外层函数 _is_funnel_supporting_metric_gap 在执行内部流程时调用。
-        做了什么：围绕 is_funnel_primary 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：is_funnel_primary 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 _is_funnel_supporting_metric_gap 跑到对应步骤时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         normalized = _normalize_chart_field_name(field)
         return any(
@@ -718,9 +724,9 @@ def _is_funnel_supporting_metric_gap(
 
     def is_funnel_auxiliary(field: str) -> bool:
         """
-        是什么：is_funnel_auxiliary 是 backend/apps/chat/task/llm.py 中的同步函数。
-        谁调用：由外层函数 _is_funnel_supporting_metric_gap 在执行内部流程时调用。
-        做了什么：围绕 is_funnel_auxiliary 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：is_funnel_auxiliary 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+        谁调用：外层函数 _is_funnel_supporting_metric_gap 跑到对应步骤时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         normalized = _normalize_chart_field_name(field)
         return any(
@@ -755,9 +761,9 @@ def _ensure_chart_covers_metric_fields(
     rows: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
     """
-    是什么：_ensure_chart_covers_metric_fields 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_ensure_chart_covers_metric_fields 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查聊天问数据和 Agent里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if chart.get("type") == "table" or not fields or not rows:
         return chart
@@ -801,6 +807,9 @@ def _ensure_chart_covers_metric_fields(
 
 
 class LLMService:
+    """
+    类说明：LLMService 把聊天问数据和 Agent的一组操作放在一起，对外提供更容易调用的业务能力。
+    """
     ds: CoreDatasource
     chat_question: ChatQuestion
     record: ChatRecord
@@ -833,9 +842,9 @@ class LLMService:
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
                  embedding: bool = False, config: LLMConfig = None):
         """
-        是什么：LLMService.__init__ 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由创建 LLMService 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：LLMService.__init__ 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：创建 LLMService 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.sql_message = []
         self.chart_message = []
@@ -926,9 +935,9 @@ class LLMService:
     @classmethod
     async def create(cls, *args, **kwargs):
         """
-        是什么：LLMService.create 是 backend/apps/chat/task/llm.py 中的异步方法。
-        谁调用：由类本身、子类或框架按照类方法约定调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.create 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：需要通过类本身做这件事时，代码会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         specialized_model_id = None
         _ai_model_list = []
@@ -986,9 +995,9 @@ class LLMService:
 
     def is_running(self, timeout=0.5):
         """
-        是什么：LLMService.is_running 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 is_running 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：LLMService.is_running 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         try:
             r = concurrent.futures.wait([self.future], timeout)
@@ -1002,9 +1011,9 @@ class LLMService:
     def init_messages(self, session: Session):
 
         """
-        是什么：LLMService.init_messages 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.init_messages 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         self.table_name_list = self.choose_table_schema(session)
 
@@ -1086,9 +1095,9 @@ class LLMService:
 
     def init_record(self, session: Session) -> ChatRecord:
         """
-        是什么：LLMService.init_record 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.init_record 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         self.record = save_question(session=session, current_user=self.current_user, question=self.chat_question)
         return self.record
@@ -1100,9 +1109,9 @@ class LLMService:
             surface: str = "smart_qa",
     ) -> None:
         """
-        是什么：LLMService.save_agent_context_snapshot 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.save_agent_context_snapshot 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         if not self.record:
             return
@@ -1124,42 +1133,42 @@ class LLMService:
 
     def get_record(self):
         """
-        是什么：LLMService.get_record 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        是什么：LLMService.get_record 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         return self.record
 
     def set_record(self, record: ChatRecord):
         """
-        是什么：LLMService.set_record 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+        是什么：LLMService.set_record 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent相关的信息改成最新状态，并保存这些变化。
         """
         self.record = record
 
     def set_articles_number(self, articles_number: int):
         """
-        是什么：LLMService.set_articles_number 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+        是什么：LLMService.set_articles_number 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent相关的信息改成最新状态，并保存这些变化。
         """
         self.articles_number = articles_number
 
     def get_fields_from_chart(self, _session: Session):
         """
-        是什么：LLMService.get_fields_from_chart 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        是什么：LLMService.get_fields_from_chart 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         chart_info = get_chart_config(_session, self.record.id)
         return format_chart_fields(chart_info)
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, ds_id: int = None):
         """
-        是什么：LLMService.filter_custom_prompts 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 filter_custom_prompts 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：LLMService.filter_custom_prompts 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         if not self.chat_question.custom_prompt_id:
             self.chat_question.custom_prompt = ""
@@ -1197,9 +1206,9 @@ class LLMService:
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
     ):
         """
-        是什么：LLMService.filter_data_skills 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 filter_data_skills 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：LLMService.filter_data_skills 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         calculate_ds_id = ds_id
         if self.current_assistant:
@@ -1233,26 +1242,26 @@ class LLMService:
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
     ):
         """
-        是什么：LLMService.load_data_skills 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        是什么：LLMService.load_data_skills 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         self.filter_data_skills(_session, ds_id, target_scope)
 
     def load_tracking_config(self, _session: Session):
         """
-        是什么：LLMService.load_tracking_config 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        是什么：LLMService.load_tracking_config 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         tenant_id = require_current_tenant_id(self.current_user)
         self.chat_question.tracking_config, _ = find_tracking_prompt_context(_session, tenant_id)
 
     def choose_table_schema(self, _session: Session):
         """
-        是什么：LLMService.choose_table_schema 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 choose_table_schema 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：LLMService.choose_table_schema 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         self.current_logs[OperationEnum.CHOOSE_TABLE] = start_log(session=_session,
                                                                   operate=OperationEnum.CHOOSE_TABLE,
@@ -1280,9 +1289,9 @@ class LLMService:
 
     def generate_analysis(self, _session: Session):
         """
-        是什么：LLMService.generate_analysis 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_analysis 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
@@ -1335,9 +1344,9 @@ class LLMService:
 
     def generate_predict(self, _session: Session):
         """
-        是什么：LLMService.generate_predict 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_predict 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
@@ -1389,9 +1398,9 @@ class LLMService:
 
         # 获取结构信息
         """
-        是什么：LLMService.generate_recommend_questions_task 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_recommend_questions_task 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         if self.ds and not self.chat_question.db_schema:
             self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
@@ -1452,9 +1461,9 @@ class LLMService:
 
     def select_datasource(self, _session: Session):
         """
-        是什么：LLMService.select_datasource 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        是什么：LLMService.select_datasource 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemPromptMessage(self.chat_question.datasource_sys_question()))
@@ -1596,9 +1605,9 @@ class LLMService:
     def generate_sql(self, _session: Session, append_question: bool = True):
         # 追加当前问题
         """
-        是什么：LLMService.generate_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         if append_question:
             self.sql_message.append(HumanMessage(
@@ -1634,9 +1643,9 @@ class LLMService:
 
     def generate_sql_text(self, _session: Session, append_question: bool = True) -> str:
         """
-        是什么：LLMService.generate_sql_text 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_sql_text 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         full_sql_text = ''
         for chunk in self.generate_sql(_session, append_question=append_question):
@@ -1650,9 +1659,9 @@ class LLMService:
             append_question: bool = True,
     ):
         """
-        是什么：LLMService.generate_sql_text_streaming_reasoning 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_sql_text_streaming_reasoning 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         full_sql_text = ''
         for chunk in self.generate_sql(_session, append_question=append_question):
@@ -1667,9 +1676,9 @@ class LLMService:
 
     def regenerate_sql_after_validation_error(self, _session: Session, message: str) -> str:
         """
-        是什么：LLMService.regenerate_sql_after_validation_error 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 regenerate_sql_after_validation_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：LLMService.regenerate_sql_after_validation_error 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         repair_message = (
             "<error-msg>\n"
@@ -1688,9 +1697,9 @@ class LLMService:
             in_chat: bool,
     ):
         """
-        是什么：LLMService.regenerate_sql_after_validation_error_streaming_reasoning 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 regenerate_sql_after_validation_error_streaming_reasoning 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：LLMService.regenerate_sql_after_validation_error_streaming_reasoning 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         repair_message = (
             "<error-msg>\n"
@@ -1708,9 +1717,9 @@ class LLMService:
 
     def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
         """
-        是什么：LLMService.generate_with_sub_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_with_sub_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
         self.chat_question.sql = sql
@@ -1750,9 +1759,9 @@ class LLMService:
 
     def generate_assistant_dynamic_sql(self, _session: Session, sql, tables: List):
         """
-        是什么：LLMService.generate_assistant_dynamic_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_assistant_dynamic_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         ds: AssistantOutDsSchema = self.ds
         sub_query = []
@@ -1770,9 +1779,9 @@ class LLMService:
 
     def build_table_filter(self, session: Session, sql: str, filters: list):
         """
-        是什么：LLMService.build_table_filter 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.build_table_filter 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         filter = json.dumps(filters, ensure_ascii=False)
         self.chat_question.sql = sql
@@ -1811,9 +1820,9 @@ class LLMService:
 
     def generate_filter(self, _session: Session, sql: str, tables: List):
         """
-        是什么：LLMService.generate_filter 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_filter 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         filters = get_row_permission_filters(session=_session, current_user=self.current_user, ds=self.ds,
                                              tables=tables)
@@ -1823,9 +1832,9 @@ class LLMService:
 
     def generate_assistant_filter(self, _session: Session, sql, tables: List):
         """
-        是什么：LLMService.generate_assistant_filter 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_assistant_filter 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         ds: AssistantOutDsSchema = self.ds
         filters = []
@@ -1839,9 +1848,9 @@ class LLMService:
     def generate_chart(self, _session: Session, chart_type: Optional[str] = '', schema: Optional[str] = ''):
         # 追加当前问题
         """
-        是什么：LLMService.generate_chart 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+        是什么：LLMService.generate_chart 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question(chart_type, schema)))
 
@@ -1874,9 +1883,9 @@ class LLMService:
 
     def check_sql(self, session: Session, res: str, operate: OperationEnum) -> tuple[str, Optional[list]]:
         """
-        是什么：LLMService.check_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：LLMService.check_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：检查聊天问数据和 Agent里的数据、权限或配置是否合法，不对就及时拦住。
         """
         log = self.current_logs[operate]
 
@@ -1918,9 +1927,9 @@ class LLMService:
     @staticmethod
     def get_chart_type_from_sql_answer(res: str) -> Optional[str]:
         """
-        是什么：LLMService.get_chart_type_from_sql_answer 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        是什么：LLMService.get_chart_type_from_sql_answer 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         chart_type: Optional[str]
         try:
@@ -1938,9 +1947,9 @@ class LLMService:
     @staticmethod
     def get_brief_from_sql_answer(res: str) -> Optional[str]:
         """
-        是什么：LLMService.get_brief_from_sql_answer 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
-        做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+        是什么：LLMService.get_brief_from_sql_answer 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：它不依赖实例状态，其他代码需要这个小能力时会调用它。
+        做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         brief: Optional[str]
         try:
@@ -1957,9 +1966,9 @@ class LLMService:
 
     def check_save_sql(self, session: Session, res: str, operate: OperationEnum) -> str:
         """
-        是什么：LLMService.check_save_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：LLMService.check_save_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：检查聊天问数据和 Agent里的数据、权限或配置是否合法，不对就及时拦住。
         """
         sql, *_ = self.check_sql(session=session, res=res, operate=operate)
         save_sql(session=session, sql=sql, record_id=self.record.id)
@@ -1970,9 +1979,9 @@ class LLMService:
 
     def save_checked_sql(self, session: Session, sql: str) -> str:
         """
-        是什么：LLMService.save_checked_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.save_checked_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         save_sql(session=session, sql=sql, record_id=self.record.id)
         self.chat_question.sql = sql
@@ -1986,9 +1995,9 @@ class LLMService:
     ) -> Dict[str, Any]:
 
         """
-        是什么：LLMService.check_save_chart 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：LLMService.check_save_chart 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：检查聊天问数据和 Agent里的数据、权限或配置是否合法，不对就及时拦住。
         """
         json_str = extract_nested_json(res)
         if json_str is None:
@@ -2031,9 +2040,9 @@ class LLMService:
     def check_save_predict_data(self, session: Session, res: str) -> bool:
 
         """
-        是什么：LLMService.check_save_predict_data 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：LLMService.check_save_predict_data 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：检查聊天问数据和 Agent里的数据、权限或配置是否合法，不对就及时拦住。
         """
         json_str = extract_nested_json(res)
 
@@ -2049,17 +2058,17 @@ class LLMService:
 
     def save_error(self, session: Session, message: str):
         """
-        是什么：LLMService.save_error 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.save_error 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         return save_error_message(session=session, record_id=self.record.id, message=message)
 
     def save_sql_data(self, session: Session, data_obj: Dict[str, Any]):
         """
-        是什么：LLMService.save_sql_data 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.save_sql_data 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         try:
             data_result = data_obj.get('data')
@@ -2080,9 +2089,9 @@ class LLMService:
 
     def save_permission_denied_data(self, session: Session) -> dict[str, Any]:
         """
-        是什么：LLMService.save_permission_denied_data 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+        是什么：LLMService.save_permission_denied_data 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
         data_obj = permission_denied_result(PERMISSION_DENIED_RESULT_MESSAGE)
         self.save_sql_data(session=session, data_obj=data_obj)
@@ -2090,9 +2099,9 @@ class LLMService:
 
     def finish(self, session: Session):
         """
-        是什么：LLMService.finish 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：完成或关闭聊天和 Agent流程，释放资源并记录最终状态。
+        是什么：LLMService.finish 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent这次处理做收尾，记录结果并关掉不再需要的资源。
         """
         return finish_record(session=session, record_id=self.record.id)
 
@@ -2104,9 +2113,9 @@ class LLMService:
             scope_allowed_tables: list[str] | set[str] | None = None,
     ):
         """
-        是什么：LLMService.execute_sql 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.execute_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
@@ -2135,9 +2144,9 @@ class LLMService:
 
     def pop_chunk(self):
         """
-        是什么：LLMService.pop_chunk 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 pop_chunk 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        是什么：LLMService.pop_chunk 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         try:
             chunk = self.chunk_list.pop(0)
@@ -2147,9 +2156,9 @@ class LLMService:
 
     def await_result(self):
         """
-        是什么：LLMService.await_result 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+        是什么：LLMService.await_result 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent处理过程中的消息或结果一段段传出去。
         """
         idle_rounds = 0
         max_idle_rounds = max(1, settings.LLM_REQUEST_TIMEOUT * 2)
@@ -2201,9 +2210,9 @@ class LLMService:
     def run_task_async(self, in_chat: bool = True, stream: bool = True,
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
         """
-        是什么：LLMService.run_task_async 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_task_async 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         if in_chat:
             stream = True
@@ -2213,9 +2222,9 @@ class LLMService:
     def run_task_cache(self, in_chat: bool = True, stream: bool = True,
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
         """
-        是什么：LLMService.run_task_cache 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_task_cache 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         for chunk in self.run_task(in_chat, stream, finish_step, return_img):
             self.chunk_list.append(chunk)
@@ -2223,9 +2232,9 @@ class LLMService:
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
         """
-        是什么：LLMService.run_task 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_task 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         AppLogUtil.info(
             f"Smart Q&A using LangGraph runner for record {getattr(self.record, 'id', None)}"
@@ -2242,27 +2251,27 @@ class LLMService:
 
     def run_recommend_questions_task_async(self):
         """
-        是什么：LLMService.run_recommend_questions_task_async 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_recommend_questions_task_async 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         self.stream_keepalive_enabled = True
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
     def run_recommend_questions_task_cache(self):
         """
-        是什么：LLMService.run_recommend_questions_task_cache 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_recommend_questions_task_cache 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         for chunk in self.run_recommend_questions_task():
             self.chunk_list.append(chunk)
 
     def run_recommend_questions_task(self):
         """
-        是什么：LLMService.run_recommend_questions_task 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_recommend_questions_task 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         try:
             _session = session_maker()
@@ -2285,9 +2294,9 @@ class LLMService:
     def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord,
                                            in_chat: bool = True, stream: bool = True):
         """
-        是什么：LLMService.run_analysis_or_predict_task_async 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_analysis_or_predict_task_async 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         self.set_record(save_analysis_predict_record(session, base_record, action_type))
         self.stream_keepalive_enabled = bool(in_chat and stream)
@@ -2295,18 +2304,18 @@ class LLMService:
 
     def run_analysis_or_predict_task_cache(self, action_type: str, in_chat: bool = True, stream: bool = True):
         """
-        是什么：LLMService.run_analysis_or_predict_task_cache 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_analysis_or_predict_task_cache 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         for chunk in self.run_analysis_or_predict_task(action_type, in_chat, stream):
             self.chunk_list.append(chunk)
 
     def run_analysis_or_predict_task(self, action_type: str, in_chat: bool = True, stream: bool = True):
         """
-        是什么：LLMService.run_analysis_or_predict_task 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+        是什么：LLMService.run_analysis_or_predict_task 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         AppLogUtil.info(
             f"Chart insight using LangGraph runner for record {getattr(self.record, 'id', None)}"
@@ -2322,9 +2331,9 @@ class LLMService:
 
     def validate_history_ds(self, session: Session):
         """
-        是什么：LLMService.validate_history_ds 是 backend/apps/chat/task/llm.py 中的同步方法。
-        谁调用：由持有 LLMService 实例的业务代码、框架回调或测试代码调用。
-        做了什么：校验聊天和 Agent相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：LLMService.validate_history_ds 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
+        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
+        做了什么：检查聊天问数据和 Agent里的数据、权限或配置是否合法，不对就及时拦住。
         """
         _ds = self.ds
         if not self.current_assistant or self.current_assistant.type == 4:
@@ -2348,9 +2357,9 @@ class LLMService:
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
     """
-    是什么：execute_sql_with_db 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：execute_sql_with_db 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     try:
         # 执行查询
@@ -2370,9 +2379,9 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
 
 def format_chart_data_for_agent_prompt(data: dict[str, Any]) -> str:
     """
-    是什么：format_chart_data_for_agent_prompt 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    是什么：format_chart_data_for_agent_prompt 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if isinstance(data, dict) and data.get("status") == "failed":
         payload = {
@@ -2389,9 +2398,9 @@ def format_chart_data_for_agent_prompt(data: dict[str, Any]) -> str:
 
 def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
     """
-    是什么：request_picture 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 request_picture 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：request_picture 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     file_name = f'c_{chat_id}_r_{record_id}'
 
@@ -2456,9 +2465,9 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
 def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = None):
     """
-    是什么：get_token_usage 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_token_usage 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     try:
         if chunk.usage_metadata:
@@ -2478,9 +2487,9 @@ def process_stream(res: Iterator[BaseMessageChunk],
                    end_tag: str = settings.DEFAULT_REASONING_CONTENT_END
                    ):
     """
-    是什么：process_stream 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：process_stream 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     if token_usage is None:
         token_usage = {}
@@ -2576,9 +2585,9 @@ def process_stream(res: Iterator[BaseMessageChunk],
 
 def get_lang_name(lang: str):
     """
-    是什么：get_lang_name 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_lang_name 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     if not lang:
         return '简体中文'
@@ -2594,9 +2603,9 @@ def get_lang_name(lang: str):
 
 def get_last_conversation_rounds(messages, rounds=settings.GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT):
     """
-    是什么：get_last_conversation_rounds 是 backend/apps/chat/task/llm.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    是什么：get_last_conversation_rounds 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
     if not messages or rounds <= 0:
         return []

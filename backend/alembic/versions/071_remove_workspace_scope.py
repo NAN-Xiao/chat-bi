@@ -1,8 +1,5 @@
-"""迁移脚本：071_remove_workspace_scope
-
-迁移版本 ID： d9e0f1a2b3c4
-上一版本： b7c1f2d3e4a5
-创建时间： 2026-06-14 00:00:00.000000
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
 """
 from alembic import op
 import sqlalchemy as sa
@@ -17,27 +14,27 @@ depends_on = None
 
 def _has_table(table_name: str) -> bool:
     """
-    是什么：_has_table 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_table 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_table 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return table_name in sa.inspect(op.get_bind()).get_table_names()
 
 
 def _has_view(view_name: str) -> bool:
     """
-    是什么：_has_view 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_view 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_view 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return view_name in sa.inspect(op.get_bind()).get_view_names()
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
     """
-    是什么：_has_column 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _has_column 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：_has_column 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not _has_table(table_name):
         return False
@@ -47,9 +44,9 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 def _drop_column_if_exists(table_name: str, column_name: str) -> None:
     """
-    是什么：_drop_column_if_exists 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据库迁移相关数据、缓存或临时状态。
+    是什么：_drop_column_if_exists 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移不再需要的数据、缓存或临时内容清理掉。
     """
     if _has_column(table_name, column_name):
         op.drop_column(table_name, column_name)
@@ -57,9 +54,9 @@ def _drop_column_if_exists(table_name: str, column_name: str) -> None:
 
 def _drop_table_if_exists(table_name: str) -> None:
     """
-    是什么：_drop_table_if_exists 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据库迁移相关数据、缓存或临时状态。
+    是什么：_drop_table_if_exists 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移不再需要的数据、缓存或临时内容清理掉。
     """
     if _has_table(table_name):
         op.drop_table(table_name)
@@ -67,9 +64,9 @@ def _drop_table_if_exists(table_name: str) -> None:
 
 def _drop_view_if_exists(view_name: str) -> None:
     """
-    是什么：_drop_view_if_exists 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据库迁移相关数据、缓存或临时状态。
+    是什么：_drop_view_if_exists 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移不再需要的数据、缓存或临时内容清理掉。
     """
     if _has_view(view_name):
         op.execute(f"DROP VIEW {view_name}")
@@ -77,9 +74,9 @@ def _drop_view_if_exists(view_name: str) -> None:
 
 def _drop_relation_if_exists(relation_name: str) -> None:
     """
-    是什么：_drop_relation_if_exists 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据库迁移相关数据、缓存或临时状态。
+    是什么：_drop_relation_if_exists 是一个可以复用的小步骤，负责数据库迁移相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据库迁移不再需要的数据、缓存或临时内容清理掉。
     """
     _drop_view_if_exists(relation_name)
     _drop_table_if_exists(relation_name)
@@ -87,9 +84,9 @@ def _drop_relation_if_exists(relation_name: str) -> None:
 
 def upgrade():
     """
-    是什么：upgrade 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：upgrade 是这个迁移脚本的数据库升级步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前升级。
     """
     _drop_relation_if_exists('sys_workspace')
     _drop_table_if_exists('sys_user_ws')
@@ -110,9 +107,9 @@ def upgrade():
 
 def downgrade():
     """
-    是什么：downgrade 是 backend/alembic/versions/071_remove_workspace_scope.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：downgrade 是这个迁移脚本的数据库回滚步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前回滚。
     """
     _drop_relation_if_exists('sys_workspace')
 

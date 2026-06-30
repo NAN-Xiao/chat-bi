@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本是测试文件，用来验证对应功能在常见情况下能按预期工作。
+"""
 from __future__ import annotations
 
 import json
@@ -9,9 +12,9 @@ from apps.chat.task.llm import _parse_sql_answer_data
 
 def test_parse_sql_answer_data_accepts_strict_json() -> None:
     """
-    是什么：test_parse_sql_answer_data_accepts_strict_json 是 backend/tests/test_llm_sql_answer_parser.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_parse_sql_answer_data_accepts_strict_json 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     payload = {
         "success": True,
@@ -32,9 +35,9 @@ def test_parse_sql_answer_data_accepts_strict_json() -> None:
 
 def test_parse_sql_answer_data_recovers_postgres_identifier_quotes() -> None:
     """
-    是什么：test_parse_sql_answer_data_recovers_postgres_identifier_quotes 是 backend/tests/test_llm_sql_answer_parser.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_parse_sql_answer_data_recovers_postgres_identifier_quotes 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     llm_answer = (
         '{"success":true,"sql":"SELECT \\"p"."channel\\" AS \\"渠道\\", '
@@ -62,9 +65,9 @@ def test_parse_sql_answer_data_recovers_postgres_identifier_quotes() -> None:
 
 def test_parse_sql_answer_data_rejects_non_json_text() -> None:
     """
-    是什么：test_parse_sql_answer_data_rejects_non_json_text 是 backend/tests/test_llm_sql_answer_parser.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_parse_sql_answer_data_rejects_non_json_text 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     with pytest.raises(ValueError):
         _parse_sql_answer_data("SELECT 1")

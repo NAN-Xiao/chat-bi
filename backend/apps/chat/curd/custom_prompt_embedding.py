@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装聊天问数据和 Agent的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 import hashlib
 import json
 import traceback
@@ -12,9 +15,9 @@ from common.utils.utils import AppLogUtil
 
 def build_skill_embedding_text(name: str | None, description: str | None) -> str:
     """
-    是什么：build_skill_embedding_text 是 backend/apps/chat/curd/custom_prompt_embedding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：build_skill_embedding_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     parts = []
     if name and name.strip():
@@ -26,9 +29,9 @@ def build_skill_embedding_text(name: str | None, description: str | None) -> str
 
 def skill_embedding_signature(name: str | None, description: str | None) -> str:
     """
-    是什么：skill_embedding_signature 是 backend/apps/chat/curd/custom_prompt_embedding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 skill_embedding_signature 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：skill_embedding_signature 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     text = build_skill_embedding_text(name, description)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -36,9 +39,9 @@ def skill_embedding_signature(name: str | None, description: str | None) -> str:
 
 def skill_definition_signature(name: str | None, description: str | None, prompt: str | None) -> str:
     """
-    是什么：skill_definition_signature 是 backend/apps/chat/curd/custom_prompt_embedding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 skill_definition_signature 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：skill_definition_signature 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     payload = {
         "name": (name or "").strip(),
@@ -51,9 +54,9 @@ def skill_definition_signature(name: str | None, description: str | None, prompt
 
 def embedding_vector_from_json(value: Any) -> list[float] | None:
     """
-    是什么：embedding_vector_from_json 是 backend/apps/chat/curd/custom_prompt_embedding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 embedding_vector_from_json 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    是什么：embedding_vector_from_json 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value in (None, ""):
         return None
@@ -76,9 +79,9 @@ def save_custom_prompt_skill_embedding(
         tenant_id: int | None = None,
 ) -> int:
     """
-    是什么：save_custom_prompt_skill_embedding 是 backend/apps/chat/curd/custom_prompt_embedding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    是什么：save_custom_prompt_skill_embedding 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
     if not settings.EMBEDDING_ENABLED:
         return 0
@@ -136,9 +139,9 @@ def run_fill_empty_custom_prompt_skill_embedding(
         limit: int = 500,
 ) -> int:
     """
-    是什么：run_fill_empty_custom_prompt_skill_embedding 是 backend/apps/chat/curd/custom_prompt_embedding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    是什么：run_fill_empty_custom_prompt_skill_embedding 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
     """
     if not settings.EMBEDDING_ENABLED:
         return 0
@@ -175,9 +178,9 @@ def run_fill_empty_custom_prompt_skill_embedding(
 
 def clear_custom_prompt_skill_embedding(session, prompt_id: int) -> None:
     """
-    是什么：clear_custom_prompt_skill_embedding 是 backend/apps/chat/curd/custom_prompt_embedding.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    是什么：clear_custom_prompt_skill_embedding 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把聊天问数据和 Agent不再需要的数据、缓存或临时内容清理掉。
     """
     from apps.chat.models.custom_prompt_model import CustomPrompt
 

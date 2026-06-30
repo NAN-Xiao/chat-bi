@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义系统管理用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 from typing import List, Optional
 
 from sqlalchemy import Column, BigInteger, String
@@ -10,6 +13,9 @@ from common.utils.time import get_timestamp
 
 
 class BaseUserPO(SQLModel):
+    """
+    类说明：BaseUserPO 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     account: str = Field(max_length=255, unique=True)
     name: str = Field(max_length=255, unique=True)
     password: str = Field(default_factory=default_password_hash, max_length=255)
@@ -27,14 +33,23 @@ class BaseUserPO(SQLModel):
 
 
 class UserModel(SnowflakeBase, BaseUserPO, table=True):
+    """
+    类说明：UserModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_user"
 
 
 class UserPlatformBase(SQLModel):
+    """
+    类说明：UserPlatformBase 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     uid: int = Field(nullable=False, sa_type=BigInteger())
     origin: int = Field(nullable=False, default=0)
     platform_uid: str = Field(max_length=255, nullable=False)
 
 
 class UserPlatformModel(SnowflakeBase, UserPlatformBase, table=True):
+    """
+    类说明：UserPlatformModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_user_platform"

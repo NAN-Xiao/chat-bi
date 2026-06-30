@@ -1,4 +1,7 @@
-﻿# 作者：Junjun
+﻿"""
+脚本说明：这个脚本放数据源的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
+# 作者：Junjun
 # 日期：2025/9/24
 from typing import List
 
@@ -24,9 +27,9 @@ router = APIRouter(
 async def save_relation(session: SessionDep, relation: List[dict],
                         ds_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：save_relation 是 backend/apps/datasource/api/table_relation.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：save_relation 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     ds = session.get(CoreDatasource, ds_id)
     if ds:
@@ -41,9 +44,9 @@ async def save_relation(session: SessionDep, relation: List[dict],
 @require_permissions(permission=AppPermission(type='ds', keyExpression="ds_id"))
 async def get_relation(session: SessionDep, ds_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：get_relation 是 backend/apps/datasource/api/table_relation.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_relation 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     ds = session.get(CoreDatasource, ds_id)
     if ds:

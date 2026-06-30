@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 # 作者：Junjun
 # 日期：2025/6/25
 
@@ -11,9 +14,9 @@ from common.core.deps import SessionDep, CurrentUser
 
 def _escape_sql_value(value: str) -> str:
     """
-    是什么：_escape_sql_value 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _escape_sql_value 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_escape_sql_value 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if value is None:
         return value
@@ -26,9 +29,9 @@ def _escape_sql_value(value: str) -> str:
 
 def _invalid_filter(message: str, strict: bool) -> None:
     """
-    是什么：_invalid_filter 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _invalid_filter 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_invalid_filter 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if strict:
         raise ValueError(message)
@@ -36,18 +39,18 @@ def _invalid_filter(message: str, strict: bool) -> None:
 
 def _sql_server_nchar(ds: CoreDatasource, field: CoreField) -> bool:
     """
-    是什么：_sql_server_nchar 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sql_server_nchar 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_sql_server_nchar 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return ds.type == 'sqlServer' and field.field_type in ('nchar', 'NCHAR', 'nvarchar', 'NVARCHAR')
 
 
 def _quoted_value(ds: CoreDatasource, field: CoreField, value: Any) -> str:
     """
-    是什么：_quoted_value 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _quoted_value 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_quoted_value 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     escaped = _escape_sql_value(value)
     if _sql_server_nchar(ds, field):
@@ -57,9 +60,9 @@ def _quoted_value(ds: CoreDatasource, field: CoreField, value: Any) -> str:
 
 def _list_values(value: Any) -> list[Any]:
     """
-    是什么：_list_values 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：_list_values 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if isinstance(value, list):
         return value
@@ -72,9 +75,9 @@ def _list_values(value: Any) -> list[Any]:
 
 def _single_value(value: Any) -> Any:
     """
-    是什么：_single_value 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _single_value 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_single_value 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, (list, tuple)):
         return value[0] if value else None
@@ -89,9 +92,9 @@ def _where_value_for_term(
         strict: bool,
 ) -> str | None:
     """
-    是什么：_where_value_for_term 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _where_value_for_term 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_where_value_for_term 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if term in ('null', 'not_null'):
         return ''
@@ -129,9 +132,9 @@ def _where_value_for_term(
 def transFilterTree(session: SessionDep, current_user: CurrentUser, tree_list: List[any],
                     ds: CoreDatasource, deny_mode: bool = False, strict: bool = False) -> str | None:
     """
-    是什么：transFilterTree 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 transFilterTree 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：transFilterTree 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if tree_list is None:
         return None
@@ -159,9 +162,9 @@ _VALID_LOGIC_OPS = {"AND", "OR"}
 
 def _same_explicit_tenant(left, right) -> bool:
     """
-    是什么：_same_explicit_tenant 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _same_explicit_tenant 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_same_explicit_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if left in (None, "") or right in (None, ""):
         return False
@@ -180,9 +183,9 @@ def transTreeToWhere(
         strict: bool = False,
 ) -> str | None:
     """
-    是什么：transTreeToWhere 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 transTreeToWhere 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：transTreeToWhere 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not isinstance(tree, dict):
         _invalid_filter("行权限过滤树格式无效", strict)
@@ -234,9 +237,9 @@ def transTreeItem(
         strict: bool = False,
 ) -> str | None:
     """
-    是什么：transTreeItem 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 transTreeItem 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：transTreeItem 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     res: str = None
     try:
@@ -351,9 +354,9 @@ def transTreeItem(
 
 def transFilterTerm(term: str) -> str:
     """
-    是什么：transFilterTerm 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 transFilterTerm 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：transFilterTerm 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if term == "eq":
         return " = "
@@ -390,9 +393,9 @@ def transFilterTerm(term: str) -> str:
 
 def userHaveVariable(user_variables: List, sys_variable: SystemVariable):
     """
-    是什么：userHaveVariable 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 userHaveVariable 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：userHaveVariable 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for u in user_variables:
         if sys_variable.id == u.get('variableId'):
@@ -403,9 +406,9 @@ def userHaveVariable(user_variables: List, sys_variable: SystemVariable):
 def getSysVariableValue(sys_variable: SystemVariable, current_user: CurrentUser, ds: CoreDatasource, field: CoreField,
                         item: Dict, ):
     """
-    是什么：getSysVariableValue 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：getSysVariableValue 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     v = None
     if sys_variable.value[0] == 'name':

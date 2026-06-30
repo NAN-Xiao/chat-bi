@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from typing import Any
 
 
@@ -19,9 +22,9 @@ CHART_TYPES = {
 
 def _axis_binding_has_distinct_display_name(value: dict[str, Any]) -> bool:
     """
-    是什么：_axis_binding_has_distinct_display_name 是 backend/common/utils/chart_config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _axis_binding_has_distinct_display_name 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_axis_binding_has_distinct_display_name 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     name = str(value.get("name") or "").strip()
     bound_value = str(value.get("value") or "").strip()
@@ -30,9 +33,9 @@ def _axis_binding_has_distinct_display_name(value: dict[str, Any]) -> bool:
 
 def _sanitize_axis_binding(value: Any) -> Any:
     """
-    是什么：_sanitize_axis_binding 是 backend/common/utils/chart_config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sanitize_axis_binding 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_sanitize_axis_binding 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, list):
         return [_sanitize_axis_binding(item) for item in value]
@@ -48,9 +51,9 @@ def _sanitize_axis_binding(value: Any) -> Any:
 
 def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：_sanitize_chart_object 是 backend/common/utils/chart_config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _sanitize_chart_object 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_sanitize_chart_object 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for key in ("columns", "xAxis", "yAxis", "series"):
         if key in chart:
@@ -65,9 +68,9 @@ def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
 
 def _looks_like_chart_object(value: dict[str, Any]) -> bool:
     """
-    是什么：_looks_like_chart_object 是 backend/common/utils/chart_config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _looks_like_chart_object 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：_looks_like_chart_object 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if any(key in value for key in ("axis", "xAxis", "yAxis", "series", "multiQuotaName")):
         return True
@@ -76,9 +79,9 @@ def _looks_like_chart_object(value: dict[str, Any]) -> bool:
 
 def sanitize_chart_display_names(value: Any) -> Any:
     """
-    是什么：sanitize_chart_display_names 是 backend/common/utils/chart_config.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 sanitize_chart_display_names 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    是什么：sanitize_chart_display_names 是一个可以复用的小步骤，负责通用工具相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把通用工具里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(value, list):
         return [sanitize_chart_display_names(item) for item in value]

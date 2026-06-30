@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 
 
 from fastapi import FastAPI, Request
@@ -14,9 +17,9 @@ from common.core.response_middleware import ResponseMiddleware
 
 def dynamic_upgrade_cors(request: Request, session: Session):
     """
-    是什么：dynamic_upgrade_cors 是 backend/apps/system/crud/assistant_manage.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 dynamic_upgrade_cors 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：dynamic_upgrade_cors 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time)).all()
     seen = set()
@@ -48,9 +51,9 @@ def dynamic_upgrade_cors(request: Request, session: Session):
 
 async def save(request: Request, session: Session, creator: AssistantBase, tenant_id: int | None = None):
     """
-    是什么：save 是 backend/apps/system/crud/assistant_manage.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：save 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     db_model = AssistantModel.model_validate(creator.model_dump(exclude_unset=True))
     db_model.tenant_id = require_tenant_id(tenant_id)

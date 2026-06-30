@@ -1,4 +1,7 @@
-﻿import json
+﻿"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
+import json
 import time
 import traceback
 from typing import List
@@ -15,9 +18,9 @@ from ..models.datasource import CoreTable, CoreField, CoreDatasource
 
 def delete_table_by_ds_id(session: SessionDep, id: int):
     """
-    是什么：delete_table_by_ds_id 是 backend/apps/datasource/crud/table.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：delete_table_by_ds_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     session.query(CoreTable).filter(CoreTable.ds_id == id).delete(synchronize_session=False)
     session.commit()
@@ -25,9 +28,9 @@ def delete_table_by_ds_id(session: SessionDep, id: int):
 
 def get_tables_by_ds_id(session: SessionDep, id: int):
     """
-    是什么：get_tables_by_ds_id 是 backend/apps/datasource/crud/table.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_tables_by_ds_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     return session.query(CoreTable).filter(CoreTable.ds_id == id).order_by(
         CoreTable.table_name.asc()).all()
@@ -35,9 +38,9 @@ def get_tables_by_ds_id(session: SessionDep, id: int):
 
 def update_table(session: SessionDep, item: CoreTable):
     """
-    是什么：update_table 是 backend/apps/datasource/crud/table.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_table 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     record = session.query(CoreTable).filter(CoreTable.id == item.id).first()
     record.checked = item.checked
@@ -48,9 +51,9 @@ def update_table(session: SessionDep, item: CoreTable):
 
 def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None = None):
     """
-    是什么：run_fill_empty_table_and_ds_embedding 是 backend/apps/datasource/crud/table.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：执行数据源主流程，协调下游服务并处理结果或异常。
+    是什么：run_fill_empty_table_and_ds_embedding 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的主要流程跑起来，一步步调用需要的处理。
     """
     try:
         if not settings.TABLE_EMBEDDING_ENABLED:
@@ -83,9 +86,9 @@ def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None =
 
 def save_table_embedding(session_maker, ids: List[int], tenant_id: int | None = None):
     """
-    是什么：save_table_embedding 是 backend/apps/datasource/crud/table.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：save_table_embedding 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     if not settings.TABLE_EMBEDDING_ENABLED:
         return
@@ -168,9 +171,9 @@ def save_table_embedding(session_maker, ids: List[int], tenant_id: int | None = 
 
 def save_ds_embedding(session_maker, ids: List[int], tenant_id: int | None = None):
     """
-    是什么：save_ds_embedding 是 backend/apps/datasource/crud/table.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：save_ds_embedding 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     if not settings.TABLE_EMBEDDING_ENABLED:
         return

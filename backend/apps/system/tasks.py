@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放系统管理里较长或较复杂的处理流程，把一次任务分成可维护的步骤。
+"""
 from typing import Any
 
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -16,9 +19,9 @@ session_maker = scoped_session(sessionmaker(bind=engine))
 
 def _int_list(value: Any) -> list[int]:
     """
-    是什么：_int_list 是 backend/apps/system/tasks.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _int_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_int_list 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not value:
         return []
@@ -28,9 +31,9 @@ def _int_list(value: Any) -> list[int]:
 @task_handler("system.ping")
 async def ping_task(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：ping_task 是 backend/apps/system/tasks.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 ping_task 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：ping_task 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return {
         "message": payload.get("message") or "pong",
@@ -42,9 +45,9 @@ async def ping_task(payload: dict[str, Any]) -> dict[str, Any]:
 @task_handler("custom_prompt.skill_embedding")
 def custom_prompt_skill_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：custom_prompt_skill_embedding_task 是 backend/apps/system/tasks.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 custom_prompt_skill_embedding_task 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：custom_prompt_skill_embedding_task 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ids = _int_list(payload.get("ids"))
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
@@ -55,9 +58,9 @@ def custom_prompt_skill_embedding_task(payload: dict[str, Any]) -> dict[str, Any
 @task_handler("custom_prompt.fill_empty_skill_embedding")
 def fill_empty_custom_prompt_skill_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    是什么：fill_empty_custom_prompt_skill_embedding_task 是 backend/apps/system/tasks.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 fill_empty_custom_prompt_skill_embedding_task 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：fill_empty_custom_prompt_skill_embedding_task 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     count = run_fill_empty_custom_prompt_skill_embedding(session_maker, tenant_id=tenant_id)

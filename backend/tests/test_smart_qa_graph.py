@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本是测试文件，用来验证对应功能在常见情况下能按预期工作。
+"""
 from __future__ import annotations
 
 import json
@@ -17,18 +20,18 @@ from common.error import SingleMessageError
 @contextmanager
 def _fake_session_scope():
     """
-    是什么：_fake_session_scope 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _fake_session_scope 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_fake_session_scope 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     yield object()
 
 
 def _sql_answer(sql: str = "select 1 as value", tables: list[str] | None = None) -> str:
     """
-    是什么：_sql_answer 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _sql_answer 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_sql_answer 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     payload = {
         "success": True,
@@ -41,9 +44,9 @@ def _sql_answer(sql: str = "select 1 as value", tables: list[str] | None = None)
 
 def _events(chunks: list[Any]) -> list[dict[str, Any]]:
     """
-    是什么：_events 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _events 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_events 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     events: list[dict[str, Any]] = []
     for chunk in chunks:
@@ -55,9 +58,9 @@ def _events(chunks: list[Any]) -> list[dict[str, Any]]:
 @pytest.fixture(autouse=True)
 def _patch_graph_runtime(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：_patch_graph_runtime 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-    做了什么：围绕 _patch_graph_runtime 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    是什么：_patch_graph_runtime 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：测试代码会调用它，用来准备数据或检查结果。
+    做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     monkeypatch.setattr(graph, "_session_scope", _fake_session_scope)
     monkeypatch.setattr(graph, "check_connection", lambda ds, trans=None: True)
@@ -71,6 +74,9 @@ def _patch_graph_runtime(monkeypatch: pytest.MonkeyPatch):
 
 
 class FakeSmartQAService:
+    """
+    类说明：FakeSmartQAService 把测试的一组操作放在一起，对外提供更容易调用的业务能力。
+    """
     def __init__(
         self,
         *,
@@ -78,9 +84,9 @@ class FakeSmartQAService:
         sql_answer: str | None = None,
     ) -> None:
         """
-        是什么：FakeSmartQAService.__init__ 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：FakeSmartQAService.__init__ 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.ds = SimpleNamespace(id=1, type="PostgreSQL", type_name="PostgreSQL")
         self.record = SimpleNamespace(
@@ -109,73 +115,73 @@ class FakeSmartQAService:
 
     def get_record(self):
         """
-        是什么：FakeSmartQAService.get_record 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+        是什么：FakeSmartQAService.get_record 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试需要的数据找出来，整理成后面好用的样子。
         """
         return self.record
 
     def trans(self, key: str):
         """
-        是什么：FakeSmartQAService.trans 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：围绕 trans 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        是什么：FakeSmartQAService.trans 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return f"{key}: "
 
     def load_data_skills(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.load_data_skills 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+        是什么：FakeSmartQAService.load_data_skills 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试需要的数据找出来，整理成后面好用的样子。
         """
         pass
 
     def filter_custom_prompts(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.filter_custom_prompts 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：围绕 filter_custom_prompts 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        是什么：FakeSmartQAService.filter_custom_prompts 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         pass
 
     def save_agent_context_snapshot(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.save_agent_context_snapshot 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeSmartQAService.save_agent_context_snapshot 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         pass
 
     def load_tracking_config(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.load_tracking_config 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+        是什么：FakeSmartQAService.load_tracking_config 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试需要的数据找出来，整理成后面好用的样子。
         """
         pass
 
     def init_messages(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.init_messages 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeSmartQAService.init_messages 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         pass
 
     def validate_history_ds(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.validate_history_ds 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：校验测试场景相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：FakeSmartQAService.validate_history_ds 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：检查测试里的数据、权限或配置是否合法，不对就及时拦住。
         """
         pass
 
     def generate_sql_text_streaming_reasoning(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.generate_sql_text_streaming_reasoning 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：基于输入上下文生成测试场景相关结果，并保存或返回给调用方。
+        是什么：FakeSmartQAService.generate_sql_text_streaming_reasoning 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：根据已有信息生成测试的结果，比如答案、SQL、图表或建议。
         """
         if kwargs.get("in_chat"):
             yield graph._sse({
@@ -187,51 +193,51 @@ class FakeSmartQAService:
 
     def check_sql(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.check_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：校验测试场景相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：FakeSmartQAService.check_sql 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：检查测试里的数据、权限或配置是否合法，不对就及时拦住。
         """
         payload = json.loads(self.sql_answer)
         return payload["sql"], payload.get("tables")
 
     def get_chart_type_from_sql_answer(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.get_chart_type_from_sql_answer 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+        是什么：FakeSmartQAService.get_chart_type_from_sql_answer 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试需要的数据找出来，整理成后面好用的样子。
         """
         return "table"
 
     def save_checked_sql(self, *, session, sql):
         """
-        是什么：FakeSmartQAService.save_checked_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeSmartQAService.save_checked_sql 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         self.saved_sql.append(sql)
         return sql
 
     def generate_assistant_dynamic_sql(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.generate_assistant_dynamic_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：基于输入上下文生成测试场景相关结果，并保存或返回给调用方。
+        是什么：FakeSmartQAService.generate_assistant_dynamic_sql 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：根据已有信息生成测试的结果，比如答案、SQL、图表或建议。
         """
         return None
 
     def check_save_sql(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.check_save_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：校验测试场景相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：FakeSmartQAService.check_save_sql 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：检查测试里的数据、权限或配置是否合法，不对就及时拦住。
         """
         raise AssertionError("dynamic SQL should not be saved in this scenario")
 
     def save_permission_denied_data(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.save_permission_denied_data 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeSmartQAService.save_permission_denied_data 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         result = {
             "status": "failed",
@@ -244,35 +250,35 @@ class FakeSmartQAService:
 
     def execute_sql(self, **kwargs):
         """
-        是什么：FakeSmartQAService.execute_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：执行测试场景主流程，协调下游服务并处理结果或异常。
+        是什么：FakeSmartQAService.execute_sql 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试的主要流程跑起来，一步步调用需要的处理。
         """
         self.executed.append(kwargs)
         return {"fields": ["value"], "data": [{"value": 1}]}
 
     def save_sql_data(self, *, session, data_obj):
         """
-        是什么：FakeSmartQAService.save_sql_data 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeSmartQAService.save_sql_data 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         self.saved_data.append(data_obj)
 
     def generate_chart(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.generate_chart 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：基于输入上下文生成测试场景相关结果，并保存或返回给调用方。
+        是什么：FakeSmartQAService.generate_chart 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：根据已有信息生成测试的结果，比如答案、SQL、图表或建议。
         """
         self.chart_generated = True
         yield from self.chart_chunks
 
     def check_save_chart(self, *, session, res, result):
         """
-        是什么：FakeSmartQAService.check_save_chart 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：校验测试场景相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：FakeSmartQAService.check_save_chart 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：检查测试里的数据、权限或配置是否合法，不对就及时拦住。
         """
         assert session is not None
         assert result["fields"] == ["value"]
@@ -280,26 +286,26 @@ class FakeSmartQAService:
 
     def save_error(self, *, session, message):
         """
-        是什么：FakeSmartQAService.save_error 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        是什么：FakeSmartQAService.save_error 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
         """
         self.saved_errors.append(message)
 
     def finish(self, *args, **kwargs):
         """
-        是什么：FakeSmartQAService.finish 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：完成或关闭测试场景流程，释放资源并记录最终状态。
+        是什么：FakeSmartQAService.finish 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试这次处理做收尾，记录结果并关掉不再需要的资源。
         """
         self.finished = True
 
 
 def test_generate_sql_finish_step_stops_before_execute(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_generate_sql_finish_step_stops_before_execute 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_generate_sql_finish_step_stops_before_execute 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer=_sql_answer("select 1 as value"))
     monkeypatch.setattr(
@@ -328,9 +334,9 @@ def test_generate_sql_finish_step_stops_before_execute(monkeypatch: pytest.Monke
 
 def test_graph_records_run_id_and_node_trace(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_graph_records_run_id_and_node_trace 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_graph_records_run_id_and_node_trace 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer=_sql_answer("select 1 as value"))
     monkeypatch.setattr(
@@ -367,9 +373,9 @@ def test_graph_records_run_id_and_node_trace(monkeypatch: pytest.MonkeyPatch):
 
 def test_query_data_finish_step_stops_before_chart(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_query_data_finish_step_stops_before_chart 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_query_data_finish_step_stops_before_chart 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer=_sql_answer("select 1 as value"))
     monkeypatch.setattr(
@@ -402,17 +408,17 @@ def test_query_data_finish_step_stops_before_chart(monkeypatch: pytest.MonkeyPat
 
 def test_permission_denied_during_sql_validation_stops_graph(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_permission_denied_during_sql_validation_stops_graph 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_permission_denied_during_sql_validation_stops_graph 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer=_sql_answer("select secret from orders"))
 
     def _deny_query(**kwargs):
         """
-        是什么：_deny_query 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：围绕 _deny_query 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        是什么：_deny_query 是一段测试代码，用来确认测试的某个场景没有问题。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         assert kwargs["sql"] == "select secret from orders"
         raise Exception("permission denied: allowed tables")
@@ -443,17 +449,17 @@ def test_permission_denied_during_sql_validation_stops_graph(monkeypatch: pytest
 
 def test_single_message_error_is_saved_and_streamed(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_single_message_error_is_saved_and_streamed 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_single_message_error_is_saved_and_streamed 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer='{"success": false, "message": "forced"}')
 
     def _raise_single_message(*, session, res, operate):
         """
-        是什么：_raise_single_message 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：围绕 _raise_single_message 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        是什么：_raise_single_message 是一段测试代码，用来确认测试的某个场景没有问题。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         assert session is not None
         assert res == '{"success": false, "message": "forced"}'
@@ -492,9 +498,9 @@ def test_single_message_error_is_saved_and_streamed(monkeypatch: pytest.MonkeyPa
 
 def test_dynamic_assistant_datasource_executes_expanded_sql():
     """
-    是什么：test_dynamic_assistant_datasource_executes_expanded_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_dynamic_assistant_datasource_executes_expanded_sql 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     sql_answer = _sql_answer("select * from orders", ["orders"])
     service = FakeSmartQAService(
@@ -504,9 +510,9 @@ def test_dynamic_assistant_datasource_executes_expanded_sql():
 
     def _dynamic_sql(session, sql, tables):
         """
-        是什么：_dynamic_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：围绕 _dynamic_sql 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        是什么：_dynamic_sql 是一段测试代码，用来确认测试的某个场景没有问题。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         assert session is not None
         assert sql == "select * from orders"
@@ -518,9 +524,9 @@ def test_dynamic_assistant_datasource_executes_expanded_sql():
 
     def _check_save_sql(*, session, res, operate):
         """
-        是什么：_check_save_sql 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：校验测试场景相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        是什么：_check_save_sql 是一段测试代码，用来确认测试的某个场景没有问题。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：检查测试里的数据、权限或配置是否合法，不对就及时拦住。
         """
         assert session is not None
         assert operate == OperationEnum.GENERATE_DYNAMIC_SQL
@@ -554,9 +560,9 @@ def test_dynamic_assistant_datasource_executes_expanded_sql():
 
 def test_non_chat_stream_query_data_returns_markdown(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_non_chat_stream_query_data_returns_markdown 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_non_chat_stream_query_data_returns_markdown 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer=_sql_answer("select 1 as value"))
     monkeypatch.setattr(
@@ -582,9 +588,9 @@ def test_non_chat_stream_query_data_returns_markdown(monkeypatch: pytest.MonkeyP
 
 def test_non_stream_full_chart_returns_json_result(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_non_stream_full_chart_returns_json_result 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_non_stream_full_chart_returns_json_result 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer=_sql_answer("select 1 as value"))
     monkeypatch.setattr(
@@ -628,9 +634,9 @@ def test_non_stream_full_chart_returns_json_result(monkeypatch: pytest.MonkeyPat
 
 def test_chart_generation_tolerates_reasoning_only_chunk(monkeypatch: pytest.MonkeyPatch):
     """
-    是什么：test_chart_generation_tolerates_reasoning_only_chunk 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_chart_generation_tolerates_reasoning_only_chunk 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = FakeSmartQAService(sql_answer=_sql_answer("select 1 as value"))
     service.chart_chunks = [
@@ -668,9 +674,9 @@ def test_chart_generation_tolerates_reasoning_only_chunk(monkeypatch: pytest.Mon
 
 def test_llm_service_routes_smart_qa_to_graph(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    是什么：test_llm_service_routes_smart_qa_to_graph 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-    谁调用：由 pytest 测试运行器收集并执行。
-    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    是什么：test_llm_service_routes_smart_qa_to_graph 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
     """
     service = llm.LLMService.__new__(llm.LLMService)
     service.record = SimpleNamespace(id=8001)
@@ -678,9 +684,9 @@ def test_llm_service_routes_smart_qa_to_graph(monkeypatch: pytest.MonkeyPatch) -
 
     def _fake_graph(service_arg, *, in_chat: bool, stream: bool, finish_step: ChatFinishStep, return_img: bool):
         """
-        是什么：_fake_graph 是 backend/tests/test_smart_qa_graph.py 中的同步测试函数。
-        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
-        做了什么：围绕 _fake_graph 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        是什么：_fake_graph 是一段测试代码，用来确认测试的某个场景没有问题。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：把测试里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         calls.append(
             {

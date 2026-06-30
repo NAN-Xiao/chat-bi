@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 # 作者：Junjun
 # 日期：2026/1/26
 import datetime
@@ -22,9 +25,9 @@ VARIABLE_TYPE_CUSTOM = "custom"
 
 def _current_tenant_id(user: CurrentUser | None) -> int:
     """
-    是什么：_current_tenant_id 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _current_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_current_tenant_id 是从当前用户里取租户 ID 的小工具。
+    谁调用：需要知道当前用户属于哪个租户的接口会调用它。
+    做了什么：把用户上下文里的租户 ID 取出来，方便后面做权限和数据隔离。
     """
     if _is_platform_operation(user):
         return DEFAULT_TENANT_ID
@@ -33,18 +36,18 @@ def _current_tenant_id(user: CurrentUser | None) -> int:
 
 def _is_platform_operation(user: CurrentUser) -> bool:
     """
-    是什么：_is_platform_operation 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_platform_operation 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_is_platform_operation 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return is_platform_admin(user) and not is_platform_workspace_delegate(user)
 
 
 def _visible_variable_condition(user: CurrentUser):
     """
-    是什么：_visible_variable_condition 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _visible_variable_condition 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_visible_variable_condition 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _is_platform_operation(user):
         return or_(
@@ -65,9 +68,9 @@ def _visible_variable_condition(user: CurrentUser):
 
 def _custom_variable_condition(user: CurrentUser):
     """
-    是什么：_custom_variable_condition 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _custom_variable_condition 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_custom_variable_condition 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _is_platform_operation(user):
         return SystemVariable.type == VARIABLE_TYPE_PLATFORM
@@ -80,9 +83,9 @@ def _custom_variable_condition(user: CurrentUser):
 
 def _apply_scope(stmt, user: CurrentUser, include_system: bool = True):
     """
-    是什么：_apply_scope 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _apply_scope 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_apply_scope 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     condition = _visible_variable_condition(user)
     if not include_system:
@@ -92,9 +95,9 @@ def _apply_scope(stmt, user: CurrentUser, include_system: bool = True):
 
 def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentUser) -> None:
     """
-    是什么：_assert_custom_variable_access 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _assert_custom_variable_access 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_assert_custom_variable_access 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if record is None:
         raise HTTPException(status_code=404, detail="变量不存在")
@@ -112,9 +115,9 @@ def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentU
 
 def _variable_response(data: SystemVariable, user: CurrentUser) -> dict:
     """
-    是什么：_variable_response 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _variable_response 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    是什么：_variable_response 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     editable = False
     if _is_platform_operation(user):
@@ -133,9 +136,9 @@ def _variable_response(data: SystemVariable, user: CurrentUser) -> dict:
 
 def save(session: SessionDep, user: CurrentUser, trans: Trans, variable: SystemVariable):
     """
-    是什么：save 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    是什么：save 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     if variable.id is None:
         if _is_platform_operation(user):
@@ -170,9 +173,9 @@ def save(session: SessionDep, user: CurrentUser, trans: Trans, variable: SystemV
 
 def delete(session: SessionDep, user: CurrentUser, ids: List[int]):
     """
-    是什么：delete 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    是什么：delete 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     if not ids:
         return True
@@ -186,9 +189,9 @@ def delete(session: SessionDep, user: CurrentUser, ids: List[int]):
 
 def list_all(session: SessionDep, trans: Trans, user: CurrentUser, variable: SystemVariable):
     """
-    是什么：list_all 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：list_all 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     search_name = getattr(variable, "name", None) if variable else None
     if search_name is None:
@@ -209,9 +212,9 @@ def list_all(session: SessionDep, trans: Trans, user: CurrentUser, variable: Sys
 
 async def list_page(session: SessionDep, trans: Trans, user: CurrentUser, pageNum: int, pageSize: int, variable: SystemVariable):
     """
-    是什么：list_page 是 backend/apps/system/crud/system_variable.py 中的异步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    是什么：list_page 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
@@ -243,9 +246,9 @@ async def list_page(session: SessionDep, trans: Trans, user: CurrentUser, pageNu
 
 def checkName(session: SessionDep, trans: Trans, user: CurrentUser, variable: SystemVariable):
     """
-    是什么：checkName 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：checkName 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     tenant_id = (
         int(getattr(variable, "tenant_id"))
@@ -273,8 +276,8 @@ def checkValue(session: SessionDep, trans: Trans, values: List):
     # 取值示例：[{"variableId":1,"variableValues":["a","b"]}]
 
     """
-    是什么：checkValue 是 backend/apps/system/crud/system_variable.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：checkValue 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     pass

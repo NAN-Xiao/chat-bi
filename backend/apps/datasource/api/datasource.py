@@ -1,4 +1,7 @@
-﻿import asyncio
+﻿"""
+脚本说明：这个脚本放数据源的接口，把前端请求接进来并交给后面的业务逻辑处理。
+"""
+import asyncio
 import hashlib
 import io
 import os
@@ -95,9 +98,9 @@ path = settings.EXCEL_PATH
 
 def _tenant_excel_path(current_user: CurrentUser) -> str:
     """
-    是什么：_tenant_excel_path 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_excel_path 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_excel_path 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     tenant_id = (
         DEFAULT_TENANT_ID
@@ -111,9 +114,9 @@ def _tenant_excel_path(current_user: CurrentUser) -> str:
 
 def _can_manage_tenant_projects(user: CurrentUser) -> bool:
     """
-    是什么：_can_manage_tenant_projects 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_tenant_projects 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_tenant_projects 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     tenant_role = normalize_tenant_role(getattr(user, "tenant_role", None))
     return (
@@ -124,9 +127,9 @@ def _can_manage_tenant_projects(user: CurrentUser) -> bool:
 
 def _can_manage_datasource_metadata(user: CurrentUser) -> bool:
     """
-    是什么：_can_manage_datasource_metadata 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _can_manage_datasource_metadata 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_can_manage_datasource_metadata 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return (
         is_platform_admin(user) and not is_platform_workspace_delegate(user)
@@ -135,9 +138,9 @@ def _can_manage_datasource_metadata(user: CurrentUser) -> bool:
 
 def _require_platform_project_admin(user: CurrentUser) -> None:
     """
-    是什么：_require_platform_project_admin 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_platform_project_admin 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not is_platform_admin(user):
         raise HTTPException(status_code=403, detail="Only SaaS admin can manage projects")
@@ -145,9 +148,9 @@ def _require_platform_project_admin(user: CurrentUser) -> None:
 
 def _require_schema_metadata_admin(user: CurrentUser) -> None:
     """
-    是什么：_require_schema_metadata_admin 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：_require_schema_metadata_admin 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if is_platform_admin(user) or can_manage_workspace_scope(user):
         return
@@ -155,6 +158,9 @@ def _require_schema_metadata_admin(user: CurrentUser) -> None:
 
 
 class DatasourceListItem(BaseModel):
+    """
+    类说明：DatasourceListItem 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: Optional[int] = None
     name: Optional[str] = None
     description: Optional[str] = None
@@ -182,6 +188,9 @@ class DatasourceListItem(BaseModel):
 
 
 class DatasourceDetailItem(BaseModel):
+    """
+    类说明：DatasourceDetailItem 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: Optional[int] = None
     name: Optional[str] = None
     description: Optional[str] = None
@@ -203,6 +212,9 @@ class DatasourceDetailItem(BaseModel):
 
 
 class DatasourceSchemaFieldItem(BaseModel):
+    """
+    类说明：DatasourceSchemaFieldItem 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: int
     field_name: str | None = None
     field_type: str | None = None
@@ -213,6 +225,9 @@ class DatasourceSchemaFieldItem(BaseModel):
 
 
 class DatasourceSchemaTableItem(BaseModel):
+    """
+    类说明：DatasourceSchemaTableItem 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: int
     table_name: str | None = None
     table_comment: str | None = None
@@ -222,6 +237,9 @@ class DatasourceSchemaTableItem(BaseModel):
 
 
 class DatasourceSchemaMetadata(BaseModel):
+    """
+    类说明：DatasourceSchemaMetadata 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: int
     name: str | None = None
     description: str | None = None
@@ -232,6 +250,9 @@ class DatasourceSchemaMetadata(BaseModel):
 
 
 class DatasourceSchemaChangeField(BaseModel):
+    """
+    类说明：DatasourceSchemaChangeField 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     field_name: str
     field_type: str
     field_comment: str | None = None
@@ -239,6 +260,9 @@ class DatasourceSchemaChangeField(BaseModel):
 
 
 class DatasourceSchemaChangeCreate(BaseModel):
+    """
+    类说明：DatasourceSchemaChangeCreate 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     change_type: str
     table_name: str
     table_comment: str | None = None
@@ -248,6 +272,9 @@ class DatasourceSchemaChangeCreate(BaseModel):
 
 
 class DatasourceSchemaChangeItem(BaseModel):
+    """
+    类说明：DatasourceSchemaChangeItem 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: int
     tenant_id: int
     datasource_id: int | None = None
@@ -264,10 +291,16 @@ class DatasourceSchemaChangeItem(BaseModel):
 
 
 class DatasourceBindingUpdate(BaseModel):
+    """
+    类说明：DatasourceBindingUpdate 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     tenant_id: Optional[int] = None
 
 
 class DatasourceBindingItem(BaseModel):
+    """
+    类说明：DatasourceBindingItem 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     datasource_id: int
     tenant_id: Optional[int] = None
     tenant_name: Optional[str] = None
@@ -275,9 +308,9 @@ class DatasourceBindingItem(BaseModel):
 
 def _tenant_name_map(session: SessionDep, tenant_ids) -> dict[int, str]:
     """
-    是什么：_tenant_name_map 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _tenant_name_map 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_tenant_name_map 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ids = {int(tenant_id) for tenant_id in tenant_ids if tenant_id not in (None, "")}
     if not ids:
@@ -296,9 +329,9 @@ def _tenant_name_map(session: SessionDep, tenant_ids) -> dict[int, str]:
 
 def _datasource_binding_item(session: SessionDep, datasource: CoreDatasource) -> DatasourceBindingItem:
     """
-    是什么：_datasource_binding_item 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _datasource_binding_item 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_binding_item 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     tenant_ids = list_bound_tenant_ids_for_datasource(session, int(datasource.id))
     tenant_id = tenant_ids[0] if tenant_ids else None
@@ -315,9 +348,9 @@ def _datasource_binding_item(session: SessionDep, datasource: CoreDatasource) ->
 
 def _coerce_tenant_id(value) -> int | None:
     """
-    是什么：_coerce_tenant_id 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _coerce_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_coerce_tenant_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         if value in (None, ""):
@@ -333,9 +366,9 @@ def _metadata_tenant_id(
         user: CurrentUser | None = None,
 ) -> int | None:
     """
-    是什么：_metadata_tenant_id 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _metadata_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_metadata_tenant_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     user_tenant_id = current_tenant_id(user)
     if user_tenant_id is not None and datasource_bound_to_tenant(session, int(datasource.id), user_tenant_id):
@@ -345,9 +378,9 @@ def _metadata_tenant_id(
 
 def _current_user_id(user: CurrentUser | None) -> int | None:
     """
-    是什么：_current_user_id 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _current_user_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_current_user_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _coerce_tenant_id(getattr(user, "id", None))
 
@@ -360,9 +393,9 @@ def _apply_schema_comments(
         user: CurrentUser | None = None,
 ) -> None:
     """
-    是什么：_apply_schema_comments 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _apply_schema_comments 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_apply_schema_comments 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     tenant_id = _metadata_tenant_id(session, datasource, user)
     table_comments = table_comment_map(session, tenant_id, [table.table_name for table in tables])
@@ -395,9 +428,9 @@ def _apply_schema_comments(
 
 def _schema_change_item(row) -> DatasourceSchemaChangeItem:
     """
-    是什么：_schema_change_item 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _schema_change_item 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_schema_change_item 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return DatasourceSchemaChangeItem(
         id=int(row.id),
@@ -422,9 +455,9 @@ def _datasource_list_items(
         datasources: list[CoreDatasource],
 ) -> list[dict[str, Any]]:
     """
-    是什么：_datasource_list_items 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 _datasource_list_items 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_list_items 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     binding_map = {
         int(datasource.id): list_bound_tenant_ids_for_datasource(session, int(datasource.id))
@@ -488,9 +521,9 @@ def _datasource_list_items(
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def datasource_list(session: SessionDep, user: CurrentUser):
     """
-    是什么：datasource_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 datasource_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_list 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_project_admin(user)
     datasources = get_datasource_list(session=session, user=user)
@@ -500,9 +533,9 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
 @router.get("/accessible/list", response_model=List[DatasourceListItem], include_in_schema=False)
 async def accessible_datasource_list(session: SessionDep, user: CurrentUser):
     """
-    是什么：accessible_datasource_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 accessible_datasource_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：accessible_datasource_list 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ensure_chatbi_business_user(user)
     datasources = get_datasource_list(session=session, user=user)
@@ -510,11 +543,17 @@ async def accessible_datasource_list(session: SessionDep, user: CurrentUser):
 
 
 class DatasourceUserMember(BaseModel):
+    """
+    类说明：DatasourceUserMember 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     id: int
     role: Optional[str] = "viewer"
 
 
 class DatasourceUserUpdate(BaseModel):
+    """
+    类说明：DatasourceUserUpdate 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     user_ids: List[int] = Field(default_factory=list)
     users: List[DatasourceUserMember] = Field(default_factory=list)
 
@@ -527,9 +566,9 @@ async def datasource_users(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
     """
-    是什么：datasource_users 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 datasource_users 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_users 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -567,9 +606,9 @@ async def update_datasource_user_api(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")
 ):
     """
-    是什么：update_datasource_user_api 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_datasource_user_api 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -604,9 +643,9 @@ async def get_datasource(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
     """
-    是什么：get_datasource 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_datasource 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -634,9 +673,9 @@ async def schema_metadata(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
     """
-    是什么：schema_metadata 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 schema_metadata 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：schema_metadata 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_schema_metadata_admin(user)
     datasource = get_ds(session, id, user)
@@ -697,9 +736,9 @@ async def schema_change_list(
         limit: int = 20,
 ):
     """
-    是什么：schema_change_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 schema_change_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：schema_change_list 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_schema_metadata_admin(user)
     datasource = get_ds(session, id, user)
@@ -728,9 +767,9 @@ async def submit_schema_change(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
     """
-    是什么：submit_schema_change 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 submit_schema_change 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：submit_schema_change 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_schema_metadata_admin(user)
     datasource = get_ds(session, id, user)
@@ -787,9 +826,9 @@ async def datasource_binding(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
     """
-    是什么：datasource_binding 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 datasource_binding 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：datasource_binding 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_project_admin(user)
     datasource = get_ds(session, id, user)
@@ -807,9 +846,9 @@ async def update_datasource_binding(
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
     """
-    是什么：update_datasource_binding 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_datasource_binding 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     _require_platform_project_admin(user)
     datasource = get_ds(session, id, user)
@@ -823,15 +862,15 @@ async def update_datasource_binding(
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
     """
-    是什么：check 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 check 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 check 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return check_status(session, trans, ds, True)
 
@@ -843,15 +882,15 @@ async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
 async def check_by_id(session: SessionDep, trans: Trans,
                       ds_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：check_by_id 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：check_by_id 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 check_by_id 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 check_by_id 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return check_status_by_id(session, trans, ds_id, True)
 
@@ -863,9 +902,9 @@ async def check_by_id(session: SessionDep, trans: Trans,
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDatasource):
     """
-    是什么：add 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：add 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     return await create_ds(session, trans, user, ds)
 
@@ -875,9 +914,9 @@ async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDa
 async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, tables: List[CoreTable],
                         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：choose_tables 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 choose_tables 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：choose_tables 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -885,9 +924,9 @@ async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, ta
 
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 choose_tables 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 choose_tables 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         chooseTables(session, trans, id, tables)
 
@@ -900,15 +939,15 @@ async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, ta
     LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATASOURCE, resource_id_expr="ds.id"))
 async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     """
-    是什么：update 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 update 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 update 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return update_ds(session, trans, user, ds)
 
@@ -921,9 +960,9 @@ async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreD
                       ))
 async def delete(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"), name: str = None):
     """
-    是什么：delete 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    是什么：delete 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     return await delete_ds(session, id, user)
 
@@ -932,9 +971,9 @@ async def delete(session: SessionDep, user: CurrentUser, id: int = Path(..., des
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_tables(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：get_tables 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_tables 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -945,16 +984,16 @@ async def get_tables(session: SessionDep, user: CurrentUser, id: int = Path(...,
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     """
-    是什么：get_tables_by_conf 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_tables_by_conf 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     try:
         def inner():
             """
-            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-            谁调用：由外层函数 get_tables_by_conf 在执行内部流程时调用。
-            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+            谁调用：外层函数 get_tables_by_conf 跑到对应步骤时会调用它。
+            做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             return getTablesByDs(session, ds)
 
@@ -963,9 +1002,9 @@ async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
         # 检查数据源状态
         def inner():
             """
-            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-            谁调用：由外层函数 get_tables_by_conf 在执行内部流程时调用。
-            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+            谁调用：外层函数 get_tables_by_conf 跑到对应步骤时会调用它。
+            做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             return check_status(session, trans, ds, True)
 
@@ -979,16 +1018,16 @@ async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     """
-    是什么：get_schema_by_conf 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_schema_by_conf 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     try:
         def inner():
             """
-            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-            谁调用：由外层函数 get_schema_by_conf 在执行内部流程时调用。
-            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+            谁调用：外层函数 get_schema_by_conf 跑到对应步骤时会调用它。
+            做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             return get_schema(ds)
 
@@ -997,9 +1036,9 @@ async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
         # 检查数据源状态
         def inner():
             """
-            是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-            谁调用：由外层函数 get_schema_by_conf 在执行内部流程时调用。
-            做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+            是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+            谁调用：外层函数 get_schema_by_conf 跑到对应步骤时会调用它。
+            做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
             """
             return check_status(session, trans, ds, True)
 
@@ -1017,9 +1056,9 @@ async def get_fields(session: SessionDep,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                      table_name: str = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_name")):
     """
-    是什么：get_fields 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_fields 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -1032,9 +1071,9 @@ async def sync_fields(session: SessionDep,
                       current_user: CurrentUser,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
     """
-    是什么：sync_fields 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：sync_fields 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     table = session.get(CoreTable, id)
     if table is None or get_ds(session, table.ds_id, current_user) is None:
@@ -1056,9 +1095,9 @@ async def sync_fields(session: SessionDep,
 @require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
 async def table_list(session: SessionDep, current_user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：table_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 table_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：table_list 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_schema_metadata_admin(current_user)
     datasource = get_ds(session, id, current_user)
@@ -1080,9 +1119,9 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
 async def field_list(session: SessionDep, current_user: CurrentUser, field: FieldObj,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
     """
-    是什么：field_list 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 field_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：field_list 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_schema_metadata_admin(current_user)
     table = session.get(CoreTable, id)
@@ -1104,9 +1143,9 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
     """
-    是什么：edit_local 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 edit_local 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：edit_local 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = get_ds(session, data.table.ds_id, user) if data.table else None
     if not data.table or datasource is None:
@@ -1123,9 +1162,9 @@ async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
     """
-    是什么：edit_table 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 edit_table 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：edit_table 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = get_ds(session, table.ds_id, user)
     if datasource is None:
@@ -1142,9 +1181,9 @@ async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
     """
-    是什么：edit_field 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 edit_field 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：edit_field 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = get_ds(session, field.ds_id, user)
     if datasource is None:
@@ -1162,18 +1201,18 @@ async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, data: TableObj,
                        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：preview_data 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 preview_data 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：preview_data 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_platform_workspace_delegate(current_user):
         raise HTTPException(status_code=403, detail="SaaS workspace delegate cannot preview datasource rows")
 
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 preview_data 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 preview_data 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         try:
             return preview(session, current_user, id, data)
@@ -1193,9 +1232,9 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def field_enum(session: SessionDep, user: CurrentUser, id: int):
     """
-    是什么：field_enum 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 field_enum 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：field_enum 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     field = session.get(CoreField, id)
     if field is None or get_ds(session, field.ds_id, user) is None:
@@ -1203,9 +1242,9 @@ async def field_enum(session: SessionDep, user: CurrentUser, id: int):
 
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 field_enum 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 field_enum 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return fieldEnum(session, user, id)
 
@@ -1285,9 +1324,9 @@ async def upload_excel(
         file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel"),
 ):
     """
-    是什么：upload_excel 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 upload_excel 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：upload_excel 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
@@ -1299,9 +1338,9 @@ async def upload_excel(
 
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 upload_excel 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 upload_excel 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         sheets = []
         engine = get_engine_conn()
@@ -1329,9 +1368,9 @@ async def upload_excel(
 def insert_pg(df, tableName, engine):
     # 修正字段类型
     """
-    是什么：insert_pg 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    是什么：insert_pg 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     for i in range(len(df.dtypes)):
         if str(df.dtypes[i]) == 'uint64':
@@ -1377,9 +1416,9 @@ f_c_col = "字段备注"
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
-    是什么：export_ds_schema 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 export_ds_schema 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：export_ds_schema 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if id != 0 and get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -1392,9 +1431,9 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
     # }
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 export_ds_schema 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 export_ds_schema 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         if id == 0:  # 下载模板
             df_list = [
@@ -1478,9 +1517,9 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                            file: UploadFile = File(...)):
     """
-    是什么：upload_ds_schema 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 upload_ds_schema 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：upload_ds_schema 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = get_ds(session, id, user)
     if datasource is None:
@@ -1574,9 +1613,9 @@ async def parse_excel(
         file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel"),
 ):
     """
-    是什么：parse_excel 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：parse_excel 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
@@ -1588,9 +1627,9 @@ async def parse_excel(
 
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 parse_excel 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 parse_excel 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         sheets_data = parse_excel_preview(save_path)
         return {
@@ -1605,9 +1644,9 @@ async def parse_excel(
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def import_to_db(session: SessionDep, trans: Trans, current_user: CurrentUser, import_req: ImportRequest):
     """
-    是什么：import_to_db 是 backend/apps/datasource/api/datasource.py 中的异步 FastAPI 接口处理函数。
-    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
-    做了什么：围绕 import_to_db 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：import_to_db 是一个接口入口，负责接住数据源相关请求。
+    谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     safe_file_name = os.path.basename(import_req.filePath or "")
     save_path = str(AppFileUtils.safe_path(_tenant_excel_path(current_user), safe_file_name))
@@ -1616,9 +1655,9 @@ async def import_to_db(session: SessionDep, trans: Trans, current_user: CurrentU
 
     def inner():
         """
-        是什么：inner 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-        谁调用：由外层函数 import_to_db 在执行内部流程时调用。
-        做了什么：围绕 inner 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        是什么：inner 是一个可以复用的小步骤，负责数据源相关的一件事。
+        谁调用：外层函数 import_to_db 跑到对应步骤时会调用它。
+        做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         engine = get_engine_conn()
         results = []
@@ -1680,9 +1719,9 @@ async def import_to_db(session: SessionDep, trans: Trans, current_user: CurrentU
 # 仅允许中文、英文字母和数字
 def filter_string(text):
     """
-    是什么：filter_string 是 backend/apps/datasource/api/datasource.py 中的同步函数。
-    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
-    做了什么：围绕 filter_string 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：filter_string 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9]'
     return re.sub(pattern, '', text)

@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+"""
 import datetime
 import json
 from typing import Any, List, Optional
@@ -48,9 +51,9 @@ REQUIRED_PROJECT_ROLE_ALIASES = {
 
 def _supports_table(session: SessionDep, table_name: str) -> bool:
     """
-    是什么：_supports_table 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _supports_table 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_supports_table 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         return inspect(session.connection()).has_table(table_name)
@@ -60,9 +63,9 @@ def _supports_table(session: SessionDep, table_name: str) -> bool:
 
 def _supports_datasource_tenant_filter(session: SessionDep) -> bool:
     """
-    是什么：_supports_datasource_tenant_filter 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _supports_datasource_tenant_filter 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_supports_datasource_tenant_filter 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         inspector = inspect(session.connection())
@@ -78,18 +81,18 @@ def _supports_datasource_tenant_filter(session: SessionDep) -> bool:
 
 def _supports_tenant_user_filter(session: SessionDep) -> bool:
     """
-    是什么：_supports_tenant_user_filter 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _supports_tenant_user_filter 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_supports_tenant_user_filter 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return _supports_table(session, TenantUserModel.__tablename__)
 
 
 def _apply_datasource_tenant_filter(statement, session: SessionDep, current_user: CurrentUser | None):
     """
-    是什么：_apply_datasource_tenant_filter 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _apply_datasource_tenant_filter 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_apply_datasource_tenant_filter 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_global_platform_context(current_user):
         return statement
@@ -110,9 +113,9 @@ def _apply_datasource_tenant_filter(statement, session: SessionDep, current_user
 
 def _datasource_in_current_tenant(session: SessionDep, datasource_id: int, current_user: CurrentUser | None) -> bool:
     """
-    是什么：_datasource_in_current_tenant 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _datasource_in_current_tenant 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_datasource_in_current_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     statement = select(CoreDatasource.id).where(CoreDatasource.id == datasource_id)
     statement = _apply_datasource_tenant_filter(statement, session, current_user)
@@ -121,9 +124,9 @@ def _datasource_in_current_tenant(session: SessionDep, datasource_id: int, curre
 
 def normalize_project_role(role: str | None) -> str:
     """
-    是什么：normalize_project_role 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    是什么：normalize_project_role 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if not role:
         return PROJECT_ROLE_VIEWER
@@ -133,18 +136,18 @@ def normalize_project_role(role: str | None) -> str:
 
 def project_role_rank(role: str | None) -> int:
     """
-    是什么：project_role_rank 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 project_role_rank 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：project_role_rank 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return PROJECT_ROLE_ORDER.get(normalize_project_role(role), 0)
 
 
 def required_project_role_rank(role: str | None) -> int:
     """
-    是什么：required_project_role_rank 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    是什么：required_project_role_rank 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not role:
         return PROJECT_ROLE_ORDER[PROJECT_ROLE_VIEWER]
@@ -154,9 +157,9 @@ def required_project_role_rank(role: str | None) -> int:
 
 def _can_satisfy_project_role(actual_role: str | None, required_role: str | None) -> bool:
     """
-    是什么：_can_satisfy_project_role 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _can_satisfy_project_role 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_can_satisfy_project_role 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if actual_role is None:
         return False
@@ -168,9 +171,9 @@ def _can_satisfy_project_role(actual_role: str | None, required_role: str | None
 
 def _supports_user_system_role_filter(session: SessionDep) -> bool:
     """
-    是什么：_supports_user_system_role_filter 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _supports_user_system_role_filter 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_supports_user_system_role_filter 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     try:
         inspector = inspect(session.connection())
@@ -190,9 +193,9 @@ def list_project_assignable_user_ids(
         current_user: CurrentUser | None = None,
 ) -> set[int]:
     """
-    是什么：list_project_assignable_user_ids 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_project_assignable_user_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     requested_ids = {int(user_id) for user_id in user_ids if user_id is not None}
     if not requested_ids:
@@ -226,9 +229,9 @@ def list_datasource_user_ids(
         current_user: CurrentUser | None = None,
 ) -> list[int]:
     """
-    是什么：list_datasource_user_ids 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_datasource_user_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if not _datasource_in_current_tenant(session, int(datasource_id), current_user):
         return []
@@ -243,9 +246,9 @@ def list_datasource_users(
         current_user: CurrentUser | None = None,
 ) -> list[dict[str, Any]]:
     """
-    是什么：list_datasource_users 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_datasource_users 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if not _datasource_in_current_tenant(session, int(datasource_id), current_user):
         return []
@@ -267,9 +270,9 @@ def list_datasource_user_counts(
         current_user: CurrentUser | None = None,
 ) -> dict[int, int]:
     """
-    是什么：list_datasource_user_counts 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_datasource_user_counts 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     requested_ids = {int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None}
     if not requested_ids:
@@ -316,9 +319,9 @@ def list_user_datasource_ids(
         current_user: CurrentUser | None = None,
 ) -> list[int]:
     """
-    是什么：list_user_datasource_ids 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_user_datasource_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     statement = (
         select(CoreDatasourceUser.ds_id)
@@ -337,9 +340,9 @@ def list_user_datasource_roles(
         current_user: CurrentUser | None = None,
 ) -> dict[int, str]:
     """
-    是什么：list_user_datasource_roles 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：list_user_datasource_roles 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     statement = (
         select(CoreDatasourceUser.ds_id, CoreDatasourceUser.role)
@@ -358,9 +361,9 @@ def get_datasource_ids_with_min_role(
         min_role: str = PROJECT_ROLE_VIEWER,
 ) -> Optional[set[int]]:
     """
-    是什么：get_datasource_ids_with_min_role 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_datasource_ids_with_min_role 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     required_rank = required_project_role_rank(min_role)
     if required_rank <= 0:
@@ -402,9 +405,9 @@ def update_datasource_users(
         user_roles: Optional[dict[int, str]] = None
 ) -> list[dict[str, Any]]:
     """
-    是什么：update_datasource_users 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_datasource_users 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     user_roles = user_roles or {}
     if not _datasource_in_current_tenant(session, int(datasource.id), current_user):
@@ -447,9 +450,9 @@ def update_user_datasources(
         datasource_roles: Optional[dict[int, str]] = None,
 ) -> list[int]:
     """
-    是什么：update_user_datasources 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    是什么：update_user_datasources 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     try:
         target_user_id = int(user_id)
@@ -512,36 +515,36 @@ def update_user_datasources(
 
 def _same_id(left, right) -> bool:
     """
-    是什么：_same_id 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _same_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_same_id 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return str(left) == str(right)
 
 
 def _rule_contains_user(rule: Any, current_user: CurrentUser) -> bool:
     """
-    是什么：_rule_contains_user 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rule_contains_user 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_contains_user 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return any(_same_id(user_id, current_user.id) for user_id in parse_json_list(rule.user_list))
 
 
 def _rule_whitelists_user(rule: Any, current_user: CurrentUser) -> bool:
     """
-    是什么：_rule_whitelists_user 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rule_whitelists_user 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_whitelists_user 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return any(_same_id(user_id, current_user.id) for user_id in parse_json_list(getattr(rule, "white_list_user", None)))
 
 
 def _permission_whitelists_user(permission: Any, current_user: CurrentUser) -> bool:
     """
-    是什么：_permission_whitelists_user 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _permission_whitelists_user 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_permission_whitelists_user 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return any(
         _same_id(user_id, current_user.id)
@@ -551,27 +554,27 @@ def _permission_whitelists_user(permission: Any, current_user: CurrentUser) -> b
 
 def _rule_contains_permission(rule: Any, permission_id) -> bool:
     """
-    是什么：_rule_contains_permission 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _rule_contains_permission 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_rule_contains_permission 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return any(_same_id(item, permission_id) for item in parse_json_list(rule.permission_list))
 
 
 def _is_datasource_scope_admin(current_user: CurrentUser) -> bool:
     """
-    是什么：_is_datasource_scope_admin 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _is_datasource_scope_admin 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_is_datasource_scope_admin 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return is_system_admin(current_user) or can_manage_workspace_scope(current_user)
 
 
 def _first_column_value(row):
     """
-    是什么：_first_column_value 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _first_column_value 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_first_column_value 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if isinstance(row, tuple):
         return row[0]
@@ -583,9 +586,9 @@ def _first_column_value(row):
 
 def get_datasource_role(session: SessionDep, current_user: CurrentUser, datasource_id) -> str | None:
     """
-    是什么：get_datasource_role 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_datasource_role 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if datasource_id is None or datasource_id == "":
         return None
@@ -614,9 +617,9 @@ def has_datasource_role(
         min_role: str = PROJECT_ROLE_VIEWER
 ) -> bool:
     """
-    是什么：has_datasource_role 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 has_datasource_role 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：has_datasource_role 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if datasource_ids is None or datasource_ids == "":
         return False
@@ -639,18 +642,18 @@ def has_datasource_role(
 
 def get_accessible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
     """
-    是什么：get_accessible_datasource_ids 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_accessible_datasource_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     return get_datasource_ids_with_min_role(session, current_user, PROJECT_ROLE_VIEWER)
 
 
 def has_datasource_access(session: SessionDep, current_user: CurrentUser, datasource_ids) -> bool:
     """
-    是什么：has_datasource_access 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 has_datasource_access 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：has_datasource_access 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if datasource_ids is None or datasource_ids == "":
         return True
@@ -661,9 +664,9 @@ def has_datasource_access(session: SessionDep, current_user: CurrentUser, dataso
 def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource,
                                tables: Optional[list] = None, single_table: Optional[CoreTable] = None):
     """
-    是什么：get_row_permission_filters 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_row_permission_filters 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if single_table:
         table_list = [session.get(CoreTable, single_table.id)]
@@ -711,9 +714,9 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
 
 def _permission_applies_to_user(permission: Any, contain_rules: list[Any], current_user: CurrentUser) -> bool:
     """
-    是什么：_permission_applies_to_user 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 _permission_applies_to_user 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：_permission_applies_to_user 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _permission_whitelists_user(permission, current_user):
         return False
@@ -731,9 +734,9 @@ def has_applicable_row_permissions(
         single_table: Optional[CoreTable] = None,
 ) -> bool:
     """
-    是什么：has_applicable_row_permissions 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 has_applicable_row_permissions 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：has_applicable_row_permissions 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not is_normal_user(current_user):
         return False
@@ -768,9 +771,9 @@ def has_applicable_row_permissions(
 def get_column_permission_fields(session: SessionDep, current_user: CurrentUser, table: CoreTable,
                                  fields: list[CoreField], contain_rules: list[Any]):
     """
-    是什么：get_column_permission_fields 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_column_permission_fields 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if is_normal_user(current_user):
         column_permissions = list_permission_records(
@@ -795,9 +798,9 @@ def get_column_permission_fields(session: SessionDep, current_user: CurrentUser,
 
 def is_normal_user(current_user: CurrentUser):
     """
-    是什么：is_normal_user 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 is_normal_user 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：is_normal_user 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return not _is_datasource_scope_admin(current_user)
 
@@ -808,9 +811,9 @@ def get_user_permission_rules(
         datasource_id: Optional[int] = None
 ) -> list[Any]:
     """
-    是什么：get_user_permission_rules 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_user_permission_rules 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if not is_normal_user(current_user):
         return []
@@ -862,9 +865,9 @@ def get_user_scoped_table_ids(
         contain_rules: Optional[list[Any]] = None,
 ) -> Optional[set[int]]:
     """
-    是什么：get_user_scoped_table_ids 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    是什么：get_user_scoped_table_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     if not is_normal_user(current_user):
         return None
@@ -920,9 +923,9 @@ def can_access_table(
         contain_rules: Optional[list[Any]] = None,
 ) -> bool:
     """
-    是什么：can_access_table 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 can_access_table 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：can_access_table 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     scoped_table_ids = get_user_scoped_table_ids(session, current_user, datasource_id, contain_rules)
     return scoped_table_ids is None or int(table_id) in scoped_table_ids
@@ -930,9 +933,9 @@ def can_access_table(
 
 def filter_list(list_a, list_b):
     """
-    是什么：filter_list 是 backend/apps/datasource/crud/permission.py 中的同步函数。
-    谁调用：由后端业务代码、框架回调或测试代码按需调用。
-    做了什么：围绕 filter_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    是什么：filter_list 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     id_to_invalid = {}
     for b in list_b:

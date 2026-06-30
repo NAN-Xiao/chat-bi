@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本定义系统管理用到的数据表或数据对象，便于代码和数据库对齐。
+"""
 from typing import Optional
 
 from pydantic import field_serializer
@@ -8,6 +11,9 @@ from common.core.models import SnowflakeBase
 
 
 class AiModelBase:
+    """
+    类说明：AiModelBase 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     supplier: int = Field(nullable=False)
     name: str = Field(max_length=255, nullable=False)
     model_type: int = Field(nullable=False)
@@ -16,6 +22,9 @@ class AiModelBase:
 
 
 class AiModelDetail(SnowflakeBase, AiModelBase, table=True):
+    """
+    类说明：AiModelDetail 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "ai_model"
     api_key: str | None = Field(default=None, nullable=True, sa_type=Text())
     api_domain: str = Field(nullable=False, sa_type=Text())
@@ -26,6 +35,9 @@ class AiModelDetail(SnowflakeBase, AiModelBase, table=True):
 
 
 class AiModelBrief(SQLModel):
+    """
+    类说明：AiModelBrief 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     id: int
     name: str
     default_model: bool
@@ -34,9 +46,9 @@ class AiModelBrief(SQLModel):
     @field_serializer("id")
     def id_to_str(self, v: int) -> str:
         """
-        是什么：AiModelBrief.id_to_str 是 backend/apps/system/models/system_model.py 中的同步方法。
-        谁调用：由持有 AiModelBrief 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 id_to_str 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        是什么：AiModelBrief.id_to_str 是 AiModelBrief 里的一个步骤，帮它完成系统管理相关的一件事。
+        谁调用：拿到 AiModelBrief 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return str(v)
 
@@ -60,6 +72,9 @@ globals()[_compat_name] = type(
 
 
 class AssistantBaseModel(SQLModel):
+    """
+    类说明：AssistantBaseModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     name: str = Field(max_length=255, nullable=False)
     type: int = Field(nullable=False, default=0)
     domain: str = Field(max_length=255, nullable=False)
@@ -73,6 +88,9 @@ class AssistantBaseModel(SQLModel):
 
 
 class AssistantModel(SnowflakeBase, AssistantBaseModel, table=True):
+    """
+    类说明：AssistantModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_assistant"
     __table_args__ = (
         Index("idx_sys_assistant_tenant_id", "tenant_id"),
@@ -82,12 +100,18 @@ class AssistantModel(SnowflakeBase, AssistantBaseModel, table=True):
 
 
 class AuthenticationBaseModel(SQLModel):
+    """
+    类说明：AuthenticationBaseModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     name: str = Field(max_length=255, nullable=False)
     type: int = Field(nullable=False, default=0)
     config: Optional[str] = Field(sa_type=Text(), nullable=True)
 
 
 class AuthenticationModel(SnowflakeBase, AuthenticationBaseModel, table=True):
+    """
+    类说明：AuthenticationModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_authentication"
     create_time: Optional[int] = Field(default=0, sa_type=BigInteger())
     enable: bool = Field(default=False, nullable=False)
@@ -95,6 +119,9 @@ class AuthenticationModel(SnowflakeBase, AuthenticationBaseModel, table=True):
 
 
 class ApiKeyBaseModel(SQLModel):
+    """
+    类说明：ApiKeyBaseModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     access_key: str = Field(max_length=255, nullable=False)
     secret_key: str = Field(max_length=255, nullable=False)
     create_time: int = Field(default=0, sa_type=BigInteger())
@@ -104,10 +131,16 @@ class ApiKeyBaseModel(SQLModel):
 
 
 class ApiKeyModel(SnowflakeBase, ApiKeyBaseModel, table=True):
+    """
+    类说明：ApiKeyModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_apikey"
 
 
 class SysArgModel(SnowflakeBase, table=True):
+    """
+    类说明：SysArgModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
+    """
     __tablename__ = "sys_arg"
 
     pkey: str = Field(max_length=255, nullable=False)

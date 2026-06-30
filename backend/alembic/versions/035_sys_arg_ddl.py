@@ -1,8 +1,5 @@
-"""迁移脚本：035_sys_arg_ddl
-
-迁移版本 ID： 29559ee607af
-上一版本： e8b470d2b150
-创建时间： 2025-08-15 11:43:26.175792
+"""
+脚本说明：这个脚本用于数据库迁移，记录表结构怎么升级或回滚。
 """
 from alembic import op
 import sqlalchemy as sa
@@ -18,9 +15,9 @@ depends_on = None
 
 def upgrade():
     """
-    是什么：upgrade 是 backend/alembic/versions/035_sys_arg_ddl.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：upgrade 是这个迁移脚本的数据库升级步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前升级。
     """
     op.create_table(
         'sys_arg',
@@ -35,9 +32,9 @@ def upgrade():
 
 def downgrade():
     """
-    是什么：downgrade 是 backend/alembic/versions/035_sys_arg_ddl.py 中的同步数据库迁移函数。
-    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
-    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    是什么：downgrade 是这个迁移脚本的数据库回滚步骤。
+    谁调用：执行 Alembic 迁移命令时，Alembic 会自动调用它。
+    做了什么：按脚本里写好的规则把数据库结构向前回滚。
     """
     op.drop_index(op.f('ix_sys_arg_id'), table_name='sys_arg')
     op.drop_table('sys_arg')

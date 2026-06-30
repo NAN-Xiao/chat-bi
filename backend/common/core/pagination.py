@@ -1,3 +1,6 @@
+"""
+脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
+"""
 from sqlalchemy import Row, Select
 from sqlmodel import Session, select, func, SQLModel
 from typing import Dict, Type, TypeVar, Sequence, Optional
@@ -8,18 +11,21 @@ from typing import Union, Any
 ModelT = TypeVar('ModelT', bound=SQLModel)
 
 class Paginator:
+    """
+    类说明：Paginator 把后端基础能力相关的数据和行为放在一起，便于其他代码直接复用。
+    """
     def __init__(self, session: Session):
         """
-        是什么：Paginator.__init__ 是 backend/common/core/pagination.py 中的同步方法。
-        谁调用：由创建 Paginator 实例的代码在实例化时调用。
-        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        是什么：Paginator.__init__ 是 Paginator 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：创建 Paginator 这个对象时，Python 会先调用它。
+        做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.session = session
     def _process_result_row(self, row: Row) -> Dict[str, Any]:
         """
-        是什么：Paginator._process_result_row 是 backend/common/core/pagination.py 中的同步方法。
-        谁调用：由持有 Paginator 实例的业务代码、框架回调或测试代码调用。
-        做了什么：执行核心配置和基础设施主流程，协调下游服务并处理结果或异常。
+        是什么：Paginator._process_result_row 是 Paginator 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：拿到 Paginator 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把后端基础能力的主要流程跑起来，一步步调用需要的处理。
         """
         result_dict = {}
         if isinstance(row, int):
@@ -43,9 +49,9 @@ class Paginator:
         **filters
     ) -> tuple[Sequence[Any], int]:
         """
-        是什么：Paginator.paginate 是 backend/common/core/pagination.py 中的异步方法。
-        谁调用：由持有 Paginator 实例的业务代码、框架回调或测试代码调用。
-        做了什么：围绕 paginate 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        是什么：Paginator.paginate 是 Paginator 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：拿到 Paginator 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         offset = (page - 1) * size
         single_model: bool = False
@@ -99,9 +105,9 @@ class Paginator:
         **filters
     ) -> PaginatedResponse[Any]:
         """
-        是什么：Paginator.get_paginated_response 是 backend/common/core/pagination.py 中的异步方法。
-        谁调用：由持有 Paginator 实例的业务代码、框架回调或测试代码调用。
-        做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+        是什么：Paginator.get_paginated_response 是 Paginator 里的一个步骤，帮它完成后端基础能力相关的一件事。
+        谁调用：拿到 Paginator 对象的代码，需要完成这个动作时会调用它。
+        做了什么：把后端基础能力需要的数据找出来，整理成后面好用的样子。
         """
         items, total = await self.paginate(
             stmt=stmt,
