@@ -7,6 +7,7 @@ import path from 'path'
 import svgLoader from 'vite-svg-loader'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
+  const devProxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8000'
   console.info(mode)
   console.info(env)
   return {
@@ -53,11 +54,11 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '/api': {
-          target: 'http://127.0.0.1:8000',
+          target: devProxyTarget,
           changeOrigin: true,
         },
         '/xpack_static': {
-          target: 'http://127.0.0.1:8000',
+          target: devProxyTarget,
           changeOrigin: true,
         },
       },

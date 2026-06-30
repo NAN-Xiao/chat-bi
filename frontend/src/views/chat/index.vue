@@ -654,6 +654,24 @@ function forgetCurrentChat(datasourceId = datasourceContext.datasourceId || curr
   sessionStorage.removeItem(currentChatStorageKey(datasourceId))
 }
 
+async function loadChatById(chatId?: number) {
+  if (!chatId) {
+    return
+  }
+  const res = await chatApi.get(chatId)
+  const info = chatApi.toChatInfo(res)
+  if (!info) {
+    return
+  }
+  currentChat.value = info
+  currentChatId.value = info.id
+  rememberCurrentChat(info.id)
+  if (!chatList.value.some((chat) => Number(chat.id) === Number(info.id))) {
+    chatList.value.unshift(info)
+  }
+  onClickHistory(info)
+}
+
 async function restoreCurrentChatFromSession() {
   if (currentChatId.value !== undefined || props.startChatDsId) {
     return
@@ -665,15 +683,7 @@ async function restoreCurrentChatFromSession() {
 
   loading.value = true
   try {
-    const res = await chatApi.get(storedChatId)
-    const info = chatApi.toChatInfo(res)
-    if (!info || !chatList.value.some((chat) => Number(chat.id) === Number(info.id))) {
-      return
-    }
-    currentChat.value = info
-    currentChatId.value = info.id
-    rememberCurrentChat(info.id)
-    onClickHistory(info)
+    await loadChatById(storedChatId)
   } catch (error) {
     console.error('Restore current chat failed:', error)
     forgetCurrentChat()
@@ -1055,10 +1065,17 @@ const sendMessage = async (
       custom_prompt_id: currentRecord.custom_prompt_id,
       data_skill_id: currentRecord.data_skill_id,
     })
+    const currentRecordIndex = currentChat.value.records.indexOf(currentRecord)
     if (task.record_id) {
       currentRecord.id = task.record_id
+      if (currentRecordIndex >= 0) {
+        currentChat.value.records[currentRecordIndex].id = task.record_id
+      }
     }
     currentRecord.task_id = task.task_id
+    if (currentRecordIndex >= 0) {
+      currentChat.value.records[currentRecordIndex].task_id = task.task_id
+    }
   } catch (error) {
     currentRecord.error = `${currentRecord.error ? `${currentRecord.error}\n` : ''}Error:${error}`
     loading.value = false
