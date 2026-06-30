@@ -429,10 +429,6 @@ async function restoreRecordTask() {
     return
   }
   if (props.message?.record?.id && props.message?.record?.finish) {
-    if (props.loading) {
-      _loading.value = false
-      emits('finish', props.message.record.id)
-    }
     getChatData(props.message.record.id)
     return
   }

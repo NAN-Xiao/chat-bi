@@ -1016,6 +1016,10 @@ function handlePageVisible() {
 }
 
 async function onChartAnswerFinish(id: number) {
+  const lastRecord = currentChat.value.records[currentChat.value.records.length - 1]
+  if (id !== lastRecord?.id) {
+    return
+  }
   getRecommendQuestionsLoading.value = true
   loading.value = false
   isTyping.value = false
