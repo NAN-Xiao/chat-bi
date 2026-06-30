@@ -188,6 +188,33 @@ pipeline {
       }
     }
 
+    stage('校验前端构建产物') {
+      steps {
+        sh '''
+          set -eux
+          tmp_container="$(docker create "$IMAGE")"
+          dist_tmp="$(mktemp -d)"
+          trap 'docker rm -f "$tmp_container" >/dev/null 2>&1 || true; rm -rf "$dist_tmp"' EXIT
+
+          docker cp "$tmp_container:/opt/shuzhi/frontend/dist/." "$dist_tmp"
+          test -f "$dist_tmp/index.html"
+
+          frontend_js="$(grep -o 'assets/index-[^"]*\\.js' "$dist_tmp/index.html" | head -n 1)"
+          test -n "$frontend_js"
+          test -f "$dist_tmp/$frontend_js"
+
+          echo "校验镜像内前端入口资源：$frontend_js"
+          for marker in 'chat.currentChat.' '/chat/question/task' 'record_id' 'task_id'; do
+            if ! grep -Fq "$marker" "$dist_tmp/$frontend_js"; then
+              echo "前端构建产物缺少关键标记：$marker"
+              exit 1
+            fi
+          done
+          echo "镜像内前端构建产物校验通过。"
+        '''
+      }
+    }
+
     stage('生成 Nginx 参考配置') {
       steps {
         sh '''
@@ -405,6 +432,38 @@ EOF
           if command -v chcon >/dev/null 2>&1; then
             chcon -R -t httpd_sys_content_t "$NGINX_ROOT" || true
           fi
+
+          frontend_js="$(grep -o 'assets/index-[^"]*\\.js' "$NGINX_ROOT/index.html" | head -n 1)"
+          test -n "$frontend_js"
+          test -f "$NGINX_ROOT/$frontend_js"
+          echo "校验 Nginx 静态目录前端入口资源：$frontend_js"
+          for marker in 'chat.currentChat.' '/chat/question/task' 'record_id' 'task_id'; do
+            if ! grep -Fq "$marker" "$NGINX_ROOT/$frontend_js"; then
+              echo "Nginx 静态目录前端产物缺少关键标记：$marker"
+              exit 1
+            fi
+          done
+
+          if command -v curl >/dev/null 2>&1; then
+            public_base="http://127.0.0.1:${NGINX_PORT:-80}"
+            if [ "${NGINX_PORT:-80}" = "80" ]; then
+              public_base="http://127.0.0.1"
+            fi
+            http_js_tmp="$(mktemp)"
+            curl -fsS "$public_base/$frontend_js" -o "$http_js_tmp"
+            for marker in 'chat.currentChat.' '/chat/question/task' 'record_id' 'task_id'; do
+              if ! grep -Fq "$marker" "$http_js_tmp"; then
+                echo "Nginx HTTP 返回的前端产物缺少关键标记：$marker"
+                rm -f "$http_js_tmp"
+                exit 1
+              fi
+            done
+            rm -f "$http_js_tmp"
+            echo "Nginx HTTP 前端产物校验通过：$public_base/$frontend_js"
+          else
+            echo "未找到 curl，跳过 Nginx HTTP 返回内容校验。"
+          fi
+
           find "$NGINX_ROOT" -maxdepth 2 -type f | head
         '''
       }
