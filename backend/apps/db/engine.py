@@ -11,8 +11,8 @@ from common.core.config import settings
 
 
 def get_engine_config():
-    return DatasourceConf(username=settings.POSTGRES_USER, password=settings.POSTGRES_PASSWORD,
-                          host=settings.POSTGRES_SERVER, port=settings.POSTGRES_PORT, database=settings.POSTGRES_DB,
+    return DatasourceConf(username=settings.core_db_user, password=settings.core_db_password,
+                          host=settings.core_db_host, port=settings.core_db_port, database=settings.core_db_name,
                           dbSchema="public", timeout=30) # read engine config
 
 

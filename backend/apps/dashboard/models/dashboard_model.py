@@ -324,6 +324,7 @@ class DashboardSqlPreview(BaseModel):
     sql: str = ''
     pivot: Optional[DashboardPivotRequest] = None
     cache_only: bool = False
+    force_refresh: bool = False
 
 
 class DashboardDefaultRequest(BaseModel):

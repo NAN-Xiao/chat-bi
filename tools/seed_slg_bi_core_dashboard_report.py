@@ -1,7 +1,7 @@
 """Create the SLG BI Mock core dashboard report.
 
 This script writes chart layout/configuration into the app system database
-(`zhishu_bi` on 127.0.0.1:15432) and reads preview data from the detail-level
+(`zhishu_bi` from core ZHISHU_DB_* settings) and reads preview data from the detail-level
 tracking database (`slg_bi_mock` on 127.0.0.1:5432).
 
 It does not create aggregate tables, snapshot tables, or analysis views.
@@ -18,20 +18,16 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from core_system_db import core_system_db_config
 
-SYSTEM_DB = {
-    "host": "10.1.5.28",
-    "port": 5432,
-    "dbname": "zhishu_bi",
-    "user": "root",
-    "password": "Password123@pg",
-}
+
+SYSTEM_DB = core_system_db_config()
 BI_DB = {
-    "host": "10.1.5.28",
+    "host": "127.0.0.1",
     "port": 5432,
     "dbname": "slg_bi_mock",
-    "user": "root",
-    "password": "Password123@pg",
+    "user": "postgres",
+    "password": "111111",
 }
 
 DASHBOARD_ID = "5e16dcf469a7491780e48eed5086eb57"

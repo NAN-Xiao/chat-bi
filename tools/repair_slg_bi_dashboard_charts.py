@@ -18,6 +18,8 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from core_system_db import core_system_db_config
+
 from seed_slg_bi_acquisition_dashboard import ROI_SQL
 from seed_slg_bi_payment_overview_dashboard import LTV_7D_SQL
 
@@ -29,13 +31,7 @@ BI_DB = {
     "user": "postgres",
     "password": "111111",
 }
-SYSTEM_DB = {
-    "host": "127.0.0.1",
-    "port": 15432,
-    "dbname": "zhishu_bi",
-    "user": "root",
-    "password": "Password123@pg",
-}
+SYSTEM_DB = core_system_db_config()
 
 DATASOURCE_ID = 1
 UPDATE_BY = "7471612174524223488"

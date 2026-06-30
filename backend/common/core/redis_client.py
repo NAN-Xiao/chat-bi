@@ -25,10 +25,8 @@ def _format_host(host: str) -> str:
 
 
 def build_redis_url() -> str:
-    if settings.CACHE_REDIS_URL:
-        return settings.CACHE_REDIS_URL
-    if settings.REDIS_URL:
-        return settings.REDIS_URL
+    if settings.ZHISHU_REDIS_URL:
+        return settings.ZHISHU_REDIS_URL
 
     scheme = "rediss" if settings.REDIS_SSL else "redis"
     auth = ""
@@ -37,8 +35,9 @@ def build_redis_url() -> str:
     elif settings.REDIS_PASSWORD:
         auth = f":{_quote(settings.REDIS_PASSWORD)}@"
 
-    host = _format_host(settings.REDIS_HOST)
-    return f"{scheme}://{auth}{host}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+    host = _format_host(settings.ZHISHU_REDIS_HOST)
+    port = settings.ZHISHU_REDIS_PORT
+    return f"{scheme}://{auth}{host}:{port}/{settings.REDIS_DB}"
 
 
 def mask_redis_url(url: str) -> str:
@@ -96,8 +95,26 @@ def redis_key(*parts: object) -> str:
     return f"{settings.REDIS_KEY_PREFIX}:{suffix}" if suffix else settings.REDIS_KEY_PREFIX
 
 
+def platform_redis_key(*parts: object) -> str:
+    return redis_key("platform", *parts)
+
+
 def tenant_redis_key(tenant_id: int | str | None, *parts: object) -> str:
+    if tenant_id in (None, ""):
+        raise ValueError("Tenant context is required for tenant-scoped Redis keys")
     return redis_key("tenant", tenant_id, *parts)
+
+
+def user_redis_key(tenant_id: int | str | None, user_id: int | str | None, *parts: object) -> str:
+    if user_id in (None, ""):
+        raise ValueError("User context is required for user-scoped Redis keys")
+    return tenant_redis_key(tenant_id, "user", user_id, *parts)
+
+
+def datasource_redis_key(tenant_id: int | str | None, datasource_id: int | str | None, *parts: object) -> str:
+    if datasource_id in (None, ""):
+        raise ValueError("Datasource context is required for datasource-scoped Redis keys")
+    return tenant_redis_key(tenant_id, "datasource", datasource_id, *parts)
 
 
 @asynccontextmanager

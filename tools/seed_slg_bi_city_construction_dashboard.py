@@ -2,7 +2,7 @@
 
 Targets:
 - BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
-- App system database: 127.0.0.1:15432 / zhishu_bi / root / Password123@pg
+- App system database: core ZHISHU_DB_* settings from the repo .env
 
 This keeps the mock data at tracking/detail level:
 - dim_player.current_city_level describes each player's current main-city level;
@@ -26,6 +26,8 @@ from zoneinfo import ZoneInfo
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from core_system_db import core_system_db_config
+
 
 TZ = ZoneInfo("Asia/Shanghai")
 
@@ -36,13 +38,7 @@ BI_DB = {
     "user": "postgres",
     "password": "111111",
 }
-SYSTEM_DB = {
-    "host": "127.0.0.1",
-    "port": 15432,
-    "dbname": "zhishu_bi",
-    "user": "root",
-    "password": "Password123@pg",
-}
+SYSTEM_DB = core_system_db_config()
 
 DASHBOARD_ID = "5fde8f6a5cfb4194ad0680e9f925d57f"
 DATASOURCE_ID = 1

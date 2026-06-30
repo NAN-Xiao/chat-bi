@@ -1690,7 +1690,7 @@ defineExpose({
           :config-item="item"
           :view-info="canvasViewInfo[item.id]"
           :canvas-view-info="canvasViewInfo"
-          :show-position="'canvas'"
+          :show-position="item.component === 'SQView' ? 'editor' : 'canvas'"
           :disabled="fullscreenFlag"
           :can-edit-sql="canEditSql"
           :show-component-bar="showComponentBar"

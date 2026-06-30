@@ -6,7 +6,7 @@ from redis.exceptions import RedisError
 from starlette.requests import Request
 
 from common.core.config import settings
-from common.core.redis_client import get_redis_client, redis_key
+from common.core.redis_client import get_redis_client, platform_redis_key
 from common.utils.utils import AppLogUtil
 
 
@@ -54,8 +54,8 @@ async def _redis_lock_state(identity: str) -> LoginLimitState | None:
     if (settings.CACHE_TYPE or "").lower() != "redis":
         return None
     client = get_redis_client()
-    lock_key = redis_key("auth", "login", "lock", identity)
-    failure_key = redis_key("auth", "login", "fail", identity)
+    lock_key = platform_redis_key("auth", "login", "lock", identity)
+    failure_key = platform_redis_key("auth", "login", "fail", identity)
     retry_after = await client.ttl(lock_key)
     attempts = int(await client.get(failure_key) or 0)
     if retry_after and retry_after > 0:
@@ -92,8 +92,8 @@ async def record_login_failure(identity: str) -> LoginLimitState:
     try:
         if (settings.CACHE_TYPE or "").lower() == "redis":
             client = get_redis_client()
-            failure_key = redis_key("auth", "login", "fail", identity)
-            lock_key = redis_key("auth", "login", "lock", identity)
+            failure_key = platform_redis_key("auth", "login", "fail", identity)
+            lock_key = platform_redis_key("auth", "login", "lock", identity)
             attempts = int(await client.incr(failure_key))
             if attempts == 1:
                 await client.expire(failure_key, settings.LOGIN_FAILURE_WINDOW_SECONDS)
@@ -134,8 +134,8 @@ async def clear_login_failures(identity: str) -> None:
         if (settings.CACHE_TYPE or "").lower() == "redis":
             client = get_redis_client()
             await client.delete(
-                redis_key("auth", "login", "fail", identity),
-                redis_key("auth", "login", "lock", identity),
+                platform_redis_key("auth", "login", "fail", identity),
+                platform_redis_key("auth", "login", "lock", identity),
             )
             return
     except RedisError:

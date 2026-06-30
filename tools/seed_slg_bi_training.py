@@ -13,17 +13,18 @@
 from __future__ import annotations
 
 import datetime
-import os
 import sys
 from pathlib import Path
 
 import psycopg
 from psycopg.types.json import Jsonb
 
+from core_system_db import core_system_db_config, export_postgres_compat_env
+
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "backend"
 
-DB = dict(host="127.0.0.1", port=15432, user="root", password="Password123@pg", dbname="zhishu_bi")
+DB = core_system_db_config()
 DATASOURCE_NAME = "SLG BI Mock"
 XIAONAN_ACCOUNT = "xiaonan"
 
@@ -188,6 +189,7 @@ SQL 口径：
 - 默认 Dn 留存是精确日留存：分母为已成熟 cohort 玩家数，分子为 `lifecycle_day = n` 当天有会话的去重玩家。
 - 按生命周期日输出时分母固定，不允许按当天有行为人数重新当分母。
 - 未成熟生命周期日返回 NULL 或标注未成熟，不能当 0。
+- 新增用户次日留存趋势的观察截止日取 `fact_sessions.session_start::date` 最大日期；默认只展示 `max_active_date - 30` 到 `max_active_date - 1` 的已成熟新增 cohort，不要用系统当前日期，也不要把最新未观察到次日活跃的 cohort 算成 0%。
 - 回流必须先定义沉默阈值，默认可用连续 7 天无 `fact_sessions` 后再次登录；精确日留存曲线回升不能直接解释为回流。
 
 推荐输出：
@@ -224,6 +226,41 @@ LEFT JOIN fact_sessions s
  AND s.lifecycle_day = m.lifecycle_day
 GROUP BY m.lifecycle_day
 ORDER BY m.lifecycle_day;
+```
+
+新增用户 D1 留存趋势参考 SQL：
+```sql
+WITH obs AS (
+  SELECT max(session_start::date) AS max_active_date FROM fact_sessions
+),
+days AS (
+  SELECT generate_series(max_active_date - 30, max_active_date - 1, interval '1 day')::date AS cohort_date
+  FROM obs
+),
+cohort AS (
+  SELECT p.install_date AS cohort_date, p.player_id
+  FROM dim_player p CROSS JOIN obs
+  WHERE p.install_date BETWEEN obs.max_active_date - 30 AND obs.max_active_date - 1
+),
+retained AS (
+  SELECT c.cohort_date,
+         count(DISTINCT c.player_id) AS retained_users
+  FROM cohort c
+  JOIN fact_sessions s
+    ON s.player_id = c.player_id
+   AND s.lifecycle_day = 1
+  GROUP BY c.cohort_date
+)
+SELECT d.cohort_date,
+       count(DISTINCT c.player_id) AS cohort_users,
+       coalesce(r.retained_users, 0) AS retained_users,
+       round(coalesce(r.retained_users, 0)::numeric / nullif(count(DISTINCT c.player_id), 0) * 100, 2) AS retention_pct,
+       TRUE AS matured_flag
+FROM days d
+LEFT JOIN cohort c ON c.cohort_date = d.cohort_date
+LEFT JOIN retained r ON r.cohort_date = d.cohort_date
+GROUP BY d.cohort_date, r.retained_users
+ORDER BY d.cohort_date;
 ```
 """,
     },
@@ -1078,11 +1115,7 @@ def _upsert_data_skill(
 def _save_embeddings(ids: list[int], tenant_id: int) -> int:
     if not ids:
         return 0
-    os.environ.setdefault("POSTGRES_SERVER", DB["host"])
-    os.environ.setdefault("POSTGRES_PORT", str(DB["port"]))
-    os.environ.setdefault("POSTGRES_DB", DB["dbname"])
-    os.environ.setdefault("POSTGRES_USER", DB["user"])
-    os.environ.setdefault("POSTGRES_PASSWORD", DB["password"])
+    export_postgres_compat_env(DB)
     if str(BACKEND_DIR) not in sys.path:
         sys.path.insert(0, str(BACKEND_DIR))
 

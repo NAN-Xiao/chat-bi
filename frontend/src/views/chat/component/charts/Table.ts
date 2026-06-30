@@ -17,7 +17,7 @@ import {
 } from '@antv/s2'
 import { debounce, filter } from 'lodash-es'
 import { i18n } from '@/i18n'
-import { formatNumber } from '@/views/chat/component/charts/utils.ts'
+import { formatValueByAxis } from '@/views/chat/component/charts/utils.ts'
 import '@antv/s2/dist/s2.min.css'
 
 const { t } = i18n.global
@@ -129,7 +129,7 @@ export class Table extends BaseChart {
             field: a.value,
             name: axisLabel(a),
             formatter: (value: any) => {
-              const formatted = formatNumber(value)
+              const formatted = formatValueByAxis(value, a)
               return String(formatted)
             },
           }
@@ -226,7 +226,8 @@ export class Table extends BaseChart {
             container.style.fontSize = '14px'
             container.style.whiteSpace = 'pre-wrap'
 
-            const formattedValue = formatNumber(meta.fieldValue)
+            const axis = this.axis?.find((axisItem) => axisItem.value === meta.field)
+            const formattedValue = formatValueByAxis(meta.fieldValue, axis)
             const text = document.createTextNode(String(formattedValue))
             container.appendChild(text)
 

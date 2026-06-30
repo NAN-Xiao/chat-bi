@@ -2,7 +2,7 @@
 
 Targets:
 - BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
-- App system database: 127.0.0.1:15432 / zhishu_bi / root / Password123@pg
+- App system database: core ZHISHU_DB_* settings from the repo .env
 
 This follows the BI tracking strategy:
 - fact_sessions rows model login/payment sessions;
@@ -28,6 +28,8 @@ from zoneinfo import ZoneInfo
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from core_system_db import core_system_db_config
+
 
 TZ = ZoneInfo("Asia/Shanghai")
 
@@ -38,13 +40,7 @@ BI_DB = {
     "user": "postgres",
     "password": "111111",
 }
-SYSTEM_DB = {
-    "host": "127.0.0.1",
-    "port": 15432,
-    "dbname": "zhishu_bi",
-    "user": "root",
-    "password": "Password123@pg",
-}
+SYSTEM_DB = core_system_db_config()
 
 DASHBOARD_ID = "45c4bd8dec1e46c3a33f2f45703b8117"
 DATASOURCE_ID = 1

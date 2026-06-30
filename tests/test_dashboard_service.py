@@ -2219,6 +2219,71 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
     assert "payments" not in chart["message"]
 
 
+def test_dashboard_structure_load_clears_unauthorized_chart_snapshot(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"amount": 99}], "fields": ["amount"]},
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "safe_query_error_type",
+        lambda _current_user, _message: "permission_denied",
+    )
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: "Viewer")
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_column_rule(session)
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="项目看板",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(
+                    {
+                        "chart-1": {
+                            "datasource": 1,
+                            "sql": "select amount from orders",
+                            "status": "success",
+                            "dataState": "ready",
+                            "fields": ["amount"],
+                            "data": {"fields": ["amount"], "data": [{"amount": 99}]},
+                        }
+                    }
+                ),
+            )
+        )
+        session.commit()
+
+        resource = dashboard_service.load_resource(
+            session=session,
+            dashboard=QueryDashboard(id="dashboard-1", include_data=False),
+            current_user=current_user,
+        )
+
+    chart = json.loads(resource["canvas_view_info"])["chart-1"]
+    assert exec_calls == []
+    assert chart["status"] == "failed"
+    assert chart["error_type"] == "permission_denied"
+    assert chart["message"] == "SQL 超出当前数据权限范围"
+    assert chart["fields"] == []
+    assert chart["data"]["fields"] == []
+    assert chart["data"]["data"] == []
+
+
 def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)

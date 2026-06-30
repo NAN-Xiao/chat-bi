@@ -111,6 +111,24 @@ function getResultFields(result: any) {
 
 type RefreshDataOptions = {
   silent?: boolean
+  forceRefresh?: boolean
+}
+
+function clampChartLoadingProgress(progress: unknown) {
+  const numericProgress = Number(progress)
+  if (!Number.isFinite(numericProgress)) {
+    return 0
+  }
+  return Math.max(0, Math.min(100, Math.round(numericProgress)))
+}
+
+function setChartLoadingProgress(progress: number, allowDecrease = false) {
+  if (!props.viewInfo) {
+    return
+  }
+  const nextProgress = clampChartLoadingProgress(progress)
+  const currentProgress = clampChartLoadingProgress(props.viewInfo.loadingProgress)
+  props.viewInfo.loadingProgress = allowDecrease ? nextProgress : Math.max(currentProgress, nextProgress)
 }
 
 const pivotGranularityOptions = computed(() => [
@@ -558,13 +576,21 @@ function schedulePivotRefresh() {
   }
   pivotRefreshTimer = window.setTimeout(() => {
     pivotRefreshTimer = undefined
-    void refreshData({ silent: true })
+    void refreshData({ silent: true, forceRefresh: true })
   }, 120)
 }
 
 function hasChartResult(viewInfo: any) {
   const rows = viewInfo?.data?.data
   return Array.isArray(rows) && rows.length > 0
+}
+
+function hasChartShape(viewInfo: any) {
+  return (
+    hasChartResult(viewInfo) ||
+    (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
+    (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
+  )
 }
 
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
@@ -576,6 +602,11 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   }
   viewInfo.snapshotRefreshedAt = refreshedAt
   viewInfo.data.snapshotRefreshedAt = refreshedAt
+}
+
+function resultRefreshedAt(result: any) {
+  const timestamp = Number(result?.refreshed_at || result?.cache_refreshed_at || 0)
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now()
 }
 
 function normalizeLoadedChartState() {
@@ -597,7 +628,21 @@ function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
 }
 
-async function previewChartSqlWithCacheFallback(payload: any) {
+function isDashboardQueryBusy(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
+}
+
+function isPermissionDeniedResult(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'permission_denied'
+}
+
+async function previewChartSqlWithCacheFallback(payload: any, forceRefresh = false) {
+  if (forceRefresh) {
+    return dashboardApi.preview_sql({
+      ...payload,
+      force_refresh: true,
+    })
+  }
   const cachedResult = await dashboardApi.preview_sql({
     ...payload,
     cache_only: true,
@@ -610,6 +655,7 @@ async function previewChartSqlWithCacheFallback(payload: any) {
 
 async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
+  const forceRefresh = options.forceRefresh !== false
   if (!props.viewInfo?.datasource) {
     if (!silent) {
       ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
@@ -633,7 +679,8 @@ async function refreshData(options: RefreshDataOptions = {}) {
   const previousFields = Array.isArray(props.viewInfo.fields) ? [...props.viewInfo.fields] : []
   const hasPreviousRows = previousData.length > 0
   props.viewInfo.dataState = 'loading'
-  props.viewInfo.loadingProgress = 0
+  props.viewInfo.refreshState = forceRefresh ? 'loading' : 'waiting'
+  setChartLoadingProgress(0, !silent)
   startRefreshProgress()
   const requestSeq = ++refreshRequestSeq
   if (!silent) {
@@ -646,7 +693,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
       pivot: pivotPayload,
-    })
+    }, forceRefresh)
     if (requestSeq !== refreshRequestSeq) {
       return
     }
@@ -666,24 +713,31 @@ async function refreshData(options: RefreshDataOptions = {}) {
     props.viewInfo.data.fields = fields
     props.viewInfo.data.data = data
     props.viewInfo.fields = fields
+    const hasPreviousShape =
+      hasPreviousRows || previousDataFields.length > 0 || previousFields.length > 0 || hasChartShape(props.viewInfo)
     props.viewInfo.status = result?.status || 'success'
     props.viewInfo.message = result?.message || ''
     if (props.viewInfo.status === 'failed') {
-      if (hasPreviousRows) {
+      const queryBusyWithSnapshot = isDashboardQueryBusy(result) && hasPreviousShape
+      if (!isPermissionDeniedResult(result) && (hasPreviousRows || queryBusyWithSnapshot)) {
         props.viewInfo.data.fields = previousDataFields
         props.viewInfo.data.data = previousData
         props.viewInfo.fields = previousFields
         props.viewInfo.status = 'success'
+        props.viewInfo.message = ''
         props.viewInfo.dataState = 'ready'
+        props.viewInfo.refreshState = isDashboardQueryBusy(result) ? 'queued' : ''
       } else {
         props.viewInfo.dataState = 'failed'
+        props.viewInfo.refreshState = ''
       }
-      if (!silent) {
+      if (!silent && !queryBusyWithSnapshot) {
         ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
       }
     } else {
       props.viewInfo.dataState = 'ready'
-      markChartSnapshotRefreshed(props.viewInfo)
+      props.viewInfo.refreshState = ''
+      markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
       if (!silent) {
         ElMessage.success(t('dashboard.chart_refresh_success'))
       }
@@ -702,9 +756,11 @@ async function refreshData(options: RefreshDataOptions = {}) {
       props.viewInfo.fields = previousFields
       props.viewInfo.status = 'success'
       props.viewInfo.dataState = 'ready'
+      props.viewInfo.refreshState = ''
     } else {
       props.viewInfo.status = 'failed'
       props.viewInfo.dataState = 'failed'
+      props.viewInfo.refreshState = ''
     }
     props.viewInfo.loadingProgress = 100
     if (!silent) {
@@ -753,8 +809,8 @@ function startRefreshProgress() {
       stopRefreshProgress()
       return
     }
-    const current = Number(props.viewInfo?.loadingProgress || 0)
-    props.viewInfo.loadingProgress = Math.min(95, current + Math.max(1, Math.round((96 - current) * 0.12)))
+    const current = clampChartLoadingProgress(props.viewInfo?.loadingProgress)
+    setChartLoadingProgress(Math.min(95, current + Math.max(1, Math.round((96 - current) * 0.12))))
   }, 260)
 }
 
@@ -946,6 +1002,11 @@ const hasRenderedChartData = computed(() => {
 const showFullChartLoading = computed(
   () => chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)
 )
+const chartLoadingText = computed(() =>
+  props.viewInfo?.refreshState === 'waiting'
+    ? t('dashboard.chart_data_waiting')
+    : t('dashboard.chart_data_loading')
+)
 const showEmptyChartState = computed(() => {
   return (
     !chartLoading.value &&
@@ -961,13 +1022,6 @@ const showChartContent = computed(() => {
     props.viewInfo?.status !== 'failed' &&
     props.viewInfo?.id
   )
-})
-const chartLoadingProgress = computed(() => {
-  const progress = Number(props.viewInfo?.loadingProgress ?? 0)
-  if (!Number.isFinite(progress)) {
-    return 0
-  }
-  return Math.max(0, Math.min(100, Math.round(progress)))
 })
 const insightDensity = computed(() => insightDisplay.value.density)
 const compactInsightHeader = computed(() => insightDensity.value !== 'regular')
@@ -1012,7 +1066,7 @@ async function recoverStaleLoadingState() {
     return
   }
   if (props.showPosition === 'canvas' && props.viewInfo?.datasource && props.viewInfo?.sql?.trim()) {
-    await refreshData({ silent: true })
+    await refreshData({ silent: true, forceRefresh: false })
   }
 }
 
@@ -1265,20 +1319,14 @@ defineExpose({
     </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="showFullChartLoading" class="chart-loading-info">
-        <el-progress
-          type="circle"
-          :percentage="chartLoadingProgress"
-          :width="92"
-          :stroke-width="7"
-          :show-text="true"
-        />
-        <div class="chart-loading-text">{{ t('dashboard.chart_data_loading') }}</div>
+        <div class="chart-loading-ring" aria-hidden="true"></div>
+        <div class="chart-loading-text">{{ chartLoadingText }}</div>
       </div>
       <div v-else-if="viewInfo.status === 'failed'" class="error-info">
         {{ viewInfo.message }}
       </div>
       <div v-else-if="showEmptyChartState" class="chart-empty-info">
-        {{ t('dashboard.sql_editor_no_preview_data') }}
+        {{ t('dashboard.chart_no_data_found') }}
       </div>
       <ChartInsightHeader
         v-else-if="canShowInsightHeader && effectiveInsightLayout === 'top'"
@@ -1300,8 +1348,8 @@ defineExpose({
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
         <div v-if="chartLoading" class="chart-refresh-overlay">
-          <span>{{ t('dashboard.chart_data_loading') }}</span>
-          <span>{{ chartLoadingProgress }}%</span>
+          <span class="chart-loading-ring small" aria-hidden="true"></span>
+          <span>{{ chartLoadingText }}</span>
         </div>
         <ChartInsightHeader
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
@@ -1957,23 +2005,20 @@ defineExpose({
   justify-content: center;
   gap: 14px;
   color: var(--workspace-text-primary, #1f2329);
+}
 
-  :deep(.ed-progress-circle__track),
-  :deep(.el-progress-circle__track) {
-    stroke: #eef1f5;
-  }
+.chart-loading-ring {
+  width: 56px;
+  height: 56px;
+  border: 5px solid #eef1f5;
+  border-top-color: var(--ed-color-primary, #2f6bff);
+  border-radius: 50%;
+  animation: chart-loading-spin 0.85s linear infinite;
 
-  :deep(.ed-progress-circle__path),
-  :deep(.el-progress-circle__path) {
-    stroke: var(--ed-color-primary, #2f6bff);
-  }
-
-  :deep(.ed-progress__text),
-  :deep(.el-progress__text) {
-    min-width: 46px;
-    color: var(--workspace-text-primary, #1f2329);
-    font-size: 20px !important;
-    font-weight: 700;
+  &.small {
+    width: 14px;
+    height: 14px;
+    border-width: 2px;
   }
 }
 
@@ -1981,5 +2026,11 @@ defineExpose({
   font-size: 13px;
   line-height: 20px;
   color: var(--workspace-text-secondary, #66758f);
+}
+
+@keyframes chart-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

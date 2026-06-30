@@ -4,12 +4,12 @@ param(
     [int[]]$BackendPorts = @(8000),
     [ValidateSet("auto", "memory", "redis", "none")]
     [string]$CacheType = "auto",
-    [string]$RedisHost = "127.0.0.1",
+    [string]$RedisHost = "10.1.5.28",
     [int]$RedisPort = 6379,
     [string]$RedisServiceName = "",
     [string]$RedisServerPath = "",
-    [string]$PostgresHost = "127.0.0.1",
-    [int]$PostgresPort = 15432,
+    [string]$PostgresHost = "10.1.5.28",
+    [int]$PostgresPort = 5432,
     [string]$PostgresServiceName = "",
     [string]$PostgresBin = "",
     [string]$PostgresData = "",
@@ -26,8 +26,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$appSystemDbHost = "127.0.0.1"
-$appSystemDbPort = 15432
+$appSystemDbHost = "10.1.5.28"
+$appSystemDbPort = 5432
 $appSystemDbName = "zhishu_bi"
 $appSystemDbUser = "root"
 $appSystemDbPassword = "Password123@pg"
@@ -68,6 +68,11 @@ function Test-TcpPort([string]$HostName, [int]$Port) {
     } finally {
         $client.Close()
     }
+}
+
+function Test-LocalEndpoint([string]$HostName) {
+    $normalized = $HostName.ToLowerInvariant()
+    return $normalized -in @("127.0.0.1", "localhost", "::1", "0.0.0.0")
 }
 
 function Wait-TcpPort([string]$HostName, [int]$Port, [int]$TimeoutSeconds = 20) {
@@ -118,12 +123,15 @@ function Start-Postgres {
         return
     }
     if ($PostgresHost -ne $appSystemDbHost -or $PostgresPort -ne $appSystemDbPort) {
-        throw "Invalid app system database endpoint: ${PostgresHost}:$PostgresPort. Local backend must use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Port $biDemoDatasourcePort is reserved for BI/tracking demo datasources."
+        throw "Invalid app system database endpoint: ${PostgresHost}:$PostgresPort. Backend must use core system DB ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Local 127.0.0.1:$biDemoDatasourcePort is reserved for BI/tracking demo datasources."
     }
     if (Test-TcpPort -HostName $PostgresHost -Port $PostgresPort) {
         Assert-AppSystemDatabaseReady
-        Write-Host "App system PostgreSQL is listening on ${PostgresHost}:$PostgresPort database=$appSystemDbName"
+        Write-Host "Core app system PostgreSQL is listening on ${PostgresHost}:$PostgresPort database=$appSystemDbName"
         return
+    }
+    if (-not (Test-LocalEndpoint -HostName $PostgresHost)) {
+        throw "Core app system PostgreSQL is not listening on remote ${PostgresHost}:$PostgresPort. Verify the remote core DB instead of starting a local PostgreSQL process."
     }
     if ($PostgresServiceName) {
         Start-Service -Name $PostgresServiceName
@@ -148,15 +156,15 @@ function Start-Postgres {
         Write-Host "App system PostgreSQL started by pg_ctl"
         return
     }
-    throw "App system PostgreSQL is not listening on ${PostgresHost}:$PostgresPort. Start ${appSystemDbName} on port $appSystemDbPort or pass -PostgresServiceName / -PostgresBin / -PostgresData. Do not use port $biDemoDatasourcePort; it is for BI/tracking datasources."
+    throw "Core app system PostgreSQL is not listening on ${PostgresHost}:$PostgresPort. Verify the remote core DB is reachable. Do not use local port $biDemoDatasourcePort; it is for BI/tracking datasources."
 }
 
 function Assert-AppSystemDatabaseReady {
-    if ($PostgresPort -eq $biDemoDatasourcePort) {
-        throw "Invalid app system database port: $biDemoDatasourcePort is reserved for BI/tracking demo datasources. Use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName."
+    if ($PostgresHost -eq "127.0.0.1" -and $PostgresPort -eq $biDemoDatasourcePort) {
+        throw "Invalid app system database port: local $biDemoDatasourcePort is reserved for BI/tracking demo datasources. Use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName."
     }
     if (-not (Test-TcpPort -HostName $appSystemDbHost -Port $appSystemDbPort)) {
-        throw "App system database is not listening on ${appSystemDbHost}:$appSystemDbPort. Start ${appSystemDbName} first."
+        throw "Core app system database is not listening on ${appSystemDbHost}:$appSystemDbPort."
     }
 
     $psql = Resolve-Executable -ExplicitPath "" -CommandName "psql"
@@ -180,10 +188,10 @@ function Assert-AppSystemDatabaseReady {
     $oldPassword = $env:PGPASSWORD
     try {
         $env:PGPASSWORD = $appSystemDbPassword
-        $query = "select case when current_database() = '$appSystemDbName' and exists (select 1 from information_schema.tables where table_schema='public' and table_name='core_datasource') and exists (select 1 from sys_tenant where name = 'slg_bi_mock' and status = 1) and exists (select 1 from sys_user u join sys_tenant_user tu on tu.user_id = u.id join sys_tenant t on t.id = tu.tenant_id where u.account = 'xiaonan' and t.name = 'slg_bi_mock' and tu.role = 'owner' and tu.status = 1) and coalesce((select count(*) from core_dashboard), 0) > 0 then 'ok' else 'bad' end"
+        $query = "select case when current_database() = '$appSystemDbName' and exists (select 1 from information_schema.tables where table_schema='public' and table_name='core_datasource') and exists (select 1 from information_schema.tables where table_schema='public' and table_name='sys_tenant') and exists (select 1 from information_schema.tables where table_schema='public' and table_name='sys_user') and coalesce((select count(*) from core_dashboard), 0) > 0 then 'ok' else 'bad' end"
         $result = & $psql -h $appSystemDbHost -p ([string]$appSystemDbPort) -U $appSystemDbUser -d $appSystemDbName -t -A -c $query 2>$null
         if ($LASTEXITCODE -ne 0 -or (($result | Select-Object -First 1) -ne "ok")) {
-            throw "App system database identity check failed for ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Expected local pgdata with slg_bi_mock workspace, xiaonan owner, and existing dashboards."
+            throw "App system database identity check failed for ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Expected core system tables and existing dashboards."
         }
     } finally {
         if ($null -eq $oldPassword) {
@@ -222,6 +230,9 @@ function Start-Redis {
     if (Test-TcpPort -HostName $RedisHost -Port $RedisPort) {
         Write-Host "Redis is listening on ${RedisHost}:$RedisPort"
         return
+    }
+    if (-not (Test-LocalEndpoint -HostName $RedisHost)) {
+        throw "Core Redis is not listening on remote ${RedisHost}:$RedisPort. Verify the remote Redis instead of starting a local Redis process."
     }
     if ($RedisServiceName) {
         Start-Service -Name $RedisServiceName
