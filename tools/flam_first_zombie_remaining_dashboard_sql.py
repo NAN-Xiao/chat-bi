@@ -687,17 +687,27 @@ LIMIT 300
 """.strip()
 
 SQL_ARMY_RECRUIT = f"""
-SELECT {ARMY_ID} AS `士兵兵种`,
-       COUNT(*) AS `招募总次数`,
-       ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均招募次数`,
-       ROUND(SUM({_json_num('e', 'ext', 'ed_count')}), 2) AS `招募总数量`
+SELECT COALESCE(
+           NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_cardType')), ''),
+           '未知'
+       ) AS `招募池ID`,
+       CASE COALESCE(
+           NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_recruitNumType')), ''),
+           '未知'
+       )
+           WHEN 'ONE' THEN '单抽'
+           WHEN 'TEN' THEN '十连抽'
+           ELSE '未知'
+       END AS `招募方式`,
+       COUNT(*) AS `招募次数`,
+       COUNT(DISTINCT e.uid) AS `招募用户数`
 FROM `event` e
 WHERE {_dt_between("e", 29)}
-  AND e.event = 'ArmyUpgrade'
+  AND e.event = 'HeroRecruit'
   AND e.prod = {PROD_ID}
-GROUP BY `士兵兵种`
-ORDER BY `招募总次数` DESC
-LIMIT 50
+GROUP BY `招募池ID`, `招募方式`
+ORDER BY `招募池ID`, `招募方式`
+LIMIT 100;
 """.strip()
 
 SPEEDUP_TYPE = f"COALESCE({_json_text('e', 'ext', 'ed_detailReason')}, {_json_text('e', 'ext', 'ed_route')}, e.event)"
@@ -777,7 +787,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "3a46d6c112284ee98373dbe53baa6290": ViewSql("主城建设", "各主城等级建筑升级次数", "line", ("日期", "主城等级", "建筑升级次数"), ("日期",), ("建筑升级次数",), sql=SQL_BUILDING_BY_CITY),
     "697c622479fb4ab0b768e02c360e6c6f": ViewSql("主城建设", "各科技升级次数", "table", ("科技名称", "升级科技.总次数"), columns=("科技名称", "升级科技.总次数"), sql=SQL_TECH_BY_TYPE),
     "725f639c5ed24cc6a13d6e1fa2430c8a": ViewSql("主城建设", "各主城等级用户科技升级情况", "line", ("日期", "主城等级", "科技升级次数"), ("日期",), ("科技升级次数",), sql=SQL_TECH_BY_CITY),
-    "1e41ffdca6b041a6abea363fcb1b8cd2": ViewSql("主城建设", "各兵种招募情况", "table", ("士兵兵种", "招募总次数", "人均招募次数", "招募总数量"), columns=("士兵兵种", "招募总次数", "人均招募次数", "招募总数量"), sql=SQL_ARMY_RECRUIT),
+    "1e41ffdca6b041a6abea363fcb1b8cd2": ViewSql("主城建设", "招募情况", "table", ("招募池ID", "招募方式", "招募次数", "招募用户数"), columns=("招募池ID", "招募方式", "招募次数", "招募用户数"), sql=SQL_ARMY_RECRUIT),
     "1c5f7aa5ae6f47ecb3dcfab37ee5e34e": ViewSql("主城建设", "各类型加速情况", "table", ("日期", "加速类型", "使用加速次数", "使用加速人数", "人均使用加速次数"), columns=("日期", "加速类型", "使用加速次数", "使用加速人数", "人均使用加速次数"), sql=SQL_SPEEDUP),
     "a547eb9c1a1a4f4eba00191abbd9ac62": ViewSql("主城建设", "主城升级漏斗", "funnel", ("主城升级步骤", "用户数"), ("主城升级步骤",), ("用户数",), ("主城升级步骤", "用户数"), sql=SQL_CITY_FUNNEL),
 }
