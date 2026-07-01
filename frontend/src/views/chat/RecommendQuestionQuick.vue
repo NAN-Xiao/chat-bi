@@ -48,6 +48,7 @@ function clickQuestion(question: string): void {
 }
 
 const stopFlag = ref(false)
+const RECOMMEND_QUESTIONS_TIMEOUT_MS = 20000
 
 async function getRecommendQuestions(articles_number: number, isRetrieve: false) {
   recommendedApi.get_datasource_recommended_base(props.datasource).then((res) => {
@@ -62,10 +63,18 @@ async function getRecommendQuestions(articles_number: number, isRetrieve: false)
 }
 
 async function getRecommendQuestionsLLM(articles_number: number) {
+  if (!props.recordId || computedQuestions.value.length > 0) {
+    emits('loadingOver')
+    return
+  }
   stopFlag.value = false
   loading.value = true
+  const controller: AbortController = new AbortController()
+  const timeout = window.setTimeout(() => {
+    stopFlag.value = true
+    controller.abort()
+  }, RECOMMEND_QUESTIONS_TIMEOUT_MS)
   try {
-    const controller: AbortController = new AbortController()
     const params = articles_number ? '?articles_number=' + articles_number : ''
     const response = await chatApi.recommendQuestions(props.recordId, controller, params)
     const reader = response.body.getReader()
@@ -125,7 +134,12 @@ async function getRecommendQuestionsLLM(articles_number: number) {
         }
       }
     }
+  } catch (error: any) {
+    if (error?.name !== 'AbortError') {
+      console.error('Get quick recommend questions failed:', error)
+    }
   } finally {
+    window.clearTimeout(timeout)
     loading.value = false
     emits('loadingOver')
   }

@@ -693,6 +693,8 @@ async function restoreCurrentChatFromSession() {
     if (hasUnfinishedRecord()) {
       isTyping.value = true
       restoreChartAnswers()
+    } else {
+      isTyping.value = false
     }
   } catch (error) {
     console.error('Restore current chat failed:', error)
@@ -995,6 +997,9 @@ async function restoreVisibleChatState() {
     if (hasUnfinishedRecord()) {
       loading.value = true
       isTyping.value = true
+    } else {
+      loading.value = false
+      isTyping.value = false
     }
     restoreChartAnswers()
   } catch (error) {
@@ -1011,6 +1016,10 @@ function handlePageVisible() {
 }
 
 async function onChartAnswerFinish(id: number) {
+  const lastRecord = currentChat.value.records[currentChat.value.records.length - 1]
+  if (id !== lastRecord?.id) {
+    return
+  }
   getRecommendQuestionsLoading.value = true
   loading.value = false
   isTyping.value = false
