@@ -624,17 +624,17 @@ LIMIT 24
     },
     {
         "name": "flam 出征与演习口径",
-        "description": "flam / first_zombie 出征、竞技场、荣耀远征、兵种升级、将领出征和胜率 SQL 生成规则。",
+        "description": "flam / first_zombie 出征、竞技场、荣耀远征、过去7日出征维度、将领出征和胜率 SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:expedition-drill -->
 # flam 出征与演习口径
 
 ## 适用范围
 - 仅适用于当前 flam 数据源 `first_zombie`，datasource_id=3。
-- 适用于出征数据看板中的出征事件数、兵种升级、平均战力、荣耀远征、出征明细、将领出征、胜率和主城等级演习。
+- 适用于出征数据看板中的出征事件数、过去7日出征维度分析、平均战力、荣耀远征、出征明细、将领出征、胜率和主城等级演习。
 
 ## SQL 口径
 - 出征/竞技/演习事件集合为 `WorldMarch`,`WorldMarchRet`,`ActivityWorldBoss`,`ActivityAllianceBossBattleRet`,`honorExpedition`,`ArenaResults`,`TrainingArenaResults`,`multipleArena`。
-- 兵种升级使用 `event='ArmyUpgrade'`，兵种优先取 `ext.ed_newArmyId`，其次 `ext.ed_oldArmyId`。
+- “过去7日各兵种出征情况”当前落地为 `WorldMarch` 出征维度分析：出征类型取 `personal.ed_marchType`，目标类型取 `personal.ed_targetType`，大本等级取 `personal.ed_mainBuildingLevel`，出征 ID 取 `personal.ed_marchId`，预计耗时取 `personal.ed_estimatedSeconds`，出征战力取 `personal.ed_myTeamBattlePower`。
 - 将领 ID 优先取 `ext.ed_heroId`，其次取 `ext.captainId`。
 - 主城等级优先取事件参数 `ext.ed_mainBuildingLevel`。
 - 平均战力优先取 `ext.combatPower`，缺失时取 `ext.captainPower`。

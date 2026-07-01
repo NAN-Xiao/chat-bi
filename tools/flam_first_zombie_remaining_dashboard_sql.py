@@ -154,16 +154,31 @@ ORDER BY e.dt
 """.strip()
 
 SQL_ARMY_7D = f"""
-SELECT {ARMY_ID} AS `出征士兵兵种`,
-       '兵种升级次数' AS `指标`,
-       COUNT(*) AS `阶段汇总`
+SELECT
+    STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
+    COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchType')), ''), '未知') AS `出征类型`,
+    COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_targetType')), ''), '未知') AS `目标类型`,
+    COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_mainBuildingLevel')), ''), '未知') AS `大本等级`,
+    COUNT(*) AS `出征次数`,
+    COUNT(DISTINCT e.uid) AS `出征用户数`,
+    COUNT(DISTINCT NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId')), '')) AS `出征ID数`,
+    ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均出征次数`,
+    ROUND(AVG(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_estimatedSeconds')), '') AS DECIMAL(18,4))) / 60, 2) AS `平均预计耗时分钟`,
+    ROUND(AVG(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_myTeamBattlePower')), '') AS DECIMAL(18,4))), 2) AS `平均出征战力`,
+    ROUND(SUM(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_myTeamBattlePower')), '') AS DECIMAL(18,4))), 2) AS `出征总战力`
 FROM `event` e
 WHERE {_dt_between("e", 6)}
-  AND e.event = 'ArmyUpgrade'
+  AND e.event = 'WorldMarch'
   AND e.prod = {PROD_ID}
-GROUP BY `出征士兵兵种`
-ORDER BY `阶段汇总` DESC
-LIMIT 50
+GROUP BY
+    e.dt,
+    `出征类型`,
+    `目标类型`,
+    `大本等级`
+ORDER BY
+    e.dt,
+    `出征次数` DESC
+LIMIT 1000;
 """.strip()
 
 SQL_HERO_EXPEDITION_COUNT = f"""
@@ -755,7 +770,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "440303dfdf39408ba86ffb222f3334f2": ViewSql("出征数据", "竞技场/出征平均战力", "metric", ("竞技场/出征平均战力", "日环比", "周同比"), y_axis=("竞技场/出征平均战力", "日环比", "周同比"), sql=SQL_EXPEDITION_AVG_POWER),
     "0b849c96c0a3480c9e940b92995d5e3e": ViewSql("出征数据", "荣耀远征事件数", "metric", ("荣耀远征事件数", "日环比", "周同比"), y_axis=("荣耀远征事件数", "日环比", "周同比"), sql=SQL_HONOR_EXPEDITION_COUNT),
     "f2be189bf85f4181bc7191cd5138561f": ViewSql("出征数据", "出征相关明细", "table", ("日期", "出征事件数", "人均事件数", "参与用户数"), columns=("日期", "出征事件数", "人均事件数", "参与用户数"), sql=SQL_EXPEDITION_DETAIL),
-    "e02bdbafdd364d3cba9f991f94896c86": ViewSql("出征数据", "过去7日各兵种出征情况", "table", ("出征士兵兵种", "指标", "阶段汇总"), columns=("出征士兵兵种", "指标", "阶段汇总"), sql=SQL_ARMY_7D),
+    "e02bdbafdd364d3cba9f991f94896c86": ViewSql("出征数据", "过去7日各兵种出征情况", "table", ("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), columns=("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), sql=SQL_ARMY_7D),
     "59a8dfd8d6e341988edfbf1666872aae": ViewSql("出征数据", "各将领出征量分布", "table", ("将领ID", "出征次数"), columns=("将领ID", "出征次数"), sql=SQL_HERO_EXPEDITION_COUNT),
     "848927b0833443d39a93797c3507368e": ViewSql("出征数据", "各等级出征胜率", "column", ("等级", "出征胜率"), ("等级",), ("出征胜率",), sql=SQL_LEVEL_WIN_RATE),
     "344c936b561f44f6bc29cc2663f3f651": ViewSql("出征数据", "各将领出征胜率", "table", ("将领ID", "各将领出征胜率"), columns=("将领ID", "各将领出征胜率"), sql=SQL_HERO_WIN_RATE),
