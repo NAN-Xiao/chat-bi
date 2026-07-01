@@ -616,17 +616,18 @@ LIMIT 1000
 """.strip()
 
 SQL_GOLD_SINK = f"""
-SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
-       {GOLD_ROUTE} AS `消耗途径`,
-       ROUND(ABS(SUM(LEAST({GOLD_DELTA}, 0))), 2) AS `钻石消耗量`
+SELECT
+    {GOLD_ROUTE} AS `消耗途径`,
+    ROUND(ABS(SUM(LEAST({GOLD_FREE_DELTA}, 0))), 2) AS `免费钻石消耗量`,
+    ROUND(ABS(SUM(LEAST({GOLD_PAID_DELTA}, 0))), 2) AS `付费钻石消耗量`
 FROM `event` e
 WHERE {_dt_between("e", 29)}
   AND e.event = 'GoldChange'
   AND e.prod = {PROD_ID}
-GROUP BY e.dt, `消耗途径`
-HAVING `钻石消耗量` > 0
-ORDER BY e.dt, `消耗途径`
-LIMIT 300
+  AND ({GOLD_FREE_DELTA} < 0 OR {GOLD_PAID_DELTA} < 0)
+GROUP BY `消耗途径`
+ORDER BY (`免费钻石消耗量` + `付费钻石消耗量`) DESC
+LIMIT 1000
 """.strip()
 
 SQL_STARTER_PACK_REPURCHASE = f"""
@@ -914,7 +915,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "095b1cf41cd64844b1f78f07ceccb7bf": ViewSql("活动分析", "参与节日活动的后续7日付费留存率", "table", ("日期", "参与节日活动用户数", "当日", "第7日"), columns=("日期", "参与节日活动用户数", "当日", "第7日"), sql=SQL_FESTIVAL_PAY_RETENTION),
     "4cc60cadf26e4b2f945c672f2648d205": ViewSql("经济系统", "钻石消耗获取情况", "line", ("日期", "免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), ("日期",), ("免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), sql=SQL_GOLD_CHANGE),
     "df837cb59810483f84fb0e7cd420646a": ViewSql("经济系统", "免费钻石获取途径分布", "column", ("获取途径", "免费钻石获取量"), ("获取途径",), ("免费钻石获取量",), columns=("获取途径", "免费钻石获取量"), sql=SQL_GOLD_SOURCE),
-    "fda6854e188c44c4b35e75c9af6d9854": ViewSql("经济系统", "钻石消耗途径分布", "line", ("日期", "消耗途径", "钻石消耗量"), ("日期",), ("钻石消耗量",), sql=SQL_GOLD_SINK),
+    "fda6854e188c44c4b35e75c9af6d9854": ViewSql("经济系统", "钻石消耗途径分布", "column", ("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), ("消耗途径",), ("免费钻石消耗量", "付费钻石消耗量"), columns=("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), sql=SQL_GOLD_SINK),
     "15da41b65ee64aba854e2de701a728bc": ViewSql("礼包付费概览", "购买新手礼包用户复购率", "table", ("日期", "购买新手礼包用户数", "当周", "第1周", "第2周"), columns=("日期", "购买新手礼包用户数", "当周", "第1周", "第2周"), sql=SQL_STARTER_PACK_REPURCHASE),
     "f113ac14e8994d12814452040b702424": ViewSql("礼包付费概览", "购买月卡用户的30日留存", "line", ("留存日", "留存率"), ("留存日",), ("留存率",), sql=SQL_MONTH_CARD_RETENTION),
     "8b3e5b7179af442e8fded00ae25a0245": ViewSql("渠道分析", "活跃用户数（按渠道）", "line", ("日期", "渠道", "活跃用户数"), ("日期",), ("活跃用户数",), sql=SQL_ACTIVE_BY_CHANNEL),

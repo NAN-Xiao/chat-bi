@@ -584,6 +584,7 @@ LIMIT 24
 - 钻石变化字段在 `personal` 中，免费钻石取 `personal.ed_changeFree`，付费钻石取 `personal.ed_changePaid`。
 - “钻石消耗获取情况”按免费钻石和付费钻石分别输出获取量、消耗量、存量变化；变化量大于 0 计入获取，变化量小于 0 取绝对值计入消耗，原始正负和保留为存量变化。
 - “免费钻石获取途径分布”只统计 `personal.ed_changeFree > 0` 的获取记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，仅输出获取途径和免费钻石获取量。
+- “钻石消耗途径分布”只统计 `personal.ed_changeFree < 0` 或 `personal.ed_changePaid < 0` 的消耗记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，分别输出免费钻石消耗量和付费钻石消耗量。
 - 获取/消耗途径优先取 `personal.ed_route`，缺失时取 `personal.ed_detailReason`，仍缺失记为“未知”。
 - 历史窗口优先使用 `CURDATE()` 派生最近 30 天 `dt` 分区，并过滤 `prod = 110000038`。
 
