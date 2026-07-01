@@ -3,7 +3,11 @@ import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import ChartInsightHeader from '@/views/chat/component/ChartInsightHeader.vue'
 import type { ChatMessage } from '@/api/chat.ts'
 import { computed, nextTick, ref } from 'vue'
-import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import type {
+  ChartAxis,
+  ChartForecastConfig,
+  ChartTypes,
+} from '@/views/chat/component/BaseChart.ts'
 import { useI18n } from 'vue-i18n'
 import { buildInsightColumns, resolveInsightLayout } from '@/views/chat/component/chartInsight.ts'
 
@@ -31,6 +35,7 @@ const chartObject = computed<{
   }
   columns: Array<ChartAxis>
   insight?: any
+  forecast?: ChartForecastConfig
 }>(() => {
   if (props.message?.record?.chart) {
     return JSON.parse(props.message.record.chart)
@@ -115,6 +120,7 @@ function getViewInfo() {
       series: series.value,
       title: chartObject.value.title,
       insight: chartObject.value?.insight,
+      forecast: chartObject.value?.forecast,
     },
     data: { data: props.data },
   }
@@ -181,6 +187,7 @@ defineExpose({
         :data="data"
         :multi-quota-name="multiQuotaName"
         :show-label="showLabel"
+        :forecast="chartObject?.forecast"
       />
     </div>
     <el-empty v-else :description="loadingData ? t('chat.loading_data') : t('chat.no_data')" />

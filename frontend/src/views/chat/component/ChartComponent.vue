@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getChartInstance } from '@/views/chat/component/index.ts'
-import { axisValue, type BaseChart, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
+import {
+  axisValue,
+  type BaseChart,
+  type ChartAxis,
+  type ChartData,
+  type ChartForecastConfig,
+} from '@/views/chat/component/BaseChart.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
 
 const params = withDefaults(
@@ -17,6 +23,7 @@ const params = withDefaults(
     showLabel?: boolean
     hideZeroLabel?: boolean
     hideValueAxis?: boolean
+    forecast?: ChartForecastConfig
   }>(),
   {
     data: () => [],
@@ -28,6 +35,7 @@ const params = withDefaults(
     showLabel: false,
     hideZeroLabel: false,
     hideValueAxis: false,
+    forecast: undefined,
   }
 )
 
@@ -151,6 +159,7 @@ function renderChart(retry = 0) {
     chartInstance.showLabel = params.showLabel
     chartInstance.hideZeroLabel = params.hideZeroLabel
     chartInstance.hideValueAxis = params.hideValueAxis
+    chartInstance.forecast = params.forecast
     chartInstance.init(axis.value, params.data)
     try {
       Promise.resolve(chartInstance.render())
@@ -185,6 +194,7 @@ watch(
     showLabel: params.showLabel,
     hideZeroLabel: params.hideZeroLabel,
     hideValueAxis: params.hideValueAxis,
+    forecast: params.forecast,
   }),
   () => {
     scheduleRenderChart()

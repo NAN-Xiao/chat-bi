@@ -3,7 +3,12 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { dashboardApi } from '@/api/dashboard.ts'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
-import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import type {
+  ChartAxis,
+  ChartForecastConfig,
+  ChartForecastMethod,
+  ChartTypes,
+} from '@/views/chat/component/BaseChart.ts'
 import { isAverageAxis, isPercentAxis } from '@/views/chat/component/charts/utils.ts'
 import {
   defaultPivotAggregationForAxes,
@@ -62,6 +67,10 @@ const form = reactive({
   insightComparisonMetrics: [] as TrendComparisonMetric[],
   insightAggregateEnabled: true,
   insightAggregateMetrics: [] as TrendAggregateMetric[],
+  forecastEnabled: false,
+  forecastMethod: 'auto' as ChartForecastMethod,
+  forecastPeriods: 7,
+  forecastHistoryWindow: 0,
   pivotEnabled: false,
   pivotTimeField: '',
   pivotGroupField: '',
@@ -137,6 +146,9 @@ const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chart
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsPivotConfig = computed(() => !['table', 'metric'].includes(form.chartType))
+const supportsForecastConfig = computed(
+  () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length > 0
+)
 const effectiveSeriesField = computed(() => normalizeSeriesField(form.series))
 const supportsTrendInsightConfig = computed(
   () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length === 1 && !effectiveSeriesField.value
@@ -252,6 +264,18 @@ const pivotRangeOptions = computed(() => [
   { label: t('dashboard.pivot_recent_90d'), value: '90d' },
   { label: t('dashboard.pivot_all_time'), value: 'all' },
   { label: t('dashboard.pivot_custom_range'), value: 'custom' },
+])
+const forecastMethodOptions = computed<Array<{ label: string; value: ChartForecastMethod }>>(() => [
+  { label: t('dashboard.forecast_method_auto'), value: 'auto' },
+  { label: t('dashboard.forecast_method_linear'), value: 'linear' },
+  { label: t('dashboard.forecast_method_polynomial'), value: 'polynomial' },
+  { label: t('dashboard.forecast_method_exponential'), value: 'exponential' },
+  { label: t('dashboard.forecast_method_logarithmic'), value: 'logarithmic' },
+  { label: t('dashboard.forecast_method_power'), value: 'power' },
+  { label: t('dashboard.forecast_method_reciprocal'), value: 'reciprocal' },
+  { label: t('dashboard.forecast_method_logistic'), value: 'logistic' },
+  { label: t('dashboard.forecast_method_gompertz'), value: 'gompertz' },
+  { label: t('dashboard.forecast_method_holt_winters'), value: 'holt_winters' },
 ])
 type PivotGranularity = 'day' | 'week' | 'month'
 
@@ -385,6 +409,38 @@ function buildInsightConfig() {
       enabled: form.insightAggregateEnabled,
       metrics: [...form.insightAggregateMetrics],
     },
+  }
+}
+
+function normalizeForecastMethod(value: any): ChartForecastMethod {
+  const methods = forecastMethodOptions.value.map((item) => item.value)
+  return methods.includes(value) ? value : 'auto'
+}
+
+function normalizeForecastNumber(value: any, fallback: number, min: number, max: number) {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, Math.round(numericValue)))
+}
+
+function initForecastConfig(forecast?: ChartForecastConfig) {
+  form.forecastEnabled = forecast?.enabled === true
+  form.forecastMethod = normalizeForecastMethod(forecast?.method)
+  form.forecastPeriods = normalizeForecastNumber(forecast?.periods, 7, 1, 60)
+  form.forecastHistoryWindow = normalizeForecastNumber(forecast?.historyWindow, 0, 0, 240)
+}
+
+function buildForecastConfig(): ChartForecastConfig {
+  if (!supportsForecastConfig.value || !form.forecastEnabled) {
+    return { enabled: false }
+  }
+  return {
+    enabled: true,
+    method: form.forecastMethod,
+    periods: normalizeForecastNumber(form.forecastPeriods, 7, 1, 60),
+    historyWindow: normalizeForecastNumber(form.forecastHistoryWindow, 0, 0, 240),
   }
 }
 
@@ -648,6 +704,7 @@ function initEditor() {
   lastPreviewSql.value = form.sql.trim()
   resetFieldSelections()
   initInsightConfig(chart.insight)
+  initForecastConfig(chart.forecast)
   initPivotConfig(viewInfo.pivot)
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
@@ -675,6 +732,10 @@ watch(
     form.insightComparisonMetrics.join('|'),
     form.insightAggregateEnabled,
     form.insightAggregateMetrics.join('|'),
+    form.forecastEnabled,
+    form.forecastMethod,
+    form.forecastPeriods,
+    form.forecastHistoryWindow,
     form.pivotEnabled,
     form.pivotTimeField,
     form.pivotGroupField,
@@ -702,6 +763,9 @@ watch(
   ],
   () => {
     sanitizeSeriesSelection()
+    if (!supportsForecastConfig.value) {
+      form.forecastEnabled = false
+    }
     normalizeInsightSelections(true)
     normalizePivotSelections()
     syncPivotGroupValues()
@@ -781,6 +845,11 @@ function buildChart() {
     chart.insight = buildInsightConfig()
   } else {
     delete chart.insight
+  }
+  if (supportsForecastConfig.value) {
+    chart.forecast = buildForecastConfig()
+  } else {
+    delete chart.forecast
   }
 
   if (form.chartType === 'table') {
@@ -1084,6 +1153,32 @@ function closeDrawer() {
             </div>
           </template>
         </div>
+        <div v-if="supportsForecastConfig" class="forecast-config">
+          <div class="forecast-config-row">
+            <span class="forecast-config-caption">{{ t('dashboard.forecast_config') }}</span>
+            <el-checkbox v-model="form.forecastEnabled">
+              {{ t('dashboard.forecast_enabled') }}
+            </el-checkbox>
+          </div>
+          <div v-if="form.forecastEnabled" class="forecast-config-grid">
+            <el-form-item :label="t('dashboard.forecast_method')">
+              <el-select v-model="form.forecastMethod">
+                <el-option
+                  v-for="item in forecastMethodOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('dashboard.forecast_periods')">
+              <el-input-number v-model="form.forecastPeriods" :min="1" :max="60" :step="1" />
+            </el-form-item>
+            <el-form-item :label="t('dashboard.forecast_history_window')">
+              <el-input-number v-model="form.forecastHistoryWindow" :min="0" :max="240" :step="1" />
+            </el-form-item>
+          </div>
+        </div>
         <div v-if="supportsPivotConfig" class="pivot-config">
           <div class="pivot-config-row">
             <span class="pivot-config-caption">{{ t('dashboard.pivot_config') }}</span>
@@ -1164,6 +1259,7 @@ function closeDrawer() {
           :series="form.chartType === 'pie' ? toAxes([effectiveSeriesField || form.x]) : toAxes([effectiveSeriesField])"
           :data="previewDisplayData"
           :multi-quota-name="form.y.length > 1 && !effectiveSeriesField ? form.multiQuotaName : undefined"
+          :forecast="buildForecastConfig()"
         />
         <div v-else class="empty-preview">{{ t('dashboard.sql_editor_no_preview_data') }}</div>
       </div>
@@ -1226,6 +1322,33 @@ function closeDrawer() {
   flex-direction: column;
   gap: 10px;
   padding: 2px 0 6px;
+}
+
+.forecast-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 6px;
+}
+
+.forecast-config-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  min-height: 32px;
+}
+
+.forecast-config-caption {
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.forecast-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 12px;
 }
 
 .insight-config-row {

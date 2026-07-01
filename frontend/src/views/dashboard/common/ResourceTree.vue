@@ -220,6 +220,8 @@ const findDefaultGroupNode = (nodes: SQTreeNode[] = []) =>
   nodes.find((item) => String(item.id) === DEFAULT_GROUP_ID)
 const findMyGroupNode = (nodes: SQTreeNode[] = []) =>
   nodes.find((item) => String(item.id) === MY_GROUP_ID)
+const findFirstMyDashboardNode = () =>
+  findFirstLeafDashboardNode(findMyGroupNode(state.resourceTree)?.children || [])
 
 const createDashboardGroup = (
   id: string,
@@ -432,6 +434,10 @@ const resolveInitialDashboardNode = () => {
       DEFAULT_SCOPE
     )
     if (rememberedNode) return rememberedNode
+  }
+  if (!props.defaultMode) {
+    const myDashboardNode = findFirstMyDashboardNode()
+    if (myDashboardNode) return myDashboardNode
   }
   return findFirstLeafDashboardNode(state.resourceTree)
 }
@@ -722,15 +728,22 @@ const collectTreeOrderItems = (
 
 const afterTreeInit = () => {
   mounted.value = true
+  const routeResourceId = currentRouteDashboardId()
+  const routeNode = routeResourceId
+    ? findDashboardNode(state.resourceTree, routeResourceId, currentRouteDashboardScope())
+    : undefined
   const selectedNode = selectedNodeKey.value
     ? findDashboardNodeById(state.resourceTree, selectedNodeKey.value)
     : undefined
-  const routeResourceId = currentRouteDashboardId()
-  if (!isLeafDashboardNode(selectedNode) && (!routeResourceId || props.defaultMode)) {
+  const activeNode = isLeafDashboardNode(routeNode)
+    ? routeNode
+    : isLeafDashboardNode(selectedNode)
+      ? selectedNode
+      : resolveInitialDashboardNode()
+  if (!selectDashboardNode(activeNode)) {
     selectedNodeKey.value = null
-  }
-  if (!selectedNodeKey.value) {
-    selectDashboardNode(resolveInitialDashboardNode())
+    returnMounted.value = false
+    emit('deleteCurResource')
   }
   restoreExpandedKeys()
   if (selectedNodeKey.value && returnMounted.value) {

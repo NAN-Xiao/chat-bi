@@ -313,6 +313,7 @@ watch(currentWorkspaceId, () => {
             :series="previewChartInfo?.chart?.series || []"
             :data="previewChartInfo?.data?.data || []"
             :multi-quota-name="previewChartInfo?.chart?.multiQuotaName"
+            :forecast="previewChartInfo?.chart?.forecast"
           />
         </div>
         <div

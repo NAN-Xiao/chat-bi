@@ -20,6 +20,25 @@ export interface ChartData {
   [key: string]: any
 }
 
+export type ChartForecastMethod =
+  | 'auto'
+  | 'linear'
+  | 'polynomial'
+  | 'exponential'
+  | 'logarithmic'
+  | 'power'
+  | 'reciprocal'
+  | 'logistic'
+  | 'gompertz'
+  | 'holt_winters'
+
+export interface ChartForecastConfig {
+  enabled?: boolean
+  method?: ChartForecastMethod
+  periods?: number
+  historyWindow?: number
+}
+
 export type ChartMountTarget = string | HTMLElement
 
 export type ChartTypes =
@@ -45,6 +64,7 @@ export abstract class BaseChart {
   showLabel: boolean = false
   hideZeroLabel: boolean = false
   hideValueAxis: boolean = false
+  forecast?: ChartForecastConfig
 
   constructor(mountTarget: ChartMountTarget, name: string) {
     this.mountTarget = mountTarget

@@ -4,7 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
-import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import type {
+  ChartAxis,
+  ChartForecastConfig,
+  ChartTypes,
+} from '@/views/chat/component/BaseChart.ts'
 import { dashboardApi } from '@/api/dashboard'
 import { findNewComponentFromList } from '@/views/dashboard/components/component-list.ts'
 import { layoutDashboardChartComponents } from '@/views/dashboard/utils/chartSizing.ts'
@@ -49,6 +53,7 @@ interface AnalysisChartConfig {
   type: ChartTypes
   title?: string
   columns?: ChartAxis[]
+  forecast?: ChartForecastConfig
   axis?: {
     x?: ChartAxis
     y?: ChartAxis | ChartAxis[]
@@ -822,6 +827,7 @@ const buildDashboardChartInfo = (block: AnalysisBlock, componentId: string) => {
       xAxis: getChartXAxis(chart),
       yAxis,
       series: getChartSeries(chart),
+      forecast: chart?.forecast,
     },
   }
 }
@@ -1369,6 +1375,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                       :series="getChartSeries(block.chart)"
                       :data="block.data"
                       :multi-quota-name="getMultiQuotaName(block.chart)"
+                      :forecast="block.chart.forecast"
                     />
                   </div>
                   <div v-else-if="!block.error" class="empty-data">暂无可展示数据</div>

@@ -11,6 +11,7 @@ import {
 } from '@/utils/platformWorkspaceDelegate'
 import {
   resolveAuthenticatedDashboardLandingTarget,
+  resolveDefaultDashboardLandingTarget,
   resolveLoginSuccessDashboardTarget,
 } from '@/utils/dashboardLanding'
 import {
@@ -150,13 +151,19 @@ export const watchRouter = (router: Router) => {
       return
     }
     if (userStore.isPlatformWorkspaceDelegate && isDefaultDashboardRoute(to.path)) {
-      next({
-        path: '/dashboard/index',
-        query: {
-          ...to.query,
-          dashboardMode: 'default',
-        },
-      })
+      const target = await resolveDefaultDashboardLandingTarget(userStore)
+      next(
+        typeof target === 'string'
+          ? target
+          : {
+              ...target,
+              query: {
+                ...(target as any).query,
+                ...to.query,
+                dashboardMode: 'default',
+              },
+            }
+      )
       return
     }
     try {

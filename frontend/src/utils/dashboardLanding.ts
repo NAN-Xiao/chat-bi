@@ -122,15 +122,26 @@ const resolveMyDashboardTarget = async () => {
 
 const resolveDashboardLandingTarget = async (
   fallbackTarget: string,
-  userStore: DashboardLandingUserState
+  userStore: DashboardLandingUserState,
+  options: { preferDefault?: boolean } = {}
 ): Promise<RouteLocationRaw> => {
   if (fallbackTarget !== MEMBER_HOME) return fallbackTarget
+
+  if (options.preferDefault) {
+    const defaultTarget = await resolveDefaultDashboardTarget(userStore)
+    if (defaultTarget) return defaultTarget
+
+    const myDashboardTarget = await resolveMyDashboardTarget()
+    return myDashboardTarget || MEMBER_HOME
+  }
+
+  const myDashboardTarget = await resolveMyDashboardTarget()
+  if (myDashboardTarget) return myDashboardTarget
 
   const defaultTarget = await resolveDefaultDashboardTarget(userStore)
   if (defaultTarget) return defaultTarget
 
-  const myDashboardTarget = await resolveMyDashboardTarget()
-  return myDashboardTarget || MEMBER_HOME
+  return MEMBER_HOME
 }
 
 export const resolveAuthenticatedDashboardLandingTarget = (userStore: DashboardLandingUserState) =>
@@ -138,6 +149,9 @@ export const resolveAuthenticatedDashboardLandingTarget = (userStore: DashboardL
 
 export const resolveBusinessDashboardLandingTarget = (userStore: DashboardLandingUserState) =>
   resolveDashboardLandingTarget(resolveBusinessHome(userStore), userStore)
+
+export const resolveDefaultDashboardLandingTarget = (userStore: DashboardLandingUserState) =>
+  resolveDashboardLandingTarget(resolveBusinessHome(userStore), userStore, { preferDefault: true })
 
 export const resolveLoginSuccessDashboardTarget = async (
   userStore: DashboardLandingUserState,

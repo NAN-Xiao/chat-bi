@@ -159,6 +159,7 @@ function closeDialog() {
                 :data="rows"
                 :multi-quota-name="chartConfig?.multiQuotaName"
                 :show-label="showLabel"
+                :forecast="chartConfig?.forecast"
               />
             </div>
           </div>

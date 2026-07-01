@@ -12,6 +12,7 @@ import {
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { buildForecastRows } from '@/views/chat/component/charts/forecast.ts'
 
 export class Area extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -69,9 +70,17 @@ export class Area extends BaseG2Chart {
     const series = config.series
 
     const _data = checkIsPercent(y, config.data)
+    const forecastData = buildForecastRows({
+      data: _data.data,
+      xField: x[0].value,
+      yField: y[0].value,
+      seriesField: series[0]?.value,
+      forecast: this.forecast,
+      isPercent: _data.isPercent,
+    })
     const shouldStack = series.length > 0
 
-    console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
+    console.debug({ 'render-info': { x: x, y: y, series: series, data: _data, forecastData }, instance: this })
 
     const areaLabels = this.showLabel
       ? [
@@ -98,7 +107,7 @@ export class Area extends BaseG2Chart {
 
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
-      type: 'area',
+      type: 'view',
       data: _data.data,
       encode: {
         x: x[0].value,
@@ -127,7 +136,7 @@ export class Area extends BaseG2Chart {
       },
       scale: {
         x: {
-          nice: true,
+          nice: forecastData.length ? false : true,
         },
         y: {
           nice: true,
@@ -137,23 +146,58 @@ export class Area extends BaseG2Chart {
       interaction: {
         tooltip: { series: series.length > 0, shared: true },
       },
-      transform: shouldStack ? [{ type: 'stackY' }] : undefined,
-      style: {
-        fillOpacity: 0.78,
-      },
-      labels: areaLabels,
-      tooltip: (datum: ChartData) => {
-        if (series.length > 0) {
-          return {
-            name: datum[series[0].value],
-            value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
-          }
-        }
-        return {
-          name: axisLabel(y[0]),
-          value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
-        }
-      },
+      children: [
+        {
+          type: 'area',
+          transform: shouldStack ? [{ type: 'stackY' }] : undefined,
+          style: {
+            fillOpacity: 0.78,
+          },
+          labels: areaLabels,
+          tooltip: (datum: ChartData) => {
+            if (series.length > 0) {
+              return {
+                name: datum[series[0].value],
+                value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
+              }
+            }
+            return {
+              name: axisLabel(y[0]),
+              value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
+            }
+          },
+        },
+        ...(forecastData.length
+          ? [
+              {
+                type: 'line',
+                data: forecastData,
+                encode: {
+                  x: x[0].value,
+                  y: y[0].value,
+                  color: series.length > 0 ? series[0].value : undefined,
+                },
+                style: {
+                  lineDash: [6, 5],
+                  lineWidth: 1.8,
+                  strokeOpacity: 0.9,
+                },
+                tooltip: (datum: ChartData) => {
+                  if (series.length > 0) {
+                    return {
+                      name: `${datum[series[0].value]} 预测`,
+                      value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
+                    }
+                  }
+                  return {
+                    name: `${axisLabel(y[0])} 预测`,
+                    value: formatTooltipValue(datum[y[0].value], _data.isPercent ? '%' : ''),
+                  }
+                },
+              },
+            ]
+          : []),
+      ],
     } as G2Spec)
 
     this.chart.options(options)

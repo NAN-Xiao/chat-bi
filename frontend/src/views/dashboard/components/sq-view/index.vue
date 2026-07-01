@@ -533,6 +533,7 @@ function getReportContextSnapshot() {
   }
 }
 const renderMultiQuotaName = computed(() => props.viewInfo.chart?.multiQuotaName)
+const renderForecast = computed(() => props.viewInfo.chart?.forecast)
 const pivotRangeLabel = computed(() => {
   if (pivotState.range === 'custom' && (pivotState.customStart || pivotState.customEnd)) {
     if (pivotState.customStart && pivotState.customEnd) {
@@ -1742,6 +1743,7 @@ defineExpose({
           :data="displayData"
           :multi-quota-name="renderMultiQuotaName"
           :show-label="showLabel"
+          :forecast="renderForecast"
         />
       </div>
     </div>

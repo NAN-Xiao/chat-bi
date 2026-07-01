@@ -101,6 +101,7 @@ onMounted(() => {
           :series="chartInfo?.chart?.series || []"
           :data="chartInfo?.data?.data || []"
           :multi-quota-name="chartInfo?.chart?.multiQuotaName"
+          :forecast="chartInfo?.chart?.forecast"
         />
         <div v-else class="preview-placeholder">
           <img :src="iconChartPreviewUrl" width="44" height="44" />

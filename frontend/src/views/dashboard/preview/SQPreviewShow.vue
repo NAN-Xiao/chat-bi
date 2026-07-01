@@ -652,6 +652,7 @@ const loadCanvasData = (params: any) => {
   dashboardLoadController = loadController
   loadingDashboardId.value = loadingKey
   dataInitState.value = false
+  stateInit()
   load_resource_prepare(
     { id: resourceId },
     async function ({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
@@ -760,6 +761,8 @@ watch(
   ([resourceId, dashboardMode]) => {
     if (!props.defaultMode && resourceId) {
       loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })
+    } else if (!props.defaultMode && !resourceId) {
+      stateInit()
     }
   },
   { immediate: true }

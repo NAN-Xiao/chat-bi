@@ -2,15 +2,20 @@
 import folder from '@/assets/svg/folder.svg'
 import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
 import { computed, reactive, ref } from 'vue'
-import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
+import {
+  saveDashboardResource,
+  saveDashboardResourceTarget,
+} from '@/views/dashboard/utils/canvasUtils.ts'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
+const dashboardStore = dashboardStoreWithOut()
 const emits = defineEmits(['finish'])
 const resource = ref(null)
 const state = reactive({
@@ -301,7 +306,18 @@ const saveResource = () => {
         level: state.nodeType === 'folder' ? 0 : 1,
         is_default: state.isDefault,
       }
-      saveDashboardResource(params, function (rsp: any) {
+      const commonParams =
+        isNewDashboard.value && dashboardStore.dashboardInfo?.dataState !== 'prepare'
+          ? {
+              componentData: [],
+              canvasStyleData: {},
+              canvasViewInfo: {},
+            }
+          : undefined
+      const saveRequest = commonParams
+        ? (callback: Function) => saveDashboardResourceTarget(params, commonParams, callback)
+        : (callback: Function) => saveDashboardResource(params, callback)
+      saveRequest(function (rsp: any) {
         const messageTips = t('common.save_success')
         ElMessage({
           type: 'success',
