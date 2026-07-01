@@ -253,15 +253,70 @@ LIMIT 1000;
 """.strip()
 
 SQL_HERO_WIN_RATE = f"""
-SELECT {HERO_ID} AS `将领ID`,
-       ROUND(AVG(CASE WHEN {_WIN_EXPR} THEN 1 ELSE 0 END) * 100, 2) AS `各将领出征胜率`
-FROM `event` e
-WHERE {_dt_between("e", 6)}
-  AND e.event IN ({EXPEDITION_EVENTS})
-  AND e.prod = {PROD_ID}
-GROUP BY `将领ID`
-ORDER BY `各将领出征胜率` DESC
-LIMIT 50
+WITH bounds AS (
+    SELECT
+        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
+        CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED) AS end_dt
+),
+march_heroes AS (
+    SELECT DISTINCT
+        e.uid,
+        JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId')) AS march_id,
+        JSON_UNQUOTE(
+            JSON_EXTRACT(
+                e.personal,
+                CONCAT('$.ed_myTeamHeroList[', n.n, '].heroId')
+            )
+        ) AS hero_id
+    FROM `event` e
+    JOIN bounds b ON TRUE
+    JOIN (
+        SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+        UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
+    ) n
+      ON JSON_EXTRACT(e.personal, CONCAT('$.ed_myTeamHeroList[', n.n, ']')) IS NOT NULL
+    WHERE e.dt BETWEEN b.start_dt AND b.end_dt
+      AND e.prod = {PROD_ID}
+      AND e.event = 'WorldMarch'
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId')) IS NOT NULL
+),
+march_results AS (
+    SELECT
+        e.uid,
+        JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId')) AS march_id,
+        MAX(
+            CASE
+                WHEN COALESCE(
+                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_result')), ''),
+                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_battleResult')), '')
+                ) IN ('4', 'win', 'success', '1', '胜利') THEN 1
+                ELSE 0
+            END
+        ) AS is_win
+    FROM `event` e
+    JOIN bounds b ON TRUE
+    WHERE e.dt BETWEEN b.start_dt AND b.end_dt
+      AND e.prod = {PROD_ID}
+      AND e.event = 'WorldMarchRet'
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId')) IS NOT NULL
+    GROUP BY
+        e.uid,
+        JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId'))
+)
+SELECT
+    mh.hero_id AS `英雄ID`,
+    COUNT(*) AS `出征次数`,
+    SUM(mr.is_win) AS `胜利次数`,
+    ROUND(SUM(mr.is_win) / NULLIF(COUNT(*), 0) * 100, 2) AS `出征胜率`
+FROM march_results mr
+JOIN march_heroes mh
+  ON mh.uid = mr.uid
+ AND mh.march_id = mr.march_id
+WHERE mh.hero_id IS NOT NULL
+  AND mh.hero_id <> ''
+GROUP BY mh.hero_id
+ORDER BY `出征次数` DESC, `出征胜率` DESC
+LIMIT 1000
 """.strip()
 
 SQL_DRILL_BY_CITY_LEVEL = f"""
@@ -407,43 +462,63 @@ LIMIT 300
 """.strip()
 
 SQL_ACTIVITY_LEVEL = f"""
-SELECT CASE
-         WHEN COALESCE(CAST({_json_text('e', 'ext', 'ed_mainBuildingLevel')} AS DECIMAL(18,4)), 0) < 10 THEN '0-9'
-         WHEN COALESCE(CAST({_json_text('e', 'ext', 'ed_mainBuildingLevel')} AS DECIMAL(18,4)), 0) < 20 THEN '10-19'
-         WHEN COALESCE(CAST({_json_text('e', 'ext', 'ed_mainBuildingLevel')} AS DECIMAL(18,4)), 0) < 30 THEN '20-29'
-         ELSE '30+'
-       END AS `阶段`,
-       COUNT(DISTINCT e.uid) AS `参与人数`
-FROM `event` e
-WHERE {_dt_between("e", 29)}
-  AND e.event IN ({ACTIVITY_EVENTS})
-  AND e.prod = {PROD_ID}
-GROUP BY `阶段`
-ORDER BY MIN(COALESCE(CAST({_json_text('e', 'ext', 'ed_mainBuildingLevel')} AS DECIMAL(18,4)), 0))
+SELECT
+    CASE
+        WHEN main_level BETWEEN 1 AND 3 THEN '1-3'
+        WHEN main_level BETWEEN 4 AND 6 THEN '4-6'
+        WHEN main_level BETWEEN 7 AND 9 THEN '7-9'
+        WHEN main_level BETWEEN 10 AND 12 THEN '10-12'
+        WHEN main_level BETWEEN 13 AND 15 THEN '13-15'
+        WHEN main_level BETWEEN 16 AND 18 THEN '16-18'
+        WHEN main_level BETWEEN 19 AND 21 THEN '19-21'
+        WHEN main_level BETWEEN 22 AND 24 THEN '22-24'
+        WHEN main_level BETWEEN 25 AND 27 THEN '25-27'
+        WHEN main_level BETWEEN 28 AND 30 THEN '28-30'
+        WHEN main_level = 31 THEN '31'
+    END AS `等级段`,
+    COUNT(DISTINCT uid) AS `参与人数`
+FROM (
+    SELECT
+        e.uid,
+        CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_mainBuildingLevel')), '') AS SIGNED) AS main_level
+    FROM `event` e
+    WHERE {_dt_between("e", 29)}
+      AND e.prod = {PROD_ID}
+      AND e.event IN ({ACTIVITY_EVENTS})
+) t
+WHERE main_level BETWEEN 1 AND 31
+GROUP BY `等级段`
+ORDER BY
+    CASE `等级段`
+        WHEN '1-3' THEN 1
+        WHEN '4-6' THEN 4
+        WHEN '7-9' THEN 7
+        WHEN '10-12' THEN 10
+        WHEN '13-15' THEN 13
+        WHEN '16-18' THEN 16
+        WHEN '19-21' THEN 19
+        WHEN '22-24' THEN 22
+        WHEN '25-27' THEN 25
+        WHEN '28-30' THEN 28
+        WHEN '31' THEN 31
+        ELSE 999
+    END
+LIMIT 1000
 """.strip()
 
 SQL_WEEKLY_ACTIVITY_DISTRIBUTION = f"""
-WITH user_week AS (
-    SELECT DATE_SUB(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d')) DAY) AS week_start,
-           e.uid,
-           COUNT(*) AS participate_count
-    FROM `event` e
-    WHERE {_dt_between("e", 29)}
-      AND e.event IN ({ACTIVITY_EVENTS})
-      AND e.prod = {PROD_ID}
-    GROUP BY week_start, e.uid
-)
-SELECT week_start AS `周`,
-       CASE
-         WHEN participate_count = 1 THEN '1次'
-         WHEN participate_count BETWEEN 2 AND 3 THEN '2-3次'
-         WHEN participate_count BETWEEN 4 AND 7 THEN '4-7次'
-         ELSE '8次+'
-       END AS `参与次数段`,
-       COUNT(DISTINCT uid) AS `人数`
-FROM user_week
-GROUP BY week_start, `参与次数段`
-ORDER BY week_start, `参与次数段`
+SELECT
+    e.event AS `活动类型`,
+    COUNT(*) AS `参与次数`,
+    COUNT(DISTINCT e.uid) AS `参与人数`,
+    ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均参与次数`
+FROM `event` e
+WHERE {_dt_between("e", 6)}
+  AND e.prod = {PROD_ID}
+  AND e.event IN ({ACTIVITY_EVENTS})
+GROUP BY e.event
+ORDER BY `参与次数` DESC
+LIMIT 1000
 """.strip()
 
 SQL_NEWBIE_ACTIVITY_RETENTION = f"""
@@ -503,34 +578,41 @@ FROM user_pay
 ORDER BY participate_dt
 """.strip()
 
-GOLD_DELTA = f"{_json_num('e', 'ext', 'ed_changeFree')} + {_json_num('e', 'ext', 'ed_changePaid')}"
-GOLD_ROUTE = f"COALESCE({_json_text('e', 'ext', 'ed_route')}, {_json_text('e', 'ext', 'ed_detailReason')}, '未知')"
+GOLD_FREE_DELTA = _json_num("e", "personal", "ed_changeFree")
+GOLD_PAID_DELTA = _json_num("e", "personal", "ed_changePaid")
+GOLD_DELTA = f"{GOLD_FREE_DELTA} + {GOLD_PAID_DELTA}"
+GOLD_ROUTE = f"COALESCE({_json_text('e', 'personal', 'ed_route')}, {_json_text('e', 'personal', 'ed_detailReason')}, '未知')"
 
 SQL_GOLD_CHANGE = f"""
-SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
-       ROUND(SUM(GREATEST({GOLD_DELTA}, 0)), 2) AS `钻石获取量`,
-       ROUND(ABS(SUM(LEAST({GOLD_DELTA}, 0))), 2) AS `钻石消耗量`,
-       ROUND(SUM({GOLD_DELTA}), 2) AS `钻石存量变化`
+SELECT
+    STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
+    ROUND(SUM(GREATEST({GOLD_FREE_DELTA}, 0)), 2) AS `免费钻石获取量`,
+    ROUND(ABS(SUM(LEAST({GOLD_FREE_DELTA}, 0))), 2) AS `免费钻石消耗量`,
+    ROUND(SUM({GOLD_FREE_DELTA}), 2) AS `免费钻石存量变化`,
+    ROUND(SUM(GREATEST({GOLD_PAID_DELTA}, 0)), 2) AS `付费钻石获取量`,
+    ROUND(ABS(SUM(LEAST({GOLD_PAID_DELTA}, 0))), 2) AS `付费钻石消耗量`,
+    ROUND(SUM({GOLD_PAID_DELTA}), 2) AS `付费钻石存量变化`
 FROM `event` e
 WHERE {_dt_between("e", 29)}
   AND e.event = 'GoldChange'
   AND e.prod = {PROD_ID}
 GROUP BY e.dt
 ORDER BY e.dt
+LIMIT 1000
 """.strip()
 
 SQL_GOLD_SOURCE = f"""
-SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
-       {GOLD_ROUTE} AS `获取途径`,
-       ROUND(SUM(GREATEST({GOLD_DELTA}, 0)), 2) AS `钻石获取量`
+SELECT
+    {GOLD_ROUTE} AS `获取途径`,
+    ROUND(SUM({GOLD_FREE_DELTA}), 2) AS `免费钻石获取量`
 FROM `event` e
 WHERE {_dt_between("e", 29)}
   AND e.event = 'GoldChange'
   AND e.prod = {PROD_ID}
-GROUP BY e.dt, `获取途径`
-HAVING `钻石获取量` > 0
-ORDER BY e.dt, `获取途径`
-LIMIT 300
+  AND {GOLD_FREE_DELTA} > 0
+GROUP BY `获取途径`
+ORDER BY `免费钻石获取量` DESC
+LIMIT 1000
 """.strip()
 
 SQL_GOLD_SINK = f"""
@@ -818,7 +900,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "e02bdbafdd364d3cba9f991f94896c86": ViewSql("出征数据", "过去7日各兵种出征情况", "table", ("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), columns=("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), sql=SQL_ARMY_7D),
     "59a8dfd8d6e341988edfbf1666872aae": ViewSql("出征数据", "近七天英雄出征量分布", "table", ("日期", "英雄ID", "出征次数"), columns=("日期", "英雄ID", "出征次数"), sql=SQL_HERO_EXPEDITION_COUNT),
     "848927b0833443d39a93797c3507368e": ViewSql("出征数据", "各等级出征胜率", "table", ("等级", "目标类型", "出征结果次数", "出征用户数", "胜利次数", "出征胜率"), columns=("等级", "目标类型", "出征结果次数", "出征用户数", "胜利次数", "出征胜率"), sql=SQL_LEVEL_WIN_RATE),
-    "344c936b561f44f6bc29cc2663f3f651": ViewSql("出征数据", "各将领出征胜率", "table", ("将领ID", "各将领出征胜率"), columns=("将领ID", "各将领出征胜率"), sql=SQL_HERO_WIN_RATE),
+    "344c936b561f44f6bc29cc2663f3f651": ViewSql("出征数据", "各英雄出征胜率", "table", ("英雄ID", "出征次数", "胜利次数", "出征胜率"), columns=("英雄ID", "出征次数", "胜利次数", "出征胜率"), sql=SQL_HERO_WIN_RATE),
     "61c21b5974844638a3d7370971de58c9": ViewSql("出征数据", "各主城等级参与演习次数", "line", ("日期", "主城等级", "参与演习次数"), ("日期",), ("参与演习次数",), sql=SQL_DRILL_BY_CITY_LEVEL),
     "f6ca362eb4274830b3298b0227a8ab88": ViewSql("付费概览", "充值用户周累充分布", "table", ("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), columns=("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), sql=SQL_WEEKLY_PAY_DISTRIBUTION),
     "4045ede9004f48de9fb8b8aed5f79287": ViewSql("渠道分析", "各渠道充值用户周累充分布", "table", ("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), columns=("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), sql=SQL_WEEKLY_PAY_DISTRIBUTION),
@@ -826,12 +908,12 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "531012d01f104a509da2d1926692ee1d": ViewSql("投放看板", "各渠道注册与付费", "table", ("日期", "渠道", "账号注册用户数", "首日付费金额", "7日累计付费金额", "累计付费金额"), columns=("日期", "渠道", "账号注册用户数", "首日付费金额", "7日累计付费金额", "累计付费金额"), sql=SQL_ACQUISITION_CHANNEL_PAY),
     "c794f6521d8b44d39f78eabdf109896b": ViewSql("活动分析", "各类活动参与率", "line", ("日期", "活动类型", "活动参与率"), ("日期",), ("活动参与率",), sql=SQL_ACTIVITY_PARTICIPATION_RATE),
     "6266951d0e1842e2b259121ab06f7a61": ViewSql("活动分析", "各类活动人均参与次数", "line", ("日期", "活动类型", "人均参与次数"), ("日期",), ("人均参与次数",), sql=SQL_ACTIVITY_AVG_TIMES),
-    "13d554014c854e508ff016d93a6f3899": ViewSql("活动分析", "各等级段参与日常活动的人数分布", "column", ("阶段", "参与人数"), ("阶段",), ("参与人数",), sql=SQL_ACTIVITY_LEVEL),
-    "161fd0d2996a49a29e82606e6db7d95b": ViewSql("活动分析", "每周活动参与次数分布", "column", ("周", "参与次数段", "人数"), ("参与次数段",), ("人数",), columns=("周", "参与次数段", "人数"), sql=SQL_WEEKLY_ACTIVITY_DISTRIBUTION),
+    "13d554014c854e508ff016d93a6f3899": ViewSql("活动分析", "各等级段参与日常活动的人数分布", "column", ("等级段", "参与人数"), ("等级段",), ("参与人数",), columns=("等级段", "参与人数"), sql=SQL_ACTIVITY_LEVEL),
+    "161fd0d2996a49a29e82606e6db7d95b": ViewSql("活动分析", "每周活动参与次数分布", "column", ("活动类型", "参与次数", "参与人数", "人均参与次数"), ("活动类型",), ("参与次数",), columns=("活动类型", "参与次数", "参与人数", "人均参与次数"), sql=SQL_WEEKLY_ACTIVITY_DISTRIBUTION),
     "9684a569ed034fb0b8a106a9817effaa": ViewSql("活动分析", "参与新手活动的后续7日留存率", "table", ("日期", "参与新手活动用户数", "第1日", "第7日"), columns=("日期", "参与新手活动用户数", "第1日", "第7日"), sql=SQL_NEWBIE_ACTIVITY_RETENTION),
     "095b1cf41cd64844b1f78f07ceccb7bf": ViewSql("活动分析", "参与节日活动的后续7日付费留存率", "table", ("日期", "参与节日活动用户数", "当日", "第7日"), columns=("日期", "参与节日活动用户数", "当日", "第7日"), sql=SQL_FESTIVAL_PAY_RETENTION),
-    "4cc60cadf26e4b2f945c672f2648d205": ViewSql("经济系统", "钻石消耗获取情况", "line", ("日期", "钻石获取量", "钻石消耗量", "钻石存量变化"), ("日期",), ("钻石获取量", "钻石消耗量", "钻石存量变化"), sql=SQL_GOLD_CHANGE),
-    "df837cb59810483f84fb0e7cd420646a": ViewSql("经济系统", "钻石获取途径分布", "line", ("日期", "获取途径", "钻石获取量"), ("日期",), ("钻石获取量",), sql=SQL_GOLD_SOURCE),
+    "4cc60cadf26e4b2f945c672f2648d205": ViewSql("经济系统", "钻石消耗获取情况", "line", ("日期", "免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), ("日期",), ("免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), sql=SQL_GOLD_CHANGE),
+    "df837cb59810483f84fb0e7cd420646a": ViewSql("经济系统", "免费钻石获取途径分布", "column", ("获取途径", "免费钻石获取量"), ("获取途径",), ("免费钻石获取量",), columns=("获取途径", "免费钻石获取量"), sql=SQL_GOLD_SOURCE),
     "fda6854e188c44c4b35e75c9af6d9854": ViewSql("经济系统", "钻石消耗途径分布", "line", ("日期", "消耗途径", "钻石消耗量"), ("日期",), ("钻石消耗量",), sql=SQL_GOLD_SINK),
     "15da41b65ee64aba854e2de701a728bc": ViewSql("礼包付费概览", "购买新手礼包用户复购率", "table", ("日期", "购买新手礼包用户数", "当周", "第1周", "第2周"), columns=("日期", "购买新手礼包用户数", "当周", "第1周", "第2周"), sql=SQL_STARTER_PACK_REPURCHASE),
     "f113ac14e8994d12814452040b702424": ViewSql("礼包付费概览", "购买月卡用户的30日留存", "line", ("留存日", "留存率"), ("留存日",), ("留存率",), sql=SQL_MONTH_CARD_RETENTION),
