@@ -838,7 +838,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 32px;
-  min-height: 68px;
+  min-height: 46px;
   padding: 0 56px;
   border-bottom: 1px solid rgba(17, 24, 39, 0.1);
   background: rgba(255, 255, 255, 0.94);
@@ -849,7 +849,7 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   min-width: 260px;
-  gap: 12px;
+  gap: 10px;
   border: 0;
   padding: 0;
   background: transparent;
@@ -858,24 +858,24 @@ onMounted(async () => {
 }
 
 .power-login-brand-mark {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.12);
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.1);
 
   img {
-    width: 34px;
-    height: 34px;
+    width: 27px;
+    height: 27px;
     object-fit: contain;
   }
 
   :deep(svg) {
-    width: 30px;
-    height: 30px;
+    width: 25px;
+    height: 25px;
   }
 }
 
@@ -885,16 +885,16 @@ onMounted(async () => {
   strong {
     display: block;
     color: #111827;
-    font-size: 18px;
-    line-height: 1.2;
+    font-size: 16px;
+    line-height: 1.15;
   }
 
   span {
     display: block;
-    margin-top: 3px;
+    margin-top: 1px;
     color: #5d6675;
-    font-size: 12px;
-    line-height: 1.25;
+    font-size: 11px;
+    line-height: 1.2;
   }
 }
 
@@ -939,8 +939,8 @@ onMounted(async () => {
 }
 
 .power-login-nav-action {
-  height: 36px;
-  padding: 0 16px;
+  height: 32px;
+  padding: 0 14px;
   font-size: 13px;
 }
 
