@@ -2,7 +2,7 @@
 脚本说明：这个脚本定义仪表盘用到的数据表或数据对象，便于代码和数据库对齐。
 """
 from sqlmodel import SQLModel, Field
-from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index
+from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index, UniqueConstraint
 from typing import Any, Optional, List, Literal, Dict
 from pydantic import BaseModel
 
@@ -147,6 +147,62 @@ class CoreDashboard(SQLModel, table=True):
     )
 
 
+class CoreDashboardTree(SQLModel, table=True):
+    """
+    类说明：CoreDashboardTree 保存不同看板树范围下的节点位置。
+    """
+    __tablename__ = "core_dashboard_tree"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "scope", "dashboard_id", name="uq_core_dashboard_tree_scope_dashboard"),
+        Index("idx_core_dashboard_tree_tenant_scope", "tenant_id", "scope"),
+        Index("idx_core_dashboard_tree_dashboard", "dashboard_id"),
+    )
+    id: str = Field(
+        sa_column=Column(String(50), nullable=False, primary_key=True)
+    )
+    tenant_id: int = Field(
+        default=1,
+        sa_column=Column(BigInteger, nullable=False, server_default="1")
+    )
+    scope: str = Field(
+        default="my",
+        max_length=32,
+        sa_column=Column(String(32), nullable=False)
+    )
+    dashboard_id: str = Field(
+        default=None,
+        max_length=50,
+        sa_column=Column(String(50), nullable=False)
+    )
+    parent_id: str = Field(
+        default="root",
+        max_length=50,
+        sa_column=Column(String(50), nullable=False, server_default="root")
+    )
+    sort: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=True)
+    )
+    create_time: int = Field(
+        default=None,
+        sa_column=Column(BigInteger, nullable=True)
+    )
+    create_by: str = Field(
+        default=None,
+        max_length=255,
+        sa_column=Column(String(255), nullable=True)
+    )
+    update_time: int = Field(
+        default=None,
+        sa_column=Column(BigInteger, nullable=True)
+    )
+    update_by: str = Field(
+        default=None,
+        max_length=255,
+        sa_column=Column(String(255), nullable=True)
+    )
+
+
 class CoreDashboardShare(SQLModel, table=True):
     """
     类说明：CoreDashboardShare 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
@@ -261,6 +317,7 @@ class DashboardBaseResponse(BaseModel):
     can_share: Optional[bool] = False
     can_set_default: Optional[bool] = False
     is_default: Optional[bool] = False
+    is_default_tree: Optional[bool] = False
     is_shared: Optional[bool] = False
     is_public: Optional[bool] = False
     can_copy_to_platform_template: Optional[bool] = False

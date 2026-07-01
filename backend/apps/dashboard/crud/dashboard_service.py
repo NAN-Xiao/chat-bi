@@ -19,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from apps.dashboard.models.dashboard_model import (
     CoreDashboard,
     CoreDashboardShare,
+    CoreDashboardTree,
     CreateDashboard,
     QueryDashboard,
     DashboardBaseResponse,
@@ -1075,6 +1076,241 @@ def _dashboard_matches_datasource(record: CoreDashboard, datasource_id: int) -> 
     if record.datasource == datasource_id:
         return True
     return record.datasource is None and _canvas_uses_datasource(record, datasource_id)
+
+
+def _dashboard_root_pid(pid: str | None) -> bool:
+    return pid in ("root", "0", "", None)
+
+
+def _dashboard_tree_scope(scope: str | None) -> str:
+    return "default" if scope == "default" else "my"
+
+
+def _dashboard_tree_position_map(
+        session: SessionDep,
+        current_user: CurrentUser,
+        scope: str,
+        dashboard_ids: list[str],
+) -> dict[str, CoreDashboardTree]:
+    unique_ids = [dashboard_id for dashboard_id in dict.fromkeys(dashboard_ids) if dashboard_id]
+    if not unique_ids:
+        return {}
+    rows = session.exec(
+        select(CoreDashboardTree).where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(current_user),
+                CoreDashboardTree.scope == _dashboard_tree_scope(scope),
+                CoreDashboardTree.dashboard_id.in_(unique_ids),
+            )
+        )
+    ).scalars().all()
+    return {row.dashboard_id: row for row in rows}
+
+
+def _dashboard_tree_scope_has_positions(
+        session: SessionDep,
+        current_user: CurrentUser,
+        scope: str,
+) -> bool:
+    row = session.exec(
+        select(CoreDashboardTree.id)
+        .where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(current_user),
+                CoreDashboardTree.scope == _dashboard_tree_scope(scope),
+            )
+        )
+        .limit(1)
+    ).first()
+    return row is not None
+
+
+def _dashboard_tree_dashboard_ids(
+        session: SessionDep,
+        current_user: CurrentUser,
+        scope: str,
+) -> list[str]:
+    rows = session.exec(
+        select(CoreDashboardTree.dashboard_id).where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(current_user),
+                CoreDashboardTree.scope == _dashboard_tree_scope(scope),
+            )
+        )
+    ).all()
+    dashboard_ids: list[str] = []
+    for row in rows:
+        if row in (None, ""):
+            continue
+        if isinstance(row, str):
+            dashboard_ids.append(row)
+        elif isinstance(row, tuple):
+            dashboard_ids.append(str(row[0]))
+        elif hasattr(row, "_mapping"):
+            dashboard_ids.append(str(row[0]))
+        else:
+            dashboard_ids.append(str(row))
+    return dashboard_ids
+
+
+def _dashboard_tree_upsert_position(
+        session: SessionDep,
+        current_user: CurrentUser,
+        scope: str,
+        dashboard_id: str,
+        parent_id: str | None,
+        sort: int | None,
+        operator_id: str,
+        now: int,
+) -> CoreDashboardTree:
+    normalized_scope = _dashboard_tree_scope(scope)
+    existing = _dashboard_tree_position_map(session, current_user, normalized_scope, [dashboard_id]).get(dashboard_id)
+    if existing is None:
+        existing = CoreDashboardTree(
+            id=uuid.uuid4().hex,
+            tenant_id=_current_tenant_id(current_user),
+            scope=normalized_scope,
+            dashboard_id=dashboard_id,
+            create_by=operator_id,
+            create_time=now,
+        )
+    existing.parent_id = "root" if _dashboard_root_pid(parent_id) else str(parent_id)
+    existing.sort = int(sort or 0)
+    existing.update_by = operator_id
+    existing.update_time = now
+    session.add(existing)
+    return existing
+
+
+def _dashboard_tree_sort_value(record: CoreDashboard, position: CoreDashboardTree | None) -> int:
+    return int(position.sort if position is not None and position.sort is not None else record.sort or 0)
+
+
+def _dashboard_tree_parent_value(record: CoreDashboard, position: CoreDashboardTree | None) -> str:
+    parent_id = position.parent_id if position is not None else record.pid
+    return "root" if _dashboard_root_pid(parent_id) else str(parent_id)
+
+
+def _dashboard_tree_position_parent(position: CoreDashboardTree | None) -> str:
+    if position is None:
+        return "root"
+    return "root" if _dashboard_root_pid(position.parent_id) else str(position.parent_id)
+
+
+def _dashboard_records_for_tree(
+        session: SessionDep,
+        current_user: CurrentUser,
+        records: list[CoreDashboard],
+        positions: dict[str, CoreDashboardTree],
+        scope: str,
+        use_legacy_fallback: bool,
+) -> list[CoreDashboard]:
+    record_by_id = {record.id: record for record in records if record.id is not None}
+    pending_parent_ids = {
+        (
+            _dashboard_tree_parent_value(record, positions.get(record.id))
+            if use_legacy_fallback
+            else _dashboard_tree_position_parent(positions.get(record.id))
+        )
+        for record in records
+        if not _dashboard_root_pid(
+            _dashboard_tree_parent_value(record, positions.get(record.id))
+            if use_legacy_fallback
+            else _dashboard_tree_position_parent(positions.get(record.id))
+        )
+        and (
+            _dashboard_tree_parent_value(record, positions.get(record.id))
+            if use_legacy_fallback
+            else _dashboard_tree_position_parent(positions.get(record.id))
+        ) not in record_by_id
+    }
+    while pending_parent_ids:
+        parent_ids = list(pending_parent_ids)
+        pending_parent_ids = set()
+        parents = session.exec(
+            select(CoreDashboard).where(
+                and_(
+                    _active_dashboard_filter(),
+                    CoreDashboard.tenant_id == _current_tenant_id(current_user),
+                    CoreDashboard.node_type == "folder",
+                    CoreDashboard.id.in_(parent_ids),
+                )
+            )
+        ).scalars().all()
+        parent_positions = _dashboard_tree_position_map(
+            session,
+            current_user,
+            scope,
+            [parent.id for parent in parents if parent.id not in positions],
+        )
+        positions.update({key: value for key, value in parent_positions.items() if key not in positions})
+        for parent in parents:
+            if parent.id in record_by_id:
+                continue
+            record_by_id[parent.id] = parent
+            records.append(parent)
+            parent_pid = (
+                _dashboard_tree_parent_value(parent, positions.get(parent.id))
+                if use_legacy_fallback
+                else _dashboard_tree_position_parent(positions.get(parent.id))
+            )
+            if not _dashboard_root_pid(parent_pid) and parent_pid not in record_by_id:
+                pending_parent_ids.add(parent_pid)
+    return records
+
+
+def _dashboard_tree_nodes(
+        session: SessionDep,
+        current_user: CurrentUser,
+        records: list[CoreDashboard],
+        scope: str,
+        datasource_id: int | None = None,
+        share_map: dict[str, CoreDashboardShare] | None = None,
+):
+    scope = _dashboard_tree_scope(scope)
+    use_legacy_fallback = not _dashboard_tree_scope_has_positions(session, current_user, scope)
+    positions = _dashboard_tree_position_map(
+        session,
+        current_user,
+        scope,
+        [record.id for record in records if record.id is not None],
+    )
+    if not use_legacy_fallback:
+        records = [record for record in records if record.id in positions]
+    records = _dashboard_records_for_tree(session, current_user, records, positions, scope, use_legacy_fallback)
+    records.sort(
+        key=lambda record: (
+            _dashboard_tree_sort_value(record, positions.get(record.id)),
+            -(int(record.create_time or 0)),
+            str(record.id or ""),
+        )
+    )
+    nodes = [
+        _dashboard_base_response(
+            session,
+            current_user,
+            record,
+            None if _is_external_mcp_dashboard(record) else datasource_id,
+            (share_map or {}).get(record.id),
+        )
+        for record in records
+    ]
+    visible_ids = {node.id for node in nodes if node.id is not None}
+    record_by_id = {record.id: record for record in records if record.id is not None}
+    for node in nodes:
+        position = positions.get(str(node.id))
+        source_record = record_by_id.get(str(node.id))
+        if source_record is not None:
+            node.pid = (
+                _dashboard_tree_parent_value(source_record, position)
+                if use_legacy_fallback
+                else _dashboard_tree_position_parent(position)
+            )
+            node.sort = _dashboard_tree_sort_value(source_record, position)
+            setattr(node, "is_default_tree", scope == "default")
+        if not _dashboard_root_pid(node.pid) and node.pid not in visible_ids:
+            node.pid = "root"
+    return nodes
 
 
 def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: int | None = None) -> int | None:
@@ -2719,6 +2955,7 @@ def _dashboard_base_response(
         can_share=can_share,
         can_set_default=can_set_default,
         is_default=bool(record.is_default),
+        is_default_tree=False,
         is_shared=active_share is not None,
         is_public=is_public,
         can_copy_to_platform_template=can_copy_to_platform_template,
@@ -2861,11 +3098,13 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
+    my_tree_has_positions = _dashboard_tree_scope_has_positions(session, current_user, "my")
     filters = [
         _active_dashboard_filter(),
         CoreDashboard.tenant_id == _current_tenant_id(current_user),
-        or_(CoreDashboard.is_default == 0, CoreDashboard.node_type == "leaf"),
     ]
+    if not my_tree_has_positions:
+        filters.append(or_(CoreDashboard.is_default == 0, CoreDashboard.node_type == "leaf"))
     datasource_id = _normalize_datasource_id(dashboard.datasource)
     bound_external_mcp_id = get_bound_external_mcp_id_for_tenant(session, _current_tenant_id(current_user))
     external_mcp_filter = and_(
@@ -2923,25 +3162,14 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
         current_user,
         [record.id for record in result],
     )
-    nodes = [
-        _dashboard_base_response(
-            session,
-            current_user,
-            record,
-            None if _is_external_mcp_dashboard(record) else datasource_id,
-            share_map.get(record.id),
-        )
-        for record in result
-    ]
-    visible_ids = {node.id for node in nodes if node.id is not None}
-    for node in nodes:
-        if (
-            node.is_default
-            and node.node_type == "leaf"
-            and node.pid not in ("root", "0", "", None)
-            and node.pid not in visible_ids
-        ):
-            node.pid = "root"
+    nodes = _dashboard_tree_nodes(
+        session,
+        current_user,
+        result,
+        "my",
+        datasource_id,
+        share_map,
+    )
     tree = build_tree_generic(nodes, root_pid="root")
     return tree
 
@@ -3098,15 +3326,18 @@ def list_default_resources(session: SessionDep, current_user: CurrentUser):
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
+    tree_dashboard_ids = _dashboard_tree_dashboard_ids(session, current_user, "default")
+    filters = [
+        _active_dashboard_filter(),
+        CoreDashboard.tenant_id == _current_tenant_id(current_user),
+    ]
+    if tree_dashboard_ids:
+        filters.append(CoreDashboard.id.in_(tree_dashboard_ids))
+    else:
+        filters.append(CoreDashboard.is_default == 1)
     statement = (
         select(CoreDashboard)
-        .where(
-            and_(
-                _active_dashboard_filter(),
-                CoreDashboard.tenant_id == _current_tenant_id(current_user),
-                CoreDashboard.is_default == 1,
-            )
-        )
+        .where(and_(*filters))
         .order_by(
             func.coalesce(CoreDashboard.sort, 0).asc(),
             CoreDashboard.update_time.asc(),
@@ -3114,14 +3345,7 @@ def list_default_resources(session: SessionDep, current_user: CurrentUser):
         )
     )
     result = session.exec(statement).scalars().all()
-    nodes = [
-        _dashboard_base_response(session, current_user, record, _effective_dashboard_datasource(record))
-        for record in result
-    ]
-    visible_ids = {node.id for node in nodes if node.id is not None}
-    for node in nodes:
-        if node.pid not in ("root", "0", "", None) and node.pid not in visible_ids:
-            node.pid = "root"
+    nodes = _dashboard_tree_nodes(session, current_user, result, "default")
     return build_tree_generic(nodes, root_pid="root")
 
 
@@ -3196,6 +3420,17 @@ def copy_default_resource(session: SessionDep, user: CurrentUser, request: Dashb
         check_version=source.check_version or "1",
     )
     session.add(record)
+    session.flush()
+    _dashboard_tree_upsert_position(
+        session,
+        user,
+        "my",
+        record.id,
+        "root",
+        record.sort,
+        operator_id,
+        now,
+    )
     session.commit()
     session.refresh(record)
     return record
@@ -3231,8 +3466,8 @@ def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDas
         dashboard.datasource = None
         if dashboard.pid and dashboard.pid != "root":
             parent = _load_dashboard_or_404(session, dashboard.pid, user)
-            if parent.node_type != "folder" or not parent.is_default:
-                raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended folder")
+            if parent.node_type != "folder":
+                raise HTTPException(status_code=400, detail="Default dashboard parent must be a folder")
     elif _is_external_mcp_dashboard_request(dashboard):
         dashboard.external_mcp_server_id = _ensure_external_mcp_bound_to_current_tenant(
             session,
@@ -3252,6 +3487,17 @@ def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDas
     session.add(record)
     session.flush()
     session.refresh(record)
+    position_scope = "default" if dashboard.is_default else "my"
+    _dashboard_tree_upsert_position(
+        session,
+        user,
+        position_scope,
+        record.id,
+        dashboard.pid,
+        record.sort,
+        record.create_by,
+        record.create_time or _now(),
+    )
     session.commit()
     session.refresh(record)
     return record
@@ -3307,6 +3553,16 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     session.add(record)
     session.flush()
     session.refresh(record)
+    _dashboard_tree_upsert_position(
+        session,
+        user,
+        "my",
+        record.id,
+        dashboard.pid,
+        record.sort,
+        record.create_by,
+        record.create_time or _now(),
+    )
     session.commit()
     session.refresh(record)
     return record
@@ -3380,10 +3636,19 @@ def move_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDashbo
             raise HTTPException(status_code=400, detail="Dashboard parent must belong to the same external MCP datasource")
         if _effective_dashboard_datasource(parent) != _effective_dashboard_datasource(record):
             raise HTTPException(status_code=400, detail="Dashboard parent must belong to the same datasource")
-    record.pid = target_pid
-    record.update_by = _asset_operator_id(session, user)
-    record.update_time = _now()
-    session.add(record)
+    now = _now()
+    operator_id = _asset_operator_id(session, user)
+    position = _dashboard_tree_upsert_position(
+        session,
+        user,
+        "my",
+        record.id,
+        target_pid,
+        _dashboard_tree_sort_value(record, _dashboard_tree_position_map(session, user, "my", [record.id]).get(record.id)),
+        operator_id,
+        now,
+    )
+    session.add(position)
     session.commit()
     session.refresh(record)
     return record
@@ -3411,38 +3676,49 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
                 raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
 
     now = int(time.time())
-    if request.is_default and not record.is_default:
+    operator_id = _asset_operator_id(session, user)
+    if request.is_default:
         max_sort_row = session.exec(
-            select(func.max(func.coalesce(CoreDashboard.sort, 0)))
+            select(func.max(func.coalesce(CoreDashboardTree.sort, 0)))
             .where(
                 and_(
-                    _active_dashboard_filter(),
-                    CoreDashboard.tenant_id == _current_tenant_id(user),
-                    CoreDashboard.node_type == "leaf",
-                    CoreDashboard.is_default == 1,
+                    CoreDashboardTree.tenant_id == _current_tenant_id(user),
+                    CoreDashboardTree.scope == "default",
                 )
             )
         ).first()
         max_sort = _first_scalar_value(max_sort_row)
-        record.sort = int(max_sort or 0) + 1
-    elif not request.is_default and record.is_default:
-        parent = (
-            session.exec(
-                select(CoreDashboard).where(
-                    and_(
-                        _active_dashboard_filter(),
-                        CoreDashboard.tenant_id == _current_tenant_id(user),
-                        CoreDashboard.id == record.pid,
-                    )
-                )
-            ).first()
-            if record.pid not in ("root", "0", "", None)
-            else None
+        sort_value = _dashboard_tree_sort_value(
+            record,
+            _dashboard_tree_position_map(session, user, "default", [record.id]).get(record.id),
         )
-        if parent and parent.is_default:
-            record.pid = "root"
+        if sort_value == 0:
+            sort_value = int(max_sort or 0) + 1
+        _dashboard_tree_upsert_position(
+            session,
+            user,
+            "default",
+            record.id,
+            "root",
+            sort_value,
+            operator_id,
+            now,
+        )
+        record.sort = sort_value
+    else:
+        default_positions = session.exec(
+            select(CoreDashboardTree).where(
+                and_(
+                    CoreDashboardTree.tenant_id == _current_tenant_id(user),
+                    CoreDashboardTree.scope == "default",
+                    CoreDashboardTree.dashboard_id == record.id,
+                )
+            )
+        ).scalars().all()
+        for position in default_positions:
+            session.delete(position)
     record.is_default = 1 if request.is_default else 0
-    record.update_by = _asset_operator_id(session, user)
+    record.update_by = operator_id
     record.update_time = now
     session.add(record)
     session.commit()
@@ -3466,8 +3742,6 @@ def sort_default_resources(session: SessionDep, user: CurrentUser, request: Dash
             and_(
                 _active_dashboard_filter(),
                 CoreDashboard.tenant_id == _current_tenant_id(user),
-                CoreDashboard.node_type == "leaf",
-                CoreDashboard.is_default == 1,
                 CoreDashboard.id.in_(ordered_ids),
             )
         )
@@ -3480,31 +3754,35 @@ def sort_default_resources(session: SessionDep, user: CurrentUser, request: Dash
     operator_id = _asset_operator_id(session, user)
     for index, dashboard_id in enumerate(ordered_ids):
         record = record_by_id[dashboard_id]
-        record.sort = index + 1
-        record.update_by = operator_id
-        record.update_time = now
-        session.add(record)
+        _dashboard_tree_upsert_position(
+            session,
+            user,
+            "default",
+            dashboard_id,
+            "root",
+            index + 1,
+            operator_id,
+            now,
+        )
+        if record.node_type == "leaf" and not record.is_default:
+            record.is_default = 1
+            record.update_by = operator_id
+            record.update_time = now
+            session.add(record)
 
     session.commit()
     return True
 
 
-def _would_create_dashboard_cycle(record_by_id: dict[str, CoreDashboard], child_id: str, target_pid: str) -> bool:
-    """
-    是什么：_would_create_dashboard_cycle 是一个可以复用的小步骤，负责仪表盘相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    seen = {child_id}
-    current_pid = target_pid
-    while current_pid and current_pid != "root":
-        if current_pid in seen:
-            return True
-        seen.add(current_pid)
-        parent = record_by_id.get(current_pid)
-        if parent is None:
-            return False
-        current_pid = parent.pid or "root"
+def _dashboard_tree_has_cycle(parent_by_id: dict[str, str]) -> bool:
+    for child_id in parent_by_id:
+        seen: set[str] = set()
+        current_id = child_id
+        while current_id and current_id != "root":
+            if current_id in seen:
+                return True
+            seen.add(current_id)
+            current_id = parent_by_id.get(current_id, "root")
     return False
 
 
@@ -3540,30 +3818,26 @@ def reorder_resources(session: SessionDep, user: CurrentUser, request: Dashboard
         raise HTTPException(status_code=404, detail="Dashboard does not exist")
 
     for record in records:
-        if scope == "default":
-            if not record.is_default:
-                raise HTTPException(status_code=400, detail="Default dashboard tree can only contain recommended dashboards")
-        else:
+        if scope != "default":
             _require_edit_permission(session, user, record)
-            if record.is_default:
-                raise HTTPException(status_code=400, detail="Recommended dashboards must be reordered in recommended scope")
 
+    requested_parent_by_id: dict[str, str] = {}
     for item in request.items:
-        record = record_by_id[str(item.id)]
         target_pid = item.pid or "root"
         if target_pid in ("0", ""):
             target_pid = "root"
-        if target_pid == record.id or _would_create_dashboard_cycle(record_by_id, record.id, target_pid):
+        requested_parent_by_id[str(item.id)] = target_pid
+
+    for item in request.items:
+        record = record_by_id[str(item.id)]
+        target_pid = requested_parent_by_id[str(item.id)]
+        if target_pid == record.id:
             raise HTTPException(status_code=400, detail="Dashboard cannot move under itself")
         if target_pid == "root":
             continue
         parent = record_by_id.get(target_pid) or _load_dashboard_or_404(session, target_pid, user)
         if parent.node_type != "folder":
             raise HTTPException(status_code=400, detail="Dashboard parent must be a folder")
-        if scope == "default" and not parent.is_default:
-            raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended")
-        if scope == "my" and parent.is_default:
-            raise HTTPException(status_code=400, detail="My dashboard parent cannot be recommended")
         if scope == "my":
             parent_datasource = _effective_dashboard_datasource(parent)
             record_datasource = _effective_dashboard_datasource(record)
@@ -3572,16 +3846,52 @@ def reorder_resources(session: SessionDep, user: CurrentUser, request: Dashboard
 
     now = int(time.time())
     operator_id = _asset_operator_id(session, user)
+    existing_tree_rows = session.exec(
+        select(CoreDashboardTree).where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(user),
+                CoreDashboardTree.scope == _dashboard_tree_scope(scope),
+            )
+        )
+    ).scalars().all()
+    existing_positions = {row.dashboard_id: row for row in existing_tree_rows}
+    parent_by_id = {
+        row.dashboard_id: _dashboard_tree_position_parent(row)
+        for row in existing_tree_rows
+        if row.dashboard_id
+    }
+    for record in records:
+        if record.id not in parent_by_id:
+            parent_by_id[record.id] = "root" if _dashboard_root_pid(record.pid) else str(record.pid)
+    parent_by_id.update(requested_parent_by_id)
+    if _dashboard_tree_has_cycle(parent_by_id):
+        raise HTTPException(status_code=400, detail="Dashboard cannot move under itself")
+
     for item in request.items:
         record = record_by_id[str(item.id)]
-        target_pid = item.pid or "root"
-        if target_pid in ("0", ""):
-            target_pid = "root"
-        record.pid = target_pid
-        record.sort = item.sort or 0
-        record.update_by = operator_id
-        record.update_time = now
-        session.add(record)
+        target_pid = requested_parent_by_id[str(item.id)]
+        position = existing_positions.get(record.id)
+        if position is None:
+            position = CoreDashboardTree(
+                id=uuid.uuid4().hex,
+                tenant_id=_current_tenant_id(user),
+                scope=scope,
+                dashboard_id=record.id,
+                parent_id=target_pid,
+                sort=item.sort or 0,
+                create_by=operator_id,
+                create_time=now,
+            )
+        position.parent_id = target_pid
+        position.sort = item.sort or 0
+        position.update_by = operator_id
+        position.update_time = now
+        session.add(position)
+        if scope == "default" and record.node_type == "leaf" and not record.is_default:
+            record.is_default = 1
+            record.update_by = operator_id
+            record.update_time = now
+            session.add(record)
 
     session.commit()
     return True
@@ -3856,6 +4166,17 @@ def _copy_single_platform_template_to_workspace_dashboard(
         check_version=template.check_version or "1",
     )
     session.add(record)
+    session.flush()
+    _dashboard_tree_upsert_position(
+        session,
+        user,
+        "my",
+        record.id,
+        "root",
+        record.sort,
+        operator_id,
+        now,
+    )
     session.commit()
     session.refresh(record)
     return _dashboard_base_response(session, user, record, target_datasource_id)
@@ -3927,8 +4248,8 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
             datasource_id = None
             if dashboard.pid and dashboard.pid != "root":
                 parent = _load_dashboard_or_404(session, dashboard.pid, user)
-                if parent.node_type != "folder" or not parent.is_default:
-                    raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended folder")
+                if parent.node_type != "folder":
+                    raise HTTPException(status_code=400, detail="Default dashboard parent must be a folder")
         elif is_external_mcp_dashboard:
             external_mcp_server_id = _ensure_external_mcp_bound_to_current_tenant(
                 session,
@@ -4006,6 +4327,16 @@ def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id:
         _ensure_datasource_access(session, current_user, coreDashboard.datasource)
     if coreDashboard.is_default:
         _require_set_default_permission(current_user)
+    tree_rows = session.exec(
+        select(CoreDashboardTree).where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(current_user),
+                CoreDashboardTree.dashboard_id == resource_id,
+            )
+        )
+    ).scalars().all()
+    for row in tree_rows:
+        session.delete(row)
     sql = text("DELETE FROM core_dashboard WHERE id = :resource_id AND tenant_id = :tenant_id")
     result = session.execute(sql, {"resource_id": resource_id, "tenant_id": _current_tenant_id(current_user)})
     session.commit()
@@ -4246,6 +4577,7 @@ def use_shared_resource(session: SessionDep, user: CurrentUser, request: SharedD
     if datasource_id is None or not _share_can_use(session, user, share):
         raise HTTPException(status_code=403, detail="You do not have permission to use this shared dashboard")
 
+    now = int(time.time())
     operator_id = _asset_operator_id(session, user)
     record = CoreDashboard(
         id=uuid.uuid4().hex,
@@ -4262,11 +4594,22 @@ def use_shared_resource(session: SessionDep, user: CurrentUser, request: SharedD
         canvas_view_info=share.canvas_view_info or "{}",
         create_by=operator_id,
         update_by=operator_id,
-        create_time=int(time.time()),
-        update_time=int(time.time()),
+        create_time=now,
+        update_time=now,
         delete_flag=0,
     )
     session.add(record)
+    session.flush()
+    _dashboard_tree_upsert_position(
+        session,
+        user,
+        "my",
+        record.id,
+        "root",
+        record.sort,
+        operator_id,
+        now,
+    )
     session.commit()
     session.refresh(record)
     return record

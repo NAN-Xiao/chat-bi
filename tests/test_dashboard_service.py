@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from apps.dashboard.models.dashboard_model import (
     CoreDashboard,
     CoreDashboardShare,
+    CoreDashboardTree,
     CreateDashboard,
     QueryDashboard,
     DashboardDefaultCopyRequest,
@@ -39,7 +40,10 @@ def _clear_dashboard_service_preview_cache(monkeypatch):
 
 def _engine_with_dashboard_table():
     engine = create_engine("sqlite://")
-    SQLModel.metadata.create_all(engine, tables=[CoreDashboard.__table__, CoreDashboardShare.__table__])
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[CoreDashboard.__table__, CoreDashboardTree.__table__, CoreDashboardShare.__table__],
+    )
     with engine.begin() as conn:
         conn.execute(text(
             """
@@ -1583,7 +1587,7 @@ def test_workspace_owner_can_edit_own_default_dashboard_with_workspace_role(monk
     assert updated.update_by == "2"
 
 
-def test_workspace_owner_my_dashboard_list_excludes_other_creators_default(monkeypatch):
+def test_my_dashboard_list_includes_default_folder_ancestor_for_visible_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
@@ -1593,11 +1597,11 @@ def test_workspace_owner_my_dashboard_list_excludes_other_creators_default(monke
             CoreDashboard(
                 id="admin-default-dashboard",
                 name="管理员推荐看板",
-                pid="root",
+                pid="admin-default-folder",
                 datasource=2,
                 node_type="leaf",
                 type="dashboard",
-                create_by="1",
+                create_by="2",
                 create_time=100,
                 delete_flag=0,
                 is_default=1,
@@ -1605,15 +1609,16 @@ def test_workspace_owner_my_dashboard_list_excludes_other_creators_default(monke
         )
         session.add(
             CoreDashboard(
-                id="owner-dashboard",
-                name="我的看板",
+                id="admin-default-folder",
+                name="管理员推荐目录",
                 pid="root",
                 datasource=2,
-                node_type="leaf",
+                node_type="folder",
                 type="dashboard",
                 create_by="2",
                 create_time=101,
                 delete_flag=0,
+                is_default=1,
             )
         )
         session.commit()
@@ -1624,9 +1629,301 @@ def test_workspace_owner_my_dashboard_list_excludes_other_creators_default(monke
             current_user=current_user,
         )
 
-    assert [node.id for node in tree] == ["owner-dashboard"]
+    assert [node.id for node in tree] == ["admin-default-folder"]
     assert tree[0].can_edit is True
     assert tree[0].can_set_default is True
+    assert [node.id for node in tree[0].children] == ["admin-default-dashboard"]
+
+
+def test_reorder_my_scope_can_move_recommended_dashboard_under_my_folder(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="my-folder",
+                name="我的目录",
+                pid="root",
+                datasource=2,
+                node_type="folder",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                is_default=0,
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="my-recommended-dashboard",
+                name="已推荐的我的看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=101,
+                delete_flag=0,
+                is_default=1,
+            )
+        )
+        session.commit()
+
+        dashboard_service.reorder_resources(
+            session=session,
+            user=current_user,
+            request=dashboard_service.DashboardReorderRequest(
+                scope="my",
+                items=[
+                    {"id": "my-folder", "pid": "root", "sort": 1},
+                    {"id": "my-recommended-dashboard", "pid": "my-folder", "sort": 1},
+                ],
+            ),
+        )
+        tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=current_user,
+        )
+        moved = session.get(CoreDashboard, "my-recommended-dashboard")
+        moved_position = session.exec(
+            select(CoreDashboardTree).where(
+                CoreDashboardTree.scope == "my",
+                CoreDashboardTree.dashboard_id == "my-recommended-dashboard",
+            )
+        ).first()
+
+    assert moved.pid == "root"
+    assert moved_position.parent_id == "my-folder"
+    assert [node.id for node in tree] == ["my-folder"]
+    assert [node.id for node in tree[0].children] == ["my-recommended-dashboard"]
+
+
+def test_default_list_includes_non_default_folder_ancestor():
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="my-folder",
+                name="我的目录",
+                pid="root",
+                datasource=2,
+                node_type="folder",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                is_default=0,
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="recommended-dashboard",
+                name="已推荐的我的看板",
+                pid="my-folder",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=101,
+                delete_flag=0,
+                is_default=1,
+            )
+        )
+        session.commit()
+
+        tree = dashboard_service.list_default_resources(
+            session=session,
+            current_user=current_user,
+        )
+
+    assert [node.id for node in tree] == ["my-folder"]
+    assert tree[0].is_default is False
+    assert [node.id for node in tree[0].children] == ["recommended-dashboard"]
+
+
+def test_my_and_default_dashboard_trees_store_same_dashboard_independently(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+
+    with Session(engine) as session:
+        for record in [
+            CoreDashboard(
+                id="my-folder",
+                name="我的目录",
+                pid="root",
+                datasource=2,
+                node_type="folder",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+            ),
+            CoreDashboard(
+                id="default-folder",
+                name="推荐目录",
+                pid="root",
+                datasource=2,
+                node_type="folder",
+                type="dashboard",
+                create_by="2",
+                create_time=101,
+                delete_flag=0,
+            ),
+            CoreDashboard(
+                id="dashboard-123",
+                name="同一个看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=102,
+                delete_flag=0,
+                is_default=1,
+            ),
+        ]:
+            session.add(record)
+        session.commit()
+
+        dashboard_service.reorder_resources(
+            session=session,
+            user=current_user,
+            request=dashboard_service.DashboardReorderRequest(
+                scope="my",
+                items=[
+                    {"id": "my-folder", "pid": "root", "sort": 1},
+                    {"id": "dashboard-123", "pid": "my-folder", "sort": 1},
+                ],
+            ),
+        )
+        dashboard_service.reorder_resources(
+            session=session,
+            user=current_user,
+            request=dashboard_service.DashboardReorderRequest(
+                scope="default",
+                items=[
+                    {"id": "default-folder", "pid": "root", "sort": 1},
+                    {"id": "dashboard-123", "pid": "default-folder", "sort": 1},
+                ],
+            ),
+        )
+
+        my_tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=current_user,
+        )
+        default_tree = dashboard_service.list_default_resources(
+            session=session,
+            current_user=current_user,
+        )
+        positions = session.exec(
+            select(CoreDashboardTree).where(CoreDashboardTree.dashboard_id == "dashboard-123")
+        ).all()
+
+    position_by_scope = {position.scope: position for position in positions}
+    assert position_by_scope["my"].parent_id == "my-folder"
+    assert position_by_scope["default"].parent_id == "default-folder"
+    assert [node.id for node in my_tree] == ["my-folder"]
+    assert [node.id for node in my_tree[0].children] == ["dashboard-123"]
+    assert [node.id for node in default_tree] == ["default-folder"]
+    assert default_tree[0].is_default is False
+    assert default_tree[0].is_default_tree is True
+    assert [node.id for node in default_tree[0].children] == ["dashboard-123"]
+
+
+def test_reorder_default_scope_does_not_change_my_tree(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+
+    with Session(engine) as session:
+        for record in [
+            CoreDashboard(
+                id="my-folder",
+                name="我的目录",
+                pid="root",
+                datasource=2,
+                node_type="folder",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+            ),
+            CoreDashboard(
+                id="default-folder",
+                name="推荐目录",
+                pid="root",
+                datasource=2,
+                node_type="folder",
+                type="dashboard",
+                create_by="2",
+                create_time=101,
+                delete_flag=0,
+            ),
+            CoreDashboard(
+                id="dashboard-123",
+                name="同一个看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=102,
+                delete_flag=0,
+                is_default=1,
+            ),
+        ]:
+            session.add(record)
+        session.add(CoreDashboardTree(
+            id="tree-my-folder",
+            tenant_id=1,
+            scope="my",
+            dashboard_id="my-folder",
+            parent_id="root",
+            sort=1,
+        ))
+        session.add(CoreDashboardTree(
+            id="tree-my-dashboard",
+            tenant_id=1,
+            scope="my",
+            dashboard_id="dashboard-123",
+            parent_id="my-folder",
+            sort=1,
+        ))
+        session.commit()
+
+        dashboard_service.reorder_resources(
+            session=session,
+            user=current_user,
+            request=dashboard_service.DashboardReorderRequest(
+                scope="default",
+                items=[
+                    {"id": "default-folder", "pid": "root", "sort": 1},
+                    {"id": "dashboard-123", "pid": "default-folder", "sort": 1},
+                ],
+            ),
+        )
+        my_tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=current_user,
+        )
+        default_tree = dashboard_service.list_default_resources(
+            session=session,
+            current_user=current_user,
+        )
+
+    assert [node.id for node in my_tree] == ["my-folder"]
+    assert [node.id for node in my_tree[0].children] == ["dashboard-123"]
+    assert [node.id for node in default_tree] == ["default-folder"]
+    assert [node.id for node in default_tree[0].children] == ["dashboard-123"]
 
 
 def test_non_owner_member_cannot_update_default_dashboard_even_with_project_editor_role(monkeypatch):
@@ -3355,10 +3652,18 @@ def test_use_shared_resource_creates_dashboard_copy(monkeypatch):
             user=current_user,
             request=SharedDashboardUseRequest(id="share-1"),
         )
+        position = session.exec(
+            select(CoreDashboardTree).where(
+                CoreDashboardTree.scope == "my",
+                CoreDashboardTree.dashboard_id == record.id,
+            )
+        ).first()
 
     assert record.name == "共享图表包"
     assert record.datasource == 1
     assert record.create_by == "5"
+    assert position is not None
+    assert position.parent_id == "root"
 
 
 def test_use_shared_resource_binds_copy_to_current_workspace(monkeypatch):

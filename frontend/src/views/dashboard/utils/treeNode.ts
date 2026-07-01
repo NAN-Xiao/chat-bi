@@ -11,10 +11,13 @@ export interface SQTreeNode {
   can_share?: boolean
   can_set_default?: boolean
   is_default?: boolean
+  is_default_tree?: boolean
   is_shared?: boolean
   is_public?: boolean
   can_copy_to_platform_template?: boolean
   virtual?: boolean
+  raw_id?: string | number
+  dashboard_scope?: 'default' | 'my'
   share_id?: string
   children?: SQTreeNode[]
 }

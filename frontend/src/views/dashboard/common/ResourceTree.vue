@@ -210,7 +210,7 @@ const getDashboardNodeKey = (scope: DashboardScope, dashboardId?: string | numbe
 }
 
 const isDefaultDashboardNode = (node?: SQTreeNode | null) =>
-  getDashboardScope(node) === DEFAULT_SCOPE
+  getDashboardScope(node) === DEFAULT_SCOPE || (node as any)?.is_default_tree === true
 const isMyDashboardNode = (node?: SQTreeNode | null) => getDashboardScope(node) === MY_SCOPE
 const isDefaultGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === DEFAULT_GROUP_ID
@@ -542,7 +542,7 @@ const canSetDefaultNode = (data: SQTreeNode) =>
   isMyDashboardNode(data) && data.node_type === 'leaf' && data.can_set_default === true
 const canRemoveDefaultNode = (data: SQTreeNode) =>
   data.node_type === 'leaf' &&
-  data.is_default === true &&
+  (data.is_default === true || isDefaultDashboardNode(data)) &&
   (canSetDefaultNode(data) || (isDefaultDashboardNode(data) && canEditDefaultOrder.value))
 const canCopyDefaultNode = (data: SQTreeNode) =>
   isDefaultDashboardNode(data) && data.node_type === 'leaf'
@@ -1066,13 +1066,7 @@ const saveTreeOrder = async () => {
   }
   if (!props.defaultMode) {
     const myNodes = findMyGroupNode(state.resourceTree)?.children || []
-    const myItems = collectTreeOrderItems(
-      myNodes,
-      MY_GROUP_ID,
-      MY_SCOPE,
-      [],
-      (node) => !node.is_default
-    )
+    const myItems = collectTreeOrderItems(myNodes, MY_GROUP_ID, MY_SCOPE)
     if (myItems.length) {
       requests.push(dashboardApi.reorder({ scope: MY_SCOPE, items: myItems }))
     }
@@ -1097,10 +1091,14 @@ const toggleTreeEditing = async () => {
 const sameDashboardScope = (left?: SQTreeNode | null, right?: SQTreeNode | null) =>
   getDashboardScope(left) === getDashboardScope(right)
 
-const allowNodeDrag = (draggingNode: any) => isTreeEditing.value && isRealNode(draggingNode?.data)
+const allowNodeDrag = (draggingNode: any) =>
+  isTreeEditing.value &&
+  isRealNode(draggingNode?.data) &&
+  (!isDefaultDashboardNode(draggingNode?.data) || canEditDefaultOrder.value)
 
 const allowNodeDrop = (draggingNode: any, dropNode: any, type: string) => {
   if (!isTreeEditing.value || !isRealNode(draggingNode?.data) || !dropNode?.data) return false
+  if (isDefaultDashboardNode(draggingNode.data) && !canEditDefaultOrder.value) return false
   if (!sameDashboardScope(draggingNode.data, dropNode.data)) return false
   if (type === 'inner') {
     return dropNode.data.node_type !== 'leaf'

@@ -171,6 +171,21 @@ def _flatten_row(row: dict[str, Any]) -> dict[str, Any]:
     return flattened
 
 
+def _ordered_mapping_items(value: dict[str, Any]) -> list[tuple[str, Any]]:
+    """
+    是什么：_ordered_mapping_items 把 MCP 映射结果转成稳定的图表行顺序。
+    """
+    items = list(value.items())
+    scalar_items = [
+        (key, item_value)
+        for key, item_value in items
+        if isinstance(item_value, (str, int, float, bool)) or item_value is None
+    ]
+    if scalar_items and all(isinstance(item_value, (int, float)) and not isinstance(item_value, bool) for _, item_value in scalar_items):
+        return sorted(scalar_items, key=lambda item: (-float(item[1]), str(item[0])))
+    return scalar_items
+
+
 def _expand_mapping_rows(
     value: dict[str, Any],
     *,
@@ -182,9 +197,7 @@ def _expand_mapping_rows(
     是什么：_expand_mapping_rows 把 MCP 返回的映射对象展开为图表可用行。
     """
     rows: list[dict[str, Any]] = []
-    for key, item_value in value.items():
-        if not isinstance(item_value, (str, int, float, bool)) and item_value is not None:
-            continue
+    for key, item_value in _ordered_mapping_items(value):
         row = {key_name: key, value_name: item_value}
         if group_name:
             row["group"] = group_name
@@ -214,8 +227,7 @@ def _normalize_external_mcp_preview_rows(
     elif isinstance(selected, dict):
         rows = [
             _flatten_row({key_name: key, value_name: value})
-            for key, value in selected.items()
-            if isinstance(value, (str, int, float, bool)) or value is None
+            for key, value in _ordered_mapping_items(selected)
         ]
         if not rows:
             rows = [_flatten_row(selected)]
