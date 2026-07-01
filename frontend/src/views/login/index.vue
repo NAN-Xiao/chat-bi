@@ -133,7 +133,29 @@
                   :loading="feishuLoading"
                   @click="startFeishuLogin"
                 >
-                  飞书登录
+                  <span class="product-login-feishu-content">
+                    <span class="product-login-feishu-logo-wrap" aria-hidden="true">
+                      <svg
+                        class="product-login-feishu-logo"
+                        viewBox="0 0 64 64"
+                        focusable="false"
+                      >
+                        <path
+                          fill="#16d2bd"
+                          d="M12.2 9.4h20.2c4.3 0 7.6 2.5 10.1 7.4l6 12-18.2 8.7L12.2 9.4z"
+                        />
+                        <path
+                          fill="#3370ff"
+                          d="M5.5 23.1c8.3 7.1 18 12.6 29 16.4 8 2.7 15.2 3 21.4 1-4.8 9.2-14.4 14.1-28.6 14.1-7.7 0-13.3-1.3-16.9-3.9-3.3-2.4-4.9-6-4.9-10.8V23.1z"
+                        />
+                        <path
+                          fill="#1f43a8"
+                          d="M28.2 38.1C36.6 27.9 45.2 22.7 54 22.7c2.3 0 4.5.3 6.5 1-4.7 8-9.8 13.8-15.3 17.2-5.7 3.6-11.4 3-17-1.7v-1.1z"
+                        />
+                      </svg>
+                    </span>
+                    <span>飞书登录</span>
+                  </span>
                 </el-button>
               </div>
             </div>
@@ -1346,7 +1368,7 @@ onMounted(async () => {
   --theme-input-bg: #ffffff;
   --theme-input-border: #cbd5e1;
   --theme-card-shadow: 0 18px 46px rgba(17, 24, 39, 0.16);
-  align-self: start;
+  align-self: stretch;
   color-scheme: light;
 }
 
@@ -1359,22 +1381,25 @@ onMounted(async () => {
     width: 540px;
     flex: 0 0 540px;
     display: flex;
+    align-items: stretch;
   }
 }
 
 .account-login-shell {
   display: grid;
   grid-template-columns: minmax(0, 560px) 540px;
-  align-items: start;
+  align-items: stretch;
   justify-content: center;
-  gap: 64px;
+  gap: 72px;
   max-width: 1220px;
   margin: 0 auto;
 }
 
 .account-login-story {
   min-width: 0;
-  padding-top: 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
 .account-login-eyebrow {
@@ -1436,8 +1461,8 @@ onMounted(async () => {
 .account-login-visual {
   position: relative;
   width: min(520px, 100%);
-  margin-top: 46px;
-  padding: 0 62px 34px 12px;
+  margin-top: auto;
+  padding: 42px 62px 0 12px;
 }
 
 .account-login-screen {
@@ -1678,16 +1703,16 @@ onMounted(async () => {
 
 .product-login-card {
   width: 100%;
-  min-height: 610px;
+  min-height: 640px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   border: 1px solid var(--theme-shell-border);
   border-radius: 8px;
   background: var(--theme-panel-bg);
   box-shadow: var(--theme-card-shadow);
-  padding: 42px 34px;
+  padding: 56px 34px;
 }
 
 .product-login-card-head {
@@ -1840,8 +1865,10 @@ onMounted(async () => {
   border-radius: 4px;
   background: #111827;
   color: #ffffff;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
+  text-shadow: none;
+  -webkit-text-stroke-width: 0;
   cursor: pointer;
   box-shadow: 0 14px 28px rgba(17, 24, 39, 0.18);
 
@@ -1856,7 +1883,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 8px 0 14px;
+  margin: 12px 0 16px;
   color: var(--theme-text-tertiary);
   font-size: 12px;
 
@@ -1871,20 +1898,50 @@ onMounted(async () => {
 
 .product-login-feishu {
   width: 100%;
-  height: 44px;
+  height: 48px;
   border-radius: 4px;
-  border-color: #cbd5e1;
-  color: #111827;
-  background: #ffffff;
-  font-size: 14px;
+  border-color: #1677ff;
+  color: #ffffff;
+  background: linear-gradient(180deg, #2388ff 0%, #0b63ce 100%);
+  font-size: 15px;
   font-weight: 800;
+  text-shadow: none;
+  -webkit-text-stroke-width: 0;
+  box-shadow: 0 14px 28px rgba(22, 119, 255, 0.24);
 
   &:hover,
   &:focus {
-    border-color: #111827;
-    color: #111827;
-    background: #fffdf2;
+    border-color: #0b63ce;
+    color: #ffffff;
+    background: linear-gradient(180deg, #1677ff 0%, #0757b8 100%);
+    box-shadow: 0 16px 32px rgba(22, 119, 255, 0.3);
   }
+}
+
+.product-login-feishu-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  line-height: 1;
+  text-shadow: none;
+  -webkit-text-stroke-width: 0;
+}
+
+.product-login-feishu-logo-wrap {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.product-login-feishu-logo {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .power-login-capabilities {
