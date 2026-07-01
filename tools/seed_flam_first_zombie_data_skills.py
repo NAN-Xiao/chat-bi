@@ -638,7 +638,7 @@ LIMIT 24
 - “近七天英雄出征量分布”使用 `WorldMarch` 的 `personal.ed_myTeamHeroList`，该字段是英雄对象 JSON 数组；需按数组下标展开并读取每个对象的 `heroId`，不要把整段 JSON 当英雄 ID，也不要按逗号拆字符串。
 - 主城等级优先取事件参数 `ext.ed_mainBuildingLevel`。
 - 平均战力优先取 `ext.combatPower`，缺失时取 `ext.captainPower`。
-- 胜率使用结果字段 `ext.battleResult` 或 `ext.expeditionDungeonResult`，值为 `win`、`success`、`1`、`胜利` 计为胜利。
+- “各等级出征胜率”使用 `WorldMarchRet` 结果事件，按 `personal.ed_mainBuildingLevel` 和 `personal.ed_targetType` 分组；胜利判断优先取 `personal.ed_result`，其次 `personal.ed_battleResult`，值为 `4`、`win`、`success`、`1`、`胜利` 计为胜利。
 - 出征分布、胜率、将领/主城等级拆分会解析 JSON 并做高基数分组，持久看板默认使用近 7 天窗口；指标卡只查昨天、前天、上周同日三个目标分区。
 
 ## 禁止事项
