@@ -109,6 +109,19 @@ def _datasource_id_values(value) -> list[str]:
     return [str(value)]
 
 
+def _row_matches_datasource(row, datasource: Optional[int]) -> bool:
+    """
+    是什么：_row_matches_datasource 用当前项目判断一条提示词或 Skill 是否可用于本次上下文。
+    谁调用：运行时查找自定义 Agent 和 Data Skills 时调用。
+    做了什么：全局记录直接放行；限定项目的记录必须命中当前 datasource。
+    """
+    if not row.get("specific_ds"):
+        return True
+    if datasource is None:
+        return False
+    return str(datasource) in _datasource_id_values(row.get("datasource_ids"))
+
+
 def _prompt_log_text(name: str, description: str, system_prompt: str, label: str = "补充提示词") -> str:
     """
     是什么：_prompt_log_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -122,25 +135,37 @@ def _prompt_log_text(name: str, description: str, system_prompt: str, label: str
     return "\n".join(parts)
 
 
-def _scope_label(visibility_scope: str | None) -> str:
+def _scope_label(visibility_scope: str | None, datasource_scoped: bool = False) -> str:
     """
     是什么：_scope_label 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+        if datasource_scoped:
+            return "platform-managed-project"
         return "platform-generic"
     if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
         return "user-private"
     return "workspace"
 
 
-def _scope_runtime_notice(visibility_scope: str | None, prompt_type: str = "Agent") -> str:
+def _scope_runtime_notice(
+        visibility_scope: str | None,
+        prompt_type: str = "Agent",
+        datasource_scoped: bool = False,
+) -> str:
     """
     是什么：_scope_runtime_notice 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value and datasource_scoped:
+        return (
+            f"This {prompt_type} is managed at platform level but explicitly scoped to the current datasource. "
+            "Use it only when the configured project matches the current datasource context. It cannot expand "
+            "datasource access or override schema, permissions, workspace metadata, or SQL safety rules."
+        )
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
         return (
             f"This {prompt_type} is a platform-level generic capability. Use it only for reusable methods, "
@@ -174,6 +199,98 @@ def _source_order_sql(alias: str = "") -> str:
         f"WHEN {prefix}visibility_scope = 'USER_PRIVATE' THEN 2 "
         "ELSE 1 END"
     )
+
+
+_SKILL_NAME_SCOPE_MARKERS = (
+    "analysis assistant",
+    "data skill",
+    "workspace",
+    "platform",
+    "personal",
+    "private",
+    "generic",
+    "tenant",
+    "saas",
+    "skill",
+    "工作空间",
+    "平台级",
+    "平台",
+    "个人",
+    "私有",
+    "租户",
+    "通用",
+    "技能",
+)
+
+
+def _skill_scope_priority(skill: dict[str, Any]) -> int:
+    """
+    是什么：_skill_scope_priority 给同类 Skill 的来源排优先级。
+    谁调用：运行时自动筛选 Data Skills 时调用。
+    做了什么：SaaS 平台 Skill 优先于工作空间 Skill，工作空间 Skill 优先于个人 Skill。
+    """
+    visibility_scope = skill.get("visibility_scope")
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+        return 0
+    if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
+        return 2
+    return 1
+
+
+def _normalize_skill_name_for_override(name: str | None) -> str:
+    """
+    是什么：_normalize_skill_name_for_override 把 Skill 名称归一成冲突判断用的 key。
+    谁调用：运行时自动筛选 Data Skills 时调用。
+    做了什么：去掉常见来源前后缀和标点，让“平台-收入健康度”和“收入健康度”能被识别为同类。
+    """
+    text = (name or "").strip().lower()
+    if not text:
+        return ""
+    separator = r"[\s_\-—–·:：/\\|]+"
+    for _ in range(4):
+        previous = text
+        for marker in _SKILL_NAME_SCOPE_MARKERS:
+            escaped = re.escape(marker)
+            if text == marker:
+                text = ""
+            else:
+                text = re.sub(rf"^(?:{escaped})(?:{separator})", "", text).strip()
+                text = re.sub(rf"(?:{separator})(?:{escaped})$", "", text).strip()
+        if text == previous:
+            break
+    return re.sub(r"[\s_\-—–·:：/\\|,，.。()（）\[\]【】{}]+", "", text)
+
+
+def _skill_override_group_key(skill: dict[str, Any]) -> str:
+    """
+    是什么：_skill_override_group_key 给同名或近似命名的 Skill 分组。
+    谁调用：运行时自动筛选 Data Skills 时调用。
+    做了什么：名称可归一时按名称分组，否则退回到 id，避免无名称 Skill 被误合并。
+    """
+    name_key = _normalize_skill_name_for_override(skill.get("name"))
+    if name_key:
+        return f"name:{name_key}"
+    return f"id:{skill.get('id') or ''}"
+
+
+def _dedupe_overridden_data_skills(skill_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    是什么：_dedupe_overridden_data_skills 处理同类 Data Skill 的覆盖关系。
+    谁调用：运行时自动筛选 Data Skills 时调用。
+    做了什么：相同或近似 Skill 只保留优先级最高的一条：SaaS > 工作空间 > 个人；同层级里项目限定优先于全项目。
+    """
+    best_by_key: dict[str, tuple[tuple[int, int, int], int, dict[str, Any]]] = {}
+    for index, skill in enumerate(skill_rows):
+        key = _skill_override_group_key(skill)
+        rank = (
+            _skill_scope_priority(skill),
+            0 if skill.get("specific_ds") else 1,
+            index,
+        )
+        current = best_by_key.get(key)
+        if current is None or rank < current[0]:
+            best_by_key[key] = (rank, index, skill)
+    return [item[2] for item in sorted(best_by_key.values(), key=lambda item: item[1])]
 
 
 def _is_split_legacy_data_skill(row) -> bool:
@@ -285,21 +402,21 @@ def _select_ranked_data_skills(
         return skill_rows
 
     # 在保留下游大语言模型调用所需关键信息的同时，尽量压缩提示词长度。
-    # 保留与当前问题最相关的平台、工作区和个人技能。
+    # 同类 Skill 已在入口按 SaaS > 工作空间 > 个人完成覆盖，这里只按相关性取最合适的一组。
     max_skills = 12
     max_prompt_chars = 18000
     ranked_positive = sorted(positive, key=lambda item: (-item[0], item[1]))
     selected: list[tuple[float, int, dict[str, Any]]] = []
-    selected_keys: set[tuple[str, str, str]] = set()
+    selected_keys: set[str] = set()
     used_chars = 0
 
-    def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
+    def skill_key(skill: dict[str, Any]) -> str:
         """
         是什么：skill_key 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
         谁调用：外层函数 _select_ranked_data_skills 跑到对应步骤时会调用它。
         做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
-        return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
+        return str(skill.get("id") or _skill_override_group_key(skill))
 
     def add_skill(item: tuple[float, int, dict[str, Any]]) -> bool:
         """
@@ -321,38 +438,6 @@ def _select_ranked_data_skills(
         selected_keys.add(key)
         used_chars += estimated_chars
         return True
-
-    def drop_lowest_platform_skill() -> bool:
-        """
-        是什么：drop_lowest_platform_skill 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
-        谁调用：外层函数 _select_ranked_data_skills 跑到对应步骤时会调用它。
-        做了什么：把聊天问数据和 Agent不再需要的数据、缓存或临时内容清理掉。
-        """
-        nonlocal used_chars
-        platform_indexes = [
-            pos
-            for pos, (_score, _index, skill) in enumerate(selected)
-            if skill.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
-        ]
-        if not platform_indexes:
-            return False
-        drop_pos = min(platform_indexes, key=lambda pos: (selected[pos][0], -selected[pos][1]))
-        _score, _index, skill = selected.pop(drop_pos)
-        selected_keys.discard(skill_key(skill))
-        used_chars -= _estimated_skill_chars(skill)
-        return True
-
-    for required_scope in (
-        CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
-        CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
-    ):
-        scope_item = next(
-            (item for item in ranked_positive if item[2].get("visibility_scope") == required_scope),
-            None,
-        )
-        if scope_item is not None and not add_skill(scope_item):
-            if drop_lowest_platform_skill():
-                add_skill(scope_item)
 
     for item in ranked_positive:
         if not add_skill(item):
@@ -452,13 +537,13 @@ def _rank_auto_data_skills_by_embedding(
     if keyword_ranked == skill_rows:
         return embedding_ranked
 
-    def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
+    def skill_key(skill: dict[str, Any]) -> str:
         """
         是什么：skill_key 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
         谁调用：外层函数 _rank_auto_data_skills_by_embedding 跑到对应步骤时会调用它。
         做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
-        return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
+        return str(skill.get("id") or _skill_override_group_key(skill))
 
     keyword_scores = {
         skill_key(skill): _score_data_skill(skill, question or "")
@@ -468,7 +553,7 @@ def _rank_auto_data_skills_by_embedding(
     strong_keyword_threshold = max(80, int(max_keyword_score * 0.6)) if max_keyword_score else 0
 
     merged: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[str] = set()
 
     def add(skill: dict[str, Any]) -> bool:
         """
@@ -527,6 +612,7 @@ def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | Non
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    skill_rows = _dedupe_overridden_data_skills(skill_rows)
     embedding_ranked = _rank_auto_data_skills_by_embedding(skill_rows, question)
     if embedding_ranked is not None:
         return embedding_ranked
@@ -621,19 +707,9 @@ def find_custom_prompts(
             "description": row.get("description") or "",
             "system_prompt": prompt,
             "visibility_scope": visibility_scope,
+            "specific_ds": bool(row.get("specific_ds")),
         }
-        if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
-            agent_list.append(agent)
-            ai_model_id = row.get("ai_model_id")
-            continue
-        if not row.get("specific_ds"):
-            agent_list.append(agent)
-            ai_model_id = row.get("ai_model_id")
-            continue
-        if datasource is None:
-            continue
-        datasource_ids = row.get("datasource_ids") or []
-        if any(str(item) == str(datasource) for item in datasource_ids):
+        if _row_matches_datasource(row, datasource):
             agent_list.append(agent)
             ai_model_id = row.get("ai_model_id")
 
@@ -643,8 +719,9 @@ def find_custom_prompts(
     content = "<Other-Infos>\n"
     for agent in agent_list:
         content += "\t<agent>\n"
-        content += f"\t\t<scope>{_scope_label(agent['visibility_scope'])}</scope>\n"
-        content += f"\t\t<runtime-constraint>{_xml_text(_scope_runtime_notice(agent['visibility_scope']))}</runtime-constraint>\n"
+        datasource_scoped = bool(agent.get("specific_ds"))
+        content += f"\t\t<scope>{_scope_label(agent['visibility_scope'], datasource_scoped)}</scope>\n"
+        content += f"\t\t<runtime-constraint>{_xml_text(_scope_runtime_notice(agent['visibility_scope'], datasource_scoped=datasource_scoped))}</runtime-constraint>\n"
         content += f"\t\t<name>{_xml_text(agent['name'])}</name>\n"
         if agent["description"]:
             content += f"\t\t<description>{_xml_text(agent['description'])}</description>\n"
@@ -678,7 +755,6 @@ def find_data_skills(
     """
     normalized_skill_id = _normalize_prompt_id(skill_id)
     normalized_scope = _normalize_target_scope(target_scope)
-    skill_condition = "AND id = :skill_id" if normalized_skill_id is not None else ""
     target_scope_condition = ""
     if not include_all_target_scopes:
         target_scope_condition = """
@@ -702,8 +778,6 @@ def find_data_skills(
         "can_manage_public": bool(can_manage_public or can_manage_all),
         "can_manage_platform_public": bool(can_manage_platform_public),
     }
-    if normalized_skill_id is not None:
-        params["skill_id"] = normalized_skill_id
 
     rows = session.execute(
         sql_text(
@@ -712,7 +786,6 @@ def find_data_skills(
                    specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
             FROM custom_prompt
             WHERE 1 = 1
-              {skill_condition}
               AND type = :custom_prompt_type
               AND COALESCE(active, false) = true
               AND (
@@ -759,24 +832,8 @@ def find_data_skills(
         prompt = row.get("prompt")
         if not prompt:
             continue
-        if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
-            skill_rows.append({
-                "id": str(row.get("id") or ""),
-                "tenant_id": row.get("tenant_id"),
-                "name": row.get("name") or "",
-                "description": row.get("description") or "",
-                "prompt": prompt,
-                "embedding": row.get("embedding"),
-                "embedding_signature": row.get("embedding_signature"),
-                "visibility_scope": visibility_scope,
-            })
-            ai_model_id = row.get("ai_model_id")
+        if not _row_matches_datasource(row, datasource):
             continue
-        if row.get("specific_ds"):
-            if datasource is None:
-                continue
-            if str(datasource) not in _datasource_id_values(row.get("datasource_ids")):
-                continue
         skill_rows.append({
             "id": str(row.get("id") or ""),
             "tenant_id": row.get("tenant_id"),
@@ -786,28 +843,45 @@ def find_data_skills(
             "embedding": row.get("embedding"),
             "embedding_signature": row.get("embedding_signature"),
             "visibility_scope": visibility_scope,
+            "specific_ds": bool(row.get("specific_ds")),
+            "ai_model_id": row.get("ai_model_id"),
         })
         ai_model_id = row.get("ai_model_id")
 
     if normalized_skill_id is None:
         skill_rows = _rank_auto_data_skills(skill_rows, question)
+    else:
+        selected_skill = next(
+            (skill for skill in skill_rows if str(skill.get("id")) == str(normalized_skill_id)),
+            None,
+        )
+        if selected_skill is None:
+            return "", [], None
+        selected_key = _skill_override_group_key(selected_skill)
+        skill_rows = _dedupe_overridden_data_skills(
+            [skill for skill in skill_rows if _skill_override_group_key(skill) == selected_key]
+        )
 
     if not skill_rows:
         return "", [], None
+    ai_model_id = next((skill.get("ai_model_id") for skill in skill_rows if skill.get("ai_model_id")), ai_model_id)
 
     content_parts = [
         "<Data-Skills>",
         "以下是本次自动匹配或用户指定的数据 Skill。Skill 以 Markdown/自然语言描述业务口径、查询范式、示例 SQL、"
         "图表偏好或注意事项。生成 SQL、解释结果和组织分析时必须优先参考它；如果它与数据库 Schema、"
         "数据权限、SQL 安全规则或当前已选数据源冲突，必须以 SaaS 规则和当前权限为准。",
-        "平台级 Skill 只代表通用能力或通用方法论，不能作为当前工作空间的表名、字段名、事件名、指标口径或业务枚举来源；"
-        "只有当前工作空间级或用户私有 Skill 才能沉淀具体业务口径，且仍必须受当前 Schema 与权限约束。",
+        "未限定项目的平台级 Skill 只代表通用能力或通用方法论，不能作为当前工作空间的表名、字段名、事件名、指标口径或业务枚举来源；"
+        "项目限定的平台管理 Skill、当前工作空间级 Skill 或用户私有 Skill 可以沉淀当前项目上下文，且仍必须受当前 Schema 与权限约束。",
     ]
     for skill in skill_rows:
         content_parts.append("\n---")
         content_parts.append(f"## {skill['name']}")
-        content_parts.append(f"\n作用域：{_scope_label(skill['visibility_scope'])}")
-        content_parts.append(f"\n约束：{_scope_runtime_notice(skill['visibility_scope'], prompt_type='Data Skill')}")
+        datasource_scoped = bool(skill.get("specific_ds"))
+        content_parts.append(f"\n作用域：{_scope_label(skill['visibility_scope'], datasource_scoped)}")
+        content_parts.append(
+            f"\n约束：{_scope_runtime_notice(skill['visibility_scope'], prompt_type='Data Skill', datasource_scoped=datasource_scoped)}"
+        )
         if skill["description"]:
             content_parts.append(f"\n描述：{skill['description']}")
         content_parts.append("")

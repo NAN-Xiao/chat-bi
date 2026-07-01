@@ -593,6 +593,8 @@
     "visible_shown": "顯示",
     "visible_hidden": "隱藏",
     "visible_hint": "隱藏後，下級使用者不可見也不可使用；不影響目前啟用狀態。",
+    "project_filter_placeholder": "按項目篩選",
+    "all_projects_hint": "此 Agent 將對所有項目生效。",
     "default_agent": "預設 Agent",
     "prompt_word_content": "系統提示詞",
     "selected_prompt_words": "是否刪除選中的 {msg} 個 Agent？",
@@ -1944,7 +1946,9 @@
     "admin_title": "數據 Skills 管理",
     "admin_platform_subtitle": "維護平台通用能力，只能表達通用方法論、回答規範和分析流程；具體表欄位、指標口徑和埋點規則請放到工作空間 Skill。",
     "admin_workspace_subtitle": "維護目前工作空間公開的數據 Skills，問答和分析助手可自動使用或手動鎖定。",
-    "platform_skill": "平台通用 Skill"
+    "platform_skill": "平台通用 Skill",
+    "project_filter_placeholder": "按項目篩選",
+    "all_projects_hint": "此 Skill 將對所有項目生效。"
   },
   "knowledge_base": {
     "title": "知識庫",

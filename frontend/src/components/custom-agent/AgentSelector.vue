@@ -170,6 +170,7 @@ const buildListQuery = () => {
   if (datasourceIdValue.value) {
     params.append('dslist', String(datasourceIdValue.value))
   }
+  params.append('effective_only', 'true')
   if (keyword.value.trim()) {
     params.append('name', keyword.value.trim())
   }

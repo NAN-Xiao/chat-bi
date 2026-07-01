@@ -593,6 +593,8 @@
     "visible_shown": "Shown",
     "visible_hidden": "Hidden",
     "visible_hint": "When hidden, lower-level users cannot see or use it. Activation is unchanged.",
+    "project_filter_placeholder": "Filter by project",
+    "all_projects_hint": "This Agent will apply to all projects.",
     "default_agent": "Default Agent",
     "prompt_word_content": "System prompt",
     "selected_prompt_words": "Do you want to delete the {msg} selected Agents?",
@@ -1944,7 +1946,9 @@
     "admin_title": "Data Skills Management",
     "admin_platform_subtitle": "Maintain platform generic capabilities for reusable methods, answer rules, and analysis workflows. Put concrete tables, fields, metric definitions, and tracking rules in workspace Skills.",
     "admin_workspace_subtitle": "Maintain workspace Data Skills that Q&A and the analysis assistant can use automatically or lock manually.",
-    "platform_skill": "Platform Generic Skill"
+    "platform_skill": "Platform Generic Skill",
+    "project_filter_placeholder": "Filter by project",
+    "all_projects_hint": "This Skill will apply to all projects."
   },
   "knowledge_base": {
     "title": "Knowledge Base",

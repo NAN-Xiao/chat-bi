@@ -593,6 +593,8 @@
     "visible_shown": "显示",
     "visible_hidden": "隐藏",
     "visible_hint": "隐藏后，下级用户不可见也不可使用；不影响当前激活状态。",
+    "project_filter_placeholder": "按项目筛选",
+    "all_projects_hint": "该 Agent 将对所有项目生效。",
     "default_agent": "默认 Agent",
     "prompt_word_content": "系统提示词",
     "selected_prompt_words": "是否删除选中的 {msg} 个 Agent？",
@@ -1945,7 +1947,9 @@
     "admin_title": "Skills管理",
     "admin_platform_subtitle": "维护平台通用能力，只能表达通用方法论、回答规范和分析流程；具体表字段、指标口径和埋点规则请放到工作空间 Skill。",
     "admin_workspace_subtitle": "维护当前工作空间公开的 Skills，用户可在问答和分析助手中自动使用或手动锁定。",
-    "platform_skill": "平台通用 Skill"
+    "platform_skill": "平台通用 Skill",
+    "project_filter_placeholder": "按项目筛选",
+    "all_projects_hint": "该 Skill 将对所有项目生效。"
   },
   "knowledge_base": {
     "title": "知识库",

@@ -35,6 +35,7 @@ const savingSkill = ref(false)
 const skillKeyword = ref('')
 const datasourceOptions = ref<any[]>([])
 const scopeFilter = ref('')
+const datasourceFilter = ref<number | string>('')
 
 const isAdminMode = computed(() => props.mode === 'admin')
 const isPlatformAdmin = computed(
@@ -85,7 +86,6 @@ const pageTitle = computed(() =>
 const validateDatasource = (_: any, value: any, callback: any) => {
   if (
     isAdminMode.value &&
-    !isPlatformAdmin.value &&
     skillForm.value.specific_ds &&
     !value?.length
   ) {
@@ -157,7 +157,6 @@ const sortBySourceAndTime = (a: any, b: any) => {
 
 const scopeText = (row: any) => {
   if (!row) return '-'
-  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('data_skill.platform_generic_capability')
   if (row?.visibility_scope === 'USER_PRIVATE') return t('access.user_permission_scope')
   if (row?.specific_ds) {
     return row.datasource_names?.length
@@ -205,8 +204,9 @@ const buildSkillQuery = (visibilityScope = scopeFilter.value) => {
   if (visibilityScope) {
     params.append('visibility_scope', visibilityScope)
   }
-  if (!isAdminMode.value && currentDatasourceId.value) {
-    params.append('dslist', String(currentDatasourceId.value))
+  const filterDatasourceId = isAdminMode.value ? datasourceFilter.value : currentDatasourceId.value
+  if (filterDatasourceId) {
+    params.append('dslist', String(filterDatasourceId))
   }
   if (skillKeyword.value.trim()) {
     params.append('name', skillKeyword.value.trim())
@@ -226,11 +226,12 @@ const dedupeSkills = (rows: any[]) => {
 }
 
 const loadDatasourceOptions = async () => {
-  if (!isAdminMode.value || isPlatformAdmin.value) {
+  if (!isAdminMode.value) {
     datasourceOptions.value = []
     return
   }
-  const res: any = await datasourceApi.accessibleList().catch(() => [])
+  const request = isPlatformAdmin.value ? datasourceApi.list() : datasourceApi.accessibleList()
+  const res: any = await request.catch(() => [])
   datasourceOptions.value = Array.isArray(res) ? res : []
 }
 
@@ -325,8 +326,8 @@ const openEditSkill = (row: any) => {
     ...cloneDeep(defaultSkillForm),
     ...cloneDeep(row),
     type: 'DATA_SKILL',
-    specific_ds: isAdminMode.value && !isPlatformAdmin.value ? Boolean(row?.specific_ds) : false,
-    datasource_ids: isAdminMode.value && !isPlatformAdmin.value ? row?.datasource_ids || [] : [],
+    specific_ds: isAdminMode.value ? Boolean(row?.specific_ds) : false,
+    datasource_ids: isAdminMode.value ? row?.datasource_ids || [] : [],
     visibility_scope: isAdminMode.value
       ? isPlatformAdmin.value
         ? 'PLATFORM_PUBLIC'
@@ -350,7 +351,7 @@ const saveSkill = () => {
     payload.type = 'DATA_SKILL'
     if (isAdminMode.value) {
       payload.visibility_scope = isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
-      if (isPlatformAdmin.value || !payload.specific_ds) {
+      if (!payload.specific_ds) {
         payload.specific_ds = false
         payload.datasource_ids = []
       } else {
@@ -401,6 +402,13 @@ const handleDatasourceChange = () => {
   skillFormRef.value?.validateField('datasource_ids')
 }
 
+const handleDatasourceScopeModeChange = (value: string | number | boolean) => {
+  if (!Boolean(value)) {
+    skillForm.value.datasource_ids = []
+  }
+  handleDatasourceChange()
+}
+
 onMounted(async () => {
   scopeFilter.value = isAdminMode.value ? (isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : '') : ''
   if (isAdminMode.value) {
@@ -420,6 +428,10 @@ watch(skillKeyword, () => {
 })
 
 watch(scopeFilter, () => {
+  loadSkills()
+})
+
+watch(datasourceFilter, () => {
   loadSkills()
 })
 </script>
@@ -442,6 +454,21 @@ watch(scopeFilter, () => {
             :key="item.value"
             :label="item.label"
             :value="item.value"
+          />
+        </el-select>
+        <el-select
+          v-if="isAdminMode"
+          v-model="datasourceFilter"
+          clearable
+          filterable
+          class="project-filter"
+          :placeholder="t('data_skill.project_filter_placeholder')"
+        >
+          <el-option
+            v-for="item in datasourceOptions"
+            :key="item.id"
+            :label="item.name"
+            :value="Number(item.id)"
           />
         </el-select>
         <el-button v-if="canCreateSkill" type="primary" @click="openCreateSkill">
@@ -620,16 +647,17 @@ watch(scopeFilter, () => {
           <div v-if="!isAdminMode" class="fixed-project">
             {{ t('access.user_permission_scope') }}
           </div>
-          <div v-else-if="isPlatformAdmin" class="fixed-project">
-            {{ t('data_skill.platform_generic_capability') }}
-          </div>
           <div v-else class="datasource-scope-editor">
-            <el-radio-group v-model="skillForm.specific_ds">
-              <el-radio :value="false">{{ t('training.all_data_sources') }}</el-radio>
-              <el-radio :value="true">{{ t('training.partial_data_sources') }}</el-radio>
+            <el-radio-group
+              v-model="skillForm.specific_ds"
+              class="project-scope-mode"
+              @change="handleDatasourceScopeModeChange"
+            >
+              <el-radio-button :value="false">{{ t('training.all_data_sources') }}</el-radio-button>
+              <el-radio-button :value="true">{{ t('training.partial_data_sources') }}</el-radio-button>
             </el-radio-group>
             <el-form-item
-              v-if="skillForm.specific_ds"
+              v-show="skillForm.specific_ds"
               prop="datasource_ids"
               class="nested-datasource-form-item"
             >
@@ -649,6 +677,9 @@ watch(scopeFilter, () => {
                 />
               </el-select>
             </el-form-item>
+            <div v-if="!skillForm.specific_ds" class="scope-mode-tip">
+              {{ t('data_skill.all_projects_hint') }}
+            </div>
           </div>
         </el-form-item>
         <el-form-item prop="prompt" :label="t('data_skill.markdown_content')">
@@ -785,6 +816,10 @@ watch(scopeFilter, () => {
 
   .scope-filter {
     width: 132px;
+  }
+
+  .project-filter {
+    width: 180px;
   }
 
   .skill-card {
@@ -970,9 +1005,29 @@ watch(scopeFilter, () => {
   .datasource-scope-editor {
     width: 100%;
 
+    .project-scope-mode {
+      display: flex;
+      width: 100%;
+    }
+
+    .project-scope-mode :deep(.ed-radio-button) {
+      flex: 1;
+    }
+
+    .project-scope-mode :deep(.ed-radio-button__inner) {
+      width: 100%;
+    }
+
     .nested-datasource-form-item {
       margin-top: 8px;
       margin-bottom: 0;
+    }
+
+    .scope-mode-tip {
+      margin-top: 8px;
+      color: #646a73;
+      font-size: 12px;
+      line-height: 20px;
     }
   }
 

@@ -5,6 +5,7 @@ import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { promptApi } from '@/api/prompt'
+import { datasourceApi } from '@/api/datasource'
 import { modelApi } from '@/api/system'
 import icon_ai from '@/assets/svg/icon_ai.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
@@ -39,7 +40,9 @@ const agentDialogTitle = ref('')
 const selectedAgent = ref<any | null>(null)
 const savingAgent = ref(false)
 const agentKeyword = ref('')
+const datasourceOptions = ref<any[]>([])
 const scopeFilter = ref('')
+const datasourceFilter = ref<number | string>('')
 
 const isAdminMode = computed(() => props.mode === 'admin')
 const isPlatformAdmin = computed(
@@ -70,12 +73,26 @@ const pageTitle = computed(() => {
   return isPlatformAdmin.value ? t('access.saas_agent') : t('access.workspace_agent')
 })
 
+const validateDatasource = (_: any, value: any, callback: any) => {
+  if (isAdminMode.value && agentForm.value.specific_ds && !value?.length) {
+    callback(new Error(t('datasource.Please_select') + t('common.empty') + t('ds.title')))
+    return
+  }
+  callback()
+}
+
 const agentRules = {
   name: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('prompt.prompt_word_name'),
       trigger: 'blur',
+    },
+  ],
+  datasource_ids: [
+    {
+      validator: validateDatasource,
+      trigger: 'change',
     },
   ],
   prompt: [
@@ -154,7 +171,7 @@ const layerOptions = computed(() => [
 ])
 
 const scopeText = (row: any) => {
-  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('access.platform_generic_capability')
+  if (!row) return '-'
   if (row?.visibility_scope === 'USER_PRIVATE') return t('access.user_permission_scope')
   if (row?.specific_ds) {
     return row.datasource_names?.length
@@ -199,8 +216,9 @@ const buildAgentQuery = (visibilityScope = scopeFilter.value) => {
   if (visibilityScope) {
     params.append('visibility_scope', visibilityScope)
   }
-  if (!isAdminMode.value && currentDatasourceId.value) {
-    params.append('dslist', String(currentDatasourceId.value))
+  const filterDatasourceId = isAdminMode.value ? datasourceFilter.value : currentDatasourceId.value
+  if (filterDatasourceId) {
+    params.append('dslist', String(filterDatasourceId))
   }
   if (agentKeyword.value.trim()) {
     params.append('name', agentKeyword.value.trim())
@@ -223,6 +241,16 @@ const loadAiModels = () => {
   modelApi.listAvailable().then((res: any) => {
     aiModelOptions.value = res || []
   })
+}
+
+const loadDatasourceOptions = async () => {
+  if (!isAdminMode.value) {
+    datasourceOptions.value = []
+    return
+  }
+  const request = isPlatformAdmin.value ? datasourceApi.list() : datasourceApi.accessibleList()
+  const res: any = await request.catch(() => [])
+  datasourceOptions.value = Array.isArray(res) ? res : []
 }
 
 const loadAgents = async () => {
@@ -318,8 +346,8 @@ const openEditAgent = (row: any) => {
   agentForm.value = {
     ...cloneDeep(defaultAgentForm),
     ...cloneDeep(row),
-    specific_ds: false,
-    datasource_ids: [],
+    specific_ds: isAdminMode.value ? Boolean(row?.specific_ds) : false,
+    datasource_ids: isAdminMode.value ? row?.datasource_ids || [] : [],
     visibility_scope: isAdminMode.value
       ? isPlatformAdmin.value
         ? 'PLATFORM_PUBLIC'
@@ -341,13 +369,19 @@ const saveAgent = () => {
     if (!valid || savingAgent.value) return
     const payload = cloneDeep(agentForm.value)
     payload.type = payload.type || 'GENERATE_SQL'
-    payload.specific_ds = false
-    payload.datasource_ids = []
-    payload.visibility_scope = isAdminMode.value
-      ? isPlatformAdmin.value
-        ? 'PLATFORM_PUBLIC'
-        : 'ADMIN_PUBLIC'
-      : 'USER_PRIVATE'
+    if (isAdminMode.value) {
+      payload.visibility_scope = isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
+      if (!payload.specific_ds) {
+        payload.specific_ds = false
+        payload.datasource_ids = []
+      } else {
+        payload.datasource_ids = (payload.datasource_ids || []).map((item: any) => Number(item))
+      }
+    } else {
+      payload.specific_ds = false
+      payload.datasource_ids = []
+      payload.visibility_scope = 'USER_PRIVATE'
+    }
     payload.visible = payload.visible !== false
     savingAgent.value = true
     promptApi
@@ -384,9 +418,22 @@ const openAgentDetail = (row: any) => {
   agentDetailVisible.value = true
 }
 
+const handleDatasourceChange = () => {
+  agentFormRef.value?.validateField('datasource_ids')
+}
+
+const handleDatasourceScopeModeChange = (value: string | number | boolean) => {
+  if (!Boolean(value)) {
+    agentForm.value.datasource_ids = []
+  }
+  handleDatasourceChange()
+}
+
 onMounted(async () => {
   scopeFilter.value = isAdminMode.value ? (isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : '') : ''
-  if (!isAdminMode.value) {
+  if (isAdminMode.value) {
+    await loadDatasourceOptions()
+  } else {
     await datasourceContext.loadDatasources()
   }
   loadAiModels()
@@ -402,6 +449,10 @@ watch(agentKeyword, () => {
 })
 
 watch(scopeFilter, () => {
+  loadAgents()
+})
+
+watch(datasourceFilter, () => {
   loadAgents()
 })
 </script>
@@ -424,6 +475,21 @@ watch(scopeFilter, () => {
             :key="item.value"
             :label="item.label"
             :value="item.value"
+          />
+        </el-select>
+        <el-select
+          v-if="isAdminMode"
+          v-model="datasourceFilter"
+          clearable
+          filterable
+          class="project-filter"
+          :placeholder="t('prompt.project_filter_placeholder')"
+        >
+          <el-option
+            v-for="item in datasourceOptions"
+            :key="item.id"
+            :label="item.name"
+            :value="Number(item.id)"
           />
         </el-select>
         <el-button v-if="canCreateAgent" type="primary" @click="openCreateAgent">
@@ -654,14 +720,42 @@ watch(scopeFilter, () => {
           </el-tooltip>
         </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
-          <div class="fixed-project">
-            {{
-              isAdminMode && isPlatformAdmin
-                ? t('access.platform_generic_capability')
-                : isAdminMode
-                  ? t('training.all_data_sources')
-                  : t('access.user_permission_scope')
-            }}
+          <div v-if="!isAdminMode" class="fixed-project">
+            {{ t('access.user_permission_scope') }}
+          </div>
+          <div v-else class="datasource-scope-editor">
+            <el-radio-group
+              v-model="agentForm.specific_ds"
+              class="project-scope-mode"
+              @change="handleDatasourceScopeModeChange"
+            >
+              <el-radio-button :value="false">{{ t('training.all_data_sources') }}</el-radio-button>
+              <el-radio-button :value="true">{{ t('training.partial_data_sources') }}</el-radio-button>
+            </el-radio-group>
+            <el-form-item
+              v-show="agentForm.specific_ds"
+              prop="datasource_ids"
+              class="nested-datasource-form-item"
+            >
+              <el-select
+                v-model="agentForm.datasource_ids"
+                multiple
+                filterable
+                :placeholder="t('datasource.Please_select') + t('common.empty') + t('ds.title')"
+                style="width: 100%"
+                @change="handleDatasourceChange"
+              >
+                <el-option
+                  v-for="item in datasourceOptions"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="Number(item.id)"
+                />
+              </el-select>
+            </el-form-item>
+            <div v-if="!agentForm.specific_ds" class="scope-mode-tip">
+              {{ t('prompt.all_projects_hint') }}
+            </div>
           </div>
         </el-form-item>
         <el-form-item prop="prompt" :label="t('prompt.prompt_word_content')">
@@ -801,6 +895,10 @@ watch(scopeFilter, () => {
 
   .scope-filter {
     width: 132px;
+  }
+
+  .project-filter {
+    width: 180px;
   }
 
   .agent-card {
@@ -1070,6 +1168,35 @@ watch(scopeFilter, () => {
     border: 1px solid #dee0e3;
     border-radius: 6px;
     background: #f7faf9;
+  }
+
+  .datasource-scope-editor {
+    width: 100%;
+
+    .project-scope-mode {
+      display: flex;
+      width: 100%;
+    }
+
+    .project-scope-mode :deep(.ed-radio-button) {
+      flex: 1;
+    }
+
+    .project-scope-mode :deep(.ed-radio-button__inner) {
+      width: 100%;
+    }
+
+    .nested-datasource-form-item {
+      margin-top: 8px;
+      margin-bottom: 0;
+    }
+
+    .scope-mode-tip {
+      margin-top: 8px;
+      color: #646a73;
+      font-size: 12px;
+      line-height: 20px;
+    }
   }
 
   .pre-wrap {

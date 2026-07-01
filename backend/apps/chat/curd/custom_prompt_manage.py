@@ -88,7 +88,7 @@ def _normalize_platform_generic_scope(
     做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
-        return DEFAULT_TENANT_ID, False, []
+        return DEFAULT_TENANT_ID, specific_ds, datasource_ids
     return None, specific_ds, datasource_ids
 
 
@@ -303,7 +303,7 @@ def _to_info(
     ai_model_id = _normalize_ai_model_id(row.ai_model_id)
     ai_model_names = ai_model_names or {}
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
-    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC and not row.specific_ds:
         datasource_ids = []
     is_owner = _is_owner(row, current_user_id)
     prompt_visible = _prompt_visible(row, current_user_id, can_manage_all, can_manage_public)
@@ -332,7 +332,7 @@ def _to_info(
         effective_active=bool(row.active) and (True if user_enabled is None else bool(user_enabled)),
         visibility_scope=visibility_scope,
         prompt=row.prompt if prompt_visible else None,
-        specific_ds=False if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC else bool(row.specific_ds),
+        specific_ds=bool(row.specific_ds),
         datasource_ids=datasource_ids,
         datasource_names=[ds_names[item] for item in datasource_ids if item in ds_names],
     )
@@ -579,21 +579,23 @@ def _visible_conditions(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    platform_condition = _platform_public_visibility_condition()
-
-    if can_manage_all:
-        return [platform_condition] + _access_conditions(datasource_ids, include_global)
-
     if datasource_ids is None:
-        return [platform_condition]
+        return [_platform_public_visibility_condition()]
 
-    public_access = _access_conditions(datasource_ids, include_global)
-    private_access = _access_conditions(datasource_ids, include_global=True)
-    conditions = [platform_condition]
-    if public_access:
-        conditions.append(and_(_tenant_public_visibility_condition(), or_(*public_access)))
-    if private_access:
-        conditions.append(and_(_private_visibility_condition(current_user_id), or_(*private_access)))
+    access = _access_conditions(datasource_ids, include_global)
+    if not access:
+        return []
+    access_condition = or_(*access)
+    if can_manage_all:
+        return [access_condition]
+
+    conditions = [
+        and_(_platform_public_visibility_condition(), access_condition),
+        and_(_tenant_public_visibility_condition(), access_condition),
+    ]
+    private_condition = _private_visibility_condition(current_user_id)
+    if private_condition is not False:
+        conditions.append(and_(private_condition, access_condition))
     return conditions
 
 
@@ -671,7 +673,6 @@ def _build_query(
         ds_conditions = [CustomPrompt.datasource_ids.contains([int(ds_id)]) for ds_id in dslist]
         if include_global:
             ds_conditions.extend([
-                _platform_public_visibility_condition(),
                 CustomPrompt.datasource_ids == [],
                 CustomPrompt.specific_ds == False,
                 CustomPrompt.specific_ds.is_(None),
@@ -1247,16 +1248,30 @@ def batch_create_custom_prompts(
 
     resolved_tenant_id = _tenant_id(tenant_id)
     datasource_name_to_id = {}
-    datasource_id = get_bound_datasource_id_for_tenant(session, resolved_tenant_id)
-    if datasource_id is not None:
+    if resolved_tenant_id == DEFAULT_TENANT_ID:
         datasource_name_to_id = {
             row.name.strip(): int(row.id)
-            for row in session.execute(
-                select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.id == datasource_id)
-            ).all()
+            for row in session.execute(select(CoreDatasource.id, CoreDatasource.name)).all()
             if row.name
         }
+    else:
+        datasource_id = get_bound_datasource_id_for_tenant(session, resolved_tenant_id)
+        if datasource_id is not None:
+            datasource_name_to_id = {
+                row.name.strip(): int(row.id)
+                for row in session.execute(
+                    select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.id == datasource_id)
+                ).all()
+                if row.name
+            }
     valid_datasource_ids = set(datasource_name_to_id.values())
+    if resolved_tenant_id == DEFAULT_TENANT_ID and not valid_datasource_ids:
+        datasource_name_to_id = {
+            str(row.id): int(row.id)
+            for row in session.execute(select(CoreDatasource.id)).all()
+            if row.id is not None
+        }
+        valid_datasource_ids = set(datasource_name_to_id.values())
 
     for info in info_list:
         try:

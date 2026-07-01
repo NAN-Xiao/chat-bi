@@ -593,6 +593,8 @@
     "visible_shown": "표시",
     "visible_hidden": "숨김",
     "visible_hint": "숨기면 하위 사용자는 보거나 사용할 수 없습니다. 활성 상태는 변경되지 않습니다.",
+    "project_filter_placeholder": "프로젝트로 필터",
+    "all_projects_hint": "이 Agent는 모든 프로젝트에 적용됩니다.",
     "default_agent": "기본 Agent",
     "prompt_word_content": "시스템 프롬프트",
     "selected_prompt_words": "선택된 {msg}개의 Agent를 삭제하시겠습니까?",
@@ -1944,7 +1946,9 @@
     "admin_title": "Data Skills 관리",
     "admin_platform_subtitle": "재사용 가능한 방법론, 답변 규칙, 분석 흐름을 위한 플랫폼 공통 기능을 관리합니다. 구체적인 테이블, 필드, 지표 정의, 트래킹 규칙은 워크스페이스 Skill에 두세요.",
     "admin_workspace_subtitle": "Q&A와 분석 도우미가 자동으로 사용하거나 수동으로 고정할 수 있는 워크스페이스 Data Skills를 관리합니다.",
-    "platform_skill": "플랫폼 공통 Skill"
+    "platform_skill": "플랫폼 공통 Skill",
+    "project_filter_placeholder": "프로젝트로 필터",
+    "all_projects_hint": "이 Skill은 모든 프로젝트에 적용됩니다."
   },
   "knowledge_base": {
     "title": "지식 베이스",

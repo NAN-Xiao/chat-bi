@@ -225,7 +225,7 @@ def _validate_prompt_datasource_scope(session: SessionDep, current_user: Current
     info.datasource_ids = datasource_ids
 
 
-def _force_platform_public_prompt(info: CustomPromptInfo):
+def _force_platform_public_prompt(session: SessionDep, info: CustomPromptInfo):
     """
     是什么：_force_platform_public_prompt 是一个可以复用的小步骤，负责系统管理相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
@@ -233,8 +233,18 @@ def _force_platform_public_prompt(info: CustomPromptInfo):
     """
     info.tenant_id = DEFAULT_TENANT_ID
     info.visibility_scope = CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC
-    info.specific_ds = False
-    info.datasource_ids = []
+    datasource_ids = _normalize_datasource_ids(info.datasource_ids)
+    if not info.specific_ds:
+        info.datasource_ids = []
+        return
+    if not datasource_ids:
+        raise HTTPException(status_code=400, detail="Datasource is required")
+    rows = session.exec(select(CoreDatasource.id).where(CoreDatasource.id.in_(datasource_ids))).all()
+    existing_ids = {int(row[0] if isinstance(row, tuple) else row) for row in rows}
+    missing_ids = [item for item in datasource_ids if int(item) not in existing_ids]
+    if missing_ids:
+        raise HTTPException(status_code=400, detail="Datasource not found")
+    info.datasource_ids = datasource_ids
 
 
 def _workspace_tenant_id(current_user: CurrentUser) -> int:
@@ -286,7 +296,7 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
             info.specific_ds = False
             info.datasource_ids = []
         elif existing_platform_public:
-            _force_platform_public_prompt(info)
+            _force_platform_public_prompt(session, info)
         else:
             if not can_manage_public:
                 raise HTTPException(status_code=403, detail="Only tenant admin can maintain public Agents")
@@ -296,7 +306,7 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
         return
 
     if can_manage_platform_public:
-        _force_platform_public_prompt(info)
+        _force_platform_public_prompt(session, info)
         return
 
     if _is_platform_public_scope(info.visibility_scope):
@@ -907,7 +917,13 @@ async def upload_excel(
         db_session = session_maker()
         try:
             if can_manage_platform_public:
-                datasource_name_to_id = {}
+                datasource_name_to_id = {
+                    row.name.strip(): int(row.id)
+                    for row in db_session.execute(
+                        select(CoreDatasource.id, CoreDatasource.name)
+                    ).all()
+                    if row.name
+                }
             else:
                 datasource_name_to_id = {}
                 datasource_id = get_bound_datasource_id_for_tenant(
@@ -1042,9 +1058,9 @@ async def upload_excel(
                         ai_model_id=ai_model_id,
                         ai_model_name=ai_model_name if ai_model_id else None,
                         prompt=prompt,
-                        datasource_names=[] if can_manage_platform_public else datasource_names,
-                        datasource_ids=[] if can_manage_platform_public else datasource_ids,
-                        specific_ds=False if can_manage_platform_public else not all_datasource,
+                        datasource_names=datasource_names,
+                        datasource_ids=datasource_ids,
+                        specific_ds=not all_datasource,
                         visibility_scope=visibility_scope,
                     ))
             result = batch_create_custom_prompts(
