@@ -182,15 +182,26 @@ LIMIT 1000;
 """.strip()
 
 SQL_HERO_EXPEDITION_COUNT = f"""
-SELECT {HERO_ID} AS `将领ID`,
-       COUNT(*) AS `出征次数`
+SELECT
+    STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
+    JSON_UNQUOTE(JSON_EXTRACT(e.personal, CONCAT('$.ed_myTeamHeroList[', n.n, '].heroId'))) AS `英雄ID`,
+    COUNT(*) AS `出征次数`
 FROM `event` e
+JOIN (
+    SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+    UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
+) n
+  ON JSON_EXTRACT(e.personal, CONCAT('$.ed_myTeamHeroList[', n.n, '].heroId')) IS NOT NULL
 WHERE {_dt_between("e", 6)}
-  AND e.event IN ({EXPEDITION_EVENTS})
+  AND e.event = 'WorldMarch'
   AND e.prod = {PROD_ID}
-GROUP BY `将领ID`
-ORDER BY `出征次数` DESC
-LIMIT 50
+GROUP BY
+    e.dt,
+    `英雄ID`
+ORDER BY
+    e.dt,
+    `出征次数` DESC
+LIMIT 1000;
 """.strip()
 
 _WIN_EXPR = "COALESCE(" + _json_text("e", "ext", "battleResult") + ", " + _json_text("e", "ext", "expeditionDungeonResult") + ") IN ('win','success','1','胜利')"
@@ -771,7 +782,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "0b849c96c0a3480c9e940b92995d5e3e": ViewSql("出征数据", "荣耀远征事件数", "metric", ("荣耀远征事件数", "日环比", "周同比"), y_axis=("荣耀远征事件数", "日环比", "周同比"), sql=SQL_HONOR_EXPEDITION_COUNT),
     "f2be189bf85f4181bc7191cd5138561f": ViewSql("出征数据", "出征相关明细", "table", ("日期", "出征事件数", "人均事件数", "参与用户数"), columns=("日期", "出征事件数", "人均事件数", "参与用户数"), sql=SQL_EXPEDITION_DETAIL),
     "e02bdbafdd364d3cba9f991f94896c86": ViewSql("出征数据", "过去7日各兵种出征情况", "table", ("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), columns=("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), sql=SQL_ARMY_7D),
-    "59a8dfd8d6e341988edfbf1666872aae": ViewSql("出征数据", "各将领出征量分布", "table", ("将领ID", "出征次数"), columns=("将领ID", "出征次数"), sql=SQL_HERO_EXPEDITION_COUNT),
+    "59a8dfd8d6e341988edfbf1666872aae": ViewSql("出征数据", "近七天英雄出征量分布", "table", ("日期", "英雄ID", "出征次数"), columns=("日期", "英雄ID", "出征次数"), sql=SQL_HERO_EXPEDITION_COUNT),
     "848927b0833443d39a93797c3507368e": ViewSql("出征数据", "各等级出征胜率", "column", ("等级", "出征胜率"), ("等级",), ("出征胜率",), sql=SQL_LEVEL_WIN_RATE),
     "344c936b561f44f6bc29cc2663f3f651": ViewSql("出征数据", "各将领出征胜率", "table", ("将领ID", "各将领出征胜率"), columns=("将领ID", "各将领出征胜率"), sql=SQL_HERO_WIN_RATE),
     "61c21b5974844638a3d7370971de58c9": ViewSql("出征数据", "各主城等级参与演习次数", "line", ("日期", "主城等级", "参与演习次数"), ("日期",), ("参与演习次数",), sql=SQL_DRILL_BY_CITY_LEVEL),
