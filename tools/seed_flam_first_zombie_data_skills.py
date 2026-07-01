@@ -663,10 +663,11 @@ LIMIT 24
 
 ## SQL 口径
 - 英雄养成事件集合为 `HeroAcquisition`,`HeroLevelUp`,`HeroStarUp`,`HeroSkillUpgrade`,`HeroRecruit`。
-- 英雄 ID 优先取 `ext.ed_heroId`，其次 `ext.captainId`。
-- 英雄等级优先取 `ext.ed_currentLevel`，缺失时取 `ext.ed_heroLevel`。
-- 英雄星级优先取 `ext.ed_heroStar`，缺失时取 `ext.ed_newStar`。
-- 当前等级分布必须先按 `uid, hero_id` 取最近一条养成事件，再统计用户数；不要把历史升级事件行数当当前等级分布。
+- 养成看板当前落地 SQL 优先读取 `event.personal` 中的英雄字段；英雄 ID 使用 `personal.ed_heroId`。
+- 英雄等级优先取 `personal.ed_currentLevel`，缺失时取 `personal.ed_heroLevel`。
+- 英雄星级优先取 `personal.ed_heroStar`，缺失时取 `personal.ed_newStar`。
+- 当前等级分布必须先按 `uid, hero_id` 用 `ROW_NUMBER() OVER (PARTITION BY uid, hero_id ORDER BY dt DESC, time DESC)` 取最近一条养成事件，再统计用户数；不要把历史升级事件行数当当前等级分布。
+- 英雄养成情况只统计 `HeroLevelUp` 和 `HeroStarUp` 两类看板行为，且仅保留 `personal.ed_heroId` 非空的事件。
 
 ## 禁止事项
 - 不要用事件次数代替当前持有/当前等级分布人数。

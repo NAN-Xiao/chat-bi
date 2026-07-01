@@ -553,56 +553,62 @@ ORDER BY d.retain_day
 """.strip()
 
 SQL_HERO_GROWTH = f"""
-SELECT {HERO_ID} AS `将领ID`,
-       COUNT(CASE WHEN e.event = 'HeroStarUp' THEN 1 END) AS `升星次数`,
-       COUNT(DISTINCT CASE WHEN e.event = 'HeroStarUp' THEN e.uid END) AS `升星用户数`,
-       COUNT(CASE WHEN e.event = 'HeroLevelUp' THEN 1 END) AS `升级次数`,
-       COUNT(DISTINCT CASE WHEN e.event = 'HeroLevelUp' THEN e.uid END) AS `升级用户数`
+SELECT
+    JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_heroId')) AS `将领ID`,
+    COUNT(CASE WHEN e.event = 'HeroStarUp' THEN 1 END) AS `升星次数`,
+    COUNT(DISTINCT CASE WHEN e.event = 'HeroStarUp' THEN e.uid END) AS `升星用户数`,
+    COUNT(CASE WHEN e.event = 'HeroLevelUp' THEN 1 END) AS `升级次数`,
+    COUNT(DISTINCT CASE WHEN e.event = 'HeroLevelUp' THEN e.uid END) AS `升级用户数`
 FROM `event` e
 WHERE {_dt_between("e", 29)}
-  AND e.event IN ({HERO_EVENTS})
-  AND e.prod = {PROD_ID}
+  AND e.event IN ('HeroLevelUp', 'HeroStarUp')
+  AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_heroId')), '') IS NOT NULL
 GROUP BY `将领ID`
 ORDER BY (`升星次数` + `升级次数`) DESC
-LIMIT 50
+LIMIT 1000;
 """.strip()
 
-HERO_LEVEL = f"COALESCE(CAST({_json_text('e', 'ext', 'ed_currentLevel')} AS DECIMAL(18,4)), CAST({_json_text('e', 'ext', 'ed_heroLevel')} AS DECIMAL(18,4)), 0)"
-HERO_STAR = f"COALESCE({_json_text('e', 'ext', 'ed_heroStar')}, {_json_text('e', 'ext', 'ed_newStar')}, '未知')"
-
 SQL_SSR_HERO_LEVEL = f"""
-WITH latest_key AS (
-    SELECT e.uid,
-           {HERO_ID} AS hero_id,
-           MAX(CONCAT(CAST(e.dt AS CHAR), LPAD(CAST(e.time AS CHAR), 20, '0'))) AS latest_key
+WITH base AS (
+    SELECT
+        e.uid,
+        e.dt,
+        e.time,
+        JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_heroId')) AS hero_id,
+        NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_heroStar')), '') AS hero_star_levelup,
+        NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_newStar')), '') AS hero_star_starup,
+        CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_currentLevel')), '') AS DECIMAL(18,4)) AS current_level,
+        CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_heroLevel')), '') AS DECIMAL(18,4)) AS event_hero_level
     FROM `event` e
     WHERE {_dt_between("e", 29)}
-      AND e.event IN ('HeroLevelUp','HeroStarUp')
+      AND e.event IN ('HeroLevelUp', 'HeroStarUp')
       AND e.prod = {PROD_ID}
-    GROUP BY e.uid, hero_id
-), latest AS (
-    SELECT e.uid,
-           {HERO_ID} AS hero_id,
-           {HERO_STAR} AS hero_star,
-           {HERO_LEVEL} AS hero_level
-    FROM `event` e
-    JOIN latest_key l
-      ON l.uid = e.uid
-     AND l.hero_id = {HERO_ID}
-     AND l.latest_key = CONCAT(CAST(e.dt AS CHAR), LPAD(CAST(e.time AS CHAR), 20, '0'))
-    WHERE e.event IN ('HeroLevelUp','HeroStarUp')
-      AND e.prod = {PROD_ID}
+),
+ranked AS (
+    SELECT
+        uid,
+        hero_id,
+        COALESCE(hero_star_levelup, hero_star_starup, '未知') AS hero_star,
+        COALESCE(current_level, event_hero_level, 0) AS hero_level,
+        ROW_NUMBER() OVER (
+            PARTITION BY uid, hero_id
+            ORDER BY dt DESC, time DESC
+        ) AS rn
+    FROM base
+    WHERE NULLIF(hero_id, '') IS NOT NULL
 )
-SELECT hero_id AS `将领ID`,
-       hero_star AS `英雄星级`,
-       COUNT(DISTINCT uid) AS `全部用户`,
-       COUNT(DISTINCT CASE WHEN hero_level BETWEEN 1 AND 10 THEN uid END) AS `1-10`,
-       COUNT(DISTINCT CASE WHEN hero_level BETWEEN 11 AND 20 THEN uid END) AS `11-20`,
-       COUNT(DISTINCT CASE WHEN hero_level >= 21 THEN uid END) AS `21+`
-FROM latest
+SELECT
+    hero_id AS `将领ID`,
+    hero_star AS `英雄星级`,
+    COUNT(*) AS `全部用户`,
+    SUM(CASE WHEN hero_level BETWEEN 1 AND 10 THEN 1 ELSE 0 END) AS `1-10`,
+    SUM(CASE WHEN hero_level BETWEEN 11 AND 20 THEN 1 ELSE 0 END) AS `11-20`,
+    SUM(CASE WHEN hero_level >= 21 THEN 1 ELSE 0 END) AS `21+`
+FROM ranked
+WHERE rn = 1
 GROUP BY hero_id, hero_star
 ORDER BY `全部用户` DESC
-LIMIT 50
+LIMIT 1000;
 """.strip()
 
 SQL_CITY_AVG_LEVEL = f"""
