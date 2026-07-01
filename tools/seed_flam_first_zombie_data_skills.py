@@ -613,13 +613,14 @@ LIMIT 24
 - “购买新手礼包用户复购率”当前落地仅使用 `event='ServerPayLog'`，商品 ID 读取 `personal.productid`，订单号读取 `personal.orderId`。
 - 新手礼包当前识别为 `personal.productid = '85003'`；首购日为用户首次购买该商品的日期。
 - 新手礼包复购率以购买新手礼包用户为 cohort，统计首购后 7 日内是否再次触发 `ServerPayLog`；近 7 天未成熟首购 cohort 需要排除，避免复购率偏低。
-- 月卡等其他商品识别可使用付费事件集合，商品/礼包标识优先从 `ext.payId` 取，其次 `ext.rechargeId`、`ext.productId`、`ext.goodsId`。
-- 月卡识别使用商品标识中的 `month` 或 `月卡`，月卡留存以购买用户为 cohort，在购买后第 1/7/14/30 日登录事件中按 `uid` 去重。
+- “购买月卡用户的30日留存”当前落地仅使用 `event='ServerPayLog'`，月卡商品暂定为 `personal.productid = '190002'`。
+- 月卡留存以 30-60 天前购买月卡的成熟用户为 cohort，使用 `UserActive` 判断购买后第 1/3/7/15/30 日活跃，输出次留、3留、7留、15留、30留。
 
 ## 禁止事项
 - 不要把所有付费用户当新手礼包或月卡 cohort。
 - 不要用累计付费快照推断具体商品复购。
 - 生成新手礼包复购 SQL 时不要从 `ext` 读取商品 ID；`ServerPayLog` 样本中商品字段在 `personal.productid`。
+- 生成月卡留存 SQL 时不要使用 `month`/`月卡` 文本匹配；当前 `ServerPayLog` 样本中商品字段是数字型 `personal.productid`。
 
 ## 持久看板 SQL
 以下 SQL 是本 Data Skill 对礼包复购和月卡留存组件的落地配置。

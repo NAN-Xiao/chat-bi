@@ -681,36 +681,47 @@ LIMIT 1000
 """.strip()
 
 SQL_MONTH_CARD_RETENTION = f"""
-WITH pay_events AS (
-    SELECT e.uid, MIN(e.dt) AS buy_dt
+WITH month_card_buyers AS (
+    SELECT
+        e.uid,
+        MIN(e.dt) AS buy_dt
     FROM `event` e
-    WHERE e.dt BETWEEN {_date_expr(61)} AND {_date_expr(31)}
+    WHERE e.dt BETWEEN {_date_expr(60)} AND {_date_expr(30)}
       AND e.prod = {PROD_ID}
-      AND e.event IN ({PAY_EVENTS})
-      AND (LOWER({PRODUCT_ID}) LIKE '%month%' OR {PRODUCT_ID} LIKE '%月卡%')
+      AND e.event = 'ServerPayLog'
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')) = '190002'
     GROUP BY e.uid
 ), active_events AS (
-    SELECT e.dt,
-           e.uid
+    SELECT DISTINCT
+        e.uid,
+        e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN {_date_expr(60)} AND {_date_expr(1)}
-      AND e.event IN ({LOGIN_EVENTS})
+    WHERE e.dt BETWEEN {_date_expr(59)} AND {_date_expr(0)}
       AND e.prod = {PROD_ID}
-    GROUP BY e.dt, e.uid
-), login_events AS (
-    SELECT p.uid,
-           DATEDIFF(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), STR_TO_DATE(CAST(p.buy_dt AS CHAR), '%Y%m%d')) AS retain_day
-    FROM pay_events p
-    JOIN active_events e ON e.uid = p.uid
-    WHERE e.dt BETWEEN p.buy_dt AND CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.buy_dt AS CHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED)
+      AND e.event = 'UserActive'
+), retain_days AS (
+    SELECT 1 AS retain_day, '次留' AS retain_label
+    UNION ALL SELECT 3, '3留'
+    UNION ALL SELECT 7, '7留'
+    UNION ALL SELECT 15, '15留'
+    UNION ALL SELECT 30, '30留'
 )
-SELECT CONCAT('第', d.retain_day, '日') AS `留存日`,
-       ROUND(COUNT(DISTINCT l.uid) / NULLIF((SELECT COUNT(DISTINCT uid) FROM pay_events), 0) * 100, 2) AS `留存率`
-FROM (
-    SELECT 1 AS retain_day UNION ALL SELECT 7 UNION ALL SELECT 14 UNION ALL SELECT 30
-) d
-LEFT JOIN login_events l ON l.retain_day = d.retain_day
-GROUP BY d.retain_day
+SELECT
+    d.retain_label AS `留存日`,
+    COUNT(DISTINCT b.uid) AS `购买月卡用户数`,
+    COUNT(DISTINCT a.uid) AS `留存用户数`,
+    ROUND(COUNT(DISTINCT a.uid) / NULLIF(COUNT(DISTINCT b.uid), 0) * 100, 2) AS `留存率`
+FROM retain_days d
+JOIN month_card_buyers b ON TRUE
+LEFT JOIN active_events a
+  ON a.uid = b.uid
+ AND a.dt = CAST(
+     DATE_FORMAT(
+         DATE_ADD(STR_TO_DATE(CAST(b.buy_dt AS CHAR), '%Y%m%d'), INTERVAL d.retain_day DAY),
+         '%Y%m%d'
+     ) AS SIGNED
+ )
+GROUP BY d.retain_day, d.retain_label
 ORDER BY d.retain_day
 """.strip()
 
@@ -936,7 +947,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "df837cb59810483f84fb0e7cd420646a": ViewSql("经济系统", "免费钻石获取途径分布", "column", ("获取途径", "免费钻石获取量"), ("获取途径",), ("免费钻石获取量",), columns=("获取途径", "免费钻石获取量"), sql=SQL_GOLD_SOURCE),
     "fda6854e188c44c4b35e75c9af6d9854": ViewSql("经济系统", "钻石消耗途径分布", "column", ("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), ("消耗途径",), ("免费钻石消耗量", "付费钻石消耗量"), columns=("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), sql=SQL_GOLD_SINK),
     "15da41b65ee64aba854e2de701a728bc": ViewSql("礼包付费概览", "购买新手礼包用户复购率", "line", ("首购日期", "购买新手礼包用户数", "7日内复购用户数", "7日内复购率"), ("首购日期",), ("7日内复购率",), columns=("首购日期", "购买新手礼包用户数", "7日内复购用户数", "7日内复购率"), sql=SQL_STARTER_PACK_REPURCHASE),
-    "f113ac14e8994d12814452040b702424": ViewSql("礼包付费概览", "购买月卡用户的30日留存", "line", ("留存日", "留存率"), ("留存日",), ("留存率",), sql=SQL_MONTH_CARD_RETENTION),
+    "f113ac14e8994d12814452040b702424": ViewSql("礼包付费概览", "购买月卡用户的30日留存", "table", ("留存日", "留存率", "留存用户数", "购买月卡用户数"), columns=("留存日", "留存率", "留存用户数", "购买月卡用户数"), sql=SQL_MONTH_CARD_RETENTION),
     "8b3e5b7179af442e8fded00ae25a0245": ViewSql("渠道分析", "活跃用户数（按渠道）", "line", ("日期", "渠道", "活跃用户数"), ("日期",), ("活跃用户数",), sql=SQL_ACTIVE_BY_CHANNEL),
     "e13ce279fb3d432da20336b1f93eaf4f": ViewSql("养成看板", "英雄养成情况", "table", ("将领ID", "升星次数", "升星用户数", "升级次数", "升级用户数"), columns=("将领ID", "升星次数", "升星用户数", "升级次数", "升级用户数"), sql=SQL_HERO_GROWTH),
     "78ddbc37336844b1852ddeaef72f7ecc": ViewSql("养成看板", "SSR英雄的等级分布", "table", ("将领ID", "英雄星级", "全部用户", "1-10", "11-20", "21+"), columns=("将领ID", "英雄星级", "全部用户", "1-10", "11-20", "21+"), sql=SQL_SSR_HERO_LEVEL),
