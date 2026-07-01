@@ -692,7 +692,7 @@ LIMIT 24
 ## SQL 口径
 - 当前主城等级类指标使用 `user` 当前日前一完整分区的 `lastinfo.blevel`，按 `uid` 去重，并过滤 `prod = 110000038`。
 - 主城/建筑升级事件使用 `BuildingUpgrade`,`BuildingIdleUpgrade`；建筑 ID 优先取 `ext.ed_buildingId`，其次 `ext.ed_metaId`。
-- 科技升级类事件使用 `BuildingIdleUpgrade`,`HeroSkillUpgrade`,`RadarUpgrade`,`AllianceTechnologyDonation`。
+- 科技升级类事件只使用 `TechnologyDonation`。
 - 兵种招募/升级使用 `event='ArmyUpgrade'`，兵种优先取 `ext.ed_newArmyId`，其次 `ext.ed_oldArmyId`，数量取 `ext.ed_count`。
 - 加速使用从 `BuildingUpgrade`,`BuildingIdleUpgrade`,`ArmyUpgrade` 中识别，类型优先取 `ext.ed_detailReason`，其次 `ext.ed_route`。
 - 主城升级漏斗使用最新快照主城等级阈值，而不是历史升级事件次数。

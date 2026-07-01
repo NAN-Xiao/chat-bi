@@ -75,7 +75,7 @@ EXPEDITION_EVENTS = [
 ]
 
 BUILDING_EVENTS = ["BuildingUpgrade", "BuildingIdleUpgrade"]
-TECH_EVENTS = ["BuildingIdleUpgrade", "HeroSkillUpgrade", "RadarUpgrade", "AllianceTechnologyDonation"]
+TECH_EVENTS = ["TechnologyDonation"]
 HERO_EVENTS = ["HeroAcquisition", "HeroLevelUp", "HeroStarUp", "HeroSkillUpgrade", "HeroRecruit"]
 ARMY_EVENTS = ["ArmyUpgrade"]
 GOLD_EVENTS = ["GoldChange"]
@@ -104,7 +104,7 @@ TRACKING_CONFIG = {
         {"metric": "army_upgrade", "events": ARMY_EVENTS, "description": "兵种升级、兵种招募和兵种相关主城成长指标使用的事件"},
         {"metric": "gold_economy", "events": GOLD_EVENTS, "description": "钻石获取、消耗和存量变化使用 GoldChange，并读取 ext.ed_changeFree/ed_changePaid"},
         {"metric": "city_building_upgrade", "events": BUILDING_EVENTS, "description": "主城/建筑升级类指标使用的建筑升级事件集合"},
-        {"metric": "technology_upgrade", "events": TECH_EVENTS, "description": "科技升级类指标使用的事件集合"},
+        {"metric": "technology_upgrade", "events": TECH_EVENTS, "description": "科技升级类指标只使用个人科技升级事件 TechnologyDonation"},
         {"metric": "hero_growth", "events": HERO_EVENTS, "description": "英雄获取、升级、升星、技能升级和招募相关养成指标使用的事件集合"},
     ],
     "sql_rules": "\n".join(

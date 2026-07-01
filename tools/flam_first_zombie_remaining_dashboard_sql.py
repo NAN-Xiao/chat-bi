@@ -97,7 +97,7 @@ def _axis(field: str) -> dict[str, str]:
 EXPEDITION_EVENTS = "'WorldMarch','WorldMarchRet','ActivityWorldBoss','ActivityAllianceBossBattleRet','honorExpedition','ArenaResults','TrainingArenaResults','multipleArena'"
 ACTIVITY_EVENTS = "'ActivityAllianceBossBattleRet','ActivityAllianceBossChoose','ActivityAllianceBossDonation','ActivityAllianceBossReward','ActivityArmsRaceBoxOpen','ActivityArmsRaceGoalPoint','ActivityArmsRaceTask','ActivityChestCount','ActivityCommanderTask','ActivityWheelCount','ActivityWorldBoss','AllianceDuelAlliancePoint','AllianceDuelPersonalPoint','AllianceDuelBoxOpen'"
 BUILDING_EVENTS = "'BuildingUpgrade','BuildingIdleUpgrade'"
-TECH_EVENTS = "'BuildingIdleUpgrade','HeroSkillUpgrade','RadarUpgrade','AllianceTechnologyDonation'"
+TECH_EVENTS = "'TechnologyDonation'"
 HERO_EVENTS = "'HeroAcquisition','HeroLevelUp','HeroStarUp','HeroSkillUpgrade','HeroRecruit'"
 
 HERO_ID = f"COALESCE({_json_text('e', 'ext', 'ed_heroId')}, {_json_text('e', 'ext', 'captainId')}, '未知')"

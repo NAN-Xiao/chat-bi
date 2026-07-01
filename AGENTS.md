@@ -2,6 +2,10 @@
 
 Scope: entire repository.
 
+## Git Workflow
+
+- When generating Git commit messages, push summaries, PR titles, PR descriptions, changelog entries, or release notes for this repository, use Chinese by default unless the user explicitly asks for another language.
+
 ## Local Dev Runbook
 
 - For local Windows development, treat the stack as three separate local services:
