@@ -428,10 +428,6 @@ async function restoreRecordTask() {
   if (restoringTask.value) {
     return
   }
-  if (props.message?.record?.id && props.message?.record?.finish) {
-    getChatData(props.message.record.id)
-    return
-  }
   const record = props.message?.record
   if (!record || record.local_answer || record.finish) {
     return

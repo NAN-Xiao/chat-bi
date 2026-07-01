@@ -825,7 +825,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                    ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
                    ChatRecord.agent_context_snapshot,
                    ChatRecord.recommended_question, ChatRecord.first_chat,
-                   ChatRecord.finish, ChatRecord.error,
+                   ChatRecord.finish, ChatRecord.error, ChatRecord.data, ChatRecord.predict_data,
                    sql_alias_log.reasoning_content.label('sql_reasoning_content'),
                    chart_alias_log.reasoning_content.label('chart_reasoning_content'),
                    analysis_alias_log.reasoning_content.label('analysis_reasoning_content'),
@@ -926,7 +926,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         ) if source_record_id else False
 
         data_value = _row_value(row, "data")
-        if row.datasource and (row.sql or row.analysis_record_id or row.predict_record_id):
+        if with_data and row.datasource and (row.sql or row.analysis_record_id or row.predict_record_id):
             data_value = orjson.dumps(get_chart_data_with_user(
                 session=session,
                 current_user=current_user,
@@ -934,6 +934,9 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             )).decode()
 
         record_result: ChatRecordResult
+        predict_data_value = _row_value(row, "predict_data")
+        if row.predict_record_id and (not current_permission_allowed or derived_cache_requires_scrub):
+            predict_data_value = None
         if not with_data:
             record_result = ChatRecordResult(id=row.id, tenant_id=row.tenant_id, chat_id=row.chat_id, create_time=row.create_time,
                                              finish_time=row.finish_time,
@@ -952,15 +955,13 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              agent_context_snapshot=row.agent_context_snapshot,
                                              recommended_question=row.recommended_question, first_chat=row.first_chat,
                                              finish=row.finish, error=row.error, data=data_value,
+                                             predict_data=predict_data_value,
                                              sql_reasoning_content=row.sql_reasoning_content,
                                              chart_reasoning_content=row.chart_reasoning_content,
                                              analysis_reasoning_content=row.analysis_reasoning_content,
                                              predict_reasoning_content=row.predict_reasoning_content,
                                              )
         else:
-            predict_data_value = row.predict_data
-            if row.predict_record_id and (not current_permission_allowed or derived_cache_requires_scrub):
-                predict_data_value = None
             record_result = ChatRecordResult(id=row.id, tenant_id=row.tenant_id, chat_id=row.chat_id, create_time=row.create_time,
                                              finish_time=row.finish_time,
                                              duration=duration,

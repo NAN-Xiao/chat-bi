@@ -9,7 +9,17 @@ pipeline {
   }
 
   parameters {
-    string(name: 'BRANCH_NAME', defaultValue: 'release_ha', description: 'Git 分支')
+    gitParameter(
+      name: 'BRANCH_NAME',
+      type: 'PT_BRANCH',
+      defaultValue: 'release_ha',
+      selectedValue: 'DEFAULT',
+      branchFilter: 'origin/(.*)',
+      sortMode: 'DESCENDING_SMART',
+      quickFilterEnabled: true,
+      useRepository: 'https://github.com/NAN-Xiao/chat-bi.git',
+      description: 'Git 分支'
+    )
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
     booleanParam(name: 'CLEAN_OLD_IMAGES', defaultValue: false, description: '是否清理旧版本镜像。默认关闭以缩短发布耗时')
   }

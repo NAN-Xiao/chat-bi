@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat.ts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import { parseSseChunk } from '@/utils/sse'
@@ -267,12 +267,6 @@ function stop() {
 
 onBeforeUnmount(() => {
   stop()
-})
-
-onMounted(() => {
-  if (props.message?.record?.id && props.message?.record?.finish) {
-    getChatPredictData(props.message.record.id)
-  }
 })
 
 defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList, stop })

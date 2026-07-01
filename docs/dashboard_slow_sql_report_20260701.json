@@ -1,0 +1,494 @@
+{
+  "generated_at": "2026-07-01T11:34:41",
+  "threshold_s": 10.0,
+  "timeout_s": 15,
+  "dashboard_sql_entries": 466,
+  "unique_sql_count": 186,
+  "tested_unique_sql_count": 183,
+  "slow_count": 21,
+  "unavailable_count": 3,
+  "slow": [
+    {
+      "hash": "71b161ac09ed2730768c521c4f9444db96079a73",
+      "datasource": 1,
+      "sql": "WITH obs AS\n  (SELECT max(\"event_date\") AS \"max_date\"\n   FROM \"public\".\"fact_payments\"),\n     cohort AS\n  (SELECT \"p\".\"player_id\"\n   FROM \"public\".\"dim_player\" \"p\"\n   CROSS JOIN obs\n   WHERE \"p\".\"install_date\" BETWEEN obs.\"max_date\" - 29 AND obs.\"max_date\"),\n     event_flags AS\n  (SELECT \"e\".\"player_id\",\n          bool_or(\"e\".\"event_name\" = 'tutorial_step'\n                  AND (\"e\".\"attributes\"->>'step')::int >= 3) AS \"did_tutorial_3\",\n          bool_or(\"e\".\"event_name\" = 'tutorial_step'\n                  AND (\"e\".\"attributes\"->>'step')::int >= 7) AS \"did_tutorial_7\"\n   FROM \"public\".\"fact_events\" \"e\"\n   JOIN cohort \"c\" ON \"c\".\"player_id\" = \"e\".\"player_id\"\n   GROUP BY \"e\".\"player_id\"),\n     player_level AS\n  (SELECT \"c\".\"player_id\",\n          coalesce(\"ef\".\"did_tutorial_3\", false) AS \"did_tutorial_3\",\n          coalesce(\"ef\".\"did_tutorial_7\", false) AS \"did_tutorial_7\",\n          EXISTS\n     (SELECT 1\n      FROM \"public\".\"fact_battles\" \"b\"\n      WHERE \"b\".\"player_id\" = \"c\".\"player_id\") AS \"did_first_battle\",\n                 EXISTS\n     (SELECT 1\n      FROM \"public\".\"fact_building_upgrades\" \"bu\"\n      WHERE \"bu\".\"player_id\" = \"c\".\"player_id\") AS \"did_building_upgrade\",\n                        EXISTS\n     (SELECT 1\n      FROM \"public\".\"fact_payments\" \"p\"\n      WHERE \"p\".\"player_id\" = \"c\".\"player_id\"\n        AND \"p\".\"payment_status\" = 'success'\n        AND \"p\".\"net_revenue_usd\" > 0\n        AND \"p\".\"is_first_pay\" = true) AS \"did_first_pay\"\n   FROM cohort \"c\"\n   LEFT JOIN event_flags \"ef\" ON \"ef\".\"player_id\" = \"c\".\"player_id\"),\n     steps AS\n  (SELECT 1 AS \"step_order\",\n          '完成教程第 3 步' AS \"step_name\",\n          count(*) FILTER (\n                           WHERE \"did_tutorial_3\") AS \"users\"\n   FROM player_level\n   UNION ALL SELECT 2,\n                    '完成教程第 7 步',\n                    count(*) FILTER (\n                                     WHERE \"did_tutorial_3\"\n                                       AND \"did_tutorial_7\")\n   FROM player_level\n   UNION ALL SELECT 3,\n                    '首次战斗',\n                    count(*) FILTER (\n                                     WHERE \"did_tutorial_3\"\n                                       AND \"did_tutorial_7\"\n                                       AND \"did_first_battle\")\n   FROM player_level\n   UNION ALL SELECT 4,\n                    '首次建筑升级',\n                    count(*) FILTER (\n                                     WHERE \"did_tutorial_3\"\n                                       AND \"did_tutorial_7\"\n                                       AND \"did_first_battle\"\n                                       AND \"did_building_upgrade\")\n   FROM player_level\n   UNION ALL SELECT 5,\n                    '首次成功付费',\n                    count(*) FILTER (\n                                     WHERE \"did_tutorial_3\"\n                                       AND \"did_tutorial_7\"\n                                       AND \"did_first_battle\"\n                                       AND \"did_building_upgrade\"\n                                       AND \"did_first_pay\")\n   FROM player_level),\n     base AS\n  (SELECT \"step_order\",\n          \"step_name\",\n          \"users\",\n          first_value(\"users\") OVER (\n                                     ORDER BY \"step_order\") AS \"start_users\",\n          lag(\"users\") OVER (\n                             ORDER BY \"step_order\") AS \"prev_users\"\n   FROM steps)\nSELECT \"step_name\" AS \"步骤名称\",\n       \"users\" AS \"通过人数\",\n       round(\"users\"::numeric / nullif(\"prev_users\", 0) * 100, 2) AS \"上步转化率\"\nFROM base\nWHERE \"prev_users\" IS NOT NULL\nORDER BY \"上步转化率\" ASC\nLIMIT 1000",
+      "ok": false,
+      "elapsed_s": 17.505127435026225,
+      "row_count_sample": null,
+      "error": "QueryCanceled: 错误:  由于语句执行超时，正在取消查询命令\n",
+      "occurrences": [
+        {
+          "dashboard_id": "29660c44cd014f49838dfe3f9b7d81e6",
+          "dashboard": "112",
+          "tenant_id": 7473600346187632640,
+          "view_id": "2185322546856108032",
+          "path": "new-view",
+          "title": "步骤转化率排行"
+        },
+        {
+          "dashboard_id": "f1ded8fbc95b409f86eae31972e5eeec",
+          "dashboard": "666",
+          "tenant_id": 7473600346187632640,
+          "view_id": "2185324965790916608",
+          "path": "new-view",
+          "title": "步骤转化率排行"
+        }
+      ]
+    },
+    {
+      "hash": "0a3fcf882f941c3f2bf729a167a2f184c2d4aabc",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS end_dt\n), cohort AS (\n    SELECT e.dt AS cohort_dt,\n           e.uid,\n           COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.pay1')), '') AS DECIMAL(18,4)), 0) AS pay1\n    FROM `event` e\n    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.end_dt\n    JOIN `user` u\n      ON u.uid = e.uid\n     AND u.dt = e.dt\n     AND u.prod = 110000038\n    WHERE e.prod = 110000038\n      AND e.event = 'UserRegister'\n)\nSELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,\n       ROUND(SUM(pay1), 2) AS `新增首日付费金额`\nFROM cohort\nGROUP BY cohort_dt\nORDER BY cohort_dt",
+      "ok": false,
+      "elapsed_s": 16.33721643203171,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "bb3ab5f2697a42af98ab90da4679cb77",
+          "dashboard": "新增看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "f784452553f1426ea5097b092deb818a",
+          "path": "new-view",
+          "title": "新增首日付费金额"
+        }
+      ]
+    },
+    {
+      "hash": "e2c1ad4a687072298df7650f29fe1676f2e2b0a1",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 36 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 8 DAY), '%Y%m%d') AS SIGNED) AS end_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS data_end_dt\n), cohort AS (\n    SELECT e.dt AS cohort_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS d1_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 3 DAY), '%Y%m%d') AS SIGNED) AS d3_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AS d7_dt,\n           e.uid,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.adinfo, '$.mediaSource')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.adinfo, '$.campaignName')), ''), '未知') AS channel\n    FROM `event` e\n    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.end_dt\n    WHERE e.prod = 110000038\n      AND e.event = 'UserRegister'\n), active AS (\n    SELECT e.dt,\n           e.uid\n    FROM `event` e\n    JOIN bounds b ON e.dt BETWEEN CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(b.start_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AND b.data_end_dt\n    WHERE e.prod = 110000038\n      AND e.event = 'UserActive'\n    GROUP BY e.dt, e.uid\n)\nSELECT STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d') AS `日期`,\n       c.channel AS `渠道`,\n       COUNT(DISTINCT c.uid) AS `用户注册用户数`,\n       ROUND(COUNT(DISTINCT CASE WHEN a.dt = c.d1_dt THEN c.uid END) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第1日`,\n       ROUND(COUNT(DISTINCT CASE WHEN a.dt = c.d3_dt THEN c.uid END) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第3日`,\n       ROUND(COUNT(DISTINCT CASE WHEN a.dt = c.d7_dt THEN c.uid END) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第7日`\nFROM cohort c\nLEFT JOIN active a\n  ON a.uid = c.uid\n AND a.dt IN (c.d1_dt, c.d3_dt, c.d7_dt)\nGROUP BY c.cohort_dt, c.channel\nORDER BY c.cohort_dt, c.channel\nLIMIT 300",
+      "ok": false,
+      "elapsed_s": 16.30064728000434,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "5cee4cf41a024c56ac9de0e3aef9aefe",
+          "dashboard": "渠道分析",
+          "tenant_id": 7477202383789887488,
+          "view_id": "63e03c7e2ad34ad58321892998497a85",
+          "path": "new-view",
+          "title": "各渠道新增留存"
+        },
+        {
+          "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
+          "dashboard": "核心看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "f39bac6b01784ca5b92c60ffe4348756",
+          "path": "new-view",
+          "title": "各渠道新增留存"
+        }
+      ]
+    },
+    {
+      "hash": "e6febb2af8c1f43898b48c0d5c776ffbb27dbbf8",
+      "datasource": 3,
+      "sql": "WITH pay_event_users AS (\n    SELECT e.dt,\n           e.uid\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')\n      AND e.prod = 110000038\n    GROUP BY e.dt, e.uid\n), user_pay_delta AS (\n    SELECT pe.dt,\n           pe.uid,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.adinfo, '$.mediaSource')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.adinfo, '$.campaignName')), ''), '未知') AS channel,\n           GREATEST(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) - COALESCE(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0), 0), 0) AS pay_amount\n    FROM pay_event_users pe\n    JOIN `user` u\n      ON u.dt = pe.dt\n     AND u.uid = pe.uid\n     AND u.prod = 110000038\n    LEFT JOIN `user` p\n      ON p.uid = pe.uid\n     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n     AND p.prod = 110000038\n)\nSELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS `日期`,\n       channel AS `渠道`,\n       ROUND(SUM(pay_amount), 2) AS `付费金额`\nFROM user_pay_delta\nGROUP BY dt, channel\nORDER BY dt, channel\nLIMIT 300",
+      "ok": false,
+      "elapsed_s": 16.29272755497368,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "5cee4cf41a024c56ac9de0e3aef9aefe",
+          "dashboard": "渠道分析",
+          "tenant_id": 7477202383789887488,
+          "view_id": "8b1c7fa28da041afaf91d4a834a9a84a",
+          "path": "new-view",
+          "title": "付费金额（按渠道）"
+        }
+      ]
+    },
+    {
+      "hash": "5a5c5ee0ee5af5167f766b698084b8ce3e4c00b5",
+      "datasource": 3,
+      "sql": "WITH cohort AS\n  (SELECT `u`.`dt` AS `cohort_dt`,\n          `u`.`uid`,\n          CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(`u`.`dt` AS CHAR), '%Y%m%d'), INTERVAL 2 DAY), '%Y%m%d') AS SIGNED) AS `d3_dt`,\n          CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(`u`.`dt` AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS `d7_dt`\n   FROM `user` `u`\n   WHERE `u`.`dt` BETWEEN 20260618 AND 20260630\n     AND `u`.`prod` = 110000038\n     AND JSON_UNQUOTE(JSON_EXTRACT(`u`.`userinfo`, '$.regdate')) = CAST(`u`.`dt` AS CHAR)\n     AND JSON_UNQUOTE(JSON_EXTRACT(`u`.`userinfo`, '$.country')) = 'US')\nSELECT STR_TO_DATE(CAST(`c`.`cohort_dt` AS CHAR), '%Y%m%d') AS `注册日期`,\n       COUNT(DISTINCT `c`.`uid`) AS `新增用户数`,\n       ROUND(SUM(CASE\n                     WHEN `s`.`dt` = `c`.`d3_dt` THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`s`.`pay`, '$.pay3')), '') AS DECIMAL(18, 4)), 0)\n                 END) / NULLIF(COUNT(DISTINCT `c`.`uid`), 0), 2) AS `3 日 LTV`,\n       ROUND(SUM(CASE\n                     WHEN `s`.`dt` = `c`.`d7_dt` THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`s`.`pay`, '$.pay7')), '') AS DECIMAL(18, 4)), 0)\n                 END) / NULLIF(COUNT(DISTINCT `c`.`uid`), 0), 2) AS `7 日 LTV`\nFROM `cohort` `c`\nLEFT JOIN `user` `s` ON `s`.`uid` = `c`.`uid`\nAND `s`.`prod` = 110000038\nAND `s`.`dt` IN (`c`.`d3_dt`,\n                 `c`.`d7_dt`)\nGROUP BY `c`.`cohort_dt`\nORDER BY `c`.`cohort_dt`\nLIMIT 1000",
+      "ok": false,
+      "elapsed_s": 16.285380021028686,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "3e086461245d4b91b7b1fcaf3f42640b",
+          "dashboard": "333",
+          "tenant_id": 7477202383789887488,
+          "view_id": "2187046412636823552",
+          "path": "new-view",
+          "title": "美国 6 月 18 日后新增用户 LTV"
+        }
+      ]
+    },
+    {
+      "hash": "d406107faa0d011bc135e824208e918c056059f1",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS max_dt\n), cohort AS (\n    SELECT u.dt AS cohort_dt,\n           u.uid,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.adinfo, '$.mediaSource')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.adinfo, '$.campaignName')), ''), '未知') AS channel,\n           COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.pay1')), '') AS DECIMAL(18,4)), 0) AS pay1,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS d7_dt,\n           b.max_dt\n    FROM `user` u\n    JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt\n    WHERE u.prod = 110000038\n      AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)\n)\nSELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,\n       channel AS `渠道`,\n       COUNT(DISTINCT c.uid) AS `账号注册用户数`,\n       ROUND(SUM(c.pay1), 2) AS `首日付费金额`,\n       ROUND(SUM(CASE WHEN d7.dt IS NOT NULL THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(d7.pay, '$.pay7')), '') AS DECIMAL(18,4)), 0) END), 2) AS `7日累计付费金额`,\n       ROUND(SUM(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(latest.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0)), 2) AS `累计付费金额`\nFROM cohort c\nLEFT JOIN `user` d7\n  ON d7.uid = c.uid\n AND d7.prod = 110000038\n AND d7.dt = c.d7_dt\nLEFT JOIN `user` latest\n  ON latest.uid = c.uid\n AND latest.prod = 110000038\n AND latest.dt = c.max_dt\nGROUP BY cohort_dt, channel\nORDER BY cohort_dt DESC, `累计付费金额` DESC\nLIMIT 300",
+      "ok": false,
+      "elapsed_s": 16.27455570199527,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "e423819a72454bc9ab71646d41aa5fd6",
+          "dashboard": "投放看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "531012d01f104a509da2d1926692ee1d",
+          "path": "new-view",
+          "title": "各渠道注册与付费"
+        }
+      ]
+    },
+    {
+      "hash": "b8c1ea1174c0163fe5d30ff23cac5a22aa7c964c",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS max_dt\n)\nSELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,\n       COUNT(DISTINCT CASE WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) > 0 THEN u.uid END) AS `累计付费用户数`\nFROM `user` u\nJOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt\nWHERE u.prod = 110000038\nGROUP BY u.dt\nORDER BY u.dt",
+      "ok": false,
+      "elapsed_s": 16.272087273013312,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
+          "dashboard": "核心看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "b9043b8bca964589949a11c198154af4",
+          "path": "new-view",
+          "title": "累计付费用户趋势"
+        }
+      ]
+    },
+    {
+      "hash": "2109058600d4417e5b586bc13c3bdcff6ef2e13b",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS max_dt\n)\nSELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,\n       ROUND(COUNT(DISTINCT CASE WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) > 0 THEN u.uid END) / NULLIF(COUNT(DISTINCT u.uid), 0) * 100, 2) AS `累计付费率`\nFROM `user` u\nJOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt\nWHERE u.prod = 110000038\nGROUP BY u.dt\nORDER BY u.dt",
+      "ok": false,
+      "elapsed_s": 16.271221059025265,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
+          "dashboard": "核心看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "e300602c05804ecc93123625f9bafa3a",
+          "path": "new-view",
+          "title": "累计付费率"
+        }
+      ]
+    },
+    {
+      "hash": "fb202d3678b7b9fdceaa3d4b3468e27326ce6ef7",
+      "datasource": 3,
+      "sql": "WITH pay_event_users AS (\n    SELECT e.dt,\n           e.uid,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.userinfo, '$.country')), ''), '未知') AS country\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')\n      AND e.prod = 110000038\n    GROUP BY e.dt, e.uid, country\n), user_pay_delta AS (\n    SELECT pe.dt,\n           pe.country,\n           pe.uid,\n           GREATEST(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) - COALESCE(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0), 0), 0) AS pay_amount\n    FROM pay_event_users pe\n    JOIN `user` u\n      ON u.dt = pe.dt\n     AND u.uid = pe.uid\n     AND u.prod = 110000038\n    LEFT JOIN `user` p\n      ON p.uid = pe.uid\n     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n     AND p.prod = 110000038\n), daily_pay AS (\n    SELECT dt,\n           country,\n           ROUND(SUM(pay_amount), 2) AS pay_amount,\n           COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS pay_users\n    FROM user_pay_delta\n    GROUP BY dt, country\n), daily_active AS (\n    SELECT e.dt,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.userinfo, '$.country')), ''), '未知') AS country,\n           COUNT(DISTINCT e.uid) AS active_users\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('UserActive')\n      AND e.prod = 110000038\n    GROUP BY e.dt, country\n)\nSELECT STR_TO_DATE(CAST(d.dt AS CHAR), '%Y%m%d') AS `日期`,\n       d.country AS `国家`,\n       ROUND(COALESCE(p.pay_amount, 0) / NULLIF(d.active_users, 0), 2) AS `ARPU`,\n       ROUND(COALESCE(p.pay_amount, 0) / NULLIF(p.pay_users, 0), 2) AS `ARPPU`\nFROM daily_active d\nLEFT JOIN daily_pay p ON p.dt = d.dt AND p.country = d.country\nORDER BY d.dt, d.country",
+      "ok": false,
+      "elapsed_s": 16.256129490036983,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
+          "dashboard": "核心看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "6fce0cfb227b47828b41fd3c5cc736d5",
+          "path": "new-view",
+          "title": "ARPU与ARPPU"
+        }
+      ]
+    },
+    {
+      "hash": "d8d76f6a977719294680bff977ea995e8957a069",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS end_dt\n), cohort AS (\n    SELECT u.dt AS cohort_dt,\n           u.uid,\n           u.dt AS d1_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 2 DAY), '%Y%m%d') AS SIGNED) AS d3_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS d7_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 13 DAY), '%Y%m%d') AS SIGNED) AS d14_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS d30_dt\n    FROM `user` u\n    JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.end_dt\n    WHERE u.prod = 110000038\n      AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)\n), cohort_size AS (\n    SELECT cohort_dt,\n           COUNT(DISTINCT uid) AS new_users\n    FROM cohort\n    GROUP BY cohort_dt\n), pay_windows AS (\n    SELECT c.cohort_dt,\n           COUNT(DISTINCT CASE WHEN s.dt = c.d1_dt THEN s.uid END) AS users_1d,\n           COUNT(DISTINCT CASE WHEN s.dt = c.d3_dt THEN s.uid END) AS users_3d,\n           COUNT(DISTINCT CASE WHEN s.dt = c.d7_dt THEN s.uid END) AS users_7d,\n           COUNT(DISTINCT CASE WHEN s.dt = c.d14_dt THEN s.uid END) AS users_14d,\n           COUNT(DISTINCT CASE WHEN s.dt = c.d30_dt THEN s.uid END) AS users_30d,\n           SUM(CASE WHEN s.dt = c.d1_dt THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(s.pay, '$.pay1')), '') AS DECIMAL(18,4)), 0) END) AS pay_1d,\n           SUM(CASE WHEN s.dt = c.d3_dt THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(s.pay, '$.pay3')), '') AS DECIMAL(18,4)), 0) END) AS pay_3d,\n           SUM(CASE WHEN s.dt = c.d7_dt THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(s.pay, '$.pay7')), '') AS DECIMAL(18,4)), 0) END) AS pay_7d,\n           SUM(CASE WHEN s.dt = c.d14_dt THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(s.pay, '$.pay14')), '') AS DECIMAL(18,4)), 0) END) AS pay_14d,\n           SUM(CASE WHEN s.dt = c.d30_dt THEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(s.pay, '$.pay30')), '') AS DECIMAL(18,4)), 0) END) AS pay_30d\n    FROM cohort c\n    LEFT JOIN `user` s\n      ON s.uid = c.uid\n     AND s.prod = 110000038\n     AND s.dt IN (c.d1_dt, c.d3_dt, c.d7_dt, c.d14_dt, c.d30_dt)\n    GROUP BY c.cohort_dt\n)\nSELECT DATE_FORMAT(STR_TO_DATE(CAST(cs.cohort_dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS cohort_date,\n       cs.new_users,\n       ROUND(CASE WHEN pw.users_1d > 0 THEN pw.pay_1d / NULLIF(cs.new_users, 0) END, 4) AS ltv_1d,\n       ROUND(CASE WHEN pw.users_3d > 0 THEN pw.pay_3d / NULLIF(cs.new_users, 0) END, 4) AS ltv_3d,\n       ROUND(CASE WHEN pw.users_7d > 0 THEN pw.pay_7d / NULLIF(cs.new_users, 0) END, 4) AS ltv_7d,\n       ROUND(CASE WHEN pw.users_14d > 0 THEN pw.pay_14d / NULLIF(cs.new_users, 0) END, 4) AS ltv_14d,\n       ROUND(CASE WHEN pw.users_30d > 0 THEN pw.pay_30d / NULLIF(cs.new_users, 0) END, 4) AS ltv_30d\nFROM cohort_size cs\nJOIN pay_windows pw ON pw.cohort_dt = cs.cohort_dt\nORDER BY cs.cohort_dt",
+      "ok": false,
+      "elapsed_s": 16.24037189799128,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "259414f219f94aacaa46f4e531646b9d",
+          "dashboard": "付费概览",
+          "tenant_id": 7477202383789887488,
+          "view_id": "6391d385e5084c0f86351ae088d3c336",
+          "path": "new-view",
+          "title": "新增用户30日LTV"
+        }
+      ]
+    },
+    {
+      "hash": "f1eb2a2c05e4d188c50b75e786776e960430ecc2",
+      "datasource": 3,
+      "sql": "WITH cohort AS (\n    SELECT u.uid,\n           u.dt AS cohort_dt\n    FROM `user` u\n    WHERE u.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n      AND u.prod = 110000038\n      AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)\n), event_window AS (\n    SELECT e.uid,\n           e.event\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('EnterGame','Login','UserLogin','NewUserGuideStart','DialogueStart','NewUserGuide','DialogueEnd','ChapterTaskReward','TaskReward')\n      AND e.prod = 110000038\n), step_users AS (\n    SELECT 1 AS step_order, '账号注册' AS step_name, COUNT(DISTINCT c.uid) AS users\n    FROM cohort c\n    UNION ALL\n    SELECT 2, '进入游戏', COUNT(DISTINCT c.uid)\n    FROM cohort c\n    JOIN event_window e ON e.uid = c.uid AND e.event IN ('EnterGame','Login','UserLogin')\n    UNION ALL\n    SELECT 3, '引导开始', COUNT(DISTINCT c.uid)\n    FROM cohort c\n    JOIN event_window e ON e.uid = c.uid AND e.event IN ('NewUserGuideStart','DialogueStart')\n    UNION ALL\n    SELECT 4, '引导完成', COUNT(DISTINCT c.uid)\n    FROM cohort c\n    JOIN event_window e ON e.uid = c.uid AND e.event IN ('NewUserGuide','DialogueEnd')\n    UNION ALL\n    SELECT 5, '章节/任务领奖', COUNT(DISTINCT c.uid)\n    FROM cohort c\n    JOIN event_window e ON e.uid = c.uid AND e.event IN ('ChapterTaskReward','TaskReward')\n), calc AS (\n    SELECT s.step_order,\n           s.step_name,\n           s.users,\n           base.users AS start_users,\n           COALESCE(prev.users, s.users) AS prev_users\n    FROM step_users s\n    LEFT JOIN step_users base ON base.step_order = 1\n    LEFT JOIN step_users prev ON prev.step_order = s.step_order - 1\n)\nSELECT step_order,\n       step_name AS `新手步骤`,\n       users AS `用户数`,\n       ROUND(users / NULLIF(start_users, 0) * 100, 2) AS `整体转化率`,\n       ROUND(users / NULLIF(COALESCE(prev_users, users), 0) * 100, 2) AS `上步转化率`,\n       GREATEST(COALESCE(prev_users, users) - users, 0) AS `流失人数`\nFROM calc\nORDER BY step_order",
+      "ok": false,
+      "elapsed_s": 16.22870142402826,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
+          "dashboard": "核心看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "73cfeb49a58a44799e5a91371fbe296d",
+          "path": "new-view",
+          "title": "新手引导漏斗转化"
+        }
+      ]
+    },
+    {
+      "hash": "2544613ecaa9378d470c776e978d24b2cb7fe50c",
+      "datasource": 3,
+      "sql": "WITH pay_event_users AS (\n    SELECT e.dt,\n           e.uid\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')\n      AND e.prod = 110000038\n    GROUP BY e.dt, e.uid\n), user_pay_delta AS (\n    SELECT pe.dt,\n           pe.uid,\n           GREATEST(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) - COALESCE(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0), 0), 0) AS pay_amount\n    FROM pay_event_users pe\n    JOIN `user` u\n      ON u.dt = pe.dt\n     AND u.uid = pe.uid\n     AND u.prod = 110000038\n    LEFT JOIN `user` p\n      ON p.uid = pe.uid\n     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n     AND p.prod = 110000038\n), daily_pay AS (\n    SELECT dt,\n           ROUND(SUM(pay_amount), 2) AS pay_amount,\n           COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS pay_users\n    FROM user_pay_delta\n    GROUP BY dt\n), daily_active AS (\n    SELECT e.dt,\n           COUNT(DISTINCT e.uid) AS active_users\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('UserActive')\n      AND e.prod = 110000038\n    GROUP BY e.dt\n)\nSELECT STR_TO_DATE(CAST(d.dt AS CHAR), '%Y%m%d') AS `日期`,\n       COALESCE(p.pay_users, 0) AS `付费用户数`,\n       COALESCE(p.pay_amount, 0) AS `付费总额`,\n       ROUND(COALESCE(p.pay_amount, 0) / NULLIF(d.active_users, 0), 2) AS `ARPU`,\n       ROUND(COALESCE(p.pay_amount, 0) / NULLIF(p.pay_users, 0), 2) AS `ARPPU`,\n       ROUND(COALESCE(p.pay_users, 0) / NULLIF(d.active_users, 0) * 100, 2) AS `付费渗透率`\nFROM daily_active d\nLEFT JOIN daily_pay p ON p.dt = d.dt\nORDER BY d.dt",
+      "ok": false,
+      "elapsed_s": 16.22785391798243,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "259414f219f94aacaa46f4e531646b9d",
+          "dashboard": "付费概览",
+          "tenant_id": 7477202383789887488,
+          "view_id": "f75122a83c84441381fe77a551f69a28",
+          "path": "new-view",
+          "title": "付费情况"
+        }
+      ]
+    },
+    {
+      "hash": "00384c4bc344da2efe7309341a2292b4af23b413",
+      "datasource": 3,
+      "sql": "WITH bounds AS\n  (SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 36 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 8 DAY), '%Y%m%d') AS SIGNED) AS end_dt,\n          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS data_end_dt),\n     cohort AS\n  (SELECT e.dt AS cohort_dt,\n          CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AS d7_dt,\n          e.uid\n   FROM `event` e\n   JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.end_dt\n   WHERE e.prod = 110000038\n     AND e.event = 'UserRegister'),\n     active AS\n  (SELECT e.dt,\n          e.uid\n   FROM `event` e\n   JOIN bounds b ON e.dt BETWEEN CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(b.start_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AND b.data_end_dt\n   WHERE e.prod = 110000038\n     AND e.event = 'UserActive'\n   GROUP BY e.dt,\n            e.uid),\n     retained AS\n  (SELECT c.cohort_dt,\n          COUNT(DISTINCT c.uid) AS d7_retained_users\n   FROM cohort c\n   JOIN active a ON a.uid = c.uid\n   AND a.dt = c.d7_dt\n   GROUP BY c.cohort_dt)\nSELECT STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d') AS `日期`,\n       COUNT(DISTINCT c.uid) AS `注册用户数`,\n       COALESCE(r.d7_retained_users, 0) AS `七日留存用户数`,\n       ROUND(COALESCE(r.d7_retained_users, 0) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `七日留存率`\nFROM cohort c\nLEFT JOIN retained r ON r.cohort_dt = c.cohort_dt\nGROUP BY c.cohort_dt,\n         r.d7_retained_users\nORDER BY c.cohort_dt\nLIMIT 1000",
+      "ok": false,
+      "elapsed_s": 16.21528673399007,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "5028ab5aceda4ddbba77e4e10ef4cd09",
+          "dashboard": "222",
+          "tenant_id": 7477202383789887488,
+          "view_id": "2186803509163368448",
+          "path": "new-view",
+          "title": "七日留存趋势"
+        }
+      ]
+    },
+    {
+      "hash": "e1996858bc184a6d9f85b3ed3cf1553bbb152677",
+      "datasource": 3,
+      "sql": "WITH latest_key AS (\n    SELECT e.uid,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_heroId')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.captainId')), ''), '未知') AS hero_id,\n           MAX(CONCAT(CAST(e.dt AS CHAR), LPAD(CAST(e.time AS CHAR), 20, '0'))) AS latest_key\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('HeroLevelUp','HeroStarUp')\n      AND e.prod = 110000038\n    GROUP BY e.uid, hero_id\n), latest AS (\n    SELECT e.uid,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_heroId')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.captainId')), ''), '未知') AS hero_id,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_heroStar')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_newStar')), ''), '未知') AS hero_star,\n           COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_currentLevel')), '') AS DECIMAL(18,4)), CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_heroLevel')), '') AS DECIMAL(18,4)), 0) AS hero_level\n    FROM `event` e\n    JOIN latest_key l\n      ON l.uid = e.uid\n     AND l.hero_id = COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_heroId')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.captainId')), ''), '未知')\n     AND l.latest_key = CONCAT(CAST(e.dt AS CHAR), LPAD(CAST(e.time AS CHAR), 20, '0'))\n    WHERE e.event IN ('HeroLevelUp','HeroStarUp')\n      AND e.prod = 110000038\n)\nSELECT hero_id AS `将领ID`,\n       hero_star AS `英雄星级`,\n       COUNT(DISTINCT uid) AS `全部用户`,\n       COUNT(DISTINCT CASE WHEN hero_level BETWEEN 1 AND 10 THEN uid END) AS `1-10`,\n       COUNT(DISTINCT CASE WHEN hero_level BETWEEN 11 AND 20 THEN uid END) AS `11-20`,\n       COUNT(DISTINCT CASE WHEN hero_level >= 21 THEN uid END) AS `21+`\nFROM latest\nGROUP BY hero_id, hero_star\nORDER BY `全部用户` DESC\nLIMIT 50",
+      "ok": false,
+      "elapsed_s": 16.212133783032186,
+      "row_count_sample": null,
+      "error": "OperationalError: (2013, 'Lost connection to MySQL server during query (timed out)')",
+      "occurrences": [
+        {
+          "dashboard_id": "1683de014d814e90b2c6dc002df8da1f",
+          "dashboard": "养成看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "78ddbc37336844b1852ddeaef72f7ecc",
+          "path": "new-view",
+          "title": "SSR英雄的等级分布"
+        }
+      ]
+    },
+    {
+      "hash": "477f078a94768f40b76230609c7b0a0988755132",
+      "datasource": 3,
+      "sql": "WITH weeks AS (\n    SELECT DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS latest_week_start\n), bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(latest_week_start, INTERVAL 11 WEEK), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_ADD(latest_week_start, INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS end_dt\n    FROM weeks\n), user_week AS (\n    SELECT DATE_SUB(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d')) DAY) AS week_start,\n           e.uid,\n           COUNT(DISTINCT e.dt) AS login_days\n    FROM `event` e\n    JOIN bounds b ON TRUE\n    WHERE e.dt BETWEEN b.start_dt AND b.end_dt\n      AND e.event IN ('UserActive')\n      AND e.prod = 110000038\n    GROUP BY week_start, e.uid\n)\nSELECT week_start AS `周`,\n       COUNT(DISTINCT uid) AS `全部用户`,\n       SUM(CASE WHEN login_days = 1 THEN 1 ELSE 0 END) AS `1天`,\n       SUM(CASE WHEN login_days = 2 THEN 1 ELSE 0 END) AS `2天`,\n       SUM(CASE WHEN login_days = 3 THEN 1 ELSE 0 END) AS `3天`,\n       SUM(CASE WHEN login_days = 4 THEN 1 ELSE 0 END) AS `4天`,\n       SUM(CASE WHEN login_days = 5 THEN 1 ELSE 0 END) AS `5天`,\n       SUM(CASE WHEN login_days = 6 THEN 1 ELSE 0 END) AS `6天`,\n       SUM(CASE WHEN login_days >= 7 THEN 1 ELSE 0 END) AS `7天`\nFROM user_week\nGROUP BY week_start\nORDER BY week_start",
+      "ok": true,
+      "elapsed_s": 15.45396824600175,
+      "row_count_sample": 12,
+      "error": null,
+      "occurrences": [
+        {
+          "dashboard_id": "8c93878ee7af41b9b3832547856d25e6",
+          "dashboard": "活跃看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "f0793fb6af7845c8be2b39e2d7ea523f",
+          "path": "new-view",
+          "title": "周登录天数分布"
+        }
+      ]
+    },
+    {
+      "hash": "ec21aca4ff5a3091601bc69ec17b2b55b33da0a7",
+      "datasource": 3,
+      "sql": "WITH participants AS (\n    SELECT e.uid, MIN(e.dt) AS participate_dt\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 35 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('ActivityAllianceBossBattleRet','ActivityAllianceBossChoose','ActivityAllianceBossDonation','ActivityAllianceBossReward','ActivityWorldBoss','AllianceDuelAlliancePoint','AllianceDuelPersonalPoint','AllianceDuelBoxOpen')\n      AND e.prod = 110000038\n    GROUP BY e.uid\n), user_pay AS (\n    SELECT p.participate_dt,\n           COUNT(DISTINCT p.uid) AS participants,\n           COUNT(DISTINCT CASE WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.pay1')), '') AS DECIMAL(18,4)), 0) > 0 THEN p.uid END) AS pay0,\n           COUNT(DISTINCT CASE WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.pay7')), '') AS DECIMAL(18,4)), 0) > 0 THEN p.uid END) AS pay7\n    FROM participants p\n    LEFT JOIN `user` u ON u.uid = p.uid AND u.dt = p.participate_dt AND u.prod = 110000038\n    WHERE p.participate_dt <= CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 8 DAY), '%Y%m%d') AS SIGNED)\n    GROUP BY p.participate_dt\n)\nSELECT STR_TO_DATE(CAST(participate_dt AS CHAR), '%Y%m%d') AS `日期`,\n       participants AS `参与节日活动用户数`,\n       ROUND(pay0 / NULLIF(participants, 0) * 100, 2) AS `当日`,\n       ROUND(pay7 / NULLIF(participants, 0) * 100, 2) AS `第7日`\nFROM user_pay\nORDER BY participate_dt",
+      "ok": true,
+      "elapsed_s": 15.276353066030424,
+      "row_count_sample": 28,
+      "error": null,
+      "occurrences": [
+        {
+          "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
+          "dashboard": "活动分析",
+          "tenant_id": 7477202383789887488,
+          "view_id": "095b1cf41cd64844b1f78f07ceccb7bf",
+          "path": "new-view",
+          "title": "参与节日活动的后续7日付费留存率"
+        }
+      ]
+    },
+    {
+      "hash": "04177a9655d1a4377da46e76ac19bbb9ae854a86",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 2 DAY), '%Y%m%d') AS SIGNED) AS end_dt\n), cohort AS (\n    SELECT e.dt AS cohort_dt,\n           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS d1_dt,\n           e.uid\n    FROM `event` e\n    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.end_dt\n    WHERE e.prod = 110000038\n      AND e.event = 'UserRegister'\n), active AS (\n    SELECT e.dt,\n           e.uid\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 28 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n      AND e.prod = 110000038\n      AND e.event = 'UserActive'\n    GROUP BY e.dt, e.uid\n), retained AS (\n    SELECT c.cohort_dt,\n           COUNT(DISTINCT c.uid) AS d1_retained_users\n    FROM cohort c\n    JOIN active a ON a.uid = c.uid AND a.dt = c.d1_dt\n    GROUP BY c.cohort_dt\n)\nSELECT STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d') AS cohort_date,\n       COUNT(DISTINCT c.uid) AS new_users,\n       COALESCE(r.d1_retained_users, 0) AS d1_retained_users,\n       ROUND(COALESCE(r.d1_retained_users, 0) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS d1_retention_pct\nFROM cohort c\nLEFT JOIN retained r ON r.cohort_dt = c.cohort_dt\nGROUP BY c.cohort_dt, r.d1_retained_users\nORDER BY c.cohort_dt",
+      "ok": true,
+      "elapsed_s": 14.242977752001025,
+      "row_count_sample": 28,
+      "error": null,
+      "occurrences": [
+        {
+          "dashboard_id": "bb3ab5f2697a42af98ab90da4679cb77",
+          "dashboard": "新增看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "f0d759307a304043883a23499a281b97",
+          "path": "new-view",
+          "title": "新增用户次日留存"
+        }
+      ]
+    },
+    {
+      "hash": "1333837a9e78c35627bafdcec939b3256b177676",
+      "datasource": 3,
+      "sql": "WITH pay_event_users AS (\n    SELECT e.dt,\n           e.uid\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')\n      AND e.prod = 110000038\n    GROUP BY e.dt, e.uid\n), user_pay_delta AS (\n    SELECT pe.dt,\n           pe.uid,\n           COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.adinfo, '$.mediaSource')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.adinfo, '$.campaignName')), ''), '未知') AS channel,\n           GREATEST(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) - COALESCE(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0), 0), 0) AS pay_amount\n    FROM pay_event_users pe\n    JOIN `user` u\n      ON u.dt = pe.dt\n     AND u.uid = pe.uid\n     AND u.prod = 110000038\n    LEFT JOIN `user` p\n      ON p.uid = pe.uid\n     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n     AND p.prod = 110000038\n)\nSELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS `日期`,\n       channel AS `渠道`,\n       COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS `付费用户数`\nFROM user_pay_delta\nGROUP BY dt, channel\nORDER BY dt, channel\nLIMIT 300",
+      "ok": true,
+      "elapsed_s": 13.86343869799748,
+      "row_count_sample": 127,
+      "error": null,
+      "occurrences": [
+        {
+          "dashboard_id": "5cee4cf41a024c56ac9de0e3aef9aefe",
+          "dashboard": "渠道分析",
+          "tenant_id": 7477202383789887488,
+          "view_id": "24a51da63ed84379adbec45927500dce",
+          "path": "new-view",
+          "title": "付费用户数（按渠道）"
+        }
+      ]
+    },
+    {
+      "hash": "f520095fe2ecd0d29a1a3441f879e39aa527630f",
+      "datasource": 3,
+      "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS max_dt\n)\nSELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,\n       ROUND(SUM(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0)), 2) AS `累计付费金额`\nFROM `user` u\nJOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt\nWHERE u.prod = 110000038\nGROUP BY u.dt\nORDER BY u.dt",
+      "ok": true,
+      "elapsed_s": 13.49294279597234,
+      "row_count_sample": 30,
+      "error": null,
+      "occurrences": [
+        {
+          "dashboard_id": "6d50bd7dfc9f46ba961d636814c3294d",
+          "dashboard": "核心看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "65f52e391c5a430b8c8d2575195082f4",
+          "path": "new-view",
+          "title": "累计付费金额趋势"
+        }
+      ]
+    },
+    {
+      "hash": "f50d554df5d99ddfd611127d2dd3e182c2688bcd",
+      "datasource": 3,
+      "sql": "WITH months AS (\n    SELECT DATE_FORMAT(CURDATE(), '%Y-%m-01') AS latest_month_start\n), bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(latest_month_start, '%Y-%m-%d'), INTERVAL 11 MONTH), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(LAST_DAY(STR_TO_DATE(latest_month_start, '%Y-%m-%d')), '%Y%m%d') AS SIGNED) AS end_dt\n    FROM months\n)\nSELECT DATE_FORMAT(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), '%Y-%m') AS `月份`,\n       COUNT(DISTINCT e.uid) AS `MAU`\nFROM `event` e\nJOIN bounds b ON TRUE\nWHERE e.dt BETWEEN b.start_dt AND b.end_dt\n  AND e.event IN ('UserActive')\n  AND e.prod = 110000038\nGROUP BY `月份`\nORDER BY `月份`",
+      "ok": true,
+      "elapsed_s": 11.366462673991919,
+      "row_count_sample": 11,
+      "error": null,
+      "occurrences": [
+        {
+          "dashboard_id": "8c93878ee7af41b9b3832547856d25e6",
+          "dashboard": "活跃看板",
+          "tenant_id": 7477202383789887488,
+          "view_id": "77aa7f9c7c2c4eb38d821d10379978e7",
+          "path": "new-view",
+          "title": "MAU"
+        }
+      ]
+    },
+    {
+      "hash": "3b398ef9a08e1173a15ce55fc56833cd51a0415a",
+      "datasource": 3,
+      "sql": "WITH participants AS (\n    SELECT e.uid, MIN(e.dt) AS participate_dt\n    FROM `event` e\n    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 35 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)\n      AND e.event IN ('ActivityCommanderTask','ActivityArmsRaceTask','ActivityChestCount')\n      AND e.prod = 110000038\n    GROUP BY e.uid\n), retained AS (\n    SELECT p.participate_dt,\n           COUNT(DISTINCT p.uid) AS participants,\n           COUNT(DISTINCT CASE WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n                                AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain1')) = '1' THEN p.uid END) AS r1,\n           COUNT(DISTINCT CASE WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)\n                                AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain7')) = '1' THEN p.uid END) AS r7\n    FROM participants p\n    LEFT JOIN `user` u\n      ON u.uid = p.uid\n     AND u.dt BETWEEN p.participate_dt AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)\n     AND u.prod = 110000038\n    WHERE p.participate_dt <= CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 8 DAY), '%Y%m%d') AS SIGNED)\n    GROUP BY p.participate_dt\n)\nSELECT STR_TO_DATE(CAST(participate_dt AS CHAR), '%Y%m%d') AS `日期`,\n       participants AS `参与新手活动用户数`,\n       ROUND(r1 / NULLIF(participants, 0) * 100, 2) AS `第1日`,\n       ROUND(r7 / NULLIF(participants, 0) * 100, 2) AS `第7日`\nFROM retained\nORDER BY participate_dt",
+      "ok": true,
+      "elapsed_s": 10.816447691991925,
+      "row_count_sample": 28,
+      "error": null,
+      "occurrences": [
+        {
+          "dashboard_id": "29ea652e2969440b91899cfb254dd0ca",
+          "dashboard": "活动分析",
+          "tenant_id": 7477202383789887488,
+          "view_id": "9684a569ed034fb0b8a106a9817effaa",
+          "path": "new-view",
+          "title": "参与新手活动的后续7日留存率"
+        }
+      ]
+    }
+  ],
+  "unavailable": [
+    {
+      "hash": "2e47255f0e84d7bd3270d58f5e3840af8d043c9e",
+      "datasource": 2,
+      "sql": "SELECT \"d\".\"event_date\" AS \"event_date\",\n       \"d\".\"daily_revenue\" AS \"daily_revenue\",\n       SUM(\"d\".\"daily_revenue\") OVER (\n                                      ORDER BY \"d\".\"event_date\") AS \"cumulative_revenue\"\nFROM\n  (SELECT \"event_date\" AS \"event_date\",\n          SUM(\"gross_revenue_usd\") AS \"daily_revenue\"\n   FROM \"public\".\"fact_payments\"\n   GROUP BY \"event_date\") \"d\"\nORDER BY \"d\".\"event_date\"\nLIMIT 1000",
+      "ok": false,
+      "elapsed_s": 0,
+      "row_count_sample": null,
+      "error": "connect OperationalError: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n",
+      "occurrences": [
+        {
+          "dashboard_id": "a0acb58f0ed24677989926750ca07067",
+          "dashboard": "新建仪表板",
+          "tenant_id": 1,
+          "view_id": "2180995677788741633",
+          "path": "new-view",
+          "title": "开服以来总收入增长曲线"
+        }
+      ]
+    },
+    {
+      "hash": "b669999962dd5eabc516e111326b3bf9af7c8242",
+      "datasource": 2,
+      "sql": "SELECT \"p\".\"channel\" AS \"channel\",\n       COUNT(\"p\".\"player_id\") AS \"player_count\",\n       COALESCE(SUM(\"p\".\"total_pay_amount\"), 0) AS \"total_pay_amount\"\nFROM \"public\".\"dim_player\" \"p\"\nINNER JOIN \"public\".\"dim_server\" \"s\" ON \"p\".\"register_server_id\" = \"s\".\"server_id\"\nWHERE \"s\".\"region\" IN ('NA',\n                       'EU')\nGROUP BY \"p\".\"channel\"\nORDER BY \"player_count\" DESC\nLIMIT 1000",
+      "ok": false,
+      "elapsed_s": 0,
+      "row_count_sample": null,
+      "error": "connect OperationalError: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n",
+      "occurrences": [
+        {
+          "dashboard_id": "a0acb58f0ed24677989926750ca07067",
+          "dashboard": "新建仪表板",
+          "tenant_id": 1,
+          "view_id": "2180995677788741632",
+          "path": "new-view",
+          "title": "欧美市场渠道质量分析"
+        }
+      ]
+    },
+    {
+      "hash": "dbd30442fe9325d8e8fb8810186788281cbd1dbc",
+      "datasource": 2,
+      "sql": "WITH \"crystal_tx\" AS\n  (SELECT \"s\".\"season_code\" AS \"season_code\",\n          \"s\".\"season_name\" AS \"season_name\",\n          \"r\".\"event_date\" AS \"event_date\",\n          \"r\".\"player_id\" AS \"player_id\",\n          \"r\".\"change_amount\" AS \"change_amount\",\n          \"r\".\"reason\" AS \"reason\",\n          \"r\".\"is_paid_related\" AS \"is_paid_related\"\n   FROM \"public\".\"fact_resource_transactions\" \"r\"\n   INNER JOIN \"public\".\"dim_season\" \"s\" ON \"r\".\"event_date\" BETWEEN \"s\".\"start_date\" AND \"s\".\"end_date\"\n   WHERE \"r\".\"resource_type\" = 'crystal'),\n     \"season_balance\" AS\n  (SELECT \"season_code\",\n          \"season_name\",\n          COUNT(*) AS \"transaction_count\",\n          COUNT(DISTINCT \"player_id\") AS \"affected_players\",\n          SUM(\"change_amount\") FILTER (\n                                       WHERE \"change_amount\" > 0) AS \"produced_amount\",\n          ABS(SUM(\"change_amount\") FILTER (\n                                           WHERE \"change_amount\" < 0)) AS \"consumed_amount\",\n          SUM(\"change_amount\") AS \"net_change\",\n          SUM(ABS(\"change_amount\")) FILTER (\n                                            WHERE \"is_paid_related\") AS \"paid_related_amount\",\n          SUM(ABS(\"change_amount\")) AS \"total_changed_amount\"\n   FROM \"crystal_tx\"\n   GROUP BY \"season_code\",\n            \"season_name\")\nSELECT \"season_code\",\n       \"season_name\",\n       \"transaction_count\",\n       \"affected_players\",\n       COALESCE(\"produced_amount\", 0) AS \"produced_amount\",\n       COALESCE(\"consumed_amount\", 0) AS \"consumed_amount\",\n       COALESCE(\"net_change\", 0) AS \"net_change\",\n       ROUND(COALESCE(\"net_change\", 0)::NUMERIC / NULLIF(ABS(COALESCE(\"consumed_amount\", 0)), 0), 4) AS \"net_to_consumption_ratio\",\n       ROUND(COALESCE(\"paid_related_amount\", 0)::NUMERIC / NULLIF(\"total_changed_amount\", 0) * 100, 2) AS \"paid_related_amount_share_pct\"\nFROM \"season_balance\"\nORDER BY \"season_code\"\nLIMIT 1000",
+      "ok": false,
+      "elapsed_s": 0,
+      "row_count_sample": null,
+      "error": "connect OperationalError: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n",
+      "occurrences": [
+        {
+          "dashboard_id": "a0acb58f0ed24677989926750ca07067",
+          "dashboard": "新建仪表板",
+          "tenant_id": 1,
+          "view_id": "2180995677788741634",
+          "path": "new-view",
+          "title": "赛季水晶经济平衡分析"
+        },
+        {
+          "dashboard_id": "ffe87c26f45b4602bb6ae9765aeef1f2",
+          "dashboard": "赛季水晶经济平衡分析",
+          "tenant_id": 1,
+          "view_id": "2180995677788741634",
+          "path": "new-view",
+          "title": "赛季水晶经济平衡分析"
+        }
+      ]
+    }
+  ]
+}
