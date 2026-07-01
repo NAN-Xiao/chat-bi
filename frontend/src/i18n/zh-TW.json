@@ -714,6 +714,7 @@
     "delete_dashboard_warn": "是否刪除我的看板：{0}",
     "rename_dashboard": "重新命名我的看板",
     "dashboard_name": "我的看板名稱",
+    "loading_dashboard": "正在載入看板",
     "select_dashboard_tips": "請在左側選擇我的看板",
     "no_dashboard": "暫無我的看板",
     "no_dashboard_info": "暫無內容，點擊下列按鈕進行新增",

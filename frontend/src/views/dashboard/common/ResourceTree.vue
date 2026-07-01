@@ -737,10 +737,11 @@ const afterTreeInit = () => {
     ensureSelectedNodeExpanded()
     returnMounted.value = false
   }
+  const activeDashboardNode = findDashboardNodeById(state.resourceTree, selectedNodeKey.value)
+  emitDashboardNodeClick(activeDashboardNode)
   nextTick(() => {
     resourceListTree.value.setCurrentKey(selectedNodeKey.value, false)
     resourceListTree.value.filter(filterText.value)
-    emitDashboardNodeClick(findDashboardNodeById(state.resourceTree, selectedNodeKey.value))
   })
 }
 

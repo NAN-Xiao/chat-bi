@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
+import { Loading } from '@element-plus/icons-vue'
 import { reactive, ref, toRefs, onBeforeMount, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { load_resource_prepare } from '@/views/dashboard/utils/canvasUtils'
 import { dashboardApi } from '@/api/dashboard.ts'
@@ -60,6 +61,7 @@ let dashboardLoadController: AbortController | null = null
 let chartRefreshTimer: number | undefined
 let chartRefreshController: AbortController | null = null
 let chartRefreshRetryCount = 0
+const resolvingDashboardTarget = ref(false)
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
 const CHART_DATABASE_REFRESH_CONCURRENCY = 4
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 180
@@ -104,6 +106,13 @@ const routeDashboardMode = computed(() => {
     : route.query.dashboardMode
   return mode === DASHBOARD_MODE_DEFAULT ? DASHBOARD_MODE_DEFAULT : DASHBOARD_MODE_MY
 })
+const previewLoading = computed(
+  () =>
+    !mounted.value ||
+    !dataInitState.value ||
+    !!loadingDashboardId.value ||
+    resolvingDashboardTarget.value
+)
 
 const stateInit = () => {
   state.canvasDataPreview = []
@@ -653,13 +662,18 @@ const loadCanvasData = (params: any) => {
       if (!dashboardInfo?.id) {
         stateInit()
         loadingDashboardId.value = null
-        dataInitState.value = true
         if (showPosition.value === 'preview') {
-          const target = await resolveBusinessDashboardLandingTarget(userStore)
-          if (!isCurrentRouteTarget(target)) {
-            await router.replace(target)
+          resolvingDashboardTarget.value = true
+          try {
+            const target = await resolveBusinessDashboardLandingTarget(userStore)
+            if (!isCurrentRouteTarget(target)) {
+              await router.replace(target)
+            }
+          } finally {
+            resolvingDashboardTarget.value = false
           }
         }
+        dataInitState.value = true
         return
       }
       if (
@@ -697,9 +711,14 @@ const isCurrentRouteTarget = (target: any) => {
     return target === route.fullPath || target === route.path
   }
   if (!target?.path || target.path !== route.path) return false
-  const targetResourceId = target.query?.resourceId
+  const firstQueryValue = (value: any) => (Array.isArray(value) ? value[0] : value)
+  const targetResourceId = firstQueryValue(target.query?.resourceId)
   if (!targetResourceId) return true
-  return String(targetResourceId) === String(route.query.resourceId || '')
+  const currentResourceId = firstQueryValue(route.query.resourceId || route.query.dashboardId)
+  if (String(targetResourceId) !== String(currentResourceId || '')) return false
+  const targetDashboardMode = firstQueryValue(target.query?.dashboardMode)
+  if (!targetDashboardMode) return true
+  return String(targetDashboardMode) === String(firstQueryValue(route.query.dashboardMode) || '')
 }
 const getPreviewStateInfo = () => {
   return state
@@ -815,7 +834,7 @@ defineExpose({
           id="sq-preview-content"
           ref="previewCanvasContainer"
           class="content"
-          :class="{ 'content--empty': !previewShowFlag }"
+          :class="{ 'content--empty': !previewShowFlag && !previewLoading }"
         >
           <SQPreview
             v-if="previewShowFlag && state.canvasStylePreview"
@@ -827,8 +846,14 @@ defineExpose({
             :show-position="showPosition"
             @chart-moved="reloadCurrentDashboard"
           ></SQPreview>
+          <div v-else-if="previewLoading" class="dashboard-loading-state">
+            <el-icon class="dashboard-loading-icon" size="36">
+              <Loading />
+            </el-icon>
+            <div class="dashboard-loading-text">{{ t('dashboard.loading_dashboard') }}</div>
+          </div>
           <EmptyBackgroundSvg
-            v-else-if="hasTreeData && mounted"
+            v-else-if="hasTreeData && mounted && !previewLoading"
             :description="
               defaultMode
                 ? t('dashboard.select_default_dashboard_tips')
@@ -836,7 +861,7 @@ defineExpose({
             "
           />
           <EmptyBackground
-            v-else-if="mounted"
+            v-else-if="mounted && !previewLoading"
             :description="
               defaultMode ? t('dashboard.no_default_dashboard') : t('dashboard.no_dashboard_info')
             "
@@ -961,6 +986,38 @@ defineExpose({
 
   :deep(.ed-empty__description) {
     color: var(--workspace-text-secondary, #66758f);
+  }
+}
+
+.dashboard-loading-state {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.dashboard-loading-icon {
+  color: var(--ed-color-primary, #2f6bff);
+  animation: dashboard-loading-spin 0.9s linear infinite;
+}
+
+.dashboard-loading-text {
+  color: var(--workspace-text-secondary, #66758f);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+@keyframes dashboard-loading-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
 

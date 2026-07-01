@@ -714,6 +714,7 @@
     "delete_dashboard_warn": "Delete This Dashboard: {0}",
     "rename_dashboard": "Rename Dashboard",
     "dashboard_name": "Dashboard Name",
+    "loading_dashboard": "Loading dashboard",
     "select_dashboard_tips": "Please select a dashboard on the left",
     "no_dashboard": "No Dashboards",
     "no_dashboard_info": "No content yet, click the button below to add",

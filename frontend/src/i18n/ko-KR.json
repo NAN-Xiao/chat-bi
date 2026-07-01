@@ -714,6 +714,7 @@
     "delete_dashboard_warn": "대시보드를 삭제하시겠습니까: {0}",
     "rename_dashboard": "대시보드 이름 바꾸기",
     "dashboard_name": "대시보드 이름",
+    "loading_dashboard": "대시보드 로딩 중",
     "select_dashboard_tips": "왼쪽에서 대시보드를 선택하십시오",
     "no_dashboard": "대시보드가 없습니다",
     "no_dashboard_info": "내용이 없습니다. 아래 버튼을 클릭하여 추가하십시오",

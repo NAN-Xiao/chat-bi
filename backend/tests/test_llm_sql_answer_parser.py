@@ -126,3 +126,69 @@ LEFT JOIN `user` s ON s.uid = c.uid
         )
         is None
     )
+
+
+def test_data_skill_sql_validation_rejects_flam_ltv_snapshot_join_without_dt_filter() -> None:
+    """
+    是什么：test_data_skill_sql_validation_rejects_flam_ltv_snapshot_join_without_dt_filter 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：准备一个具体场景，然后检查结果是不是和预期一样。
+    """
+    data_skill = r"""
+<!-- data-skill-sql-validation:{
+  "match":["ltv","3日LTV","3 日 LTV","7日LTV","7 日 LTV"],
+  "forbidden_sql_patterns":[
+    "LEFT\\s+JOIN\\s+(?:`?first_zombie`?\\s*\\.\\s*)?`?user`?\\s+(?:AS\\s+)?`?s`?\\s+ON\\s+(?!(?:(?!\\b(?:WHERE|GROUP\\s+BY|ORDER\\s+BY|LIMIT|LEFT\\s+JOIN|RIGHT\\s+JOIN|INNER\\s+JOIN|JOIN)\\b)[\\s\\S])*`?s`?\\s*\\.\\s*`?dt`?)(?:(?!\\b(?:WHERE|GROUP\\s+BY|ORDER\\s+BY|LIMIT|LEFT\\s+JOIN|RIGHT\\s+JOIN|INNER\\s+JOIN|JOIN)\\b)[\\s\\S])*`?s`?\\s*\\.\\s*`?uid`?\\s*=\\s*`?c`?\\s*\\.\\s*`?uid`?"
+  ],
+  "message":"flam 新增 cohort LTV 回连 user 快照时必须在 JOIN 条件中限定成熟快照分区。"
+} -->
+"""
+    wrong_sql = """
+WITH cohort AS (
+  SELECT u.dt AS cohort_dt,
+         u.uid,
+         CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 2 DAY), '%Y%m%d') AS SIGNED) AS d3_dt,
+         CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS d7_dt
+  FROM `first_zombie`.`user` `u`
+  WHERE `u`.`dt` BETWEEN 20260618 AND 20260630
+    AND JSON_UNQUOTE(JSON_EXTRACT(`u`.`userinfo`, '$.country')) = 'US'
+)
+SELECT c.cohort_dt,
+       ROUND(SUM(CASE WHEN `s`.`dt` = `c`.`d3_dt` THEN JSON_EXTRACT(`s`.`pay`, '$.pay3') END) / COUNT(DISTINCT c.uid), 2) AS `3 日 LTV`,
+       ROUND(SUM(CASE WHEN `s`.`dt` = `c`.`d7_dt` THEN JSON_EXTRACT(`s`.`pay`, '$.pay7') END) / COUNT(DISTINCT c.uid), 2) AS `7 日 LTV`
+FROM cohort c
+LEFT JOIN `first_zombie`.`user` `s` ON `s`.`uid` = `c`.`uid` AND `s`.`prod` = 110000038
+GROUP BY c.cohort_dt
+"""
+    correct_sql = """
+WITH cohort AS (
+  SELECT u.dt AS cohort_dt,
+         u.uid,
+         CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 2 DAY), '%Y%m%d') AS SIGNED) AS d3_dt,
+         CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS d7_dt
+  FROM `first_zombie`.`user` `u`
+  WHERE `u`.`dt` BETWEEN 20260618 AND 20260630
+    AND JSON_UNQUOTE(JSON_EXTRACT(`u`.`userinfo`, '$.country')) = 'US'
+)
+SELECT c.cohort_dt,
+       ROUND(SUM(CASE WHEN `s`.`dt` = `c`.`d3_dt` THEN JSON_EXTRACT(`s`.`pay`, '$.pay3') END) / COUNT(DISTINCT c.uid), 2) AS `3 日 LTV`,
+       ROUND(SUM(CASE WHEN `s`.`dt` = `c`.`d7_dt` THEN JSON_EXTRACT(`s`.`pay`, '$.pay7') END) / COUNT(DISTINCT c.uid), 2) AS `7 日 LTV`
+FROM cohort c
+LEFT JOIN `first_zombie`.`user` `s`
+  ON `s`.`uid` = `c`.`uid`
+ AND `s`.`prod` = 110000038
+ AND `s`.`dt` IN (`c`.`d3_dt`, `c`.`d7_dt`)
+GROUP BY c.cohort_dt
+"""
+
+    error = _data_skill_sql_validation_error("美国 6 月 18 日之后新增用户 3 日 LTV 和 7 日 LTV", wrong_sql, data_skill)
+
+    assert error == "flam 新增 cohort LTV 回连 user 快照时必须在 JOIN 条件中限定成熟快照分区。"
+    assert (
+        _data_skill_sql_validation_error(
+            "美国 6 月 18 日之后新增用户 3 日 LTV 和 7 日 LTV",
+            correct_sql,
+            data_skill,
+        )
+        is None
+    )
