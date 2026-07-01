@@ -632,33 +632,52 @@ LIMIT 1000
 
 SQL_STARTER_PACK_REPURCHASE = f"""
 WITH pay_events AS (
-    SELECT e.uid, e.dt, {PRODUCT_ID} AS product_id
+    SELECT
+        e.uid,
+        e.dt,
+        JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.orderId')) AS order_id,
+        JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')) AS product_id
     FROM `event` e
-    WHERE {_dt_between("e", 29)}
-      AND e.event IN ({PAY_EVENTS})
+    WHERE {_dt_between("e", 36)}
       AND e.prod = {PROD_ID}
+      AND e.event = 'ServerPayLog'
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')) IS NOT NULL
 ), first_buy AS (
-    SELECT uid, MIN(dt) AS first_dt
+    SELECT
+        uid,
+        MIN(dt) AS first_buy_dt
     FROM pay_events
-    WHERE LOWER(product_id) LIKE '%new%' OR LOWER(product_id) LIKE '%starter%' OR product_id LIKE '%新手%' OR product_id LIKE '%首充%'
+    WHERE product_id IN ('85003')
     GROUP BY uid
 ), repurchase AS (
-    SELECT f.first_dt,
-           COUNT(DISTINCT f.uid) AS buyers,
-           COUNT(DISTINCT CASE WHEN p.dt BETWEEN f.first_dt AND CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(f.first_dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AND p.dt > f.first_dt THEN f.uid END) AS w0,
-           COUNT(DISTINCT CASE WHEN p.dt BETWEEN CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(f.first_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(f.first_dt AS CHAR), '%Y%m%d'), INTERVAL 13 DAY), '%Y%m%d') AS SIGNED) THEN f.uid END) AS w1,
-           COUNT(DISTINCT CASE WHEN p.dt BETWEEN CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(f.first_dt AS CHAR), '%Y%m%d'), INTERVAL 14 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(f.first_dt AS CHAR), '%Y%m%d'), INTERVAL 20 DAY), '%Y%m%d') AS SIGNED) THEN f.uid END) AS w2
-    FROM first_buy f
-    LEFT JOIN pay_events p ON p.uid = f.uid
-    GROUP BY f.first_dt
+    SELECT
+        s.uid,
+        s.first_buy_dt,
+        MAX(
+            CASE
+                WHEN p.dt > s.first_buy_dt
+                 AND p.dt <= CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(s.first_buy_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+                THEN 1
+                ELSE 0
+            END
+        ) AS has_repurchase_7d
+    FROM first_buy s
+    LEFT JOIN pay_events p
+      ON p.uid = s.uid
+     AND p.dt > s.first_buy_dt
+     AND p.dt <= CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(s.first_buy_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+    WHERE s.first_buy_dt <= {_date_expr(7)}
+    GROUP BY s.uid, s.first_buy_dt
 )
-SELECT STR_TO_DATE(CAST(first_dt AS CHAR), '%Y%m%d') AS `日期`,
-       buyers AS `购买新手礼包用户数`,
-       ROUND(w0 / NULLIF(buyers, 0) * 100, 2) AS `当周`,
-       ROUND(w1 / NULLIF(buyers, 0) * 100, 2) AS `第1周`,
-       ROUND(w2 / NULLIF(buyers, 0) * 100, 2) AS `第2周`
+SELECT
+    STR_TO_DATE(CAST(first_buy_dt AS CHAR), '%Y%m%d') AS `首购日期`,
+    COUNT(*) AS `购买新手礼包用户数`,
+    SUM(has_repurchase_7d) AS `7日内复购用户数`,
+    ROUND(SUM(has_repurchase_7d) / NULLIF(COUNT(*), 0) * 100, 2) AS `7日内复购率`
 FROM repurchase
-ORDER BY first_dt
+GROUP BY first_buy_dt
+ORDER BY first_buy_dt
+LIMIT 1000
 """.strip()
 
 SQL_MONTH_CARD_RETENTION = f"""
@@ -916,7 +935,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "4cc60cadf26e4b2f945c672f2648d205": ViewSql("经济系统", "钻石消耗获取情况", "line", ("日期", "免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), ("日期",), ("免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), sql=SQL_GOLD_CHANGE),
     "df837cb59810483f84fb0e7cd420646a": ViewSql("经济系统", "免费钻石获取途径分布", "column", ("获取途径", "免费钻石获取量"), ("获取途径",), ("免费钻石获取量",), columns=("获取途径", "免费钻石获取量"), sql=SQL_GOLD_SOURCE),
     "fda6854e188c44c4b35e75c9af6d9854": ViewSql("经济系统", "钻石消耗途径分布", "column", ("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), ("消耗途径",), ("免费钻石消耗量", "付费钻石消耗量"), columns=("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), sql=SQL_GOLD_SINK),
-    "15da41b65ee64aba854e2de701a728bc": ViewSql("礼包付费概览", "购买新手礼包用户复购率", "table", ("日期", "购买新手礼包用户数", "当周", "第1周", "第2周"), columns=("日期", "购买新手礼包用户数", "当周", "第1周", "第2周"), sql=SQL_STARTER_PACK_REPURCHASE),
+    "15da41b65ee64aba854e2de701a728bc": ViewSql("礼包付费概览", "购买新手礼包用户复购率", "line", ("首购日期", "购买新手礼包用户数", "7日内复购用户数", "7日内复购率"), ("首购日期",), ("7日内复购率",), columns=("首购日期", "购买新手礼包用户数", "7日内复购用户数", "7日内复购率"), sql=SQL_STARTER_PACK_REPURCHASE),
     "f113ac14e8994d12814452040b702424": ViewSql("礼包付费概览", "购买月卡用户的30日留存", "line", ("留存日", "留存率"), ("留存日",), ("留存率",), sql=SQL_MONTH_CARD_RETENTION),
     "8b3e5b7179af442e8fded00ae25a0245": ViewSql("渠道分析", "活跃用户数（按渠道）", "line", ("日期", "渠道", "活跃用户数"), ("日期",), ("活跃用户数",), sql=SQL_ACTIVE_BY_CHANNEL),
     "e13ce279fb3d432da20336b1f93eaf4f": ViewSql("养成看板", "英雄养成情况", "table", ("将领ID", "升星次数", "升星用户数", "升级次数", "升级用户数"), columns=("将领ID", "升星次数", "升星用户数", "升级次数", "升级用户数"), sql=SQL_HERO_GROWTH),

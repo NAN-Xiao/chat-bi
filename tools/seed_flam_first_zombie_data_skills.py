@@ -609,15 +609,17 @@ LIMIT 24
 - 适用于礼包付费概览中的新手礼包复购率、月卡购买用户 30 日留存。
 
 ## SQL 口径
-- 购买行为使用付费事件集合，不使用 `user.pay.paytotal` 直接拆商品。
-- 商品/礼包标识优先从 `ext.payId` 取，其次 `ext.rechargeId`、`ext.productId`、`ext.goodsId`。
-- 新手礼包识别使用商品标识中的 `new`、`starter`、`新手`、`首充` 等关键词；首购日为该类商品的最早付费事件日期。
-- 新手礼包复购率以购买新手礼包用户为 cohort，统计首购后当周、第 1 周、第 2 周是否再次触发付费事件。
+- 购买行为不使用 `user.pay.paytotal` 直接拆商品。
+- “购买新手礼包用户复购率”当前落地仅使用 `event='ServerPayLog'`，商品 ID 读取 `personal.productid`，订单号读取 `personal.orderId`。
+- 新手礼包当前识别为 `personal.productid = '85003'`；首购日为用户首次购买该商品的日期。
+- 新手礼包复购率以购买新手礼包用户为 cohort，统计首购后 7 日内是否再次触发 `ServerPayLog`；近 7 天未成熟首购 cohort 需要排除，避免复购率偏低。
+- 月卡等其他商品识别可使用付费事件集合，商品/礼包标识优先从 `ext.payId` 取，其次 `ext.rechargeId`、`ext.productId`、`ext.goodsId`。
 - 月卡识别使用商品标识中的 `month` 或 `月卡`，月卡留存以购买用户为 cohort，在购买后第 1/7/14/30 日登录事件中按 `uid` 去重。
 
 ## 禁止事项
 - 不要把所有付费用户当新手礼包或月卡 cohort。
 - 不要用累计付费快照推断具体商品复购。
+- 生成新手礼包复购 SQL 时不要从 `ext` 读取商品 ID；`ServerPayLog` 样本中商品字段在 `personal.productid`。
 
 ## 持久看板 SQL
 以下 SQL 是本 Data Skill 对礼包复购和月卡留存组件的落地配置。
