@@ -12,6 +12,7 @@ from apps.datasource.api import (
     recommended_problem,
     table_relation,
 )
+from apps.external_mcp import api as external_mcp_api
 from apps.knowledge_base.api import knowledge_base
 from apps.settings.api import base
 from apps.system.api import (
@@ -43,6 +44,7 @@ api_router.include_router(assistant.router)
 api_router.include_router(aimodel.router)
 api_router.include_router(base.router)
 api_router.include_router(datasource.router)
+api_router.include_router(external_mcp_api.router)
 api_router.include_router(permission.router)
 api_router.include_router(chat.router)
 api_router.include_router(dashboard_api.router)

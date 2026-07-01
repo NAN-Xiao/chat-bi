@@ -231,6 +231,10 @@ function hasUsableChartSnapshot(viewInfo: any) {
   return hasChartSnapshot(viewInfo)
 }
 
+function isExternalSnapshotChart(viewInfo: any) {
+  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+}
+
 function hasUsableResultSnapshot(result: any) {
   if (result?.status === 'failed') {
     return false
@@ -480,6 +484,10 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
   allChartEntries.forEach((entry) => {
     const viewInfo = entry.viewInfo
     if (!viewInfo) {
+      return
+    }
+    if (isExternalSnapshotChart(viewInfo)) {
+      keepChartSnapshotState(viewInfo)
       return
     }
     if (!viewInfo.datasource) {

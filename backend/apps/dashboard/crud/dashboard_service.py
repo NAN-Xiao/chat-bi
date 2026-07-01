@@ -32,6 +32,7 @@ from apps.dashboard.models.dashboard_model import (
     SharedDashboardQuery,
     SharedDashboardUseRequest,
 )
+from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_external_mcp_id_for_tenant
 from apps.datasource.crud.permission import (
     PROJECT_ROLE_EDITOR,
     get_accessible_datasource_ids,
@@ -176,6 +177,7 @@ DASHBOARD_DRAFT_STATUSES = {
 }
 DASHBOARD_SOURCE_PLATFORM_DELEGATE = "platform_delegate"
 DASHBOARD_SOURCE_PLATFORM_TEMPLATE = "platform_template"
+DASHBOARD_SOURCE_EXTERNAL_MCP = "external_mcp"
 DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "图表数据正在后台刷新"
 DASHBOARD_REFRESH_POLICY_DEFAULT = {
     "auto_refresh": True,
@@ -457,6 +459,67 @@ def _is_published_workspace_dashboard(dashboard: CoreDashboard) -> bool:
     return bool(dashboard.is_default) or dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE
 
 
+def _is_external_mcp_dashboard(dashboard: CoreDashboard) -> bool:
+    """
+    是什么：_is_external_mcp_dashboard 判断看板是否来自第三方 MCP 外部数据源。
+    """
+    return (
+        getattr(dashboard, "source", None) == DASHBOARD_SOURCE_EXTERNAL_MCP
+        or getattr(dashboard, "external_mcp_server_id", None) is not None
+    )
+
+
+def _is_external_mcp_dashboard_request(dashboard: QueryDashboard) -> bool:
+    """
+    是什么：_is_external_mcp_dashboard_request 判断请求是否要创建第三方 MCP 外部数据源看板。
+    """
+    return (
+        getattr(dashboard, "source", None) == DASHBOARD_SOURCE_EXTERNAL_MCP
+        or getattr(dashboard, "external_mcp_server_id", None) not in (None, "", 0)
+    )
+
+
+def _ensure_external_mcp_bound_to_current_tenant(
+        session: SessionDep,
+        current_user: CurrentUser,
+        external_mcp_server_id,
+) -> int:
+    """
+    是什么：_ensure_external_mcp_bound_to_current_tenant 校验第三方 MCP 外部数据源已绑定当前工作空间。
+    """
+    if external_mcp_server_id in (None, "", 0):
+        raise HTTPException(status_code=400, detail="External MCP datasource is required")
+    try:
+        normalized_external_mcp_id = int(external_mcp_server_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid external MCP datasource") from exc
+    if not external_mcp_bound_to_tenant(
+        session,
+        normalized_external_mcp_id,
+        _current_tenant_id(current_user),
+    ):
+        raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+    return normalized_external_mcp_id
+
+
+def _external_mcp_dashboard_bound_to_current_tenant(
+        session: SessionDep,
+        current_user: CurrentUser,
+        dashboard: CoreDashboard,
+) -> bool:
+    """
+    是什么：_external_mcp_dashboard_bound_to_current_tenant 校验 MCP 看板是否属于当前工作空间绑定的第三方 MCP 数据源。
+    """
+    external_mcp_server_id = getattr(dashboard, "external_mcp_server_id", None)
+    if external_mcp_server_id is None:
+        return False
+    return external_mcp_bound_to_tenant(
+        session,
+        int(external_mcp_server_id),
+        _current_tenant_id(current_user),
+    )
+
+
 def _can_edit_dashboard(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
     """
     是什么：_can_edit_dashboard 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -464,6 +527,12 @@ def _can_edit_dashboard(session: SessionDep, current_user: CurrentUser, dashboar
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not _same_tenant(current_user, dashboard):
+        return False
+    if _is_external_mcp_dashboard(dashboard) and not _external_mcp_dashboard_bound_to_current_tenant(
+        session,
+        current_user,
+        dashboard,
+    ):
         return False
     if is_platform_workspace_delegate(current_user):
         return (
@@ -536,12 +605,19 @@ def _can_view_dashboard_resource(session: SessionDep, current_user: CurrentUser,
     """
     if not _same_tenant(current_user, dashboard):
         return False
+    if _is_external_mcp_dashboard(dashboard) and not _external_mcp_dashboard_bound_to_current_tenant(
+        session,
+        current_user,
+        dashboard,
+    ):
+        return False
     if is_platform_workspace_delegate(current_user):
         return (
             bool(dashboard.is_default)
             or str(dashboard.create_by) == _user_id(current_user)
             or _is_workspace_admin_owned_dashboard(session, current_user, dashboard)
             or dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE
+            or _is_external_mcp_dashboard(dashboard)
         )
     if dashboard.is_default:
         return True
@@ -655,6 +731,10 @@ def _check_dashboard_view_permission(session: SessionDep, current_user: CurrentU
     """
     if dashboard.datasource:
         _ensure_datasource_access(session, current_user, dashboard.datasource)
+        return
+    if _is_external_mcp_dashboard(dashboard):
+        if not _external_mcp_dashboard_bound_to_current_tenant(session, current_user, dashboard):
+            raise HTTPException(status_code=403, detail="You do not have permission to access this external MCP dashboard")
         return
     if not _can_view_legacy_dashboard(current_user, dashboard):
         raise HTTPException(status_code=403, detail="You do not have permission to access this dashboard")
@@ -2622,6 +2702,7 @@ def _dashboard_base_response(
         name=record.name,
         pid=record.pid,
         datasource=None if platform_template_context else record.datasource if datasource is None else datasource,
+        external_mcp_server_id=None if platform_template_context else record.external_mcp_server_id,
         node_type=record.node_type,
         leaf=record.node_type == 'leaf',
         type=record.type,
@@ -2786,15 +2867,23 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
         or_(CoreDashboard.is_default == 0, CoreDashboard.node_type == "leaf"),
     ]
     datasource_id = _normalize_datasource_id(dashboard.datasource)
+    bound_external_mcp_id = get_bound_external_mcp_id_for_tenant(session, _current_tenant_id(current_user))
+    external_mcp_filter = and_(
+        CoreDashboard.source == DASHBOARD_SOURCE_EXTERNAL_MCP,
+        CoreDashboard.external_mcp_server_id == bound_external_mcp_id,
+    ) if bound_external_mcp_id is not None else None
     if datasource_id is not None:
         _ensure_datasource_access(session, current_user, datasource_id)
     elif not is_system_admin(current_user):
         accessible_ids = get_accessible_datasource_ids(session, current_user)
         legacy_filter = and_(CoreDashboard.datasource.is_(None), CoreDashboard.create_by == _user_id(current_user))
         if accessible_ids:
-            filters.append(or_(CoreDashboard.datasource.in_(accessible_ids), legacy_filter))
+            visibility_parts = [CoreDashboard.datasource.in_(accessible_ids), legacy_filter]
+            if external_mcp_filter is not None:
+                visibility_parts.append(external_mcp_filter)
+            filters.append(or_(*visibility_parts))
         else:
-            filters.append(legacy_filter)
+            filters.append(or_(legacy_filter, external_mcp_filter) if external_mcp_filter is not None else legacy_filter)
 
     if dashboard.node_type is not None and dashboard.node_type != "":
         filters.append(CoreDashboard.node_type == dashboard.node_type)
@@ -2813,14 +2902,35 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     )
     result = session.exec(statement).scalars().all()
     if datasource_id is not None:
-        result = [record for record in result if _dashboard_matches_datasource(record, datasource_id)]
+        result = [
+            record
+            for record in result
+            if _dashboard_matches_datasource(record, datasource_id)
+            or (
+                _is_external_mcp_dashboard(record)
+                and _external_mcp_dashboard_bound_to_current_tenant(session, current_user, record)
+            )
+        ]
+    else:
+        result = [
+            record
+            for record in result
+            if not _is_external_mcp_dashboard(record)
+            or _external_mcp_dashboard_bound_to_current_tenant(session, current_user, record)
+        ]
     share_map = _active_dashboard_share_map_for_user(
         session,
         current_user,
         [record.id for record in result],
     )
     nodes = [
-        _dashboard_base_response(session, current_user, record, datasource_id, share_map.get(record.id))
+        _dashboard_base_response(
+            session,
+            current_user,
+            record,
+            None if _is_external_mcp_dashboard(record) else datasource_id,
+            share_map.get(record.id),
+        )
         for record in result
     ]
     visible_ids = {node.id for node in nodes if node.id is not None}
@@ -2851,7 +2961,14 @@ def _dashboard_payload(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    effective_datasource = None if platform_template_context else _effective_dashboard_datasource(record)
+    is_external_mcp_dashboard = (not platform_template_context) and _is_external_mcp_dashboard(record)
+    effective_datasource = None if platform_template_context or is_external_mcp_dashboard else _effective_dashboard_datasource(record)
+    if is_external_mcp_dashboard and not _external_mcp_dashboard_bound_to_current_tenant(
+        session,
+        current_user,
+        record,
+    ):
+        raise HTTPException(status_code=403, detail="Dashboard does not belong to the bound external MCP datasource")
     if dashboard is not None and dashboard.datasource is not None and effective_datasource is not None:
         request_datasource = _normalize_datasource_id(dashboard.datasource)
         if request_datasource != effective_datasource:
@@ -2863,6 +2980,11 @@ def _dashboard_payload(
 
     result_dict = record.model_dump()
     result_dict['datasource'] = effective_datasource
+    if is_external_mcp_dashboard:
+        result_dict['tenant_id'] = str(record.tenant_id)
+        result_dict['external_mcp_server_id'] = (
+            str(record.external_mcp_server_id) if record.external_mcp_server_id is not None else None
+        )
     result_dict['dashboard_refresh_policy'] = _dashboard_refresh_policy_from_skills(
         session,
         current_user,
@@ -2892,6 +3014,23 @@ def _dashboard_payload(
             item["datasource"] = None
             if item.get('sql') is not None:
                 _mark_dashboard_chart_snapshot_ready(item)
+            continue
+        if is_external_mcp_dashboard:
+            item["datasource"] = None
+            item["dashboard_id"] = record.id
+            item["tenant_id"] = str(record.tenant_id)
+            item["external_mcp_server_id"] = (
+                str(record.external_mcp_server_id) if record.external_mcp_server_id is not None else None
+            )
+            item["dataSourceType"] = DASHBOARD_SOURCE_EXTERNAL_MCP
+            item["externalSnapshot"] = True
+            if isinstance(item.get("mcp"), dict):
+                item["mcp"]["externalMcpServerId"] = (
+                    str(record.external_mcp_server_id) if record.external_mcp_server_id is not None else None
+                )
+                item["mcp"]["tenantId"] = str(record.tenant_id)
+                item["mcp"]["dashboardId"] = record.id
+            _mark_dashboard_chart_snapshot_ready(item)
             continue
         else:
             item_datasource = _chart_datasource(record, item, effective_datasource)
@@ -3094,6 +3233,14 @@ def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDas
             parent = _load_dashboard_or_404(session, dashboard.pid, user)
             if parent.node_type != "folder" or not parent.is_default:
                 raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended folder")
+    elif _is_external_mcp_dashboard_request(dashboard):
+        dashboard.external_mcp_server_id = _ensure_external_mcp_bound_to_current_tenant(
+            session,
+            user,
+            dashboard.external_mcp_server_id,
+        )
+        dashboard.source = DASHBOARD_SOURCE_EXTERNAL_MCP
+        dashboard.datasource = None
     else:
         dashboard.datasource = _ensure_datasource_access(session, user, dashboard.datasource, required=True)
         _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
@@ -3118,6 +3265,8 @@ def update_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDash
     """
     record = _load_dashboard_or_404(session, dashboard.id, user)
     _require_edit_permission(session, user, record)
+    if _is_external_mcp_dashboard(record) and not _external_mcp_dashboard_bound_to_current_tenant(session, user, record):
+        raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
     if record.datasource:
         _ensure_datasource_access(session, user, record.datasource)
     record.name = dashboard.name
@@ -3135,9 +3284,18 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：创建或保存仪表盘需要的东西，让后续流程能继续往下走。
     """
-    dashboard.datasource = _ensure_datasource_access(session, user, dashboard.datasource, required=True)
-    _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
-    _validate_canvas_datasources(session, user, dashboard, dashboard.datasource)
+    if _is_external_mcp_dashboard_request(dashboard):
+        dashboard.external_mcp_server_id = _ensure_external_mcp_bound_to_current_tenant(
+            session,
+            user,
+            dashboard.external_mcp_server_id,
+        )
+        dashboard.source = DASHBOARD_SOURCE_EXTERNAL_MCP
+        dashboard.datasource = None
+    else:
+        dashboard.datasource = _ensure_datasource_access(session, user, dashboard.datasource, required=True)
+        _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
+        _validate_canvas_datasources(session, user, dashboard, dashboard.datasource)
     record = get_create_base_info(user, dashboard)
     if is_platform_workspace_delegate(user):
         record.create_by = _asset_operator_id(session, user)
@@ -3162,6 +3320,22 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     """
     record = _load_dashboard_or_404(session, dashboard.id, user)
     _require_edit_permission(session, user, record)
+    if _is_external_mcp_dashboard(record):
+        if not _external_mcp_dashboard_bound_to_current_tenant(session, user, record):
+            raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+        record.name = dashboard.name
+        record.datasource = None
+        record.external_mcp_server_id = record.external_mcp_server_id or dashboard.external_mcp_server_id
+        record.source = DASHBOARD_SOURCE_EXTERNAL_MCP
+        record.update_by = _asset_operator_id(session, user)
+        record.update_time = int(time.time())
+        record.component_data = dashboard.component_data
+        record.canvas_style_data = dashboard.canvas_style_data
+        record.canvas_view_info = _sanitize_canvas_view_info(dashboard.canvas_view_info)
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        return record
     request_datasource = _normalize_datasource_id(dashboard.datasource)
     bound_datasource = record.datasource or request_datasource
     if request_datasource is not None and record.datasource is not None and request_datasource != record.datasource:
@@ -3200,6 +3374,10 @@ def move_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDashbo
         _require_edit_permission(session, user, parent)
         if parent.node_type != "folder":
             raise HTTPException(status_code=400, detail="Dashboard parent must be a folder")
+        if _is_external_mcp_dashboard(parent) != _is_external_mcp_dashboard(record):
+            raise HTTPException(status_code=400, detail="Dashboard parent must belong to the same datasource type")
+        if _is_external_mcp_dashboard(record) and parent.external_mcp_server_id != record.external_mcp_server_id:
+            raise HTTPException(status_code=400, detail="Dashboard parent must belong to the same external MCP datasource")
         if _effective_dashboard_datasource(parent) != _effective_dashboard_datasource(record):
             raise HTTPException(status_code=400, detail="Dashboard parent must belong to the same datasource")
     record.pid = target_pid
@@ -3221,11 +3399,16 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
     record = _load_dashboard_or_404(session, request.dashboard_id, user)
     if record.node_type != "leaf":
         raise HTTPException(status_code=400, detail="Default dashboard must be a dashboard")
-    effective_datasource = _effective_dashboard_datasource(record)
-    if effective_datasource is not None:
-        datasource = session.get(CoreDatasource, effective_datasource)
-        if not datasource or not datasource_bound_to_tenant(session, int(effective_datasource), _current_tenant_id(user)):
-            raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
+    if _is_external_mcp_dashboard(record):
+        if not _external_mcp_dashboard_bound_to_current_tenant(session, user, record):
+            raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+        effective_datasource = None
+    else:
+        effective_datasource = _effective_dashboard_datasource(record)
+        if effective_datasource is not None:
+            datasource = session.get(CoreDatasource, effective_datasource)
+            if not datasource or not datasource_bound_to_tenant(session, int(effective_datasource), _current_tenant_id(user)):
+                raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
 
     now = int(time.time())
     if request.is_default and not record.is_default:
@@ -3735,9 +3918,10 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
         raise ValueError("opt is required")
     datasource_id = _normalize_datasource_id(dashboard.datasource)
 
-
     if dashboard.opt in ('newLeaf', 'newFolder'):
         is_default_folder = bool(dashboard.is_default) and dashboard.node_type == "folder"
+        is_external_mcp_dashboard = (not is_default_folder) and _is_external_mcp_dashboard_request(dashboard)
+        external_mcp_server_id = None
         if is_default_folder:
             _require_set_default_permission(user)
             datasource_id = None
@@ -3745,6 +3929,12 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
                 parent = _load_dashboard_or_404(session, dashboard.pid, user)
                 if parent.node_type != "folder" or not parent.is_default:
                     raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended folder")
+        elif is_external_mcp_dashboard:
+            external_mcp_server_id = _ensure_external_mcp_bound_to_current_tenant(
+                session,
+                user,
+                dashboard.external_mcp_server_id,
+            )
         else:
             datasource_id = _ensure_datasource_access(session, user, datasource_id, required=True)
             _require_create_permission(session, user, datasource_id, dashboard.pid)
@@ -3754,7 +3944,12 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
             or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
             CoreDashboard.name == dashboard.name,
         ]
-        if not is_default_folder:
+        if is_external_mcp_dashboard:
+            duplicate_filters.extend([
+                CoreDashboard.source == DASHBOARD_SOURCE_EXTERNAL_MCP,
+                CoreDashboard.external_mcp_server_id == external_mcp_server_id,
+            ])
+        elif not is_default_folder:
             duplicate_filters.append(
                 CoreDashboard.datasource.is_(None)
                 if datasource_id is None
@@ -3768,16 +3963,26 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
         _require_edit_permission(session, user, record)
         if dashboard.name == record.name:
             return True
-        datasource_id = record.datasource or datasource_id
-        query = session.query(CoreDashboard).filter(
-            and_(
-                CoreDashboard.tenant_id == _current_tenant_id(user),
-                CoreDashboard.datasource == datasource_id,
-                or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
-                CoreDashboard.name == dashboard.name,
-                CoreDashboard.id != dashboard.id
+        duplicate_filters = [
+            CoreDashboard.tenant_id == _current_tenant_id(user),
+            or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
+            CoreDashboard.name == dashboard.name,
+            CoreDashboard.id != dashboard.id,
+        ]
+        if _is_external_mcp_dashboard(record):
+            external_mcp_server_id = _ensure_external_mcp_bound_to_current_tenant(
+                session,
+                user,
+                record.external_mcp_server_id,
             )
-        )
+            duplicate_filters.extend([
+                CoreDashboard.source == DASHBOARD_SOURCE_EXTERNAL_MCP,
+                CoreDashboard.external_mcp_server_id == external_mcp_server_id,
+            ])
+        else:
+            datasource_id = record.datasource or datasource_id
+            duplicate_filters.append(CoreDashboard.datasource == datasource_id)
+        query = session.query(CoreDashboard).filter(and_(*duplicate_filters))
     else:
         raise ValueError(f"Invalid opt value: {dashboard.opt}")
     return not session.query(query.exists()).scalar()
@@ -3791,6 +3996,12 @@ def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id:
     """
     coreDashboard = _load_dashboard_or_404(session, resource_id, current_user)
     _require_edit_permission(session, current_user, coreDashboard)
+    if _is_external_mcp_dashboard(coreDashboard) and not _external_mcp_dashboard_bound_to_current_tenant(
+        session,
+        current_user,
+        coreDashboard,
+    ):
+        raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
     if coreDashboard.datasource:
         _ensure_datasource_access(session, current_user, coreDashboard.datasource)
     if coreDashboard.is_default:

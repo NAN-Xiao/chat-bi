@@ -30,6 +30,7 @@ config = context.config
 #from apps.chat.models.chat_model import SQLModel
 from apps.chat.models.custom_prompt_model import SQLModel  # noqa
 from apps.analysis_assistant.models import SQLModel  # noqa
+from apps.external_mcp.models import SQLModel  # noqa
 from apps.knowledge_base.models import SQLModel  # noqa
 from apps.system.models.tenant import SQLModel  # noqa
 # from apps.dashboard.models.dashboard_model import SQLModel

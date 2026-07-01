@@ -1703,6 +1703,7 @@ defineExpose({
     <DashboardSqlEditor
       v-model="sqlEditorVisible"
       :view-info="editingViewInfo"
+      :dashboard-info="dashboardInfo"
       :allow-static-apply="platformTemplate"
       @applied="onSqlApplied"
     />

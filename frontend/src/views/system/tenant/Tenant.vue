@@ -90,11 +90,16 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('tenant.datasource_binding_status')" width="130">
+        <el-table-column :label="t('tenant.datasource_binding_status')" width="160">
           <template #default="scope">
-            <span v-if="scope.row.row_type === 'tenant'" class="table-primary-text">
-              {{ scope.row.bound_datasource_id ? t('tenant.datasource_bound') : '-' }}
-            </span>
+            <div v-if="scope.row.row_type === 'tenant'" class="table-two-line-cell">
+              <span class="table-primary-text">
+                SQL {{ scope.row.bound_datasource_id ? t('tenant.datasource_bound') : '-' }}
+              </span>
+              <span class="table-secondary-text">
+                MCP {{ scope.row.bound_external_mcp_server_id ? t('tenant.datasource_bound') : '-' }}
+              </span>
+            </div>
             <span v-else class="muted">-</span>
           </template>
         </el-table-column>
@@ -322,6 +327,31 @@
               </el-option>
             </el-select>
           </el-form-item>
+          <el-form-item :label="t('tenant.bound_external_mcp')">
+            <el-select
+              v-model="form.external_mcp_server_id"
+              clearable
+              filterable
+              :disabled="isDefaultTenantForm"
+              :loading="externalMcpLoading"
+              style="width: 100%"
+              :placeholder="t('tenant.select_external_mcp')"
+            >
+              <el-option
+                v-for="server in externalMcpOptions"
+                :key="server.id"
+                :label="server.name"
+                :value="server.id"
+              >
+                <div class="datasource-option">
+                  <span class="datasource-name ellipsis">{{ server.name }}</span>
+                  <span class="datasource-type ellipsis">
+                    {{ formatExternalMcpMeta(server) }}
+                  </span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
         </section>
 
         <section v-if="form.id" class="tenant-form-section owner-transfer-panel">
@@ -467,6 +497,7 @@ import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlin
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import TenantUsage from '@/views/system/tenant-usage/TenantUsage.vue'
 import { datasourceApi } from '@/api/datasource'
+import { externalMcpApi, type ExternalMcpServerInfo } from '@/api/externalMcp'
 import {
   tenantApi,
   type TenantApplicationInfo,
@@ -494,11 +525,13 @@ const deleteLoadingId = ref('')
 const reviewLoadingId = ref('')
 const ownerTransferLoadingId = ref('')
 const datasourceLoading = ref(false)
+const externalMcpLoading = ref(false)
 const formRef = ref()
 const tenants = shallowRef<TenantInfo[]>([])
 const applications = shallowRef<TenantApplicationInfo[]>([])
 const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
 const datasourceOptions = shallowRef<any[]>([])
+const externalMcpOptions = shallowRef<ExternalMcpServerInfo[]>([])
 const editingTenant = ref<TenantInfo | null>(null)
 const usageTenant = ref<TenantInfo | null>(null)
 const ownerCandidateLoading = ref(false)
@@ -521,6 +554,7 @@ const defaultForm = {
   billing_email: '',
   subscription_note: '',
   datasource_id: '' as number | string,
+  external_mcp_server_id: '' as number | string,
 }
 const form = reactive({ ...defaultForm })
 
@@ -596,6 +630,8 @@ const filteredTenants = computed(() => {
       contact_detail: tenant.owner_email || tenant.owner_account || '',
       bound_datasource_id: normalizeBoundDatasourceId(tenant),
       bound_datasource_name: normalizeBoundDatasourceName(tenant),
+      bound_external_mcp_server_id: normalizeBoundExternalMcpId(tenant),
+      bound_external_mcp_server_name: normalizeBoundExternalMcpName(tenant),
       admin_count: tenant.admin_count || 0,
       member_count: tenant.member_count || 0,
       source: tenant,
@@ -640,6 +676,12 @@ const normalizeBoundDatasourceId = (tenant?: TenantInfo | null) =>
 
 const normalizeBoundDatasourceName = (tenant?: TenantInfo | null) =>
   tenant?.bound_datasource_name || tenant?.bound_project_name || ''
+
+const normalizeBoundExternalMcpId = (tenant?: TenantInfo | null) =>
+  tenant?.bound_external_mcp_server_id || ''
+
+const normalizeBoundExternalMcpName = (tenant?: TenantInfo | null) =>
+  tenant?.bound_external_mcp_server_name || ''
 
 const normalizeTenantRole = (role?: string) => {
   const normalized = String(role || '').toLowerCase()
@@ -803,6 +845,16 @@ const loadDatasourceOptions = async () => {
   }
 }
 
+const loadExternalMcpOptions = async () => {
+  if (externalMcpOptions.value.length) return
+  externalMcpLoading.value = true
+  try {
+    externalMcpOptions.value = await externalMcpApi.list()
+  } finally {
+    externalMcpLoading.value = false
+  }
+}
+
 const loadUsageSnapshot = async () => {
   usageRows.value = await tenantApi.usage({
     start_date: dayjs().subtract(13, 'day').format('YYYY-MM-DD'),
@@ -819,7 +871,7 @@ const reloadEnterpriseRows = async () => {
 }
 
 const openDrawer = async (tenant: TenantInfo | null) => {
-  await loadDatasourceOptions()
+  await Promise.all([loadDatasourceOptions(), loadExternalMcpOptions()])
   editingTenant.value = tenant
   ownerTransferForm.target_user_id = ''
   ownerTransferForm.reason = ''
@@ -839,6 +891,7 @@ const openDrawer = async (tenant: TenantInfo | null) => {
     billing_email: tenant?.billing_email || '',
     subscription_note: tenant?.subscription_note || '',
     datasource_id: normalizeBoundDatasourceId(tenant),
+    external_mcp_server_id: normalizeBoundExternalMcpId(tenant),
   })
   drawerVisible.value = true
 }
@@ -939,6 +992,10 @@ const transferOwnerIfNeeded = async () => {
   }
 }
 
+const formatExternalMcpMeta = (server: ExternalMcpServerInfo) => {
+  return [server.server_name, server.server_version, server.endpoint].filter(Boolean).join(' / ')
+}
+
 const saveTenant = () => {
   formRef.value?.validate(async (valid: boolean) => {
     if (!valid) return
@@ -955,7 +1012,12 @@ const saveTenant = () => {
         billing_contact: form.billing_contact,
         billing_email: form.billing_email,
         subscription_note: form.subscription_note,
-        ...(!isDefaultTenantForm.value ? { datasource_id: form.datasource_id || null } : {}),
+        ...(!isDefaultTenantForm.value
+          ? {
+              datasource_id: form.datasource_id || null,
+              external_mcp_server_id: form.external_mcp_server_id || null,
+            }
+          : {}),
       }
       if (form.id) {
         await confirmOwnerTransferIfNeeded()

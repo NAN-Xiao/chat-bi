@@ -35,6 +35,10 @@ class CoreDashboard(SQLModel, table=True):
         default=None,
         sa_column=Column(BigInteger, nullable=True)
     )
+    external_mcp_server_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BigInteger, nullable=True)
+    )
     org_id: str = Field(
         default=None,
         max_length=50,
@@ -236,10 +240,11 @@ class DashboardBaseResponse(BaseModel):
     类说明：DashboardBaseResponse 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
     """
     id: Optional[str] = None
-    tenant_id: Optional[int] = None
+    tenant_id: Optional[int | str] = None
     name: Optional[str] = None
     pid: Optional[str] = None
     datasource: Optional[int] = None
+    external_mcp_server_id: Optional[int | str] = None
     node_type: Optional[str] = None
     leaf: Optional[bool] = False
     type: Optional[str] = None
@@ -301,10 +306,11 @@ class BaseDashboard(BaseModel):
     类说明：BaseDashboard 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。
     """
     id: str = ''
-    tenant_id: Optional[int] = None
+    tenant_id: Optional[int | str] = None
     name: str = ''
     pid: str = ''
     datasource: Optional[int] = None
+    external_mcp_server_id: Optional[int | str] = None
     org_id: str = ''
     type: str = ''
     node_type: str = ''

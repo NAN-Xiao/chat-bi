@@ -2126,6 +2126,43 @@ def test_project_viewer_can_create_own_dashboard(monkeypatch):
         assert record.create_by == "2"
 
 
+def test_create_dashboard_with_external_mcp_id_uses_external_mcp_source(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    sql_access_calls = []
+
+    monkeypatch.setattr(
+        dashboard_service,
+        "external_mcp_bound_to_tenant",
+        lambda session, external_mcp_server_id, tenant_id: int(external_mcp_server_id) == 88 and int(tenant_id) == 1,
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "_ensure_datasource_access",
+        lambda *args, **kwargs: sql_access_calls.append(args) or 2,
+    )
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+
+    with Session(engine) as session:
+        record = dashboard_service.create_resource(
+            session=session,
+            user=current_user,
+            dashboard=CreateDashboard(
+                name="ChatMon 告警",
+                pid="root",
+                datasource=2,
+                external_mcp_server_id=88,
+                node_type="leaf",
+                type="dashboard",
+            ),
+        )
+
+        assert record.source == dashboard_service.DASHBOARD_SOURCE_EXTERNAL_MCP
+        assert record.external_mcp_server_id == 88
+        assert record.datasource is None
+        assert sql_access_calls == []
+
+
 def test_project_editor_cannot_rename_other_users_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
@@ -2249,6 +2286,94 @@ def test_validate_name_allows_update_when_name_unchanged(monkeypatch):
             user=current_user,
             dashboard=QueryDashboard(id="dashboard-1", name="留存相关", opt="updateLeaf", datasource=2),
         ) is True
+
+
+def test_validate_name_checks_external_mcp_dashboard_scope(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    sql_access_calls = []
+
+    monkeypatch.setattr(
+        dashboard_service,
+        "external_mcp_bound_to_tenant",
+        lambda session, external_mcp_server_id, tenant_id: int(external_mcp_server_id) == 88 and int(tenant_id) == 1,
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "_ensure_datasource_access",
+        lambda *args, **kwargs: sql_access_calls.append(args) or 2,
+    )
+
+    with Session(engine) as session:
+        session.add_all([
+            CoreDashboard(
+                id="sql-dashboard",
+                name="重复名称",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+            ),
+            CoreDashboard(
+                id="other-external-dashboard",
+                name="重复名称",
+                pid="root",
+                datasource=None,
+                external_mcp_server_id=99,
+                source=dashboard_service.DASHBOARD_SOURCE_EXTERNAL_MCP,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+            ),
+        ])
+        session.commit()
+
+        assert dashboard_service.validate_name(
+            session=session,
+            user=current_user,
+            dashboard=QueryDashboard(
+                name="重复名称",
+                opt="newLeaf",
+                external_mcp_server_id=88,
+                node_type="leaf",
+                type="dashboard",
+            ),
+        ) is True
+
+        session.add(
+            CoreDashboard(
+                id="same-external-dashboard",
+                name="重复名称",
+                pid="root",
+                datasource=None,
+                external_mcp_server_id=88,
+                source=dashboard_service.DASHBOARD_SOURCE_EXTERNAL_MCP,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        assert dashboard_service.validate_name(
+            session=session,
+            user=current_user,
+            dashboard=QueryDashboard(
+                name="重复名称",
+                opt="newLeaf",
+                external_mcp_server_id=88,
+                node_type="leaf",
+                type="dashboard",
+            ),
+        ) is False
+        assert sql_access_calls == []
 
 
 def test_project_viewer_cannot_create_under_folder_they_cannot_edit(monkeypatch):

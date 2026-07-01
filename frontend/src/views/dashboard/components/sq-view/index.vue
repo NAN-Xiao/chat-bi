@@ -919,6 +919,10 @@ function hasChartShape(viewInfo: any) {
   )
 }
 
+function isExternalSnapshotChart(viewInfo: any) {
+  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+}
+
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   if (!viewInfo || typeof viewInfo !== 'object') {
     return
@@ -983,6 +987,21 @@ async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
   const forceRefresh = options.forceRefresh !== false
   const blocking = options.blocking === true || !silent
+  if (isExternalSnapshotChart(props.viewInfo)) {
+    if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
+      props.viewInfo.data = {}
+    }
+    props.viewInfo.data.data = Array.isArray(props.viewInfo.data.data) ? props.viewInfo.data.data : []
+    props.viewInfo.data.fields = Array.isArray(props.viewInfo.data.fields) ? props.viewInfo.data.fields : []
+    props.viewInfo.fields = Array.isArray(props.viewInfo.fields) ? props.viewInfo.fields : props.viewInfo.data.fields
+    props.viewInfo.status = 'success'
+    props.viewInfo.message = ''
+    props.viewInfo.dataState = 'ready'
+    props.viewInfo.loadingProgress = 100
+    props.viewInfo.refreshState = ''
+    scheduleRenderChart()
+    return
+  }
   if (!props.viewInfo?.datasource) {
     if (!silent) {
       ElMessage.warning(t('dashboard.sql_editor_no_datasource'))

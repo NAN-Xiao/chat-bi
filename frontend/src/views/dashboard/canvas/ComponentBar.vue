@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { toRefs } from 'vue'
+import { computed, toRefs } from 'vue'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import { Icon } from '@/components/icon-custom'
 import { useEmitt } from '@/utils/useEmitt.ts'
@@ -49,6 +49,17 @@ const props = defineProps({
 })
 
 const { configItem } = toRefs(props)
+
+const currentViewInfo = computed(() =>
+  props.configItem?.id
+    ? (dashboardStore.canvasViewInfo as Record<string, any>)?.[props.configItem.id] || {}
+    : {}
+)
+const isExternalSnapshotConfig = () =>
+  currentViewInfo.value?.externalSnapshot === true ||
+  currentViewInfo.value?.dataSourceType === 'external_mcp' ||
+  props.configItem?.externalSnapshot === true ||
+  props.configItem?.dataSourceType === 'external_mcp'
 
 const doPreview = () => {
   // do preview
@@ -114,7 +125,7 @@ const doShareComponent = async (e: MouseEvent) => {
               v-if="configItem.component === 'SQView' && canEdit && canEditSql"
               :icon="icon_sql_outlined"
               @click="doEditSql"
-              >{{ t('dashboard.edit_sql') }}</el-dropdown-item
+              >{{ isExternalSnapshotConfig() ? t('dashboard.edit_chart') : t('dashboard.edit_sql') }}</el-dropdown-item
             >
             <el-dropdown-item
               v-if="configItem.component === 'SQView' && canShare"

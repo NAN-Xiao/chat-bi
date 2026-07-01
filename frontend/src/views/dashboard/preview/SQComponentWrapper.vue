@@ -645,6 +645,10 @@ function isReportChartComponent(item: any) {
   return item?.component === 'SQView'
 }
 
+function isExternalSnapshotChart(viewInfo: any) {
+  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+}
+
 function collectReportChartEntries(
   items: any[],
   path: string[] = [],
@@ -965,6 +969,10 @@ function buildWorksheetXml(sheetName: string, title: string, fields: string[], r
 
 async function refreshChartData() {
   if (isPreviewSingleChart.value) {
+    if (isExternalSnapshotChart(currentViewInfo.value)) {
+      ElMessage.success(t('dashboard.chart_refresh_success'))
+      return
+    }
     ;(component.value as any)?.refreshData?.({ forceRefresh: true })
     return
   }
@@ -982,6 +990,10 @@ async function refreshChartData() {
       nextIndex += 1
       const entry = entries[currentIndex]
       const viewInfo = entry?.viewInfo
+      if (isExternalSnapshotChart(viewInfo)) {
+        successCount += 1
+        continue
+      }
       if (!viewInfo?.datasource || !viewInfo?.sql?.trim()) {
         failedCount += 1
         continue

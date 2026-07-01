@@ -34,6 +34,8 @@ class TenantDTO(BaseModel):
     bound_datasource_name: Optional[str] = None
     bound_project_id: Optional[int] = None
     bound_project_name: Optional[str] = None
+    bound_external_mcp_server_id: Optional[int] = None
+    bound_external_mcp_server_name: Optional[str] = None
     admin_count: int = 0
     member_count: int = 0
     join_time: int = 0
@@ -72,6 +74,7 @@ class TenantCreator(BaseModel):
     owner_name: Optional[str] = Field(default=None, max_length=100)
     owner_email: Optional[str] = Field(default=None, max_length=100)
     datasource_id: Optional[int] = None
+    external_mcp_server_id: Optional[int] = None
 
 
 class TenantEditor(BaseModel):
@@ -89,6 +92,7 @@ class TenantEditor(BaseModel):
     billing_email: Optional[str] = Field(default=None, max_length=128)
     subscription_note: Optional[str] = Field(default=None, max_length=2000)
     datasource_id: Optional[int] = None
+    external_mcp_server_id: Optional[int] = None
 
 
 class TenantStatus(BaseModel):
@@ -103,6 +107,13 @@ class TenantDatasourceBindingEditor(BaseModel):
     类说明：TenantDatasourceBindingEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
     """
     datasource_id: Optional[int] = None
+
+
+class TenantExternalMcpBindingEditor(BaseModel):
+    """
+    类说明：TenantExternalMcpBindingEditor 用来描述工作空间第三方 MCP 外部数据源绑定的输入结构。
+    """
+    external_mcp_server_id: Optional[int] = None
 
 
 class TenantOwnerTransfer(BaseModel):

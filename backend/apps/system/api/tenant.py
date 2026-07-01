@@ -10,6 +10,11 @@ from sqlmodel import delete as sqlmodel_delete, select
 from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, CustomPromptVisibilityScopeEnum
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.dashboard.models.dashboard_model import CoreDashboard
+from apps.external_mcp.crud import (
+    bind_tenant_to_external_mcp,
+    get_bound_external_mcp_id_for_tenant,
+    list_external_mcp_binding_rows,
+)
 from apps.datasource.crud.binding import (
     bind_tenant_to_datasource,
     get_bound_datasource_id_for_tenant,
@@ -112,6 +117,7 @@ from apps.system.schemas.tenant_schema import (
     TenantMemberEditor,
     TenantCreator,
     TenantDatasourceBindingEditor,
+    TenantExternalMcpBindingEditor,
     TenantDTO,
     TenantEditor,
     TenantOverviewAssetItemDTO,
@@ -425,6 +431,26 @@ def _tenant_bound_datasource_map(session: SessionDep, tenant_ids: list[int]) -> 
     return result
 
 
+def _tenant_bound_external_mcp_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
+    """
+    是什么：_tenant_bound_external_mcp_map 获取工作空间绑定的第三方 MCP 外部数据源信息。
+    """
+    ids = [int(tenant_id) for tenant_id in tenant_ids if int(tenant_id) != DEFAULT_TENANT_ID]
+    if not ids:
+        return {}
+    rows = list_external_mcp_binding_rows(session, ids)
+    result = {}
+    for tenant_id, external_mcp_server_id, external_mcp_server_name in rows:
+        result.setdefault(
+            int(tenant_id),
+            {
+                "bound_external_mcp_server_id": int(external_mcp_server_id),
+                "bound_external_mcp_server_name": external_mcp_server_name,
+            },
+        )
+    return result
+
+
 def _tenant_bound_datasource_id(session: SessionDep, tenant_id: int) -> int | None:
     """
     是什么：_tenant_bound_datasource_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -434,6 +460,15 @@ def _tenant_bound_datasource_id(session: SessionDep, tenant_id: int) -> int | No
     if int(tenant_id) == DEFAULT_TENANT_ID or not _table_exists(session, CoreDatasource.__tablename__):
         return None
     return get_bound_datasource_id_for_tenant(session, int(tenant_id))
+
+
+def _tenant_bound_external_mcp_id(session: SessionDep, tenant_id: int) -> int | None:
+    """
+    是什么：_tenant_bound_external_mcp_id 获取工作空间绑定的第三方 MCP 外部数据源 ID。
+    """
+    if int(tenant_id) == DEFAULT_TENANT_ID:
+        return None
+    return get_bound_external_mcp_id_for_tenant(session, int(tenant_id))
 
 
 def _scope_member_datasource_payload_to_bound_datasource(
@@ -549,6 +584,7 @@ def _tenant_dto(
     role: str = TENANT_ROLE_OWNER,
     owner: dict | None = None,
     datasource: dict | None = None,
+    external_mcp: dict | None = None,
     member_stats: dict | None = None,
     include_operations: bool | None = None,
     join_time: int | None = None,
@@ -560,6 +596,7 @@ def _tenant_dto(
     """
     owner = owner or {}
     datasource = datasource or {}
+    external_mcp = external_mcp or {}
     member_stats = member_stats or {}
     normalized_role = normalize_tenant_role(role)
     show_operations = normalized_role in TENANT_ADMIN_ROLES if include_operations is None else include_operations
@@ -588,6 +625,8 @@ def _tenant_dto(
         bound_datasource_name=datasource.get("bound_datasource_name") if show_operations else None,
         bound_project_id=datasource.get("bound_project_id") if show_operations else None,
         bound_project_name=datasource.get("bound_project_name") if show_operations else None,
+        bound_external_mcp_server_id=external_mcp.get("bound_external_mcp_server_id") if show_operations else None,
+        bound_external_mcp_server_name=external_mcp.get("bound_external_mcp_server_name") if show_operations else None,
         admin_count=int(member_stats.get("admin_count") or 0) if show_operations else 0,
         member_count=int(member_stats.get("member_count") or 0) if show_operations else 0,
         join_time=int(join_time or 0),
@@ -606,6 +645,7 @@ def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int
     tenant_ids = [int(tenant.id) for tenant, _role, _join_time in rows]
     owner_map = _tenant_owner_map(session, tenant_ids)
     datasource_map = _tenant_bound_datasource_map(session, tenant_ids)
+    external_mcp_map = _tenant_bound_external_mcp_map(session, tenant_ids)
     member_stats_map = _tenant_member_stats_map(session, tenant_ids)
     return [
         _tenant_dto(
@@ -613,6 +653,7 @@ def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int
             role=role,
             owner=owner_map.get(int(tenant.id)),
             datasource=datasource_map.get(int(tenant.id)),
+            external_mcp=external_mcp_map.get(int(tenant.id)),
             member_stats=member_stats_map.get(int(tenant.id)),
             join_time=join_time,
         )
@@ -630,11 +671,13 @@ def _tenant_admin_dto(session: SessionDep, tenant: TenantModel) -> TenantDTO:
     tenant_id = int(tenant.id)
     owner = _tenant_owner_map(session, [tenant_id]).get(tenant_id)
     datasource = _tenant_bound_datasource_map(session, [tenant_id]).get(tenant_id)
+    external_mcp = _tenant_bound_external_mcp_map(session, [tenant_id]).get(tenant_id)
     member_stats = _tenant_member_stats_map(session, [tenant_id]).get(tenant_id)
     return _tenant_dto(
         tenant,
         owner=owner,
         datasource=datasource,
+        external_mcp=external_mcp,
         member_stats=member_stats,
         include_operations=True,
     )
@@ -1112,6 +1155,7 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     datasource = _tenant_bound_datasource_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
+    external_mcp = _tenant_bound_external_mcp_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
     tenant = session.get(TenantModel, int(current_tenant.id))
     ensure_tenant_public_id(session, tenant)
     return TenantDTO(
@@ -1123,6 +1167,8 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
         bound_datasource_name=datasource.get("bound_datasource_name") if datasource else None,
         bound_project_id=datasource.get("bound_project_id") if datasource else None,
         bound_project_name=datasource.get("bound_project_name") if datasource else None,
+        bound_external_mcp_server_id=external_mcp.get("bound_external_mcp_server_id") if external_mcp else None,
+        bound_external_mcp_server_name=external_mcp.get("bound_external_mcp_server_name") if external_mcp else None,
     )
 
 
@@ -3389,6 +3435,36 @@ async def update_tenant_legacy_project_binding(
     return await _update_tenant_datasource_binding(session, current_user, tenant_id, editor)
 
 
+@router.put("/{tenant_id}/external-mcp-binding", response_model=TenantDTO, include_in_schema=False)
+async def update_tenant_external_mcp_binding(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+    editor: TenantExternalMcpBindingEditor,
+):
+    """
+    是什么：update_tenant_external_mcp_binding 更新工作空间绑定的第三方 MCP 外部数据源。
+    """
+    _require_platform_admin(current_user)
+    tenant = session.get(TenantModel, int(tenant_id))
+    if tenant is None or int(getattr(tenant, "status", 1)) < 0:
+        raise HTTPException(status_code=404, detail="Tenant does not exist")
+    bind_tenant_to_external_mcp(session, current_user, int(tenant_id), editor.external_mcp_server_id)
+    tenant = session.get(TenantModel, int(tenant_id))
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.UPDATE,
+        detail="更新工作空间绑定第三方 MCP 数据源",
+        module=OperationModules.TENANT,
+        tenant_id=int(tenant_id),
+        resource_id=tenant_id,
+        resource_name=tenant.name if tenant else str(tenant_id),
+        remark=f"external_mcp_server_id={editor.external_mcp_server_id or 'none'}",
+    )
+    return _tenant_admin_dto(session, tenant)
+
+
 @router.post("", response_model=TenantDTO)
 async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: TenantCreator):
     """
@@ -3422,6 +3498,8 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
             )
         if creator.datasource_id:
             bind_tenant_to_datasource(session, current_user, int(tenant.id), creator.datasource_id)
+        if creator.external_mcp_server_id:
+            bind_tenant_to_external_mcp(session, current_user, int(tenant.id), creator.external_mcp_server_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     tenant = session.get(TenantModel, int(tenant.id))
@@ -3445,7 +3523,8 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
         remark=f"tenant_id={tenant.id}; plan={tenant.plan}",
     )
     datasource = _tenant_bound_datasource_map(session, [int(tenant.id)]).get(int(tenant.id))
-    return _tenant_dto(tenant, owner=owner, datasource=datasource)
+    external_mcp = _tenant_bound_external_mcp_map(session, [int(tenant.id)]).get(int(tenant.id))
+    return _tenant_dto(tenant, owner=owner, datasource=datasource, external_mcp=external_mcp)
 
 
 @router.put("/{tenant_id}", response_model=TenantDTO)
@@ -3475,6 +3554,9 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
         if "datasource_id" in editor_fields:
             bind_tenant_to_datasource(session, current_user, int(tenant.id), editor.datasource_id)
             tenant = session.get(TenantModel, int(tenant.id))
+        if "external_mcp_server_id" in editor_fields:
+            bind_tenant_to_external_mcp(session, current_user, int(tenant.id), editor.external_mcp_server_id)
+            tenant = session.get(TenantModel, int(tenant.id))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _write_tenant_audit(
@@ -3488,7 +3570,9 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
         resource_name=tenant.name,
         remark=(
             f"tenant_id={tenant.id}; plan={tenant.plan}; "
-            f"datasource_id={editor.datasource_id if 'datasource_id' in editor_fields else 'unchanged'}"
+            f"datasource_id={editor.datasource_id if 'datasource_id' in editor_fields else 'unchanged'}; "
+            f"external_mcp_server_id="
+            f"{editor.external_mcp_server_id if 'external_mcp_server_id' in editor_fields else 'unchanged'}"
         ),
     )
     return _tenant_admin_dto(session, tenant)

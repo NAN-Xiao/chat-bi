@@ -25,6 +25,8 @@ export interface TenantInfo {
   bound_datasource_name?: string | null
   bound_project_id?: number | string | null
   bound_project_name?: string | null
+  bound_external_mcp_server_id?: number | string | null
+  bound_external_mcp_server_name?: string | null
   admin_count?: number
   member_count?: number
   join_time?: number
@@ -462,6 +464,7 @@ export const tenantApi = {
     billing_email?: string
     subscription_note?: string
     datasource_id?: number | string | null
+    external_mcp_server_id?: number | string | null
   }) => request.post<TenantInfo>('/system/tenant', data),
   edit: (
     id: number | string,
@@ -477,6 +480,7 @@ export const tenantApi = {
       billing_email?: string
       subscription_note?: string
       datasource_id?: number | string | null
+      external_mcp_server_id?: number | string | null
     }
   ) => request.put<TenantInfo>(`/system/tenant/${id}`, data),
   status: (id: number | string, status: number) =>
@@ -485,6 +489,10 @@ export const tenantApi = {
     id: number | string,
     data: { datasource_id?: number | string | null }
   ) => request.put<TenantInfo>(`/system/tenant/${id}/datasource-binding`, data),
+  updateExternalMcpBinding: (
+    id: number | string,
+    data: { external_mcp_server_id?: number | string | null }
+  ) => request.put<TenantInfo>(`/system/tenant/${id}/external-mcp-binding`, data),
   delete: (id: number | string) => request.delete<TenantInfo>(`/system/tenant/${id}`),
   platformOverview: (days = 7) =>
     request.get<PlatformOverviewInfo>(`/system/tenant/platform-overview?days=${days}`),

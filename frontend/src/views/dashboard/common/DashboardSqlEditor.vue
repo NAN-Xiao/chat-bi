@@ -2,6 +2,8 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { dashboardApi } from '@/api/dashboard.ts'
+import type { ExternalMcpToolInfo } from '@/api/externalMcp.ts'
+import { request } from '@/utils/request.ts'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type {
   ChartAxis,
@@ -32,17 +34,42 @@ const props = withDefaults(
   defineProps<{
     modelValue: boolean
     viewInfo?: any
+    dashboardInfo?: any
     allowStaticApply?: boolean
   }>(),
   {
     modelValue: false,
     viewInfo: null,
+    dashboardInfo: null,
     allowStaticApply: false,
   }
 )
 
 const emits = defineEmits(['update:modelValue', 'applied'])
 const { t } = useI18n()
+const mcpTextFallbacks: Record<string, string> = {
+  mcp_editor_no_server: '当前图表缺少第三方 MCP 数据源配置',
+  mcp_editor_select_tool: '请选择 MCP 函数',
+  mcp_editor_invalid_arguments: '参数必须是合法 JSON 对象',
+  mcp_editor_tool: 'MCP 函数',
+  mcp_editor_result_path: '结果路径',
+  mcp_editor_result_path_placeholder: '例如 items、data.items、by_priority',
+  mcp_editor_key_field: '键字段名',
+  mcp_editor_value_field: '值字段名',
+  mcp_editor_arguments: '参数 JSON',
+  mcp_editor_changed: 'MCP 配置已修改，请先运行预览',
+  mcp_editor_need_preview: 'MCP 配置修改后需要先运行预览',
+  mcp_editor_input_schema: '参数说明',
+  mcp_editor_parameters: '函数参数',
+  mcp_editor_advanced_arguments: '高级 JSON',
+  mcp_editor_tools_load_failed: 'MCP 函数列表获取失败',
+}
+
+function mt(key: string) {
+  const i18nKey = `dashboard.${key}`
+  const value = t(i18nKey)
+  return value === i18nKey ? mcpTextFallbacks[key] || value : value
+}
 
 const visible = computed({
   get() {
@@ -81,6 +108,12 @@ const form = reactive({
   pivotCustomStart: '',
   pivotCustomEnd: '',
   pivotGroupValues: [] as string[],
+  mcpTool: '',
+  mcpArgumentsObject: {} as Record<string, any>,
+  mcpArgumentsText: '{}',
+  mcpResultPath: '',
+  mcpKeyField: '',
+  mcpValueField: '',
 })
 
 const preview = reactive({
@@ -88,6 +121,7 @@ const preview = reactive({
   data: [] as Array<Record<string, any>>,
   status: 'success',
   message: '',
+  raw: undefined as any,
 })
 const sourcePreview = reactive({
   fields: [] as string[],
@@ -95,12 +129,21 @@ const sourcePreview = reactive({
 })
 
 const loading = ref(false)
+const mcpToolsLoading = ref(false)
+const mcpToolsError = ref('')
+const mcpTools = ref<ExternalMcpToolInfo[]>([])
+const mcpFilterOptionsLoading = ref(false)
+const mcpFilterOptions = ref<Record<string, string[]>>({})
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
 const initializedPivotGroupValueField = ref('')
 const PIVOT_GROUP_SELECT_ALL_VALUE = '__dashboard_pivot_group_select_all__'
 const PIVOT_GROUP_SELECT_NONE_VALUE = '__dashboard_pivot_group_select_none__'
+
+function isExternalSnapshotChart(viewInfo: any) {
+  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+}
 
 const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'table', value: 'table' },
@@ -117,6 +160,45 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'treemap', value: 'treemap' },
 ]
 
+const isExternalSnapshot = computed(() => isExternalSnapshotChart(props.viewInfo))
+const canApplyStaticSnapshot = computed(() => props.allowStaticApply || isExternalSnapshot.value)
+const editorTitle = computed(() =>
+  isExternalSnapshot.value ? t('dashboard.snapshot_editor_title') : t('dashboard.sql_editor_title')
+)
+const snapshotSourceTitle = computed(() => {
+  const mcp = props.viewInfo?.mcp || {}
+  return [mcp.server || t('dashboard.external_snapshot_source'), mcp.tool]
+    .filter(Boolean)
+    .join(' / ')
+})
+const snapshotMetaText = computed(() => {
+  const mcp = props.viewInfo?.mcp || {}
+  return [mcp.timezone, mcp.snapshotAt].filter(Boolean).join(' · ')
+})
+const selectedMcpTool = computed(() => mcpTools.value.find((item) => item.name === form.mcpTool))
+const selectedMcpToolDescription = computed(() => selectedMcpTool.value?.description || '')
+const mcpParameterFields = computed(() => buildMcpParameterFields(selectedMcpTool.value?.input_schema))
+const mcpResultPathOptions = computed(() => buildMcpResultPathOptions(selectedMcpTool.value?.output_schema))
+const selectedMcpToolSchemaText = computed(() => {
+  const schema = selectedMcpTool.value?.input_schema
+  if (!schema || Object.keys(schema).length === 0) {
+    return ''
+  }
+  return formatJson(schema)
+})
+const stableId = (value: any) => (value === undefined || value === null || value === '' ? '' : String(value))
+const currentExternalMcpServerId = computed(() => stableId(props.viewInfo?.external_mcp_server_id || props.viewInfo?.mcp?.externalMcpServerId || props.viewInfo?.mcp?.external_mcp_server_id))
+const currentExternalMcpTenantId = computed(() =>
+  stableId(
+    props.viewInfo?.tenant_id ||
+    props.viewInfo?.tenantId ||
+    props.viewInfo?.mcp?.tenantId ||
+    props.viewInfo?.mcp?.tenant_id ||
+    props.dashboardInfo?.tenant_id ||
+    props.dashboardInfo?.tenantId
+  )
+)
+const currentDashboardId = computed(() => stableId(props.dashboardInfo?.id || props.viewInfo?.dashboard_id || props.viewInfo?.dashboardId || props.viewInfo?.mcp?.dashboardId || props.viewInfo?.mcp?.dashboard_id))
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
 const seriesFieldOptions = computed(() => {
   const excluded = new Set(form.y)
@@ -131,9 +213,18 @@ const pivotTimeFieldOptions = computed(() => {
   )
   return toFieldOptions(dateFields.length ? dateFields : sourcePreview.fields)
 })
-const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource))
+const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && !isExternalSnapshot.value)
+const canRunEditorPreview = computed(() => {
+  if (isExternalSnapshot.value) {
+    return Boolean(currentExternalMcpServerId.value)
+  }
+  return !canApplyStaticSnapshot.value || canRunPreview.value
+})
 const sqlChangedAfterPreview = computed(
-  () => !props.allowStaticApply && currentPreviewSignature() !== lastPreviewSignature.value
+  () => !canApplyStaticSnapshot.value && currentPreviewSignature() !== lastPreviewSignature.value
+)
+const mcpChangedAfterPreview = computed(
+  () => isExternalSnapshot.value && currentPreviewSignature() !== lastPreviewSignature.value
 )
 const previewTableFields = computed(() => {
   if (form.columns.length > 0) {
@@ -145,7 +236,7 @@ const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.i
 const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chartType))
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
-const supportsPivotConfig = computed(() => !['table', 'metric'].includes(form.chartType))
+const supportsPivotConfig = computed(() => !isExternalSnapshot.value && !['table', 'metric'].includes(form.chartType))
 const supportsForecastConfig = computed(
   () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length > 0
 )
@@ -560,6 +651,16 @@ function previewPivotPayload() {
 }
 
 function currentPreviewSignature() {
+  if (isExternalSnapshot.value) {
+    return JSON.stringify({
+      externalMcpServerId: currentExternalMcpServerId.value || null,
+      tool: form.mcpTool,
+      argumentsText: (form.mcpArgumentsText || '').trim(),
+      resultPath: form.mcpResultPath || '',
+      keyField: form.mcpKeyField || '',
+      valueField: form.mcpValueField || '',
+    })
+  }
   return JSON.stringify({
     sql: form.sql.trim(),
     pivot: previewPivotPayload() || { enabled: false },
@@ -611,11 +712,391 @@ function updatePreviewResult(result: any) {
   preview.message = result?.message || ''
   preview.data = result?.data || []
   preview.fields = getPreviewResultFields(result)
+  preview.raw = result?.raw
 }
 
 function updateSourcePreviewResult(result: any) {
   sourcePreview.data = result?.data || []
   sourcePreview.fields = getPreviewResultFields(result)
+}
+
+function formatJson(value: any) {
+  try {
+    return JSON.stringify(value ?? {}, null, 2)
+  } catch (_error) {
+    return '{}'
+  }
+}
+
+function parseJsonObject(text: string) {
+  const trimmed = (text || '').trim()
+  if (!trimmed) {
+    return {}
+  }
+  const value = JSON.parse(trimmed)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Arguments must be a JSON object')
+  }
+  return value
+}
+
+function setMcpArgumentsObject(value: Record<string, any>) {
+  Object.keys(form.mcpArgumentsObject).forEach((key) => {
+    delete form.mcpArgumentsObject[key]
+  })
+  Object.entries(value || {}).forEach(([key, itemValue]) => {
+    if (itemValue !== undefined) {
+      form.mcpArgumentsObject[key] = itemValue
+    }
+  })
+  form.mcpArgumentsText = formatJson(form.mcpArgumentsObject)
+}
+
+function syncMcpArgumentsObjectFromText(showMessage = true) {
+  try {
+    setMcpArgumentsObject(parseJsonObject(form.mcpArgumentsText))
+    return true
+  } catch (_error) {
+    if (showMessage) {
+      ElMessage.warning(mt('mcp_editor_invalid_arguments'))
+    }
+    return false
+  }
+}
+
+function resolvedJsonSchemaVariant(schema: any) {
+  const variants = [...(schema?.oneOf || []), ...(schema?.anyOf || [])]
+  return variants.find((item: any) => item?.type && item.type !== 'null') || schema
+}
+
+function normalizeJsonSchemaType(schema: any) {
+  const resolvedSchema = resolvedJsonSchemaVariant(schema)
+  if (resolvedSchema !== schema) {
+    return normalizeJsonSchemaType(resolvedSchema)
+  }
+  const rawType = schema?.type
+  if (Array.isArray(rawType)) {
+    return rawType.find((item) => item !== 'null') || rawType[0] || ''
+  }
+  if (rawType) {
+    return rawType
+  }
+  if (Array.isArray(schema?.enum)) {
+    const example = schema.enum.find((item: any) => item !== null && item !== undefined)
+    return example === undefined ? 'string' : typeof example
+  }
+  if (schema?.properties) {
+    return 'object'
+  }
+  if (schema?.items) {
+    return 'array'
+  }
+  return 'string'
+}
+
+function schemaEnumValues(schema: any) {
+  const resolvedSchema = resolvedJsonSchemaVariant(schema)
+  if (Array.isArray(resolvedSchema?.enum)) {
+    return resolvedSchema.enum.filter((item: any) => item !== null && item !== undefined).map((item: any) => `${item}`)
+  }
+  if (Array.isArray(resolvedSchema?.items?.enum)) {
+    return resolvedSchema.items.enum.filter((item: any) => item !== null && item !== undefined).map((item: any) => `${item}`)
+  }
+  return []
+}
+
+function normalizeMcpOptionKey(value: string) {
+  return String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+}
+
+function pluralMcpOptionKey(value: string) {
+  if (value.endsWith('y')) {
+    return `${value.slice(0, -1)}ies`
+  }
+  if (value.endsWith('s')) {
+    return value
+  }
+  return `${value}s`
+}
+
+function coerceMcpOptionValues(value: any) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (item === null || item === undefined) return ''
+        if (typeof item === 'object') {
+          return item.value ?? item.id ?? item.name ?? item.label ?? ''
+        }
+        return item
+      })
+      .map((item) => String(item))
+      .filter(Boolean)
+  }
+  if (value && typeof value === 'object') {
+    return Object.keys(value)
+  }
+  return []
+}
+
+function mcpFilterOptionValues(paramName: string) {
+  const rawName = String(paramName || '')
+  const baseName = rawName.replace(/_in$/i, '')
+  const candidates = new Set(
+    [rawName, baseName, pluralMcpOptionKey(baseName)]
+      .filter(Boolean)
+      .map(normalizeMcpOptionKey)
+  )
+  for (const [key, value] of Object.entries(mcpFilterOptions.value || {})) {
+    if (candidates.has(normalizeMcpOptionKey(key))) {
+      return coerceMcpOptionValues(value)
+    }
+  }
+  return []
+}
+
+function isMcpDateParameter(name: string, schema: any) {
+  const resolvedSchema = resolvedJsonSchemaVariant(schema)
+  const type = normalizeJsonSchemaType(schema)
+  const text = [
+    name,
+    resolvedSchema?.title,
+    resolvedSchema?.description,
+    resolvedSchema?.format,
+    resolvedSchema?.pattern,
+  ].filter(Boolean).join(' ').toLowerCase()
+  return type === 'string' && (
+    resolvedSchema?.format === 'date' ||
+    resolvedSchema?.format === 'date-time' ||
+    /(^|[_\s-])date($|[_\s-])/.test(text) ||
+    text.includes('yyyy-mm-dd') ||
+    text.includes('\\\\d{4}-\\\\d{2}-\\\\d{2}')
+  )
+}
+
+function schemaDefaultValue(schema: any, required = false): any {
+  const type = normalizeJsonSchemaType(schema)
+  const enumValues = schemaEnumValues(schema)
+  if (schema?.default !== undefined && schema.default !== null) {
+    return schema.default
+  }
+  if (required && Array.isArray(schema?.examples) && schema.examples.length > 0) {
+    return schema.examples[0]
+  }
+  if (required && enumValues.length > 0) {
+    return type === 'array' ? [enumValues[0]] : enumValues[0]
+  }
+  if (!required) {
+    return undefined
+  }
+  if (type === 'integer' || type === 'number') {
+    return schema?.minimum ?? 0
+  }
+  if (type === 'boolean') {
+    return false
+  }
+  if (type === 'array') {
+    return []
+  }
+  if (type === 'object') {
+    return buildMcpArgumentsTemplate(schema)
+  }
+  return ''
+}
+
+function buildMcpArgumentsTemplate(schema: any) {
+  const properties = schema?.properties || {}
+  const requiredFields = new Set(Array.isArray(schema?.required) ? schema.required : [])
+  const template: Record<string, any> = {}
+  Object.entries(properties).forEach(([name, propertySchema]: [string, any]) => {
+    const value = schemaDefaultValue(propertySchema, requiredFields.has(name))
+    if (value !== undefined) {
+      template[name] = value
+    }
+  })
+  return template
+}
+
+function buildMcpParameterFields(schema: any) {
+  const properties = schema?.properties || {}
+  const requiredFields = new Set(Array.isArray(schema?.required) ? schema.required : [])
+  return Object.entries(properties).map(([name, propertySchema]: [string, any]) => {
+    const resolvedSchema = resolvedJsonSchemaVariant(propertySchema)
+    const type = normalizeJsonSchemaType(propertySchema)
+    const enumValues = schemaEnumValues(propertySchema)
+    const dynamicValues = enumValues.length ? [] : mcpFilterOptionValues(name)
+    const optionValues = enumValues.length ? enumValues : dynamicValues
+    const multiple = type === 'array' || /_in$/i.test(name)
+    const inputKind =
+      isMcpDateParameter(name, propertySchema)
+        ? 'date'
+        : optionValues.length || multiple
+        ? 'select'
+        : type === 'boolean'
+        ? 'boolean'
+        : type === 'integer' || type === 'number'
+        ? 'number'
+        : 'text'
+    return {
+      name,
+      required: requiredFields.has(name),
+      type,
+      inputKind,
+      multiple,
+      title: propertySchema?.title || resolvedSchema?.title || name,
+      description: propertySchema?.description || resolvedSchema?.description || '',
+      enumValues: optionValues,
+      allowCreate: multiple && optionValues.length === 0,
+      placeholder: inputKind === 'date'
+        ? 'YYYY-MM-DD'
+        : propertySchema?.description || resolvedSchema?.description || propertySchema?.title || resolvedSchema?.title || '',
+    }
+  })
+}
+
+function buildMcpResultPathOptions(schema: any) {
+  const options: Array<{ label: string; value: string }> = []
+  const visit = (node: any, path: string) => {
+    if (!node || typeof node !== 'object') {
+      return
+    }
+    const type = normalizeJsonSchemaType(node)
+    if (path && (type === 'array' || node.additionalProperties || node.items)) {
+      options.push({ label: path, value: path })
+    }
+    const properties = node.properties || {}
+    Object.entries(properties).forEach(([key, child]: [string, any]) => {
+      const nextPath = path ? `${path}.${key}` : key
+      const childType = normalizeJsonSchemaType(child)
+      if (childType === 'array' || childType === 'object' || child?.additionalProperties) {
+        visit(child, nextPath)
+      }
+    })
+  }
+  visit(schema, '')
+  return Array.from(new Map(options.map((item) => [item.value, item])).values())
+}
+
+function applyMcpToolDefaults(options: { force?: boolean } = {}) {
+  const schema = selectedMcpTool.value?.input_schema
+  if (!schema) {
+    return
+  }
+  const currentArguments = syncMcpArgumentsObjectFromText(false) ? { ...form.mcpArgumentsObject } : {}
+  if (options.force || Object.keys(currentArguments).length === 0) {
+    setMcpArgumentsObject(buildMcpArgumentsTemplate(schema))
+  }
+  mcpParameterFields.value.forEach((field) => {
+    if (field.multiple && !Array.isArray(form.mcpArgumentsObject[field.name])) {
+      form.mcpArgumentsObject[field.name] = []
+    }
+  })
+  syncMcpArgumentsTextFromObject()
+  if (!form.mcpResultPath && mcpResultPathOptions.value.length === 1) {
+    form.mcpResultPath = mcpResultPathOptions.value[0].value
+  }
+}
+
+function handleMcpToolChange() {
+  form.mcpResultPath = ''
+  form.mcpKeyField = ''
+  form.mcpValueField = ''
+  applyMcpToolDefaults({ force: true })
+  void loadMcpFilterOptions()
+}
+
+function syncMcpArgumentsTextFromObject() {
+  form.mcpArgumentsText = formatJson(form.mcpArgumentsObject)
+}
+
+function fetchMcpTools(externalMcpServerId: number | string) {
+  const tenantId = currentExternalMcpTenantId.value
+  const dashboardId = currentDashboardId.value
+  return request.get<ExternalMcpToolInfo[]>(`/external-mcp/${externalMcpServerId}/tools`, {
+    params: {
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+      ...(dashboardId ? { dashboard_id: dashboardId } : {}),
+    },
+  })
+}
+
+function previewMcpTool(data: any, config?: any) {
+  return request.post('/external-mcp/preview', data, config)
+}
+
+function filterOptionsToolName() {
+  const currentTool = form.mcpTool || selectedMcpTool.value?.name || ''
+  const namespace = currentTool.includes('.') ? currentTool.split('.').slice(0, -1).join('.') : ''
+  const preferred = namespace ? `${namespace}.filter_options` : ''
+  if (preferred && mcpTools.value.some((tool) => tool.name === preferred)) {
+    return preferred
+  }
+  return mcpTools.value.find((tool) => /(^|\.)filter_options$/i.test(tool.name))?.name || ''
+}
+
+async function loadMcpFilterOptions() {
+  const tool = filterOptionsToolName()
+  if (!isExternalSnapshot.value || !currentExternalMcpServerId.value || !tool) {
+    mcpFilterOptions.value = {}
+    return
+  }
+  mcpFilterOptionsLoading.value = true
+  try {
+    const result: any = await previewMcpTool(
+      {
+        external_mcp_server_id: currentExternalMcpServerId.value,
+        tenant_id: currentExternalMcpTenantId.value || null,
+        dashboard_id: currentDashboardId.value || null,
+        tool,
+        arguments: {},
+      },
+      { requestOptions: { silent: true } }
+    )
+    const raw = result?.raw
+    mcpFilterOptions.value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  } catch (_error) {
+    mcpFilterOptions.value = {}
+  } finally {
+    mcpFilterOptionsLoading.value = false
+  }
+}
+
+function cleanMcpArguments(value: Record<string, any>) {
+  const cleaned: Record<string, any> = {}
+  Object.entries(value || {}).forEach(([key, itemValue]) => {
+    if (itemValue === '' || itemValue === null || itemValue === undefined) {
+      return
+    }
+    if (Array.isArray(itemValue) && itemValue.length === 0) {
+      return
+    }
+    cleaned[key] = itemValue
+  })
+  return cleaned
+}
+
+async function loadMcpTools() {
+  if (!isExternalSnapshot.value || !currentExternalMcpServerId.value) {
+    mcpTools.value = []
+    return
+  }
+  mcpToolsLoading.value = true
+  mcpToolsError.value = ''
+  try {
+    mcpTools.value = (await fetchMcpTools(currentExternalMcpServerId.value)) as any
+    if (!form.mcpTool && mcpTools.value.length > 0) {
+      form.mcpTool = (mcpTools.value.find((tool) => !/(^|\.)filter_options$/i.test(tool.name)) || mcpTools.value[0]).name
+      await loadMcpFilterOptions()
+      applyMcpToolDefaults({ force: true })
+    } else {
+      await loadMcpFilterOptions()
+      applyMcpToolDefaults()
+    }
+  } catch (error: any) {
+    mcpTools.value = []
+    mcpToolsError.value = error?.message || mt('mcp_editor_tools_load_failed')
+  } finally {
+    mcpToolsLoading.value = false
+  }
 }
 
 function syncPivotGroupValues(options: { forceAll?: boolean } = {}) {
@@ -701,6 +1182,12 @@ function initEditor() {
   preview.data = viewInfo.data?.data || []
   preview.status = viewInfo.status || 'success'
   preview.message = viewInfo.message || ''
+  preview.raw = viewInfo.data?.raw
+  form.mcpTool = viewInfo.mcp?.tool || ''
+  setMcpArgumentsObject(viewInfo.mcp?.arguments || {})
+  form.mcpResultPath = viewInfo.mcp?.resultPath || viewInfo.mcp?.result_path || ''
+  form.mcpKeyField = viewInfo.mcp?.keyField || viewInfo.mcp?.key_field || ''
+  form.mcpValueField = viewInfo.mcp?.valueField || viewInfo.mcp?.value_field || ''
   lastPreviewSql.value = form.sql.trim()
   resetFieldSelections()
   initInsightConfig(chart.insight)
@@ -708,6 +1195,7 @@ function initEditor() {
   initPivotConfig(viewInfo.pivot)
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
+  void loadMcpTools()
 }
 
 watch(
@@ -773,6 +1261,58 @@ watch(
 )
 
 async function runPreview() {
+  if (isExternalSnapshot.value) {
+    if (!currentExternalMcpServerId.value) {
+      ElMessage.warning(mt('mcp_editor_no_server'))
+      return
+    }
+    if (!form.mcpTool) {
+      ElMessage.warning(mt('mcp_editor_select_tool'))
+      return
+    }
+    let argumentsValue: Record<string, any>
+    try {
+      argumentsValue = cleanMcpArguments(parseJsonObject(form.mcpArgumentsText))
+    } catch (_error) {
+      ElMessage.warning(mt('mcp_editor_invalid_arguments'))
+      return
+    }
+    loading.value = true
+    try {
+      const result: any = await previewMcpTool({
+        external_mcp_server_id: currentExternalMcpServerId.value,
+        tenant_id: currentExternalMcpTenantId.value || null,
+        dashboard_id: currentDashboardId.value || null,
+        tool: form.mcpTool,
+        arguments: argumentsValue,
+        result_path: form.mcpResultPath || null,
+        key_field: form.mcpKeyField || null,
+        value_field: form.mcpValueField || null,
+      })
+      updateSourcePreviewResult(result)
+      resetFieldSelections()
+      updatePreviewResult(result)
+      if (result?.mcp) {
+        props.viewInfo.mcp = {
+          ...(props.viewInfo.mcp || {}),
+          ...result.mcp,
+          externalMcpServerId: currentExternalMcpServerId.value,
+          tenantId: currentExternalMcpTenantId.value || null,
+        }
+      }
+      lastPreviewSignature.value = currentPreviewSignature()
+      previewVersion.value += 1
+      if (preview.status === 'failed') {
+        ElMessage.error(preview.message || t('dashboard.sql_editor_preview_failed'))
+      } else {
+        ElMessage.success(t('dashboard.sql_editor_preview_success'))
+        await nextTick()
+      }
+    } finally {
+      loading.value = false
+    }
+    return
+  }
   if (!props.viewInfo?.datasource) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return
@@ -875,15 +1415,23 @@ function buildChart() {
 }
 
 function validateBeforeApply() {
-  if (!form.sql.trim()) {
+  if (!isExternalSnapshot.value && !form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return false
   }
-  if (props.allowStaticApply && !canRunPreview.value) {
+  if (isExternalSnapshot.value && !form.mcpTool) {
+    ElMessage.warning(mt('mcp_editor_select_tool'))
+    return false
+  }
+  if (props.allowStaticApply && !isExternalSnapshot.value && !canRunPreview.value) {
     return true
   }
   if (sqlChangedAfterPreview.value) {
     ElMessage.warning(t('dashboard.sql_editor_need_preview'))
+    return false
+  }
+  if (mcpChangedAfterPreview.value) {
+    ElMessage.warning(mt('mcp_editor_need_preview'))
     return false
   }
   if (preview.status === 'failed') {
@@ -937,11 +1485,23 @@ function validateBeforeApply() {
 
 function applyChange() {
   if (!props.viewInfo || !validateBeforeApply()) return
-  props.viewInfo.sql = form.sql.trim()
+  let mcpArgumentsValue: Record<string, any> = {}
+  if (isExternalSnapshot.value) {
+    try {
+      mcpArgumentsValue = cleanMcpArguments(parseJsonObject(form.mcpArgumentsText))
+    } catch (_error) {
+      ElMessage.warning(mt('mcp_editor_invalid_arguments'))
+      return
+    }
+  }
+  props.viewInfo.sql = isExternalSnapshot.value ? null : form.sql.trim()
   const nextData: Record<string, any> = {
     ...(props.viewInfo.data || {}),
     fields: [...preview.fields],
     data: [...preview.data],
+  }
+  if (isExternalSnapshot.value && preview.raw !== undefined) {
+    nextData.raw = preview.raw
   }
   if (form.pivotEnabled) {
     nextData.source_fields = [...sourcePreview.fields]
@@ -958,6 +1518,23 @@ function applyChange() {
   props.viewInfo.chart = buildChart()
   props.viewInfo.pivot = buildPivotConfig()
   props.viewInfo.datasource = props.viewInfo.datasource || null
+  if (isExternalSnapshot.value) {
+    props.viewInfo.externalSnapshot = true
+    props.viewInfo.dataSourceType = props.viewInfo.dataSourceType || 'external_mcp'
+    props.viewInfo.tenant_id = currentExternalMcpTenantId.value || props.viewInfo.tenant_id || null
+    props.viewInfo.external_mcp_server_id = currentExternalMcpServerId.value
+    props.viewInfo.mcp = {
+      ...(props.viewInfo.mcp || {}),
+      externalMcpServerId: currentExternalMcpServerId.value,
+      tenantId: currentExternalMcpTenantId.value || null,
+      tool: form.mcpTool,
+      arguments: mcpArgumentsValue,
+      resultPath: form.mcpResultPath || '',
+      keyField: form.mcpKeyField || '',
+      valueField: form.mcpValueField || '',
+      auth: 'not_stored',
+    }
+  }
   previewVersion.value += 1
   emits('applied', props.viewInfo)
   visible.value = false
@@ -975,13 +1552,155 @@ function closeDrawer() {
     class="dashboard-sql-editor"
     direction="rtl"
     size="720px"
-    :title="t('dashboard.sql_editor_title')"
+    :title="editorTitle"
     append-to-body
     :destroy-on-close="true"
   >
     <div v-loading="loading" class="sql-editor-body">
       <el-form label-position="top">
-        <el-form-item :label="t('dashboard.sql_editor_sql')">
+        <div v-if="isExternalSnapshot" class="mcp-editor-panel">
+          <el-alert
+            class="editor-alert"
+            type="info"
+            :title="snapshotSourceTitle"
+            :description="snapshotMetaText"
+            :closable="false"
+          />
+          <div class="config-grid">
+            <el-form-item :label="mt('mcp_editor_tool')">
+              <el-select
+                v-model="form.mcpTool"
+                filterable
+                clearable
+                :loading="mcpToolsLoading"
+                :placeholder="mt('mcp_editor_select_tool')"
+                @change="handleMcpToolChange"
+              >
+                <el-option
+                  v-for="tool in mcpTools"
+                  :key="tool.name"
+                  :label="tool.title ? `${tool.name} - ${tool.title}` : tool.name"
+                  :value="tool.name"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="mt('mcp_editor_result_path')">
+              <el-select
+                v-model="form.mcpResultPath"
+                filterable
+                allow-create
+                clearable
+                :placeholder="mt('mcp_editor_result_path_placeholder')"
+              >
+                <el-option
+                  v-for="item in mcpResultPathOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+          </div>
+          <el-alert
+            v-if="mcpToolsError"
+            class="editor-alert"
+            type="warning"
+            :title="mcpToolsError"
+            :closable="false"
+          />
+          <div v-if="selectedMcpToolDescription" class="mcp-tool-description">
+            {{ selectedMcpToolDescription }}
+          </div>
+          <details v-if="selectedMcpToolSchemaText" class="mcp-schema-details">
+            <summary>{{ mt('mcp_editor_input_schema') }}</summary>
+            <pre>{{ selectedMcpToolSchemaText }}</pre>
+          </details>
+          <div v-if="mcpParameterFields.length" class="mcp-parameter-section">
+            <div class="mcp-section-title">{{ mt('mcp_editor_parameters') }}</div>
+            <div class="config-grid">
+              <el-form-item
+                v-for="param in mcpParameterFields"
+                :key="param.name"
+                :label="`${param.title}${param.required ? ' *' : ''}`"
+              >
+                <el-date-picker
+                  v-if="param.inputKind === 'date'"
+                  v-model="form.mcpArgumentsObject[param.name]"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  clearable
+                  :placeholder="param.placeholder"
+                  @change="syncMcpArgumentsTextFromObject"
+                />
+                <el-select
+                  v-else-if="param.inputKind === 'select'"
+                  v-model="form.mcpArgumentsObject[param.name]"
+                  filterable
+                  clearable
+                  :allow-create="param.allowCreate"
+                  :multiple="param.multiple"
+                  :loading="mcpFilterOptionsLoading"
+                  collapse-tags
+                  collapse-tags-tooltip
+                  :placeholder="param.placeholder"
+                  @change="syncMcpArgumentsTextFromObject"
+                >
+                  <el-option
+                    v-for="value in param.enumValues"
+                    :key="value"
+                    :label="value"
+                    :value="value"
+                  />
+                </el-select>
+                <el-switch
+                  v-else-if="param.inputKind === 'boolean'"
+                  v-model="form.mcpArgumentsObject[param.name]"
+                  @change="syncMcpArgumentsTextFromObject"
+                />
+                <el-input-number
+                  v-else-if="param.inputKind === 'number'"
+                  v-model="form.mcpArgumentsObject[param.name]"
+                  :step="param.type === 'integer' ? 1 : 0.1"
+                  controls-position="right"
+                  @change="syncMcpArgumentsTextFromObject"
+                />
+                <el-input
+                  v-else
+                  v-model="form.mcpArgumentsObject[param.name]"
+                  clearable
+                  :placeholder="param.placeholder"
+                  @input="syncMcpArgumentsTextFromObject"
+                  @keydown.stop
+                  @keyup.stop
+                />
+                <div v-if="param.description" class="mcp-param-description">{{ param.description }}</div>
+              </el-form-item>
+            </div>
+          </div>
+          <div class="config-grid">
+            <el-form-item :label="mt('mcp_editor_key_field')">
+              <el-input v-model="form.mcpKeyField" clearable placeholder="name" @keydown.stop @keyup.stop />
+            </el-form-item>
+            <el-form-item :label="mt('mcp_editor_value_field')">
+              <el-input v-model="form.mcpValueField" clearable placeholder="value" @keydown.stop @keyup.stop />
+            </el-form-item>
+          </div>
+          <details class="mcp-schema-details">
+            <summary>{{ mt('mcp_editor_advanced_arguments') }}</summary>
+            <el-form-item :label="mt('mcp_editor_arguments')">
+              <el-input
+                v-model="form.mcpArgumentsText"
+                type="textarea"
+                :autosize="{ minRows: 5, maxRows: 12 }"
+                spellcheck="false"
+                @blur="syncMcpArgumentsObjectFromText(false)"
+                @keydown.stop
+                @keyup.stop
+              />
+            </el-form-item>
+          </details>
+        </div>
+        <el-form-item v-if="!isExternalSnapshot" :label="t('dashboard.sql_editor_sql')">
           <el-input
             v-model="form.sql"
             type="textarea"
@@ -992,8 +1711,9 @@ function closeDrawer() {
           />
         </el-form-item>
         <div class="action-row">
-          <el-button type="primary" :disabled="allowStaticApply && !canRunPreview" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
-          <span v-if="sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
+          <el-button type="primary" :disabled="!canRunEditorPreview" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
+          <span v-if="!isExternalSnapshot && sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
+          <span v-if="mcpChangedAfterPreview" class="muted">{{ mt('mcp_editor_changed') }}</span>
         </div>
         <el-alert
           v-if="preview.status === 'failed' && preview.message"
@@ -1309,6 +2029,52 @@ function closeDrawer() {
 
 .editor-alert {
   margin-bottom: 16px;
+}
+
+.mcp-editor-panel {
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(47, 107, 255, 0.18);
+  border-radius: 6px;
+  background: #f8fbff;
+}
+
+.mcp-editor-panel :deep(.ed-form-item:last-child),
+.mcp-editor-panel :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.mcp-tool-description {
+  margin: -4px 0 14px;
+  color: #646a73;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.mcp-schema-details {
+  margin: -4px 0 14px;
+  color: #646a73;
+  font-size: 12px;
+}
+
+.mcp-schema-details summary {
+  cursor: pointer;
+  color: #2f6bff;
+  line-height: 20px;
+}
+
+.mcp-schema-details pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2329;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .config-grid {

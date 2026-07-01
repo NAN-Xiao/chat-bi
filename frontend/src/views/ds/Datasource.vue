@@ -12,6 +12,7 @@ import AddDrawer from '@/views/ds/AddDrawer.vue'
 import Card from './Card.vue'
 import DelMessageBox from './DelMessageBox.vue'
 import DatasourceUserDialog from './DatasourceUserDialog.vue'
+import ExternalMcpDatasourcePanel from './ExternalMcpDatasourcePanel.vue'
 import { dsTypeWithImg } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
@@ -46,6 +47,7 @@ const defaultDatasourceKeywords = ref('')
 const addDrawerRef = ref()
 const datasourceUserDialogRef = ref()
 const searchLoading = ref(false)
+const activeDatasourceMode = ref<'sql' | 'external_mcp'>('sql')
 
 const datasourceList = shallowRef([] as Datasource[])
 const defaultDatasourceList = shallowRef(dsTypeWithImg as (Datasource & { img: string })[])
@@ -178,8 +180,16 @@ const back = () => {
 <template>
   <div v-show="!currentDataTable" class="datasource-config no-padding">
     <div class="datasource-methods">
-      <span class="title">{{ $t('ds.title') }}</span>
-      <div class="button-input">
+      <div class="datasource-title-group">
+        <span class="title">{{ $t('ds.title') }}</span>
+        <el-radio-group v-model="activeDatasourceMode" class="datasource-mode-switch">
+          <el-radio-button label="sql">{{ $t('datasource.sql_datasource') }}</el-radio-button>
+          <el-radio-button label="external_mcp">{{
+            $t('datasource.external_mcp_datasource')
+          }}</el-radio-button>
+        </el-radio-group>
+      </div>
+      <div v-if="activeDatasourceMode === 'sql'" class="button-input">
         <el-input
           v-model="keywords"
           clearable
@@ -243,62 +253,67 @@ const back = () => {
         </el-button>
       </div>
     </div>
-    <EmptyBackground
-      v-if="!!keywords && !datasourceListWithSearch.length"
-      :description="$t('datasource.relevant_content_found')"
-      class="datasource-yet"
-      img-type="tree"
-    />
-
-    <div v-else class="card-content">
-      <el-row :gutter="16" class="w-full">
-        <el-col
-          v-for="ele in datasourceListWithSearch"
-          :key="ele.id"
-          :xs="24"
-          :sm="12"
-          :md="12"
-          :lg="8"
-          :xl="6"
-          class="mb-16"
-        >
-          <Card
-            :id="ele.id"
-            :key="ele.id"
-            :name="ele.name"
-            :type="ele.type"
-            :type-name="ele.type_name"
-            :num="ele.num"
-            :description="ele.description"
-            :datasource-role="ele.datasource_role || ele.project_role"
-            :authorized-user-count="ele.authorized_user_count ?? 0"
-            :can-manage-datasource="ele.can_manage_datasource === true || ele.can_manage_project === true"
-            :can-maintain-datasource="ele.can_manage_metadata === true"
-            @edit="handleEditDatasource(ele)"
-            @recommendation="handleRecommendation(ele)"
-            @members="handleDatasourceUsers(ele)"
-            @del="deleteHandler(ele)"
-            @data-table-detail="dataTableDetail(ele)"
-          ></Card>
-        </el-col>
-      </el-row>
-    </div>
-    <template v-if="!keywords && !datasourceListWithSearch.length && !searchLoading">
+    <template v-if="activeDatasourceMode === 'sql'">
       <EmptyBackground
+        v-if="!!keywords && !datasourceListWithSearch.length"
+        :description="$t('datasource.relevant_content_found')"
         class="datasource-yet"
-        :description="$t('datasource.data_source_yet')"
-        img-type="noneWhite"
+        img-type="tree"
       />
 
-      <div style="text-align: center; margin-top: -10px">
-        <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
-          <template #icon>
-            <icon_add_outlined></icon_add_outlined>
-          </template>
-          {{ $t('datasource.new_data_source') }}
-        </el-button>
+      <div v-else class="card-content">
+        <el-row :gutter="16" class="w-full">
+          <el-col
+            v-for="ele in datasourceListWithSearch"
+            :key="ele.id"
+            :xs="24"
+            :sm="12"
+            :md="12"
+            :lg="8"
+            :xl="6"
+            class="mb-16"
+          >
+            <Card
+              :id="ele.id"
+              :key="ele.id"
+              :name="ele.name"
+              :type="ele.type"
+              :type-name="ele.type_name"
+              :num="ele.num"
+              :description="ele.description"
+              :datasource-role="ele.datasource_role || ele.project_role"
+              :authorized-user-count="ele.authorized_user_count ?? 0"
+              :can-manage-datasource="
+                ele.can_manage_datasource === true || ele.can_manage_project === true
+              "
+              :can-maintain-datasource="ele.can_manage_metadata === true"
+              @edit="handleEditDatasource(ele)"
+              @recommendation="handleRecommendation(ele)"
+              @members="handleDatasourceUsers(ele)"
+              @del="deleteHandler(ele)"
+              @data-table-detail="dataTableDetail(ele)"
+            ></Card>
+          </el-col>
+        </el-row>
       </div>
+      <template v-if="!keywords && !datasourceListWithSearch.length && !searchLoading">
+        <EmptyBackground
+          class="datasource-yet"
+          :description="$t('datasource.data_source_yet')"
+          img-type="noneWhite"
+        />
+
+        <div style="text-align: center; margin-top: -10px">
+          <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
+            <template #icon>
+              <icon_add_outlined></icon_add_outlined>
+            </template>
+            {{ $t('datasource.new_data_source') }}
+          </el-button>
+        </div>
+      </template>
     </template>
+    <ExternalMcpDatasourcePanel v-else></ExternalMcpDatasourcePanel>
     <RecommendedProblemConfigDialog
       ref="recommendedProblemConfigRef"
       @recommended-problem-change="search"
@@ -328,6 +343,17 @@ const back = () => {
       font-weight: 500;
       font-size: 20px;
       line-height: 28px;
+    }
+
+    .datasource-title-group {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .datasource-mode-switch {
+      flex: 0 0 auto;
     }
   }
 

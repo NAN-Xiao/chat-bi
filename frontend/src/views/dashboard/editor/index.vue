@@ -137,6 +137,18 @@ function hasChartSnapshot(viewInfo: any) {
   return Array.isArray(rows) && rows.length > 0
 }
 
+function hasChartShape(viewInfo: any) {
+  return (
+    hasChartSnapshot(viewInfo) ||
+    (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
+    (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
+  )
+}
+
+function isExternalSnapshotChart(viewInfo: any) {
+  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+}
+
 function hasUsableResultSnapshot(result: any) {
   if (result?.status === 'failed') {
     return false
@@ -235,6 +247,10 @@ function collectDashboardCharts(items: any[], entries: Array<{ component: any; v
 }
 
 function prepareEditorChartState(viewInfo: any) {
+  if (isExternalSnapshotChart(viewInfo)) {
+    keepChartSnapshotOrLoading(viewInfo)
+    return
+  }
   if (!viewInfo || !viewInfo.sql?.trim()) {
     return
   }
@@ -279,7 +295,7 @@ function keepChartSnapshotOrLoading(viewInfo: any) {
   if (!viewInfo) {
     return
   }
-  if (hasChartSnapshot(viewInfo)) {
+  if (hasChartShape(viewInfo)) {
     viewInfo.status = 'success'
     viewInfo.message = ''
     viewInfo.dataState = 'ready'
@@ -379,7 +395,7 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
 
 async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
   const chartEntries = collectDashboardCharts(componentData.value).filter((entry) =>
-    Boolean(entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim())
+    Boolean(!isExternalSnapshotChart(entry.viewInfo) && entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim())
   )
   if (!chartEntries.length) {
     return
