@@ -313,7 +313,7 @@ watch(
         <template v-else-if="activePanel === 'requests'">
           <div class="access-header">
             <div class="access-title">{{ t('access.my_requests') }}</div>
-            <el-tag :type="pendingRequestCount ? 'warning' : 'info'" effect="light" round>
+            <el-tag :type="pendingRequestCount ? 'danger' : 'info'" effect="light" round>
               {{ t('access.pending_request_count', { count: pendingRequestCount }) }}
             </el-tag>
           </div>
@@ -574,11 +574,12 @@ watch(
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    background: #fff7e6;
-    color: #d46b08;
+    background: #f54a45;
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(245, 74, 69, 0.24);
     font-size: 12px;
     line-height: 18px;
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .access-main {
@@ -839,7 +840,7 @@ watch(
   }
 
   .status-pending {
-    color: #d46b08;
+    color: #f54a45;
 
     .status-icon {
       border: 1.5px solid currentColor;

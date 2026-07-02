@@ -1915,10 +1915,12 @@ onMounted(() => {
     margin-left: 6px;
     border-radius: 999px;
     padding: 0 6px;
-    background: var(--ed-color-primary);
+    background: #f54a45;
     color: #fff;
+    box-shadow: 0 6px 14px rgba(245, 74, 69, 0.24);
     font-size: 12px;
     line-height: 18px;
+    font-weight: 600;
   }
 
   .trial-application-actions {

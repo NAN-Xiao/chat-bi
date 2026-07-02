@@ -991,7 +991,10 @@ const submitForm = () => {
 const submitTrialApplication = () => {
   if (trialSubmitting.value || trialSubmitted.value) return
   trialApplicationFormRef.value.validate((valid: boolean) => {
-    if (!valid) return
+    if (!valid) {
+      ElMessage.warning('请先修正表单中的红色提示，再提交申请')
+      return
+    }
     trialSubmitting.value = true
     const form = trialApplicationForm.value
     AuthApi.submitTrialApplication({
@@ -2397,7 +2400,15 @@ onMounted(async () => {
 
 .trial-application-form {
   .product-login-field {
-    margin-bottom: 13px;
+    margin-bottom: 24px;
+  }
+
+  :deep(.ed-form-item__error),
+  :deep(.el-form-item__error) {
+    position: static;
+    margin-top: 6px;
+    padding-top: 0;
+    line-height: 18px;
   }
 }
 

@@ -1157,8 +1157,10 @@ onMounted(() => {
     border-radius: 999px;
     background: #f54a45;
     color: #fff;
+    box-shadow: 0 6px 14px rgba(245, 74, 69, 0.24);
     font-size: 12px;
     line-height: 18px;
+    font-weight: 600;
   }
 
   .member-content-stack {
@@ -1225,11 +1227,13 @@ onMounted(() => {
     height: 20px;
     padding: 0 6px;
     border-radius: 999px;
-    background: #eef3ff;
-    color: #245bdb;
+    background: #f54a45;
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(245, 74, 69, 0.24);
     font-size: 12px;
     line-height: 20px;
     text-align: center;
+    font-weight: 600;
   }
 
   .invitation-table {
