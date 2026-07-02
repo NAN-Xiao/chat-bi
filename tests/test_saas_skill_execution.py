@@ -80,6 +80,35 @@ def test_saas_skill_params_support_bounds_value_map_and_lists():
     assert rendered["priority_in"] == ["P0", "P1"]
 
 
+def test_saas_skill_match_can_block_business_metric_questions():
+    definition = {
+        "id": "chatmon_alert_count",
+        "name": "ChatMon 告警数量",
+        "intent": ["告警数量", "用户舆情趋势"],
+        "match": {
+            "keywords_any": ["告警", "舆情", "反馈"],
+            "block_keywords_any": ["收入", "付费"],
+        },
+        "parameters": {"days": {"type": "integer", "default": 7}},
+        "sources": [
+            {
+                "name": "alerts",
+                "type": "external_mcp",
+                "tool": "alerts.count",
+            },
+        ],
+    }
+
+    assert saas_skill.find_matching_executable_saas_skill(
+        _skill_text(definition),
+        "最近7天用户舆情趋势",
+    )
+    assert saas_skill.find_matching_executable_saas_skill(
+        _skill_text(definition),
+        "结合用户舆情分析最近7天收入下滑问题",
+    ) is None
+
+
 def test_merge_saas_skill_sources_joins_by_declared_fields():
     revenue = saas_skill.SaasSkillSourceResult(
         name="revenue",

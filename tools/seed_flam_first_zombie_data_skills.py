@@ -125,6 +125,7 @@ CITY_BUILD_VIEW_IDS = (
 
 STALE_SKILL_MARKERS = (
     "<!-- data-skill-source:flam:first-zombie:dashboard-statistics -->",
+    "<!-- data-skill-source:flam:first-zombie:revenue-voice-root-cause -->",
 )
 
 DATA_SKILLS: list[dict[str, str]] = [
@@ -407,141 +408,6 @@ LIMIT 24
 以下 SQL 是本 Data Skill 对已保存看板中付费和 LTV 类组件的落地配置；看板刷新会按这些 SQL 重新取数。
 
 {sql_blocks_markdown(PAYMENT_LTV_VIEW_IDS)}
-""",
-    },
-    {
-        "name": "flam 收入下滑舆情归因 Skill",
-        "description": "flam / first_zombie 在 Smart Q&A 中把 SQL 收入趋势与 ChatMon 玩家舆情趋势合并分析，用于回答最近 N 天收入下滑原因。",
-        "prompt": """<!-- data-skill-source:flam:first-zombie:revenue-voice-root-cause -->
-<!-- saas-skill:{
-  "id": "flam_revenue_drop_with_chatmon_voice",
-  "name": "flam 收入下滑舆情归因",
-  "description": "结合 flam SQL 付费收入趋势与 ChatMon 玩家舆情/告警趋势，分析最近 N 天收入下滑问题。",
-  "intent": ["收入下滑分析", "收入下降原因", "收入波动归因", "用户舆情分析", "结合舆情分析收入", "结合用户舆情分析最近收入下滑问题"],
-  "match": {
-    "keywords_all": ["收入"],
-    "keywords_any": ["下滑", "下降", "波动", "异常", "舆情", "吐槽", "反馈", "告警", "原因", "归因"]
-  },
-  "parameters": {
-    "days": {
-      "type": "integer",
-      "default": 7,
-      "patterns": ["(?:最近|近|过去|last)\\\\s*(\\\\d+)\\\\s*(?:天|日|days?)"]
-    }
-  },
-  "sources": [
-    {
-      "name": "sql_revenue_trend",
-      "type": "sql",
-      "sql_template_lines": [
-        "WITH pay_event_users AS (",
-        "    SELECT e.dt, e.uid",
-        "    FROM `event` e",
-        "    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {{days}} DAY), '%Y%m%d') AS SIGNED)",
-        "      AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)",
-        "      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')",
-        "      AND e.prod = 110000038",
-        "    GROUP BY e.dt, e.uid",
-        "), user_pay_delta AS (",
-        "    SELECT pe.dt,",
-        "           pe.uid,",
-        "           GREATEST(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) - COALESCE(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0), 0), 0) AS pay_amount",
-        "    FROM pay_event_users pe",
-        "    JOIN `user` u",
-        "      ON u.dt = pe.dt",
-        "     AND u.uid = pe.uid",
-        "     AND u.prod = 110000038",
-        "    LEFT JOIN `user` p",
-        "      ON p.uid = pe.uid",
-        "     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)",
-        "     AND p.prod = 110000038",
-        "), daily_pay AS (",
-        "    SELECT dt,",
-        "           ROUND(SUM(pay_amount), 2) AS pay_amount,",
-        "           COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS pay_users",
-        "    FROM user_pay_delta",
-        "    GROUP BY dt",
-        "), daily_active AS (",
-        "    SELECT e.dt,",
-        "           COUNT(DISTINCT e.uid) AS active_users",
-        "    FROM `event` e",
-        "    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {{days}} DAY), '%Y%m%d') AS SIGNED)",
-        "      AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)",
-        "      AND e.event = 'UserActive'",
-        "      AND e.prod = 110000038",
-        "    GROUP BY e.dt",
-        ")",
-        "SELECT DATE_FORMAT(STR_TO_DATE(CAST(d.dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,",
-        "       COALESCE(p.pay_users, 0) AS `付费用户数`,",
-        "       COALESCE(p.pay_amount, 0) AS `付费总额`,",
-        "       ROUND(COALESCE(p.pay_amount, 0) / NULLIF(d.active_users, 0), 2) AS `ARPU`,",
-        "       ROUND(COALESCE(p.pay_amount, 0) / NULLIF(p.pay_users, 0), 2) AS `ARPPU`,",
-        "       ROUND(COALESCE(p.pay_users, 0) / NULLIF(d.active_users, 0) * 100, 2) AS `付费渗透率`",
-        "FROM daily_active d",
-        "LEFT JOIN daily_pay p ON p.dt = d.dt",
-        "ORDER BY d.dt"
-      ]
-    },
-    {
-      "name": "chatmon_voice_trend",
-      "type": "external_mcp",
-      "external_mcp_server_id": 7485000000000000001,
-      "tool": "alerts.count",
-      "arguments_template": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}"
-      },
-      "result_path": "items",
-      "field_map": {
-        "date": "日期",
-        "dt": "日期",
-        "日期": "日期",
-        "count": "舆情反馈数",
-        "alert_count": "舆情反馈数",
-        "feedback_count": "舆情反馈数",
-        "反馈数": "舆情反馈数",
-        "流失反馈数": "舆情反馈数",
-        "告警数": "舆情反馈数"
-      }
-    }
-  ],
-  "merge": {
-    "join_fields": ["日期"],
-    "mode": "outer"
-  },
-  "chart": {
-    "type": "table",
-    "title": "收入与舆情趋势归因表",
-    "columns": [
-      {"value": "日期"},
-      {"value": "付费用户数"},
-      {"value": "付费总额"},
-      {"value": "ARPU"},
-      {"value": "ARPPU"},
-      {"value": "付费渗透率"},
-      {"value": "舆情反馈数"}
-    ]
-  },
-  "analysis": {
-    "answer_contract": ["收入下滑发生在哪些日期", "付费用户数、ARPU、ARPPU 或付费渗透率的主要变化", "同日或邻近日的玩家舆情/告警变化", "可能原因与证据强弱", "建议继续排查的 ChatMon 风险类型或 SQL 指标"]
-  }
-} -->
-# flam 收入下滑舆情归因 Skill
-
-## 适用范围
-- 仅适用于当前 flam 数据源 `first_zombie`，datasource_id=3。
-- 适用于 Smart Q&A 中用户询问“结合用户舆情分析最近 N 天收入下滑/下降/波动原因”。
-- 本 Skill 是可执行 SaaS Skill：SQL 来源读取 flam 付费趋势，MCP 来源读取当前工作空间绑定的 ChatMon 告警趋势，按日期合并后生成归因回答。
-
-## 数据来源
-- SQL 趋势：遵循 `flam 付费与 LTV 口径`，使用付费事件收敛付费用户，再用 `user.pay.paytotal` 相邻日差分计算日付费总额。
-- MCP 趋势：调用 ChatMon `alerts.count`，读取用户舆情/告警反馈按天数量。
-- 合并字段固定为 `日期`；如果 MCP 返回 `date/count`、`日期/反馈数` 或同义字段，运行时会归一成 `日期/舆情反馈数`。
-
-## 回答要求
-- 必须同时引用 SQL 指标和 MCP 舆情趋势，不要只看单一来源。
-- 如果收入下降但舆情没有同步变化，应说明舆情证据不足，并优先排查付费用户数、ARPU、ARPPU、付费渗透率。
-- 如果舆情反馈数上升且收入同日或次日下降，应说明这是相关性证据，不要直接断言因果；建议继续按 ChatMon 风险类型、Bug、支付/商业化、活动/奖励不满等维度拆解。
 """,
     },
     {

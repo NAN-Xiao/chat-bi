@@ -214,6 +214,19 @@ def _required_terms_match(question: str, definition: dict[str, Any]) -> bool:
     if not isinstance(match, dict):
         return True
     q = _normalize_text(question)
+    block_any_terms = match.get("block_keywords_any") or match.get("block_any")
+    if isinstance(block_any_terms, str):
+        block_any_terms = [block_any_terms]
+    if isinstance(block_any_terms, list) and any(_normalize_text(term) in q for term in block_any_terms):
+        return False
+
+    block_all_terms = match.get("block_keywords_all") or match.get("block_all")
+    if isinstance(block_all_terms, str):
+        block_all_terms = [block_all_terms]
+    if isinstance(block_all_terms, list) and block_all_terms:
+        if all(_normalize_text(term) in q for term in block_all_terms):
+            return False
+
     all_terms = match.get("keywords_all") or match.get("all")
     if isinstance(all_terms, str):
         all_terms = [all_terms]
