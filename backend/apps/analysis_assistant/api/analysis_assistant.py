@@ -1,6 +1,7 @@
 """
 脚本说明：这个脚本放分析助手的接口，把前端请求接进来并交给后面的业务逻辑处理。
 """
+import copy
 import re
 import traceback
 import zipfile
@@ -23,7 +24,7 @@ from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_confi
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
-from apps.datasource.crud.permission import has_datasource_access, is_normal_user
+from apps.datasource.crud.permission import has_applicable_permissions, has_datasource_access, is_normal_user
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_ERROR_TYPE,
@@ -210,6 +211,7 @@ CHART_TYPES = {
 MAX_ANALYSIS_QUERIES = 4
 MAX_SQL_ROWS = 200
 MAX_FORECAST_QUERIES = 4
+ANALYSIS_NO_PERMISSION_MESSAGE = "没有查看权限"
 
 
 PLAN_PROMPT = """请基于用户问题、页面上下文和数据库 schema，生成综合分析计划。
@@ -494,16 +496,252 @@ def _conversation_summary(record: AnalysisAssistantConversation) -> AnalysisAssi
     )
 
 
-def _conversation_detail(record: AnalysisAssistantConversation) -> AnalysisAssistantConversationDetail:
+def _mark_permission_denied_block(block: dict[str, Any]) -> None:
+    """
+    是什么：把历史/缓存里的分析数据块改成无权限占位，避免返回旧数据。
+    谁调用：分析助手历史读取、保存回显和权限异常处理会调用它。
+    做了什么：保留卡片基础信息，清空可泄露的数据、SQL、图表和摘要。
+    """
+    block["status"] = "failed"
+    block["error"] = ANALYSIS_NO_PERMISSION_MESSAGE
+    block["warning"] = ANALYSIS_NO_PERMISSION_MESSAGE
+    block["error_type"] = PERMISSION_DENIED_ERROR_TYPE
+    block["reason"] = PERMISSION_DENIED_RESULT_MESSAGE
+    block["agent_guidance"] = PERMISSION_DENIED_AGENT_GUIDANCE
+    block["error_detail"] = ""
+    block["fields"] = []
+    block["data"] = []
+    block["chart"] = None
+    block["summary"] = ""
+    block["sql"] = ""
+
+
+def _analysis_block_has_saved_artifacts(block: dict[str, Any]) -> bool:
+    """
+    是什么：判断一个历史分析块里是否带有可能来自业务数据的快照内容。
+    谁调用：历史读取和保存净化逻辑会调用它。
+    做了什么：只做保守判断，不尝试理解具体业务口径。
+    """
+    return any(
+        block.get(key)
+        for key in ("sql", "fields", "data", "chart", "summary", "image")
+    )
+
+
+def _get_datasource_for_permission_check(
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource_id: int | None,
+) -> CoreDatasource | None:
+    """
+    是什么：按当前用户权限取用于数据权限校验的数据源。
+    谁调用：历史、导出、上下文净化逻辑会调用它。
+    做了什么：没有项目或项目无权访问时返回 None，让上层 fail-closed。
+    """
+    if datasource_id is None:
+        return None
+    datasource = session.get(CoreDatasource, datasource_id)
+    if datasource is None or not has_datasource_access(session, current_user, datasource_id):
+        return None
+    return datasource
+
+
+def _datasource_has_current_permission_risk(
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource_id: int | None,
+) -> bool:
+    """
+    是什么：判断前端提交的无 SQL 数据快照是否不能被信任。
+    谁调用：导出、页面上下文和无 SQL 历史块的保护逻辑会调用它。
+    做了什么：普通用户只要在该项目命中任意表/字段/行权限，就不复用客户端数据。
+    """
+    if not is_normal_user(current_user):
+        return False
+    datasource = _get_datasource_for_permission_check(session, current_user, datasource_id)
+    if datasource is None:
+        return True
+    try:
+        return has_applicable_permissions(
+            session=session,
+            current_user=current_user,
+            ds=datasource,
+            tables=None,
+        )
+    except Exception:
+        return True
+
+
+def _sanitize_analysis_block_for_current_permissions(
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource | None,
+    block: Any,
+) -> tuple[Any, bool]:
+    """
+    是什么：按当前用户权限净化一个历史分析块。
+    谁调用：历史详情和保存回显会逐块调用它。
+    做了什么：有 SQL 的块先校验 SQL 涉及表字段；命中任意权限规则时不复用旧结果。
+    """
+    if not isinstance(block, dict):
+        return block, False
+
+    next_block = copy.deepcopy(block)
+    if not is_normal_user(current_user):
+        return next_block, False
+
+    sql = str(next_block.get("sql") or "").strip()
+    has_artifacts = _analysis_block_has_saved_artifacts(next_block)
+    if next_block.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
+        _mark_permission_denied_block(next_block)
+        return next_block, True
+
+    if datasource is None:
+        if has_artifacts:
+            _mark_permission_denied_block(next_block)
+            return next_block, True
+        return next_block, False
+
+    if sql:
+        try:
+            _prepared_sql, tables = validate_user_query_sql_or_raise(
+                session=session,
+                current_user=current_user,
+                datasource=datasource,
+                sql=sql,
+            )
+            if has_applicable_permissions(
+                session=session,
+                current_user=current_user,
+                ds=datasource,
+                tables=sorted(tables),
+            ):
+                _mark_permission_denied_block(next_block)
+                return next_block, True
+        except Exception:
+            _mark_permission_denied_block(next_block)
+            return next_block, True
+    elif has_artifacts:
+        try:
+            if has_applicable_permissions(
+                session=session,
+                current_user=current_user,
+                ds=datasource,
+                tables=None,
+            ):
+                _mark_permission_denied_block(next_block)
+                return next_block, True
+        except Exception:
+            _mark_permission_denied_block(next_block)
+            return next_block, True
+
+    return next_block, False
+
+
+def _sanitize_conversation_messages_for_current_permissions(
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource_id: int | None,
+    messages: list[dict],
+) -> list[dict]:
+    """
+    是什么：按当前权限净化分析助手历史消息。
+    谁调用：历史读取和保存历史时会调用它。
+    做了什么：只处理 assistant blocks；一旦有块被隐藏，也清掉可能汇总旧数字的最终回答。
+    """
+    if not messages or not is_normal_user(current_user):
+        return messages
+
+    datasource = _get_datasource_for_permission_check(session, current_user, datasource_id)
+    sanitized_messages = copy.deepcopy(messages)
+    for message in sanitized_messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        blocks = message.get("blocks")
+        if not isinstance(blocks, list):
+            continue
+        next_blocks = []
+        has_scrubbed_block = False
+        for block in blocks:
+            sanitized_block, scrubbed = _sanitize_analysis_block_for_current_permissions(
+                session,
+                current_user,
+                datasource,
+                block,
+            )
+            next_blocks.append(sanitized_block)
+            has_scrubbed_block = has_scrubbed_block or scrubbed
+        message["blocks"] = next_blocks
+        if has_scrubbed_block:
+            message["content"] = ""
+            message["final"] = ANALYSIS_NO_PERMISSION_MESSAGE
+    return sanitized_messages
+
+
+def _sanitize_analysis_request_context_for_current_permissions(
+    session: SessionDep,
+    current_user: CurrentUser,
+    request: AnalysisAssistantRequest,
+) -> AnalysisAssistantRequest:
+    """
+    是什么：在有数据权限风险时丢弃前端带来的历史/页面上下文。
+    谁调用：综合分析助手实时问答入口会调用它。
+    做了什么：保留本轮问题，让后续步骤重新走后端受控 SQL 和当前权限。
+    """
+    if not is_normal_user(current_user):
+        return request
+    has_client_context = bool(str(request.context or "").strip()) or len(request.messages) > 1
+    if not has_client_context:
+        return request
+    if not _datasource_has_current_permission_risk(session, current_user, request.datasource_id):
+        return request
+    return request.model_copy(
+        update={
+            "context": None,
+            "messages": [request.messages[-1]],
+        }
+    )
+
+
+def _permission_denied_stream_response():
+    """
+    是什么：给流式助手接口返回统一无权限事件。
+    谁调用：无法信任客户端数据的流式入口会调用它。
+    做了什么：不返回任何旧数据，只让前端展示无权限提示。
+    """
+    def generate():
+        yield _sse({
+            "type": "error",
+            "content": ANALYSIS_NO_PERMISSION_MESSAGE,
+            "error_type": PERMISSION_DENIED_ERROR_TYPE,
+        })
+        yield _sse({"type": "finish"})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _conversation_detail(
+    record: AnalysisAssistantConversation,
+    session: SessionDep | None = None,
+    current_user: CurrentUser | None = None,
+) -> AnalysisAssistantConversationDetail:
     """
     是什么：_conversation_detail 是一个可以复用的小步骤，负责分析助手相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     summary = _conversation_summary(record)
+    messages = record.messages if isinstance(record.messages, list) else []
+    if session is not None and current_user is not None:
+        messages = _sanitize_conversation_messages_for_current_permissions(
+            session,
+            current_user,
+            record.datasource_id,
+            messages,
+        )
     return AnalysisAssistantConversationDetail(
         **summary.model_dump(),
-        messages=record.messages if isinstance(record.messages, list) else [],
+        messages=messages,
     )
 
 
@@ -607,14 +845,7 @@ def _mark_query_error_block(block: dict[str, Any], query_error: Exception, curre
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if is_normal_user(current_user) and looks_like_permission_scope_error(str(query_error)):
-        block["status"] = "failed"
-        block["error"] = PERMISSION_DENIED_RESULT_MESSAGE
-        block["error_type"] = PERMISSION_DENIED_ERROR_TYPE
-        block["warning"] = PERMISSION_DENIED_RESULT_MESSAGE
-        block["reason"] = PERMISSION_DENIED_RESULT_MESSAGE
-        block["agent_guidance"] = PERMISSION_DENIED_AGENT_GUIDANCE
-        block["error_detail"] = ""
-        block["summary"] = ""
+        _mark_permission_denied_block(block)
         return
 
     block["error"] = "数据计算失败"
@@ -769,7 +1000,7 @@ async def get_history(conversation_id: int, current_user: CurrentUser, session: 
     做了什么：把分析助手需要的数据找出来，整理成后面好用的样子。
     """
     record = _get_owned_conversation(session, current_user, conversation_id)
-    return _conversation_detail(record)
+    return _conversation_detail(record, session, current_user)
 
 
 @router.delete("/history/{conversation_id}", include_in_schema=False)
@@ -810,6 +1041,12 @@ async def save_history(
         raise RuntimeError("历史对话内容不能为空")
     if request.datasource_id is not None and not has_datasource_access(session, current_user, request.datasource_id):
         raise RuntimeError("当前用户无权访问该历史对话所属项目")
+    messages = _sanitize_conversation_messages_for_current_permissions(
+        session,
+        current_user,
+        request.datasource_id,
+        messages,
+    )
 
     now = datetime.now()
     title = _normalise_conversation_title(request.title, messages)
@@ -840,7 +1077,7 @@ async def save_history(
     session.add(record)
     session.commit()
     session.refresh(record)
-    return _conversation_detail(record)
+    return _conversation_detail(record, session, current_user)
 
 
 def _strip_markdown(value: str | None) -> str:
@@ -1300,6 +1537,8 @@ async def export_report(
         raise RuntimeError("Unauthorized")
     if request.datasource_id is not None and not has_datasource_access(session, current_user, request.datasource_id):
         raise RuntimeError("当前用户无权导出该项目分析内容")
+    if _datasource_has_current_permission_risk(session, current_user, request.datasource_id):
+        raise HTTPException(status_code=403, detail=ANALYSIS_NO_PERMISSION_MESSAGE)
     if not request.blocks and not str(request.final or "").strip():
         raise RuntimeError("没有可导出的分析内容")
 
@@ -3067,6 +3306,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             status_code=400,
             detail="Report interpretation must use /analysis-assistant/report-interpretation",
         )
+    request = _sanitize_analysis_request_context_for_current_permissions(session, current_user, request)
     limited_response = await _tenant_rate_limit_response(session, current_user)
     if limited_response is not None:
         return limited_response
@@ -3288,6 +3528,12 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         raise RuntimeError("Unauthorized")
     if not request.messages or not request.messages[-1].content.strip():
         raise RuntimeError("Question cannot be Empty")
+    if str(request.context or "").strip() and _datasource_has_current_permission_risk(
+        session,
+        current_user,
+        request.datasource_id,
+    ):
+        return _permission_denied_stream_response()
     limited_response = await _tenant_rate_limit_response(session, current_user)
     if limited_response is not None:
         return limited_response

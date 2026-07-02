@@ -37,6 +37,7 @@ from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_exter
 from apps.datasource.crud.permission import (
     PROJECT_ROLE_EDITOR,
     get_accessible_datasource_ids,
+    has_applicable_permissions,
     has_datasource_access,
     has_datasource_role,
     is_normal_user,
@@ -49,13 +50,14 @@ from apps.datasource.crud.query_executor import (
     safe_query_error_type,
     validate_user_query_sql_or_raise,
 )
-from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
+from apps.datasource.crud.permission_errors import PERMISSION_DENIED_DISPLAY_MESSAGE, PERMISSION_DENIED_ERROR_TYPE
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import get_sqlglot_dialect
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.user import UserModel
+from apps.system.schemas.system_schema import UserInfoDTO
 from apps.system.models.tenant import TenantModel, TenantUserModel
-from apps.system.crud.tenant import TENANT_ROLE_ADMIN, TENANT_ROLE_OWNER
+from apps.system.crud.tenant import TENANT_ROLE_ADMIN, TENANT_ROLE_OWNER, TenantContext, attach_tenant_context
 from apps.system.crud.user import is_platform_workspace_delegate, is_system_admin
 from common.core.config import settings
 from common.core.redis_client import build_redis_url, user_redis_key
@@ -180,6 +182,7 @@ DASHBOARD_SOURCE_PLATFORM_DELEGATE = "platform_delegate"
 DASHBOARD_SOURCE_PLATFORM_TEMPLATE = "platform_template"
 DASHBOARD_SOURCE_EXTERNAL_MCP = "external_mcp"
 DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "图表数据正在后台刷新"
+DASHBOARD_CHART_NO_PERMISSION_MESSAGE = "没有查看权限"
 DASHBOARD_REFRESH_POLICY_DEFAULT = {
     "auto_refresh": True,
     "snapshot_max_age_hours": 3,
@@ -1327,7 +1330,7 @@ def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: in
     return item_datasource
 
 
-_USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
+_USER_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
 
 
 _PIVOT_RANGE_DAYS = {
@@ -1740,16 +1743,88 @@ def _failed_chart_result(message: str, error_type: str | None = None) -> dict[st
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    display_message = DASHBOARD_CHART_NO_PERMISSION_MESSAGE if error_type == PERMISSION_DENIED_ERROR_TYPE else message
     result = {
         'status': 'failed',
         'data': [],
         'fields': [],
-        'message': message,
+        'message': display_message,
     }
     if error_type:
         result['error_type'] = error_type
         result['reason'] = message
     return result
+
+
+def _normalize_dashboard_chart_result(result: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：_normalize_dashboard_chart_result 是一个可以复用的小步骤，负责仪表盘相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把权限失败类图表结果整理成前端可直接展示的状态。
+    """
+    if (
+        isinstance(result, dict)
+        and result.get("status") == "failed"
+        and result.get("error_type") == PERMISSION_DENIED_ERROR_TYPE
+    ):
+        original_message = result.get("reason") or result.get("message") or ""
+        result["message"] = DASHBOARD_CHART_NO_PERMISSION_MESSAGE
+        result["reason"] = original_message
+        result["data"] = []
+        result["fields"] = []
+    return result
+
+
+def _dashboard_chart_permission_audit(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int,
+        sql: str,
+        pivot: Any | None = None,
+) -> tuple[dict[str, Any] | None, bool]:
+    """
+    是什么：_dashboard_chart_permission_audit 一次性完成看板图表权限校验和缓存复用判定。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：避免刷新同一卡片时重复解析 SQL、重复构建权限范围。
+    """
+    datasource = session.get(CoreDatasource, datasource_id)
+    if datasource is None:
+        return _failed_chart_result("项目不存在"), False
+    tables: set[str] = set()
+    try:
+        validation_sql = (
+            _build_dashboard_pivot_sql(sql, datasource, pivot)
+            if _dashboard_pivot_enabled(pivot)
+            else sql
+        )
+        _validated_sql, tables = validate_user_query_sql_or_raise(
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            sql=validation_sql,
+        )
+    except Exception as exc:
+        message = f"{exc}"
+        error_type = safe_query_error_type(current_user, message)
+        return _failed_chart_result(
+            safe_query_error_message(current_user, message),
+            PERMISSION_DENIED_ERROR_TYPE if error_type else None,
+        ), False
+    if not is_normal_user(current_user):
+        return None, False
+    try:
+        # 表/字段权限已经在 validate_user_query_sql_or_raise 中 fail-closed；
+        # 只有行权限会让同一 SQL 在不同用户下产生不同结果，不能复用旧缓存/快照。
+        permissions_apply = has_applicable_permissions(
+            session=session,
+            current_user=current_user,
+            ds=datasource,
+            tables=sorted(tables),
+            permission_types=["row"],
+        )
+    except Exception:
+        permissions_apply = True
+    return None, permissions_apply
 
 
 def _dashboard_chart_permission_failure(
@@ -1764,29 +1839,36 @@ def _dashboard_chart_permission_failure(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    datasource = session.get(CoreDatasource, datasource_id)
-    if datasource is None:
-        return _failed_chart_result("项目不存在")
-    try:
-        validation_sql = (
-            _build_dashboard_pivot_sql(sql, datasource, pivot)
-            if _dashboard_pivot_enabled(pivot)
-            else sql
-        )
-        validate_user_query_sql_or_raise(
-            session=session,
-            current_user=current_user,
-            datasource=datasource,
-            sql=validation_sql,
-        )
-    except Exception as exc:
-        message = f"{exc}"
-        error_type = safe_query_error_type(current_user, message)
-        return _failed_chart_result(
-            safe_query_error_message(current_user, message),
-            PERMISSION_DENIED_ERROR_TYPE if error_type else None,
-        )
-    return None
+    failure, _permissions_apply = _dashboard_chart_permission_audit(
+        session,
+        current_user,
+        datasource_id,
+        sql,
+        pivot,
+    )
+    return failure
+
+
+def _dashboard_chart_uses_applicable_permissions(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int,
+        sql: str,
+        pivot: Any | None = None,
+) -> bool:
+    """
+    是什么：_dashboard_chart_uses_applicable_permissions 判断图表 SQL 是否落在当前用户权限规则范围内。
+    谁调用：看板快照、缓存命中等可能复用旧数据的路径会调用它。
+    做了什么：只要命中权限规则，旧快照和旧缓存都不直接返回，避免权限变更后泄漏历史数据。
+    """
+    _failure, permissions_apply = _dashboard_chart_permission_audit(
+        session,
+        current_user,
+        datasource_id,
+        sql,
+        pivot,
+    )
+    return permissions_apply
 
 
 def _dashboard_sql_preview_cache_ttl() -> int:
@@ -2289,6 +2371,7 @@ def _execute_dashboard_chart_sql(
         close_system_transaction_before_query=True,
         include_execution_meta=True,
     )
+    result = _normalize_dashboard_chart_result(result)
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
     execution_meta = result.pop("_execution_meta", None)
     if result.get("status") != "failed":
@@ -2434,7 +2517,120 @@ def _prepare_dashboard_template_canvas_view_info(canvas_view_info: str | bytes |
         item["datasource"] = None
         if item.get("sql") is not None or isinstance(item.get("chart"), dict):
             _mark_dashboard_chart_snapshot_ready(item)
+            refreshed_at = item.get("snapshotRefreshedAt") or item["data"].get("snapshotRefreshedAt")
+            if not refreshed_at:
+                refreshed_at = int(time.time() * 1000)
+                item["snapshotRefreshedAt"] = refreshed_at
+                item["data"]["snapshotRefreshedAt"] = refreshed_at
     return orjson.dumps(canvas_view_obj).decode()
+
+
+def _mark_dashboard_chart_snapshot_refreshed(item: dict, refreshed_at: int | None = None) -> None:
+    """
+    是什么：给静态模板快照打上已固化标记，避免空结果图表被反复回源修复。
+    """
+    if not isinstance(item.get("data"), dict):
+        item["data"] = {}
+    timestamp = refreshed_at or int(time.time() * 1000)
+    item["snapshotRefreshedAt"] = timestamp
+    item["data"]["snapshotRefreshedAt"] = timestamp
+
+
+def _dashboard_chart_snapshot_refreshed_at(item: dict, data: dict | None = None) -> int:
+    """
+    是什么：读取模板图表快照刷新时间，0/空/非法值都视为未固化。
+    """
+    if data is None:
+        data = item.get("data") if isinstance(item.get("data"), dict) else {}
+    value = item.get("snapshotRefreshedAt") or data.get("snapshotRefreshedAt")
+    try:
+        timestamp = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return timestamp if timestamp > 0 else 0
+
+
+def _materialize_dashboard_template_canvas_view_info(
+        session: SessionDep,
+        current_user: CurrentUser,
+        source: CoreDashboard,
+        canvas_view_info: str | bytes | None,
+) -> str:
+    """
+    是什么：把工作空间看板复制为平台模板时，固化一份源看板图表结果快照。
+    """
+    canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
+    effective_datasource = _effective_dashboard_datasource(source)
+    for item in canvas_view_obj.values():
+        if not isinstance(item, dict):
+            continue
+        item_datasource = _chart_datasource(source, item, effective_datasource)
+        sql = item.get("sql")
+        if sql is not None and str(sql).strip() and item_datasource is not None:
+            permission_failure, _permissions_apply = _dashboard_chart_permission_audit(
+                session,
+                current_user,
+                item_datasource,
+                str(sql).strip(),
+                item.get("pivot"),
+            )
+            if permission_failure is not None:
+                _apply_dashboard_chart_result(item, permission_failure)
+                _mark_dashboard_chart_snapshot_refreshed(item)
+            else:
+                data_result = _execute_dashboard_chart_sql(
+                    session,
+                    current_user,
+                    item_datasource,
+                    str(sql).strip(),
+                    item.get("pivot"),
+                )
+                _apply_dashboard_chart_result(item, data_result)
+                _mark_dashboard_chart_snapshot_refreshed(item, data_result.get("refreshed_at"))
+        elif item.get("sql") is not None or isinstance(item.get("chart"), dict):
+            _mark_dashboard_chart_snapshot_ready(item)
+            _mark_dashboard_chart_snapshot_refreshed(item)
+        item["datasource"] = None
+    return orjson.dumps(canvas_view_obj).decode()
+
+
+def _platform_template_source_user_context(
+        session: SessionDep,
+        template: CoreDashboard,
+        source: CoreDashboard,
+) -> CurrentUser | None:
+    """
+    是什么：为已有平台模板补快照时，还原当初 SaaS 委托进入源工作空间的查询上下文。
+    """
+    if template.create_by in (None, ""):
+        return None
+    try:
+        db_user = session.get(UserModel, int(template.create_by))
+    except (TypeError, ValueError):
+        return None
+    if not db_user or not is_system_admin(db_user):
+        return None
+    source_tenant_id = _optional_int(source.tenant_id)
+    if source_tenant_id is None:
+        return None
+    tenant = session.get(TenantModel, source_tenant_id)
+    if not tenant:
+        return None
+    try:
+        user_info = UserInfoDTO.model_validate(db_user.model_dump())
+    except Exception:
+        return None
+    tenant_context = TenantContext(
+        id=int(tenant.id),
+        public_id=getattr(tenant, "public_id", None),
+        name=tenant.name,
+        role=TENANT_ROLE_OWNER,
+    )
+    return attach_tenant_context(
+        user_info,
+        tenant_context,
+        platform_workspace_delegate=True,
+    )
 
 
 def _remark_value(remark: str | None, key: str) -> str | None:
@@ -2537,19 +2733,25 @@ def _platform_template_needs_snapshot_repair(template: CoreDashboard) -> bool:
             return True
         if item.get("status") == "loading" or item.get("dataState") == "loading":
             return True
-        if item.get("sql") is not None and rows is None:
+        snapshot_refreshed_at = _dashboard_chart_snapshot_refreshed_at(item, data)
+        if (
+            str(item.get("sql") or "").strip()
+            and not snapshot_refreshed_at
+            and not (isinstance(rows, list) and rows)
+        ):
             return True
     return False
 
 
-def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: CoreDashboard) -> None:
+def _refresh_platform_template_snapshot_from_source(
+        session: SessionDep,
+        template: CoreDashboard,
+        *,
+        require_source_materialized: bool = False,
+) -> None:
     """
-    是什么：_repair_platform_template_snapshot_if_needed 是一个可以复用的小步骤，负责仪表盘相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
+    是什么：按模板记录里的来源看板，重新固化平台模板图表快照。
     """
-    if not _platform_template_needs_snapshot_repair(template):
-        return
     source_id = _template_source_dashboard_id(template)
     source = session.get(CoreDashboard, source_id) if source_id else None
     if source and source.delete_flag != 1 and source.node_type == "leaf":
@@ -2560,9 +2762,23 @@ def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: 
         )
         template.component_data = component_data
         template.canvas_style_data = canvas_style_data
-        template.canvas_view_info = _prepare_dashboard_template_canvas_view_info(canvas_view_info)
+        source_user = _platform_template_source_user_context(session, template, source)
+        if require_source_materialized and source_user is None:
+            raise HTTPException(status_code=400, detail="平台模板缺少来源工作空间上下文，无法刷新图表数据")
+        template.canvas_view_info = (
+            _materialize_dashboard_template_canvas_view_info(
+                session,
+                source_user,
+                source,
+                canvas_view_info,
+            )
+            if source_user is not None
+            else _prepare_dashboard_template_canvas_view_info(canvas_view_info)
+        )
         template.remark = _platform_template_source_remark(source)
     else:
+        if require_source_materialized:
+            raise HTTPException(status_code=400, detail="平台模板来源看板不存在，无法刷新图表数据")
         template.canvas_view_info = _prepare_dashboard_template_canvas_view_info(template.canvas_view_info)
         if source_id and not _remark_value(template.remark, "source_dashboard_id"):
             template.remark = f"{template.remark + ';' if template.remark else ''}source_dashboard_id={source_id}"
@@ -2575,6 +2791,15 @@ def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: 
     session.add(template)
     session.commit()
     session.refresh(template)
+
+
+def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: CoreDashboard) -> None:
+    """
+    是什么：打开平台模板时，自动修复旧记录里缺失的数据快照。
+    """
+    if not _platform_template_needs_snapshot_repair(template):
+        return
+    _refresh_platform_template_snapshot_from_source(session, template)
 
 
 def _user_name(session: SessionDep, user_id) -> str | None:
@@ -3265,7 +3490,7 @@ def _dashboard_payload(
         if item.get('sql') is not None:
             if not include_data:
                 if item_datasource is not None:
-                    permission_failure = _dashboard_chart_permission_failure(
+                    permission_failure, permissions_apply = _dashboard_chart_permission_audit(
                         session,
                         current_user,
                         item_datasource,
@@ -3274,6 +3499,9 @@ def _dashboard_payload(
                     )
                     if permission_failure is not None:
                         _apply_dashboard_chart_result(item, permission_failure)
+                        continue
+                    if permissions_apply:
+                        _clear_dashboard_chart_data(item)
                         continue
                 _mark_dashboard_chart_snapshot_ready(item)
                 continue
@@ -3922,7 +4150,12 @@ def copy_dashboard_to_platform_template(
         source.canvas_style_data,
         source.canvas_view_info,
     )
-    canvas_view_info = _prepare_dashboard_template_canvas_view_info(canvas_view_info)
+    canvas_view_info = _materialize_dashboard_template_canvas_view_info(
+        session,
+        user,
+        source,
+        canvas_view_info,
+    )
     now = _now()
     record = CoreDashboard(
         id=uuid.uuid4().hex,
@@ -3987,8 +4220,6 @@ def list_platform_dashboard_templates(session: SessionDep, user: CurrentUser):
         .order_by(CoreDashboard.update_time.desc(), CoreDashboard.create_time.desc())
     )
     result = session.exec(statement).scalars().all()
-    for record in result:
-        _repair_platform_template_snapshot_if_needed(session, record)
     return [
         _dashboard_base_response(
             session,
@@ -4013,7 +4244,33 @@ def load_platform_dashboard_template(
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     template = _load_platform_template_or_404(session, template_id, user)
-    _repair_platform_template_snapshot_if_needed(session, template)
+    return _dashboard_payload(
+        session,
+        user,
+        template,
+        dashboard=QueryDashboard(id=template_id, include_data=include_data),
+        platform_template_context=True,
+        include_data=include_data,
+    )
+
+
+def refresh_platform_dashboard_template(
+        session: SessionDep,
+        user: CurrentUser,
+        template_id: str,
+        include_data: bool = False,
+):
+    """
+    是什么：SaaS 后台手动刷新平台模板里的图表快照。
+    """
+    if not _is_platform_admin_context(user):
+        raise HTTPException(status_code=403, detail="Only SaaS admin can refresh dashboard templates")
+    template = _load_platform_template_or_404(session, template_id, user)
+    _refresh_platform_template_snapshot_from_source(
+        session,
+        template,
+        require_source_materialized=True,
+    )
     return _dashboard_payload(
         session,
         user,
@@ -4120,7 +4377,6 @@ def _copy_single_platform_template_to_workspace_dashboard(
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     template = _load_platform_template_or_404(session, template_id, user)
-    _repair_platform_template_snapshot_if_needed(session, template)
     target_datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(user))
     if target_datasource_id is not None:
         _ensure_datasource_access(session, user, target_datasource_id, required=True)
@@ -4360,13 +4616,22 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
     if datasource_id is None:
         return _failed_chart_result("Dashboard datasource is required")
     normalized_sql = request.sql.strip()
+    permission_failure, permissions_apply = _dashboard_chart_permission_audit(
+        session,
+        current_user,
+        datasource_id,
+        normalized_sql,
+        request.pivot,
+    )
+    if permission_failure is not None:
+        return permission_failure
     cache_key = _dashboard_sql_preview_cache_key(
         current_user=current_user,
         datasource_id=datasource_id,
         sql=normalized_sql,
         pivot=request.pivot,
     )
-    if not request.force_refresh:
+    if not request.force_refresh and not permissions_apply:
         cached = _dashboard_sql_preview_cache_get(cache_key)
         if cached is not None:
             return cached
@@ -4375,25 +4640,27 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
 
     inflight_lock = _dashboard_sql_preview_inflight_lock(cache_key)
     if not inflight_lock.acquire(timeout=_dashboard_sql_preview_dedupe_wait_timeout()):
-        cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
-        if cached is not None:
-            cached["refresh_deferred"] = True
-            return cached
+        if not permissions_apply:
+            cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+            if cached is not None:
+                cached["refresh_deferred"] = True
+                return cached
         return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
 
     datasource_semaphore = _dashboard_sql_preview_datasource_semaphore(datasource_id)
     datasource_acquired = False
     try:
-        if not request.force_refresh:
+        if not request.force_refresh and not permissions_apply:
             cached = _dashboard_sql_preview_cache_get(cache_key)
             if cached is not None:
                 return cached
         datasource_acquired = datasource_semaphore.acquire(timeout=_dashboard_sql_preview_wait_timeout())
         if not datasource_acquired:
-            cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
-            if cached is not None:
-                cached["refresh_deferred"] = True
-                return cached
+            if not permissions_apply:
+                cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+                if cached is not None:
+                    cached["refresh_deferred"] = True
+                    return cached
             AppLogUtil.warning(f"Dashboard SQL preview busy: datasource={datasource_id}")
             return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
 
@@ -4404,7 +4671,8 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             normalized_sql,
             request.pivot,
         )
-        _dashboard_sql_preview_cache_set(cache_key, result)
+        if not permissions_apply:
+            _dashboard_sql_preview_cache_set(cache_key, result)
         return result
     finally:
         if datasource_acquired:

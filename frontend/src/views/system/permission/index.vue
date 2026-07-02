@@ -17,6 +17,7 @@ import { datasourceApi } from '@/api/datasource'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
+import { normalizeIdString } from '@/utils/id'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -580,7 +581,7 @@ const next = () => {
 }
 const saveLoading = ref(false)
 const selectedUserIds = () =>
-  (selectPermissionRef.value?.checkTableList || []).map((ele: any) => ele.id)
+  (selectPermissionRef.value?.checkTableList || []).map((ele: any) => normalizeIdString(ele.id))
 
 const save = () => {
   if (currentPermission.id && !canEditRuleGroup(currentPermission)) {

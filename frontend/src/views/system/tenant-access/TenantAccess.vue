@@ -458,9 +458,13 @@ import { getList as getPermissionList, savePermissions } from '@/api/permissions
 import { decrypted } from '@/views/ds/js/aes'
 import { formatTimestamp } from '@/utils/date'
 import { useUserStore } from '@/stores/user'
+import { idsEqual, normalizeIdString, toIdStringList, uniqueIdStrings } from '@/utils/id'
 
 const { t } = useI18n()
 const userStore = useUserStore()
+const isPurePlatformAdmin = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
 const keyword = ref('')
 const memberLoading = ref(false)
 const applicationLoading = ref(false)
@@ -788,8 +792,8 @@ const buildUserDatasourcePermissionMap = (userId: any, datasourceIds: number[]) 
   if (!userId) return result
 
   permissionRuleGroups.value.forEach((rule: any) => {
-    const users = toNumberList(rule.users || rule.user_list)
-    if (!users.includes(Number(userId))) return
+    const users = toIdStringList(rule.users || rule.user_list)
+    if (!users.some((item) => idsEqual(item, userId))) return
     getDatasourceIdsFromRule(rule).forEach((datasourceId: number) => {
       if (!datasourceIds.includes(datasourceId)) return
       result[datasourceId] = Array.from(new Set<number>([...(result[datasourceId] || []), Number(rule.id)]))
@@ -798,7 +802,7 @@ const buildUserDatasourcePermissionMap = (userId: any, datasourceIds: number[]) 
   return result
 }
 
-const serializePermissionRule = (rule: any, users: number[]) => ({
+const serializePermissionRule = (rule: any, users: string[]) => ({
   id: rule.id,
   name: rule.name,
   permissions: (rule.permissions || []).map((item: any) => ({
@@ -822,6 +826,8 @@ const serializePermissionRule = (rule: any, users: number[]) => ({
 
 const syncUserPermissionStrategies = (userId: any): Promise<void> => {
   if (!userId || !permissionRuleGroups.value.length) return Promise.resolve()
+  const userIdText = normalizeIdString(userId)
+  if (!userIdText) return Promise.resolve()
   const selectedRuleIds = new Set(
     Object.values(memberForm.project_permission_map || {})
       .flatMap((item: any) => toNumberList(item))
@@ -831,14 +837,15 @@ const syncUserPermissionStrategies = (userId: any): Promise<void> => {
 
   permissionRuleGroups.value.forEach((rule: any) => {
     if (!getDatasourceIdsFromRule(rule).length) return
-    const currentUsers = toNumberList(rule.users || rule.user_list)
+    const currentUsers = toIdStringList(rule.users || rule.user_list)
+    const currentUsersWithoutTarget = currentUsers.filter((item: string) => !idsEqual(item, userIdText))
     const shouldInclude = selectedRuleIds.has(Number(rule.id))
     const nextUsers = shouldInclude
-      ? Array.from(new Set<number>([...currentUsers, Number(userId)]))
-      : currentUsers.filter((item: number) => item !== Number(userId))
+      ? uniqueIdStrings([...currentUsersWithoutTarget, userIdText])
+      : currentUsersWithoutTarget
     const changed =
       nextUsers.length !== currentUsers.length ||
-      nextUsers.some((item: number) => !currentUsers.includes(item))
+      nextUsers.some((item: string, index: number) => item !== currentUsers[index])
     if (!changed) return
     rule.users = nextUsers
     requests.push(savePermissions(serializePermissionRule(rule, nextUsers)))
@@ -848,6 +855,7 @@ const syncUserPermissionStrategies = (userId: any): Promise<void> => {
 }
 
 const loadDatasourcePermissionContext = async () => {
+  if (isPurePlatformAdmin.value) return
   const [tenant, datasources, permissions] = await Promise.all([
     tenantApi.current(),
     datasourceApi.accessibleList(),
@@ -859,6 +867,10 @@ const loadDatasourcePermissionContext = async () => {
 }
 
 const loadMembers = async () => {
+  if (isPurePlatformAdmin.value) {
+    memberRows.value = []
+    return
+  }
   memberLoading.value = true
   try {
     const [members] = await Promise.all([tenantApi.members(keyword.value.trim()), loadDatasourcePermissionContext()])
@@ -870,6 +882,11 @@ const loadMembers = async () => {
 }
 
 const loadApplications = async () => {
+  if (isPurePlatformAdmin.value) {
+    joinApplications.value = []
+    invitations.value = []
+    return
+  }
   applicationLoading.value = true
   try {
     const [joinRows, invitationRows] = await Promise.all([
@@ -1092,6 +1109,7 @@ const removeMember = async (row: TenantMemberInfo) => {
 }
 
 onMounted(() => {
+  if (isPurePlatformAdmin.value) return
   loadMembers()
   loadApplications()
 })

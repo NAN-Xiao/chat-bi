@@ -124,6 +124,7 @@ def test_default_history_loading_uses_cached_data_without_executing_sql(monkeypa
     monkeypatch.setattr(chat_crud, "get_chart_data_with_user", _unexpected_live_data)
     monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         chat_crud,
         "_source_record_requires_live_data_for_current_permissions",
@@ -144,3 +145,36 @@ def test_default_history_loading_uses_cached_data_without_executing_sql(monkeypa
         "data": [{"day": "2026-06-30", "revenue": 12.5}],
     }
     assert chat_info.records[0]["predict_data"] == [{"day": "2026-07-01", "revenue": 14.0}]
+
+
+def test_history_loading_scrubs_cached_data_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：验证当前用户命中任意数据权限时，默认历史详情不会返回旧快照数据。
+    """
+
+    def _unexpected_live_data(*_args, **_kwargs):
+        raise AssertionError("默认历史加载不应执行历史 SQL")
+
+    monkeypatch.setattr(chat_crud, "get_chart_data_with_user", _unexpected_live_data)
+    monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        chat_crud,
+        "_source_record_requires_live_data_for_current_permissions",
+        lambda *_args, **_kwargs: False,
+    )
+
+    chat_info = chat_crud.get_chat_with_records(
+        session=_FakeSession(),
+        chart_id=8001,
+        current_user=_user(),
+        current_assistant=None,
+        with_data=False,
+    )
+
+    assert len(chat_info.records) == 1
+    assert chat_info.records[0]["data"]["status"] == "failed"
+    assert chat_info.records[0]["data"]["error_type"] == "permission_denied"
+    assert chat_info.records[0]["data"]["message"] == "没有查看权限"
+    assert chat_info.records[0]["predict_data"] is None

@@ -719,6 +719,7 @@ import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
 import { useClipboard } from '@vueuse/core'
 import { useUserStore } from '@/stores/user'
+import { idsEqual, normalizeIdString, toIdStringList, uniqueIdStrings } from '@/utils/id'
 
 const { copy } = useClipboard({ legacy: true })
 const userStore = useUserStore()
@@ -1060,8 +1061,8 @@ const buildUserProjectPermissionMap = (userId: any, projectIds: number[]) => {
   if (!userId) return result
 
   permissionRuleGroups.value.forEach((rule: any) => {
-    const users = toNumberList(rule.users || rule.user_list)
-    if (!users.includes(Number(userId))) return
+    const users = toIdStringList(rule.users || rule.user_list)
+    if (!users.some((item) => idsEqual(item, userId))) return
     getProjectIdsFromRule(rule).forEach((projectId: number) => {
       if (!projectIds.includes(projectId)) return
       result[projectId] = Array.from(new Set<number>([...(result[projectId] || []), Number(rule.id)]))
@@ -1070,7 +1071,7 @@ const buildUserProjectPermissionMap = (userId: any, projectIds: number[]) => {
   return result
 }
 
-const serializePermissionRule = (rule: any, users: number[]) => {
+const serializePermissionRule = (rule: any, users: string[]) => {
   return {
     id: rule.id,
     name: rule.name,
@@ -1096,6 +1097,8 @@ const serializePermissionRule = (rule: any, users: number[]) => {
 
 const syncUserPermissionStrategies = (userId: any): Promise<void> => {
   if (!userId || !permissionRuleGroups.value.length) return Promise.resolve()
+  const userIdText = normalizeIdString(userId)
+  if (!userIdText) return Promise.resolve()
   const selectedRuleIds = new Set(
     Object.values(state.form.project_permission_map || {})
       .flatMap((item: any) => toNumberList(item))
@@ -1105,14 +1108,15 @@ const syncUserPermissionStrategies = (userId: any): Promise<void> => {
 
   permissionRuleGroups.value.forEach((rule: any) => {
     if (!getProjectIdsFromRule(rule).length) return
-    const currentUsers = toNumberList(rule.users || rule.user_list)
+    const currentUsers = toIdStringList(rule.users || rule.user_list)
+    const currentUsersWithoutTarget = currentUsers.filter((item: string) => !idsEqual(item, userIdText))
     const shouldInclude = selectedRuleIds.has(Number(rule.id))
     const nextUsers = shouldInclude
-      ? Array.from(new Set<number>([...currentUsers, Number(userId)]))
-      : currentUsers.filter((item: number) => item !== Number(userId))
+      ? uniqueIdStrings([...currentUsersWithoutTarget, userIdText])
+      : currentUsersWithoutTarget
     const changed =
       nextUsers.length !== currentUsers.length ||
-      nextUsers.some((item: number) => !currentUsers.includes(item))
+      nextUsers.some((item: string, index: number) => item !== currentUsers[index])
     if (!changed) return
     rule.users = nextUsers
     requests.push(savePermissions(serializePermissionRule(rule, nextUsers)))

@@ -5,6 +5,7 @@ from typing import Any
 
 
 PERMISSION_DENIED_ERROR_TYPE = "permission_denied"
+PERMISSION_DENIED_DISPLAY_MESSAGE = "没有查看权限"
 PERMISSION_DENIED_RESULT_MESSAGE = "当前用户对该项目的表或字段权限受限，无法返回这部分数据。"
 PERMISSION_DENIED_AGENT_GUIDANCE = (
     "当前账号缺少本次查询或分析所需的部分数据权限。"
@@ -36,19 +37,20 @@ def looks_like_permission_scope_error(message: str) -> bool:
     ))
 
 
-def permission_denied_result(message: str = PERMISSION_DENIED_RESULT_MESSAGE) -> dict[str, Any]:
+def permission_denied_result(message: str = PERMISSION_DENIED_DISPLAY_MESSAGE) -> dict[str, Any]:
     """
     是什么：permission_denied_result 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    reason = PERMISSION_DENIED_RESULT_MESSAGE if message == PERMISSION_DENIED_DISPLAY_MESSAGE else message
     return {
         "status": "failed",
         "error_type": PERMISSION_DENIED_ERROR_TYPE,
         "fields": [],
         "data": [],
         "message": message,
-        "reason": message,
+        "reason": reason,
         "warning": message,
         "agent_guidance": PERMISSION_DENIED_AGENT_GUIDANCE,
     }

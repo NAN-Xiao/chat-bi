@@ -513,13 +513,43 @@ def update_user_datasources(
     return sorted(next_datasource_ids)
 
 
-def _same_id(left, right) -> bool:
+JS_SAFE_INTEGER_MAX = 9007199254740991
+
+
+def _id_text(value) -> str:
+    """
+    是什么：_id_text 把 ID 统一转成字符串，避免 64 位 ID 在前端数字化后丢精度。
+    谁调用：权限规则匹配用户、白名单或权限 ID 时会调用它。
+    做了什么：保留原始字符串形态，兼容少量历史数据里的整数/浮点写法。
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text
+
+
+def _same_id(left, right, *, allow_js_number_alias: bool = False) -> bool:
     """
     是什么：_same_id 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    return str(left) == str(right)
+    left_text = _id_text(left)
+    right_text = _id_text(right)
+    if left_text == right_text:
+        return True
+    if not allow_js_number_alias:
+        return False
+    try:
+        left_int = int(left_text)
+        right_int = int(right_text)
+    except (TypeError, ValueError):
+        return False
+    if abs(left_int) <= JS_SAFE_INTEGER_MAX or abs(right_int) <= JS_SAFE_INTEGER_MAX:
+        return False
+    return float(left_int) == float(right_int)
 
 
 def _rule_contains_user(rule: Any, current_user: CurrentUser) -> bool:
@@ -528,7 +558,10 @@ def _rule_contains_user(rule: Any, current_user: CurrentUser) -> bool:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    return any(_same_id(user_id, current_user.id) for user_id in parse_json_list(rule.user_list))
+    return any(
+        _same_id(user_id, current_user.id, allow_js_number_alias=True)
+        for user_id in parse_json_list(rule.user_list)
+    )
 
 
 def _rule_whitelists_user(rule: Any, current_user: CurrentUser) -> bool:
@@ -765,6 +798,53 @@ def has_applicable_row_permissions(
         for permission in row_permissions or []:
             if _permission_applies_to_user(permission, contain_rules, current_user):
                 return True
+    return False
+
+
+def has_applicable_permissions(
+        session: SessionDep,
+        current_user: CurrentUser,
+        ds: CoreDatasource,
+        tables: Optional[list] = None,
+        single_table: Optional[CoreTable] = None,
+        permission_types: Optional[list[str]] = None,
+) -> bool:
+    """
+    是什么：has_applicable_permissions 判断当前用户是否命中某个数据源范围内的任意权限规则。
+    谁调用：缓存、快照、历史记录等复用旧结果的入口会调用它。
+    做了什么：只要涉及表上存在对当前用户生效的表、字段或行权限，就认为旧结果不可信。
+    """
+    if not is_normal_user(current_user):
+        return False
+    if single_table:
+        table_list = [session.get(CoreTable, single_table.id)]
+    elif tables is None:
+        table_list = session.query(CoreTable).filter(CoreTable.ds_id == ds.id).all()
+    else:
+        table_list = session.query(CoreTable).filter(
+            and_(CoreTable.ds_id == ds.id, CoreTable.table_name.in_(tables or []))
+        ).all()
+    if not table_list:
+        return False
+
+    contain_rules = get_user_permission_rules(session, current_user, ds.id)
+    if not contain_rules:
+        return False
+    types = permission_types or ["table", "column", "row"]
+    for table in table_list:
+        if table is None:
+            continue
+        for permission_type in types:
+            permissions = list_permission_records(
+                session,
+                ds_id=ds.id,
+                table_id=table.id,
+                permission_type=permission_type,
+                enable=True,
+            )
+            for permission in permissions or []:
+                if _permission_applies_to_user(permission, contain_rules, current_user):
+                    return True
     return False
 
 

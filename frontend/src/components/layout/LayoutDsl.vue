@@ -120,8 +120,8 @@ const useTopNavigationShell = computed(() => !isPlatformSaasAdminShell.value)
 const showTopWorkspaceAdminSidebar = computed(() => useTopNavigationShell.value && showSysmenu.value)
 const workspaceScopedViewKey = computed(() =>
   showTopWorkspaceAdminSidebar.value
-    ? `workspace-admin:${workspaceAdminViewVersion.value}`
-    : 'workspace-content'
+    ? `workspace-admin:${workspaceAdminViewVersion.value}:${route.path}`
+    : route.path
 )
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,

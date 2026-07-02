@@ -286,6 +286,7 @@ defineExpose({
             :base-matrix-count="tabBaseMatrixCount"
             :canvas-id="tabItem.name"
             :readonly-template="readonlyTemplate"
+            :platform-template="platformTemplate"
             in-tab
           ></SQPreview>
           <DashboardEditor

@@ -84,6 +84,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  platformTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 const emit = defineEmits(['chartMoved'])
 const { configItem, showPosition } = toRefs(props)
@@ -116,7 +120,19 @@ let reportStreamBuffer = ''
 const isPreviewSingleChart = computed(
   () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
 )
-const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || {})
+const emptyCurrentViewInfo = computed(() => ({
+  id: props.configItem?.id,
+  chart: {
+    title: props.configItem?.title || '',
+  },
+  data: {
+    data: [],
+    fields: [],
+  },
+  fields: [],
+  status: 'success',
+}))
+const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || emptyCurrentViewInfo.value)
 const currentChartType = computed(() => {
   const chart = currentViewInfo.value?.chart || {}
   return chart.type || chart.sourceType || 'table'
@@ -1180,12 +1196,13 @@ defineExpose({
           ref="component"
           class="component"
           :canvas-view-info="canvasViewInfo"
-          :view-info="canvasViewInfo[configItem.id]"
+          :view-info="currentViewInfo"
           :config-item="configItem"
           :show-position="showPosition"
           :disabled="true"
           :active="active"
           :readonly-template="readonlyTemplate"
+          :platform-template="platformTemplate"
           v-bind="componentExtraProps"
         />
       </div>

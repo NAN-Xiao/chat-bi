@@ -28,7 +28,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     finish_record, save_analysis_answer, save_predict_answer, save_predict_data, \
     save_select_datasource_answer, save_recommend_question_answer, \
     get_old_questions, save_analysis_predict_record, get_chart_config, \
-    get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
+    get_chart_data_with_user, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error, format_chart_fields, get_chat_brief_generate, \
     trigger_log_error, save_agent_context_snapshot
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
@@ -43,7 +43,7 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog,
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
-    PERMISSION_DENIED_RESULT_MESSAGE,
+    PERMISSION_DENIED_DISPLAY_MESSAGE,
     permission_denied_result,
 )
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access
@@ -1295,7 +1295,7 @@ class LLMService:
         """
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
-        data = get_chat_chart_data(_session, self.record.id)
+        data = get_chart_data_with_user(_session, self.current_user, self.record.id)
         self.chat_question.data = format_chart_data_for_agent_prompt(data)
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
 
@@ -1350,7 +1350,7 @@ class LLMService:
         """
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
-        data = get_chat_chart_data(_session, self.record.id)
+        data = get_chart_data_with_user(_session, self.current_user, self.record.id)
         self.chat_question.data = format_chart_data_for_agent_prompt(data)
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
@@ -2093,7 +2093,7 @@ class LLMService:
         谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
         做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
         """
-        data_obj = permission_denied_result(PERMISSION_DENIED_RESULT_MESSAGE)
+        data_obj = permission_denied_result(PERMISSION_DENIED_DISPLAY_MESSAGE)
         self.save_sql_data(session=session, data_obj=data_obj)
         return data_obj
 

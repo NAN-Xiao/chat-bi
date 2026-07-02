@@ -65,6 +65,7 @@ class FakeChartInsightService:
         做了什么：把这个对象刚创建时需要的信息先放好。
         """
         self.record = SimpleNamespace(id=7001, chat_id=7000, question="chart question")
+        self.current_user = SimpleNamespace(id=1001, tenant_id=2001)
         self.analysis_chunks = analysis_chunks or [
             {"content": "A", "reasoning_content": "think A"},
             {"content": "B", "reasoning_content": ""},
@@ -208,8 +209,8 @@ def test_predict_graph_non_stream_success_returns_json(monkeypatch: pytest.Monke
     predict_data = [{"value": 2}]
 
     monkeypatch.setattr(graph, "get_chat_chart_config", lambda session, record_id: {"type": "table"})
-    monkeypatch.setattr(graph, "get_chat_chart_data", lambda session, record_id: origin_data)
-    monkeypatch.setattr(graph, "get_chat_predict_data", lambda session, record_id: predict_data)
+    monkeypatch.setattr(graph, "get_chart_data_with_user", lambda session, current_user, record_id: origin_data)
+    monkeypatch.setattr(graph, "get_chat_predict_data_with_user", lambda session, current_user, record_id: predict_data)
 
     chunks = list(graph.run_chart_insight_graph(service, "predict", in_chat=False, stream=False))
 

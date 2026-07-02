@@ -12,6 +12,7 @@ from apps.datasource.crud.permission import (
     is_normal_user,
 )
 from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_DISPLAY_MESSAGE,
     PERMISSION_DENIED_ERROR_TYPE,
     looks_like_permission_scope_error,
 )
@@ -30,7 +31,7 @@ from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil
 
 
-USER_QUERY_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
+USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
 
 
 @dataclass

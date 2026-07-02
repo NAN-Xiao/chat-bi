@@ -15,10 +15,10 @@ from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, 
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.datasource import get_ds
-from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
+from apps.datasource.crud.permission_errors import PERMISSION_DENIED_DISPLAY_MESSAGE, PERMISSION_DENIED_ERROR_TYPE
 from apps.datasource.crud.permission import (
     get_accessible_datasource_ids,
-    has_applicable_row_permissions,
+    has_applicable_permissions,
     has_datasource_access,
     is_normal_user,
 )
@@ -34,7 +34,7 @@ from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
 from common.utils.utils import extract_nested_json, AppLogUtil
 
-_USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
+_USER_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
 DEFAULT_TENANT_ID = 1
 
 CHAT_USAGE_METRICS = {
@@ -220,7 +220,7 @@ def _record_requires_live_data_for_current_permissions(session: SessionDep, curr
         if datasource is None or not has_datasource_access(session, current_user, datasource_id):
             return True
         _statements, tables, _scope = validate_sql_scope(session, current_user, datasource, sql)
-        return has_applicable_row_permissions(
+        return has_applicable_permissions(
             session=session,
             current_user=current_user,
             ds=datasource,
@@ -918,6 +918,13 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         # 获取令牌总消耗
         total_tokens = token_usage_map.get(row.id, 0)
         current_permission_allowed = _record_allowed_by_current_permissions(session, current_user, row)
+        record_cache_requires_scrub = (
+            not with_data
+            and row.datasource
+            and row.sql
+            and current_permission_allowed
+            and _record_requires_live_data_for_current_permissions(session, current_user, row)
+        )
         source_record_id = row.analysis_record_id or row.predict_record_id
         derived_cache_requires_scrub = _source_record_requires_live_data_for_current_permissions(
             session,
@@ -935,7 +942,10 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
         record_result: ChatRecordResult
         predict_data_value = _row_value(row, "predict_data")
-        if row.predict_record_id and (not current_permission_allowed or derived_cache_requires_scrub):
+        if (
+            record_cache_requires_scrub
+            or (row.predict_record_id and (not current_permission_allowed or derived_cache_requires_scrub))
+        ):
             predict_data_value = None
         if not with_data:
             record_result = ChatRecordResult(id=row.id, tenant_id=row.tenant_id, chat_id=row.chat_id, create_time=row.create_time,
@@ -983,6 +993,9 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
         if not current_permission_allowed:
             record_result = _scrub_record_for_current_permissions(record_result)
+        elif record_cache_requires_scrub:
+            record_result.data = orjson.dumps(_failed_permission_data()).decode()
+            record_result.error = _USER_PERMISSION_DENIED_MESSAGE
         elif derived_cache_requires_scrub:
             record_result = _scrub_derived_cache_for_current_permissions(record_result)
         record_list.append(record_result)
