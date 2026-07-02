@@ -115,11 +115,24 @@ def _row_matches_datasource(row, datasource: Optional[int]) -> bool:
     谁调用：运行时查找自定义 Agent 和 Data Skills 时调用。
     做了什么：全局记录直接放行；限定项目的记录必须命中当前 datasource。
     """
+    if row.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+        return True
     if not row.get("specific_ds"):
         return True
     if datasource is None:
         return False
     return str(datasource) in _datasource_id_values(row.get("datasource_ids"))
+
+
+def _effective_datasource_scoped(row_or_skill) -> bool:
+    """
+    是什么：判断 Prompt/Skill 在运行时是否应按项目限定处理。
+    谁调用：运行时 Prompt/Data Skill 组装和排序逻辑。
+    做了什么：平台公共记录永远按通用能力处理，兼容历史上误带 datasource 绑定的脏数据。
+    """
+    if row_or_skill.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+        return False
+    return bool(row_or_skill.get("specific_ds"))
 
 
 def _prompt_log_text(name: str, description: str, system_prompt: str, label: str = "补充提示词") -> str:
@@ -284,7 +297,7 @@ def _dedupe_overridden_data_skills(skill_rows: list[dict[str, Any]]) -> list[dic
         key = _skill_override_group_key(skill)
         rank = (
             _skill_scope_priority(skill),
-            0 if skill.get("specific_ds") else 1,
+            0 if _effective_datasource_scoped(skill) else 1,
             index,
         )
         current = best_by_key.get(key)
@@ -458,13 +471,14 @@ def _queue_stale_skill_embeddings(skill_rows: list[dict[str, Any]]) -> None:
         return
     stale_by_tenant: dict[int | None, list[int]] = {}
     for skill in skill_rows:
+        vector = embedding_vector_from_json(skill.get("embedding"))
         expected_signature = skill_definition_signature(
             skill.get("name"),
             skill.get("description"),
             skill.get("prompt"),
+            dim=len(vector or []),
         )
         current_signature = skill.get("embedding_signature")
-        vector = embedding_vector_from_json(skill.get("embedding"))
         if current_signature == expected_signature and vector is not None:
             continue
         try:
@@ -498,14 +512,15 @@ def _rank_auto_data_skills_by_embedding(
     _queue_stale_skill_embeddings(skill_rows)
     valid_embeddings: list[tuple[int, dict[str, Any], list[float]]] = []
     for index, skill in enumerate(skill_rows):
+        vector = embedding_vector_from_json(skill.get("embedding"))
         expected_signature = skill_definition_signature(
             skill.get("name"),
             skill.get("description"),
             skill.get("prompt"),
+            dim=len(vector or []),
         )
         if skill.get("embedding_signature") != expected_signature:
             continue
-        vector = embedding_vector_from_json(skill.get("embedding"))
         if vector is None:
             continue
         valid_embeddings.append((index, skill, vector))
@@ -517,6 +532,26 @@ def _rank_auto_data_skills_by_embedding(
         query_embedding = EmbeddingModelCache.get_model().embed_query(question)
     except Exception:
         AppLogUtil.exception("Failed to embed question for data skill ranking")
+        return None
+
+    dimension_mismatch_rows = [
+        skill
+        for _index, skill, vector in valid_embeddings
+        if len(vector) != len(query_embedding)
+    ]
+    if dimension_mismatch_rows:
+        _queue_stale_skill_embeddings(
+            [
+                {**skill, "embedding_signature": None}
+                for skill in dimension_mismatch_rows
+            ]
+        )
+        valid_embeddings = [
+            (index, skill, vector)
+            for index, skill, vector in valid_embeddings
+            if len(vector) == len(query_embedding)
+        ]
+    if not valid_embeddings:
         return None
 
     threshold = float(settings.EMBEDDING_DEFAULT_SIMILARITY or 0)
@@ -591,6 +626,7 @@ def _rank_auto_data_skills_by_embedding(
             skill.get("name"),
             skill.get("description"),
             skill.get("prompt"),
+            dim=len(vector or []),
         )
         if skill.get("embedding_signature") == expected_signature and vector is not None:
             continue
@@ -715,7 +751,7 @@ def find_custom_prompts(
             "description": row.get("description") or "",
             "system_prompt": prompt,
             "visibility_scope": visibility_scope,
-            "specific_ds": bool(row.get("specific_ds")),
+            "specific_ds": _effective_datasource_scoped(row),
         }
         if _row_matches_datasource(row, datasource):
             agent_list.append(agent)
@@ -727,7 +763,7 @@ def find_custom_prompts(
     content = "<Other-Infos>\n"
     for agent in agent_list:
         content += "\t<agent>\n"
-        datasource_scoped = bool(agent.get("specific_ds"))
+        datasource_scoped = _effective_datasource_scoped(agent)
         content += f"\t\t<scope>{_scope_label(agent['visibility_scope'], datasource_scoped)}</scope>\n"
         content += f"\t\t<runtime-constraint>{_xml_text(_scope_runtime_notice(agent['visibility_scope'], datasource_scoped=datasource_scoped))}</runtime-constraint>\n"
         content += f"\t\t<name>{_xml_text(agent['name'])}</name>\n"
@@ -851,7 +887,7 @@ def find_data_skills(
             "embedding": row.get("embedding"),
             "embedding_signature": row.get("embedding_signature"),
             "visibility_scope": visibility_scope,
-            "specific_ds": bool(row.get("specific_ds")),
+            "specific_ds": _effective_datasource_scoped(row),
             "ai_model_id": row.get("ai_model_id"),
         })
         ai_model_id = row.get("ai_model_id")
@@ -885,7 +921,7 @@ def find_data_skills(
     for skill in skill_rows:
         content_parts.append("\n---")
         content_parts.append(f"## {skill['name']}")
-        datasource_scoped = bool(skill.get("specific_ds"))
+        datasource_scoped = _effective_datasource_scoped(skill)
         content_parts.append(f"\n作用域：{_scope_label(skill['visibility_scope'], datasource_scoped)}")
         content_parts.append(
             f"\n约束：{_scope_runtime_notice(skill['visibility_scope'], prompt_type='Data Skill', datasource_scoped=datasource_scoped)}"

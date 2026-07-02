@@ -21,7 +21,7 @@ async def get_api_key(session: SessionDep, access_key: str) -> ApiKeyModel | Non
     return session.exec(query).first()
 
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.ASK_INFO, keyExpression="access_key")
-async def clear_api_key_cache(access_key: str):
+async def clear_api_key_cache(access_key: str, session: SessionDep | None = None):
      """
      是什么：clear_api_key_cache 是一个可以复用的小步骤，负责系统管理相关的一件事。
      谁调用：后端其他代码在需要这个功能时会调用它。

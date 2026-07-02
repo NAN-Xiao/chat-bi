@@ -17,9 +17,16 @@ class FakeRedis:
         self.values = {}
         self.lists = defaultdict(list)
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and key in self.values:
+            return False
         self.values[key] = value
         return True
+
+    async def delete(self, key):
+        existed = key in self.values
+        self.values.pop(key, None)
+        return 1 if existed else 0
 
     async def get(self, key):
         return self.values.get(key)
@@ -246,6 +253,29 @@ def test_enqueue_rejects_when_tenant_task_quota_is_exceeded(monkeypatch):
             assert "Tenant 10 task quota exceeded" in str(exc)
         else:
             raise AssertionError("tenant task quota should reject enqueue")
+
+    asyncio.run(scenario())
+
+
+def test_enqueue_task_deduplicates_pending_task_by_key(monkeypatch):
+    _install_fake_redis(monkeypatch)
+    task_queue._task_handlers["test.dedupe"] = lambda payload: payload
+
+    async def scenario():
+        first = await task_queue.enqueue_task("test.dedupe", {"ids": [1]}, tenant_id=10, dedupe_key="same")
+        second = await task_queue.enqueue_task("test.dedupe", {"ids": [1]}, tenant_id=10, dedupe_key="same")
+
+        assert second["id"] == first["id"]
+        assert await task_queue.queue_size() == 1
+        assert await task_queue.tenant_queue_size(10) == 1
+
+        claimed = await task_queue._claim_task()
+        finished = await task_queue.run_task(claimed, worker_name="worker-1")
+        assert finished["status"] == TaskStatus.SUCCEEDED.value
+
+        third = await task_queue.enqueue_task("test.dedupe", {"ids": [1]}, tenant_id=10, dedupe_key="same")
+        assert third["id"] != first["id"]
+        assert await task_queue.queue_size() == 1
 
     asyncio.run(scenario())
 

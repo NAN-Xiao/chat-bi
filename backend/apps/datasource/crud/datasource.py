@@ -14,6 +14,7 @@ from apps.datasource.crud.permission import can_access_table, current_tenant_id,
     has_datasource_access, is_normal_user
 from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.crud.query_executor import execute_user_query_or_raise
+from apps.datasource.embedding.utils import embedding_payload_is_current
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, effective_db_schema, encrypt_datasource_configuration
 from apps.db.constant import DB
@@ -956,11 +957,16 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
         missing_embedding_table_ids = [
             int(table["id"])
             for table in tables
-            if not table.get("embedding")
+            if not embedding_payload_is_current(table.get("embedding"))
         ]
         if missing_embedding_table_ids:
             run_save_table_embeddings(missing_embedding_table_ids, tenant_id=_schema_metadata_tenant_id(session, ds, current_user))
-        tables = calc_table_embedding(tables, question)
+        metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user)
+        tables = calc_table_embedding(
+            tables,
+            question,
+            stale_embedding_callback=lambda ids: run_save_table_embeddings(ids, tenant_id=metadata_tenant_id),
+        )
     # 拼接结构信息
     if tables:
         for s in tables:

@@ -93,8 +93,8 @@ async def status(session: SessionDep, current_user: CurrentUser, dto: ApikeyStat
     if dto.status == api_key.status:
         return
     api_key.status = dto.status
-    await clear_api_key_cache(api_key.access_key)
     session.add(api_key)
+    await clear_api_key_cache(api_key.access_key, session=session)
     session.commit()
 
 @router.delete("/{id}")
@@ -110,6 +110,6 @@ async def delete(session: SessionDep, current_user: CurrentUser, id: int):
         raise ValueError("API Key not found")
     if api_key.uid != current_user.id or api_key.tenant_id != _current_tenant_id(current_user):
         raise PermissionError("No permission to delete this API Key")
-    await clear_api_key_cache(api_key.access_key)
     session.delete(api_key)
+    await clear_api_key_cache(api_key.access_key, session=session)
     session.commit()

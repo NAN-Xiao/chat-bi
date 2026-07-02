@@ -12,7 +12,17 @@ from apps.system.models.system_variable_model import SystemVariable
 from common.core.deps import SessionDep, CurrentUser
 
 
-def _escape_sql_value(value: str) -> str:
+_SYSTEM_VARIABLE_USER_FIELDS = {
+    "id": "id",
+    "user_id": "id",
+    "account": "account",
+    "email": "email",
+    "name": "name",
+    "tenant_id": "tenant_id",
+}
+
+
+def _escape_sql_value(value: str, ds_type: str | None = None) -> str:
     """
     是什么：_escape_sql_value 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -22,8 +32,10 @@ def _escape_sql_value(value: str) -> str:
         return value
     # 标准 SQL 转义：将嵌入的单引号加倍。
     escaped = str(value).replace("'", "''")
-    # 移除部分驱动会解释为转义字符的反斜杠。
-    escaped = escaped.replace("\\", "\\\\")
+    # 只有保留 C 风格反斜杠字符串转义的方言需要再加倍反斜杠；
+    # PostgreSQL/SQL Server 标准字符串下反斜杠是普通字符，不能无条件改写。
+    if str(ds_type or "").strip().lower() in {"mysql", "doris", "starrocks", "ck", "clickhouse", "hive"}:
+        escaped = escaped.replace("\\", "\\\\")
     return escaped
 
 
@@ -52,7 +64,7 @@ def _quoted_value(ds: CoreDatasource, field: CoreField, value: Any) -> str:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    escaped = _escape_sql_value(value)
+    escaped = _escape_sql_value(value, ds.type)
     if _sql_server_nchar(ds, field):
         return f"N'{escaped}'"
     return f"'{escaped}'"
@@ -111,7 +123,7 @@ def _where_value_for_term(
         if value is None or value == "":
             _invalid_filter("行权限过滤条件缺少 LIKE 值", strict)
             return None
-        escaped = _escape_sql_value(value)
+        escaped = _escape_sql_value(value, ds.type)
         if _sql_server_nchar(ds, field):
             return f"N'%{escaped}%'"
         return f"'%{escaped}%'"
@@ -410,17 +422,17 @@ def getSysVariableValue(sys_variable: SystemVariable, current_user: CurrentUser,
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
-    v = None
-    if sys_variable.value[0] == 'name':
-        v = current_user.name
-    if sys_variable.value[0] == 'account':
-        v = current_user.account
-    if sys_variable.value[0] == 'email':
-        v = current_user.email
+    if not isinstance(sys_variable.value, list) or not sys_variable.value:
+        return None
+    variable_key = str(sys_variable.value[0] or "").strip()
+    user_attr = _SYSTEM_VARIABLE_USER_FIELDS.get(variable_key)
+    if not user_attr:
+        return None
+    v = getattr(current_user, user_attr, None)
     if v is None:
         return None
 
-    escaped_v = _escape_sql_value(v) if v is not None else v
+    escaped_v = _escape_sql_value(v, ds.type) if v is not None else v
 
     whereValue = ''
     if item['term'] == 'null':

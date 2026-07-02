@@ -274,6 +274,8 @@ def _saved_record_missing_event_projection(
             _missing_event_feedback,
             _missing_event_notice,
             _rewrite_sql_for_missing_events,
+            _unknown_event_feedback,
+            _unknown_event_notice,
         )
 
         tracking_config, _ = find_tracking_prompt_context(session, _current_tenant_id(current_user))
@@ -292,6 +294,14 @@ def _saved_record_missing_event_projection(
 
     missing_events = sorted(set(rewrite.missing_events) | set(cleanup.missing_events if cleanup else []))
     if not missing_events:
+        if rewrite.unknown_events:
+            return _SavedRecordBusinessProjection(
+                data=data,
+                chart=chart,
+                analysis=_unknown_event_feedback(rewrite.unknown_events),
+                analysis_notice=_unknown_event_notice(rewrite.unknown_events),
+                execute_sql=rewrite.sql if rewrite.changed and rewrite.sql else None,
+            )
         return None
 
     cleaned_data = cleanup.result if cleanup else data

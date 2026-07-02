@@ -170,6 +170,19 @@ def _task_tenant_index_key(task_id: str) -> str:
     return redis_key("task", "tenant", task_id)
 
 
+def _task_dedupe_key(tenant_id: int | str | None, queue_name: str | None, dedupe_key: str) -> str:
+    """
+    是什么：_task_dedupe_key 生成租户内任务去重键。
+    """
+    return tenant_redis_key(
+        _normalize_tenant_id(tenant_id),
+        "task",
+        "dedupe",
+        queue_name or settings.TASK_QUEUE_NAME,
+        dedupe_key,
+    )
+
+
 def _decode_redis_value(value: bytes | str) -> str:
     """
     是什么：_decode_redis_value 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -258,6 +271,7 @@ async def enqueue_task(
     tenant_id: int | str | None = None,
     queue_name: str | None = None,
     max_attempts: int | None = None,
+    dedupe_key: str | None = None,
 ) -> dict[str, Any]:
     """
     是什么：enqueue_task 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -267,11 +281,39 @@ async def enqueue_task(
     if name not in _task_handlers:
         raise ValueError(f"Unknown task handler: {name}")
 
-    task_id = uuid.uuid4().hex
     now = utc_now()
     resolved_tenant_id = _normalize_tenant_id(tenant_id)
+    resolved_queue_name = queue_name or settings.TASK_QUEUE_NAME
+    client = get_redis_client()
+    task_id = uuid.uuid4().hex
+    dedupe_redis_key = None
+    if dedupe_key:
+        dedupe_redis_key = _task_dedupe_key(resolved_tenant_id, resolved_queue_name, str(dedupe_key))
+        acquired = await client.set(
+            dedupe_redis_key,
+            task_id,
+            ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
+            nx=True,
+        )
+        if not acquired:
+            raw_existing_task_id = await client.get(dedupe_redis_key)
+            if raw_existing_task_id is not None:
+                existing_task = await get_task(_decode_redis_value(raw_existing_task_id), tenant_id=resolved_tenant_id)
+                if existing_task and existing_task.get("status") in {
+                    TaskStatus.PENDING.value,
+                    TaskStatus.RUNNING.value,
+                }:
+                    return existing_task
+            await client.set(
+                dedupe_redis_key,
+                task_id,
+                ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
+            )
+
     quota_state = check_tenant_usage_quota_detached(tenant_id=resolved_tenant_id, action="task")
     if not quota_state.allowed:
+        if dedupe_redis_key:
+            await client.delete(dedupe_redis_key)
         if getattr(quota_state, "reason", None) == "subscription_suspended":
             raise RuntimeError(
                 f"Tenant {resolved_tenant_id} subscription is {quota_state.subscription_status}; "
@@ -285,6 +327,8 @@ async def enqueue_task(
     if max_pending_per_tenant > 0:
         current_pending = await tenant_queue_size(resolved_tenant_id, queue_name)
         if current_pending >= max_pending_per_tenant:
+            if dedupe_redis_key:
+                await client.delete(dedupe_redis_key)
             raise RuntimeError(
                 f"Tenant {resolved_tenant_id} task queue is full "
                 f"({current_pending}/{max_pending_per_tenant} pending)."
@@ -293,7 +337,7 @@ async def enqueue_task(
         "id": task_id,
         "tenant_id": resolved_tenant_id,
         "name": name,
-        "queue": queue_name or settings.TASK_QUEUE_NAME,
+        "queue": resolved_queue_name,
         "status": TaskStatus.PENDING.value,
         "payload": payload or {},
         "result": None,
@@ -306,9 +350,9 @@ async def enqueue_task(
         "attempts": 0,
         "max_attempts": max_attempts or settings.TASK_QUEUE_MAX_ATTEMPTS,
         "worker": None,
+        "dedupe_key": str(dedupe_key) if dedupe_key else None,
     }
 
-    client = get_redis_client()
     await client.set(
         _task_key(task_id, resolved_tenant_id),
         _json_dumps(task),
@@ -333,6 +377,7 @@ async def _enqueue_task_and_log(
     tenant_id: int | str | None = None,
     queue_name: str | None = None,
     max_attempts: int | None = None,
+    dedupe_key: str | None = None,
 ) -> dict[str, Any] | None:
     """
     是什么：_enqueue_task_and_log 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -347,6 +392,7 @@ async def _enqueue_task_and_log(
             tenant_id=tenant_id,
             queue_name=queue_name,
             max_attempts=max_attempts,
+            dedupe_key=dedupe_key,
         )
     except Exception:
         AppLogUtil.exception(f"Failed to enqueue task: {name}")
@@ -361,6 +407,7 @@ def enqueue_task_detached(
     tenant_id: int | str | None = None,
     queue_name: str | None = None,
     max_attempts: int | None = None,
+    dedupe_key: str | None = None,
 ) -> dict[str, Any] | None:
     """
     是什么：enqueue_task_detached 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -374,6 +421,7 @@ def enqueue_task_detached(
         tenant_id=tenant_id,
         queue_name=queue_name,
         max_attempts=max_attempts,
+        dedupe_key=dedupe_key,
     )
     try:
         loop = asyncio.get_running_loop()
@@ -490,6 +538,20 @@ async def _remove_processing_task(task_id: str, tenant_id: int | str | None, que
     做了什么：把后端基础能力不再需要的数据、缓存或临时内容清理掉。
     """
     await get_redis_client().lrem(_tenant_processing_key(tenant_id, queue_name), 0, task_id)
+
+
+async def _release_task_dedupe(task: dict[str, Any]) -> None:
+    """
+    是什么：_release_task_dedupe 在任务终态时释放可选去重键。
+    """
+    dedupe_key = task.get("dedupe_key")
+    if not dedupe_key:
+        return
+    client = get_redis_client()
+    key = _task_dedupe_key(task.get("tenant_id"), task.get("queue"), str(dedupe_key))
+    raw_task_id = await client.get(key)
+    if raw_task_id is not None and _decode_redis_value(raw_task_id) == str(task.get("id")):
+        await client.delete(key)
 
 
 async def _tenant_processing_limit_reached(tenant_id: int | str | None, queue_name: str | None = None) -> bool:
@@ -677,8 +739,10 @@ async def run_task(
             await _push_pending_task(task_id, task.get("tenant_id"), task_queue)
             _record_task_usage(task.get("tenant_id"), "task.retried", success=False)
         elif task["status"] == TaskStatus.SUCCEEDED.value:
+            await _release_task_dedupe(task)
             _record_task_usage(task.get("tenant_id"), "task.succeeded", success=True)
         elif task["status"] == TaskStatus.FAILED.value:
+            await _release_task_dedupe(task)
             _record_task_usage(task.get("tenant_id"), "task.failed", success=False)
 
     return task
@@ -739,6 +803,7 @@ async def recover_stale_tasks(
             task["worker"] = None
             await _save_task(task)
             await _ack_task(task_id, queue)
+            await _release_task_dedupe(task)
             failed += 1
             continue
 

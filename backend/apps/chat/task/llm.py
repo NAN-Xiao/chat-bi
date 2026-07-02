@@ -51,6 +51,7 @@ from apps.datasource.crud.query_executor import (
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
     user_data_unavailable_message,
+    wrap_external_subquery_with_table_rule,
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
@@ -1954,7 +1955,7 @@ class LLMService:
         for table in ds.tables:
             if table.name in tables and table.sql:
                 # sub_query.append({"table": table.name, "query": table.sql})
-                result_dict[table.name] = table.sql
+                result_dict[table.name] = wrap_external_subquery_with_table_rule(ds, table.name, table.sql)
                 sub_query.append({"table": table.name, "query": f'{dynamic_subsql_prefix}{table.name}'})
         if not sub_query:
             return None

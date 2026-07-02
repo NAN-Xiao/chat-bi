@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import inspect
 import json
 from types import SimpleNamespace
@@ -943,6 +944,7 @@ def test_auto_data_skill_ranking_uses_name_description_embedding_before_body_key
                 "收入确认 Skill",
                 revenue_description,
                 "# Revenue Body\nUse configured net amount.",
+                dim=2,
             ),
             "funnel_description": funnel_description,
             "funnel_prompt": "# Funnel Body\n净收入 确认 订单 状态 noisy body.",
@@ -951,6 +953,7 @@ def test_auto_data_skill_ranking_uses_name_description_embedding_before_body_key
                 "漏斗 Skill",
                 funnel_description,
                 "# Funnel Body\n净收入 确认 订单 状态 noisy body.",
+                dim=2,
             ),
         })
 
@@ -966,6 +969,53 @@ def test_auto_data_skill_ranking_uses_name_description_embedding_before_body_key
 
         assert "# Revenue Body" in skill_text
         assert "# Funnel Body" not in skill_text
+        assert logs == ["名称：收入确认 Skill\n描述：净收入确认和订单状态口径\nSkill 内容：# Revenue Body\nUse configured net amount."]
+
+
+def test_auto_data_skill_embedding_with_legacy_signature_is_requeued(monkeypatch):
+    engine = _engine()
+    queued = []
+    monkeypatch.setattr(custom_prompt_runtime, "run_save_custom_prompt_skill_embeddings", lambda ids, tenant_id=None: queued.append((ids, tenant_id)))
+    with Session(engine) as session:
+        description = "净收入确认和订单状态口径"
+        prompt = "# Revenue Body\nUse configured net amount."
+        legacy_payload = {
+            "name": "收入确认 Skill",
+            "description": description,
+            "prompt": prompt,
+        }
+        legacy_signature = hashlib.sha256(
+            json.dumps(legacy_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        session.execute(text(
+            """
+            INSERT INTO custom_prompt
+                (id, tenant_id, type, name, description, target_scope, active, visible,
+                 create_by, visibility_scope, prompt, embedding, embedding_signature,
+                 specific_ds, datasource_ids)
+            VALUES
+                (8111, 10, 'DATA_SKILL', '收入确认 Skill', :description, 'SMART_QA', 1, 1,
+                 2, 'ADMIN_PUBLIC', :prompt, :embedding, :signature, 0, '[]')
+            """
+        ), {
+            "description": description,
+            "prompt": prompt,
+            "embedding": json.dumps([1.0, 0.0]),
+            "signature": legacy_signature,
+        })
+
+        skill_text, logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=None,
+            current_user_id=3,
+            tenant_id=10,
+            question="净收入确认怎么查",
+        )
+
+        assert queued == [([8111], 10)]
+        assert "# Revenue Body" in skill_text
         assert logs == ["名称：收入确认 Skill\n描述：净收入确认和订单状态口径\nSkill 内容：# Revenue Body\nUse configured net amount."]
 
 
@@ -989,7 +1039,7 @@ def test_data_skill_embedding_is_invalidated_and_requeued_when_name_or_descripti
         session.commit()
         row = session.get(CustomPrompt, skill_id)
         row.embedding = json.dumps([0.0, 1.0])
-        row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt)
+        row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt, dim=2)
         session.add(row)
         session.commit()
         queued.clear()
@@ -1035,7 +1085,7 @@ def test_data_skill_embedding_is_invalidated_and_requeued_when_body_changes(monk
         session.commit()
         row = session.get(CustomPrompt, skill_id)
         row.embedding = json.dumps([0.0, 1.0])
-        row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt)
+        row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt, dim=2)
         session.add(row)
         session.commit()
         queued.clear()

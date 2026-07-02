@@ -15,13 +15,11 @@ import orjson
 from sqlmodel import Session
 
 from apps.chat.task.assistant_output import emit, sse
-from apps.datasource.crud.permission_errors import (
-    PERMISSION_DENIED_ERROR_TYPE,
-    looks_like_permission_scope_error,
-)
+from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
 from common.error import AppDBConnectionError, AppDBError, DataUnavailableError, SingleMessageError
 from common.user_facing_errors import (
     DATA_UNAVAILABLE_ERROR_TYPE,
+    classify_error,
     data_unavailable_error_payload,
     looks_like_data_unavailable_business_message,
 )
@@ -101,8 +99,9 @@ def classify_workflow_error(error: BaseException) -> str:
         return "db_connection"
     if isinstance(error, AppDBError):
         return "exec_sql"
-    if looks_like_permission_scope_error(str(error)):
-        return PERMISSION_DENIED_ERROR_TYPE
+    classified = classify_error(error).error_type
+    if classified in {DATA_UNAVAILABLE_ERROR_TYPE, PERMISSION_DENIED_ERROR_TYPE}:
+        return classified
     return "unexpected"
 
 

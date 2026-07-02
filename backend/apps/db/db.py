@@ -768,7 +768,7 @@ def _unsafe_exec_sql_after_validation(
                     res = _limited_fetchmany(result)
                     return _build_query_result(columns, res, sql)
                 except Exception as ex:
-                    raise ParseSQLResultError(str(ex))
+                    raise ParseSQLResultError(str(ex)) from ex
         except Exception:
             session.rollback()
             raise
@@ -789,7 +789,7 @@ def _unsafe_exec_sql_after_validation(
                                                                                                 cursor.description]
                     return _build_query_result(columns, res, sql)
                 except Exception as ex:
-                    raise ParseSQLResultError(str(ex))
+                    raise ParseSQLResultError(str(ex)) from ex
         elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
             ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
             with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
@@ -805,7 +805,7 @@ def _unsafe_exec_sql_after_validation(
                                                                                                 cursor.description]
                     return _build_query_result(columns, res, sql)
                 except Exception as ex:
-                    raise ParseSQLResultError(str(ex))
+                    raise ParseSQLResultError(str(ex)) from ex
         elif equals_ignore_case(ds.type, 'redshift'):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                              password=conf.password,
@@ -819,7 +819,7 @@ def _unsafe_exec_sql_after_validation(
                                                                                                 cursor.description]
                     return _build_query_result(columns, res, sql)
                 except Exception as ex:
-                    raise ParseSQLResultError(str(ex))
+                    raise ParseSQLResultError(str(ex)) from ex
         elif equals_ignore_case(ds.type, 'kingbase'):
             with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                   password=conf.password,
@@ -834,7 +834,7 @@ def _unsafe_exec_sql_after_validation(
                                                                                                 cursor.description]
                     return _build_query_result(columns, res, sql)
                 except Exception as ex:
-                    raise ParseSQLResultError(str(ex))
+                    raise ParseSQLResultError(str(ex)) from ex
         elif equals_ignore_case(ds.type, 'es'):
             try:
                 res, columns = get_es_data_by_http(conf, sql)
@@ -857,7 +857,7 @@ def _unsafe_exec_sql_after_validation(
                                                                                                 cursor.description]
                     return _build_query_result(columns, res, hive_sql)
                 except Exception as ex:
-                    raise ParseSQLResultError(str(ex))
+                    raise ParseSQLResultError(str(ex)) from ex
 
 
 def normalize_sql_safety_ds_type(ds_type: str | None) -> str:

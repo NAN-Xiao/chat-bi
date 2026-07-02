@@ -3,8 +3,11 @@
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 import re
+from threading import Lock
+import time
 from typing import Any, TypedDict
 
 import orjson
@@ -59,12 +62,14 @@ from apps.chat.task.assistant_workflow import (
 )
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission_errors import (
+    audit_permission_denied,
     looks_like_permission_scope_error,
 )
 from apps.datasource.crud.query_executor import validate_user_query_sql_or_raise
 from apps.datasource.crud.sql_permission import normalize_identifier
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_connection, get_session, get_sqlglot_dialect
+from common.core.config import settings
 from common.error import AppDBConnectionError, DataUnavailableError
 from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil, extract_nested_json
@@ -212,10 +217,16 @@ class _EventAvailability:
 class _MissingEventSqlRewrite:
     sql: str | None
     missing_events: list[str] = field(default_factory=list)
+    unknown_events: list[str] = field(default_factory=list)
     removed_fields: list[str] = field(default_factory=list)
     removed_ctes: list[str] = field(default_factory=list)
+    availability: list[_EventAvailability] = field(default_factory=list)
     changed: bool = False
     executable: bool = True
+
+
+_EVENT_EXISTENCE_CACHE: dict[tuple[Any, str, str, str, str], tuple[float, bool]] = {}
+_EVENT_EXISTENCE_CACHE_LOCK = Lock()
 
 
 def _event_name_fields_for_service(service: Any) -> set[str]:
@@ -379,6 +390,161 @@ def _quote_table_for_sql(table_name: str, schema_name: str | None, ds_type: str 
     return table.sql(dialect=get_sqlglot_dialect(ds_type))
 
 
+def _event_cache_datasource_key(ds: Any) -> Any:
+    return getattr(ds, "id", None) or (
+        getattr(ds, "type", None),
+        getattr(ds, "name", None),
+        id(ds),
+    )
+
+
+def _event_cache_key(
+        *,
+        ds: Any,
+        schema: str,
+        table: str,
+        event_field: str,
+        event_value: str,
+) -> tuple[Any, str, str, str, str]:
+    return (
+        _event_cache_datasource_key(ds),
+        normalize_identifier(schema),
+        normalize_identifier(table),
+        normalize_identifier(event_field),
+        event_value,
+    )
+
+
+def _cached_event_existence(
+        *,
+        ds: Any,
+        schema: str,
+        table: str,
+        event_field: str,
+        event_values: set[str],
+) -> tuple[dict[str, bool], set[str]]:
+    ttl = max(0, int(getattr(settings, "SMART_QA_EVENT_EXISTENCE_CACHE_TTL_SECONDS", 0) or 0))
+    if ttl <= 0:
+        return {}, set(event_values)
+    now = time.monotonic()
+    cached: dict[str, bool] = {}
+    pending: set[str] = set()
+    with _EVENT_EXISTENCE_CACHE_LOCK:
+        for event_value in event_values:
+            key = _event_cache_key(
+                ds=ds,
+                schema=schema,
+                table=table,
+                event_field=event_field,
+                event_value=event_value,
+            )
+            item = _EVENT_EXISTENCE_CACHE.get(key)
+            if item and item[0] > now:
+                cached[event_value] = item[1]
+            else:
+                if item:
+                    _EVENT_EXISTENCE_CACHE.pop(key, None)
+                pending.add(event_value)
+    return cached, pending
+
+
+def _store_event_existence_cache(
+        *,
+        ds: Any,
+        schema: str,
+        table: str,
+        event_field: str,
+        values: dict[str, bool],
+) -> None:
+    ttl = max(0, int(getattr(settings, "SMART_QA_EVENT_EXISTENCE_CACHE_TTL_SECONDS", 0) or 0))
+    if ttl <= 0 or not values:
+        return
+    expires_at = time.monotonic() + ttl
+    with _EVENT_EXISTENCE_CACHE_LOCK:
+        for event_value, exists in values.items():
+            key = _event_cache_key(
+                ds=ds,
+                schema=schema,
+                table=table,
+                event_field=event_field,
+                event_value=event_value,
+            )
+            _EVENT_EXISTENCE_CACHE[key] = (expires_at, bool(exists))
+
+
+def _chunks(values: list[str], size: int):
+    chunk_size = max(1, int(size or 1))
+    for index in range(0, len(values), chunk_size):
+        yield values[index:index + chunk_size]
+
+
+def _event_values_exist_in_datasource(
+        *,
+        service: Any,
+        table: str,
+        schema: str,
+        event_field: str,
+        event_values: set[str],
+) -> dict[str, bool | None]:
+    ds = getattr(service, "ds", None)
+    values = {str(value) for value in event_values if str(value).strip()}
+    if ds is None or not values:
+        return {value: None for value in values}
+
+    cached, pending = _cached_event_existence(
+        ds=ds,
+        schema=schema,
+        table=table,
+        event_field=event_field,
+        event_values=values,
+    )
+    result: dict[str, bool | None] = dict(cached)
+    if not pending:
+        return result
+
+    ds_type = getattr(ds, "type", None)
+    dialect = get_sqlglot_dialect(ds_type)
+    table_sql = _quote_table_for_sql(table, schema, ds_type)
+    field_sql = exp.column(event_field, quoted=True).sql(dialect=dialect)
+    existing_values: set[str] = set()
+    batch_size = max(1, int(getattr(settings, "SMART_QA_EVENT_EXISTENCE_BATCH_SIZE", 500) or 500))
+    db_session = None
+    try:
+        db_session = get_session(ds, timeout=10)
+        for batch in _chunks(sorted(pending), batch_size):
+            params = {f"event_value_{index}": value for index, value in enumerate(batch)}
+            placeholders = ", ".join(f":event_value_{index}" for index in range(len(batch)))
+            sql = f"SELECT DISTINCT {field_sql} AS event_value FROM {table_sql} WHERE {field_sql} IN ({placeholders})"
+            rows = db_session.execute(text(sql), params).all()
+            for row in rows:
+                try:
+                    existing_values.add(str(row[0]))
+                except Exception:
+                    pass
+    except Exception as exc:
+        AppLogUtil.warning(
+            "Skip missing event post-check batch: "
+            f"{table}.{event_field} values={sorted(pending)} error={exc}"
+        )
+        for event_value in pending:
+            result[event_value] = None
+        return result
+    finally:
+        if db_session is not None:
+            db_session.close()
+
+    fresh = {event_value: event_value in existing_values for event_value in pending}
+    _store_event_existence_cache(
+        ds=ds,
+        schema=schema,
+        table=table,
+        event_field=event_field,
+        values=fresh,
+    )
+    result.update(fresh)
+    return result
+
+
 def _event_exists_in_datasource(
         *,
         service: Any,
@@ -387,34 +553,13 @@ def _event_exists_in_datasource(
         event_field: str,
         event_value: str,
 ) -> bool | None:
-    ds = getattr(service, "ds", None)
-    if ds is None:
-        return None
-
-    ds_type = getattr(ds, "type", None)
-    table_expr = exp.Table(this=exp.to_identifier(table, quoted=True))
-    if schema:
-        table_expr.set("db", exp.to_identifier(schema, quoted=True))
-    sql = exp.select(exp.Literal.number(1)).from_(table_expr).where(
-        exp.EQ(
-            this=exp.column(event_field, quoted=True),
-            expression=exp.Var(this=":event_value"),
-        )
-    ).limit(1).sql(
-        dialect=get_sqlglot_dialect(ds_type),
-    )
-    try:
-        db_session = get_session(ds, timeout=10)
-        try:
-            row = db_session.execute(text(sql), {"event_value": event_value}).first()
-            return row is not None
-        finally:
-            db_session.close()
-    except Exception as exc:
-        AppLogUtil.warning(
-            f"Skip missing event post-check for {table}.{event_field}={event_value}: {exc}"
-        )
-        return None
+    return _event_values_exist_in_datasource(
+        service=service,
+        table=table,
+        schema=schema,
+        event_field=event_field,
+        event_values={event_value},
+    ).get(event_value)
 
 
 def _event_availability_for_sql(service: Any, sql: str) -> list[_EventAvailability]:
@@ -422,34 +567,45 @@ def _event_availability_for_sql(service: Any, sql: str) -> list[_EventAvailabili
     if not predicates:
         return []
 
+    grouped_values: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    for predicate in predicates:
+        grouped_values[(predicate.schema, predicate.table, predicate.event_field)].update(predicate.event_values)
+
+    existence_by_group: dict[tuple[str, str, str], dict[str, bool | None]] = {}
+    for (schema, table, event_field), event_values in grouped_values.items():
+        existence_by_group[(schema, table, event_field)] = _event_values_exist_in_datasource(
+            service=service,
+            table=table,
+            schema=schema,
+            event_field=event_field,
+            event_values=event_values,
+        )
+
+    unknown_policy = str(getattr(settings, "SMART_QA_EVENT_UNKNOWN_POLICY", "conservative") or "conservative").lower()
+    strict_unknown = unknown_policy == "strict"
     availability: list[_EventAvailability] = []
-    existence_cache: dict[tuple[str, str, str, str], bool | None] = {}
     for predicate in predicates:
         item = _EventAvailability(predicate=predicate)
         for event_value in predicate.event_values:
-            cache_key = (predicate.schema, predicate.table, predicate.event_field, event_value)
-            if cache_key not in existence_cache:
-                existence_cache[cache_key] = _event_exists_in_datasource(
-                    service=service,
-                    table=predicate.table,
-                    schema=predicate.schema,
-                    event_field=predicate.event_field,
-                    event_value=event_value,
-                )
-            exists = existence_cache[cache_key]
+            exists = existence_by_group.get(
+                (predicate.schema, predicate.table, predicate.event_field),
+                {},
+            ).get(event_value)
             if exists is False:
                 item.missing_values.add(event_value)
             elif exists is True:
                 item.existing_values.add(event_value)
+            elif strict_unknown:
+                item.missing_values.add(event_value)
             else:
                 item.unknown_values.add(event_value)
         availability.append(item)
     return availability
 
 
-def _missing_requested_events(service: Any, sql: str) -> list[_RequestedEventPredicate]:
+def _missing_requested_events_from_availability(items: list[_EventAvailability]) -> list[_RequestedEventPredicate]:
     missing: list[_RequestedEventPredicate] = []
-    for item in _event_availability_for_sql(service, sql):
+    for item in items:
         if item.missing_values:
             predicate = item.predicate
             missing.append(_RequestedEventPredicate(
@@ -462,6 +618,18 @@ def _missing_requested_events(service: Any, sql: str) -> list[_RequestedEventPre
                 select_output_columns=predicate.select_output_columns,
             ))
     return missing
+
+
+def _missing_requested_events(service: Any, sql: str) -> list[_RequestedEventPredicate]:
+    return _missing_requested_events_from_availability(_event_availability_for_sql(service, sql))
+
+
+def _unknown_events_from_availability(items: list[_EventAvailability]) -> list[str]:
+    return sorted({
+        value
+        for item in items
+        for value in item.unknown_values
+    })
 
 
 def _final_select(statement: exp.Expression) -> exp.Select | None:
@@ -548,6 +716,42 @@ def _missing_event_notice(missing_events: list[str], removed_fields: list[str]) 
         "items": missing_events,
         "removed_fields": removed_fields,
     }
+
+
+def _unknown_event_feedback(unknown_events: list[str]) -> str:
+    event_text = "、".join(unknown_events)
+    return f"未能确认 {event_text} 埋点是否存在，相关数值可能受数据源状态影响。"
+
+
+def _unknown_event_notice(unknown_events: list[str]) -> dict[str, Any]:
+    return {
+        "notice_type": "data_scope_gap",
+        "severity": "warning",
+        "reason": "event_existence_unknown",
+        "items": unknown_events,
+        "unconfirmed_events": unknown_events,
+        "agent_guidance": "部分埋点存在性未能确认，结论需提示这些指标可能不完整或为占位零值。",
+    }
+
+
+def _business_notice_rank(notice: dict[str, Any] | None) -> int:
+    reason = str((notice or {}).get("reason") or "")
+    return {
+        "missing_event": 30,
+        "event_existence_unknown": 20,
+        "data_unavailable": 10,
+    }.get(reason, 0)
+
+
+def _merge_business_notice(
+        current: dict[str, Any] | None,
+        candidate: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not candidate:
+        return current
+    if not current or _business_notice_rank(candidate) >= _business_notice_rank(current):
+        return candidate
+    return current
 
 
 def _missing_event_predicates_from_availability(items: list[_EventAvailability]) -> list[_RequestedEventPredicate]:
@@ -726,8 +930,14 @@ def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlR
         for item in availability
         for value in item.missing_values
     })
+    unknown_events = _unknown_events_from_availability(availability)
     if not missing_events:
-        return _MissingEventSqlRewrite(sql=sql, executable=True)
+        return _MissingEventSqlRewrite(
+            sql=sql,
+            unknown_events=unknown_events,
+            availability=availability,
+            executable=True,
+        )
 
     missing_predicates = _missing_event_predicates_from_availability(availability)
     fields_to_remove = _result_fields_for_missing_events(sql, service, missing_predicates)
@@ -736,7 +946,9 @@ def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlR
         return _MissingEventSqlRewrite(
             sql=None,
             missing_events=missing_events,
+            unknown_events=unknown_events,
             removed_fields=sorted(fields_to_remove),
+            availability=availability,
             executable=False,
         )
 
@@ -747,7 +959,9 @@ def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlR
         return _MissingEventSqlRewrite(
             sql=None,
             missing_events=missing_events,
+            unknown_events=unknown_events,
             removed_fields=sorted(fields_to_remove),
+            availability=availability,
             executable=False,
         )
 
@@ -764,8 +978,10 @@ def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlR
             return _MissingEventSqlRewrite(
                 sql=None,
                 missing_events=missing_events,
+                unknown_events=unknown_events,
                 removed_fields=sorted(fields_to_remove),
                 removed_ctes=sorted(missing_ctes),
+                availability=availability,
                 executable=False,
             )
         changed = True
@@ -777,8 +993,10 @@ def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlR
         return _MissingEventSqlRewrite(
             sql=None,
             missing_events=missing_events,
+            unknown_events=unknown_events,
             removed_fields=sorted(fields_to_remove),
             removed_ctes=sorted(missing_ctes),
+            availability=availability,
             executable=False,
         )
     for value in missing_events:
@@ -786,23 +1004,33 @@ def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlR
             return _MissingEventSqlRewrite(
                 sql=None,
                 missing_events=missing_events,
+                unknown_events=unknown_events,
                 removed_fields=sorted(fields_to_remove),
                 removed_ctes=sorted(missing_ctes),
+                availability=availability,
                 executable=False,
             )
 
     return _MissingEventSqlRewrite(
         sql=rewritten_sql,
         missing_events=missing_events,
+        unknown_events=unknown_events,
         removed_fields=sorted(fields_to_remove),
         removed_ctes=sorted(missing_ctes),
+        availability=availability,
         changed=changed,
         executable=True,
     )
 
 
-def _cleanup_missing_event_result(service: Any, sql: str, result: dict[str, Any]) -> _EventResultCleanup:
-    missing_events = _missing_requested_events(service, sql)
+def _cleanup_missing_event_result(
+        service: Any,
+        sql: str,
+        result: dict[str, Any],
+        availability: list[_EventAvailability] | None = None,
+) -> _EventResultCleanup:
+    missing_events = _missing_requested_events_from_availability(availability) if availability is not None else \
+        _missing_requested_events(service, sql)
     if not missing_events:
         return _EventResultCleanup(result=result)
 
@@ -847,6 +1075,7 @@ class SmartQAGraphState(TypedDict, total=False):
     real_execute_sql: str
     execute_scope_sql: str
     execute_allowed_tables: list[str] | set[str] | None
+    event_availability: list[_EventAvailability] | None
     business_notice: dict[str, Any] | None
     result: dict[str, Any]
     chart: dict[str, Any]
@@ -1003,6 +1232,13 @@ def _execute_saas_skill(state: SmartQAGraphState) -> dict[str, Any]:
         except Exception as execute_error:
             if not looks_like_permission_scope_error(str(execute_error)):
                 raise
+            audit_permission_denied(
+                current_user=service.current_user,
+                datasource_id=getattr(getattr(service, "ds", None), "id", None),
+                record_id=getattr(getattr(service, "record", None), "id", None),
+                operation="smart_qa.saas_skill_execute",
+                reason=str(execute_error),
+            )
             trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
             failed_result = service.save_permission_denied_data(session=session)
             emit_permission_denied_response(
@@ -1180,6 +1416,9 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         sql_operate = OperationEnum.GENERATE_SQL
         missing_event_message = None
         missing_event_notice = None
+        unknown_event_message = None
+        unknown_event_notice = None
+        event_availability = None
 
         try:
             sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
@@ -1281,6 +1520,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     allowed_tables=service.table_name_list,
                 )
                 rewrite = _rewrite_sql_for_missing_events(service, checked_sql)
+                event_availability = rewrite.availability
                 if rewrite.missing_events:
                     supported_removed_fields = rewrite.removed_fields if rewrite.executable else []
                     missing_event_message = _missing_event_feedback(
@@ -1328,10 +1568,22 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                             f"removed_ctes={rewrite.removed_ctes} "
                             f"removed_fields={rewrite.removed_fields}"
                         )
+                        event_availability = None
+                elif rewrite.unknown_events:
+                    unknown_event_message = _unknown_event_feedback(rewrite.unknown_events)
+                    unknown_event_notice = _unknown_event_notice(rewrite.unknown_events)
                 sql = service.save_checked_sql(session=session, sql=checked_sql)
         except Exception as permission_error:
             if not looks_like_permission_scope_error(str(permission_error)):
                 raise
+            audit_permission_denied(
+                current_user=service.current_user,
+                datasource_id=getattr(getattr(service, "ds", None), "id", None),
+                record_id=getattr(getattr(service, "record", None), "id", None),
+                operation="smart_qa.prepare_sql_permission",
+                reason=str(permission_error),
+                tables=service.table_name_list,
+            )
             sql = service.save_checked_sql(session=session, sql=sql)
             failed_result = service.save_permission_denied_data(session=session)
             format_sql = sqlparse.format(sql, reindent=True)
@@ -1379,6 +1631,17 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 json_result=json_result,
                 notice=missing_event_notice,
             )
+    if unknown_event_message and unknown_event_notice:
+        with _session_scope() as session:
+            _save_and_emit_plain_answer(
+                service=service,
+                session=session,
+                message=unknown_event_message,
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                notice=unknown_event_notice,
+            )
 
     real_execute_sql = sql
     execute_scope_sql = sql
@@ -1425,7 +1688,8 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
             "real_execute_sql": real_execute_sql,
             "execute_scope_sql": execute_scope_sql,
             "execute_allowed_tables": execute_allowed_tables,
-            "business_notice": missing_event_notice,
+            "event_availability": event_availability,
+            "business_notice": _merge_business_notice(missing_event_notice, unknown_event_notice),
             "stop": False,
         }
 
@@ -1445,6 +1709,7 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
     real_execute_sql = state["real_execute_sql"]
     execute_scope_sql = state["execute_scope_sql"]
     execute_allowed_tables = state["execute_allowed_tables"]
+    event_availability = state.get("event_availability")
     business_notice = state.get("business_notice")
 
     with _session_scope() as session:
@@ -1490,6 +1755,14 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
         except Exception as execute_error:
             if not looks_like_permission_scope_error(str(execute_error)):
                 raise
+            audit_permission_denied(
+                current_user=service.current_user,
+                datasource_id=getattr(getattr(service, "ds", None), "id", None),
+                record_id=getattr(getattr(service, "record", None), "id", None),
+                operation="smart_qa.execute_sql_permission",
+                reason=str(execute_error),
+                tables=execute_allowed_tables,
+            )
             trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
             failed_result = service.save_permission_denied_data(session=session)
             emit_permission_denied_response(
@@ -1514,7 +1787,7 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
             }
         if notice_removed_fields:
             result = _prune_result_fields(result, notice_removed_fields)
-        cleanup = _cleanup_missing_event_result(service, real_execute_sql, result)
+        cleanup = _cleanup_missing_event_result(service, real_execute_sql, result, event_availability)
         result = cleanup.result
         execute_log_message: dict[str, Any] = {"sql": real_execute_sql, "count": len(result.get("data"))}
         if business_notice:

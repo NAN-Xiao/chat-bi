@@ -1,6 +1,8 @@
 """
 脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
+import hashlib
+import json
 from typing import Any
 
 from common.core.task_queue import enqueue_task_detached
@@ -16,7 +18,7 @@ def _int_list(value: list[int] | None) -> list[int]:
     """
     if not value:
         return []
-    return [int(item) for item in value]
+    return sorted({int(item) for item in value})
 
 
 def _with_tenant(payload: dict[str, Any], tenant_id: int | None = None) -> dict[str, Any]:
@@ -38,7 +40,15 @@ def _enqueue_embedding_task(name: str, payload: dict[str, Any], tenant_id: int |
     """
     try:
         register_builtin_tasks()
-        task = enqueue_task_detached(name, _with_tenant(payload, tenant_id), tenant_id=tenant_id)
+        normalized_payload = _with_tenant(payload, tenant_id)
+        dedupe_key = json.dumps(
+            {"name": name, "payload": normalized_payload},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        dedupe_key = hashlib.sha256(dedupe_key.encode("utf-8")).hexdigest()
+        task = enqueue_task_detached(name, normalized_payload, tenant_id=tenant_id, dedupe_key=dedupe_key)
         if task:
             AppLogUtil.info(f"Queued embedding task: {name} task_id={task.get('id')}")
     except Exception:

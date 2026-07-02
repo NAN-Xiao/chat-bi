@@ -6,55 +6,14 @@ These tests validate:
 2. _escape_sql_value() preserves safe values unchanged
 3. _VALID_LOGIC_OPS whitelist rejects injection payloads
 """
-import os
-import textwrap
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
-from apps.datasource.crud.row_permission import transTreeItem
+from apps.datasource.crud.row_permission import _VALID_LOGIC_OPS, _escape_sql_value, transTreeItem
 from apps.datasource.models.datasource import CoreDatasource
-
-
-# ---------- Extract functions from source ----------
-
-_SRC_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "backend", "apps", "datasource", "crud", "row_permission.py",
-)
-
-# Parse the source and extract _escape_sql_value function body
-with open(_SRC_PATH) as f:
-    _source = f.read()
-
-# Build a minimal executable namespace containing the function
-_ns = {}
-exec(
-    compile(
-        textwrap.dedent("""
-def _escape_sql_value(value):
-    if value is None:
-        return value
-    escaped = str(value).replace("'", "''")
-    escaped = escaped.replace("\\\\", "\\\\\\\\")
-    return escaped
-
-_VALID_LOGIC_OPS = {"AND", "OR"}
-"""),
-        "<extracted>",
-        "exec",
-    ),
-    _ns,
-)
-
-_escape_sql_value = _ns["_escape_sql_value"]
-_VALID_LOGIC_OPS = _ns["_VALID_LOGIC_OPS"]
-
-# Also verify the source file actually contains the same code
-assert "_escape_sql_value" in _source, "Function not found in source"
-assert "_VALID_LOGIC_OPS" in _source, "Whitelist not found in source"
 
 
 # ============================================================
@@ -102,14 +61,19 @@ class TestEscapeSqlValue:
         result = _escape_sql_value("O'Malley")
         assert result == "O''Malley"
 
-    def test_backslash_escaped(self):
-        """Backslash escape attempt."""
+    def test_backslash_preserved_for_standard_sql(self):
+        """Backslash should stay literal for standard SQL dialects such as PostgreSQL."""
         result = _escape_sql_value("test\\value")
+        assert result == "test\\value"
+
+    def test_backslash_escaped_for_mysql_family(self):
+        """MySQL-family dialects keep backslash string escapes unless configured otherwise."""
+        result = _escape_sql_value("test\\value", "mysql")
         assert result == "test\\\\value"
 
     def test_combined_quote_and_backslash(self):
         """Combined injection attempt with quotes and backslashes."""
-        result = _escape_sql_value("test\\'; DROP TABLE users; --")
+        result = _escape_sql_value("test\\'; DROP TABLE users; --", "mysql")
         assert result == "test\\\\''; DROP TABLE users; --"
 
     def test_union_injection(self):
@@ -136,12 +100,11 @@ class TestEscapeSqlValue:
         assert result == "it''''s already"
 
     def test_backslash_quote_bypass_attempt(self):
-        r"""Bypass attempt: \' should become \\'"""
+        r"""Bypass attempt remains inside the literal for standard SQL."""
         payload = "\\'"
         result = _escape_sql_value(payload)
-        # Backslash doubled, then quote doubled
         assert "''" in result
-        assert "\\\\" in result
+        assert result == "\\''"
 
 
 # ============================================================
@@ -284,6 +247,17 @@ def _variable_filter_item(variable_id: int) -> dict:
     }
 
 
+def _system_variable_filter_item(variable_id: int) -> dict:
+    return {
+        "type": "item",
+        "field_id": 100,
+        "filter_type": "text",
+        "term": "eq",
+        "value_type": "variable",
+        "variable_id": variable_id,
+    }
+
+
 def test_normal_row_permission_value_preserves_comma():
     engine = _row_permission_engine()
     datasource = CoreDatasource(id=1, tenant_id=10, name="Workspace DS", type="pg")
@@ -330,6 +304,43 @@ def test_custom_row_permission_variable_requires_explicit_same_tenant():
         assert transTreeItem(session, current_user, _variable_filter_item(1), datasource) is None
         assert transTreeItem(session, current_user, _variable_filter_item(2), datasource) is None
         assert transTreeItem(session, current_user, _variable_filter_item(3), datasource) == '\"region\" IN (\'CN\')'
+
+
+def test_builtin_system_variable_supports_stable_identity_fields():
+    engine = _row_permission_engine()
+    datasource = CoreDatasource(id=1, tenant_id=10, name="Workspace DS", type="pg")
+    current_user = SimpleNamespace(id=2, account="alice", name="Alice", email="alice@example.com", tenant_id=10)
+
+    with Session(engine) as session:
+        session.execute(text(
+            """
+            INSERT INTO system_variable (id, tenant_id, name, var_type, type, value)
+            VALUES
+                (11, NULL, 'user_id', 'text', 'system', '["user_id"]'),
+                (12, NULL, 'tenant_id', 'text', 'system', '["tenant_id"]')
+            """
+        ))
+        session.commit()
+
+        assert transTreeItem(session, current_user, _system_variable_filter_item(11), datasource) == '"region" = \'2\''
+        assert transTreeItem(session, current_user, _system_variable_filter_item(12), datasource) == '"region" = \'10\''
+
+
+def test_unknown_builtin_system_variable_fails_closed():
+    engine = _row_permission_engine()
+    datasource = CoreDatasource(id=1, tenant_id=10, name="Workspace DS", type="pg")
+    current_user = SimpleNamespace(id=2, account="alice", name="Alice", email="alice@example.com", tenant_id=10)
+
+    with Session(engine) as session:
+        session.execute(text(
+            """
+            INSERT INTO system_variable (id, tenant_id, name, var_type, type, value)
+            VALUES (13, NULL, 'display_name', 'text', 'system', '["display_name"]')
+            """
+        ))
+        session.commit()
+
+        assert transTreeItem(session, current_user, _system_variable_filter_item(13), datasource) is None
 
 
 if __name__ == "__main__":

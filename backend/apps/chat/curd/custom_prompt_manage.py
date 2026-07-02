@@ -13,7 +13,7 @@ from apps.chat.curd.custom_prompt import (
     CustomPromptTypeEnum,
     CustomPromptVisibilityScopeEnum,
 )
-from apps.chat.curd.custom_prompt_embedding import skill_definition_signature
+from apps.chat.curd.custom_prompt_embedding import embedding_vector_from_json, skill_definition_signature
 from apps.chat.models.custom_prompt_model import (
     CustomPrompt,
     CustomPromptInfo,
@@ -88,7 +88,7 @@ def _normalize_platform_generic_scope(
     做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
-        return DEFAULT_TENANT_ID, specific_ds, datasource_ids
+        return DEFAULT_TENANT_ID, False, []
     return None, specific_ds, datasource_ids
 
 
@@ -303,7 +303,9 @@ def _to_info(
     ai_model_id = _normalize_ai_model_id(row.ai_model_id)
     ai_model_names = ai_model_names or {}
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
-    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC and not row.specific_ds:
+    effective_specific_ds = bool(row.specific_ds)
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        effective_specific_ds = False
         datasource_ids = []
     is_owner = _is_owner(row, current_user_id)
     prompt_visible = _prompt_visible(row, current_user_id, can_manage_all, can_manage_public)
@@ -332,7 +334,7 @@ def _to_info(
         effective_active=bool(row.active) and (True if user_enabled is None else bool(user_enabled)),
         visibility_scope=visibility_scope,
         prompt=row.prompt if prompt_visible else None,
-        specific_ds=bool(row.specific_ds),
+        specific_ds=effective_specific_ds,
         datasource_ids=datasource_ids,
         datasource_names=[ds_names[item] for item in datasource_ids if item in ds_names],
     )
@@ -375,6 +377,7 @@ def _access_conditions(accessible_datasource_ids: Optional[set[int]], include_gl
         conditions.append(CustomPrompt.datasource_ids.contains([int(ds_id)]))
     if include_global:
         conditions.extend([
+            _platform_public_visibility_condition(),
             CustomPrompt.datasource_ids == [],
             CustomPrompt.specific_ds == False,
             CustomPrompt.specific_ds.is_(None),
@@ -546,8 +549,9 @@ def _mark_skill_embedding_stale_if_needed(row: CustomPrompt, prompt_type: Custom
             row.embedding_signature = None
         return False
 
-    expected_signature = skill_definition_signature(row.name, row.description, row.prompt)
-    if row.embedding and row.embedding_signature == expected_signature:
+    vector = embedding_vector_from_json(row.embedding)
+    expected_signature = skill_definition_signature(row.name, row.description, row.prompt, dim=len(vector or []))
+    if vector is not None and row.embedding_signature == expected_signature:
         return False
     row.embedding = None
     row.embedding_signature = None
@@ -673,6 +677,7 @@ def _build_query(
         ds_conditions = [CustomPrompt.datasource_ids.contains([int(ds_id)]) for ds_id in dslist]
         if include_global:
             ds_conditions.extend([
+                _platform_public_visibility_condition(),
                 CustomPrompt.datasource_ids == [],
                 CustomPrompt.specific_ds == False,
                 CustomPrompt.specific_ds.is_(None),
@@ -1013,19 +1018,19 @@ def create_custom_prompt(
 
     prompt_type = _normalize_type(info.type)
     resolved_tenant_id = _tenant_id(tenant_id if tenant_id is not None else info.tenant_id)
+    visibility_scope = _normalize_visibility_scope(info.visibility_scope)
     specific_ds = bool(info.specific_ds)
     datasource_ids = _normalize_ids(info.datasource_ids) if specific_ds else []
-    if specific_ds and not datasource_ids:
-        raise HTTPException(status_code=400, detail="Datasource is required")
-    ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
-    target_scope = _normalize_target_scope(info.target_scope)
-    _ensure_target_scope_allowed(prompt_type, target_scope)
-    visibility_scope = _normalize_visibility_scope(info.visibility_scope)
     platform_tenant_id, specific_ds, datasource_ids = _normalize_platform_generic_scope(
         visibility_scope,
         specific_ds,
         datasource_ids,
     )
+    if specific_ds and not datasource_ids:
+        raise HTTPException(status_code=400, detail="Datasource is required")
+    ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
+    target_scope = _normalize_target_scope(info.target_scope)
+    _ensure_target_scope_allowed(prompt_type, target_scope)
     if platform_tenant_id is not None:
         resolved_tenant_id = platform_tenant_id
 
@@ -1123,19 +1128,19 @@ def update_custom_prompt(
         raise HTTPException(status_code=400, detail="Prompt content is required")
 
     prompt_type = _normalize_type(info.type or row.type)
+    visibility_scope = _normalize_visibility_scope(info.visibility_scope or row.visibility_scope)
     specific_ds = bool(info.specific_ds)
     datasource_ids = _normalize_ids(info.datasource_ids) if specific_ds else []
-    if specific_ds and not datasource_ids:
-        raise HTTPException(status_code=400, detail="Datasource is required")
-    ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
-    target_scope = _normalize_target_scope(info.target_scope or row.target_scope)
-    _ensure_target_scope_allowed(prompt_type, target_scope)
-    visibility_scope = _normalize_visibility_scope(info.visibility_scope or row.visibility_scope)
     platform_tenant_id, specific_ds, datasource_ids = _normalize_platform_generic_scope(
         visibility_scope,
         specific_ds,
         datasource_ids,
     )
+    if specific_ds and not datasource_ids:
+        raise HTTPException(status_code=400, detail="Datasource is required")
+    ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
+    target_scope = _normalize_target_scope(info.target_scope or row.target_scope)
+    _ensure_target_scope_allowed(prompt_type, target_scope)
     if platform_tenant_id is not None:
         resolved_tenant_id = platform_tenant_id
 

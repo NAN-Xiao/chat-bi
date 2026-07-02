@@ -708,8 +708,11 @@ def test_missing_event_value_is_pruned_and_streamed_as_business_notice(monkeypat
     )
     monkeypatch.setattr(
         graph,
-        "_event_exists_in_datasource",
-        lambda **kwargs: False if kwargs["event_value"] == "spaceship_upgrade_complete" else True,
+        "_event_values_exist_in_datasource",
+        lambda **kwargs: {
+            value: value != "spaceship_upgrade_complete"
+            for value in kwargs["event_values"]
+        },
     )
 
     chunks = list(
@@ -753,8 +756,11 @@ def test_schema_qualified_missing_event_cte_prunes_outer_coalesce_field(monkeypa
     }
     monkeypatch.setattr(
         graph,
-        "_event_exists_in_datasource",
-        lambda **kwargs: False if kwargs["event_value"] == "spaceship_upgrade_complete" else True,
+        "_event_values_exist_in_datasource",
+        lambda **kwargs: {
+            value: value != "spaceship_upgrade_complete"
+            for value in kwargs["event_values"]
+        },
     )
 
     cleanup = graph._cleanup_missing_event_result(service, _schema_qualified_missing_event_sql(), result)
@@ -823,8 +829,11 @@ def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch:
     )
     monkeypatch.setattr(
         graph,
-        "_event_exists_in_datasource",
-        lambda **kwargs: False if kwargs["event_value"] == "spaceship_upgrade_complete" else True,
+        "_event_values_exist_in_datasource",
+        lambda **kwargs: {
+            value: value != "spaceship_upgrade_complete"
+            for value in kwargs["event_values"]
+        },
     )
 
     chunks = list(
@@ -866,8 +875,11 @@ def test_only_missing_event_metric_stops_without_zero_chart(monkeypatch: pytest.
     )
     monkeypatch.setattr(
         graph,
-        "_event_exists_in_datasource",
-        lambda **kwargs: False if kwargs["event_value"] == "dragon_summon_success" else True,
+        "_event_values_exist_in_datasource",
+        lambda **kwargs: {
+            value: value != "dragon_summon_success"
+            for value in kwargs["event_values"]
+        },
     )
 
     chunks = list(
@@ -945,7 +957,11 @@ def test_existing_event_zero_values_are_not_pruned(monkeypatch: pytest.MonkeyPat
         "get_table_schema",
         lambda **kwargs: ("table daily_metrics(event_date date, dau int, pdau int)", ["daily_metrics"]),
     )
-    monkeypatch.setattr(graph, "_event_exists_in_datasource", lambda **kwargs: True)
+    monkeypatch.setattr(
+        graph,
+        "_event_values_exist_in_datasource",
+        lambda **kwargs: {value: True for value in kwargs["event_values"]},
+    )
 
     chunks = list(
         graph.run_smart_qa_graph(
@@ -962,6 +978,56 @@ def test_existing_event_zero_values_are_not_pruned(monkeypatch: pytest.MonkeyPat
     assert not any(event["type"] == "analysis-result" and event.get("notice") for event in events)
     assert not any(event["type"] == "error" for event in events)
     assert service.finished is True
+
+
+def test_event_availability_checks_values_in_batches(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：同一表字段上的多个埋点值应批量查询，避免逐值往返数据库。
+    """
+    sql = """
+    SELECT event_name, count(*) AS cnt
+    FROM fact_events
+    WHERE event_name IN ('event_a', 'event_b')
+    GROUP BY event_name
+    """
+    service = FakeSmartQAService()
+    calls: list[set[str]] = []
+
+    def _batch_exists(**kwargs):
+        calls.append(set(kwargs["event_values"]))
+        return {"event_a": True, "event_b": False}
+
+    monkeypatch.setattr(graph, "_event_values_exist_in_datasource", _batch_exists)
+
+    availability = graph._event_availability_for_sql(service, sql)
+
+    assert len(calls) == 1
+    assert calls[0] == {"event_a", "event_b"}
+    assert availability[0].existing_values == {"event_a"}
+    assert availability[0].missing_values == {"event_b"}
+
+
+def test_unknown_event_policy_can_be_conservative_or_strict(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：埋点存在性查询失败时，默认进入 unknown；strict 策略下按 missing 处理。
+    """
+    sql = "SELECT count(*) AS cnt FROM fact_events WHERE event_name = 'event_unknown'"
+    service = FakeSmartQAService()
+    monkeypatch.setattr(
+        graph,
+        "_event_values_exist_in_datasource",
+        lambda **kwargs: {value: None for value in kwargs["event_values"]},
+    )
+
+    monkeypatch.setattr(graph.settings, "SMART_QA_EVENT_UNKNOWN_POLICY", "conservative")
+    conservative = graph._event_availability_for_sql(service, sql)[0]
+    assert conservative.unknown_values == {"event_unknown"}
+    assert conservative.missing_values == set()
+
+    monkeypatch.setattr(graph.settings, "SMART_QA_EVENT_UNKNOWN_POLICY", "strict")
+    strict = graph._event_availability_for_sql(service, sql)[0]
+    assert strict.unknown_values == set()
+    assert strict.missing_values == {"event_unknown"}
 
 
 def test_empty_sql_result_finishes_without_chart(monkeypatch: pytest.MonkeyPatch):

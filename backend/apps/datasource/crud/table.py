@@ -1,19 +1,32 @@
 ﻿"""
 脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
-import json
 import time
 import traceback
 from typing import List
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, select, update
 
 from apps.ai_model.embedding import EmbeddingModelCache
+from apps.datasource.embedding.utils import dump_embedding_payload, embedding_payload_is_current
 from apps.system.crud.schema_metadata import SchemaFieldKey, field_comment_map, table_comment_map
 from common.core.config import settings
 from common.core.deps import SessionDep
 from common.utils.utils import AppLogUtil
 from ..models.datasource import CoreTable, CoreField, CoreDatasource
+
+
+def _stale_embedding_ids(rows) -> list[int]:
+    """
+    是什么：_stale_embedding_ids 从查询结果里找出缺失或不匹配当前模型/维度的向量记录。
+    """
+    ids: list[int] = []
+    for row in rows:
+        item_id = row[0]
+        embedding = row[1]
+        if not embedding_payload_is_current(embedding):
+            ids.append(int(item_id))
+    return ids
 
 
 def delete_table_by_ds_id(session: SessionDep, id: int):
@@ -62,24 +75,20 @@ def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None =
         session = session_maker()
 
         AppLogUtil.info('get tables')
-        stmt = select(CoreTable.id).where(
-            or_(CoreTable.embedding.is_(None), CoreTable.embedding == "")
-        )
+        stmt = select(CoreTable.id, CoreTable.embedding)
         if tenant_id is not None:
             stmt = stmt.join(CoreDatasource, CoreDatasource.id == CoreTable.ds_id).where(
                 CoreDatasource.tenant_id == int(tenant_id)
             )
-        results = session.execute(stmt).scalars().all()
+        results = _stale_embedding_ids(session.execute(stmt).all())
         AppLogUtil.info('table result: ' + str(len(results)))
         save_table_embedding(session_maker, results, tenant_id=tenant_id)
 
         AppLogUtil.info('get datasource')
-        ds_stmt = select(CoreDatasource.id).where(
-            or_(CoreDatasource.embedding.is_(None), CoreDatasource.embedding == "")
-        )
+        ds_stmt = select(CoreDatasource.id, CoreDatasource.embedding)
         if tenant_id is not None:
             ds_stmt = ds_stmt.where(CoreDatasource.tenant_id == int(tenant_id))
-        ds_results = session.execute(ds_stmt).scalars().all()
+        ds_results = _stale_embedding_ids(session.execute(ds_stmt).all())
         AppLogUtil.info('datasource result: ' + str(len(ds_results)))
         save_ds_embedding(session_maker, ds_results, tenant_id=tenant_id)
     except Exception:
@@ -155,7 +164,7 @@ def save_table_embedding(session_maker, ids: List[int], tenant_id: int | None = 
                 schema_table += ",\n".join(field_list)
             schema_table += '\n]\n'
             # table_schema.append(schema_table)
-            emb = json.dumps(model.embed_query(schema_table))
+            emb = dump_embedding_payload(model.embed_query(schema_table), model)
 
             update_filters = [CoreTable.id == _id]
             if tenant_id is not None:
@@ -239,7 +248,7 @@ def save_ds_embedding(session_maker, ids: List[int], tenant_id: int | None = Non
                     schema_table += ",\n".join(field_list)
                 schema_table += '\n]\n'
             # table_schema.append(schema_table)
-            emb = json.dumps(model.embed_query(schema_table))
+            emb = dump_embedding_payload(model.embed_query(schema_table), model)
 
             update_filters = [CoreDatasource.id == _id]
             if tenant_id is not None:

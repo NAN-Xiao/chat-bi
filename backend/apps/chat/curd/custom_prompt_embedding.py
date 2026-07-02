@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import and_, select, update
 
 from apps.ai_model.embedding import EmbeddingModelCache
+from apps.datasource.embedding.utils import embedding_model_identity
 from common.core.config import settings
 from common.utils.utils import AppLogUtil
 
@@ -37,7 +38,13 @@ def skill_embedding_signature(name: str | None, description: str | None) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def skill_definition_signature(name: str | None, description: str | None, prompt: str | None) -> str:
+def skill_definition_signature(
+        name: str | None,
+        description: str | None,
+        prompt: str | None,
+        model: Any | None = None,
+        dim: int | None = None,
+) -> str:
     """
     是什么：skill_definition_signature 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -47,6 +54,8 @@ def skill_definition_signature(name: str | None, description: str | None, prompt
         "name": (name or "").strip(),
         "description": (description or "").strip(),
         "prompt": (prompt or "").strip(),
+        "embedding_model": embedding_model_identity(model),
+        "embedding_dim": int(dim or 0),
     }
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -104,17 +113,16 @@ def save_custom_prompt_skill_embedding(
         model = EmbeddingModelCache.get_model()
         saved = 0
         for row in rows:
-            signature = skill_definition_signature(row.name, row.description, row.prompt)
             text = build_skill_embedding_text(row.name, row.description)
             if not text:
                 row.embedding = None
-                row.embedding_signature = signature
+                row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt, model, 0)
                 session.add(row)
                 saved += 1
                 continue
             vector = model.embed_query(text)
             row.embedding = json.dumps(vector, ensure_ascii=False)
-            row.embedding_signature = signature
+            row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt, model, len(vector))
             session.add(row)
             saved += 1
         session.commit()
@@ -154,15 +162,19 @@ def run_fill_empty_custom_prompt_skill_embedding(
         if tenant_id is not None:
             stmt = stmt.where(CustomPrompt.tenant_id == int(tenant_id))
         rows = session.execute(stmt).scalars().all()
-        ids = [
-            int(row.id)
-            for row in rows
-            if row.id
-            and (
-                embedding_vector_from_json(row.embedding) is None
-                or row.embedding_signature != skill_definition_signature(row.name, row.description, row.prompt)
+        ids = []
+        for row in rows:
+            if not row.id:
+                continue
+            vector = embedding_vector_from_json(row.embedding)
+            expected_signature = skill_definition_signature(
+                row.name,
+                row.description,
+                row.prompt,
+                dim=len(vector or []),
             )
-        ]
+            if vector is None or row.embedding_signature != expected_signature:
+                ids.append(int(row.id))
         if not ids:
             return 0
         return save_custom_prompt_skill_embedding(session_maker, ids, tenant_id=tenant_id)

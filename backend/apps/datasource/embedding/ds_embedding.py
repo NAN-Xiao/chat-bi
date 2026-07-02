@@ -9,7 +9,7 @@ import traceback
 from typing import Optional
 
 from apps.ai_model.embedding import EmbeddingModelCache
-from apps.datasource.embedding.utils import cosine_similarity
+from apps.datasource.embedding.utils import cosine_similarity, load_embedding_payload
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.assistant import AssistantOutDs
 from common.core.config import settings
@@ -85,14 +85,15 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, o
                 _list.append({"id": ds.id, "cosine_similarity": 0.0, "ds": ds, "embedding": ds.embedding})
 
         if _list:
-            missing_ds_ids = [
+            parsed_embeddings = [load_embedding_payload(item.get("embedding")) for item in _list]
+            stale_ds_ids = [
                 int(item.get("id"))
-                for item in _list
-                if not item.get("embedding")
+                for item, parsed in zip(_list, parsed_embeddings)
+                if not parsed.current
             ]
-            if missing_ds_ids:
+            if stale_ds_ids:
                 AppLogUtil.info(
-                    f"datasource embedding missing, queue refresh and return all candidates: {missing_ds_ids}"
+                    f"datasource embedding stale, queue refresh and return all candidates: {stale_ds_ids}"
                 )
                 tenant_ids = {
                     tenant_id
@@ -100,10 +101,10 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, o
                     if tenant_id is not None
                 }
                 if len(tenant_ids) == 1:
-                    run_save_ds_embeddings(missing_ds_ids, tenant_id=tenant_ids.pop())
+                    run_save_ds_embeddings(stale_ds_ids, tenant_id=tenant_ids.pop())
                 else:
-                    for item in _list:
-                        if not item.get("embedding"):
+                    for item, parsed in zip(_list, parsed_embeddings):
+                        if not parsed.current:
                             run_save_ds_embeddings([int(item.get("id"))], tenant_id=_tenant_id_for_ds(item.get("ds")))
                 return [
                     {"id": obj.get('ds').id, "name": obj.get('ds').name, "description": obj.get('ds').description}
@@ -113,15 +114,47 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, o
                 # text = [s.get('ds_schema') for s in _list]
 
                 model = EmbeddingModelCache.get_model()
+                parsed_embeddings = [load_embedding_payload(item.get("embedding"), model) for item in _list]
+                stale_embeddings = [item for item in parsed_embeddings if not item.current]
+                if stale_embeddings:
+                    AppLogUtil.info(
+                        "datasource embedding stale after model resolve, return all candidates: "
+                        + ",".join(sorted({item.reason for item in stale_embeddings}))
+                    )
+                    return [
+                        {"id": obj.get('ds').id, "name": obj.get('ds').name, "description": obj.get('ds').description}
+                        for obj in _list
+                    ]
                 start_time = time.time()
-                # results = model.embed_documents(text)
-                results = [item.get('embedding') for item in _list]
 
                 q_embedding = model.embed_query(question)
-                for index in range(len(results)):
-                    item = results[index]
-                    if item:
-                        _list[index]['cosine_similarity'] = cosine_similarity(q_embedding, json.loads(item))
+                dimension_mismatch_ids = [
+                    int(_list[index].get("id"))
+                    for index, item in enumerate(parsed_embeddings)
+                    if _list[index].get("id") and item.dim != len(q_embedding)
+                ]
+                if dimension_mismatch_ids:
+                    AppLogUtil.info(
+                        f"datasource embedding dimension mismatch, queue refresh and return all candidates: {dimension_mismatch_ids}"
+                    )
+                    tenant_ids = {
+                        tenant_id
+                        for tenant_id in (_tenant_id_for_ds(item.get("ds")) for item in _list)
+                        if tenant_id is not None
+                    }
+                    if len(tenant_ids) == 1:
+                        run_save_ds_embeddings(dimension_mismatch_ids, tenant_id=tenant_ids.pop())
+                    else:
+                        mismatch_set = set(dimension_mismatch_ids)
+                        for item in _list:
+                            if int(item.get("id")) in mismatch_set:
+                                run_save_ds_embeddings([int(item.get("id"))], tenant_id=_tenant_id_for_ds(item.get("ds")))
+                    return [
+                        {"id": obj.get('ds').id, "name": obj.get('ds').name, "description": obj.get('ds').description}
+                        for obj in _list
+                    ]
+                for index, item in enumerate(parsed_embeddings):
+                    _list[index]['cosine_similarity'] = cosine_similarity(q_embedding, item.vector or [])
 
                 _list.sort(key=lambda x: x['cosine_similarity'], reverse=True)
                 # print(len(_list))

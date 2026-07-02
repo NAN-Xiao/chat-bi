@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from typing import Any
 
@@ -33,6 +34,81 @@ DATA_UNAVAILABLE_AGENT_GUIDANCE = (
     "不要编造不存在的表、字段、事件、指标或数据结果。"
 )
 
+DATA_UNAVAILABLE_SQLSTATES = {
+    "3F000",  # invalid_schema_name
+    "42P01",  # undefined_table
+    "42703",  # undefined_column
+    "42S02",  # ODBC/base table not found
+    "42S22",  # ODBC/column not found
+}
+PERMISSION_DENIED_SQLSTATES = {
+    "28000",  # invalid authorization specification / access denied
+    "42501",  # insufficient_privilege
+}
+DATA_UNAVAILABLE_ERRNOS = {
+    1146,  # MySQL table doesn't exist
+    1054,  # MySQL unknown column
+    208,  # SQL Server invalid object name
+    207,  # SQL Server invalid column name
+    942,  # Oracle ORA-00942 table or view does not exist
+    904,  # Oracle ORA-00904 invalid identifier
+    60,  # ClickHouse unknown table
+    47,  # ClickHouse unknown identifier
+}
+PERMISSION_DENIED_ERRNOS = {
+    1044,  # MySQL access denied for database
+    1142,  # MySQL command denied
+    1227,  # MySQL access denied; need privilege
+    229,  # SQL Server permission denied
+    1031,  # Oracle ORA-01031 insufficient privileges
+}
+
+DATA_UNAVAILABLE_TEXT_PATTERNS = [
+    r"\bundefinedtable\b",
+    r"\bundefinedcolumn\b",
+    r"\bno such table\b",
+    r"\bno such column\b",
+    r"\bunknown column\b",
+    r"\binvalid column name\b",
+    r"\binvalid object name\b",
+    r"\brelation\s+.+\s+does not exist\b",
+    r"\bcolumn\s+.+\s+does not exist\b",
+    r"\btable\s+.+\s+does not exist\b",
+    r"\bdoesn't exist\b",
+    r"\bora-00942\b",
+    r"\bora-00904\b",
+    r"表[“\"]?[^”\"\s]+[”\"]?不存在",
+    r"列[“\"]?[^”\"\s]+[”\"]?不存在",
+    r"字段[“\"]?[^”\"\s]+[”\"]?不存在",
+    r"无效的列名",
+    r"对象名.+无效",
+]
+PERMISSION_DENIED_TEXT_MARKERS = (
+    "无权",
+    "无权限",
+    "权限",
+    "select *",
+    "unauthorized",
+    "allowed tables",
+    "permission",
+    "表范围",
+    "字段权限",
+    "permission_scope",
+    "permission denied",
+    "insufficient privilege",
+    "not permitted",
+    "access denied",
+    "ora-01031",
+)
+
+
+@dataclass(frozen=True)
+class ErrorClassification:
+    error_type: str | None = None
+    source: str = "unknown"
+    code: str | int | None = None
+    message: str = ""
+
 
 def is_business_error_type(error_type: str | None) -> bool:
     """
@@ -54,6 +130,121 @@ def agent_guidance_for_error_type(error_type: str | None) -> str | None:
     if error_type == DATA_UNAVAILABLE_ERROR_TYPE:
         return DATA_UNAVAILABLE_AGENT_GUIDANCE
     return None
+
+
+def _walk_error_chain(error: Any):
+    seen: set[int] = set()
+    stack = [error]
+    while stack:
+        item = stack.pop(0)
+        if item is None:
+            continue
+        item_id = id(item)
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        yield item
+        for attr in ("orig", "original", "__cause__", "__context__"):
+            next_item = getattr(item, attr, None)
+            if next_item is not None:
+                stack.append(next_item)
+
+
+def _candidate_sqlstates(error: Any) -> list[str]:
+    states: list[str] = []
+    for item in _walk_error_chain(error):
+        for attr in ("sqlstate", "pgcode"):
+            value = getattr(item, attr, None)
+            if value:
+                states.append(str(value).upper())
+        diag = getattr(item, "diag", None)
+        value = getattr(diag, "sqlstate", None) if diag is not None else None
+        if value:
+            states.append(str(value).upper())
+        for arg in getattr(item, "args", ()) or ():
+            if isinstance(arg, str):
+                for match in re.finditer(r"\b[0-9A-Z]{5}\b", arg.upper()):
+                    states.append(match.group(0))
+    return list(dict.fromkeys(states))
+
+
+def _candidate_errnos(error: Any) -> list[int]:
+    numbers: list[int] = []
+    for item in _walk_error_chain(error):
+        for attr in ("errno", "number", "code"):
+            value = getattr(item, attr, None)
+            if isinstance(value, int):
+                numbers.append(value)
+            elif isinstance(value, str) and value.isdigit():
+                numbers.append(int(value))
+        for arg in getattr(item, "args", ()) or ():
+            if isinstance(arg, int):
+                numbers.append(arg)
+            elif isinstance(arg, str):
+                for pattern in (r"\bORA-(\d{5})\b", r"\bError\s+(\d{2,5})\b", r"\[(\d{2,5})\]"):
+                    for match in re.finditer(pattern, arg, flags=re.IGNORECASE):
+                        try:
+                            numbers.append(int(match.group(1)))
+                        except (TypeError, ValueError):
+                            pass
+    return list(dict.fromkeys(numbers))
+
+
+def _message_for_error(error: Any) -> str:
+    if isinstance(error, str):
+        return error
+    messages = []
+    for item in _walk_error_chain(error):
+        text = str(item or "")
+        if text and text not in messages:
+            messages.append(text)
+    return " | ".join(messages)
+
+
+def _matches_data_unavailable_text(message: str) -> bool:
+    lowered = str(message or "").lower()
+    return any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in DATA_UNAVAILABLE_TEXT_PATTERNS)
+
+
+def _matches_permission_denied_text(message: str) -> bool:
+    lowered = str(message or "").lower()
+    return any(marker in lowered for marker in PERMISSION_DENIED_TEXT_MARKERS)
+
+
+def classify_error(error: Any) -> ErrorClassification:
+    """
+    是什么：统一把底层异常或历史错误文本分类成平台标准错误类型。
+    谁调用：SQL 执行、工作流和兼容旧入口的 looks_like_* 函数。
+    做了什么：优先使用 SQLSTATE/errno 等结构化错误码，文本正则只作为 fallback。
+    """
+    message = _message_for_error(error)
+    for state in _candidate_sqlstates(error):
+        if state in DATA_UNAVAILABLE_SQLSTATES:
+            return ErrorClassification(DATA_UNAVAILABLE_ERROR_TYPE, "sqlstate", state, message)
+        if state in PERMISSION_DENIED_SQLSTATES:
+            return ErrorClassification(PERMISSION_DENIED_ERROR_TYPE, "sqlstate", state, message)
+    for errno in _candidate_errnos(error):
+        if errno in DATA_UNAVAILABLE_ERRNOS:
+            return ErrorClassification(DATA_UNAVAILABLE_ERROR_TYPE, "errno", errno, message)
+        if errno in PERMISSION_DENIED_ERRNOS:
+            return ErrorClassification(PERMISSION_DENIED_ERROR_TYPE, "errno", errno, message)
+    if _matches_permission_denied_text(message):
+        return ErrorClassification(PERMISSION_DENIED_ERROR_TYPE, "text", None, message)
+    if _matches_data_unavailable_text(message) or looks_like_data_unavailable_business_message(message):
+        return ErrorClassification(DATA_UNAVAILABLE_ERROR_TYPE, "text", None, message)
+    return ErrorClassification(None, "unknown", None, message)
+
+
+def error_type_for(error: Any) -> str | None:
+    return classify_error(error).error_type
+
+
+def looks_like_permission_denied_error(error: Any) -> bool:
+    return error_type_for(error) == PERMISSION_DENIED_ERROR_TYPE
+
+
+def looks_like_data_unavailable_error(error: Any) -> bool:
+    return error_type_for(error) == DATA_UNAVAILABLE_ERROR_TYPE
 
 
 def failed_data_result(

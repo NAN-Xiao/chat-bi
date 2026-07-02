@@ -317,13 +317,15 @@ def validate_sql_columns(
         statements: list[exp.Expression],
         permission_scope: dict[str, dict[str, Any]],
         current_user: CurrentUser,
+        *,
+        enforce: bool = False,
 ) -> None:
     """
     是什么：validate_sql_columns 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
-    if not is_normal_user(current_user):
+    if not enforce and not is_normal_user(current_user):
         return
 
     denied_columns: set[str] = set()
@@ -471,18 +473,26 @@ def apply_row_permission_filters(
         谁调用：外层函数 apply_row_permission_filters 跑到对应步骤时会调用它。
         做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
-        if not isinstance(node, exp.Table):
-            return node
-        table_name = normalize_identifier(node.name)
-        filter_sql = filter_by_table.get(table_name)
-        if not filter_sql:
+        if isinstance(node, exp.Table):
+            table_name = normalize_identifier(node.name)
+            alias_name = node.alias_or_name or node.name
+            filter_sql = filter_by_table.get(table_name) or filter_by_table.get(normalize_identifier(alias_name))
+            if not filter_sql:
+                return node
+
+            source = node.copy()
+            source.set("alias", None)
+        elif isinstance(node, exp.Subquery):
+            alias_name = node.alias_or_name
+            filter_sql = filter_by_table.get(normalize_identifier(alias_name))
+            if not alias_name or not filter_sql:
+                return node
+            source = node.copy()
+        else:
             return node
 
-        alias_name = node.alias_or_name or node.name
-        table_without_alias = node.copy()
-        table_without_alias.set("alias", None)
         condition = parse_condition_expression(filter_sql, datasource.type)
-        filtered_select = exp.select("*").from_(table_without_alias).where(condition)
+        filtered_select = exp.select("*").from_(source).where(condition)
         return exp.Subquery(
             this=filtered_select,
             alias=exp.TableAlias(this=exp.to_identifier(alias_name)),
