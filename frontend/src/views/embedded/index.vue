@@ -42,6 +42,7 @@ import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
 import { setCurrentColor } from '@/utils/utils'
 import { useI18n } from 'vue-i18n'
+import { trustedMessageHostOrigin } from './messageSecurity'
 
 const { t } = useI18n()
 const assistantStore = useAssistantStore()
@@ -69,19 +70,59 @@ const validator = ref({
 const appName = ref('')
 const loading = ref(true)
 const eventName = 'shuzhi_assistant_event'
-const communicationCb = async (event: any) => {
+const authReady = ref(false)
+const initConfig = ref<{
+  assistantId: any
+  userFlag?: any
+  online?: any
+} | null>(null)
+const normalizeCredential = (value?: any): string => {
+  if (!value) return ''
+  return value.toString().replace(/^(Bearer|Embedded)\s+/i, '')
+}
+const validateAssistantSession = async (credential?: string) => {
+  if (authReady.value || !initConfig.value) {
+    return
+  }
+  const validatorCredential = normalizeCredential(credential || route.query.token)
+  if (!validatorCredential || !assistantStore.getHostOrigin) {
+    return
+  }
+  const { assistantId, userFlag, online } = initConfig.value
+  const param = {
+    id: assistantId,
+    virtual: userFlag || assistantStore.getFlag,
+    online,
+  }
+  validator.value = await assistantApi.validate(param, validatorCredential, assistantStore.getHostOrigin)
+  assistantStore.setToken(validator.value.token)
+  assistantStore.setAssistant(true)
+  authReady.value = true
+  loading.value = false
+  loadAssistantConfig(assistantId)
+}
+const communicationCb = async (event: MessageEvent) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
       return
+    }
+    const trustedHostOrigin = trustedMessageHostOrigin(event, assistantStore.getHostOrigin)
+    if (!trustedHostOrigin) {
+      return
+    }
+    if (!assistantStore.getHostOrigin) {
+      assistantStore.setHostOrigin(trustedHostOrigin)
+    }
+    if (event.data?.validatorCredential || event.data?.credentialToken || event.data?.token) {
+      await validateAssistantSession(
+        event.data?.validatorCredential || event.data?.credentialToken || event.data?.token
+      )
     }
     if (event.data?.busi == 'certificate') {
       const certificate = event.data['certificate']
       assistantStore.setType(1)
       assistantStore.setCertificate(certificate)
       assistantStore.resolveCertificate(certificate)
-    }
-    if (event.data?.hostOrigin) {
-      assistantStore.setHostOrigin(event.data?.hostOrigin)
     }
     if (event.data?.busi == 'setOnline') {
       setFormatOnline(event.data.online)
@@ -140,46 +181,7 @@ const setPageHeaderFontColor = (val: any) => {
   const ele = document.querySelector('body') as HTMLElement
   ele.style.setProperty('--ed-text-color-primary', val)
 }
-onBeforeMount(async () => {
-  const assistantId = route.query.id
-  if (!assistantId) {
-    ElMessage.error('Miss assistant id, please check assistant url')
-    return
-  }
-
-  const online = route.query.online
-  setFormatOnline(online)
-
-  let userFlag = route.query.userFlag
-  if (userFlag && userFlag === '1') {
-    userFlag = '100001'
-  }
-
-  const history: boolean = route.query.history !== 'false'
-  assistantStore.setHistory(history)
-
-  const now = Date.now()
-  assistantStore.setFlag(now)
-  assistantStore.setId(assistantId?.toString() || '')
-  const param = {
-    id: assistantId,
-    virtual: userFlag || assistantStore.getFlag,
-    online,
-  }
-  validator.value = await assistantApi.validate(param)
-  assistantStore.setToken(validator.value.token)
-  assistantStore.setAssistant(true)
-  loading.value = false
-
-  window.addEventListener('message', communicationCb)
-  const readyData = {
-    eventName: 'shuzhi_assistant_event',
-    busi: 'ready',
-    ready: true,
-    messageId: assistantId,
-  }
-  window.parent.postMessage(readyData, '*')
-
+const loadAssistantConfig = (assistantId: any) => {
   request.get(`/system/assistant/${assistantId}`).then((res) => {
     if (res.name) {
       appName.value = res.name
@@ -217,6 +219,46 @@ onBeforeMount(async () => {
       })
     }
   })
+}
+onBeforeMount(async () => {
+  const assistantId = route.query.id
+  if (!assistantId) {
+    ElMessage.error('Miss assistant id, please check assistant url')
+    return
+  }
+
+  const online = route.query.online
+  setFormatOnline(online)
+
+  let userFlag = route.query.userFlag
+  if (userFlag && userFlag === '1') {
+    userFlag = '100001'
+  }
+
+  const history: boolean = route.query.history !== 'false'
+  assistantStore.setHistory(history)
+
+  const now = Date.now()
+  assistantStore.setFlag(now)
+  assistantStore.setId(assistantId?.toString() || '')
+  initConfig.value = {
+    assistantId,
+    userFlag,
+    online,
+  }
+
+  window.addEventListener('message', communicationCb)
+  const readyData = {
+    eventName: 'shuzhi_assistant_event',
+    busi: 'ready',
+    ready: true,
+    messageId: assistantId,
+  }
+  window.parent.postMessage(readyData, '*')
+  if (route.query.hostOrigin) {
+    assistantStore.setHostOrigin(route.query.hostOrigin.toString())
+  }
+  await validateAssistantSession()
 })
 
 onBeforeUnmount(() => {

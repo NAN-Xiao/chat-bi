@@ -649,6 +649,9 @@ def bind_or_create_feishu_user(session: Session, identity: FeishuIdentity) -> Ba
         return BaseUserDTO.model_validate(user.model_dump())
 
     user = _find_user_by_email(session, identity.email)
+    if user is not None and int(getattr(user, "origin", 0) or 0) != FEISHU_ORIGIN:
+        raise ValueError("Feishu login cannot auto-bind an existing local account; please link it explicitly")
+
     if user is None:
         account_base = identity.email or f"feishu_{identity.platform_uid}"
         account = _unique_user_value(session, UserModel.account, account_base, identity.platform_uid)

@@ -17,6 +17,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { useUserStore } from '@/stores/user'
+import {
+  applyMixedChartResult,
+  canRefreshMixedChart,
+  isExternalMcpSnapshotChart,
+  isMixedChart,
+  refreshMixedChartData,
+} from '@/views/dashboard/utils/mixedChartData'
+import {
+  ensureChartSnapshotRefreshedAt,
+  nextDashboardRefreshDelayMs,
+} from '@/views/dashboard/utils/dashboardRefreshPolicy'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -232,7 +243,7 @@ function hasUsableChartSnapshot(viewInfo: any) {
 }
 
 function isExternalSnapshotChart(viewInfo: any) {
-  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+  return isExternalMcpSnapshotChart(viewInfo)
 }
 
 function hasUsableResultSnapshot(result: any) {
@@ -263,7 +274,25 @@ function resultRefreshedAt(result: any) {
 }
 
 function canLookupChartCache(viewInfo: any) {
-  return !!(viewInfo?.datasource && viewInfo?.sql?.trim())
+  return isMixedChart(viewInfo)
+    ? canRefreshMixedChart(viewInfo)
+    : !!(viewInfo?.datasource && viewInfo?.sql?.trim())
+}
+
+function scheduleNextDashboardAutoRefresh(loadVersion: number) {
+  if (loadVersion !== dashboardLoadVersion) {
+    return
+  }
+  const refreshableViewInfos = collectDashboardCharts(state.canvasDataPreview)
+    .map((entry) => entry.viewInfo)
+    .filter((viewInfo) => viewInfo && canLookupChartCache(viewInfo))
+  const delay = nextDashboardRefreshDelayMs(
+    refreshableViewInfos,
+    state.dashboardInfo?.dashboardRefreshPolicy
+  )
+  if (delay !== null) {
+    scheduleDashboardChartRefresh(loadVersion, delay)
+  }
 }
 
 function applyChartResult(viewInfo: any, result: any) {
@@ -438,6 +467,12 @@ async function previewChartSqlCacheOnly(
   viewInfo: any,
   requestConfig: any = { requestOptions: { silent: true } }
 ) {
+  if (isMixedChart(viewInfo)) {
+    return refreshMixedChartData(viewInfo, {
+      cacheOnly: true,
+      requestConfig,
+    })
+  }
   const cachedResult = await dashboardApi.preview_sql(
     {
       ...chartSqlPayload(viewInfo),
@@ -452,6 +487,12 @@ async function previewChartSqlFromDatabase(
   viewInfo: any,
   requestConfig: any = { requestOptions: { silent: true } }
 ) {
+  if (isMixedChart(viewInfo)) {
+    return refreshMixedChartData(viewInfo, {
+      forceRefresh: true,
+      requestConfig,
+    })
+  }
   return dashboardApi.preview_sql(
     {
       ...chartSqlPayload(viewInfo),
@@ -501,6 +542,9 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
   const chartEntries = allChartEntries.filter((entry) => canLookupChartCache(entry.viewInfo))
   const total = chartEntries.length
   if (!total) {
+    if (chartRefreshController === controller) {
+      chartRefreshController = null
+    }
     return
   }
   await nextTick()
@@ -552,7 +596,12 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
         ) {
           databaseRefreshEntries.push(entry)
         } else {
-          applyChartResult(viewInfo, cachedResult)
+          if (isMixedChart(viewInfo)) {
+            applyMixedChartResult(viewInfo, cachedResult)
+            markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(cachedResult))
+          } else {
+            applyChartResult(viewInfo, cachedResult)
+          }
         }
       } catch (error: any) {
         if (isAbortError(error) || controller.signal.aborted) {
@@ -597,7 +646,12 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
             }
           }
         } else {
-          applyChartResult(viewInfo, result)
+          if (isMixedChart(viewInfo)) {
+            applyMixedChartResult(viewInfo, result)
+            markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
+          } else {
+            applyChartResult(viewInfo, result)
+          }
         }
       } catch (error: any) {
         if (isAbortError(error) || controller.signal.aborted) {
@@ -626,6 +680,9 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     ) {
       chartRefreshRetryCount += 1
       scheduleDashboardChartRefresh(loadVersion, CHART_TRANSIENT_RETRY_DELAY_MS)
+    } else if (loadVersion === dashboardLoadVersion && !controller.signal.aborted) {
+      chartRefreshRetryCount = 0
+      scheduleNextDashboardAutoRefresh(loadVersion)
     }
   }
 }
@@ -695,11 +752,16 @@ const loadCanvasData = (params: any) => {
       state.canvasDataPreview = canvasDataResult
       state.canvasStylePreview = canvasStyleResult
       state.canvasViewInfoPreview = canvasViewInfoPreview
-      collectDashboardCharts(canvasDataResult).forEach((entry) => prepareChartPreviewState(entry.viewInfo))
       state.dashboardInfo = {
         ...dashboardInfo,
         dashboardMode,
       }
+      collectDashboardCharts(canvasDataResult).forEach((entry) => {
+        if (entry.viewInfo && canLookupChartCache(entry.viewInfo)) {
+          ensureChartSnapshotRefreshedAt(entry.viewInfo)
+        }
+        prepareChartPreviewState(entry.viewInfo)
+      })
       loadingDashboardId.value = null
       dataInitState.value = true
       scheduleDashboardChartRefresh(loadVersion)
@@ -790,6 +852,11 @@ function toggleSidebar() {
 function createDashboard() {
   resourceTreeRef.value?.createNewObject()
 }
+
+function getDashboardReportContextSnapshots() {
+  return (dashboardPreview.value as any)?.getReportContextSnapshots?.() || {}
+}
+
 defineExpose({
   getPreviewStateInfo,
 })
@@ -839,6 +906,7 @@ defineExpose({
           :dashboard-info="previewShowFlag ? state.dashboardInfo : {}"
           :component-data="state.canvasDataPreview"
           :canvas-view-info="state.canvasViewInfoPreview"
+          :get-report-context-snapshots="getDashboardReportContextSnapshots"
           @reload="reload"
         />
         <div

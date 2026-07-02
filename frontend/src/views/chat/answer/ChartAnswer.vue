@@ -164,7 +164,7 @@ async function resolveActiveTask(record: ChatRecord): Promise<ActiveTaskState | 
 async function handlePayload(
   payload: string,
   currentRecord: ChatRecord,
-  state: { sql_answer: string; chart_answer: string }
+  state: { sql_answer: string; chart_answer: string; analysis: string; analysis_thinking: string }
 ) {
   let data
   try {
@@ -229,6 +229,12 @@ async function handlePayload(
       state.chart_answer += data.reasoning_content || ''
       _currentChat.value.records[index.value].chart_answer = state.chart_answer
       break
+    case 'analysis-result':
+      state.analysis += data.content || ''
+      state.analysis_thinking += data.reasoning_content || ''
+      _currentChat.value.records[index.value].analysis = state.analysis
+      _currentChat.value.records[index.value].analysis_thinking = state.analysis_thinking
+      break
     case 'chart':
       _currentChat.value.records[index.value].chart = data.content
       break
@@ -278,6 +284,8 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
   const state = {
     sql_answer: _currentChat.value.records[index.value].sql_answer || '',
     chart_answer: _currentChat.value.records[index.value].chart_answer || '',
+    analysis: _currentChat.value.records[index.value].analysis || '',
+    analysis_thinking: _currentChat.value.records[index.value].analysis_thinking || '',
   }
   let offset = initialOffset
 
@@ -477,6 +485,7 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask })
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
     <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
+    <MdComponent v-if="message.record?.analysis" :message="message.record.analysis" />
     <ChartBlock
       style="margin-top: 6px"
       :message="message"

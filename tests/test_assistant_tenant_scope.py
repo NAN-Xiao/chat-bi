@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import jwt
@@ -8,6 +9,8 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine
+from starlette.requests import Request
+from starlette.responses import Response
 
 from apps.system.api import assistant as assistant_api
 from apps.system.models.system_model import AssistantModel
@@ -48,6 +51,30 @@ def _unwrap(func):
 
 def _request():
     return SimpleNamespace(app=SimpleNamespace(user_middleware=[]))
+
+
+def _http_request(*, origin: str = "https://example.com", credential: str | None = None):
+    headers = [(b"x-shuzhi-host-origin", origin.encode("utf-8"))]
+    if credential:
+        headers.append((b"x-shuzhi-assistant-validator", f"Embedded {credential}".encode("utf-8")))
+    return Request({"type": "http", "method": "GET", "path": "/system/assistant/validator", "headers": headers})
+
+
+def _trans(key: str, **kwargs):
+    return key.format(**kwargs) if kwargs else key
+
+
+def _validator_credential(assistant: AssistantModel, *, origin: str = "https://example.com") -> str:
+    return jwt.encode(
+        {
+            "assistant_id": assistant.id,
+            "tenant_id": assistant.tenant_id,
+            "origin": origin,
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        },
+        assistant.app_secret,
+        algorithm=security.ALGORITHM,
+    )
 
 
 def _tenant_admin(tenant_id=10):
@@ -227,10 +254,158 @@ def test_assistant_ds_is_filtered_by_assistant_tenant():
 def test_assistant_validator_token_contains_assistant_tenant_id():
     engine = _engine()
     with Session(engine) as session:
-        session.add(_assistant(101, 10, "Tenant A"))
+        assistant = _assistant(101, 10, "Tenant A")
+        session.add(assistant)
         session.commit()
 
-        result = asyncio.run(assistant_api.validator(session=session, id=101, virtual=999))
+        result = asyncio.run(assistant_api.validator(
+            request=_http_request(credential=_validator_credential(assistant)),
+            session=session,
+            trans=_trans,
+            id=101,
+            virtual=999,
+        ))
         payload = jwt.decode(result.token, settings.SECRET_KEY, algorithms=[security.ALGORITHM])
 
         assert payload["tenant_id"] == 10
+
+
+def test_assistant_info_hides_certificate_without_validator_credential():
+    engine = _engine()
+    with Session(engine) as session:
+        assistant = _assistant(101, 10, "Tenant A")
+        assistant.configuration = json.dumps({
+            "public_list": [101],
+            "certificate": [{"type": "custom", "source": "secret-token", "target": "header"}],
+        })
+        session.add(assistant)
+        session.commit()
+
+        result = asyncio.run(assistant_api.info(
+            request=_http_request(),
+            response=Response(),
+            session=session,
+            trans=_trans,
+            id=101,
+        ))
+
+        public_config = json.loads(result.configuration)
+        assert "certificate" not in public_config
+
+
+def test_assistant_info_includes_certificate_with_validator_credential():
+    engine = _engine()
+    with Session(engine) as session:
+        assistant = _assistant(101, 10, "Tenant A")
+        assistant.configuration = json.dumps({
+            "public_list": [101],
+            "certificate": [{"type": "custom", "source": "secret-token", "target": "header"}],
+        })
+        session.add(assistant)
+        session.commit()
+
+        result = asyncio.run(assistant_api.info(
+            request=_http_request(credential=_validator_credential(assistant)),
+            response=Response(),
+            session=session,
+            trans=_trans,
+            id=101,
+        ))
+
+        public_config = json.loads(result.configuration)
+        assert public_config["certificate"][0]["source"] == "secret-token"
+
+
+def test_assistant_validator_rejects_missing_credential():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(_assistant(101, 10, "Tenant A"))
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(assistant_api.validator(
+                request=_http_request(),
+                session=session,
+                trans=_trans,
+                id=101,
+                virtual=999,
+            ))
+
+        assert exc.value.status_code == 401
+
+
+def test_assistant_validator_rejects_wrong_origin():
+    engine = _engine()
+    with Session(engine) as session:
+        assistant = _assistant(101, 10, "Tenant A")
+        session.add(assistant)
+        session.commit()
+
+        with pytest.raises(RuntimeError):
+            asyncio.run(assistant_api.validator(
+                request=_http_request(
+                    origin="https://evil.example.com",
+                    credential=_validator_credential(assistant, origin="https://evil.example.com"),
+                ),
+                session=session,
+                trans=_trans,
+                id=101,
+                virtual=999,
+            ))
+
+
+def test_assistant_validator_rejects_wrong_app_secret_signature():
+    engine = _engine()
+    with Session(engine) as session:
+        assistant = _assistant(101, 10, "Tenant A")
+        session.add(assistant)
+        session.commit()
+        credential = jwt.encode(
+            {
+                "assistant_id": assistant.id,
+                "tenant_id": assistant.tenant_id,
+                "origin": "https://example.com",
+                "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            },
+            "wrong-secret",
+            algorithm=security.ALGORITHM,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(assistant_api.validator(
+                request=_http_request(credential=credential),
+                session=session,
+                trans=_trans,
+                id=101,
+                virtual=999,
+            ))
+
+        assert exc.value.status_code == 401
+
+
+def test_assistant_validator_rejects_unsigned_origin_binding():
+    engine = _engine()
+    with Session(engine) as session:
+        assistant = _assistant(101, 10, "Tenant A")
+        session.add(assistant)
+        session.commit()
+        credential = jwt.encode(
+            {
+                "assistant_id": assistant.id,
+                "tenant_id": assistant.tenant_id,
+                "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            },
+            assistant.app_secret,
+            algorithm=security.ALGORITHM,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(assistant_api.validator(
+                request=_http_request(credential=credential),
+                session=session,
+                trans=_trans,
+                id=101,
+                virtual=999,
+            ))
+
+        assert exc.value.status_code == 401

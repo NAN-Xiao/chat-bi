@@ -50,6 +50,13 @@ import {
 } from '@/views/dashboard/utils/metricSemantics.ts'
 import { inferPivotDimensions, type PivotDimension } from '@/views/dashboard/utils/pivotDimensions.ts'
 import { ArrowLeft, ArrowRight, Search } from '@element-plus/icons-vue'
+import {
+  applyMixedChartResult,
+  canRefreshMixedChart,
+  isExternalMcpSnapshotChart,
+  isMixedChart,
+  refreshMixedChartData,
+} from '@/views/dashboard/utils/mixedChartData'
 const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
@@ -920,7 +927,7 @@ function hasChartShape(viewInfo: any) {
 }
 
 function isExternalSnapshotChart(viewInfo: any) {
-  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+  return isExternalMcpSnapshotChart(viewInfo)
 }
 
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
@@ -983,10 +990,111 @@ async function previewChartSqlWithCacheFallback(payload: any, forceRefresh = fal
   return dashboardApi.preview_sql(payload)
 }
 
+async function previewMixedChartWithCacheFallback(viewInfo: any, forceRefresh = false) {
+  if (forceRefresh) {
+    return refreshMixedChartData(viewInfo, { forceRefresh: true })
+  }
+  const cachedResult = await refreshMixedChartData(viewInfo, { cacheOnly: true })
+  if (!isDashboardCacheMiss(cachedResult)) {
+    return cachedResult
+  }
+  return refreshMixedChartData(viewInfo)
+}
+
 async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
   const forceRefresh = options.forceRefresh !== false
   const blocking = options.blocking === true || !silent
+  if (isMixedChart(props.viewInfo)) {
+    if (!canRefreshMixedChart(props.viewInfo)) {
+      if (!silent) {
+        ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
+      }
+      return
+    }
+    refreshing.value = true
+    if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
+      props.viewInfo.data = {}
+    }
+    const previousData = Array.isArray(props.viewInfo.data.data) ? [...props.viewInfo.data.data] : []
+    const previousDataFields = Array.isArray(props.viewInfo.data.fields) ? [...props.viewInfo.data.fields] : []
+    const previousFields = Array.isArray(props.viewInfo.fields) ? [...props.viewInfo.fields] : []
+    const hasPreviousRows = previousData.length > 0
+    props.viewInfo.dataState = 'loading'
+    props.viewInfo.refreshState = forceRefresh ? 'loading' : 'waiting'
+    setChartLoadingProgress(0, !silent)
+    startRefreshProgress()
+    const requestSeq = ++refreshRequestSeq
+    if (blocking) {
+      blockingRefreshLoading.value = true
+      blockingRefreshRequestSeq = requestSeq
+    }
+    try {
+      const result = await previewMixedChartWithCacheFallback(props.viewInfo, forceRefresh)
+      if (requestSeq !== refreshRequestSeq) {
+        return
+      }
+      const hasPreviousShape =
+        hasPreviousRows || previousDataFields.length > 0 || previousFields.length > 0 || hasChartShape(props.viewInfo)
+      if (result?.status === 'failed') {
+        if (!isPermissionDeniedResult(result) && (hasPreviousRows || (isDashboardQueryBusy(result) && hasPreviousShape))) {
+          props.viewInfo.data.fields = previousDataFields
+          props.viewInfo.data.data = previousData
+          props.viewInfo.fields = previousFields
+          props.viewInfo.status = 'success'
+          props.viewInfo.message = ''
+          props.viewInfo.dataState = 'ready'
+          props.viewInfo.refreshState = isDashboardQueryBusy(result) ? 'queued' : ''
+        } else {
+          props.viewInfo.status = 'failed'
+          props.viewInfo.message = result?.message || t('dashboard.chart_refresh_failed')
+          props.viewInfo.dataState = 'failed'
+          props.viewInfo.refreshState = ''
+        }
+        if (!silent && props.viewInfo.dataState === 'failed') {
+          ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
+        }
+      } else {
+        applyMixedChartResult(props.viewInfo, result)
+        markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
+        if (!silent) {
+          ElMessage.success(t('dashboard.chart_refresh_success'))
+        }
+      }
+      props.viewInfo.loadingProgress = 100
+      chartRenderVersion.value += 1
+      await nextTick()
+    } catch (error: any) {
+      if (requestSeq !== refreshRequestSeq) {
+        return
+      }
+      props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
+      if (hasPreviousRows) {
+        props.viewInfo.data.fields = previousDataFields
+        props.viewInfo.data.data = previousData
+        props.viewInfo.fields = previousFields
+        props.viewInfo.status = 'success'
+        props.viewInfo.dataState = 'ready'
+      } else {
+        props.viewInfo.status = 'failed'
+        props.viewInfo.dataState = 'failed'
+      }
+      props.viewInfo.refreshState = ''
+      if (!silent && !hasPreviousRows) {
+        ElMessage.error(props.viewInfo.message)
+      }
+    } finally {
+      if (requestSeq === refreshRequestSeq) {
+        stopRefreshProgress()
+        refreshing.value = false
+        props.viewInfo.loadingProgress = props.viewInfo.dataState === 'loading' ? props.viewInfo.loadingProgress : 100
+      }
+      if (blockingRefreshRequestSeq === requestSeq) {
+        blockingRefreshLoading.value = false
+      }
+    }
+    return
+  }
   if (isExternalSnapshotChart(props.viewInfo)) {
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
       props.viewInfo.data = {}
@@ -1405,7 +1513,10 @@ async function recoverStaleLoadingState() {
     scheduleRenderChart()
     return
   }
-  if (props.showPosition === 'canvas' && props.viewInfo?.datasource && props.viewInfo?.sql?.trim()) {
+  const canRecoverChart = isMixedChart(props.viewInfo)
+    ? canRefreshMixedChart(props.viewInfo)
+    : !!(props.viewInfo?.datasource && props.viewInfo?.sql?.trim())
+  if (props.showPosition === 'canvas' && canRecoverChart) {
     await refreshData({ silent: true, forceRefresh: false })
   }
 }

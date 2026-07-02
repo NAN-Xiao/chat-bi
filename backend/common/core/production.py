@@ -10,7 +10,7 @@ from common.core.config import settings
 from common.utils.utils import AppLogUtil
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
-_DEVELOPMENT_DEFAULT_PASSWORDS = {"Shuzhi@123456", "elex@123"}
+_DEVELOPMENT_DEFAULT_PASSWORDS = {"Shuzhi@123456", "SQLBot@123456", "elex@123"}
 
 
 def _env_present(name: str) -> bool:

@@ -26,6 +26,13 @@ import {
   resolveReportPopoverStyle,
   type ReportPopoverStyle,
 } from '@/views/dashboard/preview/reportPopoverPosition'
+import {
+  applyMixedChartResult,
+  canRefreshMixedChart,
+  isExternalMcpSnapshotChart,
+  isMixedChart,
+  refreshMixedChartData,
+} from '@/views/dashboard/utils/mixedChartData'
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
@@ -546,6 +553,12 @@ function isDashboardQueryBusy(result: any) {
 }
 
 async function previewChartSql(viewInfo: any, config?: any, forceRefresh = false) {
+  if (isMixedChart(viewInfo)) {
+    return refreshMixedChartData(viewInfo, {
+      forceRefresh,
+      requestConfig: config,
+    })
+  }
   const payload = {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
@@ -646,7 +659,13 @@ function isReportChartComponent(item: any) {
 }
 
 function isExternalSnapshotChart(viewInfo: any) {
-  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+  return isExternalMcpSnapshotChart(viewInfo)
+}
+
+function canRefreshChart(viewInfo: any) {
+  return isMixedChart(viewInfo)
+    ? canRefreshMixedChart(viewInfo)
+    : !!(viewInfo?.datasource && viewInfo?.sql?.trim())
 }
 
 function collectReportChartEntries(
@@ -699,11 +718,19 @@ function getEntryTitle(entry: { component: any; viewInfo: any; path: string[] },
   )
 }
 
-function getCurrentReportSnapshot(entry: { component: any; viewInfo: any; path: string[] }, index: number) {
-  if (index !== 0 || entry.component?.id !== props.configItem?.id) {
-    return null
+function getReportContextSnapshots() {
+  const directSnapshot = (component.value as any)?.getReportContextSnapshot?.()
+  if (directSnapshot && props.configItem?.id) {
+    return {
+      [props.configItem.id]: directSnapshot,
+    }
   }
-  return (component.value as any)?.getReportContextSnapshot?.() || null
+  return (component.value as any)?.getReportContextSnapshots?.() || {}
+}
+
+function getCurrentReportSnapshot(entry: { component: any; viewInfo: any; path: string[] }) {
+  const snapshots = getReportContextSnapshots()
+  return snapshots?.[entry.component?.id] || null
 }
 
 function getReportDatasourceId() {
@@ -719,7 +746,7 @@ function buildSingleChartContext(
 ) {
   const viewInfo = entry.viewInfo || {}
   const chart = viewInfo.chart || {}
-  const snapshot = getCurrentReportSnapshot(entry, index)
+  const snapshot = getCurrentReportSnapshot(entry)
   const snapshotRows = Array.isArray(snapshot?.data) ? snapshot.data : null
   const storedRows = Array.isArray(viewInfo.data?.data) ? viewInfo.data.data : []
   const rows = snapshotRows || rowsAfterStoredPivotFilters(viewInfo, storedRows)
@@ -994,7 +1021,7 @@ async function refreshChartData() {
         successCount += 1
         continue
       }
-      if (!viewInfo?.datasource || !viewInfo?.sql?.trim()) {
+      if (!canRefreshChart(viewInfo)) {
         failedCount += 1
         continue
       }
@@ -1010,11 +1037,15 @@ async function refreshChartData() {
         if (!viewInfo.data || typeof viewInfo.data !== 'object') {
           viewInfo.data = {}
         }
-        viewInfo.data.fields = fields
-        viewInfo.data.data = data
-        viewInfo.fields = fields
-        viewInfo.status = result?.status || 'success'
-        viewInfo.message = result?.message || ''
+        if (isMixedChart(viewInfo) && result?.status !== 'failed') {
+          applyMixedChartResult(viewInfo, result)
+        } else {
+          viewInfo.data.fields = fields
+          viewInfo.data.data = data
+          viewInfo.fields = fields
+          viewInfo.status = result?.status || 'success'
+          viewInfo.message = result?.message || ''
+        }
         if (viewInfo.status === 'failed') {
           if (hasPreviousSnapshot || (isDashboardQueryBusy(result) && hasPreviousShape)) {
             viewInfo.data.fields = previousDataFields
@@ -1123,6 +1154,10 @@ function exportChartTableData() {
 onBeforeUnmount(() => {
   abortReportGeneration(false)
   document.removeEventListener('mousedown', handleDocumentMouseDown, true)
+})
+
+defineExpose({
+  getReportContextSnapshots,
 })
 </script>
 

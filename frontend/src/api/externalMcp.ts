@@ -26,6 +26,13 @@ export interface ExternalMcpToolInfo {
 export const externalMcpApi = {
   list: (params?: { keyword?: string; include_disabled?: boolean }) =>
     request.get<ExternalMcpServerInfo[]>('/external-mcp/list', { params }),
+  available: (params?: { tenant_id?: number | string | null; dashboard_id?: number | string | null }) =>
+    request.get<ExternalMcpServerInfo[]>('/external-mcp/available', {
+      params: {
+        ...(params?.tenant_id ? { tenant_id: String(params.tenant_id) } : {}),
+        ...(params?.dashboard_id ? { dashboard_id: String(params.dashboard_id) } : {}),
+      },
+    }),
   tools: (externalMcpServerId: number | string, params?: { tenant_id?: number | string | null; dashboard_id?: number | string | null }) =>
     request.get<ExternalMcpToolInfo[]>(`/external-mcp/${externalMcpServerId}/tools`, {
       params: {
@@ -33,7 +40,7 @@ export const externalMcpApi = {
         ...(params?.dashboard_id ? { dashboard_id: String(params.dashboard_id) } : {}),
       },
     }),
-  preview: (data: any) => request.post('/external-mcp/preview', data),
+  preview: (data: any, config?: any) => request.post('/external-mcp/preview', data, config),
   add: (data: any) => request.post<ExternalMcpServerInfo>('/external-mcp', data),
   edit: (data: any) => request.put<ExternalMcpServerInfo>('/external-mcp', data),
 }

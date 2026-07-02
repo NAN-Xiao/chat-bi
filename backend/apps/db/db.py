@@ -666,6 +666,32 @@ def _effective_query_timeout(ds: CoreDatasource | AssistantOutDsSchema, query_ti
         return 0
 
 
+def _query_result_max_rows() -> int:
+    try:
+        return max(1, int(settings.SHUZHI_QUERY_RESULT_MAX_ROWS))
+    except Exception:
+        return 10000
+
+
+def _limited_fetchmany(cursor_or_result):
+    fetchmany = getattr(cursor_or_result, "fetchmany", None)
+    if callable(fetchmany):
+        return fetchmany(_query_result_max_rows())
+    return cursor_or_result.fetchall()
+
+
+def _build_query_result(columns: list, rows: list, sql: str) -> dict:
+    result_list = [
+        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)}
+        for tuple_item in rows
+    ]
+    return {
+        "fields": columns,
+        "data": result_list,
+        "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8'))),
+    }
+
+
 def _apply_sqlalchemy_statement_timeout(session, ds_type: str, timeout_seconds: int) -> None:
     if timeout_seconds <= 0:
         return
@@ -677,7 +703,34 @@ def _apply_sqlalchemy_statement_timeout(session, ds_type: str, timeout_seconds: 
             session.execute(text("SET SESSION MAX_EXECUTION_TIME = :timeout_ms"), {"timeout_ms": timeout_ms})
     except Exception as exc:
         AppLogUtil.warning(f"Failed to apply datasource query timeout: type={ds_type}, timeout={timeout_seconds}s, error={exc}")
-        session.rollback()
+
+
+def _apply_sqlalchemy_read_only_guard(session, ds_type: str) -> None:
+    ds_key = normalize_sql_safety_ds_type(ds_type)
+    guard_sql = {
+        "pg": "SET TRANSACTION READ ONLY",
+        "excel": "SET TRANSACTION READ ONLY",
+        "mysql": "START TRANSACTION READ ONLY",
+        "oracle": "SET TRANSACTION READ ONLY",
+        "ck": "SET readonly = 1",
+    }.get(ds_key)
+    if guard_sql:
+        session.execute(text(guard_sql))
+
+
+def _apply_dbapi_read_only_guard(conn, cursor, ds_type: str) -> None:
+    ds_key = normalize_sql_safety_ds_type(ds_type)
+    if ds_key == "kingbase" and hasattr(conn, "set_session"):
+        conn.set_session(readonly=True)
+        return
+    guard_sql = {
+        "redshift": "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY",
+        "doris": "START TRANSACTION READ ONLY",
+        "starrocks": "START TRANSACTION READ ONLY",
+        "oracle": "SET TRANSACTION READ ONLY",
+    }.get(ds_key)
+    if guard_sql:
+        cursor.execute(guard_sql)
 
 
 def _unsafe_exec_sql_after_validation(
@@ -703,17 +756,17 @@ def _unsafe_exec_sql_after_validation(
         timeout_seconds = _effective_query_timeout(ds, query_timeout)
         session = get_session(ds, timeout=timeout_seconds)
         try:
-            _apply_sqlalchemy_statement_timeout(session, ds.type, timeout_seconds)
+            if normalize_sql_safety_ds_type(ds.type) == "mysql":
+                _apply_sqlalchemy_statement_timeout(session, ds.type, timeout_seconds)
+                _apply_sqlalchemy_read_only_guard(session, ds.type)
+            else:
+                _apply_sqlalchemy_read_only_guard(session, ds.type)
+                _apply_sqlalchemy_statement_timeout(session, ds.type, timeout_seconds)
             with session.execute(text(sql)) as result:
                 try:
                     columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
-                    res = result.fetchall()
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    res = _limited_fetchmany(result)
+                    return _build_query_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         except Exception:
@@ -730,16 +783,11 @@ def _unsafe_exec_sql_after_validation(
                                   port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql, timeout=conf.timeout)
-                    res = cursor.fetchall()
+                    res = _limited_fetchmany(cursor)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    return _build_query_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
@@ -747,37 +795,29 @@ def _unsafe_exec_sql_after_validation(
             with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
                                  port=conf.port, db=conf.database, connect_timeout=conf.timeout,
                                  read_timeout=conf.timeout, **extra_config_dict,
-                                 **ssl_args) as conn, conn.cursor() as cursor:
+                                  **ssl_args) as conn, conn.cursor() as cursor:
                 try:
+                    _apply_dbapi_read_only_guard(conn, cursor, ds.type)
                     cursor.execute(sql)
-                    res = cursor.fetchall()
+                    res = _limited_fetchmany(cursor)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    return _build_query_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'redshift'):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                            password=conf.password,
-                                            timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+                                             password=conf.password,
+                                             timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
+                    _apply_dbapi_read_only_guard(conn, cursor, ds.type)
                     cursor.execute(sql)
-                    res = cursor.fetchall()
+                    res = _limited_fetchmany(cursor)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    return _build_query_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'kingbase'):
@@ -786,17 +826,13 @@ def _unsafe_exec_sql_after_validation(
                                   options=f"-c statement_timeout={conf.timeout * 1000}",
                                   **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
+                    _apply_dbapi_read_only_guard(conn, cursor, ds.type)
                     cursor.execute(sql)
-                    res = cursor.fetchall()
+                    res = _limited_fetchmany(cursor)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    return _build_query_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'es'):
@@ -805,12 +841,7 @@ def _unsafe_exec_sql_after_validation(
                 columns = [field.get('name') for field in columns] if origin_column else [field.get('name').lower() for
                                                                                           field in
                                                                                           columns]
-                result_list = [
-                    {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                    res
-                ]
-                return {"fields": columns, "data": result_list,
-                        "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                return _build_query_result(columns, res[:_query_result_max_rows()], sql)
             except Exception as ex:
                 raise Exception(str(ex))
         elif equals_ignore_case(ds.type, 'hive'):
@@ -820,18 +851,27 @@ def _unsafe_exec_sql_after_validation(
                     # Hive 使用反引号标识符；这里规范化带引号标识符作为兼容兜底。
                     hive_sql = re.sub(r'"([A-Za-z_][A-Za-z0-9_]*)"', r'`\1`', sql)
                     cursor.execute(hive_sql)
-                    res = cursor.fetchall()
+                    res = _limited_fetchmany(cursor)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(hive_sql, 'utf-8')))}
+                    return _build_query_result(columns, res, hive_sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
+
+
+def normalize_sql_safety_ds_type(ds_type: str | None) -> str:
+    ds_key = str(ds_type or '').strip().casefold()
+    return {
+        'postgres': 'pg',
+        'postgresql': 'pg',
+        'pgsql': 'pg',
+        'clickhouse': 'ck',
+        'sql server': 'sqlserver',
+        'sqlserver': 'sqlserver',
+        'mssql': 'sqlserver',
+        'aws_redshift': 'redshift',
+    }.get(ds_key, ds_key)
 
 
 def get_sqlglot_dialect(ds_type: str) -> str:
@@ -840,11 +880,20 @@ def get_sqlglot_dialect(ds_type: str) -> str:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
-    if equals_ignore_case(ds_type, 'mysql', 'doris', 'starrocks'):
+    ds_key = normalize_sql_safety_ds_type(ds_type)
+    if ds_key in {'mysql', 'doris', 'starrocks'}:
         return 'mysql'
-    elif equals_ignore_case(ds_type, 'sqlServer'):
+    elif ds_key == 'sqlserver':
         return 'tsql'
-    elif equals_ignore_case(ds_type, 'hive'):
+    elif ds_key in {'pg', 'kingbase', 'excel'}:
+        return 'postgres'
+    elif ds_key == 'redshift':
+        return 'redshift'
+    elif ds_key == 'ck':
+        return 'clickhouse'
+    elif ds_key == 'oracle':
+        return 'oracle'
+    elif ds_key == 'hive':
         return 'hive'
     return None
 
@@ -852,12 +901,52 @@ def get_sqlglot_dialect(ds_type: str) -> str:
 # 通用危险函数（适用于所有数据库）
 COMMON_DANGEROUS_FUNCTIONS = {'version', 'current_user', 'user', 'database'}
 
+POSTGRES_COMPAT_DANGEROUS_FUNCTIONS = {
+    'pg_read_file',
+    'pg_read_binary_file',
+    'pg_ls_dir',
+    'pg_ls_logdir',
+    'pg_ls_waldir',
+    'pg_ls_tmpdir',
+    'pg_ls_archive_statusdir',
+    'pg_stat_file',
+    'pg_write_file',
+    'lo_import',
+    'lo_export',
+}
+
+CLICKHOUSE_DANGEROUS_FUNCTIONS = {
+    'file',
+    'fileCluster',
+    'url',
+    's3',
+    's3Cluster',
+    'hdfs',
+    'hdfsCluster',
+    'azureBlobStorage',
+    'gcs',
+    'oss',
+    'cosn',
+    'executable',
+    'executablePool',
+    'remote',
+    'remoteSecure',
+    'mysql',
+    'postgresql',
+    'mongodb',
+    'jdbc',
+    'odbc',
+}
+
 # 特定数据库的危险函数
 DS_SPECIFIC_DANGEROUS_FUNCTIONS = {
     'mysql': {'LOAD_FILE', 'INTO OUTFILE', 'INTO DUMPFILE'},
     'doris': {'LOAD_FILE', 'INTO OUTFILE', 'INTO DUMPFILE'},
     'starrocks': {'LOAD_FILE', 'INTO OUTFILE', 'INTO DUMPFILE'},
-    'postgresql': {'pg_read_file', 'pg_write_file', 'lo_import', 'lo_export'},
+    'pg': POSTGRES_COMPAT_DANGEROUS_FUNCTIONS,
+    'kingbase': POSTGRES_COMPAT_DANGEROUS_FUNCTIONS,
+    'redshift': POSTGRES_COMPAT_DANGEROUS_FUNCTIONS,
+    'ck': CLICKHOUSE_DANGEROUS_FUNCTIONS,
     'sqlserver': {'EXEC', 'xp_cmdshell', 'sp_executesql'},
     'oracle': {'UTL_FILE', 'DBMS_PIPE', 'DBMS_LOCK'},
     'hive': {'ADD FILE', 'ADD JAR'},
@@ -880,10 +969,28 @@ def get_dangerous_functions(ds_type: str) -> set:
     做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     functions = COMMON_DANGEROUS_FUNCTIONS.copy()
-    ds_key = ds_type.lower() if ds_type else ''
+    ds_key = normalize_sql_safety_ds_type(ds_type)
     if ds_key in DS_SPECIFIC_DANGEROUS_FUNCTIONS:
         functions.update(DS_SPECIFIC_DANGEROUS_FUNCTIONS[ds_key])
     return functions
+
+
+def normalize_sql_function_name(name: str | None) -> str:
+    return str(name or '').strip('`"[]').casefold()
+
+
+def iter_sql_function_names(stmt) -> list[str]:
+    function_names: list[str] = []
+    for func in stmt.find_all(exp.Func):
+        function_names.append(normalize_sql_function_name(getattr(func, 'name', '')))
+
+    for table in stmt.find_all(exp.Table):
+        expressions = table.args.get('expressions') or []
+        table_name = normalize_sql_function_name(getattr(table, 'name', ''))
+        if table_name and expressions:
+            function_names.append(table_name)
+
+    return function_names
 
 
 def check_dangerous_functions(statements: list, ds_type: str) -> bool:
@@ -893,12 +1000,12 @@ def check_dangerous_functions(statements: list, ds_type: str) -> bool:
     做了什么：检查数据库连接里的数据、权限或配置是否合法，不对就及时拦住。
     """
     dangerous_functions = get_dangerous_functions(ds_type)
-    dangerous_functions_upper = {f.upper() for f in dangerous_functions}
+    dangerous_function_names = {normalize_sql_function_name(f) for f in dangerous_functions}
 
     for stmt in statements:
         if stmt:
-            for func in stmt.find_all(exp.Anonymous):
-                if func.name.upper() in dangerous_functions_upper:
+            for func_name in iter_sql_function_names(stmt):
+                if func_name in dangerous_function_names:
                     return False
     return True
 
@@ -940,15 +1047,18 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
 
         if not statements:
             raise ValueError("Parse SQL Error")
+        executable_statements = [stmt for stmt in statements if stmt is not None]
+        if len(executable_statements) != 1:
+            return False, "SQL must contain exactly one statement"
 
         # 2. 使用 sqlglot 检查函数调用
         dangerous_functions = get_dangerous_functions(ds.type)
-        dangerous_functions_upper = {f.upper() for f in dangerous_functions}
-        for stmt in statements:
+        dangerous_function_names = {normalize_sql_function_name(f) for f in dangerous_functions}
+        for stmt in executable_statements:
             if stmt:
-                for func in stmt.find_all(exp.Anonymous):
-                    if func.name.upper() in dangerous_functions_upper:
-                        return False, f"SQL contains dangerous function: {func.name}"
+                for func_name in iter_sql_function_names(stmt):
+                    if func_name in dangerous_function_names:
+                        return False, f"SQL contains dangerous function: {func_name}"
 
         # 3. 检查写操作类型
         write_types = (
@@ -957,9 +1067,7 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
             exp.Merge, exp.Copy
         )
 
-        for stmt in statements:
-            if stmt is None:
-                continue
+        for stmt in executable_statements:
             if isinstance(stmt, write_types):
                 return False, f"SQL contains write operation: {type(stmt).__name__}"
 

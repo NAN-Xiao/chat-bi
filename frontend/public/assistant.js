@@ -487,6 +487,17 @@
     const url = new URL(src)
     return url.searchParams.get(key)
   }
+  function targetOriginFromUrl(src) {
+    return new URL(src).origin
+  }
+  function formatTargetValue(target_val, source_val) {
+    if (isEmpty(target_val)) {
+      return source_val
+    }
+    return String(target_val)
+      .replace(/\{\{\s*(source|value)\s*\}\}/g, source_val)
+      .replace(/\$\{\s*(source|value)\s*\}/g, source_val)
+  }
   function parsrCertificate(config) {
     const certificateList = config.certificate
     if (!certificateList?.length) {
@@ -519,7 +530,7 @@
     return {
       target,
       key: target_key || source,
-      value: (target_val && eval(target_val)) || source_val,
+      value: formatTargetValue(target_val, source_val),
     }
   }
   function getCookie(key) {
@@ -539,17 +550,24 @@
   function registerMessageEvent(id, data) {
     const iframe = document.getElementById(`shuzhi-assistant-chat-iframe-${id}`)
     const url = iframe.src
+    const targetOrigin = targetOriginFromUrl(url)
     const eventName = 'shuzhi_assistant_event'
     window.addEventListener('message', (event) => {
+      if (event.source !== iframe.contentWindow || event.origin !== targetOrigin) {
+        return
+      }
       if (event.data?.eventName === eventName) {
         if (event.data?.messageId !== id) {
           return
         }
         if (event.data?.busi == 'ready' && event.data?.ready) {
-          params = {
+          const params = {
             eventName,
             messageId: id,
             hostOrigin: window.location.origin,
+          }
+          if (data.validatorCredential) {
+            params['validatorCredential'] = data.validatorCredential
           }
           if (data.type === 1) {
             const certificate = parsrCertificate(data)
@@ -557,7 +575,7 @@
             params['certificate'] = certificate
           }
           const contentWindow = iframe.contentWindow
-          contentWindow.postMessage(params, url)
+          contentWindow.postMessage(params, targetOrigin)
         }
       }
     })
@@ -567,11 +585,20 @@
     const online = getParam(src, 'online')
     const userFlag = getParam(src, 'userFlag')
     const history = getParam(src, 'history')
+    const validatorCredential = getParam(src, 'validatorCredential') || getParam(src, 'token')
     let url = `${domain_url}/api/v1/system/assistant/info/${id}`
     if (domain_url.includes('5173')) {
       url = url.replace('5173', '8000')
     }
-    fetch(url)
+    const fetchOptions = validatorCredential
+      ? {
+          headers: {
+            'X-SHUZHI-HOST-ORIGIN': window.location.origin,
+            'X-SHUZHI-ASSISTANT-VALIDATOR': `Embedded ${validatorCredential}`,
+          },
+        }
+      : undefined
+    fetch(url, fetchOptions)
       .then((response) => response.json())
       .then((res) => {
         if (!res.data) {
@@ -605,6 +632,7 @@
         tempData['online'] = online && online.toString().toLowerCase() == 'true'
         tempData['userFlag'] = userFlag
         tempData['history'] = history
+        tempData['validatorCredential'] = validatorCredential
         initshuzhi_assistant(tempData)
         registerMessageEvent(id, tempData)
       })
@@ -762,9 +790,10 @@
       if (online != null && typeof online != 'boolean') {
         throw new Error('The parameter can only be of type boolean')
       }
-      const iframe = document.getElementById(`shuzhi-assistant-chat-iframe-${id}`)
+        const iframe = document.getElementById(`shuzhi-assistant-chat-iframe-${id}`)
       if (iframe) {
         const url = iframe.src
+        const targetOrigin = targetOriginFromUrl(url)
         const eventName = 'shuzhi_assistant_event'
         const params = {
           busi: 'setOnline',
@@ -773,7 +802,7 @@
           messageId: id,
         }
         const contentWindow = iframe.contentWindow
-        contentWindow.postMessage(params, url)
+        contentWindow.postMessage(params, targetOrigin)
       }
     }
     window.shuzhi_assistant_handler[id]['refresh'] = (online, userFlag) => {
@@ -820,9 +849,10 @@
       if (show != null && typeof show != 'boolean') {
         throw new Error('The parameter can only be of type boolean')
       }
-      const iframe = document.getElementById(`shuzhi-assistant-chat-iframe-${id}`)
+        const iframe = document.getElementById(`shuzhi-assistant-chat-iframe-${id}`)
       if (iframe) {
         const url = iframe.src
+        const targetOrigin = targetOriginFromUrl(url)
         const eventName = 'shuzhi_assistant_event'
         const params = {
           busi: 'setHistory',
@@ -831,13 +861,14 @@
           messageId: id,
         }
         const contentWindow = iframe.contentWindow
-        contentWindow.postMessage(params, url)
+        contentWindow.postMessage(params, targetOrigin)
       }
     }
     window.shuzhi_assistant_handler[id]['createConversation'] = (param) => {
       const iframe = document.getElementById(`shuzhi-assistant-chat-iframe-${id}`)
       if (iframe) {
         const url = iframe.src
+        const targetOrigin = targetOriginFromUrl(url)
         const eventName = 'shuzhi_assistant_event'
         const params = {
           busi: 'createConversation',
@@ -846,7 +877,7 @@
           messageId: id,
         }
         const contentWindow = iframe.contentWindow
-        contentWindow.postMessage(params, url)
+        contentWindow.postMessage(params, targetOrigin)
       }
     }
   }

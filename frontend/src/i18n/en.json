@@ -970,7 +970,17 @@
     "dashboard_create_mode": "Create Mode",
     "blank_dashboard": "Blank Dashboard",
     "create_from_platform_template": "Create from Template",
-    "select_platform_template": "Select a platform template"
+    "select_platform_template": "Select a platform template",
+    "add_manual_chart": "Create Chart Manually",
+    "add_chart_from_chat": "Choose From Chat",
+    "chart_source_config": "Data Sources",
+    "chart_source_sql": "SQL",
+    "chart_source_mcp": "MCP",
+    "chart_source_required": "Select at least one data source",
+    "mcp_editor_no_bound_server": "No third-party MCP datasource is available in this workspace",
+    "mcp_editor_server": "MCP Datasource",
+    "mcp_editor_select_server": "Select an MCP datasource",
+    "mcp_editor_servers_load_failed": "Failed to load MCP datasources"
   },
   "qa": {
     "retrieve_error": "No content available",

@@ -575,7 +575,15 @@ def _rank_auto_data_skills_by_embedding(
     for skill in keyword_ranked:
         score = keyword_scores.get(skill_key(skill), 0)
         is_workspace_specific = skill.get("visibility_scope") != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
+        is_executable_platform_skill = (
+            skill.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
+            and "<!-- saas-skill:" in (skill.get("prompt") or "")
+        )
+        executable_platform_threshold = 12
         if is_workspace_specific and strong_keyword_threshold and score >= strong_keyword_threshold:
+            if add(skill):
+                continue
+        if is_executable_platform_skill and score >= executable_platform_threshold:
             if add(skill):
                 continue
         vector = embedding_vector_from_json(skill.get("embedding"))

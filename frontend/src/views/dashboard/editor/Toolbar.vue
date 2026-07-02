@@ -31,13 +31,17 @@ const { snapshotIndex } = storeToRefs(snapshotStore)
 const emits = defineEmits(['addComponents'])
 const resourceGroupOptRef = ref(null)
 const chatChartSelectionRef = ref(null)
-const openViewDialog = () => {
+const openChatChartDialog = () => {
   if (!props.baseParams?.canUseChatHistory) {
     emits('addComponents', 'SQView')
     return
   }
   // @ts-expect-error  @typescript-eslint/ban-ts-comment
   chatChartSelectionRef.value?.dialogInit()
+}
+
+const addManualChart = () => {
+  emits('addComponents', 'SQView', undefined, { openEditor: true })
 }
 
 import SQFullscreen from '@/views/dashboard/common/SQFullscreen.vue'
@@ -234,15 +238,34 @@ const previewInner = () => {
       </div>
     </div>
     <div class="core-toolbar">
-      <component-button-label
+      <el-dropdown
         v-if="canEditDashboard"
-        :icon-name="dvView"
-        :title="t('dashboard.add_view')"
-        themes="light"
-        is-label
-        show-split-line
-        @custom-click="openViewDialog"
-      ></component-button-label>
+        trigger="click"
+        placement="bottom-start"
+      >
+        <div>
+          <component-button-label
+            :icon-name="dvView"
+            :title="t('dashboard.add_view')"
+            themes="light"
+            is-label
+            show-split-line
+          ></component-button-label>
+        </div>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="addManualChart">
+              {{ t('dashboard.add_manual_chart') }}
+            </el-dropdown-item>
+            <el-dropdown-item
+              v-if="baseParams?.canUseChatHistory"
+              @click="openChatChartDialog"
+            >
+              {{ t('dashboard.add_chart_from_chat') }}
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <component-button-label
         v-if="canEditDashboard"
         :icon-name="dvText"

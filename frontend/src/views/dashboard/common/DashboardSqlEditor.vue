@@ -2,7 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { dashboardApi } from '@/api/dashboard.ts'
-import type { ExternalMcpToolInfo } from '@/api/externalMcp.ts'
+import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
 import { request } from '@/utils/request.ts'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type {
@@ -47,8 +47,26 @@ const props = withDefaults(
 
 const emits = defineEmits(['update:modelValue', 'applied'])
 const { t } = useI18n()
+type ChartDataSourceType = 'sql' | 'external_mcp'
+type PreviewResultSnapshot = {
+  fields: string[]
+  data: Array<Record<string, any>>
+  status: string
+  message: string
+  raw?: any
+}
+
 const mcpTextFallbacks: Record<string, string> = {
+  chart_source_config: '数据来源',
+  chart_source_sql: 'SQL',
+  chart_source_mcp: 'MCP',
+  chart_source_required: '请至少选择一个数据来源',
+  chart_source_changed: '数据配置已修改，请先运行预览',
+  chart_mixed_merge_no_common_field: 'SQL 和 MCP 没有可自动合并的同名维度字段',
   mcp_editor_no_server: '当前图表缺少第三方 MCP 数据源配置',
+  mcp_editor_no_bound_server: '当前工作空间没有可用的第三方 MCP 数据源',
+  mcp_editor_server: 'MCP 数据源',
+  mcp_editor_select_server: '请选择 MCP 数据源',
   mcp_editor_select_tool: '请选择 MCP 函数',
   mcp_editor_invalid_arguments: '参数必须是合法 JSON 对象',
   mcp_editor_tool: 'MCP 函数',
@@ -62,6 +80,7 @@ const mcpTextFallbacks: Record<string, string> = {
   mcp_editor_input_schema: '参数说明',
   mcp_editor_parameters: '函数参数',
   mcp_editor_advanced_arguments: '高级 JSON',
+  mcp_editor_servers_load_failed: 'MCP 数据源列表获取失败',
   mcp_editor_tools_load_failed: 'MCP 函数列表获取失败',
 }
 
@@ -81,6 +100,8 @@ const visible = computed({
 })
 
 const form = reactive({
+  sourceTypes: ['sql'] as ChartDataSourceType[],
+  primarySource: 'sql' as ChartDataSourceType,
   sql: '',
   title: '',
   chartType: 'table' as ChartTypes,
@@ -108,6 +129,7 @@ const form = reactive({
   pivotCustomStart: '',
   pivotCustomEnd: '',
   pivotGroupValues: [] as string[],
+  mcpServerId: '',
   mcpTool: '',
   mcpArgumentsObject: {} as Record<string, any>,
   mcpArgumentsText: '{}',
@@ -127,8 +149,22 @@ const sourcePreview = reactive({
   fields: [] as string[],
   data: [] as Array<Record<string, any>>,
 })
+const sourceResults = reactive<Record<ChartDataSourceType, PreviewResultSnapshot>>({
+  sql: createEmptyPreviewResultSnapshot(),
+  external_mcp: createEmptyPreviewResultSnapshot(),
+})
+const mergeState = reactive({
+  joinFields: [] as string[],
+  fieldMap: {
+    sql: {} as Record<string, string>,
+    external_mcp: {} as Record<string, string>,
+  },
+})
 
 const loading = ref(false)
+const mcpServersLoading = ref(false)
+const mcpServersError = ref('')
+const mcpServers = ref<ExternalMcpServerInfo[]>([])
 const mcpToolsLoading = ref(false)
 const mcpToolsError = ref('')
 const mcpTools = ref<ExternalMcpToolInfo[]>([])
@@ -143,6 +179,59 @@ const PIVOT_GROUP_SELECT_NONE_VALUE = '__dashboard_pivot_group_select_none__'
 
 function isExternalSnapshotChart(viewInfo: any) {
   return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+}
+
+function normalizeSourceType(value: any): ChartDataSourceType | '' {
+  if (value === 'external_mcp' || value === 'mcp') {
+    return 'external_mcp'
+  }
+  if (value === 'sql') {
+    return 'sql'
+  }
+  return ''
+}
+
+function normalizeSourceTypes(values: any): ChartDataSourceType[] {
+  const rawValues = Array.isArray(values) ? values : []
+  return Array.from(
+    new Set(rawValues.map(normalizeSourceType).filter(Boolean) as ChartDataSourceType[])
+  )
+}
+
+function chartSourceConfig(viewInfo: any) {
+  return viewInfo?.sourceConfig || viewInfo?.source_config || {}
+}
+
+function resolveChartSourceTypes(viewInfo: any): ChartDataSourceType[] {
+  const config = chartSourceConfig(viewInfo)
+  const configured = normalizeSourceTypes(config.sources || config.sourceTypes || viewInfo?.sources)
+  const sourceTypes = configured.length ? configured : []
+  if ((viewInfo?.sql || viewInfo?.datasource) && !sourceTypes.includes('sql')) {
+    sourceTypes.push('sql')
+  }
+  if (
+    (
+      isExternalSnapshotChart(viewInfo) ||
+      viewInfo?.external_mcp_server_id ||
+      viewInfo?.mcp ||
+      config?.mcp
+    ) &&
+    !sourceTypes.includes('external_mcp')
+  ) {
+    sourceTypes.push('external_mcp')
+  }
+  return sourceTypes.length ? sourceTypes : ['sql']
+}
+
+function resolveMcpServerId(viewInfo: any) {
+  const config = chartSourceConfig(viewInfo)
+  const value =
+    viewInfo?.external_mcp_server_id ||
+      viewInfo?.mcp?.externalMcpServerId ||
+      viewInfo?.mcp?.external_mcp_server_id ||
+      config?.mcp?.externalMcpServerId ||
+      config?.mcp?.external_mcp_server_id
+  return value === undefined || value === null || value === '' ? '' : String(value)
 }
 
 const chartTypes: Array<{ label: string; value: ChartTypes }> = [
@@ -160,14 +249,20 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'treemap', value: 'treemap' },
 ]
 
-const isExternalSnapshot = computed(() => isExternalSnapshotChart(props.viewInfo))
-const canApplyStaticSnapshot = computed(() => props.allowStaticApply || isExternalSnapshot.value)
-const editorTitle = computed(() =>
-  isExternalSnapshot.value ? t('dashboard.snapshot_editor_title') : t('dashboard.sql_editor_title')
-)
+const sourceTypeOptions = computed(() => [
+  { label: mt('chart_source_sql'), value: 'sql' as ChartDataSourceType },
+  { label: mt('chart_source_mcp'), value: 'external_mcp' as ChartDataSourceType },
+])
+const hasSqlSource = computed(() => form.sourceTypes.includes('sql'))
+const hasMcpSource = computed(() => form.sourceTypes.includes('external_mcp'))
+const isMixedSource = computed(() => hasSqlSource.value && hasMcpSource.value)
+const isExternalSnapshot = computed(() => hasMcpSource.value && !hasSqlSource.value)
+const isMaterializedSource = computed(() => isExternalSnapshot.value || isMixedSource.value)
+const editorTitle = computed(() => t('dashboard.edit_chart'))
 const snapshotSourceTitle = computed(() => {
   const mcp = props.viewInfo?.mcp || {}
-  return [mcp.server || t('dashboard.external_snapshot_source'), mcp.tool]
+  const server = mcpServers.value.find((item) => stableId(item.id) === stableId(form.mcpServerId))
+  return [server?.name || mcp.server || t('dashboard.external_snapshot_source'), form.mcpTool || mcp.tool]
     .filter(Boolean)
     .join(' / ')
 })
@@ -187,7 +282,7 @@ const selectedMcpToolSchemaText = computed(() => {
   return formatJson(schema)
 })
 const stableId = (value: any) => (value === undefined || value === null || value === '' ? '' : String(value))
-const currentExternalMcpServerId = computed(() => stableId(props.viewInfo?.external_mcp_server_id || props.viewInfo?.mcp?.externalMcpServerId || props.viewInfo?.mcp?.external_mcp_server_id))
+const currentExternalMcpServerId = computed(() => stableId(form.mcpServerId))
 const currentExternalMcpTenantId = computed(() =>
   stableId(
     props.viewInfo?.tenant_id ||
@@ -213,19 +308,27 @@ const pivotTimeFieldOptions = computed(() => {
   )
   return toFieldOptions(dateFields.length ? dateFields : sourcePreview.fields)
 })
-const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && !isExternalSnapshot.value)
+const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && hasSqlSource.value)
 const canRunEditorPreview = computed(() => {
-  if (isExternalSnapshot.value) {
-    return Boolean(currentExternalMcpServerId.value)
+  if (!hasSqlSource.value && !hasMcpSource.value) {
+    return false
   }
-  return !canApplyStaticSnapshot.value || canRunPreview.value
+  if (hasSqlSource.value && !props.viewInfo?.datasource) {
+    return false
+  }
+  if (hasMcpSource.value && !currentExternalMcpServerId.value) {
+    return false
+  }
+  return true
 })
+const sourceChangedAfterPreview = computed(() => currentPreviewSignature() !== lastPreviewSignature.value)
 const sqlChangedAfterPreview = computed(
-  () => !canApplyStaticSnapshot.value && currentPreviewSignature() !== lastPreviewSignature.value
+  () => hasSqlSource.value && !hasMcpSource.value && sourceChangedAfterPreview.value
 )
 const mcpChangedAfterPreview = computed(
-  () => isExternalSnapshot.value && currentPreviewSignature() !== lastPreviewSignature.value
+  () => hasMcpSource.value && !hasSqlSource.value && sourceChangedAfterPreview.value
 )
+const mixedChangedAfterPreview = computed(() => isMixedSource.value && sourceChangedAfterPreview.value)
 const previewTableFields = computed(() => {
   if (form.columns.length > 0) {
     return form.columns.slice(0, 10)
@@ -236,7 +339,7 @@ const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.i
 const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chartType))
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
-const supportsPivotConfig = computed(() => !isExternalSnapshot.value && !['table', 'metric'].includes(form.chartType))
+const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric'].includes(form.chartType))
 const supportsForecastConfig = computed(
   () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length > 0
 )
@@ -616,7 +719,7 @@ function initPivotConfig(pivot?: any) {
 }
 
 function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
-  if (!form.pivotEnabled) {
+  if (!supportsPivotConfig.value || !form.pivotEnabled) {
     return { enabled: false }
   }
   const groupField = form.pivotGroupField || effectiveSeriesField.value
@@ -651,20 +754,30 @@ function previewPivotPayload() {
 }
 
 function currentPreviewSignature() {
-  if (isExternalSnapshot.value) {
-    return JSON.stringify({
-      externalMcpServerId: currentExternalMcpServerId.value || null,
-      tool: form.mcpTool,
-      argumentsText: (form.mcpArgumentsText || '').trim(),
-      resultPath: form.mcpResultPath || '',
-      keyField: form.mcpKeyField || '',
-      valueField: form.mcpValueField || '',
-    })
-  }
   return JSON.stringify({
-    sql: form.sql.trim(),
-    pivot: previewPivotPayload() || { enabled: false },
+    sources: [...form.sourceTypes],
+    sql: hasSqlSource.value
+      ? {
+          datasource: props.viewInfo?.datasource || null,
+          sql: form.sql.trim(),
+          pivot: previewPivotPayload() || { enabled: false },
+        }
+      : null,
+    mcp: hasMcpSource.value
+      ? {
+          externalMcpServerId: currentExternalMcpServerId.value || null,
+          tool: form.mcpTool,
+          argumentsText: (form.mcpArgumentsText || '').trim(),
+          resultPath: form.mcpResultPath || '',
+          keyField: form.mcpKeyField || '',
+          valueField: form.mcpValueField || '',
+        }
+      : null,
   })
+}
+
+function hasCurrentPreviewData() {
+  return preview.status !== 'failed' && (preview.fields.length > 0 || preview.data.length > 0)
 }
 
 function axisValues(axis?: Array<{ value?: string }>) {
@@ -705,6 +818,179 @@ function getPreviewResultFields(result: any) {
     ...(Array.isArray(result?.fields) ? result.fields : []),
     ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
   ])
+}
+
+function createEmptyPreviewResultSnapshot(): PreviewResultSnapshot {
+  return {
+    fields: [],
+    data: [],
+    status: 'success',
+    message: '',
+  }
+}
+
+function previewResultSnapshot(result: any): PreviewResultSnapshot {
+  return {
+    fields: getPreviewResultFields(result),
+    data: Array.isArray(result?.data) ? result.data : [],
+    status: result?.status || 'success',
+    message: result?.message || '',
+    raw: result?.raw,
+  }
+}
+
+function normalizePreviewResultSnapshot(value: any): PreviewResultSnapshot {
+  if (!value || typeof value !== 'object') {
+    return createEmptyPreviewResultSnapshot()
+  }
+  return {
+    fields: getPreviewResultFields(value),
+    data: Array.isArray(value?.data) ? value.data : [],
+    status: value?.status || 'success',
+    message: value?.message || '',
+    raw: value?.raw,
+  }
+}
+
+function setSourceResult(type: ChartDataSourceType, result: any) {
+  const snapshot = previewResultSnapshot(result)
+  sourceResults[type].fields = snapshot.fields
+  sourceResults[type].data = snapshot.data
+  sourceResults[type].status = snapshot.status
+  sourceResults[type].message = snapshot.message
+  sourceResults[type].raw = snapshot.raw
+}
+
+function normalizeJoinValue(value: any) {
+  if (value === undefined || value === null) {
+    return ''
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString()
+  }
+  return typeof value === 'object' ? JSON.stringify(value) : `${value}`.trim()
+}
+
+function joinKey(row: Record<string, any>, fields: string[]) {
+  return JSON.stringify(fields.map((field) => normalizeJoinValue(row?.[field])))
+}
+
+function hasNumericValues(rows: Array<Record<string, any>>, field: string) {
+  return rows.some((row) => typeof row?.[field] === 'number')
+}
+
+function isPreferredJoinField(field: string, leftRows: Array<Record<string, any>>, rightRows: Array<Record<string, any>>) {
+  return (
+    isLikelyPivotDateField(field, leftRows) ||
+    isLikelyPivotDateField(field, rightRows) ||
+    (!hasNumericValues(leftRows, field) && !hasNumericValues(rightRows, field))
+  )
+}
+
+function prefixedSourceField(type: ChartDataSourceType, field: string) {
+  const label = type === 'sql' ? mt('chart_source_sql') : mt('chart_source_mcp')
+  return `${label}.${field}`
+}
+
+function mergePreviewResults(
+  sqlResult: PreviewResultSnapshot,
+  mcpResult: PreviewResultSnapshot
+): PreviewResultSnapshot & {
+  joinFields: string[]
+  fieldMap: Record<ChartDataSourceType, Record<string, string>>
+} {
+  if (sqlResult.status === 'failed') {
+    return { ...sqlResult, joinFields: [], fieldMap: { sql: {}, external_mcp: {} } }
+  }
+  if (mcpResult.status === 'failed') {
+    return { ...mcpResult, joinFields: [], fieldMap: { sql: {}, external_mcp: {} } }
+  }
+  const commonFields = sqlResult.fields.filter((field) => mcpResult.fields.includes(field))
+  const joinFields = commonFields.filter((field) => isPreferredJoinField(field, sqlResult.data, mcpResult.data))
+  if (joinFields.length === 0) {
+    return {
+      fields: [],
+      data: [],
+      status: 'failed',
+      message: mt('chart_mixed_merge_no_common_field'),
+      joinFields: [],
+      fieldMap: { sql: {}, external_mcp: {} },
+    }
+  }
+
+  const allMetricFields = [
+    ...sqlResult.fields.filter((field) => !joinFields.includes(field)),
+    ...mcpResult.fields.filter((field) => !joinFields.includes(field)),
+  ]
+  const duplicatedMetricFields = new Set(
+    allMetricFields.filter((field, index) => allMetricFields.indexOf(field) !== index)
+  )
+  const fieldMap: Record<ChartDataSourceType, Record<string, string>> = {
+    sql: {},
+    external_mcp: {},
+  }
+  const makeOutputField = (type: ChartDataSourceType, field: string) =>
+    joinFields.includes(field) ? field : duplicatedMetricFields.has(field) ? prefixedSourceField(type, field) : field
+  ;(['sql', 'external_mcp'] as ChartDataSourceType[]).forEach((type) => {
+    const fields = type === 'sql' ? sqlResult.fields : mcpResult.fields
+    fields.forEach((field) => {
+      fieldMap[type][field] = makeOutputField(type, field)
+    })
+  })
+
+  const outputFields = unique([
+    ...joinFields,
+    ...sqlResult.fields.filter((field) => !joinFields.includes(field)).map((field) => fieldMap.sql[field]),
+    ...mcpResult.fields.filter((field) => !joinFields.includes(field)).map((field) => fieldMap.external_mcp[field]),
+  ])
+  const rowMap = new Map<string, Record<string, any>>()
+  const rowOrder: string[] = []
+  const mergeRows = (type: ChartDataSourceType, rows: Array<Record<string, any>>) => {
+    rows.forEach((row) => {
+      const key = joinKey(row, joinFields)
+      if (!rowMap.has(key)) {
+        const baseRow: Record<string, any> = {}
+        joinFields.forEach((field) => {
+          baseRow[field] = row?.[field]
+        })
+        rowMap.set(key, baseRow)
+        rowOrder.push(key)
+      }
+      const target = rowMap.get(key)!
+      Object.entries(row || {}).forEach(([field, value]) => {
+        const outputField = fieldMap[type][field] || field
+        target[outputField] = value
+      })
+    })
+  }
+  mergeRows('sql', sqlResult.data)
+  mergeRows('external_mcp', mcpResult.data)
+  return {
+    fields: outputFields,
+    data: rowOrder.map((key) => rowMap.get(key)!).filter(Boolean),
+    status: 'success',
+    message: '',
+    joinFields,
+    fieldMap,
+  }
+}
+
+function setMergeState(joinFields: string[], fieldMap: Record<ChartDataSourceType, Record<string, string>>) {
+  mergeState.joinFields = [...joinFields]
+  mergeState.fieldMap.sql = { ...(fieldMap.sql || {}) }
+  mergeState.fieldMap.external_mcp = { ...(fieldMap.external_mcp || {}) }
+}
+
+function applyPreviewSnapshot(result: PreviewResultSnapshot) {
+  updateSourcePreviewResult(result)
+  resetFieldSelections()
+  normalizePivotSelections()
+  syncPivotGroupValues()
+  updatePreviewResult(result)
+}
+
+function clearMergeState() {
+  setMergeState([], { sql: {}, external_mcp: {} })
 }
 
 function updatePreviewResult(result: any) {
@@ -1004,8 +1290,60 @@ function handleMcpToolChange() {
   void loadMcpFilterOptions()
 }
 
+function handleMcpServerChange() {
+  form.mcpTool = ''
+  form.mcpResultPath = ''
+  form.mcpKeyField = ''
+  form.mcpValueField = ''
+  setMcpArgumentsObject({})
+  mcpTools.value = []
+  mcpFilterOptions.value = {}
+  void loadMcpTools()
+}
+
+function handleSourceTypesChange(values: ChartDataSourceType[]) {
+  const nextSources = normalizeSourceTypes(values)
+  form.sourceTypes = nextSources.length ? nextSources : ['sql']
+  form.primarySource = hasMcpSource.value && !hasSqlSource.value ? 'external_mcp' : 'sql'
+  if (!hasMcpSource.value) {
+    form.mcpServerId = ''
+    mcpTools.value = []
+    mcpFilterOptions.value = {}
+  } else {
+    void loadMcpServers().then(() => loadMcpTools())
+  }
+  previewVersion.value += 1
+}
+
 function syncMcpArgumentsTextFromObject() {
   form.mcpArgumentsText = formatJson(form.mcpArgumentsObject)
+}
+
+async function loadMcpServers() {
+  if (!hasMcpSource.value) {
+    mcpServers.value = []
+    mcpServersError.value = ''
+    return
+  }
+  mcpServersLoading.value = true
+  mcpServersError.value = ''
+  try {
+    mcpServers.value = await externalMcpApi.available({
+      tenant_id: currentExternalMcpTenantId.value || null,
+      dashboard_id: currentDashboardId.value || null,
+    })
+    if (!form.mcpServerId && mcpServers.value.length === 1) {
+      form.mcpServerId = stableId(mcpServers.value[0].id)
+    }
+    if (!form.mcpServerId && mcpServers.value.length > 0) {
+      form.mcpServerId = stableId(mcpServers.value[0].id)
+    }
+  } catch (error: any) {
+    mcpServers.value = []
+    mcpServersError.value = error?.message || mt('mcp_editor_servers_load_failed')
+  } finally {
+    mcpServersLoading.value = false
+  }
 }
 
 function fetchMcpTools(externalMcpServerId: number | string) {
@@ -1035,7 +1373,7 @@ function filterOptionsToolName() {
 
 async function loadMcpFilterOptions() {
   const tool = filterOptionsToolName()
-  if (!isExternalSnapshot.value || !currentExternalMcpServerId.value || !tool) {
+  if (!hasMcpSource.value || !currentExternalMcpServerId.value || !tool) {
     mcpFilterOptions.value = {}
     return
   }
@@ -1075,7 +1413,7 @@ function cleanMcpArguments(value: Record<string, any>) {
 }
 
 async function loadMcpTools() {
-  if (!isExternalSnapshot.value || !currentExternalMcpServerId.value) {
+  if (!hasMcpSource.value || !currentExternalMcpServerId.value) {
     mcpTools.value = []
     return
   }
@@ -1166,8 +1504,16 @@ function resetFieldSelections() {
 function initEditor() {
   const viewInfo = props.viewInfo || {}
   const chart = viewInfo.chart || {}
+  const sourceTypes = resolveChartSourceTypes(viewInfo)
+  const sourceConfig = chartSourceConfig(viewInfo)
+  const mcpConfig = {
+    ...(sourceConfig.mcp || {}),
+    ...(viewInfo.mcp || {}),
+  }
   const fields = collectFields(viewInfo)
   const currentFields = collectCurrentPreviewFields(viewInfo)
+  form.sourceTypes = sourceTypes
+  form.primarySource = sourceTypes.includes('external_mcp') && !sourceTypes.includes('sql') ? 'external_mcp' : 'sql'
   form.sql = viewInfo.sql || ''
   form.title = chart.title || ''
   form.chartType = chart.sourceType || chart.type || 'table'
@@ -1183,11 +1529,21 @@ function initEditor() {
   preview.status = viewInfo.status || 'success'
   preview.message = viewInfo.message || ''
   preview.raw = viewInfo.data?.raw
-  form.mcpTool = viewInfo.mcp?.tool || ''
-  setMcpArgumentsObject(viewInfo.mcp?.arguments || {})
-  form.mcpResultPath = viewInfo.mcp?.resultPath || viewInfo.mcp?.result_path || ''
-  form.mcpKeyField = viewInfo.mcp?.keyField || viewInfo.mcp?.key_field || ''
-  form.mcpValueField = viewInfo.mcp?.valueField || viewInfo.mcp?.value_field || ''
+  setSourceResult('sql', normalizePreviewResultSnapshot(sourceConfig.sql?.lastResult))
+  setSourceResult('external_mcp', normalizePreviewResultSnapshot(sourceConfig.mcp?.lastResult))
+  setMergeState(
+    Array.isArray(sourceConfig.merge?.joinFields) ? sourceConfig.merge.joinFields : [],
+    {
+      sql: sourceConfig.merge?.fieldMap?.sql || {},
+      external_mcp: sourceConfig.merge?.fieldMap?.external_mcp || {},
+    }
+  )
+  form.mcpServerId = resolveMcpServerId(viewInfo)
+  form.mcpTool = mcpConfig.tool || ''
+  setMcpArgumentsObject(mcpConfig.arguments || {})
+  form.mcpResultPath = mcpConfig.resultPath || mcpConfig.result_path || ''
+  form.mcpKeyField = mcpConfig.keyField || mcpConfig.key_field || ''
+  form.mcpValueField = mcpConfig.valueField || mcpConfig.value_field || ''
   lastPreviewSql.value = form.sql.trim()
   resetFieldSelections()
   initInsightConfig(chart.insight)
@@ -1195,7 +1551,13 @@ function initEditor() {
   initPivotConfig(viewInfo.pivot)
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
-  void loadMcpTools()
+  if (hasMcpSource.value) {
+    void loadMcpServers().then(() => loadMcpTools())
+  } else {
+    mcpServers.value = []
+    mcpTools.value = []
+    mcpFilterOptions.value = {}
+  }
 }
 
 watch(
@@ -1260,100 +1622,114 @@ watch(
   }
 )
 
-async function runPreview() {
-  if (isExternalSnapshot.value) {
-    if (!currentExternalMcpServerId.value) {
-      ElMessage.warning(mt('mcp_editor_no_server'))
-      return
-    }
-    if (!form.mcpTool) {
-      ElMessage.warning(mt('mcp_editor_select_tool'))
-      return
-    }
-    let argumentsValue: Record<string, any>
-    try {
-      argumentsValue = cleanMcpArguments(parseJsonObject(form.mcpArgumentsText))
-    } catch (_error) {
-      ElMessage.warning(mt('mcp_editor_invalid_arguments'))
-      return
-    }
-    loading.value = true
-    try {
-      const result: any = await previewMcpTool({
-        external_mcp_server_id: currentExternalMcpServerId.value,
-        tenant_id: currentExternalMcpTenantId.value || null,
-        dashboard_id: currentDashboardId.value || null,
-        tool: form.mcpTool,
-        arguments: argumentsValue,
-        result_path: form.mcpResultPath || null,
-        key_field: form.mcpKeyField || null,
-        value_field: form.mcpValueField || null,
-      })
-      updateSourcePreviewResult(result)
-      resetFieldSelections()
-      updatePreviewResult(result)
-      if (result?.mcp) {
-        props.viewInfo.mcp = {
-          ...(props.viewInfo.mcp || {}),
-          ...result.mcp,
-          externalMcpServerId: currentExternalMcpServerId.value,
-          tenantId: currentExternalMcpTenantId.value || null,
-        }
-      }
-      lastPreviewSignature.value = currentPreviewSignature()
-      previewVersion.value += 1
-      if (preview.status === 'failed') {
-        ElMessage.error(preview.message || t('dashboard.sql_editor_preview_failed'))
-      } else {
-        ElMessage.success(t('dashboard.sql_editor_preview_success'))
-        await nextTick()
-      }
-    } finally {
-      loading.value = false
-    }
-    return
-  }
+async function previewSqlSource() {
   if (!props.viewInfo?.datasource) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
-    return
+    return null
   }
   if (!form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
+    return null
+  }
+  const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
+  if (shouldPreviewPivot) {
+    const sourceResult = await dashboardApi.preview_sql({
+      datasource: props.viewInfo.datasource,
+      sql: form.sql.trim(),
+    })
+    const sourceSnapshot = previewResultSnapshot(sourceResult)
+    setSourceResult('sql', sourceSnapshot)
+    updateSourcePreviewResult(sourceSnapshot)
+    resetFieldSelections()
+    normalizePivotSelections()
+    syncPivotGroupValues()
+    if (sourceSnapshot.status === 'failed') {
+      return sourceSnapshot
+    }
+  }
+  const result = await dashboardApi.preview_sql({
+    datasource: props.viewInfo.datasource,
+    sql: form.sql.trim(),
+    pivot: previewPivotPayload(),
+  })
+  const snapshot = previewResultSnapshot(result)
+  setSourceResult('sql', snapshot)
+  return snapshot
+}
+
+async function previewMcpSource() {
+  if (!currentExternalMcpServerId.value) {
+    ElMessage.warning(mt('mcp_editor_no_server'))
+    return null
+  }
+  if (!form.mcpTool) {
+    ElMessage.warning(mt('mcp_editor_select_tool'))
+    return null
+  }
+  let argumentsValue: Record<string, any>
+  try {
+    argumentsValue = cleanMcpArguments(parseJsonObject(form.mcpArgumentsText))
+  } catch (_error) {
+    ElMessage.warning(mt('mcp_editor_invalid_arguments'))
+    return null
+  }
+  const result: any = await previewMcpTool({
+    external_mcp_server_id: currentExternalMcpServerId.value,
+    tenant_id: currentExternalMcpTenantId.value || null,
+    dashboard_id: currentDashboardId.value || null,
+    tool: form.mcpTool,
+    arguments: argumentsValue,
+    result_path: form.mcpResultPath || null,
+    key_field: form.mcpKeyField || null,
+    value_field: form.mcpValueField || null,
+  })
+  if (result?.mcp) {
+    props.viewInfo.mcp = {
+      ...(props.viewInfo.mcp || {}),
+      ...result.mcp,
+      externalMcpServerId: currentExternalMcpServerId.value,
+      tenantId: currentExternalMcpTenantId.value || null,
+    }
+  }
+  const snapshot = previewResultSnapshot(result)
+  setSourceResult('external_mcp', snapshot)
+  return snapshot
+}
+
+async function runPreview() {
+  if (!hasSqlSource.value && !hasMcpSource.value) {
+    ElMessage.warning(mt('chart_source_required'))
     return
   }
   loading.value = true
   try {
-    const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
-    if (shouldPreviewPivot) {
-      const sourceResult = await dashboardApi.preview_sql({
-        datasource: props.viewInfo.datasource,
-        sql: form.sql.trim(),
-      })
-      updateSourcePreviewResult(sourceResult)
-      resetFieldSelections()
-      normalizePivotSelections()
-      syncPivotGroupValues()
-      if ((sourceResult?.status || 'success') === 'failed') {
-        updatePreviewResult(sourceResult)
-        lastPreviewSql.value = form.sql.trim()
-        lastPreviewSignature.value = currentPreviewSignature()
-        previewVersion.value += 1
-        ElMessage.error(preview.message || t('dashboard.sql_editor_preview_failed'))
+    clearMergeState()
+    let nextPreview: PreviewResultSnapshot | null = null
+    if (isMixedSource.value) {
+      const sqlResult = await previewSqlSource()
+      if (!sqlResult) {
         return
       }
+      const mcpResult = await previewMcpSource()
+      if (!mcpResult) {
+        return
+      }
+      const merged = mergePreviewResults(sqlResult, mcpResult)
+      setMergeState(merged.joinFields, merged.fieldMap)
+      nextPreview = merged
+    } else if (hasSqlSource.value) {
+      nextPreview = await previewSqlSource()
+    } else if (hasMcpSource.value) {
+      nextPreview = await previewMcpSource()
     }
-    const result = await dashboardApi.preview_sql({
-      datasource: props.viewInfo.datasource,
-      sql: form.sql.trim(),
-      pivot: previewPivotPayload(),
-    })
-    if (!shouldPreviewPivot) {
-      updateSourcePreviewResult(result)
-      resetFieldSelections()
-      normalizePivotSelections()
-      syncPivotGroupValues()
+    if (!nextPreview) {
+      return
     }
-    updatePreviewResult(result)
+    if (hasSqlSource.value && !hasMcpSource.value && supportsPivotConfig.value && form.pivotEnabled) {
+      updatePreviewResult(nextPreview)
+    } else {
+      applyPreviewSnapshot(nextPreview)
+    }
     lastPreviewSql.value = form.sql.trim()
     lastPreviewSignature.value = currentPreviewSignature()
     previewVersion.value += 1
@@ -1415,15 +1791,23 @@ function buildChart() {
 }
 
 function validateBeforeApply() {
-  if (!isExternalSnapshot.value && !form.sql.trim()) {
+  if (form.sourceTypes.length === 0) {
+    ElMessage.warning(mt('chart_source_required'))
+    return false
+  }
+  if (hasSqlSource.value && !form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return false
   }
-  if (isExternalSnapshot.value && !form.mcpTool) {
+  if (hasMcpSource.value && !currentExternalMcpServerId.value) {
+    ElMessage.warning(mt('mcp_editor_select_server'))
+    return false
+  }
+  if (hasMcpSource.value && !form.mcpTool) {
     ElMessage.warning(mt('mcp_editor_select_tool'))
     return false
   }
-  if (props.allowStaticApply && !isExternalSnapshot.value && !canRunPreview.value) {
+  if (props.allowStaticApply && !isMaterializedSource.value && !canRunPreview.value) {
     return true
   }
   if (sqlChangedAfterPreview.value) {
@@ -1434,8 +1818,16 @@ function validateBeforeApply() {
     ElMessage.warning(mt('mcp_editor_need_preview'))
     return false
   }
+  if (mixedChangedAfterPreview.value) {
+    ElMessage.warning(mt('chart_source_changed'))
+    return false
+  }
   if (preview.status === 'failed') {
     ElMessage.warning(preview.message || t('dashboard.sql_editor_preview_failed'))
+    return false
+  }
+  if (!hasCurrentPreviewData()) {
+    ElMessage.warning(t('dashboard.sql_editor_run_preview'))
     return false
   }
   if (form.chartType === 'table') {
@@ -1483,10 +1875,21 @@ function validateBeforeApply() {
   return true
 }
 
+function sourceResultForSave(type: ChartDataSourceType) {
+  const result = sourceResults[type]
+  return {
+    fields: [...result.fields],
+    data: [...result.data],
+    status: result.status,
+    message: result.message,
+    ...(result.raw !== undefined ? { raw: result.raw } : {}),
+  }
+}
+
 function applyChange() {
   if (!props.viewInfo || !validateBeforeApply()) return
   let mcpArgumentsValue: Record<string, any> = {}
-  if (isExternalSnapshot.value) {
+  if (hasMcpSource.value) {
     try {
       mcpArgumentsValue = cleanMcpArguments(parseJsonObject(form.mcpArgumentsText))
     } catch (_error) {
@@ -1494,7 +1897,7 @@ function applyChange() {
       return
     }
   }
-  props.viewInfo.sql = isExternalSnapshot.value ? null : form.sql.trim()
+  props.viewInfo.sql = hasSqlSource.value ? form.sql.trim() : null
   const nextData: Record<string, any> = {
     ...(props.viewInfo.data || {}),
     fields: [...preview.fields],
@@ -1502,10 +1905,15 @@ function applyChange() {
   }
   if (isExternalSnapshot.value && preview.raw !== undefined) {
     nextData.raw = preview.raw
+  } else {
+    delete nextData.raw
   }
-  if (form.pivotEnabled) {
+  if (supportsPivotConfig.value && form.pivotEnabled) {
     nextData.source_fields = [...sourcePreview.fields]
     nextData.source_data = [...sourcePreview.data]
+  } else if (isMixedSource.value) {
+    nextData.source_fields = [...preview.fields]
+    nextData.source_data = [...preview.data]
   } else {
     delete nextData.source_fields
     delete nextData.source_data
@@ -1517,10 +1925,45 @@ function applyChange() {
   props.viewInfo.message = preview.message
   props.viewInfo.chart = buildChart()
   props.viewInfo.pivot = buildPivotConfig()
-  props.viewInfo.datasource = props.viewInfo.datasource || null
-  if (isExternalSnapshot.value) {
-    props.viewInfo.externalSnapshot = true
-    props.viewInfo.dataSourceType = props.viewInfo.dataSourceType || 'external_mcp'
+  props.viewInfo.datasource = hasSqlSource.value ? props.viewInfo.datasource || null : null
+  props.viewInfo.sourceConfig = {
+    sources: [...form.sourceTypes],
+    mode: isMixedSource.value ? 'mixed' : isExternalSnapshot.value ? 'external_mcp' : 'sql',
+    primarySource: isExternalSnapshot.value ? 'external_mcp' : 'sql',
+    merge: isMixedSource.value
+      ? {
+          strategy: 'join_by_common_dimensions',
+          joinFields: [...mergeState.joinFields],
+          fieldMap: {
+            sql: { ...mergeState.fieldMap.sql },
+            external_mcp: { ...mergeState.fieldMap.external_mcp },
+          },
+        }
+      : null,
+    sql: hasSqlSource.value
+      ? {
+          datasource: props.viewInfo.datasource || null,
+          sql: form.sql.trim(),
+          lastResult: sourceResultForSave('sql'),
+        }
+      : null,
+    mcp: hasMcpSource.value
+      ? {
+          externalMcpServerId: currentExternalMcpServerId.value,
+          tenantId: currentExternalMcpTenantId.value || null,
+          tool: form.mcpTool,
+          arguments: mcpArgumentsValue,
+          resultPath: form.mcpResultPath || '',
+          keyField: form.mcpKeyField || '',
+          valueField: form.mcpValueField || '',
+          auth: 'not_stored',
+          lastResult: sourceResultForSave('external_mcp'),
+        }
+      : null,
+  }
+  props.viewInfo.primarySource = props.viewInfo.sourceConfig.primarySource
+  props.viewInfo.sources = [...form.sourceTypes]
+  if (hasMcpSource.value) {
     props.viewInfo.tenant_id = currentExternalMcpTenantId.value || props.viewInfo.tenant_id || null
     props.viewInfo.external_mcp_server_id = currentExternalMcpServerId.value
     props.viewInfo.mcp = {
@@ -1534,6 +1977,19 @@ function applyChange() {
       valueField: form.mcpValueField || '',
       auth: 'not_stored',
     }
+  } else {
+    props.viewInfo.external_mcp_server_id = null
+    props.viewInfo.mcp = null
+  }
+  if (isMixedSource.value) {
+    props.viewInfo.externalSnapshot = false
+    props.viewInfo.dataSourceType = 'mixed'
+  } else if (isExternalSnapshot.value) {
+    props.viewInfo.externalSnapshot = true
+    props.viewInfo.dataSourceType = 'external_mcp'
+  } else {
+    props.viewInfo.externalSnapshot = false
+    props.viewInfo.dataSourceType = 'sql'
   }
   previewVersion.value += 1
   emits('applied', props.viewInfo)
@@ -1558,7 +2014,36 @@ function closeDrawer() {
   >
     <div v-loading="loading" class="sql-editor-body">
       <el-form label-position="top">
-        <div v-if="isExternalSnapshot" class="mcp-editor-panel">
+        <div class="source-config-panel">
+          <div class="config-grid">
+            <el-form-item :label="mt('chart_source_config')">
+              <el-checkbox-group
+                v-model="form.sourceTypes"
+                class="source-checkbox-group"
+                @change="handleSourceTypesChange"
+              >
+                <el-checkbox
+                  v-for="item in sourceTypeOptions"
+                  :key="item.value"
+                  :label="item.value"
+                >
+                  {{ item.label }}
+                </el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+          </div>
+        </div>
+        <el-form-item v-if="hasSqlSource" :label="t('dashboard.sql_editor_sql')">
+          <el-input
+            v-model="form.sql"
+            type="textarea"
+            :autosize="{ minRows: 8, maxRows: 16 }"
+            spellcheck="false"
+            @keydown.stop
+            @keyup.stop
+          />
+        </el-form-item>
+        <div v-if="hasMcpSource" class="mcp-editor-panel">
           <el-alert
             class="editor-alert"
             type="info"
@@ -1566,7 +2051,38 @@ function closeDrawer() {
             :description="snapshotMetaText"
             :closable="false"
           />
+          <el-alert
+            v-if="mcpServersError"
+            class="editor-alert"
+            type="warning"
+            :title="mcpServersError"
+            :closable="false"
+          />
+          <el-alert
+            v-else-if="!mcpServersLoading && mcpServers.length === 0"
+            class="editor-alert"
+            type="warning"
+            :title="mt('mcp_editor_no_bound_server')"
+            :closable="false"
+          />
           <div class="config-grid">
+            <el-form-item :label="mt('mcp_editor_server')">
+              <el-select
+                v-model="form.mcpServerId"
+                filterable
+                clearable
+                :loading="mcpServersLoading"
+                :placeholder="mt('mcp_editor_select_server')"
+                @change="handleMcpServerChange"
+              >
+                <el-option
+                  v-for="server in mcpServers"
+                  :key="server.id"
+                  :label="server.server_name ? `${server.name} - ${server.server_name}` : server.name"
+                  :value="String(server.id)"
+                />
+              </el-select>
+            </el-form-item>
             <el-form-item :label="mt('mcp_editor_tool')">
               <el-select
                 v-model="form.mcpTool"
@@ -1700,19 +2216,9 @@ function closeDrawer() {
             </el-form-item>
           </details>
         </div>
-        <el-form-item v-if="!isExternalSnapshot" :label="t('dashboard.sql_editor_sql')">
-          <el-input
-            v-model="form.sql"
-            type="textarea"
-            :autosize="{ minRows: 8, maxRows: 16 }"
-            spellcheck="false"
-            @keydown.stop
-            @keyup.stop
-          />
-        </el-form-item>
         <div class="action-row">
           <el-button type="primary" :disabled="!canRunEditorPreview" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
-          <span v-if="!isExternalSnapshot && sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
+          <span v-if="hasSqlSource && !isExternalSnapshot && sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
           <span v-if="mcpChangedAfterPreview" class="muted">{{ mt('mcp_editor_changed') }}</span>
         </div>
         <el-alert
@@ -2029,6 +2535,21 @@ function closeDrawer() {
 
 .editor-alert {
   margin-bottom: 16px;
+}
+
+.source-config-panel {
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(31, 35, 41, 0.1);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.source-checkbox-group {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .mcp-editor-panel {

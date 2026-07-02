@@ -25,6 +25,7 @@ import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import { setCurrentColor } from '@/utils/utils'
 import { useUserStore } from '@/stores/user'
+import { trustedMessageHostOrigin } from './messageSecurity'
 const userStore = useUserStore()
 const { t } = useI18n()
 const chatRef = ref()
@@ -53,10 +54,57 @@ const validator = ref({
 const loading = ref(true)
 const divLoading = ref(true)
 const eventName = 'shuzhi_embedded_event'
-const communicationCb = async (event: any) => {
+const authReady = ref(false)
+const initConfig = ref<{
+  assistantId: any
+  assistantType: number
+  userFlag?: any
+  online?: any
+} | null>(null)
+const normalizeCredential = (value?: any): string => {
+  if (!value) return ''
+  return value.toString().replace(/^(Bearer|Embedded)\s+/i, '')
+}
+const validateAssistantSession = async (credential?: string) => {
+  if (authReady.value || !initConfig.value) {
+    return
+  }
+  const { assistantId, assistantType, userFlag, online } = initConfig.value
+  if (assistantType === 4) {
+    return
+  }
+  const validatorCredential = normalizeCredential(credential || route.query.token)
+  if (!validatorCredential || !assistantStore.getHostOrigin) {
+    return
+  }
+  const param = {
+    id: assistantId,
+    virtual: userFlag || assistantStore.getFlag,
+    online,
+  }
+  validator.value = await assistantApi.validate(param, validatorCredential, assistantStore.getHostOrigin)
+  assistantStore.setToken(validator.value.token)
+  assistantStore.setAssistant(true)
+  authReady.value = true
+  loading.value = false
+  loadAssistantConfig(assistantId)
+}
+const communicationCb = async (event: MessageEvent) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
       return
+    }
+    const trustedHostOrigin = trustedMessageHostOrigin(event, assistantStore.getHostOrigin)
+    if (!trustedHostOrigin) {
+      return
+    }
+    if (!assistantStore.getHostOrigin) {
+      assistantStore.setHostOrigin(trustedHostOrigin)
+    }
+    if (event.data?.validatorCredential || event.data?.credentialToken || event.data?.token) {
+      await validateAssistantSession(
+        event.data?.validatorCredential || event.data?.credentialToken || event.data?.token
+      )
     }
     if (event.data?.busi == 'certificate') {
       const type = parseInt(event.data['type'])
@@ -71,9 +119,6 @@ const communicationCb = async (event: any) => {
       }
       assistantStore.setCertificate(certificate)
       assistantStore.resolveCertificate(certificate)
-    }
-    if (event.data?.hostOrigin) {
-      assistantStore.setHostOrigin(event.data?.hostOrigin)
     }
     if (event.data?.busi == 'setOnline') {
       setFormatOnline(event.data.online)
@@ -131,54 +176,7 @@ const setPageCustomColor = (val: any) => {
   const ele = document.querySelector('body') as HTMLElement
   setCurrentColor(val, ele)
 }
-
-onBeforeMount(async () => {
-  const assistantId = route.query.id
-  if (!assistantId) {
-    ElMessage.error('Miss embedded id, please check embedded url')
-    return
-  }
-  const typeParam = route.query.type
-  let assistantType = 2
-  if (typeParam) {
-    assistantType = parseInt(typeParam.toString())
-    assistantStore.setType(assistantType)
-  }
-  dynamicType.value = assistantType
-  const online = route.query.online
-  setFormatOnline(online)
-
-  const history: boolean = route.query.history !== 'false'
-  assistantStore.setHistory(history)
-
-  let name = route.query.name
-  if (name) {
-    assistantName.value = decodeURIComponent(name.toString())
-  }
-  let userFlag = route.query.userFlag
-  if (userFlag && userFlag === '1') {
-    userFlag = '100001'
-  }
-  const now = Date.now()
-  assistantStore.setFlag(now)
-  assistantStore.setId(assistantId?.toString() || '')
-  if (assistantType === 4) {
-    assistantStore.setAssistant(true)
-    registerReady(assistantId)
-    return
-  }
-  const param = {
-    id: assistantId,
-    virtual: userFlag || assistantStore.getFlag,
-    online,
-  }
-  validator.value = await assistantApi.validate(param)
-  assistantStore.setToken(validator.value.token)
-  assistantStore.setAssistant(true)
-  loading.value = false
-
-  registerReady(assistantId)
-
+const loadAssistantConfig = (assistantId: any) => {
   request.get(`/system/assistant/${assistantId}`).then((res) => {
     if (res?.configuration) {
       const rawData = JSON.parse(res?.configuration)
@@ -212,6 +210,55 @@ onBeforeMount(async () => {
       })
     }
   })
+}
+
+onBeforeMount(async () => {
+  const assistantId = route.query.id
+  if (!assistantId) {
+    ElMessage.error('Miss embedded id, please check embedded url')
+    return
+  }
+  const typeParam = route.query.type
+  let assistantType = 2
+  if (typeParam) {
+    assistantType = parseInt(typeParam.toString())
+    assistantStore.setType(assistantType)
+  }
+  dynamicType.value = assistantType
+  const online = route.query.online
+  setFormatOnline(online)
+
+  const history: boolean = route.query.history !== 'false'
+  assistantStore.setHistory(history)
+
+  let name = route.query.name
+  if (name) {
+    assistantName.value = decodeURIComponent(name.toString())
+  }
+  let userFlag = route.query.userFlag
+  if (userFlag && userFlag === '1') {
+    userFlag = '100001'
+  }
+  const now = Date.now()
+  assistantStore.setFlag(now)
+  assistantStore.setId(assistantId?.toString() || '')
+  initConfig.value = {
+    assistantId,
+    assistantType,
+    userFlag,
+    online,
+  }
+  if (assistantType === 4) {
+    assistantStore.setAssistant(true)
+    registerReady(assistantId)
+    return
+  }
+
+  registerReady(assistantId)
+  if (route.query.hostOrigin) {
+    assistantStore.setHostOrigin(route.query.hostOrigin.toString())
+  }
+  await validateAssistantSession()
 })
 
 onBeforeUnmount(() => {

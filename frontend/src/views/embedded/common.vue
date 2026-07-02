@@ -19,6 +19,7 @@ import { useRoute } from 'vue-router'
 import { useAssistantStore } from '@/stores/assistant'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
+import { trustedMessageHostOrigin } from './messageSecurity'
 const { t } = useI18n()
 const userStore = useUserStore()
 const assistantStore = useAssistantStore()
@@ -33,10 +34,17 @@ const busiFlag = ref('ds')
 const isWsAdmin = computed(() => {
   return userStore.isAdmin
 })
-const communicationCb = async (event: any) => {
+const communicationCb = async (event: MessageEvent) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
       return
+    }
+    const trustedHostOrigin = trustedMessageHostOrigin(event, assistantStore.getHostOrigin)
+    if (!trustedHostOrigin) {
+      return
+    }
+    if (!assistantStore.getHostOrigin) {
+      assistantStore.setHostOrigin(trustedHostOrigin)
     }
     if (!event.data?.busiFlag) {
       busiFlag.value = ''
@@ -52,9 +60,6 @@ const communicationCb = async (event: any) => {
       await userStore.info()
       loading.value = false
       return
-    }
-    if (event.data?.hostOrigin) {
-      assistantStore.setHostOrigin(event.data?.hostOrigin)
     }
   }
 }

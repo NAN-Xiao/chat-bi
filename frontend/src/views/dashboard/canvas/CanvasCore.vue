@@ -148,6 +148,10 @@ const editSql = (id: string) => {
   sqlEditorVisible.value = true
 }
 
+const openSqlEditor = (id: string) => {
+  editSql(id)
+}
+
 const onSqlApplied = (viewInfo: any) => {
   nextTick(() => {
     if (viewInfo?.id) {
@@ -1646,6 +1650,7 @@ defineExpose({
   findClosetCoords,
   makeCoordinate,
   findPositionX,
+  openSqlEditor,
 })
 </script>
 

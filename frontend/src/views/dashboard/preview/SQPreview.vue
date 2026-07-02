@@ -63,6 +63,7 @@ const { showPosition, canvasId } = toRefs(props)
 const emit = defineEmits(['chartMoved'])
 const domId = 'preview-' + canvasId.value
 const previewCanvas = ref(null)
+const componentWrapperRefs = ref<any[]>([])
 const renderReady = ref(true)
 const state = reactive({
   initState: true,
@@ -91,6 +92,16 @@ const displayComponentData = computed(() =>
 )
 
 const restore = () => {}
+
+function getReportContextSnapshots() {
+  return componentWrapperRefs.value.reduce((snapshots: Record<string, any>, wrapper: any) => {
+    const wrapperSnapshots = wrapper?.getReportContextSnapshots?.()
+    if (wrapperSnapshots && typeof wrapperSnapshots === 'object') {
+      Object.assign(snapshots, wrapperSnapshots)
+    }
+    return snapshots
+  }, {})
+}
 
 function nowItemStyle(item: CanvasItem) {
   return {
@@ -137,6 +148,7 @@ onBeforeUnmount(() => {
 
 defineExpose({
   restore,
+  getReportContextSnapshots,
 })
 </script>
 
@@ -153,6 +165,7 @@ defineExpose({
       <SQComponentWrapper
         v-for="(item, index) in displayComponentData"
         :key="index"
+        ref="componentWrapperRefs"
         :active="!!curComponent && item.id === curComponent['id']"
         :config-item="item"
         :canvas-view-info="canvasViewInfo"

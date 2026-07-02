@@ -566,6 +566,7 @@ class McpAssistant(BaseModel):
     """
     类说明：McpAssistant 表示聊天问数据和 Agent里的一类数据，通常用来和数据库表或业务对象对应。
     """
+    token: str = Body(description='token')
     question: str = Body(description='用户提问')
     url: str = Body(description='第三方数据接口')
     authorization: str = Body(description='第三方接口凭证')

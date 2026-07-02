@@ -270,6 +270,7 @@ class Settings(BaseSettings):
     # 安全配置：是否允许元数据查询（SHOW/DESCRIBE/DESC/EXPLAIN）
     # 默认关闭，防止通过元数据查询泄露数据库结构
     SHUZHI_ALLOW_METADATA_QUERIES: bool = False
+    SHUZHI_QUERY_RESULT_MAX_ROWS: int = 10000
 
     PARSE_REASONING_BLOCK_ENABLED: bool = True
     DEFAULT_REASONING_CONTENT_START: str = '<think>'

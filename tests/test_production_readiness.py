@@ -106,6 +106,16 @@ def test_valid_single_tenant_production_settings_pass(monkeypatch):
     assert validate_production_settings() == []
 
 
+def test_production_settings_reject_seeded_sqlbot_admin_password(monkeypatch):
+    _set_valid_production_settings(monkeypatch)
+    monkeypatch.setattr(settings, "DEFAULT_PWD", "SQLBot@123456")
+
+    with pytest.raises(RuntimeError) as exc:
+        validate_production_settings()
+
+    assert "DEFAULT_PWD must be changed" in str(exc.value)
+
+
 def test_disabled_production_checks_return_errors_without_raising(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
     monkeypatch.delenv("SENSITIVE_CONFIG_ENCRYPTION_KEY", raising=False)

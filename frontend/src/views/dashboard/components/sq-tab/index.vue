@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   computed,
+  type ComponentInternalInstance,
   type PropType,
   reactive,
   ref,
@@ -16,8 +17,7 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import DashboardEditor from '@/views/dashboard/editor/DashboardEditor.vue'
 
 const showTabTitleFlag = ref(true)
-// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-let currentInstance
+let currentInstance: ComponentInternalInstance | null = null
 import _ from 'lodash'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import { useI18n } from 'vue-i18n'
@@ -166,6 +166,25 @@ function sureCurTitle() {
   state.dialogVisible = false
 }
 
+function getReportContextSnapshots() {
+  const snapshots: Record<string, any> = {}
+  const refs = currentInstance?.refs || {}
+  Object.keys(refs).forEach((key) => {
+    if (!key.startsWith('tabPreviewRef_')) {
+      return
+    }
+    const rawRef = refs[key]
+    const instances = Array.isArray(rawRef) ? rawRef : [rawRef]
+    instances.forEach((instance: any) => {
+      const childSnapshots = instance?.getReportContextSnapshots?.()
+      if (childSnapshots && typeof childSnapshots === 'object') {
+        Object.assign(snapshots, childSnapshots)
+      }
+    })
+  })
+  return snapshots
+}
+
 const titleValid = computed(() => {
   return !!state.textarea && !!state.textarea.trim()
 })
@@ -194,6 +213,7 @@ onMounted(() => {
 defineExpose({
   addTabItem,
   outResizeEnd,
+  getReportContextSnapshots,
 })
 </script>
 

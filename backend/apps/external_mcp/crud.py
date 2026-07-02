@@ -429,6 +429,60 @@ def list_external_mcp_servers(
     return list(session.exec(statement.order_by(CoreExternalMcpServer.name, CoreExternalMcpServer.id)).all())
 
 
+def list_available_external_mcp_servers(
+    session: SessionDep,
+    current_user: CurrentUser,
+    *,
+    tenant_id: int | str | None = None,
+    dashboard_id: str | None = None,
+) -> list[CoreExternalMcpServer]:
+    """
+    是什么：list_available_external_mcp_servers 列出当前图表上下文可使用的第三方 MCP 数据源。
+    """
+    if not supports_external_mcp_binding(session) or not supports_external_mcp_server(session):
+        return []
+
+    dashboard_context = _external_mcp_dashboard_record(session, dashboard_id)
+    if dashboard_context is not None and _can_use_external_mcp_dashboard_context(
+        session,
+        current_user,
+        dashboard_context,
+    ):
+        target_tenant_id = int(dashboard_context.tenant_id)
+        server_ids = [int(dashboard_context.external_mcp_server_id)]
+    else:
+        target_tenant_id = _resolve_external_mcp_access_tenant_id(
+            session,
+            current_user,
+            0,
+            requested_tenant_id=tenant_id,
+            dashboard_id=dashboard_id,
+        )
+        if target_tenant_id is None or int(target_tenant_id) == DEFAULT_TENANT_ID:
+            return []
+        server_ids = list(
+            session.exec(
+                select(CoreExternalMcpTenantBinding.external_mcp_server_id)
+                .where(CoreExternalMcpTenantBinding.tenant_id == int(target_tenant_id))
+                .order_by(CoreExternalMcpTenantBinding.id)
+            ).all()
+        )
+
+    normalized_ids = list(dict.fromkeys(int(server_id) for server_id in server_ids if server_id is not None))
+    if not normalized_ids:
+        return []
+    return list(
+        session.exec(
+            select(CoreExternalMcpServer)
+            .where(
+                CoreExternalMcpServer.id.in_(normalized_ids),
+                CoreExternalMcpServer.status == 1,
+            )
+            .order_by(CoreExternalMcpServer.name, CoreExternalMcpServer.id)
+        ).all()
+    )
+
+
 def list_external_mcp_tools(
     session: SessionDep,
     current_user: CurrentUser,

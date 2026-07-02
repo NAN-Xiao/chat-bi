@@ -14,6 +14,8 @@ from apps.chat.curd.chat import (
     format_json_data,
     get_chat_chart_data,
     rename_chat,
+    save_analysis_answer,
+    save_chart,
     start_log,
     trigger_log_error,
 )
@@ -92,6 +94,7 @@ class SmartQAGraphState(TypedDict, total=False):
     execute_allowed_tables: list[str] | set[str] | None
     result: dict[str, Any]
     chart: dict[str, Any]
+    saas_skill_handled: bool
     stop: bool
 
 
@@ -192,6 +195,200 @@ def _generate_sql(state: SmartQAGraphState) -> dict[str, Any]:
         )
     AppLogUtil.info(full_sql_text)
     return {"full_sql_text": full_sql_text}
+
+
+def _execute_saas_skill(state: SmartQAGraphState) -> dict[str, Any]:
+    """
+    是什么：_execute_saas_skill 让 Data Skill 中声明的 SQL/MCP 多源能力可以直接服务 Smart Q&A。
+    """
+    from apps.chat.task.saas_skill import (
+        build_saas_skill_answer_messages,
+        execute_saas_skill,
+        find_matching_executable_saas_skill,
+        serialize_saas_skill_messages,
+        stream_saas_skill_answer_chunks,
+    )
+
+    service = state["service"]
+    in_chat = state["in_chat"]
+    stream = state["stream"]
+    finish_step = state["finish_step"]
+    json_result = state["json_result"]
+
+    match = find_matching_executable_saas_skill(
+        service.chat_question.data_skill,
+        service.chat_question.question,
+    )
+    if match is None:
+        return {"saas_skill_handled": False, "stop": False}
+
+    with _session_scope() as session:
+        service.current_logs[OperationEnum.EXECUTE_SQL] = start_log(
+            session=session,
+            operate=OperationEnum.EXECUTE_SQL,
+            record_id=service.record.id,
+            full_message={
+                "saas_skill_id": match.definition.get("id"),
+                "saas_skill_name": match.definition.get("name"),
+                "parameters": match.params,
+                "sources": [
+                    {
+                        "name": source.get("name") or source.get("id"),
+                        "type": source.get("type"),
+                    }
+                    for source in match.definition.get("sources") or []
+                    if isinstance(source, dict)
+                ],
+            },
+            local_operation=True,
+        )
+        try:
+            execution = execute_saas_skill(session, service, match)
+        except Exception as execute_error:
+            if not looks_like_permission_scope_error(str(execute_error)):
+                raise
+            trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
+            failed_result = service.save_permission_denied_data(session=session)
+            emit_permission_denied_response(
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                sql=None,
+                failed_result=failed_result,
+                include_reason=True,
+            )
+            return {"json_result": json_result, "saas_skill_handled": True, "stop": True}
+
+        service.current_logs[OperationEnum.EXECUTE_SQL] = end_log(
+            session=session,
+            log=service.current_logs[OperationEnum.EXECUTE_SQL],
+            full_message={
+                "saas_skill_id": match.definition.get("id"),
+                "source_count": len(execution.sources),
+                "row_count": len(execution.merged_result.get("data") or []),
+                "fields": execution.merged_result.get("fields") or [],
+            },
+        )
+
+        if execution.display_sql:
+            service.save_checked_sql(session=session, sql=execution.display_sql)
+            format_sql = sqlparse.format(execution.display_sql, reindent=True)
+            if in_chat:
+                _emit(_sse({"content": format_sql, "type": "sql"}))
+            elif stream:
+                _emit(f"```sql\n{format_sql}\n```\n\n")
+
+        service.save_sql_data(session=session, data_obj=dict(execution.merged_result))
+        save_chart(
+            session=session,
+            record_id=service.record.id,
+            chart=orjson.dumps(execution.chart).decode(),
+        )
+
+        if in_chat:
+            _emit(_sse({"content": "execute-success", "type": "sql-data"}))
+            _emit(_sse({"content": orjson.dumps(execution.chart).decode(), "type": "chart"}))
+        elif not stream:
+            json_result["data"] = get_chat_chart_data(session, service.record.id)
+            json_result["chart"] = execution.chart
+
+    if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
+        if in_chat:
+            _emit(_sse({"type": "finish"}))
+        elif stream:
+            column_list = [AxisObj(name=field, value=field) for field in execution.merged_result.get("fields") or []]
+            _md_data, fields_list = DataFormat.convert_object_array_for_pandas(
+                column_list,
+                execution.merged_result.get("data") or [],
+            )
+            emit_markdown_table(
+                _md_data,
+                fields_list,
+                empty_message="The SaaS Skill execution result is empty.",
+            )
+        else:
+            _emit(json_result)
+        return {
+            "json_result": json_result,
+            "result": execution.merged_result,
+            "chart": execution.chart,
+            "saas_skill_handled": True,
+            "stop": True,
+        }
+
+    answer_messages = build_saas_skill_answer_messages(service, execution)
+    token_usage: dict[str, Any] = {}
+    full_answer = ""
+    full_reasoning = ""
+
+    with _session_scope() as session:
+        service.current_logs[OperationEnum.ANALYSIS] = start_log(
+            session=session,
+            ai_modal_id=service.chat_question.ai_modal_id,
+            ai_modal_name=service.chat_question.ai_modal_name,
+            operate=OperationEnum.ANALYSIS,
+            record_id=service.record.id,
+            full_message=serialize_saas_skill_messages(answer_messages),
+        )
+        for chunk in stream_saas_skill_answer_chunks(service, answer_messages, token_usage):
+            content = chunk.get("content") or ""
+            reasoning_content = chunk.get("reasoning_content") or ""
+            full_answer += content
+            full_reasoning += reasoning_content
+            if in_chat:
+                _emit(_sse({
+                    "content": content,
+                    "reasoning_content": reasoning_content,
+                    "type": "analysis-result",
+                }))
+            elif stream:
+                _emit(content)
+
+        service.current_logs[OperationEnum.ANALYSIS] = end_log(
+            session=session,
+            log=service.current_logs[OperationEnum.ANALYSIS],
+            full_message=[
+                *serialize_saas_skill_messages(answer_messages),
+                {"type": "ai", "content": full_answer},
+            ],
+            reasoning_content=full_reasoning,
+            token_usage=token_usage,
+        )
+        service.record = save_analysis_answer(
+            session=session,
+            record_id=service.record.id,
+            answer=orjson.dumps({
+                "content": full_answer,
+                "reasoning_content": full_reasoning,
+            }).decode(),
+        )
+
+    if not stream:
+        json_result["analysis"] = full_answer
+    if in_chat:
+        _emit(_sse({"type": "finish"}))
+    elif stream:
+        _emit("\n\n")
+        column_list = [AxisObj(name=field, value=field) for field in execution.merged_result.get("fields") or []]
+        _md_data, fields_list = DataFormat.convert_object_array_for_pandas(
+            column_list,
+            execution.merged_result.get("data") or [],
+        )
+        emit_markdown_table(
+            _md_data,
+            fields_list,
+            empty_message="The SaaS Skill execution result is empty.",
+        )
+    else:
+        _emit(json_result)
+
+    return {
+        "json_result": json_result,
+        "result": execution.merged_result,
+        "chart": execution.chart,
+        "saas_skill_handled": True,
+        "stop": True,
+    }
 
 
 def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
@@ -562,6 +759,13 @@ def _should_continue_after_sql(state: SmartQAGraphState) -> str:
     return END if state.get("stop") else "execute_sql"
 
 
+def _should_continue_after_saas_skill(state: SmartQAGraphState) -> str:
+    """
+    是什么：_should_continue_after_saas_skill 决定可执行 SaaS Skill 命中后是否跳过常规 SQL 流程。
+    """
+    return END if state.get("stop") else "generate_sql"
+
+
 def _should_continue_after_execute(state: SmartQAGraphState) -> str:
     """
     是什么：_should_continue_after_execute 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -581,6 +785,7 @@ def _build_graph():
     graph.add_node("prepare_context", _observe_node("prepare_context", _prepare_existing_context))
     graph.add_node("emit_record_metadata", _observe_node("emit_record_metadata", _emit_record_metadata))
     graph.add_node("ensure_datasource", _observe_node("ensure_datasource", _ensure_datasource))
+    graph.add_node("execute_saas_skill", _observe_node("execute_saas_skill", _execute_saas_skill))
     graph.add_node("generate_sql", _observe_node("generate_sql", _generate_sql))
     graph.add_node("prepare_sql", _observe_node("prepare_sql", _prepare_sql))
     graph.add_node("execute_sql", _observe_node("execute_sql", _execute_sql))
@@ -589,7 +794,8 @@ def _build_graph():
     graph.set_entry_point("prepare_context")
     graph.add_edge("prepare_context", "emit_record_metadata")
     graph.add_edge("emit_record_metadata", "ensure_datasource")
-    graph.add_edge("ensure_datasource", "generate_sql")
+    graph.add_edge("ensure_datasource", "execute_saas_skill")
+    graph.add_conditional_edges("execute_saas_skill", _should_continue_after_saas_skill)
     graph.add_edge("generate_sql", "prepare_sql")
     graph.add_conditional_edges("prepare_sql", _should_continue_after_sql)
     graph.add_conditional_edges("execute_sql", _should_continue_after_execute)

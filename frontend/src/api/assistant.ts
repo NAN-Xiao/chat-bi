@@ -7,5 +7,15 @@ export const assistantApi = {
   edit: (data: any) => request.put('/system/assistant', data),
   delete: (id: number) => request.delete(`/system/assistant/${id}`),
   query: (id: number) => request.get(`/system/assistant/${id}`),
-  validate: (data: any) => request.get('/system/assistant/validator', { params: data }),
+  validate: (data: any, credential?: string, hostOrigin?: string) =>
+    request.get('/system/assistant/validator', {
+      params: data,
+      headers:
+        credential || hostOrigin
+          ? {
+              ...(credential ? { 'X-SHUZHI-ASSISTANT-VALIDATOR': `Embedded ${credential}` } : {}),
+              ...(hostOrigin ? { 'X-SHUZHI-HOST-ORIGIN': hostOrigin } : {}),
+            }
+          : undefined,
+    }),
 }

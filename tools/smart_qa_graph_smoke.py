@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+import jwt
 import requests
 from sqlalchemy import MetaData, Table, delete, insert
 from sqlmodel import Session, create_engine, text
@@ -212,6 +213,7 @@ def _temporary_dynamic_assistant_fixture(
     metadata = MetaData()
     assistant_table = Table("sys_assistant", metadata, autoload_with=engine)
     assistant_id = int(time.time() * 1000) * 1000 + (int(user_id) % 1000)
+    app_secret = f"codex-smoke-assistant-secret-{assistant_id}"
     with _dynamic_assistant_datasource_server(datasource_id) as endpoint:
         configuration = {
             "endpoint": endpoint,
@@ -232,7 +234,7 @@ def _temporary_dynamic_assistant_fixture(
                             "configuration": json.dumps(configuration, ensure_ascii=False),
                             "create_time": int(time.time() * 1000),
                             "app_id": None,
-                            "app_secret": None,
+                            "app_secret": app_secret,
                             "enable_custom_model": False,
                             "custom_model": None,
                         },
@@ -241,9 +243,23 @@ def _temporary_dynamic_assistant_fixture(
             )
 
         try:
+            validator_credential = jwt.encode(
+                {
+                    "assistant_id": assistant_id,
+                    "tenant_id": int(tenant_id),
+                    "origin": "http://127.0.0.1",
+                    "exp": dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5),
+                },
+                app_secret,
+                algorithm="HS256",
+            )
             response = requests.get(
                 base_url + "/system/assistant/validator",
                 params={"id": assistant_id, "virtual": int(user_id)},
+                headers={
+                    "X-SHUZHI-HOST-ORIGIN": "http://127.0.0.1",
+                    "X-SHUZHI-ASSISTANT-VALIDATOR": f"Embedded {validator_credential}",
+                },
                 timeout=30,
             )
             response.raise_for_status()

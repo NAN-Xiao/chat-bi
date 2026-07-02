@@ -56,10 +56,12 @@ const currentViewInfo = computed(() =>
     : {}
 )
 const isExternalSnapshotConfig = () =>
+  Array.isArray(currentViewInfo.value?.sources) && currentViewInfo.value.sources.length > 1 ||
+  Array.isArray(currentViewInfo.value?.sourceConfig?.sources) && currentViewInfo.value.sourceConfig.sources.length > 1 ||
   currentViewInfo.value?.externalSnapshot === true ||
-  currentViewInfo.value?.dataSourceType === 'external_mcp' ||
+  ['external_mcp', 'mixed'].includes(currentViewInfo.value?.dataSourceType) ||
   props.configItem?.externalSnapshot === true ||
-  props.configItem?.dataSourceType === 'external_mcp'
+  ['external_mcp', 'mixed'].includes(props.configItem?.dataSourceType)
 
 const doPreview = () => {
   // do preview

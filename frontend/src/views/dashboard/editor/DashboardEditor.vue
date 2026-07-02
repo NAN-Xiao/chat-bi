@@ -106,6 +106,11 @@ const findPositionX = (width: number) => {
   return canvasCoreRef.value.findPositionX(width)
 }
 
+const openSqlEditor = (id: string) => {
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  canvasCoreRef.value?.openSqlEditor(id)
+}
+
 const gridStyle = computed(() => {
   const gridStepX = baseWidth.value + baseMarginLeft.value
   const gridStepY = baseHeight.value + baseMarginTop.value
@@ -130,6 +135,7 @@ defineExpose({
   canvasSizeInit,
   addItemToBox,
   findPositionX,
+  openSqlEditor,
 })
 
 onMounted(() => {

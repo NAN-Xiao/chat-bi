@@ -43,6 +43,11 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  getReportContextSnapshots: {
+    type: Function,
+    required: false,
+    default: null,
+  },
 })
 const canEdit = computed(() => props.dashboardInfo?.canEdit === true)
 const canInterpretDashboard = computed(() => !!props.dashboardInfo?.id && !props.platformTemplate)
@@ -210,16 +215,25 @@ function getDashboardDatasourceId() {
   return normalizeDatasourceId(datasource)
 }
 
+function getRuntimeReportContextSnapshots() {
+  const snapshots = props.getReportContextSnapshots?.()
+  return snapshots && typeof snapshots === 'object' ? snapshots : {}
+}
+
 function buildSingleChartContext(
   entry: { component: any; viewInfo: any; path: string[] },
-  index: number
+  index: number,
+  snapshots: Record<string, any> = {}
 ) {
   const viewInfo = entry.viewInfo || {}
   const chart = viewInfo.chart || {}
+  const snapshot = snapshots?.[entry.component?.id] || null
+  const snapshotRows = Array.isArray(snapshot?.data) ? snapshot.data : null
   const storedRows = Array.isArray(viewInfo.data?.data) ? viewInfo.data.data : []
-  const rows = rowsAfterStoredPivotFilters(viewInfo, storedRows)
+  const rows = snapshotRows || rowsAfterStoredPivotFilters(viewInfo, storedRows)
   const sampleRows = rows.slice(0, 50)
   const fields = unique([
+    ...(Array.isArray(snapshot?.fields) ? snapshot.fields : []),
     ...(Array.isArray(viewInfo.data?.fields) ? viewInfo.data.fields : []),
     ...(Array.isArray(viewInfo.fields) ? viewInfo.fields : []),
     ...getAxisFields(chart.columns),
@@ -228,17 +242,29 @@ function buildSingleChartContext(
     ...getAxisFields(chart.series),
     ...sampleRows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
   ])
-  const pivot = viewInfo.pivot || {}
-  const selectedGroupValues = Array.isArray(pivot.group_values)
-    ? unique(pivot.group_values.map(normalizeReportGroupValue))
-    : []
+  const pivot = snapshot?.pivot || viewInfo.pivot || {}
+  const selectedGroupValues = Array.isArray(pivot?.selected_group_values)
+    ? pivot.selected_group_values
+    : Array.isArray(pivot?.group_values)
+      ? unique(pivot.group_values.map(normalizeReportGroupValue))
+      : []
+  const visibleRowsLabel = snapshotRows
+    ? `${snapshot.totalRows ?? rows.length} current visible rows after chart UI filters`
+    : `${rows.length} rows after stored chart filters`
   const whitelist = visibleValueWhitelist(sampleRows, fields)
-  const filterContext = [
-    `Current visible row scope: ${rows.length} rows after stored chart filters; stored source rows before filters: ${storedRows.length}.`,
-    pivot?.enabled
-      ? `Stored pivot/filter state: group field=${pivot.group_field || '-'}, group enabled=${pivot.group_enabled !== false ? 'true' : 'false'}, allowed groups=${selectedGroupValues.length ? selectedGroupValues.join(', ') : 'all/none'}.`
-      : 'Stored pivot/filter state: pivot disabled.',
-  ]
+  const filterContext = snapshotRows
+    ? [
+        `Current visible row scope: ${visibleRowsLabel}; source rows before UI filters: ${snapshot?.sourceRows ?? '-'}.`,
+        pivot?.enabled
+          ? `Current pivot/filter state: group field=${pivot.group_field || '-'}, group enabled=${pivot.group_enabled ? 'true' : 'false'}, selected groups=${selectedGroupValues.length ? selectedGroupValues.join(', ') : 'all/none'}, selected group count=${pivot.selected_group_count ?? '-'} of ${pivot.total_group_count ?? '-'}.`
+          : 'Current pivot/filter state: pivot disabled.',
+      ]
+    : [
+        `Current visible row scope: ${visibleRowsLabel}; stored source rows before filters: ${storedRows.length}.`,
+        pivot?.enabled
+          ? `Stored pivot/filter state: group field=${pivot.group_field || '-'}, group enabled=${pivot.group_enabled !== false ? 'true' : 'false'}, allowed groups=${selectedGroupValues.length ? selectedGroupValues.join(', ') : 'all/none'}.`
+          : 'Stored pivot/filter state: pivot disabled.',
+      ]
 
   return [
     `Chart ${index + 1}: ${getEntryTitle(entry, index)}`,
@@ -254,8 +280,9 @@ function buildSingleChartContext(
 
 function buildDashboardReportContext() {
   const entries = getDashboardChartEntries()
+  const snapshots = getRuntimeReportContextSnapshots()
   const chartContexts = entries
-    .map((entry, index) => buildSingleChartContext(entry, index))
+    .map((entry, index) => buildSingleChartContext(entry, index, snapshots))
     .join('\n\n---\n\n')
 
   return [

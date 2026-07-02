@@ -3,9 +3,12 @@
 """
 # 作者：Junjun
 # 日期：2025/7/1
+import ipaddress
 import json
+import socket
 from datetime import timedelta
 from typing import Optional
+from urllib.parse import urlsplit
 
 import jwt
 from fastapi import HTTPException, status, APIRouter
@@ -32,6 +35,61 @@ reusable_oauth2 = XOAuth2PasswordBearer(
 )
 
 router = APIRouter(tags=["mcp"], prefix="/mcp")
+
+
+_BLOCKED_MCP_ASSISTANT_HOSTS = {"localhost", "localhost.localdomain"}
+
+
+def _is_forbidden_network_address(value: str) -> bool:
+    """
+    是什么：_is_forbidden_network_address 判断 MCP 外部助手 URL 是否指向内网或特殊地址。
+    """
+    try:
+        address = ipaddress.ip_address(value.strip("[]"))
+    except ValueError:
+        return False
+    return any(
+        (
+            address.is_loopback,
+            address.is_private,
+            address.is_link_local,
+            address.is_multicast,
+            address.is_reserved,
+            address.is_unspecified,
+        )
+    )
+
+
+def validate_mcp_assistant_url(url: str) -> str:
+    """
+    是什么：validate_mcp_assistant_url 在旧 MCP assistant 入口阻断 SSRF 高危地址。
+    """
+    parsed = urlsplit((url or "").strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="MCP assistant URL must use http or https")
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="MCP assistant URL host is required")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="MCP assistant URL userinfo is not allowed")
+
+    hostname = parsed.hostname.strip().lower()
+    if hostname in _BLOCKED_MCP_ASSISTANT_HOSTS or _is_forbidden_network_address(hostname):
+        raise HTTPException(status_code=400, detail="MCP assistant URL host is not allowed")
+
+    try:
+        resolved_addresses = {
+            item[4][0]
+            for item in socket.getaddrinfo(hostname, parsed.port, type=socket.SOCK_STREAM)
+            if item and len(item) >= 5 and item[4]
+        }
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=400, detail="MCP assistant URL host cannot be resolved") from exc
+
+    if not resolved_addresses:
+        raise HTTPException(status_code=400, detail="MCP assistant URL host cannot be resolved")
+    if any(_is_forbidden_network_address(address) for address in resolved_addresses):
+        raise HTTPException(status_code=400, detail="MCP assistant URL host is not allowed")
+    return url
 
 
 # @router.post("/access_token", operation_id="access_token")
@@ -168,11 +226,8 @@ async def mcp_assistant(session: SessionDep, chat: McpAssistant):
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把MCP 服务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    session_user = BaseUserDTO(**{
-        "id": -1, "account": 'shuzhi-mcp-assistant', "assistant_id": -1, "password": '', "language": "zh-CN",
-        "name": "shuzhi-mcp-assistant", "email": "shuzhi-mcp-assistant@shuzhi.com"
-    })
-    # session_user: UserModel = get_db_user(session=session, user_id=1)
+    session_user = get_user(session, chat.token)
+    validate_mcp_assistant_url(chat.url)
     c = create_chat(session, session_user, CreateChat(origin=1), False)
 
     # 构建助手参数

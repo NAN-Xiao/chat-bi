@@ -21,6 +21,13 @@ import {
   clearDashboardCanvasDraft,
 } from '@/views/dashboard/utils/canvasDraft.ts'
 import { applyRecommendedChartComponentSize } from '@/views/dashboard/utils/chartSizing.ts'
+import {
+  applyMixedChartResult,
+  canRefreshMixedChart,
+  isExternalMcpSnapshotChart,
+  isMixedChart,
+  refreshMixedChartData,
+} from '@/views/dashboard/utils/mixedChartData'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -146,7 +153,7 @@ function hasChartShape(viewInfo: any) {
 }
 
 function isExternalSnapshotChart(viewInfo: any) {
-  return viewInfo?.externalSnapshot === true || viewInfo?.dataSourceType === 'external_mcp'
+  return isExternalMcpSnapshotChart(viewInfo)
 }
 
 function hasUsableResultSnapshot(result: any) {
@@ -200,6 +207,12 @@ async function previewChartSqlCacheOnly(
   viewInfo: any,
   requestConfig: any = { requestOptions: { silent: true } }
 ) {
+  if (isMixedChart(viewInfo)) {
+    return refreshMixedChartData(viewInfo, {
+      cacheOnly: true,
+      requestConfig,
+    })
+  }
   return dashboardApi.preview_sql(
     {
       ...chartSqlPayload(viewInfo),
@@ -213,6 +226,12 @@ async function previewChartSqlFromDatabase(
   viewInfo: any,
   requestConfig: any = { requestOptions: { silent: true } }
 ) {
+  if (isMixedChart(viewInfo)) {
+    return refreshMixedChartData(viewInfo, {
+      forceRefresh: true,
+      requestConfig,
+    })
+  }
   return dashboardApi.preview_sql(
     {
       ...chartSqlPayload(viewInfo),
@@ -395,7 +414,11 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
 
 async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
   const chartEntries = collectDashboardCharts(componentData.value).filter((entry) =>
-    Boolean(!isExternalSnapshotChart(entry.viewInfo) && entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim())
+    Boolean(
+      isMixedChart(entry.viewInfo)
+        ? canRefreshMixedChart(entry.viewInfo)
+        : !isExternalSnapshotChart(entry.viewInfo) && entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim()
+    )
   )
   if (!chartEntries.length) {
     return
@@ -451,17 +474,24 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           cachedResult?.status === 'failed' ||
           !hasUsableResultSnapshot(cachedResult)
         ) {
-          if (!hasChartSnapshot(viewInfo)) {
+          if (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo)) {
             databaseRefreshEntries.push(entry)
           }
         } else {
-          withAutoChartUpdate(() => applyChartResult(viewInfo, cachedResult))
+          withAutoChartUpdate(() => {
+            if (isMixedChart(viewInfo)) {
+              applyMixedChartResult(viewInfo, cachedResult)
+              markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(cachedResult))
+            } else {
+              applyChartResult(viewInfo, cachedResult)
+            }
+          })
         }
       } catch (error: any) {
         if (isAbortError(error) || controller.signal.aborted) {
           return
         }
-        if (loadVersion === routeLoadVersion && !hasChartSnapshot(viewInfo)) {
+        if (loadVersion === routeLoadVersion && (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo))) {
           databaseRefreshEntries.push(entry)
         }
       } finally {
@@ -500,7 +530,12 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
               transientPendingCount += 1
             }
           } else {
-            applyChartResult(viewInfo, result)
+            if (isMixedChart(viewInfo)) {
+              applyMixedChartResult(viewInfo, result)
+              markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
+            } else {
+              applyChartResult(viewInfo, result)
+            }
           }
         })
       } catch (error: any) {
@@ -744,7 +779,7 @@ watch(
   { deep: true, flush: 'sync' }
 )
 
-const addComponents = (componentType: string, views?: any) => {
+const addComponents = (componentType: string, views?: any, options: { openEditor?: boolean } = {}) => {
   const component = cloneDeep(findNewComponentFromList(componentType))
   if (!component) {
     return
@@ -764,7 +799,13 @@ const addComponents = (componentType: string, views?: any) => {
       addComponent(component, target)
     })
   } else {
-    addComponent(component)
+    const added = addComponent(component)
+    if (options.openEditor && added?.component === 'SQView') {
+      nextTick(() => {
+        // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        dashboardEditorInnerRef.value?.openSqlEditor?.(added.id)
+      })
+    }
   }
 }
 const addComponent = (componentSource: any, viewInfo?: any) => {
@@ -788,11 +829,24 @@ const addComponent = (componentSource: any, viewInfo?: any) => {
     component.y = maxYComponentCount() + 2
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     dashboardEditorInnerRef.value.addItemToBox(component)
+    return component
   }
+  return null
 }
 
 const createEmptyViewInfo = (id: string) => ({
   id,
+  sourceConfig: {
+    sources: ['sql'],
+    primarySource: 'sql',
+    sql: {
+      datasource: state.platformTemplateId ? null : state.datasource || datasourceContext.datasourceId,
+      sql: '',
+    },
+    mcp: null,
+  },
+  sources: ['sql'],
+  primarySource: 'sql',
   sql: '',
   datasource: state.platformTemplateId ? null : state.datasource || datasourceContext.datasourceId,
   data: {

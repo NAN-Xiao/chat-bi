@@ -6,8 +6,10 @@ import os
 from datetime import timedelta
 from typing import Optional
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
+from fastapi.security.utils import get_authorization_scheme_param
 
 
 async def get_assistant_info(**kwargs):
@@ -37,7 +39,7 @@ from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantPublicInfo, AssistantValidator
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, Trans, CurrentUser
-from common.core.security import create_access_token
+from common.core.security import ALGORITHM, create_access_token
 from common.core.app_cache import clear_cache
 from common.utils.file_utils import AppFileUtils
 from common.utils.utils import get_origin_from_referer, origin_match_domain
@@ -63,6 +65,11 @@ PUBLIC_CONFIGURATION_KEYS = {
     "x_val",
     "y_val",
 }
+
+VALIDATOR_CREDENTIAL_HEADERS = (
+    "X-SHUZHI-ASSISTANT-VALIDATOR",
+    "X-SHUZHI-ASSISTANT-CREDENTIAL",
+)
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
@@ -135,6 +142,95 @@ def _assistant_tenant_id(current_assistant: CurrentAssistant) -> int:
     return require_tenant_id(getattr(current_assistant, "tenant_id", None))
 
 
+def _normalize_origin(origin: str | None) -> str | None:
+    """
+    是什么：_normalize_origin 把前端传入的来源地址规整成同一种格式。
+    谁调用：公开嵌入接口在校验域名时会调用它。
+    做了什么：去掉末尾斜杠，避免同一来源因为格式不同被误判。
+    """
+    if not origin:
+        return None
+    return origin.rstrip("/")
+
+
+def _request_host_origin(request: Request) -> str | None:
+    """
+    是什么：_request_host_origin 读取真正的第三方宿主来源。
+    谁调用：validator 这类运行在 iframe 内部的接口会调用它。
+    做了什么：优先取嵌入页转发的宿主来源，再回退到浏览器 Origin/Referer。
+    """
+    return _normalize_origin(
+        request.headers.get("X-SHUZHI-HOST-ORIGIN")
+        or request.query_params.get("hostOrigin")
+        or request.headers.get("origin")
+        or get_origin_from_referer(request)
+    )
+
+
+def _extract_validator_credential(request: Request) -> str | None:
+    """
+    是什么：_extract_validator_credential 读取 validator 的短期认证令牌。
+    谁调用：validator 签发 assistant 会话前会调用它。
+    做了什么：支持专用请求头，兼容 Bearer/Embedded 前缀。
+    """
+    raw_credential = None
+    for header in VALIDATOR_CREDENTIAL_HEADERS:
+        raw_credential = raw_credential or request.headers.get(header)
+    if not raw_credential:
+        return None
+    scheme, param = get_authorization_scheme_param(raw_credential)
+    if scheme:
+        if scheme.lower() not in {"bearer", "embedded"}:
+            raise HTTPException(status_code=401, detail="Validator credential schema error")
+        return param
+    return raw_credential
+
+
+def _validate_validator_credential(
+    db_model: AssistantModel,
+    credential: str | None,
+    origin: str,
+) -> None:
+    """
+    是什么：_validate_validator_credential 校验第三方嵌入方是否有权换取 assistant 会话。
+    谁调用：/system/assistant/validator 会在签 token 前调用它。
+    做了什么：要求调用方提供 app_secret 签名的短期 JWT，并绑定 assistant 与来源域名。
+    """
+    if not credential:
+        raise HTTPException(status_code=401, detail="Missing assistant validator credential")
+    if not db_model.app_secret:
+        raise HTTPException(status_code=401, detail="Assistant app_secret is not configured")
+    try:
+        payload = jwt.decode(
+            credential,
+            db_model.app_secret,
+            algorithms=[ALGORITHM],
+            options={"require": ["exp"]},
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Assistant validator credential expired")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid assistant validator credential")
+
+    payload_assistant_id = payload.get("assistant_id") or payload.get("embeddedId")
+    if str(payload_assistant_id or "") != str(db_model.id):
+        raise HTTPException(status_code=401, detail="Assistant validator credential mismatch")
+
+    payload_tenant_id = payload.get("tenant_id")
+    if payload_tenant_id:
+        try:
+            if int(payload_tenant_id) != _model_tenant_id(db_model):
+                raise HTTPException(status_code=401, detail="Assistant validator tenant mismatch")
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=401, detail="Assistant validator tenant mismatch")
+
+    payload_origin = _normalize_origin(payload.get("origin") or payload.get("hostOrigin"))
+    if not payload_origin:
+        raise HTTPException(status_code=401, detail="Assistant validator origin is required")
+    if payload_origin and payload_origin != origin:
+        raise HTTPException(status_code=401, detail="Assistant validator origin mismatch")
+
+
 def _public_assistant_info(db_model: AssistantModel, include_certificate: bool = False) -> AssistantPublicInfo:
     """
     是什么：_public_assistant_info 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -158,6 +254,14 @@ def _public_assistant_info(db_model: AssistantModel, include_certificate: bool =
     return AssistantPublicInfo.model_validate(data)
 
 
+def _include_certificate_for_public_request(request: Request, db_model: AssistantModel, origin: str) -> bool:
+    credential = _extract_validator_credential(request)
+    if not credential:
+        return False
+    _validate_validator_credential(db_model, credential, origin)
+    return True
+
+
 @router.get("/info/{id}", include_in_schema=False)
 async def info(request: Request, response: Response, session: SessionDep, trans: Trans, id: int) -> AssistantPublicInfo:
     """
@@ -172,15 +276,15 @@ async def info(request: Request, response: Response, session: SessionDep, trans:
         raise RuntimeError(f"assistant application not exist")
     db_model = AssistantModel.model_validate(db_model)
 
-    origin = request.headers.get("origin") or get_origin_from_referer(request)
+    origin = _request_host_origin(request)
     if not origin:
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
-    origin = origin.rstrip('/')
     if not origin_match_domain(origin, db_model.domain):
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
 
     response.headers["Access-Control-Allow-Origin"] = origin
-    return _public_assistant_info(db_model, include_certificate=True)
+    include_certificate = _include_certificate_for_public_request(request, db_model, origin)
+    return _public_assistant_info(db_model, include_certificate=include_certificate)
 
 
 @router.get("/app/{appId}", include_in_schema=False)
@@ -196,19 +300,26 @@ async def getApp(request: Request, response: Response, session: SessionDep, tran
     if not db_model:
         raise RuntimeError(f"assistant application not exist")
     db_model = AssistantModel.model_validate(db_model)
-    origin = request.headers.get("origin") or get_origin_from_referer(request)
+    origin = _request_host_origin(request)
     if not origin:
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
-    origin = origin.rstrip('/')
     if not origin_match_domain(origin, db_model.domain):
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
 
     response.headers["Access-Control-Allow-Origin"] = origin
-    return _public_assistant_info(db_model, include_certificate=True)
+    include_certificate = _include_certificate_for_public_request(request, db_model, origin)
+    return _public_assistant_info(db_model, include_certificate=include_certificate)
 
 
 @router.get("/validator", response_model=AssistantValidator, include_in_schema=False)
-async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query(None), online: Optional[bool] = Query(False)):
+async def validator(
+    request: Request,
+    session: SessionDep,
+    trans: Trans,
+    id: int,
+    virtual: Optional[int] = Query(None),
+    online: Optional[bool] = Query(False),
+):
     """
     是什么：validator 是一个接口入口，负责接住系统管理相关请求。
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
@@ -221,6 +332,13 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     if not db_model:
         return AssistantValidator()
     db_model = AssistantModel.model_validate(db_model)
+    origin = _request_host_origin(request)
+    if not origin:
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
+    if not origin_match_domain(origin, db_model.domain):
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
+    validator_credential = _extract_validator_credential(request)
+    _validate_validator_credential(db_model, validator_credential, origin)
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     # 保留查询参数用于兼容前端，但不要把它当作认证信号。

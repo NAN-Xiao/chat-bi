@@ -970,7 +970,17 @@
     "dashboard_create_mode": "创建方式",
     "blank_dashboard": "空白看板",
     "create_from_platform_template": "从模板创建",
-    "select_platform_template": "请选择平台模板"
+    "select_platform_template": "请选择平台模板",
+    "add_manual_chart": "手动新建图表",
+    "add_chart_from_chat": "从对话选择图表",
+    "chart_source_config": "数据来源",
+    "chart_source_sql": "SQL",
+    "chart_source_mcp": "MCP",
+    "chart_source_required": "请至少选择一个数据来源",
+    "mcp_editor_no_bound_server": "当前工作空间没有可用的第三方 MCP 数据源",
+    "mcp_editor_server": "MCP 数据源",
+    "mcp_editor_select_server": "请选择 MCP 数据源",
+    "mcp_editor_servers_load_failed": "MCP 数据源列表获取失败"
   },
   "qa": {
     "retrieve_error": "暂无内容",

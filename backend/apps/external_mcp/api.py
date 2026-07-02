@@ -4,6 +4,7 @@
 from fastapi import APIRouter, Query
 
 from apps.external_mcp.crud import (
+    list_available_external_mcp_servers,
     list_external_mcp_servers,
     list_external_mcp_tools,
     preview_external_mcp_tool,
@@ -62,6 +63,27 @@ async def list_external_mcp(
             session,
             keyword=keyword,
             include_disabled=include_disabled,
+        )
+    ]
+
+
+@router.get("/available", response_model=list[ExternalMcpServerDTO], include_in_schema=False)
+async def list_available_external_mcp(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int | str | None = Query(default=None),
+    dashboard_id: str | None = Query(default=None),
+):
+    """
+    是什么：list_available_external_mcp 列出当前图表上下文可选的第三方 MCP 数据源。
+    """
+    return [
+        _external_mcp_dto(record)
+        for record in list_available_external_mcp_servers(
+            session,
+            current_user,
+            tenant_id=tenant_id,
+            dashboard_id=dashboard_id,
         )
     ]
 
