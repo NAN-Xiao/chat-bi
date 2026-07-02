@@ -18,6 +18,12 @@ export const userImportApi = {
 export const userApi = {
   pager: (params: any, pageNumber: number, pageSize: number) =>
     request.get(`/user/pager/${pageNumber}/${pageSize}${params}`),
+  trialApplications: (status = 'pending') =>
+    request.get(`/user/trial-applications${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  reviewTrialApplication: (
+    id: string | number,
+    data: { approved: boolean; review_comment?: string }
+  ) => request.post(`/user/trial-applications/${id}/review`, data),
   add: (data: any) => request.post('/user', data),
   edit: (data: any) => request.put('/user', data),
   clearErrorApi: (key: string) => request.get(`/user/clearErrorRecord/${key}`),

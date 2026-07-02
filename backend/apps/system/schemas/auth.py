@@ -2,8 +2,8 @@
 脚本说明：这个脚本定义系统管理的输入输出结构，帮接口和业务代码统一数据格式。
 """
 
-from typing import Optional
-from pydantic import BaseModel
+from typing import Literal, Optional
+from pydantic import BaseModel, Field
 from enum import Enum
 
 class LocalLoginSchema(BaseModel):
@@ -12,6 +12,45 @@ class LocalLoginSchema(BaseModel):
     """
     account: str
     password: str
+
+
+class TrialApplicationCreate(BaseModel):
+    """
+    类说明：TrialApplicationCreate 描述访客申请试用账号时提交的信息。
+    """
+    account: str = Field(min_length=3, max_length=100)
+    password: str = Field(min_length=8, max_length=20)
+    name: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=1, max_length=100)
+    company: Optional[str] = Field(default=None, max_length=255)
+    reason: Optional[str] = Field(default=None, max_length=2000)
+
+
+class TrialApplicationReview(BaseModel):
+    """
+    类说明：TrialApplicationReview 描述管理员审核试用申请的入参。
+    """
+    approved: bool
+    review_comment: Optional[str] = Field(default=None, max_length=2000)
+
+
+class TrialApplicationDTO(BaseModel):
+    """
+    类说明：TrialApplicationDTO 描述试用申请列表和详情返回结构。
+    """
+    id: int
+    account: str
+    name: str
+    email: str
+    company: Optional[str] = None
+    reason: Optional[str] = None
+    status: Literal["pending", "approved", "rejected"] = "pending"
+    reviewer_user_id: Optional[int] = None
+    review_comment: Optional[str] = None
+    approved_user_id: Optional[int] = None
+    create_time: int = 0
+    update_time: int = 0
+    review_time: Optional[int] = None
     
 class CacheNamespace(Enum):
     """

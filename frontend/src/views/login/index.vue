@@ -1,98 +1,215 @@
 <template>
-  <main class="login-container power-login-page">
-    <img v-if="storyBg" class="power-login-bg" :src="storyBg" alt="" />
+  <main class="login-container shuzhi-landing-page">
+    <img v-if="storyBg" class="shuzhi-brand-bg" :src="storyBg" alt="" />
 
-    <header class="power-login-nav">
-      <button type="button" class="power-login-brand" aria-label="返回主页" @click="goHomePage">
-        <div class="power-login-brand-mark">
+    <header class="shuzhi-nav">
+      <button type="button" class="shuzhi-brand" aria-label="返回星通数智首页" @click="goHomePage">
+        <span class="shuzhi-brand-mark">
           <img v-if="loginBg" :src="loginBg" alt="" />
           <custom_small v-else-if="appearanceStore.themeColor !== 'default'"></custom_small>
           <img v-else :src="elexDataLogoUrl" alt="" />
-        </div>
-        <div class="power-login-brand-copy">
+        </span>
+        <span class="shuzhi-brand-copy">
           <strong>{{ productName }}</strong>
-          <span>ChatBI 数据问答与看板 SaaS</span>
-        </div>
+          <span>智能 BI 与数据分析工作台</span>
+        </span>
       </button>
 
-      <nav class="power-login-menu" aria-label="产品能力">
-        <span v-for="item in navItems" :key="item">{{ item }}</span>
+      <nav class="shuzhi-nav-links" aria-label="产品导航">
+        <button
+          v-for="item in navItems"
+          :key="item.target"
+          type="button"
+          @click="isWorkspaceEntryPage ? goHomePage() : scrollToHomeSection(item.target)"
+        >
+          {{ item.label }}
+        </button>
       </nav>
 
-      <button v-if="isLoginFormPage" type="button" class="power-login-nav-action" @click="goHomePage">
-        返回首页
-      </button>
-      <button v-else type="button" class="power-login-nav-action" @click="goLoginPage">登录</button>
+      <div class="shuzhi-nav-actions">
+        <button
+          v-if="isWorkspaceEntryPage"
+          type="button"
+          class="shuzhi-link-button"
+          @click="goHomePage"
+        >
+          返回首页
+        </button>
+        <button v-else type="button" class="shuzhi-link-button" @click="goLoginPage">登录</button>
+        <button
+          type="button"
+          class="shuzhi-primary-button shuzhi-nav-primary"
+          @click="isTrialApplicationPage ? goLoginPage() : goTrialPage()"
+        >
+          <span>{{ isTrialApplicationPage ? '账号登录' : '免费试用' }}</span>
+          <el-icon><ArrowRight /></el-icon>
+        </button>
+      </div>
     </header>
 
-    <div v-if="!isLoginFormPage" class="home-announcement-strip">
-      <span>星通数智 SaaS 主页</span>
-      <strong>用 ChatBI、语义层和数据看板，把可信分析带给每个团队。</strong>
-      <button type="button" @click="goLoginPage">进入工作台</button>
-    </div>
+    <section
+      v-if="isWorkspaceEntryPage"
+      class="shuzhi-login-stage"
+      :class="{ 'is-trial-stage': isTrialApplicationPage }"
+      :aria-label="isTrialApplicationPage ? '申请试用星通数智' : '登录星通数智'"
+    >
+      <div class="shuzhi-login-shell">
+        <section class="shuzhi-login-story">
+          <span class="shuzhi-pill">
+            <i></i>
+            {{ entryStoryPill }}
+          </span>
+          <h1>{{ entryStoryTitle }}</h1>
+          <p>
+            {{ entryStoryDesc }}
+          </p>
 
-    <section v-if="isLoginFormPage" class="power-login-account-page" aria-label="登录">
-      <div class="account-login-shell">
-        <section class="account-login-story">
-          <p class="account-login-eyebrow">让可信数据分析从这里开始</p>
-          <h1>登录 {{ productName }}，继续你的智能分析工作台</h1>
-          <ul class="account-login-benefits">
-            <li v-for="item in accountBenefits" :key="item">
-              <i></i>
+          <ul class="shuzhi-check-list">
+            <li v-for="item in currentEntryBenefits" :key="item">
+              <el-icon><Check /></el-icon>
               <span>{{ item }}</span>
             </li>
           </ul>
 
-          <div class="account-login-visual" aria-label="数据分析工作台预览">
-            <div class="account-login-screen">
-              <div class="account-login-screen-head">
-                <span></span>
-                <span></span>
-                <span></span>
-                <b>星通数智 · Smart Q&amp;A</b>
-              </div>
-              <div class="account-login-screen-body">
-                <aside>
-                  <span v-for="item in previewSources" :key="item"></span>
-                </aside>
-                <section>
-                  <div class="account-login-prompt">本月核心指标变化如何？</div>
-                  <div class="account-login-mini-metrics">
-                    <div v-for="item in previewMetrics" :key="item.label">
-                      <span>{{ item.label }}</span>
-                      <strong>{{ item.value }}</strong>
-                    </div>
-                  </div>
-                  <div class="account-login-mini-chart">
-                    <span
-                      v-for="item in previewBars"
-                      :key="item"
-                      :style="{ height: `${item}%` }"
-                    ></span>
-                  </div>
-                </section>
-              </div>
-            </div>
-            <div class="account-login-phone">
+          <div class="login-preview-card" aria-hidden="true">
+            <div class="mini-window-head">
               <span></span>
-              <strong>24</strong>
-              <em>看板更新</em>
+              <span></span>
+              <span></span>
+              <b>{{ productName }} · Smart Q&amp;A</b>
+            </div>
+            <div class="login-preview-body">
+              <div class="login-preview-question">本周收入和转化有哪些异常？</div>
+              <div class="login-preview-chart">
+                <i v-for="item in previewBars" :key="item" :style="{ height: `${item}%` }"></i>
+              </div>
+              <div class="login-preview-note">
+                <span>已识别 3 个异常指标</span>
+                <strong>自动生成归因路径</strong>
+              </div>
             </div>
           </div>
         </section>
 
         <aside class="product-login-wrap">
-          <div class="product-login-card">
+          <div class="product-login-card" :class="{ 'is-trial-card': isTrialApplicationPage }">
             <div class="product-login-card-head">
-              <span>工作台入口</span>
-              <h2>{{ $t('common.login') }}</h2>
+              <span>{{ isTrialApplicationPage ? '申请试用' : '工作台入口' }}</span>
+              <h2>{{ isTrialApplicationPage ? '申请试用' : '账号登录' }}</h2>
               <p class="product-login-desc">
-                使用你的账号进入 {{ productName }}，继续查询数据、管理数据看板和分析业务问题。
+                {{ entryCardDesc }}
               </p>
             </div>
 
             <div class="login-form">
-              <div class="default-login-tabs">
+              <div v-if="isTrialApplicationPage" class="trial-application-panel">
+                <div v-if="trialSubmitted" class="trial-submit-result">
+                  <el-icon><CircleCheckFilled /></el-icon>
+                  <h3>申请已提交</h3>
+                  <p>
+                    管理员审核通过后，你就可以使用申请的账号和密码在登录页进入 {{ productName }}。
+                  </p>
+                  <el-button type="primary" class="product-login-submit" @click="goLoginPage">
+                    去登录页
+                  </el-button>
+                </div>
+                <el-form
+                  v-else
+                  ref="trialApplicationFormRef"
+                  class="form-content_error product-login-form trial-application-form"
+                  :model="trialApplicationForm"
+                  :rules="trialApplicationRules"
+                  label-position="top"
+                  @keyup.enter="submitTrialApplication"
+                >
+                  <el-form-item class="product-login-field" prop="account" label="账号">
+                    <el-input
+                      v-model="trialApplicationForm.account"
+                      clearable
+                      placeholder="请输入 3 位以上账号"
+                      maxlength="100"
+                      size="large"
+                    ></el-input>
+                  </el-form-item>
+                  <el-form-item class="product-login-field" prop="password" label="密码">
+                    <el-input
+                      v-model="trialApplicationForm.password"
+                      type="password"
+                      show-password
+                      clearable
+                      placeholder="8-20 位，含大小写字母、数字和特殊字符"
+                      maxlength="20"
+                      size="large"
+                    ></el-input>
+                  </el-form-item>
+                  <el-form-item
+                    class="product-login-field"
+                    prop="confirmPassword"
+                    label="确认密码"
+                  >
+                    <el-input
+                      v-model="trialApplicationForm.confirmPassword"
+                      type="password"
+                      show-password
+                      clearable
+                      placeholder="请再次输入密码"
+                      maxlength="20"
+                      size="large"
+                    ></el-input>
+                  </el-form-item>
+                  <el-form-item class="product-login-field" prop="name" label="姓名">
+                    <el-input
+                      v-model="trialApplicationForm.name"
+                      clearable
+                      placeholder="请输入姓名或联系人"
+                      maxlength="100"
+                      size="large"
+                    ></el-input>
+                  </el-form-item>
+                  <el-form-item class="product-login-field" prop="email" label="邮箱">
+                    <el-input
+                      v-model="trialApplicationForm.email"
+                      clearable
+                      placeholder="请输入可接收审核通知的邮箱"
+                      maxlength="100"
+                      size="large"
+                    ></el-input>
+                  </el-form-item>
+                  <el-form-item class="product-login-field" prop="company" label="公司/团队">
+                    <el-input
+                      v-model="trialApplicationForm.company"
+                      clearable
+                      placeholder="选填"
+                      maxlength="255"
+                      size="large"
+                    ></el-input>
+                  </el-form-item>
+                  <el-form-item class="product-login-field" prop="reason" label="试用说明">
+                    <el-input
+                      v-model="trialApplicationForm.reason"
+                      type="textarea"
+                      :rows="3"
+                      maxlength="2000"
+                      show-word-limit
+                      placeholder="选填：简单说明希望使用的数据分析场景"
+                    ></el-input>
+                  </el-form-item>
+                  <el-form-item>
+                    <el-button
+                      type="primary"
+                      class="product-login-submit"
+                      :loading="trialSubmitting"
+                      @click="submitTrialApplication"
+                    >
+                      提交申请
+                    </el-button>
+                  </el-form-item>
+                  <p class="trial-application-tip">
+                    提交后需等待管理员审核。审核通过前，申请账号暂不能登录工作台。
+                  </p>
+                </el-form>
+              </div>
+              <div v-else class="default-login-tabs">
                 <el-form
                   ref="loginFormRef"
                   class="form-content_error product-login-form"
@@ -163,137 +280,122 @@
         </aside>
       </div>
 
-      <section class="account-login-more" aria-label="SaaS 能力">
-        <h2>更多方式探索 {{ productName }}</h2>
-        <div class="account-login-more-grid">
-          <article v-for="item in accountExploreCards" :key="item.title">
-            <span>{{ item.icon }}</span>
-            <b>{{ item.title }}</b>
-            <p>{{ item.desc }}</p>
-          </article>
-        </div>
+      <section class="login-capability-strip" aria-label="登录页能力摘要">
+        <article v-for="item in accountExploreCards" :key="item.title">
+          <el-icon>
+            <component :is="item.icon" />
+          </el-icon>
+          <b>{{ item.title }}</b>
+          <p>{{ item.desc }}</p>
+        </article>
       </section>
     </section>
 
-    <section v-else class="power-login-hero">
-      <div class="power-login-story">
-        <div class="power-login-kicker">
-          <span class="power-login-kicker-mark">BI</span>
-          <span>语义层驱动的企业级智能分析</span>
-        </div>
-
-        <div class="power-login-headline">
-          <h1>把数据资产、指标口径和业务问题，变成可追溯的分析答案。</h1>
-          <p>{{ productSlogan }}</p>
-        </div>
-
-        <div class="power-login-actions">
-          <button type="button" class="power-login-primary" @click="goLoginPage">进入 {{ productName }}</button>
-          <span>数据源权限、语义层和 SQL 生成统一收敛</span>
-        </div>
-
-        <div class="power-login-status-row" aria-label="SaaS 能力">
-          <span v-for="item in statusChips" :key="item" class="power-login-status-chip">
-            <i class="power-login-dot"></i>
-            {{ item }}
+    <template v-else>
+      <section class="shuzhi-hero" aria-label="星通数智首页">
+        <div class="shuzhi-hero-copy">
+          <span class="shuzhi-pill">
+            <i></i>
+            星通数智 3.0 已发布
           </span>
+          <h1>让数据从噪音，变成你的决策力</h1>
+          <p>{{ productSlogan }}</p>
+
+          <div class="shuzhi-hero-actions">
+            <button type="button" class="shuzhi-primary-button" @click="goTrialPage">
+              <span>免费开始使用</span>
+              <el-icon><ArrowRight /></el-icon>
+            </button>
+            <button
+              type="button"
+              class="shuzhi-secondary-button"
+              @click="scrollToHomeSection('product-flow')"
+            >
+              <el-icon><VideoPlay /></el-icon>
+              <span>观看演示</span>
+            </button>
+          </div>
+
+          <div class="shuzhi-trust-row">
+            <span v-for="item in trustDots" :key="item" :class="`trust-dot-${item}`"></span>
+            <strong>数据源、语义层、问答与看板在同一个工作台协同</strong>
+          </div>
         </div>
-      </div>
 
-      <div class="home-hero-visual" aria-label="智能分析工作台预览">
-        <div class="power-login-showcase" aria-label="智能分析工作台预览">
-          <div class="power-login-window">
-            <div class="power-login-window-bar">
+        <div class="hero-dashboard" aria-label="星通数智看板预览">
+          <div class="hero-dashboard-window">
+            <div class="mini-window-head">
               <span></span>
               <span></span>
               <span></span>
-              <b>Smart Q&amp;A</b>
+              <b>{{ productName }} · 智能分析看板</b>
             </div>
-            <div class="power-login-window-body">
-              <aside class="power-login-sidebar">
-                <span v-for="item in previewSources" :key="item"></span>
-              </aside>
-              <section class="power-login-report">
-                <div class="power-login-question">
-                  <span>业务提问</span>
-                  <strong>本周各渠道转化表现如何？</strong>
-                </div>
+            <div class="hero-dashboard-body">
+              <div class="metric-grid">
+                <article v-for="item in heroMetrics" :key="item.label">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                  <em :class="{ danger: item.tone === 'danger' }">{{ item.trend }}</em>
+                </article>
+              </div>
 
-                <div class="power-login-metrics">
-                  <div v-for="item in previewMetrics" :key="item.label" class="power-login-metric">
-                    <span>{{ item.label }}</span>
-                    <strong>{{ item.value }}</strong>
-                    <em>{{ item.trend }}</em>
-                  </div>
+              <section class="trend-panel">
+                <div class="panel-title">
+                  <b>营收趋势</b>
+                  <span>本周</span>
                 </div>
+                <svg viewBox="0 0 420 160" role="img" aria-label="营收趋势折线图">
+                  <defs>
+                    <linearGradient id="heroLineFill" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stop-color="#6258f6" stop-opacity="0.24" />
+                      <stop offset="100%" stop-color="#6258f6" stop-opacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M20 128 L72 104 L122 116 L170 80 L222 96 L270 54 L322 72 L370 34 L400 24 L400 150 L20 150 Z"
+                    fill="url(#heroLineFill)"
+                  />
+                  <polyline
+                    points="20,128 72,104 122,116 170,80 222,96 270,54 322,72 370,34 400,24"
+                    fill="none"
+                    stroke="#6258f6"
+                    stroke-width="5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle cx="370" cy="34" r="6" fill="#ffffff" stroke="#6258f6" stroke-width="4" />
+                </svg>
+              </section>
 
-                <div class="power-login-chart">
-                  <span
-                    v-for="item in previewBars"
-                    :key="item"
-                    :style="{ height: `${item}%` }"
-                  ></span>
+              <section class="channel-panel">
+                <b>渠道占比</b>
+                <div class="donut-chart">
+                  <span>总计<br />100%</span>
                 </div>
-
-                <div class="power-login-table">
-                  <span v-for="item in previewRows" :key="item"></span>
+                <div class="channel-legend">
+                  <span><i></i>自然搜索 48%</span>
+                  <span><i></i>付费投放 32%</span>
                 </div>
               </section>
             </div>
           </div>
         </div>
-
-        <div class="home-hero-tile-grid">
-          <article
-            v-for="(item, index) in heroTiles"
-            :key="item.title"
-            :class="['home-hero-tile', { 'home-hero-tile-accent': index === 0 }]"
-          >
-            <span>{{ item.label }}</span>
-            <strong>{{ item.title }}</strong>
-            <p>{{ item.desc }}</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <template v-if="!isLoginFormPage">
-      <section class="home-section home-product-section" aria-label="核心能力">
-        <div class="home-section-head home-section-head-center">
-          <span>产品组合</span>
-          <h2>探索 {{ productName }} 的智能分析能力</h2>
-        </div>
-        <div class="power-login-capabilities">
-          <article v-for="item in capabilities" :key="item.title" class="power-login-capability">
-            <span class="power-login-capability-icon">{{ item.icon }}</span>
-            <b>{{ item.title }}</b>
-            <p>{{ item.desc }}</p>
-            <small>了解能力</small>
-          </article>
-        </div>
       </section>
 
-      <section class="home-section home-proof-section" aria-label="SaaS 指标">
-        <div class="home-section-head home-section-head-center">
-          <span>SaaS 总览</span>
-          <h2>从数据连接到业务答案，形成可运营的分析闭环</h2>
+      <section id="product-flow" class="home-section flow-section" aria-label="为什么选择星通数智">
+        <div class="section-heading center">
+          <span>为什么选择 {{ productName }}</span>
+          <h2>从数据混乱，到决策清晰</h2>
+          <p>
+            多数团队的数据散落在系统、报表和手工口径里。{{ productName }} 用三步打通从原始数据到可执行洞察的链路。
+          </p>
         </div>
-        <div class="home-proof-grid">
-          <article v-for="item in platformStats" :key="item.label">
-            <strong>{{ item.value }}</strong>
-            <span>{{ item.label }}</span>
-            <p>{{ item.desc }}</p>
-          </article>
-        </div>
-      </section>
 
-      <section class="home-section home-flow-section" aria-label="分析工作流">
-        <div class="home-section-head">
-          <span>工作流</span>
-          <h2>让每一次问数都沿着同一套可信路径前进</h2>
-        </div>
-        <div class="home-flow-grid">
-          <article v-for="(item, index) in workflowSteps" :key="item.title">
+        <div class="flow-card-grid">
+          <article v-for="(item, index) in capabilities" :key="item.title">
+            <el-icon>
+              <component :is="item.icon" />
+            </el-icon>
             <em>{{ String(index + 1).padStart(2, '0') }}</em>
             <b>{{ item.title }}</b>
             <p>{{ item.desc }}</p>
@@ -301,144 +403,172 @@
         </div>
       </section>
 
-      <section class="home-section home-ai-section" aria-label="可信 AI 分析">
-        <div class="home-ai-copy">
-          <span>AI 分析工作台</span>
-          <h2>让 AI 在正确的数据上下文里回答业务问题</h2>
-          <p>
-            星通数智把数据源权限、字段元数据和 Data Skills 放在同一条路径上，
-            让自然语言问数更接近真实业务场景中的数据治理方式。
-          </p>
-          <div class="home-ai-badges">
-            <span v-for="item in homeAiBadges" :key="item">{{ item }}</span>
-          </div>
+      <section id="platform" class="home-section platform-section" aria-label="分析全链路">
+        <div class="section-heading center">
+          <span>核心能力</span>
+          <h2>一个平台，覆盖分析全链路</h2>
+          <p>从数据接入到智能问数、异常归因和团队协作，星通数智把分析流程装进同一个工作台。</p>
         </div>
-        <div class="home-ai-visual" aria-hidden="true">
-          <div class="home-ai-ring">
-            <span>TRUSTED</span>
-            <strong>AI BI</strong>
-            <em>Semantic Layer</em>
-          </div>
-          <div class="home-ai-lines">
-            <i></i>
-            <i></i>
-            <i></i>
-          </div>
-        </div>
-      </section>
 
-      <section class="home-section home-semantic-section" aria-label="语义层能力">
-        <div class="home-section-copy">
-          <span>语义层</span>
-          <h2>把指标口径和查询范式沉淀成团队共享资产</h2>
-          <p>
-            星通数智优先通过数据源范围、字段元数据、Data Skills 和推荐问题来约束分析行为，
-            让 Smart Q&amp;A、分析助手和看板都沿用同一套可信上下文。
-          </p>
-        </div>
-        <div class="home-semantic-list">
-          <article v-for="item in semanticHighlights" :key="item.title">
-            <span>{{ item.icon }}</span>
-            <div>
-              <b>{{ item.title }}</b>
-              <p>{{ item.desc }}</p>
+        <div class="feature-row">
+          <div class="feature-copy">
+            <span>01 实时看板</span>
+            <h3>用拖拽搭建任何你想要的看板</h3>
+            <p>
+              业务指标、自由图表和问答结果可以沉淀为持续运营的看板，让团队成员围绕同一份事实沟通。
+            </p>
+            <ul class="shuzhi-check-list compact">
+              <li v-for="item in dashboardBullets" :key="item">
+                <el-icon><Check /></el-icon>
+                <span>{{ item }}</span>
+              </li>
+            </ul>
+          </div>
+          <div class="dashboard-builder" aria-hidden="true">
+            <div class="mini-window-head">
+              <span></span>
+              <span></span>
+              <span></span>
+              <b>实时看板编辑器</b>
             </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="home-section home-governance-section" aria-label="数据源与权限治理">
-        <div class="home-section-head">
-          <span>治理能力</span>
-          <h2>先确认上下文和权限，再生成 SQL 与图表</h2>
-        </div>
-        <div class="home-governance-layout">
-          <div class="home-governance-panel">
-            <div v-for="item in governanceItems" :key="item.title" class="home-governance-row">
-              <i></i>
-              <div>
-                <b>{{ item.title }}</b>
-                <p>{{ item.desc }}</p>
+            <div class="builder-body">
+              <div class="builder-card metric">
+                <span>今日活跃</span>
+                <strong>12,840</strong>
+              </div>
+              <div class="builder-card bars">
+                <b>渠道分布</b>
+                <i v-for="item in builderBars" :key="item" :style="{ height: `${item}%` }"></i>
+              </div>
+              <div class="builder-card line">
+                <b>访问趋势</b>
+                <span v-for="item in lineDots" :key="item"></span>
               </div>
             </div>
           </div>
-          <div class="home-governance-preview" aria-hidden="true">
-            <span>Datasource Context</span>
-            <strong>SLG BI Mock</strong>
-            <p>已授权表 18 · Data Skills 24 · 推荐问题 42</p>
-            <div>
-              <em></em>
-              <em></em>
-              <em></em>
-            </div>
-          </div>
         </div>
-      </section>
 
-      <section class="home-section home-dashboard-section" aria-label="看板场景">
-        <div class="home-section-head">
-          <span>看板场景</span>
-          <h2>从一次问答延展为长期跟踪的业务看板</h2>
-        </div>
-        <div class="home-dashboard-grid">
-          <article v-for="item in dashboardScenarios" :key="item.title">
-            <span>{{ item.icon }}</span>
-            <b>{{ item.title }}</b>
-            <p>{{ item.desc }}</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="home-section home-story-section" aria-label="客户场景">
-        <div class="home-section-head home-section-head-center">
-          <span>团队场景</span>
-          <h2>{{ productName }} 帮助团队把数据工作转向可信 AI</h2>
-        </div>
-        <div class="home-story-layout">
-          <article class="home-story-feature">
-            <span>Smart Q&amp;A</span>
-            <h3>从“帮我取数”走向“共同沉淀分析资产”</h3>
+        <div class="feature-row reverse">
+          <div class="feature-copy">
+            <span>02 智能归因</span>
+            <h3>让异常无处可藏，归因一钻到底</h3>
             <p>
-              业务用户可以直接提出问题，SaaS 在授权数据源内生成 SQL 和图表；
-              数据团队则把高频问题、指标口径和查询样例沉淀到语义层。
+              指标波动自动捕捉，AI 结合维度拆解和业务语义提示，让问题定位从经验猜测走向可复核路径。
             </p>
-            <div class="home-story-chart" aria-hidden="true">
-              <i v-for="item in previewBars" :key="item" :style="{ height: `${item}%` }"></i>
+            <ul class="shuzhi-check-list compact">
+              <li v-for="item in anomalyBullets" :key="item">
+                <el-icon><Check /></el-icon>
+                <span>{{ item }}</span>
+              </li>
+            </ul>
+          </div>
+          <div class="anomaly-card" aria-hidden="true">
+            <div class="mini-window-head">
+              <span></span>
+              <span></span>
+              <span></span>
+              <b>智能归因下钻</b>
             </div>
-          </article>
-          <div class="home-story-cards">
-            <article v-for="item in customerStories" :key="item.title">
-              <span>{{ item.label }}</span>
-              <b>{{ item.title }}</b>
-              <p>{{ item.desc }}</p>
-            </article>
+            <div class="anomaly-body">
+              <div class="alert-line">
+                <el-icon><Bell /></el-icon>
+                <strong>订单量较昨日下降 18.2%</strong>
+                <span>2 分钟前</span>
+              </div>
+              <div class="root-cause-list">
+                <div>
+                  <span><i></i>渠道 · 付费搜索</span>
+                  <strong>贡献 -12.4%</strong>
+                </div>
+                <div>
+                  <span><i></i>地域 · 华东区</span>
+                  <strong>贡献 -4.1%</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feature-row">
+          <div class="feature-copy">
+            <span>03 协同分析</span>
+            <h3>让分析成为团队的共同语言</h3>
+            <p>
+              看板评论、指标订阅和问数记录可以沉淀为团队知识，让每一次决策都有上下文、有过程、可追溯。
+            </p>
+            <ul class="shuzhi-check-list compact">
+              <li v-for="item in collaborationBullets" :key="item">
+                <el-icon><Check /></el-icon>
+                <span>{{ item }}</span>
+              </li>
+            </ul>
+          </div>
+          <div class="collaboration-card" aria-hidden="true">
+            <div class="mini-window-head">
+              <span></span>
+              <span></span>
+              <span></span>
+              <b>看板协同评论</b>
+            </div>
+            <div class="collaboration-body">
+              <div class="collab-chart">
+                <i v-for="item in collaborationBars" :key="item" :style="{ height: `${item}%` }"></i>
+              </div>
+              <div class="comment-panel">
+                <b>评论 (3)</b>
+                <p><span></span>增长放缓来自新客转化</p>
+                <p><span></span>建议同步检查渠道预算</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="home-section home-resource-section" aria-label="资源中心">
-        <div class="home-section-head home-section-head-center">
-          <span>资源中心</span>
-          <h2>围绕数据问题、语义治理和看板运营持续进化</h2>
+      <section id="solutions" class="home-section scenario-section" aria-label="解决方案">
+        <div class="section-heading">
+          <span>解决方案</span>
+          <h2>让不同角色都能在同一套可信数据上工作</h2>
         </div>
-        <div class="home-resource-grid">
-          <article v-for="item in resourceCards" :key="item.title">
-            <span>{{ item.tag }}</span>
+        <div class="scenario-grid">
+          <article v-for="item in scenarioCards" :key="item.title">
+            <el-icon>
+              <component :is="item.icon" />
+            </el-icon>
             <b>{{ item.title }}</b>
             <p>{{ item.desc }}</p>
-            <small>{{ item.action }}</small>
           </article>
         </div>
       </section>
 
-      <section class="home-section home-cta-section" aria-label="开始使用">
+      <section id="resources" class="home-section cta-section" aria-label="开始使用">
         <div>
           <span>开始使用</span>
           <h2>进入 {{ productName }}，把业务问题直接连接到可信数据</h2>
           <p>从自然语言问数开始，逐步沉淀语义层、推荐问题和数据看板。</p>
         </div>
-        <button type="button" class="power-login-primary" @click="goLoginPage">登录工作台</button>
+        <button type="button" class="shuzhi-primary-button" @click="goTrialPage">
+          <span>申请试用</span>
+          <el-icon><ArrowRight /></el-icon>
+        </button>
       </section>
+
+      <footer class="shuzhi-footer">
+        <div class="footer-brand">
+          <span class="shuzhi-brand-mark">
+            <img v-if="loginBg" :src="loginBg" alt="" />
+            <custom_small v-else-if="appearanceStore.themeColor !== 'default'"></custom_small>
+            <img v-else :src="elexDataLogoUrl" alt="" />
+          </span>
+          <strong>{{ productName }}</strong>
+          <p>让每个团队都能从数据走向决策。统一的实时分析工作台，服务企业的数据协同与 AI 问数。</p>
+        </div>
+        <div class="footer-links">
+          <div v-for="group in footerLinks" :key="group.title">
+            <b>{{ group.title }}</b>
+            <span v-for="item in group.items" :key="item">{{ item }}</span>
+          </div>
+        </div>
+      </footer>
     </template>
   </main>
 </template>
@@ -454,6 +584,24 @@ import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { AuthApi } from '@/api/login'
 import { ElMessage } from 'element-plus-secondary'
 import { resolveLoginSuccessDashboardTarget } from '@/utils/dashboardLanding'
+import {
+  ArrowRight,
+  Bell,
+  ChatDotRound,
+  Check,
+  CircleCheckFilled,
+  Collection,
+  Connection,
+  DataBoard,
+  DocumentChecked,
+  Histogram,
+  Lock,
+  MagicStick,
+  Monitor,
+  PieChart,
+  TrendCharts,
+  VideoPlay,
+} from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -463,6 +611,17 @@ const loginForm = ref({
   username: '',
   password: '',
 })
+const trialApplicationForm = ref({
+  account: '',
+  password: '',
+  confirmPassword: '',
+  name: '',
+  email: '',
+  company: '',
+  reason: '',
+})
+const trialSubmitting = ref(false)
+const trialSubmitted = ref(false)
 const feishuLoading = ref(false)
 const feishuStatus = ref<{
   enabled: boolean
@@ -471,7 +630,7 @@ const feishuStatus = ref<{
   enabled: false,
   authorize_url: null,
 })
-// const isLdap = computed(() => activeName.value == 'ldap')
+
 const storyBg = computed(() => appearanceStore.getBg || '')
 
 const loginBg = computed(() => {
@@ -484,203 +643,108 @@ const productSlogan = computed(() => {
   if (appearanceStore.getShowSlogan && appearanceStore.slogan) {
     return appearanceStore.slogan
   }
-  return '连接数据资产、语义口径与权限体系，帮助团队用自然语言完成查询、洞察和决策。'
+  return '把分散在业务系统里的数据汇聚成统一分析工作台，自动建模、实时看板、智能洞察，帮助团队在几分钟内从数据走向决策。'
 })
 
-const navItems = ['AI看板', '语义层', '数据看板', '权限治理']
-
+const navItems = [
+  { label: '产品', target: 'product-flow' },
+  { label: '解决方案', target: 'solutions' },
+  { label: '能力', target: 'platform' },
+  { label: '资源', target: 'resources' },
+]
+const trustDots = ['blue', 'violet', 'coral', 'teal']
+const heroMetrics = [
+  { label: '总营收', value: '¥1,284,560', trend: '+12.5% 较上周' },
+  { label: '活跃用户', value: '48,295', trend: '+8.2% 较上周' },
+  { label: '转化率', value: '7.84%', trend: '-1.3% 较上周', tone: 'danger' },
+]
 const capabilities = [
   {
-    icon: '问',
-    title: '自然语言报表',
-    desc: '面向业务问题生成查询、解释结果并保留可追溯上下文。',
+    icon: Connection,
+    title: '一键连接数据源',
+    desc: '接入数据库、Excel、SaaS 工具和业务系统，统一管理字段、权限与数据上下文。',
   },
   {
-    icon: '源',
-    title: '多源数据连接',
-    desc: '统一管理数据源、表字段和权限，让分析范围清晰可信。',
+    icon: DataBoard,
+    title: '自动建模与看板',
+    desc: 'AI 自动识别字段关系、生成数据模型，并将高频问题沉淀为可复用的看板资产。',
   },
   {
-    icon: '径',
-    title: '指标口径沉淀',
-    desc: '通过 Data Skills 沉淀指标口径、查询范式和推荐问题。',
-  },
-  {
-    icon: '图',
-    title: '图表智能呈现',
-    desc: '自动选择合适图表，并支持进一步追问和对比分析。',
+    icon: Bell,
+    title: '智能洞察与预警',
+    desc: '异常自动识别、归因下钻、关键指标波动实时推送，让决策系统快人一步。',
   },
 ]
-
-const statusChips = ['数据源权限优先', '语义层统一口径', 'SQL 可追溯', '图表与看板联动']
-const previewSources = ['数据源', '语义层', '权限', '看板']
-const previewMetrics = [
-  { label: '查询命中', value: '96%', trend: '+8.2%' },
-  { label: '响应时间', value: '1.8s', trend: '-21%' },
-  { label: '看板更新', value: '24', trend: '+5' },
-]
-const previewBars = [48, 64, 42, 76, 58, 88, 72, 94, 67]
-const previewRows = ['渠道', '指标', '趋势', '权限']
-const heroTiles = [
-  {
-    label: 'Semantic',
-    title: '统一口径',
-    desc: 'Data Skills、字段元数据和推荐问题集中维护。',
-  },
-  {
-    label: 'Governance',
-    title: '先校验权限',
-    desc: '当前数据源与授权范围优先于自然语言描述。',
-  },
-  {
-    label: 'Dashboard',
-    title: '持续看板',
-    desc: '把高频问答沉淀为可追踪的业务视图。',
-  },
-]
-const homeAiBadges = ['数据源上下文', '语义层检索', 'SQL 可复核', '图表联动']
 const accountBenefits = [
   '继续使用自然语言查询数据、追问结果和生成图表。',
   '统一连接数据源、语义口径、权限校验和看板资产。',
-  '在同一个工作台管理 Data Skills、推荐问题和数据看板。',
-  '面向工作空间团队沉淀可信分析过程，减少重复沟通和口径偏差。',
+  '在工作空间内复用 Data Skills、推荐问题和分析记录。',
+]
+const trialBenefits = [
+  '填写账号、密码和邮箱后提交申请，管理员审核通过后即可登录试用。',
+  '申请阶段不直接开通数据权限，先由管理员确认团队和使用场景。',
+  '通过后继续使用同一账号密码进入工作台，沉淀问数、图表和看板资产。',
 ]
 const accountExploreCards = [
   {
-    icon: '问',
-    title: 'AI看板',
-    desc: '通过业务语言发起查询，自动生成 SQL、解释结果并沉淀上下文。',
+    icon: ChatDotRound,
+    title: '智能问数',
+    desc: '用业务语言提问，自动生成 SQL、图表和可复核解释。',
   },
   {
-    icon: '径',
-    title: '语义层治理',
-    desc: '集中维护指标口径、查询范式和推荐问题，统一分析边界。',
+    icon: Lock,
+    title: '权限优先',
+    desc: '先确认工作空间、数据源和用户授权，再进入分析路径。',
   },
   {
-    icon: '板',
-    title: '数据看板',
-    desc: '围绕业务主题组织图表和看板，持续跟踪核心数据变化。',
+    icon: Collection,
+    title: '资产沉淀',
+    desc: '把高频问题、指标口径和看板沉淀为团队共享资产。',
   },
 ]
-const platformStats = [
+const previewBars = [34, 58, 44, 72, 64, 86, 76]
+const builderBars = [48, 66, 78, 88, 62, 46]
+const lineDots = ['a', 'b', 'c', 'd', 'e']
+const collaborationBars = [46, 58, 76, 62, 52]
+const dashboardBullets = ['40+ 可组合图表组件，自由拖拽排版', '秒级数据刷新，团队共享同一份数据真相']
+const anomalyBullets = ['异常波动秒级识别，自动推送归因报告', '多维下钻，定位到具体人群与渠道']
+const collaborationBullets = ['看板内评论与订阅，分析讨论就地沉淀', '报表定时推送邮件和 IM，决策不等人']
+const scenarioCards = [
   {
-    value: '统一',
-    label: '数据上下文',
-    desc: '围绕当前数据源、权限、表字段和语义记录组织分析范围。',
+    icon: Monitor,
+    title: '业务团队',
+    desc: '直接用自然语言提出问题，快速获得图表、解释和可继续追问的上下文。',
   },
   {
-    value: '可追溯',
-    label: 'SQL 与图表',
-    desc: '保留查询路径、生成过程和结果解释，方便复核与迭代。',
+    icon: MagicStick,
+    title: '数据团队',
+    desc: '把反复沟通的指标口径、查询范式和推荐问题沉淀到语义层。',
   },
   {
-    value: '共享',
-    label: '语义资产',
-    desc: 'Data Skills、推荐问题和自定义提示可被多助手复用。',
-  },
-]
-const workflowSteps = [
-  {
-    title: '选择数据源',
-    desc: '先确认当前上下文和授权范围，避免跨项目、跨租户或跨数据源误用。',
+    icon: PieChart,
+    title: '管理团队',
+    desc: '通过看板和权限体系组织跨部门指标，让经营复盘建立在一致事实上。',
   },
   {
-    title: '理解业务问题',
-    desc: '结合字段元数据和 Data Skills 识别指标、维度、时间窗口和筛选条件。',
+    icon: Histogram,
+    title: '运营团队',
+    desc: '围绕渠道、活动、用户行为或业务流程快速探索波动原因。',
   },
   {
-    title: '生成查询与图表',
-    desc: '生成可执行 SQL，返回数据后选择合适图表，并支持继续追问。',
+    icon: TrendCharts,
+    title: '增长团队',
+    desc: '持续跟踪漏斗、留存和转化趋势，发现机会并验证策略效果。',
   },
   {
-    title: '沉淀为资产',
-    desc: '将高频问题、可靠口径和看板内容沉淀到语义层与分析工作台。',
-  },
-]
-const semanticHighlights = [
-  {
-    icon: '词',
-    title: 'Data Skills',
-    desc: '沉淀指标名称、业务别名、计算口径和查询范式，让不同团队使用同一套语言。',
-  },
-  {
-    icon: '例',
-    title: '字段元数据',
-    desc: '围绕数据源维护表字段说明和展示名称，让 SQL 生成有清晰的结构依据。',
-  },
-  {
-    icon: '问',
-    title: '推荐问题',
-    desc: '按数据源维护可复用的问题入口，帮助业务用户快速开始探索。',
+    icon: DocumentChecked,
+    title: '合规协作',
+    desc: '保留问题、SQL、图表和解释过程，让关键分析结果可追溯、可复核。',
   },
 ]
-const governanceItems = [
-  {
-    title: '数据源上下文优先',
-    desc: '当前选择的数据源和用户授权范围优先于用户自然语言描述。',
-  },
-  {
-    title: '组织与角色边界',
-    desc: '结合租户、项目、角色和数据源权限控制分析入口。',
-  },
-  {
-    title: '安全查询路径',
-    desc: 'SQL 生成、执行和图表呈现都围绕被授权元数据展开。',
-  },
-]
-const dashboardScenarios = [
-  {
-    icon: '经',
-    title: '经营复盘',
-    desc: '把核心指标、趋势变化和异常问题汇总到可持续跟踪的看板中。',
-  },
-  {
-    icon: '运',
-    title: '运营分析',
-    desc: '围绕渠道、活动、用户行为或业务流程快速提出问题并生成图表。',
-  },
-  {
-    icon: '管',
-    title: '管理驾驶舱',
-    desc: '统一组织跨部门指标与权限，让管理者看到可信且一致的数据视图。',
-  },
-]
-const customerStories = [
-  {
-    label: '业务团队',
-    title: '少等取数，多做判断',
-    desc: '围绕授权数据源直接提问，快速获得图表、解释和可继续追问的上下文。',
-  },
-  {
-    label: '数据团队',
-    title: '把口径沉淀下来',
-    desc: '把反复沟通的指标解释、查询范式和推荐问题沉淀到 Data Skills，降低重复支持成本。',
-  },
-  {
-    label: '管理团队',
-    title: '看同一套可信视图',
-    desc: '通过看板和权限体系组织跨部门指标，让经营复盘建立在一致数据基础上。',
-  },
-]
-const resourceCards = [
-  {
-    tag: '产品实践',
-    title: '用自然语言开始问数',
-    desc: '从业务问题出发，连接数据源、生成 SQL、解释结果并自动呈现图表。',
-    action: '查看路径',
-  },
-  {
-    tag: '治理方法',
-    title: '把指标口径放进语义层',
-    desc: '用 Data Skills、字段说明和权限配置约束分析行为，让多个助手共享同一上下文。',
-    action: '了解语义层',
-  },
-  {
-    tag: '看板运营',
-    title: '从一次追问到长期看板',
-    desc: '把高频问题、核心指标和异常跟踪沉淀为团队可复用的数据看板。',
-    action: '探索看板',
-  },
+const footerLinks = [
+  { title: '产品', items: ['功能特性', '定价方案', '数据源', '更新日志'] },
+  { title: '公司', items: ['关于我们', '客户案例', '加入我们', '联系我们'] },
+  { title: '资源', items: ['帮助中心', '开发者文档', '数据博客', 'API 参考'] },
 ]
 
 const rules = {
@@ -689,15 +753,113 @@ const rules = {
 }
 
 const loginFormRef = ref()
+const trialApplicationFormRef = ref()
+const passwordPattern =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[~!@#$%^&*()_+\-={}|:"<>?`[\];',./])[A-Za-z\d~!@#$%^&*()_+\-={}|:"<>?`[\];',./]{8,20}$/
+const emailPattern = /^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*@([a-zA-Z0-9]+(-[a-zA-Z0-9]+)*\.)+[a-zA-Z]{2,}$/
+const validateTrialPassword = (_rule: any, value: string, callback: (error?: Error) => void) => {
+  if (!value) {
+    callback(new Error('请输入密码'))
+    return
+  }
+  if (!passwordPattern.test(value)) {
+    callback(new Error('密码需为 8-20 位，包含大小写字母、数字和特殊字符'))
+    return
+  }
+  callback()
+}
+const validateTrialConfirmPassword = (
+  _rule: any,
+  value: string,
+  callback: (error?: Error) => void
+) => {
+  if (!value) {
+    callback(new Error('请再次输入密码'))
+    return
+  }
+  if (value !== trialApplicationForm.value.password) {
+    callback(new Error('两次输入的密码不一致'))
+    return
+  }
+  callback()
+}
+const validateTrialEmail = (_rule: any, value: string, callback: (error?: Error) => void) => {
+  if (!value) {
+    callback(new Error('请输入邮箱'))
+    return
+  }
+  if (!emailPattern.test(value)) {
+    callback(new Error('邮箱格式不正确'))
+    return
+  }
+  callback()
+}
+const trialApplicationRules = {
+  account: [
+    { required: true, message: '请输入账号', trigger: 'blur' },
+    { min: 3, max: 100, message: '账号需为 3-100 位', trigger: 'blur' },
+  ],
+  password: [{ validator: validateTrialPassword, trigger: 'blur' }],
+  confirmPassword: [{ validator: validateTrialConfirmPassword, trigger: 'blur' }],
+  name: [
+    { required: true, message: '请输入姓名', trigger: 'blur' },
+    { max: 100, message: '姓名不能超过 100 位', trigger: 'blur' },
+  ],
+  email: [{ validator: validateTrialEmail, trigger: 'blur' }],
+  company: [{ max: 255, message: '公司/团队不能超过 255 位', trigger: 'blur' }],
+  reason: [{ max: 2000, message: '试用说明不能超过 2000 位', trigger: 'blur' }],
+}
 const isLoginFormPage = computed(() => {
   return router.currentRoute.value.path === '/admin-login' || router.currentRoute.value.query.view === 'account'
 })
+const isTrialApplicationPage = computed(() => {
+  return router.currentRoute.value.query.view === 'trial'
+})
+const isWorkspaceEntryPage = computed(() => isLoginFormPage.value || isTrialApplicationPage.value)
+const currentEntryBenefits = computed(() =>
+  isTrialApplicationPage.value ? trialBenefits : accountBenefits
+)
+const entryStoryPill = computed(() =>
+  isTrialApplicationPage.value ? '申请试用，审核通过后启用' : '可信分析，从统一入口开始'
+)
+const entryStoryTitle = computed(() =>
+  isTrialApplicationPage.value
+    ? `申请试用 ${productName.value}，先完成账号审核再进入工作台`
+    : `登录 ${productName.value}，继续把问题变成可追溯的数据答案`
+)
+const entryStoryDesc = computed(() =>
+  isTrialApplicationPage.value
+    ? '提交必要账号信息后，管理员会审核账号、邮箱和使用场景。通过后即可使用申请的账号密码登录试用。'
+    : '在同一个工作台里完成自然语言问数、语义口径复用、图表生成和团队看板协同。'
+)
+const entryCardDesc = computed(() =>
+  isTrialApplicationPage.value
+    ? '填写账号、密码、姓名和邮箱等必要信息。申请通过前账号不会被开通，审核通过后可直接在登录页使用。'
+    : `使用你的账号进入 ${productName.value}，继续查询数据、管理看板和沉淀团队分析资产。`
+)
+
+const scrollToHomeSection = (id: string) => {
+  if (isWorkspaceEntryPage.value) {
+    goHomePage()
+    return
+  }
+  window.requestAnimationFrame(() => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
 
 const goLoginPage = () => {
   const query = { ...router.currentRoute.value.query }
   delete query.code
   delete query.state
   router.push({ path: '/login', query: { ...query, view: 'account' } })
+}
+
+const goTrialPage = () => {
+  const query = { ...router.currentRoute.value.query }
+  delete query.code
+  delete query.state
+  router.push({ path: '/login', query: { ...query, view: 'trial' } })
 }
 
 const goHomePage = () => {
@@ -826,6 +988,30 @@ const submitForm = () => {
   })
 }
 
+const submitTrialApplication = () => {
+  if (trialSubmitting.value || trialSubmitted.value) return
+  trialApplicationFormRef.value.validate((valid: boolean) => {
+    if (!valid) return
+    trialSubmitting.value = true
+    const form = trialApplicationForm.value
+    AuthApi.submitTrialApplication({
+      account: form.account.trim(),
+      password: form.password,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      company: form.company.trim() || undefined,
+      reason: form.reason.trim() || undefined,
+    })
+      .then(() => {
+        trialSubmitted.value = true
+        ElMessage.success('申请已提交，请等待管理员审核')
+      })
+      .finally(() => {
+        trialSubmitting.value = false
+      })
+  })
+}
+
 onMounted(async () => {
   await normalizeLoginBrowserUrl()
   const handled = await handleFeishuCallback()
@@ -839,51 +1025,61 @@ onMounted(async () => {
 .login-container {
   width: 100%;
   max-width: 100%;
-  box-sizing: border-box;
   min-height: 100vh;
+  box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
 }
 
-.power-login-page {
+.shuzhi-landing-page {
+  --page-bg: #ffffff;
+  --soft-bg: #f7f8fc;
+  --text-main: #171927;
+  --text-strong: #101323;
+  --text-muted: #7a8194;
+  --line: #e7e9f2;
+  --primary: #6258f6;
+  --primary-dark: #4b42df;
+  --primary-soft: #eeedff;
+  --teal: #19c7a5;
+  --blue: #2f8cff;
+  --coral: #ff6b6b;
+  --shadow: 0 24px 70px rgba(61, 58, 124, 0.12);
   position: relative;
-  overflow-x: hidden;
-  color: #111827;
+  color: var(--text-main);
   color-scheme: light;
-  background:
-    linear-gradient(180deg, rgba(232, 249, 244, 0.82) 0, rgba(255, 255, 255, 0.98) 430px),
-    linear-gradient(100deg, rgba(0, 166, 126, 0.08), rgba(0, 120, 212, 0.07) 54%, rgba(242, 200, 17, 0.08)),
-    #ffffff;
+  background: var(--page-bg);
 }
 
-.power-login-bg {
+.shuzhi-brand-bg {
   position: absolute;
-  inset: 0;
+  inset: 0 0 auto;
   width: 100%;
   height: 520px;
   object-fit: cover;
-  opacity: 0.08;
+  opacity: 0.06;
   pointer-events: none;
 }
 
-.power-login-nav {
-  position: relative;
+.shuzhi-nav {
+  position: sticky;
+  top: 0;
   z-index: 20;
+  min-height: 64px;
   display: flex;
   align-items: center;
-  gap: 32px;
-  min-height: 46px;
-  padding: 0 56px;
-  border-bottom: 1px solid rgba(17, 24, 39, 0.1);
-  background: rgba(255, 255, 255, 0.94);
+  gap: 34px;
+  padding: 0 max(40px, calc((100vw - 1280px) / 2));
+  border-bottom: 1px solid rgba(231, 233, 242, 0.72);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(16px);
 }
 
-.power-login-brand {
+.shuzhi-brand {
+  min-width: 230px;
   display: inline-flex;
   align-items: center;
-  min-width: 260px;
-  gap: 10px;
+  gap: 11px;
   border: 0;
   padding: 0;
   background: transparent;
@@ -891,897 +1087,1171 @@ onMounted(async () => {
   text-align: left;
 }
 
-.power-login-brand-mark {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+.shuzhi-brand-mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.1);
+  box-shadow: 0 10px 24px rgba(81, 72, 220, 0.16);
 
   img {
-    width: 27px;
-    height: 27px;
+    width: 25px;
+    height: 25px;
     object-fit: contain;
   }
 
   :deep(svg) {
-    width: 25px;
-    height: 25px;
+    width: 24px;
+    height: 24px;
   }
 }
 
-.power-login-brand-copy {
+.shuzhi-brand-copy {
   min-width: 0;
 
   strong {
     display: block;
-    color: #111827;
-    font-size: 16px;
+    color: var(--text-strong);
+    font-size: 17px;
     line-height: 1.15;
   }
 
   span {
     display: block;
-    margin-top: 1px;
-    color: #5d6675;
+    margin-top: 2px;
+    color: var(--text-muted);
     font-size: 11px;
-    line-height: 1.2;
+    line-height: 1.3;
   }
 }
 
-.power-login-menu {
-  display: flex;
-  align-items: center;
-  gap: 26px;
+.shuzhi-nav-links {
   flex: 1;
-  color: #374151;
-  font-size: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 34px;
 
-  span {
-    white-space: nowrap;
+  button {
+    border: 0;
+    padding: 4px 0;
+    background: transparent;
+    color: #5f6678;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+
+    &:hover,
+    &:focus {
+      color: var(--primary);
+    }
   }
 }
 
-.power-login-nav-action,
-.power-login-primary {
+.shuzhi-nav-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.shuzhi-link-button,
+.shuzhi-primary-button,
+.shuzhi-secondary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   border: 0;
-  border-radius: 4px;
-  background: #111827;
-  color: #ffffff;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 800;
   transition:
-    background 160ms ease,
     transform 160ms ease,
-    box-shadow 160ms ease;
-
-  &:hover,
-  &:focus {
-    background: #000000;
-    box-shadow: 0 8px 18px rgba(17, 24, 39, 0.18);
-  }
+    box-shadow 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
 
   &:active {
     transform: translateY(1px);
   }
 }
 
-.power-login-nav-action {
-  height: 32px;
-  padding: 0 14px;
-  font-size: 13px;
-}
-
-.home-announcement-strip {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  min-height: 44px;
-  padding: 8px 56px;
-  background: #003b5c;
-  color: #ffffff;
-  text-align: center;
-
-  span {
-    flex: 0 0 auto;
-    border-radius: 3px;
-    padding: 4px 8px;
-    background: #10b981;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  strong {
-    min-width: 0;
-    color: #ffffff;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-
-  button {
-    flex: 0 0 auto;
-    border: 1px solid rgba(255, 255, 255, 0.52);
-    border-radius: 4px;
-    padding: 6px 12px;
-    background: transparent;
-    color: #ffffff;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 800;
-
-    &:hover,
-    &:focus {
-      background: rgba(255, 255, 255, 0.12);
-    }
-  }
-}
-
-.power-login-hero {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(470px, 1.08fr);
-  align-items: center;
-  gap: 46px;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 64px 56px 72px;
-}
-
-.power-login-story {
-  min-width: 0;
-  max-width: 590px;
-}
-
-.power-login-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: #2f2f2f;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.power-login-kicker-mark {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border-radius: 4px;
-  background: #0aa678;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 900;
-  color: #ffffff;
-  box-shadow: inset -8px 0 0 rgba(17, 24, 39, 0.08);
-}
-
-.power-login-headline {
-  max-width: 590px;
-  margin-top: 26px;
-
-  h1 {
-    margin: 0;
-    color: #073b4c;
-    font-size: 54px;
-    line-height: 1.04;
-    letter-spacing: 0;
-  }
-
-  p {
-    max-width: 560px;
-    margin: 20px 0 0;
-    color: #4b5563;
-    font-size: 18px;
-    line-height: 1.8;
-  }
-}
-
-.power-login-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 28px;
-
-  span {
-    color: #5d6675;
-    font-size: 13px;
-  }
-}
-
-.power-login-primary {
-  height: 44px;
-  padding: 0 22px;
-  background: #0aa678;
-  color: #ffffff;
+.shuzhi-link-button {
+  height: 38px;
+  padding: 0 6px;
+  background: transparent;
+  color: var(--text-main);
   font-size: 14px;
 
   &:hover,
   &:focus {
-    background: #008866;
-    color: #ffffff;
+    color: var(--primary);
   }
 }
 
-.power-login-status-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  max-width: 560px;
-  margin-top: 30px;
-  color: #374151;
-  font-size: 13px;
+.shuzhi-primary-button {
+  min-height: 46px;
+  border-radius: 6px;
+  padding: 0 22px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 14px;
+  box-shadow: 0 14px 30px rgba(98, 88, 246, 0.26);
+
+  &:hover,
+  &:focus {
+    background: var(--primary-dark);
+    color: #ffffff;
+    box-shadow: 0 18px 38px rgba(98, 88, 246, 0.32);
+  }
 }
 
-.power-login-status-chip {
+.shuzhi-secondary-button {
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 20px;
+  background: #ffffff;
+  color: var(--text-main);
+  font-size: 14px;
+
+  &:hover,
+  &:focus {
+    border-color: rgba(98, 88, 246, 0.34);
+    color: var(--primary);
+    box-shadow: 0 12px 28px rgba(61, 58, 124, 0.1);
+  }
+}
+
+.shuzhi-nav-primary {
+  min-height: 38px;
+  padding: 0 16px;
+  box-shadow: 0 10px 22px rgba(98, 88, 246, 0.22);
+}
+
+.shuzhi-pill {
+  width: fit-content;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(17, 24, 39, 0.12);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.72);
-  white-space: nowrap;
-}
-
-.power-login-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 50%;
-  background: #0aa678;
-  box-shadow: 0 0 0 3px rgba(10, 166, 120, 0.18);
-}
-
-.home-hero-visual {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 168px;
-  gap: 16px;
-  align-items: stretch;
-  min-width: 0;
-}
-
-.power-login-showcase {
-  min-width: 0;
-  max-width: none;
-  margin-top: 0;
-}
-
-.power-login-window {
-  overflow: hidden;
-  border: 1px solid rgba(17, 24, 39, 0.12);
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 30px 70px rgba(17, 24, 39, 0.16);
-}
-
-.power-login-window-bar {
-  display: flex;
-  align-items: center;
   gap: 7px;
-  height: 38px;
-  padding: 0 14px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f7f8fa;
-
-  span {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: #c8ced8;
-  }
-
-  b {
-    margin-left: 8px;
-    color: #4b5563;
-    font-size: 12px;
-  }
-}
-
-.power-login-window-body {
-  display: grid;
-  grid-template-columns: 108px minmax(0, 1fr);
-  min-height: 360px;
-}
-
-.power-login-sidebar {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  padding: 20px 16px;
-  border-right: 1px solid #e5e7eb;
-  background: #fbfbfd;
-
-  span {
-    height: 12px;
-    border-radius: 3px;
-    background: #d8dce5;
-
-    &:first-child {
-      width: 72px;
-      background: #f3c712;
-    }
-
-    &:nth-child(2) {
-      width: 56px;
-    }
-
-    &:nth-child(3) {
-      width: 80px;
-    }
-
-    &:nth-child(4) {
-      width: 62px;
-    }
-  }
-}
-
-.power-login-report {
-  min-width: 0;
-  padding: 22px;
-}
-
-.power-login-question {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  min-height: 52px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 0 16px;
-  background: #ffffff;
-
-  span {
-    color: #6b7280;
-    font-size: 12px;
-  }
-
-  strong {
-    color: #111827;
-    font-size: 15px;
-  }
-}
-
-.power-login-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.power-login-metric {
-  min-height: 82px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 12px;
-  background: #ffffff;
-
-  span,
-  em {
-    display: block;
-    color: #6b7280;
-    font-size: 12px;
-    font-style: normal;
-  }
-
-  strong {
-    display: block;
-    margin: 8px 0 4px;
-    color: #111827;
-    font-size: 24px;
-    line-height: 1;
-  }
-
-  em {
-    color: #107c10;
-  }
-}
-
-.power-login-chart {
-  display: flex;
-  align-items: end;
-  gap: 10px;
-  height: 118px;
-  margin-top: 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 16px 18px 14px;
-  background:
-    linear-gradient(#f3f4f6 1px, transparent 1px),
-    #ffffff;
-  background-size: 100% 28px;
-
-  span {
-    flex: 1;
-    min-width: 10px;
-    border-radius: 3px 3px 0 0;
-    background: #f3c712;
-
-    &:nth-child(3n + 1) {
-      background: #0078d4;
-    }
-
-    &:nth-child(3n + 2) {
-      background: #0aa678;
-    }
-  }
-}
-
-.power-login-table {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr 0.9fr 0.8fr;
-  gap: 10px;
-  margin-top: 14px;
-
-  span {
-    height: 12px;
-    border-radius: 3px;
-    background: #e5e7eb;
-
-    &:first-child {
-      background: #c8ced8;
-    }
-  }
-}
-
-.home-hero-tile-grid {
-  display: grid;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  min-width: 0;
-}
-
-.home-hero-tile {
-  min-width: 0;
-  border: 1px solid #dce3ec;
-  border-radius: 8px;
-  padding: 16px;
-  background: #ffffff;
-  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.08);
-
-  span {
-    color: #0078d4;
-    font-size: 11px;
-    font-weight: 900;
-  }
-
-  strong {
-    display: block;
-    margin-top: 10px;
-    color: #073b4c;
-    font-size: 19px;
-    line-height: 1.2;
-  }
-
-  p {
-    margin: 8px 0 0;
-    color: #4b5563;
-    font-size: 12px;
-    line-height: 1.55;
-  }
-}
-
-.home-hero-tile-accent {
-  border-color: #0aa678;
-  background: #003b5c;
-
-  span,
-  p {
-    color: #d7f8ef;
-  }
-
-  strong {
-    color: #ffffff;
-  }
-}
-
-.product-login-wrap {
-  --theme-panel-bg: #ffffff;
-  --theme-panel-bg-soft: #f5f7fb;
-  --theme-control-bg: #ffffff;
-  --theme-control-hover-bg: #ffffff;
-  --theme-hover-bg: #fff7d6;
-  --theme-active-bg: #fff0ad;
-  --theme-shell-border: #d1d5db;
-  --theme-text-primary: #111827;
-  --theme-text-secondary: #4b5563;
-  --theme-text-tertiary: #6b7280;
-  --theme-input-bg: #ffffff;
-  --theme-input-border: #cbd5e1;
-  --theme-card-shadow: 0 18px 46px rgba(17, 24, 39, 0.16);
-  align-self: stretch;
-  color-scheme: light;
-}
-
-.power-login-account-page {
-  position: relative;
-  z-index: 1;
-  padding: 72px 56px 0;
-
-  .product-login-wrap {
-    width: 540px;
-    flex: 0 0 540px;
-    display: flex;
-    align-items: stretch;
-  }
-}
-
-.account-login-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 560px) 540px;
-  align-items: stretch;
-  justify-content: center;
-  gap: 72px;
-  max-width: 1220px;
-  margin: 0 auto;
-}
-
-.account-login-story {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-}
-
-.account-login-eyebrow {
-  margin: 0;
-  color: #4b5563;
-  font-size: 14px;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 13px;
   font-weight: 800;
-  line-height: 1.4;
-}
-
-.account-login-story {
-  h1 {
-    max-width: 560px;
-    margin: 10px 0 18px;
-    color: #0b1f44;
-    font-size: 44px;
-    line-height: 1.12;
-    letter-spacing: 0;
-  }
-}
-
-.account-login-benefits {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: #4b5563;
-  font-size: 14px;
-  line-height: 1.55;
-
-  li {
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
-  }
 
   i {
-    position: relative;
-    width: 18px;
-    height: 18px;
-    display: inline-block;
-
-    &::before {
-      content: '';
-      position: absolute;
-      left: 4px;
-      top: 2px;
-      width: 8px;
-      height: 12px;
-      border: solid #0078d4;
-      border-width: 0 2px 2px 0;
-      transform: rotate(45deg);
-    }
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary);
   }
 }
 
-.account-login-visual {
+.shuzhi-hero {
   position: relative;
-  width: min(520px, 100%);
-  margin-top: auto;
-  padding: 42px 62px 0 12px;
+  z-index: 1;
+  min-height: 500px;
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(520px, 1.08fr);
+  gap: 70px;
+  align-items: center;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 70px 40px 74px;
 }
 
-.account-login-screen {
+.shuzhi-hero-copy {
+  min-width: 0;
+
+  h1 {
+    max-width: 620px;
+    margin: 32px 0 20px;
+    color: var(--primary);
+    font-size: 56px;
+    line-height: 1.1;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+  }
+
+  p {
+    max-width: 620px;
+    margin: 0;
+    color: #687083;
+    font-size: 17px;
+    line-height: 1.8;
+  }
+}
+
+.shuzhi-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 26px;
+}
+
+.shuzhi-trust-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 28px;
+
+  span {
+    width: 24px;
+    height: 24px;
+    margin-right: -7px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 8px 18px rgba(61, 58, 124, 0.12);
+  }
+
+  strong {
+    margin-left: 17px;
+    color: #6f7586;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+}
+
+.trust-dot-blue {
+  background: var(--blue);
+}
+
+.trust-dot-violet {
+  background: var(--primary);
+}
+
+.trust-dot-coral {
+  background: var(--coral);
+}
+
+.trust-dot-teal {
+  background: var(--teal);
+}
+
+.hero-dashboard {
+  min-width: 0;
+}
+
+.hero-dashboard-window,
+.dashboard-builder,
+.anomaly-card,
+.collaboration-card,
+.login-preview-card {
   overflow: hidden;
-  border: 1px solid #d9e1ec;
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 24px 50px rgba(12, 32, 68, 0.14);
+  box-shadow: var(--shadow);
 }
 
-.account-login-screen-head {
+.hero-dashboard-window {
+  width: 100%;
+}
+
+.mini-window-head {
+  height: 42px;
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
-  padding: 0 12px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f8fafc;
+  padding: 0 18px;
+  border-bottom: 1px solid #edf0f6;
+  background: #fbfbfe;
 
   span {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #cbd5e1;
+    background: #ff6b57;
+
+    &:nth-child(2) {
+      background: #ffc145;
+    }
+
+    &:nth-child(3) {
+      background: #28c4a0;
+    }
   }
 
   b {
-    margin-left: 8px;
-    color: #475569;
+    flex: 1;
+    color: #a0a7b7;
     font-size: 12px;
+    text-align: center;
   }
 }
 
-.account-login-screen-body {
+.hero-dashboard-body {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  min-height: 260px;
-
-  aside {
-    display: grid;
-    align-content: start;
-    gap: 12px;
-    padding: 18px 14px;
-    border-right: 1px solid #e5e7eb;
-    background: #f8fafc;
-
-    span {
-      height: 12px;
-      border-radius: 3px;
-      background: #cfd7e3;
-
-      &:first-child {
-        width: 64px;
-        background: #f3c712;
-      }
-
-      &:nth-child(2) {
-        width: 48px;
-      }
-
-      &:nth-child(3) {
-        width: 68px;
-      }
-
-      &:nth-child(4) {
-        width: 56px;
-      }
-    }
-  }
-
-  section {
-    min-width: 0;
-    padding: 18px;
-  }
+  grid-template-columns: minmax(0, 1.7fr) minmax(170px, 0.72fr);
+  gap: 18px;
+  padding: 18px;
 }
 
-.account-login-prompt {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 0 14px;
-  color: #0f172a;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.account-login-mini-metrics {
+.metric-grid {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  gap: 14px;
 
-  div {
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 10px;
-    background: #ffffff;
+  article {
+    min-height: 86px;
+    border: 1px solid #e9ebf3;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #fcfcff;
   }
 
-  span {
+  span,
+  em {
     display: block;
-    color: #64748b;
-    font-size: 11px;
+    color: #8c94a8;
+    font-size: 12px;
+    font-style: normal;
+    line-height: 1.3;
   }
 
   strong {
     display: block;
-    margin-top: 6px;
-    color: #0f172a;
-    font-size: 22px;
+    margin: 10px 0 8px;
+    color: var(--text-strong);
+    font-size: 23px;
     line-height: 1;
   }
-}
 
-.account-login-mini-chart {
-  display: flex;
-  align-items: end;
-  gap: 7px;
-  height: 94px;
-  margin-top: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 14px 14px 10px;
-  background:
-    linear-gradient(#f1f5f9 1px, transparent 1px),
-    #ffffff;
-  background-size: 100% 24px;
+  em {
+    color: #10a978;
+    font-weight: 800;
+  }
 
-  span {
-    flex: 1;
-    min-width: 8px;
-    border-radius: 3px 3px 0 0;
-    background: #f3c712;
-
-    &:nth-child(3n + 1) {
-      background: #0078d4;
-    }
-
-    &:nth-child(3n + 2) {
-      background: #10b981;
-    }
+  .danger {
+    color: #ec5f6b;
   }
 }
 
-.account-login-phone {
-  position: absolute;
-  right: 8px;
-  bottom: 0;
-  width: 86px;
-  height: 150px;
-  border: 1px solid #d9e1ec;
-  border-radius: 14px;
-  padding: 18px 12px;
+.trend-panel,
+.channel-panel {
+  min-width: 0;
+  border: 1px solid #e9ebf3;
+  border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 18px 38px rgba(12, 32, 68, 0.18);
+}
 
-  span {
+.trend-panel {
+  padding: 18px 18px 8px;
+
+  svg {
     display: block;
-    width: 34px;
-    height: 8px;
-    margin: 0 auto 28px;
-    border-radius: 999px;
-    background: #d9e1ec;
+    width: 100%;
+    height: 190px;
+  }
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  b {
+    color: var(--text-strong);
+    font-size: 14px;
   }
 
-  strong {
-    display: block;
-    color: #0b1f44;
-    font-size: 30px;
-    line-height: 1;
+  span {
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 800;
+  }
+}
+
+.channel-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 14px;
+
+  b {
+    align-self: flex-start;
+    color: var(--text-strong);
+    font-size: 14px;
+  }
+}
+
+.donut-chart {
+  width: 128px;
+  height: 128px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--teal) 0 48%, var(--primary) 48% 80%, #e9ecf7 80% 100%);
+
+  &::before {
+    content: '';
+    position: absolute;
+  }
+
+  span {
+    width: 74px;
+    height: 74px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #606779;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.25;
     text-align: center;
+  }
+}
+
+.channel-legend {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+
+  span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #7f8799;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  i {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 50%;
+    background: var(--primary);
+  }
+
+  span:first-child i {
+    background: var(--teal);
+  }
+}
+
+.home-section {
+  position: relative;
+  z-index: 1;
+  padding: 72px max(40px, calc((100vw - 1180px) / 2));
+}
+
+.section-heading {
+  max-width: 780px;
+  margin-bottom: 36px;
+
+  &.center {
+    margin-right: auto;
+    margin-left: auto;
+    text-align: center;
+  }
+
+  > span {
+    display: inline-flex;
+    margin-bottom: 14px;
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  h2 {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: 36px;
+    line-height: 1.22;
+    letter-spacing: 0;
+  }
+
+  p {
+    max-width: 720px;
+    margin: 16px auto 0;
+    color: #7a8194;
+    font-size: 15px;
+    line-height: 1.8;
+  }
+}
+
+.flow-section {
+  background: #ffffff;
+}
+
+.flow-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 86px;
+
+  article {
+    min-height: 238px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 26px;
+    background: #ffffff;
+    box-shadow: 0 16px 40px rgba(61, 58, 124, 0.06);
+  }
+
+  .el-icon {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 21px;
   }
 
   em {
     display: block;
-    margin-top: 7px;
-    color: #64748b;
+    margin-top: 24px;
+    color: #9aa2b7;
     font-size: 12px;
     font-style: normal;
-    text-align: center;
-  }
-}
-
-.account-login-more {
-  margin: 82px -56px 0;
-  padding: 54px 56px 64px;
-  background: #f7f8fa;
-
-  h2 {
-    margin: 0 0 34px;
-    color: #0b1f44;
-    font-size: 32px;
-    line-height: 1.2;
-    text-align: center;
-  }
-}
-
-.account-login-more-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 28px;
-  max-width: 960px;
-  margin: 0 auto;
-
-  article {
-    border-top: 1px solid #d9e1ec;
-    padding-top: 22px;
-  }
-
-  span {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border-radius: 4px;
-    background: #f3c712;
-    color: #0b1f44;
-    font-size: 13px;
     font-weight: 900;
   }
 
   b {
     display: block;
+    margin-top: 14px;
+    color: var(--text-strong);
+    font-size: 18px;
+  }
+
+  p {
+    margin: 12px 0 0;
+    color: #7a8194;
+    font-size: 13px;
+    line-height: 1.75;
+  }
+}
+
+.platform-section {
+  background: var(--soft-bg);
+}
+
+.feature-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
+  align-items: center;
+  gap: 76px;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 42px 0;
+
+  &.reverse {
+    grid-template-columns: minmax(420px, 1.08fr) minmax(0, 0.92fr);
+
+    .feature-copy {
+      order: 2;
+    }
+  }
+}
+
+.feature-copy {
+  min-width: 0;
+
+  > span {
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  h3 {
+    margin: 18px 0 16px;
+    color: var(--text-strong);
+    font-size: 31px;
+    line-height: 1.22;
+    letter-spacing: 0;
+  }
+
+  p {
+    margin: 0;
+    color: #7a8194;
+    font-size: 15px;
+    line-height: 1.8;
+  }
+}
+
+.shuzhi-check-list {
+  display: grid;
+  gap: 13px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #676e82;
+  font-size: 14px;
+  line-height: 1.55;
+
+  li {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+
+  .el-icon {
+    margin-top: 2px;
+    color: var(--teal);
+    font-size: 15px;
+  }
+
+  &.compact {
+    gap: 10px;
+    margin-top: 20px;
+    font-size: 13px;
+  }
+}
+
+.dashboard-builder,
+.anomaly-card,
+.collaboration-card {
+  width: 100%;
+}
+
+.builder-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 18px;
+}
+
+.builder-card {
+  min-height: 118px;
+  border: 1px solid #e9ebf3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.builder-card.metric {
+  padding: 18px;
+
+  span {
+    color: #9aa2b7;
+    font-size: 12px;
+  }
+
+  strong {
+    display: block;
+    margin-top: 10px;
+    color: var(--text-strong);
+    font-size: 25px;
+  }
+}
+
+.builder-card.bars {
+  grid-row: span 2;
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  padding: 42px 26px 22px;
+  position: relative;
+
+  b {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    color: var(--text-strong);
+    font-size: 14px;
+  }
+
+  i {
+    flex: 1;
+    min-width: 16px;
+    border-radius: 4px 4px 0 0;
+    background: var(--primary);
+
+    &:nth-child(2n) {
+      opacity: 0.72;
+    }
+  }
+}
+
+.builder-card.line {
+  position: relative;
+  display: flex;
+  align-items: end;
+  gap: 24px;
+  padding: 44px 22px 26px;
+
+  b {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    color: var(--text-strong);
+    font-size: 14px;
+  }
+
+  span {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--primary);
+
+    &:nth-child(2) {
+      margin-bottom: 18px;
+    }
+
+    &:nth-child(3) {
+      margin-bottom: 10px;
+    }
+
+    &:nth-child(4) {
+      margin-bottom: 34px;
+    }
+
+    &:nth-child(5) {
+      margin-bottom: 28px;
+    }
+  }
+}
+
+.anomaly-body,
+.collaboration-body {
+  padding: 28px;
+}
+
+.alert-line {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  padding: 0 14px;
+  background: #fff8df;
+  color: #f19a1a;
+
+  .el-icon {
+    font-size: 16px;
+  }
+
+  strong {
+    min-width: 0;
+    color: #e68b0a;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+
+  span {
+    color: #aeb4c2;
+    font-size: 12px;
+  }
+}
+
+.root-cause-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+
+  div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    border-radius: 8px;
+    padding: 14px;
+    background: #fafbff;
+  }
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #677086;
+    font-size: 13px;
+  }
+
+  i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--primary);
+  }
+
+  strong {
+    color: #ec5f6b;
+    font-size: 13px;
+  }
+}
+
+.collaboration-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.8fr);
+  gap: 22px;
+  align-items: center;
+}
+
+.collab-chart {
+  height: 190px;
+  display: flex;
+  align-items: end;
+  gap: 20px;
+  border-bottom: 1px solid #dfe3ed;
+  padding: 0 18px 0 0;
+
+  i {
+    flex: 1;
+    min-width: 20px;
+    border-radius: 4px 4px 0 0;
+    background: var(--primary);
+
+    &:nth-child(2n) {
+      opacity: 0.76;
+    }
+  }
+}
+
+.comment-panel {
+  border: 1px solid #e9ebf3;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+
+  b {
+    display: block;
+    color: var(--text-strong);
+    font-size: 14px;
+  }
+
+  p {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 8px;
+    margin: 14px 0 0;
+    color: #697186;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  span {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--blue);
+  }
+
+  p:last-child span {
+    background: var(--teal);
+  }
+}
+
+.scenario-section {
+  background: #ffffff;
+}
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+
+  article {
+    min-height: 196px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 24px;
+    background: #ffffff;
+    box-shadow: 0 12px 30px rgba(61, 58, 124, 0.05);
+  }
+
+  .el-icon {
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 19px;
+  }
+
+  b {
+    display: block;
     margin-top: 18px;
-    color: #0b1f44;
-    font-size: 20px;
+    color: var(--text-strong);
+    font-size: 18px;
   }
 
   p {
     margin: 10px 0 0;
-    color: #4b5563;
+    color: #7a8194;
     font-size: 13px;
+    line-height: 1.72;
+  }
+}
+
+.cta-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  background: #f5f6fb;
+
+  span {
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  h2 {
+    max-width: 720px;
+    margin: 10px 0 0;
+    color: var(--text-strong);
+    font-size: 32px;
+    line-height: 1.25;
+  }
+
+  p {
+    margin: 12px 0 0;
+    color: #7a8194;
+    font-size: 14px;
     line-height: 1.7;
   }
+
+  .shuzhi-primary-button {
+    flex: 0 0 auto;
+  }
+}
+
+.shuzhi-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(460px, 0.85fr);
+  gap: 60px;
+  padding: 64px max(40px, calc((100vw - 1180px) / 2)) 58px;
+  background: #111224;
+  color: #ffffff;
+}
+
+.footer-brand {
+  max-width: 450px;
+
+  .shuzhi-brand-mark {
+    display: inline-grid;
+  }
+
+  strong {
+    display: inline-block;
+    margin-left: 10px;
+    vertical-align: middle;
+    color: #ffffff;
+    font-size: 18px;
+  }
+
+  p {
+    margin: 22px 0 0;
+    color: #9ba2b8;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+}
+
+.footer-links {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+
+  b,
+  span {
+    display: block;
+  }
+
+  b {
+    color: #ffffff;
+    font-size: 14px;
+  }
+
+  span {
+    margin-top: 14px;
+    color: #8d94aa;
+    font-size: 13px;
+  }
+}
+
+.shuzhi-login-stage {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 64px);
+  padding: 42px max(40px, calc((100vw - 1180px) / 2)) 0;
+  background:
+    linear-gradient(180deg, rgba(247, 248, 252, 0.68) 0, rgba(255, 255, 255, 0.96) 360px),
+    #ffffff;
+
+  &.is-trial-stage {
+    .shuzhi-login-shell {
+      min-height: 735px;
+    }
+  }
+}
+
+.shuzhi-login-shell {
+  min-height: 590px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  align-items: stretch;
+  gap: 70px;
+}
+
+.shuzhi-login-story {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0;
+
+  h1 {
+    max-width: 620px;
+    margin: 24px 0 18px;
+    color: var(--text-strong);
+    font-size: 45px;
+    line-height: 1.14;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+  }
+
+  > p {
+    max-width: 610px;
+    margin: 0;
+    color: #737b90;
+    font-size: 16px;
+    line-height: 1.8;
+  }
+}
+
+.login-preview-card {
+  max-width: 560px;
+  margin-top: auto;
+}
+
+.login-preview-body {
+  padding: 18px;
+}
+
+.login-preview-question {
+  border: 1px solid #e9ebf3;
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--text-strong);
+  background: #fcfcff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.login-preview-chart {
+  height: 132px;
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  margin-top: 16px;
+  border: 1px solid #e9ebf3;
+  border-radius: 8px;
+  padding: 18px 20px 14px;
+  background: #ffffff;
+
+  i {
+    flex: 1;
+    min-width: 14px;
+    border-radius: 4px 4px 0 0;
+    background: var(--primary);
+
+    &:nth-child(3n + 1) {
+      background: var(--blue);
+    }
+
+    &:nth-child(3n + 2) {
+      background: var(--teal);
+    }
+  }
+}
+
+.login-preview-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 13px;
+
+  strong {
+    color: var(--primary);
+  }
+}
+
+.product-login-wrap {
+  --theme-panel-bg: #ffffff;
+  --theme-text-primary: #171927;
+  --theme-text-secondary: #6f7689;
+  --theme-text-tertiary: #9aa2b7;
+  --theme-input-bg: #ffffff;
+  --theme-input-border: #dfe3ed;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  padding-top: 36px;
+  color-scheme: light;
 }
 
 .product-login-card {
   width: 100%;
-  min-height: 640px;
+  min-height: 552px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  border: 1px solid var(--theme-shell-border);
+  justify-content: center;
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--theme-panel-bg);
-  box-shadow: var(--theme-card-shadow);
-  padding: 56px 34px;
+  box-shadow: var(--shadow);
+  padding: 42px 34px;
+
+  &.is-trial-card {
+    min-height: 706px;
+    justify-content: flex-start;
+  }
 }
 
 .product-login-card-head {
-  width: min(100%, 420px);
-  margin-bottom: 30px;
+  width: 100%;
+  margin-bottom: 28px;
 
   > span {
-    display: inline-block;
+    display: inline-flex;
     margin-bottom: 10px;
-    color: #8a6d00;
+    border-radius: 999px;
+    padding: 5px 10px;
+    background: var(--primary-soft);
+    color: var(--primary);
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 900;
   }
 
   h2 {
     margin: 0;
     color: var(--theme-text-primary);
-    font-size: 24px;
+    font-size: 26px;
     line-height: 1.3;
   }
 }
 
 .product-login-desc {
-  max-width: 420px;
   margin: 10px 0 0;
   color: var(--theme-text-secondary);
   font-size: 13px;
-  line-height: 1.8;
+  line-height: 1.75;
 }
 
-.login-form {
-  width: min(100%, 420px);
-}
-
-.default-login-tabs {
+.login-form,
+.default-login-tabs,
+.trial-application-panel {
   width: 100%;
 }
 
@@ -1790,7 +2260,7 @@ onMounted(async () => {
   color: var(--theme-text-primary);
 
   .product-login-field {
-    margin-bottom: 15px;
+    margin-bottom: 16px;
   }
 
   :deep(.ed-form-item__content),
@@ -1800,10 +2270,10 @@ onMounted(async () => {
 
   :deep(.ed-form-item__label),
   :deep(.el-form-item__label) {
-    margin-bottom: 7px;
+    margin-bottom: 8px;
     color: var(--theme-text-primary);
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 800;
     line-height: 1.2;
   }
 
@@ -1812,16 +2282,16 @@ onMounted(async () => {
     --ed-input-bg-color: var(--theme-input-bg);
     --ed-input-border-color: var(--theme-input-border);
     --ed-input-clear-hover-color: var(--theme-text-secondary);
-    --ed-input-focus-border-color: #111827;
-    --ed-input-hover-border-color: #111827;
+    --ed-input-focus-border-color: var(--primary);
+    --ed-input-hover-border-color: var(--primary);
     --ed-input-icon-color: var(--theme-text-tertiary);
     --ed-input-placeholder-color: var(--theme-text-tertiary);
     --ed-input-text-color: var(--theme-text-primary);
     --el-input-bg-color: var(--theme-input-bg);
     --el-input-border-color: var(--theme-input-border);
     --el-input-clear-hover-color: var(--theme-text-secondary);
-    --el-input-focus-border-color: #111827;
-    --el-input-hover-border-color: #111827;
+    --el-input-focus-border-color: var(--primary);
+    --el-input-hover-border-color: var(--primary);
     --el-input-icon-color: var(--theme-text-tertiary);
     --el-input-placeholder-color: var(--theme-text-tertiary);
     --el-input-text-color: var(--theme-text-primary);
@@ -1830,11 +2300,11 @@ onMounted(async () => {
 
   :deep(.ed-input__wrapper),
   :deep(.el-input__wrapper) {
-    height: 44px;
+    height: 46px;
     border: 1px solid var(--theme-input-border);
-    border-radius: 4px;
+    border-radius: 6px;
     box-shadow: none;
-    padding: 0 12px;
+    padding: 0 13px;
     background: var(--theme-input-bg);
     transition:
       border-color 150ms ease,
@@ -1845,8 +2315,8 @@ onMounted(async () => {
   :deep(.el-input__wrapper.is-focus),
   :deep(.ed-input__wrapper:hover),
   :deep(.el-input__wrapper:hover) {
-    border-color: #111827;
-    box-shadow: 0 0 0 3px rgba(242, 200, 17, 0.34);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(98, 88, 246, 0.12);
   }
 
   :deep(.ed-input__inner),
@@ -1890,25 +2360,89 @@ onMounted(async () => {
   :deep(.el-form-item__error) {
     padding-top: 5px;
   }
+
+  :deep(.ed-textarea__inner),
+  :deep(.el-textarea__inner) {
+    min-height: 92px;
+    border-color: var(--theme-input-border);
+    border-radius: 6px;
+    box-shadow: none;
+    background: var(--theme-input-bg);
+    color: var(--theme-text-primary);
+    font-size: 14px;
+    line-height: 1.6;
+    resize: none;
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+
+    &:hover,
+    &:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(98, 88, 246, 0.12);
+    }
+  }
+}
+
+.trial-application-form {
+  .product-login-field {
+    margin-bottom: 13px;
+  }
+}
+
+.trial-application-tip {
+  margin: -2px 0 0;
+  color: var(--theme-text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.trial-submit-result {
+  display: flex;
+  min-height: 430px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
+  .el-icon {
+    color: var(--teal);
+    font-size: 48px;
+  }
+
+  h3 {
+    margin: 18px 0 10px;
+    color: var(--theme-text-primary);
+    font-size: 24px;
+    line-height: 1.3;
+  }
+
+  p {
+    max-width: 330px;
+    margin: 0 0 28px;
+    color: var(--theme-text-secondary);
+    font-size: 14px;
+    line-height: 1.8;
+  }
 }
 
 .product-login-submit {
   width: 100%;
-  height: 44px;
+  height: 46px;
   border: 0;
-  border-radius: 4px;
-  background: #111827;
+  border-radius: 6px;
+  background: var(--primary);
   color: #ffffff;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 900;
   text-shadow: none;
   -webkit-text-stroke-width: 0;
   cursor: pointer;
-  box-shadow: 0 14px 28px rgba(17, 24, 39, 0.18);
+  box-shadow: 0 14px 30px rgba(98, 88, 246, 0.26);
 
   &:hover,
   &:focus {
-    background: #000000;
+    background: var(--primary-dark);
     color: #ffffff;
   }
 }
@@ -1917,7 +2451,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 12px 0 16px;
+  margin: 14px 0 16px;
   color: var(--theme-text-tertiary);
   font-size: 12px;
 
@@ -1926,29 +2460,28 @@ onMounted(async () => {
     content: '';
     height: 1px;
     flex: 1;
-    background: var(--theme-shell-border);
+    background: var(--line);
   }
 }
 
 .product-login-feishu {
   width: 100%;
-  height: 48px;
-  border-radius: 4px;
-  border-color: #1677ff;
+  height: 46px;
+  border-radius: 6px;
+  border-color: #3370ff;
   color: #ffffff;
-  background: linear-gradient(180deg, #2388ff 0%, #0b63ce 100%);
+  background: #3370ff;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 900;
   text-shadow: none;
   -webkit-text-stroke-width: 0;
-  box-shadow: 0 14px 28px rgba(22, 119, 255, 0.24);
+  box-shadow: 0 14px 28px rgba(51, 112, 255, 0.24);
 
   &:hover,
   &:focus {
-    border-color: #0b63ce;
+    border-color: #245bdb;
     color: #ffffff;
-    background: linear-gradient(180deg, #1677ff 0%, #0757b8 100%);
-    box-shadow: 0 16px 32px rgba(22, 119, 255, 0.3);
+    background: #245bdb;
   }
 }
 
@@ -1978,1205 +2511,308 @@ onMounted(async () => {
   display: block;
 }
 
-.power-login-capabilities {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin: 0;
-}
-
-.power-login-capability {
-  min-height: 206px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 22px;
-  background: #ffffff;
-  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
-
-  b {
-    display: block;
-    margin: 18px 0 10px;
-    color: #073b4c;
-    font-size: 18px;
-    line-height: 1.3;
-  }
-
-  p {
-    min-height: 64px;
-    margin: 0;
-    color: #4b5563;
-    font-size: 13px;
-    line-height: 1.7;
-  }
-
-  small {
-    display: inline-block;
-    margin-top: 18px;
-    color: #0078d4;
-    font-size: 12px;
-    font-weight: 900;
-  }
-}
-
-.power-login-capability-icon {
-  width: 32px;
-  height: 32px;
-  display: grid !important;
-  place-items: center;
-  border-radius: 4px;
-  color: #111827 !important;
-  background: #f3c712;
-  font-size: 13px !important;
-  font-weight: 900;
-}
-
-.home-section {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 64px max(56px, calc((100vw - 1280px) / 2));
-}
-
-.home-section-head {
-  max-width: 760px;
-  margin-bottom: 28px;
-
-  > span {
-    display: inline-block;
-    margin-bottom: 10px;
-    color: #8a6d00;
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  h2 {
-    margin: 0;
-    color: #0b1f44;
-    font-size: 32px;
-    line-height: 1.24;
-    letter-spacing: 0;
-  }
-}
-
-.home-section-head-center {
-  max-width: 760px;
-  margin-right: auto;
-  margin-left: auto;
-  text-align: center;
-}
-
-.home-product-section {
-  padding-top: 74px;
-  background: #ffffff;
-}
-
-.home-proof-section {
-  background: #f7fafb;
-}
-
-.home-proof-grid {
+.login-capability-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
+  margin: 68px -40px 0;
+  padding: 50px max(40px, calc((100vw - 1180px) / 2));
+  background: var(--soft-bg);
 
   article {
-    min-height: 160px;
-    border: 1px solid #e5e7eb;
+    min-height: 170px;
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 22px;
     background: #ffffff;
-    box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
   }
 
-  strong {
-    display: block;
-    color: #0b1f44;
-    font-size: 30px;
-    line-height: 1;
-  }
-
-  span {
-    display: block;
-    margin-top: 12px;
-    color: #111827;
-    font-size: 15px;
-    font-weight: 800;
-  }
-
-  p {
-    margin: 8px 0 0;
-    color: #4b5563;
-    font-size: 13px;
-    line-height: 1.7;
-  }
-}
-
-.home-flow-section {
-  background: linear-gradient(180deg, rgba(247, 248, 250, 0) 0, #f7f8fa 100%);
-}
-
-.home-flow-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-
-  article {
-    border-top: 3px solid #f3c712;
-    border-radius: 0 0 8px 8px;
-    padding: 18px 16px 20px;
-    background: #ffffff;
-    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.06);
-  }
-
-  em {
-    color: #0078d4;
-    font-size: 12px;
-    font-style: normal;
-    font-weight: 900;
-  }
-
-  b {
-    display: block;
-    margin-top: 12px;
-    color: #111827;
-    font-size: 15px;
-  }
-
-  p {
-    margin: 8px 0 0;
-    color: #4b5563;
-    font-size: 13px;
-    line-height: 1.7;
-  }
-}
-
-.home-ai-section {
-  display: grid;
-  grid-template-columns: minmax(0, 0.94fr) minmax(330px, 0.72fr);
-  align-items: center;
-  gap: 54px;
-  overflow: hidden;
-  background:
-    linear-gradient(90deg, rgba(0, 59, 92, 0.98), rgba(0, 91, 112, 0.98)),
-    #003b5c;
-  color: #ffffff;
-}
-
-.home-ai-copy {
-  max-width: 680px;
-
-  > span {
-    color: #8cf4d0;
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  h2 {
-    margin: 12px 0 14px;
-    color: #ffffff;
-    font-size: 40px;
-    line-height: 1.12;
-  }
-
-  p {
-    margin: 0;
-    color: #d6edf2;
-    font-size: 15px;
-    line-height: 1.8;
-  }
-}
-
-.home-ai-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 24px;
-
-  span {
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    border-radius: 999px;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 800;
-  }
-}
-
-.home-ai-visual {
-  position: relative;
-  min-height: 310px;
-  display: grid;
-  place-items: center;
-}
-
-.home-ai-ring {
-  position: relative;
-  z-index: 1;
-  width: 260px;
-  height: 260px;
-  display: grid;
-  place-items: center;
-  border: 2px solid rgba(140, 244, 208, 0.78);
-  border-radius: 50%;
-  background: rgba(0, 166, 126, 0.12);
-  text-align: center;
-  box-shadow: inset 0 0 0 14px rgba(255, 255, 255, 0.04);
-
-  span,
-  em {
-    position: absolute;
-    color: #8cf4d0;
-    font-size: 12px;
-    font-style: normal;
-    font-weight: 900;
-  }
-
-  span {
-    top: 58px;
-  }
-
-  em {
-    bottom: 56px;
-  }
-
-  strong {
-    color: #ffffff;
-    font-size: 48px;
-    line-height: 1;
-  }
-}
-
-.home-ai-lines {
-  position: absolute;
-  inset: 30px 0;
-  display: grid;
-  align-content: center;
-  gap: 24px;
-  opacity: 0.78;
-
-  i {
-    display: block;
-    height: 2px;
-    width: 390px;
-    background: linear-gradient(90deg, transparent, #8cf4d0, transparent);
-    transform: translateX(-54px);
-
-    &:nth-child(2) {
-      width: 320px;
-      transform: translateX(20px);
-    }
-
-    &:nth-child(3) {
-      width: 360px;
-      transform: translateX(-8px);
-    }
-  }
-}
-
-.home-semantic-section,
-.home-governance-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 36px;
-  align-items: center;
-}
-
-.home-section-copy {
-  > span {
-    color: #8a6d00;
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  h2 {
-    margin: 10px 0 14px;
-    color: #0b1f44;
-    font-size: 32px;
-    line-height: 1.24;
-  }
-
-  p {
-    margin: 0;
-    color: #4b5563;
-    font-size: 14px;
-    line-height: 1.85;
-  }
-}
-
-.home-semantic-list {
-  display: grid;
-  gap: 14px;
-
-  article {
-    display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 14px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 16px;
-    background: #ffffff;
-    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);
-  }
-
-  span {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border-radius: 4px;
-    background: #f3c712;
-    color: #0b1f44;
-    font-size: 13px;
-    font-weight: 900;
-  }
-
-  b {
-    color: #111827;
-    font-size: 15px;
-  }
-
-  p {
-    margin: 6px 0 0;
-    color: #4b5563;
-    font-size: 13px;
-    line-height: 1.65;
-  }
-}
-
-.home-governance-section {
-  background: #f7f8fa;
-}
-
-.home-governance-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.home-governance-row {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
-  background: #ffffff;
-
-  i {
-    width: 12px;
-    height: 12px;
-    margin-top: 4px;
-    border-radius: 50%;
-    background: #f3c712;
-    box-shadow: 0 0 0 5px rgba(242, 200, 17, 0.18);
-  }
-
-  b {
-    color: #111827;
-    font-size: 15px;
-  }
-
-  p {
-    margin: 6px 0 0;
-    color: #4b5563;
-    font-size: 13px;
-    line-height: 1.65;
-  }
-}
-
-.home-governance-preview {
-  border: 1px solid #d9e1ec;
-  border-radius: 8px;
-  padding: 28px;
-  background: #ffffff;
-  box-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
-
-  > span {
-    color: #64748b;
-    font-size: 12px;
-    font-weight: 800;
-  }
-
-  strong {
-    display: block;
-    margin-top: 10px;
-    color: #0b1f44;
-    font-size: 30px;
-  }
-
-  p {
-    margin: 8px 0 18px;
-    color: #4b5563;
-    font-size: 13px;
-  }
-
-  div {
-    display: grid;
-    gap: 10px;
-  }
-
-  em {
-    height: 12px;
-    border-radius: 3px;
-    background: #e5e7eb;
-
-    &:first-child {
-      width: 88%;
-      background: #f3c712;
-    }
-
-    &:nth-child(2) {
-      width: 66%;
-    }
-
-    &:nth-child(3) {
-      width: 78%;
-    }
-  }
-}
-
-.home-dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-
-  article {
-    min-height: 180px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 22px;
-    background: #ffffff;
-    box-shadow: 0 10px 26px rgba(17, 24, 39, 0.06);
-  }
-
-  span {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border-radius: 4px;
-    background: #f3c712;
-    color: #0b1f44;
-    font-size: 13px;
-    font-weight: 900;
-  }
-
-  b {
-    display: block;
-    margin-top: 18px;
-    color: #111827;
-    font-size: 18px;
-  }
-
-  p {
-    margin: 10px 0 0;
-    color: #4b5563;
-    font-size: 13px;
-    line-height: 1.75;
-  }
-}
-
-.home-story-section {
-  background: #ffffff;
-}
-
-.home-story-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 22px;
-  align-items: stretch;
-}
-
-.home-story-feature {
-  min-height: 360px;
-  border: 1px solid #dce3ec;
-  border-radius: 8px;
-  padding: 30px;
-  background:
-    linear-gradient(135deg, rgba(0, 59, 92, 0.72), rgba(7, 59, 76, 0.92)),
-    #073b4c;
-  color: #ffffff;
-  box-shadow: 0 18px 38px rgba(17, 24, 39, 0.1);
-
-  > span {
-    color: #8cf4d0;
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  h3 {
-    max-width: 520px;
-    margin: 14px 0 12px;
-    color: #ffffff;
-    font-size: 30px;
-    line-height: 1.22;
-  }
-
-  p {
-    max-width: 600px;
-    margin: 0;
-    color: #d6edf2;
-    font-size: 14px;
-    line-height: 1.75;
-  }
-}
-
-.home-story-chart {
-  display: flex;
-  align-items: end;
-  gap: 12px;
-  height: 120px;
-  margin-top: 34px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  padding: 18px 20px 14px;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px),
-    rgba(255, 255, 255, 0.06);
-  background-size: 100% 30px;
-
-  i {
-    flex: 1;
-    min-width: 8px;
-    border-radius: 3px 3px 0 0;
-    background: #8cf4d0;
-
-    &:nth-child(3n + 1) {
-      background: #f3c712;
-    }
-
-    &:nth-child(3n + 2) {
-      background: #79c7ff;
-    }
-  }
-}
-
-.home-story-cards {
-  display: grid;
-  gap: 14px;
-
-  article {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 20px;
-    background: #ffffff;
-    box-shadow: 0 12px 26px rgba(17, 24, 39, 0.06);
-  }
-
-  span {
-    color: #0078d4;
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  b {
-    display: block;
-    margin-top: 10px;
-    color: #073b4c;
-    font-size: 18px;
-  }
-
-  p {
-    margin: 8px 0 0;
-    color: #4b5563;
-    font-size: 13px;
-    line-height: 1.7;
-  }
-}
-
-.home-resource-section {
-  background: #f7fafb;
-}
-
-.home-resource-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
-}
-
-.home-resource-grid article {
-  min-height: 238px;
-  border: 1px solid #e1e7ef;
-  border-radius: 8px;
-  padding: 22px;
-  background: #ffffff;
-  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
-
-  span {
+  .el-icon {
+    width: 38px;
+    height: 38px;
     display: inline-flex;
-    border-radius: 3px;
-    padding: 5px 8px;
-    background: #e9f8f3;
-    color: #008866;
-    font-size: 12px;
-    font-weight: 900;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 19px;
   }
 
   b {
     display: block;
-    margin-top: 18px;
-    color: #073b4c;
-    font-size: 20px;
-    line-height: 1.3;
+    margin-top: 16px;
+    color: var(--text-strong);
+    font-size: 17px;
   }
 
   p {
-    margin: 12px 0 0;
-    color: #4b5563;
+    margin: 10px 0 0;
+    color: #7a8194;
     font-size: 13px;
-    line-height: 1.75;
-  }
-
-  small {
-    display: inline-block;
-    margin-top: 20px;
-    color: #0078d4;
-    font-size: 12px;
-    font-weight: 900;
-  }
-}
-
-.home-cta-section {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  background:
-    linear-gradient(110deg, rgba(0, 59, 92, 0.96), rgba(0, 120, 212, 0.84)),
-    #003b5c;
-  color: #ffffff;
-
-  span {
-    color: #8cf4d0;
-    font-size: 12px;
-    font-weight: 900;
-  }
-
-  h2 {
-    max-width: 720px;
-    margin: 10px 0 0;
-    color: #ffffff;
-    font-size: 30px;
-    line-height: 1.25;
-  }
-
-  p {
-    margin: 10px 0 0;
-    color: #cbd5e1;
-    font-size: 14px;
     line-height: 1.7;
   }
-
-  .power-login-primary {
-    flex: 0 0 auto;
-    background: #ffffff;
-    color: #073b4c;
-
-    &:hover,
-    &:focus {
-      background: #e9f8f3;
-      color: #073b4c;
-    }
-  }
-}
-
-:deep(.shuzhi-other-login) {
-  height: auto;
-  min-height: 0;
-}
-
-:deep(.de-other-login-divider) {
-  margin: 10px 0 12px;
 }
 
 @media (max-width: 1180px) {
-  .power-login-nav {
-    padding: 0 32px;
+  .shuzhi-nav {
+    padding: 0 28px;
   }
 
-  .power-login-menu {
+  .shuzhi-nav-links {
     display: none;
   }
 
-  .power-login-hero {
+  .shuzhi-hero,
+  .shuzhi-login-shell {
     grid-template-columns: 1fr;
-    padding: 48px 32px 52px;
+    gap: 44px;
   }
 
-  .power-login-story {
-    max-width: 760px;
+  .shuzhi-hero {
+    padding: 54px 28px 62px;
   }
 
-  .power-login-headline {
-    max-width: 760px;
-  }
-
-  .home-hero-visual {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .home-hero-tile-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: none;
+  .shuzhi-login-stage {
+    padding: 54px 28px 0;
   }
 
   .product-login-wrap {
-    max-width: 480px;
+    max-width: 520px;
   }
 
-  .power-login-capabilities {
+  .flow-card-grid {
+    gap: 20px;
+  }
+
+  .feature-row,
+  .feature-row.reverse {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .feature-row.reverse .feature-copy {
+    order: 0;
+  }
+
+  .scenario-grid,
+  .login-capability-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .home-section {
-    padding: 54px 32px;
-  }
-
-  .home-flow-grid,
-  .home-proof-grid,
-  .home-dashboard-grid,
-  .home-resource-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .home-semantic-section,
-  .home-governance-layout,
-  .home-ai-section,
-  .home-story-layout {
+  .shuzhi-footer {
     grid-template-columns: 1fr;
-  }
-
-  .home-ai-visual {
-    min-height: 240px;
-  }
-
-  .home-cta-section {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .power-login-account-page {
-    padding: 48px 32px 0;
-
-    .product-login-wrap {
-      width: min(540px, 100%);
-      flex: none;
-      justify-self: center;
-    }
-  }
-
-  .account-login-shell {
-    grid-template-columns: 1fr;
-    max-width: 760px;
-    gap: 42px;
-  }
-
-  .account-login-story {
-    padding-top: 0;
-  }
-
-  .account-login-more {
-    margin: 64px -32px 0;
-    padding: 48px 32px 56px;
   }
 }
 
-@media (max-width: 720px) {
-  .power-login-nav {
+@media (max-width: 760px) {
+  .shuzhi-nav {
     position: relative;
     min-height: auto;
+    align-items: flex-start;
     padding: 16px 18px;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .power-login-brand {
-    max-width: calc(100% - 76px);
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  .power-login-brand-copy {
-    strong {
-      font-size: 17px;
-    }
-
-    span {
-      max-width: 180px;
-    }
-  }
-
-  .power-login-nav-action {
-    position: absolute;
-    top: 18px;
-    right: 18px;
-    display: inline-flex;
-    height: 34px;
-    padding: 0 14px;
-    font-size: 13px;
-  }
-
-  .home-announcement-strip {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px 18px;
-    text-align: left;
-
-    button {
-      padding: 6px 10px;
-    }
-  }
-
-  .power-login-hero {
-    padding: 34px 18px 42px;
-    overflow: hidden;
-  }
-
-  .power-login-story {
-    width: calc(100vw - 36px);
-    max-width: calc(100vw - 36px);
-  }
-
-  .power-login-headline {
-    width: calc(100vw - 36px);
-    max-width: calc(100vw - 36px);
-    margin-top: 22px;
-
-    h1 {
-      white-space: normal;
-      word-break: break-all;
-      font-size: 36px;
-      line-height: 1.18;
-      overflow-wrap: anywhere;
-    }
-
-    p {
-      white-space: normal;
-      word-break: break-all;
-      font-size: 15px;
-      overflow-wrap: anywhere;
-    }
-  }
-
-  .power-login-actions {
-    align-items: flex-start;
-    width: calc(100vw - 36px);
-
-    span {
-      min-width: 0;
-      flex: 0 0 100%;
-      line-height: 1.5;
-      white-space: normal;
-      word-break: break-all;
-    }
-  }
-
-  .power-login-status-row {
-    grid-template-columns: 1fr;
-  }
-
-  .home-hero-visual {
-    width: calc(100vw - 36px);
-    max-width: calc(100vw - 36px);
-    grid-template-columns: 1fr;
-    overflow: hidden;
-  }
-
-  .power-login-showcase {
-    width: calc(100vw - 36px);
-    max-width: calc(100vw - 36px);
-    overflow: hidden;
-    margin-right: 0;
-  }
-
-  .home-hero-tile-grid {
-    grid-template-columns: 1fr;
     gap: 12px;
   }
 
-  .product-login-wrap {
-    width: calc(100vw - 36px);
-  }
-
-  .power-login-window {
-    width: 100%;
+  .shuzhi-brand {
     min-width: 0;
-    max-width: 100%;
-    box-shadow: 0 18px 42px rgba(17, 24, 39, 0.14);
+    max-width: calc(100% - 126px);
   }
 
-  .power-login-window-body {
-    grid-template-columns: 86px minmax(0, 1fr);
-    min-height: 0;
+  .shuzhi-brand-copy span {
+    display: none;
   }
 
-  .power-login-sidebar {
-    padding: 18px 12px;
-
-    span {
-      max-width: 62px;
-    }
+  .shuzhi-nav-actions {
+    margin-left: auto;
+    gap: 8px;
   }
 
-  .power-login-report {
-    padding: 16px 12px;
+  .shuzhi-link-button {
+    display: none;
   }
 
-  .power-login-question {
-    align-items: flex-start;
+  .shuzhi-nav-primary {
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
+  .shuzhi-hero {
+    grid-template-columns: 1fr;
+    padding: 34px 18px 44px;
+  }
+
+  .shuzhi-hero-copy h1 {
+    margin-top: 24px;
+    font-size: 38px;
+    line-height: 1.16;
+  }
+
+  .shuzhi-hero-copy p,
+  .shuzhi-login-story > p {
+    font-size: 15px;
+  }
+
+  .shuzhi-hero-actions {
+    align-items: stretch;
     flex-direction: column;
-    justify-content: center;
-    gap: 6px;
-    padding: 12px;
+  }
+
+  .shuzhi-primary-button,
+  .shuzhi-secondary-button {
+    width: 100%;
+  }
+
+  .shuzhi-trust-row {
+    align-items: flex-start;
 
     strong {
-      font-size: 13px;
-      line-height: 1.35;
-    }
-  }
-
-  .power-login-metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .power-login-chart {
-    gap: 5px;
-    height: 100px;
-    padding: 14px 10px 12px;
-
-    span {
       min-width: 0;
     }
   }
 
-  .power-login-table {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .product-login-card {
-    padding: 24px 18px;
-    min-height: auto;
-  }
-
-  .power-login-capabilities {
+  .hero-dashboard-body {
     grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-grid article {
+    min-height: 0;
+  }
+
+  .trend-panel svg {
+    height: 150px;
   }
 
   .home-section {
-    padding: 36px 18px;
+    padding: 42px 18px;
   }
 
-  .home-section-head {
-    margin-bottom: 22px;
+  .section-heading {
+    margin-bottom: 26px;
 
-    h2 {
-      font-size: 25px;
+    &.center {
+      text-align: left;
     }
-  }
 
-  .home-section-copy {
-    h2 {
-      font-size: 25px;
-    }
-  }
-
-  .home-flow-grid,
-  .home-proof-grid,
-  .home-dashboard-grid,
-  .home-resource-grid,
-  .account-login-more-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .home-proof-grid article,
-  .home-dashboard-grid article {
-    min-height: 0;
-  }
-
-  .home-governance-preview {
-    padding: 20px;
-
-    strong {
-      font-size: 24px;
-    }
-  }
-
-  .home-ai-section {
-    gap: 28px;
-  }
-
-  .home-ai-copy {
     h2 {
       font-size: 28px;
     }
-  }
 
-  .home-ai-visual {
-    min-height: 220px;
-    overflow: hidden;
-  }
-
-  .home-ai-ring {
-    width: 196px;
-    height: 196px;
-
-    strong {
-      font-size: 38px;
-    }
-
-    span {
-      top: 40px;
-    }
-
-    em {
-      bottom: 38px;
+    p {
+      margin-left: 0;
+      margin-right: 0;
+      font-size: 14px;
     }
   }
 
-  .home-ai-lines {
-    display: none;
+  .flow-card-grid,
+  .scenario-grid,
+  .login-capability-strip {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 
-  .home-story-layout {
+  .flow-card-grid article,
+  .scenario-grid article {
+    min-height: 0;
+  }
+
+  .feature-row {
+    padding: 26px 0;
+  }
+
+  .feature-copy h3 {
+    font-size: 25px;
+  }
+
+  .builder-body,
+  .collaboration-body {
     grid-template-columns: 1fr;
   }
 
-  .home-story-feature {
-    min-height: 0;
-    padding: 22px;
+  .builder-card.bars {
+    min-height: 170px;
+    grid-row: auto;
+    gap: 10px;
+    padding-left: 18px;
+    padding-right: 18px;
+  }
 
-    h3 {
-      font-size: 24px;
+  .collab-chart {
+    height: 150px;
+    gap: 10px;
+  }
+
+  .alert-line {
+    grid-template-columns: 22px minmax(0, 1fr);
+
+    span {
+      grid-column: 2;
     }
   }
 
-  .home-story-chart {
-    gap: 7px;
-    height: 104px;
-    padding: 16px 12px 12px;
+  .root-cause-list div,
+  .login-preview-note,
+  .cta-section {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .home-resource-grid article {
-    min-height: 0;
-  }
-
-  .home-cta-section {
-    margin-bottom: 28px;
+  .cta-section {
+    display: flex;
 
     h2 {
-      font-size: 24px;
+      font-size: 25px;
     }
   }
 
-  .power-login-account-page {
-    padding: 34px 18px 0;
-    max-width: 100vw;
-    overflow-x: hidden;
-
-    .product-login-wrap {
-      width: 100%;
-      max-width: none;
-    }
-  }
-
-  .account-login-shell {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .account-login-eyebrow {
-    font-size: 13px;
-  }
-
-  .account-login-story {
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
-
-    h1 {
-      max-width: 100%;
-      white-space: normal;
-      font-size: 31px;
-      line-height: 1.18;
-      overflow-wrap: anywhere;
-      word-break: break-all;
-    }
-  }
-
-  .account-login-benefits {
-    font-size: 13px;
-  }
-
-  .account-login-visual {
-    width: 100%;
-    margin-top: 30px;
-    padding: 0;
-  }
-
-  .account-login-screen-body {
-    grid-template-columns: 74px minmax(0, 1fr);
-    min-height: 0;
-    max-width: 100%;
-
-    aside {
-      padding: 16px 10px;
-
-      span {
-        max-width: 52px;
-      }
-    }
-
-    section {
-      padding: 14px 10px;
-    }
-  }
-
-  .account-login-prompt {
-    min-height: 48px;
-    align-items: flex-start;
-    padding: 10px;
-    font-size: 13px;
-    line-height: 1.35;
-  }
-
-  .account-login-mini-metrics {
+  .shuzhi-footer {
     grid-template-columns: 1fr;
+    gap: 34px;
+    padding: 44px 18px;
   }
 
-  .account-login-mini-chart {
-    gap: 5px;
-    height: 92px;
-    padding: 12px 8px 10px;
-
-    span {
-      min-width: 0;
-    }
+  .footer-links {
+    grid-template-columns: 1fr;
+    gap: 24px;
   }
 
-  .account-login-phone {
-    display: none;
+  .shuzhi-login-stage {
+    padding: 34px 18px 0;
   }
 
-  .account-login-more {
+  .shuzhi-login-story h1 {
+    font-size: 32px;
+    line-height: 1.18;
+  }
+
+  .login-preview-card {
+    margin-top: 32px;
+  }
+
+  .login-preview-chart {
+    gap: 7px;
+    padding: 14px 12px 10px;
+  }
+
+  .product-login-wrap {
+    max-width: none;
+  }
+
+  .product-login-card {
+    min-height: auto;
+    padding: 28px 18px;
+  }
+
+  .login-capability-strip {
     margin: 42px -18px 0;
     padding: 36px 18px 42px;
-
-    h2 {
-      margin-bottom: 24px;
-      font-size: 25px;
-      text-align: left;
-    }
-  }
-
-  .account-login-more-grid {
-    grid-template-columns: 1fr;
-    gap: 22px;
   }
 }
 </style>

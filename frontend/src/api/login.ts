@@ -17,6 +17,14 @@ export const AuthApi = {
   feishuStatus: (params?: { redirect?: string }) => request.get('/login/feishu/status', { params }),
   feishuCallback: (data: { code: string; state: string }) =>
     request.post('/login/feishu/callback', data),
+  submitTrialApplication: (data: {
+    account: string
+    password: string
+    name: string
+    email: string
+    company?: string
+    reason?: string
+  }) => request.post('/login/trial-application', data),
   logout: (data: any) => request.post('/login/logout', data),
   info: () => request.get('/user/info'),
 }
