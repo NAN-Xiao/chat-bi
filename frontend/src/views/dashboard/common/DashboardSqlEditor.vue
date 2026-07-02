@@ -329,8 +329,12 @@ const mcpChangedAfterPreview = computed(
   () => hasMcpSource.value && !hasSqlSource.value && sourceChangedAfterPreview.value
 )
 const mixedChangedAfterPreview = computed(() => isMixedSource.value && sourceChangedAfterPreview.value)
-const previewDisplayFields = computed(() => visiblePreviewFields(preview.fields, preview.data))
-const previewTableFields = computed(() => previewDisplayFields.value.slice(0, 10))
+const previewTableFields = computed(() => {
+  if (form.columns.length > 0) {
+    return form.columns.slice(0, 10)
+  }
+  return preview.fields.slice(0, 10)
+})
 const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.id || 'new'}-${previewVersion.value}`)
 const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chartType))
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
@@ -372,25 +376,8 @@ const chartPreviewYFields = computed(() => {
   return form.y
 })
 const activePivotGroupValueField = computed(() => form.pivotGroupField || effectiveSeriesField.value)
-const previewHasPivotGroupField = computed(() => {
-  const field = activePivotGroupValueField.value
-  return Boolean(field && visiblePreviewFields([field], preview.data).includes(field))
-})
-const sourceHasPivotGroupValues = computed(() => {
-  const field = activePivotGroupValueField.value
-  return Boolean(field && collectPivotGroupValueCounts(field).size > 0)
-})
-const chartPreviewSeriesFields = computed(() => {
-  const field = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
-  return field && previewDisplayFields.value.includes(field) ? [field] : []
-})
 const showPivotGroupValueConfig = computed(
-  () =>
-    supportsPivotConfig.value &&
-    form.pivotEnabled &&
-    form.pivotGroupEnabled &&
-    Boolean(activePivotGroupValueField.value) &&
-    sourceHasPivotGroupValues.value
+  () => supportsPivotConfig.value && form.pivotEnabled && Boolean(activePivotGroupValueField.value)
 )
 const pivotGroupValueOptions = computed(() => {
   const field = activePivotGroupValueField.value
@@ -411,7 +398,7 @@ const pivotGroupValueOptions = computed(() => {
     .sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true, sensitivity: 'base' }))
 })
 const previewDisplayData = computed(() => {
-  if (!showPivotGroupValueConfig.value || !previewHasPivotGroupField.value) {
+  if (!showPivotGroupValueConfig.value) {
     return preview.data
   }
   const field = activePivotGroupValueField.value
@@ -488,39 +475,6 @@ type PivotGranularity = 'day' | 'week' | 'month'
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
-}
-
-function isMeaningfulPreviewValue(value: unknown) {
-  if (value === undefined || value === null) {
-    return false
-  }
-  if (typeof value === 'string') {
-    return value.trim() !== ''
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value)
-  }
-  if (value instanceof Date) {
-    return !Number.isNaN(value.getTime())
-  }
-  if (Array.isArray(value)) {
-    return value.length > 0
-  }
-  if (typeof value === 'object') {
-    return Object.keys(value as Record<string, unknown>).length > 0
-  }
-  return true
-}
-
-function visiblePreviewFields(fields: string[], rows: Array<Record<string, any>>) {
-  const orderedFields = unique([
-    ...fields,
-    ...rows.slice(0, 20).flatMap((row) => Object.keys(row || {})),
-  ])
-  const visibleFields = orderedFields.filter((field) =>
-    rows.some((row) => isMeaningfulPreviewValue(row?.[field]))
-  )
-  return visibleFields.length ? visibleFields : orderedFields
 }
 
 function normalizePivotGroupValue(value: unknown) {
@@ -2525,10 +2479,10 @@ function closeDrawer() {
           :key="chartPreviewId"
           :id="chartPreviewId"
           :type="form.chartType"
-          :columns="form.chartType === 'table' ? toAxes(previewTableFields) : []"
+          :columns="form.chartType === 'table' ? toAxes(form.columns.length ? form.columns : sourcePreview.fields) : []"
           :x="form.chartType !== 'table' && form.chartType !== 'metric' && form.chartType !== 'pie' ? toAxes([form.x]) : []"
           :y="toAxes(chartPreviewYFields, { metrics: true })"
-          :series="toAxes(chartPreviewSeriesFields)"
+          :series="form.chartType === 'pie' ? toAxes([effectiveSeriesField || form.x]) : toAxes([effectiveSeriesField])"
           :data="previewDisplayData"
           :multi-quota-name="form.y.length > 1 && !effectiveSeriesField ? form.multiQuotaName : undefined"
           :forecast="buildForecastConfig()"
