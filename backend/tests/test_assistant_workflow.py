@@ -10,11 +10,13 @@ from typing import Any
 
 from apps.chat.task.assistant_workflow import (
     AssistantWorkflowConfig,
+    classify_workflow_error,
     emit_record_metadata,
     format_workflow_error,
     run_assistant_workflow,
 )
-from common.error import SingleMessageError
+from common.error import AppDBError, DataUnavailableError, SingleMessageError
+from common.user_facing_errors import DATA_UNAVAILABLE_ERROR_TYPE
 
 
 @contextmanager
@@ -192,6 +194,99 @@ def test_run_assistant_workflow_formats_single_message_errors() -> None:
     assert service.saved_errors == ["visible failure"]
     assert service.finished is True
     assert service._unit_workflow_graph_error_type == "single_message"
+
+
+def test_format_workflow_error_keeps_sql_exec_detail() -> None:
+    """
+    是什么：真正 SQL 执行失败应继续保留查看详情所需的 traceback。
+    """
+    service = FakeWorkflowService()
+
+    payload = json.loads(
+        format_workflow_error(
+            AppDBError("database timeout"),
+            service=service,
+            log_prefix=CONFIG.log_prefix,
+            include_db_error_types=True,
+        )
+    )
+
+    assert payload["type"] == "exec-sql-err"
+    assert payload["message"] == "Execute SQL Failed"
+    assert payload["traceback"] == "database timeout"
+
+
+def test_format_workflow_error_data_unavailable_is_business_payload() -> None:
+    """
+    是什么：缺表/缺字段/缺埋点属于业务提示，不应携带 traceback。
+    """
+    service = FakeWorkflowService()
+    message = "当前数据源缺少本次问题所需的表、字段或埋点数据。"
+
+    payload = json.loads(
+        format_workflow_error(
+            DataUnavailableError(message),
+            service=service,
+            log_prefix=CONFIG.log_prefix,
+            include_db_error_types=True,
+        )
+    )
+
+    assert payload["error_type"] == DATA_UNAVAILABLE_ERROR_TYPE
+    assert payload["type"] == DATA_UNAVAILABLE_ERROR_TYPE
+    assert payload["message"] == message
+    assert "traceback" not in payload
+
+
+def test_classify_workflow_error_data_unavailable() -> None:
+    """
+    是什么：工作流日志也应把数据不可用归到标准类型。
+    """
+    assert classify_workflow_error(DataUnavailableError("缺少埋点")) == DATA_UNAVAILABLE_ERROR_TYPE
+    assert (
+        classify_workflow_error(SingleMessageError("当前数据库 Schema 中不存在 fact_sessions 表"))
+        == DATA_UNAVAILABLE_ERROR_TYPE
+    )
+
+
+def test_run_assistant_workflow_formats_data_unavailable_as_structured_error() -> None:
+    """
+    是什么：兜底工作流遇到数据不可用时，保存结构化业务错误，前端不展示详情按钮。
+    """
+    service = FakeWorkflowService()
+    message = "当前数据源缺少本次问题所需的表、字段或埋点数据。"
+    graph = FakeWorkflowGraph(error=DataUnavailableError(message))
+
+    chunks = list(
+        run_assistant_workflow(
+            config=CONFIG,
+            graph=graph,
+            service=service,
+            initial_state={
+                "service": service,
+                "in_chat": True,
+                "stream": True,
+                "json_result": {"success": True},
+            },
+            format_error=lambda error: format_workflow_error(
+                error,
+                service=service,
+                log_prefix=CONFIG.log_prefix,
+                include_db_error_types=True,
+            ),
+            session_scope_factory=_fake_session_scope,
+        )
+    )
+
+    error_event = _events(chunks)[-1]
+    payload = json.loads(error_event["content"])
+
+    assert payload["error_type"] == DATA_UNAVAILABLE_ERROR_TYPE
+    assert payload["message"] == message
+    assert "traceback" not in payload
+    assert service.saved_errors == [error_event["content"]]
+    assert service.finished is True
+    assert service._unit_workflow_graph_error_type == DATA_UNAVAILABLE_ERROR_TYPE
 
 
 def test_emit_record_metadata_for_smart_qa_shape(monkeypatch) -> None:

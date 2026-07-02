@@ -33,6 +33,7 @@ async def get_chat_task_events(
     client = get_redis_client()
     key = _events_key(tenant_id, task_id)
     raw_events = await client.lrange(key, safe_offset, safe_offset + safe_limit - 1)
+    total = int(await client.llen(key))
     events = [
         event.decode("utf-8") if isinstance(event, bytes) else str(event)
         for event in raw_events
@@ -41,6 +42,7 @@ async def get_chat_task_events(
         "events": events,
         "offset": safe_offset,
         "next_offset": safe_offset + len(events),
+        "total": total,
     }
 
 

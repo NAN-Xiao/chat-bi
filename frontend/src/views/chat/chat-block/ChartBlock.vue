@@ -98,8 +98,17 @@ const chartId = computed(() => props.message?.record?.id + (props.enlarge ? '-fu
 const dataPermissionDenied = computed(
   () => dataObject.value?.status === 'failed' && dataObject.value?.error_type === 'permission_denied'
 )
+const dataBusinessFailure = computed(
+  () =>
+    dataObject.value?.status === 'failed' &&
+    ['permission_denied', 'data_unavailable'].includes(dataObject.value?.error_type || '')
+)
 const dataFailureMessage = computed(() =>
-  dataPermissionDenied.value ? '没有查看权限' : dataObject.value?.message || dataObject.value?.reason || ''
+  dataPermissionDenied.value
+    ? '没有查看权限'
+    : dataObject.value?.message ||
+      dataObject.value?.reason ||
+      '当前数据源缺少本次问题所需的表、字段或埋点数据。'
 )
 const chartDatasourceId = computed(
   () => props.message?.record?.datasource || dataObject.value?.datasource || datasourceContext.datasourceId
@@ -571,7 +580,7 @@ watch(
         {{ chartObject.title || message.record?.question }}
       </div>
       <div class="buttons-bar">
-        <div v-if="!dataPermissionDenied" class="chart-select-container">
+        <div v-if="!dataBusinessFailure" class="chart-select-container">
           <el-tooltip effect="dark" :offset="8" :content="t('chat.type')" placement="top">
             <ChartPopover
               v-if="chartTypeList.length > 0"
@@ -602,7 +611,7 @@ watch(
         </div>
 
         <div
-          v-if="!dataPermissionDenied && currentChartType !== 'table' && currentChartType !== 'metric'"
+          v-if="!dataBusinessFailure && currentChartType !== 'table' && currentChartType !== 'metric'"
           class="chart-select-container"
         >
           <el-tooltip
@@ -633,7 +642,7 @@ watch(
             </el-button>
           </el-tooltip>
         </div>
-        <div v-if="message?.record?.chart && !dataPermissionDenied">
+        <div v-if="message?.record?.chart && !dataBusinessFailure">
           <el-popover
             ref="exportRef"
             trigger="click"
@@ -679,7 +688,7 @@ watch(
             </div>
           </el-popover>
         </div>
-        <div v-if="message?.record?.chart && !isAssistant && !dataPermissionDenied">
+        <div v-if="message?.record?.chart && !isAssistant && !dataBusinessFailure">
           <el-tooltip
             effect="dark"
             :content="
@@ -700,7 +709,7 @@ watch(
           </el-tooltip>
         </div>
         <div class="divider" />
-        <div v-if="!enlarge && !dataPermissionDenied">
+        <div v-if="!enlarge && !dataBusinessFailure">
           <el-tooltip
             effect="dark"
             :offset="8"
@@ -715,7 +724,7 @@ watch(
             </el-button>
           </el-tooltip>
         </div>
-        <div v-else-if="!dataPermissionDenied">
+        <div v-else-if="!dataBusinessFailure">
           <el-tooltip
             effect="dark"
             :offset="8"
@@ -732,7 +741,7 @@ watch(
       </div>
     </div>
 
-    <div v-if="dataPermissionDenied" class="data-permission-warning">
+    <div v-if="dataBusinessFailure" class="data-permission-warning">
       {{ dataFailureMessage }}
     </div>
 

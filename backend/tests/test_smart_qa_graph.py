@@ -14,7 +14,7 @@ from apps.chat.models.chat_model import ChatFinishStep, OperationEnum
 from apps.chat.task import llm
 from apps.chat.task import smart_qa_graph as graph
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
-from common.error import SingleMessageError
+from common.error import DataUnavailableError, SingleMessageError
 
 
 @contextmanager
@@ -38,6 +38,17 @@ def _sql_answer(sql: str = "select 1 as value", tables: list[str] | None = None)
         "sql": sql,
         "tables": tables or ["orders"],
         "chart_type": "table",
+    }
+    return json.dumps(payload)
+
+
+def _sql_answer_with_message(sql: str, message: str, tables: list[str] | None = None) -> str:
+    payload = {
+        "success": True,
+        "sql": sql,
+        "tables": tables or ["orders"],
+        "chart_type": "table",
+        "message": message,
     }
     return json.dumps(payload)
 
@@ -70,7 +81,14 @@ def _patch_graph_runtime(monkeypatch: pytest.MonkeyPatch):
         lambda **kwargs: SimpleNamespace(id=1, error=False),
     )
     monkeypatch.setattr(graph, "end_log", lambda **kwargs: kwargs["log"])
-    monkeypatch.setattr(graph, "trigger_log_error", lambda session, log: log)
+
+    def _trigger_log_error(session, log, full_message=None):
+        log.error = True
+        if full_message is not None:
+            log.messages = full_message
+        return log
+
+    monkeypatch.setattr(graph, "trigger_log_error", _trigger_log_error)
 
 
 class FakeSmartQAService:
@@ -95,7 +113,12 @@ class FakeSmartQAService:
             question="test question",
             regenerate_record_id=None,
         )
-        self.chat_question = SimpleNamespace(question="test question")
+        self.chat_question = SimpleNamespace(
+            question="test question",
+            data_skill="",
+            ai_modal_id=None,
+            ai_modal_name=None,
+        )
         self.current_user = SimpleNamespace(id=1)
         self.current_assistant = current_assistant
         self.current_logs: dict[OperationEnum, Any] = {}
@@ -106,6 +129,7 @@ class FakeSmartQAService:
         self.saved_sql: list[str] = []
         self.saved_data: list[dict[str, Any]] = []
         self.saved_errors: list[str] = []
+        self.saved_analysis: list[str] = []
         self.executed: list[dict[str, Any]] = []
         self.chart_generated = False
         self.finished = False
@@ -189,6 +213,14 @@ class FakeSmartQAService:
                 "reasoning_content": "thinking",
                 "type": "sql-result",
             })
+        return self.sql_answer
+
+    def regenerate_sql_after_validation_error_streaming_reasoning(self, *args, **kwargs):
+        """
+        是什么：FakeSmartQAService.regenerate_sql_after_validation_error_streaming_reasoning 是一段测试代码，用来模拟 Data Skill 校验后的 SQL 重试。
+        """
+        if False:
+            yield None
         return self.sql_answer
 
     def check_sql(self, *args, **kwargs):
@@ -292,6 +324,15 @@ class FakeSmartQAService:
         """
         self.saved_errors.append(message)
 
+    def save_analysis(self, *, session, answer):
+        """
+        是什么：FakeSmartQAService.save_analysis 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
+        谁调用：测试代码会调用它，用来准备数据或检查结果。
+        做了什么：创建或保存测试需要的东西，让后续流程能继续往下走。
+        """
+        self.saved_analysis.append(answer)
+        return self.record
+
     def finish(self, *args, **kwargs):
         """
         是什么：FakeSmartQAService.finish 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
@@ -362,6 +403,7 @@ def test_graph_records_run_id_and_node_trace(monkeypatch: pytest.MonkeyPatch):
         "prepare_context",
         "emit_record_metadata",
         "ensure_datasource",
+        "execute_saas_skill",
         "generate_sql",
         "prepare_sql",
         "execute_sql",
@@ -404,6 +446,127 @@ def test_query_data_finish_step_stops_before_chart(monkeypatch: pytest.MonkeyPat
     ]
     assert not any(event["type"] == "chart-result" for event in events)
     assert not any(event["type"] == "chart" for event in events)
+
+
+def test_sql_answer_message_is_streamed_as_plain_business_feedback(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：test_sql_answer_message_is_streamed_as_plain_business_feedback 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：确认部分数据缺失提示不会变成错误卡片。
+    """
+    message = "当前数据源没有 pdau 埋点，已生成 DAU 部分。"
+    service = FakeSmartQAService(
+        sql_answer=_sql_answer_with_message("select 1 as value", message),
+    )
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], ["orders"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.QUERY_DATA,
+        ),
+    )
+    events = _events(chunks)
+
+    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+    saved_feedback = json.loads(service.saved_analysis[-1])
+    assert feedback_event["content"] == message
+    assert saved_feedback["content"] == message
+    assert not any(event["type"] == "error" for event in events)
+    assert service.saved_errors == []
+    assert service.finished is True
+
+
+def test_data_unavailable_execution_is_logged_but_not_streamed_as_error(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：test_data_unavailable_execution_is_logged_but_not_streamed_as_error 是一段测试代码，用来确认测试的某个场景没有问题。
+    谁调用：跑测试时 pytest 会找到并执行它。
+    做了什么：确认缺表/缺字段执行失败会留日志，但用户侧看到普通业务提示。
+    """
+    message = "当前数据源缺少本次问题所需的表、字段或埋点数据：public.fact_events。"
+    service = FakeSmartQAService(sql_answer=_sql_answer('select * from "public"."fact_events"'))
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], ["orders"]),
+    )
+
+    def _raise_data_unavailable(**kwargs):
+        service.executed.append(kwargs)
+        raise DataUnavailableError(message)
+
+    service.execute_sql = _raise_data_unavailable
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+    execute_log = service.current_logs[OperationEnum.EXECUTE_SQL]
+
+    assert feedback_event["content"] == message
+    assert execute_log.error is True
+    assert execute_log.messages["error_type"] == "data_unavailable"
+    assert execute_log.messages["message"] == message
+    assert not any(event["type"] == "error" for event in events)
+    assert not any(event["type"] == "chart" for event in events)
+    assert service.saved_errors == []
+    assert service.finished is True
+    assert events[-1]["type"] == "finish"
+
+
+def test_data_skill_schema_unavailable_is_streamed_as_business_feedback(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：Data Skill 校验发现 schema 缺表时，应给用户普通业务提示，失败详情留在生成 SQL 日志。
+    """
+    service = FakeSmartQAService(sql_answer=_sql_answer("select * from fact_events"))
+    schema_error = "Data Skill 要求使用 fact_sessions 表计算 DAU，但当前数据库 Schema 中不存在该表。"
+    service.current_logs[OperationEnum.GENERATE_SQL] = SimpleNamespace(id=1, error=False)
+
+    def _raise_schema_unavailable(*, session, res, operate):
+        assert session is not None
+        assert operate == OperationEnum.GENERATE_SQL
+        service.current_logs[operate].error = True
+        raise llm.DataSkillSqlValidationError(schema_error)
+
+    service.check_sql = _raise_schema_unavailable
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], ["orders"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+    sql_log = service.current_logs[OperationEnum.GENERATE_SQL]
+
+    assert "当前数据源缺少本次问题所需的表、字段或埋点数据" in feedback_event["content"]
+    assert sql_log.error is True
+    assert service.saved_sql == []
+    assert service.executed == []
+    assert service.saved_errors == []
+    assert service.finished is True
+    assert events[-1]["type"] == "finish"
+    assert not any(event["type"] == "error" for event in events)
 
 
 def test_permission_denied_during_sql_validation_stops_graph(monkeypatch: pytest.MonkeyPatch):

@@ -69,6 +69,7 @@ export class ChatRecord {
   agent_context_snapshot?: Record<string, any>
   duration?: number
   total_tokens?: number
+  stopped?: boolean
 
   constructor()
   constructor(

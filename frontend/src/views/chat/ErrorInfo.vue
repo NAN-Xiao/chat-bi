@@ -12,6 +12,7 @@ const { t } = useI18n()
 const assistantStore = useAssistantStore()
 const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 const permissionDeniedType = 'permission-denied'
+const dataUnavailableType = 'data-unavailable'
 const permissionDeniedPatterns = [
   '当前用户无权访问项目',
   'Datasource access is required',
@@ -25,6 +26,30 @@ const permissionDeniedPatterns = [
   '无法安全应用字段权限',
   '行权限过滤条件无法安全解析',
 ]
+const dataUnavailablePatterns = [
+  '当前数据源缺少本次问题所需',
+  '当前数据源缺少所需',
+  '当前数据源没有',
+  '当前数据库 Schema 中不存在',
+  'schema 中不存在',
+  '缺少所需表',
+  '缺少所需字段',
+  '缺少所需埋点',
+  '缺少埋点',
+  '埋点不存在',
+  '事件不存在',
+  '没有这个数据',
+  '没有对应埋点',
+  '没有该埋点',
+  'table is not present in schema',
+  'field is not present in schema',
+  'missing required table',
+  'missing required field',
+  'missing required event',
+  'missing tracking event',
+]
+const dataUnavailableFallback =
+  '当前数据源缺少本次问题所需的表、字段或埋点数据。请换一个当前数据源已包含的指标，或让管理员补充对应配置后再试。'
 
 const showBlock = computed(() => {
   return props.error && props.error?.trim().length > 0
@@ -35,12 +60,19 @@ function isPermissionDeniedError(message?: string) {
   return permissionDeniedPatterns.some(pattern => message.includes(pattern))
 }
 
+function isDataUnavailableError(message?: string) {
+  if (!message) return false
+  const text = message.toLowerCase()
+  return dataUnavailablePatterns.some(pattern => text.includes(pattern.toLowerCase()))
+}
+
 const errorMessage = computed(() => {
-  const obj: { message?: string; showMore: boolean; traceback: string; type?: string } = {
+  const obj: { message?: string; showMore: boolean; traceback: string; type?: string; errorType?: string } = {
     message: props.error,
     showMore: false,
     traceback: '',
     type: undefined,
+    errorType: undefined,
   }
   if (showBlock.value && props.error?.trim().startsWith('{') && props.error?.trim().endsWith('}')) {
     try {
@@ -48,6 +80,7 @@ const errorMessage = computed(() => {
       obj.message = json['message']
       obj.traceback = json['traceback']
       obj.type = json['type']
+      obj.errorType = json['error_type'] || json['errorType']
       if (obj.traceback?.trim().length > 0) {
         obj.showMore = true
       }
@@ -55,11 +88,26 @@ const errorMessage = computed(() => {
       console.error(e)
     }
   }
-  if (isPermissionDeniedError(`${obj.message ?? ''}\n${obj.traceback ?? ''}`)) {
+  if (obj.errorType === 'permission_denied' || obj.type === 'permission_denied') {
     obj.message = t('chat.permission_denied_tip')
     obj.showMore = false
     obj.traceback = ''
     obj.type = permissionDeniedType
+  } else if (obj.errorType === 'data_unavailable' || obj.type === 'data_unavailable') {
+    obj.message = obj.message || dataUnavailableFallback
+    obj.showMore = false
+    obj.traceback = ''
+    obj.type = dataUnavailableType
+  } else if (isPermissionDeniedError(`${obj.message ?? ''}\n${obj.traceback ?? ''}`)) {
+    obj.message = t('chat.permission_denied_tip')
+    obj.showMore = false
+    obj.traceback = ''
+    obj.type = permissionDeniedType
+  } else if (isDataUnavailableError(obj.message)) {
+    obj.message = obj.message || dataUnavailableFallback
+    obj.showMore = false
+    obj.traceback = ''
+    obj.type = dataUnavailableType
   }
   return obj
 })
@@ -86,6 +134,9 @@ function showTraceBack() {
         {{ t('chat.exec-sql-err') }}
       </template>
       <template v-else-if="errorMessage.type === permissionDeniedType">
+        {{ errorMessage.message }}
+      </template>
+      <template v-else-if="errorMessage.type === dataUnavailableType">
         {{ errorMessage.message }}
       </template>
       <template v-else>

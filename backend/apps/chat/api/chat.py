@@ -46,6 +46,28 @@ router = APIRouter(
 )
 
 
+def _chat_task_terminal_event(status: str | None, error: str | None = None) -> str | None:
+    if status == "failed":
+        message = error or "Smart Q&A task failed without an error message."
+        return "data:" + orjson.dumps({"content": message, "type": "error"}).decode() + "\n\n"
+    if status == "succeeded":
+        return "data:" + orjson.dumps({"type": "finish"}).decode() + "\n\n"
+    return None
+
+
+def _chat_task_page_has_terminal_event(events: list[str]) -> bool:
+    for event in events:
+        try:
+            payloads = [line[5:].strip() for line in str(event).splitlines() if line.startswith("data:")]
+            for payload in payloads:
+                data = orjson.loads(payload)
+                if data.get("type") in {"finish", "error"}:
+                    return True
+        except Exception:
+            continue
+    return False
+
+
 def _current_tenant_id(current_user: CurrentUser) -> int:
     """
     是什么：_current_tenant_id 是从当前用户里取租户 ID 的小工具。
@@ -730,9 +752,24 @@ async def get_question_task_events(current_user: CurrentUser,
         offset=offset,
         limit=limit,
     )
+    task_status = task.get("status")
+    events = list(event_page.get("events") or [])
+    event_stream_total = int(event_page.get("total") or 0)
+    page_end_offset = int(event_page.get("next_offset") or offset)
+    is_event_stream_tail = page_end_offset >= event_stream_total
+    if (
+        task_status in {"succeeded", "failed"}
+        and is_event_stream_tail
+        and not _chat_task_page_has_terminal_event(events)
+    ):
+        terminal_event = _chat_task_terminal_event(task_status, task.get("error"))
+        if terminal_event:
+            events.append(terminal_event)
+            event_page["events"] = events
+            event_page["next_offset"] = int(event_page.get("next_offset") or offset) + 1
     return {
         "task_id": task_id,
-        "status": task.get("status"),
+        "status": task_status,
         "error": task.get("error"),
         "result": task.get("result"),
         **event_page,

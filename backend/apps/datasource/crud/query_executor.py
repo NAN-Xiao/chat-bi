@@ -3,6 +3,7 @@
 """
 from dataclasses import dataclass
 import inspect
+import re
 import time
 from typing import Any
 
@@ -27,11 +28,76 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_sql_read, _unsafe_exec_sql_after_validation
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentUser, SessionDep
+from common.error import DataUnavailableError
+from common.user_facing_errors import (
+    DATA_UNAVAILABLE_ERROR_TYPE,
+    data_unavailable_data_result,
+    failed_data_result,
+)
 from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil
 
 
 USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
+
+
+def looks_like_data_unavailable_error(message: str) -> bool:
+    """
+    是什么：判断 SQL 执行错误是否是缺表、缺字段或数据结构不可用。
+    谁调用：查询执行器和 Smart Q&A 错误处理。
+    做了什么：把底层数据库错误归类为用户可理解的数据不可用反馈。
+    """
+    text = str(message or "")
+    lowered = text.lower()
+    patterns = [
+        r"\bundefinedtable\b",
+        r"\bundefinedcolumn\b",
+        r"\bno such table\b",
+        r"\bno such column\b",
+        r"\bunknown column\b",
+        r"\binvalid column name\b",
+        r"\binvalid object name\b",
+        r"\brelation\s+.+\s+does not exist\b",
+        r"\bcolumn\s+.+\s+does not exist\b",
+        r"\btable\s+.+\s+does not exist\b",
+        r"\bdoesn't exist\b",
+        r"表[“\"]?[^”\"\s]+[”\"]?不存在",
+        r"列[“\"]?[^”\"\s]+[”\"]?不存在",
+        r"字段[“\"]?[^”\"\s]+[”\"]?不存在",
+        r"无效的列名",
+        r"对象名.+无效",
+    ]
+    return any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in patterns)
+
+
+def user_data_unavailable_message(message: str) -> str:
+    """
+    是什么：把数据库缺表/缺字段错误转成面向用户的业务提示。
+    谁调用：执行 SQL 时捕获结构缺失错误。
+    做了什么：避免把 traceback 暴露给用户。
+    """
+    text = str(message or "")
+    identifiers = []
+    for pattern in [
+        r'relation\s+"([^"]+)"\."([^"]+)"\s+does not exist',
+        r'relation\s+"([^"]+)"\s+does not exist',
+        r'column\s+"([^"]+)"\s+does not exist',
+        r'table\s+"([^"]+)"\s+does not exist',
+        r'表[“"]?([^”"\s]+)[”"]?不存在',
+        r'列[“"]?([^”"\s]+)[”"]?不存在',
+        r'字段[“"]?([^”"\s]+)[”"]?不存在',
+    ]:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            identifiers.append(".".join(part for part in match.groups() if part))
+            break
+
+    suffix = f"：{identifiers[0]}" if identifiers else ""
+    return (
+        f"当前数据源缺少本次问题所需的表、字段或埋点数据{suffix}。"
+        "我不能编造不存在的数据；如果问题里还有当前数据源能支持的部分，我会只生成可支持的结果。"
+        "请换一个当前数据源已包含的指标，或让管理员补充对应表/字段/埋点配置后再试。"
+    )
 
 
 @dataclass
@@ -53,16 +119,14 @@ def _failed_query_result(message: str, error_type: str | None = None) -> dict[st
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    result: dict[str, Any] = {
+    if error_type:
+        return failed_data_result(error_type=error_type, message=message)
+    return {
         "status": "failed",
         "fields": [],
         "data": [],
         "message": message,
     }
-    if error_type:
-        result["error_type"] = error_type
-        result["reason"] = message
-    return result
 
 
 def safe_query_error_message(current_user: CurrentUser, message: str) -> str:
@@ -141,23 +205,28 @@ def _execute_after_validation(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：调用底层 SQL 执行器，并在执行器支持时传递查询超时时间。
     """
-    if query_timeout and query_timeout > 0:
-        try:
-            signature = inspect.signature(_unsafe_exec_sql_after_validation)
-            params = signature.parameters
-            accepts_timeout = "query_timeout" in params or any(
-                param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
-            )
-        except (TypeError, ValueError):
-            accepts_timeout = True
-        if accepts_timeout:
-            return _unsafe_exec_sql_after_validation(
-                ds=ds,
-                sql=sql,
-                origin_column=origin_column,
-                query_timeout=query_timeout,
-            )
-    return _unsafe_exec_sql_after_validation(ds=ds, sql=sql, origin_column=origin_column)
+    try:
+        if query_timeout and query_timeout > 0:
+            try:
+                signature = inspect.signature(_unsafe_exec_sql_after_validation)
+                params = signature.parameters
+                accepts_timeout = "query_timeout" in params or any(
+                    param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
+                )
+            except (TypeError, ValueError):
+                accepts_timeout = True
+            if accepts_timeout:
+                return _unsafe_exec_sql_after_validation(
+                    ds=ds,
+                    sql=sql,
+                    origin_column=origin_column,
+                    query_timeout=query_timeout,
+                )
+        return _unsafe_exec_sql_after_validation(ds=ds, sql=sql, origin_column=origin_column)
+    except Exception as exc:
+        if looks_like_data_unavailable_error(str(exc)):
+            raise DataUnavailableError(user_data_unavailable_message(str(exc))) from exc
+        raise
 
 
 def prepare_query_sql(
@@ -415,7 +484,14 @@ def execute_user_query(
                 "tables": sorted(query_result.tables),
             }
         return result
+    except DataUnavailableError as exc:
+        AppLogUtil.error(f"User query data unavailable: {exc}")
+        return data_unavailable_data_result(str(exc))
     except Exception as exc:
         AppLogUtil.error(f"User query execution failed: {exc}")
         message = safe_query_error_message(current_user, f"{exc}")
-        return _failed_query_result(message, safe_query_error_type(current_user, f"{exc}"))
+        error_type = safe_query_error_type(current_user, f"{exc}")
+        if error_type is None and looks_like_data_unavailable_error(str(exc)):
+            message = user_data_unavailable_message(str(exc))
+            error_type = DATA_UNAVAILABLE_ERROR_TYPE
+        return _failed_query_result(message, error_type)

@@ -50,6 +50,7 @@ from apps.datasource.crud.permission import get_row_permission_filters, has_data
 from apps.datasource.crud.query_executor import (
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
+    user_data_unavailable_message,
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
@@ -89,6 +90,7 @@ from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, AppDBError, ParseSQLResultError
+from common.user_facing_errors import agent_guidance_for_error_type
 from common.utils.locale import I18n, I18nHelper
 from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
 
@@ -112,6 +114,31 @@ class DataSkillSqlValidationError(SingleMessageError):
     类说明：DataSkillSqlValidationError 表示聊天问数据和 Agent过程里的特定错误，让上层能更准确地提示或处理。
     """
     pass
+
+
+def looks_like_data_skill_schema_unavailable_error(message: str) -> bool:
+    """
+    是什么：判断 Data Skill 校验失败是否源于当前 schema 缺表或缺字段。
+    谁调用：Smart Q&A 生成 SQL 阶段的错误展示。
+    做了什么：把这类业务不可用反馈从用户可见的系统错误中分离出来。
+    """
+    text = str(message or "")
+    lowered = text.lower()
+    patterns = [
+        "当前数据库 schema 中不存在",
+        "schema 中不存在",
+        "当前<m-schema>没有",
+        "m-schema 没有",
+        "缺少所需表",
+        "缺少所需字段",
+        "缺少对应表",
+        "缺少对应字段",
+        "table is not present in schema",
+        "field is not present in schema",
+        "missing required table",
+        "missing required field",
+    ]
+    return any(pattern in lowered for pattern in patterns)
 
 
 def _is_app_system_message(message: dict[str, Any]) -> bool:
@@ -378,6 +405,12 @@ def _parse_relaxed_sql_answer_data(text: str) -> dict[str, Any] | None:
     brief = _extract_relaxed_simple_json_string_field(text, "brief")
     if brief is not None:
         data["brief"] = brief
+    message = (
+        _extract_relaxed_simple_json_string_field(text, "message")
+        or _extract_relaxed_simple_json_string_field(text, "warning")
+    )
+    if message is not None:
+        data["message"] = message
     return data
 
 
@@ -2384,13 +2417,16 @@ def format_chart_data_for_agent_prompt(data: dict[str, Any]) -> str:
     做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     if isinstance(data, dict) and data.get("status") == "failed":
+        error_type = data.get("error_type")
         payload = {
             "status": data.get("status"),
-            "error_type": data.get("error_type"),
+            "error_type": error_type,
             "message": data.get("message"),
             "reason": data.get("reason") or data.get("message"),
             "warning": data.get("warning") or data.get("message"),
-            "agent_guidance": data.get("agent_guidance") or PERMISSION_DENIED_AGENT_GUIDANCE,
+            "agent_guidance": data.get("agent_guidance")
+            or agent_guidance_for_error_type(error_type)
+            or PERMISSION_DENIED_AGENT_GUIDANCE,
         }
         return orjson.dumps(payload).decode()
     return orjson.dumps(data.get("data") if isinstance(data, dict) else []).decode()

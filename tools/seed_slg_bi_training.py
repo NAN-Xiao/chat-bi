@@ -1,10 +1,10 @@
 """Seed 统一业务口径 Data Skills into the 星通数智系统库。
 
-- 不修改任何应用代码，只向系统库 custom_prompt 写入 DATA_SKILL 配置。
+- 向系统库 custom_prompt 写入 DATA_SKILL 配置，并补齐 SLG BI Mock 的 PostgreSQL schema 配置。
 - 幂等：重复运行不会产生重复记录，已存在记录会更新到最新口径。
 - 目标数据源固定为 core_datasource 中的 'SLG BI Mock'（按名称自动定位 id）。
 - Skill 中的示例 SQL 片段均为只读 SELECT，指标在查询时从明细表计算，符合仓库 AGENTS.md 约束。
-- Data Skills 写入 custom_prompt：6 个工作空间公开 Skill，4 个 xiaonan 私人 Skill。
+- Data Skills 写入 custom_prompt：7 个工作空间公开 Skill，4 个 xiaonan 私人 Skill。
 
 运行：
     backend/.venv/Scripts/python.exe tools/seed_slg_bi_training.py
@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import sys
 from pathlib import Path
 
@@ -261,6 +262,84 @@ LEFT JOIN cohort c ON c.cohort_date = d.cohort_date
 LEFT JOIN retained r ON r.cohort_date = d.cohort_date
 GROUP BY d.cohort_date, r.retained_users
 ORDER BY d.cohort_date;
+```
+""",
+    },
+    {
+        "slug": "workspace-active-paying-dau",
+        "visibility_scope": "ADMIN_PUBLIC",
+        "owner_account": "",
+        "name": "SLG Skill：DAU、PDAU 与付费活跃趋势",
+        "description": "用于 DAU、PDAU、付费 DAU、活跃用户和付费用户趋势；DAU 使用 fact_sessions，PDAU 使用 fact_payments 成功净收入订单去重玩家，默认按最近 30 个业务日期补齐连续日期。",
+        "prompt": """
+<!-- data-skill-source:slg-bi-mock:workspace:active-paying-dau -->
+<!-- data-skill-sql-validation:{
+  "match":["DAU","dau","PDAU","pdau","付费DAU","付费活跃","付费用户趋势","活跃趋势"],
+  "forbidden_sql_all_contains":[
+    ["fact_events", "COUNT(DISTINCT", "DAU"],
+    ["fact_events", "player_id", "pdau"]
+  ],
+  "message":"DAU/PDAU 趋势不能使用 fact_events 事件明细直接替代活跃或付费口径。请按本 Data Skill 使用 fact_sessions 计算 DAU，使用 fact_payments 的成功净收入订单计算 PDAU。"
+} -->
+# SLG Skill：DAU、PDAU 与付费活跃趋势
+
+适用问题：
+- “最近 30 天 DAU 和 PDAU 趋势”“DAU/PDAU 折线图”“付费 DAU 趋势”“活跃用户和付费用户趋势”。
+- 按渠道、区服、国家、平台拆解 DAU/PDAU 或付费活跃率。
+
+必须使用的明细表：
+- DAU/活跃用户使用 `fact_sessions`，按 `session_start::date` 或 `event_date` 统计 `count(distinct player_id)`。
+- PDAU 默认解释为 Paying Daily Active Users / 当日付费用户数，使用 `fact_payments`，过滤 `payment_status='success' AND net_revenue_usd > 0` 后按 `event_date` 统计 `count(distinct player_id)`。
+- 如果用户要求“付费活跃率”，分子使用 PDAU，分母使用同日 DAU。
+- 不要使用 `fact_events` 事件人数替代 DAU/PDAU；`fact_events` 只适合事件 PV/UV、埋点排查和特定事件触发人数。
+
+SQL 口径：
+- 未指定日期时，观察窗口锚定 `fact_sessions` 最大业务日期 `max(session_start::date)`，默认输出最近 30 天，即 `max_date - 29` 到 `max_date`。
+- 输出趋势必须用 `generate_series` 补齐连续日期；无活跃或无付费日期返回 0。
+- DAU、PDAU 是人数快照/去重人数，按周/月透视默认平均，不要跨日求和成人次，除非用户明确要求累计人次。
+- 若要按渠道拆解，DAU 可关联 `dim_player` 或使用 `fact_sessions.channel/bi_channel_name/bi_channel_group`；PDAU 可用 `fact_payments` 的同名渠道字段或关联 `dim_player`，但同一个查询内维度口径要一致。
+- 图表默认使用折线图：x 轴为日期，y 轴为 DAU 和 PDAU 两条指标线。
+
+推荐输出：
+- 趋势：`日期`, `DAU`, `PDAU`, `付费活跃率`。
+- 拆解：`日期`, `渠道`/`区服`/`国家`, `DAU`, `PDAU`, `付费活跃率`。
+
+最近 30 天 DAU/PDAU 趋势参考 SQL：
+```sql
+WITH obs AS (
+  SELECT max(session_start::date) AS max_date
+  FROM fact_sessions
+),
+days AS (
+  SELECT generate_series(obs.max_date - 29, obs.max_date, interval '1 day')::date AS event_date
+  FROM obs
+),
+dau AS (
+  SELECT s.session_start::date AS event_date,
+         count(DISTINCT s.player_id) AS dau
+  FROM fact_sessions s
+  CROSS JOIN obs
+  WHERE s.session_start::date BETWEEN obs.max_date - 29 AND obs.max_date
+  GROUP BY s.session_start::date
+),
+pdau AS (
+  SELECT p.event_date,
+         count(DISTINCT p.player_id) AS pdau
+  FROM fact_payments p
+  CROSS JOIN obs
+  WHERE p.event_date BETWEEN obs.max_date - 29 AND obs.max_date
+    AND p.payment_status = 'success'
+    AND p.net_revenue_usd > 0
+  GROUP BY p.event_date
+)
+SELECT d.event_date AS "日期",
+       coalesce(da.dau, 0) AS "DAU",
+       coalesce(pa.pdau, 0) AS "PDAU",
+       round(coalesce(pa.pdau, 0)::numeric / nullif(coalesce(da.dau, 0), 0) * 100, 2) AS "付费活跃率"
+FROM days d
+LEFT JOIN dau da ON da.event_date = d.event_date
+LEFT JOIN pdau pa ON pa.event_date = d.event_date
+ORDER BY d.event_date;
 ```
 """,
     },
@@ -1116,8 +1195,7 @@ def _save_embeddings(ids: list[int], tenant_id: int) -> int:
     if not ids:
         return 0
     export_postgres_compat_env(DB)
-    if str(BACKEND_DIR) not in sys.path:
-        sys.path.insert(0, str(BACKEND_DIR))
+    _ensure_backend_import_path()
 
     from sqlalchemy.orm import scoped_session, sessionmaker
 
@@ -1126,6 +1204,44 @@ def _save_embeddings(ids: list[int], tenant_id: int) -> int:
 
     session_maker = scoped_session(sessionmaker(bind=engine))
     return save_custom_prompt_skill_embedding(session_maker, ids, tenant_id=tenant_id)
+
+
+def _ensure_backend_import_path() -> None:
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
+
+
+def _ensure_slg_datasource_public_schema(cur, ds_id: int) -> bool:
+    """
+    Keep the demo datasource metadata aligned with its physical PostgreSQL schema.
+    """
+    _ensure_backend_import_path()
+    export_postgres_compat_env(DB)
+
+    from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
+
+    cur.execute(
+        "SELECT type, configuration FROM core_datasource WHERE id = %s",
+        (ds_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise SystemExit(f"未找到数据源 id={ds_id}。")
+
+    ds_type, encrypted_config = row
+    if str(ds_type or "").casefold() not in {"pg", "postgres", "postgresql"}:
+        return False
+
+    config = json.loads(aes_decrypt(encrypted_config))
+    if str(config.get("dbSchema") or "").strip():
+        return False
+
+    config["dbSchema"] = "public"
+    cur.execute(
+        "UPDATE core_datasource SET configuration = %s WHERE id = %s",
+        (encrypt_datasource_configuration(json.dumps(config, ensure_ascii=False)), ds_id),
+    )
+    return True
 
 
 def main() -> None:
@@ -1142,6 +1258,7 @@ def main() -> None:
         ds_id = row[0]
         tenant_id = row[1]
         print(f"目标数据源: id={ds_id} tenant_id={tenant_id} name={DATASOURCE_NAME!r}")
+        schema_updated = _ensure_slg_datasource_public_schema(cur, ds_id)
 
         xiaonan_user_id = _find_user_id(cur, XIAONAN_ACCOUNT, tenant_id)
         skill_added = skill_updated = 0
@@ -1166,6 +1283,7 @@ def main() -> None:
 
         conn.commit()
         saved = _save_embeddings(skill_ids, tenant_id)
+        print(f"数据源 schema 配置: {'已补齐 public' if schema_updated else '无需更新'}")
         print(f"数据 Skills: 新增 {skill_added} 条，更新 {skill_updated} 条")
         print(f"Embedding refreshed: {saved}")
         print(f"xiaonan 用户: id={xiaonan_user_id}")

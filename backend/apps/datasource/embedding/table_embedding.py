@@ -61,6 +61,9 @@ def calc_table_embedding(tables: list[dict], question: str):
              "cosine_similarity": 0.0, "table_name": table.get('table_name')})
 
     if _list:
+        if any(not item.get('embedding') for item in _list):
+            AppLogUtil.info("table embedding missing, return all visible tables")
+            return _list
         try:
             # text = [s.get('schema_table') for s in _list]
             #
