@@ -75,7 +75,7 @@ EXPEDITION_EVENTS = [
 ]
 
 BUILDING_EVENTS = ["BuildingUpgrade", "BuildingIdleUpgrade"]
-TECH_EVENTS = ["BuildingIdleUpgrade", "HeroSkillUpgrade", "RadarUpgrade", "AllianceTechnologyDonation"]
+TECH_EVENTS = ["TechnologyDonation"]
 HERO_EVENTS = ["HeroAcquisition", "HeroLevelUp", "HeroStarUp", "HeroSkillUpgrade", "HeroRecruit"]
 ARMY_EVENTS = ["ArmyUpgrade"]
 GOLD_EVENTS = ["GoldChange"]
@@ -102,9 +102,9 @@ TRACKING_CONFIG = {
         {"metric": "activity_participation", "events": ACTIVITY_EVENTS, "description": "活动参与率、人均参与次数、活动参与频次和活动后续质量使用的活动事件集合"},
         {"metric": "expedition_drill", "events": EXPEDITION_EVENTS, "description": "出征、竞技场、荣耀远征、世界 Boss、联盟 Boss 和演习类看板使用的事件集合"},
         {"metric": "army_upgrade", "events": ARMY_EVENTS, "description": "兵种升级、兵种招募和兵种相关主城成长指标使用的事件"},
-        {"metric": "gold_economy", "events": GOLD_EVENTS, "description": "钻石获取、消耗和存量变化使用 GoldChange，并读取 ext.ed_changeFree/ed_changePaid"},
+        {"metric": "gold_economy", "events": GOLD_EVENTS, "description": "钻石获取、消耗和存量变化使用 GoldChange，并读取 personal.ed_changeFree/personal.ed_changePaid"},
         {"metric": "city_building_upgrade", "events": BUILDING_EVENTS, "description": "主城/建筑升级类指标使用的建筑升级事件集合"},
-        {"metric": "technology_upgrade", "events": TECH_EVENTS, "description": "科技升级类指标使用的事件集合"},
+        {"metric": "technology_upgrade", "events": TECH_EVENTS, "description": "科技升级类指标只使用个人科技升级事件 TechnologyDonation"},
         {"metric": "hero_growth", "events": HERO_EVENTS, "description": "英雄获取、升级、升星、技能升级和招募相关养成指标使用的事件集合"},
     ],
     "sql_rules": "\n".join(
@@ -119,7 +119,7 @@ TRACKING_CONFIG = {
             "留存标记 remain1/remain3/remain7 必须在注册后精确第 1/3/7 日快照读取；未成熟 cohort 不按 0 处理。",
             "付费用户周累充分布必须先按自然周取每个 uid 的最新 user 快照，再按 pay.paytotal 分段，避免多日快照重复计数。",
             "活动参与率分母是同日 UserActive DAU，分子是活动事件 uid 去重；活动后续留存/付费必须先固定参与 cohort。",
-            "钻石经济使用 GoldChange，变化量为 ext.ed_changeFree + ext.ed_changePaid；正数计获取，负数绝对值计消耗。",
+            "钻石经济使用 GoldChange，变化字段在 personal.ed_changeFree 与 personal.ed_changePaid；正数计获取，负数绝对值计消耗。",
             "出征和演习胜率分母是出征/竞技事件行，胜利结果读取 ext.battleResult 或 ext.expeditionDungeonResult。",
             "当前主城等级和主城升级漏斗使用 user 最新快照 lastinfo.blevel；不要用历史升级事件次数替代当前玩家数。",
             "英雄当前等级分布需要先按 uid 与英雄 ID 取最近一条养成事件，再统计人数；不要把升级事件次数当等级分布。",
@@ -254,7 +254,7 @@ FIELDS = [
             "battleResult",
             "expeditionDungeonResult",
         ],
-        "ai_notes": "礼包购买结构优先用 payId，其次 rechargeId/productId/goodsId；实时在线人数使用 CCU.ext.ed_ccu；钻石经济、出征、主城、英雄和兵种指标都需要先按对应 event 过滤后再解析 ext 子路径。",
+        "ai_notes": "礼包购买结构优先用 payId，其次 rechargeId/productId/goodsId；实时在线人数使用 CCU.ext.ed_ccu；钻石经济、出征、主城、英雄和兵种指标都需要先按对应 event 过滤后再解析对应 JSON 子路径，GoldChange 钻石字段在 personal。",
     },
     {
         "table_name": "event",
@@ -269,34 +269,34 @@ FIELDS = [
     },
     {
         "table_name": "event",
-        "field_name": "ext.ed_changeFree",
-        "field_comment": "GoldChange 事件中的免费钻石变化量；需与 ed_changePaid 相加后判断获取或消耗。",
+        "field_name": "personal.ed_changeFree",
+        "field_comment": "GoldChange 事件中的免费钻石变化量；正数计免费钻石获取，负数取绝对值计免费钻石消耗。",
         "field_role": "json_path_metric",
         "semantic_type": "number",
         "aliases": ["免费钻石变化", "免费钻石增减"],
-        "expression": "JSON_UNQUOTE(JSON_EXTRACT(ext, '$.ed_changeFree'))",
+        "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_changeFree'))",
         "example_values": ["100", "-50"],
-        "ai_notes": "钻石经济口径不能只使用该字段，必须和 ed_changePaid 合并。",
+        "ai_notes": "钻石消耗获取情况需要与付费钻石分列展示，不要从 ext.ed_changeFree 读取。",
     },
     {
         "table_name": "event",
-        "field_name": "ext.ed_changePaid",
-        "field_comment": "GoldChange 事件中的付费钻石变化量；需与 ed_changeFree 相加后判断获取或消耗。",
+        "field_name": "personal.ed_changePaid",
+        "field_comment": "GoldChange 事件中的付费钻石变化量；正数计付费钻石获取，负数取绝对值计付费钻石消耗。",
         "field_role": "json_path_metric",
         "semantic_type": "number",
         "aliases": ["付费钻石变化", "付费钻石增减"],
-        "expression": "JSON_UNQUOTE(JSON_EXTRACT(ext, '$.ed_changePaid'))",
+        "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_changePaid'))",
         "example_values": ["100", "-50"],
-        "ai_notes": "钻石经济口径不能只使用该字段，必须和 ed_changeFree 合并。",
+        "ai_notes": "钻石消耗获取情况需要与免费钻石分列展示，不要从 ext.ed_changePaid 读取。",
     },
     {
         "table_name": "event",
-        "field_name": "ext.ed_route",
+        "field_name": "personal.ed_route",
         "field_comment": "资源变化、加速或功能行为的入口/路径；钻石获取消耗途径优先使用该字段。",
         "field_role": "json_path_dimension",
         "semantic_type": "category",
         "aliases": ["路径", "来源途径", "消耗途径"],
-        "expression": "JSON_UNQUOTE(JSON_EXTRACT(ext, '$.ed_route'))",
+        "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_route'))",
         "example_values": ["shop", "task", "building"],
     },
     {
@@ -838,6 +838,19 @@ def upsert_fields(cur, now: int) -> None:
         )
 
 
+def delete_stale_fields(cur) -> int:
+    cur.execute(
+        """
+        DELETE FROM public.sys_tenant_tracking_field
+        WHERE tenant_id = %s
+          AND table_name = 'event'
+          AND field_name IN ('ext.ed_changeFree', 'ext.ed_changePaid', 'ext.ed_route')
+        """,
+        (TENANT_ID,),
+    )
+    return int(cur.rowcount or 0)
+
+
 def upsert_schema_comments(cur, now: int) -> tuple[int, int]:
     table_count = 0
     field_count = 0
@@ -906,6 +919,7 @@ def main() -> None:
             upsert_config(cur, now)
             upsert_tables(cur, now)
             upsert_fields(cur, now)
+            deleted_stale_fields = delete_stale_fields(cur)
             schema_tables, schema_fields = upsert_schema_comments(cur, now)
         conn.commit()
     print(
@@ -914,6 +928,7 @@ def main() -> None:
                 "tracking_config": 1,
                 "tables": len(TABLES),
                 "fields": len(FIELDS),
+                "deleted_stale_fields": deleted_stale_fields,
                 "schema_tables": schema_tables,
                 "schema_fields": schema_fields,
             },

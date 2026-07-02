@@ -543,18 +543,19 @@ LIMIT 24
     },
     {
         "name": "flam 活动参与与后续质量口径",
-        "description": "flam / first_zombie 活动参与率、人均参与、参与频次、活动后续留存和付费质量 SQL 生成规则。",
+        "description": "flam / first_zombie 活动参与率、人均参与、近7天各活动参与次数、活动后续留存和付费质量 SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:activity-quality -->
 # flam 活动参与与后续质量口径
 
 ## 适用范围
 - 仅适用于当前 flam 数据源 `first_zombie`，datasource_id=3。
-- 适用于活动分析看板中的活动参与率、人均参与次数、等级段参与、周参与频次、活动后续留存和活动后续付费。
+- 适用于活动分析看板中的活动参与率、人均参与次数、等级段参与、近7天各活动参与次数、活动后续留存和活动后续付费。
 
 ## SQL 口径
 - 活动参与人数使用活动事件集合中的 `uid` 去重；活动次数使用事件行数。
+- “每周活动参与次数分布”当前落地为近7天按活动类型统计参与次数、参与人数和人均参与次数；活动类型取 `event`，参与次数为事件行数，参与人数为 `uid` 去重。
 - 活动参与率的分母为同日 `UserActive` DAU。
-- 活动等级段优先读取事件参数 `ext.ed_mainBuildingLevel`。
+- “各等级段参与日常活动的人数分布”优先读取 `personal.ed_mainBuildingLevel`，每3个等级一个段，最大到31级；过滤等级为空或不在1-31之间的记录，不输出未知等级段。
 - 活动后续留存先固定用户首次参与活动日，再在精确 D1/D7 用户快照读取 `remain.remain1/remain7`，并排除 D7 未成熟参与日。
 - 活动后续付费先固定用户首次参与活动日，再读取参与日及成熟窗口内的付费字段；不要把所有历史付费用户混入活动参与 cohort。
 
@@ -580,13 +581,15 @@ LIMIT 24
 
 ## SQL 口径
 - 钻石经济使用 `event='GoldChange'`。
-- 单条变化量为 `ext.ed_changeFree + ext.ed_changePaid`。
-- 变化量大于 0 计入钻石获取，变化量小于 0 取绝对值计入钻石消耗，二者之和保留为钻石存量变化。
-- 路径/原因优先取 `ext.ed_route`，缺失时取 `ext.ed_detailReason`，仍缺失记为“未知”。
+- 钻石变化字段在 `personal` 中，免费钻石取 `personal.ed_changeFree`，付费钻石取 `personal.ed_changePaid`。
+- “钻石消耗获取情况”按免费钻石和付费钻石分别输出获取量、消耗量、存量变化；变化量大于 0 计入获取，变化量小于 0 取绝对值计入消耗，原始正负和保留为存量变化。
+- “免费钻石获取途径分布”只统计 `personal.ed_changeFree > 0` 的获取记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，仅输出获取途径和免费钻石获取量。
+- “钻石消耗途径分布”只统计 `personal.ed_changeFree < 0` 或 `personal.ed_changePaid < 0` 的消耗记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，分别输出免费钻石消耗量和付费钻石消耗量。
+- 获取/消耗途径优先取 `personal.ed_route`，缺失时取 `personal.ed_detailReason`，仍缺失记为“未知”。
 - 历史窗口优先使用 `CURDATE()` 派生最近 30 天 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
-- 不要只看免费钻石或只看付费钻石字段；必须把 `ed_changeFree` 与 `ed_changePaid` 合并计算。
+- 不要再从 `ext.ed_changeFree/ext.ed_changePaid` 读取钻石变化；当前 `GoldChange` 样本中 `ext` 为空，字段在 `personal`。
 - 不要把负数消耗直接展示为负柱；看板消耗量应展示绝对值。
 
 ## 持久看板 SQL
@@ -606,15 +609,18 @@ LIMIT 24
 - 适用于礼包付费概览中的新手礼包复购率、月卡购买用户 30 日留存。
 
 ## SQL 口径
-- 购买行为使用付费事件集合，不使用 `user.pay.paytotal` 直接拆商品。
-- 商品/礼包标识优先从 `ext.payId` 取，其次 `ext.rechargeId`、`ext.productId`、`ext.goodsId`。
-- 新手礼包识别使用商品标识中的 `new`、`starter`、`新手`、`首充` 等关键词；首购日为该类商品的最早付费事件日期。
-- 新手礼包复购率以购买新手礼包用户为 cohort，统计首购后当周、第 1 周、第 2 周是否再次触发付费事件。
-- 月卡识别使用商品标识中的 `month` 或 `月卡`，月卡留存以购买用户为 cohort，在购买后第 1/7/14/30 日登录事件中按 `uid` 去重。
+- 购买行为不使用 `user.pay.paytotal` 直接拆商品。
+- “购买新手礼包用户复购率”当前落地仅使用 `event='ServerPayLog'`，商品 ID 读取 `personal.productid`，订单号读取 `personal.orderId`。
+- 新手礼包当前识别为 `personal.productid = '85003'`；首购日为用户首次购买该商品的日期。
+- 新手礼包复购率以购买新手礼包用户为 cohort，统计首购后 7 日内是否再次触发 `ServerPayLog`；近 7 天未成熟首购 cohort 需要排除，避免复购率偏低。
+- “购买月卡用户的30日留存”当前落地仅使用 `event='ServerPayLog'`，月卡商品暂定为 `personal.productid = '190002'`。
+- 月卡留存以 30-60 天前购买月卡的成熟用户为 cohort，使用 `UserActive` 判断购买后第 1/3/7/15/30 日活跃，输出次留、3留、7留、15留、30留。
 
 ## 禁止事项
 - 不要把所有付费用户当新手礼包或月卡 cohort。
 - 不要用累计付费快照推断具体商品复购。
+- 生成新手礼包复购 SQL 时不要从 `ext` 读取商品 ID；`ServerPayLog` 样本中商品字段在 `personal.productid`。
+- 生成月卡留存 SQL 时不要使用 `month`/`月卡` 文本匹配；当前 `ServerPayLog` 样本中商品字段是数字型 `personal.productid`。
 
 ## 持久看板 SQL
 以下 SQL 是本 Data Skill 对礼包复购和月卡留存组件的落地配置。
@@ -624,21 +630,22 @@ LIMIT 24
     },
     {
         "name": "flam 出征与演习口径",
-        "description": "flam / first_zombie 出征、竞技场、荣耀远征、兵种升级、将领出征和胜率 SQL 生成规则。",
+        "description": "flam / first_zombie 出征、竞技场、荣耀远征、过去7日出征维度、英雄出征量和胜率 SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:expedition-drill -->
 # flam 出征与演习口径
 
 ## 适用范围
 - 仅适用于当前 flam 数据源 `first_zombie`，datasource_id=3。
-- 适用于出征数据看板中的出征事件数、兵种升级、平均战力、荣耀远征、出征明细、将领出征、胜率和主城等级演习。
+- 适用于出征数据看板中的出征事件数、过去7日出征维度分析、平均战力、荣耀远征、出征明细、近七天英雄出征量、胜率和主城等级演习。
 
 ## SQL 口径
 - 出征/竞技/演习事件集合为 `WorldMarch`,`WorldMarchRet`,`ActivityWorldBoss`,`ActivityAllianceBossBattleRet`,`honorExpedition`,`ArenaResults`,`TrainingArenaResults`,`multipleArena`。
-- 兵种升级使用 `event='ArmyUpgrade'`，兵种优先取 `ext.ed_newArmyId`，其次 `ext.ed_oldArmyId`。
-- 将领 ID 优先取 `ext.ed_heroId`，其次取 `ext.captainId`。
+- “过去7日各兵种出征情况”当前落地为 `WorldMarch` 出征维度分析：出征类型取 `personal.ed_marchType`，目标类型取 `personal.ed_targetType`，大本等级取 `personal.ed_mainBuildingLevel`，出征 ID 取 `personal.ed_marchId`，预计耗时取 `personal.ed_estimatedSeconds`，出征战力取 `personal.ed_myTeamBattlePower`。
+- “近七天英雄出征量分布”使用 `WorldMarch` 的 `personal.ed_myTeamHeroList`，该字段是英雄对象 JSON 数组；需按数组下标展开并读取每个对象的 `heroId`，不要把整段 JSON 当英雄 ID，也不要按逗号拆字符串。
 - 主城等级优先取事件参数 `ext.ed_mainBuildingLevel`。
 - 平均战力优先取 `ext.combatPower`，缺失时取 `ext.captainPower`。
-- 胜率使用结果字段 `ext.battleResult` 或 `ext.expeditionDungeonResult`，值为 `win`、`success`、`1`、`胜利` 计为胜利。
+- “各等级出征胜率”使用 `WorldMarchRet` 结果事件，按 `personal.ed_mainBuildingLevel` 和 `personal.ed_targetType` 分组；胜利判断优先取 `personal.ed_result`，其次 `personal.ed_battleResult`，值为 `4`、`win`、`success`、`1`、`胜利` 计为胜利。
+- “各英雄出征胜率”使用 `WorldMarch` 的 `personal.ed_myTeamHeroList` 展开英雄阵容，再按 `uid + personal.ed_marchId` 回连 `WorldMarchRet` 结果事件；出征次数按 `uid + ed_marchId + hero_id` 去重统计，胜率分母为该英雄参与且有结果回包的出征次数，不输出出征用户数。
 - 出征分布、胜率、将领/主城等级拆分会解析 JSON 并做高基数分组，持久看板默认使用近 7 天窗口；指标卡只查昨天、前天、上周同日三个目标分区。
 
 ## 禁止事项
@@ -663,10 +670,11 @@ LIMIT 24
 
 ## SQL 口径
 - 英雄养成事件集合为 `HeroAcquisition`,`HeroLevelUp`,`HeroStarUp`,`HeroSkillUpgrade`,`HeroRecruit`。
-- 英雄 ID 优先取 `ext.ed_heroId`，其次 `ext.captainId`。
-- 英雄等级优先取 `ext.ed_currentLevel`，缺失时取 `ext.ed_heroLevel`。
-- 英雄星级优先取 `ext.ed_heroStar`，缺失时取 `ext.ed_newStar`。
-- 当前等级分布必须先按 `uid, hero_id` 取最近一条养成事件，再统计用户数；不要把历史升级事件行数当当前等级分布。
+- 养成看板当前落地 SQL 优先读取 `event.personal` 中的英雄字段；英雄 ID 使用 `personal.ed_heroId`。
+- 英雄等级优先取 `personal.ed_currentLevel`，缺失时取 `personal.ed_heroLevel`。
+- 英雄星级优先取 `personal.ed_heroStar`，缺失时取 `personal.ed_newStar`。
+- 当前等级分布必须先按 `uid, hero_id` 用 `ROW_NUMBER() OVER (PARTITION BY uid, hero_id ORDER BY dt DESC, time DESC)` 取最近一条养成事件，再统计用户数；不要把历史升级事件行数当当前等级分布。
+- 英雄养成情况只统计 `HeroLevelUp` 和 `HeroStarUp` 两类看板行为，且仅保留 `personal.ed_heroId` 非空的事件。
 
 ## 禁止事项
 - 不要用事件次数代替当前持有/当前等级分布人数。
@@ -680,19 +688,19 @@ LIMIT 24
     },
     {
         "name": "flam 主城建设与成长口径",
-        "description": "flam / first_zombie 主城等级、建筑/科技升级、兵种招募、加速和主城漏斗 SQL 生成规则。",
+        "description": "flam / first_zombie 主城等级、建筑/科技升级、英雄招募、加速和主城漏斗 SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:city-build-growth -->
 # flam 主城建设与成长口径
 
 ## 适用范围
 - 仅适用于当前 flam 数据源 `first_zombie`，datasource_id=3。
-- 适用于主城建设看板中的主城平均等级、主城/建筑/科技升级、等级分布、兵种招募、加速和主城升级漏斗。
+- 适用于主城建设看板中的主城平均等级、主城/建筑/科技升级、等级分布、招募情况、加速和主城升级漏斗。
 
 ## SQL 口径
 - 当前主城等级类指标使用 `user` 当前日前一完整分区的 `lastinfo.blevel`，按 `uid` 去重，并过滤 `prod = 110000038`。
 - 主城/建筑升级事件使用 `BuildingUpgrade`,`BuildingIdleUpgrade`；建筑 ID 优先取 `ext.ed_buildingId`，其次 `ext.ed_metaId`。
-- 科技升级类事件使用 `BuildingIdleUpgrade`,`HeroSkillUpgrade`,`RadarUpgrade`,`AllianceTechnologyDonation`。
-- 兵种招募/升级使用 `event='ArmyUpgrade'`，兵种优先取 `ext.ed_newArmyId`，其次 `ext.ed_oldArmyId`，数量取 `ext.ed_count`。
+- 科技升级类事件只使用 `TechnologyDonation`。
+- 招募情况使用 `event='HeroRecruit'`，招募池 ID 取 `personal.ed_cardType`，招募方式取 `personal.ed_recruitNumType`；`ONE` 映射为“单抽”，`TEN` 映射为“十连抽”，缺失或其它值归为“未知”。
 - 加速使用从 `BuildingUpgrade`,`BuildingIdleUpgrade`,`ArmyUpgrade` 中识别，类型优先取 `ext.ed_detailReason`，其次 `ext.ed_route`。
 - 主城升级漏斗使用最新快照主城等级阈值，而不是历史升级事件次数。
 
