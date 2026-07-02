@@ -926,6 +926,109 @@ def _clone_canvas_component_tree(items: list, id_map: dict[str, str]) -> None:
             _clone_canvas_component_tree(nested_components, id_map)
 
 
+def _collect_canvas_view_component_ids(items: list) -> list[str]:
+    """
+    是什么：收集画布里真正用于渲染图表卡片的 SQView 组件 id。
+    """
+    result: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        if item.get("component") == "SQView" and item_id not in (None, ""):
+            result.append(str(item_id))
+
+        prop_value = item.get("propValue")
+        if isinstance(prop_value, list):
+            for tab in prop_value:
+                if isinstance(tab, dict) and isinstance(tab.get("componentData"), list):
+                    result.extend(_collect_canvas_view_component_ids(tab["componentData"]))
+
+        nested_components = item.get("componentData")
+        if isinstance(nested_components, list):
+            result.extend(_collect_canvas_view_component_ids(nested_components))
+    return result
+
+
+def _canvas_view_candidate_ids(view_id: Any, view_info: Any, id_map: dict[str, str] | None = None) -> list[str]:
+    candidates: list[str] = []
+    id_map = id_map or {}
+
+    def add(value: Any) -> None:
+        if value in (None, ""):
+            return
+        text = str(value)
+        mapped = id_map.get(text)
+        if mapped and mapped not in candidates:
+            candidates.append(mapped)
+        if text not in candidates:
+            candidates.append(text)
+
+    add(view_id)
+    if isinstance(view_info, dict):
+        add(view_info.get("id"))
+        chart = view_info.get("chart")
+        if isinstance(chart, dict):
+            add(chart.get("id"))
+    return candidates
+
+
+def _align_canvas_view_info_to_component_ids(
+        component_ids: list[str],
+        canvas_view_obj: dict,
+        id_map: dict[str, str] | None = None,
+) -> dict:
+    """
+    是什么：让 canvas_view_info 的 key 和 SQView 组件 id 对齐。
+
+    为什么：历史看板里可能存在组件 id 与 view_info key 不一致的情况；预览组件渲染时
+    固定使用组件 id 查 canvasViewInfo，因此模板快照必须按组件 id 组织。
+    """
+    if not component_ids or not canvas_view_obj:
+        return canvas_view_obj
+
+    view_items = list(canvas_view_obj.items())
+    component_id_set = set(component_ids)
+    existing_candidates = {
+        candidate
+        for view_id, view_info in view_items
+        for candidate in _canvas_view_candidate_ids(view_id, view_info, id_map)
+    }
+    use_positional_alignment = (
+        len(component_ids) == len(view_items)
+        and component_id_set.isdisjoint(existing_candidates)
+    )
+
+    aligned: dict[str, Any] = {}
+    used_component_ids: set[str] = set()
+    for index, (view_id, view_info) in enumerate(view_items):
+        next_view_id: str | None = None
+        candidates = _canvas_view_candidate_ids(view_id, view_info, id_map)
+        for candidate in candidates:
+            if candidate in component_id_set and candidate not in used_component_ids:
+                next_view_id = candidate
+                break
+
+        if next_view_id is None and use_positional_alignment and index < len(component_ids):
+            next_view_id = component_ids[index]
+
+        if next_view_id is None:
+            next_view_id = candidates[0] if candidates else str(view_id)
+
+        if next_view_id in aligned and next_view_id not in component_id_set:
+            next_view_id = str(view_id)
+
+        if isinstance(view_info, dict):
+            view_info["id"] = next_view_id
+            chart = view_info.get("chart")
+            if isinstance(chart, dict):
+                chart["id"] = next_view_id
+        aligned[next_view_id] = view_info
+        if next_view_id in component_id_set:
+            used_component_ids.add(next_view_id)
+    return aligned
+
+
 def _clone_dashboard_canvas_payload(
         component_data: str | bytes | None,
         canvas_style_data: str | bytes | None,
@@ -941,6 +1044,7 @@ def _clone_dashboard_canvas_payload(
     id_map: dict[str, str] = {}
 
     _clone_canvas_component_tree(component_data_obj, id_map)
+    component_view_ids = _collect_canvas_view_component_ids(component_data_obj)
 
     cloned_canvas_view_obj: dict[str, Any] = {}
     for view_id, view_info in canvas_view_obj.items():
@@ -961,6 +1065,10 @@ def _clone_dashboard_canvas_payload(
                 elif str(chart_id) in id_map:
                     chart["id"] = id_map[str(chart_id)]
         cloned_canvas_view_obj[next_view_id] = view_info
+    cloned_canvas_view_obj = _align_canvas_view_info_to_component_ids(
+        component_view_ids,
+        cloned_canvas_view_obj,
+    )
 
     return (
         orjson.dumps(component_data_obj).decode(),
@@ -3460,6 +3568,11 @@ def _dashboard_payload(
     result_dict['is_default'] = bool(record.is_default)
 
     canvas_view_obj = _parse_canvas_view_info(result_dict.get('canvas_view_info'))
+    if platform_template_context:
+        canvas_view_obj = _align_canvas_view_info_to_component_ids(
+            _collect_canvas_view_component_ids(_parse_canvas_component_data(result_dict.get('component_data'))),
+            canvas_view_obj,
+        )
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue

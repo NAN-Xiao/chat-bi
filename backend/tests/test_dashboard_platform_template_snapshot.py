@@ -82,6 +82,68 @@ def test_materialize_platform_template_canvas_view_info_stores_query_snapshot(
     assert view["data"]["snapshotRefreshedAt"] == 1782864000000
 
 
+def test_clone_dashboard_canvas_payload_aligns_view_info_to_sqview_component_ids() -> None:
+    """
+    是什么：源看板组件 id 与 canvas_view_info key 不一致时，模板快照仍应按组件 id 组织。
+    """
+    component_data = json.dumps(
+        [
+            {"id": "component-1", "component": "SQView", "_dragId": "component-1"},
+            {"id": "component-2", "component": "SQView", "_dragId": "component-2"},
+        ]
+    )
+    canvas_view_info = json.dumps(
+        {
+            "view-a": {
+                "id": "view-a",
+                "chart": {"id": "view-a", "title": "DAU"},
+                "data": {"data": [{"day": "2026-06-30", "dau": 100}], "fields": ["day", "dau"]},
+            },
+            "view-b": {
+                "id": "view-b",
+                "chart": {"id": "view-b", "title": "WAU"},
+                "data": {"data": [{"week": "2026-W26", "wau": 200}], "fields": ["week", "wau"]},
+            },
+        }
+    )
+
+    cloned_component_data, _, cloned_canvas_view_info = dashboard_service._clone_dashboard_canvas_payload(
+        component_data,
+        "{}",
+        canvas_view_info,
+    )
+
+    cloned_components = json.loads(cloned_component_data)
+    cloned_views = json.loads(cloned_canvas_view_info)
+    cloned_component_ids = [item["id"] for item in cloned_components]
+
+    assert list(cloned_views.keys()) == cloned_component_ids
+    assert cloned_views[cloned_component_ids[0]]["chart"]["title"] == "DAU"
+    assert cloned_views[cloned_component_ids[0]]["id"] == cloned_component_ids[0]
+    assert cloned_views[cloned_component_ids[0]]["chart"]["id"] == cloned_component_ids[0]
+    assert cloned_views[cloned_component_ids[1]]["chart"]["title"] == "WAU"
+
+
+def test_align_canvas_view_info_to_component_ids_repairs_existing_template_payload() -> None:
+    """
+    是什么：已有模板快照错位时，加载响应可以不跑 SQL，直接把快照按组件 id 对齐。
+    """
+    views = {
+        "view-a": {"id": "view-a", "chart": {"id": "view-a", "title": "DAU"}},
+        "view-b": {"id": "view-b", "chart": {"id": "view-b", "title": "WAU"}},
+    }
+
+    aligned = dashboard_service._align_canvas_view_info_to_component_ids(
+        ["component-1", "component-2"],
+        views,
+    )
+
+    assert list(aligned.keys()) == ["component-1", "component-2"]
+    assert aligned["component-1"]["chart"]["title"] == "DAU"
+    assert aligned["component-1"]["chart"]["id"] == "component-1"
+    assert aligned["component-2"]["chart"]["title"] == "WAU"
+
+
 def test_platform_template_empty_sql_chart_needs_repair() -> None:
     """
     是什么：旧模板里有 SQL 但没有 rows 和 fields 时，应判定为缺少快照并触发修复。
