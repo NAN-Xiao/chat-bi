@@ -82,23 +82,32 @@ export const initCanvasData = (params: any, callBack: () => void) => {
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export const findNextComponentIndex = async (params: any, callBack: Function) => {
-  load_resource_prepare(params, function (result: any) {
-    let bottomPosition = 0
-    const { dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview } = result
-    canvasDataResult.forEach((component: any) => {
-      const componentBottom = component.y + component.sizeY
-      if (componentBottom > bottomPosition) {
-        bottomPosition = componentBottom
+  const { onError, ...requestParams } = params || {}
+  load_resource_prepare(
+    requestParams,
+    function (result: any) {
+      const { dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview } = result || {}
+      if (!dashboardInfo?.id || !Array.isArray(canvasDataResult)) {
+        onError?.(result)
+        return
       }
-    })
-    callBack({
-      bottomPosition,
-      dashboardInfo,
-      canvasDataResult,
-      canvasStyleResult,
-      canvasViewInfoPreview,
-    })
-  })
+      let bottomPosition = 0
+      canvasDataResult.forEach((component: any) => {
+        const componentBottom = component.y + component.sizeY
+        if (componentBottom > bottomPosition) {
+          bottomPosition = componentBottom
+        }
+      })
+      callBack({
+        bottomPosition,
+        dashboardInfo,
+        canvasDataResult,
+        canvasStyleResult,
+        canvasViewInfoPreview,
+      })
+    },
+    { includeData: false }
+  )
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
@@ -148,7 +157,7 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
       ? params.datasource
       : dashboardStore.dashboardInfo.datasource || datasourceContext.datasourceId,
   }
-  dashboardApi.check_name(requestBaseParams).then((resCheck: any) => {
+  return dashboardApi.check_name(requestBaseParams).then((resCheck: any) => {
     if (resCheck) {
       if (requestBaseParams.opt === 'newLeaf') {
         // create canvas
@@ -158,7 +167,7 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
           canvas_style_data: JSON.stringify(commonParams.canvasStyleData),
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),
         }
-        dashboardApi.create_canvas(requestParams).then((res: any) => {
+        return dashboardApi.create_canvas(requestParams).then((res: any) => {
           const previousSourceKey = dashboardStore.canvasEditingSourceKey
           dashboardStore.updateDashboardInfo({
             id: res.id,
@@ -178,11 +187,11 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
           callBack(res)
         })
       } else if (requestBaseParams.opt === 'newFolder') {
-        dashboardApi.create_resource(requestBaseParams).then((res: any) => {
+        return dashboardApi.create_resource(requestBaseParams).then((res: any) => {
           callBack(res)
         })
       } else if (requestBaseParams.opt === 'rename') {
-        dashboardApi.update_resource(requestBaseParams).then((res: any) => {
+        return dashboardApi.update_resource(requestBaseParams).then((res: any) => {
           callBack(res)
         })
       } else if (requestBaseParams.opt === 'updateLeaf') {
@@ -192,7 +201,7 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
           canvas_style_data: JSON.stringify(commonParams.canvasStyleData),
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),
         }
-        dashboardApi.update_canvas(requestParams).then((res: any) => {
+        return dashboardApi.update_canvas(requestParams).then((res: any) => {
           clearDashboardCanvasDraft(dashboardStore.canvasEditingSourceKey)
           dashboardStore.markCanvasSaved()
           callBack(res)

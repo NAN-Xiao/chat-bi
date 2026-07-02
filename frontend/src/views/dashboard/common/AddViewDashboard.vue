@@ -96,6 +96,7 @@ const saveResourcePrepare = () => {
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   resource.value?.validate((result) => {
     if (result) {
+      loading.value = true
       const component = cloneDeep(findNewComponentFromList('SQView'))
       const newComponentId = guid()
       // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -103,33 +104,42 @@ const saveResourcePrepare = () => {
       // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       state.viewInfo['id'] = newComponentId
       if (resourceForm.addType === 'history' && component) {
-        findNextComponentIndex({ id: resourceForm.dashboardId }, (result: any) => {
-          const {
-            bottomPosition,
-            dashboardInfo,
-            canvasDataResult,
-            canvasStyleResult,
-            canvasViewInfoPreview,
-          } = result
-          const params = {
-            opt: 'updateLeaf',
-            pid: 'root',
+        findNextComponentIndex(
+          {
             id: resourceForm.dashboardId,
-            name: dashboardInfo.name,
-            datasource: dashboardInfo.datasource || state.datasource || datasourceContext.datasourceId,
+            onError: () => {
+              loading.value = false
+              ElMessage.error('加载看板失败，请稍后重试')
+            },
+          },
+          (result: any) => {
+            const {
+              bottomPosition,
+              dashboardInfo,
+              canvasDataResult,
+              canvasStyleResult,
+              canvasViewInfoPreview,
+            } = result
+            const params = {
+              opt: 'updateLeaf',
+              pid: 'root',
+              id: resourceForm.dashboardId,
+              name: dashboardInfo.name,
+              datasource: dashboardInfo.datasource || state.datasource || datasourceContext.datasourceId,
+            }
+            component['id'] = newComponentId
+            applyRecommendedSingleChartFrame(component, state.viewInfo)
+            canvasDataResult.push(component)
+            canvasViewInfoPreview[newComponentId] = state.viewInfo
+            component['y'] = bottomPosition
+            const commonParams = {
+              componentData: canvasDataResult,
+              canvasStyleData: canvasStyleResult,
+              canvasViewInfo: canvasViewInfoPreview,
+            }
+            saveResource(params, commonParams)
           }
-          component['id'] = newComponentId
-          applyRecommendedSingleChartFrame(component, state.viewInfo)
-          canvasDataResult.push(component)
-          canvasViewInfoPreview[newComponentId] = state.viewInfo
-          component['y'] = bottomPosition
-          const commonParams = {
-            componentData: canvasDataResult,
-            canvasStyleData: canvasStyleResult,
-            canvasViewInfo: canvasViewInfoPreview,
-          }
-          saveResource(params, commonParams)
-        })
+        )
       } else if (resourceForm.addType === 'new' && component) {
         const params = {
           opt: 'newLeaf',
@@ -151,6 +161,8 @@ const saveResourcePrepare = () => {
           canvasViewInfo: canvasViewInfo,
         }
         saveResource(params, commonParams)
+      } else {
+        loading.value = false
       }
     }
   })
@@ -158,9 +170,13 @@ const saveResourcePrepare = () => {
 
 const saveResource = (params: any, commonParams: any) => {
   saveDashboardResourceTarget(params, commonParams, (res: any) => {
+    loading.value = false
     const messageTips = t('dashboard.add_success')
     openMessageLoading(messageTips, 'success', res?.id, callbackExportSuc)
     resetForm()
+  }).catch(() => {
+    loading.value = false
+    ElMessage.error('添加失败，请稍后重试')
   })
 }
 
