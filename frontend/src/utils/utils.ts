@@ -111,7 +111,7 @@ export const toLoginPage = (fullPath: string) => {
   }
   return {
     path: '/login',
-    query: { redirect: fullPath },
+    query: { view: 'account', redirect: fullPath },
   }
 }
 

@@ -30,6 +30,7 @@ Scope: entire repository.
 - Local startup logs to check first:
   `.codex-runtime/backend-8000.current.err.log`, `.codex-runtime/backend-8001.current.err.log`, `.codex-runtime/frontend-5173.current.out.log`,
   plus application logs under `logs/` and `backend/logs/`.
+- When asked to diagnose a remote Jenkins build failure, first inspect the Jenkins build logs on `10.1.5.28` instead of guessing from application symptoms. Use SSH with user `root` and password `ELEXtech%0609`; the `chat-ai` job build logs live under `/home/jenkins/jenkins-data/jobs/chat-ai/builds`. For a specific build number, read `/home/jenkins/jenkins-data/jobs/chat-ai/builds/<build-number>/log`, identify the first failing stage/command/error, and treat post-failure container or application log dumps as secondary evidence unless they are the first failing command.
 - For local backend startup on this machine, set these environment overrides before running `uvicorn` from the repo root so paths and ports match the workspace:
   `SHUZHI_DB_HOST=10.1.5.28`, `SHUZHI_DB_PORT=5432`, `SHUZHI_DB_DB=zhishu_bi`, `SHUZHI_DB_USER=root`, `SHUZHI_DB_PASSWORD=Password123@pg`,
   `POSTGRES_SERVER=10.1.5.28`, `POSTGRES_PORT=5432`, `POSTGRES_DB=zhishu_bi`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`,

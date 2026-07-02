@@ -14,7 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 COPY frontend /tmp/frontend
-RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
+RUN cd /tmp/frontend && npm ci && npm run build && mv dist ${UI_HOME}/dist
 
 
 FROM ${SHUZHI_BUILD_BASE_IMAGE} AS shuzhi-builder

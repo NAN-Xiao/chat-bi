@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlmodel import select
 
 from apps.system.crud.tenant import (
     auto_assign_tenants_by_email_domain,
@@ -14,18 +15,91 @@ from apps.system.crud.tenant import (
     resolve_current_tenant,
 )
 from apps.system.schemas.logout_schema import LogoutSchema
+from apps.system.schemas.auth import TrialApplicationCreate, TrialApplicationDTO
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.config import settings
 from common.core.deps import SessionDep, Trans
 from common.core.schemas import Token
-from common.core.security import create_access_token
+from common.core.security import create_access_token, hash_password
 from common.utils.crypto import shuzhi_decrypt
+from common.utils.time import get_timestamp
 
-from ..crud.user import authenticate
+from ..crud.user import authenticate, check_email_format, check_pwd_format
+from ..models.user import TrialApplicationModel, UserModel
 
 router = APIRouter(tags=["login"], prefix="/login")
+
+
+def _clean_trial_value(value: str | None) -> str:
+    """
+    是什么：_clean_trial_value 清理试用申请中的文本字段。
+    """
+    return (value or "").strip()
+
+
+def _trial_application_dto(application: TrialApplicationModel) -> TrialApplicationDTO:
+    """
+    是什么：_trial_application_dto 把试用申请数据库对象转成接口返回结构。
+    """
+    return TrialApplicationDTO.model_validate(application.model_dump(exclude={"password_hash"}))
+
+
+def _pending_trial_application_exists(session: SessionDep, account: str, email: str) -> bool:
+    """
+    是什么：_pending_trial_application_exists 检查账号或邮箱是否已有待审核申请。
+    """
+    statement = select(TrialApplicationModel.id).where(
+        TrialApplicationModel.status == "pending",
+        (TrialApplicationModel.account == account) | (TrialApplicationModel.email == email),
+    )
+    return session.exec(statement).first() is not None
+
+
+@router.post("/trial-application", response_model=TrialApplicationDTO)
+async def submit_trial_application(
+    session: SessionDep,
+    application: TrialApplicationCreate,
+) -> TrialApplicationDTO:
+    """
+    是什么：submit_trial_application 接收未登录访客提交的试用账号申请。
+    """
+    account = _clean_trial_value(application.account)
+    name = _clean_trial_value(application.name)
+    email = _clean_trial_value(application.email)
+    company = _clean_trial_value(application.company) or None
+    reason = _clean_trial_value(application.reason) or None
+    password = application.password or ""
+    if not account or not name:
+        raise HTTPException(status_code=400, detail="账号和姓名不能为空")
+    if not check_email_format(email):
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+    if not check_pwd_format(password):
+        raise HTTPException(status_code=400, detail="密码需为 8-20 位，包含大小写字母、数字和特殊字符")
+    if session.exec(select(UserModel.id).where(UserModel.account == account)).first():
+        raise HTTPException(status_code=400, detail="账号已存在，请直接登录或更换账号")
+    if session.exec(select(UserModel.id).where(UserModel.name == name)).first():
+        raise HTTPException(status_code=400, detail="姓名已存在，请更换姓名或联系管理员")
+    if session.exec(select(UserModel.id).where(UserModel.email == email)).first():
+        raise HTTPException(status_code=400, detail="邮箱已存在，请直接登录或更换邮箱")
+    if _pending_trial_application_exists(session, account, email):
+        raise HTTPException(status_code=400, detail="该账号或邮箱已有待审核申请，请等待管理员审核")
+    now = get_timestamp()
+    trial_application = TrialApplicationModel(
+        account=account,
+        name=name,
+        email=email,
+        password_hash=hash_password(password),
+        company=company,
+        reason=reason,
+        status="pending",
+        create_time=now,
+        update_time=now,
+    )
+    session.add(trial_application)
+    session.flush()
+    return _trial_application_dto(trial_application)
 
 
 def _requested_tenant_id(request: Request) -> int | None:

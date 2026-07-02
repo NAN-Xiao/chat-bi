@@ -828,7 +828,7 @@ onMounted(() => {
   }
 
   .status-pending {
-    color: #d46b08;
+    color: #f54a45;
 
     .status-icon {
       border: 1.5px solid currentColor;
@@ -925,7 +925,7 @@ onMounted(() => {
     color: #646a73;
 
     &.is-pending {
-      color: #d46b08;
+      color: #f54a45;
     }
   }
 

@@ -36,6 +36,12 @@
           </template>
           {{ $t('user.add_users') }}
         </el-button>
+        <el-button v-if="isPlatformAdmin" secondary @click="openTrialApplicationDialog">
+          试用申请
+          <span v-if="trialApplications.length" class="trial-application-count">
+            {{ trialApplications.length }}
+          </span>
+        </el-button>
       </div>
     </div>
     <div
@@ -682,6 +688,72 @@
       </div>
     </template>
   </el-dialog>
+  <el-dialog
+    v-model="trialApplicationDialogVisible"
+    title="试用申请审核"
+    width="980px"
+    destroy-on-close
+  >
+    <el-table
+      v-loading="trialApplicationLoading"
+      :data="trialApplications"
+      class="trial-application-table"
+      max-height="520"
+      style="width: 100%"
+    >
+      <el-table-column prop="account" label="账号" min-width="130" show-overflow-tooltip />
+      <el-table-column prop="name" label="姓名" min-width="110" show-overflow-tooltip />
+      <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
+      <el-table-column prop="company" label="公司/团队" min-width="150" show-overflow-tooltip>
+        <template #default="scope">
+          <span>{{ scope.row.company || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="reason" label="试用说明" min-width="220" show-overflow-tooltip>
+        <template #default="scope">
+          <span>{{ scope.row.reason || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="create_time" label="申请时间" width="180">
+        <template #default="scope">
+          <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column fixed="right" label="操作" width="150">
+        <template #default="scope">
+          <div class="trial-application-actions">
+            <el-button
+              link
+              type="primary"
+              :loading="trialReviewingId === `${scope.row.id}:approve`"
+              @click="reviewTrialApplication(scope.row, true)"
+            >
+              通过
+            </el-button>
+            <el-button
+              link
+              type="danger"
+              :loading="trialReviewingId === `${scope.row.id}:reject`"
+              @click="reviewTrialApplication(scope.row, false)"
+            >
+              拒绝
+            </el-button>
+          </div>
+        </template>
+      </el-table-column>
+      <template #empty>
+        <EmptyBackground description="暂无待审核试用申请" img-type="tree" />
+      </template>
+    </el-table>
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button secondary @click="trialApplicationDialogVisible = false">
+          {{ $t('common.cancel') }}
+        </el-button>
+        <el-button type="primary" @click="loadTrialApplications">刷新</el-button>
+      </div>
+    </template>
+  </el-dialog>
   <UserImport ref="userImportRef" @refresh-grid="search"></UserImport>
   <drawer-main
     ref="drawerMainRef"
@@ -715,7 +787,7 @@ import field_time from '@/assets/svg/field_time.svg'
 import field_value from '@/assets/svg/field_value.svg'
 import { variablesApi } from '@/api/variables'
 import { formatTimestamp } from '@/utils/date'
-import { ClickOutside as vClickOutside } from 'element-plus-secondary'
+import { ClickOutside as vClickOutside, ElMessageBox } from 'element-plus-secondary'
 import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
 import { useClipboard } from '@vueuse/core'
 import { useUserStore } from '@/stores/user'
@@ -735,6 +807,10 @@ const isIndeterminate = ref(true)
 const drawerMainRef = ref()
 const userImportRef = ref()
 const selectionLoading = ref(false)
+const trialApplicationDialogVisible = ref(false)
+const trialApplicationLoading = ref(false)
+const trialReviewingId = ref('')
+const trialApplications = ref<any[]>([])
 
 const iconMap = {
   text: field_text,
@@ -1240,6 +1316,57 @@ const handleEditPassword = (row: any) => {
   })
 }
 
+const loadTrialApplications = () => {
+  if (!isPlatformAdmin.value) return Promise.resolve([])
+  trialApplicationLoading.value = true
+  return userApi
+    .trialApplications('pending')
+    .then((res: any) => {
+      trialApplications.value = Array.isArray(res) ? res : []
+      return trialApplications.value
+    })
+    .finally(() => {
+      trialApplicationLoading.value = false
+    })
+}
+
+const openTrialApplicationDialog = () => {
+  trialApplicationDialogVisible.value = true
+  loadTrialApplications()
+}
+
+const submitTrialApplicationReview = (row: any, approved: boolean, reviewComment = '') => {
+  trialReviewingId.value = `${row.id}:${approved ? 'approve' : 'reject'}`
+  userApi
+    .reviewTrialApplication(row.id, {
+      approved,
+      review_comment: reviewComment,
+    })
+    .then(() => {
+      ElMessage.success(approved ? '试用账号已开通' : '试用申请已拒绝')
+      return Promise.all([loadTrialApplications(), search()])
+    })
+    .finally(() => {
+      trialReviewingId.value = ''
+    })
+}
+
+const reviewTrialApplication = (row: any, approved: boolean) => {
+  if (approved) {
+    submitTrialApplicationReview(row, true, '审核通过')
+    return
+  }
+  ElMessageBox.confirm(`确认拒绝 ${row.account} 的试用申请？`, {
+    confirmButtonType: 'danger',
+    confirmButtonText: '拒绝',
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  }).then(() => {
+    submitTrialApplicationReview(row, false, '管理员拒绝')
+  })
+}
+
 /* const handleUserImport = () => {
   userImportRef.value.showDialog()
 } */
@@ -1718,6 +1845,7 @@ const formatUserOrigin = (origin?: number) => {
 onMounted(() => {
   handleCurrentChange(1)
   loadDefaultPwd()
+  loadTrialApplications()
 })
 </script>
 
@@ -1776,6 +1904,29 @@ onMounted(() => {
   .search-bar {
     display: flex;
     align-items: center;
+  }
+
+  .trial-application-count {
+    min-width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    border-radius: 999px;
+    padding: 0 6px;
+    background: #f54a45;
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(245, 74, 69, 0.24);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .trial-application-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .shuzhi-table_user {

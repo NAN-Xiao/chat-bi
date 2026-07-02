@@ -9,6 +9,7 @@ learning-docs/
 *.lock
 *-lock.json
 !/backend/uv.lock
+!/frontend/package-lock.json
 components.d.ts
 
 # Byte-compiled / optimized / DLL files

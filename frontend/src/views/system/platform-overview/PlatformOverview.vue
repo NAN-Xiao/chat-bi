@@ -39,7 +39,7 @@
           </div>
         </div>
         <div class="risk-list">
-          <div v-for="item in riskItems" :key="item.key" class="risk-item">
+          <div v-for="item in riskItems" :key="item.key" :class="['risk-item', `is-${item.level}`]">
             <span :class="['risk-level', `is-${item.level}`]">{{ item.label }}</span>
             <span class="risk-text">{{ item.text }}</span>
             <strong>{{ item.value }}</strong>
@@ -690,13 +690,13 @@ onMounted(async () => {
     font-weight: 500;
 
     &.is-warning {
-      background: rgba(245, 108, 108, 0.12);
-      color: #f56c6c;
+      background: rgba(245, 74, 69, 0.12);
+      color: #f54a45;
     }
 
     &.is-attention {
-      background: rgba(245, 183, 79, 0.15);
-      color: #b97a00;
+      background: rgba(245, 74, 69, 0.12);
+      color: #f54a45;
     }
 
     &.is-healthy {
@@ -710,6 +710,18 @@ onMounted(async () => {
     color: var(--theme-text-primary);
     font-size: 13px;
     line-height: 20px;
+  }
+
+  .risk-item {
+    &.is-warning,
+    &.is-attention {
+      border-color: rgba(245, 74, 69, 0.18);
+      background: rgba(245, 74, 69, 0.04);
+
+      strong {
+        color: #f54a45;
+      }
+    }
   }
 
   .hero-chart,

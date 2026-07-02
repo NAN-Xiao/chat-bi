@@ -39,8 +39,13 @@ from apps.system.crud.user import (
 )
 from apps.system.crud.user_excel import batchUpload, download_error_file, downTemplate
 from apps.system.models.tenant import TenantModel, TenantUserModel
-from apps.system.models.user import UserModel, UserPlatformModel
-from apps.system.schemas.auth import CacheName, CacheNamespace
+from apps.system.models.user import TrialApplicationModel, UserModel, UserPlatformModel
+from apps.system.schemas.auth import (
+    CacheName,
+    CacheNamespace,
+    TrialApplicationDTO,
+    TrialApplicationReview,
+)
 from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.schemas.system_schema import (
     PwdEditor,
@@ -63,8 +68,16 @@ from common.core.security import (
     hash_password,
     verify_stored_password,
 )
+from common.utils.time import get_timestamp
 
 router = APIRouter(tags=["system_user"], prefix="/user")
+
+
+def _trial_application_dto(application: TrialApplicationModel) -> TrialApplicationDTO:
+    """
+    是什么：_trial_application_dto 把试用申请数据库对象转成接口返回结构。
+    """
+    return TrialApplicationDTO.model_validate(application.model_dump(exclude={"password_hash"}))
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
@@ -502,6 +515,75 @@ async def default_pwd() -> str:
     if settings.APP_ENV == "production":
         raise HTTPException(status_code=403, detail="Default password is not exposed in production")
     return settings.DEFAULT_PWD
+
+
+@router.get("/trial-applications", response_model=list[TrialApplicationDTO], include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['admin']))
+async def list_trial_applications(
+    session: SessionDep,
+    current_user: CurrentUser,
+    status: str | None = Query("pending"),
+) -> list[TrialApplicationDTO]:
+    """
+    是什么：list_trial_applications 返回平台管理员可审核的试用账号申请。
+    """
+    if not is_platform_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only platform admin can review trial applications")
+    statement = select(TrialApplicationModel).order_by(TrialApplicationModel.create_time.desc())
+    if status:
+        statement = statement.where(TrialApplicationModel.status == status)
+    return [_trial_application_dto(item) for item in session.exec(statement).all()]
+
+
+@router.post("/trial-applications/{application_id}/review", response_model=TrialApplicationDTO, include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['admin']))
+async def review_trial_application(
+    session: SessionDep,
+    current_user: CurrentUser,
+    trans: Trans,
+    application_id: int,
+    review: TrialApplicationReview,
+) -> TrialApplicationDTO:
+    """
+    是什么：review_trial_application 审核试用申请；通过后创建启用的本地账号。
+    """
+    if not is_platform_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only platform admin can review trial applications")
+    application = session.get(TrialApplicationModel, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="Trial application not found")
+    if application.status != "pending":
+        raise HTTPException(status_code=400, detail="Trial application has already been reviewed")
+    now = get_timestamp()
+    application.reviewer_user_id = int(current_user.id)
+    application.review_comment = review.review_comment
+    application.review_time = now
+    application.update_time = now
+    if not review.approved:
+        application.status = "rejected"
+        session.add(application)
+        return _trial_application_dto(application)
+
+    if _existing_user_by_account(session, application.account):
+        raise HTTPException(status_code=400, detail="Account already exists")
+    _require_unique_user_name(session, trans, application.name)
+    user_model = UserModel(
+        account=application.account,
+        name=application.name,
+        email=application.email,
+        password=application.password_hash,
+        status=1,
+        origin=0,
+        language="zh-CN",
+        system_role="viewer",
+    )
+    session.add(user_model)
+    session.flush()
+    ensure_user_sample_workspace_membership(session, user_model)
+    application.status = "approved"
+    application.approved_user_id = int(user_model.id)
+    session.add(application)
+    return _trial_application_dto(application)
 
 @router.get("/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserGrid], summary=f"{PLACEHOLDER_PREFIX}system_user_grid", description=f"{PLACEHOLDER_PREFIX}system_user_grid")
 @require_permissions(permission=AppPermission(role=['admin']))

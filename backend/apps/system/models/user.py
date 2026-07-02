@@ -3,7 +3,7 @@
 """
 from typing import List, Optional
 
-from sqlalchemy import Column, BigInteger, String
+from sqlalchemy import Column, BigInteger, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
 
@@ -53,3 +53,24 @@ class UserPlatformModel(SnowflakeBase, UserPlatformBase, table=True):
     类说明：UserPlatformModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
     """
     __tablename__ = "sys_user_platform"
+
+
+class TrialApplicationModel(SnowflakeBase, table=True):
+    """
+    类说明：TrialApplicationModel 记录未登录访客提交的试用账号申请。
+    """
+    __tablename__ = "sys_trial_application"
+
+    account: str = Field(max_length=100, nullable=False, index=True)
+    name: str = Field(max_length=100, nullable=False)
+    email: str = Field(max_length=100, nullable=False, index=True)
+    password_hash: str = Field(max_length=255, nullable=False)
+    company: Optional[str] = Field(default=None, max_length=255)
+    reason: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))
+    status: str = Field(default="pending", max_length=32, nullable=False, index=True)
+    reviewer_user_id: Optional[int] = Field(default=None, sa_type=BigInteger())
+    review_comment: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))
+    approved_user_id: Optional[int] = Field(default=None, sa_type=BigInteger())
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    review_time: Optional[int] = Field(default=None, sa_type=BigInteger())

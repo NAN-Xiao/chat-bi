@@ -59,7 +59,7 @@
             <div
               v-for="item in heroFocusItems"
               :key="item.key"
-              class="hero-focus-item"
+              :class="['hero-focus-item', `is-${item.level || 'normal'}`]"
             >
               <span :class="['todo-level', `is-${item.level || 'normal'}`]">
                 {{ todoLevelLabel(item.level) }}
@@ -174,7 +174,7 @@
           <div
             v-for="item in todoRows"
             :key="item.key"
-            class="todo-item"
+            :class="['todo-item', `is-${item.level || 'normal'}`]"
           >
             <div class="todo-main">
               <div class="todo-title">{{ todoLabel(item.key) }}</div>
@@ -912,6 +912,16 @@ onMounted(async () => {
     background: #f8fbff;
     border: 1px solid #edf2f8;
     text-align: left;
+
+    &.is-warning,
+    &.is-attention {
+      border-color: rgba(245, 74, 69, 0.18);
+      background: rgba(245, 74, 69, 0.04);
+
+      .hero-focus-count {
+        color: #f54a45;
+      }
+    }
   }
 
   .hero-focus-text {
@@ -1068,7 +1078,7 @@ onMounted(async () => {
   }
 
   .danger {
-    color: #f56c6c !important;
+    color: #f54a45 !important;
   }
 
   .analytics-grid {
@@ -1160,6 +1170,19 @@ onMounted(async () => {
     text-align: left;
   }
 
+  .todo-item {
+    &.is-warning,
+    &.is-attention {
+      border-color: rgba(245, 74, 69, 0.18);
+      background: rgba(245, 74, 69, 0.04);
+
+      .todo-count {
+        color: #f54a45;
+        font-weight: 600;
+      }
+    }
+  }
+
   .todo-main,
   .event-content {
     min-width: 0;
@@ -1194,13 +1217,13 @@ onMounted(async () => {
     font-weight: 500;
 
     &.is-warning {
-      background: rgba(245, 108, 108, 0.12);
-      color: #f56c6c;
+      background: rgba(245, 74, 69, 0.12);
+      color: #f54a45;
     }
 
     &.is-attention {
-      background: rgba(245, 183, 79, 0.15);
-      color: #b97a00;
+      background: rgba(245, 74, 69, 0.12);
+      color: #f54a45;
     }
 
     &.is-healthy {
