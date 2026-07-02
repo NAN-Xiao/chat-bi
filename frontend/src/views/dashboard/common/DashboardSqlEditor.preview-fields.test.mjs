@@ -26,6 +26,7 @@ const activePivotGroupValueFieldMatch = source.match(
 const buildPivotConfigMatch = source.match(
   /function buildPivotConfig\([\s\S]*?\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction previewPivotPayload/
 )
+const buildPivotGroupEnabledMatch = buildPivotConfigMatch?.[1].match(/group_enabled:\s*([^\r\n]+),/)
 
 assert.ok(chartPreviewMatch, '图表预览组件需要声明 columns 绑定')
 assert.match(
@@ -83,10 +84,26 @@ assert.doesNotMatch(
   /const groupField = form\.pivotGroupField\s*\|\|/,
   '分类清空时不能继续把内部 pivotGroupField 写入透视配置'
 )
+assert.ok(buildPivotGroupEnabledMatch, '需要显式保存透视分组启用状态')
+assert.match(
+  buildPivotGroupEnabledMatch?.[1] || '',
+  /pivotGroupValues/,
+  '保存分组可见项时必须同步启用分组，否则仪表盘会继续显示不分组'
+)
 assert.match(
   showPivotGroupValueConfigMatch[1],
   /sourceHasPivotGroupValues/,
   '分组可见项显示应基于源数据分组值，不能因为透视后的预览结果缺少分组字段而隐藏'
+)
+assert.match(
+  showPivotGroupValueConfigMatch[1],
+  /form\.pivotGroupValues\.length/,
+  '已有分组可见项配置时，即使当前源预览暂时缺少分组字段也应保留配置入口'
+)
+assert.doesNotMatch(
+  showPivotGroupValueConfigMatch[1],
+  /form\.pivotGroupEnabled/,
+  '分组可见项应跟随分类字段显示，不能因为默认不分组而隐藏'
 )
 assert.doesNotMatch(
   showPivotGroupValueConfigMatch[1],

@@ -388,9 +388,8 @@ const showPivotGroupValueConfig = computed(
   () =>
     supportsPivotConfig.value &&
     form.pivotEnabled &&
-    form.pivotGroupEnabled &&
     Boolean(activePivotGroupValueField.value) &&
-    sourceHasPivotGroupValues.value
+    (sourceHasPivotGroupValues.value || form.pivotGroupValues.length > 0)
 )
 const pivotGroupValueOptions = computed(() => {
   const field = activePivotGroupValueField.value
@@ -769,6 +768,7 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
     return { enabled: false }
   }
   const groupField = activePivotGroupValueField.value
+  const pivotGroupValues = groupField ? unique(form.pivotGroupValues.map(normalizePivotGroupValue)) : []
   const config: Record<string, any> = {
     enabled: true,
     client_filter_only: props.viewInfo?.pivot?.client_filter_only === true,
@@ -777,7 +777,7 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
     metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
     metric_field: form.y[0] || '',
     group_field: groupField,
-    group_enabled: Boolean(groupField && form.pivotGroupEnabled),
+    group_enabled: Boolean(groupField && (form.pivotGroupEnabled || pivotGroupValues.length > 0)),
     dimensions: inferredPivotDimensions(),
     range_enabled: form.pivotRangeEnabled,
     granularity: form.pivotGranularity,
@@ -787,7 +787,7 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
     aggregation: defaultPivotAggregation(),
   }
   if (options.includeGroupValues !== false) {
-    config.group_values = groupField ? unique(form.pivotGroupValues.map(normalizePivotGroupValue)) : []
+    config.group_values = pivotGroupValues
   }
   return config
 }

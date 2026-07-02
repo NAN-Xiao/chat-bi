@@ -431,10 +431,20 @@ function hasRenderableMetricRow(row: Record<string, any>, metricFields: string[]
   return metricFields.some((field) => hasRenderableMetricValue(row?.[field]))
 }
 
+function rowsHavePivotGroupValue(rows: Array<Record<string, any>>, field: string) {
+  return Boolean(field && rows.some((row) => normalizePivotGroupValue(row?.[field])))
+}
+
 const renderableChartData = computed(() => {
-  const rows = rawChartData.value
+  let rows = rawChartData.value
   if (!pivotEnabled.value) {
     return rows
+  }
+  if (pivotState.groupEnabled && activePivotGroupField.value && !rowsHavePivotGroupValue(rows, activePivotGroupField.value)) {
+    const sourceRows = Array.isArray(props.viewInfo?.data?.source_data) ? props.viewInfo.data.source_data : []
+    if (rowsHavePivotGroupValue(sourceRows, activePivotGroupField.value)) {
+      rows = sourceRows
+    }
   }
   const metricFields = renderYAxis.value.map((axis) => axis.value).filter(Boolean)
   if (metricFields.length === 0) {
@@ -909,8 +919,11 @@ function syncPivotStateFromView(force = false) {
   pivotState.customStart = pivot.custom_start || ''
   pivotState.customEnd = pivot.custom_end || ''
   pivotState.groupField = pivot.group_field || pivotDimensions.value[0]?.field || pivotGroupField.value || ''
+  const hasConfiguredPivotGroupValues = configuredPivotGroupValues.value.length > 0
   pivotState.groupEnabled =
-    typeof pivot.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(pivotState.groupField)
+    typeof pivot.group_enabled === 'boolean'
+      ? Boolean(pivotState.groupField && (pivot.group_enabled || hasConfiguredPivotGroupValues))
+      : Boolean(pivotState.groupField)
   if (pivotEnabled.value) {
     const pivotPayload = getPivotPayload()
     props.viewInfo.pivot = {
