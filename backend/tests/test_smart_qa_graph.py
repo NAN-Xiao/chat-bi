@@ -120,6 +120,26 @@ LIMIT 1000
 """
 
 
+def _direct_missing_event_metric_sql() -> str:
+    return """
+WITH obs AS (
+  SELECT max("session_start"::date) AS "max_date"
+  FROM "public"."fact_sessions"
+),
+event_stats AS (
+  SELECT count(*) AS "触发次数",
+         count(DISTINCT "player_id") AS "触发人数"
+  FROM "public"."fact_events" "e"
+  CROSS JOIN obs
+  WHERE "e"."event_date" BETWEEN obs."max_date" - 6 AND obs."max_date"
+    AND "e"."event_name" = 'dragon_summon_success'
+)
+SELECT "触发次数", "触发人数"
+FROM event_stats
+LIMIT 1000
+"""
+
+
 def _events(chunks: list[Any]) -> list[dict[str, Any]]:
     """
     是什么：_events 是一段测试代码，用来确认测试的某个场景没有问题。
@@ -827,6 +847,51 @@ def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch:
     assert feedback_event["notice"]["items"] == ["spaceship_upgrade_complete"]
     assert feedback_event["notice"]["removed_fields"] == ["飞船升级完成触发用户数"]
     assert not any(event["type"] == "error" for event in events)
+    assert service.finished is True
+
+
+def test_only_missing_event_metric_stops_without_zero_chart(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：只统计不存在埋点时，应直接提示缺少埋点，不能把聚合 0 展示成有效图表。
+    """
+    sql = _direct_missing_event_metric_sql()
+    service = FakeSmartQAService(sql_answer=_sql_answer(sql, ["fact_sessions", "fact_events"]))
+    service.ds.type = "pg"
+    service.table_name_list = ["fact_sessions", "fact_events"]
+
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"fact_sessions", "fact_events"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "_event_exists_in_datasource",
+        lambda **kwargs: False if kwargs["event_value"] == "dragon_summon_success" else True,
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+    event_types = [event["type"] for event in events]
+
+    assert service.saved_sql == []
+    assert service.executed == []
+    assert service.chart_generated is False
+    assert "sql-data" not in event_types
+    assert "chart" not in event_types
+    assert event_types[-1] == "finish"
+    assert feedback_event["notice"]["reason"] == "missing_event"
+    assert feedback_event["notice"]["items"] == ["dragon_summon_success"]
+    assert feedback_event["notice"]["removed_fields"] == []
+    assert feedback_event["content"] == "当前数据源缺少 dragon_summon_success 埋点数据。"
     assert service.finished is True
 
 

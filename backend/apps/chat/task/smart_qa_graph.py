@@ -153,8 +153,11 @@ def _has_result_rows(result: dict[str, Any] | None) -> bool:
     谁调用：Smart Q&A 决定是否继续生成图表。
     做了什么：空结果仍会保存执行记录，但不会再生成空图表控件。
     """
-    rows = result.get("data") if isinstance(result, dict) else None
-    return isinstance(rows, list) and len(rows) > 0
+    if not isinstance(result, dict):
+        return False
+    fields = result.get("fields")
+    rows = result.get("data")
+    return isinstance(fields, list) and len(fields) > 0 and isinstance(rows, list) and len(rows) > 0
 
 
 def _empty_result_notice() -> dict[str, Any]:
@@ -495,13 +498,14 @@ def _result_fields_for_missing_events(sql: str, service: Any, missing_events: li
         if select_expr is None:
             continue
         final_aliases = _aliases_for_final_sources(select_expr)
+        only_final_source = next(iter(final_aliases.values()), None) if len(set(final_aliases.values())) == 1 else None
         for item in select_expr.expressions:
             output_name = item.alias_or_name
             if not output_name:
                 continue
             for column in item.find_all(exp.Column):
                 source_alias = normalize_identifier(column.table)
-                source_name = final_aliases.get(source_alias)
+                source_name = final_aliases.get(source_alias) or (only_final_source if not source_alias else None)
                 if not source_name:
                     continue
                 output_columns = missing_ctes.get(source_name)
@@ -1278,13 +1282,14 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 )
                 rewrite = _rewrite_sql_for_missing_events(service, checked_sql)
                 if rewrite.missing_events:
+                    supported_removed_fields = rewrite.removed_fields if rewrite.executable else []
                     missing_event_message = _missing_event_feedback(
                         rewrite.missing_events,
-                        rewrite.removed_fields,
+                        supported_removed_fields,
                     )
                     missing_event_notice = _missing_event_notice(
                         rewrite.missing_events,
-                        rewrite.removed_fields,
+                        supported_removed_fields,
                     )
                     if not rewrite.executable or not rewrite.sql:
                         _save_and_emit_plain_answer(
@@ -1514,13 +1519,16 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
         execute_log_message: dict[str, Any] = {"sql": real_execute_sql, "count": len(result.get("data"))}
         if business_notice:
             execute_log_message["business_notice"] = business_notice
+        stop_after_missing_event_notice = False
         if cleanup.missing_events:
-            message = _missing_event_feedback(cleanup.missing_events, cleanup.removed_fields)
+            stop_after_missing_event_notice = not _has_result_rows(result)
+            supported_removed_fields = [] if stop_after_missing_event_notice else cleanup.removed_fields
+            message = _missing_event_feedback(cleanup.missing_events, supported_removed_fields)
             execute_log_message["business_notice"] = {
                 "notice_type": "data_scope_gap",
                 "reason": "missing_event",
                 "missing_events": cleanup.missing_events,
-                "removed_fields": cleanup.removed_fields,
+                "removed_fields": supported_removed_fields,
             }
             _save_and_emit_plain_answer(
                 service=service,
@@ -1529,12 +1537,12 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 in_chat=in_chat,
                 stream=stream,
                 json_result=json_result,
-                notice=_missing_event_notice(cleanup.missing_events, cleanup.removed_fields),
+                notice=_missing_event_notice(cleanup.missing_events, supported_removed_fields),
             )
 
         empty_result_message = None
         empty_result_notice = None
-        if not _has_result_rows(result):
+        if not stop_after_missing_event_notice and not _has_result_rows(result):
             empty_result_message = _empty_result_feedback()
             empty_result_notice = _empty_result_notice()
             execute_log_message["business_notice"] = empty_result_notice
@@ -1550,6 +1558,15 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
             _emit(_sse({"content": "execute-success", "type": "sql-data"}))
         if not stream:
             json_result["data"] = get_chat_chart_data(session, service.record.id)
+
+        if stop_after_missing_event_notice:
+            if in_chat:
+                _emit(_sse({"type": "finish"}))
+            elif not stream:
+                json_result["success"] = False
+                json_result["message"] = message
+                _emit(json_result)
+            return {"json_result": json_result, "result": result, "stop": True}
 
         if empty_result_message and empty_result_notice:
             _save_and_emit_plain_answer(
