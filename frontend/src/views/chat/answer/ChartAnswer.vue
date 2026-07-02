@@ -531,12 +531,19 @@ function hasRecordData(record?: ChatRecord) {
     }
     try {
       const data = JSONBig.parse(text)
-      return data?.status === 'failed' || (Array.isArray(data?.data) && data.data.length > 0)
+      return (
+        data?.status === 'failed' ||
+        data?.status === 'business_notice' ||
+        (Array.isArray(data?.data) && data.data.length > 0)
+      )
     } catch (e) {
       return true
     }
   }
   if (record.data?.status === 'failed') {
+    return true
+  }
+  if (record.data?.status === 'business_notice') {
     return true
   }
   return Array.isArray(record.data?.data) && record.data.data.length > 0
@@ -558,6 +565,11 @@ function getChatData(recordId?: number) {
       _currentChat.value.records.forEach((record) => {
         if (record.id === recordId) {
           record.data = response
+          if (response?.status === 'business_notice') {
+            record.chart = ''
+            record.analysis_notice = response.notice
+            record.analysis = response.message || response.reason || record.analysis
+          }
         }
       })
     })

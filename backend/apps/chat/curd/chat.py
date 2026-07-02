@@ -2,7 +2,9 @@
 脚本说明：这个脚本封装聊天问数据和 Agent的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
 import datetime
+from dataclasses import dataclass
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import List, Optional, Union, Dict, Any
 
 import orjson
@@ -32,6 +34,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.system.crud.tenant_usage import record_tenant_usage_detached, token_total
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
+from apps.system.crud.tracking_config import find_tracking_prompt_context
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
@@ -134,6 +137,202 @@ def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> d
         "message": message,
         "reason": message,
     }
+
+
+@dataclass
+class _SavedRecordBusinessProjection:
+    data: dict[str, Any] | None = None
+    chart: str | None = None
+    clear_chart: bool = False
+    analysis: str | None = None
+    analysis_notice: dict[str, Any] | None = None
+    execute_sql: str | None = None
+
+
+def _business_notice_data(
+        *,
+        message: str,
+        notice: dict[str, Any],
+        datasource_id: int | None,
+) -> dict[str, Any]:
+    return {
+        "status": "business_notice",
+        "error_type": notice.get("reason"),
+        "fields": [],
+        "data": [],
+        "message": message,
+        "reason": message,
+        "notice": notice,
+        "datasource": datasource_id,
+    }
+
+
+def _axis_field(axis_item: Any) -> str:
+    if not isinstance(axis_item, dict):
+        return ""
+    for key in ("value", "field", "name"):
+        value = axis_item.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def _filter_axis(axis_value: Any, allowed_fields: set[str]) -> Any:
+    if isinstance(axis_value, list):
+        return [
+            item
+            for item in axis_value
+            if not _axis_field(item) or _axis_field(item) in allowed_fields
+        ]
+    if isinstance(axis_value, dict):
+        return axis_value if not _axis_field(axis_value) or _axis_field(axis_value) in allowed_fields else None
+    return axis_value
+
+
+def _axis_has_value(axis_value: Any) -> bool:
+    if isinstance(axis_value, list):
+        return len(axis_value) > 0
+    if isinstance(axis_value, dict):
+        return True
+    return axis_value not in (None, "", [])
+
+
+def _table_chart_for_fields(fields: list[str], title: str | None = None) -> str | None:
+    if not fields:
+        return None
+    chart: dict[str, Any] = {
+        "type": "table",
+        "columns": [{"name": field, "value": field} for field in fields],
+    }
+    if title:
+        chart["title"] = title
+    return orjson.dumps(chart).decode()
+
+
+def _filter_chart_json_for_fields(chart_json: str | None, fields: list[str]) -> str | None:
+    if not chart_json:
+        return None
+    allowed_fields = {str(field) for field in fields if str(field).strip()}
+    if not allowed_fields:
+        return None
+    try:
+        chart = orjson.loads(chart_json)
+    except Exception:
+        return _table_chart_for_fields(fields)
+    if not isinstance(chart, dict):
+        return _table_chart_for_fields(fields)
+
+    chart_type = str(chart.get("type") or "table")
+    axis = chart.get("axis")
+    if isinstance(axis, dict):
+        for key in ("x", "y", "series"):
+            if key in axis:
+                filtered = _filter_axis(axis.get(key), allowed_fields)
+                if filtered in (None, [], ""):
+                    axis.pop(key, None)
+                else:
+                    axis[key] = filtered
+        chart["axis"] = axis
+
+    if isinstance(chart.get("columns"), list):
+        chart["columns"] = [
+            column
+            for column in chart["columns"]
+            if not _axis_field(column) or _axis_field(column) in allowed_fields
+        ]
+
+    if chart_type == "metric":
+        if not isinstance(axis, dict) or not _axis_has_value(axis.get("y")):
+            return _table_chart_for_fields(fields, chart.get("title"))
+    elif chart_type != "table":
+        if isinstance(axis, dict) and not _axis_has_value(axis.get("y")):
+            return _table_chart_for_fields(fields, chart.get("title"))
+
+    return orjson.dumps(chart).decode()
+
+
+def _saved_record_missing_event_projection(
+        *,
+        session: SessionDep,
+        current_user: CurrentUser,
+        record_id: int | None,
+        datasource_id: int | None,
+        sql: str | None,
+        data: dict[str, Any] | None,
+        chart: str | None = None,
+) -> _SavedRecordBusinessProjection | None:
+    if not datasource_id or not sql:
+        return None
+    ds = session.get(CoreDatasource, datasource_id)
+    if ds is None:
+        return None
+
+    try:
+        from apps.chat.task.smart_qa_graph import (
+            _cleanup_missing_event_result,
+            _has_result_rows,
+            _missing_event_feedback,
+            _missing_event_notice,
+            _rewrite_sql_for_missing_events,
+        )
+
+        tracking_config, _ = find_tracking_prompt_context(session, _current_tenant_id(current_user))
+        service = SimpleNamespace(
+            ds=ds,
+            chat_question=SimpleNamespace(tracking_config=tracking_config),
+            record=SimpleNamespace(id=record_id),
+        )
+        rewrite = _rewrite_sql_for_missing_events(service, sql)
+        cleanup = _cleanup_missing_event_result(service, sql, data) if isinstance(data, dict) else None
+    except Exception as exc:
+        AppLogUtil.warning(
+            f"Skip saved Smart Q&A missing event cleanup: record_id={record_id}, datasource_id={datasource_id}, error={exc}"
+        )
+        return None
+
+    missing_events = sorted(set(rewrite.missing_events) | set(cleanup.missing_events if cleanup else []))
+    if not missing_events:
+        return None
+
+    cleaned_data = cleanup.result if cleanup else data
+    supported_result = _has_result_rows(cleaned_data) if isinstance(cleaned_data, dict) else False
+    if not rewrite.executable:
+        supported_result = False
+    removed_fields = sorted(set(rewrite.removed_fields) | set(cleanup.removed_fields if cleanup else []))
+    notice_removed_fields = removed_fields if supported_result else []
+    message = _missing_event_feedback(missing_events, notice_removed_fields)
+    notice = _missing_event_notice(missing_events, notice_removed_fields)
+
+    if data is None and rewrite.executable and rewrite.sql:
+        message = _missing_event_feedback(missing_events, removed_fields)
+        notice = _missing_event_notice(missing_events, removed_fields)
+        return _SavedRecordBusinessProjection(
+            analysis=message,
+            analysis_notice=notice,
+            execute_sql=rewrite.sql,
+        )
+
+    if not supported_result:
+        return _SavedRecordBusinessProjection(
+            data=_business_notice_data(
+                message=message,
+                notice=notice,
+                datasource_id=datasource_id,
+            ),
+            clear_chart=True,
+            analysis=message,
+            analysis_notice=notice,
+        )
+
+    fields = [str(field) for field in cleaned_data.get("fields") or []]
+    return _SavedRecordBusinessProjection(
+        data=cleaned_data,
+        chart=_filter_chart_json_for_fields(chart, fields) if chart else None,
+        clear_chart=False,
+        analysis=message,
+        analysis_notice=notice,
+        execute_sql=rewrite.sql if rewrite.changed and rewrite.sql else None,
+    )
 
 
 def _row_value(row, key: str):
@@ -744,6 +943,16 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
                 )
             data = _loads_record_data(row.data)
             if data is not None:
+                projection = _saved_record_missing_event_projection(
+                    session=session,
+                    current_user=current_user,
+                    record_id=chat_record_id,
+                    datasource_id=row.datasource,
+                    sql=row.sql,
+                    data=data,
+                )
+                if projection and projection.data is not None:
+                    return projection.data
                 return data
             return get_chart_data_with_user_live(
                 session=session,
@@ -773,6 +982,19 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
     row = session.execute(stmt).first()
     if row is None or row.datasource is None or not row.sql:
         return {'status': 'failed', 'fields': [], 'data': [], 'message': '记录不存在或没有可执行 SQL'}
+    projection = _saved_record_missing_event_projection(
+        session=session,
+        current_user=current_user,
+        record_id=chat_record_id,
+        datasource_id=row.datasource,
+        sql=row.sql,
+        data=None,
+    )
+    if projection:
+        if projection.data is not None:
+            return projection.data
+        if projection.execute_sql:
+            return _execute_dashboard_chart_sql(session, current_user, row.datasource, projection.execute_sql)
     return _execute_dashboard_chart_sql(session, current_user, row.datasource, row.sql)
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
@@ -1015,6 +1237,32 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                 chat_record_id=row.id,
             )).decode()
 
+        chart_value = row.chart
+        analysis_value = row.analysis
+        analysis_notice_value = None
+        if current_permission_allowed and row.datasource and row.sql:
+            parsed_data = _loads_record_data(data_value) if isinstance(data_value, str) else None
+            projection = _saved_record_missing_event_projection(
+                session=session,
+                current_user=current_user,
+                record_id=row.id,
+                datasource_id=row.datasource,
+                sql=row.sql,
+                data=parsed_data,
+                chart=chart_value,
+            )
+            if projection:
+                if projection.data is not None:
+                    data_value = orjson.dumps(projection.data).decode()
+                if projection.clear_chart:
+                    chart_value = None
+                elif projection.chart is not None:
+                    chart_value = projection.chart
+                if projection.analysis:
+                    analysis_value = projection.analysis
+                if projection.analysis_notice:
+                    analysis_notice_value = projection.analysis_notice
+
         record_result: ChatRecordResult
         predict_data_value = _row_value(row, "predict_data")
         if (
@@ -1029,8 +1277,9 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              total_tokens=total_tokens,
                                              question=row.question, sql_answer=row.sql_answer, sql=row.sql,
                                              datasource=row.datasource,
-                                             chart_answer=row.chart_answer, chart=row.chart,
-                                             analysis=row.analysis, predict=row.predict,
+                                             chart_answer=row.chart_answer, chart=chart_value,
+                                             analysis=analysis_value, analysis_notice=analysis_notice_value,
+                                             predict=row.predict,
                                              datasource_select_answer=row.datasource_select_answer,
                                              analysis_record_id=row.analysis_record_id,
                                              predict_record_id=row.predict_record_id,
@@ -1053,8 +1302,9 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              total_tokens=total_tokens,
                                              question=row.question, sql_answer=row.sql_answer, sql=row.sql,
                                              datasource=row.datasource,
-                                             chart_answer=row.chart_answer, chart=row.chart,
-                                             analysis=row.analysis, predict=row.predict,
+                                             chart_answer=row.chart_answer, chart=chart_value,
+                                             analysis=analysis_value, analysis_notice=analysis_notice_value,
+                                             predict=row.predict,
                                              datasource_select_answer=row.datasource_select_answer,
                                              analysis_record_id=row.analysis_record_id,
                                              predict_record_id=row.predict_record_id,

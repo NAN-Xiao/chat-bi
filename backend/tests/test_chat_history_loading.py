@@ -315,6 +315,76 @@ def test_history_loading_still_scrubs_sql_record_when_permission_denied(
     assert record["sql_answer"] is None
 
 
+def test_history_loading_hides_saved_chart_for_missing_event_notice(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：旧记录里即使保存过 0 指标图，缺失埋点业务清洗后也不能继续回显 chart。
+    """
+    cached_data = json.dumps(
+        {
+            "fields": ["触发次数", "触发人数"],
+            "data": [{"触发次数": 0, "触发人数": 0}],
+        },
+        ensure_ascii=False,
+    )
+    notice = {
+        "notice_type": "data_scope_gap",
+        "severity": "warning",
+        "reason": "missing_event",
+        "items": ["dragon_summon_success"],
+        "removed_fields": [],
+    }
+    business_data = {
+        "status": "business_notice",
+        "error_type": "missing_event",
+        "fields": [],
+        "data": [],
+        "message": "当前数据源缺少 dragon_summon_success 埋点数据。",
+        "notice": notice,
+    }
+
+    monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        chat_crud,
+        "_source_record_requires_live_data_for_current_permissions",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        chat_crud,
+        "_saved_record_missing_event_projection",
+        lambda **_kwargs: chat_crud._SavedRecordBusinessProjection(
+            data=business_data,
+            clear_chart=True,
+            analysis=business_data["message"],
+            analysis_notice=notice,
+        ),
+    )
+
+    chat_info = chat_crud.get_chat_with_records(
+        session=_SingleRecordSession(
+            _history_row(
+                sql="select count(*) as 触发次数 from fact_events where event_name = 'dragon_summon_success'",
+                chart='{"type":"metric","axis":{"y":[{"value":"触发次数"},{"value":"触发人数"}]}}',
+                data=cached_data,
+            )
+        ),
+        chart_id=8001,
+        current_user=_user(),
+        current_assistant=None,
+        with_data=False,
+    )
+
+    record = chat_info.records[0]
+    assert record["chart"] is None
+    assert record["data"]["status"] == "business_notice"
+    assert record["data"]["fields"] == []
+    assert record["analysis"] == "当前数据源缺少 dragon_summon_success 埋点数据。"
+    assert record["analysis_notice"]["reason"] == "missing_event"
+
+
 def test_history_loading_does_not_preserve_permission_error_without_sql(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
