@@ -8,7 +8,16 @@ import { ElMessage } from 'element-plus-secondary'
 const props = defineProps({
   viewInfo: {
     type: Object,
-    required: true,
+    required: false,
+    default: () => ({
+      chart: {},
+      data: {
+        data: [],
+        fields: [],
+      },
+      fields: [],
+      status: 'success',
+    }),
   },
   outerId: {
     type: String,
@@ -23,6 +32,10 @@ const props = defineProps({
   showLabel: {
     type: Boolean,
     required: false,
+    default: false,
+  },
+  platformTemplate: {
+    type: Boolean,
     default: false,
   },
 })
@@ -73,6 +86,28 @@ let progressTimer: number | undefined
 let pivotRefreshTimer: number | undefined
 let refreshRequestSeq = 0
 let blockingRefreshRequestSeq = 0
+
+function ensureViewInfoShape() {
+  if (!props.viewInfo || typeof props.viewInfo !== 'object') {
+    return
+  }
+  if (!props.viewInfo.chart || typeof props.viewInfo.chart !== 'object') {
+    props.viewInfo.chart = {}
+  }
+  if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
+    props.viewInfo.data = {}
+  }
+  props.viewInfo.data.data = Array.isArray(props.viewInfo.data.data) ? props.viewInfo.data.data : []
+  props.viewInfo.data.fields = Array.isArray(props.viewInfo.data.fields) ? props.viewInfo.data.fields : []
+  props.viewInfo.fields = Array.isArray(props.viewInfo.fields) ? props.viewInfo.fields : props.viewInfo.data.fields
+  props.viewInfo.status = props.viewInfo.status || 'success'
+}
+
+watch(
+  () => props.viewInfo,
+  () => ensureViewInfoShape(),
+  { immediate: true }
+)
 
 type PivotGranularity = 'day' | 'week' | 'month'
 type PivotQuickRange = {
@@ -907,6 +942,11 @@ function schedulePivotRefresh() {
     scheduleRenderChart()
     return
   }
+  if (props.platformTemplate) {
+    chartRenderVersion.value += 1
+    scheduleRenderChart()
+    return
+  }
   pivotRefreshTimer = window.setTimeout(() => {
     pivotRefreshTimer = undefined
     void refreshData({ silent: true, forceRefresh: true, blocking: true })
@@ -961,6 +1001,16 @@ function normalizeLoadedChartState() {
   return true
 }
 
+function normalizePlatformTemplateSnapshotState() {
+  if (!props.viewInfo || typeof props.viewInfo !== 'object') {
+    return
+  }
+  props.viewInfo.status = props.viewInfo.status === 'failed' ? 'failed' : 'success'
+  props.viewInfo.dataState = props.viewInfo.status === 'failed' ? 'failed' : 'ready'
+  props.viewInfo.loadingProgress = 100
+  props.viewInfo.refreshState = ''
+}
+
 function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
 }
@@ -1005,6 +1055,11 @@ async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
   const forceRefresh = options.forceRefresh !== false
   const blocking = options.blocking === true || !silent
+  if (props.platformTemplate) {
+    normalizePlatformTemplateSnapshotState()
+    scheduleRenderChart()
+    return
+  }
   if (isMixedChart(props.viewInfo)) {
     if (!canRefreshMixedChart(props.viewInfo)) {
       if (!silent) {
@@ -1510,6 +1565,11 @@ async function recoverStaleLoadingState() {
     return
   }
   if (normalizeLoadedChartState()) {
+    scheduleRenderChart()
+    return
+  }
+  if (props.platformTemplate) {
+    normalizePlatformTemplateSnapshotState()
     scheduleRenderChart()
     return
   }

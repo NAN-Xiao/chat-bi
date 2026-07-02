@@ -57,6 +57,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  platformTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const { showPosition, canvasId } = toRefs(props)
@@ -178,6 +182,7 @@ defineExpose({
         :index="index"
         :frameless="inTab"
         :readonly-template="readonlyTemplate"
+        :platform-template="platformTemplate"
         @chart-moved="emit('chartMoved', $event)"
       />
     </template>

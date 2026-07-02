@@ -49,6 +49,7 @@ api_router.include_router(permission.router)
 api_router.include_router(chat.router)
 api_router.include_router(dashboard_api.router)
 api_router.include_router(dashboard_api.platform_router)
+api_router.include_router(dashboard_api.platform_delegate_router)
 api_router.include_router(knowledge_base.router)
 if settings.MCP_ENABLED:
     from apps.mcp import mcp

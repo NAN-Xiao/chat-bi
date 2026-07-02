@@ -98,7 +98,9 @@ const chartId = computed(() => props.message?.record?.id + (props.enlarge ? '-fu
 const dataPermissionDenied = computed(
   () => dataObject.value?.status === 'failed' && dataObject.value?.error_type === 'permission_denied'
 )
-const dataFailureMessage = computed(() => dataObject.value?.message || dataObject.value?.reason || '')
+const dataFailureMessage = computed(() =>
+  dataPermissionDenied.value ? '没有查看权限' : dataObject.value?.message || dataObject.value?.reason || ''
+)
 const chartDatasourceId = computed(
   () => props.message?.record?.datasource || dataObject.value?.datasource || datasourceContext.datasourceId
 )

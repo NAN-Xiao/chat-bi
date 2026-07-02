@@ -21,6 +21,8 @@ export const dashboardApi = {
     request.get('/dashboard/platform-template/list', config),
   platform_template_admin_load: (params: any, config?: any) =>
     request.post('/dashboard/platform-template/load', params, config),
+  platform_template_admin_refresh: (params: any, config?: any) =>
+    request.post('/dashboard/platform-template/refresh', params, config),
   platform_template_admin_update: (params: any, config?: any) =>
     request.post('/dashboard/platform-template/update', params, config),
   platform_template_admin_delete: (params: any, config?: any) =>

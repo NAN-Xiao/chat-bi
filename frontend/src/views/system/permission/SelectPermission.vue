@@ -96,6 +96,7 @@ import avatar_personal from '@/assets/svg/avatar_personal.svg'
 import Close from '@/assets/svg/icon_close_outlined_w.svg'
 import Search from '@/assets/svg/icon_search-outline_outlined.svg'
 import type { CheckboxValueType } from 'element-plus-secondary'
+import { idsEqual } from '@/utils/id'
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
 const checkedProject = ref<any[]>([])
@@ -167,7 +168,9 @@ const open = async (user: any) => {
     )
   )
   if (user?.length) {
-    checkedProject.value = project.value.filter((ele: any) => user.includes(ele.id))
+    checkedProject.value = project.value.filter((ele: any) =>
+      user.some((item: any) => idsEqual(item, ele.id))
+    )
     checkTableList.value = [...checkedProject.value]
     handleCheckedProjectChange(checkedProject.value)
   }
@@ -176,8 +179,8 @@ const open = async (user: any) => {
 }
 
 const clearProject = (val: any) => {
-  checkedProject.value = checkedProject.value.filter((ele: any) => ele.id !== val.id)
-  checkTableList.value = checkTableList.value.filter((ele: any) => ele.id !== val.id)
+  checkedProject.value = checkedProject.value.filter((ele: any) => !idsEqual(ele.id, val.id))
+  checkTableList.value = checkTableList.value.filter((ele: any) => !idsEqual(ele.id, val.id))
   handleCheckedProjectChange(checkedProject.value)
 }
 

@@ -16,6 +16,7 @@ const permissionDeniedPatterns = [
   '当前用户无权访问项目',
   'Datasource access is required',
   'Chat does not belong to current project',
+  '没有查看权限',
   'SQL 超出当前数据权限范围',
   'SQL 包含无权限表',
   'SQL contains unauthorized tables',

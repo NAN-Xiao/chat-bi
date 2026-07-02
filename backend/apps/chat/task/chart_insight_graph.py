@@ -9,9 +9,9 @@ from langgraph.graph import END, StateGraph
 
 from apps.chat.curd.chat import (
     format_json_data,
+    get_chart_data_with_user,
     get_chat_chart_config,
-    get_chat_chart_data,
-    get_chat_predict_data,
+    get_chat_predict_data_with_user,
 )
 from apps.chat.task.assistant_output import (
     emit as _emit,
@@ -168,8 +168,8 @@ def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
                 _emit(_sse({"type": "predict-success"}))
             else:
                 chart = get_chat_chart_config(session, service.record.id)
-                origin_data = get_chat_chart_data(session, service.record.id)
-                predict_data = get_chat_predict_data(session, service.record.id)
+                origin_data = get_chart_data_with_user(session, service.current_user, service.record.id)
+                predict_data = get_chat_predict_data_with_user(session, service.current_user, service.record.id)
 
                 if stream:
                     md_data, fields_list = DataFormat.convert_data_fields_for_pandas(
@@ -188,7 +188,7 @@ def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
 
                 try:
                     if chart.get("type") != "table":
-                        combined_data = get_chat_chart_data(session, service.record.id)
+                        combined_data = get_chart_data_with_user(session, service.current_user, service.record.id)
                         combined_data["data"] = combined_data.get("data") + predict_data
 
                         emit_chart_image(

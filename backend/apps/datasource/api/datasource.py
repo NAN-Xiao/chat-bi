@@ -8,6 +8,7 @@ import os
 import traceback
 import uuid
 import re
+import time
 from datetime import datetime
 from io import StringIO
 from typing import Any, List, Optional
@@ -539,9 +540,18 @@ async def accessible_datasource_list(session: SessionDep, user: CurrentUser):
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    start = time.perf_counter()
     ensure_chatbi_business_user(user)
     datasources = get_datasource_list(session=session, user=user)
-    return _datasource_list_items(session, user, datasources)
+    result = _datasource_list_items(session, user, datasources)
+    AppLogUtil.info(
+        "Datasource accessible list finished: tenant_id=%s, user_id=%s, count=%s, elapsed_ms=%s",
+        getattr(user, "tenant_id", None),
+        getattr(user, "id", None),
+        len(result),
+        int((time.perf_counter() - start) * 1000),
+    )
+    return result
 
 
 class DatasourceUserMember(BaseModel):

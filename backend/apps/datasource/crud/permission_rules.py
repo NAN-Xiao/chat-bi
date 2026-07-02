@@ -146,6 +146,37 @@ def _int_list(value: Any) -> list[int]:
     return result
 
 
+def _id_text(value: Any) -> str | None:
+    """
+    是什么：_id_text 把用户 ID 转成适合 JSON 往返的字符串。
+    谁调用：权限规则保存/返回用户列表时会调用它。
+    做了什么：避免 64 位用户 ID 被浏览器当作 Number 后丢失低位精度。
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text or None
+
+
+def _id_string_list(value: Any) -> list[str]:
+    """
+    是什么：_id_string_list 提取用户 ID 列表并保持字符串形态。
+    谁调用：权限规则的 user_list / white_list_user 保存和 DTO 返回会调用它。
+    做了什么：去掉空值和重复项，但不把用户 ID 转成数字。
+    """
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in parse_json_list(value):
+        text = _id_text(item)
+        if text is None or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
 def _rule_values(rule_data: dict[str, Any], permission_ids: list[int]) -> dict[str, Any]:
     """
     是什么：_rule_values 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -161,8 +192,11 @@ def _rule_values(rule_data: dict[str, Any], permission_ids: list[int]) -> dict[s
         "tenant_id": tenant_id,
         "scope": scope,
         "permission_list": json.dumps(permission_ids, ensure_ascii=False),
-        "user_list": json.dumps(_int_list(rule_data.get("users", rule_data.get("user_list"))), ensure_ascii=False),
-        "white_list_user": _json_text(rule_data.get("white_list_user"), []),
+        "user_list": json.dumps(
+            _id_string_list(rule_data.get("users", rule_data.get("user_list"))),
+            ensure_ascii=False,
+        ),
+        "white_list_user": json.dumps(_id_string_list(rule_data.get("white_list_user")), ensure_ascii=False),
     }
 
 
@@ -183,7 +217,7 @@ def _permission_values(permission_data: dict[str, Any]) -> dict[str, Any]:
         "table_id": permission_data.get("table_id"),
         "expression_tree": _json_text(permission_data.get("expression_tree"), {}),
         "permissions": _json_text(permission_data.get("permissions"), []),
-        "white_list_user": _json_text(permission_data.get("white_list_user"), []),
+        "white_list_user": json.dumps(_id_string_list(permission_data.get("white_list_user")), ensure_ascii=False),
     }
 
 
@@ -317,7 +351,7 @@ def permission_record_to_dict(session: SessionDep, record: SimpleNamespace) -> d
         "table_id": record.table_id,
         "expression_tree": tree,
         "permissions": permission_list,
-        "white_list_user": parse_json_list(record.white_list_user),
+        "white_list_user": _id_string_list(record.white_list_user),
         "create_time": record.create_time,
         "tree": tree,
         "permission_list": permission_list,
@@ -340,8 +374,7 @@ def rule_record_to_dict(session: SessionDep, rule: SimpleNamespace) -> dict[str,
         for permission_id in permission_ids
         if permission_id in permission_map
     ]
-    user_ids = _int_list(rule.user_list)
-    users = [int(user_id) for user_id in user_ids]
+    users = _id_string_list(rule.user_list)
     return {
         "id": rule.id,
         "enable": rule.enable,
@@ -351,7 +384,7 @@ def rule_record_to_dict(session: SessionDep, rule: SimpleNamespace) -> dict[str,
         "scope": normalize_rule_scope(getattr(rule, "scope", None)),
         "permission_list": permission_ids,
         "user_list": users,
-        "white_list_user": parse_json_list(rule.white_list_user),
+        "white_list_user": _id_string_list(rule.white_list_user),
         "create_time": rule.create_time,
         "permissions": permissions,
         "users": users,
@@ -516,13 +549,13 @@ def delete_permission_records_for_datasources(
     session.flush()
 
 
-def list_rule_user_ids(session: SessionDep, rule: SimpleNamespace) -> list[int]:
+def list_rule_user_ids(session: SessionDep, rule: SimpleNamespace) -> list[str]:
     """
     是什么：list_rule_user_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
-    return _int_list(rule.user_list)
+    return _id_string_list(rule.user_list)
 
 
 def list_users_by_ids(session: SessionDep, user_ids: list[int]) -> list[UserModel]:

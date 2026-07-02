@@ -90,6 +90,7 @@ const DEFAULT_SCOPE: DashboardScope = 'default'
 const MY_SCOPE: DashboardScope = 'my'
 const TREE_NODE_INDENT = 28
 const mounted = ref(false)
+const treeLoading = ref(false)
 const selectedNodeKey: any = ref(null)
 const filterText = ref(null)
 const expandedArray = ref<Array<string | number>>([])
@@ -124,6 +125,8 @@ const state = reactive({
     },
   ],
 })
+
+const treeBusy = computed(() => treeLoading.value || copyLoading.value)
 
 const canEditDefaultOrder = computed<boolean>(() => userStore.isTenantAdminUser === true)
 const isCombinedDashboardTree = computed<boolean>(() => !props.defaultMode)
@@ -495,40 +498,146 @@ const nodeClick = (data: SQTreeNode, node: any) => {
 const getTree = async () => {
   const requestSeq = ++treeRequestSeq
   const requestTenantId = userStore.getTenantId || 'default'
+  treeLoading.value = true
+  const isCurrentTreeRequest = () =>
+    requestSeq === treeRequestSeq && (userStore.getTenantId || 'default') === requestTenantId
   if (props.defaultMode) {
     state.originResourceTree = []
-    dashboardApi.default_list().then(async (res: SQTreeNode[]) => {
-      if (
-        requestSeq !== treeRequestSeq ||
-        (userStore.getTenantId || 'default') !== requestTenantId
-      ) {
-        return
-      }
-      state.originResourceTree = normalizeDefaultDashboardNodes(res || [], 'root')
-      state.resourceTree = _.cloneDeep(state.originResourceTree)
-      afterTreeInit()
-    })
+    dashboardApi
+      .default_list()
+      .then(async (res: SQTreeNode[]) => {
+        if (!isCurrentTreeRequest()) {
+          return
+        }
+        state.originResourceTree = normalizeDefaultDashboardNodes(res || [], 'root')
+        state.resourceTree = _.cloneDeep(state.originResourceTree)
+        afterTreeInit()
+      })
+      .catch((error: any) => {
+        console.warn('Failed to load recommended dashboard tree', error)
+        if (!isCurrentTreeRequest()) {
+          return
+        }
+        state.originResourceTree = []
+        state.resourceTree = []
+        afterTreeInit()
+      })
+      .finally(() => {
+        if (isCurrentTreeRequest()) {
+          treeLoading.value = false
+        }
+      })
     return
   }
-  await datasourceContext.loadDatasources()
+  try {
+    await datasourceContext.loadDatasources()
+  } catch (error: any) {
+    console.warn('Failed to load datasource context before dashboard tree', error)
+    if (isCurrentTreeRequest()) {
+      state.originResourceTree = buildCombinedTree([], [])
+      state.resourceTree = _.cloneDeep(state.originResourceTree)
+      afterTreeInit()
+      treeLoading.value = false
+    }
+    return
+  }
+  if (!isCurrentTreeRequest()) {
+    return
+  }
   const requestDatasourceId = datasourceContext.datasourceId
-  state.originResourceTree = []
-  const defaultListRequest = dashboardApi.default_list()
-  const myListRequest = requestDatasourceId
-    ? dashboardApi.list_resource({ datasource: requestDatasourceId })
-    : Promise.resolve([])
-  Promise.all([defaultListRequest, myListRequest]).then(async ([defaultRes, myRes]) => {
+  state.originResourceTree = buildCombinedTree([], [])
+  state.resourceTree = _.cloneDeep(state.originResourceTree)
+  let defaultNodes: SQTreeNode[] = []
+  let myNodes: SQTreeNode[] = []
+  let defaultLoaded = false
+  let myLoaded = false
+  let treeInitialized = false
+
+  const publishCombinedTree = () => {
+    state.originResourceTree = buildCombinedTree(defaultNodes, myNodes)
+    state.resourceTree = _.cloneDeep(state.originResourceTree)
+  }
+
+  const refreshTreeView = () => {
+    restoreExpandedKeys()
+    if (selectedNodeKey.value) {
+      ensureSelectedNodeExpanded()
+    }
+    nextTick(() => {
+      resourceListTree.value?.setCurrentKey?.(selectedNodeKey.value, false)
+      resourceListTree.value?.filter?.(filterText.value)
+    })
+  }
+
+  const canInitializeCombinedTree = () => {
+    const routeResourceId = currentRouteDashboardId()
+    if (routeResourceId) {
+      const routeScope = currentRouteDashboardScope()
+      const routeBranchLoaded = routeScope === DEFAULT_SCOPE ? defaultLoaded : myLoaded
+      if (!routeBranchLoaded) return false
+      const routeNode = findDashboardNode(state.resourceTree, routeResourceId, routeScope)
+      return isLeafDashboardNode(routeNode) || (defaultLoaded && myLoaded)
+    }
+    const myDashboardNode = findFirstLeafDashboardNode(myNodes)
+    if (myLoaded && myDashboardNode) return true
+    return defaultLoaded && myLoaded
+  }
+
+  const handleTreeBranchLoaded = () => {
     if (
-      requestSeq !== treeRequestSeq ||
-      (userStore.getTenantId || 'default') !== requestTenantId ||
+      !isCurrentTreeRequest() ||
       datasourceContext.datasourceId !== requestDatasourceId
     ) {
       return
     }
-    state.originResourceTree = buildCombinedTree(defaultRes || [], myRes || [])
-    state.resourceTree = _.cloneDeep(state.originResourceTree)
-    afterTreeInit()
-  })
+    publishCombinedTree()
+    if (!canInitializeCombinedTree()) {
+      return
+    }
+    if (!treeInitialized) {
+      afterTreeInit()
+      treeInitialized = true
+      treeLoading.value = false
+    } else {
+      refreshTreeView()
+    }
+  }
+
+  dashboardApi
+    .default_list()
+    .then((res: SQTreeNode[]) => {
+      defaultNodes = res || []
+    })
+    .catch((error: any) => {
+      console.warn('Failed to load recommended dashboard tree', error)
+      defaultNodes = []
+    })
+    .finally(() => {
+      defaultLoaded = true
+      handleTreeBranchLoaded()
+      if (myLoaded && isCurrentTreeRequest()) {
+        treeLoading.value = false
+      }
+    })
+
+  const myListRequest = requestDatasourceId
+    ? dashboardApi.list_resource({ datasource: requestDatasourceId })
+    : Promise.resolve([])
+  myListRequest
+    .then((res: SQTreeNode[]) => {
+      myNodes = res || []
+    })
+    .catch((error: any) => {
+      console.warn('Failed to load my dashboard tree', error)
+      myNodes = []
+    })
+    .finally(() => {
+      myLoaded = true
+      handleTreeBranchLoaded()
+      if (defaultLoaded && isCurrentTreeRequest()) {
+        treeLoading.value = false
+      }
+    })
 }
 
 const hasData = computed<boolean>(() => !!findFirstLeafDashboardNode(state.resourceTree))
@@ -841,7 +950,7 @@ const openCreateDashboardDialog = (params: any = {}) => {
 }
 
 watch(filterText, (val) => {
-  resourceListTree.value.filter(val)
+  resourceListTree.value?.filter?.(val)
 })
 
 const loadInit = () => {}
@@ -1253,13 +1362,19 @@ defineExpose({
         </el-button>
       </div>
     </div>
-    <el-scrollbar v-loading="copyLoading" class="custom-tree">
+    <el-scrollbar v-loading="treeBusy" class="custom-tree">
       <el-tree
         ref="resourceListTree"
         class="dashboard-resource-tree"
         style="overflow-x: hidden"
         menu
-        :empty-text="defaultMode ? t('dashboard.no_default_dashboard') : t('dashboard.no_dashboard')"
+        :empty-text="
+          treeLoading
+            ? ''
+            : defaultMode
+              ? t('dashboard.no_default_dashboard')
+              : t('dashboard.no_dashboard')
+        "
         :draggable="isTreeEditing"
         :allow-drag="allowNodeDrag"
         :allow-drop="allowNodeDrop"

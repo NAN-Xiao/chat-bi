@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -19,21 +19,42 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
-const previewLoading = ref(false)
 const deletingId = ref('')
 const keyword = ref('')
 const list = ref<any[]>([])
 const selectedId = ref('')
 const previewKey = ref(0)
+const refreshingTemplateId = ref('')
+const pendingRefreshTemplateId = ref('')
 const preview = reactive({
   dashboardInfo: {} as Record<string, any>,
   componentData: [] as any[],
   canvasStyleData: {} as Record<string, any>,
   canvasViewInfo: {} as Record<string, any>,
 })
+let previewRequestSeq = 0
+const TEMPLATE_ROUTE_PATH = '/system/dashboard-template'
+
+const isTemplateRoute = () => route.path === TEMPLATE_ROUTE_PATH
+
+const invalidatePreviewRequests = () => {
+  previewRequestSeq += 1
+  pendingRefreshTemplateId.value = ''
+  refreshingTemplateId.value = ''
+}
+
+const isActiveTemplateRequest = (id: string, requestSeq: number) =>
+  isTemplateRoute() &&
+  requestSeq === previewRequestSeq &&
+  String(selectedId.value) === String(id)
 
 const hasPreview = computed(() => Boolean(preview.dashboardInfo?.id))
 const hasCanvasPreview = computed(() => hasPreview.value && preview.componentData.length > 0)
+const isCurrentTemplateRefreshing = computed(
+  () =>
+    Boolean(refreshingTemplateId.value) &&
+    String(refreshingTemplateId.value) === String(selectedId.value)
+)
 const templateMenuList = computed(() => [
   {
     label: t('dashboard.delete'),
@@ -109,6 +130,85 @@ const parseJson = (value: any, fallback: any) => {
   }
 }
 
+const cloneJson = (value: any, fallback: any) => {
+  try {
+    return JSON.parse(JSON.stringify(value ?? fallback))
+  } catch {
+    return fallback
+  }
+}
+
+const applyTemplatePreviewPayload = (res: any) => {
+  preview.dashboardInfo = {
+    id: res.id,
+    name: res.name,
+    pid: res.pid,
+    datasource: res.datasource,
+    status: res.status,
+    source: res.source,
+    contentId: res.content_id,
+    type: res.type,
+    createName: res.create_name,
+    updateName: res.update_name,
+    sourceDashboardId: res.source_dashboard_id,
+    sourceDashboardName: res.source_dashboard_name,
+    sourceTenantId: res.source_tenant_id,
+    sourceTenantName: res.source_tenant_name,
+    sourceDatasourceId: res.source_datasource_id,
+    sourceDatasourceName: res.source_datasource_name,
+    createTime: res.create_time,
+    updateTime: res.update_time,
+    canEdit: res.can_edit === true,
+    canShare: false,
+    isDefault: false,
+  }
+  preview.componentData = parseJson(res.component_data, [])
+  preview.canvasStyleData = parseJson(res.canvas_style_data, {})
+  preview.canvasViewInfo = parseJson(res.canvas_view_info, {})
+}
+
+const syncTemplateListItem = (res: any) => {
+  const index = list.value.findIndex((item) => String(item.id) === String(res?.id))
+  if (index < 0) return
+  list.value[index] = {
+    ...list.value[index],
+    ...res,
+    source_dashboard_id: res.source_dashboard_id,
+    source_dashboard_name: res.source_dashboard_name,
+    source_tenant_id: res.source_tenant_id,
+    source_tenant_name: res.source_tenant_name,
+    source_datasource_id: res.source_datasource_id,
+    source_datasource_name: res.source_datasource_name,
+  }
+}
+
+const snapshotRefreshedAt = (item: any) => {
+  const timestamp = Number(item?.snapshotRefreshedAt || item?.data?.snapshotRefreshedAt || 0)
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : 0
+}
+
+const chartHasRows = (item: any) => Array.isArray(item?.data?.data) && item.data.data.length > 0
+
+const chartNeedsSnapshotRefresh = (item: any) => {
+  if (!item || typeof item !== 'object') return false
+  if (!String(item.sql || '').trim()) return false
+  return !snapshotRefreshedAt(item) && !chartHasRows(item)
+}
+
+const previewNeedsChartRefresh = () =>
+  Object.values(preview.canvasViewInfo || {}).some((item: any) => chartNeedsSnapshotRefresh(item))
+
+const markPreviewChartsRefreshing = (refreshState = 'loading') => {
+  Object.values(preview.canvasViewInfo || {}).forEach((item: any) => {
+    if (!item || typeof item !== 'object') return
+    if (item.sql === undefined && !item.chart) return
+    item.status = 'loading'
+    item.dataState = 'loading'
+    item.refreshState = refreshState
+    item.loadingProgress = 0
+  })
+}
+
 const clearPreview = () => {
   preview.dashboardInfo = {}
   preview.componentData = []
@@ -118,62 +218,108 @@ const clearPreview = () => {
 }
 
 const loadTemplatePreview = async (id: string) => {
+  if (!isTemplateRoute()) return
   if (!id) {
     clearPreview()
     return
   }
-  previewLoading.value = true
+  const requestSeq = ++previewRequestSeq
+  const res = await dashboardApi.platform_template_admin_load(
+    { id, include_data: false },
+    { requestOptions: { silent: true } }
+  )
+  if (!isActiveTemplateRequest(id, requestSeq)) {
+    return
+  }
+  applyTemplatePreviewPayload(res)
+  previewKey.value += 1
+  if (previewNeedsChartRefresh()) {
+    await nextTick()
+    if (!isActiveTemplateRequest(id, requestSeq)) return
+    void refreshTemplateCharts({ silent: true, refreshState: 'waiting', expectedId: id })
+  }
+}
+
+const refreshTemplateCharts = async (
+  options: { silent?: boolean; refreshState?: 'loading' | 'waiting'; expectedId?: string } = {}
+) => {
+  const id = options.expectedId || selectedId.value
+  if (!id || !isTemplateRoute()) return
+  const requestSeq = previewRequestSeq
+  if (refreshingTemplateId.value) {
+    if (isActiveTemplateRequest(id, requestSeq)) {
+      pendingRefreshTemplateId.value = id
+      markPreviewChartsRefreshing(options.refreshState || 'waiting')
+    }
+    return
+  }
+  refreshingTemplateId.value = id
+  const previousCanvasViewInfo = cloneJson(preview.canvasViewInfo, {})
+  markPreviewChartsRefreshing(options.refreshState || 'loading')
   try {
-    const res = await dashboardApi.platform_template_admin_load(
+    const res = await dashboardApi.platform_template_admin_refresh(
       { id, include_data: false },
       { requestOptions: { silent: true } }
     )
-    preview.dashboardInfo = {
-      id: res.id,
-      name: res.name,
-      pid: res.pid,
-      datasource: res.datasource,
-      status: res.status,
-      source: res.source,
-      contentId: res.content_id,
-      type: res.type,
-      createName: res.create_name,
-      updateName: res.update_name,
-      sourceDashboardId: res.source_dashboard_id,
-      sourceDashboardName: res.source_dashboard_name,
-      sourceTenantId: res.source_tenant_id,
-      sourceTenantName: res.source_tenant_name,
-      sourceDatasourceId: res.source_datasource_id,
-      sourceDatasourceName: res.source_datasource_name,
-      createTime: res.create_time,
-      updateTime: res.update_time,
-      canEdit: res.can_edit === true,
-      canShare: false,
-      isDefault: false,
+    if (!isActiveTemplateRequest(id, requestSeq)) {
+      return
     }
-    preview.componentData = parseJson(res.component_data, [])
-    preview.canvasStyleData = parseJson(res.canvas_style_data, {})
-    preview.canvasViewInfo = parseJson(res.canvas_view_info, {})
+    applyTemplatePreviewPayload(res)
+    syncTemplateListItem(res)
     previewKey.value += 1
+    if (!options.silent) {
+      ElMessage.success(t('dashboard.chart_refresh_success'))
+    }
+  } catch (error: any) {
+    if (!isActiveTemplateRequest(id, requestSeq)) {
+      return
+    }
+    preview.canvasViewInfo = previousCanvasViewInfo
+    previewKey.value += 1
+    if (!options.silent) {
+      ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
+    }
   } finally {
-    previewLoading.value = false
+    if (String(refreshingTemplateId.value) === String(id)) {
+      refreshingTemplateId.value = ''
+    }
+    if (!isTemplateRoute() || requestSeq !== previewRequestSeq) {
+      pendingRefreshTemplateId.value = ''
+      return
+    }
+    const nextId = pendingRefreshTemplateId.value
+    pendingRefreshTemplateId.value = ''
+    if (
+      nextId &&
+      String(selectedId.value) === String(nextId) &&
+      previewNeedsChartRefresh()
+    ) {
+      void refreshTemplateCharts({
+        silent: true,
+        refreshState: 'waiting',
+        expectedId: nextId,
+      })
+    }
   }
 }
 
 const selectTemplate = async (item: any, syncRoute = true) => {
-  if (!item?.id || selectedId.value === item.id) return
+  if (!item?.id || selectedId.value === item.id || !isTemplateRoute()) return
   selectedId.value = item.id
   if (syncRoute) {
     await router.replace({
-      path: '/system/dashboard-template',
+      path: TEMPLATE_ROUTE_PATH,
       query: { ...route.query, templateId: item.id },
     })
+    if (!isTemplateRoute()) return
   }
   await loadTemplatePreview(item.id)
 }
 
 const loadList = async () => {
+  if (!isTemplateRoute()) return
   loading.value = true
+  let nextSelected: any
   try {
     const res = await dashboardApi.platform_template_admin_list({
       requestOptions: { silent: true },
@@ -182,17 +328,18 @@ const loadList = async () => {
     const routeTemplateId = Array.isArray(route.query.templateId)
       ? route.query.templateId[0]
       : route.query.templateId
-    const nextSelected =
+    nextSelected =
       list.value.find((item) => String(item.id) === String(routeTemplateId || selectedId.value)) ||
       list.value[0]
-    if (nextSelected) {
-      await selectTemplate(nextSelected, false)
-    } else {
-      selectedId.value = ''
-      clearPreview()
-    }
   } finally {
     loading.value = false
+  }
+  if (!isTemplateRoute()) return
+  if (nextSelected) {
+    await selectTemplate(nextSelected, false)
+  } else {
+    selectedId.value = ''
+    clearPreview()
   }
 }
 
@@ -222,7 +369,7 @@ const deleteTemplate = async (item?: any) => {
       selectedId.value = ''
       clearPreview()
       await router.replace({
-        path: '/system/dashboard-template',
+        path: TEMPLATE_ROUTE_PATH,
         query: nextQuery,
       })
     }
@@ -242,6 +389,7 @@ watch(
   () => filteredList.value.map((item) => item.id).join(','),
   async () => {
     await nextTick()
+    if (!isTemplateRoute()) return
     if (selectedId.value && filteredList.value.some((item) => item.id === selectedId.value)) return
     if (filteredList.value[0]) {
       await selectTemplate(filteredList.value[0])
@@ -252,11 +400,24 @@ watch(
 onMounted(() => {
   loadList()
 })
+
+watch(
+  () => route.path,
+  (path) => {
+    if (path !== TEMPLATE_ROUTE_PATH) {
+      invalidatePreviewRequests()
+    }
+  }
+)
+
+onBeforeUnmount(() => {
+  invalidatePreviewRequests()
+})
 </script>
 
 <template>
-  <div v-loading="loading" class="platform-template-workbench no-padding">
-    <aside class="template-sidebar">
+  <div class="platform-template-workbench no-padding">
+    <aside v-loading="loading" class="template-sidebar">
       <div class="sidebar-head">
         <div class="title">{{ t('dashboard.platform_template_library') }}</div>
         <div class="subtitle">{{ t('dashboard.platform_template_library_desc') }}</div>
@@ -325,7 +486,6 @@ onMounted(() => {
           platform-template
         />
         <div
-          v-loading="previewLoading"
           class="content"
           :class="{ 'content--empty': !hasCanvasPreview }"
         >
@@ -339,6 +499,7 @@ onMounted(() => {
             :canvas-view-info="preview.canvasViewInfo"
             show-position="preview"
             readonly-template
+            platform-template
           />
           <EmptyBackgroundSvg
             v-else-if="hasPreview"
@@ -355,7 +516,14 @@ onMounted(() => {
           />
         </div>
         <div class="template-head-actions">
-          <el-button secondary @click="loadList">{{ t('common.refresh') }}</el-button>
+          <el-button
+            secondary
+            :loading="isCurrentTemplateRefreshing"
+            :disabled="!hasPreview || Boolean(refreshingTemplateId)"
+            @click="refreshTemplateCharts()"
+          >
+            {{ t('common.refresh') }}
+          </el-button>
         </div>
       </div>
     </main>

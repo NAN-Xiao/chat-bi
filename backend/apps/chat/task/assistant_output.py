@@ -10,6 +10,7 @@ import orjson
 from langgraph.config import get_stream_writer
 
 from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_DISPLAY_MESSAGE,
     PERMISSION_DENIED_ERROR_TYPE,
     PERMISSION_DENIED_RESULT_MESSAGE,
 )
@@ -110,7 +111,7 @@ def emit_permission_denied_response(
             "type": "sql-data",
             "status": "failed",
             "error_type": PERMISSION_DENIED_ERROR_TYPE,
-            "message": PERMISSION_DENIED_RESULT_MESSAGE,
+            "message": PERMISSION_DENIED_DISPLAY_MESSAGE,
         }
         if include_reason:
             payload["reason"] = PERMISSION_DENIED_RESULT_MESSAGE
@@ -119,14 +120,14 @@ def emit_permission_denied_response(
     elif stream:
         if emit_sql and formatted_sql:
             emit(f"```sql\n{formatted_sql}\n```\n\n")
-        emit(f"> {PERMISSION_DENIED_RESULT_MESSAGE}\n")
+        emit(f"> {PERMISSION_DENIED_DISPLAY_MESSAGE}\n")
     else:
         json_result["success"] = False
         if sql is not None:
             json_result["sql"] = sql
         if failed_result is not None:
             json_result["data"] = failed_result
-        json_result["message"] = PERMISSION_DENIED_RESULT_MESSAGE
+        json_result["message"] = PERMISSION_DENIED_DISPLAY_MESSAGE
         emit(json_result)
 
     return json_result

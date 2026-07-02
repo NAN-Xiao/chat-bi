@@ -20,7 +20,11 @@ from apps.datasource.crud.binding import bind_tenant_to_datasource
 from apps.datasource.crud import permission
 from apps.datasource.crud import query_executor
 from apps.datasource.crud.permission_rules import delete_permission_records_for_datasources
-from apps.datasource.crud.permission_errors import PERMISSION_DENIED_AGENT_GUIDANCE, PERMISSION_DENIED_RESULT_MESSAGE
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_AGENT_GUIDANCE,
+    PERMISSION_DENIED_DISPLAY_MESSAGE,
+    PERMISSION_DENIED_RESULT_MESSAGE,
+)
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreTable, TableObj
 from apps.datasource.models.datasource import FieldObj
@@ -1095,6 +1099,91 @@ def test_permission_rule_group_can_be_created_without_users():
         assert row == (2, "TENANT", "[]")
 
 
+def test_permission_rule_save_preserves_large_user_ids_as_strings():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    large_user_id = "7477902731336749056"
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=2))
+        session.execute(text(
+            """
+            INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+            VALUES (10, 1, 1, 'orders', 'orders', 'orders')
+            """
+        ))
+        session.commit()
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            workspace_admin,
+            {
+                "name": "large user id rule",
+                "permissions": [
+                    {"name": "orders denied", "type": "table", "ds_id": 1, "table_id": 10},
+                ],
+                "users": [large_user_id],
+            },
+        ))
+
+        saved_id = int(saved["id"])
+        assert saved["users"] == [large_user_id]
+        assert saved["user_list"] == [large_user_id]
+        row = session.execute(
+            text("SELECT user_list FROM ds_rules WHERE id = :id"),
+            {"id": saved_id},
+        ).first()
+        assert row == (json.dumps([large_user_id]),)
+
+
+def test_permission_rule_matching_accepts_js_rounded_historical_user_id():
+    engine = _engine_with_permission_tables()
+    large_user_id = 7477902731336749056
+    js_rounded_user_id = 7477902731336749000
+    current_user = SimpleNamespace(
+        id=large_user_id,
+        system_role="viewer",
+        tenant_id=2,
+        tenant_role="member",
+    )
+
+    with Session(engine) as session:
+        datasource = _datasource(1, tenant_id=2)
+        session.add(datasource)
+        _insert_table_permission_fixture(session)
+        permissions = json.dumps([
+            {"field_id": 100, "field_name": "order_id", "enable": True},
+            {"field_id": 101, "field_name": "amount", "enable": False},
+        ])
+        session.execute(text(
+            """
+            INSERT INTO ds_permission
+                (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+            VALUES
+                (1000, 'orders columns', 1, 'user', 'column', 1, 10, '{}', :permissions, '[]')
+            """
+        ), {"permissions": permissions})
+        session.execute(text(
+            """
+            INSERT INTO ds_rules
+                (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
+            VALUES
+                (2000, 1, 'historical rounded user rule', '', 2, 'TENANT', '[1000]', :user_list, '[]')
+            """
+        ), {"user_list": json.dumps([js_rounded_user_id])})
+        session.commit()
+
+        rules = permission.get_user_permission_rules(session, current_user, 1)
+        assert [rule.id for rule in rules] == [2000]
+        with pytest.raises(ValueError, match="无权限字段"):
+            validate_sql_scope(
+                session,
+                current_user,
+                datasource,
+                "select sum(amount) as arpu from orders",
+            )
+
+
 def test_workspace_permission_rule_can_infer_bound_datasource_from_table():
     engine = _engine_with_permission_tables()
     workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
@@ -1757,7 +1846,7 @@ def test_analysis_assistant_permission_failure_is_structured_and_sanitized(monke
             raise AssertionError("hidden column query should be rejected")
 
     assert block["error_type"] == analysis_assistant_api.PERMISSION_DENIED_ERROR_TYPE
-    assert block["warning"] == PERMISSION_DENIED_RESULT_MESSAGE
+    assert block["warning"] == PERMISSION_DENIED_DISPLAY_MESSAGE
     assert block["agent_guidance"] == PERMISSION_DENIED_AGENT_GUIDANCE
     assert block["error_detail"] == ""
     assert block["summary"] == ""
@@ -1974,7 +2063,7 @@ def test_analysis_assistant_db_permission_failure_is_structured_and_sanitized():
 
     assert block["status"] == "failed"
     assert block["error_type"] == analysis_assistant_api.PERMISSION_DENIED_ERROR_TYPE
-    assert block["warning"] == PERMISSION_DENIED_RESULT_MESSAGE
+    assert block["warning"] == PERMISSION_DENIED_DISPLAY_MESSAGE
     assert block["agent_guidance"] == PERMISSION_DENIED_AGENT_GUIDANCE
     assert block["error_detail"] == ""
     assert block["summary"] == ""
