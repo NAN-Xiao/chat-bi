@@ -80,6 +80,9 @@ const blockingRefreshLoading = ref(false)
 const chartRenderVersion = ref(0)
 const pivotCalendarMonth = ref('')
 const pivotCalendarDraftStart = ref('')
+const pivotGroupPopoverVisible = ref(false)
+const pivotGroupReferenceRef = ref<HTMLElement | null>(null)
+const pivotGroupPanelRef = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
 let progressTimer: number | undefined
@@ -317,7 +320,7 @@ function axisForField(list: any, field: string): ChartAxis | undefined {
   return normalizedAxis(axis) || undefined
 }
 
-const pivotTimeField = computed(() => props.viewInfo?.pivot?.time_field || firstAxisValue(props.viewInfo?.chart?.xAxis))
+const pivotTimeField = computed(() => props.viewInfo?.pivot?.time_field || '')
 const chartMetricAxes = computed<ChartAxis[]>(() => {
   const used = new Set<string>()
   return normalizeAxisList(props.viewInfo?.chart?.yAxis)
@@ -339,7 +342,10 @@ const pivotMetricFields = computed(() => {
   const legacyField = props.viewInfo?.pivot?.metric_field || firstAxisValue(props.viewInfo?.chart?.yAxis)
   return legacyField ? [legacyField] : []
 })
-const pivotGroupField = computed(() => props.viewInfo?.pivot?.group_field || firstAxisValue(props.viewInfo?.chart?.series))
+const pivotGroupField = computed(() => {
+  const pivot = props.viewInfo?.pivot || {}
+  return pivot.group_field || ''
+})
 const pivotDimensions = computed<PivotDimension[]>(() =>
   inferPivotDimensions({
     fields: [
@@ -354,7 +360,7 @@ const pivotDimensions = computed<PivotDimension[]>(() =>
     configured: props.viewInfo?.pivot?.dimensions,
   })
 )
-const activePivotGroupField = computed(() => pivotState.groupField || pivotGroupField.value || pivotDimensions.value[0]?.field || '')
+const activePivotGroupField = computed(() => pivotState.groupField || pivotGroupField.value || '')
 const activePivotGroupDimension = computed(() =>
   pivotDimensions.value.find((item) => item.field === activePivotGroupField.value) ||
   (activePivotGroupField.value ? { field: activePivotGroupField.value, label: activePivotGroupField.value } : null)
@@ -410,12 +416,16 @@ const renderYAxis = computed<ChartAxis[]>(() => {
   return normalizeAxisList(props.viewInfo?.chart?.yAxis)
 })
 const renderSeries = computed<ChartAxis[]>(() => {
+  const chartSeries = normalizeAxisList(props.viewInfo?.chart?.series)
   if (pivotEnabled.value) {
+    if (chartSeries.length > 0) {
+      return chartSeries
+    }
     return pivotHasGroup.value && pivotState.groupEnabled && currentPivotGroupAxis.value
       ? [currentPivotGroupAxis.value]
       : []
   }
-  return normalizeAxisList(props.viewInfo?.chart?.series)
+  return chartSeries
 })
 const pivotGroupValueFilterEnabled = computed(
   () => pivotEnabled.value && pivotHasGroup.value && pivotState.groupEnabled && Boolean(activePivotGroupField.value)
@@ -435,14 +445,29 @@ function rowsHavePivotGroupValue(rows: Array<Record<string, any>>, field: string
   return Boolean(field && rows.some((row) => normalizePivotGroupValue(row?.[field])))
 }
 
+function rowsHaveAxisValue(rows: Array<Record<string, any>>, axes: ChartAxis[]) {
+  const fields = axes.map((axis) => axis.value).filter(Boolean)
+  if (fields.length === 0) {
+    return true
+  }
+  return fields.every((field) => rows.some((row) => normalizePivotGroupValue(row?.[field])))
+}
+
 const renderableChartData = computed(() => {
   let rows = rawChartData.value
   if (!pivotEnabled.value) {
     return rows
   }
-  if (pivotState.groupEnabled && activePivotGroupField.value && !rowsHavePivotGroupValue(rows, activePivotGroupField.value)) {
+  const chartSeries = renderSeries.value
+  const needsSourceRows =
+    (pivotState.groupEnabled && activePivotGroupField.value && !rowsHavePivotGroupValue(rows, activePivotGroupField.value)) ||
+    !rowsHaveAxisValue(rows, chartSeries)
+  if (needsSourceRows) {
     const sourceRows = Array.isArray(props.viewInfo?.data?.source_data) ? props.viewInfo.data.source_data : []
-    if (rowsHavePivotGroupValue(sourceRows, activePivotGroupField.value)) {
+    if (
+      rowsHaveAxisValue(sourceRows, chartSeries) &&
+      (!pivotState.groupEnabled || !activePivotGroupField.value || rowsHavePivotGroupValue(sourceRows, activePivotGroupField.value))
+    ) {
       rows = sourceRows
     }
   }
@@ -867,6 +892,31 @@ function toggleAllPivotGroupValues(event: Event) {
   }
 }
 
+function isInsidePivotGroupPopover(target: EventTarget | null) {
+  if (!(target instanceof Node)) {
+    return false
+  }
+  return Boolean(
+    pivotGroupReferenceRef.value?.contains(target) ||
+    pivotGroupPanelRef.value?.contains(target)
+  )
+}
+
+function handlePivotGroupOutsidePointerDown(event: PointerEvent) {
+  if (!pivotGroupPopoverVisible.value || isInsidePivotGroupPopover(event.target)) {
+    return
+  }
+  pivotGroupPopoverVisible.value = false
+}
+
+function addPivotGroupOutsidePointerListener() {
+  document.addEventListener('pointerdown', handlePivotGroupOutsidePointerDown, true)
+}
+
+function removePivotGroupOutsidePointerListener() {
+  document.removeEventListener('pointerdown', handlePivotGroupOutsidePointerDown, true)
+}
+
 function selectAllPivotGroupValues() {
   resetPivotGroupValueSelection('all')
   chartRenderVersion.value += 1
@@ -918,7 +968,7 @@ function syncPivotStateFromView(force = false) {
   pivotState.range = pivot.range || 'source'
   pivotState.customStart = pivot.custom_start || ''
   pivotState.customEnd = pivot.custom_end || ''
-  pivotState.groupField = pivot.group_field || pivotDimensions.value[0]?.field || pivotGroupField.value || ''
+  pivotState.groupField = pivotGroupField.value || ''
   const hasConfiguredPivotGroupValues = configuredPivotGroupValues.value.length > 0
   pivotState.groupEnabled =
     typeof pivot.group_enabled === 'boolean'
@@ -1635,6 +1685,17 @@ watch(
   }
 )
 
+watch(
+  () => pivotGroupPopoverVisible.value,
+  (visible) => {
+    if (visible) {
+      addPivotGroupOutsidePointerListener()
+    } else {
+      removePivotGroupOutsidePointerListener()
+    }
+  }
+)
+
 function onTypeChange(val: any) {
   chartType.value = val
   // eslint-disable-next-line vue/no-mutating-props
@@ -1664,6 +1725,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  removePivotGroupOutsidePointerListener()
   resizeObserver?.disconnect()
   stopRefreshProgress()
   if (renderTimer) {
@@ -1819,6 +1881,7 @@ defineExpose({
       </el-popover>
       <el-popover
         v-if="pivotHasGroup"
+        v-model:visible="pivotGroupPopoverVisible"
         trigger="click"
         placement="bottom-start"
         width="206"
@@ -1826,6 +1889,7 @@ defineExpose({
       >
         <template #reference>
           <button
+            ref="pivotGroupReferenceRef"
             type="button"
             class="pivot-chip pivot-group-chip"
             :class="{ active: pivotState.groupEnabled }"
@@ -1833,7 +1897,7 @@ defineExpose({
             {{ pivotState.groupEnabled ? pivotGroupValueLabel : t('dashboard.pivot_ungrouped') }}
           </button>
         </template>
-        <div class="pivot-group-value-panel">
+        <div ref="pivotGroupPanelRef" class="pivot-group-value-panel">
           <el-input
             v-model="pivotGroupValueSearch"
             class="pivot-group-search"

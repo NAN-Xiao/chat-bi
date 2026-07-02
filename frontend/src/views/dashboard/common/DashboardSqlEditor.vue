@@ -308,6 +308,18 @@ const pivotTimeFieldOptions = computed(() => {
   )
   return toFieldOptions(dateFields.length ? dateFields : sourcePreview.fields)
 })
+const pivotGroupFieldOptions = computed(() => {
+  const options = new Map<string, string>()
+  inferredPivotDimensions().forEach((dimension) => {
+    if (dimension.field) {
+      options.set(dimension.field, dimension.label || dimension.field)
+    }
+  })
+  ;[form.pivotGroupField, effectiveSeriesField.value]
+    .filter((field) => field && sourcePreview.fields.includes(field))
+    .forEach((field) => options.set(field, field))
+  return Array.from(options.entries()).map(([value, label]) => ({ value, label }))
+})
 const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && hasSqlSource.value)
 const canRunEditorPreview = computed(() => {
   if (!hasSqlSource.value && !hasMcpSource.value) {
@@ -371,7 +383,9 @@ const chartPreviewYFields = computed(() => {
   }
   return form.y
 })
-const activePivotGroupValueField = computed(() => effectiveSeriesField.value)
+const activePivotGroupValueField = computed(() =>
+  form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+)
 const previewHasPivotGroupField = computed(() => {
   const field = activePivotGroupValueField.value
   return Boolean(field && visiblePreviewFields([field], preview.data).includes(field))
@@ -382,7 +396,7 @@ const sourceHasPivotGroupValues = computed(() => {
 })
 const chartPreviewSeriesFields = computed(() => {
   const field = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
-  return field && previewDisplayFields.value.includes(field) ? [field] : []
+  return field && visiblePreviewFields([field], previewDisplayData.value).includes(field) ? [field] : []
 })
 const showPivotGroupValueConfig = computed(
   () =>
@@ -397,28 +411,29 @@ const pivotGroupValueOptions = computed(() => {
     return []
   }
   const counts = collectPivotGroupValueCounts(field)
-  unique(form.pivotGroupValues.map(normalizePivotGroupValue)).forEach((value) => {
-    if (value && !counts.has(value)) {
-      counts.set(value, 0)
-    }
-  })
-  return Array.from(counts.entries())
-    .map(([value, count]) => ({
-      label: count > 0 ? value : `${value} (0)`,
+  return Array.from(counts.keys())
+    .map((value) => ({
+      label: value,
       value,
     }))
     .sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true, sensitivity: 'base' }))
 })
 const previewDisplayData = computed(() => {
+  let rows = preview.data
+  const seriesField = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+  const previewHasSeriesField = !seriesField || visiblePreviewFields([seriesField], rows).includes(seriesField)
+  if (!previewHasSeriesField && visiblePreviewFields([seriesField], sourcePreview.data).includes(seriesField)) {
+    rows = sourcePreview.data
+  }
   if (!showPivotGroupValueConfig.value || !previewHasPivotGroupField.value) {
-    return preview.data
+    return rows
   }
   const field = activePivotGroupValueField.value
   const selected = new Set(unique(form.pivotGroupValues.map(normalizePivotGroupValue)))
   if (!field || selected.size === 0) {
     return []
   }
-  return preview.data.filter((row) => selected.has(normalizePivotGroupValue(row?.[field])))
+  return rows.filter((row) => selected.has(normalizePivotGroupValue(row?.[field])))
 })
 const hasPreviewData = computed(() => preview.status !== 'failed' && previewDisplayData.value.length > 0)
 const pivotGroupValueSelectionText = computed(
@@ -683,16 +698,12 @@ function buildForecastConfig(): ChartForecastConfig {
   }
 }
 
-function defaultPivotField(field: string, fallback = '') {
-  return field || fallback
-}
-
 function normalizePivotGranularity(value: any, fallback: PivotGranularity = 'day'): PivotGranularity {
   return value === 'week' || value === 'month' || value === 'day' ? value : fallback
 }
 
 function defaultPivotGranularity(): PivotGranularity {
-  const detected = detectTrendAxisGranularity(sourcePreview.data, form.pivotTimeField || form.x)
+  const detected = detectTrendAxisGranularity(sourcePreview.data, form.pivotTimeField)
   return detected === 'week' || detected === 'month' ? detected : 'day'
 }
 
@@ -710,41 +721,72 @@ function inferredPivotDimensions() {
       series: toAxes([effectiveSeriesField.value].filter(Boolean) as string[]),
       columns: toAxes(form.columns),
     },
-    timeField: form.pivotTimeField || form.x,
+    timeField: form.pivotTimeField,
     metricFields: form.y,
   })
 }
 
-function pickAllowedField(preferredFields: string[], allowedFields: string[], fallback = '') {
-  const preferred = preferredFields.find((field) => field && allowedFields.includes(field))
-  return preferred || allowedFields[0] || fallback
+function sanitizePivotTimeField() {
+  const timeFields = pivotTimeFieldOptions.value.map((item) => item.value)
+  if (!form.pivotTimeField || !timeFields.includes(form.pivotTimeField)) {
+    form.pivotTimeField = ''
+  }
+  return timeFields.length > 0
 }
 
 function normalizePivotSelections() {
   sanitizeSeriesSelection()
-  if (!form.pivotTimeField) {
-    form.pivotTimeField = defaultPivotField(form.x, sourcePreview.fields[0] || '')
-  }
-  form.pivotGroupField = effectiveSeriesField.value || inferredPivotDimensions()[0]?.field || ''
+  const hasSelectableTimeField = sanitizePivotTimeField()
   const fields = sourcePreview.fields
-  if (fields.length) {
-    const timeFields = pivotTimeFieldOptions.value.map((item) => item.value)
-    if (!timeFields.includes(form.pivotTimeField)) {
-      form.pivotTimeField = pickAllowedField([form.x], timeFields, fields[0] || '')
-    }
-    if (form.pivotGroupField && !fields.includes(form.pivotGroupField)) form.pivotGroupField = ''
+  if (form.pivotGroupField && (!fields.length || !fields.includes(form.pivotGroupField))) form.pivotGroupField = ''
+  if (!hasSelectableTimeField) {
+    form.pivotEnabled = false
+    form.pivotGroupValues = []
+    form.pivotGroupEnabled = false
+    return
   }
   if (!form.pivotGroupField) {
     form.pivotGroupEnabled = false
   }
 }
 
+function alignSeriesAndPivotGroupFields() {
+  if (!form.pivotEnabled || !showSeries.value) {
+    return false
+  }
+  const timeFields = pivotTimeFieldOptions.value.map((item) => item.value)
+  if (!form.pivotTimeField || !timeFields.includes(form.pivotTimeField)) {
+    return false
+  }
+  const seriesField = effectiveSeriesField.value
+  const groupField = form.pivotGroupField
+  if (!seriesField || !groupField || seriesField === groupField) {
+    return false
+  }
+  if (!sourcePreview.fields.includes(seriesField) || !sourcePreview.fields.includes(groupField)) {
+    return false
+  }
+  const seriesValueCount = collectPivotGroupValueCounts(seriesField).size
+  const groupValueCount = collectPivotGroupValueCounts(groupField).size
+  const looksSwapped =
+    groupValueCount > 0 &&
+    groupValueCount <= 20 &&
+    seriesValueCount >= Math.max(groupValueCount * 2, groupValueCount + 10)
+  if (!looksSwapped) {
+    return false
+  }
+  form.series = groupField
+  form.pivotGroupField = seriesField
+  form.pivotGroupEnabled = true
+  return true
+}
+
 function initPivotConfig(pivot?: any) {
   form.pivotEnabled = pivot?.enabled === true
   form.pivotTimeField = pivot?.time_field || ''
-  form.pivotGroupField = effectiveSeriesField.value || pivot?.group_field || ''
+  form.pivotGroupField = pivot?.group_field || ''
   form.pivotGroupEnabled =
-    typeof pivot?.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(form.pivotGroupField || effectiveSeriesField.value)
+    typeof pivot?.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(form.pivotGroupField)
   form.pivotRangeEnabled = pivot?.range_enabled !== false
   form.pivotGranularity = normalizePivotGranularity(pivot?.granularity)
   form.pivotRange = pivot?.range || 'source'
@@ -753,6 +795,11 @@ function initPivotConfig(pivot?: any) {
   form.pivotGroupValues = []
   initializedPivotGroupValueField.value = ''
   normalizePivotSelections()
+  if (!form.pivotEnabled) {
+    form.pivotGroupValues = []
+    initializedPivotGroupValueField.value = ''
+    return
+  }
   form.pivotGroupValues = Array.isArray(pivot?.group_values)
     ? unique(pivot.group_values.map(normalizePivotGroupValue))
     : pivotGroupValueOptions.value.map((item) => item.value)
@@ -1607,6 +1654,31 @@ function initEditor() {
 }
 
 watch(
+  () => activePivotGroupValueField.value,
+  (field, previousField) => {
+    if (!form.pivotEnabled || !field || field === previousField) {
+      return
+    }
+    syncPivotGroupValues({ forceAll: true })
+  }
+)
+
+watch(
+  () => form.pivotEnabled,
+  (enabled) => {
+    if (!enabled) {
+      return
+    }
+    sanitizePivotTimeField()
+    if (form.pivotGroupField && !sourcePreview.fields.includes(form.pivotGroupField)) {
+      form.pivotGroupField = ''
+      form.pivotGroupValues = []
+      form.pivotGroupEnabled = false
+    }
+  }
+)
+
+watch(
   () => props.modelValue,
   (value) => {
     if (value) {
@@ -1688,7 +1760,11 @@ async function previewSqlSource() {
     updateSourcePreviewResult(sourceSnapshot)
     resetFieldSelections()
     normalizePivotSelections()
-    syncPivotGroupValues()
+    if (alignSeriesAndPivotGroupFields()) {
+      syncPivotGroupValues({ forceAll: true })
+    } else {
+      syncPivotGroupValues()
+    }
     if (sourceSnapshot.status === 'failed') {
       return sourceSnapshot
     }
@@ -2476,6 +2552,16 @@ function closeDrawer() {
                   :key="item.value"
                   :label="item.label"
                   :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('dashboard.pivot_group_field')">
+              <el-select v-model="form.pivotGroupField" filterable clearable>
+                <el-option
+                  v-for="field in pivotGroupFieldOptions"
+                  :key="field.value"
+                  :label="field.label"
+                  :value="field.value"
                 />
               </el-select>
             </el-form-item>

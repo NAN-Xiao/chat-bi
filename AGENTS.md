@@ -92,6 +92,13 @@ Scope: entire repository.
 - If domain-specific behavior is needed for a demo or customer scenario, keep it in configuration, seed scripts, documentation, test fixtures, or datasource-scoped semantic records. Do not wire it into the platform runtime path.
 - Production logic should be driven by system configuration, datasource metadata, user/workspace permissions, semantic-layer records, and selected assistant settings. Prefer extending those configuration mechanisms before adding code branches.
 
+## No Silent Compatibility Fallbacks
+
+- Do not add silent compatibility fallbacks for field mapping, chart axes, pivot settings, datasource context, semantic records, permissions, SQL fields, or user-selected configuration unless the user explicitly requests backward compatibility for a known legacy case.
+- When a configured field or required setting is missing, invalid, unauthorized, or absent from the current SQL result, prefer clearing the invalid value, disabling the dependent UI, showing an explicit validation message, or asking the user to choose the correct value.
+- Do not automatically substitute another field such as the first column, xAxis, series, metric field, datasource default, semantic example, or similarly named field. Silent substitution can make charts appear valid while using the wrong business meaning.
+- If temporary legacy compatibility is unavoidable, keep it narrowly scoped, name it as legacy behavior in code/tests, and add a regression test proving it cannot override explicit current configuration.
+
 ## Chart Rendering and Dashboard Copy Constraints
 
 - Chart rendering components must bind chart libraries to the current component-owned DOM element/ref, not to a globally queried DOM id. Chat answers, fullscreen dialogs, dashboard previews, and add-to-dashboard flows may temporarily contain duplicate chart ids for the same source record.
