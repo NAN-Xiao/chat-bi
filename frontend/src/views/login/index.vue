@@ -2087,7 +2087,18 @@ onMounted(async () => {
 
   &.is-trial-stage {
     .shuzhi-login-shell {
+      align-items: start;
       min-height: 735px;
+    }
+
+    .shuzhi-login-story {
+      align-self: start;
+      min-height: 0;
+      height: auto;
+    }
+
+    .login-preview-card {
+      margin-top: 18px;
     }
   }
 }
