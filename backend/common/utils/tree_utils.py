@@ -2,7 +2,6 @@
 脚本说明：这个脚本放通用工具相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
 from typing import List, Optional, Dict, TypeVar, Protocol, Any
-from pydantic import BaseModel
 
 
 class ITreeNode(Protocol):

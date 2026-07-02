@@ -10,6 +10,7 @@ import {
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboardStore)
+type DashboardResourceCallback = (response: any) => void
 
 export const load_resource_prepare = (
   params: any,
@@ -80,8 +81,7 @@ export const initCanvasData = (params: any, callBack: () => void) => {
   })
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export const findNextComponentIndex = async (params: any, callBack: Function) => {
+export const findNextComponentIndex = async (params: any, callBack: DashboardResourceCallback) => {
   const { onError, ...requestParams } = params || {}
   load_resource_prepare(
     requestParams,
@@ -110,8 +110,7 @@ export const findNextComponentIndex = async (params: any, callBack: Function) =>
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export const saveDashboardResource = (params: any, callBack: Function) => {
+export const saveDashboardResource = (params: any, callBack: DashboardResourceCallback) => {
   const commonParams = {
     componentData: componentData.value,
     canvasStyleData: canvasStyleData.value,
@@ -120,7 +119,7 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
   saveDashboardResourceTarget(params, commonParams, callBack)
 }
 
-export const savePlatformTemplateResource = (params: any, callBack: Function) => {
+export const savePlatformTemplateResource = (params: any, callBack: DashboardResourceCallback) => {
   const requestParams = {
     id: params.id,
     name: params.name || dashboardStore.dashboardInfo.name,
@@ -148,8 +147,11 @@ export const savePlatformTemplateResource = (params: any, callBack: Function) =>
   })
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export const saveDashboardResourceTarget = (params: any, commonParams: any, callBack: Function) => {
+export const saveDashboardResourceTarget = (
+  params: any,
+  commonParams: any,
+  callBack: DashboardResourceCallback
+) => {
   const hasDatasourceParam = Object.prototype.hasOwnProperty.call(params, 'datasource')
   const requestBaseParams = {
     ...params,

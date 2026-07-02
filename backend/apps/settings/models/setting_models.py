@@ -1,7 +1,7 @@
 """
 脚本说明：这个脚本定义后端业务用到的数据表或数据对象，便于代码和数据库对齐。
 """
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
 
 from common.core.models import SnowflakeBase
 
@@ -15,4 +15,3 @@ class term_model(SnowflakeBase, table=True):
     definition: str = Field(max_length=255)
     domain: str = Field(max_length=255)
     create_time: int = Field(default=0)
-   

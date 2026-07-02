@@ -633,7 +633,7 @@ const getChartSeries = (chart?: AnalysisChartConfig) => {
   return []
 }
 
-const getMultiQuotaName = (_chart?: AnalysisChartConfig) => '指标类型'
+const getMultiQuotaName = () => '指标类型'
 
 const getPreviewRows = (block: AnalysisBlock) => (block.data || []).slice(0, 6)
 
@@ -1331,7 +1331,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 <section
                   v-for="block in message.blocks"
                   :key="block.id"
-                  v-memo="[block]"
                   class="analysis-block"
                   :class="{ failed: block.error }"
                 >
@@ -1374,7 +1373,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                       :y="getChartYAxis(block.chart)"
                       :series="getChartSeries(block.chart)"
                       :data="block.data"
-                      :multi-quota-name="getMultiQuotaName(block.chart)"
+                      :multi-quota-name="getMultiQuotaName()"
                       :forecast="block.chart.forecast"
                     />
                   </div>

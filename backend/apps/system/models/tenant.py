@@ -5,7 +5,7 @@ import secrets
 
 from sqlalchemy import BigInteger, Boolean, Column, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
 
 from common.core.models import SnowflakeBase
 from common.utils.time import get_timestamp

@@ -603,7 +603,7 @@ const toNumberList = (value: any): number[] => {
   }
   try {
     return toNumberList(JSON.parse(value))
-  } catch (e) {
+  } catch {
     return []
   }
 }
@@ -613,7 +613,7 @@ const parseJsonValue = (value: any, fallback: any) => {
   if (typeof value === 'object') return value
   try {
     return JSON.parse(value)
-  } catch (e) {
+  } catch {
     return fallback
   }
 }
@@ -763,7 +763,7 @@ const formatDatasourceDatabase = (datasource: any) => {
     const schema = conf.dbSchema || conf.schema
     const host = conf.host && conf.port ? `${conf.host}:${conf.port}` : conf.host
     return [database, schema, host].filter(Boolean).join(' / ') || datasource.name
-  } catch (e) {
+  } catch {
     return datasource?.name || '-'
   }
 }

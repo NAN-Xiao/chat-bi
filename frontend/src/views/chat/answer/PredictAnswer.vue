@@ -211,7 +211,7 @@ function hasRecordData(record?: ChatRecord) {
     try {
       const data = JSON.parse(text)
       return data?.status === 'failed' || (Array.isArray(data?.data) && data.data.length > 0)
-    } catch (e) {
+    } catch {
       return true
     }
   }

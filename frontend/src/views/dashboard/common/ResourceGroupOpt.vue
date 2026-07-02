@@ -315,8 +315,8 @@ const saveResource = () => {
             }
           : undefined
       const saveRequest = commonParams
-        ? (callback: Function) => saveDashboardResourceTarget(params, commonParams, callback)
-        : (callback: Function) => saveDashboardResource(params, callback)
+        ? (callback: (rsp: any) => void) => saveDashboardResourceTarget(params, commonParams, callback)
+        : (callback: (rsp: any) => void) => saveDashboardResource(params, callback)
       saveRequest(function (rsp: any) {
         const messageTips = t('common.save_success')
         ElMessage({

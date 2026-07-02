@@ -244,7 +244,7 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
     if db.connect_type == ConnectType.sqlalchemy:
         conn = get_engine(ds, 10)
         try:
-            with conn.connect() as connection:
+            with conn.connect():
                 AppLogUtil.info("success")
                 return True
         except Exception as e:

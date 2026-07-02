@@ -5,7 +5,7 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import List, Optional, Union, Dict, Any
+from typing import List, Optional, Union, Any
 
 import orjson
 import sqlparse
@@ -16,7 +16,6 @@ from sqlalchemy.orm import aliased
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
-from apps.datasource.crud.datasource import get_ds
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_DISPLAY_MESSAGE,
     PERMISSION_DENIED_ERROR_TYPE,

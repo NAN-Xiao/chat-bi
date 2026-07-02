@@ -536,7 +536,7 @@ function hasRecordData(record?: ChatRecord) {
         data?.status === 'business_notice' ||
         (Array.isArray(data?.data) && data.data.length > 0)
       )
-    } catch (e) {
+    } catch {
       return true
     }
   }

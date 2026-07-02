@@ -12,7 +12,7 @@ export const toIdStringList = (value: any): string[] => {
   if (typeof value === 'string') {
     try {
       return toIdStringList(JSON.parse(value))
-    } catch (e) {
+    } catch {
       const text = normalizeIdString(value)
       return text ? [text] : []
     }

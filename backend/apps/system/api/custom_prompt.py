@@ -272,7 +272,6 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
-    can_manage_all = _can_manage_all_prompts(session, current_user)
     can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
     current_tid = DEFAULT_TENANT_ID if can_manage_platform_public else _workspace_tenant_id(current_user)
     if info.id:

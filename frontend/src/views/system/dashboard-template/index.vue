@@ -285,20 +285,16 @@ const refreshTemplateCharts = async (
     }
     if (!isTemplateRoute() || requestSeq !== previewRequestSeq) {
       pendingRefreshTemplateId.value = ''
-      return
-    }
-    const nextId = pendingRefreshTemplateId.value
-    pendingRefreshTemplateId.value = ''
-    if (
-      nextId &&
-      String(selectedId.value) === String(nextId) &&
-      previewNeedsChartRefresh()
-    ) {
-      void refreshTemplateCharts({
-        silent: true,
-        refreshState: 'waiting',
-        expectedId: nextId,
-      })
+    } else {
+      const nextId = pendingRefreshTemplateId.value
+      pendingRefreshTemplateId.value = ''
+      if (nextId && String(selectedId.value) === String(nextId) && previewNeedsChartRefresh()) {
+        void refreshTemplateCharts({
+          silent: true,
+          refreshState: 'waiting',
+          expectedId: nextId,
+        })
+      }
     }
   }
 }
@@ -519,7 +515,7 @@ onBeforeUnmount(() => {
           <el-button
             secondary
             :loading="isCurrentTemplateRefreshing"
-            :disabled="!hasPreview || Boolean(refreshingTemplateId)"
+            :disabled="!hasPreview || !!refreshingTemplateId"
             @click="refreshTemplateCharts()"
           >
             {{ t('common.refresh') }}

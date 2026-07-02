@@ -128,10 +128,10 @@ def test_ask_token_cannot_override_api_key_bound_tenant(monkeypatch):
         status=True,
     )
 
-    async def fake_get_api_key(_session, _access_key):
+    async def fake_get_api_key(_session, _access_key, **_kwargs):
         return api_key
 
-    async def fake_get_user_info(*, session, user_id):
+    async def fake_get_user_info(*, user_id, **_kwargs):
         return UserInfoDTO(
             id=user_id,
             account="demo",
@@ -161,3 +161,59 @@ def test_ask_token_cannot_override_api_key_bound_tenant(monkeypatch):
 
     assert ok is False
     assert detail == "Token tenant header mismatch!"
+
+
+def test_ask_token_falls_back_when_unverified_tenant_is_stale(monkeypatch):
+    engine = create_engine("sqlite://")
+    monkeypatch.setattr(auth_middleware, "engine", engine)
+
+    api_key = ApiKeyModel(
+        id=100,
+        access_key="access-1",
+        secret_key="secret-1-secret-1-secret-1-secret-1",
+        create_time=1,
+        uid=1,
+        tenant_id=10,
+        status=True,
+    )
+    calls = []
+
+    async def fake_get_api_key(_session, _access_key, **_kwargs):
+        requested_tenant_id = _kwargs.get("tenant_id")
+        calls.append(requested_tenant_id)
+        if requested_tenant_id == 99:
+            return None
+        return api_key
+
+    async def fake_get_user_info(*, user_id, **_kwargs):
+        return UserInfoDTO(
+            id=user_id,
+            account="demo",
+            name="Demo",
+            email="demo@example.com",
+            password="hash",
+            status=1,
+            origin=0,
+            system_role="viewer",
+        )
+
+    monkeypatch.setattr(auth_middleware, "get_api_key", fake_get_api_key)
+    monkeypatch.setattr(auth_middleware, "get_user_info", fake_get_user_info)
+    monkeypatch.setattr(auth_middleware.TokenMiddleware, "_attach_tenant", lambda self, request, session, user, *args, **kwargs: user)
+
+    token = jwt.encode(
+        {"access_key": "access-1", "tenant_id": 99},
+        "secret-1-secret-1-secret-1-secret-1",
+        algorithm=security.ALGORITHM,
+    )
+    request = Request({
+        "type": "http",
+        "headers": [],
+    })
+
+    middleware = auth_middleware.TokenMiddleware(app=None)
+    ok, detail = asyncio.run(middleware.validateAskToken(request, f"sk {token}", auth_middleware.I18n()))
+
+    assert ok is False
+    assert detail == "Token tenant payload mismatch!"
+    assert calls == [99, None]

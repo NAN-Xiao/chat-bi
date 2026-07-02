@@ -5,7 +5,7 @@ import datetime
 
 from sqlmodel import select
 
-from common.core.deps import SessionDep, CurrentUser, Trans
+from common.core.deps import SessionDep, CurrentUser
 from ..models.datasource import DsRecommendedProblem, RecommendedProblemBase, CoreDatasource, RecommendedProblemResponse
 import orjson
 

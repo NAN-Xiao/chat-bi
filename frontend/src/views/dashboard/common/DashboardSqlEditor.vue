@@ -547,7 +547,7 @@ function normalizePivotGroupValue(value: unknown) {
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value)
-    } catch (_error) {
+    } catch {
       return `${value}`
     }
   }
@@ -1102,7 +1102,7 @@ function updateSourcePreviewResult(result: any) {
 function formatJson(value: any) {
   try {
     return JSON.stringify(value ?? {}, null, 2)
-  } catch (_error) {
+  } catch {
     return '{}'
   }
 }
@@ -1135,7 +1135,7 @@ function syncMcpArgumentsObjectFromText(showMessage = true) {
   try {
     setMcpArgumentsObject(parseJsonObject(form.mcpArgumentsText))
     return true
-  } catch (_error) {
+  } catch {
     if (showMessage) {
       ElMessage.warning(mt('mcp_editor_invalid_arguments'))
     }
@@ -1484,7 +1484,7 @@ async function loadMcpFilterOptions() {
     )
     const raw = result?.raw
     mcpFilterOptions.value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
-  } catch (_error) {
+  } catch {
     mcpFilterOptions.value = {}
   } finally {
     mcpFilterOptionsLoading.value = false
@@ -1791,7 +1791,7 @@ async function previewMcpSource() {
   let argumentsValue: Record<string, any>
   try {
     argumentsValue = cleanMcpArguments(parseJsonObject(form.mcpArgumentsText))
-  } catch (_error) {
+  } catch {
     ElMessage.warning(mt('mcp_editor_invalid_arguments'))
     return null
   }
@@ -2014,7 +2014,7 @@ function applyChange() {
   if (hasMcpSource.value) {
     try {
       mcpArgumentsValue = cleanMcpArguments(parseJsonObject(form.mcpArgumentsText))
-    } catch (_error) {
+    } catch {
       ElMessage.warning(mt('mcp_editor_invalid_arguments'))
       return
     }

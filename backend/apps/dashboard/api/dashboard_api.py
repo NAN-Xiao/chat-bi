@@ -1,12 +1,10 @@
 ﻿"""
 脚本说明：这个脚本放仪表盘的接口，把前端请求接进来并交给后面的业务逻辑处理。
 """
-from typing import List
-
 import asyncio
 import time
 
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends
 
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
     create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql, \

@@ -550,7 +550,7 @@ const leaveWorkspace = async (tenant: TenantInfo) => {
       customClass: 'confirm-no_icon',
       autofocus: false,
     })
-  } catch (e) {
+  } catch {
     return
   }
   tenantLeavingId.value = tenantId

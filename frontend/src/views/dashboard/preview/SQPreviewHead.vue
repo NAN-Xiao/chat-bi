@@ -112,7 +112,7 @@ function normalizeReportGroupValue(value: any) {
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value)
-    } catch (_error) {
+    } catch {
       return `${value}`
     }
   }

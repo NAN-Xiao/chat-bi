@@ -16,7 +16,7 @@ from common.audit.schemas.request_context import RequestContext
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.user import is_platform_workspace_delegate
 from apps.system.crud.user import get_user_by_account
-from apps.system.schemas.system_schema import UserInfoDTO, BaseUserDTO
+from apps.system.schemas.system_schema import UserInfoDTO
 from sqlalchemy import and_, select
 
 from common.core.db import engine
@@ -458,11 +458,6 @@ class SystemLogger:
 
             # 获取客户端信息
             client_info = cls.get_client_info(request)
-            # 获取请求参数
-            request_params = None
-            if config.extract_params:
-                request_params = cls.extract_request_params(request)
-
             # 创建日志对象
             log = SystemLog(
                 tenant_id=_user_tenant_id(user_info),
@@ -518,7 +513,7 @@ class SystemLogger:
                     session.commit()
                 return log
 
-        except Exception as e:
+        except Exception:
             print(f"[SystemLogger] Failed to create log: {str(traceback.format_exc())}")
             return None
 

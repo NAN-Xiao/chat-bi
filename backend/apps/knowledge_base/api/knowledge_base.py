@@ -290,7 +290,7 @@ async def save_knowledge_base(
                 tenant_id=int(record.tenant_id),
             )
             record.task_id = task.get("id")
-        except Exception as exc:
+        except Exception:
             record.task_id = None
             record.error_message = None
             background_tasks.add_task(

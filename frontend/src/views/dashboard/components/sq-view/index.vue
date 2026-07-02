@@ -191,7 +191,7 @@ function normalizePivotGroupValue(value: unknown) {
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value)
-    } catch (_error) {
+    } catch {
       return `${value}`
     }
   }
@@ -885,7 +885,7 @@ function togglePivotGroupValue(value: string, event: Event) {
 }
 
 function toggleAllPivotGroupValues(event: Event) {
-  if (Boolean((event.target as HTMLInputElement | null)?.checked)) {
+  if ((event.target as HTMLInputElement | null)?.checked) {
     selectAllPivotGroupValues()
   } else {
     clearPivotGroupValues()

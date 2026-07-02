@@ -423,7 +423,7 @@ const handleDatasourceChange = () => {
 }
 
 const handleDatasourceScopeModeChange = (value: string | number | boolean) => {
-  if (!Boolean(value)) {
+  if (!value) {
     agentForm.value.datasource_ids = []
   }
   handleDatasourceChange()

@@ -901,7 +901,7 @@ const toNumberList = (value: any): number[] => {
   try {
     const parsed = JSON.parse(value)
     return toNumberList(parsed)
-  } catch (e) {
+  } catch {
     return []
   }
 }
@@ -911,7 +911,7 @@ const parseJsonValue = (value: any, fallback: any) => {
   if (typeof value === 'object') return value
   try {
     return JSON.parse(value)
-  } catch (e) {
+  } catch {
     return fallback
   }
 }
@@ -1102,7 +1102,7 @@ const formatProjectDatabase = (project: any) => {
     const schema = conf.dbSchema || conf.schema
     const host = conf.host && conf.port ? `${conf.host}:${conf.port}` : conf.host
     return [database, schema, host].filter(Boolean).join(' / ') || project.name
-  } catch (e) {
+  } catch {
     return project?.name || '-'
   }
 }

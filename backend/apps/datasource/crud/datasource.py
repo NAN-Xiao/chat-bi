@@ -51,7 +51,7 @@ def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreData
     if is_platform_admin(user) and not is_platform_workspace_delegate(user):
         return session.exec(select(CoreDatasource).order_by(CoreDatasource.name)).all()
 
-    tenant_id = current_tenant_id(user)
+    current_tenant_id(user)
     accessible_ids = get_accessible_datasource_ids(session, user)
     if not accessible_ids:
         return []
@@ -209,7 +209,13 @@ def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDat
             raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
 
 
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.id")
+@clear_cache(
+    namespace=CacheNamespace.AUTH_INFO,
+    cacheName=CacheName.DS_ID_LIST,
+    keyExpression="user.id",
+    scope="tenant",
+    tenantExpression="user.tenant_id",
+)
 async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
     """
     是什么：create_ds 是一个可以复用的小步骤，负责数据源相关的一件事。

@@ -384,8 +384,14 @@ async def picture(file_id: str = Path(description="file_id")):
     return StreamingResponse(iterfile(), media_type=media_type)
 
 
-@clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
-async def clear_ui_cache(id: int):
+@clear_cache(
+    namespace=CacheNamespace.EMBEDDED_INFO,
+    cacheName=CacheName.ASSISTANT_INFO,
+    keyExpression="id",
+    scope="tenant",
+    tenantExpression="tenant_id",
+)
+async def clear_ui_cache(id: int, session: SessionDep | None = None, tenant_id: int | None = None):
     """
     是什么：clear_ui_cache 是一个可以复用的小步骤，负责系统管理相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
@@ -538,7 +544,6 @@ async def add(request: Request, session: SessionDep, current_user: CurrentUser, 
     dependencies=[Depends(require_chatbi_business_user)],
 )
 @require_permissions(permission=AppPermission(role=['admin']))
-@clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, resource_id_expr="editor.id"))
 async def update(request: Request, session: SessionDep, current_user: CurrentUser, editor: AssistantDTO):
     """
@@ -551,6 +556,7 @@ async def update(request: Request, session: SessionDep, current_user: CurrentUse
     update_data = editor.model_dump(exclude_unset=True, exclude={"id"})
     db_model.sqlmodel_update(update_data)
     session.add(db_model)
+    await clear_ui_cache(id=id, session=session, tenant_id=db_model.tenant_id)
     session.commit()
     dynamic_upgrade_cors(request=request, session=session)
 
@@ -579,7 +585,6 @@ async def get_one(session: SessionDep, current_user: CurrentUser, id: int = Path
     dependencies=[Depends(require_chatbi_business_user)],
 )
 @require_permissions(permission=AppPermission(role=['admin']))
-@clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.APPLICATION, resource_id_expr="id"))
 async def delete(request: Request, session: SessionDep, current_user: CurrentUser, id: int = Path(description="ID")):
     """
@@ -588,6 +593,7 @@ async def delete(request: Request, session: SessionDep, current_user: CurrentUse
     做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
     db_model = _get_manageable_assistant(session, current_user, id)
+    await clear_ui_cache(id=id, session=session, tenant_id=db_model.tenant_id)
     session.delete(db_model)
     session.commit()
     dynamic_upgrade_cors(request=request, session=session)

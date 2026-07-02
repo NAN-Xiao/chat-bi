@@ -294,8 +294,12 @@ class TokenMiddleware(BaseHTTPMiddleware):
             if not access_key:
                 return False, "Miss access_key payload error!"
             with Session(engine) as session:
-                api_key_model = await get_api_key(session, access_key)
+                unverified_tenant_id = unverified_payload.get("tenant_id") or self._tenant_id_from_request(request, None)
+                api_key_model = await get_api_key(session, access_key, tenant_id=unverified_tenant_id)
                 api_key_model = ApiKeyModel.model_validate(api_key_model) if api_key_model else None
+                if not api_key_model:
+                    api_key_model = await get_api_key(session, access_key)
+                    api_key_model = ApiKeyModel.model_validate(api_key_model) if api_key_model else None
                 if not api_key_model:
                     return False, "Invalid access_key!"
                 if not api_key_model.status:
@@ -314,7 +318,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if api_key_tenant_id and header_tenant_id and int(header_tenant_id) != int(api_key_tenant_id):
                     return False, "Token tenant header mismatch!"
                 uid = api_key_model.uid
-                session_user = await get_user_info(session = session, user_id = uid)
+                session_user = await get_user_info(session = session, user_id = uid, tenant_id=bound_tenant_id)
                 if not session_user:
                     message = trans('i18n_not_exist', msg = trans('i18n_user.account'))
                     raise Exception(message)
@@ -358,7 +362,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
             )
             token_data = TokenPayload(**payload)
             with Session(engine) as session:
-                session_user = await get_user_info(session = session, user_id = token_data.id)
+                session_user = await get_user_info(
+                    session=session,
+                    user_id=token_data.id,
+                    tenant_id=token_data.tenant_id,
+                )
                 if not session_user:
                     message = trans('i18n_not_exist', msg = trans('i18n_user.account'))
                     raise Exception(message)
@@ -405,7 +413,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 """ session_user = await get_user_info(session = session, user_id = token_data.id)
                 session_user = UserInfoDTO.model_validate(session_user) """
                 token_data = TokenPayload(**payload)
-                assistant_info = await get_assistant_info(session=session, assistant_id=payload['assistant_id'])
+                assistant_info = await get_assistant_info(
+                    session=session,
+                    assistant_id=payload['assistant_id'],
+                    tenant_id=payload.get("tenant_id"),
+                )
                 assistant_info = AssistantModel.model_validate(assistant_info)
                 self._assistant_tenant_id_from_payload(payload, assistant_info)
                 session_user = get_assistant_user(id = token_data.id)
@@ -436,7 +448,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
             if not embeddedId:
                 embeddedId = xor_decrypt(app_key)
             with Session(engine) as session:
-                assistant_info = await get_assistant_info(session=session, assistant_id=embeddedId)
+                assistant_info = await get_assistant_info(
+                    session=session,
+                    assistant_id=embeddedId,
+                    tenant_id=unverified_payload.get("tenant_id"),
+                )
                 assistant_info = AssistantModel.model_validate(assistant_info)
                 payload = jwt.decode(
                     param, assistant_info.app_secret, algorithms=[security.ALGORITHM]
@@ -457,7 +473,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if not session_user:
                     message = trans('i18n_not_exist', msg = trans('i18n_user.account'))
                     raise Exception(message)
-                session_user = await get_user_info(session = session, user_id = session_user.id)
+                session_user = await get_user_info(
+                    session=session,
+                    user_id=session_user.id,
+                    tenant_id=getattr(assistant_info, "tenant_id", None),
+                )
 
                 session_user = UserInfoDTO.model_validate(session_user)
                 if session_user.status != 1:

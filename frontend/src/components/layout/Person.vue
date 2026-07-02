@@ -51,8 +51,13 @@ const adminTenantList = computed(() =>
   tenantList.value.filter((tenant) => canManageTenant(tenant.role))
 )
 const hasAdminTenant = computed(() => adminTenantList.value.length > 0)
+const WORKSPACE_ADMIN_ENTRY_ENABLED = false
 const showAdminWorkspaceEntry = computed(
-  () => false && !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && hasAdminTenant.value
+  () =>
+    WORKSPACE_ADMIN_ENTRY_ENABLED &&
+    !isPlatformAdmin.value &&
+    !isPlatformWorkspaceDelegate.value &&
+    hasAdminTenant.value
 )
 const showWorkspaceApplicationEntry = computed(
   () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && !userStore.hasActiveWorkspace

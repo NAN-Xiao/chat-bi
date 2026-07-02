@@ -4,9 +4,10 @@
 import asyncio
 import random
 import re
+import weakref
 from functools import partial, wraps
 from inspect import signature
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
@@ -25,12 +26,15 @@ from common.core.redis_client import (
     platform_redis_key,
     redis_lock,
     redis_health,
+    tenant_redis_key,
 )
 from common.utils.utils import AppLogUtil
 
 _CACHE_TTL_JITTER_RATIO = 0.1
 _SQLALCHEMY_SESSION_MODULES = {"sqlmodel.orm.session", "sqlalchemy.orm.session"}
-_LOCAL_CACHE_REBUILD_LOCKS: dict[str, asyncio.Lock] = {}
+_LOCAL_CACHE_REBUILD_LOCKS: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+_CACHE_BACKGROUND_TASKS: set[asyncio.Task] = set()
+CacheScope = Literal["platform", "tenant"]
 
 
 def _cache_part(value: Any) -> str:
@@ -51,14 +55,122 @@ def _cache_namespace(namespace: Any) -> str:
     return _cache_part(namespace) if namespace else ""
 
 
-def _prefixed_cache_key(key: str) -> str:
+def _prefixed_cache_key(key: str, *, scope: CacheScope = "platform", tenant_id: Any | None = None) -> str:
     """
     是什么：_prefixed_cache_key 给自定义 key 补上 FastAPICache 的全局前缀。
     谁调用：缓存读取和清理都会调用它。
-    做了什么：因为自定义 key_builder 会绕过 fastapi-cache 默认拼接，这里显式补齐 prefix。
+    做了什么：因为自定义 key_builder 会绕过 fastapi-cache 默认拼接，这里显式补齐 prefix 和 Redis 作用域。
     """
     prefix = FastAPICache.get_prefix()
-    return platform_redis_key("cache", prefix, key) if prefix else platform_redis_key("cache", key)
+    parts = ("cache", prefix, key) if prefix else ("cache", key)
+    if scope == "tenant":
+        return tenant_redis_key(tenant_id, *parts)
+    return platform_redis_key(*parts)
+
+
+def _normalize_cache_scope(scope: str) -> CacheScope:
+    """
+    是什么：_normalize_cache_scope 规整缓存 Redis 作用域。
+    谁调用：cache 和 clear_cache 装饰器。
+    做了什么：只允许明确的平台级或租户级作用域，避免误拼裸 Redis key。
+    """
+    normalized = (scope or "platform").strip().lower()
+    if normalized not in {"platform", "tenant"}:
+        raise ValueError(f"Unsupported cache scope: {scope}")
+    return normalized  # type: ignore[return-value]
+
+
+def _cache_value_missing(value: Any) -> bool:
+    """
+    是什么：_cache_value_missing 判断缓存表达式是否没有取到有效值。
+    谁调用：keyExpression 和 tenantExpression 解析逻辑。
+    做了什么：把 None 和空字符串视为缺失，避免生成没有边界的 Redis key。
+    """
+    return value is None or value == ""
+
+
+def _member_value(value: Any, part: str) -> Any:
+    """
+    是什么：_member_value 从对象或字典里取一个字段。
+    谁调用：缓存表达式解析逻辑。
+    做了什么：兼容 Pydantic/SQLModel 对象和 dict 入参。
+    """
+    if isinstance(value, dict):
+        return value.get(part)
+    return getattr(value, part)
+
+
+def _resolve_expression_value(
+    func: Any,
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
+    expression: str,
+    *,
+    missing_value: Any = None,
+) -> Any:
+    """
+    是什么：_resolve_expression_value 解析 keyExpression/tenantExpression。
+    谁调用：缓存 key 构建和租户作用域构建。
+    做了什么：支持参数名、属性路径和 args[0] 这类位置参数表达式。
+    """
+    sig = signature(func)
+    bound_args = sig.bind_partial(*args, **kwargs)
+    bound_args.apply_defaults()
+
+    if expression.startswith("args["):
+        match = re.match(r"args\[(\d+)\](?:\.(.+))?$", expression)
+        if not match:
+            raise ValueError(f"Invalid args expression: {expression}")
+        value = bound_args.args[int(match.group(1))]
+        attr_path = match.group(2)
+        if attr_path:
+            for part in attr_path.split("."):
+                value = _member_value(value, part)
+        return value
+
+    parts = expression.split(".")
+    if parts[0] not in bound_args.arguments:
+        return missing_value
+    value = bound_args.arguments[parts[0]]
+    if _cache_value_missing(value):
+        return missing_value
+    for part in parts[1:]:
+        value = _member_value(value, part)
+        if _cache_value_missing(value):
+            return missing_value
+    return value
+
+
+def _expression_values(value: Any) -> list[Any]:
+    """
+    是什么：_expression_values 把表达式结果规整成列表。
+    谁调用：tenantExpression 可能返回多个租户 ID 时调用。
+    做了什么：过滤空值，保持后续 key 生成逻辑简单。
+    """
+    if isinstance(value, (list, tuple, set)):
+        return [item for item in value if not _cache_value_missing(item)]
+    return [] if _cache_value_missing(value) else [value]
+
+
+def _tenant_expression_values(
+    func: Any,
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
+    expression: str,
+) -> list[Any]:
+    """
+    是什么：_tenant_expression_values 解析租户表达式。
+    谁调用：租户级 cache/clear_cache。
+    做了什么：支持用 a|b 表示 fallback，先使用第一个能取到值的租户上下文。
+    """
+    for item in expression.split("|"):
+        item = item.strip()
+        if not item:
+            continue
+        values = _expression_values(_resolve_expression_value(func, args, kwargs, item))
+        if values:
+            return values
+    return []
 
 
 def _jitter_expire(expire: int | None) -> int | None:
@@ -181,6 +293,17 @@ def _local_rebuild_lock(cache_key: str) -> asyncio.Lock:
     return lock
 
 
+def _track_background_task(task: asyncio.Task) -> asyncio.Task:
+    """
+    是什么：_track_background_task 保存后台缓存任务引用。
+    谁调用：after_commit 异步清理缓存时调用。
+    做了什么：避免 create_task 后只剩事件循环弱引用，任务执行完成后自动移除。
+    """
+    _CACHE_BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_CACHE_BACKGROUND_TASKS.discard)
+    return task
+
+
 async def _load_with_single_flight(
     cache_key: str,
     expire: int | None,
@@ -214,6 +337,21 @@ async def _load_with_single_flight(
         return await load_and_cache()
 
 
+async def _load_without_single_flight(
+    cache_key: str,
+    expire: int | None,
+    loader: Any,
+) -> Any:
+    """
+    是什么：_load_without_single_flight 直接回源并写缓存。
+    谁调用：cache 装饰器在关闭单飞时调用。
+    做了什么：给低价值、高频 miss 的缓存保留少 RTT 的路径。
+    """
+    result = await loader()
+    await _write_backend_key(cache_key, result, expire)
+    return result
+
+
 def _run_async_clear(cache_keys: list[str], loop: asyncio.AbstractEventLoop | None = None) -> None:
     """
     是什么：_run_async_clear 在同步 after_commit 事件里触发异步缓存清理。
@@ -221,7 +359,7 @@ def _run_async_clear(cache_keys: list[str], loop: asyncio.AbstractEventLoop | No
     做了什么：优先把任务挂到当前事件循环；没有运行中的事件循环时用 asyncio.run。
     """
     if loop and loop.is_running():
-        loop.call_soon_threadsafe(lambda: loop.create_task(_clear_backend_keys(cache_keys)))
+        loop.call_soon_threadsafe(lambda: _track_background_task(loop.create_task(_clear_backend_keys(cache_keys))))
         return
 
     try:
@@ -229,7 +367,7 @@ def _run_async_clear(cache_keys: list[str], loop: asyncio.AbstractEventLoop | No
     except RuntimeError:
         asyncio.run(_clear_backend_keys(cache_keys))
         return
-    running_loop.create_task(_clear_backend_keys(cache_keys))
+    _track_background_task(running_loop.create_task(_clear_backend_keys(cache_keys)))
 
 
 def _register_after_commit_clear(session: Any, cache_keys: list[str]) -> bool:
@@ -274,26 +412,7 @@ def custom_key_builder(
         base_key = ":".join(key_parts) + ":"
 
         if keyExpression:
-            sig = signature(func)
-            bound_args = sig.bind_partial(*args, **kwargs)
-            bound_args.apply_defaults()
-
-            # 支持位置参数 args[0] 格式
-            if keyExpression.startswith("args["):
-                if match := re.match(r"args\[(\d+)\]", keyExpression):
-                    index = int(match.group(1))
-                    value = bound_args.args[index]
-                    if isinstance(value, list):
-                        return [f"{base_key}{v}" for v in value]
-                    return f"{base_key}{value}"
-
-            # 支持属性路径格式
-            parts = keyExpression.split('.')
-            if not bound_args.arguments.get(parts[0]):
-                return f"{base_key}{parts[0]}"
-            value = bound_args.arguments[parts[0]]
-            for part in parts[1:]:
-                value = getattr(value, part)
+            value = _resolve_expression_value(func, args, kwargs, keyExpression, missing_value=keyExpression.split(".")[0])
             if isinstance(value, list):
                 return [f"{base_key}{v}" for v in value]
             return f"{base_key}{value}"
@@ -311,12 +430,17 @@ def cache(
     *,
     cacheName: str,  # 必须提供缓存名称
     keyExpression: Optional[str] = None,
+    scope: str = "platform",
+    tenantExpression: Optional[str] = None,
+    singleFlight: bool = True,
 ):
     """
     是什么：cache 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    cache_scope = _normalize_cache_scope(scope)
+
     def decorator(func):
         # 预先生成键构建器
         """
@@ -348,7 +472,19 @@ def cache(
             )
             if isinstance(cache_key, list):
                 raise ValueError("cache decorator requires a single cache key")
-            full_cache_key = _prefixed_cache_key(cache_key)
+            tenant_values = [None]
+            if cache_scope == "tenant":
+                if not tenantExpression:
+                    AppLogUtil.warning(f"Tenant-scoped cache [{cache_key}] missing tenantExpression, bypass cache")
+                    return await func(*args, **kwargs)
+                tenant_values = _tenant_expression_values(func, args, kwargs, tenantExpression)
+                if not tenant_values:
+                    AppLogUtil.warning(f"Tenant-scoped cache [{cache_key}] missing tenant context, bypass cache")
+                    return await func(*args, **kwargs)
+                if len(tenant_values) != 1:
+                    raise ValueError("cache decorator requires a single tenant context")
+
+            full_cache_key = _prefixed_cache_key(cache_key, scope=cache_scope, tenant_id=tenant_values[0])
 
             hit, cached = await _read_backend_key(full_cache_key)
             if hit:
@@ -357,7 +493,9 @@ def cache(
             async def load_value():
                 return await func(*args, **kwargs)
 
-            return await _load_with_single_flight(full_cache_key, expire, load_value)
+            if singleFlight:
+                return await _load_with_single_flight(full_cache_key, expire, load_value)
+            return await _load_without_single_flight(full_cache_key, expire, load_value)
 
         return wrapper
     return decorator
@@ -367,12 +505,16 @@ def clear_cache(
     *,
     cacheName: str,
     keyExpression: Optional[str] = None,
+    scope: str = "platform",
+    tenantExpression: Optional[str] = None,
 ):
     """
     是什么：clear_cache 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把后端基础能力不再需要的数据、缓存或临时内容清理掉。
     """
+    cache_scope = _normalize_cache_scope(scope)
+
     def decorator(func):
         """
         是什么：decorator 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -397,8 +539,21 @@ def clear_cache(
                 keyExpression=keyExpression,
             )
             key_list = cache_key if isinstance(cache_key, list) else [cache_key]
-            prefixed_key_list = [_prefixed_cache_key(temp_cache_key) for temp_cache_key in key_list]
             result = await func(*args, **kwargs)
+            tenant_values = [None]
+            if cache_scope == "tenant":
+                if not tenantExpression:
+                    AppLogUtil.warning(f"Tenant-scoped cache clear [{key_list}] missing tenantExpression, skip cache clear")
+                    return result
+                tenant_values = _tenant_expression_values(func, args, kwargs, tenantExpression)
+                if not tenant_values:
+                    AppLogUtil.warning(f"Tenant-scoped cache clear [{key_list}] missing tenant context, skip cache clear")
+                    return result
+            prefixed_key_list = [
+                _prefixed_cache_key(temp_cache_key, scope=cache_scope, tenant_id=tenant_id)
+                for temp_cache_key in key_list
+                for tenant_id in tenant_values
+            ]
             session = _find_session(func, args, kwargs)
             if not _register_after_commit_clear(session, prefixed_key_list):
                 await _clear_backend_keys(prefixed_key_list)

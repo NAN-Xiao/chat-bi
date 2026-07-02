@@ -1932,7 +1932,6 @@ async def tenant_overview(
     current_date = datetime.now()
     start_date = current_date.date() - timedelta(days=days - 1)
     start_datetime = datetime.combine(start_date, datetime.min.time())
-    previous_start_datetime = start_datetime - timedelta(days=days)
 
     member_statement = (
         select(func.count())

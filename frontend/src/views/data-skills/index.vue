@@ -403,7 +403,7 @@ const handleDatasourceChange = () => {
 }
 
 const handleDatasourceScopeModeChange = (value: string | number | boolean) => {
-  if (!Boolean(value)) {
+  if (!value) {
     skillForm.value.datasource_ids = []
   }
   handleDatasourceChange()

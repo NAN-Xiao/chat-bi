@@ -6,7 +6,7 @@ import json
 import traceback
 from typing import Any
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import select, update
 
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.datasource.embedding.utils import embedding_model_identity

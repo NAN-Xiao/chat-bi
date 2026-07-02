@@ -2,15 +2,13 @@
 脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
 
-from sqlmodel import Session, func, select, delete as sqlmodel_delete
-from apps.datasource.models.datasource import CoreDatasourceUser
+from sqlmodel import Session, func, select
 from apps.system.crud.tenant import user_belongs_to_tenant
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import EMAIL_REGEX, PWD_REGEX, BaseUserDTO, UserInfoDTO
-from common.core.deps import SessionDep
 from common.core.app_cache import cache, clear_cache
 from common.utils.utils import AppLogUtil
-from ..models.user import UserModel, UserPlatformModel
+from ..models.user import UserModel
 from common.core.security import hash_password, verify_stored_password
 
 SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
@@ -149,13 +147,20 @@ def get_user_by_account(*, session: Session, account: str) -> BaseUserDTO | None
         return None
     return BaseUserDTO.model_validate(db_user.model_dump())
 
-@cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="user_id")
-async def get_user_info(*, session: Session, user_id: int) -> UserInfoDTO | None:
+@cache(
+    namespace=CacheNamespace.AUTH_INFO,
+    cacheName=CacheName.USER_INFO,
+    keyExpression="user_id",
+    scope="tenant",
+    tenantExpression="tenant_id",
+)
+async def get_user_info(*, session: Session, user_id: int, tenant_id: int | None = None) -> UserInfoDTO | None:
     """
     是什么：get_user_info 是一个可以复用的小步骤，负责系统管理相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
+    _ = tenant_id
     db_user: UserModel = get_db_user(session = session, user_id = user_id)
     if not db_user:
         return None
@@ -180,30 +185,26 @@ def authenticate(*, session: Session, account: str, password: str) -> BaseUserDT
         session.add(db_user)
     return BaseUserDTO.model_validate(db_user.model_dump())
 
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
-async def single_delete(session: SessionDep, id: int):
+@clear_cache(
+    namespace=CacheNamespace.AUTH_INFO,
+    cacheName=CacheName.USER_INFO,
+    keyExpression="user_id",
+    scope="tenant",
+    tenantExpression="tenant_ids",
+)
+async def clear_user_info_cache(
+    *,
+    user_id: int,
+    tenant_ids: list[int],
+    session: Session | None = None,
+):
     """
-    是什么：single_delete 是一个可以复用的小步骤，负责系统管理相关的一件事。
+    是什么：clear_user_info_cache 清理指定用户在多个租户分片下的鉴权缓存。
     谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
+    做了什么：用户状态、密码、资料和成员关系变化后，按目标用户租户边界失效缓存。
     """
-    user_model: UserModel = get_db_user(session = session, user_id = id)
-    ds_user_del_stmt = sqlmodel_delete(CoreDatasourceUser).where(CoreDatasourceUser.user_id == id)
-    session.exec(ds_user_del_stmt)
-    if user_model and user_model.origin and user_model.origin != 0:
-        platform_del_stmt = sqlmodel_delete(UserPlatformModel).where(UserPlatformModel.uid == id)
-        session.exec(platform_del_stmt)
-    session.delete(user_model)
-    session.commit()
-
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")    
-async def clean_user_cache(id: int):
-    """
-    是什么：clean_user_cache 是一个可以复用的小步骤，负责系统管理相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
-    """
-    AppLogUtil.info(f"User cache for [{id}] has been cleaned")
+    _ = session
+    AppLogUtil.info(f"User cache for [{user_id}] has been cleaned in tenants {tenant_ids}")
 
 
 def check_account_exists(*, session: Session, account: str) -> bool:

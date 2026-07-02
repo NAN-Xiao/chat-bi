@@ -515,7 +515,7 @@ function cleanFilename(name?: string) {
 
 function cleanSheetName(name?: string, fallback?: string) {
   return (name || fallback || t('dashboard.view'))
-    .replace(/[\[\]:*?/\\]/g, '_')
+    .replace(/[[\]:*?/\\]/g, '_')
     .slice(0, 31) || t('dashboard.view')
 }
 
@@ -619,7 +619,7 @@ function normalizeReportGroupValue(value: any) {
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value)
-    } catch (_error) {
+    } catch {
       return `${value}`
     }
   }

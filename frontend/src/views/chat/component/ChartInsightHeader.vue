@@ -766,7 +766,15 @@ function buildTrendSeriesStats(axis: ChartAxis): Array<StatItem> {
   return stats
     .sort((a, b) => b.rawValue - a.rawValue)
     .slice(0, props.maxStats)
-    .map(({ rawValue, ...item }) => item)
+    .map((item) => ({
+      label: item.label,
+      value: item.value,
+      subLabel: item.subLabel,
+      meta: item.meta,
+      color: item.color,
+      tone: item.tone,
+      group: item.group,
+    }))
 }
 
 function buildConfiguredTrendSummary(

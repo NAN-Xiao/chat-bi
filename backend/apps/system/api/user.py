@@ -12,7 +12,7 @@ from apps.datasource.crud.permission import (
     update_user_datasources,
 )
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
-from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
+from apps.datasource.models.datasource import CoreDatasourceUser
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
@@ -31,6 +31,7 @@ from apps.system.crud.user import (
     check_pwd_format,
     check_user_in_tenant,
     get_db_user,
+    clear_user_info_cache,
     is_high_privilege_system_role,
     is_high_privilege_user,
     is_platform_admin,
@@ -41,8 +42,6 @@ from apps.system.crud.user_excel import batchUpload, download_error_file, downTe
 from apps.system.models.tenant import TenantModel, TenantUserModel
 from apps.system.models.user import TrialApplicationModel, UserModel, UserPlatformModel
 from apps.system.schemas.auth import (
-    CacheName,
-    CacheNamespace,
     TrialApplicationDTO,
     TrialApplicationReview,
 )
@@ -58,7 +57,6 @@ from apps.system.schemas.system_schema import (
 )
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
-from common.core.app_cache import clear_cache
 from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
@@ -144,6 +142,35 @@ def _get_user_visible_tenant_role(session: SessionDep, current_user: CurrentUser
         .order_by(TenantUserModel.is_primary.desc(), TenantModel.name)
     ).first()
     return normalize_tenant_role(row) if row else None
+
+
+def _user_cache_tenant_ids(session: SessionDep, user_id: int) -> list[int]:
+    """
+    是什么：_user_cache_tenant_ids 找出目标用户可能写入 USER_INFO 缓存的租户分片。
+    谁调用：用户资料、状态、密码和成员关系变更后清理鉴权缓存。
+    做了什么：按目标用户的成员关系清缓存，避免用操作者租户导致旧鉴权缓存残留。
+    """
+    tenant_ids = session.exec(
+        select(TenantUserModel.tenant_id).where(TenantUserModel.user_id == int(user_id))
+    ).all()
+    values = {DEFAULT_TENANT_ID}
+    values.update(int(tenant_id) for tenant_id in tenant_ids if tenant_id is not None)
+    return sorted(values)
+
+
+async def _clear_user_cache_for_tenants(
+    session: SessionDep,
+    user_id: int,
+    tenant_ids: list[int] | set[int] | tuple[int, ...],
+) -> None:
+    """
+    是什么：_clear_user_cache_for_tenants 清理目标用户多个租户下的鉴权缓存。
+    谁调用：用户管理接口在业务写入完成后调用。
+    做了什么：把缓存失效租户和写缓存租户对齐，不依赖当前操作者租户。
+    """
+    normalized = sorted({int(tenant_id) for tenant_id in tenant_ids if tenant_id is not None})
+    if normalized:
+        await clear_user_info_cache(user_id=int(user_id), tenant_ids=normalized, session=session)
 
 
 def _user_active_tenant_summary(session: SessionDep, user_ids: list[int]) -> dict[int, dict]:
@@ -360,6 +387,7 @@ async def _join_existing_user_to_tenant(
             creator.project_ids,
             creator.project_role_map,
         )
+    await _clear_user_cache_for_tenants(session, int(existing_user.id), [target_tenant_id])
     return existing_user
 
 
@@ -786,13 +814,17 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}user_update_api", description=f"{PLACEHOLDER_PREFIX}user_update_api")
 @require_permissions(permission=AppPermission(role=['admin']))
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 @system_log(LogConfig(
     operation_type=OperationType.UPDATE,
     module=OperationModules.USER,
     resource_id_expr="editor.id"
 ))
-async def update(session: SessionDep, current_user: CurrentUser, editor: UserEditor, trans: Trans):
+async def update(
+    session: SessionDep,
+    current_user: CurrentUser,
+    editor: UserEditor,
+    trans: Trans,
+):
     """
     是什么：update 是一个接口入口，负责接住系统管理相关请求。
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
@@ -802,6 +834,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     if not user_model:
         raise Exception(f"User with id [{editor.id}] not found!")
+    cache_tenant_ids = _user_cache_tenant_ids(session, int(editor.id))
     _require_user_in_current_tenant(session, current_user, editor.id)
     if editor.account != user_model.account:
         raise Exception("account cannot be changed!")
@@ -834,6 +867,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
     session.add(user_model)
     if should_update_tenant_membership:
         target_tenant_id = _target_tenant_id_for_payload(current_user, editor.tenant_id)
+        cache_tenant_ids.append(int(target_tenant_id))
         assign_user_to_tenant(
             session,
             int(user_model.id),
@@ -850,6 +884,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
             editor.project_role_map,
         )
     ensure_user_sample_workspace_membership(session, user_model)
+    await _clear_user_cache_for_tenants(session, int(user_model.id), cache_tenant_ids)
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}user_del_api", description=f"{PLACEHOLDER_PREFIX}user_del_api")
 @require_permissions(permission=AppPermission(role=['admin']))
@@ -864,7 +899,9 @@ async def delete(session: SessionDep, current_user: CurrentUser, id: int = Path(
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把系统管理不再需要的数据、缓存或临时内容清理掉。
     """
+    cache_tenant_ids = _user_cache_tenant_ids(session, id)
     _remove_user_from_current_tenant(session, current_user, id)
+    await _clear_user_cache_for_tenants(session, id, cache_tenant_ids)
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}user_batchdel_api", description=f"{PLACEHOLDER_PREFIX}user_batchdel_api")
 @require_permissions(permission=AppPermission(role=['admin']))
@@ -876,27 +913,29 @@ async def batch_del(session: SessionDep, current_user: CurrentUser, id_list: lis
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     for id in id_list:
+        cache_tenant_ids = _user_cache_tenant_ids(session, id)
         _remove_user_from_current_tenant(session, current_user, id)
+        await _clear_user_cache_for_tenants(session, id, cache_tenant_ids)
 
 @router.put("/language", summary=f"{PLACEHOLDER_PREFIX}language_change", description=f"{PLACEHOLDER_PREFIX}language_change")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def langChange(session: SessionDep, current_user: CurrentUser, trans: Trans, language: UserLanguage):
     """
     是什么：langChange 是一个接口入口，负责接住系统管理相关请求。
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    cache_tenant_ids = _user_cache_tenant_ids(session, int(current_user.id))
     lang = language.language
     if lang not in ["zh-CN", "zh-TW", "en", "ko-KR"]:
         raise Exception(trans('i18n_user.language_not_support', key = lang))
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     db_user.language = lang
     session.add(db_user)
+    await _clear_user_cache_for_tenants(session, int(current_user.id), cache_tenant_ids)
 
 
 @router.patch("/pwd/{id}", summary=f"{PLACEHOLDER_PREFIX}reset_pwd", description=f"{PLACEHOLDER_PREFIX}reset_pwd")
 @require_permissions(permission=AppPermission(role=['admin']))
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.RESET_PWD,module=OperationModules.USER,resource_id_expr="id"))
 async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
     """
@@ -904,6 +943,7 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans,
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    cache_tenant_ids = _user_cache_tenant_ids(session, id)
     _require_user_in_current_tenant(session, current_user, id)
     if not is_platform_admin(current_user):
         _ensure_tenant_owner_manageable(session, current_user, id)
@@ -914,9 +954,9 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans,
         raise Exception(trans('i18n_permission.no_permission', url = " patch[/user/pwd/id],", msg = trans('i18n_permission.only_admin')))
     db_user.password = default_password_hash()
     session.add(db_user)
+    await _clear_user_cache_for_tenants(session, id, cache_tenant_ids)
 
 @router.put("/pwd", summary=f"{PLACEHOLDER_PREFIX}update_pwd", description=f"{PLACEHOLDER_PREFIX}update_pwd")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE_PWD,module=OperationModules.USER,result_id_expr="id"))
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans, editor: PwdEditor):
     """
@@ -924,6 +964,7 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    cache_tenant_ids = _user_cache_tenant_ids(session, int(current_user.id))
     new_pwd = editor.new_pwd
     if not check_pwd_format(new_pwd):
         raise Exception(trans('i18n_format_invalid', key = trans('i18n_user.password')))
@@ -933,12 +974,12 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans
         raise Exception(trans('i18n_error', key = trans('i18n_user.password')))
     db_user.password = hash_password(new_pwd)
     session.add(db_user)
+    await _clear_user_cache_for_tenants(session, int(current_user.id), cache_tenant_ids)
     return db_user
 
 
 @router.patch("/status", summary=f"{PLACEHOLDER_PREFIX}update_status", description=f"{PLACEHOLDER_PREFIX}update_status")
 @require_permissions(permission=AppPermission(role=['admin']))
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="statusDto.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE_STATUS,module=OperationModules.USER, resource_id_expr="statusDto.id"))
 async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Trans, statusDto: UserStatus):
     """
@@ -956,6 +997,7 @@ async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Tr
     if status == 0 and not is_super_admin(current_user):
         _ensure_tenant_owner_manageable(session, current_user, statusDto.id)
     db_user: UserModel = get_db_user(session=session, user_id=statusDto.id)
+    cache_tenant_ids = _user_cache_tenant_ids(session, int(statusDto.id))
     if is_high_privilege_user(db_user) and status == 0 and not is_super_admin(current_user):
         raise Exception(trans('i18n_permission.no_permission', url = ", ", msg = trans('i18n_permission.only_admin')))
     if is_super_admin(db_user) and status == 0:
@@ -964,3 +1006,4 @@ async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Tr
         _ensure_user_not_sole_active_owner(session, int(db_user.id))
     db_user.status = status
     session.add(db_user)
+    await _clear_user_cache_for_tenants(session, int(statusDto.id), cache_tenant_ids)

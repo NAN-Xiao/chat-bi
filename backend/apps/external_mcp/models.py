@@ -2,7 +2,7 @@
 脚本说明：这个脚本定义第三方 MCP 外部数据源接入配置相关的数据表。
 """
 from sqlalchemy import BigInteger, Boolean, Column, Index, String, Text, UniqueConstraint
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
 
 from common.core.models import SnowflakeBase
 from common.utils.time import get_timestamp

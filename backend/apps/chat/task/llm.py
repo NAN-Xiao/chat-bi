@@ -50,7 +50,6 @@ from apps.datasource.crud.permission import get_row_permission_filters, has_data
 from apps.datasource.crud.query_executor import (
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
-    user_data_unavailable_message,
     wrap_external_subquery_with_table_rule,
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding

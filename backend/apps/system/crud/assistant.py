@@ -3,7 +3,6 @@
 """
 import json
 import re
-import urllib
 from typing import Optional
 
 import requests
@@ -26,13 +25,32 @@ from common.core.deps import Trans
 from common.core.response_middleware import ResponseMiddleware
 
 
-@cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
-async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
+@cache(
+    namespace=CacheNamespace.EMBEDDED_INFO,
+    cacheName=CacheName.ASSISTANT_INFO,
+    keyExpression="assistant_id",
+    scope="tenant",
+    tenantExpression="tenant_id",
+)
+async def get_assistant_info(
+    *,
+    session: Session,
+    assistant_id: int,
+    tenant_id: int | None = None,
+) -> AssistantModel | None:
     """
     是什么：get_assistant_info 是一个可以复用的小步骤，负责系统管理相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把系统管理需要的数据找出来，整理成后面好用的样子。
     """
+    if tenant_id is not None:
+        db_model = session.exec(
+            select(AssistantModel).where(
+                AssistantModel.id == assistant_id,
+                AssistantModel.tenant_id == int(tenant_id),
+            )
+        ).first()
+        return db_model
     db_model = session.get(AssistantModel, assistant_id)
     return db_model
 
