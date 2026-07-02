@@ -20,6 +20,12 @@ const previewDisplayDataMatch = source.match(
 const chartPreviewSeriesFieldsMatch = source.match(
   /const chartPreviewSeriesFields = computed\(\(\) => \{([\s\S]*?)\r?\n\}\)\r?\nconst showPivotGroupValueConfig/
 )
+const activePivotGroupValueFieldMatch = source.match(
+  /const activePivotGroupValueField = computed\(\(\) => ([^\r\n]+)\)/
+)
+const buildPivotConfigMatch = source.match(
+  /function buildPivotConfig\([\s\S]*?\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction previewPivotPayload/
+)
 
 assert.ok(chartPreviewMatch, '图表预览组件需要声明 columns 绑定')
 assert.match(
@@ -55,6 +61,28 @@ assert.match(
 )
 
 assert.ok(showPivotGroupValueConfigMatch, '需要保留透视分组值显示条件')
+assert.ok(activePivotGroupValueFieldMatch, '需要保留透视分组选项字段计算逻辑')
+assert.match(
+  activePivotGroupValueFieldMatch[1],
+  /effectiveSeriesField\.value/,
+  '分组可见项必须跟随用户显式选择的分类字段'
+)
+assert.doesNotMatch(
+  activePivotGroupValueFieldMatch[1],
+  /form\.pivotGroupField\s*\|\|/,
+  '分类清空时不能用内部 pivotGroupField 兜底显示分组可见项'
+)
+assert.ok(buildPivotConfigMatch, '需要保留透视配置构建逻辑')
+assert.match(
+  buildPivotConfigMatch[1],
+  /const groupField = activePivotGroupValueField\.value/,
+  '保存和运行预览的透视分组字段必须跟随显式分类字段'
+)
+assert.doesNotMatch(
+  buildPivotConfigMatch[1],
+  /const groupField = form\.pivotGroupField\s*\|\|/,
+  '分类清空时不能继续把内部 pivotGroupField 写入透视配置'
+)
 assert.match(
   showPivotGroupValueConfigMatch[1],
   /sourceHasPivotGroupValues/,

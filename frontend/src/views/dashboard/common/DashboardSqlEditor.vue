@@ -371,7 +371,7 @@ const chartPreviewYFields = computed(() => {
   }
   return form.y
 })
-const activePivotGroupValueField = computed(() => form.pivotGroupField || effectiveSeriesField.value)
+const activePivotGroupValueField = computed(() => effectiveSeriesField.value)
 const previewHasPivotGroupField = computed(() => {
   const field = activePivotGroupValueField.value
   return Boolean(field && visiblePreviewFields([field], preview.data).includes(field))
@@ -768,7 +768,7 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
   if (!supportsPivotConfig.value || !form.pivotEnabled) {
     return { enabled: false }
   }
-  const groupField = form.pivotGroupField || effectiveSeriesField.value
+  const groupField = activePivotGroupValueField.value
   const config: Record<string, any> = {
     enabled: true,
     client_filter_only: props.viewInfo?.pivot?.client_filter_only === true,
