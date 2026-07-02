@@ -48,6 +48,8 @@ import { UserStore } from '@/stores/user'
 import { watchRouter } from './watch'
 import { resolveSystemHome } from '@/utils/navigation'
 
+export const APP_HASH_HISTORY_BASE = '/'
+
 const t = i18n.global.t
 const getSystemHome = () => {
   const userStore = UserStore(store)
@@ -592,7 +594,7 @@ export const routes = [
   },
 ]
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHashHistory(APP_HASH_HISTORY_BASE),
   routes,
 })
 watchRouter(router)

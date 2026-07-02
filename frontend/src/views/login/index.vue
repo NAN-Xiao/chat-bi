@@ -701,11 +701,7 @@ const goLoginPage = () => {
 }
 
 const goHomePage = () => {
-  const query = { ...router.currentRoute.value.query }
-  delete query.view
-  delete query.code
-  delete query.state
-  router.push({ path: '/login', query })
+  router.push({ path: '/login' })
 }
 
 const getCallbackParam = (name: string) => {
@@ -783,6 +779,43 @@ const startFeishuLogin = async () => {
   ElMessage.warning('飞书登录暂不可用，请联系管理员检查企业飞书配置')
 }
 
+const normalizeLoginBrowserUrl = async () => {
+  const { pathname, search, hash } = window.location
+  if ((pathname === '/' || pathname === '') && !search) {
+    return
+  }
+  if (!hash.startsWith('#/login') && !hash.startsWith('#/admin-login')) {
+    return
+  }
+
+  const hashRoute = hash.slice(1)
+  const queryIndex = hashRoute.indexOf('?')
+  const hashPath = queryIndex >= 0 ? hashRoute.slice(0, queryIndex) : hashRoute
+  const hashQuery = queryIndex >= 0 ? hashRoute.slice(queryIndex + 1) : ''
+  const nextQuery = new URLSearchParams(hashQuery)
+  const outerQuery = new URLSearchParams(search)
+  outerQuery.forEach((value, key) => {
+    if (!nextQuery.has(key)) {
+      nextQuery.set(key, value)
+    }
+  })
+
+  const query: Record<string, string> = {}
+  nextQuery.forEach((value, key) => {
+    query[key] = value
+  })
+
+  await router.replace({
+    path: hashPath,
+    query,
+  })
+  window.history.replaceState(
+    window.history.state,
+    document.title,
+    `${window.location.origin}/${window.location.hash}`
+  )
+}
+
 const submitForm = () => {
   loginFormRef.value.validate((valid: boolean) => {
     if (valid) {
@@ -794,6 +827,7 @@ const submitForm = () => {
 }
 
 onMounted(async () => {
+  await normalizeLoginBrowserUrl()
   const handled = await handleFeishuCallback()
   if (!handled) {
     await loadFeishuStatus()
