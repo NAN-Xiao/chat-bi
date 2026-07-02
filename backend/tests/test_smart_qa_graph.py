@@ -899,6 +899,55 @@ def test_existing_event_zero_values_are_not_pruned(monkeypatch: pytest.MonkeyPat
     assert service.finished is True
 
 
+def test_empty_sql_result_finishes_without_chart(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：SQL 正常执行但没有返回数据时，应提示无数据并跳过图表生成。
+    """
+    service = FakeSmartQAService(sql_answer=_sql_answer("select value from orders where 1 = 0"))
+
+    def _execute_sql(**kwargs):
+        service.executed.append(kwargs)
+        return {"fields": ["value"], "data": []}
+
+    service.execute_sql = _execute_sql
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], ["orders"]),
+    )
+    captured_log_message: dict[str, Any] = {}
+
+    def _end_log(**kwargs):
+        captured_log_message.update(kwargs["full_message"])
+        log = kwargs["log"]
+        log.messages = kwargs["full_message"]
+        return log
+
+    monkeypatch.setattr(graph, "end_log", _end_log)
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+    event_types = [event["type"] for event in events]
+
+    assert len(service.executed) == 1
+    assert service.saved_data[-1] == {"fields": ["value"], "data": []}
+    assert service.chart_generated is False
+    assert "chart" not in event_types
+    assert event_types[-1] == "finish"
+    assert feedback_event["notice"]["reason"] == "data_unavailable"
+    assert "没有可展示的数据" in feedback_event["content"]
+    assert captured_log_message["business_notice"]["reason"] == "data_unavailable"
+    assert service.finished is True
+
+
 def test_permission_denied_during_sql_validation_stops_graph(monkeypatch: pytest.MonkeyPatch):
     """
     是什么：test_permission_denied_during_sql_validation_stops_graph 是一段测试代码，用来确认测试的某个场景没有问题。

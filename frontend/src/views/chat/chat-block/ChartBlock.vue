@@ -103,6 +103,7 @@ const dataBusinessFailure = computed(
     dataObject.value?.status === 'failed' &&
     ['permission_denied', 'data_unavailable'].includes(dataObject.value?.error_type || '')
 )
+const hasDisplayData = computed(() => Array.isArray(data.value) && data.value.length > 0)
 const dataFailureMessage = computed(() =>
   dataPermissionDenied.value
     ? '没有查看权限'
@@ -576,8 +577,9 @@ watch(
     v-if="
       isFinalChartAnswer &&
       !message.isTyping &&
+      (loadingData || dataBusinessFailure || hasDisplayData) &&
       ((!isPredict && (message?.record?.sql || message?.record?.chart)) ||
-        (isPredict && message?.record?.chart && data.length > 0))
+        (isPredict && message?.record?.chart && hasDisplayData))
     "
     v-loading.fullscreen.lock="loading"
     class="chart-component-container smart-chart-answer"

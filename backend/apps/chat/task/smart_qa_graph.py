@@ -147,6 +147,38 @@ def _save_and_emit_plain_answer(
             json_result["notice"] = notice
 
 
+def _has_result_rows(result: dict[str, Any] | None) -> bool:
+    """
+    是什么：判断 SQL 结果是否有可展示的数据行。
+    谁调用：Smart Q&A 决定是否继续生成图表。
+    做了什么：空结果仍会保存执行记录，但不会再生成空图表控件。
+    """
+    rows = result.get("data") if isinstance(result, dict) else None
+    return isinstance(rows, list) and len(rows) > 0
+
+
+def _empty_result_notice() -> dict[str, Any]:
+    """
+    是什么：生成空结果的业务提示标记。
+    谁调用：SQL 正常执行但没有返回数据时调用。
+    做了什么：把“没有数据”标为业务结果，而不是系统错误。
+    """
+    return {
+        "notice_type": "data_scope_gap",
+        "reason": "data_unavailable",
+        "severity": "info",
+    }
+
+
+def _empty_result_feedback() -> str:
+    """
+    是什么：空结果时展示给用户的简短说明。
+    谁调用：SQL 正常执行但没有可展示数据时调用。
+    做了什么：避免前端出现空图表/空表，让用户明确知道查询范围内没有结果。
+    """
+    return "当前查询条件下没有可展示的数据，已保存本次执行记录。"
+
+
 @dataclass
 class _RequestedEventPredicate:
     table: str
@@ -1500,6 +1532,13 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 notice=_missing_event_notice(cleanup.missing_events, cleanup.removed_fields),
             )
 
+        empty_result_message = None
+        empty_result_notice = None
+        if not _has_result_rows(result):
+            empty_result_message = _empty_result_feedback()
+            empty_result_notice = _empty_result_notice()
+            execute_log_message["business_notice"] = empty_result_notice
+
         service.current_logs[OperationEnum.EXECUTE_SQL] = end_log(
             session=session,
             log=service.current_logs[OperationEnum.EXECUTE_SQL],
@@ -1511,6 +1550,23 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
             _emit(_sse({"content": "execute-success", "type": "sql-data"}))
         if not stream:
             json_result["data"] = get_chat_chart_data(session, service.record.id)
+
+        if empty_result_message and empty_result_notice:
+            _save_and_emit_plain_answer(
+                service=service,
+                session=session,
+                message=empty_result_message,
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                finish=True,
+                notice=empty_result_notice,
+            )
+            if not in_chat and not stream:
+                json_result["success"] = True
+                json_result["message"] = empty_result_message
+                _emit(json_result)
+            return {"json_result": json_result, "result": result, "stop": True}
 
     if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
         if stream:
