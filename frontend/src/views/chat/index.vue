@@ -434,11 +434,28 @@
             target-scope="SMART_QA"
           />
 
+          <el-tooltip
+            v-if="hasActiveGeneration"
+            effect="dark"
+            :content="t('permission.stop_replying')"
+            placement="top"
+          >
+            <el-button
+              circle
+              type="primary"
+              class="input-icon stop-icon"
+              :aria-label="t('permission.stop_replying')"
+              @click.stop="stopGenerating"
+            >
+              <span class="stop-square"></span>
+            </el-button>
+          </el-tooltip>
           <el-button
+            v-else
             circle
             type="primary"
             class="input-icon"
-            :disabled="isTyping"
+            :disabled="!inputMessage.trim()"
             @click.stop="($event: any) => sendMessage(undefined, $event)"
           >
             <el-icon size="16">
@@ -580,6 +597,32 @@ const isTyping = ref<boolean>(false)
 const loginBg = computed(() => {
   return appearanceStore.getLogin
 })
+function hasDisplayableAnswerRecord(record?: ChatRecord) {
+  return !!(
+    record?.local_answer ||
+    record?.chart ||
+    record?.analysis ||
+    record?.predict ||
+    record?.predict_content
+  )
+}
+function isUnfinishedAnswerRecord(record?: ChatRecord) {
+  return (
+    !!record &&
+    !record.first_chat &&
+    !hasDisplayableAnswerRecord(record) &&
+    !record.finish &&
+    !record.error &&
+    !record.stopped
+  )
+}
+function isRecordTyping(record?: ChatRecord, index = -1) {
+  return (
+    index === currentChat.value.records.length - 1 &&
+    isTyping.value &&
+    isUnfinishedAnswerRecord(record)
+  )
+}
 const computedMessages = computed<Array<ChatMessage>>(() => {
   const messages: Array<ChatMessage> = []
   for (let i = 0; i < currentChat.value.records.length; i++) {
@@ -597,7 +640,7 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
       role: 'assistant',
       create_time: record.create_time,
       record: record,
-      isTyping: i === currentChat.value.records.length - 1 && isTyping.value,
+      isTyping: isRecordTyping(record, i),
       first_chat: record.first_chat,
       recommended_question: record.recommended_question,
       index: i,
@@ -609,16 +652,26 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 const hasRealChatRecords = computed(() =>
   currentChat.value.records.some((record) => !record.first_chat && !!record.question?.trim())
 )
-function isUnfinishedAnswerRecord(record?: ChatRecord) {
-  return !!record && !record.first_chat && !record.local_answer && !record.finish && !record.error
-}
 function hasUnfinishedRecord() {
   return currentChat.value.records.some((record) => isUnfinishedAnswerRecord(record))
 }
+const hasUnfinishedGeneration = computed(() => hasUnfinishedRecord())
+const hasActiveGeneration = computed(
+  () => getRecommendQuestionsLoading.value || hasUnfinishedGeneration.value
+)
 const hasChatMessages = computed(() => computedMessages.value.length > 0)
 const isLoadingSelectedChat = computed(() => loading.value && currentChatId.value !== undefined)
 const showWelcomeContent = computed(() => !hasRealChatRecords.value && !isLoadingSelectedChat.value)
 const showEmptyLoadingContent = computed(() => !hasRealChatRecords.value && isLoadingSelectedChat.value)
+
+watch(hasUnfinishedGeneration, (hasUnfinished) => {
+  if (!hasUnfinished && isTyping.value) {
+    clearInterval(scrollTime)
+    scrollTime = null
+    loading.value = false
+    isTyping.value = false
+  }
+})
 
 const showChatFooter = computed(() => {
   return (
@@ -1038,9 +1091,21 @@ function onChartAnswerError(id: number) {
 }
 
 function onChatStop() {
+  clearInterval(scrollTime)
+  scrollTime = null
+  getRecommendQuestionsLoading.value = false
+  currentChat.value.records.forEach((record) => {
+    if (isUnfinishedAnswerRecord(record)) {
+      record.stopped = true
+    }
+  })
   loading.value = false
   isTyping.value = false
   console.debug('onChatStop')
+}
+
+function stopGenerating() {
+  stop(onChatStop)
 }
 const assistantPrepareSend = async () => {
   if (
@@ -1652,6 +1717,34 @@ onBeforeUnmount(() => {
           background: rgba(187, 191, 196, 1);
           border-color: unset;
           box-shadow: none;
+        }
+
+        &.stop-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: #f56c6c;
+          border-color: #f56c6c;
+          box-shadow: 0 8px 18px rgba(245, 108, 108, 0.24);
+
+          &:hover,
+          &:focus {
+            background: #e84f4f;
+            border-color: #e84f4f;
+          }
+
+          &:active {
+            background: #d93b3b;
+            border-color: #d93b3b;
+          }
+
+          .stop-square {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background: #ffffff;
+          }
         }
       }
 

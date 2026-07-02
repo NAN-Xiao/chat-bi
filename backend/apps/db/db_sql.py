@@ -4,6 +4,7 @@
 # 作者：Junjun
 # 日期：2025/8/20
 from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
+from apps.datasource.utils.utils import effective_db_schema
 from common.utils.utils import equals_ignore_case
 
 
@@ -47,6 +48,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
+    db_schema = effective_db_schema(ds.type, conf)
     if equals_ignore_case(ds.type, "mysql"):
         return """
                 SELECT
@@ -72,7 +74,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                 WHERE
                     t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
                     AND t.TABLE_SCHEMA = :param
-                """, conf.dbSchema
+                """, db_schema
     elif equals_ignore_case(ds.type, "pg", "excel"):
         return """
               SELECT c.relname                                       AS TABLE_NAME,
@@ -87,7 +89,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                 AND c.relname NOT LIKE 'pg_%'
                 AND c.relname NOT LIKE 'sql_%'
               ORDER BY c.relname \
-              """, conf.dbSchema
+              """, db_schema
     elif equals_ignore_case(ds.type, "oracle"):
         return """
                 SELECT DISTINCT
@@ -111,7 +113,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                     AND c.TABLE_TYPE = t.OBJECT_TYPE
                     AND c.OWNER = :param
                 ORDER BY t.TABLE_NAME
-                """, conf.dbSchema
+                """, db_schema
     elif equals_ignore_case(ds.type, "ck"):
         version = int(db_version.split('.')[0])
         if version < 22:
@@ -136,7 +138,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                 from all_tab_comments
                 where owner=:param
                 AND (table_type = 'TABLE' or table_type = 'VIEW')
-                """, conf.dbSchema
+                """, db_schema
     elif equals_ignore_case(ds.type, "redshift"):
         return """
                 SELECT
@@ -147,7 +149,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                 WHERE
                   relkind in  ('r','p', 'f')
                   AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = %s)
-                """, conf.dbSchema
+                """, db_schema
     elif equals_ignore_case(ds.type, "doris", "starrocks"):
         return """
                 SELECT
@@ -172,7 +174,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                 AND c.relname NOT LIKE 'pg_%'
                 AND c.relname NOT LIKE 'sql_%'
               ORDER BY c.relname \
-              """, conf.dbSchema
+              """, db_schema
     elif equals_ignore_case(ds.type, "es"):
         return "", None
     elif equals_ignore_case(ds.type, "hive"):
@@ -187,6 +189,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
+    db_schema = effective_db_schema(ds.type, conf)
     if equals_ignore_case(ds.type, "mysql"):
         sql1 = """
                 SELECT
@@ -217,7 +220,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                     C.TABLE_SCHEMA = :param1
                 """
         sql2 = " AND C.TABLE_NAME = :param2" if table_name is not None and table_name != "" else ""
-        return sql1 + sql2, conf.dbSchema, table_name
+        return sql1 + sql2, db_schema, table_name
     elif equals_ignore_case(ds.type, "pg", "excel"):
         sql1 = """
                SELECT a.attname                                       AS COLUMN_NAME,
@@ -233,7 +236,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                  AND NOT a.attisdropped \
                """
         sql2 = " AND c.relname = :param2" if table_name is not None and table_name != "" else ""
-        return sql1 + sql2, conf.dbSchema, table_name
+        return sql1 + sql2, db_schema, table_name
     elif equals_ignore_case(ds.type, "redshift"):
         sql1 = """
                SELECT a.attname                                       AS COLUMN_NAME,
@@ -249,7 +252,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                  AND NOT a.attisdropped \
                """
         sql2 = " AND c.relname = %s" if table_name is not None and table_name != "" else ""
-        return sql1 + sql2, conf.dbSchema, table_name
+        return sql1 + sql2, db_schema, table_name
     elif equals_ignore_case(ds.type, "oracle"):
         sql1 = """
                 SELECT
@@ -274,7 +277,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                     col.OWNER = :param1
                 """
         sql2 = " AND col.TABLE_NAME = :param2" if table_name is not None and table_name != "" else ""
-        return sql1 + sql2, conf.dbSchema, table_name
+        return sql1 + sql2, db_schema, table_name
     elif equals_ignore_case(ds.type, "ck"):
         sql1 = """
                 SELECT
@@ -302,7 +305,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                     c.OWNER = :param1
                 """
         sql2 = " AND c.TABLE_NAME = :param2" if table_name is not None and table_name != "" else ""
-        return sql1 + sql2, conf.dbSchema, table_name
+        return sql1 + sql2, db_schema, table_name
     elif equals_ignore_case(ds.type, "doris", "starrocks"):
         sql1 = """
                 SELECT
@@ -331,7 +334,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                          AND NOT a.attisdropped \
                        """
         sql2 = " AND c.relname = '{1}'" if table_name is not None and table_name != "" else ""
-        return sql1 + sql2, conf.dbSchema, table_name
+        return sql1 + sql2, db_schema, table_name
     elif equals_ignore_case(ds.type, "es"):
         return "", None, None
     elif equals_ignore_case(ds.type, "hive"):

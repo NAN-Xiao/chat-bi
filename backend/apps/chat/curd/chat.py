@@ -1508,16 +1508,25 @@ def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], d
     return log
 
 
-def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
+def trigger_log_error(
+        session: SessionDep,
+        log: ChatLog,
+        full_message: Union[list[dict], dict, str] = None,
+) -> ChatLog:
     """
     是什么：trigger_log_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     log.error = True
-    stmt = update(ChatLog).where(and_(ChatLog.id == log.id)).values(
-        error=True
-    )
+    values = {"error": True}
+    if full_message is not None:
+        log.messages = full_message
+        log.finish_time = datetime.datetime.now()
+        values["messages"] = log.messages
+        values["finish_time"] = log.finish_time
+
+    stmt = update(ChatLog).where(and_(ChatLog.id == log.id)).values(**values)
     session.execute(stmt)
     session.commit()
     _record_chat_usage_from_log(log, success=False)

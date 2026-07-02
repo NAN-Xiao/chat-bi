@@ -19,7 +19,12 @@ from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_ERROR_TYPE,
     looks_like_permission_scope_error,
 )
-from common.error import AppDBConnectionError, AppDBError, SingleMessageError
+from common.error import AppDBConnectionError, AppDBError, DataUnavailableError, SingleMessageError
+from common.user_facing_errors import (
+    DATA_UNAVAILABLE_ERROR_TYPE,
+    data_unavailable_error_payload,
+    looks_like_data_unavailable_business_message,
+)
 from common.utils.utils import AppLogUtil
 
 WorkflowState = MutableMapping[str, Any]
@@ -86,6 +91,10 @@ def classify_workflow_error(error: BaseException) -> str:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    if isinstance(error, DataUnavailableError):
+        return DATA_UNAVAILABLE_ERROR_TYPE
+    if isinstance(error, SingleMessageError) and looks_like_data_unavailable_business_message(str(error)):
+        return DATA_UNAVAILABLE_ERROR_TYPE
     if isinstance(error, SingleMessageError):
         return "single_message"
     if isinstance(error, AppDBConnectionError):
@@ -305,6 +314,19 @@ def format_workflow_error(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
+    if isinstance(error, DataUnavailableError):
+        error_msg = str(error)
+        AppLogUtil.info(f"{log_prefix} data unavailable record_id={record_id(service)}: {error_msg}")
+        return orjson.dumps(data_unavailable_error_payload(error_msg)).decode()
+
+    if (
+        isinstance(error, SingleMessageError)
+        and looks_like_data_unavailable_business_message(str(error))
+    ):
+        error_msg = str(error)
+        AppLogUtil.info(f"{log_prefix} business data unavailable record_id={record_id(service)}: {error_msg}")
+        return orjson.dumps(data_unavailable_error_payload(error_msg)).decode()
+
     if isinstance(error, SingleMessageError):
         error_msg = str(error)
         AppLogUtil.info(f"{log_prefix} user-visible error record_id={record_id(service)}: {error_msg}")

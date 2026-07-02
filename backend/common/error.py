@@ -37,6 +37,13 @@ class AppDBError(Exception):
     pass
 
 
+class DataUnavailableError(SingleMessageError):
+    """
+    类说明：DataUnavailableError 表示当前数据源缺少回答所需表、字段或埋点数据。
+    """
+    pass
+
+
 class ParseSQLResultError(Exception):
     """
     类说明：ParseSQLResultError 表示后端业务过程里的特定错误，让上层能更准确地提示或处理。

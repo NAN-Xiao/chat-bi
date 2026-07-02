@@ -13,6 +13,24 @@ key = b"Shuzhi1234567890"
 _FERNET_PREFIX = "fernet:v1:"
 
 
+def effective_db_schema(ds_type: str | None, conf) -> str:
+    """
+    是什么：根据数据源类型和连接配置得到真正可用于表名前缀/元数据读取的 schema。
+    谁调用：数据源元数据读取、预览和 SQL 生成上下文。
+    做了什么：PostgreSQL 类数据源在 dbSchema 为空时使用 public，避免把数据库名误当 schema。
+    """
+    schema = str(getattr(conf, "dbSchema", None) or "").strip()
+    if schema:
+        return schema
+
+    ds_type_key = str(ds_type or "").casefold()
+    if ds_type_key in {"pg", "postgres", "postgresql", "excel", "redshift", "kingbase"}:
+        return "public"
+    if ds_type_key == "sqlserver":
+        return "dbo"
+    return schema
+
+
 def _is_plain_json(value: str) -> bool:
     """
     是什么：_is_plain_json 是一个可以复用的小步骤，负责数据源相关的一件事。

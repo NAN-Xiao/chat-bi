@@ -87,6 +87,7 @@ const _loading = computed({
 const stopFlag = ref(false)
 const restoringTask = ref(false)
 const POLL_INTERVAL_MS = 1000
+const EMPTY_EVENT_REFRESH_ROUNDS = 3
 const activeTaskStoragePrefix = 'chat.smartQa.activeTask.'
 
 interface ActiveTaskState {
@@ -96,6 +97,50 @@ interface ActiveTaskState {
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function normalizeTaskError(error?: unknown) {
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  if (error && typeof error === 'object') {
+    const data = (error as any).response?.data || error
+    const message =
+      data.detail ||
+      data.message ||
+      data.msg ||
+      data.error ||
+      (typeof data.toString === 'function' && data.toString !== Object.prototype.toString
+        ? data.toString()
+        : '')
+    if (message && String(message).trim() && message !== '[object Object]') {
+      return String(message)
+    }
+  }
+  return '问数任务异常结束，但后端未返回具体错误。请稍后重试。'
+}
+
+function failCurrentRecord(currentRecord: ChatRecord, error?: unknown) {
+  const message = normalizeTaskError(error)
+  currentRecord.error = message
+  if (index.value >= 0 && _currentChat.value.records[index.value]) {
+    _currentChat.value.records[index.value].error = message
+  }
+  _loading.value = false
+  emits('error', currentRecord.id)
+}
+
+function hasDisplayableAnswerRecord(record?: ChatRecord) {
+  return !!(
+    record?.local_answer ||
+    record?.chart ||
+    record?.analysis ||
+    record?.predict ||
+    record?.predict_content
+  )
 }
 
 function activeTaskStorageKey(record: ChatRecord) {
@@ -147,7 +192,7 @@ async function resolveActiveTask(record: ChatRecord): Promise<ActiveTaskState | 
   if (remembered) {
     return remembered
   }
-  if (!record.id || record.finish || record.error) {
+  if (!record.id || record.finish || record.error || hasDisplayableAnswerRecord(record)) {
     return undefined
   }
 
@@ -212,8 +257,7 @@ async function handlePayload(
       })
       break
     case 'error':
-      currentRecord.error = data.content
-      emits('error', currentRecord.id)
+      failCurrentRecord(currentRecord, data.content)
       break
     case 'sql-result':
       state.sql_answer += data.reasoning_content || ''
@@ -288,16 +332,30 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
     analysis_thinking: _currentChat.value.records[index.value].analysis_thinking || '',
   }
   let offset = initialOffset
+  let emptyEventRounds = 0
 
   while (true) {
     if (stopFlag.value) {
       break
     }
 
-    const eventPage = await questionApi.getTaskEvents(taskId, offset)
+    let eventPage
+    try {
+      eventPage = await questionApi.getTaskEvents(taskId, offset)
+    } catch (error) {
+      forgetActiveTask(currentRecord)
+      failCurrentRecord(currentRecord, error)
+      break
+    }
     offset = eventPage.next_offset ?? offset
     rememberActiveTask(currentRecord, taskId, offset)
-    for (const eventChunk of eventPage.events || []) {
+    const events = eventPage.events || []
+    if (events.length > 0) {
+      emptyEventRounds = 0
+    } else {
+      emptyEventRounds += 1
+    }
+    for (const eventChunk of events) {
       const parsed = parseSseChunk('', eventChunk)
       for (const payload of parsed.payloads) {
         await handlePayload(payload, currentRecord, state)
@@ -306,9 +364,14 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
 
     if (['succeeded', 'failed'].includes(eventPage.status)) {
       forgetActiveTask(currentRecord)
-      if (eventPage.status === 'failed' && eventPage.error && !currentRecord.error) {
-        currentRecord.error = eventPage.error
-        emits('error', currentRecord.id)
+      if (currentRecord.error || _currentChat.value.records[index.value]?.error) {
+        failCurrentRecord(currentRecord, currentRecord.error || _currentChat.value.records[index.value]?.error)
+      } else if (eventPage.status === 'failed') {
+        if (!currentRecord.error) {
+          failCurrentRecord(currentRecord, eventPage.error)
+        } else {
+          _loading.value = false
+        }
       } else if (eventPage.status === 'succeeded') {
         const finishAlreadyNotified =
           currentRecord.finish || _currentChat.value.records[index.value]?.finish
@@ -322,6 +385,28 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
       }
       _loading.value = false
       break
+    }
+
+    if (emptyEventRounds >= EMPTY_EVENT_REFRESH_ROUNDS) {
+      emptyEventRounds = 0
+      const refreshed = await refreshCurrentRecord(currentRecord.id)
+      const latestRecord = _currentChat.value.records[index.value]
+      if (refreshed && latestRecord?.error) {
+        forgetActiveTask(currentRecord)
+        failCurrentRecord(currentRecord, latestRecord.error)
+        break
+      }
+      if (refreshed && (latestRecord?.finish || hasDisplayableAnswerRecord(latestRecord))) {
+        forgetActiveTask(currentRecord)
+        _loading.value = false
+        if (latestRecord?.id) {
+          getChatData(latestRecord.id)
+        }
+        if (latestRecord?.finish) {
+          emits('finish', latestRecord.id)
+        }
+        break
+      }
     }
 
     await sleep(POLL_INTERVAL_MS)
@@ -437,7 +522,7 @@ async function restoreRecordTask() {
     return
   }
   const record = props.message?.record
-  if (!record || record.local_answer || record.finish) {
+  if (!record || record.finish || record.error || hasDisplayableAnswerRecord(record)) {
     return
   }
   restoringTask.value = true
@@ -483,7 +568,12 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask })
 </script>
 
 <template>
-  <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
+  <BaseAnswer
+    v-if="message"
+    :message="message"
+    :reasoning-name="reasoningName"
+    :loading="_loading"
+  >
     <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
     <MdComponent v-if="message.record?.analysis" :message="message.record.analysis" />
     <ChartBlock

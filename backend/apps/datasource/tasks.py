@@ -3,8 +3,8 @@
 """
 from typing import Any
 
-from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlmodel import Session
+from sqlalchemy.orm import scoped_session, sessionmaker
 
 from apps.datasource.crud.datasource import sync_single_fields
 from apps.datasource.crud.table import (
@@ -20,7 +20,7 @@ from common.utils.embedding_threads import (
 )
 from common.utils.locale import I18n
 
-session_maker = scoped_session(sessionmaker(bind=engine))
+session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 i18n = I18n()
 
 

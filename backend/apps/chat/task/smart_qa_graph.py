@@ -59,7 +59,7 @@ from apps.datasource.crud.permission_errors import (
 from apps.datasource.crud.query_executor import validate_user_query_sql_or_raise
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_connection
-from common.error import AppDBConnectionError
+from common.error import AppDBConnectionError, DataUnavailableError
 from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil, extract_nested_json
 
@@ -67,6 +67,69 @@ WORKFLOW_KEY = "smart_qa"
 RUN_ID_PREFIX = "smartqa"
 LOG_PREFIX = "Smart Q&A LangGraph"
 WORKFLOW_CONFIG = AssistantWorkflowConfig(WORKFLOW_KEY, RUN_ID_PREFIX, LOG_PREFIX)
+
+
+def _sql_answer_message(full_sql_text: str) -> str | None:
+    """
+    是什么：从 SQL 生成结果里取出可展示给用户的普通提示。
+    谁调用：Smart Q&A 生成 SQL 后需要提示部分数据缺失时调用。
+    做了什么：只读取 success=true 的 message/warning，避免把失败原因当作成功提示重复展示。
+    """
+    json_str = extract_nested_json(full_sql_text)
+    if not json_str:
+        return None
+    try:
+        data = orjson.loads(json_str)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or not data.get("success"):
+        return None
+    message = data.get("message") or data.get("warning")
+    if not isinstance(message, str):
+        return None
+    message = message.strip()
+    return message or None
+
+
+def _save_and_emit_plain_answer(
+    *,
+    service: Any,
+    session: Any,
+    message: str,
+    in_chat: bool,
+    stream: bool,
+    json_result: dict[str, Any],
+    finish: bool = False,
+) -> None:
+    """
+    是什么：把业务提示保存为普通回答并发送给前端。
+    谁调用：Smart Q&A 遇到部分数据缺失或数据不可用时调用。
+    做了什么：复用 analysis 字段/analysis-result 事件，不把业务提示写成 record.error。
+    """
+    answer = orjson.dumps({
+        "content": message,
+        "reasoning_content": "",
+    }).decode()
+    if hasattr(service, "save_analysis"):
+        service.record = service.save_analysis(session=session, answer=answer)
+    else:
+        service.record = save_analysis_answer(
+            session=session,
+            record_id=service.record.id,
+            answer=answer,
+        )
+    if in_chat:
+        _emit(_sse({
+            "content": message,
+            "reasoning_content": "",
+            "type": "analysis-result",
+        }))
+        if finish:
+            _emit(_sse({"type": "finish"}))
+    elif stream:
+        _emit(f"> {message}\n")
+    else:
+        json_result["message"] = message
 
 
 class SmartQAGraphState(TypedDict, total=False):
@@ -404,7 +467,10 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         _remove_temp_sql_text,
         dynamic_ds_types,
         dynamic_subsql_prefix,
+        looks_like_data_skill_schema_unavailable_error,
+        user_data_unavailable_message,
     )
+    from common.error import SingleMessageError
 
     service = state["service"]
     in_chat = state["in_chat"]
@@ -432,9 +498,29 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 _emit,
             )
             AppLogUtil.info(full_sql_text)
-            sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
+            try:
+                sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
+            except (DataSkillSqlValidationError, SingleMessageError) as regenerated_error:
+                if not looks_like_data_skill_schema_unavailable_error(str(regenerated_error)):
+                    raise
+                message = user_data_unavailable_message(str(regenerated_error))
+                _save_and_emit_plain_answer(
+                    service=service,
+                    session=session,
+                    message=message,
+                    in_chat=in_chat,
+                    stream=stream,
+                    json_result=json_result,
+                    finish=True,
+                )
+                if not in_chat and not stream:
+                    json_result["success"] = False
+                    json_result["message"] = message
+                    _emit(json_result)
+                return {"json_result": json_result, "stop": True}
 
         chart_type = service.get_chart_type_from_sql_answer(full_sql_text)
+        sql_answer_user_message = _sql_answer_message(full_sql_text)
 
         if service.change_title:
             llm_brief = service.get_brief_from_sql_answer(full_sql_text)
@@ -528,6 +614,17 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     elif stream:
         _emit(f"```sql\n{format_sql}\n```\n\n")
 
+    if sql_answer_user_message:
+        with _session_scope() as session:
+            _save_and_emit_plain_answer(
+                service=service,
+                session=session,
+                message=sql_answer_user_message,
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+            )
+
     real_execute_sql = sql
     execute_scope_sql = sql
     execute_allowed_tables = service.table_name_list
@@ -607,6 +704,32 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 scope_sql=execute_scope_sql,
                 scope_allowed_tables=execute_allowed_tables,
             )
+        except DataUnavailableError as data_error:
+            message = str(data_error)
+            trigger_log_error(
+                session,
+                service.current_logs[OperationEnum.EXECUTE_SQL],
+                full_message={
+                    "sql": real_execute_sql,
+                    "error_type": "data_unavailable",
+                    "message": message,
+                    "traceback": str(data_error.__cause__ or data_error),
+                },
+            )
+            _save_and_emit_plain_answer(
+                service=service,
+                session=session,
+                message=message,
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                finish=True,
+            )
+            if not in_chat and not stream:
+                json_result["success"] = False
+                json_result["message"] = message
+                _emit(json_result)
+            return {"json_result": json_result, "stop": True}
         except Exception as execute_error:
             if not looks_like_permission_scope_error(str(execute_error)):
                 raise

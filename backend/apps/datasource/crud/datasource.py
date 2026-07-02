@@ -15,7 +15,7 @@ from apps.datasource.crud.permission import can_access_table, current_tenant_id,
 from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.crud.query_executor import execute_user_query_or_raise
 from apps.datasource.embedding.table_embedding import calc_table_embedding
-from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
+from apps.datasource.utils.utils import aes_decrypt, effective_db_schema, encrypt_datasource_configuration
 from apps.db.constant import DB
 from apps.db.db import get_tables, get_fields, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
@@ -637,26 +637,27 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         return {"fields": [], "data": [], "sql": ''}
 
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    db_schema = effective_db_schema(ds.type, conf)
     sql: str = ""
     if ds.type == "mysql" or ds.type == "doris" or ds.type == "starrocks" or ds.type == "hive":
         sql = f"""SELECT `{"`, `".join(fields)}` FROM `{table.table_name}`
             {where}
             LIMIT 100"""
     elif ds.type == "sqlServer":
-        sql = f"""SELECT TOP 100 [{"], [".join(fields)}] FROM [{conf.dbSchema}].[{table.table_name}]
+        sql = f"""SELECT TOP 100 [{"], [".join(fields)}] FROM [{db_schema}].[{table.table_name}]
             {where}
             """
     elif ds.type == "pg" or ds.type == "excel" or ds.type == "redshift" or ds.type == "kingbase":
-        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{table.table_name}"
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{db_schema}"."{table.table_name}"
             {where}
             LIMIT 100"""
     elif ds.type == "oracle":
-        # sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}"
+        # sql = f"""SELECT "{'", "'.join(fields)}" FROM "{db_schema}"."{data.table.table_name}"
         #     {where}
         #     ORDER BY "{fields[0]}"
         #     OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
         sql = f"""SELECT * FROM
-                    (SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{table.table_name}"
+                    (SELECT "{'", "'.join(fields)}" FROM "{db_schema}"."{table.table_name}"
                     {where}
                     ORDER BY "{fields[0]}")
                     WHERE ROWNUM <= 100
@@ -666,7 +667,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
             {where}
             LIMIT 100"""
     elif ds.type == "dm":
-        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{table.table_name}"
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{db_schema}"."{table.table_name}"
             {where}
             LIMIT 100"""
     elif ds.type == "es":
@@ -749,7 +750,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
     tenant_id = _schema_metadata_tenant_id(session, ds, current_user)
     _apply_workspace_comments_to_tables(session, tenant_id, tables)
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
-    schema = conf.dbSchema if conf.dbSchema is not None and conf.dbSchema != "" else conf.database
+    schema = effective_db_schema(ds.type, conf)
 
     # 获取全部字段
     table_ids = [table.id for table in tables]

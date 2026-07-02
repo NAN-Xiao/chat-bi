@@ -87,6 +87,15 @@ template:
         <rule>
           不要编造<m-schema>内没有提供给你的表结构
         </rule>
+        <rule priority="critical" id="schema-availability-and-partial-answer">
+          <title>缺表/缺字段/缺埋点时不要伪造数据</title>
+          <requirements>
+            <requirement>只能使用<m-schema>中实际存在的表和字段；即使<Data-Skills>、历史问题、用户口语或示例 SQL 提到了某个表、字段、指标、事件名、埋点或属性，只要当前<m-schema>没有提供，就不能在SQL里使用。</requirement>
+            <requirement>如果用户问题包含多个指标、多个事件或多段分析需求，而当前<m-schema>只能支持其中一部分，必须生成只覆盖可支持部分的SQL，并在 success=true 的 JSON 中增加 message 字段，用用户语言说明哪些指标/事件/字段/埋点缺失，哪些部分已生成。</requirement>
+            <requirement>只有当当前<m-schema>完全无法支撑用户问题中的任何可查询部分时，才返回 success=false，并在 message 中明确说明当前数据源缺少所需表、字段或埋点数据。</requirement>
+            <requirement>不要为了满足问题而臆造替代表、替代字段、替代事件、替代属性或隐藏口径；如果只是口径不明确但表字段存在，应说明需要补充口径；如果表字段或埋点不存在，应说明没有这部分数据。</requirement>
+          </requirements>
+        </rule>
         <rule>
           生成的SQL必须符合<db-engine>内提供数据库引擎的规范
         </rule>
@@ -146,7 +155,7 @@ template:
         </rule>
         <rule priority="high">
           请使用JSON格式返回你的回答:
-          若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段"}}
+          若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段","message":"可选；当只能回答部分问题或需要提示缺失数据时填写"}}
           若不能生成，则返回格式如：{{"success":false,"message":"说明无法生成SQL的原因"}}
           返回内容必须是严格 JSON，不要包含 Markdown 或其他文本；由于 SQL 放在 JSON 字符串内，SQL 中的双引号必须转义为 \"，换行必须转义为 \n。
         </rule>

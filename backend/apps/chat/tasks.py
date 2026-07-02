@@ -22,7 +22,6 @@ from common.utils.command_utils import parse_quick_command
 def _error_chunk(message: str) -> str:
     return "data:" + orjson.dumps({"content": message, "type": "error"}).decode() + "\n\n"
 
-
 def _assistant_from_payload(payload: dict[str, Any]) -> AssistantHeader | None:
     assistant_payload = payload.get("assistant")
     if not assistant_payload:
@@ -185,6 +184,7 @@ async def smart_qa_task(payload: dict[str, Any]) -> dict[str, Any]:
     task = current_task_context()
     task_id = str(task.get("id")) if task else str(payload.get("task_id") or "")
 
+    record: ChatRecord | None = None
     try:
         with Session(engine) as session:
             current_user = _load_task_user(session, payload, tenant_id)
@@ -221,5 +221,25 @@ async def smart_qa_task(payload: dict[str, Any]) -> dict[str, Any]:
             return {"record_id": getattr(record, "id", None), "tenant_id": tenant_id}
     except Exception as exc:
         message = exc.detail if isinstance(exc, HTTPException) else str(exc)
+        record_id = payload.get("record_id") or getattr(record, "id", None)
+        if record_id:
+            try:
+                with Session(engine) as session:
+                    current_user = _load_task_user(session, payload, tenant_id)
+                    current_assistant = _assistant_from_payload(payload)
+                    question = _resolve_chat_question(session, current_user, payload)
+                    llm_service = await LLMService.create(
+                        session,
+                        current_user,
+                        question,
+                        current_assistant,
+                        embedding=bool(payload.get("embedding", True)),
+                    )
+                    task_record = _load_task_record(session, current_user, {"record_id": record_id})
+                    if task_record is not None:
+                        llm_service.set_record(task_record)
+                        llm_service.save_error(session, str(message))
+            except Exception:
+                pass
         await append_chat_task_event(tenant_id, task_id, _error_chunk(str(message)))
         raise
