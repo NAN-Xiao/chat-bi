@@ -107,6 +107,22 @@ APP_SYSTEM_MESSAGE_KEY = "app_system"
 APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
 
 
+def _disable_reasoning_for_recommendation(config: LLMConfig) -> None:
+    if config.additional_params is None:
+        additional_params = {}
+        object.__setattr__(config, "additional_params", additional_params)
+    else:
+        additional_params = config.additional_params
+    extra_body = additional_params.get("extra_body")
+    if not isinstance(extra_body, dict):
+        extra_body = {}
+    else:
+        extra_body = dict(extra_body)
+
+    extra_body["enable_thinking"] = False
+    additional_params["extra_body"] = extra_body
+
+
 class DataSkillSqlValidationError(SingleMessageError):
     """
     类说明：DataSkillSqlValidationError 表示聊天问数据和 Agent过程里的特定错误，让上层能更准确地提示或处理。
@@ -910,11 +926,8 @@ class LLMService:
         self.chat_question = chat_question
         self.config = config
         if no_reasoning:
-            # 仅在使用通义千问模型时生效
-            if self.config.additional_params:
-                if self.config.additional_params.get('extra_body'):
-                    if self.config.additional_params.get('extra_body').get('enable_thinking'):
-                        del self.config.additional_params['extra_body']['enable_thinking']
+            # 推荐问题只需要短 JSON，显式关闭通义千问等模型的思考模式，避免耗时被 reasoning 放大。
+            _disable_reasoning_for_recommendation(self.config)
 
         self.chat_question.ai_modal_id = self.config.model_id
         self.chat_question.ai_modal_name = self.config.model_name

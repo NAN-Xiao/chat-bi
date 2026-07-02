@@ -67,7 +67,7 @@ function clickQuestion(question: string): void {
 }
 
 const stopFlag = ref(false)
-const RECOMMEND_QUESTIONS_TIMEOUT_MS = 20000
+const RECOMMEND_QUESTIONS_TIMEOUT_MS = 30000
 
 async function getRecommendQuestions(articles_number: number) {
   if (!props.recordId || computedQuestions.value.length > 0) {
