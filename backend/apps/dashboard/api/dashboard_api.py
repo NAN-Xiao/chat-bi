@@ -4,6 +4,7 @@
 from typing import List
 
 import asyncio
+import time
 
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 
@@ -37,6 +38,7 @@ from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
+from common.utils.utils import AppLogUtil
 
 router = APIRouter(
     tags=["Dashboard"],
@@ -62,7 +64,18 @@ async def list_resource_api(session: SessionDep, dashboard: QueryDashboard, curr
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
-    return list_resource(session=session, dashboard=dashboard, current_user=current_user)
+    start = time.perf_counter()
+    result = list_resource(session=session, dashboard=dashboard, current_user=current_user)
+    AppLogUtil.info(
+        "Dashboard tree list_resource finished: tenant_id=%s, user_id=%s, datasource=%s, node_type=%s, count=%s, elapsed_ms=%s",
+        getattr(current_user, "tenant_id", None),
+        getattr(current_user, "id", None),
+        dashboard.datasource,
+        dashboard.node_type,
+        len(result) if isinstance(result, list) else None,
+        int((time.perf_counter() - start) * 1000),
+    )
+    return result
 
 
 @router.post("/load_resource", summary=f"{PLACEHOLDER_PREFIX}load_resource_api")
@@ -82,7 +95,16 @@ async def list_default_resource_api(session: SessionDep, current_user: CurrentUs
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
-    return list_default_resources(session=session, current_user=current_user)
+    start = time.perf_counter()
+    result = list_default_resources(session=session, current_user=current_user)
+    AppLogUtil.info(
+        "Dashboard tree default_list finished: tenant_id=%s, user_id=%s, count=%s, elapsed_ms=%s",
+        getattr(current_user, "tenant_id", None),
+        getattr(current_user, "id", None),
+        len(result) if isinstance(result, list) else None,
+        int((time.perf_counter() - start) * 1000),
+    )
+    return result
 
 
 @router.post("/default/load", summary=f"{PLACEHOLDER_PREFIX}dashboard_default")

@@ -5,6 +5,8 @@ import { store } from './index'
 import { useUserStore } from './user'
 
 const { wsCache } = useCache()
+let datasourceLoadPromise: Promise<void> | null = null
+let datasourceLoadTenantId = ''
 
 export interface DatasourceContextItem {
   id?: number | string
@@ -65,14 +67,16 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       if (this.tenantScopeId && this.tenantScopeId !== requestTenantId) {
         this.clear(false)
       }
+      if (this.loading && datasourceLoadPromise && datasourceLoadTenantId === requestTenantId) {
+        return datasourceLoadPromise
+      }
       if (
-        (this.loading && !force) ||
         (this.initialized && !force && this.tenantScopeId === requestTenantId)
       ) {
         return
       }
       this.loading = true
-      try {
+      const loadPromise = (async () => {
         const res = await datasourceApi.accessibleList()
         if ((useUserStore().getTenantId || 'default') !== requestTenantId) {
           return
@@ -105,8 +109,17 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
         }
         this.tenantScopeId = requestTenantId
         this.initialized = true
+      })()
+      datasourceLoadPromise = loadPromise
+      datasourceLoadTenantId = requestTenantId
+      try {
+        return await loadPromise
       } finally {
-        this.loading = false
+        if (datasourceLoadPromise === loadPromise) {
+          datasourceLoadPromise = null
+          datasourceLoadTenantId = ''
+          this.loading = false
+        }
       }
     },
 
@@ -162,6 +175,8 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
     },
 
     clear(persist = true) {
+      datasourceLoadPromise = null
+      datasourceLoadTenantId = ''
       this.datasources = []
       this.datasourceId = undefined
       this.datasourceName = ''
@@ -172,6 +187,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       this.canManageDashboard = false
       this.canManageProject = false
       this.tenantScopeId = ''
+      this.loading = false
       this.initialized = false
       if (persist) {
         wsCache.delete(this.cacheKey())
