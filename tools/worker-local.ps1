@@ -4,7 +4,7 @@ param(
     [int]$Workers = 1,
     [string]$RedisHost = "10.1.5.28",
     [int]$RedisPort = 6379,
-    [string]$QueueName = "default"
+    [string]$QueueName = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +20,12 @@ if (-not (Test-Path -LiteralPath $pythonExe)) {
 }
 
 New-Item -ItemType Directory -Force -Path $workerRuntime | Out-Null
+
+if (-not $QueueName) {
+    $workspaceSlug = Split-Path -Leaf $workspaceRoot
+    $computerSlug = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "local" }
+    $QueueName = "local-$computerSlug-$workspaceSlug" -replace "[^A-Za-z0-9_.-]", "-"
+}
 
 function Get-PidFile([int]$Index) {
     return Join-Path $workerRuntime "worker-$Index.pid"

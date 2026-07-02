@@ -4,6 +4,7 @@ import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } fr
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
+import BusinessNotice from '@/views/chat/BusinessNotice.vue'
 import JSONBig from 'json-bigint'
 import { parseSseChunk } from '@/utils/sse'
 
@@ -86,9 +87,24 @@ const _loading = computed({
 
 const stopFlag = ref(false)
 const restoringTask = ref(false)
+const finalAnswerReady = ref(!!(props.message?.record?.finish || props.message?.record?.finish_time))
 const POLL_INTERVAL_MS = 1000
 const EMPTY_EVENT_REFRESH_ROUNDS = 3
 const activeTaskStoragePrefix = 'chat.smartQa.activeTask.'
+
+const showFinalAnswer = computed(() => {
+  const record = props.message?.record
+  if (!record || props.message?.isTyping) {
+    return false
+  }
+  if (record.error || record.stopped) {
+    return true
+  }
+  if (record.finish || record.finish_time) {
+    return finalAnswerReady.value
+  }
+  return !record.task_id
+})
 
 interface ActiveTaskState {
   task_id: string
@@ -129,14 +145,18 @@ function failCurrentRecord(currentRecord: ChatRecord, error?: unknown) {
   if (index.value >= 0 && _currentChat.value.records[index.value]) {
     _currentChat.value.records[index.value].error = message
   }
+  clearCurrentTask(currentRecord)
   _loading.value = false
   emits('error', currentRecord.id)
 }
 
-function hasDisplayableAnswerRecord(record?: ChatRecord) {
+function hasStoredFinalAnswer(record?: ChatRecord) {
   return !!(
+    record?.finish ||
+    record?.finish_time ||
+    record?.error ||
+    record?.stopped ||
     record?.local_answer ||
-    record?.chart ||
     record?.analysis ||
     record?.predict ||
     record?.predict_content
@@ -163,9 +183,22 @@ function forgetActiveTask(record: ChatRecord) {
   sessionStorage.removeItem(activeTaskStorageKey(record))
 }
 
+function clearCurrentTask(record: ChatRecord) {
+  record.task_id = undefined
+  if (index.value >= 0 && _currentChat.value.records[index.value]) {
+    _currentChat.value.records[index.value].task_id = undefined
+  }
+}
+
 function pausePolling() {
   stopFlag.value = true
   _loading.value = false
+}
+
+async function markFinalAnswerReady() {
+  await nextTick()
+  await nextTick()
+  finalAnswerReady.value = true
 }
 
 function rememberedActiveTask(record: ChatRecord): ActiveTaskState | undefined {
@@ -192,7 +225,7 @@ async function resolveActiveTask(record: ChatRecord): Promise<ActiveTaskState | 
   if (remembered) {
     return remembered
   }
-  if (!record.id || record.finish || record.error || hasDisplayableAnswerRecord(record)) {
+  if (!record.id || hasStoredFinalAnswer(record)) {
     return undefined
   }
 
@@ -278,6 +311,9 @@ async function handlePayload(
       state.analysis_thinking += data.reasoning_content || ''
       _currentChat.value.records[index.value].analysis = state.analysis
       _currentChat.value.records[index.value].analysis_thinking = state.analysis_thinking
+      if (data.notice) {
+        _currentChat.value.records[index.value].analysis_notice = data.notice
+      }
       break
     case 'chart':
       _currentChat.value.records[index.value].chart = data.content
@@ -290,6 +326,8 @@ async function handlePayload(
     case 'finish':
       currentRecord.finish = true
       _currentChat.value.records[index.value].finish = true
+      await markFinalAnswerReady()
+      clearCurrentTask(currentRecord)
       emits('finish', currentRecord.id)
       break
   }
@@ -377,6 +415,8 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
           currentRecord.finish || _currentChat.value.records[index.value]?.finish
         currentRecord.finish = true
         _currentChat.value.records[index.value].finish = true
+        await markFinalAnswerReady()
+        clearCurrentTask(currentRecord)
         await refreshCurrentRecord(currentRecord.id)
         getChatData(currentRecord.id)
         if (!finishAlreadyNotified) {
@@ -396,8 +436,12 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
         failCurrentRecord(currentRecord, latestRecord.error)
         break
       }
-      if (refreshed && (latestRecord?.finish || hasDisplayableAnswerRecord(latestRecord))) {
+      if (refreshed && hasStoredFinalAnswer(latestRecord)) {
         forgetActiveTask(currentRecord)
+        if (latestRecord?.finish || latestRecord?.finish_time) {
+          await markFinalAnswerReady()
+        }
+        clearCurrentTask(currentRecord)
         _loading.value = false
         if (latestRecord?.id) {
           getChatData(latestRecord.id)
@@ -415,6 +459,7 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
 
 const sendMessage = async () => {
   stopFlag.value = false
+  finalAnswerReady.value = false
   _loading.value = true
 
   if (index.value < 0) {
@@ -436,6 +481,7 @@ const sendMessage = async () => {
 
   try {
     if (currentRecord.task_id) {
+      finalAnswerReady.value = false
       rememberActiveTask(currentRecord, currentRecord.task_id)
       await pollQuestionTask(currentRecord.task_id, currentRecord)
       return
@@ -454,6 +500,7 @@ const sendMessage = async () => {
     }
     currentRecord.task_id = task.task_id
     _currentChat.value.records[index.value].task_id = task.task_id
+    finalAnswerReady.value = false
     rememberActiveTask(currentRecord, task.task_id)
     await pollQuestionTask(task.task_id, currentRecord)
   } catch (error) {
@@ -478,9 +525,21 @@ function hasRecordData(record?: ChatRecord) {
     return false
   }
   if (typeof record.data === 'string') {
-    return record.data.trim().length > 0
+    const text = record.data.trim()
+    if (!text) {
+      return false
+    }
+    try {
+      const data = JSONBig.parse(text)
+      return data?.status === 'failed' || (Array.isArray(data?.data) && data.data.length > 0)
+    } catch (e) {
+      return true
+    }
   }
-  return Array.isArray(record.data?.data) ? record.data.data.length > 0 : !!record.data
+  if (record.data?.status === 'failed') {
+    return true
+  }
+  return Array.isArray(record.data?.data) && record.data.data.length > 0
 }
 
 function getChatData(recordId?: number) {
@@ -522,7 +581,13 @@ async function restoreRecordTask() {
     return
   }
   const record = props.message?.record
-  if (!record || record.finish || record.error || hasDisplayableAnswerRecord(record)) {
+  if (!record) {
+    return
+  }
+  if (hasStoredFinalAnswer(record)) {
+    if (record.id && record.chart && !hasRecordData(record)) {
+      getChatData(record.id)
+    }
     return
   }
   restoringTask.value = true
@@ -530,6 +595,7 @@ async function restoreRecordTask() {
     const activeTask = await resolveActiveTask(record)
     if (activeTask) {
       stopFlag.value = false
+      finalAnswerReady.value = false
       _loading.value = true
       record.task_id = activeTask.task_id
       await pollQuestionTask(activeTask.task_id, record, activeTask.offset)
@@ -540,6 +606,8 @@ async function restoreRecordTask() {
     if (refreshed) {
       const latestRecord = _currentChat.value.records[index.value]
       if (latestRecord?.finish) {
+        await markFinalAnswerReady()
+        clearCurrentTask(latestRecord)
         _loading.value = false
         getChatData(latestRecord.id)
         emits('finish', latestRecord.id)
@@ -552,6 +620,7 @@ async function restoreRecordTask() {
     }
   } catch (error) {
     record.error = `${record.error ? `${record.error}\n` : ''}Error:${error}`
+    clearCurrentTask(record)
     emits('error', record.id)
     _loading.value = false
     console.error('Restore active chat task failed:', error)
@@ -574,20 +643,27 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask })
     :reasoning-name="reasoningName"
     :loading="_loading"
   >
-    <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
-    <MdComponent v-if="message.record?.analysis" :message="message.record.analysis" />
-    <ChartBlock
-      style="margin-top: 6px"
-      :message="message"
-      :record-id="recordId"
-      :loading-data="loadingData"
-    />
-    <slot></slot>
+    <template v-if="showFinalAnswer">
+      <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
+      <BusinessNotice
+        v-if="message.record?.analysis_notice"
+        :notice="message.record.analysis_notice"
+        :message="message.record?.analysis"
+      />
+      <MdComponent v-else-if="message.record?.analysis" :message="message.record.analysis" />
+      <ChartBlock
+        style="margin-top: 6px"
+        :message="message"
+        :record-id="recordId"
+        :loading-data="loadingData"
+      />
+      <slot></slot>
+    </template>
     <template #tool>
-      <slot name="tool"></slot>
+      <slot v-if="showFinalAnswer" name="tool"></slot>
     </template>
     <template #footer>
-      <slot name="footer"></slot>
+      <slot v-if="showFinalAnswer" name="footer"></slot>
     </template>
   </BaseAnswer>
 </template>

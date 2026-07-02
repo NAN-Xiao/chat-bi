@@ -51,6 +51,7 @@ export class ChatRecord {
   chart?: string
   local_answer?: string
   analysis?: string
+  analysis_notice?: Record<string, any>
   analysis_thinking?: string
   predict?: string
   predict_content?: string
@@ -85,6 +86,7 @@ export class ChatRecord {
     chart_answer: string | undefined,
     chart: string | undefined,
     analysis: string | undefined,
+    analysis_notice: Record<string, any> | undefined,
     analysis_thinking: string | undefined,
     predict: string | undefined,
     predict_content: string | undefined,
@@ -117,6 +119,7 @@ export class ChatRecord {
     chart_answer?: string,
     chart?: string,
     analysis?: string,
+    analysis_notice?: Record<string, any>,
     analysis_thinking?: string,
     predict?: string,
     predict_content?: string,
@@ -148,6 +151,7 @@ export class ChatRecord {
     this.chart_answer = chart_answer
     this.chart = chart
     this.analysis = analysis
+    this.analysis_notice = analysis_notice
     this.analysis_thinking = analysis_thinking
     this.predict = predict
     this.predict_content = predict_content
@@ -296,6 +300,7 @@ const toChatRecord = (data?: any): ChatRecord | undefined => {
     data.chart_answer,
     data.chart,
     data.analysis,
+    data.analysis_notice,
     data.analysis_thinking,
     data.predict,
     data.predict_content,

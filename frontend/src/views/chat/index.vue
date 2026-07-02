@@ -610,10 +610,11 @@ function isUnfinishedAnswerRecord(record?: ChatRecord) {
   return (
     !!record &&
     !record.first_chat &&
-    !hasDisplayableAnswerRecord(record) &&
     !record.finish &&
+    !record.finish_time &&
     !record.error &&
-    !record.stopped
+    !record.stopped &&
+    (!!record.task_id || !hasDisplayableAnswerRecord(record))
   )
 }
 function isRecordTyping(record?: ChatRecord, index = -1) {

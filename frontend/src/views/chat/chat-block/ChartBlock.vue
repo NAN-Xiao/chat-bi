@@ -110,6 +110,13 @@ const dataFailureMessage = computed(() =>
       dataObject.value?.reason ||
       '当前数据源缺少本次问题所需的表、字段或埋点数据。'
 )
+const isFinalChartAnswer = computed(() => {
+  const record = props.message?.record
+  return !!(
+    record &&
+    (!record.task_id || record.finish || record.finish_time || record.error || record.stopped)
+  )
+})
 const chartDatasourceId = computed(
   () => props.message?.record?.datasource || dataObject.value?.datasource || datasourceContext.datasourceId
 )
@@ -567,6 +574,7 @@ watch(
 <template>
   <div
     v-if="
+      isFinalChartAnswer &&
       !message.isTyping &&
       ((!isPredict && (message?.record?.sql || message?.record?.chart)) ||
         (isPredict && message?.record?.chart && data.length > 0))

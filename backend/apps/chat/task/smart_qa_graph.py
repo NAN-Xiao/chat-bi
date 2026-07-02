@@ -3,10 +3,15 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+import re
 from typing import Any, TypedDict
 
 import orjson
+import sqlglot
 import sqlparse
+from sqlglot import exp
+from sqlalchemy import text
 from langgraph.graph import END, StateGraph
 
 from apps.chat.curd.chat import (
@@ -57,8 +62,9 @@ from apps.datasource.crud.permission_errors import (
     looks_like_permission_scope_error,
 )
 from apps.datasource.crud.query_executor import validate_user_query_sql_or_raise
+from apps.datasource.crud.sql_permission import normalize_identifier
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import check_connection
+from apps.db.db import check_connection, get_session, get_sqlglot_dialect
 from common.error import AppDBConnectionError, DataUnavailableError
 from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil, extract_nested_json
@@ -100,16 +106,20 @@ def _save_and_emit_plain_answer(
     stream: bool,
     json_result: dict[str, Any],
     finish: bool = False,
+    notice: dict[str, Any] | None = None,
 ) -> None:
     """
     是什么：把业务提示保存为普通回答并发送给前端。
     谁调用：Smart Q&A 遇到部分数据缺失或数据不可用时调用。
     做了什么：复用 analysis 字段/analysis-result 事件，不把业务提示写成 record.error。
     """
-    answer = orjson.dumps({
+    answer_payload = {
         "content": message,
         "reasoning_content": "",
-    }).decode()
+    }
+    if notice:
+        answer_payload["notice"] = notice
+    answer = orjson.dumps(answer_payload).decode()
     if hasattr(service, "save_analysis"):
         service.record = service.save_analysis(session=session, answer=answer)
     else:
@@ -119,17 +129,663 @@ def _save_and_emit_plain_answer(
             answer=answer,
         )
     if in_chat:
-        _emit(_sse({
+        event_payload = {
             "content": message,
             "reasoning_content": "",
             "type": "analysis-result",
-        }))
+        }
+        if notice:
+            event_payload["notice"] = notice
+        _emit(_sse(event_payload))
         if finish:
             _emit(_sse({"type": "finish"}))
     elif stream:
         _emit(f"> {message}\n")
     else:
         json_result["message"] = message
+        if notice:
+            json_result["notice"] = notice
+
+
+@dataclass
+class _RequestedEventPredicate:
+    table: str
+    schema: str
+    table_alias: str
+    event_field: str
+    event_values: set[str] = field(default_factory=set)
+    select_alias: str | None = None
+    select_output_columns: set[str] = field(default_factory=set)
+
+
+@dataclass
+class _EventResultCleanup:
+    result: dict[str, Any]
+    removed_fields: list[str] = field(default_factory=list)
+    missing_events: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _EventAvailability:
+    predicate: _RequestedEventPredicate
+    missing_values: set[str] = field(default_factory=set)
+    existing_values: set[str] = field(default_factory=set)
+    unknown_values: set[str] = field(default_factory=set)
+
+
+@dataclass
+class _MissingEventSqlRewrite:
+    sql: str | None
+    missing_events: list[str] = field(default_factory=list)
+    removed_fields: list[str] = field(default_factory=list)
+    removed_ctes: list[str] = field(default_factory=list)
+    changed: bool = False
+    executable: bool = True
+
+
+def _event_name_fields_for_service(service: Any) -> set[str]:
+    """
+    是什么：找出当前工作空间里表示“事件/埋点名”的字段名。
+    谁调用：SQL 执行后校验事件值是否真实存在。
+    做了什么：优先读工作空间打点配置；没有配置时用通用 event_name 兜底。
+    """
+    fields = {"event_name"}
+    tracking_config = getattr(getattr(service, "chat_question", None), "tracking_config", "") or ""
+    for pattern in [
+        r"默认事件名字段\s*[:：]\s*`([^`]+)`",
+        r"default_event_name_field[\"'\s:：]+([A-Za-z_][A-Za-z0-9_]*)",
+    ]:
+        for match in re.finditer(pattern, tracking_config, flags=re.IGNORECASE):
+            field_name = normalize_identifier(match.group(1))
+            if field_name:
+                fields.add(field_name)
+    for match in re.finditer(r"(?:field_role|role)[\"'\s:：]+event_name", tracking_config, flags=re.IGNORECASE):
+        window = tracking_config[max(0, match.start() - 240): match.end() + 240]
+        field_match = re.search(r"(?:field_name|field|字段)[\"'\s:：]+([A-Za-z_][A-Za-z0-9_]*)", window, flags=re.IGNORECASE)
+        if field_match:
+            field_name = normalize_identifier(field_match.group(1))
+            if field_name:
+                fields.add(field_name)
+    return fields
+
+
+def _sql_statements(sql: str, ds_type: str | None) -> list[exp.Expression]:
+    dialect = get_sqlglot_dialect(ds_type)
+    return [stmt for stmt in sqlglot.parse(sql, dialect=dialect) if stmt is not None]
+
+
+def _table_aliases_for_select(select_expr: exp.Select) -> dict[str, exp.Table]:
+    sources = []
+    from_expr = select_expr.args.get("from_")
+    if from_expr and from_expr.this is not None:
+        sources.append(from_expr.this)
+    for join in select_expr.args.get("joins") or []:
+        if join.this is not None:
+            sources.append(join.this)
+
+    aliases: dict[str, exp.Table] = {}
+    for source in sources:
+        if not isinstance(source, exp.Table):
+            continue
+        alias = normalize_identifier(source.alias_or_name or source.name)
+        table_name = normalize_identifier(source.name)
+        if alias:
+            aliases[alias] = source
+        if table_name:
+            aliases[table_name] = source
+    return aliases
+
+
+def _literal_strings(expr_node: exp.Expression) -> set[str]:
+    values: set[str] = set()
+    if isinstance(expr_node, exp.Literal) and expr_node.is_string:
+        values.add(str(expr_node.this))
+        return values
+    for literal in expr_node.find_all(exp.Literal):
+        if literal.is_string:
+            values.add(str(literal.this))
+    return values
+
+
+def _event_values_from_condition(condition: exp.Expression, event_fields: set[str]) -> list[tuple[exp.Column, set[str]]]:
+    matches: list[tuple[exp.Column, set[str]]] = []
+
+    for eq in condition.find_all(exp.EQ):
+        left_column = eq.left if isinstance(eq.left, exp.Column) else None
+        right_column = eq.right if isinstance(eq.right, exp.Column) else None
+        if left_column is not None and normalize_identifier(left_column.name) in event_fields:
+            values = _literal_strings(eq.right)
+            if values:
+                matches.append((left_column, values))
+        elif right_column is not None and normalize_identifier(right_column.name) in event_fields:
+            values = _literal_strings(eq.left)
+            if values:
+                matches.append((right_column, values))
+
+    for in_expr in condition.find_all(exp.In):
+        target = in_expr.this
+        if not isinstance(target, exp.Column) or normalize_identifier(target.name) not in event_fields:
+            continue
+        values = set()
+        expressions = in_expr.args.get("expressions") or []
+        for item in expressions:
+            values.update(_literal_strings(item))
+        query = in_expr.args.get("query")
+        if query is not None:
+            values.update(_literal_strings(query))
+        if values:
+            matches.append((target, values))
+
+    return matches
+
+
+def _selected_output_columns(select_expr: exp.Select) -> set[str]:
+    columns: set[str] = set()
+    for item in select_expr.expressions:
+        alias = normalize_identifier(item.alias_or_name)
+        if alias and alias != "*":
+            columns.add(alias)
+    return columns
+
+
+def _extract_requested_event_predicates(sql: str, service: Any) -> list[_RequestedEventPredicate]:
+    event_fields = _event_name_fields_for_service(service)
+    if not event_fields:
+        return []
+
+    predicates: list[_RequestedEventPredicate] = []
+    try:
+        statements = _sql_statements(sql, getattr(getattr(service, "ds", None), "type", None))
+    except Exception as exc:
+        AppLogUtil.warning(f"Skip missing event post-check because SQL parsing failed: {exc}")
+        return []
+
+    for statement in statements:
+        for select_expr in statement.find_all(exp.Select):
+            where_expr = select_expr.args.get("where")
+            if where_expr is None or where_expr.this is None:
+                continue
+            aliases = _table_aliases_for_select(select_expr)
+            for column, values in _event_values_from_condition(where_expr.this, event_fields):
+                table_ref = aliases.get(normalize_identifier(column.table))
+                if table_ref is None and len(aliases) == 1:
+                    table_ref = next(iter(aliases.values()))
+                if table_ref is None:
+                    continue
+                table_name = normalize_identifier(table_ref.name)
+                if not table_name:
+                    continue
+                predicates.append(_RequestedEventPredicate(
+                    table=table_name,
+                    schema=normalize_identifier(table_ref.db),
+                    table_alias=normalize_identifier(table_ref.alias_or_name or table_ref.name),
+                    event_field=normalize_identifier(column.name),
+                    event_values=values,
+                    select_alias=normalize_identifier(_nearest_cte_alias(select_expr)),
+                    select_output_columns=_selected_output_columns(select_expr),
+                ))
+
+    return predicates
+
+
+def _nearest_cte_alias(select_expr: exp.Select) -> str | None:
+    parent = select_expr.parent
+    while parent is not None:
+        if isinstance(parent, exp.CTE):
+            return parent.alias_or_name
+        parent = parent.parent
+    return None
+
+
+def _quote_table_for_sql(table_name: str, schema_name: str | None, ds_type: str | None) -> str:
+    table = exp.Table(this=exp.to_identifier(table_name, quoted=True))
+    if schema_name:
+        table.set("db", exp.to_identifier(schema_name, quoted=True))
+    return table.sql(dialect=get_sqlglot_dialect(ds_type))
+
+
+def _event_exists_in_datasource(
+        *,
+        service: Any,
+        table: str,
+        schema: str,
+        event_field: str,
+        event_value: str,
+) -> bool | None:
+    ds = getattr(service, "ds", None)
+    if ds is None:
+        return None
+
+    ds_type = getattr(ds, "type", None)
+    table_expr = exp.Table(this=exp.to_identifier(table, quoted=True))
+    if schema:
+        table_expr.set("db", exp.to_identifier(schema, quoted=True))
+    sql = exp.select(exp.Literal.number(1)).from_(table_expr).where(
+        exp.EQ(
+            this=exp.column(event_field, quoted=True),
+            expression=exp.Var(this=":event_value"),
+        )
+    ).limit(1).sql(
+        dialect=get_sqlglot_dialect(ds_type),
+    )
+    try:
+        db_session = get_session(ds, timeout=10)
+        try:
+            row = db_session.execute(text(sql), {"event_value": event_value}).first()
+            return row is not None
+        finally:
+            db_session.close()
+    except Exception as exc:
+        AppLogUtil.warning(
+            f"Skip missing event post-check for {table}.{event_field}={event_value}: {exc}"
+        )
+        return None
+
+
+def _event_availability_for_sql(service: Any, sql: str) -> list[_EventAvailability]:
+    predicates = _extract_requested_event_predicates(sql, service)
+    if not predicates:
+        return []
+
+    availability: list[_EventAvailability] = []
+    existence_cache: dict[tuple[str, str, str, str], bool | None] = {}
+    for predicate in predicates:
+        item = _EventAvailability(predicate=predicate)
+        for event_value in predicate.event_values:
+            cache_key = (predicate.schema, predicate.table, predicate.event_field, event_value)
+            if cache_key not in existence_cache:
+                existence_cache[cache_key] = _event_exists_in_datasource(
+                    service=service,
+                    table=predicate.table,
+                    schema=predicate.schema,
+                    event_field=predicate.event_field,
+                    event_value=event_value,
+                )
+            exists = existence_cache[cache_key]
+            if exists is False:
+                item.missing_values.add(event_value)
+            elif exists is True:
+                item.existing_values.add(event_value)
+            else:
+                item.unknown_values.add(event_value)
+        availability.append(item)
+    return availability
+
+
+def _missing_requested_events(service: Any, sql: str) -> list[_RequestedEventPredicate]:
+    missing: list[_RequestedEventPredicate] = []
+    for item in _event_availability_for_sql(service, sql):
+        if item.missing_values:
+            predicate = item.predicate
+            missing.append(_RequestedEventPredicate(
+                table=predicate.table,
+                schema=predicate.schema,
+                table_alias=predicate.table_alias,
+                event_field=predicate.event_field,
+                event_values=item.missing_values,
+                select_alias=predicate.select_alias,
+                select_output_columns=predicate.select_output_columns,
+            ))
+    return missing
+
+
+def _final_select(statement: exp.Expression) -> exp.Select | None:
+    if isinstance(statement, exp.Select):
+        return statement
+    return statement.find(exp.Select)
+
+
+def _aliases_for_final_sources(select_expr: exp.Select) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for alias, table_expr in _table_aliases_for_select(select_expr).items():
+        source_name = normalize_identifier(table_expr.name)
+        if source_name:
+            aliases[alias] = source_name
+    return aliases
+
+
+def _result_fields_for_missing_events(sql: str, service: Any, missing_events: list[_RequestedEventPredicate]) -> set[str]:
+    if not missing_events:
+        return set()
+    try:
+        statements = _sql_statements(sql, getattr(getattr(service, "ds", None), "type", None))
+    except Exception:
+        return set()
+
+    missing_ctes: dict[str, set[str]] = {}
+    for event in missing_events:
+        if event.select_alias:
+            missing_ctes.setdefault(normalize_identifier(event.select_alias), set()).update(event.select_output_columns)
+
+    fields: set[str] = set()
+    for statement in statements:
+        select_expr = _final_select(statement)
+        if select_expr is None:
+            continue
+        final_aliases = _aliases_for_final_sources(select_expr)
+        for item in select_expr.expressions:
+            output_name = item.alias_or_name
+            if not output_name:
+                continue
+            for column in item.find_all(exp.Column):
+                source_alias = normalize_identifier(column.table)
+                source_name = final_aliases.get(source_alias)
+                if not source_name:
+                    continue
+                output_columns = missing_ctes.get(source_name)
+                if output_columns is None:
+                    continue
+                if not output_columns or normalize_identifier(column.name) in output_columns:
+                    fields.add(output_name)
+                    break
+    return fields
+
+
+def _prune_result_fields(result: dict[str, Any], fields_to_remove: set[str]) -> dict[str, Any]:
+    if not fields_to_remove:
+        return result
+    fields = [field for field in result.get("fields") or [] if field not in fields_to_remove]
+    data = []
+    for row in result.get("data") or []:
+        if isinstance(row, dict):
+            data.append({key: value for key, value in row.items() if key not in fields_to_remove})
+        else:
+            data.append(row)
+    cleaned = dict(result)
+    cleaned["fields"] = fields
+    cleaned["data"] = data
+    return cleaned
+
+
+def _missing_event_feedback(missing_events: list[str], removed_fields: list[str]) -> str:
+    event_text = "、".join(missing_events)
+    if removed_fields:
+        return f"当前数据源缺少 {event_text} 埋点数据，已生成其余可支持的结果。"
+    return f"当前数据源缺少 {event_text} 埋点数据。"
+
+
+def _missing_event_notice(missing_events: list[str], removed_fields: list[str]) -> dict[str, Any]:
+    return {
+        "notice_type": "data_scope_gap",
+        "severity": "warning",
+        "reason": "missing_event",
+        "items": missing_events,
+        "removed_fields": removed_fields,
+    }
+
+
+def _missing_event_predicates_from_availability(items: list[_EventAvailability]) -> list[_RequestedEventPredicate]:
+    missing: list[_RequestedEventPredicate] = []
+    for item in items:
+        if not item.missing_values:
+            continue
+        predicate = item.predicate
+        missing.append(_RequestedEventPredicate(
+            table=predicate.table,
+            schema=predicate.schema,
+            table_alias=predicate.table_alias,
+            event_field=predicate.event_field,
+            event_values=set(item.missing_values),
+            select_alias=predicate.select_alias,
+            select_output_columns=set(predicate.select_output_columns),
+        ))
+    return missing
+
+
+def _removable_missing_event_ctes(items: list[_EventAvailability]) -> set[str]:
+    grouped: dict[str, dict[str, bool]] = {}
+    for item in items:
+        alias = normalize_identifier(item.predicate.select_alias)
+        if not alias:
+            continue
+        state = grouped.setdefault(alias, {"missing": False, "supported": False})
+        if item.missing_values:
+            state["missing"] = True
+        if item.existing_values or item.unknown_values or not item.missing_values:
+            state["supported"] = True
+    return {
+        alias
+        for alias, state in grouped.items()
+        if state["missing"] and not state["supported"]
+    }
+
+
+def _expression_references_sources(
+        expression: exp.Expression | None,
+        *,
+        source_aliases: set[str],
+        final_aliases: dict[str, str],
+        source_names: set[str],
+) -> bool:
+    if expression is None:
+        return False
+    for column in expression.find_all(exp.Column):
+        alias = normalize_identifier(column.table)
+        if alias in source_aliases:
+            return True
+        if final_aliases.get(alias) in source_names:
+            return True
+    return False
+
+
+def _remove_order_references(
+        select_expr: exp.Select,
+        *,
+        source_aliases: set[str],
+        final_aliases: dict[str, str],
+        source_names: set[str],
+) -> None:
+    order_expr = select_expr.args.get("order")
+    if not order_expr:
+        return
+    expressions = [
+        item
+        for item in order_expr.expressions
+        if not _expression_references_sources(
+            item,
+            source_aliases=source_aliases,
+            final_aliases=final_aliases,
+            source_names=source_names,
+        )
+    ]
+    if expressions:
+        order_expr.set("expressions", expressions)
+    else:
+        select_expr.set("order", None)
+
+
+def _remove_missing_event_cte_branches(
+        statement: exp.Expression,
+        *,
+        missing_ctes: set[str],
+        fields_to_remove: set[str],
+) -> bool:
+    if not missing_ctes:
+        return False
+    select_expr = statement if isinstance(statement, exp.Select) else None
+    if select_expr is None:
+        return False
+
+    with_expr = statement.args.get("with_")
+    if with_expr:
+        kept_ctes = [
+            cte
+            for cte in with_expr.expressions
+            if normalize_identifier(cte.alias_or_name) not in missing_ctes
+        ]
+        if len(kept_ctes) != len(with_expr.expressions):
+            if kept_ctes:
+                with_expr.set("expressions", kept_ctes)
+            else:
+                statement.set("with_", None)
+
+    final_aliases = _aliases_for_final_sources(select_expr)
+    removed_aliases = {
+        alias
+        for alias, source_name in final_aliases.items()
+        if source_name in missing_ctes
+    }
+    removed_aliases.update(missing_ctes)
+
+    from_expr = select_expr.args.get("from_")
+    if from_expr and isinstance(from_expr.this, exp.Table):
+        if normalize_identifier(from_expr.this.name) in missing_ctes:
+            return False
+
+    kept_joins = []
+    removed_join = False
+    for join in select_expr.args.get("joins") or []:
+        source = join.this
+        if isinstance(source, exp.Table) and normalize_identifier(source.name) in missing_ctes:
+            if str(join.args.get("side") or "").upper() != "LEFT":
+                return False
+            removed_join = True
+            continue
+        kept_joins.append(join)
+    if removed_join:
+        select_expr.set("joins", kept_joins)
+
+    normalized_removed_fields = {normalize_identifier(field) for field in fields_to_remove}
+    kept_expressions = []
+    removed_expression = False
+    for item in select_expr.expressions:
+        output_name = normalize_identifier(item.alias_or_name)
+        if output_name in normalized_removed_fields or _expression_references_sources(
+            item,
+            source_aliases=removed_aliases,
+            final_aliases=final_aliases,
+            source_names=missing_ctes,
+        ):
+            removed_expression = True
+            continue
+        kept_expressions.append(item)
+    if not kept_expressions:
+        return False
+    if removed_expression:
+        select_expr.set("expressions", kept_expressions)
+
+    for key in ("where", "having", "qualify", "group"):
+        if _expression_references_sources(
+            select_expr.args.get(key),
+            source_aliases=removed_aliases,
+            final_aliases=final_aliases,
+            source_names=missing_ctes,
+        ):
+            return False
+
+    _remove_order_references(
+        select_expr,
+        source_aliases=removed_aliases,
+        final_aliases=final_aliases,
+        source_names=missing_ctes,
+    )
+
+    return removed_join or removed_expression
+
+
+def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlRewrite:
+    availability = _event_availability_for_sql(service, sql)
+    missing_events = sorted({
+        value
+        for item in availability
+        for value in item.missing_values
+    })
+    if not missing_events:
+        return _MissingEventSqlRewrite(sql=sql, executable=True)
+
+    missing_predicates = _missing_event_predicates_from_availability(availability)
+    fields_to_remove = _result_fields_for_missing_events(sql, service, missing_predicates)
+    missing_ctes = _removable_missing_event_ctes(availability)
+    if not missing_ctes:
+        return _MissingEventSqlRewrite(
+            sql=None,
+            missing_events=missing_events,
+            removed_fields=sorted(fields_to_remove),
+            executable=False,
+        )
+
+    try:
+        statements = _sql_statements(sql, getattr(getattr(service, "ds", None), "type", None))
+    except Exception as exc:
+        AppLogUtil.warning(f"Skip missing event SQL rewrite because SQL parsing failed: {exc}")
+        return _MissingEventSqlRewrite(
+            sql=None,
+            missing_events=missing_events,
+            removed_fields=sorted(fields_to_remove),
+            executable=False,
+        )
+
+    rewritten_statements: list[exp.Expression] = []
+    changed = False
+    for statement in statements:
+        rewritten = statement.copy()
+        statement_changed = _remove_missing_event_cte_branches(
+            rewritten,
+            missing_ctes=missing_ctes,
+            fields_to_remove=fields_to_remove,
+        )
+        if not statement_changed:
+            return _MissingEventSqlRewrite(
+                sql=None,
+                missing_events=missing_events,
+                removed_fields=sorted(fields_to_remove),
+                removed_ctes=sorted(missing_ctes),
+                executable=False,
+            )
+        changed = True
+        rewritten_statements.append(rewritten)
+
+    dialect = get_sqlglot_dialect(getattr(getattr(service, "ds", None), "type", None))
+    rewritten_sql = ";\n".join(statement.sql(dialect=dialect) for statement in rewritten_statements)
+    if not rewritten_sql.strip():
+        return _MissingEventSqlRewrite(
+            sql=None,
+            missing_events=missing_events,
+            removed_fields=sorted(fields_to_remove),
+            removed_ctes=sorted(missing_ctes),
+            executable=False,
+        )
+    for value in missing_events:
+        if value in rewritten_sql:
+            return _MissingEventSqlRewrite(
+                sql=None,
+                missing_events=missing_events,
+                removed_fields=sorted(fields_to_remove),
+                removed_ctes=sorted(missing_ctes),
+                executable=False,
+            )
+
+    return _MissingEventSqlRewrite(
+        sql=rewritten_sql,
+        missing_events=missing_events,
+        removed_fields=sorted(fields_to_remove),
+        removed_ctes=sorted(missing_ctes),
+        changed=changed,
+        executable=True,
+    )
+
+
+def _cleanup_missing_event_result(service: Any, sql: str, result: dict[str, Any]) -> _EventResultCleanup:
+    missing_events = _missing_requested_events(service, sql)
+    if not missing_events:
+        return _EventResultCleanup(result=result)
+
+    event_values = sorted({value for event in missing_events for value in event.event_values})
+    fields_to_remove = _result_fields_for_missing_events(sql, service, missing_events)
+    fields_to_remove = {field for field in fields_to_remove if field in set(result.get("fields") or [])}
+    cleaned_result = _prune_result_fields(result, fields_to_remove)
+    removed_fields = [field for field in result.get("fields") or [] if field in fields_to_remove]
+    AppLogUtil.info(
+        "Smart Q&A missing event cleanup: "
+        f"record_id={getattr(getattr(service, 'record', None), 'id', None)} "
+        f"datasource_id={getattr(getattr(service, 'ds', None), 'id', None)} "
+        f"missing_events={event_values} removed_fields={removed_fields}"
+    )
+    return _EventResultCleanup(
+        result=cleaned_result,
+        removed_fields=removed_fields,
+        missing_events=event_values,
+    )
 
 
 class SmartQAGraphState(TypedDict, total=False):
@@ -155,6 +811,7 @@ class SmartQAGraphState(TypedDict, total=False):
     real_execute_sql: str
     execute_scope_sql: str
     execute_allowed_tables: list[str] | set[str] | None
+    business_notice: dict[str, Any] | None
     result: dict[str, Any]
     chart: dict[str, Any]
     saas_skill_handled: bool
@@ -485,6 +1142,8 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         app_temp_sql_text = None
         assistant_dynamic_sql = None
         sql_operate = OperationEnum.GENERATE_SQL
+        missing_event_message = None
+        missing_event_notice = None
 
         try:
             sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
@@ -585,6 +1244,53 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     sql=sql,
                     allowed_tables=service.table_name_list,
                 )
+                rewrite = _rewrite_sql_for_missing_events(service, checked_sql)
+                if rewrite.missing_events:
+                    missing_event_message = _missing_event_feedback(
+                        rewrite.missing_events,
+                        rewrite.removed_fields,
+                    )
+                    missing_event_notice = _missing_event_notice(
+                        rewrite.missing_events,
+                        rewrite.removed_fields,
+                    )
+                    if not rewrite.executable or not rewrite.sql:
+                        _save_and_emit_plain_answer(
+                            service=service,
+                            session=session,
+                            message=missing_event_message,
+                            in_chat=in_chat,
+                            stream=stream,
+                            json_result=json_result,
+                            finish=True,
+                            notice=missing_event_notice,
+                        )
+                        if not in_chat and not stream:
+                            json_result["success"] = False
+                            json_result["message"] = missing_event_message
+                            _emit(json_result)
+                        return {
+                            "json_result": json_result,
+                            "business_notice": missing_event_notice,
+                            "stop": True,
+                        }
+                    if rewrite.changed:
+                        checked_sql, _actual_tables = validate_user_query_sql_or_raise(
+                            session=session,
+                            current_user=service.current_user,
+                            datasource=service.ds,
+                            sql=rewrite.sql,
+                            allowed_tables=service.table_name_list,
+                        )
+                        tables = sorted(_actual_tables)
+                        AppLogUtil.info(
+                            "Smart Q&A missing event SQL rewrite: "
+                            f"record_id={getattr(getattr(service, 'record', None), 'id', None)} "
+                            f"datasource_id={getattr(getattr(service, 'ds', None), 'id', None)} "
+                            f"missing_events={rewrite.missing_events} "
+                            f"removed_ctes={rewrite.removed_ctes} "
+                            f"removed_fields={rewrite.removed_fields}"
+                        )
                 sql = service.save_checked_sql(session=session, sql=checked_sql)
         except Exception as permission_error:
             if not looks_like_permission_scope_error(str(permission_error)):
@@ -623,6 +1329,18 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 in_chat=in_chat,
                 stream=stream,
                 json_result=json_result,
+            )
+
+    if missing_event_message and missing_event_notice:
+        with _session_scope() as session:
+            _save_and_emit_plain_answer(
+                service=service,
+                session=session,
+                message=missing_event_message,
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                notice=missing_event_notice,
             )
 
     real_execute_sql = sql
@@ -665,13 +1383,14 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         "tables": tables,
         "chart_type": chart_type,
         "dynamic_sql_result": dynamic_sql_result,
-        "app_temp_sql_text": app_temp_sql_text,
-        "assistant_dynamic_sql": assistant_dynamic_sql,
-        "real_execute_sql": real_execute_sql,
-        "execute_scope_sql": execute_scope_sql,
-        "execute_allowed_tables": execute_allowed_tables,
-        "stop": False,
-    }
+            "app_temp_sql_text": app_temp_sql_text,
+            "assistant_dynamic_sql": assistant_dynamic_sql,
+            "real_execute_sql": real_execute_sql,
+            "execute_scope_sql": execute_scope_sql,
+            "execute_allowed_tables": execute_allowed_tables,
+            "business_notice": missing_event_notice,
+            "stop": False,
+        }
 
 
 def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
@@ -689,6 +1408,7 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
     real_execute_sql = state["real_execute_sql"]
     execute_scope_sql = state["execute_scope_sql"]
     execute_allowed_tables = state["execute_allowed_tables"]
+    business_notice = state.get("business_notice")
 
     with _session_scope() as session:
         service.current_logs[OperationEnum.EXECUTE_SQL] = start_log(
@@ -745,15 +1465,46 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
             )
             return {"json_result": json_result, "stop": True}
 
-        service.current_logs[OperationEnum.EXECUTE_SQL] = end_log(
-            session=session,
-            log=service.current_logs[OperationEnum.EXECUTE_SQL],
-            full_message={"sql": real_execute_sql, "count": len(result.get("data"))},
-        )
-
         data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
         data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
         result["data"] = data
+        notice_removed_fields = set()
+        if isinstance(business_notice, dict):
+            notice_removed_fields = {
+                str(field)
+                for field in business_notice.get("removed_fields") or []
+                if str(field).strip()
+            }
+        if notice_removed_fields:
+            result = _prune_result_fields(result, notice_removed_fields)
+        cleanup = _cleanup_missing_event_result(service, real_execute_sql, result)
+        result = cleanup.result
+        execute_log_message: dict[str, Any] = {"sql": real_execute_sql, "count": len(result.get("data"))}
+        if business_notice:
+            execute_log_message["business_notice"] = business_notice
+        if cleanup.missing_events:
+            message = _missing_event_feedback(cleanup.missing_events, cleanup.removed_fields)
+            execute_log_message["business_notice"] = {
+                "notice_type": "data_scope_gap",
+                "reason": "missing_event",
+                "missing_events": cleanup.missing_events,
+                "removed_fields": cleanup.removed_fields,
+            }
+            _save_and_emit_plain_answer(
+                service=service,
+                session=session,
+                message=message,
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                notice=_missing_event_notice(cleanup.missing_events, cleanup.removed_fields),
+            )
+
+        service.current_logs[OperationEnum.EXECUTE_SQL] = end_log(
+            session=session,
+            log=service.current_logs[OperationEnum.EXECUTE_SQL],
+            full_message=execute_log_message,
+        )
 
         service.save_sql_data(session=session, data_obj=result)
         if in_chat:

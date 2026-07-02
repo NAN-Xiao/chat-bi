@@ -273,14 +273,26 @@ ORDER BY d.cohort_date;
         "description": "用于 DAU、PDAU、付费 DAU、活跃用户和付费用户趋势；DAU 使用 fact_sessions，PDAU 使用 fact_payments 成功净收入订单去重玩家，默认按最近 30 个业务日期补齐连续日期。",
         "prompt": """
 <!-- data-skill-source:slg-bi-mock:workspace:active-paying-dau -->
-<!-- data-skill-sql-validation:{
-  "match":["DAU","dau","PDAU","pdau","付费DAU","付费活跃","付费用户趋势","活跃趋势"],
-  "forbidden_sql_all_contains":[
-    ["fact_events", "COUNT(DISTINCT", "DAU"],
-    ["fact_events", "player_id", "pdau"]
-  ],
-  "message":"DAU/PDAU 趋势不能使用 fact_events 事件明细直接替代活跃或付费口径。请按本 Data Skill 使用 fact_sessions 计算 DAU，使用 fact_payments 的成功净收入订单计算 PDAU。"
-} -->
+<!-- data-skill-sql-validation:[
+  {
+    "match":["DAU","dau","活跃趋势","活跃用户"],
+    "required_sql_contains":["fact_sessions"],
+    "forbidden_sql_select_all_contains":[
+      ["fact_events", "count(distinct", "dau"],
+      ["fact_events", "count(distinct", " as dau"]
+    ],
+    "message":"DAU 趋势必须按本 Data Skill 使用 fact_sessions 计算。fact_events 只能用于事件 PV/UV 或用户明确指定的埋点触发人数。"
+  },
+  {
+    "match":["PDAU","pdau","付费DAU","付费活跃","付费用户趋势"],
+    "required_sql_contains":["fact_payments"],
+    "forbidden_sql_select_all_contains":[
+      ["fact_events", "count(distinct", "pdau"],
+      ["fact_events", "count(distinct", " as pdau"]
+    ],
+    "message":"PDAU 趋势必须按本 Data Skill 使用 fact_payments 的成功净收入订单计算。fact_events 只能用于事件 PV/UV 或用户明确指定的埋点触发人数。"
+  }
+] -->
 # SLG Skill：DAU、PDAU 与付费活跃趋势
 
 适用问题：
@@ -292,6 +304,7 @@ ORDER BY d.cohort_date;
 - PDAU 默认解释为 Paying Daily Active Users / 当日付费用户数，使用 `fact_payments`，过滤 `payment_status='success' AND net_revenue_usd > 0` 后按 `event_date` 统计 `count(distinct player_id)`。
 - 如果用户要求“付费活跃率”，分子使用 PDAU，分母使用同日 DAU。
 - 不要使用 `fact_events` 事件人数替代 DAU/PDAU；`fact_events` 只适合事件 PV/UV、埋点排查和特定事件触发人数。
+- 如果用户在同一问题里额外指定某个埋点事件，例如 `spaceship_upgrade_complete`，可以在同一 SQL 中用 `fact_events` 统计该事件的触发用户数；但 DAU 仍必须来自 `fact_sessions`，PDAU 仍必须来自 `fact_payments`。
 
 SQL 口径：
 - 未指定日期时，观察窗口锚定 `fact_sessions` 最大业务日期 `max(session_start::date)`，默认输出最近 30 天，即 `max_date - 29` 到 `max_date`。

@@ -193,6 +193,7 @@ class ChatRecordResult(BaseModel):
     chart_answer: Optional[str] = None
     chart: Optional[str] = None
     analysis: Optional[str] = None
+    analysis_notice: Optional[dict] = None
     predict: Optional[str] = None
     predict_data: Optional[str] = None
     recommended_question: Optional[str] = None

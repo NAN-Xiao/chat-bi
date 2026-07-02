@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from apps.chat.task.llm import _ensure_chart_covers_metric_fields
+from apps.chat.task.llm import _ensure_chart_covers_metric_fields, _filter_chart_bindings_to_result_fields
 
 
 def test_time_series_rate_chart_keeps_line_when_counts_are_supporting_metrics() -> None:
@@ -92,3 +92,29 @@ def test_chart_downgrades_to_table_when_important_metric_is_missing() -> None:
 
     assert checked_chart["type"] == "table"
     assert [column["value"] for column in checked_chart["columns"]] == fields
+
+
+def test_chart_filters_axis_fields_missing_from_result() -> None:
+    """
+    是什么：图表模型引用了已被业务校验裁掉的字段时，保存前应删除无效绑定。
+    """
+    fields = ["日期", "DAU", "PDAU"]
+    chart = {
+        "type": "line",
+        "title": "DAU、PDAU 与飞船升级触发用户趋势",
+        "axis": {
+            "x": {"value": "日期"},
+            "y": [
+                {"value": "DAU"},
+                {"value": "PDAU"},
+                {"value": "飞船升级完成触发用户数"},
+            ],
+            "multi-quota": {"value": ["DAU", "PDAU", "飞船升级完成触发用户数"]},
+        },
+    }
+
+    checked_chart = _filter_chart_bindings_to_result_fields(chart, fields)
+
+    assert checked_chart["type"] == "line"
+    assert [item["value"] for item in checked_chart["axis"]["y"]] == ["DAU", "PDAU"]
+    assert checked_chart["axis"]["multi-quota"]["value"] == ["DAU", "PDAU"]

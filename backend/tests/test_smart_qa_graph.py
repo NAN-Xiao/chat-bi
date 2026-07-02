@@ -53,6 +53,73 @@ def _sql_answer_with_message(sql: str, message: str, tables: list[str] | None = 
     return json.dumps(payload)
 
 
+def _mixed_missing_event_sql() -> str:
+    return """
+WITH missing_event AS (
+  SELECT event_date, count(distinct player_id) AS missing_event_users
+  FROM fact_events
+  WHERE event_name = 'spaceship_upgrade_complete'
+  GROUP BY event_date
+)
+SELECT d.event_date AS "日期",
+       d.dau AS "DAU",
+       d.pdau AS "PDAU",
+       coalesce(m.missing_event_users, 0) AS "飞船升级完成触发用户数"
+FROM daily_metrics d
+LEFT JOIN missing_event m ON m.event_date = d.event_date
+"""
+
+
+def _schema_qualified_missing_event_sql() -> str:
+    return """
+WITH obs AS (
+  SELECT max("session_start"::date) AS "max_date"
+  FROM "public"."fact_sessions"
+),
+days AS (
+  SELECT generate_series(obs."max_date" - 29, obs."max_date", interval '1 day')::date AS "event_date"
+  FROM obs
+),
+dau AS (
+  SELECT "s"."session_start"::date AS "event_date",
+         count(DISTINCT "s"."player_id") AS "dau"
+  FROM "public"."fact_sessions" "s"
+  CROSS JOIN obs
+  WHERE "s"."session_start"::date BETWEEN obs."max_date" - 29 AND obs."max_date"
+  GROUP BY "s"."session_start"::date
+),
+pdau AS (
+  SELECT "p"."event_date",
+         count(DISTINCT "p"."player_id") AS "pdau"
+  FROM "public"."fact_payments" "p"
+  CROSS JOIN obs
+  WHERE "p"."event_date" BETWEEN obs."max_date" - 29 AND obs."max_date"
+    AND "p"."payment_status" = 'success'
+    AND "p"."net_revenue_usd" > 0
+  GROUP BY "p"."event_date"
+),
+spaceship_upgrade AS (
+  SELECT "e"."event_date",
+         count(DISTINCT "e"."player_id") AS "spaceship_upgrade_users"
+  FROM "public"."fact_events" "e"
+  CROSS JOIN obs
+  WHERE "e"."event_date" BETWEEN obs."max_date" - 29 AND obs."max_date"
+    AND "e"."event_name" = 'spaceship_upgrade_complete'
+  GROUP BY "e"."event_date"
+)
+SELECT "d"."event_date" AS "日期",
+       coalesce("da"."dau", 0) AS "DAU",
+       coalesce("pa"."pdau", 0) AS "PDAU",
+       coalesce("su"."spaceship_upgrade_users", 0) AS "飞船升级完成触发用户数"
+FROM days "d"
+LEFT JOIN dau "da" ON "da"."event_date" = "d"."event_date"
+LEFT JOIN pdau "pa" ON "pa"."event_date" = "d"."event_date"
+LEFT JOIN spaceship_upgrade "su" ON "su"."event_date" = "d"."event_date"
+ORDER BY "d"."event_date"
+LIMIT 1000
+"""
+
+
 def _events(chunks: list[Any]) -> list[dict[str, Any]]:
     """
     是什么：_events 是一段测试代码，用来确认测试的某个场景没有问题。
@@ -567,6 +634,269 @@ def test_data_skill_schema_unavailable_is_streamed_as_business_feedback(monkeypa
     assert service.finished is True
     assert events[-1]["type"] == "finish"
     assert not any(event["type"] == "error" for event in events)
+
+
+def test_missing_event_value_is_pruned_and_streamed_as_business_notice(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：埋点值本身不存在时，应保留可生成指标，裁掉对应 0 值指标，并给业务通知。
+    """
+    sql = _mixed_missing_event_sql()
+    service = FakeSmartQAService(sql_answer=_sql_answer(sql, ["daily_metrics", "fact_events"]))
+    captured_chart_result: dict[str, Any] = {}
+    service.chart_chunks = [
+        {
+            "content": json.dumps({
+                "type": "line",
+                "title": "DAU 与 PDAU 趋势",
+                "axis": {
+                    "x": {"value": "日期"},
+                    "y": [{"value": "DAU"}, {"value": "PDAU"}],
+                },
+            }),
+            "reasoning_content": "",
+        },
+    ]
+
+    def _execute_sql(**kwargs):
+        service.executed.append(kwargs)
+        assert "spaceship_upgrade_complete" not in kwargs["sql"]
+        assert "missing_event" not in kwargs["sql"]
+        assert "飞船升级完成触发用户数" not in kwargs["sql"]
+        return {
+            "fields": ["日期", "DAU", "PDAU"],
+            "data": [
+                {"日期": "2026-07-01", "DAU": 10, "PDAU": 2},
+                {"日期": "2026-07-02", "DAU": 12, "PDAU": 3},
+            ],
+        }
+
+    def _check_save_chart(*, session, res, result):
+        captured_chart_result.update(result)
+        return json.loads(res)
+
+    service.execute_sql = _execute_sql
+    service.check_save_chart = _check_save_chart
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"daily_metrics", "fact_events"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_table_schema",
+        lambda **kwargs: ("table daily_metrics(event_date date, dau int, pdau int)", ["daily_metrics"]),
+    )
+    monkeypatch.setattr(
+        graph,
+        "_event_exists_in_datasource",
+        lambda **kwargs: False if kwargs["event_value"] == "spaceship_upgrade_complete" else True,
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+    saved_feedback = json.loads(service.saved_analysis[-1])
+
+    assert len(service.executed) == 1
+    assert service.saved_sql[-1] == service.executed[0]["sql"]
+    assert service.saved_data[-1]["fields"] == ["日期", "DAU", "PDAU"]
+    assert all("飞船升级完成触发用户数" not in row for row in service.saved_data[-1]["data"])
+    assert captured_chart_result["fields"] == ["日期", "DAU", "PDAU"]
+    assert feedback_event["notice"]["reason"] == "missing_event"
+    assert feedback_event["notice"]["items"] == ["spaceship_upgrade_complete"]
+    assert saved_feedback["notice"]["notice_type"] == "data_scope_gap"
+    assert "已生成其余可支持的结果" in feedback_event["content"]
+    assert not any(event["type"] == "error" for event in events)
+    assert any(event["type"] == "chart" for event in events)
+    assert service.finished is True
+
+
+def test_schema_qualified_missing_event_cte_prunes_outer_coalesce_field(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：带 schema、CTE、LEFT JOIN、COALESCE 的 SQL，也要能裁掉不存在埋点的外层展示字段。
+    """
+    service = FakeSmartQAService()
+    service.ds.type = "pg"
+    result = {
+        "fields": ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"],
+        "data": [
+            {"日期": "2026-07-01", "DAU": 10, "PDAU": 2, "飞船升级完成触发用户数": 0},
+            {"日期": "2026-07-02", "DAU": 12, "PDAU": 3, "飞船升级完成触发用户数": 0},
+        ],
+    }
+    monkeypatch.setattr(
+        graph,
+        "_event_exists_in_datasource",
+        lambda **kwargs: False if kwargs["event_value"] == "spaceship_upgrade_complete" else True,
+    )
+
+    cleanup = graph._cleanup_missing_event_result(service, _schema_qualified_missing_event_sql(), result)
+
+    assert cleanup.missing_events == ["spaceship_upgrade_complete"]
+    assert cleanup.removed_fields == ["飞船升级完成触发用户数"]
+    assert cleanup.result["fields"] == ["日期", "DAU", "PDAU"]
+    assert all("飞船升级完成触发用户数" not in row for row in cleanup.result["data"])
+
+
+def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：缺失埋点应在 SQL 准备阶段被移出最终执行 SQL，而不是执行后只裁图表字段。
+    """
+    sql = _schema_qualified_missing_event_sql()
+    service = FakeSmartQAService(sql_answer=_sql_answer(sql, ["fact_sessions", "fact_payments", "fact_events"]))
+    service.ds.type = "pg"
+    service.table_name_list = ["fact_sessions", "fact_payments", "fact_events"]
+    captured_chart_result: dict[str, Any] = {}
+    service.chart_chunks = [
+        {
+            "content": json.dumps({
+                "type": "line",
+                "title": "DAU 与 PDAU 趋势",
+                "axis": {
+                    "x": {"value": "日期"},
+                    "y": [{"value": "DAU"}, {"value": "PDAU"}],
+                },
+            }),
+            "reasoning_content": "",
+        },
+    ]
+
+    def _execute_sql(**kwargs):
+        service.executed.append(kwargs)
+        assert "spaceship_upgrade_complete" not in kwargs["sql"]
+        assert "spaceship_upgrade" not in kwargs["sql"]
+        assert "飞船升级完成触发用户数" not in kwargs["sql"]
+        assert "DAU" in kwargs["sql"]
+        assert "PDAU" in kwargs["sql"]
+        return {
+            "fields": ["日期", "DAU", "PDAU"],
+            "data": [
+                {"日期": "2026-07-01", "DAU": 10, "PDAU": 2},
+                {"日期": "2026-07-02", "DAU": 12, "PDAU": 3},
+            ],
+        }
+
+    def _check_save_chart(*, session, res, result):
+        captured_chart_result.update(result)
+        return json.loads(res)
+
+    service.execute_sql = _execute_sql
+    service.check_save_chart = _check_save_chart
+    validated_sql: list[str] = []
+
+    def _validate(**kwargs):
+        validated_sql.append(kwargs["sql"])
+        return kwargs["sql"], {"fact_sessions", "fact_payments", "fact_events"}
+
+    monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", _validate)
+    monkeypatch.setattr(
+        graph,
+        "get_table_schema",
+        lambda **kwargs: ("table fact_sessions(...)\ntable fact_payments(...)", ["fact_sessions", "fact_payments"]),
+    )
+    monkeypatch.setattr(
+        graph,
+        "_event_exists_in_datasource",
+        lambda **kwargs: False if kwargs["event_value"] == "spaceship_upgrade_complete" else True,
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    feedback_event = next(event for event in events if event["type"] == "analysis-result")
+
+    assert len(validated_sql) == 2
+    assert "spaceship_upgrade_complete" in validated_sql[0]
+    assert "spaceship_upgrade_complete" not in validated_sql[1]
+    assert service.saved_sql[-1] == service.executed[0]["sql"]
+    assert service.saved_data[-1]["fields"] == ["日期", "DAU", "PDAU"]
+    assert captured_chart_result["fields"] == ["日期", "DAU", "PDAU"]
+    assert feedback_event["notice"]["items"] == ["spaceship_upgrade_complete"]
+    assert feedback_event["notice"]["removed_fields"] == ["飞船升级完成触发用户数"]
+    assert not any(event["type"] == "error" for event in events)
+    assert service.finished is True
+
+
+def test_existing_event_zero_values_are_not_pruned(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：埋点存在但当前窗口为 0 时，应保留 0 值指标。
+    """
+    sql = _mixed_missing_event_sql()
+    service = FakeSmartQAService(sql_answer=_sql_answer(sql, ["daily_metrics", "fact_events"]))
+    captured_chart_result: dict[str, Any] = {}
+    service.chart_chunks = [
+        {
+            "content": json.dumps({
+                "type": "line",
+                "title": "DAU、PDAU 与事件趋势",
+                "axis": {
+                    "x": {"value": "日期"},
+                    "y": [
+                        {"value": "DAU"},
+                        {"value": "PDAU"},
+                        {"value": "飞船升级完成触发用户数"},
+                    ],
+                },
+            }),
+            "reasoning_content": "",
+        },
+    ]
+
+    def _execute_sql(**kwargs):
+        service.executed.append(kwargs)
+        return {
+            "fields": ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"],
+            "data": [
+                {"日期": "2026-07-01", "DAU": 10, "PDAU": 2, "飞船升级完成触发用户数": 0},
+            ],
+        }
+
+    def _check_save_chart(*, session, res, result):
+        captured_chart_result.update(result)
+        return json.loads(res)
+
+    service.execute_sql = _execute_sql
+    service.check_save_chart = _check_save_chart
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"daily_metrics", "fact_events"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_table_schema",
+        lambda **kwargs: ("table daily_metrics(event_date date, dau int, pdau int)", ["daily_metrics"]),
+    )
+    monkeypatch.setattr(graph, "_event_exists_in_datasource", lambda **kwargs: True)
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+
+    assert service.saved_data[-1]["fields"] == ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"]
+    assert captured_chart_result["fields"] == ["日期", "DAU", "PDAU", "飞船升级完成触发用户数"]
+    assert not any(event["type"] == "analysis-result" and event.get("notice") for event in events)
+    assert not any(event["type"] == "error" for event in events)
+    assert service.finished is True
 
 
 def test_permission_denied_during_sql_validation_stops_graph(monkeypatch: pytest.MonkeyPatch):

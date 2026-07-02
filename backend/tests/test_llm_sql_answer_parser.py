@@ -192,3 +192,83 @@ GROUP BY c.cohort_dt
         )
         is None
     )
+
+
+def test_data_skill_sql_validation_allows_event_metric_when_required_metric_sources_exist() -> None:
+    """
+    是什么：DAU/PDAU 使用正确来源表时，同一 SQL 可额外用 fact_events 统计指定埋点。
+    """
+    rules = [
+        {
+            "match": ["DAU", "dau", "活跃趋势", "活跃用户"],
+            "required_sql_contains": ["fact_sessions"],
+            "forbidden_sql_select_all_contains": [
+                ["fact_events", "count(distinct", ' as "dau"'],
+                ["fact_events", "count(distinct", " as dau"],
+            ],
+            "message": "DAU 趋势必须按本 Data Skill 使用 fact_sessions 计算。fact_events 只能用于事件 PV/UV 或用户明确指定的埋点触发人数。",
+        },
+        {
+            "match": ["PDAU", "pdau", "付费DAU", "付费活跃", "付费用户趋势"],
+            "required_sql_contains": ["fact_payments"],
+            "forbidden_sql_select_all_contains": [
+                ["fact_events", "count(distinct", ' as "pdau"'],
+                ["fact_events", "count(distinct", " as pdau"],
+            ],
+            "message": "PDAU 趋势必须按本 Data Skill 使用 fact_payments 的成功净收入订单计算。fact_events 只能用于事件 PV/UV 或用户明确指定的埋点触发人数。",
+        },
+    ]
+    data_skill = f"<!-- data-skill-sql-validation:{json.dumps(rules, ensure_ascii=False)} -->"
+    mixed_sql = """
+WITH obs AS (
+  SELECT max(session_start::date) AS max_date FROM fact_sessions
+),
+days AS (
+  SELECT generate_series(obs.max_date - 29, obs.max_date, interval '1 day')::date AS event_date FROM obs
+),
+dau AS (
+  SELECT s.session_start::date AS event_date, count(DISTINCT s.player_id) AS dau
+  FROM fact_sessions s CROSS JOIN obs
+  WHERE s.session_start::date BETWEEN obs.max_date - 29 AND obs.max_date
+  GROUP BY s.session_start::date
+),
+pdau AS (
+  SELECT p.event_date, count(DISTINCT p.player_id) AS pdau
+  FROM fact_payments p CROSS JOIN obs
+  WHERE p.event_date BETWEEN obs.max_date - 29 AND obs.max_date
+    AND p.payment_status = 'success'
+    AND p.net_revenue_usd > 0
+  GROUP BY p.event_date
+),
+event_users AS (
+  SELECT e.event_date, count(DISTINCT e.player_id) AS spaceship_upgrade_complete_users
+  FROM fact_events e CROSS JOIN obs
+  WHERE e.event_date BETWEEN obs.max_date - 29 AND obs.max_date
+    AND e.event_name = 'spaceship_upgrade_complete'
+  GROUP BY e.event_date
+)
+SELECT d.event_date AS "日期",
+       coalesce(da.dau, 0) AS "DAU",
+       coalesce(pa.pdau, 0) AS "PDAU",
+       coalesce(eu.spaceship_upgrade_complete_users, 0) AS "spaceship_upgrade_complete触发用户"
+FROM days d
+LEFT JOIN dau da ON da.event_date = d.event_date
+LEFT JOIN pdau pa ON pa.event_date = d.event_date
+LEFT JOIN event_users eu ON eu.event_date = d.event_date
+ORDER BY d.event_date
+"""
+    wrong_sql = """
+SELECT e.event_date AS "日期",
+       count(DISTINCT e.player_id) AS "DAU",
+       count(DISTINCT e.player_id) FILTER (WHERE e.event_name = 'pay') AS "PDAU"
+FROM fact_events e
+GROUP BY e.event_date
+"""
+
+    question = "显示最近 30 天的 DAU、PDAU 趋势，同时统计 spaceship_upgrade_complete 埋点的触发用户"
+
+    assert _data_skill_sql_validation_error(question, mixed_sql, data_skill) is None
+    assert (
+        _data_skill_sql_validation_error(question, wrong_sql, data_skill)
+        == "DAU 趋势必须按本 Data Skill 使用 fact_sessions 计算。fact_events 只能用于事件 PV/UV 或用户明确指定的埋点触发人数。"
+    )

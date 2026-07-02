@@ -18,6 +18,7 @@ param(
     [switch]$StartWorker,
     [switch]$SkipWorker,
     [int]$Workers = 1,
+    [string]$QueueName = "",
     [switch]$StartMcp,
     [switch]$SkipDatabase,
     [switch]$SkipRedis,
@@ -41,6 +42,11 @@ $workerScript = Join-Path $PSScriptRoot "worker-local.ps1"
 $nginxScript = Join-Path $PSScriptRoot "nginx-local.ps1"
 
 New-Item -ItemType Directory -Force -Path $stackRuntime | Out-Null
+if (-not $QueueName) {
+    $workspaceSlug = Split-Path -Leaf $workspaceRoot
+    $computerSlug = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "local" }
+    $QueueName = "local-$computerSlug-$workspaceSlug" -replace "[^A-Za-z0-9_.-]", "-"
+}
 if (-not $PostgresData) {
     $defaultSystemPgData = Join-Path $runtimeRoot "pgdata"
     if (Test-Path -LiteralPath (Join-Path $defaultSystemPgData "PG_VERSION")) {
@@ -299,6 +305,7 @@ function Start-Backend {
         CacheType = $CacheType
         RedisHost = $RedisHost
         RedisPort = $RedisPort
+        QueueName = $QueueName
     }
     if ($StartMcp) {
         $backendParams.StartMcp = $true
@@ -312,6 +319,7 @@ function Stop-Backend {
         BackendPorts = $BackendPorts
         RedisHost = $RedisHost
         RedisPort = $RedisPort
+        QueueName = $QueueName
     }
     if ($StartMcp) {
         $backendParams.StartMcp = $true
@@ -327,14 +335,14 @@ function Start-Workers {
         Write-Warning "Task worker start skipped because Redis is not listening on ${RedisHost}:$RedisPort"
         return
     }
-    & $workerScript -Action start -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort
+    & $workerScript -Action start -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort -QueueName $QueueName
 }
 
 function Stop-Workers {
     if ($SkipWorker) {
         return
     }
-    & $workerScript -Action stop -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort
+    & $workerScript -Action stop -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort -QueueName $QueueName
 }
 
 function Start-Nginx {

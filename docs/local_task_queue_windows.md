@@ -4,7 +4,7 @@
 
 ## 启动 worker
 
-先确认 Redis `127.0.0.1:6379` 已启动。
+先确认 Redis `10.1.5.28:6379` 可访问。默认本地队列名会按“本机名 + 工作区名”自动生成，避免共享 Redis 上其他开发机或旧 worker 抢走本机任务。
 
 启动 1 个 worker：
 
@@ -16,6 +16,13 @@
 
 ```powershell
 .\tools\worker-local.ps1 -Action start -Workers 2
+```
+
+如需和指定后端实例共用固定队列，可显式传入：
+
+```powershell
+.\tools\backend-local.ps1 -Action start -BackendPorts 8000 -QueueName local-my-dev
+.\tools\worker-local.ps1 -Action start -Workers 1 -QueueName local-my-dev
 ```
 
 查看状态：
@@ -60,6 +67,7 @@ GET  /api/v1/system/tasks/health
 
 当前已迁移：
 
+- Smart Q&A：`/chat/question/task` 会投递到 Redis 队列，worker 后台执行并写入事件流。
 - 单表字段同步：`/datasource/syncFields/{id}` 会返回任务信息，worker 后台执行。
 - 表和数据源 embedding：字段同步、表备注、字段备注、数据源更新后投递到 Redis 队列。
 

@@ -6,7 +6,7 @@ import time
 import traceback
 from typing import List
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, or_, select, update
 
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.system.crud.schema_metadata import SchemaFieldKey, field_comment_map, table_comment_map
@@ -62,7 +62,9 @@ def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None =
         session = session_maker()
 
         AppLogUtil.info('get tables')
-        stmt = select(CoreTable.id).where(and_(CoreTable.embedding.is_(None)))
+        stmt = select(CoreTable.id).where(
+            or_(CoreTable.embedding.is_(None), CoreTable.embedding == "")
+        )
         if tenant_id is not None:
             stmt = stmt.join(CoreDatasource, CoreDatasource.id == CoreTable.ds_id).where(
                 CoreDatasource.tenant_id == int(tenant_id)
@@ -72,7 +74,9 @@ def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None =
         save_table_embedding(session_maker, results, tenant_id=tenant_id)
 
         AppLogUtil.info('get datasource')
-        ds_stmt = select(CoreDatasource.id).where(and_(CoreDatasource.embedding.is_(None)))
+        ds_stmt = select(CoreDatasource.id).where(
+            or_(CoreDatasource.embedding.is_(None), CoreDatasource.embedding == "")
+        )
         if tenant_id is not None:
             ds_stmt = ds_stmt.where(CoreDatasource.tenant_id == int(tenant_id))
         ds_results = session.execute(ds_stmt).scalars().all()

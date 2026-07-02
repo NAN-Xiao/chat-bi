@@ -258,6 +258,70 @@ def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
     return any(term in text for term in terms)
 
 
+def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bool:
+    """
+    是什么：判断 SQL 是否命中 Data Skill 里的正则或普通文本模式。
+    谁调用：Data Skill SQL 校验。
+    做了什么：正则无效时退回到大小写不敏感的包含判断。
+    """
+    try:
+        return re.search(pattern_text, sql_text, re.IGNORECASE | re.DOTALL) is not None
+    except re.error:
+        return pattern_text.lower() in sql_lower
+
+
+def _required_sql_missing(rule: dict[str, Any], sql_text: str, sql_lower: str) -> bool:
+    """
+    是什么：检查 Data Skill 声明的必需 SQL 片段是否缺失。
+    谁调用：Data Skill SQL 校验。
+    做了什么：把“指标必须来自哪些明细表”做成通用配置，而不是写死在平台代码里。
+    """
+    for text in _normalize_rule_terms(rule.get("required_sql_contains")):
+        if text.lower() not in sql_lower:
+            return True
+
+    for group in rule.get("required_sql_all_contains") or []:
+        terms = _normalize_rule_terms(group)
+        if terms and not all(term.lower() in sql_lower for term in terms):
+            return True
+
+    for pattern_text in _normalize_rule_terms(rule.get("required_sql_patterns")):
+        if not _sql_pattern_matches(pattern_text, sql_text, sql_lower):
+            return True
+
+    return False
+
+
+def _sql_select_segments(sql_text: str) -> list[str]:
+    """
+    是什么：把 SQL 粗略拆成若干 SELECT 片段。
+    谁调用：Data Skill SQL 校验。
+    做了什么：支持“同一个 SELECT 片段内同时出现某些内容才算违规”的语义规则。
+    """
+    starts = [match.start() for match in re.finditer(r"\bselect\b", sql_text, flags=re.IGNORECASE)]
+    if not starts:
+        return [sql_text]
+    starts.append(len(sql_text))
+    return [sql_text[starts[index]:starts[index + 1]] for index in range(len(starts) - 1)]
+
+
+def _forbidden_select_group_matches(rule: dict[str, Any], sql_text: str) -> bool:
+    """
+    是什么：检查是否有单个 SELECT 片段命中一组禁止片段。
+    谁调用：Data Skill SQL 校验。
+    做了什么：避免跨 CTE 把合法事件统计和其它指标别名误连在一起。
+    """
+    groups = rule.get("forbidden_sql_select_all_contains") or []
+    if not groups:
+        return False
+    segments = [segment.lower() for segment in _sql_select_segments(sql_text)]
+    for group in groups:
+        terms = [term.lower() for term in _normalize_rule_terms(group)]
+        if terms and any(all(term in segment for term in terms) for segment in segments):
+            return True
+    return False
+
+
 def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = "") -> str | None:
     """
     是什么：_data_skill_sql_validation_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -275,12 +339,20 @@ def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = 
         if _rule_allowed_by_question(rule, question):
             continue
 
+        if _required_sql_missing(rule, sql_text, sql_lower):
+            return str(
+                rule.get("message")
+                or "SQL 缺少本次匹配的 Data Skill 要求使用的表、字段或条件，请按 Data Skill 重写 SQL。"
+            )
+
+        if _forbidden_select_group_matches(rule, sql_text):
+            return str(
+                rule.get("message")
+                or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+            )
+
         for pattern_text in _normalize_rule_terms(rule.get("forbidden_sql_patterns")):
-            try:
-                matched = re.search(pattern_text, sql_text, re.IGNORECASE | re.DOTALL) is not None
-            except re.error:
-                matched = pattern_text.lower() in sql_lower
-            if matched:
+            if _sql_pattern_matches(pattern_text, sql_text, sql_lower):
                 return str(
                     rule.get("message")
                     or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
@@ -535,6 +607,73 @@ def _sanitize_chart_bindings(chart: dict[str, Any]) -> dict[str, Any]:
             multi_quota.pop("name", None)
 
     return chart
+
+
+def _filter_chart_bindings_to_result_fields(chart: dict[str, Any], fields: list[Any] | None) -> dict[str, Any]:
+    """
+    是什么：把图表配置里不存在于 SQL 结果字段的绑定裁掉。
+    谁调用：图表保存前的通用后处理。
+    做了什么：保证最终图表只引用实际返回字段，避免缺失字段仍被画成空折线。
+    """
+    if not fields:
+        return chart
+
+    allowed_fields = {_normalize_chart_field_name(field) for field in fields}
+
+    def is_allowed(value: Any) -> bool:
+        return _normalize_chart_field_name(value) in allowed_fields
+
+    def filter_axis_item(item: Any) -> Any:
+        if isinstance(item, dict) and item.get("value") and is_allowed(item.get("value")):
+            return item
+        return None
+
+    filtered_chart = dict(chart)
+    if isinstance(filtered_chart.get("columns"), list):
+        filtered_chart["columns"] = [
+            column for column in filtered_chart["columns"]
+            if not isinstance(column, dict) or not column.get("value") or is_allowed(column.get("value"))
+        ]
+
+    axis = filtered_chart.get("axis")
+    if isinstance(axis, dict):
+        axis = dict(axis)
+        for key in ("x", "series"):
+            item = axis.get(key)
+            if isinstance(item, dict) and item.get("value") and not is_allowed(item.get("value")):
+                axis.pop(key, None)
+
+        y_axis = axis.get("y")
+        if isinstance(y_axis, list):
+            axis["y"] = [item for item in y_axis if filter_axis_item(item) is not None]
+        elif isinstance(y_axis, dict) and y_axis.get("value") and not is_allowed(y_axis.get("value")):
+            axis.pop("y", None)
+
+        multi_quota = axis.get("multi-quota")
+        if isinstance(multi_quota, dict):
+            values = multi_quota.get("value")
+            if isinstance(values, list):
+                filtered_values = [value for value in values if is_allowed(value)]
+                if filtered_values:
+                    multi_quota = dict(multi_quota)
+                    multi_quota["value"] = filtered_values
+                    axis["multi-quota"] = multi_quota
+                else:
+                    axis.pop("multi-quota", None)
+            elif values and not is_allowed(values):
+                axis.pop("multi-quota", None)
+
+        filtered_chart["axis"] = axis
+
+    if not filtered_chart.get("columns"):
+        axis = filtered_chart.get("axis")
+        has_axis_binding = False
+        if isinstance(axis, dict):
+            has_axis_binding = any(axis.get(key) for key in ("x", "y", "series", "multi-quota"))
+        if not has_axis_binding:
+            return _build_complete_table_chart(fields, title=filtered_chart.get("title"))
+
+    return filtered_chart
 
 
 def _is_chart_numeric_value(value: Any) -> bool:
@@ -2073,6 +2212,7 @@ class LLMService:
             raise SingleMessageError(message)
 
         if result:
+            chart = _filter_chart_bindings_to_result_fields(chart, result.get("fields"))
             chart = _ensure_chart_covers_metric_fields(
                 chart,
                 result.get("fields"),

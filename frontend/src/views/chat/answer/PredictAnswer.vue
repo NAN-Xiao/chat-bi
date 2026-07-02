@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat.ts'
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import { parseSseChunk } from '@/utils/sse'
@@ -204,9 +204,21 @@ function hasRecordData(record?: ChatRecord) {
     return false
   }
   if (typeof record.data === 'string') {
-    return record.data.trim().length > 0
+    const text = record.data.trim()
+    if (!text) {
+      return false
+    }
+    try {
+      const data = JSON.parse(text)
+      return data?.status === 'failed' || (Array.isArray(data?.data) && data.data.length > 0)
+    } catch (e) {
+      return true
+    }
   }
-  return Array.isArray(record.data?.data) ? record.data.data.length > 0 : !!record.data
+  if (record.data?.status === 'failed') {
+    return true
+  }
+  return Array.isArray(record.data?.data) && record.data.data.length > 0
 }
 
 function getChatPredictData(recordId?: number) {
@@ -267,6 +279,13 @@ function stop() {
 
 onBeforeUnmount(() => {
   stop()
+})
+
+onMounted(() => {
+  const record = props.message?.record
+  if (record?.id && record.predict_data?.length > 0 && !hasRecordData(record)) {
+    getChatData(record.id)
+  }
 })
 
 defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList, stop })

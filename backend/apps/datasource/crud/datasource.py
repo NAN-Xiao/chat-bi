@@ -267,7 +267,7 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
     record = get_ds(session, ds.id, user)
     if record is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    update_data = ds.model_dump(exclude_unset=True, exclude={"tenant_id"})
+    update_data = ds.model_dump(exclude_unset=True, exclude={"tenant_id", "embedding"})
     if update_data.get("configuration") in (None, ""):
         update_data.pop("configuration", None)
     elif "configuration" in update_data:
@@ -953,6 +953,13 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
 
     # 执行表向量化
     if embedding and tables and settings.TABLE_EMBEDDING_ENABLED:
+        missing_embedding_table_ids = [
+            int(table["id"])
+            for table in tables
+            if not table.get("embedding")
+        ]
+        if missing_embedding_table_ids:
+            run_save_table_embeddings(missing_embedding_table_ids, tenant_id=_schema_metadata_tenant_id(session, ds, current_user))
         tables = calc_table_embedding(tables, question)
     # 拼接结构信息
     if tables:

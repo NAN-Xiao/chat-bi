@@ -7,6 +7,7 @@ param(
     [string]$CacheType = "auto",
     [string]$RedisHost = "10.1.5.28",
     [int]$RedisPort = 6379,
+    [string]$QueueName = "",
     [string]$FrontendHost = "http://localhost:5173",
     [string]$CorsOrigins = "",
     [switch]$StartMcp,
@@ -31,6 +32,12 @@ if (-not (Test-Path -LiteralPath $pythonExe)) {
 }
 
 New-Item -ItemType Directory -Force -Path $replicaRuntime | Out-Null
+
+if (-not $QueueName) {
+    $workspaceSlug = Split-Path -Leaf $workspaceRoot
+    $computerSlug = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "local" }
+    $QueueName = "local-$computerSlug-$workspaceSlug" -replace "[^A-Za-z0-9_.-]", "-"
+}
 
 function Resolve-CacheType {
     if ($CacheType -ne "auto") {
@@ -123,6 +130,7 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:LOCAL_MODEL_PATH = "$runtimeRootForEnv/models"
     $env:MCP_ENABLED = "false"
     $env:AUTO_RUN_MIGRATIONS = "false"
+    $env:TASK_QUEUE_NAME = $QueueName
 
     $env:CACHE_TYPE = $ResolvedCacheType
     if ($ResolvedCacheType -eq "redis") {

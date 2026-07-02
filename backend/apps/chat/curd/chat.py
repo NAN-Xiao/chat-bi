@@ -15,7 +15,11 @@ from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, 
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.datasource import get_ds
-from apps.datasource.crud.permission_errors import PERMISSION_DENIED_DISPLAY_MESSAGE, PERMISSION_DENIED_ERROR_TYPE
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_DISPLAY_MESSAGE,
+    PERMISSION_DENIED_ERROR_TYPE,
+    looks_like_permission_scope_error,
+)
 from apps.datasource.crud.permission import (
     get_accessible_datasource_ids,
     has_applicable_permissions,
@@ -164,6 +168,77 @@ def _record_has_sensitive_artifacts(row) -> bool:
             "datasource_select_answer",
         )
     )
+
+
+def _record_data_is_public_failure(data: str | None) -> bool:
+    """
+    是什么：判断保存的数据块是否只是无结果的失败提示。
+    谁调用：历史记录权限脱敏时判断能不能保留用户可读失败信息。
+    做了什么：只允许 status=failed 且没有返回数据行的数据块继续展示。
+    """
+    if not data:
+        return True
+    try:
+        payload = orjson.loads(data)
+    except Exception:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("status") != "failed":
+        return False
+    rows = payload.get("data")
+    return rows in (None, [], "")
+
+
+def _record_can_preserve_error_when_scrubbed(
+        session: SessionDep,
+        current_user: CurrentUser,
+        row,
+) -> bool:
+    """
+    是什么：判断权限脱敏时是否可以保留当前用户自己的业务错误文案。
+    谁调用：聊天历史加载。
+    做了什么：没有可执行 SQL 和结果数据时，保留错误提示，但仍清理生成过程产物。
+    """
+    error = _row_value(row, "error")
+    if not error:
+        return False
+    if looks_like_permission_scope_error(error):
+        return False
+    try:
+        payload = orjson.loads(error)
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        error_type = payload.get("error_type") or payload.get("errorType") or payload.get("type")
+        if error_type == PERMISSION_DENIED_ERROR_TYPE:
+            return False
+    if _row_value(row, "sql"):
+        return False
+    if _row_value(row, "analysis_record_id") or _row_value(row, "predict_record_id"):
+        return False
+    if any(
+        _row_value(row, key)
+        for key in (
+            "chart",
+            "analysis",
+            "predict",
+            "predict_data",
+        )
+    ):
+        return False
+    if not _record_data_is_public_failure(_row_value(row, "data")):
+        return False
+
+    datasource_id = _row_value(row, "datasource")
+    if not datasource_id:
+        return True
+    try:
+        datasource = session.get(CoreDatasource, datasource_id)
+        return datasource is not None and has_datasource_access(session, current_user, datasource_id)
+    except Exception as exc:
+        AppLogUtil.error(f"Chat record error preservation validation failed: {exc}")
+        return False
 
 
 def _record_allowed_by_current_permissions(session: SessionDep, current_user: CurrentUser, row) -> bool:
@@ -991,8 +1066,16 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              finish=row.finish, error=row.error, data=data_value,
                                              predict_data=predict_data_value)
 
+        preserve_scrubbed_error = (
+            not current_permission_allowed
+            and _record_can_preserve_error_when_scrubbed(session, current_user, row)
+        )
+        original_error = record_result.error
         if not current_permission_allowed:
             record_result = _scrub_record_for_current_permissions(record_result)
+            if preserve_scrubbed_error:
+                record_result.error = original_error
+                record_result.data = None
         elif record_cache_requires_scrub:
             record_result.data = orjson.dumps(_failed_permission_data()).decode()
             record_result.error = _USER_PERMISSION_DENIED_MESSAGE
@@ -1040,6 +1123,7 @@ def format_record(record: ChatRecordResult):
         _obj = orjson.loads(record.analysis)
         _dict['analysis_thinking'] = _obj.get('reasoning_content')
         _dict['analysis'] = _obj.get('content')
+        _dict['analysis_notice'] = _obj.get('notice')
     if record.analysis_reasoning_content and record.analysis_reasoning_content.strip() != '':
         _dict['analysis_thinking'] = record.analysis_reasoning_content
     if record.predict and record.predict.strip() != '' and record.predict.strip()[0] == '{' and record.predict.strip()[

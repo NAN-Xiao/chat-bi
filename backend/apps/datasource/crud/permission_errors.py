@@ -18,6 +18,7 @@ def looks_like_permission_scope_error(message: str) -> bool:
     """
     text = str(message or "").lower()
     return any(marker in text for marker in (
+        "无权",
         "无权限",
         "权限",
         "select *",

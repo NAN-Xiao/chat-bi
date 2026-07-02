@@ -15,7 +15,21 @@ from apps.system.crud.assistant import AssistantOutDs
 from common.core.config import settings
 from common.core.deps import CurrentAssistant
 from common.core.deps import SessionDep, CurrentUser
+from common.utils.embedding_threads import run_save_ds_embeddings
 from common.utils.utils import AppLogUtil
+
+
+def _tenant_id_for_ds(ds: CoreDatasource) -> int | None:
+    """
+    是什么：_tenant_id_for_ds 从数据源对象里取租户，用于后台补齐 embedding。
+    """
+    tenant_id = getattr(ds, "tenant_id", None)
+    if tenant_id in (None, ""):
+        return None
+    try:
+        return int(tenant_id)
+    except (TypeError, ValueError):
+        return None
 
 
 def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, out_ds: AssistantOutDs,
@@ -63,12 +77,38 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, o
         for _ds in _ds_list:
             if _ds.get('id'):
                 ds = session.get(CoreDatasource, _ds.get('id'))
+                if ds is None:
+                    continue
                 # table_schema = get_table_schema(session, current_user, ds, question, embedding=False)
                 # ds_info = f"{ds.name}, {ds.description}\n"
                 # ds_schema = ds_info + table_schema
                 _list.append({"id": ds.id, "cosine_similarity": 0.0, "ds": ds, "embedding": ds.embedding})
 
         if _list:
+            missing_ds_ids = [
+                int(item.get("id"))
+                for item in _list
+                if not item.get("embedding")
+            ]
+            if missing_ds_ids:
+                AppLogUtil.info(
+                    f"datasource embedding missing, queue refresh and return all candidates: {missing_ds_ids}"
+                )
+                tenant_ids = {
+                    tenant_id
+                    for tenant_id in (_tenant_id_for_ds(item.get("ds")) for item in _list)
+                    if tenant_id is not None
+                }
+                if len(tenant_ids) == 1:
+                    run_save_ds_embeddings(missing_ds_ids, tenant_id=tenant_ids.pop())
+                else:
+                    for item in _list:
+                        if not item.get("embedding"):
+                            run_save_ds_embeddings([int(item.get("id"))], tenant_id=_tenant_id_for_ds(item.get("ds")))
+                return [
+                    {"id": obj.get('ds').id, "name": obj.get('ds').name, "description": obj.get('ds').description}
+                    for obj in _list
+                ]
             try:
                 # text = [s.get('ds_schema') for s in _list]
 

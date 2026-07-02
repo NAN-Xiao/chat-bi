@@ -195,5 +195,9 @@ onMounted(() => {
     font-weight: 400;
     color: rgba(31, 35, 41, 1);
   }
+
+  .thinking-btn ~ .answer-container {
+    margin-top: 10px;
+  }
 }
 </style>
