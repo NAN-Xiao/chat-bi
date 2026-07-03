@@ -125,30 +125,23 @@ const adminWorkspaceTenants = computed(() => {
   return []
 })
 
-const workspaceAdminChildMenu = (tenant: any) => ({
-  path: `/system/workspace-admin/${tenant.id}`,
-  tenant,
-  meta: {
-    title: tenant.name || tenant.public_id || tenant.id,
-    iconActive: 'workspace',
-    iconDeActive: 'noWorkspace',
-    action: 'workspace-admin-entry',
-  },
-})
-
 const workspaceAdminMenu = computed(() => {
   if (props.mode !== 'horizontal' || !adminWorkspaceTenants.value.length) {
     return null
   }
+  const currentTenant =
+    adminWorkspaceTenants.value.find(
+      (tenant: any) => String(tenant.id) === String(userStore.getTenantId || '')
+    ) || adminWorkspaceTenants.value[0]
   return {
     path: '/system/workspace-admin',
-    children: adminWorkspaceTenants.value.map(workspaceAdminChildMenu),
+    tenant: currentTenant,
     meta: {
       title: t('tenant.management'),
       iconActive: 'workspace',
       iconDeActive: 'noWorkspace',
+      action: 'workspace-admin-entry',
       activePrefix: '/system',
-      hidePopupTitle: true,
     },
   }
 })
@@ -217,6 +210,7 @@ const routerList = computed(() => {
     }"
     :mode="props.mode"
     :collapse="props.mode === 'vertical' ? props.collapse : false"
+    :ellipsis="false"
   >
     <MenuItem v-for="menu in routerList" :key="menu.path" :menu="menu"></MenuItem>
   </el-menu>
@@ -481,6 +475,10 @@ const routerList = computed(() => {
   --ed-menu-bg-color: transparent;
   --ed-menu-hover-bg-color: transparent;
   --ed-menu-active-color: var(--ed-color-primary, #2f6bff);
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: max-content;
   height: var(--top-nav-height);
   border: none !important;
   background: transparent !important;
@@ -493,8 +491,14 @@ const routerList = computed(() => {
   > .ed-sub-menu .ed-sub-menu__title {
     height: var(--top-nav-height) !important;
     line-height: 20px !important;
+    flex: 0 0 auto;
+    min-width: 92px;
+    width: auto !important;
+    height: 34px !important;
+    margin: 0 3px;
     padding: 0 12px !important;
     border-bottom: 2px solid transparent !important;
+    border-radius: 8px !important;
     color: #41506a !important;
     font-size: 14px;
     font-weight: 500;
@@ -572,27 +576,28 @@ const routerList = computed(() => {
   > .ed-menu-item:focus,
   > .ed-sub-menu:hover .ed-sub-menu__title,
   > .ed-sub-menu:focus .ed-sub-menu__title {
-    background: transparent !important;
+    background: var(--workspace-control-hover-bg, #f3f7ff) !important;
     color: #1f2f4a !important;
 
     .menu-title-text {
-      font-size: 15px;
+      font-size: 14px;
     }
   }
 
   > .ed-menu-item.is-active,
   > .ed-sub-menu.is-active .ed-sub-menu__title {
-    background: transparent !important;
+    background: var(--workspace-primary-soft-bg, #eaf1ff) !important;
     border-bottom-color: transparent !important;
     color: var(--ed-color-primary, #2f6bff) !important;
 
     .menu-title-text {
-      font-size: 15px;
+      font-size: 14px;
+      font-weight: 600;
     }
 
     .menu-title-text::after {
-      opacity: 1;
-      transform: scaleX(1);
+      opacity: 0;
+      transform: scaleX(0.45);
     }
   }
 
