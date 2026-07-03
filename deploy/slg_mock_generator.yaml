@@ -12,7 +12,8 @@ generator:
   target_future_days: 7
   check_interval_seconds: 3600
   retention_days: 60
+  new_user_behavior_days: 7
   run_once: false
   log_level: INFO
-  daily_players: 8000
+  daily_players: 3000
   seed_base: 20260613

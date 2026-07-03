@@ -55,19 +55,27 @@ services:
     restart: always
     networks:
       - shuzhi-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./deploy/slg_mock_generator.yaml:/app/config/slg_mock_generator.yaml:ro
     environment:
       CONFIG_FILE: /app/config/slg_mock_generator.yaml
-      DB_HOST: 127.0.0.1
+      DB_HOST: host.docker.internal
       DB_PORT: "5432"
       DB_NAME: slg_bi_mock_test
       DB_USER: postgres
       DB_PASSWORD: "111111"
+      DB_SCHEMA: public
       TARGET_PAST_DAYS: "7"
       TARGET_FUTURE_DAYS: "7"
+      NEW_USER_BEHAVIOR_DAYS: "7"
+      DAILY_PLAYERS: "3000"
       CHECK_INTERVAL_SECONDS: "3600"
       RETENTION_DAYS: "60"
+      RUN_ONCE: "false"
+      LOG_LEVEL: INFO
+      SEED_BASE: "20260613"
       TIMEZONE: Asia/Shanghai
 
 networks:

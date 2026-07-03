@@ -94,6 +94,8 @@ tools/slg_bi_mock_scheduled_generator.py
 
 ## 与现有打包发布的关系
 
+Docker 构建、发布、回滚和排障流程见 `docs/slg_bi_mock_docker_release.md`。本文档只保留设计口径和实现约束。
+
 该方案不会和当前发布冲突：
 
 - 现有 `Dockerfile` 不需要改动。
@@ -156,11 +158,13 @@ python tools/slg_bi_mock_scheduled_generator.py --run-once
 连接 PostgreSQL
 确保基础 schema、状态表、auto_gen_time 字段和索引存在
 按当前时间和配置项 TARGET_PAST_DAYS / TARGET_FUTURE_DAYS 计算目标业务日集合
-逐日检查目标业务日是否已成功生成
-如果某日已生成：跳过该日
-如果某日未生成：生成该目标业务日整天明细数据
-该日明细数据入库成功后，再记录该业务日期已生成
-按 auto_gen_time 清理超过 RETENTION_DAYS 的自动生成数据
+第一步：逐日检查目标业务日新增用户 cohort 是否已成功生成
+如果某日 cohort 已生成：跳过该日
+如果某日 cohort 未生成：生成该目标业务日新增用户和 D0 明细数据
+该日 cohort 明细数据入库成功后，再记录 state_type = 'cohort'
+第二步：按 auto_gen_time 清理超过 RETENTION_DAYS 的自动生成数据
+第三步：按 NEW_USER_BEHAVIOR_DAYS 补充当前业务日前 N 天新增用户在当前业务日的老用户行为
+老用户行为入库成功后，再记录 state_type = 'behavior'
 睡眠 CHECK_INTERVAL_SECONDS
 ```
 
@@ -203,16 +207,19 @@ target_day_end = target_day_start + timedelta(days=1)
 - `fact_payments.event_time` 落在目标日内，`event_date = target_business_date`。
 - 战斗、资源、建筑、研究、练兵等事实表的业务时间也应落在目标日内。
 
-## 生成日期记录表
+## 生成状态记录表
 
-新增生成日期记录表用于记录每个目标业务日是否已经成功入库，避免每小时重复追加同一天数据。
+新增生成状态记录表用于记录两类成功状态，避免每小时重复追加同一批数据。
+
+- `state_type = 'cohort'`：某个业务日的新增用户和 D0 行为已经成功入库。
+- `state_type = 'behavior'`：某个新增用户 cohort 在某个业务日的老用户行为已经成功入库。
 
 重要顺序：
 
 ```text
 先按业务日生成并写入明细数据
 明细数据入库成功
-再写入 mock_generation_state 记录该 business_date 已生成
+再写入 mock_generation_state 记录该批数据已生成
 ```
 
 不要在明细数据入库前预先记录该业务日期。生成失败或事务回滚时，`mock_generation_state` 中不应留下该日期的成功记录，下一轮检查会继续补这一天。
@@ -220,10 +227,12 @@ target_day_end = target_day_start + timedelta(days=1)
 ```sql
 create table if not exists mock_generation_state (
     generator_id varchar(64) not null,
+    state_type text not null check (state_type in ('cohort', 'behavior')),
+    cohort_date date not null,
     business_date date not null,
     business_day_start timestamptz not null,
     status text not null default 'success' check (status = 'success'),
-    primary key (generator_id, business_date)
+    primary key (generator_id, state_type, cohort_date, business_date)
 );
 ```
 
@@ -236,9 +245,11 @@ generator_id = 'slg_bi_mock_scheduled_generator'
 字段含义：
 
 - `generator_id`：生成器标识，固定使用 `slg_bi_mock_scheduled_generator`，类型为 `varchar(64)`，不是自增数值 ID。
-- `business_date`：目标业务日期，例如 `2026-07-06`。
+- `state_type`：生成状态类型，取值为 `cohort` 或 `behavior`。
+- `cohort_date`：新增用户 cohort 日期，即这批玩家的 `install_date`。
+- `business_date`：目标行为业务日期，例如 `2026-07-06`。当 `state_type = 'cohort'` 时，`cohort_date = business_date`。
 - `business_day_start`：目标业务日零点，例如 `2026-07-06 00:00:00+08`。
-- `status`：生成完成标记，固定为 `success`。该表只记录已经成功入库的业务日期。
+- `status`：生成完成标记，固定为 `success`。该表只记录已经成功入库的数据批次。
 
 状态表不再存储 `auto_gen_time`、`generated_at`、`row_counts`、`updated_at`。这些字段不参与幂等判断，行数和生成时间保留在运行日志中即可。
 
@@ -248,14 +259,16 @@ generator_id = 'slg_bi_mock_scheduled_generator'
 select status
 from mock_generation_state
 where generator_id = 'slg_bi_mock_scheduled_generator'
+  and state_type = :state_type
+  and cohort_date = :cohort_date
   and business_date = :business_date;
 ```
 
 判断规则：
 
 - 记录存在且 `status = 'success'`：跳过生成。
-- 记录不存在：生成该业务日整天数据。
-- 生成和入库成功后：再插入或更新该日期的 `success` 记录。
+- 记录不存在：生成对应 cohort 或 behavior 数据。
+- 生成和入库成功后：再插入或更新该批数据的 `success` 记录。
 - 生成失败或入库失败：事务回滚，不记录该业务日期，下次检查继续补数。
 
 ## 并发控制
@@ -498,8 +511,10 @@ generator:
   target_future_days: 7
   check_interval_seconds: 3600
   retention_days: 60
+  new_user_behavior_days: 7
   run_once: false
   log_level: INFO
+  daily_players: 3000
 ```
 
 字段说明：
@@ -509,6 +524,8 @@ generator:
 - 当天 `D+0` 默认包含在检查窗口内。
 - `generator.check_interval_seconds`：常驻模式下两次检查的间隔，默认一小时。
 - `generator.retention_days`：按 `auto_gen_time` 清理自动生成数据的保留天数，默认 60 天。
+- `generator.new_user_behavior_days`：补充当前业务日前多少天新增用户在当前业务日的老用户行为，默认 7。
+- `generator.daily_players`：每天新增玩家数，默认 3000。
 - `generator.timezone`：目标业务日计算使用的业务时区。
 
 建议同时支持以下环境变量覆盖配置文件：
@@ -523,6 +540,8 @@ DB_SCHEMA=public
 TIMEZONE=Asia/Shanghai
 TARGET_PAST_DAYS=7
 TARGET_FUTURE_DAYS=7
+NEW_USER_BEHAVIOR_DAYS=7
+DAILY_PLAYERS=3000
 CHECK_INTERVAL_SECONDS=3600
 RETENTION_DAYS=60
 RUN_ONCE=false
@@ -538,6 +557,8 @@ CONFIG_FILE=/app/config/slg_mock_generator.yaml
 - 环境变量优先级应高于配置文件，便于容器部署时覆盖敏感项或临时调整窗口。
 - `TARGET_PAST_DAYS` 在配置文件中的字段名为 `generator.target_past_days`，环境变量仅作为覆盖入口。
 - `TARGET_FUTURE_DAYS` 在配置文件中的字段名为 `generator.target_future_days`，环境变量仅作为覆盖入口。
+- `NEW_USER_BEHAVIOR_DAYS` 在配置文件中的字段名为 `generator.new_user_behavior_days`，环境变量仅作为覆盖入口。
+- `DAILY_PLAYERS` 在配置文件中的字段名为 `generator.daily_players`，环境变量仅作为覆盖入口。
 
 ## 数据生成要求
 
@@ -549,7 +570,8 @@ CONFIG_FILE=/app/config/slg_mock_generator.yaml
 load_config(config_file)
 ensure_schema()
 resolve_target_business_dates(now, target_past_days, target_future_days)
-generate_and_record_business_day(target_day_start, target_day_end)
+generate_and_record_cohort(target_day_start, target_day_end)
+generate_and_record_existing_user_behavior(cohort_date, business_date)
 cleanup_expired_auto_generated_rows(retention_days)
 ```
 
@@ -558,8 +580,14 @@ cleanup_expired_auto_generated_rows(retention_days)
 - `load_config(...)` 读取 `CONFIG_FILE` 指向的 YAML 配置，并用环境变量覆盖同名部署参数。
 - `ensure_schema()` 只做缺失表、缺失字段、缺失索引、状态表补齐。
 - `resolve_target_business_dates(...)` 按业务时区和 `TARGET_PAST_DAYS`、`TARGET_FUTURE_DAYS` 计算目标业务日集合。
-- `generate_and_record_business_day(...)` 每次只生成一个目标业务日整天的明细数据，并在该日明细数据写入成功后、最终提交前写入 `mock_generation_state` 成功记录。
+- `generate_and_record_cohort(...)` 每次只生成一个目标业务日新增用户和 D0 明细数据，并在该批数据写入成功后、最终提交前写入 `mock_generation_state` 的 `cohort` 成功记录。
+- `generate_and_record_existing_user_behavior(...)` 通过确定性重放指定 cohort 到目标业务日，只写入目标业务日的老用户事实明细，并在成功后写入 `behavior` 成功记录。
 - `cleanup_expired_auto_generated_rows(...)` 只按 `auto_gen_time` 清理过期自动生成数据。
+
+老用户行为补充有两个关键约束：
+
+- 重放时必须强制所有玩家安装日固定为 `cohort_date`，不能在 `cohort_date..business_date` 窗口内重新随机分配新增日期，否则会污染 `dim_player.install_date` 分布。
+- 玩家 ID 必须沿用 cohort 日期的偏移，保证行为归属到同一批玩家；事实表主键 ID 必须使用独立 behavior 号段，避免与该 cohort 的 D0 明细主键冲突。
 
 每次生成的数据仍应满足：
 

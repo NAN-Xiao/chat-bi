@@ -398,7 +398,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user", default="postgres")
     parser.add_argument("--password", default="111111")
     parser.add_argument("--db-name", default="slg_bi_mock_test")
-    parser.add_argument("--players", type=int, default=8000)
+    parser.add_argument("--players", type=int, default=3000)
     parser.add_argument("--start-date", default="2026-04-14")
     parser.add_argument("--days", type=int, default=60)
     parser.add_argument("--seed", type=int, default=20260613)
@@ -942,6 +942,63 @@ def copy_rows(
                 copy.write_row(row)
 
 
+def upsert_rows(
+    conn: psycopg.Connection,
+    table: str,
+    columns: list[str],
+    rows: list[tuple],
+    *,
+    conflict_columns: list[str],
+    auto_gen_time: int | None = None,
+) -> None:
+    if not rows:
+        return
+    update_columns = [column for column in columns if column not in set(conflict_columns)]
+    with conn.cursor() as cur:
+        insert_sql = sql.SQL(
+            "insert into {} ({}) values ({}) on conflict ({}) do update set {}"
+        ).format(
+            sql.Identifier(table),
+            sql.SQL(", ").join(sql.Identifier(column) for column in columns),
+            sql.SQL(", ").join(sql.Placeholder() for _ in columns),
+            sql.SQL(", ").join(sql.Identifier(column) for column in conflict_columns),
+            sql.SQL(", ").join(
+                sql.SQL("{} = excluded.{}").format(sql.Identifier(column), sql.Identifier(column))
+                for column in update_columns
+            ),
+        )
+        for row in rows:
+            if auto_gen_time is not None and "auto_gen_time" in columns and len(row) == len(columns) - 1:
+                row = (*row, auto_gen_time)
+            cur.execute(insert_sql, row)
+
+
+def _row_business_date(value) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    return value
+
+
+def filter_rows_for_write_date(rows: list[tuple], date_index: int, write_date: date | None) -> list[tuple]:
+    if write_date is None:
+        return rows
+    return [row for row in rows if _row_business_date(row[date_index]) == write_date]
+
+
+def filter_rows_for_available_events(
+    rows: list[tuple],
+    start_event_uid_index: int,
+    finish_event_uid_index: int,
+    available_event_uids: set[str],
+) -> list[tuple]:
+    return [
+        row
+        for row in rows
+        if row[start_event_uid_index] in available_event_uids
+        and row[finish_event_uid_index] in available_event_uids
+    ]
+
+
 def cleanup_expired_auto_generated_rows(conn: psycopg.Connection, retention_days: int = 60) -> dict[str, int]:
     if retention_days <= 0:
         raise ValueError("retention_days must be greater than 0")
@@ -1097,7 +1154,12 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
     random.seed(args.seed)
     auto_gen_time = int(getattr(args, "auto_gen_time", 0)) or int(time.time())
     id_offset = int(getattr(args, "id_offset", 0))
-    big_id_offset = id_offset * 1000
+    fact_id_offset = int(getattr(args, "fact_id_offset", id_offset))
+    big_id_offset = fact_id_offset * 1000
+    write_date_value = getattr(args, "write_date", None)
+    write_date = datetime.strptime(write_date_value, "%Y-%m-%d").date() if write_date_value else None
+    upsert_player_dimension = bool(getattr(args, "upsert_player_dimension", False))
+    force_install_day_zero = bool(getattr(args, "force_install_day_zero", False))
     start = datetime.strptime(args.start_date, "%Y-%m-%d").date()
     days = date_range(start, args.days)
     end = days[-1]
@@ -1142,7 +1204,10 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
             if spike_start <= i < spike_start + spike_len:
                 base *= uplift
         install_weights.append(base)
-    install_indices = sorted(random.choices(range(args.days), weights=install_weights, k=args.players))
+    if force_install_day_zero:
+        install_indices = [0] * args.players
+    else:
+        install_indices = sorted(random.choices(range(args.days), weights=install_weights, k=args.players))
 
     def choose_server(install_day: date) -> int:
         candidates = [s for s in server_dicts if s["open_date"] <= install_day]
@@ -1713,13 +1778,30 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
     alliance_rows = [(a["alliance_id"], a["server_id"], a["alliance_tag"], a["alliance_name"], a["language"], a["tier"], a["create_time"], a["max_members"], a["member_count"], a["active_member_7d"], a["total_power"], a["leader_player_id"]) for a in alliances]
     event_name_rows = [(name, meta[0], meta[1], meta[2], json.dumps(meta[3], ensure_ascii=False)) for name, meta in EVENTS.items()]
 
+    session_rows = filter_rows_for_write_date(session_rows, 7, write_date)
+    event_rows = filter_rows_for_write_date(event_rows, 7, write_date)
+    payment_rows = filter_rows_for_write_date(payment_rows, 4, write_date)
+    battle_rows = filter_rows_for_write_date(battle_rows, 6, write_date)
+    resource_rows = filter_rows_for_write_date(resource_rows, 4, write_date)
+    building_rows = filter_rows_for_write_date(building_rows, 6, write_date)
+    research_rows = filter_rows_for_write_date(research_rows, 6, write_date)
+    training_rows = filter_rows_for_write_date(training_rows, 6, write_date)
+    available_event_uids = {row[0] for row in event_rows}
+    building_rows = filter_rows_for_available_events(building_rows, 2, 3, available_event_uids)
+    research_rows = filter_rows_for_available_events(research_rows, 2, 3, available_event_uids)
+    training_rows = filter_rows_for_available_events(training_rows, 2, 3, available_event_uids)
+
     conn = psycopg.connect(host=args.host, port=args.port, dbname=args.db_name, user=args.user, password=args.password)
     create_schema(conn)
+    player_columns = ["player_id", "account_id", "role_id", "device_id", "register_time", "install_date", "country", "language", "platform", "channel", "campaign", "device_tier", "device_model", "os_version", "register_server_id", "activity_segment", "payer_segment", "current_level", "current_vip_level", "current_power", "current_city_level", "current_alliance_id", "first_pay_time", "total_pay_amount", "last_active_date", "auto_gen_time"]
     copy_rows(conn, "dim_server", ["server_id", "server_code", "server_name", "open_date", "region", "timezone", "auto_gen_time"], servers, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
     copy_rows(conn, "dim_alliance", ["alliance_id", "server_id", "alliance_tag", "alliance_name", "language", "tier", "create_time", "max_members", "member_count", "active_member_7d", "total_power", "leader_player_id", "auto_gen_time"], alliance_rows, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
     copy_rows(conn, "dim_product", ["product_id", "product_name", "product_type", "price_usd", "limit_type", "unlock_level", "is_first_pay_pack", "auto_gen_time"], PRODUCTS, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
     copy_rows(conn, "dim_event_name", ["event_name", "event_category", "event_cn_name", "description", "required_attrs", "auto_gen_time"], event_name_rows, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
-    copy_rows(conn, "dim_player", ["player_id", "account_id", "role_id", "device_id", "register_time", "install_date", "country", "language", "platform", "channel", "campaign", "device_tier", "device_model", "os_version", "register_server_id", "activity_segment", "payer_segment", "current_level", "current_vip_level", "current_power", "current_city_level", "current_alliance_id", "first_pay_time", "total_pay_amount", "last_active_date", "auto_gen_time"], player_rows, auto_gen_time=auto_gen_time)
+    if upsert_player_dimension:
+        upsert_rows(conn, "dim_player", player_columns, player_rows, conflict_columns=["player_id"], auto_gen_time=auto_gen_time)
+    else:
+        copy_rows(conn, "dim_player", player_columns, player_rows, auto_gen_time=auto_gen_time)
     copy_rows(conn, "fact_sessions", ["session_id", "session_uid", "player_id", "account_id", "role_id", "device_id", "server_id", "session_start", "session_end", "duration_seconds", "lifecycle_day", "player_level_start", "player_level_end", "power_start", "power_end", "platform", "channel", "campaign", "client_version", "app_build", "sdk_version", "device_tier", "device_model", "os_version", "network_type", "country", "ip_country", "auto_gen_time"], session_rows, auto_gen_time=auto_gen_time)
     copy_rows(conn, "fact_events", ["event_uid", "client_event_id", "trace_id", "event_time", "client_time", "server_receive_time", "ingest_time", "event_date", "player_id", "account_id", "role_id", "device_id", "server_id", "session_id", "event_name", "event_category", "lifecycle_day", "player_level", "vip_level", "power", "alliance_id", "client_version", "app_build", "sdk_version", "event_schema_version", "platform", "channel", "campaign", "country", "ip_country", "language", "device_model", "os_version", "device_tier", "network_type", "event_source", "sequence_in_session", "attributes", "auto_gen_time"], event_rows, auto_gen_time=auto_gen_time)
     copy_rows(conn, "fact_payments", ["order_id", "start_event_uid", "final_event_uid", "event_time", "event_date", "player_id", "server_id", "session_id", "product_id", "product_name", "amount_usd", "gross_revenue_usd", "refund_amount_usd", "net_revenue_usd", "local_currency", "payment_channel", "payment_status", "fail_reason", "refund_reason", "is_first_pay", "pay_sequence", "lifecycle_day", "vip_level_after", "player_level", "revenue_tier", "attributes", "auto_gen_time"], payment_rows, auto_gen_time=auto_gen_time)
