@@ -38,6 +38,7 @@ const currentTheme = ref<ThemeMode>(getInitialTheme())
 const workspaceAdminViewVersion = ref(0)
 const appearanceStore = useAppearanceStoreWithOut()
 let time: any
+let topNavResizeObserver: ResizeObserver | undefined
 const handleThemeChange = (event: Event) => {
   const theme = (event as CustomEvent<ThemeMode>).detail
   if (theme === 'dark' || theme === 'light') {
@@ -47,6 +48,7 @@ const handleThemeChange = (event: Event) => {
 onUnmounted(() => {
   clearTimeout(time)
   window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+  topNavResizeObserver?.disconnect()
 })
 const loginBg = computed(() => {
   return appearanceStore.getLogin
@@ -77,6 +79,84 @@ watch(analysisAssistantExpanded, (expanded) => {
 })
 const handleFoldExpand = () => {
   handleCollapseChange(!collapse.value)
+}
+
+const topNavDragState = {
+  active: false,
+  dragging: false,
+  pointerId: 0,
+  startX: 0,
+  startScrollLeft: 0,
+  moved: false,
+  suppressNextClick: false,
+}
+const topNavDragThreshold = 8
+
+const resetTopNavDragState = () => {
+  topNavDragState.active = false
+  topNavDragState.dragging = false
+  topNavDragState.pointerId = 0
+  topNavDragState.startX = 0
+  topNavDragState.startScrollLeft = 0
+  topNavDragState.moved = false
+}
+
+const updateTopNavOverflowState = () => {
+  const menuEl = document.querySelector<HTMLElement>('.top-nav-menu')
+  if (!menuEl) return
+  const overflowing = menuEl.scrollWidth > menuEl.clientWidth + 1
+  menuEl.classList.toggle('is-overflowing', overflowing)
+}
+
+const handleTopNavPointerDown = (event: PointerEvent) => {
+  if (event.button > 0) return
+  const menuEl = event.currentTarget as HTMLElement | null
+  if (!menuEl || menuEl.scrollWidth <= menuEl.clientWidth + 1) return
+  topNavDragState.suppressNextClick = false
+  topNavDragState.active = true
+  topNavDragState.pointerId = event.pointerId
+  topNavDragState.startX = event.clientX
+  topNavDragState.startScrollLeft = menuEl.scrollLeft
+  topNavDragState.moved = false
+  menuEl.classList.add('is-pressing')
+}
+
+const handleTopNavPointerMove = (event: PointerEvent) => {
+  if (!topNavDragState.active || event.pointerId !== topNavDragState.pointerId) return
+  const menuEl = event.currentTarget as HTMLElement | null
+  if (!menuEl) return
+  const deltaX = event.clientX - topNavDragState.startX
+  if (!topNavDragState.dragging && Math.abs(deltaX) > topNavDragThreshold) {
+    topNavDragState.dragging = true
+    topNavDragState.moved = true
+    menuEl.setPointerCapture?.(event.pointerId)
+    menuEl.classList.add('is-dragging')
+  }
+  if (topNavDragState.dragging) {
+    menuEl.scrollLeft = topNavDragState.startScrollLeft - deltaX
+    event.preventDefault()
+  }
+}
+
+const handleTopNavPointerEnd = (event: PointerEvent) => {
+  if (!topNavDragState.active || event.pointerId !== topNavDragState.pointerId) return
+  const menuEl = event.currentTarget as HTMLElement | null
+  const shouldSuppressClick = topNavDragState.moved
+  menuEl?.releasePointerCapture?.(event.pointerId)
+  menuEl?.classList.remove('is-pressing')
+  menuEl?.classList.remove('is-dragging')
+  resetTopNavDragState()
+  topNavDragState.suppressNextClick = shouldSuppressClick
+  window.setTimeout(() => {
+    topNavDragState.suppressNextClick = false
+  }, 120)
+}
+
+const handleTopNavClickCapture = (event: MouseEvent) => {
+  if (!topNavDragState.suppressNextClick) return
+  event.preventDefault()
+  event.stopPropagation()
+  topNavDragState.suppressNextClick = false
 }
 
 const restoreBusinessTenant = async () => {
@@ -139,6 +219,16 @@ onBeforeMount(() => {
 onMounted(() => {
   currentTheme.value = getInitialTheme()
   window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+  const menuEl = document.querySelector<HTMLElement>('.top-nav-menu')
+  if (menuEl) {
+    updateTopNavOverflowState()
+    topNavResizeObserver = new ResizeObserver(updateTopNavOverflowState)
+    topNavResizeObserver.observe(menuEl)
+    window.addEventListener('resize', updateTopNavOverflowState)
+  }
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', updateTopNavOverflowState)
 })
 </script>
 
@@ -169,7 +259,16 @@ onMounted(() => {
           </span>
         </div>
         <div class="top-nav-brand-divider" aria-hidden="true"></div>
-        <Menu class="top-nav-menu" mode="horizontal" scope="business"></Menu>
+        <Menu
+          class="top-nav-menu"
+          mode="horizontal"
+          scope="business"
+          @click.capture="handleTopNavClickCapture"
+          @pointerdown="handleTopNavPointerDown"
+          @pointermove="handleTopNavPointerMove"
+          @pointerup="handleTopNavPointerEnd"
+          @pointercancel="handleTopNavPointerEnd"
+        ></Menu>
         <div class="top-nav-actions">
           <ProjectSelector
             v-if="!userStore.isPlatformWorkspaceDelegate"
@@ -446,9 +545,9 @@ onMounted(() => {
     }
 
     .top-nav-brand {
-      flex: 0 0 auto;
-      min-width: 184px;
-      max-width: 220px;
+      flex: 0 0 236px;
+      min-width: 236px;
+      max-width: 236px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -520,7 +619,20 @@ onMounted(() => {
       flex: 1 1 auto;
       min-width: 0;
       height: var(--top-nav-height);
-      overflow: hidden;
+      overflow-x: auto;
+      overflow-y: hidden;
+      overscroll-behavior-x: contain;
+      user-select: none;
+      scrollbar-width: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+
+      &.is-overflowing.is-pressing,
+      &.is-overflowing.is-dragging {
+        cursor: grabbing;
+      }
     }
 
     .top-nav-actions {
