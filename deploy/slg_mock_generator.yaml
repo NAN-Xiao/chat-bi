@@ -1,0 +1,18 @@
+database:
+  host: 127.0.0.1
+  port: 5432
+  name: slg_bi_mock_test
+  user: postgres
+  password: "111111"
+  schema: public
+
+generator:
+  timezone: Asia/Shanghai
+  target_past_days: 7
+  target_future_days: 7
+  check_interval_seconds: 3600
+  retention_days: 60
+  run_once: false
+  log_level: INFO
+  daily_players: 8000
+  seed_base: 20260613

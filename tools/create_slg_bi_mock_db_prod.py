@@ -4,9 +4,10 @@ import argparse
 import json
 import math
 import random
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time as datetime_time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,7 @@ from psycopg import sql
 
 
 TZ = ZoneInfo("Asia/Shanghai")
+AUTO_GEN_TIME_COMMENT = "数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析"
 
 EVENTS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     "device_register": ("account", "设备注册", "SDK生成设备或安装实例ID", {"device_id": "设备ID"}),
@@ -344,6 +346,7 @@ GENERIC_COLUMN_DESCRIPTIONS = {
     "finish_reason": "完成原因。",
     "power_gain": "战力增益。",
     "cost_json": "资源消耗JSON。",
+    "auto_gen_time": "数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析",
     "table_name": "表名。",
     "column_name": "字段名。",
     "object_type": "对象类型。",
@@ -394,11 +397,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--admin-db", default="slg_config")
     parser.add_argument("--user", default="postgres")
     parser.add_argument("--password", default="111111")
-    parser.add_argument("--db-name", default="slg_bi_mock")
+    parser.add_argument("--db-name", default="slg_bi_mock_test")
     parser.add_argument("--players", type=int, default=8000)
     parser.add_argument("--start-date", default="2026-04-14")
     parser.add_argument("--days", type=int, default=60)
     parser.add_argument("--seed", type=int, default=20260613)
+    parser.add_argument("--id-offset", type=int, default=0)
+    parser.add_argument("--auto-gen-time", type=int, default=0)
+    parser.set_defaults(on_success=None)
     parser.add_argument("--recreate", action="store_true")
     return parser.parse_args()
 
@@ -416,7 +422,7 @@ def weighted_pair(items: list[tuple[str, str, float]]) -> tuple[str, str]:
 
 
 def day_dt(day: date, hour: int, minute: int, second: int = 0) -> datetime:
-    return datetime.combine(day, time(hour, minute, second), tzinfo=TZ)
+    return datetime.combine(day, datetime_time(hour, minute, second), tzinfo=TZ)
 
 
 def date_range(start: date, days: int) -> list[date]:
@@ -586,15 +592,16 @@ def ensure_database(args: argparse.Namespace) -> None:
 
 def create_schema(conn: psycopg.Connection) -> None:
     ddl = """
-    create table dim_server (
+    create table if not exists dim_server (
         server_id integer primary key,
         server_code text not null unique,
         server_name text not null,
         open_date date not null,
         region text not null,
-        timezone text not null
+        timezone text not null,
+        auto_gen_time bigint not null default 0
     );
-    create table dim_alliance (
+    create table if not exists dim_alliance (
         alliance_id integer primary key,
         server_id integer not null references dim_server(server_id),
         alliance_tag text not null,
@@ -606,25 +613,28 @@ def create_schema(conn: psycopg.Connection) -> None:
         member_count integer not null,
         active_member_7d integer not null,
         total_power bigint not null,
-        leader_player_id integer
+        leader_player_id integer,
+        auto_gen_time bigint not null default 0
     );
-    create table dim_product (
+    create table if not exists dim_product (
         product_id text primary key,
         product_name text not null,
         product_type text not null,
         price_usd numeric(10,2) not null,
         limit_type text not null,
         unlock_level integer not null,
-        is_first_pay_pack boolean not null
+        is_first_pay_pack boolean not null,
+        auto_gen_time bigint not null default 0
     );
-    create table dim_event_name (
+    create table if not exists dim_event_name (
         event_name text primary key,
         event_category text not null,
         event_cn_name text not null,
         description text not null,
-        required_attrs jsonb not null
+        required_attrs jsonb not null,
+        auto_gen_time bigint not null default 0
     );
-    create table dim_player (
+    create table if not exists dim_player (
         player_id integer primary key,
         account_id text not null unique,
         role_id text not null unique,
@@ -649,9 +659,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         current_alliance_id integer references dim_alliance(alliance_id),
         first_pay_time timestamptz,
         total_pay_amount numeric(12,2) not null,
-        last_active_date date
+        last_active_date date,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_sessions (
+    create table if not exists fact_sessions (
         session_id bigint primary key,
         session_uid text not null unique,
         player_id integer not null references dim_player(player_id),
@@ -678,9 +689,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         os_version text not null,
         network_type text not null,
         country text not null,
-        ip_country text not null
+        ip_country text not null,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_events (
+    create table if not exists fact_events (
         event_id bigserial primary key,
         event_uid text not null unique,
         client_event_id text not null,
@@ -719,9 +731,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         network_type text not null,
         event_source text not null,
         sequence_in_session integer not null,
-        attributes jsonb not null
+        attributes jsonb not null,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_payments (
+    create table if not exists fact_payments (
         order_id text primary key,
         start_event_uid text not null references fact_events(event_uid),
         final_event_uid text not null references fact_events(event_uid),
@@ -747,9 +760,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         vip_level_after integer not null,
         player_level integer not null,
         revenue_tier text not null,
-        attributes jsonb not null
+        attributes jsonb not null,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_battles (
+    create table if not exists fact_battles (
         battle_id bigint primary key,
         battle_uid text not null unique,
         event_uid text not null references fact_events(event_uid),
@@ -772,9 +786,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         stamina_spent integer not null,
         map_x integer not null,
         map_y integer not null,
-        attributes jsonb not null
+        attributes jsonb not null,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_resource_transactions (
+    create table if not exists fact_resource_transactions (
         trans_id bigint primary key,
         event_uid text not null references fact_events(event_uid),
         business_event_uid text,
@@ -789,9 +804,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         source_sink text not null,
         reason text not null,
         is_paid_related boolean not null,
-        attributes jsonb not null
+        attributes jsonb not null,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_building_upgrades (
+    create table if not exists fact_building_upgrades (
         upgrade_id bigint primary key,
         task_id text not null unique,
         start_event_uid text not null references fact_events(event_uid),
@@ -810,9 +826,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         speedup_seconds integer not null,
         finish_reason text not null,
         power_gain integer not null,
-        cost_json jsonb not null
+        cost_json jsonb not null,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_research (
+    create table if not exists fact_research (
         research_id bigint primary key,
         task_id text not null unique,
         start_event_uid text not null references fact_events(event_uid),
@@ -831,9 +848,10 @@ def create_schema(conn: psycopg.Connection) -> None:
         speedup_seconds integer not null,
         finish_reason text not null,
         power_gain integer not null,
-        cost_json jsonb not null
+        cost_json jsonb not null,
+        auto_gen_time bigint not null default 0
     );
-    create table fact_army_training (
+    create table if not exists fact_army_training (
         training_id bigint primary key,
         task_id text not null unique,
         start_event_uid text not null references fact_events(event_uid),
@@ -852,23 +870,176 @@ def create_schema(conn: psycopg.Connection) -> None:
         speedup_seconds integer not null,
         finish_reason text not null,
         power_gain integer not null,
-        cost_json jsonb not null
+        cost_json jsonb not null,
+        auto_gen_time bigint not null default 0
     );
+    """
+    auto_gen_time_ddl = """
+    alter table dim_server add column if not exists auto_gen_time bigint not null default 0;
+    alter table dim_alliance add column if not exists auto_gen_time bigint not null default 0;
+    alter table dim_product add column if not exists auto_gen_time bigint not null default 0;
+    alter table dim_event_name add column if not exists auto_gen_time bigint not null default 0;
+    alter table dim_player add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_sessions add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_events add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_payments add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_battles add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_resource_transactions add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_building_upgrades add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_research add column if not exists auto_gen_time bigint not null default 0;
+    alter table fact_army_training add column if not exists auto_gen_time bigint not null default 0;
+    """
+    auto_gen_time_comment_ddl = """
+    comment on column dim_server.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column dim_alliance.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column dim_product.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column dim_event_name.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column dim_player.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_sessions.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_events.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_payments.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_battles.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_resource_transactions.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_building_upgrades.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_research.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
+    comment on column fact_army_training.auto_gen_time is '数据自动生成时间 用于自动清理数据 和业务逻辑无关 不用于数据分析';
     """
     with conn.cursor() as cur:
         cur.execute(ddl)
+        cur.execute(auto_gen_time_ddl)
+        cur.execute(auto_gen_time_comment_ddl)
     conn.commit()
     apply_data_dictionary(conn)
 
 
-def copy_rows(conn: psycopg.Connection, table: str, columns: list[str], rows: list[tuple]) -> None:
+def copy_rows(
+    conn: psycopg.Connection,
+    table: str,
+    columns: list[str],
+    rows: list[tuple],
+    *,
+    auto_gen_time: int | None = None,
+    on_conflict_do_nothing: bool = False,
+) -> None:
     if not rows:
         return
     with conn.cursor() as cur:
+        if on_conflict_do_nothing:
+            insert_sql = sql.SQL("insert into {} ({}) values ({}) on conflict do nothing").format(
+                sql.Identifier(table),
+                sql.SQL(", ").join(sql.Identifier(column) for column in columns),
+                sql.SQL(", ").join(sql.Placeholder() for _ in columns),
+            )
+            for row in rows:
+                if auto_gen_time is not None and "auto_gen_time" in columns and len(row) == len(columns) - 1:
+                    row = (*row, auto_gen_time)
+                cur.execute(insert_sql, row)
+            return
         with cur.copy(f"COPY {table} ({', '.join(columns)}) FROM STDIN") as copy:
             for row in rows:
+                if auto_gen_time is not None and "auto_gen_time" in columns and len(row) == len(columns) - 1:
+                    row = (*row, auto_gen_time)
                 copy.write_row(row)
+
+
+def cleanup_expired_auto_generated_rows(conn: psycopg.Connection, retention_days: int = 60) -> dict[str, int]:
+    if retention_days <= 0:
+        raise ValueError("retention_days must be greater than 0")
+
+    counts: dict[str, int] = {}
+    cutoff_sql = "auto_gen_time > 0 and auto_gen_time < extract(epoch from now() - (%s * interval '1 day'))::bigint"
+    fact_tables = [
+        "fact_payments",
+        "fact_resource_transactions",
+        "fact_battles",
+        "fact_building_upgrades",
+        "fact_research",
+        "fact_army_training",
+        "fact_events",
+        "fact_sessions",
+    ]
+    with conn.cursor() as cur:
+        for table_name in fact_tables:
+            cur.execute(
+                sql.SQL("delete from {} where " + cutoff_sql).format(sql.Identifier(table_name)),
+                (retention_days,),
+            )
+            counts[table_name] = cur.rowcount
+
+        # 维表只清理已无事实表引用的自动生成行，避免误删仍在活跃的玩家、商品或字典。
+        cur.execute(
+            """
+            delete from dim_player p
+            where p.auto_gen_time > 0
+              and p.auto_gen_time < extract(epoch from now() - (%s * interval '1 day'))::bigint
+              and not exists (select 1 from fact_sessions s where s.player_id = p.player_id)
+              and not exists (select 1 from fact_events e where e.player_id = p.player_id)
+              and not exists (select 1 from fact_payments py where py.player_id = p.player_id)
+              and not exists (select 1 from fact_battles b where b.player_id = p.player_id or b.target_player_id = p.player_id)
+              and not exists (select 1 from fact_resource_transactions r where r.player_id = p.player_id)
+              and not exists (select 1 from fact_building_upgrades bu where bu.player_id = p.player_id)
+              and not exists (select 1 from fact_research rs where rs.player_id = p.player_id)
+              and not exists (select 1 from fact_army_training at where at.player_id = p.player_id)
+            """,
+            (retention_days,),
+        )
+        counts["dim_player"] = cur.rowcount
+
+        cur.execute(
+            """
+            delete from dim_product p
+            where p.auto_gen_time > 0
+              and p.auto_gen_time < extract(epoch from now() - (%s * interval '1 day'))::bigint
+              and not exists (select 1 from fact_payments py where py.product_id = p.product_id)
+            """,
+            (retention_days,),
+        )
+        counts["dim_product"] = cur.rowcount
+
+        cur.execute(
+            """
+            delete from dim_event_name e
+            where e.auto_gen_time > 0
+              and e.auto_gen_time < extract(epoch from now() - (%s * interval '1 day'))::bigint
+              and not exists (select 1 from fact_events fe where fe.event_name = e.event_name)
+            """,
+            (retention_days,),
+        )
+        counts["dim_event_name"] = cur.rowcount
+
+        cur.execute(
+            """
+            delete from dim_alliance a
+            where a.auto_gen_time > 0
+              and a.auto_gen_time < extract(epoch from now() - (%s * interval '1 day'))::bigint
+              and not exists (select 1 from dim_player p where p.current_alliance_id = a.alliance_id)
+            """,
+            (retention_days,),
+        )
+        counts["dim_alliance"] = cur.rowcount
+
+        cur.execute(
+            """
+            delete from dim_server s
+            where s.auto_gen_time > 0
+              and s.auto_gen_time < extract(epoch from now() - (%s * interval '1 day'))::bigint
+              and not exists (select 1 from dim_alliance a where a.server_id = s.server_id)
+              and not exists (select 1 from dim_player p where p.register_server_id = s.server_id)
+              and not exists (select 1 from fact_sessions fs where fs.server_id = s.server_id)
+              and not exists (select 1 from fact_events fe where fe.server_id = s.server_id)
+              and not exists (select 1 from fact_payments py where py.server_id = s.server_id)
+              and not exists (select 1 from fact_battles b where b.server_id = s.server_id)
+              and not exists (select 1 from fact_resource_transactions r where r.server_id = s.server_id)
+              and not exists (select 1 from fact_building_upgrades bu where bu.server_id = s.server_id)
+              and not exists (select 1 from fact_research rs where rs.server_id = s.server_id)
+              and not exists (select 1 from fact_army_training at where at.server_id = s.server_id)
+            """,
+            (retention_days,),
+        )
+        counts["dim_server"] = cur.rowcount
+
     conn.commit()
+    return counts
 
 
 def apply_data_dictionary(conn: psycopg.Connection) -> None:
@@ -924,6 +1095,9 @@ def apply_data_dictionary(conn: psycopg.Connection) -> None:
 
 def generate(args: argparse.Namespace) -> dict[str, int]:
     random.seed(args.seed)
+    auto_gen_time = int(getattr(args, "auto_gen_time", 0)) or int(time.time())
+    id_offset = int(getattr(args, "id_offset", 0))
+    big_id_offset = id_offset * 1000
     start = datetime.strptime(args.start_date, "%Y-%m-%d").date()
     days = date_range(start, args.days)
     end = days[-1]
@@ -977,6 +1151,7 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
     players: list[Player] = []
     players_by_server: dict[int, list[int]] = defaultdict(list)
     for idx, install_index in enumerate(install_indices, start=1):
+        player_id = id_offset + idx
         install_day = days[install_index]
         hour = int(weighted_choice([(9, 0.10), (10, 0.08), (12, 0.14), (14, 0.10), (18, 0.16), (20, 0.24), (22, 0.13), (1, 0.05)]))
         register_time = day_dt(install_day, hour, random.randint(0, 59), random.randint(0, 59))
@@ -991,9 +1166,9 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
         server_id = choose_server(install_day)
         tutorial_target = int(weighted_choice([(1, 0.004), (2, 0.006), (3, 0.010), (4, 0.020), (5, 0.030), (6, 0.050), (7, 0.065), (8, 0.075), (9, 0.080), (10, 0.090), (11, 0.110), (12, 0.460)]))
         player = Player(
-            player_id=idx,
-            account_id=f"acc_{idx:08d}",
-            role_id=f"role_{server_id}_{idx:08d}",
+            player_id=player_id,
+            account_id=f"acc_{player_id:08d}",
+            role_id=f"role_{server_id}_{player_id:08d}",
             device_id=f"dev_{random.getrandbits(64):016x}",
             register_time=register_time,
             install_date=install_day,
@@ -1027,17 +1202,16 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
     resource_balances: dict[int, dict[str, int]] = defaultdict(lambda: {"food": 15000, "wood": 15000, "stone": 8000, "iron": 5000, "gold": 350})
     building_levels: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(lambda: 1))
     research_levels: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    product_by_id = {p[0]: p for p in PRODUCTS}
 
-    session_id = 1
-    event_seq = 1
-    order_seq = 1
-    trans_id = 1
-    battle_id = 1
-    upgrade_id = 1
-    research_id = 1
-    training_id = 1
-    task_seq = 1
+    session_id = big_id_offset + 1
+    event_seq = big_id_offset + 1
+    order_seq = big_id_offset + 1
+    trans_id = big_id_offset + 1
+    battle_id = big_id_offset + 1
+    upgrade_id = big_id_offset + 1
+    research_id = big_id_offset + 1
+    training_id = big_id_offset + 1
+    task_seq = big_id_offset + 1
 
     def next_event_uid() -> str:
         nonlocal event_seq
@@ -1541,40 +1715,51 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
 
     conn = psycopg.connect(host=args.host, port=args.port, dbname=args.db_name, user=args.user, password=args.password)
     create_schema(conn)
-    copy_rows(conn, "dim_server", ["server_id", "server_code", "server_name", "open_date", "region", "timezone"], servers)
-    copy_rows(conn, "dim_alliance", ["alliance_id", "server_id", "alliance_tag", "alliance_name", "language", "tier", "create_time", "max_members", "member_count", "active_member_7d", "total_power", "leader_player_id"], alliance_rows)
-    copy_rows(conn, "dim_product", ["product_id", "product_name", "product_type", "price_usd", "limit_type", "unlock_level", "is_first_pay_pack"], PRODUCTS)
-    copy_rows(conn, "dim_event_name", ["event_name", "event_category", "event_cn_name", "description", "required_attrs"], event_name_rows)
-    copy_rows(conn, "dim_player", ["player_id", "account_id", "role_id", "device_id", "register_time", "install_date", "country", "language", "platform", "channel", "campaign", "device_tier", "device_model", "os_version", "register_server_id", "activity_segment", "payer_segment", "current_level", "current_vip_level", "current_power", "current_city_level", "current_alliance_id", "first_pay_time", "total_pay_amount", "last_active_date"], player_rows)
-    copy_rows(conn, "fact_sessions", ["session_id", "session_uid", "player_id", "account_id", "role_id", "device_id", "server_id", "session_start", "session_end", "duration_seconds", "lifecycle_day", "player_level_start", "player_level_end", "power_start", "power_end", "platform", "channel", "campaign", "client_version", "app_build", "sdk_version", "device_tier", "device_model", "os_version", "network_type", "country", "ip_country"], session_rows)
-    copy_rows(conn, "fact_events", ["event_uid", "client_event_id", "trace_id", "event_time", "client_time", "server_receive_time", "ingest_time", "event_date", "player_id", "account_id", "role_id", "device_id", "server_id", "session_id", "event_name", "event_category", "lifecycle_day", "player_level", "vip_level", "power", "alliance_id", "client_version", "app_build", "sdk_version", "event_schema_version", "platform", "channel", "campaign", "country", "ip_country", "language", "device_model", "os_version", "device_tier", "network_type", "event_source", "sequence_in_session", "attributes"], event_rows)
-    copy_rows(conn, "fact_payments", ["order_id", "start_event_uid", "final_event_uid", "event_time", "event_date", "player_id", "server_id", "session_id", "product_id", "product_name", "amount_usd", "gross_revenue_usd", "refund_amount_usd", "net_revenue_usd", "local_currency", "payment_channel", "payment_status", "fail_reason", "refund_reason", "is_first_pay", "pay_sequence", "lifecycle_day", "vip_level_after", "player_level", "revenue_tier", "attributes"], payment_rows)
-    copy_rows(conn, "fact_battles", ["battle_id", "battle_uid", "event_uid", "march_start_event_uid", "march_finish_event_uid", "event_time", "event_date", "player_id", "server_id", "session_id", "battle_type", "target_type", "target_player_id", "result", "troops_sent", "troops_lost", "wounded", "power_delta", "resource_looted", "stamina_spent", "map_x", "map_y", "attributes"], battle_rows)
-    copy_rows(conn, "fact_resource_transactions", ["trans_id", "event_uid", "business_event_uid", "event_time", "event_date", "player_id", "server_id", "session_id", "resource_type", "change_amount", "balance_after", "source_sink", "reason", "is_paid_related", "attributes"], resource_rows)
-    copy_rows(conn, "fact_building_upgrades", ["upgrade_id", "task_id", "start_event_uid", "finish_event_uid", "start_time", "finish_time", "claim_time", "start_session_id", "finish_session_id", "player_id", "server_id", "building_type", "from_level", "to_level", "duration_seconds", "speedup_seconds", "finish_reason", "power_gain", "cost_json"], building_rows)
-    copy_rows(conn, "fact_research", ["research_id", "task_id", "start_event_uid", "finish_event_uid", "start_time", "finish_time", "claim_time", "start_session_id", "finish_session_id", "player_id", "server_id", "research_type", "from_level", "to_level", "duration_seconds", "speedup_seconds", "finish_reason", "power_gain", "cost_json"], research_rows)
-    copy_rows(conn, "fact_army_training", ["training_id", "task_id", "start_event_uid", "finish_event_uid", "start_time", "finish_time", "claim_time", "start_session_id", "finish_session_id", "player_id", "server_id", "troop_type", "troop_tier", "troop_count", "duration_seconds", "speedup_seconds", "finish_reason", "power_gain", "cost_json"], training_rows)
+    copy_rows(conn, "dim_server", ["server_id", "server_code", "server_name", "open_date", "region", "timezone", "auto_gen_time"], servers, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
+    copy_rows(conn, "dim_alliance", ["alliance_id", "server_id", "alliance_tag", "alliance_name", "language", "tier", "create_time", "max_members", "member_count", "active_member_7d", "total_power", "leader_player_id", "auto_gen_time"], alliance_rows, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
+    copy_rows(conn, "dim_product", ["product_id", "product_name", "product_type", "price_usd", "limit_type", "unlock_level", "is_first_pay_pack", "auto_gen_time"], PRODUCTS, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
+    copy_rows(conn, "dim_event_name", ["event_name", "event_category", "event_cn_name", "description", "required_attrs", "auto_gen_time"], event_name_rows, auto_gen_time=auto_gen_time, on_conflict_do_nothing=True)
+    copy_rows(conn, "dim_player", ["player_id", "account_id", "role_id", "device_id", "register_time", "install_date", "country", "language", "platform", "channel", "campaign", "device_tier", "device_model", "os_version", "register_server_id", "activity_segment", "payer_segment", "current_level", "current_vip_level", "current_power", "current_city_level", "current_alliance_id", "first_pay_time", "total_pay_amount", "last_active_date", "auto_gen_time"], player_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_sessions", ["session_id", "session_uid", "player_id", "account_id", "role_id", "device_id", "server_id", "session_start", "session_end", "duration_seconds", "lifecycle_day", "player_level_start", "player_level_end", "power_start", "power_end", "platform", "channel", "campaign", "client_version", "app_build", "sdk_version", "device_tier", "device_model", "os_version", "network_type", "country", "ip_country", "auto_gen_time"], session_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_events", ["event_uid", "client_event_id", "trace_id", "event_time", "client_time", "server_receive_time", "ingest_time", "event_date", "player_id", "account_id", "role_id", "device_id", "server_id", "session_id", "event_name", "event_category", "lifecycle_day", "player_level", "vip_level", "power", "alliance_id", "client_version", "app_build", "sdk_version", "event_schema_version", "platform", "channel", "campaign", "country", "ip_country", "language", "device_model", "os_version", "device_tier", "network_type", "event_source", "sequence_in_session", "attributes", "auto_gen_time"], event_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_payments", ["order_id", "start_event_uid", "final_event_uid", "event_time", "event_date", "player_id", "server_id", "session_id", "product_id", "product_name", "amount_usd", "gross_revenue_usd", "refund_amount_usd", "net_revenue_usd", "local_currency", "payment_channel", "payment_status", "fail_reason", "refund_reason", "is_first_pay", "pay_sequence", "lifecycle_day", "vip_level_after", "player_level", "revenue_tier", "attributes", "auto_gen_time"], payment_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_battles", ["battle_id", "battle_uid", "event_uid", "march_start_event_uid", "march_finish_event_uid", "event_time", "event_date", "player_id", "server_id", "session_id", "battle_type", "target_type", "target_player_id", "result", "troops_sent", "troops_lost", "wounded", "power_delta", "resource_looted", "stamina_spent", "map_x", "map_y", "attributes", "auto_gen_time"], battle_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_resource_transactions", ["trans_id", "event_uid", "business_event_uid", "event_time", "event_date", "player_id", "server_id", "session_id", "resource_type", "change_amount", "balance_after", "source_sink", "reason", "is_paid_related", "attributes", "auto_gen_time"], resource_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_building_upgrades", ["upgrade_id", "task_id", "start_event_uid", "finish_event_uid", "start_time", "finish_time", "claim_time", "start_session_id", "finish_session_id", "player_id", "server_id", "building_type", "from_level", "to_level", "duration_seconds", "speedup_seconds", "finish_reason", "power_gain", "cost_json", "auto_gen_time"], building_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_research", ["research_id", "task_id", "start_event_uid", "finish_event_uid", "start_time", "finish_time", "claim_time", "start_session_id", "finish_session_id", "player_id", "server_id", "research_type", "from_level", "to_level", "duration_seconds", "speedup_seconds", "finish_reason", "power_gain", "cost_json", "auto_gen_time"], research_rows, auto_gen_time=auto_gen_time)
+    copy_rows(conn, "fact_army_training", ["training_id", "task_id", "start_event_uid", "finish_event_uid", "start_time", "finish_time", "claim_time", "start_session_id", "finish_session_id", "player_id", "server_id", "troop_type", "troop_tier", "troop_count", "duration_seconds", "speedup_seconds", "finish_reason", "power_gain", "cost_json", "auto_gen_time"], training_rows, auto_gen_time=auto_gen_time)
     with conn.cursor() as cur:
         cur.execute(
             """
-            create index idx_fact_events_date_name on fact_events(event_date, event_name);
-            create index idx_fact_events_uid on fact_events(event_uid);
-            create index idx_fact_events_player_time on fact_events(player_id, event_time);
-            create index idx_fact_events_session on fact_events(session_id);
-            create index idx_fact_events_attrs_gin on fact_events using gin(attributes);
-            create index idx_sessions_start_server on fact_sessions(session_start, server_id);
-            create index idx_payments_status_date on fact_payments(payment_status, event_date);
-            create index idx_battles_date_type on fact_battles(event_date, battle_type);
-            create index idx_resource_date_reason on fact_resource_transactions(event_date, reason);
-            create index idx_building_task_time on fact_building_upgrades(start_time, finish_time);
-            create index idx_research_task_time on fact_research(start_time, finish_time);
-            create index idx_training_task_time on fact_army_training(start_time, finish_time);
+            create index if not exists idx_fact_events_date_name on fact_events(event_date, event_name);
+            create index if not exists idx_fact_events_uid on fact_events(event_uid);
+            create index if not exists idx_fact_events_player_time on fact_events(player_id, event_time);
+            create index if not exists idx_fact_events_session on fact_events(session_id);
+            create index if not exists idx_fact_events_attrs_gin on fact_events using gin(attributes);
+            create index if not exists idx_dim_server_auto_gen_time on dim_server(auto_gen_time);
+            create index if not exists idx_dim_alliance_auto_gen_time on dim_alliance(auto_gen_time);
+            create index if not exists idx_dim_product_auto_gen_time on dim_product(auto_gen_time);
+            create index if not exists idx_dim_event_name_auto_gen_time on dim_event_name(auto_gen_time);
+            create index if not exists idx_dim_player_auto_gen_time on dim_player(auto_gen_time);
+            create index if not exists idx_sessions_start_server on fact_sessions(session_start, server_id);
+            create index if not exists idx_fact_sessions_auto_gen_time on fact_sessions(auto_gen_time);
+            create index if not exists idx_payments_status_date on fact_payments(payment_status, event_date);
+            create index if not exists idx_fact_events_auto_gen_time on fact_events(auto_gen_time);
+            create index if not exists idx_fact_payments_auto_gen_time on fact_payments(auto_gen_time);
+            create index if not exists idx_battles_date_type on fact_battles(event_date, battle_type);
+            create index if not exists idx_fact_battles_auto_gen_time on fact_battles(auto_gen_time);
+            create index if not exists idx_resource_date_reason on fact_resource_transactions(event_date, reason);
+            create index if not exists idx_fact_resource_transactions_auto_gen_time on fact_resource_transactions(auto_gen_time);
+            create index if not exists idx_building_task_time on fact_building_upgrades(start_time, finish_time);
+            create index if not exists idx_fact_building_upgrades_auto_gen_time on fact_building_upgrades(auto_gen_time);
+            create index if not exists idx_research_task_time on fact_research(start_time, finish_time);
+            create index if not exists idx_fact_research_auto_gen_time on fact_research(auto_gen_time);
+            create index if not exists idx_training_task_time on fact_army_training(start_time, finish_time);
+            create index if not exists idx_fact_army_training_auto_gen_time on fact_army_training(auto_gen_time);
             analyze;
             """
         )
-    conn.commit()
-    conn.close()
-    return {
+    counts = {
         "servers": len(servers),
         "alliances": len(alliance_rows),
         "players": len(player_rows),
@@ -1587,6 +1772,12 @@ def generate(args: argparse.Namespace) -> dict[str, int]:
         "research": len(research_rows),
         "army_training": len(training_rows),
     }
+    on_success = getattr(args, "on_success", None)
+    if on_success is not None:
+        on_success(conn, counts)
+    conn.commit()
+    conn.close()
+    return counts
 
 
 def main() -> None:

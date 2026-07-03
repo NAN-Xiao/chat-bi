@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir psycopg[binary] PyYAML
+
+COPY tools/create_slg_bi_mock_db_prod.py /app/tools/create_slg_bi_mock_db_prod.py
+COPY tools/slg_bi_mock_scheduled_generator.py /app/tools/slg_bi_mock_scheduled_generator.py
+
+ENV PYTHONUNBUFFERED=1
+ENV CONFIG_FILE=/app/config/slg_mock_generator.yaml
+
+ENTRYPOINT ["python", "/app/tools/slg_bi_mock_scheduled_generator.py"]
