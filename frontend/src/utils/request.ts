@@ -44,6 +44,9 @@ const decodeHeader = (value: string) => {
 
 const HTML_ERROR_RESPONSE_PATTERN = /<\s*(?:!doctype|html|head|body|title|center|h[1-6])[\s>]/i
 const MAX_ERROR_MESSAGE_LENGTH = 300
+const DUPLICATE_ERROR_MESSAGE_INTERVAL = 2000
+let lastErrorMessage = ''
+let lastErrorMessageAt = 0
 
 const normalizeErrorText = (value: string) => {
   const text = value.trim()
@@ -64,6 +67,64 @@ const errorResponseMessage = (data: any) => {
   } catch {
     return normalizeErrorText(String(data))
   }
+}
+
+const statusErrorMessage = (status?: number) => {
+  switch (status) {
+    case 400:
+      return 'Invalid request parameters'
+    case 401:
+      return 'Unauthorized, please login again'
+    case 403:
+      return 'Access denied'
+    case 404:
+      return 'Resource not found'
+    case 500:
+      return 'Server error'
+    case 502:
+      return '服务网关异常（502），请稍后重试或联系管理员'
+    case 503:
+      return '服务暂时不可用（503），请稍后重试'
+    case 504:
+      return '服务响应超时（504），请稍后重试'
+    default:
+      return status ? `Server responded with error: ${status}` : ''
+  }
+}
+
+export const formatRequestErrorMessage = (error: any, fallback = 'Request error') => {
+  if (!error) return fallback
+  if (axios.isAxiosError(error)) {
+    const responseMessage = error.response?.data ? errorResponseMessage(error.response.data) : ''
+    return (
+      responseMessage ||
+      statusErrorMessage(error.response?.status) ||
+      normalizeErrorText(error.message || '') ||
+      fallback
+    )
+  }
+  if (error?.response?.data) {
+    const responseMessage = errorResponseMessage(error.response.data)
+    if (responseMessage) return responseMessage
+  }
+  if (typeof error === 'string') {
+    return normalizeErrorText(error) || fallback
+  }
+  return normalizeErrorText(error?.message || String(error)) || fallback
+}
+
+const showErrorMessage = (message: string) => {
+  const now = Date.now()
+  if (message === lastErrorMessage && now - lastErrorMessageAt < DUPLICATE_ERROR_MESSAGE_INTERVAL) {
+    return
+  }
+  lastErrorMessage = message
+  lastErrorMessageAt = now
+  ElMessage({
+    message,
+    type: 'error',
+    showClose: true,
+  })
 }
 
 const syncTenantContextFromResponse = (response: AxiosResponse) => {
@@ -307,14 +368,9 @@ class HttpService {
     const hasUserToken = Boolean(wsCache.get('user.token'))
 
     if (error.response) {
+      errorMessage = formatRequestErrorMessage(error, statusErrorMessage(error.response.status) || errorMessage)
       switch (error.response.status) {
-        case 400:
-          errorMessage = 'Invalid request parameters'
-          break
         case 401:
-          errorMessage = error.response?.data
-            ? error.response.data.toString()
-            : 'Unauthorized, please login again'
           // Redirect to login page if needed
           if (assistantStore.getAssistant) {
             wsCache.delete('user.token')
@@ -325,11 +381,7 @@ class HttpService {
             return
           }
           if (hasUserToken) {
-            ElMessage({
-              message: errorMessage,
-              type: 'error',
-              showClose: true,
-            })
+            showErrorMessage(errorMessage)
           }
           setTimeout(() => {
             wsCache.delete('user.token')
@@ -345,29 +397,6 @@ class HttpService {
           }, 2000)
           return
         // break
-        case 403:
-          errorMessage = 'Access denied'
-          break
-        case 404:
-          errorMessage = 'Resource not found'
-          break
-        case 500:
-          errorMessage = 'Server error'
-          break
-        case 502:
-          errorMessage = '服务网关异常（502），请稍后重试或联系管理员'
-          break
-        case 503:
-          errorMessage = '服务暂时不可用（503），请稍后重试'
-          break
-        case 504:
-          errorMessage = '服务响应超时（504），请稍后重试'
-          break
-        default:
-          errorMessage = `Server responded with error: ${error.response.status}`
-      }
-      if (error?.response?.data) {
-        errorMessage = errorResponseMessage(error.response.data) || errorMessage
       }
     } else if (error.request) {
       errorMessage = 'No response from server'
@@ -375,16 +404,12 @@ class HttpService {
       errorMessage = 'Request canceled'
       return // Skip showing cancel messages
     } else {
-      errorMessage = error['message'] || 'Unknown error'
+      errorMessage = formatRequestErrorMessage(error, 'Unknown error')
     }
 
     // Show error using UI library (e.g., Element Plus, Ant Design)
     console.error(errorMessage)
-    ElMessage({
-      message: errorMessage,
-      type: 'error',
-      showClose: true,
-    })
+    showErrorMessage(errorMessage)
   }
 
   // Cancel all pending requests

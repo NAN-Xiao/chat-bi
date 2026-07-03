@@ -9,6 +9,7 @@ import { genFileId, type UploadInstance, type UploadProps, type UploadRawFile } 
 import { useCache } from '@/utils/useCache.ts'
 import { datasourceApi } from '@/api/datasource'
 import { getLocale } from '@/utils/utils.ts'
+import { formatRequestErrorMessage } from '@/utils/request'
 import ccmUpload from '@/assets/svg/icon_export_outlined.svg'
 
 const { t } = useI18n()
@@ -134,7 +135,7 @@ const onError = (err: Error) => {
   infoMessage.value = msg
   hasError.value = true
   close()
-  ElMessage.error(err.toString())
+  ElMessage.error(formatRequestErrorMessage(err, msg || '上传失败'))
 }
 
 const dialogShow = ref<boolean>(false)

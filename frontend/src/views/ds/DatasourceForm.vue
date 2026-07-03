@@ -17,6 +17,7 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_fileExcel_colorful from '@/assets/datasource/icon_excel.png'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import { useCache } from '@/utils/useCache'
+import { formatRequestErrorMessage } from '@/utils/request'
 import ExcelDetailDialog from './ExcelDetailDialog.vue'
 import icon_visible_outlined from '@/assets/embedded/icon_visible_outlined.svg'
 
@@ -460,7 +461,7 @@ const saveExcel = (excel: any) => {
 }
 
 const onError = (e: any) => {
-  ElMessage.error(e.toString())
+  ElMessage.error(formatRequestErrorMessage(e, '上传失败'))
   uploadLoading.value = false
 }
 
