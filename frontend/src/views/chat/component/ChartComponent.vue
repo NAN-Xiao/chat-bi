@@ -106,6 +106,12 @@ function hasRenderedOutput() {
   if (params.type === 'metric') {
     return element.children.length > 0
   }
+  if (params.type === 'table') {
+    return Boolean(
+      element.querySelector('canvas, svg, .s2-table, .s2-spreadsheet, .s2-container') ||
+        element.children.length > 0
+    )
+  }
   return Boolean(element.querySelector('canvas, svg'))
 }
 
