@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Delete, FolderAdd, Plus } from '@element-plus/icons-vue'
 import { dashboardApi } from '@/api/dashboard.ts'
+import { datasourceApi } from '@/api/datasource.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
 import { request } from '@/utils/request.ts'
+import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
+import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type {
   ChartAxis,
@@ -54,6 +58,42 @@ type PreviewResultSnapshot = {
   status: string
   message: string
   raw?: any
+}
+type SqlBuilderFilterLogic = 'and' | 'or'
+type SqlBuilderFilter = {
+  id: string
+  type?: 'rule' | 'group'
+  field: string
+  operator: string
+  value: string
+  logic?: SqlBuilderFilterLogic
+  children?: SqlBuilderFilter[]
+}
+type SqlBuilderMetricItem = {
+  id: string
+  event: string
+  metric: string
+  aggregation: string
+  alias: string
+  filterLogic: SqlBuilderFilterLogic
+  filters: SqlBuilderFilter[]
+}
+type SchemaFieldOption = {
+  label: string
+  value: string
+  table: string
+  tableId?: number | string
+  tableLabel?: string
+  field: string
+  displayName?: string
+  type?: string
+  comment?: string
+  tableComment?: string
+  category?: string
+  sourceField?: string
+  jsonPath?: string
+  expression?: string
+  isJsonSubfield?: boolean
 }
 
 const mcpTextFallbacks: Record<string, string> = {
@@ -137,6 +177,17 @@ const form = reactive({
   mcpKeyField: '',
   mcpValueField: '',
 })
+const sqlBuilder = reactive({
+  activeTab: 'builder',
+  timeField: '',
+  timeGrain: 'day',
+  timeRange: '30d',
+  timeCustomRange: [] as string[],
+  metricItems: [] as SqlBuilderMetricItem[],
+  groups: [] as string[],
+  globalFilters: [] as SqlBuilderFilter[],
+  globalFilterLogic: 'and' as SqlBuilderFilterLogic,
+})
 
 const preview = reactive({
   fields: [] as string[],
@@ -170,6 +221,8 @@ const mcpToolsError = ref('')
 const mcpTools = ref<ExternalMcpToolInfo[]>([])
 const mcpFilterOptionsLoading = ref(false)
 const mcpFilterOptions = ref<Record<string, string[]>>({})
+const schemaLoading = ref(false)
+const schemaTables = ref<any[]>([])
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
@@ -249,6 +302,41 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'treemap', value: 'treemap' },
 ]
 
+const builderTimeGrainOptions = [
+  { label: '按天', value: 'day' },
+  { label: '按周', value: 'week' },
+  { label: '按月', value: 'month' },
+  { label: '不按时间', value: 'none' },
+]
+
+const builderTimeRangeOptions = [
+  { label: '过去7天', value: '7d' },
+  { label: '过去30天', value: '30d' },
+  { label: '过去90天', value: '90d' },
+  { label: '自定义', value: 'custom' },
+  { label: '全部', value: 'all' },
+]
+
+const builderAggregationOptions = [
+  { label: '总次数', value: 'count' },
+  { label: '求和', value: 'sum' },
+  { label: '平均值', value: 'avg' },
+  { label: '最大值', value: 'max' },
+  { label: '最小值', value: 'min' },
+  { label: '去重数', value: 'count_distinct' },
+]
+
+const builderFilterOperatorOptions = [
+  { label: '等于', value: 'eq' },
+  { label: '不等于', value: 'ne' },
+  { label: '包含', value: 'contains' },
+  { label: '大于', value: 'gt' },
+  { label: '小于', value: 'lt' },
+  { label: '范围', value: 'between' },
+  { label: '为空', value: 'is_null' },
+  { label: '非空', value: 'is_not_null' },
+]
+
 const sourceTypeOptions = computed(() => [
   { label: mt('chart_source_sql'), value: 'sql' as ChartDataSourceType },
   { label: mt('chart_source_mcp'), value: 'external_mcp' as ChartDataSourceType },
@@ -294,6 +382,46 @@ const currentExternalMcpTenantId = computed(() =>
   )
 )
 const currentDashboardId = computed(() => stableId(props.dashboardInfo?.id || props.viewInfo?.dashboard_id || props.viewInfo?.dashboardId || props.viewInfo?.mcp?.dashboardId || props.viewInfo?.mcp?.dashboard_id))
+const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
+  const options: SchemaFieldOption[] = []
+  const seen = new Set<string>()
+  ;(schemaTables.value || []).forEach((table: any) => {
+    const tableName = table?.table_name || table?.tableName || table?.name || table?.table || ''
+    if (!tableName) return
+    const tableComment = table?.custom_comment || table?.customComment || table?.table_comment || table?.tableComment || table?.comment || ''
+    const tableDisplayName = table?.display_name || table?.displayName || ''
+    const tableLabel = tableDisplayName || tableComment
+    ;(table?.fields || []).forEach((field: any) => {
+      const fieldName = field?.field_name || field?.fieldName || field?.name || field?.column_name || field?.columnName || ''
+      if (!fieldName) return
+      const value = tableName ? `${tableName}.${fieldName}` : fieldName
+      if (seen.has(value)) return
+      seen.add(value)
+      const type = field?.field_type || field?.fieldType || field?.type || ''
+      const comment = field?.custom_comment || field?.customComment || field?.field_comment || field?.fieldComment || field?.comment || ''
+      const displayName = field?.display_name || field?.displayName || ''
+      options.push({
+        label: displayName || fieldName,
+        value,
+        table: tableName,
+        tableId: table?.id,
+        tableLabel,
+        field: fieldName,
+        displayName,
+        type,
+        comment,
+        tableComment,
+        category: builderFieldCategory(type, fieldName),
+      })
+    })
+  })
+  return options
+})
+const builderFieldOptions = computed(() => schemaFieldOptions.value)
+const builderTimeFieldOptions = computed(() => {
+  const timeFields = schemaFieldOptions.value.filter((item) => item.category === 'time')
+  return timeFields.length ? timeFields : schemaFieldOptions.value
+})
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
 const seriesFieldOptions = computed(() => {
   const excluded = new Set(form.y)
@@ -576,6 +704,276 @@ function collectPivotGroupSourceValues(field: string) {
 
 function toFieldOptions(fields: string[]) {
   return fields.map((field) => ({ label: field, value: field }))
+}
+
+function builderFieldCategory(type = '', field = '') {
+  const text = `${type} ${field}`.toLowerCase()
+  if (/date|time|timestamp|dt|day|日期|时间/.test(text)) return 'time'
+  if (/int|decimal|double|float|numeric|number|amount|price|count|rate|ratio|score|value/.test(text)) return 'number'
+  return 'text'
+}
+
+function nodeId(prefix: string) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function emptyBuilderFilter(): SqlBuilderFilter {
+  return {
+    id: nodeId('filter'),
+    type: 'rule',
+    field: '',
+    operator: 'eq',
+    value: '',
+    logic: 'and',
+  }
+}
+
+function emptyBuilderFilterGroup(): SqlBuilderFilter {
+  return {
+    id: nodeId('group'),
+    type: 'group',
+    field: '',
+    operator: 'eq',
+    value: '',
+    logic: 'and',
+    children: [emptyBuilderFilter()],
+  }
+}
+
+function emptyMetricItem(): SqlBuilderMetricItem {
+  return {
+    id: nodeId('metric'),
+    event: '',
+    metric: '',
+    aggregation: 'count',
+    alias: '',
+    filterLogic: 'and',
+    filters: [],
+  }
+}
+
+function addMetricItem() {
+  const item = emptyMetricItem()
+  const eventField = schemaFieldOptions.value.find((field) => /(^|[._])event(name)?$/i.test(field.field))
+  const numericField = schemaFieldOptions.value.find((field) => field.category === 'number')
+  item.event = eventField?.value || schemaFieldOptions.value[0]?.value || ''
+  item.metric = numericField?.value || item.event
+  item.alias = `指标${sqlBuilder.metricItems.length + 1}`
+  sqlBuilder.metricItems.push(item)
+}
+
+function removeMetricItem(index: number) {
+  sqlBuilder.metricItems.splice(index, 1)
+}
+
+function metricTitle(item: SqlBuilderMetricItem, index: number) {
+  const event = schemaFieldOptions.value.find((field) => field.value === item.event)
+  const aggregation = builderAggregationOptions.find((option) => option.value === item.aggregation)
+  return `${event?.displayName || event?.label || event?.field || `指标${index + 1}`}.${aggregation?.label || '指标'}`
+}
+
+function fieldOptionByValue(value: string) {
+  return schemaFieldOptions.value.find((field) => field.value === value)
+}
+
+function sqlFieldExpression(value: string) {
+  const option = fieldOptionByValue(value)
+  if (option?.expression) return option.expression
+  if (option?.table && option?.field) return `\`${option.table}\`.\`${option.field}\``
+  const [table, ...fieldParts] = String(value || '').split('.')
+  const field = fieldParts.join('.')
+  if (table && field) return `\`${table}\`.\`${field}\``
+  return value ? `\`${value}\`` : ''
+}
+
+function sqlAlias(value: string, fallback: string) {
+  const clean = String(value || fallback || 'metric').replace(/[^\w\u4e00-\u9fa5]+/g, '_').replace(/^_+|_+$/g, '')
+  return clean || fallback
+}
+
+function quoteSqlValue(value: string) {
+  const trimmed = String(value || '').trim()
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed
+  return `'${trimmed.replace(/'/g, "''")}'`
+}
+
+function filterCondition(node: SqlBuilderFilter): string {
+  if (!node.field && node.type !== 'group') return ''
+  if (node.type === 'group' || Array.isArray(node.children)) {
+    const logic = node.logic === 'or' ? ' OR ' : ' AND '
+    const children = (node.children || []).map(filterCondition).filter(Boolean)
+    return children.length ? `(${children.join(logic)})` : ''
+  }
+  const expr = sqlFieldExpression(node.field)
+  if (!expr) return ''
+  if (node.operator === 'is_null') return `${expr} IS NULL`
+  if (node.operator === 'is_not_null') return `${expr} IS NOT NULL`
+  if (node.operator === 'contains') return `${expr} LIKE '%${String(node.value || '').replace(/'/g, "''")}%'`
+  if (node.operator === 'between') {
+    const [start, end] = String(node.value || '').split(',').map((item) => item.trim())
+    if (!start || !end) return ''
+    return `${expr} BETWEEN ${quoteSqlValue(start)} AND ${quoteSqlValue(end)}`
+  }
+  const operatorMap: Record<string, string> = {
+    eq: '=',
+    ne: '<>',
+    gt: '>',
+    lt: '<',
+  }
+  return `${expr} ${operatorMap[node.operator] || '='} ${quoteSqlValue(node.value)}`
+}
+
+function combineFilters(filters: SqlBuilderFilter[], logic: SqlBuilderFilterLogic) {
+  const rows = filters.map(filterCondition).filter(Boolean)
+  if (!rows.length) return ''
+  return rows.join(logic === 'or' ? ' OR ' : ' AND ')
+}
+
+function aggregateExpression(item: SqlBuilderMetricItem) {
+  const metricExpr = item.aggregation === 'count' ? '*' : sqlFieldExpression(item.metric || item.event)
+  const condition = combineFilters(item.filters || [], item.filterLogic || 'and')
+  const valueExpr = condition && metricExpr !== '*' ? `CASE WHEN ${condition} THEN ${metricExpr} END` : metricExpr
+  const countExpr = condition ? `CASE WHEN ${condition} THEN 1 END` : '*'
+  if (item.aggregation === 'count') return `COUNT(${countExpr})`
+  if (item.aggregation === 'count_distinct') return `COUNT(DISTINCT ${valueExpr})`
+  if (item.aggregation === 'avg') return `AVG(${valueExpr})`
+  if (item.aggregation === 'max') return `MAX(${valueExpr})`
+  if (item.aggregation === 'min') return `MIN(${valueExpr})`
+  if (condition) return `SUM(CASE WHEN ${condition} THEN ${metricExpr} ELSE 0 END)`
+  return `SUM(${metricExpr})`
+}
+
+function timeSelectExpression() {
+  if (sqlBuilder.timeGrain === 'none' || !sqlBuilder.timeField) return ''
+  const expr = sqlFieldExpression(sqlBuilder.timeField)
+  if (sqlBuilder.timeGrain === 'week') return `DATE_FORMAT(${expr}, '%x-W%v')`
+  if (sqlBuilder.timeGrain === 'month') return `DATE_FORMAT(${expr}, '%Y-%m')`
+  return `DATE(${expr})`
+}
+
+function timeWhereCondition() {
+  if (sqlBuilder.timeRange === 'all' || !sqlBuilder.timeField) return ''
+  const expr = sqlFieldExpression(sqlBuilder.timeField)
+  if (sqlBuilder.timeRange === 'custom') {
+    const [start, end] = sqlBuilder.timeCustomRange || []
+    return start && end ? `${expr} BETWEEN '${start}' AND '${end}'` : ''
+  }
+  const days = Number(String(sqlBuilder.timeRange).replace('d', ''))
+  if (!Number.isFinite(days) || days <= 0) return ''
+  return `${expr} >= DATE_SUB(CURRENT_DATE, INTERVAL ${days} DAY)`
+}
+
+function selectedTableName() {
+  const selected = [
+    sqlBuilder.timeField,
+    ...sqlBuilder.metricItems.flatMap((item) => [item.event, item.metric]),
+    ...sqlBuilder.groups,
+  ]
+    .map(fieldOptionByValue)
+    .find(Boolean)
+  return selected?.table || schemaFieldOptions.value[0]?.table || ''
+}
+
+function currentSqlMainTable() {
+  const match = String(form.sql || '').match(/\bfrom\s+([`"\[]?[\w.]+[`"\]]?)/i)
+  return match?.[1]?.replace(/^[`"\[]|[`"\]]$/g, '') || ''
+}
+
+function previewSchemaTables() {
+  const tableName = currentSqlMainTable()
+  const fields = unique([...sourcePreview.fields, ...preview.fields])
+  if (!tableName || !fields.length) return []
+  return [
+    {
+      id: 'current-sql',
+      table_name: tableName,
+      display_name: '当前 SQL',
+      fields: fields.map((field) => ({
+        field_name: field,
+        field_type: sourcePreview.data.some((row) => typeof row?.[field] === 'number') ? 'number' : '',
+        custom_comment: '',
+      })),
+    },
+  ]
+}
+
+function generateBuilderSql() {
+  if (!sqlBuilder.metricItems.length) {
+    addMetricItem()
+  }
+  const tableName = selectedTableName()
+  if (!tableName) {
+    ElMessage.warning('当前数据源没有可用字段')
+    return
+  }
+  const selectRows: string[] = []
+  const groupRows: string[] = []
+  const timeExpr = timeSelectExpression()
+  if (timeExpr) {
+    selectRows.push(`${timeExpr} AS \`日期\``)
+    groupRows.push(timeExpr)
+  }
+  sqlBuilder.groups.forEach((field) => {
+    const expr = sqlFieldExpression(field)
+    if (!expr) return
+    const option = fieldOptionByValue(field)
+    selectRows.push(`${expr} AS \`${sqlAlias(option?.displayName || option?.label || option?.field || field, '分组')}\``)
+    groupRows.push(expr)
+  })
+  sqlBuilder.metricItems.forEach((item, index) => {
+    const alias = item.alias || metricTitle(item, index)
+    selectRows.push(`${aggregateExpression(item)} AS \`${sqlAlias(alias, `指标${index + 1}`)}\``)
+  })
+  const whereRows = [timeWhereCondition(), combineFilters(sqlBuilder.globalFilters, sqlBuilder.globalFilterLogic)].filter(Boolean)
+  const lines = [
+    'SELECT',
+    `  ${selectRows.length ? selectRows.join(',\n  ') : 'COUNT(*) AS `总次数`'}`,
+    `FROM \`${tableName}\``,
+  ]
+  if (whereRows.length) lines.push(`WHERE ${whereRows.join(' AND ')}`)
+  if (groupRows.length) lines.push(`GROUP BY ${groupRows.join(', ')}`)
+  if (groupRows.length) lines.push(`ORDER BY ${groupRows[0]} ASC`)
+  form.sql = lines.join('\n')
+  ElMessage.success('已根据配置生成 SQL')
+}
+
+async function loadSchemaTables() {
+  if (!props.viewInfo?.datasource) {
+    schemaTables.value = previewSchemaTables()
+    return
+  }
+  schemaLoading.value = true
+  try {
+    const tables: any[] = await datasourceApi.tableList(props.viewInfo.datasource)
+    const normalizedTables = Array.isArray(tables) ? tables : []
+    const tablesWithFields = await Promise.all(
+      normalizedTables.map(async (table) => {
+        if (Array.isArray(table?.fields)) {
+          return table
+        }
+        if (!table?.id) {
+          return { ...table, fields: [] }
+        }
+        try {
+          const fields = await datasourceApi.fieldList(table.id, { fieldName: '' })
+          return { ...table, fields: Array.isArray(fields) ? fields : [] }
+        } catch {
+          return { ...table, fields: [] }
+        }
+      })
+    )
+    schemaTables.value = tablesWithFields.length ? tablesWithFields : previewSchemaTables()
+    if (!sqlBuilder.timeField) {
+      sqlBuilder.timeField = builderTimeFieldOptions.value[0]?.value || ''
+    }
+    if (!sqlBuilder.metricItems.length) {
+      addMetricItem()
+    }
+  } catch {
+    schemaTables.value = previewSchemaTables()
+  } finally {
+    schemaLoading.value = false
+  }
 }
 
 function chartSupportsExplicitSeries(chartType: ChartTypes) {
@@ -1644,6 +2042,7 @@ function initEditor() {
   initPivotConfig(viewInfo.pivot)
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
+  void loadSchemaTables()
   if (hasMcpSource.value) {
     void loadMcpServers().then(() => loadMcpTools())
   } else {
@@ -2155,16 +2554,233 @@ function closeDrawer() {
             </el-form-item>
           </div>
         </div>
-        <el-form-item v-if="hasSqlSource" :label="t('dashboard.sql_editor_sql')">
-          <el-input
-            v-model="form.sql"
-            type="textarea"
-            :autosize="{ minRows: 8, maxRows: 16 }"
-            spellcheck="false"
-            @keydown.stop
-            @keyup.stop
-          />
-        </el-form-item>
+        <div v-if="hasSqlSource" class="sql-builder-panel">
+          <div class="sql-builder-header">
+            <div class="sql-builder-tabs">
+              <button
+                type="button"
+                :class="{ active: sqlBuilder.activeTab === 'builder' }"
+                @click="sqlBuilder.activeTab = 'builder'"
+              >
+                图表配置
+              </button>
+              <button
+                type="button"
+                :class="{ active: sqlBuilder.activeTab === 'sql' }"
+                @click="sqlBuilder.activeTab = 'sql'"
+              >
+                SQL 明细
+              </button>
+            </div>
+            <button type="button" class="builder-outline-button" @click="generateBuilderSql">
+              生成 SQL
+            </button>
+          </div>
+
+          <div v-if="sqlBuilder.activeTab === 'builder'" v-loading="schemaLoading" class="sql-builder-content">
+            <section class="builder-section builder-time-section">
+              <div class="builder-section-head">
+                <div class="builder-section-title">
+                  <span class="builder-section-mark"></span>
+                  <span>时间范围</span>
+                </div>
+              </div>
+              <div class="builder-compact-grid">
+                <BuilderFieldPicker
+                  v-model="sqlBuilder.timeField"
+                  :options="builderTimeFieldOptions"
+                  :loading="schemaLoading"
+                  mode="time"
+                  placeholder="时间字段"
+                />
+                <el-select v-model="sqlBuilder.timeGrain" size="small">
+                  <el-option
+                    v-for="item in builderTimeGrainOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+                <el-select v-model="sqlBuilder.timeRange" size="small">
+                  <el-option
+                    v-for="item in builderTimeRangeOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </div>
+              <el-date-picker
+                v-if="sqlBuilder.timeRange === 'custom'"
+                v-model="sqlBuilder.timeCustomRange"
+                type="daterange"
+                value-format="YYYY-MM-DD"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                size="small"
+                class="builder-date-range"
+              />
+            </section>
+
+            <section class="builder-section">
+              <div class="builder-section-head">
+                <div class="builder-section-title">
+                  <span class="builder-section-index">1</span>
+                  <span>分析指标</span>
+                </div>
+                <div class="builder-section-actions">
+                  <button type="button" class="builder-icon-button" title="添加指标" @click="addMetricItem">
+                    <el-icon><Plus /></el-icon>
+                  </button>
+                </div>
+              </div>
+              <div class="metric-list">
+                <div
+                  v-for="(item, index) in sqlBuilder.metricItems"
+                  :key="item.id"
+                  class="metric-item"
+                >
+                  <div class="metric-index">{{ index + 1 }}</div>
+                  <div class="metric-body">
+                    <div class="metric-title">{{ metricTitle(item, index) }}</div>
+                    <div class="metric-chip-row">
+                      <BuilderFieldPicker
+                        v-model="item.event"
+                        :options="builderFieldOptions"
+                        :loading="schemaLoading"
+                        mode="event"
+                        placeholder="事件/字段"
+                      />
+                      <span class="metric-of">的</span>
+                      <el-select v-model="item.aggregation" size="small" class="metric-aggregation">
+                        <el-option
+                          v-for="option in builderAggregationOptions"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </el-select>
+                      <BuilderFieldPicker
+                        v-if="item.aggregation !== 'count'"
+                        v-model="item.metric"
+                        :options="builderFieldOptions"
+                        :loading="schemaLoading"
+                        mode="metric"
+                        placeholder="计算字段"
+                      />
+                      <el-input
+                        v-model="item.alias"
+                        class="metric-alias"
+                        size="small"
+                        clearable
+                        placeholder="别名"
+                        @keydown.stop
+                        @keyup.stop
+                      />
+                      <button type="button" class="builder-icon-button danger" @click="removeMetricItem(index)">
+                        <el-icon><Delete /></el-icon>
+                      </button>
+                    </div>
+                    <BuilderFilterTree
+                      v-if="item.filters.length"
+                      :nodes="item.filters"
+                      :logic="item.filterLogic"
+                      :field-options="builderFieldOptions"
+                      :operator-options="builderFilterOperatorOptions"
+                      :schema-loading="schemaLoading"
+                      :show-toolbar="false"
+                      empty-text="暂无指标筛选"
+                      @update:logic="item.filterLogic = $event"
+                    />
+                    <div class="builder-inline-actions">
+                      <button type="button" class="builder-add-link" @click="item.filters.push(emptyBuilderFilter())">
+                        <el-icon><Plus /></el-icon>
+                        <span>筛选条件</span>
+                      </button>
+                      <button type="button" class="builder-add-link" @click="item.filters.push(emptyBuilderFilterGroup())">
+                        <el-icon><FolderAdd /></el-icon>
+                        <span>条件组</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="builder-section">
+              <div class="builder-section-head">
+                <div class="builder-section-title">
+                  <span class="builder-section-mark"></span>
+                  <span>全局筛选</span>
+                </div>
+                <div class="builder-section-actions">
+                  <button type="button" class="builder-icon-button" title="添加筛选条件" @click="sqlBuilder.globalFilters.push(emptyBuilderFilter())">
+                    <el-icon><Plus /></el-icon>
+                  </button>
+                  <button type="button" class="builder-icon-button" title="添加条件组" @click="sqlBuilder.globalFilters.push(emptyBuilderFilterGroup())">
+                    <el-icon><FolderAdd /></el-icon>
+                  </button>
+                </div>
+              </div>
+              <BuilderFilterTree
+                :nodes="sqlBuilder.globalFilters"
+                :logic="sqlBuilder.globalFilterLogic"
+                :field-options="builderFieldOptions"
+                :operator-options="builderFilterOperatorOptions"
+                :schema-loading="schemaLoading"
+                :show-toolbar="false"
+                empty-text="暂无全局筛选"
+                @update:logic="sqlBuilder.globalFilterLogic = $event"
+              />
+            </section>
+
+            <section class="builder-section">
+              <div class="builder-section-head">
+                <div class="builder-section-title">
+                  <span class="builder-section-mark"></span>
+                  <span>分组项</span>
+                </div>
+                <div class="builder-section-actions">
+                  <button type="button" class="builder-icon-button" title="添加分组项" @click="sqlBuilder.groups.push('')">
+                    <el-icon><Plus /></el-icon>
+                  </button>
+                </div>
+              </div>
+              <div class="group-list">
+                <div v-for="(_, index) in sqlBuilder.groups" :key="index" class="group-row">
+                  <span class="group-index">{{ index + 1 }}</span>
+                  <BuilderFieldPicker
+                    v-model="sqlBuilder.groups[index]"
+                    :options="builderFieldOptions"
+                    :loading="schemaLoading"
+                    mode="property"
+                    placeholder="分组字段"
+                  />
+                  <button type="button" class="builder-icon-button danger" @click="sqlBuilder.groups.splice(index, 1)">
+                    <el-icon><Delete /></el-icon>
+                  </button>
+                </div>
+                <div v-if="!sqlBuilder.groups.length" class="builder-empty">暂无分组项</div>
+              </div>
+            </section>
+
+            <div class="builder-bottom-bar">
+              <el-checkbox>近似计算</el-checkbox>
+              <el-button type="primary" @click="generateBuilderSql">计算/生成</el-button>
+            </div>
+          </div>
+
+          <div v-else class="sql-detail-pane">
+            <el-input
+              v-model="form.sql"
+              type="textarea"
+              :autosize="{ minRows: 18, maxRows: 18 }"
+              spellcheck="false"
+              @keydown.stop
+              @keyup.stop
+            />
+          </div>
+        </div>
         <div v-if="hasMcpSource" class="mcp-editor-panel">
           <el-alert
             class="editor-alert"
@@ -2682,6 +3298,344 @@ function closeDrawer() {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.sql-builder-panel {
+  height: 620px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(31, 35, 41, 0.1);
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sql-builder-header {
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid rgba(31, 35, 41, 0.08);
+  background: #fff;
+}
+
+.sql-builder-tabs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #f4f6fb;
+}
+
+.sql-builder-tabs button {
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #646a73;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sql-builder-tabs button.active {
+  background: #fff;
+  color: #1f54d8;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(31, 35, 41, 0.08);
+}
+
+.builder-outline-button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid #d8e1f2;
+  border-radius: 5px;
+  background: #fff;
+  color: #315cff;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.builder-outline-button:hover {
+  border-color: #315cff;
+  background: #f5f8ff;
+}
+
+.sql-builder-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px 0;
+}
+
+.builder-section {
+  padding: 0 0 18px;
+  margin-bottom: 14px;
+}
+
+.builder-time-section {
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f0f2f6;
+}
+
+.builder-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.builder-section-head {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.builder-section-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.builder-section-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1f54d8;
+  box-shadow: 0 0 0 4px #eef3ff;
+}
+
+.builder-section-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: #171d4f;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.builder-section-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.builder-icon-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #505968;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.builder-icon-button:hover {
+  background: #eef3ff;
+  color: #2f6bff;
+}
+
+.builder-icon-button.danger:hover {
+  background: #fff1f0;
+  color: #f04438;
+}
+
+.builder-compact-grid {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 92px 98px;
+  gap: 6px;
+  align-items: center;
+}
+
+.builder-compact-grid :deep(.builder-field-picker-trigger),
+.group-row :deep(.builder-field-picker-trigger) {
+  width: 100%;
+}
+
+.builder-date-range {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.metric-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.metric-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.metric-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: #171d4f;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.metric-body {
+  min-width: 0;
+}
+
+.metric-title {
+  margin-bottom: 7px;
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.metric-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 28px;
+}
+
+.metric-chip-row :deep(.builder-field-picker-trigger) {
+  max-width: 168px;
+}
+
+.metric-of {
+  color: #8f959e;
+  font-size: 12px;
+  text-align: center;
+}
+
+.metric-aggregation {
+  width: 88px;
+}
+
+.metric-alias {
+  width: 84px;
+}
+
+.builder-add-link {
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #2f6bff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.builder-add-link:hover {
+  background: #eef3ff;
+}
+
+.builder-inline-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.group-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 26px;
+  gap: 6px;
+  align-items: center;
+}
+
+.group-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: #f5f6fa;
+  color: #8f959e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.builder-empty {
+  padding: 4px 0 2px;
+  color: #8f959e;
+  font-size: 12px;
+}
+
+.builder-bottom-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  height: 44px;
+  margin: 0 -18px;
+  padding: 7px 18px;
+  border-top: 1px solid rgba(31, 35, 41, 0.08);
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sql-detail-pane {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  display: flex;
+}
+
+.sql-detail-pane :deep(.el-textarea),
+.sql-detail-pane :deep(.el-textarea__inner) {
+  height: 100%;
+  min-height: 100% !important;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.sql-builder-panel :deep(.el-input__wrapper),
+.sql-builder-panel :deep(.el-select__wrapper) {
+  min-height: 26px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.sql-builder-panel :deep(.el-input__inner),
+.sql-builder-panel :deep(.el-select__placeholder),
+.sql-builder-panel :deep(.el-select__selected-item) {
+  font-size: 12px;
 }
 
 .mcp-editor-panel {

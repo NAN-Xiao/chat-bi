@@ -20,20 +20,15 @@ type SchemaField = {
   id: number | string
   field_name: string
   field_type?: string
-  display_name?: string
   field_comment?: string
   custom_comment?: string
   checked?: boolean
   field_index?: number
-  is_virtual?: boolean
-  source_field?: string
-  json_path?: string
 }
 
 type SchemaTable = {
   id: number | string
   table_name: string
-  display_name?: string
   table_comment?: string
   custom_comment?: string
   checked?: boolean
@@ -42,11 +37,6 @@ type SchemaTable = {
 
 type SchemaMetadata = DatasourceItem & {
   tables: SchemaTable[]
-}
-
-type SchemaTreeEntry = {
-  table: SchemaTable
-  jsonFields: SchemaField[]
 }
 
 type SchemaChangeField = {
@@ -61,19 +51,14 @@ const { t } = useI18n()
 const datasourceLoading = ref(false)
 const schemaLoading = ref(false)
 const changeSubmitting = ref(false)
-const metadataSubmitting = ref(false)
 const tableKeyword = ref('')
 const fieldKeyword = ref('')
 const datasources = ref<DatasourceItem[]>([])
 const schema = ref<SchemaMetadata | null>(null)
 const selectedTableId = ref<number | string | null>(null)
-const selectedJsonFieldName = ref('')
 const changeDrawerVisible = ref(false)
-const metadataDrawerVisible = ref(false)
 const changeMode = ref<'create_table' | 'create_field' | 'alter_field'>('create_table')
-const metadataMode = ref<'table' | 'field'>('table')
 const changeFormRef = ref()
-const metadataFormRef = ref()
 const changeForm = reactive({
   change_type: 'create_table' as 'create_table' | 'alter_table',
   table_name: '',
@@ -82,19 +67,9 @@ const changeForm = reactive({
   source_table_name: '',
   fields: [] as SchemaChangeField[],
 })
-const metadataForm = reactive({
-  table_name: '',
-  field_name: '',
-  display_name: '',
-  comment: '',
-})
 
 const changeFormRules = {
   table_name: [{ required: true, message: t('data_dictionary.table_name_required'), trigger: 'blur' }],
-}
-
-const metadataFormRules = {
-  display_name: [{ max: 255, message: '展示名不能超过 255 个字符', trigger: 'blur' }],
 }
 
 const fieldTypeOptions = [
@@ -111,90 +86,31 @@ const fieldTypeOptions = [
   'jsonb',
 ].map((value) => ({ label: value, value }))
 
-const tableDisplayName = (table: SchemaTable) => table.display_name || table.table_name
-
-const fieldDisplayName = (field: SchemaField) => field.display_name || '-'
-
-const fieldNodeDisplayName = (field: SchemaField) => field.display_name || field.field_name
-
-const sourceFieldName = (field: SchemaField) => {
-  if (field.source_field) return field.source_field
-  return field.field_name.includes('.') ? field.field_name.split('.')[0] : field.field_name
-}
-
-const jsonChildFields = (table: SchemaTable, fieldName: string) => {
-  return (table.fields || []).filter((field) => {
-    return (field.is_virtual || field.field_type === 'json_path') && sourceFieldName(field) === fieldName
-  })
-}
-
-const looksLikeJsonViewField = (table: SchemaTable, field: SchemaField) => {
-  if (field.is_virtual || field.field_type === 'json_path') return false
-  const type = String(field.field_type || '').toLowerCase()
-  const comment = `${field.field_comment || ''} ${field.custom_comment || ''}`.toLowerCase()
-  return (
-    jsonChildFields(table, field.field_name).length > 0 ||
-    type === 'json' ||
-    type === 'jsonb' ||
-    comment.includes('json') ||
-    comment.includes('常用路径') ||
-    comment.includes('json_extract')
-  )
-}
-
-const jsonViewFields = (table: SchemaTable) => {
-  return (table.fields || []).filter((field) => looksLikeJsonViewField(table, field))
-}
-
-const matchesTableKeyword = (table: SchemaTable, keyword: string) => {
-  if (!keyword) return true
-  return [table.table_name, table.display_name, table.table_comment, table.custom_comment].some((value) =>
-    String(value || '').toLowerCase().includes(keyword)
-  )
-}
-
-const matchesFieldKeyword = (field: SchemaField, keyword: string) => {
-  if (!keyword) return true
-  return [field.field_name, field.display_name, field.field_type, field.field_comment, field.custom_comment].some((value) =>
-    String(value || '').toLowerCase().includes(keyword)
-  )
-}
-
-const schemaTree = computed<SchemaTreeEntry[]>(() => {
+const filteredTables = computed(() => {
   const keyword = tableKeyword.value.trim().toLowerCase()
   const tables = schema.value?.tables || []
-  return tables
-    .map((table) => {
-      const jsonFields = jsonViewFields(table)
-      const tableMatched = matchesTableKeyword(table, keyword)
-      const matchedJsonFields = keyword
-        ? jsonFields.filter((field) => matchesFieldKeyword(field, keyword))
-        : jsonFields
-      return {
-        table,
-        jsonFields: tableMatched ? jsonFields : matchedJsonFields,
-      }
-    })
-    .filter((item) => matchesTableKeyword(item.table, keyword) || item.jsonFields.length > 0)
+  if (!keyword) return tables
+  return tables.filter((item) => {
+    return [item.table_name, item.table_comment, item.custom_comment].some((value) =>
+      String(value || '').toLowerCase().includes(keyword)
+    )
+  })
 })
-
-const filteredTables = computed(() => schemaTree.value.map((item) => item.table))
 
 const selectedTable = computed(() => {
   return filteredTables.value.find((item) => String(item.id) === String(selectedTableId.value)) || null
 })
 
-const selectedJsonField = computed(() => {
-  if (!selectedTable.value || !selectedJsonFieldName.value) return null
-  return selectedTable.value.fields.find((field) => field.field_name === selectedJsonFieldName.value) || null
-})
-
 const filteredFields = computed(() => {
   const keyword = fieldKeyword.value.trim().toLowerCase()
   const table = selectedTable.value
-  if (!table) return []
-  const fields = table.fields.filter((field) => !field.is_virtual && !looksLikeJsonViewField(table, field))
-  return fields.filter((item) => matchesFieldKeyword(item, keyword))
+  const fields = table?.fields || []
+  if (!keyword) return fields
+  return fields.filter((item) => {
+    return [item.field_name, item.field_type, item.field_comment, item.custom_comment].some((value) =>
+      String(value || '').toLowerCase().includes(keyword)
+    )
+  })
 })
 
 const changeDrawerTitle = computed(() =>
@@ -205,17 +121,8 @@ const changeDrawerTitle = computed(() =>
     : t('data_dictionary.alter_field')
 )
 
-const metadataDrawerTitle = computed(() =>
-  metadataMode.value === 'table' ? '配置表展示信息' : '配置字段展示信息'
-)
-
-const metadataActionLabel = computed(() =>
-  selectedJsonField.value ? '配置字段展示' : '配置表展示'
-)
-
 const selectFirstVisibleTable = () => {
   selectedTableId.value = filteredTables.value[0]?.id ?? null
-  selectedJsonFieldName.value = ''
 }
 
 const emptyField = (): SchemaChangeField => ({
@@ -236,16 +143,6 @@ const loadSchema = async (id: number | string) => {
   } finally {
     schemaLoading.value = false
   }
-}
-
-const selectTableNode = (table: SchemaTable) => {
-  selectedTableId.value = table.id
-  selectedJsonFieldName.value = ''
-}
-
-const selectJsonNode = (table: SchemaTable, field: SchemaField) => {
-  selectedTableId.value = table.id
-  selectedJsonFieldName.value = field.field_name
 }
 
 const loadDatasources = async () => {
@@ -310,77 +207,6 @@ const openAlterField = (field: SchemaField) => {
     required: false,
   }]
   changeDrawerVisible.value = true
-}
-
-const fieldTypeText = (field: SchemaField) => {
-  if (field.is_virtual || field.field_type === 'json_path') return 'JSON字段'
-  return field.field_type || '-'
-}
-
-const canAlterField = (field: SchemaField) => {
-  const table = selectedTable.value
-  return !!table && !field.is_virtual && !looksLikeJsonViewField(table, field)
-}
-
-const resetMetadataForm = () => {
-  metadataForm.table_name = ''
-  metadataForm.field_name = ''
-  metadataForm.display_name = ''
-  metadataForm.comment = ''
-  metadataFormRef.value?.clearValidate?.()
-}
-
-const openTableMetadata = () => {
-  const table = selectedTable.value
-  if (!table) return
-  resetMetadataForm()
-  metadataMode.value = 'table'
-  metadataForm.table_name = table.table_name
-  metadataForm.display_name = table.display_name || ''
-  metadataForm.comment = table.custom_comment || table.table_comment || ''
-  metadataDrawerVisible.value = true
-}
-
-const openSelectedMetadata = () => {
-  if (selectedJsonField.value) {
-    openFieldMetadata(selectedJsonField.value)
-    return
-  }
-  openTableMetadata()
-}
-
-const openFieldMetadata = (field: SchemaField) => {
-  if (!selectedTable.value) return
-  resetMetadataForm()
-  metadataMode.value = 'field'
-  metadataForm.table_name = selectedTable.value.table_name
-  metadataForm.field_name = field.field_name
-  metadataForm.display_name = field.display_name || ''
-  metadataForm.comment = field.custom_comment || field.field_comment || ''
-  metadataDrawerVisible.value = true
-}
-
-const submitMetadata = async () => {
-  if (!schema.value || !metadataForm.table_name) return
-  const valid = await metadataFormRef.value?.validate?.().catch(() => false)
-  if (!valid) return
-  const currentTableId = selectedTableId.value
-  const currentJsonFieldName = selectedJsonFieldName.value
-  metadataSubmitting.value = true
-  try {
-    schema.value = await datasourceApi.updateSchemaMetadata(schema.value.id, {
-      table_name: metadataForm.table_name,
-      field_name: metadataMode.value === 'field' ? metadataForm.field_name : undefined,
-      display_name: metadataForm.display_name.trim(),
-      comment: metadataForm.comment.trim(),
-    })
-    selectedTableId.value = currentTableId
-    selectedJsonFieldName.value = currentJsonFieldName
-    metadataDrawerVisible.value = false
-    ElMessage.success('展示信息已保存')
-  } finally {
-    metadataSubmitting.value = false
-  }
 }
 
 const addChangeField = () => {
@@ -454,42 +280,19 @@ const submitSchemaChange = async () => {
           </div>
 
           <div class="table-list">
-            <div
-              v-for="item in schemaTree"
-              :key="item.table.id"
-              class="table-tree-group"
+            <button
+              v-for="table in filteredTables"
+              :key="table.id"
+              type="button"
+              class="table-item"
+              :class="{ active: String(selectedTableId) === String(table.id) }"
+              @click="selectedTableId = table.id"
             >
-              <button
-                type="button"
-                class="table-item table-node"
-                :class="{ active: String(selectedTableId) === String(item.table.id) && !selectedJsonFieldName }"
-                @click="selectTableNode(item.table)"
-              >
-                <span class="table-name">{{ tableDisplayName(item.table) }}</span>
-                <span v-if="item.table.display_name" class="table-physical-name">{{ item.table.table_name }}</span>
-                <span class="table-comment">{{ item.table.custom_comment || item.table.table_comment || '-' }}</span>
-              </button>
-              <div v-if="item.jsonFields.length" class="json-node-list">
-                <button
-                  v-for="field in item.jsonFields"
-                  :key="`${item.table.id}:${field.field_name}`"
-                  type="button"
-                  class="json-node"
-                  :class="{
-                    active: String(selectedTableId) === String(item.table.id) && selectedJsonFieldName === field.field_name,
-                  }"
-                  @click="selectJsonNode(item.table, field)"
-                >
-                  <span class="json-node-main">
-                    <span class="json-node-line" />
-                    <span class="json-node-label">{{ fieldNodeDisplayName(field) }}</span>
-                  </span>
-                  <span v-if="field.display_name" class="json-node-physical">{{ field.field_name }}</span>
-                </button>
-              </div>
-            </div>
+              <span class="table-name">{{ table.table_name }}</span>
+              <span class="table-comment">{{ table.custom_comment || table.table_comment || '-' }}</span>
+            </button>
             <EmptyBackground
-              v-if="!schemaTree.length"
+              v-if="!filteredTables.length"
               :description="t('data_dictionary.empty_table')"
               img-type="tree"
             />
@@ -525,14 +328,7 @@ const submitSchemaChange = async () => {
               <el-button :icon="Refresh" :loading="datasourceLoading || schemaLoading" @click="loadDatasources">
                 {{ t('common.refresh') }}
               </el-button>
-              <el-button
-                :icon="EditPen"
-                :disabled="!selectedTable"
-                @click="openSelectedMetadata"
-              >
-                {{ metadataActionLabel }}
-              </el-button>
-              <el-button :icon="Plus" type="primary" :disabled="!selectedTable || !!selectedJsonFieldName" @click="openCreateField">
+              <el-button :icon="Plus" type="primary" :disabled="!selectedTable" @click="openCreateField">
                 {{ t('data_dictionary.create_field') }}
               </el-button>
             </div>
@@ -540,24 +336,15 @@ const submitSchemaChange = async () => {
 
           <section class="field-panel">
             <el-table :data="filteredFields" class="field-table" style="width: 100%">
-              <el-table-column prop="display_name" label="展示名" min-width="160" show-overflow-tooltip>
-                <template #default="scope">
-                  {{ fieldDisplayName(scope.row) }}
-                </template>
-              </el-table-column>
               <el-table-column prop="field_name" :label="t('datasource.field_name')" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="field_type" :label="t('datasource.field_type')" width="120" show-overflow-tooltip>
-                <template #default="scope">
-                  {{ fieldTypeText(scope.row) }}
-                </template>
-              </el-table-column>
+              <el-table-column prop="field_type" :label="t('datasource.field_type')" width="180" show-overflow-tooltip />
               <el-table-column prop="field_comment" :label="t('datasource.field_original_notes')" min-width="220" show-overflow-tooltip />
               <el-table-column prop="custom_comment" :label="t('datasource.field_notes_1')" min-width="220" show-overflow-tooltip>
                 <template #default="scope">
                   {{ scope.row.custom_comment || '-' }}
                 </template>
               </el-table-column>
-              <el-table-column fixed="right" :label="t('ds.actions')" width="150" align="center" class-name="field-operation-cell">
+              <el-table-column fixed="right" :label="t('ds.actions')" width="96" align="center" class-name="field-operation-cell">
                 <template #default="scope">
                   <el-button
                     class="field-row-action"
@@ -565,16 +352,6 @@ const submitSchemaChange = async () => {
                     type="primary"
                     size="small"
                     :icon="EditPen"
-                    @click="openFieldMetadata(scope.row)"
-                  >
-                    配置
-                  </el-button>
-                  <el-button
-                    v-if="canAlterField(scope.row)"
-                    class="field-row-action"
-                    text
-                    type="primary"
-                    size="small"
                     @click="openAlterField(scope.row)"
                   >
                     {{ t('data_dictionary.alter_field_action') }}
@@ -701,60 +478,6 @@ const submitSchemaChange = async () => {
         <div class="drawer-footer">
           <el-button @click="changeDrawerVisible = false">{{ t('common.cancel') }}</el-button>
           <el-button type="primary" :loading="changeSubmitting" @click="submitSchemaChange">
-            {{ t('common.save') }}
-          </el-button>
-        </div>
-      </template>
-    </el-drawer>
-
-    <el-drawer
-      v-model="metadataDrawerVisible"
-      :title="metadataDrawerTitle"
-      size="520px"
-      destroy-on-close
-    >
-      <el-form
-        ref="metadataFormRef"
-        :model="metadataForm"
-        :rules="metadataFormRules"
-        label-position="top"
-        class="schema-change-form"
-        @submit.prevent
-      >
-        <el-alert
-          title="展示名和备注保存在当前系统库的数据字典元数据中，不会修改业务库表结构。"
-          type="info"
-          show-icon
-          :closable="false"
-        />
-        <el-form-item label="表名">
-          <el-input v-model="metadataForm.table_name" disabled />
-        </el-form-item>
-        <el-form-item v-if="metadataMode === 'field'" label="字段名">
-          <el-input v-model="metadataForm.field_name" disabled />
-        </el-form-item>
-        <el-form-item prop="display_name" label="展示中文名">
-          <el-input
-            v-model="metadataForm.display_name"
-            clearable
-            placeholder="例如：注册日期、客户端版本、事件名称"
-          />
-        </el-form-item>
-        <el-form-item label="备注 / Tips">
-          <el-input
-            v-model="metadataForm.comment"
-            class="schema-textarea schema-textarea--large"
-            type="textarea"
-            :rows="8"
-            resize="vertical"
-            placeholder="鼠标悬浮时展示给用户的字段说明"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="drawer-footer">
-          <el-button @click="metadataDrawerVisible = false">{{ t('common.cancel') }}</el-button>
-          <el-button type="primary" :loading="metadataSubmitting" @click="submitMetadata">
             {{ t('common.save') }}
           </el-button>
         </div>

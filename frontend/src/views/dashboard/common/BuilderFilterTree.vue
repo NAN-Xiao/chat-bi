@@ -43,6 +43,7 @@ const props = withDefaults(
     level?: number
     removable?: boolean
     emptyText?: string
+    showToolbar?: boolean
   }>(),
   {
     logic: 'and',
@@ -50,6 +51,7 @@ const props = withDefaults(
     level: 0,
     removable: true,
     emptyText: '暂无筛选条件',
+    showToolbar: false,
   }
 )
 
@@ -115,7 +117,7 @@ function isGroup(node: FilterNode) {
 
 <template>
   <div class="builder-filter-tree" :class="{ 'is-nested': level > 0 }">
-    <div class="builder-filter-toolbar">
+    <div v-if="showToolbar" class="builder-filter-toolbar">
       <el-button text class="builder-add-condition" @click="addRule(nodes)">
         <el-icon><Plus /></el-icon>
         <span>筛选条件</span>
@@ -158,6 +160,7 @@ function isGroup(node: FilterNode) {
             :operator-options="operatorOptions"
             :schema-loading="schemaLoading"
             :level="level + 1"
+            :show-toolbar="true"
             @update:logic="updateNodeLogic(node, $event)"
           />
         </div>
@@ -208,7 +211,7 @@ function isGroup(node: FilterNode) {
   content: '';
   position: absolute;
   left: 10px;
-  top: 34px;
+  top: 8px;
   bottom: 10px;
   width: 1px;
   background: #d8dde7;
@@ -269,17 +272,17 @@ function isGroup(node: FilterNode) {
 
 .builder-filter-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.2fr) 88px minmax(110px, 1fr) 26px;
+  grid-template-columns: minmax(116px, 1.2fr) 82px minmax(104px, 1fr) 24px;
   align-items: center;
   gap: 6px;
-  min-height: 30px;
+  min-height: 28px;
 }
 
 .builder-filter-group {
   min-width: 0;
   padding: 7px 8px 8px;
   border: 1px solid #e7eaf0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #fafbff;
 }
 
@@ -309,7 +312,7 @@ function isGroup(node: FilterNode) {
 }
 
 .builder-operator-select {
-  width: 88px;
+  width: 82px;
 }
 
 .builder-remove-button {
@@ -332,8 +335,12 @@ function isGroup(node: FilterNode) {
 }
 
 .builder-empty-row {
-  padding: 4px 0 2px;
+  padding: 2px 0 2px;
   color: #9aa2af;
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.builder-filter-tree :deep(.builder-field-picker-trigger) {
+  width: 100%;
 }
 </style>

@@ -188,7 +188,7 @@ function selectField(option: FieldOption) {
     trigger="click"
     placement="bottom-start"
     popper-class="builder-field-picker-popper"
-    :popper-style="{ zIndex: 3301 }"
+    :popper-style="{ zIndex: 5001 }"
     :disabled="disabled"
   >
     <template #reference>
@@ -235,7 +235,7 @@ function selectField(option: FieldOption) {
                 :hide-after="0"
                 width="260"
                 popper-class="builder-field-hover-popper"
-                :popper-style="{ zIndex: 3302 }"
+                :popper-style="{ zIndex: 5002 }"
               >
                 <template #reference>
                   <button
@@ -273,22 +273,36 @@ function selectField(option: FieldOption) {
 <style scoped lang="less">
 .builder-field-picker-trigger {
   display: inline-flex;
-  width: 100%;
-  min-height: 28px;
+  width: auto;
+  max-width: 100%;
+  min-height: 26px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   padding: 0 8px;
-  border: 1px solid #d8e1f2;
-  border-radius: 7px;
-  background: #fff;
+  border: 0;
+  border-radius: 6px;
+  background: #f3f5fa;
   color: #1f2633;
   cursor: pointer;
   font-size: 12px;
+  line-height: 24px;
+  vertical-align: middle;
+}
+
+.builder-field-picker-trigger span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .builder-field-picker-trigger.is-empty {
   color: #8b93a3;
+}
+
+.builder-field-picker-trigger:hover {
+  background: #eceff6;
 }
 
 .builder-field-picker-arrow {
@@ -469,10 +483,10 @@ function selectField(option: FieldOption) {
 
 :global(.builder-field-picker-popper),
 :global(.builder-field-hover-popper) {
-  z-index: 3301 !important;
+  z-index: 5001 !important;
 }
 
 :global(.builder-field-hover-popper) {
-  z-index: 3302 !important;
+  z-index: 5002 !important;
 }
 </style>
