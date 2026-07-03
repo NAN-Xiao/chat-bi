@@ -21,7 +21,10 @@ export const datasourceApi = {
   tableList: (id: number) => request.post(`/datasource/tableList/${id}`),
   fieldList: (id: number, data = { fieldName: '' }) =>
     request.post(`/datasource/fieldList/${id}`, data),
-  schemaMetadata: (id: number | string) => request.get(`/datasource/schema-metadata/${id}`),
+  schemaMetadata: (id: number | string) =>
+    request.get(`/datasource/schema-metadata/${id}`, { params: { _t: Date.now() } }),
+  updateSchemaMetadata: (id: number | string, data: any) =>
+    request.post(`/datasource/schema-metadata/${id}/update`, data),
   schemaChangeList: (id: number | string, limit = 20) =>
     request.get(`/datasource/schema-change/${id}`, { params: { limit } }),
   submitSchemaChange: (id: number | string, data: any) =>
