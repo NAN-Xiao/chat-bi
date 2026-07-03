@@ -2186,24 +2186,54 @@ def _build_graph():
     做了什么：添加 prepare_context、emit_record_metadata、ensure_datasource、execute_saas_skill、generate_sql、prepare_sql、execute_sql、generate_chart 节点及条件边，并编译图。
     """
     graph = StateGraph(SmartQAGraphState)
+
+    # 节点 1：加载 Smart Q&A 所需的上下文、Data Skill、自定义提示和打点配置。
     graph.add_node("prepare_context", _observe_node("prepare_context", _prepare_existing_context))
+
+    # 节点 2：向前端发送当前对话记录的基础元数据（问题、重新生成 id 等）。
     graph.add_node("emit_record_metadata", _observe_node("emit_record_metadata", _emit_record_metadata))
+
+    # 节点 3：确保当前流程有合法且可连接的数据源；未指定时自动选择并通知前端。
     graph.add_node("ensure_datasource", _observe_node("ensure_datasource", _ensure_datasource))
+
+    # 节点 4：尝试命中并执行 Data Skill 中声明的可执行 SaaS Skill；命中后可能直接结束流程。
     graph.add_node("execute_saas_skill", _observe_node("execute_saas_skill", _execute_saas_skill))
+
+    # 节点 5：根据用户问题、表结构和上下文生成 SQL 文本。
     graph.add_node("generate_sql", _observe_node("generate_sql", _generate_sql))
+
+    # 节点 6：校验并保存生成的 SQL，处理权限、缺失事件、动态数据源等分支逻辑。
     graph.add_node("prepare_sql", _observe_node("prepare_sql", _prepare_sql))
+
+    # 节点 7：执行 SQL 并获取结果；处理数据不可用、权限拒绝、空结果等情况。
     graph.add_node("execute_sql", _observe_node("execute_sql", _execute_sql))
+
+    # 节点 8：根据 SQL 结果生成图表配置，并向前端发送图表或图片。
     graph.add_node("generate_chart", _observe_node("generate_chart", _generate_chart))
 
+    # 流程起点：从准备上下文开始。
     graph.set_entry_point("prepare_context")
+
+    # 顺序边：准备上下文 → 发送元数据 → 确保数据源 → 尝试 SaaS Skill。
     graph.add_edge("prepare_context", "emit_record_metadata")
     graph.add_edge("emit_record_metadata", "ensure_datasource")
     graph.add_edge("ensure_datasource", "execute_saas_skill")
+
+    # 条件边：SaaS Skill 命中并处理完成后直接结束；否则进入常规 SQL 生成。
     graph.add_conditional_edges("execute_saas_skill", _should_continue_after_saas_skill)
+
+    # 顺序边：生成 SQL → 准备/校验 SQL。
     graph.add_edge("generate_sql", "prepare_sql")
+
+    # 条件边：prepare_sql 根据 finish_step 或业务异常决定停止还是继续执行 SQL。
     graph.add_conditional_edges("prepare_sql", _should_continue_after_sql)
+
+    # 条件边：execute_sql 根据 finish_step 或业务异常决定停止还是继续生成图表。
     graph.add_conditional_edges("execute_sql", _should_continue_after_execute)
+
+    # 终点边：图表生成完成后结束整个工作流。
     graph.add_edge("generate_chart", END)
+
     return graph.compile()
 
 

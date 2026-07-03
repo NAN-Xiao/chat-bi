@@ -223,17 +223,65 @@ const routerList = computed(() => {
 </template>
 
 <style lang="less">
+.shuzhi-layout-menu,
+.shuzhi-layout-menu .ed-menu,
+.shuzhi-layout-menu .ed-menu-item,
+.shuzhi-layout-menu .ed-sub-menu {
+  list-style: none !important;
+  list-style-type: none !important;
+}
+
+.shuzhi-layout-menu {
+  margin: 0;
+  padding-left: 0;
+}
+
+.shuzhi-layout-menu::marker,
+.shuzhi-layout-menu .ed-menu-item::marker,
+.shuzhi-layout-menu .ed-sub-menu::marker {
+  content: '';
+  font-size: 0;
+}
+
+.shuzhi-layout-menu .ed-menu-item,
+.shuzhi-layout-menu .ed-sub-menu__title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.shuzhi-layout-menu .menu-line-icon-wrapper {
+  flex: 0 0 auto;
+}
+
+.shuzhi-layout-menu .menu-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ed-menu-vertical {
   --ed-menu-item-height: 40px;
   --ed-menu-bg-color: transparent;
   --ed-menu-base-level-padding: 4px;
+  --shuzhi-sidebar-icon-size: 16px;
+  --shuzhi-sidebar-icon-column: 18px;
+  --shuzhi-sidebar-icon-gap: 7px;
   border-right: none;
 
   .ed-menu-item {
+    display: flex !important;
+    align-items: center;
     height: 40px !important;
+    padding: 0 10px !important;
     border-radius: 8px !important;
     margin-bottom: 4px;
     color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary));
+    font-size: 13px;
+    line-height: 20px !important;
     transition:
       background 160ms ease,
       color 160ms ease,
@@ -257,9 +305,15 @@ const routerList = computed(() => {
   }
 
   .ed-sub-menu .ed-sub-menu__title {
+    display: flex !important;
+    align-items: center;
+    height: 40px !important;
+    padding: 0 28px 0 10px !important;
     border-radius: 8px;
     margin-bottom: 4px;
     color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary));
+    font-size: 13px;
+    line-height: 20px !important;
     transition:
       background 160ms ease,
       color 160ms ease,
@@ -291,7 +345,35 @@ const routerList = computed(() => {
   }
 
   .ed-sub-menu .ed-icon {
-    margin-right: 8px;
+    margin-right: var(--shuzhi-sidebar-icon-gap);
+  }
+
+  .menu-line-icon-wrapper {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 var(--shuzhi-sidebar-icon-column);
+    width: var(--shuzhi-sidebar-icon-column) !important;
+    height: var(--shuzhi-sidebar-icon-size) !important;
+    margin-right: var(--shuzhi-sidebar-icon-gap) !important;
+    color: inherit !important;
+    font-size: var(--shuzhi-sidebar-icon-size) !important;
+    line-height: 1 !important;
+  }
+
+  .menu-title-text {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 20px;
+    text-align: left;
+  }
+
+  .ed-sub-menu__icon-arrow {
+    top: 50% !important;
+    right: 8px !important;
+    margin-top: -6px !important;
   }
 
   .ed-menu-item,
@@ -302,6 +384,9 @@ const routerList = computed(() => {
     }
 
     .shuzhi-menu-line-icon {
+      display: block;
+      width: var(--shuzhi-sidebar-icon-size) !important;
+      height: var(--shuzhi-sidebar-icon-size) !important;
       color: inherit !important;
 
       path,
@@ -372,6 +457,20 @@ const routerList = computed(() => {
           opacity: 1;
         }
       }
+    }
+  }
+
+  &.ed-menu--collapse {
+    .ed-menu-item,
+    > .ed-sub-menu > .ed-sub-menu__title {
+      justify-content: center;
+      padding: 0 !important;
+    }
+
+    .menu-line-icon-wrapper {
+      flex-basis: 100%;
+      width: 100% !important;
+      margin-right: 0 !important;
     }
   }
 }
