@@ -158,7 +158,7 @@ FIELDS = [
     {
         "table_name": "event",
         "field_name": "event",
-        "field_comment": "事件名称/埋点名称；活跃、付费、活动、建筑等指标必须先筛选对应事件集合。",
+        "field_comment": "事件名称/埋点名称；活跃、付费、活动、建筑等指标必须先筛选对应事件集合。如果该列在某些项目中承载 JSON 文本，子字段应另配为 source_field=event、json_path=$.xxx 的字典字段。",
         "field_role": "event_name",
         "semantic_type": "category",
         "aliases": ["事件名", "埋点名", "行为类型"],
@@ -221,6 +221,78 @@ FIELDS = [
         "semantic_type": "json",
         "aliases": ["最近状态", "用户状态"],
         "example_values": ["level", "blevel", "regnday"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "allianceinfo",
+        "field_comment": "联盟信息 JSON 文本；联盟维度分析的具体子字段需按 source_field=allianceinfo、json_path=$.xxx 维护。",
+        "field_role": "dimension_json",
+        "semantic_type": "json",
+        "aliases": ["联盟信息"],
+        "example_values": ["allianceId", "allianceName", "allianceLevel"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "abtest",
+        "field_comment": "AB 实验信息 JSON 文本；实验分组分析的具体子字段需按 source_field=abtest、json_path=$.xxx 维护。",
+        "field_role": "dimension_json",
+        "semantic_type": "json",
+        "aliases": ["AB实验", "实验分组"],
+        "example_values": ["group", "experimentId"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "remain",
+        "field_comment": "事件行中的留存相关 JSON 文本；具体留存标记子字段需按 source_field=remain、json_path=$.xxx 维护。",
+        "field_role": "retention_json",
+        "semantic_type": "json",
+        "aliases": ["留存信息"],
+        "example_values": ["remain1", "remain3", "remain7"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "level",
+        "field_comment": "事件行中的等级相关 JSON 文本；等级拆分子字段需按 source_field=level、json_path=$.xxx 维护。",
+        "field_role": "state_json",
+        "semantic_type": "json",
+        "aliases": ["等级信息"],
+        "example_values": ["level", "blevel"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "pay",
+        "field_comment": "事件行中的付费相关 JSON 文本；付费金额、订单、商品等子字段需按 source_field=pay、json_path=$.xxx 维护。",
+        "field_role": "payment_json",
+        "semantic_type": "json",
+        "aliases": ["付费信息"],
+        "example_values": ["paytotal", "pay1", "orderId", "productId"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "currentinfo",
+        "field_comment": "事件发生时当前状态 JSON 文本；当前等级、战力、资源等子字段需按 source_field=currentinfo、json_path=$.xxx 维护。",
+        "field_role": "state_json",
+        "semantic_type": "json",
+        "aliases": ["当前状态"],
+        "example_values": ["level", "power", "resource"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "sdkinfo",
+        "field_comment": "SDK/客户端上下文 JSON 文本；渠道、平台、版本等子字段需按 source_field=sdkinfo、json_path=$.xxx 维护。",
+        "field_role": "dimension_json",
+        "semantic_type": "json",
+        "aliases": ["SDK信息"],
+        "example_values": ["platform", "channel", "version"],
+    },
+    {
+        "table_name": "event",
+        "field_name": "personal",
+        "field_comment": "个人行为上下文 JSON 文本；钻石经济等字段在 personal.ed_changeFree/personal.ed_changePaid。",
+        "field_role": "event_params_json",
+        "semantic_type": "json",
+        "aliases": ["个人参数", "个人信息"],
+        "example_values": ["ed_changeFree", "ed_changePaid", "ed_route"],
     },
     {
         "table_name": "event",
@@ -710,6 +782,69 @@ FIELDS = [
 ]
 
 
+def _json_path_expr(table_name: str, field_name: str) -> str | None:
+    if "." not in field_name:
+        return None
+    source_field, json_path = field_name.split(".", 1)
+    return f"JSON_UNQUOTE(JSON_EXTRACT(`{table_name}`.`{source_field}`, '$.{json_path}'))"
+
+
+def _apply_json_source_metadata(item: dict) -> None:
+    field_name = item["field_name"]
+    if "." not in field_name:
+        return
+    source_field, json_path = field_name.split(".", 1)
+    item.setdefault("source_field", source_field)
+    item.setdefault("json_path", f"$.{json_path}")
+
+
+def _dt_date_expr(table_name: str) -> str:
+    return f"STR_TO_DATE(CAST(`{table_name}`.`dt` AS CHAR), '%Y%m%d')"
+
+
+def apply_chart_builder_expressions() -> None:
+    """Make tracking fields directly usable by the dashboard SQL builder."""
+    for item in FIELDS:
+        table_name = item["table_name"]
+        field_name = item["field_name"]
+        _apply_json_source_metadata(item)
+        if field_name == "dt":
+            item["expression"] = _dt_date_expr(table_name)
+            continue
+        if table_name == "event" and field_name == "time":
+            item["expression"] = "DATE_ADD(FROM_UNIXTIME(`event`.`time` / 1000), INTERVAL 8 HOUR)"
+            continue
+        if table_name == "event" and field_name == "adinfo":
+            item["expression"] = (
+                "COALESCE("
+                "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`event`.`adinfo`, '$.mediaSource')), ''), "
+                "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`event`.`adinfo`, '$.campaignName')), ''), "
+                "'未知')"
+            )
+            continue
+        if table_name == "event" and field_name == "deviceinfo":
+            item["expression"] = (
+                "COALESCE("
+                "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`event`.`deviceinfo`, '$._platform')), ''), "
+                "'未知')"
+            )
+            continue
+        if table_name == "user" and field_name == "userinfo":
+            item["expression"] = "JSON_UNQUOTE(JSON_EXTRACT(`user`.`userinfo`, '$.regdate'))"
+            continue
+        if table_name == "user" and field_name == "adinfo":
+            item["expression"] = (
+                "COALESCE("
+                "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`user`.`adinfo`, '$.mediaSource')), ''), "
+                "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`user`.`adinfo`, '$.campaignName')), ''), "
+                "'未知')"
+            )
+            continue
+        json_expr = _json_path_expr(table_name, field_name)
+        if json_expr:
+            item["expression"] = json_expr
+
+
 def _snowflake_id() -> int:
     if str(BACKEND_DIR) not in sys.path:
         sys.path.insert(0, str(BACKEND_DIR))
@@ -799,14 +934,16 @@ def upsert_fields(cur, now: int) -> None:
             """
             INSERT INTO public.sys_tenant_tracking_field (
                 id, tenant_id, table_name, field_name, field_comment, field_role,
-                semantic_type, aliases, value_mappings, expression, required,
+                semantic_type, source_field, json_path, aliases, value_mappings, expression, required,
                 example_values, ai_notes, create_by, update_by, create_time, update_time
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (tenant_id, table_name, field_name) DO UPDATE SET
                 field_comment = EXCLUDED.field_comment,
                 field_role = EXCLUDED.field_role,
                 semantic_type = EXCLUDED.semantic_type,
+                source_field = EXCLUDED.source_field,
+                json_path = EXCLUDED.json_path,
                 aliases = EXCLUDED.aliases,
                 value_mappings = EXCLUDED.value_mappings,
                 expression = EXCLUDED.expression,
@@ -824,6 +961,8 @@ def upsert_fields(cur, now: int) -> None:
                 item.get("field_comment"),
                 item.get("field_role"),
                 item.get("semantic_type"),
+                item.get("source_field"),
+                item.get("json_path"),
                 Jsonb(item.get("aliases") or []),
                 Jsonb(item.get("value_mappings")) if item.get("value_mappings") is not None else None,
                 item.get("expression"),
@@ -911,6 +1050,7 @@ def upsert_schema_comments(cur, now: int) -> tuple[int, int]:
 
 
 def main() -> None:
+    apply_chart_builder_expressions()
     now = int(time.time())
     schema_tables = 0
     schema_fields = 0

@@ -19,3 +19,11 @@ export const modelApi = {
     request.post('/system/aimodel/models', data),
   listAvailable: () => request.get('/system/aimodel/list/available'),
 }
+
+export const trackingConfigApi = {
+  get: () => request.get('/system/tracking-config'),
+  update: (data: any) => request.put('/system/tracking-config', data),
+  downloadTemplate: () => request.download('/system/tracking-config/template'),
+  exportExcel: () => request.download('/system/tracking-config/export'),
+  importExcel: (file: File) => request.upload('/system/tracking-config/importExcel', file),
+}

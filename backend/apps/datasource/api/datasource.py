@@ -63,7 +63,7 @@ from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
-from apps.system.models.tenant import TenantModel
+from apps.system.models.tenant import TenantModel, TenantTrackingFieldModel
 from apps.system.schemas.business_access import (
     ensure_chatbi_business_user,
     require_chatbi_business_or_platform_admin,
@@ -216,13 +216,44 @@ class DatasourceSchemaFieldItem(BaseModel):
     """
     类说明：DatasourceSchemaFieldItem 把数据源相关的数据和行为放在一起，便于其他代码直接复用。
     """
-    id: int
+    id: int | str
     field_name: str | None = None
     field_type: str | None = None
     field_comment: str | None = None
     custom_comment: str | None = None
     checked: bool = True
     field_index: int | None = None
+    display_name: str | None = None
+    field_role: str | None = None
+    semantic_type: str | None = None
+    expression: str | None = None
+    source_field: str | None = None
+    json_path: str | None = None
+    is_json_subfield: bool = False
+    category: str | None = None
+
+
+class DatasourceFieldListItem(BaseModel):
+    """
+    类说明：DatasourceFieldListItem 是字段下拉接口使用的字段结构。
+    """
+    id: int | str
+    ds_id: int | None = None
+    table_id: int | str | None = None
+    checked: bool = True
+    field_name: str | None = None
+    field_type: str | None = None
+    field_comment: str | None = None
+    custom_comment: str | None = None
+    field_index: int | None = None
+    display_name: str | None = None
+    field_role: str | None = None
+    semantic_type: str | None = None
+    expression: str | None = None
+    source_field: str | None = None
+    json_path: str | None = None
+    is_json_subfield: bool = False
+    category: str | None = None
 
 
 class DatasourceSchemaTableItem(BaseModel):
@@ -425,6 +456,193 @@ def _apply_schema_comments(
                 field.custom_comment = field_comments[key] or ""
             else:
                 field.custom_comment = field.custom_comment or ""
+
+
+def _tracking_json_list(value: Any) -> list[Any]:
+    """
+    是什么：把 tracking 字段中的 JSON 列表整理成 Python list。
+    """
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def _tracking_display_name(row: TenantTrackingFieldModel | None) -> str | None:
+    """
+    是什么：从 tracking 字段中取面向图表配置器展示的名称。
+    """
+    if row is None:
+        return None
+    for item in _tracking_json_list(row.aliases):
+        text = str(item or "").strip()
+        if text:
+            return text
+    comment = (row.field_comment or "").strip()
+    if not comment:
+        return None
+    return re.split(r"[；;。，,\n]", comment, maxsplit=1)[0].strip() or None
+
+
+def _tracking_category(row: TenantTrackingFieldModel | None, field_type: str | None = None) -> str:
+    """
+    是什么：把 tracking 语义类型映射成图表配置器的字段类别。
+    """
+    text = " ".join(
+        str(value or "").lower()
+        for value in (
+            getattr(row, "field_name", None),
+            getattr(row, "field_role", None),
+            getattr(row, "semantic_type", None),
+            field_type,
+        )
+    )
+    if any(token in text for token in ("time", "date", "timestamp", "partition_date", "snapshot_date")):
+        return "time"
+    if any(token in text for token in ("number", "metric", "amount", "decimal", "float", "double", "int", "rate", "ratio")):
+        return "number"
+    return "text"
+
+
+def _tracking_source_field(row_or_name: TenantTrackingFieldModel | str | None) -> str:
+    """
+    是什么：从 tracking 虚拟字段名中取底层物理列名。
+    """
+    if isinstance(row_or_name, TenantTrackingFieldModel):
+        configured = str(getattr(row_or_name, "source_field", None) or "").strip()
+        if configured:
+            return configured
+        text = str(row_or_name.field_name or "").strip()
+    else:
+        text = str(row_or_name or "").strip()
+    return text.split(".", 1)[0] if "." in text else text
+
+
+def _tracking_json_path(row_or_name: TenantTrackingFieldModel | str | None) -> str | None:
+    """
+    是什么：把形如 userinfo.country 的字段名转换为 JSON path。
+    """
+    if isinstance(row_or_name, TenantTrackingFieldModel):
+        configured = str(getattr(row_or_name, "json_path", None) or "").strip()
+        if configured:
+            return configured if configured.startswith("$") else f"$.{configured.lstrip('.')}"
+        text = str(row_or_name.field_name or "").strip()
+    else:
+        text = str(row_or_name or "").strip()
+    if "." not in text:
+        return None
+    return "$." + text.split(".", 1)[1]
+
+
+def _tracking_fields_for_table(
+        session: SessionDep,
+        tenant_id: int | None,
+        table_name: str,
+) -> dict[str, TenantTrackingFieldModel]:
+    """
+    是什么：读取当前工作空间对某张表配置的 tracking 字段。
+    """
+    if tenant_id is None or not table_name:
+        return {}
+    rows = session.exec(
+        select(TenantTrackingFieldModel)
+        .where(
+            TenantTrackingFieldModel.tenant_id == int(tenant_id),
+            TenantTrackingFieldModel.table_name == table_name,
+        )
+        .order_by(TenantTrackingFieldModel.field_name, TenantTrackingFieldModel.id)
+    ).all()
+    return {row.field_name: row for row in rows if row.field_name}
+
+
+def _field_list_item_from_core(
+        field: CoreField,
+        table_name: str,
+        tracking: TenantTrackingFieldModel | None,
+) -> DatasourceFieldListItem:
+    """
+    是什么：把物理字段与 tracking 注释合并成字段下拉项。
+    """
+    display_name = _tracking_display_name(tracking)
+    comment = (field.custom_comment or field.field_comment or "").strip() or getattr(tracking, "field_comment", None)
+    return DatasourceFieldListItem(
+        id=int(field.id),
+        ds_id=int(field.ds_id) if field.ds_id is not None else None,
+        table_id=int(field.table_id) if field.table_id is not None else None,
+        checked=bool(field.checked),
+        field_name=field.field_name,
+        field_type=field.field_type,
+        field_comment=field.field_comment,
+        custom_comment=comment,
+        field_index=field.field_index,
+        display_name=display_name,
+        field_role=getattr(tracking, "field_role", None),
+        semantic_type=getattr(tracking, "semantic_type", None),
+        expression=getattr(tracking, "expression", None),
+        source_field=field.field_name,
+        is_json_subfield=False,
+        category=_tracking_category(tracking, field.field_type),
+    )
+
+
+def _field_list_item_from_tracking(
+        row: TenantTrackingFieldModel,
+        *,
+        table: CoreTable,
+        field_index: int,
+) -> DatasourceFieldListItem:
+    """
+    是什么：把 tracking 中的 JSON 子字段暴露为图表配置器可选字段。
+    """
+    source_field = _tracking_source_field(row)
+    json_path = _tracking_json_path(row)
+    return DatasourceFieldListItem(
+        id=f"tracking:{table.table_name}:{row.field_name}",
+        ds_id=int(table.ds_id) if table.ds_id is not None else None,
+        table_id=int(table.id) if table.id is not None else None,
+        checked=True,
+        field_name=row.field_name,
+        field_type=row.semantic_type or row.field_role,
+        field_comment=row.field_comment,
+        custom_comment=row.field_comment,
+        field_index=field_index,
+        display_name=_tracking_display_name(row),
+        field_role=row.field_role,
+        semantic_type=row.semantic_type,
+        expression=row.expression,
+        source_field=source_field,
+        json_path=json_path,
+        is_json_subfield=bool(json_path) or source_field != row.field_name,
+        category=_tracking_category(row),
+    )
+
+
+def _build_field_list_items(
+        session: SessionDep,
+        datasource: CoreDatasource,
+        table: CoreTable,
+        visible_fields: list[CoreField],
+        user: CurrentUser,
+) -> list[DatasourceFieldListItem]:
+    """
+    是什么：生成字段下拉项，合并物理字段和工作空间 tracking 字典字段。
+    """
+    tenant_id = _metadata_tenant_id(session, datasource, user)
+    tracking_by_name = _tracking_fields_for_table(session, tenant_id, table.table_name)
+    physical_names = {field.field_name for field in visible_fields if field.field_name}
+    result = [
+        _field_list_item_from_core(field, table.table_name, tracking_by_name.get(field.field_name))
+        for field in visible_fields
+    ]
+    next_index = max([int(field.field_index or 0) for field in visible_fields] or [0]) + 1
+    for field_name, tracking in tracking_by_name.items():
+        if field_name in physical_names:
+            continue
+        source_field = _tracking_source_field(tracking)
+        if source_field not in physical_names:
+            continue
+        result.append(_field_list_item_from_tracking(tracking, table=table, field_index=next_index))
+        next_index += 1
+    return result
 
 
 def _schema_change_item(row) -> DatasourceSchemaChangeItem:
@@ -723,15 +941,29 @@ async def schema_metadata(
                 checked=bool(table.checked),
                 fields=[
                     DatasourceSchemaFieldItem(
-                        id=int(field.id),
+                        id=field.id,
                         field_name=field.field_name,
                         field_type=field.field_type,
                         field_comment=field.field_comment,
                         custom_comment=field.custom_comment,
                         checked=bool(field.checked),
                         field_index=field.field_index,
+                        display_name=field.display_name,
+                        field_role=field.field_role,
+                        semantic_type=field.semantic_type,
+                        expression=field.expression,
+                        source_field=field.source_field,
+                        json_path=field.json_path,
+                        is_json_subfield=field.is_json_subfield,
+                        category=field.category,
                     )
-                    for field in fields_by_table.get(int(table.id), [])
+                    for field in _build_field_list_items(
+                        session,
+                        datasource,
+                        table,
+                        fields_by_table.get(int(table.id), []),
+                        user,
+                    )
                 ],
             )
             for table in tables
@@ -1126,7 +1358,7 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
     return [table for table in tables if int(table.id) in scoped_table_ids]
 
 
-@router.post("/fieldList/{id}", response_model=List[CoreField], summary=f"{PLACEHOLDER_PREFIX}ds_field_list")
+@router.post("/fieldList/{id}", response_model=List[DatasourceFieldListItem], summary=f"{PLACEHOLDER_PREFIX}ds_field_list")
 @require_permissions(permission=AppPermission(role=['admin'], type='table', keyExpression="id"))
 async def field_list(session: SessionDep, current_user: CurrentUser, field: FieldObj,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
@@ -1148,7 +1380,7 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
     fields = get_fields_by_table_id(session, id, field)
     visible_fields = get_column_permission_fields(session, current_user, table, fields, contain_rules)
     _apply_schema_comments(session, datasource, [table], {int(table.id): visible_fields}, current_user)
-    return visible_fields
+    return _build_field_list_items(session, datasource, table, visible_fields, current_user)
 
 
 @router.post("/editLocalComment", include_in_schema=False)

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
-import { Delete, EditPen, Plus, Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, Download, EditPen, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { datasourceApi } from '@/api/datasource'
+import { trackingConfigApi } from '@/api/system'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 
@@ -24,6 +25,15 @@ type SchemaField = {
   custom_comment?: string
   checked?: boolean
   field_index?: number
+  display_name?: string
+  field_role?: string
+  semantic_type?: string
+  aliases?: string[]
+  expression?: string
+  source_field?: string
+  json_path?: string
+  is_json_subfield?: boolean
+  category?: string
 }
 
 type SchemaTable = {
@@ -46,19 +56,40 @@ type SchemaChangeField = {
   required?: boolean
 }
 
+type TrackingConfig = {
+  enabled?: boolean
+  default_event_table?: string
+  default_subject_field?: string
+  default_event_name_field?: string
+  default_event_time_field?: string
+  field_role_mappings?: any[]
+  event_name_mappings?: any[]
+  sql_rules?: string
+  notes?: string
+  tables?: any[]
+  fields?: any[]
+}
+
 const { t } = useI18n()
 
 const datasourceLoading = ref(false)
 const schemaLoading = ref(false)
 const changeSubmitting = ref(false)
+const templateDownloading = ref(false)
+const dictionaryExporting = ref(false)
+const dictionaryImporting = ref(false)
 const tableKeyword = ref('')
 const fieldKeyword = ref('')
 const datasources = ref<DatasourceItem[]>([])
 const schema = ref<SchemaMetadata | null>(null)
 const selectedTableId = ref<number | string | null>(null)
+const activeFieldView = ref('all')
 const changeDrawerVisible = ref(false)
+const dictionaryFieldDrawerVisible = ref(false)
 const changeMode = ref<'create_table' | 'create_field' | 'alter_field'>('create_table')
+const dictionaryMode = ref<'create' | 'edit'>('create')
 const changeFormRef = ref()
+const dictionaryFormRef = ref()
 const changeForm = reactive({
   change_type: 'create_table' as 'create_table' | 'alter_table',
   table_name: '',
@@ -67,9 +98,29 @@ const changeForm = reactive({
   source_table_name: '',
   fields: [] as SchemaChangeField[],
 })
+const dictionarySubmitting = ref(false)
+const trackingConfig = ref<TrackingConfig | null>(null)
+const dictionaryForm = reactive({
+  table_name: '',
+  field_name: '',
+  field_comment: '',
+  field_role: '',
+  semantic_type: '',
+  source_field: '',
+  json_path: '',
+  aliases_text: '',
+  expression: '',
+  example_values_text: '',
+  ai_notes: '',
+})
 
 const changeFormRules = {
   table_name: [{ required: true, message: t('data_dictionary.table_name_required'), trigger: 'blur' }],
+}
+
+const dictionaryFormRules = {
+  table_name: [{ required: true, message: t('data_dictionary.table_name_required'), trigger: 'blur' }],
+  field_name: [{ required: true, message: t('data_dictionary.dictionary_field_name_required'), trigger: 'blur' }],
 }
 
 const fieldTypeOptions = [
@@ -86,6 +137,55 @@ const fieldTypeOptions = [
   'jsonb',
 ].map((value) => ({ label: value, value }))
 
+const dictionaryRoleOptions = [
+  'event_time',
+  'partition_date',
+  'snapshot_date',
+  'event_name',
+  'subject_id',
+  'json_path_dimension',
+  'json_path_metric',
+  'json_path_flag',
+  'dimension_json',
+  'event_params_json',
+  'profile_json',
+  'payment_json',
+  'retention_json',
+].map((value) => ({ label: value, value }))
+
+const semanticTypeOptions = [
+  'date',
+  'timestamp_ms',
+  'identifier',
+  'category',
+  'number',
+  'json',
+  'boolean_flag',
+  'country_code',
+].map((value) => ({ label: value, value }))
+
+const inferSourceField = (fieldName: string) => {
+  const text = String(fieldName || '').trim()
+  return text.includes('.') ? text.split('.', 1)[0] : ''
+}
+
+const inferJsonPath = (fieldName: string) => {
+  const text = String(fieldName || '').trim()
+  return text.includes('.') ? `$.${text.split('.').slice(1).join('.')}` : ''
+}
+
+const syncJsonSourceFromFieldName = () => {
+  if (dictionaryForm.source_field && dictionaryForm.json_path) return
+  const sourceField = inferSourceField(dictionaryForm.field_name)
+  const jsonPath = inferJsonPath(dictionaryForm.field_name)
+  if (sourceField && !dictionaryForm.source_field) {
+    dictionaryForm.source_field = sourceField
+  }
+  if (jsonPath && !dictionaryForm.json_path) {
+    dictionaryForm.json_path = jsonPath
+  }
+}
+
 const filteredTables = computed(() => {
   const keyword = tableKeyword.value.trim().toLowerCase()
   const tables = schema.value?.tables || []
@@ -101,17 +201,109 @@ const selectedTable = computed(() => {
   return filteredTables.value.find((item) => String(item.id) === String(selectedTableId.value)) || null
 })
 
+const sourceFieldName = (field: SchemaField) => field.source_field || inferSourceField(field.field_name)
+
+const physicalFieldOptions = computed(() => {
+  return (selectedTable.value?.fields || [])
+    .filter((item) => !isDictionaryField(item))
+    .map((item) => ({
+      label: item.field_name,
+      value: item.field_name,
+      type: item.field_type || '',
+    }))
+})
+
+const isJsonSourceField = (field: SchemaField) => {
+  const text = [
+    field.field_type,
+    field.field_role,
+    field.semantic_type,
+    field.category,
+  ].join(' ').toLowerCase()
+  return text.includes('json')
+}
+
+const nestedViewOptions = computed(() => {
+  const fields = selectedTable.value?.fields || []
+  const physicalByName = new Map(
+    fields
+      .filter((item) => !isDictionaryField(item) && item.field_name)
+      .map((item) => [item.field_name, item])
+  )
+  const sourceNames = new Set<string>()
+  fields.forEach((field) => {
+    if (!field.field_name) return
+    if (!isDictionaryField(field) && isJsonSourceField(field)) {
+      sourceNames.add(field.field_name)
+      return
+    }
+    if (isDictionaryField(field)) {
+      const source = sourceFieldName(field)
+      if (source) sourceNames.add(source)
+    }
+  })
+  return Array.from(sourceNames)
+    .filter((source) => physicalByName.has(source))
+    .sort((left, right) => left.localeCompare(right))
+    .map((source) => {
+      const field = physicalByName.get(source)
+      return {
+        label: field?.display_name || field?.custom_comment || field?.field_comment || source,
+        value: `json:${source}`,
+        source,
+      }
+    })
+})
+
+const fieldViewOptions = computed(() => [
+  { label: t('data_dictionary.all_fields'), value: 'all' },
+  { label: t('data_dictionary.physical_fields'), value: 'physical' },
+  ...nestedViewOptions.value.map((item) => ({
+    label: item.label === item.source ? `JSON: ${item.source}` : `JSON: ${item.source} (${item.label})`,
+    value: item.value,
+  })),
+])
+
 const filteredFields = computed(() => {
   const keyword = fieldKeyword.value.trim().toLowerCase()
   const table = selectedTable.value
-  const fields = table?.fields || []
+  let fields = table?.fields || []
+  if (activeFieldView.value === 'physical') {
+    fields = fields.filter((item) => !isDictionaryField(item))
+  } else if (activeFieldView.value.startsWith('json:')) {
+    const source = activeFieldView.value.slice('json:'.length)
+    fields = fields.filter((item) => {
+      if (!item.field_name) return false
+      if (!isDictionaryField(item)) return item.field_name === source
+      return sourceFieldName(item) === source
+    })
+  }
   if (!keyword) return fields
   return fields.filter((item) => {
-    return [item.field_name, item.field_type, item.field_comment, item.custom_comment].some((value) =>
-      String(value || '').toLowerCase().includes(keyword)
-    )
+    return [
+      item.field_name,
+      item.display_name,
+      item.field_type,
+      item.field_role,
+      item.semantic_type,
+      item.field_comment,
+      item.custom_comment,
+      item.expression,
+      item.source_field,
+      item.json_path,
+    ].some((value) => String(value || '').toLowerCase().includes(keyword))
   })
 })
+
+const isDictionaryField = (field: SchemaField) =>
+  field.is_json_subfield || String(field.id || '').startsWith('tracking:')
+
+const fieldDisplayName = (field: SchemaField) => field.display_name || field.field_name
+
+const fieldSourceLabel = (field: SchemaField) =>
+  isDictionaryField(field) ? t('data_dictionary.dictionary_field') : t('data_dictionary.physical_field')
+
+const fieldTypeLabel = (field: SchemaField) => field.semantic_type || field.field_type || '-'
 
 const changeDrawerTitle = computed(() =>
   changeMode.value === 'create_table'
@@ -123,6 +315,17 @@ const changeDrawerTitle = computed(() =>
 
 const selectFirstVisibleTable = () => {
   selectedTableId.value = filteredTables.value[0]?.id ?? null
+}
+
+const loadTrackingConfig = async () => {
+  trackingConfig.value = await trackingConfigApi.get()
+}
+
+const currentTrackingConfig = async () => {
+  if (!trackingConfig.value) {
+    await loadTrackingConfig()
+  }
+  return trackingConfig.value || {}
 }
 
 const emptyField = (): SchemaChangeField => ({
@@ -138,7 +341,13 @@ const loadSchema = async (id: number | string) => {
   tableKeyword.value = ''
   selectedTableId.value = null
   try {
-    schema.value = await datasourceApi.schemaMetadata(id)
+    const [schemaRes] = await Promise.all([
+      datasourceApi.schemaMetadata(id),
+      loadTrackingConfig().catch(() => {
+        trackingConfig.value = null
+      }),
+    ])
+    schema.value = schemaRes
     selectFirstVisibleTable()
   } finally {
     schemaLoading.value = false
@@ -164,6 +373,10 @@ onMounted(() => {
   loadDatasources()
 })
 
+watch(selectedTableId, () => {
+  activeFieldView.value = 'all'
+})
+
 const resetChangeForm = () => {
   changeForm.change_type = 'create_table'
   changeForm.table_name = ''
@@ -174,26 +387,9 @@ const resetChangeForm = () => {
   changeFormRef.value?.clearValidate?.()
 }
 
-const openCreateTable = () => {
-  resetChangeForm()
-  changeMode.value = 'create_table'
-  changeDrawerVisible.value = true
-}
-
-const openCreateField = () => {
-  if (!selectedTable.value) return
-  resetChangeForm()
-  changeMode.value = 'create_field'
-  changeForm.change_type = 'alter_table'
-  changeForm.table_name = selectedTable.value.table_name
-  changeForm.source_table_name = selectedTable.value.table_name
-  changeForm.table_comment = selectedTable.value.custom_comment || selectedTable.value.table_comment || ''
-  changeForm.fields = [emptyField()]
-  changeDrawerVisible.value = true
-}
-
 const openAlterField = (field: SchemaField) => {
   if (!selectedTable.value) return
+  if (isDictionaryField(field)) return
   resetChangeForm()
   changeMode.value = 'alter_field'
   changeForm.change_type = 'alter_table'
@@ -207,6 +403,232 @@ const openAlterField = (field: SchemaField) => {
     required: false,
   }]
   changeDrawerVisible.value = true
+}
+
+const splitTextList = (value: string) =>
+  String(value || '')
+    .split(/[\n,，]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+const saveBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+const downloadTrackingTemplate = async () => {
+  templateDownloading.value = true
+  try {
+    const blob = await trackingConfigApi.downloadTemplate()
+    saveBlob(blob, 'tracking_dictionary_template.xlsx')
+    ElMessage.success(t('data_dictionary.template_downloaded'))
+  } finally {
+    templateDownloading.value = false
+  }
+}
+
+const exportTrackingConfig = async () => {
+  dictionaryExporting.value = true
+  try {
+    const blob = await trackingConfigApi.exportExcel()
+    saveBlob(blob, 'tracking_dictionary_current.xlsx')
+    ElMessage.success(t('data_dictionary.export_downloaded'))
+  } finally {
+    dictionaryExporting.value = false
+  }
+}
+
+const importTrackingExcel = async (options: any) => {
+  dictionaryImporting.value = true
+  try {
+    const result: any = await trackingConfigApi.importExcel(options.file)
+    trackingConfig.value = result?.config || result
+    const summary = result?.summary || {}
+    ElMessage.success(t('data_dictionary.import_success', {
+      tables: summary.table_count || 0,
+      fields: summary.field_count || 0,
+      events: summary.event_count || 0,
+    }))
+    if (summary.warning_count) {
+      const firstWarning = Array.isArray(summary.warnings) ? summary.warnings[0] : ''
+      ElMessage.warning(
+        firstWarning
+          ? t('data_dictionary.import_warning_with_first', { count: summary.warning_count, warning: firstWarning })
+          : t('data_dictionary.import_warning', { count: summary.warning_count })
+      )
+    }
+    if (schema.value?.id) {
+      await loadSchema(schema.value.id)
+    } else {
+      await loadDatasources()
+    }
+    options.onSuccess?.(result)
+  } catch (error) {
+    options.onError?.(error)
+  } finally {
+    dictionaryImporting.value = false
+  }
+}
+
+const resetDictionaryForm = () => {
+  dictionaryForm.table_name = selectedTable.value?.table_name || ''
+  dictionaryForm.field_name = ''
+  dictionaryForm.field_comment = ''
+  dictionaryForm.field_role = ''
+  dictionaryForm.semantic_type = ''
+  dictionaryForm.source_field = ''
+  dictionaryForm.json_path = ''
+  dictionaryForm.aliases_text = ''
+  dictionaryForm.expression = ''
+  dictionaryForm.example_values_text = ''
+  dictionaryForm.ai_notes = ''
+  dictionaryFormRef.value?.clearValidate?.()
+}
+
+const findTrackingField = (tableName: string, fieldName: string) => {
+  const fields = trackingConfig.value?.fields || []
+  return fields.find(
+    (item: any) => item?.table_name === tableName && item?.field_name === fieldName
+  )
+}
+
+const openEditDictionaryField = (field: SchemaField) => {
+  if (!selectedTable.value) return
+  resetDictionaryForm()
+  dictionaryMode.value = 'edit'
+  const item = findTrackingField(selectedTable.value.table_name, field.field_name) || field
+  dictionaryForm.table_name = selectedTable.value.table_name
+  dictionaryForm.field_name = field.field_name
+  dictionaryForm.field_comment = item.field_comment || field.custom_comment || field.field_comment || ''
+  dictionaryForm.field_role = item.field_role || ''
+  dictionaryForm.semantic_type = item.semantic_type || field.field_type || ''
+  dictionaryForm.source_field = item.source_field || field.source_field || inferSourceField(field.field_name)
+  dictionaryForm.json_path = item.json_path || field.json_path || inferJsonPath(field.field_name)
+  dictionaryForm.aliases_text = Array.isArray(item.aliases) ? item.aliases.join('\n') : field.display_name || ''
+  dictionaryForm.expression = item.expression || field.expression || ''
+  dictionaryForm.example_values_text = Array.isArray(item.example_values) ? item.example_values.join('\n') : ''
+  dictionaryForm.ai_notes = item.ai_notes || ''
+  dictionaryFieldDrawerVisible.value = true
+}
+
+const openFieldAction = (field: SchemaField) => {
+  if (isDictionaryField(field)) {
+    openEditDictionaryField(field)
+  } else {
+    openAlterField(field)
+  }
+}
+
+const dictionaryPayload = async () => {
+  const current = await currentTrackingConfig()
+  const fields = Array.isArray(current.fields) ? [...current.fields] : []
+  const tableName = dictionaryForm.table_name.trim()
+  const fieldName = dictionaryForm.field_name.trim()
+  const nextField = {
+    table_name: tableName,
+    field_name: fieldName,
+    field_comment: dictionaryForm.field_comment.trim(),
+    field_role: dictionaryForm.field_role.trim(),
+    semantic_type: dictionaryForm.semantic_type.trim(),
+    source_field: dictionaryForm.source_field.trim(),
+    json_path: dictionaryForm.json_path.trim(),
+    aliases: splitTextList(dictionaryForm.aliases_text),
+    expression: dictionaryForm.expression.trim(),
+    required: false,
+    example_values: splitTextList(dictionaryForm.example_values_text),
+    ai_notes: dictionaryForm.ai_notes.trim(),
+  }
+  const existingIndex = fields.findIndex(
+    (item: any) => item?.table_name === tableName && item?.field_name === fieldName
+  )
+  if (existingIndex >= 0) {
+    fields.splice(existingIndex, 1, { ...fields[existingIndex], ...nextField })
+  } else {
+    fields.push(nextField)
+  }
+
+  const tables = Array.isArray(current.tables) ? [...current.tables] : []
+  if (!tables.some((item: any) => item?.table_name === tableName)) {
+    const table = schema.value?.tables.find((item) => item.table_name === tableName)
+    tables.push({
+      table_name: tableName,
+      table_comment: table?.custom_comment || table?.table_comment || '',
+      table_role: '',
+      aliases: [],
+      ai_notes: '',
+    })
+  }
+
+  return trackingConfigPayload(current, fields, tables)
+}
+
+const trackingConfigPayload = (
+  current: TrackingConfig,
+  fields: any[],
+  tables = Array.isArray(current.tables) ? [...current.tables] : []
+) => ({
+  enabled: current.enabled !== false,
+  default_event_table: current.default_event_table || '',
+  default_subject_field: current.default_subject_field || '',
+  default_event_name_field: current.default_event_name_field || '',
+  default_event_time_field: current.default_event_time_field || '',
+  field_role_mappings: Array.isArray(current.field_role_mappings) ? current.field_role_mappings : [],
+  event_name_mappings: Array.isArray(current.event_name_mappings) ? current.event_name_mappings : [],
+  sql_rules: current.sql_rules || '',
+  notes: current.notes || '',
+  tables,
+  fields,
+})
+
+const deleteDictionaryField = async (field: SchemaField) => {
+  if (!schema.value || !selectedTable.value || !isDictionaryField(field)) return
+  const tableName = selectedTable.value.table_name
+  const fieldName = field.field_name
+  const confirmed = await ElMessageBox.confirm(
+    t('data_dictionary.delete_dictionary_field_confirm', {
+      field: fieldDisplayName(field),
+      table: tableName,
+      technical: fieldName,
+    }),
+    t('data_dictionary.delete_dictionary_field'),
+    {
+      type: 'warning',
+      confirmButtonText: t('data_dictionary.delete_dictionary_field_action'),
+      cancelButtonText: t('common.cancel'),
+    }
+  ).catch(() => false)
+  if (!confirmed) return
+  const current = await currentTrackingConfig()
+  const fields = Array.isArray(current.fields)
+    ? current.fields.filter(
+        (item: any) => !(item?.table_name === tableName && item?.field_name === fieldName)
+      )
+    : []
+  trackingConfig.value = await trackingConfigApi.update(trackingConfigPayload(current, fields))
+  ElMessage.success(t('data_dictionary.dictionary_field_deleted'))
+  await loadSchema(schema.value.id)
+}
+
+const submitDictionaryField = async () => {
+  if (!schema.value) return
+  const valid = await dictionaryFormRef.value?.validate?.().catch(() => false)
+  if (!valid) return
+  dictionarySubmitting.value = true
+  try {
+    const payload = await dictionaryPayload()
+    trackingConfig.value = await trackingConfigApi.update(payload)
+    ElMessage.success(t('data_dictionary.dictionary_field_saved'))
+    dictionaryFieldDrawerVisible.value = false
+    await loadSchema(schema.value.id)
+  } finally {
+    dictionarySubmitting.value = false
+  }
 }
 
 const addChangeField = () => {
@@ -274,9 +696,6 @@ const submitSchemaChange = async () => {
                 </el-icon>
               </template>
             </el-input>
-            <el-tooltip :content="t('data_dictionary.create_table')" placement="top">
-              <el-button class="table-create-button" :icon="Plus" @click="openCreateTable" />
-            </el-tooltip>
           </div>
 
           <div class="table-list">
@@ -323,28 +742,88 @@ const submitSchemaChange = async () => {
                   </el-icon>
                 </template>
               </el-input>
+              <el-select
+                v-model="activeFieldView"
+                class="field-view-select"
+                :placeholder="t('data_dictionary.field_view')"
+              >
+                <el-option
+                  v-for="option in fieldViewOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
             </div>
             <div class="schema-actions">
-              <el-button :icon="Refresh" :loading="datasourceLoading || schemaLoading" @click="loadDatasources">
-                {{ t('common.refresh') }}
+              <el-button :icon="Download" :loading="templateDownloading" @click="downloadTrackingTemplate">
+                {{ t('data_dictionary.download_template') }}
               </el-button>
-              <el-button :icon="Plus" type="primary" :disabled="!selectedTable" @click="openCreateField">
-                {{ t('data_dictionary.create_field') }}
+              <el-button :icon="Download" :loading="dictionaryExporting" @click="exportTrackingConfig">
+                {{ t('data_dictionary.export_dictionary') }}
               </el-button>
+              <el-upload
+                accept=".xlsx,.xls"
+                :show-file-list="false"
+                :http-request="importTrackingExcel"
+              >
+                <el-button :icon="Upload" :loading="dictionaryImporting">
+                  {{ t('data_dictionary.import_dictionary') }}
+                </el-button>
+              </el-upload>
             </div>
           </div>
 
           <section class="field-panel">
             <el-table :data="filteredFields" class="field-table" style="width: 100%">
-              <el-table-column prop="field_name" :label="t('datasource.field_name')" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="field_type" :label="t('datasource.field_type')" width="180" show-overflow-tooltip />
+              <el-table-column :label="t('datasource.field_name')" min-width="220" show-overflow-tooltip>
+                <template #default="scope">
+                  <div class="field-name-cell">
+                    <span class="field-display-name">{{ fieldDisplayName(scope.row) }}</span>
+                    <span v-if="scope.row.display_name && scope.row.display_name !== scope.row.field_name" class="field-technical-name">
+                      {{ scope.row.field_name }}
+                    </span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column :label="t('data_dictionary.field_source')" width="112" align="center">
+                <template #default="scope">
+                  <el-tag
+                    size="small"
+                    :type="isDictionaryField(scope.row) ? 'success' : 'info'"
+                    effect="plain"
+                  >
+                    {{ fieldSourceLabel(scope.row) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column :label="t('datasource.field_type')" width="160" show-overflow-tooltip>
+                <template #default="scope">
+                  {{ fieldTypeLabel(scope.row) }}
+                </template>
+              </el-table-column>
+              <el-table-column :label="t('data_dictionary.source_field')" width="150" show-overflow-tooltip>
+                <template #default="scope">
+                  {{ scope.row.source_field || '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column :label="t('data_dictionary.json_path')" width="170" show-overflow-tooltip>
+                <template #default="scope">
+                  {{ scope.row.json_path || '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column :label="t('data_dictionary.field_expression')" min-width="260" show-overflow-tooltip>
+                <template #default="scope">
+                  <span class="field-expression">{{ scope.row.expression || scope.row.json_path || '-' }}</span>
+                </template>
+              </el-table-column>
               <el-table-column prop="field_comment" :label="t('datasource.field_original_notes')" min-width="220" show-overflow-tooltip />
               <el-table-column prop="custom_comment" :label="t('datasource.field_notes_1')" min-width="220" show-overflow-tooltip>
                 <template #default="scope">
                   {{ scope.row.custom_comment || '-' }}
                 </template>
               </el-table-column>
-              <el-table-column fixed="right" :label="t('ds.actions')" width="96" align="center" class-name="field-operation-cell">
+              <el-table-column fixed="right" :label="t('ds.actions')" width="180" align="center" class-name="field-operation-cell">
                 <template #default="scope">
                   <el-button
                     class="field-row-action"
@@ -352,9 +831,20 @@ const submitSchemaChange = async () => {
                     type="primary"
                     size="small"
                     :icon="EditPen"
-                    @click="openAlterField(scope.row)"
+                    @click="openFieldAction(scope.row)"
                   >
-                    {{ t('data_dictionary.alter_field_action') }}
+                    {{ isDictionaryField(scope.row) ? t('data_dictionary.alter_dictionary_field_action') : t('data_dictionary.alter_field_action') }}
+                  </el-button>
+                  <el-button
+                    v-if="isDictionaryField(scope.row)"
+                    class="field-row-action"
+                    text
+                    type="danger"
+                    size="small"
+                    :icon="Delete"
+                    @click="deleteDictionaryField(scope.row)"
+                  >
+                    {{ t('data_dictionary.delete_dictionary_field_action') }}
                   </el-button>
                 </template>
               </el-table-column>
@@ -372,6 +862,158 @@ const submitSchemaChange = async () => {
           </el-button>
         </div>
       </main>
+
+    <el-drawer
+      v-model="dictionaryFieldDrawerVisible"
+      :title="dictionaryMode === 'create' ? t('data_dictionary.create_dictionary_field') : t('data_dictionary.alter_dictionary_field')"
+      size="620px"
+      destroy-on-close
+    >
+      <el-form
+        ref="dictionaryFormRef"
+        :model="dictionaryForm"
+        :rules="dictionaryFormRules"
+        label-position="top"
+        class="schema-change-form"
+        @submit.prevent
+      >
+        <el-alert
+          :title="t('data_dictionary.dictionary_field_notice')"
+          type="info"
+          show-icon
+          :closable="false"
+        />
+        <div class="field-editor-grid">
+          <el-form-item prop="table_name" :label="t('data_dictionary.table_name')">
+            <el-input v-model="dictionaryForm.table_name" :disabled="true" />
+          </el-form-item>
+          <el-form-item prop="field_name" :label="t('datasource.field_name')">
+            <el-input
+              v-model="dictionaryForm.field_name"
+              :disabled="dictionaryMode === 'edit'"
+              :placeholder="t('data_dictionary.dictionary_field_name_placeholder')"
+              @blur="syncJsonSourceFromFieldName"
+            />
+          </el-form-item>
+        </div>
+        <div class="field-editor-grid">
+          <el-form-item :label="t('data_dictionary.source_field')">
+            <el-select
+              v-model="dictionaryForm.source_field"
+              allow-create
+              default-first-option
+              filterable
+              clearable
+              :reserve-keyword="false"
+              :placeholder="t('data_dictionary.source_field_placeholder')"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="option in physicalFieldOptions"
+                :key="option.value"
+                :label="option.type ? `${option.label} (${option.type})` : option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="t('data_dictionary.json_path')">
+            <el-input
+              v-model="dictionaryForm.json_path"
+              :placeholder="t('data_dictionary.json_path_placeholder')"
+            />
+          </el-form-item>
+        </div>
+        <div class="field-editor-grid">
+          <el-form-item :label="t('data_dictionary.field_role')">
+            <el-select
+              v-model="dictionaryForm.field_role"
+              allow-create
+              default-first-option
+              filterable
+              clearable
+              :reserve-keyword="false"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="option in dictionaryRoleOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="t('data_dictionary.semantic_type')">
+            <el-select
+              v-model="dictionaryForm.semantic_type"
+              allow-create
+              default-first-option
+              filterable
+              clearable
+              :reserve-keyword="false"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="option in semanticTypeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+        </div>
+        <el-form-item :label="t('data_dictionary.display_aliases')">
+          <el-input
+            v-model="dictionaryForm.aliases_text"
+            class="schema-textarea schema-textarea--small"
+            type="textarea"
+            :rows="3"
+            :placeholder="t('data_dictionary.display_aliases_placeholder')"
+          />
+        </el-form-item>
+        <el-form-item :label="t('data_dictionary.field_expression')">
+          <el-input
+            v-model="dictionaryForm.expression"
+            class="schema-textarea schema-textarea--medium code-textarea"
+            type="textarea"
+            :rows="4"
+            :placeholder="t('data_dictionary.field_expression_placeholder')"
+          />
+        </el-form-item>
+        <el-form-item :label="t('datasource.field_notes')">
+          <el-input
+            v-model="dictionaryForm.field_comment"
+            class="schema-textarea schema-textarea--medium"
+            type="textarea"
+            :rows="4"
+          />
+        </el-form-item>
+        <el-form-item :label="t('data_dictionary.ai_notes')">
+          <el-input
+            v-model="dictionaryForm.ai_notes"
+            class="schema-textarea schema-textarea--medium"
+            type="textarea"
+            :rows="4"
+          />
+        </el-form-item>
+        <el-form-item :label="t('data_dictionary.example_values')">
+          <el-input
+            v-model="dictionaryForm.example_values_text"
+            class="schema-textarea schema-textarea--small"
+            type="textarea"
+            :rows="3"
+            :placeholder="t('data_dictionary.example_values_placeholder')"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="drawer-footer">
+          <el-button @click="dictionaryFieldDrawerVisible = false">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="dictionarySubmitting" @click="submitDictionaryField">
+            {{ t('common.save') }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
 
     <el-drawer
       v-model="changeDrawerVisible"
@@ -537,7 +1179,7 @@ const submitSchemaChange = async () => {
 
 .table-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   align-items: center;
 }
@@ -548,14 +1190,6 @@ const submitSchemaChange = async () => {
 
 .table-search {
   min-width: 0;
-}
-
-.table-create-button {
-  width: 44px;
-  height: 36px;
-  min-width: 44px;
-  padding: 0;
-  border-radius: 8px;
 }
 
 .table-list {
@@ -610,6 +1244,10 @@ const submitSchemaChange = async () => {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+
+  :deep(.ed-upload) {
+    display: flex;
+  }
 }
 
 .table-item {
@@ -653,6 +1291,11 @@ const submitSchemaChange = async () => {
 .field-search {
   width: 286px;
   flex: 0 0 286px;
+}
+
+.field-view-select {
+  width: 220px;
+  flex: 0 0 220px;
 }
 
 .field-table {
@@ -719,6 +1362,7 @@ const submitSchemaChange = async () => {
   :deep(.field-operation-cell .cell) {
     justify-content: center;
     padding: 0 8px;
+    gap: 4px;
   }
 }
 
@@ -728,6 +1372,38 @@ const submitSchemaChange = async () => {
   padding: 0 8px;
   font-size: 14px;
   line-height: 20px;
+}
+
+.field-name-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.field-display-name,
+.field-technical-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-display-name {
+  color: #1f2329;
+  font-weight: 500;
+}
+
+.field-technical-name {
+  color: #8f959e;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.field-expression {
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  color: #4f5869;
 }
 
 .sidebar-empty,
@@ -815,9 +1491,22 @@ const submitSchemaChange = async () => {
   }
 }
 
+.schema-textarea--small {
+  :deep(.ed-textarea__inner) {
+    min-height: 66px !important;
+  }
+}
+
 .schema-textarea--large {
   :deep(.ed-textarea__inner) {
     min-height: 176px !important;
+  }
+}
+
+.code-textarea {
+  :deep(.ed-textarea__inner) {
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    font-size: 12px;
   }
 }
 

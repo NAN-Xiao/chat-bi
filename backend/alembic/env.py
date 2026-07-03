@@ -11,6 +11,7 @@ import os
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlmodel import SQLModel
 
 # 这是 Alembic 配置对象，提供
 # 对当前 .ini 配置文件中各项值的访问能力。
@@ -28,15 +29,15 @@ config = context.config
 # from apps.system.models.user import SQLModel  # noqa
 # from apps.settings.models.setting_models import SQLModel
 #from apps.chat.models.chat_model import SQLModel
-from apps.chat.models.custom_prompt_model import SQLModel  # noqa
-from apps.analysis_assistant.models import SQLModel  # noqa
-from apps.external_mcp.models import SQLModel  # noqa
-from apps.knowledge_base.models import SQLModel  # noqa
-from apps.system.models.tenant import SQLModel  # noqa
+import apps.chat.models.custom_prompt_model  # noqa
+import apps.analysis_assistant.models  # noqa
+import apps.external_mcp.models  # noqa
+import apps.knowledge_base.models  # noqa
+import apps.system.models.tenant  # noqa
 # from apps.dashboard.models.dashboard_model import SQLModel
 from common.core.config import settings # noqa
 #from apps.datasource.models.datasource import SQLModel
-from apps.system.models.system_model import SQLModel
+import apps.system.models.system_model  # noqa
 
 target_metadata = SQLModel.metadata
 

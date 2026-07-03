@@ -35,6 +35,17 @@ def test_undefined_table_is_data_unavailable() -> None:
     assert "public.fact_events" in user_data_unavailable_message(message)
 
 
+def test_llm_exports_user_data_unavailable_message_for_workflow_imports() -> None:
+    """
+    是什么：Smart Q&A 工作流的历史导入路径应继续能拿到数据不可用提示函数。
+    """
+    from apps.chat.task.llm import user_data_unavailable_message as llm_message
+
+    message = 'psycopg.errors.UndefinedTable: relation "public"."fact_events" does not exist'
+
+    assert llm_message(message) == user_data_unavailable_message(message)
+
+
 def test_generic_column_word_is_not_data_unavailable() -> None:
     """
     是什么：普通错误里出现 column 单词时，不应误判为缺字段。

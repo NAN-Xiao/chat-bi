@@ -217,6 +217,8 @@ class TenantTrackingFieldModel(SnowflakeBase, table=True):
     field_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
     field_role: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
     semantic_type: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
+    source_field: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
+    json_path: str | None = Field(default=None, sa_column=Column(String(1000), nullable=True))
     aliases: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     value_mappings: list | dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     expression: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))

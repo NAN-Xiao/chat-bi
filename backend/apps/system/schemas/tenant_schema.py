@@ -276,6 +276,8 @@ class TenantTrackingFieldBase(BaseModel):
     field_comment: Optional[str] = Field(default=None, max_length=4000)
     field_role: Optional[str] = Field(default=None, max_length=64)
     semantic_type: Optional[str] = Field(default=None, max_length=64)
+    source_field: Optional[str] = Field(default=None, max_length=255)
+    json_path: Optional[str] = Field(default=None, max_length=1000)
     aliases: list[str] = Field(default_factory=list)
     value_mappings: Optional[Any] = None
     expression: Optional[str] = Field(default=None, max_length=4000)
@@ -332,6 +334,27 @@ class TenantTrackingConfigDTO(TenantTrackingConfigBase):
     update_by: Optional[int] = None
     create_time: int = 0
     update_time: int = 0
+
+
+class TenantTrackingImportSummary(BaseModel):
+    """
+    类说明：TenantTrackingImportSummary 描述数据字典 Excel 导入后的归一化结果。
+    """
+    profile: str = "shuzhi_generic_v1"
+    table_count: int = 0
+    field_count: int = 0
+    event_count: int = 0
+    skipped_rows: int = 0
+    warning_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TenantTrackingConfigImportDTO(BaseModel):
+    """
+    类说明：TenantTrackingConfigImportDTO 返回导入后的完整配置和导入摘要。
+    """
+    config: TenantTrackingConfigDTO
+    summary: TenantTrackingImportSummary
 
 
 class TenantDataRequestCreator(BaseModel):

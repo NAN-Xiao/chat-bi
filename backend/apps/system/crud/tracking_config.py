@@ -145,6 +145,8 @@ def _field_dto(row: TenantTrackingFieldModel) -> TenantTrackingFieldDTO:
         field_comment=row.field_comment,
         field_role=row.field_role,
         semantic_type=row.semantic_type,
+        source_field=row.source_field,
+        json_path=row.json_path,
         aliases=_json_list(row.aliases),
         value_mappings=_json_list_or_dict(row.value_mappings),
         expression=row.expression,
@@ -264,6 +266,8 @@ def save_tracking_config(
                 field_comment=_clean_text(item.field_comment),
                 field_role=_clean_text(item.field_role, 64),
                 semantic_type=_clean_text(item.semantic_type, 64),
+                source_field=_clean_text(item.source_field, 255),
+                json_path=_clean_text(item.json_path, 1000),
                 aliases=_json_list(item.aliases),
                 value_mappings=_json_list_or_dict(item.value_mappings),
                 expression=_clean_text(item.expression),
@@ -362,6 +366,10 @@ def build_tracking_prompt_context(config: TenantTrackingConfigDTO) -> tuple[str,
                 parts.append(f"role={item.field_role}")
             if item.semantic_type:
                 parts.append(f"type={item.semantic_type}")
+            if item.source_field:
+                parts.append(f"source={item.source_field}")
+            if item.json_path:
+                parts.append(f"json_path={item.json_path}")
             if item.required:
                 parts.append("required=true")
             if item.field_comment:

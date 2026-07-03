@@ -405,6 +405,8 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
       const type = field?.field_type || field?.fieldType || field?.type || ''
       const comment = field?.custom_comment || field?.customComment || field?.field_comment || field?.fieldComment || field?.comment || ''
       const displayName = field?.display_name || field?.displayName || ''
+      const sourceField = field?.source_field || field?.sourceField || ''
+      const jsonPath = field?.json_path || field?.jsonPath || ''
       options.push({
         label: displayName || fieldName,
         value,
@@ -416,7 +418,11 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
         type,
         comment,
         tableComment,
-        category: builderFieldCategory(type, fieldName),
+        category: field?.category || builderFieldCategory(type, fieldName),
+        sourceField,
+        jsonPath,
+        expression: field?.expression || '',
+        isJsonSubfield: field?.is_json_subfield || field?.isJsonSubfield || false,
       })
     })
   })
