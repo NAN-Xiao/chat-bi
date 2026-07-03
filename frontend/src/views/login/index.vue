@@ -892,7 +892,10 @@ const goLoginSuccess = async () => {
 
 const loadFeishuStatus = async () => {
   try {
-    const res: any = await AuthApi.feishuStatus({ redirect: currentRedirect() })
+    const res: any = await AuthApi.feishuStatus(
+      { redirect: currentRedirect() },
+      { requestOptions: { silent: true, retryCount: 0 } }
+    )
     feishuStatus.value = {
       enabled: Boolean(res?.enabled),
       authorize_url: res?.authorize_url || null,

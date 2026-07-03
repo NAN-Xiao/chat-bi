@@ -1,4 +1,4 @@
-import { request } from '@/utils/request'
+import { request, type FullRequestConfig } from '@/utils/request'
 export const AuthApi = {
   login: (credentials: { username: string; password: string }) => {
     const entryCredentials = {
@@ -14,7 +14,8 @@ export const AuthApi = {
       },
     })
   },
-  feishuStatus: (params?: { redirect?: string }) => request.get('/login/feishu/status', { params }),
+  feishuStatus: (params?: { redirect?: string }, config?: FullRequestConfig) =>
+    request.get('/login/feishu/status', { ...config, params }),
   feishuCallback: (data: { code: string; state: string }) =>
     request.post('/login/feishu/callback', data),
   submitTrialApplication: (data: {

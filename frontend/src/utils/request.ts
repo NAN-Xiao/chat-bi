@@ -42,16 +42,27 @@ const decodeHeader = (value: string) => {
   }
 }
 
+const HTML_ERROR_RESPONSE_PATTERN = /<\s*(?:!doctype|html|head|body|title|center|h[1-6])[\s>]/i
+const MAX_ERROR_MESSAGE_LENGTH = 300
+
+const normalizeErrorText = (value: string) => {
+  const text = value.trim()
+  if (!text || HTML_ERROR_RESPONSE_PATTERN.test(text)) return ''
+  const normalized = text.replace(/\s+/g, ' ')
+  if (normalized.length <= MAX_ERROR_MESSAGE_LENGTH) return normalized
+  return `${normalized.slice(0, MAX_ERROR_MESSAGE_LENGTH)}...`
+}
+
 const errorResponseMessage = (data: any) => {
   if (!data) return ''
-  if (typeof data === 'string') return data
-  if (typeof data?.detail === 'string') return data.detail
-  if (typeof data?.message === 'string') return data.message
-  if (typeof data?.msg === 'string') return data.msg
+  if (typeof data === 'string') return normalizeErrorText(data)
+  if (typeof data?.detail === 'string') return normalizeErrorText(data.detail)
+  if (typeof data?.message === 'string') return normalizeErrorText(data.message)
+  if (typeof data?.msg === 'string') return normalizeErrorText(data.msg)
   try {
-    return JSON.stringify(data)
+    return normalizeErrorText(JSON.stringify(data))
   } catch {
-    return String(data)
+    return normalizeErrorText(String(data))
   }
 }
 
@@ -270,7 +281,7 @@ class HttpService {
         // Retry logic for specific status codes
         const shouldRetry =
           error.response?.status === 502 &&
-          (config.__retryCount || 0) < (requestOptions.retryCount || 3)
+          (config.__retryCount || 0) < (requestOptions.retryCount ?? 3)
 
         if (shouldRetry) {
           config.__retryCount = (config.__retryCount || 0) + 1
@@ -342,6 +353,15 @@ class HttpService {
           break
         case 500:
           errorMessage = 'Server error'
+          break
+        case 502:
+          errorMessage = '服务网关异常（502），请稍后重试或联系管理员'
+          break
+        case 503:
+          errorMessage = '服务暂时不可用（503），请稍后重试'
+          break
+        case 504:
+          errorMessage = '服务响应超时（504），请稍后重试'
           break
         default:
           errorMessage = `Server responded with error: ${error.response.status}`
