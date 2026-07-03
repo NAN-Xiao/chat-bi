@@ -275,7 +275,7 @@ export class Table extends BaseChart {
   }
 
   render() {
-    this.table?.render()
+    return this.table?.render()
   }
 
   destroy() {

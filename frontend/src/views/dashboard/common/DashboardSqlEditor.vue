@@ -6,6 +6,7 @@ import { dashboardApi } from '@/api/dashboard.ts'
 import { datasourceApi } from '@/api/datasource.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
 import { request } from '@/utils/request.ts'
+import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
@@ -337,12 +338,16 @@ const builderFilterOperatorOptions = [
   { label: '非空', value: 'is_not_null' },
 ]
 
-const sourceTypeOptions = computed(() => [
-  { label: mt('chart_source_sql'), value: 'sql' as ChartDataSourceType },
-  { label: mt('chart_source_mcp'), value: 'external_mcp' as ChartDataSourceType },
-])
 const hasSqlSource = computed(() => form.sourceTypes.includes('sql'))
 const hasMcpSource = computed(() => form.sourceTypes.includes('external_mcp'))
+const sqlSourceEnabled = computed({
+  get: () => hasSqlSource.value,
+  set: (enabled: boolean) => setSourceTypeEnabled('sql', enabled),
+})
+const mcpSourceEnabled = computed({
+  get: () => hasMcpSource.value,
+  set: (enabled: boolean) => setSourceTypeEnabled('external_mcp', enabled),
+})
 const isMixedSource = computed(() => hasSqlSource.value && hasMcpSource.value)
 const isExternalSnapshot = computed(() => hasMcpSource.value && !hasSqlSource.value)
 const isMaterializedSource = computed(() => isExternalSnapshot.value || isMixedSource.value)
@@ -897,14 +902,15 @@ function previewSchemaTables() {
   ]
 }
 
-function generateBuilderSql() {
+function generateBuilderSql(options: { notify?: boolean } = {}) {
+  const notify = options.notify !== false
   if (!sqlBuilder.metricItems.length) {
     addMetricItem()
   }
   const tableName = selectedTableName()
   if (!tableName) {
     ElMessage.warning('当前数据源没有可用字段')
-    return
+    return false
   }
   const selectRows: string[] = []
   const groupRows: string[] = []
@@ -934,7 +940,17 @@ function generateBuilderSql() {
   if (groupRows.length) lines.push(`GROUP BY ${groupRows.join(', ')}`)
   if (groupRows.length) lines.push(`ORDER BY ${groupRows[0]} ASC`)
   form.sql = lines.join('\n')
-  ElMessage.success('已根据配置生成 SQL')
+  if (notify) {
+    ElMessage.success('已根据配置生成 SQL')
+  }
+  return true
+}
+
+async function calculateBuilderSql() {
+  if (!generateBuilderSql({ notify: false })) {
+    return
+  }
+  await runPreview()
 }
 
 async function loadSchemaTables() {
@@ -1806,6 +1822,13 @@ function handleSourceTypesChange(values: ChartDataSourceType[]) {
   previewVersion.value += 1
 }
 
+function setSourceTypeEnabled(type: ChartDataSourceType, enabled: boolean) {
+  const nextSources = enabled
+    ? Array.from(new Set([...form.sourceTypes, type]))
+    : form.sourceTypes.filter((item) => item !== type)
+  handleSourceTypesChange(nextSources as ChartDataSourceType[])
+}
+
 function syncMcpArgumentsTextFromObject() {
   form.mcpArgumentsText = formatJson(form.mcpArgumentsObject)
 }
@@ -2535,24 +2558,9 @@ function closeDrawer() {
   >
     <div v-loading="loading" class="sql-editor-body">
       <el-form label-position="top">
-        <div class="source-config-panel">
-          <div class="config-grid">
-            <el-form-item :label="mt('chart_source_config')">
-              <el-checkbox-group
-                v-model="form.sourceTypes"
-                class="source-checkbox-group"
-                @change="handleSourceTypesChange"
-              >
-                <el-checkbox
-                  v-for="item in sourceTypeOptions"
-                  :key="item.value"
-                  :label="item.value"
-                >
-                  {{ item.label }}
-                </el-checkbox>
-              </el-checkbox-group>
-            </el-form-item>
-          </div>
+        <div v-if="!hasSqlSource" class="source-section-toggle">
+          <div class="source-section-title">SQL 数据源</div>
+          <el-checkbox v-model="sqlSourceEnabled" class="source-inline-checkbox">SQL</el-checkbox>
         </div>
         <div v-if="hasSqlSource" class="sql-builder-panel">
           <div class="sql-builder-header">
@@ -2572,16 +2580,15 @@ function closeDrawer() {
                 SQL 明细
               </button>
             </div>
-            <button type="button" class="builder-outline-button" @click="generateBuilderSql">
-              生成 SQL
-            </button>
+            <el-checkbox v-model="sqlSourceEnabled" class="source-inline-checkbox">SQL</el-checkbox>
           </div>
 
-          <div v-if="sqlBuilder.activeTab === 'builder'" v-loading="schemaLoading" class="sql-builder-content">
-            <section class="builder-section builder-time-section">
+          <div v-if="sqlBuilder.activeTab === 'builder'" class="sql-builder-builder-pane">
+            <div v-loading="schemaLoading" class="sql-builder-content">
+              <section class="builder-section builder-time-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
-                  <span class="builder-section-mark"></span>
+                  <BuilderSectionIcon class="builder-section-icon" />
                   <span>时间范围</span>
                 </div>
               </div>
@@ -2625,7 +2632,7 @@ function closeDrawer() {
             <section class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
-                  <span class="builder-section-index">1</span>
+                  <BuilderSectionIcon class="builder-section-icon" />
                   <span>分析指标</span>
                 </div>
                 <div class="builder-section-actions">
@@ -2643,7 +2650,10 @@ function closeDrawer() {
                   <div class="metric-index">{{ index + 1 }}</div>
                   <div class="metric-body">
                     <div class="metric-title">{{ metricTitle(item, index) }}</div>
-                    <div class="metric-chip-row">
+                    <div
+                      class="metric-chip-row"
+                      :class="{ 'has-metric-field': item.aggregation !== 'count' }"
+                    >
                       <BuilderFieldPicker
                         v-model="item.event"
                         :options="builderFieldOptions"
@@ -2710,7 +2720,7 @@ function closeDrawer() {
             <section class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
-                  <span class="builder-section-mark"></span>
+                  <BuilderSectionIcon class="builder-section-icon" />
                   <span>全局筛选</span>
                 </div>
                 <div class="builder-section-actions">
@@ -2737,7 +2747,7 @@ function closeDrawer() {
             <section class="builder-section">
               <div class="builder-section-head">
                 <div class="builder-section-title">
-                  <span class="builder-section-mark"></span>
+                  <BuilderSectionIcon class="builder-section-icon" />
                   <span>分组项</span>
                 </div>
                 <div class="builder-section-actions">
@@ -2764,9 +2774,11 @@ function closeDrawer() {
               </div>
             </section>
 
+            </div>
+
             <div class="builder-bottom-bar">
               <el-checkbox>近似计算</el-checkbox>
-              <el-button type="primary" @click="generateBuilderSql">计算/生成</el-button>
+              <el-button type="primary" :disabled="!canRunEditorPreview" @click="calculateBuilderSql">计算/生成</el-button>
             </div>
           </div>
 
@@ -2780,6 +2792,10 @@ function closeDrawer() {
               @keyup.stop
             />
           </div>
+        </div>
+        <div class="source-section-toggle">
+          <div class="source-section-title">MCP 数据源</div>
+          <el-checkbox v-model="mcpSourceEnabled" class="source-inline-checkbox">MCP</el-checkbox>
         </div>
         <div v-if="hasMcpSource" class="mcp-editor-panel">
           <el-alert
@@ -2954,7 +2970,7 @@ function closeDrawer() {
             </el-form-item>
           </details>
         </div>
-        <div class="action-row">
+        <div v-if="!hasSqlSource && hasMcpSource" class="action-row">
           <el-button type="primary" :disabled="!canRunEditorPreview" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
           <span v-if="hasSqlSource && !isExternalSnapshot && sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
           <span v-if="mcpChangedAfterPreview" class="muted">{{ mt('mcp_editor_changed') }}</span>
@@ -3285,24 +3301,39 @@ function closeDrawer() {
   margin-bottom: 16px;
 }
 
-.source-config-panel {
-  padding: 12px;
-  margin-bottom: 16px;
+.source-section-toggle {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  margin: 0 0 12px;
   border: 1px solid rgba(31, 35, 41, 0.1);
   border-radius: 6px;
   background: #fff;
 }
 
-.source-checkbox-group {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.source-section-title {
+  flex: 0 0 auto;
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.source-inline-checkbox {
+  height: 24px;
+  margin-right: 0;
+}
+
+.source-inline-checkbox :deep(.el-checkbox__label) {
+  font-size: 13px;
 }
 
 .sql-builder-panel {
-  height: 620px;
-  margin-bottom: 16px;
+  min-height: 580px;
+  max-height: 620px;
+  margin-bottom: 10px;
   border: 1px solid rgba(31, 35, 41, 0.1);
   border-radius: 6px;
   background: #fff;
@@ -3349,43 +3380,33 @@ function closeDrawer() {
   box-shadow: 0 1px 3px rgba(31, 35, 41, 0.08);
 }
 
-.builder-outline-button {
-  height: 26px;
-  padding: 0 9px;
-  border: 1px solid #d8e1f2;
-  border-radius: 5px;
-  background: #fff;
-  color: #315cff;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 24px;
-}
-
-.builder-outline-button:hover {
-  border-color: #315cff;
-  background: #f5f8ff;
-}
-
 .sql-builder-content {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 14px 18px 0;
+  padding: 16px 22px 0;
+}
+
+.sql-builder-builder-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .builder-section {
-  padding: 0 0 18px;
-  margin-bottom: 14px;
-}
-
-.builder-time-section {
-  padding-bottom: 12px;
+  padding: 0 0 16px;
   margin-bottom: 16px;
   border-bottom: 1px solid #f0f2f6;
 }
 
+.builder-time-section {
+  padding-bottom: 14px;
+}
+
 .builder-section:last-of-type {
   margin-bottom: 0;
+  border-bottom: 0;
 }
 
 .builder-section-head {
@@ -3404,28 +3425,14 @@ function closeDrawer() {
   min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
-.builder-section-mark {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #1f54d8;
-  box-shadow: 0 0 0 4px #eef3ff;
-}
-
-.builder-section-index {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  background: #171d4f;
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
+.builder-section-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #1f2329;
 }
 
 .builder-section-actions {
@@ -3460,8 +3467,8 @@ function closeDrawer() {
 
 .builder-compact-grid {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) 92px 98px;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 106px 112px;
+  gap: 8px;
   align-items: center;
 }
 
@@ -3478,13 +3485,14 @@ function closeDrawer() {
 .metric-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .metric-item {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
 }
 
 .metric-index {
@@ -3505,7 +3513,7 @@ function closeDrawer() {
 }
 
 .metric-title {
-  margin-bottom: 7px;
+  margin-bottom: 8px;
   color: #1f2329;
   font-size: 13px;
   font-weight: 600;
@@ -3513,15 +3521,21 @@ function closeDrawer() {
 }
 
 .metric-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(132px, 1fr) 18px 104px 116px 24px;
+  column-gap: 8px;
+  row-gap: 8px;
   align-items: center;
-  min-height: 28px;
+  min-height: 30px;
+}
+
+.metric-chip-row.has-metric-field {
+  grid-template-columns: minmax(112px, 1fr) 18px 104px minmax(112px, 1fr) 116px 24px;
 }
 
 .metric-chip-row :deep(.builder-field-picker-trigger) {
-  max-width: 168px;
+  width: 100%;
+  max-width: none;
 }
 
 .metric-of {
@@ -3531,11 +3545,11 @@ function closeDrawer() {
 }
 
 .metric-aggregation {
-  width: 88px;
+  width: 100%;
 }
 
 .metric-alias {
-  width: 84px;
+  width: 100%;
 }
 
 .builder-add-link {
@@ -3560,8 +3574,8 @@ function closeDrawer() {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
+  gap: 8px;
+  margin-top: 9px;
 }
 
 .group-list {
@@ -3596,12 +3610,9 @@ function closeDrawer() {
 }
 
 .builder-bottom-bar {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
+  flex: 0 0 44px;
   height: 44px;
-  margin: 0 -18px;
-  padding: 7px 18px;
+  padding: 7px 22px;
   border-top: 1px solid rgba(31, 35, 41, 0.08);
   background: #fff;
   display: flex;

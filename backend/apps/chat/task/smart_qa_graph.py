@@ -65,7 +65,10 @@ from apps.datasource.crud.permission_errors import (
     audit_permission_denied,
     looks_like_permission_scope_error,
 )
-from apps.datasource.crud.query_executor import validate_user_query_sql_or_raise
+from apps.datasource.crud.query_executor import (
+    user_data_unavailable_message,
+    validate_user_query_sql_or_raise,
+)
 from apps.datasource.crud.sql_permission import normalize_identifier
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_connection, get_session, get_sqlglot_dialect
@@ -1579,7 +1582,6 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         dynamic_ds_types,
         dynamic_subsql_prefix,
         looks_like_data_skill_schema_unavailable_error,
-        user_data_unavailable_message,
     )
     from common.error import SingleMessageError
 

@@ -203,14 +203,14 @@ function isGroup(node: FilterNode) {
 <style scoped lang="less">
 .builder-filter-tree {
   position: relative;
-  padding-left: 24px;
+  padding-left: 26px;
   font-size: 12px;
 }
 
 .builder-filter-tree::before {
   content: '';
   position: absolute;
-  left: 10px;
+  left: 11px;
   top: 8px;
   bottom: 10px;
   width: 1px;
@@ -233,7 +233,7 @@ function isGroup(node: FilterNode) {
 .builder-filter-node-list {
   position: relative;
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .builder-filter-node {
@@ -243,7 +243,7 @@ function isGroup(node: FilterNode) {
 
 .builder-connector {
   position: absolute;
-  left: -24px;
+  left: -26px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 1;
@@ -272,15 +272,15 @@ function isGroup(node: FilterNode) {
 
 .builder-filter-row {
   display: grid;
-  grid-template-columns: minmax(116px, 1.2fr) 82px minmax(104px, 1fr) 24px;
+  grid-template-columns: minmax(150px, 1.15fr) 88px minmax(150px, 1fr) 24px;
   align-items: center;
-  gap: 6px;
-  min-height: 28px;
+  gap: 8px;
+  min-height: 30px;
 }
 
 .builder-filter-group {
   min-width: 0;
-  padding: 7px 8px 8px;
+  padding: 10px 12px 12px;
   border: 1px solid #e7eaf0;
   border-radius: 6px;
   background: #fafbff;
@@ -292,6 +292,7 @@ function isGroup(node: FilterNode) {
   justify-content: space-between;
   gap: 6px;
   min-height: 24px;
+  margin-bottom: 6px;
 }
 
 .builder-filter-group-title {
@@ -312,7 +313,7 @@ function isGroup(node: FilterNode) {
 }
 
 .builder-operator-select {
-  width: 82px;
+  width: 88px;
 }
 
 .builder-remove-button {
