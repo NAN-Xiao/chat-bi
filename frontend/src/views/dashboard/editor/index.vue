@@ -183,6 +183,43 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   viewInfo.data.snapshotRefreshedAt = refreshedAt
 }
 
+function clearPendingChartData(viewInfo: any, refreshState = 'waiting') {
+  if (!viewInfo) {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.data = []
+  viewInfo.data.fields = []
+  viewInfo.fields = []
+  viewInfo.status = 'loading'
+  viewInfo.message = ''
+  delete viewInfo.error_type
+  delete viewInfo.reason
+  viewInfo.dataState = 'loading'
+  setChartLoadingProgress(viewInfo, 0, true)
+  viewInfo.refreshState = refreshState
+}
+
+function normalizePermissionDeniedChart(viewInfo: any) {
+  if (!viewInfo) {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.data = []
+  viewInfo.data.fields = []
+  viewInfo.fields = []
+  viewInfo.status = 'failed'
+  viewInfo.message = viewInfo.message || '没有查看权限'
+  viewInfo.error_type = 'permission_denied'
+  viewInfo.dataState = 'failed'
+  viewInfo.loadingProgress = 100
+  viewInfo.refreshState = ''
+}
+
 function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
 }
@@ -270,7 +307,15 @@ function prepareEditorChartState(viewInfo: any) {
     keepChartSnapshotOrLoading(viewInfo)
     return
   }
-  if (!viewInfo || !viewInfo.sql?.trim()) {
+  if (!viewInfo) {
+    return
+  }
+  if (isPermissionDeniedResult(viewInfo)) {
+    normalizePermissionDeniedChart(viewInfo)
+    return
+  }
+  const canRefreshChart = isMixedChart(viewInfo) ? canRefreshMixedChart(viewInfo) : Boolean(viewInfo.sql?.trim())
+  if (!canRefreshChart) {
     return
   }
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
@@ -279,18 +324,7 @@ function prepareEditorChartState(viewInfo: any) {
   viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
   viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
   viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
-  viewInfo.message = ''
-  if (hasChartSnapshot(viewInfo)) {
-    viewInfo.status = 'success'
-    viewInfo.dataState = 'ready'
-    viewInfo.loadingProgress = 100
-    viewInfo.refreshState = ''
-  } else {
-    viewInfo.status = 'loading'
-    viewInfo.dataState = 'loading'
-    setChartLoadingProgress(viewInfo, 0, true)
-    viewInfo.refreshState = 'waiting'
-  }
+  clearPendingChartData(viewInfo, 'waiting')
 }
 
 function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {

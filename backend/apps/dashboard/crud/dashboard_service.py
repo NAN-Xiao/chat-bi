@@ -2530,6 +2530,8 @@ def _clear_dashboard_chart_data(item: dict) -> None:
     item['fields'] = []
     item['status'] = 'loading'
     item['message'] = ''
+    item.pop('error_type', None)
+    item.pop('reason', None)
     item['dataState'] = 'loading'
     item['loadingProgress'] = 0
 
@@ -3613,12 +3615,10 @@ def _dashboard_payload(
                     if permission_failure is not None:
                         _apply_dashboard_chart_result(item, permission_failure)
                         continue
-                    if permissions_apply:
-                        _clear_dashboard_chart_data(item)
-                        continue
-                _mark_dashboard_chart_snapshot_ready(item)
+                _clear_dashboard_chart_data(item)
                 continue
             if item_datasource is None:
+                _apply_dashboard_chart_result(item, _failed_chart_result("Dashboard datasource is required"))
                 continue
             if record.datasource is not None and item_datasource != record.datasource:
                 data_result = {

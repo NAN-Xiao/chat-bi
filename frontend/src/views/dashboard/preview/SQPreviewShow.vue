@@ -268,6 +268,43 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   viewInfo.data.snapshotRefreshedAt = refreshedAt
 }
 
+function clearPendingChartData(viewInfo: any, refreshState = 'waiting') {
+  if (!viewInfo) {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.data = []
+  viewInfo.data.fields = []
+  viewInfo.fields = []
+  viewInfo.status = 'loading'
+  viewInfo.message = ''
+  delete viewInfo.error_type
+  delete viewInfo.reason
+  viewInfo.dataState = 'loading'
+  setChartLoadingProgress(viewInfo, 0, true)
+  viewInfo.refreshState = refreshState
+}
+
+function normalizePermissionDeniedChart(viewInfo: any) {
+  if (!viewInfo) {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.data = []
+  viewInfo.data.fields = []
+  viewInfo.fields = []
+  viewInfo.status = 'failed'
+  viewInfo.message = viewInfo.message || '没有查看权限'
+  viewInfo.error_type = 'permission_denied'
+  viewInfo.dataState = 'failed'
+  viewInfo.loadingProgress = 100
+  viewInfo.refreshState = ''
+}
+
 function resultRefreshedAt(result: any) {
   const timestamp = Number(result?.refreshed_at || result?.cache_refreshed_at || 0)
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now()
@@ -408,7 +445,14 @@ function failChartWithoutSnapshot(viewInfo: any, result?: any) {
 }
 
 function prepareChartDatabaseRefreshState(viewInfo: any) {
-  if (!viewInfo || !viewInfo.sql?.trim()) {
+  if (!viewInfo) {
+    return
+  }
+  if (isPermissionDeniedResult(viewInfo)) {
+    normalizePermissionDeniedChart(viewInfo)
+    return
+  }
+  if (!canLookupChartCache(viewInfo)) {
     return
   }
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
@@ -432,7 +476,14 @@ function prepareChartDatabaseRefreshState(viewInfo: any) {
 }
 
 function prepareChartPreviewState(viewInfo: any) {
-  if (!viewInfo || !viewInfo.sql?.trim()) {
+  if (!viewInfo) {
+    return
+  }
+  if (isPermissionDeniedResult(viewInfo)) {
+    normalizePermissionDeniedChart(viewInfo)
+    return
+  }
+  if (!canLookupChartCache(viewInfo)) {
     return
   }
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
@@ -441,18 +492,7 @@ function prepareChartPreviewState(viewInfo: any) {
   viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
   viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
   viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
-  viewInfo.message = ''
-  if (hasUsableChartSnapshot(viewInfo)) {
-    viewInfo.status = 'success'
-    viewInfo.dataState = 'ready'
-    viewInfo.loadingProgress = 100
-    viewInfo.refreshState = ''
-  } else {
-    viewInfo.status = 'loading'
-    viewInfo.dataState = 'loading'
-    setChartLoadingProgress(viewInfo, 0, true)
-    viewInfo.refreshState = 'waiting'
-  }
+  clearPendingChartData(viewInfo, 'waiting')
 }
 
 function chartSqlPayload(viewInfo: any) {

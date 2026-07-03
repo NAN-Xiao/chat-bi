@@ -18,6 +18,9 @@ type MixedRefreshOptions = {
   requestConfig?: any
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const DAY_MS = 24 * 60 * 60 * 1000
+
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
 }
@@ -61,6 +64,17 @@ function dashboardCacheMissResult(message = '看板缓存未命中') {
   }
 }
 
+function failedPreviewResult(message: string, errorType = 'external_mcp_refresh_failed') {
+  return {
+    status: 'failed',
+    fields: [],
+    data: [],
+    message,
+    reason: message,
+    error_type: errorType,
+  }
+}
+
 export function isMixedChart(viewInfo: any) {
   const sources = viewInfo?.sourceConfig?.sources || viewInfo?.sources
   return (
@@ -74,6 +88,122 @@ export function isExternalMcpSnapshotChart(viewInfo: any) {
   return viewInfo?.dataSourceType === 'external_mcp' || (
     viewInfo?.externalSnapshot === true && !isMixedChart(viewInfo)
   )
+}
+
+function parseIsoDate(value: any) {
+  const text = `${value || ''}`
+  if (!ISO_DATE_RE.test(text)) {
+    return null
+  }
+  const [year, month, day] = text.split('-').map((item) => Number(item))
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+function formatIsoDate(value: Date) {
+  const year = value.getUTCFullYear()
+  const month = `${value.getUTCMonth() + 1}`.padStart(2, '0')
+  const day = `${value.getUTCDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function shiftIsoDate(value: string, offsetDays: number) {
+  const date = parseIsoDate(value)
+  if (!date) {
+    return value
+  }
+  date.setUTCDate(date.getUTCDate() + offsetDays)
+  return formatIsoDate(date)
+}
+
+function inclusiveDateWindowDays(startDate: any, endDate: any) {
+  const start = parseIsoDate(startDate)
+  const end = parseIsoDate(endDate)
+  if (!start || !end) {
+    return 0
+  }
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / DAY_MS) + 1)
+}
+
+function todayInTimezone(timezone?: string) {
+  if (!timezone) {
+    return formatIsoDate(new Date(Date.UTC(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      new Date().getDate()
+    )))
+  }
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date())
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+    if (values.year && values.month && values.day) {
+      return `${values.year}-${values.month}-${values.day}`
+    }
+  } catch (_error) {
+    // Fall back to the browser date if the MCP server advertises an unknown timezone.
+  }
+  return formatIsoDate(new Date(Date.UTC(
+    new Date().getFullYear(),
+    new Date().getMonth(),
+    new Date().getDate()
+  )))
+}
+
+function chartTitle(viewInfo: any) {
+  return `${viewInfo?.chart?.title || viewInfo?.title || ''}`
+}
+
+function titleLooksRelativeDateWindow(title: string) {
+  return /(?:近|最近|过去)\s*\d+\s*(?:日|天)/.test(title) || /\b(?:last|recent|past)\s*\d+\s*days?\b/i.test(title)
+}
+
+function configuredRelativeDateWindow(sourceMcp: any, viewInfo: any) {
+  return sourceMcp?.dateWindow || sourceMcp?.relativeDateWindow || viewInfo?.dateWindow || viewInfo?.relativeDateWindow || null
+}
+
+function relativeDateWindowDays(config: any) {
+  if (!config || typeof config !== 'object') {
+    return 0
+  }
+  const days = Number(config.days || config.value || config.windowDays || config.recentDays)
+  return Number.isFinite(days) && days > 0 ? Math.round(days) : 0
+}
+
+function shouldRefreshDateWindow(sourceMcp: any, viewInfo: any) {
+  if (sourceMcp?.autoRefreshDateWindow === false) {
+    return false
+  }
+  if (sourceMcp?.autoRefreshDateWindow === true || configuredRelativeDateWindow(sourceMcp, viewInfo)) {
+    return true
+  }
+  return titleLooksRelativeDateWindow(chartTitle(viewInfo))
+}
+
+function withResolvedMcpDateWindow(argumentsValue: Record<string, any>, sourceMcp: any, viewInfo: any) {
+  if (!argumentsValue?.start_date || !argumentsValue?.end_date) {
+    return argumentsValue
+  }
+  if (!ISO_DATE_RE.test(`${argumentsValue.start_date}`) || !ISO_DATE_RE.test(`${argumentsValue.end_date}`)) {
+    return argumentsValue
+  }
+  if (!shouldRefreshDateWindow(sourceMcp, viewInfo)) {
+    return argumentsValue
+  }
+  const explicitDays = relativeDateWindowDays(configuredRelativeDateWindow(sourceMcp, viewInfo))
+  const days = explicitDays || inclusiveDateWindowDays(argumentsValue.start_date, argumentsValue.end_date)
+  if (!days) {
+    return argumentsValue
+  }
+  const endDate = todayInTimezone(sourceMcp?.timezone || argumentsValue.timezone)
+  return {
+    ...argumentsValue,
+    start_date: shiftIsoDate(endDate, -(days - 1)),
+    end_date: endDate,
+  }
 }
 
 function normalizeJoinValue(value: any) {
@@ -217,12 +347,13 @@ function chartSqlPayload(viewInfo: any) {
 
 function mcpPayload(viewInfo: any) {
   const sourceMcp = viewInfo?.sourceConfig?.mcp || viewInfo?.mcp || {}
+  const argumentsValue = withResolvedMcpDateWindow({ ...(sourceMcp.arguments || {}) }, sourceMcp, viewInfo)
   return {
     external_mcp_server_id: sourceMcp.externalMcpServerId || sourceMcp.external_mcp_server_id || viewInfo.external_mcp_server_id,
     tenant_id: sourceMcp.tenantId || sourceMcp.tenant_id || viewInfo.tenant_id || null,
     dashboard_id: sourceMcp.dashboardId || sourceMcp.dashboard_id || viewInfo.dashboard_id || null,
     tool: sourceMcp.tool,
-    arguments: sourceMcp.arguments || {},
+    arguments: argumentsValue,
     result_path: sourceMcp.resultPath || sourceMcp.result_path || null,
     key_field: sourceMcp.keyField || sourceMcp.key_field || null,
     value_field: sourceMcp.valueField || sourceMcp.value_field || null,
@@ -242,6 +373,50 @@ export function canRefreshMixedChart(viewInfo: any) {
   const sqlPayload = chartSqlPayload(viewInfo)
   const mcp = mcpPayload(viewInfo)
   return Boolean(isMixedChart(viewInfo) && sqlPayload.datasource && sqlPayload.sql && mcp.external_mcp_server_id && mcp.tool)
+}
+
+function chartBoundFields(viewInfo: any) {
+  const chart = viewInfo?.chart || {}
+  return unique([
+    ...(Array.isArray(chart?.xAxis) ? chart.xAxis.map((item: any) => item?.value || item?.name) : []),
+    ...(Array.isArray(chart?.yAxis) ? chart.yAxis.map((item: any) => item?.value || item?.name) : []),
+    ...(Array.isArray(chart?.series) ? chart.series.map((item: any) => item?.value || item?.name) : []),
+  ])
+}
+
+function missingBoundFields(viewInfo: any, fields: string[]) {
+  const available = new Set(fields)
+  return chartBoundFields(viewInfo).filter((field) => !available.has(field))
+}
+
+export function canRefreshExternalMcpSnapshotChart(viewInfo: any) {
+  const mcp = mcpPayload(viewInfo)
+  return Boolean(isExternalMcpSnapshotChart(viewInfo) && mcp.external_mcp_server_id && mcp.tool)
+}
+
+export async function refreshExternalMcpSnapshotData(viewInfo: any, options: MixedRefreshOptions = {}) {
+  const payload = mcpPayload(viewInfo)
+  if (!payload.external_mcp_server_id || !payload.tool) {
+    return failedPreviewResult('当前图表缺少第三方 MCP 数据源配置', 'external_mcp_missing_config')
+  }
+  const result = await externalMcpApi.preview(payload, options.requestConfig)
+  const normalized = previewResultSnapshot(result)
+  if (normalized.status === 'failed') {
+    return normalized
+  }
+  const missing = missingBoundFields(viewInfo, normalized.fields)
+  if (missing.length) {
+    return {
+      ...normalized,
+      status: 'failed',
+      message: `MCP 返回字段缺少当前图表绑定字段：${missing.join('、')}。请调整 MCP 结果路径或使用能返回同结构数据的 MCP 函数。`,
+      error_type: 'external_mcp_shape_mismatch',
+    }
+  }
+  return {
+    ...normalized,
+    refreshed_at: Date.now(),
+  }
 }
 
 export async function refreshMixedChartData(viewInfo: any, options: MixedRefreshOptions = {}) {
@@ -273,6 +448,46 @@ export async function refreshMixedChartData(viewInfo: any, options: MixedRefresh
     ...(sqlResult?.cache_stale !== undefined ? { cache_stale: sqlResult.cache_stale } : {}),
     ...(sqlResult?.refresh_deferred !== undefined ? { refresh_deferred: sqlResult.refresh_deferred } : {}),
     refreshed_at: Number.isFinite(refreshedAt) && refreshedAt > 0 ? refreshedAt : Date.now(),
+  }
+}
+
+export function applyExternalMcpSnapshotResult(viewInfo: any, result: any) {
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  const fields = getPreviewResultFields(result)
+  const data = Array.isArray(result?.data) ? result.data : []
+  viewInfo.data.fields = fields
+  viewInfo.data.data = data
+  viewInfo.data.source_fields = fields
+  viewInfo.data.source_data = data
+  viewInfo.data.raw = result?.raw
+  viewInfo.fields = fields
+  viewInfo.status = result?.status || 'success'
+  viewInfo.message = result?.message || ''
+  viewInfo.dataState = viewInfo.status === 'failed' ? 'failed' : 'ready'
+  viewInfo.loadingProgress = 100
+  viewInfo.refreshState = ''
+  viewInfo.externalSnapshot = true
+  viewInfo.dataSourceType = 'external_mcp'
+  if (result?.mcp) {
+    const nextMcp = {
+      ...((viewInfo.sourceConfig?.mcp || viewInfo.mcp || {}) as Record<string, any>),
+      ...result.mcp,
+      lastResult: previewResultSnapshot(result),
+    }
+    viewInfo.mcp = {
+      ...(viewInfo.mcp || {}),
+      ...nextMcp,
+    }
+    viewInfo.sourceConfig = {
+      ...(viewInfo.sourceConfig || {}),
+      mode: viewInfo.sourceConfig?.mode || 'external_mcp',
+      mcp: {
+        ...(viewInfo.sourceConfig?.mcp || {}),
+        ...nextMcp,
+      },
+    }
   }
 }
 

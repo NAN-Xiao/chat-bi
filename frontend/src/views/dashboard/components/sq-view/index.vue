@@ -64,10 +64,13 @@ import {
 import { inferPivotDimensions, type PivotDimension } from '@/views/dashboard/utils/pivotDimensions.ts'
 import { ArrowLeft, ArrowRight, Search } from '@element-plus/icons-vue'
 import {
+  applyExternalMcpSnapshotResult,
   applyMixedChartResult,
+  canRefreshExternalMcpSnapshotChart,
   canRefreshMixedChart,
   isExternalMcpSnapshotChart,
   isMixedChart,
+  refreshExternalMcpSnapshotData,
   refreshMixedChartData,
 } from '@/views/dashboard/utils/mixedChartData'
 const { t, locale } = useI18n()
@@ -1214,18 +1217,105 @@ async function refreshData(options: RefreshDataOptions = {}) {
     return
   }
   if (isExternalSnapshotChart(props.viewInfo)) {
+    if (!canRefreshExternalMcpSnapshotChart(props.viewInfo)) {
+      if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
+        props.viewInfo.data = {}
+      }
+      props.viewInfo.data.data = Array.isArray(props.viewInfo.data.data) ? props.viewInfo.data.data : []
+      props.viewInfo.data.fields = Array.isArray(props.viewInfo.data.fields) ? props.viewInfo.data.fields : []
+      props.viewInfo.fields = Array.isArray(props.viewInfo.fields) ? props.viewInfo.fields : props.viewInfo.data.fields
+      props.viewInfo.status = 'success'
+      props.viewInfo.message = ''
+      props.viewInfo.dataState = 'ready'
+      props.viewInfo.loadingProgress = 100
+      props.viewInfo.refreshState = ''
+      if (!silent && !hasChartShape(props.viewInfo)) {
+        ElMessage.warning(t('dashboard.mcp_editor_no_server'))
+      }
+      scheduleRenderChart()
+      return
+    }
+    refreshing.value = true
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
       props.viewInfo.data = {}
     }
-    props.viewInfo.data.data = Array.isArray(props.viewInfo.data.data) ? props.viewInfo.data.data : []
-    props.viewInfo.data.fields = Array.isArray(props.viewInfo.data.fields) ? props.viewInfo.data.fields : []
-    props.viewInfo.fields = Array.isArray(props.viewInfo.fields) ? props.viewInfo.fields : props.viewInfo.data.fields
-    props.viewInfo.status = 'success'
-    props.viewInfo.message = ''
-    props.viewInfo.dataState = 'ready'
-    props.viewInfo.loadingProgress = 100
-    props.viewInfo.refreshState = ''
-    scheduleRenderChart()
+    const previousData = Array.isArray(props.viewInfo.data.data) ? [...props.viewInfo.data.data] : []
+    const previousDataFields = Array.isArray(props.viewInfo.data.fields) ? [...props.viewInfo.data.fields] : []
+    const previousFields = Array.isArray(props.viewInfo.fields) ? [...props.viewInfo.fields] : []
+    const hasPreviousRows = previousData.length > 0
+    props.viewInfo.dataState = 'loading'
+    props.viewInfo.refreshState = forceRefresh ? 'loading' : 'waiting'
+    setChartLoadingProgress(0, !silent)
+    startRefreshProgress()
+    const requestSeq = ++refreshRequestSeq
+    if (blocking) {
+      blockingRefreshLoading.value = true
+      blockingRefreshRequestSeq = requestSeq
+    }
+    try {
+      const result = await refreshExternalMcpSnapshotData(props.viewInfo, { forceRefresh })
+      if (requestSeq !== refreshRequestSeq) {
+        return
+      }
+      const hasPreviousShape =
+        hasPreviousRows || previousDataFields.length > 0 || previousFields.length > 0 || hasChartShape(props.viewInfo)
+      if (result?.status === 'failed') {
+        if (hasPreviousShape) {
+          props.viewInfo.data.fields = previousDataFields
+          props.viewInfo.data.data = previousData
+          props.viewInfo.fields = previousFields
+          props.viewInfo.status = 'success'
+          props.viewInfo.message = ''
+          props.viewInfo.dataState = 'ready'
+          props.viewInfo.refreshState = ''
+        } else {
+          props.viewInfo.status = 'failed'
+          props.viewInfo.message = result?.message || t('dashboard.chart_refresh_failed')
+          props.viewInfo.dataState = 'failed'
+          props.viewInfo.refreshState = ''
+        }
+        if (!silent) {
+          ElMessage.error(result?.message || t('dashboard.chart_refresh_failed'))
+        }
+      } else {
+        applyExternalMcpSnapshotResult(props.viewInfo, result)
+        markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
+        if (!silent) {
+          ElMessage.success(t('dashboard.chart_refresh_success'))
+        }
+      }
+      props.viewInfo.loadingProgress = 100
+      chartRenderVersion.value += 1
+      await nextTick()
+    } catch (error: any) {
+      if (requestSeq !== refreshRequestSeq) {
+        return
+      }
+      props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
+      if (hasPreviousRows) {
+        props.viewInfo.data.fields = previousDataFields
+        props.viewInfo.data.data = previousData
+        props.viewInfo.fields = previousFields
+        props.viewInfo.status = 'success'
+        props.viewInfo.dataState = 'ready'
+      } else {
+        props.viewInfo.status = 'failed'
+        props.viewInfo.dataState = 'failed'
+      }
+      props.viewInfo.refreshState = ''
+      if (!silent) {
+        ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
+      }
+    } finally {
+      if (requestSeq === refreshRequestSeq) {
+        stopRefreshProgress()
+        refreshing.value = false
+        props.viewInfo.loadingProgress = props.viewInfo.dataState === 'loading' ? props.viewInfo.loadingProgress : 100
+      }
+      if (blockingRefreshRequestSeq === requestSeq) {
+        blockingRefreshLoading.value = false
+      }
+    }
     return
   }
   if (!props.viewInfo?.datasource) {
@@ -1638,7 +1728,9 @@ async function recoverStaleLoadingState() {
   }
   const canRecoverChart = isMixedChart(props.viewInfo)
     ? canRefreshMixedChart(props.viewInfo)
-    : !!(props.viewInfo?.datasource && props.viewInfo?.sql?.trim())
+    : isExternalSnapshotChart(props.viewInfo)
+      ? canRefreshExternalMcpSnapshotChart(props.viewInfo)
+      : !!(props.viewInfo?.datasource && props.viewInfo?.sql?.trim())
   if (props.showPosition === 'canvas' && canRecoverChart) {
     await refreshData({ silent: true, forceRefresh: false })
   }

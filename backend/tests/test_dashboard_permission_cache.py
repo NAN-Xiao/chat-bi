@@ -3,12 +3,13 @@
 """
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 
 from apps.dashboard.crud import dashboard_service
-from apps.dashboard.models.dashboard_model import DashboardSqlPreview
+from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardSqlPreview
 
 
 def _request(cache_only: bool = False) -> DashboardSqlPreview:
@@ -98,3 +99,61 @@ def test_preview_sql_does_not_write_cache_when_permissions_apply(monkeypatch: py
 
     assert result["status"] == "success"
     assert result["data"] == [{"day": "2026-06-30", "revenue": 12.5}]
+
+
+def test_dashboard_payload_without_data_strips_saved_chart_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：看板初始加载不能先把保存的图表快照发给前端，再等待异步权限检查覆盖。
+    """
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(dashboard_service, "_dashboard_chart_permission_audit", lambda *_args, **_kwargs: (None, False))
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(dashboard_service, "_can_edit_dashboard", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_can_share_dashboard", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_can_set_default_dashboard", lambda *_args, **_kwargs: False)
+
+    record = CoreDashboard(
+        id="dashboard-1",
+        tenant_id=2001,
+        name="核心看板",
+        pid="root",
+        datasource=1,
+        node_type="leaf",
+        type="dashboard",
+        canvas_style_data="{}",
+        component_data="[]",
+        canvas_view_info=json.dumps(
+            {
+                "chart-1": {
+                    "id": "chart-1",
+                    "datasource": 1,
+                    "sql": "select day, revenue from fact_payments",
+                    "status": "success",
+                    "fields": ["day", "revenue"],
+                    "data": {
+                        "fields": ["day", "revenue"],
+                        "data": [{"day": "2026-06-30", "revenue": 12.5}],
+                    },
+                }
+            }
+        ),
+        status=1,
+        is_default=1,
+        delete_flag=0,
+    )
+
+    result = dashboard_service._dashboard_payload(
+        object(),
+        _user(),
+        record,
+        default_context=True,
+        include_data=False,
+    )
+
+    chart = json.loads(result["canvas_view_info"])["chart-1"]
+    assert chart["status"] == "loading"
+    assert chart["dataState"] == "loading"
+    assert chart["fields"] == []
+    assert chart["data"]["fields"] == []
+    assert chart["data"]["data"] == []
