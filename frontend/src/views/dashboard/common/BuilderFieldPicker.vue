@@ -90,7 +90,6 @@ const tableTabs = computed(() => {
       value: `${TABLE_TAB_PREFIX}${tableName}`,
     }))
 })
-
 const tabOptions = computed(() => {
   return [
     { label: '全部', value: 'all' },
@@ -158,7 +157,17 @@ const groupedOptions = computed(() => {
     }
     groups.get(key)?.push(item)
   })
-  return Array.from(groups.entries()).map(([name, items]) => ({ name, items }))
+  return Array.from(groups.entries()).map(([name, items]) => ({
+    name,
+    items: items.sort((a, b) => {
+      const aSource = a.sourceField || a.field
+      const bSource = b.sourceField || b.field
+      const sourceCompare = aSource.localeCompare(bSource, undefined, { numeric: true, sensitivity: 'base' })
+      if (sourceCompare !== 0) return sourceCompare
+      if (a.isJsonSubfield !== b.isJsonSubfield) return a.isJsonSubfield ? 1 : -1
+      return a.field.localeCompare(b.field, undefined, { numeric: true, sensitivity: 'base' })
+    }),
+  }))
 })
 
 function fieldTypeLabel(option: FieldOption) {
@@ -172,6 +181,9 @@ function fieldTypeLabel(option: FieldOption) {
 }
 
 function displayFieldName(option: FieldOption) {
+  if (option.isJsonSubfield && option.sourceField && option.field.startsWith(`${option.sourceField}.`)) {
+    return option.displayName || option.label || option.field.slice(option.sourceField.length + 1)
+  }
   return option.displayName || option.label || option.field
 }
 
@@ -241,7 +253,7 @@ function selectField(option: FieldOption) {
                   <button
                     type="button"
                     class="builder-field-picker-option"
-                    :class="{ active: item.value === modelValue }"
+                    :class="{ active: item.value === modelValue, 'is-json-subfield': item.isJsonSubfield }"
                     @click="selectField(item)"
                   >
                     <span class="field-name">{{ displayFieldName(item) }}</span>
@@ -407,6 +419,14 @@ function selectField(option: FieldOption) {
 .builder-field-picker-option:hover,
 .builder-field-picker-option.active {
   background: #eef1f7;
+}
+
+.builder-field-picker-option.is-json-subfield {
+  padding-left: 20px;
+}
+
+.builder-field-picker-option.is-json-subfield .field-name {
+  color: #31415f;
 }
 
 .field-name {

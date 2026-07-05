@@ -14,6 +14,7 @@ from apps.dashboard.crud.dashboard_service import list_resource, load_resource, 
     copy_dashboard_to_platform_template, list_platform_dashboard_templates, load_platform_dashboard_template, \
     update_platform_dashboard_template, delete_platform_dashboard_template, copy_platform_template_to_workspace_dashboard, \
     refresh_platform_dashboard_template
+from apps.dashboard.crud.ai_sql_generator import generate_dashboard_ai_sql
 from apps.dashboard.models.dashboard_model import (
     CreateDashboard,
     BaseDashboard,
@@ -24,6 +25,8 @@ from apps.dashboard.models.dashboard_model import (
     DashboardReorderRequest,
     DashboardPlatformTemplateCopyRequest,
     DashboardPlatformTemplateUseRequest,
+    DashboardAiSqlGenerateRequest,
+    DashboardAiSqlGenerateResponse,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -414,6 +417,17 @@ async def sql_preview_api(session: SessionDep, current_user: CurrentUser, reques
         current_user=current_user,
         request=request,
     )
+
+
+@router.post("/ai_sql_generate", response_model=DashboardAiSqlGenerateResponse, summary=f"{PLACEHOLDER_PREFIX}dashboard_ai_sql_generate")
+@require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
+async def ai_sql_generate_api(session: SessionDep, current_user: CurrentUser, request: DashboardAiSqlGenerateRequest):
+    """
+    是什么：ai_sql_generate_api 是手动看板 AI 生成 SQL 的接口入口。
+    谁调用：前端手动看板配置器点击计算/生成时调用。
+    做了什么：把用户在配置器中选择的字段、指标、筛选和意图交给 AI 生成 SQL，不直接执行 SQL。
+    """
+    return await generate_dashboard_ai_sql(session=session, current_user=current_user, request=request)
 
 
 @router.post("/share", summary=f"{PLACEHOLDER_PREFIX}dashboard_share")

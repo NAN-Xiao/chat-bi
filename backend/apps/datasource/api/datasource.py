@@ -231,6 +231,8 @@ class DatasourceSchemaFieldItem(BaseModel):
     json_path: str | None = None
     is_json_subfield: bool = False
     category: str | None = None
+    value_mappings: list[Any] | dict[str, Any] | None = None
+    example_values: list[Any] | None = None
 
 
 class DatasourceFieldListItem(BaseModel):
@@ -254,6 +256,8 @@ class DatasourceFieldListItem(BaseModel):
     json_path: str | None = None
     is_json_subfield: bool = False
     category: str | None = None
+    value_mappings: list[Any] | dict[str, Any] | None = None
+    example_values: list[Any] | None = None
 
 
 class DatasourceSchemaTableItem(BaseModel):
@@ -581,6 +585,8 @@ def _field_list_item_from_core(
         source_field=field.field_name,
         is_json_subfield=False,
         category=_tracking_category(tracking, field.field_type),
+        value_mappings=getattr(tracking, "value_mappings", None),
+        example_values=getattr(tracking, "example_values", None),
     )
 
 
@@ -613,6 +619,8 @@ def _field_list_item_from_tracking(
         json_path=json_path,
         is_json_subfield=bool(json_path) or source_field != row.field_name,
         category=_tracking_category(row),
+        value_mappings=row.value_mappings,
+        example_values=row.example_values,
     )
 
 
@@ -956,6 +964,8 @@ async def schema_metadata(
                         json_path=field.json_path,
                         is_json_subfield=field.is_json_subfield,
                         category=field.category,
+                        value_mappings=field.value_mappings,
+                        example_values=field.example_values,
                     )
                     for field in _build_field_list_items(
                         session,

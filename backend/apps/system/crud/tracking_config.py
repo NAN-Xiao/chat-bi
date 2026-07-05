@@ -70,6 +70,13 @@ def _json_list_or_dict(value: Any):
     return parsed if isinstance(parsed, (list, dict)) else None
 
 
+def _normalized_semantic_type(field_role: str | None, semantic_type: str | None) -> str | None:
+    role = (field_role or "").strip().lower()
+    if role == "event_name":
+        return "text"
+    return semantic_type
+
+
 def _row_id(row) -> int | None:
     """
     是什么：_row_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -144,7 +151,7 @@ def _field_dto(row: TenantTrackingFieldModel) -> TenantTrackingFieldDTO:
         field_name=row.field_name,
         field_comment=row.field_comment,
         field_role=row.field_role,
-        semantic_type=row.semantic_type,
+        semantic_type=_normalized_semantic_type(row.field_role, row.semantic_type),
         source_field=row.source_field,
         json_path=row.json_path,
         aliases=_json_list(row.aliases),
@@ -265,7 +272,10 @@ def save_tracking_config(
                 field_name=field_name,
                 field_comment=_clean_text(item.field_comment),
                 field_role=_clean_text(item.field_role, 64),
-                semantic_type=_clean_text(item.semantic_type, 64),
+                semantic_type=_normalized_semantic_type(
+                    _clean_text(item.field_role, 64),
+                    _clean_text(item.semantic_type, 64),
+                ),
                 source_field=_clean_text(item.source_field, 255),
                 json_path=_clean_text(item.json_path, 1000),
                 aliases=_json_list(item.aliases),
@@ -364,8 +374,9 @@ def build_tracking_prompt_context(config: TenantTrackingConfigDTO) -> tuple[str,
             parts = [f"- `{item.table_name}.{item.field_name}`"]
             if item.field_role:
                 parts.append(f"role={item.field_role}")
-            if item.semantic_type:
-                parts.append(f"type={item.semantic_type}")
+            semantic_type = _normalized_semantic_type(item.field_role, item.semantic_type)
+            if semantic_type:
+                parts.append(f"type={semantic_type}")
             if item.source_field:
                 parts.append(f"source={item.source_field}")
             if item.json_path:

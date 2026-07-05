@@ -186,7 +186,7 @@ function isGroup(node: FilterNode) {
             class="builder-filter-value"
             size="small"
             clearable
-            placeholder="值"
+            placeholder="手动输入筛选值"
             @keydown.stop
             @keyup.stop
           />

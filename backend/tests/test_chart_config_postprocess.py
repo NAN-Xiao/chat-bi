@@ -68,6 +68,46 @@ def test_time_series_rate_chart_keeps_line_when_counts_are_supporting_metrics() 
     ]
 
 
+def test_series_rate_chart_keeps_primary_metric_when_other_horizons_are_available() -> None:
+    """
+    是什么：带渠道 series 的留存趋势只画主指标时，不应因为还有 D3/D7 字段而降级成表格。
+    """
+    fields = ["日期", "渠道", "新增用户数", "第 1 日", "第 3 日", "第 7 日"]
+    rows = [
+        {
+            "日期": "2026-06-01",
+            "渠道": "Facebook",
+            "新增用户数": 120,
+            "第 1 日": 27.5,
+            "第 3 日": 10.2,
+            "第 7 日": 4.1,
+        },
+        {
+            "日期": "2026-06-01",
+            "渠道": "Organic",
+            "新增用户数": 40,
+            "第 1 日": 35.0,
+            "第 3 日": 15.0,
+            "第 7 日": 8.0,
+        },
+    ]
+    chart = {
+        "type": "line",
+        "title": "各渠道新增用户留存趋势",
+        "axis": {
+            "x": {"value": "日期"},
+            "y": [{"value": "第 1 日"}],
+            "series": {"value": "渠道"},
+        },
+    }
+
+    checked_chart = _ensure_chart_covers_metric_fields(chart, fields, rows)
+
+    assert checked_chart["type"] == "line"
+    assert checked_chart["axis"]["y"] == [{"value": "第 1 日"}]
+    assert checked_chart["axis"]["series"] == {"value": "渠道"}
+
+
 def test_chart_downgrades_to_table_when_important_metric_is_missing() -> None:
     """
     是什么：test_chart_downgrades_to_table_when_important_metric_is_missing 是一段测试代码，用来确认测试的某个场景没有问题。

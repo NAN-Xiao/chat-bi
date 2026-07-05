@@ -871,6 +871,47 @@ def _is_supporting_only_gap(covered_metrics: list[str], missing_metrics: list[st
     )
 
 
+def _is_horizon_metric_field(field: str) -> bool:
+    """
+    是什么：识别 D1/D3/第 7 日 这类同一指标不同观察窗口的字段。
+    """
+    normalized = re.sub(r"\s+", "", _normalize_chart_field_name(field))
+    return bool(
+        re.fullmatch(r"d\d+", normalized)
+        or re.fullmatch(r"d\d+(d|day|days)", normalized)
+        or re.fullmatch(r"day\d+", normalized)
+        or re.fullmatch(r"第\d+[日天]", normalized)
+        or re.fullmatch(r"\d+[日天]", normalized)
+    )
+
+
+def _is_single_series_primary_metric_gap(
+        chart: dict[str, Any],
+        covered_metrics: list[str],
+        missing_metrics: list[str],
+) -> bool:
+    """
+    是什么：允许带分类 series 的趋势图只绑定一个主指标。
+    """
+    chart_type = str(chart.get("type") or "").lower()
+    if chart_type not in {"line", "area"} or len(covered_metrics) != 1 or not missing_metrics:
+        return False
+
+    axis = chart.get("axis") or {}
+    if not isinstance(axis, dict) or not axis.get("series"):
+        return False
+
+    major_missing = [field for field in missing_metrics if not _is_supporting_metric_field(field)]
+    if not major_missing:
+        return True
+
+    compared_metrics = covered_metrics + major_missing
+    if all(_is_rate_metric_field(field) or _is_average_metric_field(field) for field in compared_metrics):
+        return True
+
+    return all(_is_horizon_metric_field(field) for field in compared_metrics)
+
+
 def _is_funnel_supporting_metric_gap(
     chart: dict[str, Any],
     covered_metrics: list[str],
@@ -985,6 +1026,8 @@ def _ensure_chart_covers_metric_fields(
     ]
     if len(covered_metrics) < len(metric_fields):
         if _is_funnel_supporting_metric_gap(chart, covered_metrics, missing_metrics):
+            return chart
+        if _is_single_series_primary_metric_gap(chart, covered_metrics, missing_metrics):
             return chart
         if _is_supporting_only_gap(covered_metrics, missing_metrics):
             return chart
@@ -1488,6 +1531,7 @@ class LLMService:
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
         self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
+        self.load_tracking_config(_session)
 
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS, ds_id)
 
@@ -1541,6 +1585,7 @@ class LLMService:
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
         self.filter_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
+        self.load_tracking_config(_session)
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
 
         self.save_agent_context_snapshot(

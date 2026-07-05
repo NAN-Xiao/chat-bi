@@ -9,6 +9,7 @@ export const dashboardApi = {
   update_canvas: (params: any) => request.post('/dashboard/update_canvas', params),
   check_name: (params: any) => request.post('/dashboard/check_name', params),
   preview_sql: (params: any, config?: any) => request.post('/dashboard/sql_preview', params, config),
+  generate_ai_sql: (params: any, config?: any) => request.post('/dashboard/ai_sql_generate', params, config),
   default_list: (config?: any) => request.get('/dashboard/default/list', config),
   default_load: (params: any, config?: any) => request.post('/dashboard/default/load', params, config),
   default_copy: (params: any, config?: any) => request.post('/dashboard/default/copy', params, config),

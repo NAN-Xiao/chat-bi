@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -20,26 +21,15 @@ from apps.system.schemas.tenant_schema import (
 )
 
 GENERIC_PROFILE = "shuzhi_generic_v1"
-THINKINGDATA_LIKE_PROFILE = "thinkingdata_like_v1"
 
 INFO_SHEET = "_说明"
 TABLE_MAP_SHEET = "_表映射"
-ENUM_SHEET = "_枚举与值域"
 SQL_RULE_SHEET = "_SQL规则"
-COMPETITOR_EVENT_SHEET = "#事件数据"
-COMPETITOR_COMMON_PROPERTY_SHEET = "#公共事件属性"
-COMPETITOR_USER_PROPERTY_SHEET = "#用户数据"
 
 SYSTEM_SHEETS = {
     INFO_SHEET,
     TABLE_MAP_SHEET,
-    ENUM_SHEET,
     SQL_RULE_SHEET,
-    "接入必知",
-    "#用户ID体系",
-    COMPETITOR_EVENT_SHEET,
-    COMPETITOR_COMMON_PROPERTY_SHEET,
-    COMPETITOR_USER_PROPERTY_SHEET,
     "数据类型设计原则",
     "公共事件属性设置方式",
     "多端接入注意点",
@@ -48,11 +38,6 @@ SYSTEM_SHEETS = {
 
 BUSINESS_COLUMNS = [
     "row_type",
-    "event_name",
-    "event_display_name",
-    "event_category",
-    "collect_side",
-    "field_view",
     "field_name",
     "field_display_name",
     "field_type",
@@ -62,10 +47,17 @@ BUSINESS_COLUMNS = [
     "json_path",
     "expression",
     "required",
-    "enum_values",
+    "value",
+    "value_display_name",
+    "value_category",
+    "collect_side",
+    "event_name",
+    "event_display_name",
+    "event_category",
     "example_values",
     "description",
     "ai_notes",
+    "aliases",
 ]
 
 TABLE_MAP_COLUMNS = [
@@ -79,15 +71,7 @@ TABLE_MAP_COLUMNS = [
     "partition_field",
     "table_comment",
     "ai_notes",
-]
-
-ENUM_COLUMNS = [
-    "object_type",
-    "object_name",
-    "value",
-    "display_name",
-    "description",
-    "deprecated",
+    "aliases",
 ]
 
 SQL_RULE_COLUMNS = [
@@ -99,11 +83,11 @@ SQL_RULE_COLUMNS = [
 
 EXPORT_COLUMN_LABELS = {
     "row_type": "行类型",
-    "event_name": "事件名",
+    "event_name": "事件名（必填）",
     "event_display_name": "事件显示名",
-    "event_category": "事件分类",
+    "event_category": "事件标签",
     "collect_side": "采集端",
-    "field_view": "字段视图",
+    "event_description": "事件说明",
     "field_name": "字段名",
     "field_display_name": "字段显示名",
     "field_type": "字段类型",
@@ -113,10 +97,19 @@ EXPORT_COLUMN_LABELS = {
     "json_path": "JSON 路径",
     "expression": "字段表达式",
     "required": "是否必填",
-    "enum_values": "枚举值",
+    "value": "值",
+    "value_display_name": "值显示名",
+    "value_category": "值标签",
     "example_values": "示例值",
     "description": "说明",
     "ai_notes": "AI 说明",
+    "aliases": "别名",
+    "source_table": "来源表",
+    "property_name": "属性名（必填）",
+    "property_display_name": "属性显示名",
+    "property_type": "属性类型（必填）",
+    "property_category": "属性标签",
+    "update_mode": "更新方式",
     "sheet_name": "工作表名",
     "table_name": "物理表名",
     "table_display_name": "表显示名",
@@ -126,15 +119,34 @@ EXPORT_COLUMN_LABELS = {
     "event_time_field": "事件时间字段",
     "partition_field": "分区字段",
     "table_comment": "表说明",
-    "object_type": "对象类型",
-    "object_name": "对象名",
-    "value": "值",
-    "display_name": "显示名",
-    "deprecated": "是否废弃",
     "rule_name": "规则名",
     "scope": "适用范围",
     "rule_text": "规则内容",
     "priority": "优先级",
+}
+
+BUSINESS_EXPORT_COLUMN_LABELS = {
+    "row_type": "行类型",
+    "field_name": "字段名",
+    "field_display_name": "字段显示名",
+    "field_type": "字段类型",
+    "field_role": "字段角色",
+    "semantic_type": "语义类型",
+    "source_field": "来源字段",
+    "json_path": "JSON 路径",
+    "expression": "字段表达式",
+    "required": "是否必填",
+    "value": "字段/事件取值",
+    "value_display_name": "取值显示名",
+    "value_category": "取值标签",
+    "collect_side": "采集端",
+    "event_name": "适用事件名",
+    "event_display_name": "适用事件显示名",
+    "event_category": "适用事件标签",
+    "example_values": "示例值",
+    "description": "说明",
+    "ai_notes": "AI 说明",
+    "aliases": "别名",
 }
 
 TYPE_ALIASES = {
@@ -181,6 +193,11 @@ TYPE_ALIASES = {
 }
 
 HEADER_ALIASES = {
+    "item": "item",
+    "project": "item",
+    "configkey": "item",
+    "配置项": "item",
+    "项目": "item",
     "rowtype": "row_type",
     "行类型": "row_type",
     "类型": "row_type",
@@ -218,6 +235,9 @@ HEADER_ALIASES = {
     "eventdisplayname": "event_display_name",
     "事件显示名": "event_display_name",
     "事件展示名": "event_display_name",
+    "适用事件名": "event_name",
+    "适用事件显示名": "event_display_name",
+    "适用事件标签": "event_category",
     "eventdescription": "event_description",
     "事件说明": "event_description",
     "eventcategory": "event_category",
@@ -225,11 +245,6 @@ HEADER_ALIASES = {
     "事件标签": "event_category",
     "collectside": "collect_side",
     "采集端": "collect_side",
-    "fieldview": "field_view",
-    "view": "field_view",
-    "字段视图": "field_view",
-    "字段分组": "field_view",
-    "json视图": "field_view",
     "fieldname": "field_name",
     "字段名": "field_name",
     "fielddisplayname": "field_display_name",
@@ -252,31 +267,42 @@ HEADER_ALIASES = {
     "required": "required",
     "是否必填": "required",
     "必填": "required",
-    "enumvalues": "enum_values",
-    "枚举值": "enum_values",
-    "value_mappings": "enum_values",
+    "fieldvalue": "value",
+    "eventvalue": "value",
+    "value": "value",
+    "字段事件取值": "value",
+    "字段取值": "value",
+    "事件取值": "value",
+    "枚举取值": "value",
+    "取值": "value",
+    "值": "value",
+    "valuedisplayname": "value_display_name",
+    "fieldvaluedisplayname": "value_display_name",
+    "eventvaluedisplayname": "value_display_name",
+    "字段取值显示名": "value_display_name",
+    "事件取值显示名": "value_display_name",
+    "取值显示名": "value_display_name",
+    "值显示名": "value_display_name",
+    "valuecategory": "value_category",
+    "fieldvaluecategory": "value_category",
+    "eventvaluecategory": "value_category",
+    "字段取值标签": "value_category",
+    "事件取值标签": "value_category",
+    "取值标签": "value_category",
+    "值标签": "value_category",
     "examplevalues": "example_values",
     "示例值": "example_values",
     "description": "description",
+    "说明": "description",
+    "备注": "description",
     "fieldcomment": "description",
     "字段说明": "description",
-    "属性说明": "description",
     "ainotes": "ai_notes",
     "ai说明": "ai_notes",
     "llm说明": "ai_notes",
-    "propertyname": "property_name",
-    "属性名": "property_name",
-    "propertydisplayname": "property_display_name",
-    "属性显示名": "property_display_name",
-    "属性展示名": "property_display_name",
-    "propertytype": "property_type",
-    "属性类型": "property_type",
-    "propertycategory": "property_category",
-    "属性标签": "property_category",
-    "updatemode": "update_mode",
-    "更新方式": "update_mode",
-    "subjecttype": "subject_type",
-    "主体类型": "subject_type",
+    "aliases": "aliases",
+    "别名": "aliases",
+    "别称": "aliases",
     "ruletitle": "rule_name",
     "rulename": "rule_name",
     "规则名": "rule_name",
@@ -286,16 +312,38 @@ HEADER_ALIASES = {
     "规则内容": "rule_text",
     "priority": "priority",
     "优先级": "priority",
-    "objecttype": "object_type",
-    "对象类型": "object_type",
-    "objectname": "object_name",
-    "对象名": "object_name",
-    "value": "value",
-    "值": "value",
-    "displayname": "display_name",
-    "显示名": "display_name",
-    "deprecated": "deprecated",
-    "是否废弃": "deprecated",
+}
+
+ROW_TYPE_ALIASES = {
+    "physicalfield": "physical_field",
+    "physical_field": "physical_field",
+    "物理字段": "physical_field",
+    "物理列": "physical_field",
+    "dictionaryfield": "dictionary_field",
+    "dictionary_field": "dictionary_field",
+    "jsonfield": "dictionary_field",
+    "jsonsubfield": "dictionary_field",
+    "字典字段": "dictionary_field",
+    "json字段": "dictionary_field",
+    "json子字段": "dictionary_field",
+    "fieldvalue": "field_value",
+    "field_value": "field_value",
+    "enumvalue": "field_value",
+    "字段值": "field_value",
+    "字段取值": "field_value",
+    "枚举值": "field_value",
+    "eventvalue": "event_value",
+    "event_value": "event_value",
+    "eventname": "event_value",
+    "event_name": "event_value",
+    "事件值": "event_value",
+    "事件取值": "event_value",
+    "事件名取值": "event_value",
+    "event": "event",
+    "eventdefinition": "event",
+    "event_definition": "event",
+    "事件": "event",
+    "事件定义": "event",
 }
 
 
@@ -405,6 +453,15 @@ def _read_sheet_rows(excel: pd.ExcelFile, sheet_name: str) -> tuple[list[dict[st
     return rows, skipped
 
 
+def _row_type(value: Any) -> str:
+    text = _text(value).lower()
+    if not text:
+        return ""
+    normalized = text.replace("-", "_").replace(" ", "_")
+    compact = normalized.replace("_", "")
+    return ROW_TYPE_ALIASES.get(normalized) or ROW_TYPE_ALIASES.get(compact) or normalized
+
+
 def _normalize_type(value: Any) -> str:
     text = _text(value).lower().replace(" ", "_").replace("-", "_")
     if not text:
@@ -447,21 +504,46 @@ def _split_list(value: Any) -> list[str]:
     ]
 
 
+def _json_text(value: Any) -> str:
+    if value in (None, [], {}):
+        return ""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _parse_json_list(value: Any, warnings: list[str], label: str) -> list[Any]:
+    text = _text(value)
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        _add_warning(warnings, f"{label} 不是合法 JSON，已跳过。")
+        return []
+    if isinstance(parsed, list):
+        return parsed
+    _add_warning(warnings, f"{label} 必须是 JSON 数组，已跳过。")
+    return []
+
+
+def _aliases_text(value: Any) -> str:
+    aliases = getattr(value, "aliases", None) or []
+    return "\n".join(_text(alias) for alias in aliases if _text(alias))
+
+
+def _aliases_from_row(row: dict[str, Any], display_name: str, canonical_name: str) -> list[str]:
+    aliases = []
+    if display_name and display_name != canonical_name:
+        aliases.append(display_name)
+    aliases.extend(_split_list(row.get("aliases")))
+    return _merge_list([], aliases)
+
+
 def _json_path_from_field_name(field_name: str) -> tuple[str, str]:
     text = _text(field_name)
     if "." not in text:
         return "", ""
     source, child = text.split(".", 1)
     return source.strip(), f"$.{child.strip()}" if child.strip() else ""
-
-
-def _source_from_field_view(value: Any) -> str:
-    text = _text(value)
-    if not text:
-        return ""
-    text = re.sub(r"^(?:json|view)[:：]\s*", "", text, flags=re.I).strip()
-    text = re.sub(r"\s*(?:view|视图)$", "", text, flags=re.I).strip()
-    return text
 
 
 def _normalize_json_path(value: str) -> str:
@@ -674,6 +756,41 @@ def _merge_event_mappings(old: list[Any], new: list[Any]) -> list[Any]:
     return [result[name] for name in ordered_names]
 
 
+def _value_mapping_key(item: Any) -> str:
+    if isinstance(item, dict):
+        return _first_text(item.get("value"), item.get("name"), item.get("key"))
+    text = _text(item)
+    if "=" in text:
+        return text.split("=", 1)[0].strip()
+    return text
+
+
+def _merge_value_mappings(old: Any, new: Any) -> Any:
+    if new in (None, [], {}):
+        return old
+    if old in (None, [], {}):
+        return new
+    if not isinstance(old, list) or not isinstance(new, list):
+        return new
+
+    result: dict[str, Any] = {}
+    order: list[str] = []
+    for item in old + new:
+        key = _value_mapping_key(item)
+        if not key:
+            continue
+        if key not in order:
+            order.append(key)
+        if isinstance(item, dict):
+            current = result.setdefault(key, {"value": key})
+            for item_key, item_value in item.items():
+                if _text(item_value) or item_key not in current:
+                    current[item_key] = item_value
+        else:
+            result.setdefault(key, item)
+    return [result[key] for key in order if key in result]
+
+
 def _merge_tracking_config(existing: TenantTrackingConfigDTO, imported: TenantTrackingConfigEditor) -> TenantTrackingConfigEditor:
     base = _editor_from_existing(existing)
     base.enabled = imported.enabled if imported.enabled is not None else base.enabled
@@ -719,7 +836,7 @@ def _merge_tracking_config(existing: TenantTrackingConfigDTO, imported: TenantTr
         current.source_field = _merge_text(current.source_field, field_item.source_field)
         current.json_path = _merge_text(current.json_path, field_item.json_path)
         current.aliases = _merge_list(current.aliases, field_item.aliases)
-        current.value_mappings = field_item.value_mappings if field_item.value_mappings not in (None, [], {}) else current.value_mappings
+        current.value_mappings = _merge_value_mappings(current.value_mappings, field_item.value_mappings)
         current.expression = _merge_text(current.expression, field_item.expression)
         current.required = bool(current.required or field_item.required)
         current.example_values = _merge_list(current.example_values, field_item.example_values)
@@ -773,7 +890,7 @@ def _table_item(
     alias: str = "",
     ai_notes: str = "",
 ) -> TenantTrackingTableBase:
-    aliases = [alias] if alias and alias != table_name else []
+    aliases = _merge_list([], [alias] if alias and alias != table_name else [])
     return TenantTrackingTableBase(
         table_name=table_name,
         table_comment=table_comment or None,
@@ -792,28 +909,32 @@ def _field_item(
     warnings: list[str],
     physical_schema: dict[str, PhysicalTableInfo],
 ) -> TenantTrackingFieldBase | None:
-    raw_field_name = _first_text(row.get("field_name"), row.get("property_name"))
+    raw_field_name = _text(row.get("field_name"))
+    source_field = _text(row.get("source_field"))
+    json_path = _normalize_json_path(_text(row.get("json_path")))
+    if not raw_field_name and row_type != "physical_field" and source_field and json_path:
+        child_name = _json_child_name(source_field, "", json_path)
+        if child_name:
+            raw_field_name = f"{source_field}.{child_name}"
     field_name = raw_field_name
     if not table_name or not field_name:
         return None
 
-    display_name = _first_text(row.get("field_display_name"), row.get("property_display_name"))
-    field_type = _first_text(row.get("field_type"), row.get("property_type"))
+    display_name = _text(row.get("field_display_name"))
+    field_type = _text(row.get("field_type"))
     semantic_type = _first_text(row.get("semantic_type"), _semantic_type(field_type))
-    view_source = _source_from_field_view(row.get("field_view"))
-    source_field = _text(row.get("source_field")) or view_source
-    json_path = _normalize_json_path(_text(row.get("json_path")))
+    configured_role = _text(row.get("field_role"))
+    if configured_role.lower() == "event_name":
+        semantic_type = "text"
     inferred_source, inferred_path = _json_path_from_field_name(raw_field_name)
     if not source_field and inferred_source:
         source_field = inferred_source
     if not json_path and inferred_path:
         json_path = inferred_path
-    elif not json_path and source_field and row_type not in {"physical_field", "json_view"} and "." not in raw_field_name:
+    elif not json_path and source_field and row_type != "physical_field" and "." not in raw_field_name:
         json_path = _normalize_json_path(raw_field_name)
-    if source_field and json_path and row_type not in {"physical_field", "json_view"} and "." not in raw_field_name:
+    if source_field and json_path and row_type != "physical_field" and "." not in raw_field_name:
         field_name = f"{source_field}.{raw_field_name}"
-    if row_type == "json_view" and not source_field:
-        source_field = field_name
 
     physical_names = _physical_field_names(physical_schema, table_name)
     if physical_names and source_field and source_field not in physical_names:
@@ -838,17 +959,17 @@ def _field_item(
                 f"{table_name}.{field_name} 已配置 JSON 路径，但未能按当前数据源生成 SQL 表达式；请在 Excel expression 列补充。",
             )
 
-    aliases = [display_name] if display_name and display_name != field_name else []
+    aliases = _aliases_from_row(row, display_name, field_name)
     return TenantTrackingFieldBase(
         table_name=table_name,
         field_name=field_name,
         field_comment=_first_text(row.get("description"), row.get("event_description")) or None,
-        field_role=_field_role(row_type, semantic_type, source_field, json_path, _text(row.get("field_role"))) or None,
+        field_role=_field_role(row_type, semantic_type, source_field, json_path, configured_role) or None,
         semantic_type=semantic_type or None,
         source_field=source_field or None,
         json_path=json_path or None,
         aliases=aliases,
-        value_mappings=_split_list(row.get("enum_values")) or None,
+        value_mappings=None,
         expression=expression or None,
         required=_parse_bool(row.get("required")),
         example_values=_split_list(row.get("example_values")),
@@ -857,44 +978,30 @@ def _field_item(
 
 
 def _event_mapping(row: dict[str, Any]) -> dict[str, Any] | None:
-    event_name = _text(row.get("event_name"))
+    event_name = _first_text(row.get("value"), row.get("event_name"))
     if not event_name:
         return None
     result = {
         "event_name": event_name,
-        "event_display_name": _text(row.get("event_display_name")),
-        "event_category": _text(row.get("event_category")),
+        "event_display_name": _first_text(row.get("value_display_name"), row.get("event_display_name")),
+        "event_category": _first_text(row.get("value_category"), row.get("event_category")),
         "collect_side": _text(row.get("collect_side")),
         "description": _first_text(row.get("event_description"), row.get("description")),
         "ai_notes": _text(row.get("ai_notes")),
+        "aliases": _split_list(row.get("aliases")),
     }
     return {key: value for key, value in result.items() if value}
 
 
-def _event_property(row: dict[str, Any]) -> dict[str, Any] | None:
-    raw_name = _first_text(row.get("field_name"), row.get("property_name"))
-    name = raw_name
-    if not name:
-        return None
-    view_source = _source_from_field_view(row.get("field_view"))
-    source_field = _text(row.get("source_field")) or view_source
-    json_path = _normalize_json_path(_text(row.get("json_path")))
-    inferred_source, inferred_path = _json_path_from_field_name(raw_name)
-    if not source_field and inferred_source:
-        source_field = inferred_source
-    if not json_path and inferred_path:
-        json_path = inferred_path
-    elif not json_path and source_field and "." not in raw_name:
-        json_path = _normalize_json_path(raw_name)
-    if source_field and json_path and "." not in raw_name:
-        name = f"{source_field}.{raw_name}"
+def _property_from_field_item(field_item: TenantTrackingFieldBase, row: dict[str, Any]) -> dict[str, Any]:
     result = {
-        "property_name": name,
-        "property_display_name": _first_text(row.get("field_display_name"), row.get("property_display_name")),
-        "property_type": _first_text(row.get("field_type"), row.get("property_type")),
-        "source_field": source_field,
-        "json_path": json_path,
-        "description": _text(row.get("description")),
+        "property_name": field_item.field_name,
+        "property_display_name": _first_alias(field_item),
+        "property_type": field_item.semantic_type or _text(row.get("field_type")),
+        "source_field": field_item.source_field or "",
+        "json_path": field_item.json_path or "",
+        "description": field_item.field_comment or "",
+        "ai_notes": field_item.ai_notes or "",
     }
     return {key: value for key, value in result.items() if value}
 
@@ -932,12 +1039,12 @@ def _parse_table_map(
         sheet_name = _text(row.get("sheet_name")) or table_name
         sheet_to_table[sheet_name] = table_name
         editor.tables.append(
-            _table_item(
-                table_name,
-                table_comment=_text(row.get("table_comment")),
-                table_role=_text(row.get("table_role")),
-                alias=_text(row.get("table_display_name")),
-                ai_notes=_text(row.get("ai_notes")),
+            TenantTrackingTableBase(
+                table_name=table_name,
+                table_comment=_text(row.get("table_comment")) or None,
+                table_role=_text(row.get("table_role")) or None,
+                aliases=_aliases_from_row(row, _text(row.get("table_display_name")), table_name),
+                ai_notes=_text(row.get("ai_notes")) or None,
             )
         )
         if _text(row.get("event_name_field")) and not editor.default_event_table:
@@ -965,6 +1072,75 @@ def _parse_sql_rules(rows: list[dict[str, Any]]) -> str:
     return "\n".join(rules)
 
 
+def _parse_info_sheet(rows: list[dict[str, Any]], editor: TenantTrackingConfigEditor, warnings: list[str]) -> None:
+    for row in rows:
+        item = _first_text(row.get("item"), row.get("description"))
+        value = _text(row.get("description"))
+        if not item:
+            continue
+        key = item.strip().lower()
+        if key in {"config.enabled", "enabled", "启用"}:
+            editor.enabled = _parse_bool(value)
+        elif key in {"config.notes", "notes", "工作空间说明"}:
+            editor.notes = value or None
+        elif key in {"config.field_role_mappings", "field_role_mappings", "字段角色映射"}:
+            editor.field_role_mappings = _parse_json_list(value, warnings, item)
+
+
+def _append_field_value_mapping(
+    editor: TenantTrackingConfigEditor,
+    table_name: str,
+    field_name: str,
+    value: str,
+    display_name: str = "",
+    category: str = "",
+    description: str = "",
+    aliases: Any = None,
+) -> None:
+    if not table_name or not field_name or not value:
+        return
+    target = None
+    for field_item in editor.fields or []:
+        if field_item.table_name == table_name and field_item.field_name == field_name:
+            target = field_item
+            break
+    if target is None:
+        target = TenantTrackingFieldBase(
+            table_name=table_name,
+            field_name=field_name,
+            semantic_type="text",
+        )
+        editor.fields.append(target)
+
+    mapping: dict[str, Any] = {"value": value}
+    if display_name:
+        mapping["display_name"] = display_name
+    if category:
+        mapping["category"] = category
+    if description:
+        mapping["description"] = description
+    alias_values = _split_list(aliases)
+    if alias_values:
+        mapping["aliases"] = alias_values
+    values = list(target.value_mappings or []) if isinstance(target.value_mappings, list) else []
+    if not any(isinstance(item, dict) and _text(item.get("value")) == value or _text(item) == value for item in values):
+        values.append(mapping)
+    target.value_mappings = values
+
+
+def _apply_event_field_defaults(
+    editor: TenantTrackingConfigEditor,
+    table_name: str,
+    field_name: str,
+) -> None:
+    if not table_name:
+        return
+    if not editor.default_event_table:
+        editor.default_event_table = table_name
+    if field_name and not editor.default_event_name_field:
+        editor.default_event_name_field = field_name
+
+
 def _parse_generic_business_sheet(
     rows: list[dict[str, Any]],
     table_name: str,
@@ -974,33 +1150,114 @@ def _parse_generic_business_sheet(
     warnings: list[str],
     physical_schema: dict[str, PhysicalTableInfo],
 ) -> None:
+    last_value_context: dict[str, str] = {}
+    last_field_context: dict[str, str] = {}
     for row in rows:
-        row_type = _text(row.get("row_type")).lower() or "dictionary_field"
-        row_type = row_type.replace("-", "_").replace(" ", "_")
-        if row_type in {"event", "event_definition"}:
+        row_type = _row_type(row.get("row_type"))
+        if not row_type and _text(row.get("value")):
+            if _text(row.get("field_name")):
+                row_type = "field_value"
+                row["row_type"] = row_type
+            elif last_value_context:
+                row_type = last_value_context.get("row_type", "")
+                row["row_type"] = row_type
+                for key in ("field_name", "field_display_name", "field_role", "semantic_type", "field_type", "source_field", "json_path"):
+                    if not _text(row.get(key)) and last_value_context.get(key):
+                        row[key] = last_value_context[key]
+            elif last_field_context:
+                row_type = "field_value"
+                row["row_type"] = row_type
+                for key in ("field_name", "field_display_name", "field_role", "semantic_type", "field_type", "source_field", "json_path"):
+                    if not _text(row.get(key)) and last_field_context.get(key):
+                        row[key] = last_field_context[key]
+        elif not row_type and (
+            _text(row.get("field_name"))
+            or _text(row.get("json_path"))
+            or _text(row.get("source_field"))
+        ) and last_field_context.get("field_name"):
+            row_type = "dictionary_field"
+            row["row_type"] = row_type
+            if not _text(row.get("source_field")) and last_field_context.get("source_field"):
+                row["source_field"] = last_field_context["source_field"]
+            if not _text(row.get("field_role")) and last_field_context.get("field_role"):
+                row["field_role"] = last_field_context["field_role"]
+            if not _text(row.get("semantic_type")) and last_field_context.get("semantic_type"):
+                row["semantic_type"] = last_field_context["semantic_type"]
+            if not _text(row.get("field_type")) and last_field_context.get("field_type"):
+                row["field_type"] = last_field_context["field_type"]
+        if not row_type and _text(row.get("value")) and last_value_context:
+            row_type = last_value_context.get("row_type", "")
+            row["row_type"] = row_type
+            for key in ("field_name", "field_role", "semantic_type", "field_type"):
+                if not _text(row.get(key)) and last_value_context.get(key):
+                    row[key] = last_value_context[key]
+        if not row_type:
+            _add_warning(warnings, f"{table_name} sheet 中有一行缺少 row_type，已跳过。")
+            continue
+        if row_type in {"event_value", "field_value"} and not _text(row.get("field_name")):
+            inherited_context = last_value_context or last_field_context
+            for key in ("field_name", "field_display_name", "field_role", "semantic_type", "field_type", "source_field", "json_path"):
+                if not _text(row.get(key)) and inherited_context.get(key):
+                    row[key] = inherited_context[key]
+        if row_type == "event_value":
+            last_value_context = {
+                "row_type": "event_value",
+                "field_name": _text(row.get("field_name")),
+                "field_display_name": _text(row.get("field_display_name")),
+                "field_role": _text(row.get("field_role")),
+                "semantic_type": _text(row.get("semantic_type")),
+                "field_type": _text(row.get("field_type")),
+                "source_field": _text(row.get("source_field")),
+                "json_path": _text(row.get("json_path")),
+            }
             event = _event_mapping(row)
             if event:
                 _append_event_mapping(editor.event_name_mappings, event)
-            continue
-
-        if row_type in {"event_property", "eventproperty"}:
-            event = _event_mapping(row)
-            prop = _event_property(row)
-            if event:
-                _append_event_mapping(editor.event_name_mappings, event, prop)
-            field_item = _field_item(
-                row,
+            _apply_event_field_defaults(
+                editor,
                 table_name,
-                row_type="event_property",
-                datasource_type=datasource_type,
-                warnings=warnings,
-                physical_schema=physical_schema,
+                _text(row.get("field_name")),
             )
-            if field_item:
-                editor.fields.append(field_item)
             continue
 
-        if row_type in {"physical_field", "dictionary_field", "json_view", "field", "property"}:
+        if row_type == "field_value":
+            last_value_context = {
+                "row_type": "field_value",
+                "field_name": _text(row.get("field_name")),
+                "field_display_name": _text(row.get("field_display_name")),
+                "field_role": _text(row.get("field_role")),
+                "semantic_type": _text(row.get("semantic_type")),
+                "field_type": _text(row.get("field_type")),
+                "source_field": _text(row.get("source_field")),
+                "json_path": _text(row.get("json_path")),
+            }
+            _append_field_value_mapping(
+                editor,
+                table_name,
+                _text(row.get("field_name")),
+                _text(row.get("value")),
+                _text(row.get("value_display_name")),
+                _text(row.get("value_category")),
+                _text(row.get("description")),
+                row.get("aliases"),
+            )
+            continue
+
+        if row_type == "event":
+            last_value_context = {}
+            last_field_context = {}
+            event = _event_mapping(row)
+            if event:
+                _append_event_mapping(editor.event_name_mappings, event)
+            _apply_event_field_defaults(
+                editor,
+                table_name,
+                _text(row.get("field_name")),
+            )
+            continue
+
+        if row_type in {"physical_field", "dictionary_field"}:
+            last_value_context = {}
             field_item = _field_item(
                 row,
                 table_name,
@@ -1011,84 +1268,28 @@ def _parse_generic_business_sheet(
             )
             if field_item:
                 editor.fields.append(field_item)
-
-
-def _parse_competitor_event_sheet(
-    rows: list[dict[str, Any]],
-    editor: TenantTrackingConfigEditor,
-    *,
-    event_table: str,
-    datasource_type: str | None,
-    warnings: list[str],
-    physical_schema: dict[str, PhysicalTableInfo],
-) -> None:
-    last_event: dict[str, Any] = {}
-    for row in rows:
-        event_name = _text(row.get("event_name"))
-        if event_name:
-            last_event = {
-                "event_name": event_name,
-                "event_display_name": _text(row.get("event_display_name")),
-                "event_description": _text(row.get("event_description")),
-                "event_category": _text(row.get("event_category")),
-                "collect_side": _text(row.get("collect_side")),
-            }
-        elif last_event:
-            for key, value in last_event.items():
-                if not _text(row.get(key)):
-                    row[key] = value
-
-        event = _event_mapping(row)
-        prop = _event_property(row)
-        table_name = _text(row.get("source_table")) or event_table
-        if event:
-            _append_event_mapping(editor.event_name_mappings, event, prop)
-        if prop:
-            normalized = dict(row)
-            normalized["field_name"] = prop["property_name"]
-            normalized["field_display_name"] = prop.get("property_display_name", "")
-            normalized["field_type"] = prop.get("property_type", "")
-            field_item = _field_item(
-                normalized,
-                table_name,
-                row_type="event_property",
-                datasource_type=datasource_type,
-                warnings=warnings,
-                physical_schema=physical_schema,
-            )
-            if field_item:
-                editor.fields.append(field_item)
-
-
-def _parse_competitor_property_sheet(
-    rows: list[dict[str, Any]],
-    editor: TenantTrackingConfigEditor,
-    *,
-    table_name: str,
-    datasource_type: str | None,
-    warnings: list[str],
-    physical_schema: dict[str, PhysicalTableInfo],
-) -> None:
-    for row in rows:
-        field_name = _text(row.get("property_name"))
-        if not field_name:
+                last_field_context = {
+                    "field_name": field_item.field_name,
+                    "field_display_name": _first_alias(field_item),
+                    "field_role": field_item.field_role or "",
+                    "semantic_type": field_item.semantic_type or "",
+                    "field_type": field_item.semantic_type or _text(row.get("field_type")),
+                    "source_field": field_item.source_field or field_item.field_name if row_type == "physical_field" else field_item.source_field or "",
+                    "json_path": field_item.json_path or "",
+                }
+                if _text(field_item.field_role).lower() == "event_name":
+                    _apply_event_field_defaults(editor, table_name, field_item.field_name)
+                event_name = _text(row.get("event_name"))
+                if event_name:
+                    event = {
+                        "event_name": event_name,
+                        "event_display_name": _text(row.get("event_display_name")),
+                        "event_category": _text(row.get("event_category")),
+                    }
+                    _append_event_mapping(editor.event_name_mappings, event, _property_from_field_item(field_item, row))
             continue
-        table_for_row = _text(row.get("source_table")) or table_name
-        normalized = dict(row)
-        normalized["field_name"] = field_name
-        normalized["field_display_name"] = _text(row.get("property_display_name"))
-        normalized["field_type"] = _text(row.get("property_type"))
-        normalized["description"] = _text(row.get("description"))
-        field_item = _field_item(
-            normalized,
-            table_for_row,
-            row_type="dictionary_field",
-            datasource_type=datasource_type,
-            warnings=warnings,
-            physical_schema=physical_schema,
-        )
-        if field_item:
-            editor.fields.append(field_item)
+
+        _add_warning(warnings, f"{table_name} sheet 中存在未知 row_type={row_type}，已跳过。")
 
 
 def parse_tracking_excel(
@@ -1102,11 +1303,7 @@ def parse_tracking_excel(
     warnings: list[str] = []
     skipped_rows = 0
     excel = pd.ExcelFile(io.BytesIO(content))
-    profile = (
-        THINKINGDATA_LIKE_PROFILE
-        if any(name in excel.sheet_names for name in {COMPETITOR_EVENT_SHEET, COMPETITOR_COMMON_PROPERTY_SHEET, COMPETITOR_USER_PROPERTY_SHEET})
-        else GENERIC_PROFILE
-    )
+    profile = GENERIC_PROFILE
     imported = TenantTrackingConfigEditor(
         enabled=True,
         tables=[],
@@ -1114,6 +1311,11 @@ def parse_tracking_excel(
         event_name_mappings=[],
     )
     sheet_to_table: dict[str, str] = {}
+
+    if INFO_SHEET in excel.sheet_names:
+        rows, skipped = _read_sheet_rows(excel, INFO_SHEET)
+        skipped_rows += skipped
+        _parse_info_sheet(rows, imported, warnings)
 
     if TABLE_MAP_SHEET in excel.sheet_names:
         rows, skipped = _read_sheet_rows(excel, TABLE_MAP_SHEET)
@@ -1124,47 +1326,6 @@ def parse_tracking_excel(
         rows, skipped = _read_sheet_rows(excel, SQL_RULE_SHEET)
         skipped_rows += skipped
         imported.sql_rules = _parse_sql_rules(rows) or None
-
-    if profile == THINKINGDATA_LIKE_PROFILE:
-        event_table = ""
-        if COMPETITOR_EVENT_SHEET in excel.sheet_names or COMPETITOR_COMMON_PROPERTY_SHEET in excel.sheet_names:
-            event_table = sheet_to_table.get(COMPETITOR_EVENT_SHEET) or sheet_to_table.get(COMPETITOR_COMMON_PROPERTY_SHEET) or _resolve_event_table(existing, schema, warnings)
-            imported.default_event_table = imported.default_event_table or event_table
-        if COMPETITOR_EVENT_SHEET in excel.sheet_names:
-            rows, skipped = _read_sheet_rows(excel, COMPETITOR_EVENT_SHEET)
-            skipped_rows += skipped
-            _parse_competitor_event_sheet(
-                rows,
-                imported,
-                event_table=event_table,
-                datasource_type=datasource_type,
-                warnings=warnings,
-                physical_schema=schema,
-            )
-        if COMPETITOR_COMMON_PROPERTY_SHEET in excel.sheet_names:
-            rows, skipped = _read_sheet_rows(excel, COMPETITOR_COMMON_PROPERTY_SHEET)
-            skipped_rows += skipped
-            _parse_competitor_property_sheet(
-                rows,
-                imported,
-                table_name=event_table,
-                datasource_type=datasource_type,
-                warnings=warnings,
-                physical_schema=schema,
-            )
-        if COMPETITOR_USER_PROPERTY_SHEET in excel.sheet_names:
-            rows, skipped = _read_sheet_rows(excel, COMPETITOR_USER_PROPERTY_SHEET)
-            skipped_rows += skipped
-            user_table = sheet_to_table.get(COMPETITOR_USER_PROPERTY_SHEET) or _resolve_subject_table(existing, schema, warnings)
-            _parse_competitor_property_sheet(
-                rows,
-                imported,
-                table_name=user_table,
-                datasource_type=datasource_type,
-                warnings=warnings,
-                physical_schema=schema,
-            )
-
     for sheet_name in excel.sheet_names:
         if sheet_name in SYSTEM_SHEETS:
             continue
@@ -1189,7 +1350,7 @@ def parse_tracking_excel(
         )
 
     if not imported.tables and not imported.fields and not imported.event_name_mappings:
-        raise ValueError("Excel 中没有可识别的表、字段或事件配置，请使用平台模板或包含 #事件数据/#用户数据 的兼容模板。")
+        raise ValueError("Excel 中没有可识别的表、字段或事件配置，请使用平台导出的物理表 sheet 格式。")
 
     known_tables = set(schema.keys())
     if known_tables:
@@ -1200,8 +1361,9 @@ def parse_tracking_excel(
                     f"{table.table_name} 不在当前绑定数据源 schema 中，配置会保存但不会出现在图表字段列表里。",
                 )
 
-    merged = _merge_tracking_config(existing, imported)
-    return ParsedTrackingConfig(editor=merged, profile=profile, warnings=warnings, skipped_rows=skipped_rows)
+    empty_current = TenantTrackingConfigDTO(tenant_id=existing.tenant_id, enabled=imported.enabled)
+    normalized = _merge_tracking_config(empty_current, imported)
+    return ParsedTrackingConfig(editor=normalized, profile=profile, warnings=warnings, skipped_rows=skipped_rows)
 
 
 def import_summary(parsed: ParsedTrackingConfig) -> TenantTrackingImportSummary:
@@ -1231,46 +1393,7 @@ def _safe_sheet_name(value: str, used: set[str]) -> str:
 
 
 def _apply_business_sheet_layout(workbook, worksheet, rows: list[dict[str, Any]], columns: list[str]) -> None:
-    if not rows or "field_view" not in columns:
-        return
-    view_col = columns.index("field_view")
-    group_clear_format = workbook.add_format({
-        "bg_color": "#BFBFBF",
-        "border": 1,
-    })
-    view_format = workbook.add_format({
-        "align": "center",
-        "valign": "vcenter",
-        "bold": True,
-        "text_wrap": True,
-        "bg_color": "#EAF1FF",
-        "font_color": "#1F4E79",
-        "border": 1,
-    })
-    event_area_end_col = max(view_col - 1, 0)
-    start_index = 0
-    while start_index < len(rows):
-        current_view = _text(rows[start_index].get("field_view"))
-        if not current_view:
-            start_index += 1
-            continue
-        end_index = start_index
-        while end_index + 1 < len(rows) and _text(rows[end_index + 1].get("field_view")) == current_view:
-            end_index += 1
-        excel_start = start_index + 1
-        excel_end = end_index + 1
-        if event_area_end_col > 0:
-            if excel_end > excel_start:
-                worksheet.merge_range(excel_start, 0, excel_end, event_area_end_col, "", group_clear_format)
-            else:
-                worksheet.write_blank(excel_start, 0, None, group_clear_format)
-                for clear_col in range(1, event_area_end_col + 1):
-                    worksheet.write_blank(excel_start, clear_col, None, group_clear_format)
-        if excel_end > excel_start:
-            worksheet.merge_range(excel_start, view_col, excel_end, view_col, current_view, view_format)
-        else:
-            worksheet.write(excel_start, view_col, current_view, view_format)
-        start_index = end_index + 1
+    return
 
 
 def _first_alias(value: Any) -> str:
@@ -1297,16 +1420,9 @@ def _config_field_map(config: TenantTrackingConfigDTO) -> dict[tuple[str, str], 
 def _business_row_from_field(field_item: Any, *, row_type: str) -> dict[str, Any]:
     source_field = _text(field_item.source_field)
     json_path = _text(field_item.json_path)
-    has_view = bool(source_field and json_path)
-    display_field_name = _json_child_name(source_field, field_item.field_name, json_path) if has_view else field_item.field_name
     return {
         "row_type": row_type,
-        "event_name": "",
-        "event_display_name": "",
-        "event_category": "",
-        "collect_side": "",
-        "field_view": f"{source_field} view" if has_view else "",
-        "field_name": display_field_name,
+        "field_name": field_item.field_name,
         "field_display_name": _first_alias(field_item),
         "field_type": field_item.semantic_type or "",
         "field_role": field_item.field_role or "",
@@ -1315,11 +1431,26 @@ def _business_row_from_field(field_item: Any, *, row_type: str) -> dict[str, Any
         "json_path": json_path,
         "expression": field_item.expression or "",
         "required": "Y" if field_item.required else "",
-        "enum_values": "\n".join(str(item) for item in field_item.value_mappings or []) if isinstance(field_item.value_mappings, list) else "",
+        "value": "",
+        "value_display_name": "",
+        "value_category": "",
+        "collect_side": "",
+        "event_name": "",
+        "event_display_name": "",
+        "event_category": "",
         "example_values": "\n".join(str(item) for item in field_item.example_values or []),
         "description": field_item.field_comment or "",
         "ai_notes": field_item.ai_notes or "",
+        "aliases": _aliases_text(field_item),
     }
+
+
+def _semantic_type_for_export(field_item: Any, physical_type: str = "") -> str:
+    field_role = _text(getattr(field_item, "field_role", None)).lower()
+    semantic_type = _text(getattr(field_item, "semantic_type", None)).lower()
+    if field_role == "event_name":
+        return "text"
+    return semantic_type or _semantic_type(physical_type)
 
 
 def _business_field_sort_key(field_item: Any) -> tuple[str, str, str]:
@@ -1329,68 +1460,731 @@ def _business_field_sort_key(field_item: Any) -> tuple[str, str, str]:
     return (view_key, _text(getattr(field_item, "field_name", "")), _text(getattr(field_item, "semantic_type", "")))
 
 
-def _business_event_rows(config: TenantTrackingConfigDTO, table_name: str) -> list[dict[str, Any]]:
-    if not config.default_event_table or config.default_event_table != table_name:
-        return []
+def _event_aliases_from_mapping(item: Any, event_name: str) -> str:
+    if not isinstance(item, dict):
+        return ""
+    aliases = item.get("aliases")
+    if isinstance(aliases, dict):
+        return "\n".join(_text(alias) for alias in aliases.get(event_name, []) if _text(alias))
+    if isinstance(aliases, list):
+        return "\n".join(_text(alias) for alias in aliases if _text(alias))
+    return _text(aliases)
+
+
+def _business_event_value_rows(config: TenantTrackingConfigDTO, *, event_field: str) -> list[dict[str, Any]]:
+    event_field = event_field or "event"
     rows: list[dict[str, Any]] = []
-    for item in config.event_name_mappings or []:
-        if not isinstance(item, dict):
+    for mapping in config.event_name_mappings or []:
+        if not isinstance(mapping, dict):
             continue
-        event_name = _first_text(item.get("event_name"), item.get("name"), item.get("value"))
-        if not event_name:
+        for event_name in _event_names_from_mapping(mapping):
+            rows.append({
+                "row_type": "event_value",
+                "field_name": event_field,
+                "field_display_name": "",
+                "field_type": "",
+                "field_role": "event_name",
+                "semantic_type": "text",
+                "source_field": "",
+                "json_path": "",
+                "expression": "",
+                "required": "",
+                "value": event_name,
+                "value_display_name": _event_display_from_mapping(mapping, event_name),
+                "value_category": _event_category_from_mapping(mapping),
+                "collect_side": _event_collect_side_from_mapping(mapping),
+                "event_name": "",
+                "event_display_name": "",
+                "event_category": "",
+                "example_values": "",
+                "description": _event_description_from_mapping(mapping),
+                "ai_notes": _text(mapping.get("ai_notes")),
+                "aliases": _event_aliases_from_mapping(mapping, event_name),
+            })
+    return rows
+
+
+def _business_event_property_rows(config: TenantTrackingConfigDTO) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for mapping in config.event_name_mappings or []:
+        if not isinstance(mapping, dict):
             continue
-        rows.append({
-            "row_type": "event",
-            "event_name": event_name,
-            "event_display_name": _text(item.get("event_display_name")),
-            "event_category": _text(item.get("event_category")),
-            "collect_side": _text(item.get("collect_side")),
-            "field_view": "",
-            "field_name": "",
-            "field_display_name": "",
-            "field_type": "",
-            "field_role": "",
-            "semantic_type": "",
-            "source_field": "",
-            "json_path": "",
-            "expression": "",
-            "required": "",
-            "enum_values": "",
-            "example_values": "",
-            "description": _text(item.get("description")),
-            "ai_notes": _text(item.get("ai_notes")),
-        })
-        for prop in item.get("properties", []) or []:
+        properties = mapping.get("properties")
+        if not isinstance(properties, list):
+            continue
+        event_names = _event_names_from_mapping(mapping)
+        event_name = event_names[0] if event_names else _text(mapping.get("event_name"))
+        for prop in properties:
             if not isinstance(prop, dict):
                 continue
             prop_name = _first_text(prop.get("property_name"), prop.get("field_name"), prop.get("name"))
             if not prop_name:
                 continue
             source_field = _text(prop.get("source_field"))
-            json_path = _text(prop.get("json_path"))
-            has_view = bool(source_field and json_path)
+            json_path = _normalize_json_path(_text(prop.get("json_path")))
+            if not source_field:
+                inferred_source, inferred_path = _json_path_from_field_name(prop_name)
+                source_field = inferred_source
+                json_path = json_path or inferred_path
+            exported_field_name = prop_name
+            if source_field and json_path and not prop_name.startswith(f"{source_field}."):
+                child_name = _json_child_name(source_field, prop_name, json_path)
+                if child_name:
+                    exported_field_name = f"{source_field}.{child_name}"
             rows.append({
-                "row_type": "event_property",
-                "event_name": event_name,
-                "event_display_name": "",
-                "event_category": "",
-                "collect_side": "",
-                "field_view": f"{source_field} view" if has_view else "",
-                "field_name": _json_child_name(source_field, prop_name, json_path) if has_view else prop_name,
-                "field_display_name": _text(prop.get("property_display_name")),
-                "field_type": _text(prop.get("property_type")),
-                "field_role": "",
-                "semantic_type": "",
+                "row_type": "dictionary_field",
+                "field_name": exported_field_name,
+                "field_display_name": _first_text(prop.get("property_display_name"), prop.get("display_name"), prop.get("label")),
+                "field_type": _first_text(prop.get("property_type"), prop.get("field_type"), prop.get("type")),
+                "field_role": _first_text(prop.get("field_role"), "json_path_metric" if _normalize_type(prop.get("property_type")) == "number" else "json_path_dimension"),
+                "semantic_type": _semantic_type(_first_text(prop.get("semantic_type"), prop.get("property_type"), prop.get("field_type"), prop.get("type"))),
                 "source_field": source_field,
                 "json_path": json_path,
-                "expression": "",
-                "required": "",
-                "enum_values": "",
-                "example_values": "",
-                "description": _text(prop.get("description")),
-                "ai_notes": "",
+                "expression": _text(prop.get("expression")),
+                "required": "Y" if _parse_bool(prop.get("required")) else "",
+                "value": "",
+                "value_display_name": "",
+                "value_category": "",
+                "collect_side": "",
+                "event_name": event_name,
+                "event_display_name": _event_display_from_mapping(mapping, event_name) if event_name else "",
+                "event_category": _event_category_from_mapping(mapping),
+                "example_values": "\n".join(str(item) for item in prop.get("example_values", []) if _text(item)) if isinstance(prop.get("example_values"), list) else _text(prop.get("example_values")),
+                "description": _first_text(prop.get("description"), prop.get("ai_notes")),
+                "ai_notes": _text(prop.get("ai_notes")),
+                "aliases": "\n".join(str(item) for item in prop.get("aliases", []) if _text(item)) if isinstance(prop.get("aliases"), list) else "",
             })
     return rows
+
+
+def _field_value_rows(field_item: Any) -> list[dict[str, Any]]:
+    values = getattr(field_item, "value_mappings", None)
+    if not isinstance(values, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in values:
+        value = ""
+        display_name = ""
+        category = ""
+        description = ""
+        aliases = ""
+        if isinstance(item, dict):
+            value = _first_text(item.get("value"), item.get("name"), item.get("key"))
+            display_name = _first_text(item.get("display_name"), item.get("label"), item.get("name"))
+            category = _first_text(item.get("category"), item.get("metric"))
+            description = _first_text(item.get("description"), item.get("ai_notes"))
+            aliases = "\n".join(str(alias) for alias in item.get("aliases", []) if _text(alias)) if isinstance(item.get("aliases"), list) else _text(item.get("aliases"))
+        else:
+            value_text = _text(item)
+            if "=" in value_text:
+                value, display_name = [part.strip() for part in value_text.split("=", 1)]
+            else:
+                value = value_text
+        if not value:
+            continue
+        rows.append({
+            "row_type": "field_value",
+            "field_name": getattr(field_item, "field_name", ""),
+            "field_display_name": _first_alias(field_item),
+            "field_type": "",
+            "field_role": getattr(field_item, "field_role", "") or "",
+            "semantic_type": getattr(field_item, "semantic_type", "") or "",
+            "source_field": "",
+            "json_path": "",
+            "expression": "",
+            "required": "",
+            "value": value,
+            "value_display_name": display_name,
+            "value_category": category,
+            "collect_side": "",
+            "event_name": "",
+            "event_display_name": "",
+            "event_category": "",
+            "example_values": "",
+            "description": description,
+            "ai_notes": "",
+            "aliases": aliases,
+        })
+    return rows
+
+
+VALUE_ROW_CONTEXT_COLUMNS = (
+    "row_type",
+    "field_name",
+    "field_display_name",
+    "field_type",
+    "field_role",
+    "semantic_type",
+    "source_field",
+    "json_path",
+    "expression",
+    "required",
+)
+
+
+def _source_field_from_row(row: dict[str, Any]) -> str:
+    source_field = _text(row.get("source_field"))
+    if source_field:
+        return source_field
+    inferred_source, _ = _json_path_from_field_name(_text(row.get("field_name")))
+    return inferred_source
+
+
+def _append_and_mark(result: list[dict[str, Any]], emitted: set[int], row: dict[str, Any]) -> None:
+    row_id = id(row)
+    if row_id in emitted:
+        return
+    emitted.add(row_id)
+    result.append(row)
+
+
+def _organize_business_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    physical_rows: list[dict[str, Any]] = []
+    dictionary_by_source: dict[str, list[dict[str, Any]]] = {}
+    dictionary_without_source: list[dict[str, Any]] = []
+    event_values_by_field: dict[str, list[dict[str, Any]]] = {}
+    field_values_by_field: dict[str, list[dict[str, Any]]] = {}
+    remaining_rows: list[dict[str, Any]] = []
+
+    for row in rows:
+        row_type = _text(row.get("row_type"))
+        field_name = _text(row.get("field_name"))
+        if row_type == "physical_field":
+            physical_rows.append(row)
+        elif row_type == "dictionary_field":
+            source_field = _source_field_from_row(row)
+            if source_field:
+                dictionary_by_source.setdefault(source_field, []).append(row)
+            else:
+                dictionary_without_source.append(row)
+        elif row_type == "event_value":
+            event_values_by_field.setdefault(field_name, []).append(row)
+        elif row_type == "field_value":
+            field_values_by_field.setdefault(field_name, []).append(row)
+        else:
+            remaining_rows.append(row)
+
+    result: list[dict[str, Any]] = []
+    emitted: set[int] = set()
+
+    def emit_values(field_name: str) -> None:
+        for value_row in field_values_by_field.pop(field_name, []):
+            _append_and_mark(result, emitted, value_row)
+
+    def emit_dictionary(row: dict[str, Any]) -> None:
+        _append_and_mark(result, emitted, row)
+        emit_values(_text(row.get("field_name")))
+
+    for physical_row in physical_rows:
+        field_name = _text(physical_row.get("field_name"))
+        _append_and_mark(result, emitted, physical_row)
+        for event_value_row in event_values_by_field.pop(field_name, []):
+            _append_and_mark(result, emitted, event_value_row)
+        emit_values(field_name)
+        for dictionary_row in dictionary_by_source.pop(field_name, []):
+            emit_dictionary(dictionary_row)
+
+    for event_group in list(event_values_by_field.values()):
+        for event_value_row in event_group:
+            _append_and_mark(result, emitted, event_value_row)
+    event_values_by_field.clear()
+
+    for dictionary_group in list(dictionary_by_source.values()):
+        for dictionary_row in dictionary_group:
+            emit_dictionary(dictionary_row)
+    dictionary_by_source.clear()
+
+    for dictionary_row in dictionary_without_source:
+        emit_dictionary(dictionary_row)
+
+    for value_group in list(field_values_by_field.values()):
+        for value_row in value_group:
+            _append_and_mark(result, emitted, value_row)
+    field_values_by_field.clear()
+
+    for row in remaining_rows:
+        _append_and_mark(result, emitted, row)
+    return result
+
+
+def _compact_value_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    last_value_key: tuple[str, str, str, str] | None = None
+    last_dictionary_source = ""
+    for row in rows:
+        row_type = _text(row.get("row_type"))
+        field_name = _text(row.get("field_name"))
+        source_field = _source_field_from_row(row)
+        json_path = _text(row.get("json_path"))
+        if row_type == "dictionary_field":
+            compact_row = dict(row)
+            if source_field and last_dictionary_source == source_field:
+                compact_row["row_type"] = ""
+                compact_row["source_field"] = ""
+            result.append(compact_row)
+            last_dictionary_source = source_field
+            last_value_key = None
+            continue
+        if row_type in {"event_value", "field_value"}:
+            value_key = (row_type, field_name, source_field, json_path)
+            compact_row = dict(row)
+            if last_value_key == value_key:
+                for column in VALUE_ROW_CONTEXT_COLUMNS:
+                    compact_row[column] = ""
+            result.append(compact_row)
+            last_value_key = value_key
+            continue
+        result.append(row)
+        last_value_key = None
+        if row_type == "physical_field":
+            last_dictionary_source = ""
+    return result
+
+
+TRACKING_INFO_COLUMNS = ["项目", "说明"]
+
+
+def _event_names_from_mapping(item: Any) -> list[str]:
+    if not isinstance(item, dict):
+        text = _text(item)
+        return [text] if text else []
+    names: list[str] = []
+    for key in ("event_name", "name", "value"):
+        text = _text(item.get(key))
+        if text:
+            names.append(text)
+    events = item.get("events")
+    if isinstance(events, list):
+        names.extend(_text(value) for value in events if _text(value))
+    return _merge_list([], names)
+
+
+def _event_display_from_mapping(item: Any, event_name: str) -> str:
+    if not isinstance(item, dict):
+        return event_name
+    return _first_text(
+        item.get("event_display_name"),
+        item.get("display_name"),
+        item.get("metric"),
+        item.get("name"),
+        event_name,
+    )
+
+
+def _event_description_from_mapping(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return _first_text(item.get("description"), item.get("event_description"), item.get("ai_notes"))
+
+
+def _event_category_from_mapping(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return _first_text(item.get("event_category"), item.get("category"), item.get("metric"))
+
+
+def _event_collect_side_from_mapping(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return _text(item.get("collect_side"))
+
+
+def _tracking_table_comment(table_item: Any, table_info: PhysicalTableInfo | None = None) -> str:
+    return (
+        _text(getattr(table_item, "table_comment", None))
+        or (table_info.custom_comment if table_info else "")
+        or (table_info.table_comment if table_info else "")
+    )
+
+
+def _table_role(table_item: Any) -> str:
+    return _text(getattr(table_item, "table_role", None)).lower()
+
+
+def _resolve_export_event_table(config: TenantTrackingConfigDTO, all_table_names: list[str]) -> str:
+    if config.default_event_table:
+        return config.default_event_table
+    table_map = _config_table_map(config)
+    for table_name, table_item in table_map.items():
+        role = _table_role(table_item)
+        if role in {"event", "event_fact", "fact_event", "fact_events"}:
+            return table_name
+    for candidate in ("event", "events", "fact_events"):
+        if candidate in all_table_names:
+            return candidate
+    return all_table_names[0] if all_table_names else "event"
+
+
+def _resolve_export_field_by_role(config: TenantTrackingConfigDTO, table_name: str, role: str) -> str:
+    role = role.lower()
+    for field_item in config.fields or []:
+        if field_item.table_name != table_name:
+            continue
+        if _text(getattr(field_item, "field_role", None)).lower() == role:
+            return field_item.field_name
+    return ""
+
+
+def _physical_field_name(schema: dict[str, PhysicalTableInfo], table_name: str, candidates: Iterable[str]) -> str:
+    table_info = schema.get(table_name)
+    if not table_info:
+        return ""
+    by_lower = {
+        _text(field_info.field_name).lower(): field_info.field_name
+        for field_info in table_info.fields
+        if _text(field_info.field_name)
+    }
+    for candidate in candidates:
+        field_name = by_lower.get(candidate.lower())
+        if field_name:
+            return field_name
+    return ""
+
+
+def _resolve_export_event_field(
+    config: TenantTrackingConfigDTO,
+    event_table: str,
+    schema: dict[str, PhysicalTableInfo],
+) -> str:
+    return (
+        _text(config.default_event_name_field)
+        or _resolve_export_field_by_role(config, event_table, "event_name")
+        or _physical_field_name(schema, event_table, ("event", "event_name", "event_type"))
+        or "event"
+    )
+
+
+def _resolve_export_subject_field(config: TenantTrackingConfigDTO, event_table: str, schema: dict[str, PhysicalTableInfo]) -> str:
+    return (
+        _text(config.default_subject_field)
+        or _resolve_export_field_by_role(config, event_table, "subject_id")
+        or _physical_field_name(schema, event_table, ("uid", "user_id", "userid", "role_id", "player_id"))
+    )
+
+
+def _resolve_export_event_time_field(config: TenantTrackingConfigDTO, event_table: str, schema: dict[str, PhysicalTableInfo]) -> str:
+    return (
+        _text(config.default_event_time_field)
+        or _resolve_export_field_by_role(config, event_table, "event_time")
+        or _physical_field_name(schema, event_table, ("time", "event_time", "event_timestamp", "timestamp", "created_at"))
+    )
+
+
+def _resolve_export_user_table(config: TenantTrackingConfigDTO, all_table_names: list[str], event_table: str) -> str:
+    table_map = _config_table_map(config)
+    for table_name, table_item in table_map.items():
+        role = _table_role(table_item)
+        if role in {"subject", "subject_profile", "daily_user_snapshot", "user", "profile", "profile_table", "user_profile"}:
+            return table_name
+    for candidate in ("user", "users", "profile", "subject_profile"):
+        if candidate in all_table_names and candidate != event_table:
+            return candidate
+    for table_name in all_table_names:
+        if table_name != event_table:
+            return table_name
+    return "user"
+
+
+def _append_table_map_defaults(
+    table_rows: list[dict[str, Any]],
+    *,
+    sheet_name: str,
+    table_name: str,
+    table_item: Any | None,
+    table_info: PhysicalTableInfo | None,
+    table_role: str,
+    subject_field: str = "",
+    event_name_field: str = "",
+    event_time_field: str = "",
+) -> None:
+    if not table_name:
+        return
+    table_rows.append({
+        "sheet_name": sheet_name,
+        "table_name": table_name,
+        "table_display_name": _first_alias(table_item) if table_item else "",
+        "table_role": _text(getattr(table_item, "table_role", None)) if table_item else table_role,
+        "subject_field": subject_field,
+        "event_name_field": event_name_field,
+        "event_time_field": event_time_field,
+        "partition_field": "",
+        "table_comment": _tracking_table_comment(table_item, table_info),
+        "ai_notes": _text(getattr(table_item, "ai_notes", None)) if table_item else "",
+        "aliases": _aliases_text(table_item) if table_item else "",
+    })
+
+
+def _info_rows(
+    config: TenantTrackingConfigDTO,
+    *,
+    event_table: str,
+    user_table: str,
+    subject_field: str,
+    event_field: str,
+    event_time_field: str,
+) -> list[dict[str, Any]]:
+    return [
+        {"项目": "用途", "说明": "本 Excel 是当前项目的数据字典维护文件；导入后会影响 Smart Q&A、分析助手、看板/图表配置和图表解读。"},
+        {"项目": "主维护入口", "说明": "每个物理表一个同名 sheet。字段、JSON 子字段、字段取值、事件取值都在对应物理表 sheet 中维护。"},
+        {"项目": "行类型", "说明": "physical_field=物理字段；dictionary_field=JSON/派生字典字段；event_value=事件名字段的业务事件取值；field_value=普通字段枚举/值域。"},
+        {"项目": "分组维护", "说明": "同一字段下面的后续取值行可以省略 row_type/field_name/字段角色/语义类型等上下文，导入时会继承上一条 event_value 或 field_value。"},
+        {"项目": "事件取值", "说明": f"`{event_table}` sheet 中 field_name={event_field or 'event'} 且 row_type=event_value 的行，会写入事件字典；后续同字段事件值可只维护 value、中文名、标签、说明、别名。"},
+        {"项目": "JSON 字段", "说明": "JSON 容器字段下面可维护 dictionary_field 子字段；紧跟 physical_field=ext/userinfo 等容器时，子字段可省略 source_field。字段取值紧跟子字段时，可用 field_value 维护 1/3/4 等枚举含义。"},
+        {"项目": "图表配置", "说明": "导入后的字段会出现在图表 SQL 构建器字段下拉中，表达式列会作为 SQL 生成优先使用的字段表达式。"},
+        {"项目": "SQL 规则", "说明": "`_SQL规则` 中维护跨字段口径、时间窗口、留存/漏斗等复杂规则；不要把复杂业务口径硬编码进平台。"},
+        {"项目": "当前默认", "说明": f"事件表={event_table}；主体字段={subject_field or ''}；事件名字段={event_field or ''}；事件时间字段={event_time_field or ''}。"},
+        {"项目": "config.enabled", "说明": "Y" if config.enabled else "N"},
+        {"项目": "config.notes", "说明": config.notes or ""},
+        {"项目": "config.field_role_mappings", "说明": _json_text(config.field_role_mappings)},
+    ]
+
+
+def _user_id_rows(config: TenantTrackingConfigDTO) -> list[dict[str, Any]]:
+    return [
+        {
+            "subject_type": "当前项目",
+            "property_name": config.default_subject_field or "uid",
+            "property_display_name": "用户ID",
+            "description": "当前工作空间默认主体字段；事件人数、活跃人数、参与人数等通常按该字段去重。",
+            "ai_notes": "如一个项目存在账号、角色、设备等多 ID，请在此说明主分析主体，并在字段字典中补充其他 ID 字段。",
+        }
+    ]
+
+
+def _generic_sheet_rows_for_table(
+    table_name: str,
+    *,
+    physical_fields: list[PhysicalFieldInfo],
+    field_map: dict[tuple[str, str], Any],
+    template_only: bool,
+) -> list[dict[str, Any]]:
+    physical_names = {field_info.field_name for field_info in physical_fields}
+    rows: list[dict[str, Any]] = []
+    for field_info in physical_fields:
+        configured = field_map.get((table_name, field_info.field_name))
+        if configured and not template_only:
+            row = _business_row_from_field(configured, row_type="physical_field")
+            row["field_type"] = field_info.field_type or row["field_type"]
+            row["semantic_type"] = _semantic_type_for_export(configured, field_info.field_type)
+            row["description"] = row["description"] or field_info.custom_comment or field_info.field_comment
+            rows.append(row)
+        else:
+            rows.append({
+                "row_type": "physical_field",
+                "field_name": field_info.field_name,
+                "field_display_name": "",
+                "field_type": field_info.field_type,
+                "field_role": "",
+                "semantic_type": _semantic_type(field_info.field_type),
+                "source_field": "",
+                "json_path": "",
+                "expression": "",
+                "required": "",
+                "value": "",
+                "value_display_name": "",
+                "value_category": "",
+                "collect_side": "",
+                "event_name": "",
+                "event_display_name": "",
+                "event_category": "",
+                "example_values": "",
+                "description": field_info.custom_comment or field_info.field_comment,
+                "ai_notes": "",
+            })
+        configured_for_values = field_map.get((table_name, field_info.field_name))
+        if configured_for_values and not template_only:
+            rows.extend(_field_value_rows(configured_for_values))
+    if not template_only:
+        configured_fields = [
+            configured
+            for (field_table, _), configured in field_map.items()
+            if field_table == table_name and configured.field_name not in physical_names
+        ]
+        for configured in sorted(configured_fields, key=_business_field_sort_key):
+            rows.append(_business_row_from_field(configured, row_type="dictionary_field"))
+            rows.extend(_field_value_rows(configured))
+    return rows
+
+
+def _json_source_field_for_template(physical_fields: list[PhysicalFieldInfo]) -> str:
+    for field_info in physical_fields:
+        text = f"{field_info.field_name} {field_info.field_type} {field_info.field_comment} {field_info.custom_comment}".lower()
+        if "json" in text:
+            return field_info.field_name
+    return ""
+
+
+def _template_example_rows(
+    *,
+    event_field: str,
+    json_source_field: str,
+) -> list[dict[str, Any]]:
+    source_field = json_source_field or "ext"
+    return [
+        {
+            "row_type": "event_value",
+            "field_name": event_field or "event",
+            "field_display_name": "",
+            "field_type": "",
+            "field_role": "event_name",
+            "semantic_type": "text",
+            "source_field": "",
+            "json_path": "",
+            "expression": "",
+            "required": "",
+            "value": "login",
+            "value_display_name": "登录",
+            "value_category": "基础事件",
+            "collect_side": "client",
+            "event_name": "",
+            "event_display_name": "",
+            "event_category": "",
+            "example_values": "",
+            "description": "事件取值样例；把 value 改成当前项目真实上报的事件名。",
+            "ai_notes": "",
+            "aliases": "",
+        },
+        {
+            "row_type": "event_value",
+            "field_name": event_field or "event",
+            "field_display_name": "",
+            "field_type": "",
+            "field_role": "event_name",
+            "semantic_type": "text",
+            "source_field": "",
+            "json_path": "",
+            "expression": "",
+            "required": "",
+            "value": "pay_success",
+            "value_display_name": "支付成功",
+            "value_category": "付费事件",
+            "collect_side": "server",
+            "event_name": "",
+            "event_display_name": "",
+            "event_category": "",
+            "example_values": "",
+            "description": "事件取值样例；如果没有付费事件可删除。",
+            "ai_notes": "",
+            "aliases": "",
+        },
+        {
+            "row_type": "dictionary_field",
+            "field_name": f"{source_field}.battleResult",
+            "field_display_name": "战斗结果",
+            "field_type": "text",
+            "field_role": "json_path_dimension",
+            "semantic_type": "text",
+            "source_field": source_field,
+            "json_path": "$.battleResult",
+            "expression": "",
+            "required": "",
+            "value": "",
+            "value_display_name": "",
+            "value_category": "",
+            "collect_side": "",
+            "event_name": "battle_end",
+            "event_display_name": "战斗结束",
+            "event_category": "玩法事件",
+            "example_values": "win\nlose",
+            "description": "JSON 子字段样例；source_field 必须是当前表中承载事件参数的 JSON 字段。",
+            "ai_notes": "",
+            "aliases": "",
+        },
+        {
+            "row_type": "field_value",
+            "field_name": f"{source_field}.battleResult",
+            "field_display_name": "战斗结果",
+            "field_type": "",
+            "field_role": "json_path_dimension",
+            "semantic_type": "text",
+            "source_field": source_field,
+            "json_path": "$.battleResult",
+            "expression": "",
+            "required": "",
+            "value": "1",
+            "value_display_name": "胜利",
+            "value_category": "战斗结果",
+            "collect_side": "",
+            "event_name": "",
+            "event_display_name": "",
+            "event_category": "",
+            "example_values": "",
+            "description": "字段取值样例；把 1/3/4 改成当前项目真实上报值。",
+            "ai_notes": "",
+            "aliases": "",
+        },
+        {
+            "row_type": "field_value",
+            "field_name": f"{source_field}.battleResult",
+            "field_display_name": "战斗结果",
+            "field_type": "",
+            "field_role": "json_path_dimension",
+            "semantic_type": "text",
+            "source_field": source_field,
+            "json_path": "$.battleResult",
+            "expression": "",
+            "required": "",
+            "value": "3",
+            "value_display_name": "失败",
+            "value_category": "战斗结果",
+            "collect_side": "",
+            "event_name": "",
+            "event_display_name": "",
+            "event_category": "",
+            "example_values": "",
+            "description": "",
+            "ai_notes": "",
+            "aliases": "",
+        },
+    ]
+
+
+def _dedupe_business_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    for row in rows:
+        key = (
+            _text(row.get("row_type")),
+            _text(row.get("field_name")),
+            _text(row.get("event_name")),
+            _text(row.get("value")),
+            _text(row.get("json_path")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(row)
+    return result
+
+
+def _export_header_label(sheet_name: str, column: str) -> str:
+    if column in BUSINESS_COLUMNS and sheet_name not in SYSTEM_SHEETS:
+        return BUSINESS_EXPORT_COLUMN_LABELS.get(column, column)
+    return EXPORT_COLUMN_LABELS.get(column, column)
+
+
+def _write_tracking_sheet(writer, sheet_name: str, rows: list[dict[str, Any]], columns: list[str]) -> None:
+    df = pd.DataFrame(rows, columns=columns)
+    df.columns = [_export_header_label(sheet_name, column) for column in columns]
+    df.to_excel(writer, sheet_name=sheet_name, index=False)
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+    header_format = workbook.add_format({
+        "bold": True,
+        "bg_color": "#D9EAF7",
+        "font_color": "#1F4E79",
+        "border": 1,
+        "align": "center",
+        "valign": "vcenter",
+    })
+    text_format = workbook.add_format({"text_wrap": True, "valign": "top"})
+    for col_index, column in enumerate(columns):
+        header_label = _export_header_label(sheet_name, column)
+        worksheet.write(0, col_index, header_label, header_format)
+        max_len = max([len(str(header_label))] + [len(str(row.get(column, ""))) for row in rows[:200]])
+        worksheet.set_column(col_index, col_index, min(max(max_len + 2, 12), 44), text_format)
+    if rows:
+        worksheet.freeze_panes(1, 0)
 
 
 def tracking_config_excel(
@@ -1409,23 +2203,30 @@ def tracking_config_excel(
         if table.table_name and table.table_name not in all_table_names:
             all_table_names.append(table.table_name)
     if not all_table_names:
-        all_table_names = ["event", "subject_profile"]
+        all_table_names = ["event", "user"]
+
+    event_table = _resolve_export_event_table(config, all_table_names)
+    user_table = _resolve_export_user_table(config, all_table_names, event_table)
+    event_field = _resolve_export_event_field(config, event_table, schema)
+    subject_field = _resolve_export_subject_field(config, event_table, schema)
+    event_time_field = _resolve_export_event_time_field(config, event_table, schema)
 
     for table_name in all_table_names:
         sheet_name_by_table[table_name] = _safe_sheet_name(table_name, used_sheet_names)
 
     table_rows: list[dict[str, Any]] = []
     for table_name in all_table_names:
+        sheet_name = sheet_name_by_table[table_name]
         table_info = schema.get(table_name)
         configured = table_map.get(table_name)
         table_rows.append({
-            "sheet_name": sheet_name_by_table[table_name],
+            "sheet_name": sheet_name,
             "table_name": table_name,
             "table_display_name": _first_alias(configured) if configured else "",
             "table_role": getattr(configured, "table_role", "") or "",
-            "subject_field": config.default_subject_field if config.default_event_table == table_name else "",
-            "event_name_field": config.default_event_name_field if config.default_event_table == table_name else "",
-            "event_time_field": config.default_event_time_field if config.default_event_table == table_name else "",
+            "subject_field": subject_field if table_name == event_table else "",
+            "event_name_field": event_field if table_name == event_table else "",
+            "event_time_field": event_time_field if table_name == event_table else "",
             "partition_field": "",
             "table_comment": (
                 getattr(configured, "table_comment", "") or
@@ -1433,133 +2234,56 @@ def tracking_config_excel(
                 (table_info.table_comment if table_info else "")
             ),
             "ai_notes": getattr(configured, "ai_notes", "") or "",
+            "aliases": _aliases_text(configured) if configured else "",
         })
 
     sheets: list[tuple[str, list[dict[str, Any]], list[str]]] = [
         (
             INFO_SHEET,
-            [
-                {"项目": "用途", "说明": "下载模板后按真实表 sheet 维护字段语义，上传后会合并到当前工作空间数据字典。"},
-                {"项目": "JSON 字段", "说明": "JSON 子字段必须维护 source_field 和 json_path；字段名带点号只用于便捷识别。"},
-                {"项目": "表达式", "说明": "expression 应填写当前数据源方言的 SQL 表达式，供图表 SQL 配置器直接使用。"},
-                {"项目": "复杂口径", "说明": "复杂指标、留存、漏斗、窗口等分析口径建议维护到 Data Skills，不写入字段模板。"},
-            ],
-            ["项目", "说明"],
+            _info_rows(
+                config,
+                event_table=event_table,
+                user_table=user_table,
+                subject_field=subject_field,
+                event_field=event_field,
+                event_time_field=event_time_field,
+            ),
+            TRACKING_INFO_COLUMNS,
         ),
         (TABLE_MAP_SHEET, table_rows, TABLE_MAP_COLUMNS),
     ]
 
     for table_name in all_table_names:
-        rows: list[dict[str, Any]] = []
-        if not template_only:
-            rows.extend(_business_event_rows(config, table_name))
         physical_fields = schema.get(table_name).fields if schema.get(table_name) else []
-        physical_names = {field_info.field_name for field_info in physical_fields}
-        for field_info in physical_fields:
-            configured = field_map.get((table_name, field_info.field_name))
-            if configured and not template_only:
-                row = _business_row_from_field(configured, row_type="physical_field")
-                row["field_type"] = row["field_type"] or field_info.field_type
-                row["description"] = row["description"] or field_info.custom_comment or field_info.field_comment
-                rows.append(row)
-            else:
-                rows.append({
-                    "row_type": "physical_field",
-                    "event_name": "",
-                    "event_display_name": "",
-                    "event_category": "",
-                    "collect_side": "",
-                    "field_view": "",
-                    "field_name": field_info.field_name,
-                    "field_display_name": "",
-                    "field_type": field_info.field_type,
-                    "field_role": "",
-                    "semantic_type": "",
-                    "source_field": "",
-                    "json_path": "",
-                    "expression": "",
-                    "required": "",
-                    "enum_values": "",
-                    "example_values": "",
-                    "description": field_info.custom_comment or field_info.field_comment,
-                    "ai_notes": "",
-                })
-        if not template_only:
-            configured_fields = [
-                configured
-                for (field_table, _), configured in field_map.items()
-                if field_table == table_name and configured.field_name not in physical_names
-            ]
-            for configured in sorted(configured_fields, key=_business_field_sort_key):
-                rows.append(_business_row_from_field(configured, row_type="dictionary_field"))
-        elif not rows and table_name == "event":
-            rows.extend([
-                {
-                    "row_type": "physical_field",
-                    "event_name": "",
-                    "event_display_name": "",
-                    "event_category": "",
-                    "collect_side": "",
-                    "field_view": "",
-                    "field_name": "event",
-                    "field_display_name": "",
-                    "field_type": "json",
-                    "field_role": "event_params_json",
-                    "semantic_type": "json",
-                    "source_field": "",
-                    "json_path": "",
-                    "expression": "",
-                    "required": "",
-                    "enum_values": "",
-                    "example_values": "",
-                    "description": "承载事件明细的 JSON 字符串字段示例，可按实际字段名修改。",
-                    "ai_notes": "",
-                },
-                {
-                    "row_type": "dictionary_field",
-                    "event_name": "",
-                    "event_display_name": "",
-                    "event_category": "",
-                    "collect_side": "",
-                    "field_view": "event view",
-                    "field_name": "amount",
-                    "field_display_name": "金额",
-                    "field_type": "number",
-                    "field_role": "json_path_metric",
-                    "semantic_type": "number",
-                    "source_field": "event",
-                    "json_path": "$.amount",
-                    "expression": "",
-                    "required": "",
-                    "enum_values": "",
-                    "example_values": "",
-                    "description": "JSON 子字段示例；上传前请改成真实字段。",
-                    "ai_notes": "",
-                },
-            ])
+        rows = _generic_sheet_rows_for_table(
+            table_name,
+            physical_fields=physical_fields,
+            field_map=field_map,
+            template_only=template_only,
+        )
+        if not template_only and table_name == event_table:
+            event_value_rows = _business_event_value_rows(config, event_field=event_field)
+            event_property_rows = _business_event_property_rows(config)
+            if event_value_rows or event_property_rows:
+                physical_rows = [row for row in rows if row.get("row_type") == "physical_field"]
+                other_rows = [row for row in rows if row.get("row_type") != "physical_field"]
+                rows = physical_rows + event_value_rows + other_rows + event_property_rows
+        if template_only and table_name == event_table:
+            rows.extend(_template_example_rows(
+                event_field=event_field,
+                json_source_field=_json_source_field_for_template(physical_fields),
+            ))
+        rows = _dedupe_business_rows(rows)
+        rows = _compact_value_rows(_organize_business_rows(rows))
         sheets.append((sheet_name_by_table[table_name], rows, BUSINESS_COLUMNS))
 
     sheets.extend([
-        (ENUM_SHEET, [], ENUM_COLUMNS),
         (SQL_RULE_SHEET, [{"rule_name": "示例", "scope": "", "rule_text": config.sql_rules or "", "priority": ""}] if config.sql_rules and not template_only else [], SQL_RULE_COLUMNS),
     ])
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter", engine_kwargs={"options": {"strings_to_numbers": False}}) as writer:
         for sheet_name, rows, columns in sheets:
-            df = pd.DataFrame(rows, columns=columns)
-            df.columns = [EXPORT_COLUMN_LABELS.get(column, column) for column in columns]
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-            workbook = writer.book
-            worksheet = writer.sheets[sheet_name]
-            for col_index, column in enumerate(columns):
-                header_label = EXPORT_COLUMN_LABELS.get(column, column)
-                max_len = max([len(str(header_label))] + [len(str(row.get(column, ""))) for row in rows[:200]])
-                worksheet.set_column(col_index, col_index, min(max(max_len + 2, 12), 42))
-            if "field_view" in columns:
-                worksheet.set_column(columns.index("field_view"), columns.index("field_view"), 16)
-                _apply_business_sheet_layout(workbook, worksheet, rows, columns)
-            if rows:
-                worksheet.freeze_panes(1, 0)
+            _write_tracking_sheet(writer, sheet_name, rows, columns)
     output.seek(0)
     return io.BytesIO(output.getvalue())

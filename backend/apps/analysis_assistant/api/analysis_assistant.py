@@ -46,6 +46,7 @@ from apps.analysis_assistant.models import (
 )
 from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tracking_config import find_tracking_prompt_context
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
@@ -1652,6 +1653,23 @@ def _collect_data_skill_context(
         return ""
 
 
+def _collect_tracking_context(session: SessionDep, current_user: CurrentUser | None) -> str:
+    """
+    是什么：读取工作空间数据字典/埋点方案上下文，让所有分析类 agent 使用同一份语义配置。
+    """
+    try:
+        tenant_id = _current_tenant_id(current_user) if current_user is not None else None
+        tracking_text, _tracking_list = find_tracking_prompt_context(session, tenant_id)
+        return tracking_text.strip()
+    except Exception:
+        traceback.print_exc()
+        return ""
+
+
+def _merge_semantic_contexts(*parts: str) -> str:
+    return "\n\n".join(part.strip() for part in parts if part and part.strip())
+
+
 def _custom_agent_block(custom_agent: str) -> str:
     """
     是什么：_custom_agent_block 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -1793,7 +1811,7 @@ def _stream_report_interpretation(
     success = False
     try:
         if data_skill.strip():
-            yield _trace("已应用当前用户可用的数据 Skills，正在生成报表解读。")
+            yield _trace("已应用当前工作空间数据字典/Data Skills，正在生成报表解读。")
         else:
             yield _trace("正在基于当前图表数据生成报表解读。")
         final = ""
@@ -3330,6 +3348,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         target_scope,
         include_all_target_scopes=False,
     )
+    tracking_context = _collect_tracking_context(session, current_user)
+    semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, llm_config = await _create_llm(custom_agent_model_id)
     context_snapshot = build_agent_context_snapshot(
         surface="analysis_assistant",
@@ -3339,7 +3359,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         custom_prompt_text=custom_agent,
         custom_prompt_model_id=custom_agent_model_id,
         data_skill_id=request.data_skill_id,
-        data_skill_text=data_skill,
+        data_skill_text=semantic_context,
         ai_model_id=llm_config.model_id,
         ai_model_name=llm_config.model_name,
         target_scope=target_scope.value if target_scope else None,
@@ -3357,7 +3377,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         try:
             yield _sse({"type": "context_snapshot", "snapshot": context_snapshot})
             outline_text = ""
-            for chunk in llm.stream(_initial_outline_messages(request, custom_agent, data_skill)):
+            for chunk in llm.stream(_initial_outline_messages(request, custom_agent, semantic_context)):
                 content = _chunk_text(chunk.content)
                 if content:
                     outline_text += content
@@ -3377,6 +3397,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 schema,
                 allowed_tables,
             )
+            if tracking_context.strip():
+                yield _trace("已应用当前工作空间数据字典/埋点方案，字段选择和事件口径将优先参考它。")
             if data_skill.strip():
                 yield _trace("已应用本次选择的数据 Skill，将优先参考其中的业务口径和查询范式。")
             if custom_agent.strip():
@@ -3385,13 +3407,13 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             if forecast_requested:
                 yield _trace("正在识别预测指标、目标对象和可用的历史观察窗口。")
                 plan = _build_forecast_plan(
-                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, data_skill
+                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, semantic_context
                 )
                 yield _trace("预测方法和数据检查项已确定，下面按预测口径召回数据。")
             else:
                 yield _trace("正在把分析框架拆成可执行的数据检查项。")
                 plan = _build_plan(
-                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, data_skill
+                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, semantic_context
                 )
 
             intro = str(plan.get("intro") or "我会先识别问题指标，再从多个角度查看数据并给出分析建议。")
@@ -3444,7 +3466,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
                         repaired_sql = _repair_sql(
                             llm, question, raw_query, sql, first_error, schema, sample_data, data_profile,
-                            custom_agent, data_skill
+                            custom_agent, semantic_context
                         )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables
@@ -3459,12 +3481,12 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             allowed_tables=allowed_tables,
                             origin_column=True,
                         ).result
-                    semantic_error = _semantic_validation_error(raw_query, result, data_skill)
+                    semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
                         repaired_sql = _repair_sql(
                             llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data,
-                            data_profile, custom_agent, data_skill
+                            data_profile, custom_agent, semantic_context
                         )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables
@@ -3479,14 +3501,14 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             allowed_tables=allowed_tables,
                             origin_column=True,
                         ).result
-                        semantic_error = _semantic_validation_error(raw_query, result, data_skill)
+                        semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
                         if semantic_error:
                             raise ValueError(semantic_error)
                     block["fields"] = [str(field) for field in result.get("fields") or []]
                     block["data"] = result.get("data") or []
                     yield _trace("这个角度的数据已经整理好，正在提炼关键发现。", block_id=block_id)
                     block["chart"] = _build_chart_config(raw_query, result)
-                    block["summary"] = _summarise_block(llm, question, block, custom_agent, data_skill)
+                    block["summary"] = _summarise_block(llm, question, block, custom_agent, semantic_context)
                 except Exception as query_error:
                     _mark_query_error_block(block, query_error, current_user)
 
@@ -3495,7 +3517,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
 
             yield _trace("正在汇总各个角度的发现，形成最终判断和建议。")
             final = ""
-            for chunk in llm.stream(_final_answer_messages(question, intro, blocks, custom_agent, data_skill)):
+            for chunk in llm.stream(_final_answer_messages(question, intro, blocks, custom_agent, semantic_context)):
                 content = _chunk_text(chunk.content)
                 if content:
                     final += content
@@ -3550,8 +3572,10 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
         include_all_target_scopes=True,
     )
+    tracking_context = _collect_tracking_context(session, current_user)
+    semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, _llm_config = await _create_llm(None)
     return StreamingResponse(
-        _stream_report_interpretation(llm, request, current_user, data_skill),
+        _stream_report_interpretation(llm, request, current_user, semantic_context),
         media_type="text/event-stream",
     )

@@ -431,6 +431,35 @@ class DashboardSqlPreview(BaseModel):
     force_refresh: bool = False
 
 
+class DashboardAiSqlGenerateRequest(BaseModel):
+    """
+    类说明：DashboardAiSqlGenerateRequest 表示手动看板 AI 生成 SQL 的输入。
+    """
+    datasource: int
+    intent: str = ''
+    chart_type: str = ''
+    title: str = ''
+    context: Dict[str, Any] = Field(default_factory=dict)
+    data_skill_id: Optional[int] = None
+
+
+class DashboardAiSqlGenerateResponse(BaseModel):
+    """
+    类说明：DashboardAiSqlGenerateResponse 表示手动看板 AI 生成 SQL 的结果。
+    """
+    success: bool = True
+    sql: str = ''
+    title: str = ''
+    chart_type: str = ''
+    tables: List[str] = Field(default_factory=list)
+    intent: str = ''
+    message: str = ''
+    advice: str = ''
+    issues: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)
+    raw: str = ''
+
+
 class DashboardDefaultRequest(BaseModel):
     """
     类说明：DashboardDefaultRequest 表示仪表盘里的一类数据，通常用来和数据库表或业务对象对应。

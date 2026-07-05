@@ -386,8 +386,13 @@ class AiModelQuestion(BaseModel):
         谁调用：拿到 AiModelQuestion 对象的代码，需要完成这个动作时会调用它。
         做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
+        semantic_context = "\n\n".join(
+            item.strip()
+            for item in (self.tracking_config, self.data_skill)
+            if item and item.strip()
+        )
         return get_chart_template()['user'].format(lang=self.lang, sql=self.sql, question=self.question, rule=self.rule,
-                                                   chart_type=chart_type, schema=schema, data_skill=self.data_skill)
+                                                   chart_type=chart_type, schema=schema, data_skill=semantic_context)
 
     def analysis_sys_question(self):
         """
@@ -395,9 +400,14 @@ class AiModelQuestion(BaseModel):
         谁调用：拿到 AiModelQuestion 对象的代码，需要完成这个动作时会调用它。
         做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
+        semantic_context = "\n\n".join(
+            item.strip()
+            for item in (self.tracking_config, self.data_skill)
+            if item and item.strip()
+        )
         return get_analysis_template()['system'].format(lang=self.lang, terminologies="",
                                                         custom_prompt=self.custom_prompt,
-                                                        data_skill=self.data_skill,
+                                                        data_skill=semantic_context,
                                                         shuzhi_name=self.shuzhi_name)
 
     def analysis_user_question(self):
@@ -414,8 +424,13 @@ class AiModelQuestion(BaseModel):
         谁调用：拿到 AiModelQuestion 对象的代码，需要完成这个动作时会调用它。
         做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
+        semantic_context = "\n\n".join(
+            item.strip()
+            for item in (self.tracking_config, self.data_skill)
+            if item and item.strip()
+        )
         return get_predict_template()['system'].format(lang=self.lang, custom_prompt=self.custom_prompt,
-                                                       data_skill=self.data_skill,
+                                                       data_skill=semantic_context,
                                                        shuzhi_name=self.shuzhi_name)
 
     def predict_user_question(self):
