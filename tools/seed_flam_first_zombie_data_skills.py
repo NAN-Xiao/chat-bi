@@ -350,22 +350,28 @@ LIMIT 24
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:payment-ltv -->
 <!-- data-skill-sql-validation:[
 {{
-  "match":["ltv","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
+  "match":["ltv","LTV","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","次日LTV","次日 LTV","2日LTV","2 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
   "forbidden_sql_patterns":[
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+1\\\\s+DAY[\\\\s\\\\S]{{0,160}}d1_dt",
+    "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+2\\\\s+DAY[\\\\s\\\\S]{{0,160}}d2_dt",
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+3\\\\s+DAY[\\\\s\\\\S]{{0,160}}d3_dt",
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+7\\\\s+DAY[\\\\s\\\\S]{{0,160}}d7_dt",
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+14\\\\s+DAY[\\\\s\\\\S]{{0,160}}d14_dt",
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+30\\\\s+DAY[\\\\s\\\\S]{{0,160}}d30_dt"
   ],
-  "message":"flam 新增 cohort LTV 的 pay 窗口字段必须按快照成熟日读取：pay1=注册日(+0)，pay3=注册后第2天(+2)，pay7=注册后第6天(+6)，pay14=+13，pay30=+29。不要把字段名数字写成 DATE_ADD 的 +1/+3/+7/+14/+30。"
+  "message":"flam 新增 cohort LTV 的 pay 窗口字段必须按快照成熟日读取：pay1=首日/1日(+0)，pay2=次日/2日(+1)，pay3=+2，pay7=+6，pay14=+13，pay30=+29。不要把字段名数字直接写成 DATE_ADD 的 +1/+2/+3/+7/+14/+30。"
 }},
 {{
-  "match":["ltv","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
+  "match":["ltv","LTV","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","次日LTV","次日 LTV","2日LTV","2 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
   "forbidden_sql_patterns":[
     "LEFT\\\\s+JOIN\\\\s+(?:`?first_zombie`?\\\\s*\\\\.\\\\s*)?`?user`?\\\\s+(?:AS\\\\s+)?`?s`?\\\\s+ON\\\\s+(?!(?:(?!\\\\b(?:WHERE|GROUP\\\\s+BY|ORDER\\\\s+BY|LIMIT|LEFT\\\\s+JOIN|RIGHT\\\\s+JOIN|INNER\\\\s+JOIN|JOIN)\\\\b)[\\\\s\\\\S])*`?s`?\\\\s*\\\\.\\\\s*`?dt`?)(?:(?!\\\\b(?:WHERE|GROUP\\\\s+BY|ORDER\\\\s+BY|LIMIT|LEFT\\\\s+JOIN|RIGHT\\\\s+JOIN|INNER\\\\s+JOIN|JOIN)\\\\b)[\\\\s\\\\S])*`?s`?\\\\s*\\\\.\\\\s*`?uid`?\\\\s*=\\\\s*`?c`?\\\\s*\\\\.\\\\s*`?uid`?"
   ],
-  "message":"flam 新增 cohort LTV 回连 user 快照时必须在 JOIN 条件中限定成熟快照分区，例如 `s.dt IN (c.d1_dt, c.d3_dt, c.d7_dt)`；不能只按 uid/prod 连接全量用户日快照。"
+  "message":"flam 新增 cohort LTV 回连 user 快照时必须在 JOIN 条件中限定成熟快照分区，例如 `s.dt IN (c.d1_dt, c.d2_dt, c.d3_dt, c.d7_dt)`；不能只按 uid/prod 连接全量用户日快照。"
+}},
+{{
+  "match":["次日LTV","次日 LTV"],
+  "forbidden_sql_all_contains":[["pay1","次日"]],
+  "message":"flam 次日 LTV 是注册第 2 个自然日累计窗口，应读取 pay.pay2 和 cohort_dt + 1 快照；pay.pay1 只能用于首日/1日 LTV。"
 }}
 ] -->
 # flam 付费与 LTV 口径
@@ -388,15 +394,17 @@ LIMIT 24
 ## 留存与 LTV
 - 留存和 LTV 必须先固定注册 cohort，再在后续用户日记录中读取 `remain` 或 `pay` 累计窗口字段。
 - `remain.remain1 = 1` 表示 D1 留存，`remain3 = 1`、`remain7 = 1` 分别表示 D3/D7 留存。
-- `pay.pay1/pay2/pay3/pay7/pay14/pay30` 表示注册后 1/2/3/7/14/30 日累计付费窗口；在不同生命周期日的快照中这些窗口会逐步成熟。
-- `pay1/pay3/pay7` 字段名中的数字是累计窗口名，不是 `DATE_ADD` 的日期偏移量。新增 cohort LTV 快照映射必须写成：1 日/首日 LTV = 注册日快照 `s.dt = cohort_dt` 读取 `pay1`；3 日 LTV = 注册后第 2 天快照 `cohort_dt + 2` 读取 `pay3`；7 日 LTV = 注册后第 6 天快照 `cohort_dt + 6` 读取 `pay7`；14 日 LTV = `cohort_dt + 13` 读取 `pay14`；30 日 LTV = `cohort_dt + 29` 读取 `pay30`。
-- 禁止把新增 cohort LTV 的 `d1_dt/d3_dt/d7_dt/d14_dt/d30_dt` 分别写成 `+1/+3/+7/+14/+30`；正确偏移是 `+0/+2/+6/+13/+29`。如果业务库最大 `dt` 尚未覆盖对应快照，应返回 NULL，而不是错位读取下一天或更晚快照。
-- 新增 cohort LTV 回连 `user` 日快照时，`JOIN` 条件必须同时限定 `uid`、`prod` 和目标成熟快照分区；推荐写法是 `LEFT JOIN user s ON s.uid = c.uid AND s.prod = 110000038 AND s.dt IN (c.d1_dt, c.d3_dt, c.d7_dt, ...)`。禁止只写 `s.uid = c.uid AND s.prod = 110000038` 后再在 `SUM(CASE WHEN s.dt = ... THEN ...)` 中判断日期，这会扫描同一用户所有历史快照并导致 ADS/MySQL 超时。
+- `pay.pay1/pay2/pay3/pay7/pay14/pay30` 表示注册后 1/2/3/7/14/30 个自然日累计付费窗口，注册日算第 1 个自然日；在不同生命周期日的快照中这些窗口会逐步成熟。
+- LTV 命名必须区分：首日/1日 LTV 使用 `pay1` 和注册日快照；次日/2日 LTV 使用 `pay2` 和注册后第 1 天快照。不要把“次日 LTV”写成 `pay1`。
+- `pay1/pay2/pay3/pay7` 字段名中的数字是累计窗口名，不是 `DATE_ADD` 的日期偏移量。新增 cohort LTV 快照映射必须写成：1 日/首日 LTV = 注册日快照 `s.dt = cohort_dt` 读取 `pay1`；次日/2 日 LTV = 注册后第 1 天快照 `cohort_dt + 1` 读取 `pay2`；3 日 LTV = 注册后第 2 天快照 `cohort_dt + 2` 读取 `pay3`；7 日 LTV = 注册后第 6 天快照 `cohort_dt + 6` 读取 `pay7`；14 日 LTV = `cohort_dt + 13` 读取 `pay14`；30 日 LTV = `cohort_dt + 29` 读取 `pay30`。
+- 禁止把新增 cohort LTV 的 `d1_dt/d2_dt/d3_dt/d7_dt/d14_dt/d30_dt` 分别写成 `+1/+2/+3/+7/+14/+30`；正确偏移是 `+0/+1/+2/+6/+13/+29`。如果业务库最大 `dt` 尚未覆盖对应快照，应返回 NULL，而不是错位读取下一天或更晚快照。
+- 新增 cohort LTV 回连 `user` 日快照时，`JOIN` 条件必须同时限定 `uid`、`prod` 和目标成熟快照分区；推荐写法是 `LEFT JOIN user s ON s.uid = c.uid AND s.prod = 110000038 AND s.dt IN (c.d1_dt, c.d2_dt, c.d3_dt, c.d7_dt, ...)`。禁止只写 `s.uid = c.uid AND s.prod = 110000038` 后再在 `SUM(CASE WHEN s.dt = ... THEN ...)` 中判断日期，这会扫描同一用户所有历史快照并导致 ADS/MySQL 超时。
 - 新增首日付费金额固定取注册日快照行的 `pay.pay1` 求和，不要从后续快照 `MAX(pay1)`。
 - 用户询问“最近 N 天新增用户的平均付费金额/人均付费”但没有说明首日、累计或生命周期窗口时，不要静默只返回单一 `pay1` 口径；优先同时输出 `新增用户数`、`首日付费金额`、`首日人均付费`、`截至最新完整分区累计付费金额`、`截至最新完整分区累计人均付费`，并在回答中标明两套口径。
 - 用户明确说“首日/D0/当天付费/新增当天付费/新增用户中的付费用户占比”时，使用注册日快照的 `pay.pay1` 判断付费金额与付费用户。
+- 用户明确说“次日 LTV”时，使用注册后第 1 天快照的 `pay.pay2`；这与“次日留存”的 +1 观察日对齐，但字段名是 pay2。
 - 用户说“后续付费/产生的付费/累计付费/截至当前/截至昨日/到目前为止”时，先固定新增 cohort，再读取当前日前一完整分区的 `pay.paytotal` 快照；付费用户数按 `paytotal > 0` 去重，不要误用注册日 `pay.pay1`。
-- 新增 cohort LTV 表必须先固定注册 cohort 和分母，再按成熟生命周期日读取对应快照：1 日取注册日快照的 `pay1`，3 日取注册后第 2 天快照的 `pay3`，7 日取注册后第 6 天快照的 `pay7`，14 日取注册后第 13 天快照的 `pay14`，30 日取注册后第 29 天快照的 `pay30`。
+- 新增 cohort LTV 表必须先固定注册 cohort 和分母，再按成熟生命周期日读取对应快照：1 日取注册日快照的 `pay1`，次日/2 日取注册后第 1 天快照的 `pay2`，3 日取注册后第 2 天快照的 `pay3`，7 日取注册后第 6 天快照的 `pay7`，14 日取注册后第 13 天快照的 `pay14`，30 日取注册后第 29 天快照的 `pay30`。
 - 未成熟或业务库还没有对应生命周期快照的 LTV 单元格应返回 NULL/空值，不要把未成熟 cohort 当 0，也不要用注册日快照填充后续 LTV。
 - 当前 flam 业务库只有 `user` 与 `event` 两张业务表，注册归因 JSON 里可见媒体/广告系列信息，但没有真实买量成本字段；没有成本分母时不能把 LTV 或回收金额命名为真实 ROI。
 

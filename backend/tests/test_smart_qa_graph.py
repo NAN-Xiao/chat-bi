@@ -1007,6 +1007,31 @@ def test_event_availability_checks_values_in_batches(monkeypatch: pytest.MonkeyP
     assert availability[0].missing_values == {"event_b"}
 
 
+def test_event_availability_trusts_configured_tracking_events(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：工作空间事件字典已声明的事件值不再额外扫物理事件表确认。
+    """
+    sql = "SELECT count(*) AS cnt FROM event WHERE event = 'UserRegister'"
+    service = FakeSmartQAService()
+    service.ds = SimpleNamespace(id=3, type="mysql", type_name="MySQL")
+    service.chat_question.tracking_config = '''
+    - 默认事件名字段: `event`
+    ## 事件名映射
+    [{"events":["UserRegister"],"metric":"new_user_registration"}]
+    '''
+
+    def _should_not_probe(**kwargs):
+        raise AssertionError("configured events should not query datasource")
+
+    monkeypatch.setattr(graph, "get_session", _should_not_probe)
+
+    availability = graph._event_availability_for_sql(service, sql)
+
+    assert availability[0].existing_values == {"UserRegister"}
+    assert availability[0].missing_values == set()
+    assert availability[0].unknown_values == set()
+
+
 def test_unknown_event_policy_can_be_conservative_or_strict(monkeypatch: pytest.MonkeyPatch):
     """
     是什么：埋点存在性查询失败时，默认进入 unknown；strict 策略下按 missing 处理。

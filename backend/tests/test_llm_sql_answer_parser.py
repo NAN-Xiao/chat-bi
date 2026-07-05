@@ -194,6 +194,35 @@ GROUP BY c.cohort_dt
     )
 
 
+def test_data_skill_sql_validation_rejects_flam_next_day_ltv_using_pay1() -> None:
+    """
+    是什么：次日 LTV 应使用 pay2，不能沿用首日 pay1。
+    """
+    data_skill = """
+<!-- data-skill-sql-validation:{
+  "match":["次日LTV","次日 LTV"],
+  "forbidden_sql_all_contains":[["pay1","次日"]],
+  "message":"flam 次日 LTV 是注册第 2 个自然日累计窗口，应读取 pay.pay2 和 cohort_dt + 1 快照；pay.pay1 只能用于首日/1日 LTV。"
+} -->
+"""
+    wrong_sql = """
+SELECT ROUND(SUM(JSON_EXTRACT(s.pay, '$.pay1')) / COUNT(DISTINCT c.uid), 4) AS `次日 LTV`
+FROM cohort c
+LEFT JOIN `user` s ON s.uid = c.uid AND s.dt = c.d1_dt
+"""
+    correct_sql = """
+SELECT ROUND(SUM(JSON_EXTRACT(s.pay, '$.pay2')) / COUNT(DISTINCT c.uid), 4) AS `次日 LTV`
+FROM cohort c
+LEFT JOIN `user` s ON s.uid = c.uid AND s.dt = c.d2_dt
+"""
+
+    assert (
+        _data_skill_sql_validation_error("六月18号到24号新增用户的次日 ltv", wrong_sql, data_skill)
+        == "flam 次日 LTV 是注册第 2 个自然日累计窗口，应读取 pay.pay2 和 cohort_dt + 1 快照；pay.pay1 只能用于首日/1日 LTV。"
+    )
+    assert _data_skill_sql_validation_error("六月18号到24号新增用户的次日 ltv", correct_sql, data_skill) is None
+
+
 def test_data_skill_sql_validation_allows_event_metric_when_required_metric_sources_exist() -> None:
     """
     是什么：DAU/PDAU 使用正确来源表时，同一 SQL 可额外用 fact_events 统计指定埋点。

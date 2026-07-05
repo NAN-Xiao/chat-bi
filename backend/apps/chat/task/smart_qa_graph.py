@@ -468,6 +468,24 @@ def _event_cache_key(
     )
 
 
+def _configured_event_values_for_service(service: Any) -> set[str]:
+    """
+    是什么：从工作空间打点配置中提取已声明的事件值。
+    谁调用：事件存在性后置检查。
+    做了什么：优先信任当前工作空间维护的事件字典，避免对已配置事件值再扫大事件表。
+    """
+    tracking_config = getattr(getattr(service, "chat_question", None), "tracking_config", "") or ""
+    if not tracking_config:
+        return set()
+    configured: set[str] = set()
+    for match in re.finditer(r'"events"\s*:\s*\[(.*?)\]', tracking_config, flags=re.IGNORECASE | re.DOTALL):
+        for value in re.findall(r'"([^"]+)"', match.group(1)):
+            value = value.strip()
+            if value:
+                configured.add(value)
+    return configured
+
+
 def _cached_event_existence(
         *,
         ds: Any,
@@ -564,14 +582,21 @@ def _event_values_exist_in_datasource(
     if ds is None or not values:
         return {value: None for value in values}
 
+    configured_values = _configured_event_values_for_service(service)
+    configured_hits = values.intersection(configured_values)
+    result: dict[str, bool | None] = {value: True for value in configured_hits}
+    values_to_probe = values.difference(configured_hits)
+    if not values_to_probe:
+        return result
+
     cached, pending = _cached_event_existence(
         ds=ds,
         schema=schema,
         table=table,
         event_field=event_field,
-        event_values=values,
+        event_values=values_to_probe,
     )
-    result: dict[str, bool | None] = dict(cached)
+    result.update(cached)
     if not pending:
         return result
 

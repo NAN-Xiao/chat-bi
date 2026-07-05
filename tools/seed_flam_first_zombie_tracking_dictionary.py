@@ -24,6 +24,10 @@ LOGIN_EVENTS = [
     "UserActive",
 ]
 
+REGISTER_EVENTS = [
+    "UserRegister",
+]
+
 PAY_EVENTS = [
     "PayBuyRet",
     "PayBuyRetBenifit",
@@ -95,6 +99,7 @@ TRACKING_CONFIG = {
         {"role": "snapshot_date", "table": "user", "field": "dt", "description": "用户快照日期 yyyyMMdd"},
     ],
     "event_name_mappings": [
+        {"metric": "new_user_registration", "events": REGISTER_EVENTS, "description": "新增用户/注册 cohort 使用 UserRegister 归一化注册事件；需要快照字段时再回连 user 注册日快照"},
         {"metric": "active_user", "events": LOGIN_EVENTS, "description": "DAU/WAU/MAU/活跃拆分使用 UserActive 归一化活跃事件"},
         {"metric": "payment_event", "events": PAY_EVENTS, "description": "充值次数、充值用户、实时付费事件使用的付费事件集合"},
         {"metric": "ccu", "events": ["CCU"], "description": "实时在线人数事件；在线人数读取 ext.ed_ccu"},
@@ -115,7 +120,9 @@ TRACKING_CONFIG = {
             "活跃用户必须过滤 UserActive 归一化活跃事件后按 uid 去重，不使用 event 全事件去重，也不直接用 user 快照行数代替。",
             "核心看板新手引导漏斗默认以 user 注册日 cohort 为起点，后续步骤按 cohort 内 uid 去重统计。",
             "礼包购买结构使用付费事件集合，并从 ext.payId/rechargeId/productId/goodsId 提取礼包或商品标识。",
-            "新增 cohort 使用 user 注册日快照 userinfo.regdate = dt；新增首日付费固定取注册日快照 pay.pay1，不从后续快照取 MAX(pay1)。",
+            "新增 cohort 可使用 UserRegister 注册事件按 uid 去重；需要读取 pay、remain、当前等级等快照字段时，再回连 user 注册日或成熟生命周期日快照。",
+            "新增首日付费固定取注册日快照 pay.pay1，不从后续快照取 MAX(pay1)。",
+            "新增 cohort LTV 中，首日/1日 LTV 使用 pay.pay1；次日/2日 LTV 使用 pay.pay2；3日/7日/14日/30日 LTV 分别使用 pay.pay3/pay7/pay14/pay30。不要把“次日 LTV”写成 pay1。",
             "留存标记 remain1/remain3/remain7 必须在注册后精确第 1/3/7 日快照读取；未成熟 cohort 不按 0 处理。",
             "付费用户周累充分布必须先按自然周取每个 uid 的最新 user 快照，再按 pay.paytotal 分段，避免多日快照重复计数。",
             "活动参与率分母是同日 UserActive DAU，分子是活动事件 uid 去重；活动后续留存/付费必须先固定参与 cohort。",
@@ -666,12 +673,12 @@ FIELDS = [
     {
         "table_name": "user",
         "field_name": "pay",
-        "field_comment": "用户付费累计与付费次数 JSON；paytotal 为截至 dt 的累计付费快照，pay1/pay2/pay3/pay7 为注册第 1/2/3/7 个自然日累计付费窗口，注册日算第 1 日。",
+        "field_comment": "用户付费累计与付费次数 JSON；paytotal 为截至 dt 的累计付费快照，pay1/pay2/pay3/pay7/pay14/pay30 为注册第 1/2/3/7/14/30 个自然日累计付费窗口，注册日算第 1 日。",
         "field_role": "payment_json",
         "semantic_type": "json",
         "aliases": ["付费信息", "累计付费"],
-        "example_values": ["paytotal", "pay1", "pay2", "pay3", "pay7", "firstpaytime", "lastpaytime"],
-        "ai_notes": "新增 LTV 按成熟快照读取：pay1 读注册日(+0)，pay3 读注册后第 2 天(+2)，pay7 读注册后第 6 天(+6)；不要把字段数字当 DATE_ADD 偏移。日付费金额用 paytotal 相邻快照差分。",
+        "example_values": ["paytotal", "pay1", "pay2", "pay3", "pay7", "pay14", "pay30", "firstpaytime", "lastpaytime"],
+        "ai_notes": "新增 LTV 按成熟快照读取：pay1 读注册日(+0)，pay2 读注册后第 1 天(+1)，pay3 读注册后第 2 天(+2)，pay7 读注册后第 6 天(+6)，pay14 读注册后第 13 天(+13)，pay30 读注册后第 29 天(+29)；首日/1日 LTV 才是 pay1，次日/2日 LTV 是 pay2。不要把字段数字当 DATE_ADD 偏移。日付费金额用 paytotal 相邻快照差分。",
     },
     {
         "table_name": "user",
@@ -690,21 +697,21 @@ FIELDS = [
         "field_comment": "注册第 1 个自然日（注册日/首日）累计付费窗口字段；新增首日或 1 日 LTV 固定取注册日快照该字段。",
         "field_role": "json_path_metric",
         "semantic_type": "number",
-        "aliases": ["首日付费", "当日LTV", "1日LTV", "D1 LTV"],
+        "aliases": ["首日付费", "当日LTV", "首日LTV", "1日LTV", "D0 LTV"],
         "expression": "JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay1'))",
         "example_values": ["0", "9.99"],
-        "ai_notes": "用于首日/1 日 LTV 时，快照条件必须是 s.dt = cohort_dt；不要写 DATE_ADD(cohort_dt, INTERVAL 1 DAY)，也不要从后续快照 MAX(pay1) 推导首日付费。",
+        "ai_notes": "用于首日/1 日 LTV 时，快照条件必须是 s.dt = cohort_dt；不要写 DATE_ADD(cohort_dt, INTERVAL 1 DAY)，也不要从后续快照 MAX(pay1) 推导首日付费。用户说“次日 LTV”时不要用 pay1，应使用 pay2。",
     },
     {
         "table_name": "user",
         "field_name": "pay.pay2",
-        "field_comment": "注册第 2 个自然日累计付费窗口字段；如需 2 日 LTV，读取注册后第 1 天快照该字段。",
+        "field_comment": "注册第 2 个自然日累计付费窗口字段；次日/2 日 LTV 读取注册后第 1 天快照该字段。",
         "field_role": "json_path_metric",
         "semantic_type": "number",
-        "aliases": ["2日LTV", "D2累计付费"],
+        "aliases": ["次日LTV", "2日LTV", "D1 LTV", "D2累计付费"],
         "expression": "JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay2'))",
         "example_values": ["0", "19.99"],
-        "ai_notes": "pay2 是 2 日累计窗口，不是常见报表里的首日/1 日 LTV；读取快照偏移为 cohort_dt + 1。",
+        "ai_notes": "pay2 是注册第 2 个自然日累计窗口；用于次日 LTV / 2 日 LTV，读取快照偏移为 cohort_dt + 1。不要把“次日 LTV”错绑到 pay1。",
     },
     {
         "table_name": "user",
@@ -727,6 +734,28 @@ FIELDS = [
         "expression": "JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay7'))",
         "example_values": ["0", "49.99"],
         "ai_notes": "用于 7 日 LTV 时，快照偏移必须是 cohort_dt + 6；不要写 DATE_ADD(cohort_dt, INTERVAL 7 DAY)。只展示 D7 已成熟 cohort，不要把未成熟 cohort 当 0。",
+    },
+    {
+        "table_name": "user",
+        "field_name": "pay.pay14",
+        "field_comment": "注册第 14 个自然日累计付费窗口字段；14 日 LTV 读取注册后第 13 天快照该字段。",
+        "field_role": "json_path_metric",
+        "semantic_type": "number",
+        "aliases": ["14日LTV", "D14累计付费"],
+        "expression": "JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay14'))",
+        "example_values": ["0", "79.99"],
+        "ai_notes": "用于 14 日 LTV 时，快照偏移必须是 cohort_dt + 13；不要写 DATE_ADD(cohort_dt, INTERVAL 14 DAY)。只展示 D14 已成熟 cohort，不要把未成熟 cohort 当 0。",
+    },
+    {
+        "table_name": "user",
+        "field_name": "pay.pay30",
+        "field_comment": "注册第 30 个自然日累计付费窗口字段；30 日 LTV 读取注册后第 29 天快照该字段。",
+        "field_role": "json_path_metric",
+        "semantic_type": "number",
+        "aliases": ["30日LTV", "D30累计付费"],
+        "expression": "JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay30'))",
+        "example_values": ["0", "129.99"],
+        "ai_notes": "用于 30 日 LTV 时，快照偏移必须是 cohort_dt + 29；不要写 DATE_ADD(cohort_dt, INTERVAL 30 DAY)。只展示 D30 已成熟 cohort，不要把未成熟 cohort 当 0。",
     },
     {
         "table_name": "user",
