@@ -231,10 +231,12 @@ def test_ai_table_schema_uses_workspace_dictionary_without_cached_field_fallback
     monkeypatch.setattr(datasource_crud, "get_user_permission_rules", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(datasource_crud, "get_user_scoped_table_ids", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(datasource_crud, "get_column_permission_fields", lambda **kwargs: kwargs["fields"])
-    monkeypatch.setattr(
-        datasource_crud,
-        "get_tracking_config",
-        lambda *_args, **_kwargs: SimpleNamespace(
+    monkeypatch.setattr(datasource_crud, "datasource_physical_schema", lambda *_args, **_kwargs: {"user": {"uid", "pay", "hidden_cache_only"}})
+    tracking_config_calls: list[tuple[tuple, dict]] = []
+
+    def fake_get_tracking_config(*args, **kwargs):
+        tracking_config_calls.append((args, kwargs))
+        return SimpleNamespace(
             enabled=True,
             tables=[
                 SimpleNamespace(
@@ -262,7 +264,12 @@ def test_ai_table_schema_uses_workspace_dictionary_without_cached_field_fallback
                     ai_notes="次日 LTV 必须使用 pay2，不使用 pay1。",
                 )
             ],
-        ),
+        )
+
+    monkeypatch.setattr(
+        datasource_crud,
+        "get_tracking_config",
+        fake_get_tracking_config,
     )
     monkeypatch.setattr(
         datasource_crud,
@@ -298,6 +305,9 @@ def test_ai_table_schema_uses_workspace_dictionary_without_cached_field_fallback
     )
 
     assert tables == ["user"]
+    assert tracking_config_calls
+    assert tracking_config_calls[0][0][2] == 2
+    assert tracking_config_calls[0][1]["include_legacy"] is False
     assert "workspace data dictionary" in schema
     assert "(pay.pay2:number" in schema
     assert "expression=JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay2'))" in schema
@@ -317,6 +327,7 @@ def test_ai_table_schema_hides_tracking_field_when_source_field_permission_denie
     monkeypatch.setattr(datasource_crud, "get_user_permission_rules", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(datasource_crud, "get_user_scoped_table_ids", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(datasource_crud, "get_column_permission_fields", lambda **_kwargs: [])
+    monkeypatch.setattr(datasource_crud, "datasource_physical_schema", lambda *_args, **_kwargs: {"user": {"pay"}})
     monkeypatch.setattr(
         datasource_crud,
         "get_tracking_config",
@@ -364,6 +375,71 @@ def test_ai_table_schema_hides_tracking_field_when_source_field_permission_denie
 
     assert schema == ""
     assert tables == []
+
+
+def test_ai_table_schema_filters_drifted_dictionary_fields_without_physical_fallback(monkeypatch) -> None:
+    """
+    是什么：数据字典字段漂移后，AI schema 不回退到物理缓存悄悄继续生成。
+    """
+    monkeypatch.setattr(datasource_crud, "_schema_metadata_tenant_id", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(datasource_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda _value: json.dumps({"dbSchema": "public"}))
+    monkeypatch.setattr(datasource_crud, "get_user_permission_rules", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(datasource_crud, "get_user_scoped_table_ids", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(datasource_crud, "get_column_permission_fields", lambda **kwargs: kwargs["fields"])
+    monkeypatch.setattr(datasource_crud, "datasource_physical_schema", lambda *_args, **_kwargs: {"user": {"pay"}})
+    monkeypatch.setattr(
+        datasource_crud,
+        "get_tracking_config",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            enabled=True,
+            tables=[SimpleNamespace(table_name="user", table_comment="用户表", table_role="", aliases=[], ai_notes="")],
+            fields=[
+                SimpleNamespace(
+                    table_name="user",
+                    field_name="missing_payload.pay2",
+                    field_comment="漂移字段",
+                    field_role="json_path_metric",
+                    semantic_type="number",
+                    source_field="missing_payload",
+                    json_path="$.pay2",
+                    aliases=[],
+                    value_mappings=None,
+                    expression="missing expression",
+                    required=False,
+                    example_values=[],
+                    ai_notes="",
+                )
+            ],
+            event_name_mappings=[],
+            field_role_mappings=[],
+            sql_rules=None,
+        ),
+    )
+    monkeypatch.setattr(
+        datasource_crud,
+        "get_table_obj_by_ds",
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(
+                schema="public",
+                table=SimpleNamespace(id=10, ds_id=2, table_name="user", custom_comment="", embedding=None),
+                fields=[SimpleNamespace(id=101, field_name="pay", field_type="json", custom_comment="", field_comment="付费JSON")],
+            )
+        ],
+    )
+
+    schema, tables = datasource_crud.get_ai_table_schema(
+        _FakeSchemaSession([[SimpleNamespace(table_name="user", table_comment="")], []]),
+        SimpleNamespace(id=1),
+        SimpleNamespace(id=2, type="pg", configuration="{}", table_relation=None),
+        "次日 LTV",
+        embedding=False,
+    )
+
+    assert tables == []
+    assert "schema validation found no usable dictionary fields" in schema
+    assert "missing_payload" in schema
+    assert "(pay:json" not in schema
 
 
 def test_fill_empty_table_and_ds_embedding_detects_non_empty_stale_vectors(monkeypatch) -> None:

@@ -1653,13 +1653,17 @@ def _collect_data_skill_context(
         return ""
 
 
-def _collect_tracking_context(session: SessionDep, current_user: CurrentUser | None) -> str:
+def _collect_tracking_context(
+    session: SessionDep,
+    current_user: CurrentUser | None,
+    datasource_id: int | None = None,
+) -> str:
     """
     是什么：读取工作空间数据字典/埋点方案上下文，让所有分析类 agent 使用同一份语义配置。
     """
     try:
         tenant_id = _current_tenant_id(current_user) if current_user is not None else None
-        tracking_text, _tracking_list = find_tracking_prompt_context(session, tenant_id)
+        tracking_text, _tracking_list = find_tracking_prompt_context(session, tenant_id, datasource_id)
         return tracking_text.strip()
     except Exception:
         traceback.print_exc()
@@ -3348,7 +3352,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         target_scope,
         include_all_target_scopes=False,
     )
-    tracking_context = _collect_tracking_context(session, current_user)
+    tracking_context = _collect_tracking_context(session, current_user, datasource.id)
     semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, llm_config = await _create_llm(custom_agent_model_id)
     context_snapshot = build_agent_context_snapshot(
@@ -3566,7 +3570,7 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
         include_all_target_scopes=True,
     )
-    tracking_context = _collect_tracking_context(session, current_user)
+    tracking_context = _collect_tracking_context(session, current_user, request.datasource_id)
     semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, _llm_config = await _create_llm(None)
     return StreamingResponse(

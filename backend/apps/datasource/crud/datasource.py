@@ -28,7 +28,11 @@ from apps.system.crud.schema_metadata import (
     table_comment_map,
 )
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
-from apps.system.crud.tracking_config import get_tracking_config
+from apps.system.crud.tracking_config import (
+    datasource_physical_schema,
+    filter_tracking_config_for_physical_schema,
+    get_tracking_config,
+)
 from apps.system.models.tenant import TenantSchemaFieldModel, TenantSchemaTableModel
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -998,7 +1002,21 @@ def _dictionary_schema_from_workspace(
     if tenant_id is None or ds is None or not has_datasource_access(session, current_user, ds.id):
         return "", [], False
 
-    tracking_config = get_tracking_config(session, int(tenant_id))
+    tracking_config = get_tracking_config(session, int(tenant_id), int(ds.id), include_legacy=False)
+    tracking_configured = bool(
+        getattr(tracking_config, "tables", None)
+        or getattr(tracking_config, "fields", None)
+        or getattr(tracking_config, "event_name_mappings", None)
+        or getattr(tracking_config, "field_role_mappings", None)
+        or getattr(tracking_config, "sql_rules", None)
+    )
+    tracking_validation_warnings: list[str] = []
+    if getattr(tracking_config, "enabled", False):
+        tracking_config, tracking_validation = filter_tracking_config_for_physical_schema(
+            tracking_config,
+            datasource_physical_schema(session, int(ds.id)),
+        )
+        tracking_validation_warnings = tracking_validation.warnings
     tracking_enabled = bool(getattr(tracking_config, "enabled", False))
     tracking_tables = {
         item.table_name: item
@@ -1027,7 +1045,8 @@ def _dictionary_schema_from_workspace(
         for row in schema_fields
     }
     dictionary_configured = bool(
-        tracking_tables
+        tracking_configured
+        or tracking_tables
         or tracking_fields_by_table
         or schema_table_comments
         or schema_field_comments
@@ -1039,6 +1058,13 @@ def _dictionary_schema_from_workspace(
         table_names = table_names & requested
     table_names = {name for name in table_names if name}
     if not table_names:
+        if dictionary_configured and tracking_validation_warnings:
+            schema_str = f"【DB_ID】 {db_name or ''}\n【Schema】\n"
+            schema_str += "【AI schema source】workspace data dictionary, but current datasource schema validation found no usable dictionary fields.\n"
+            schema_str += "【Dictionary schema validation】\n"
+            schema_str += "\n".join(f"- {warning}" for warning in tracking_validation_warnings[:20])
+            schema_str += "\n"
+            return schema_str, [], dictionary_configured
         return "", [], dictionary_configured
 
     table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
@@ -1106,6 +1132,13 @@ def _dictionary_schema_from_workspace(
         table_name_list.append(table_name)
 
     if not schema_parts:
+        if dictionary_configured and tracking_validation_warnings:
+            schema_str = f"【DB_ID】 {db_name or ''}\n【Schema】\n"
+            schema_str += "【AI schema source】workspace data dictionary, but current datasource schema validation found no usable dictionary fields.\n"
+            schema_str += "【Dictionary schema validation】\n"
+            schema_str += "\n".join(f"- {warning}" for warning in tracking_validation_warnings[:20])
+            schema_str += "\n"
+            return schema_str, [], dictionary_configured
         return "", [], dictionary_configured
 
     schema_str = f"【DB_ID】 {db_name or ''}\n【Schema】\n"
@@ -1114,6 +1147,10 @@ def _dictionary_schema_from_workspace(
         "Use only tables and fields declared below; do not infer missing structure from the physical database. "
         "When a dictionary field declares expression=..., use that SQL expression rather than treating the dictionary field name as a physical column.\n"
     )
+    if tracking_validation_warnings:
+        schema_str += "【Dictionary schema validation】\n"
+        schema_str += "\n".join(f"- {warning}" for warning in tracking_validation_warnings[:20])
+        schema_str += "\n"
     schema_str += "".join(schema_parts)
     return schema_str, table_name_list, dictionary_configured
 

@@ -158,11 +158,13 @@ class TenantTrackingConfigModel(SnowflakeBase, table=True):
     """
     __tablename__ = "sys_tenant_tracking_config"
     __table_args__ = (
-        UniqueConstraint("tenant_id", name="uq_sys_tenant_tracking_config_tenant_id"),
+        UniqueConstraint("tenant_id", "datasource_id", name="uq_sys_tenant_tracking_config_tenant_datasource"),
         Index("idx_sys_tenant_tracking_config_tenant_id", "tenant_id"),
+        Index("idx_sys_tenant_tracking_config_datasource", "tenant_id", "datasource_id"),
     )
 
     tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    datasource_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
     enabled: bool = Field(default=True, sa_column=Column(Boolean(), nullable=False, server_default="true"))
     default_event_table: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
     default_subject_field: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
@@ -184,11 +186,13 @@ class TenantTrackingTableModel(SnowflakeBase, table=True):
     """
     __tablename__ = "sys_tenant_tracking_table"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "table_name", name="uq_sys_tenant_tracking_table_name"),
+        UniqueConstraint("tenant_id", "datasource_id", "table_name", name="uq_sys_tenant_tracking_table_name"),
         Index("idx_sys_tenant_tracking_table_tenant_id", "tenant_id"),
+        Index("idx_sys_tenant_tracking_table_datasource", "tenant_id", "datasource_id"),
     )
 
     tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    datasource_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
     table_name: str = Field(sa_column=Column(String(255), nullable=False))
     table_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
     table_role: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
@@ -206,12 +210,14 @@ class TenantTrackingFieldModel(SnowflakeBase, table=True):
     """
     __tablename__ = "sys_tenant_tracking_field"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "table_name", "field_name", name="uq_sys_tenant_tracking_field_name"),
+        UniqueConstraint("tenant_id", "datasource_id", "table_name", "field_name", name="uq_sys_tenant_tracking_field_name"),
         Index("idx_sys_tenant_tracking_field_tenant_id", "tenant_id"),
+        Index("idx_sys_tenant_tracking_field_datasource", "tenant_id", "datasource_id"),
         Index("idx_sys_tenant_tracking_field_table", "tenant_id", "table_name"),
     )
 
     tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    datasource_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
     table_name: str = Field(sa_column=Column(String(255), nullable=False))
     field_name: str = Field(sa_column=Column(String(255), nullable=False))
     field_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))

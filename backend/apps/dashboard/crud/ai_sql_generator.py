@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+from asyncio import to_thread
 from datetime import datetime
 from typing import Any, TypedDict
 
@@ -75,15 +76,38 @@ def _text_chunk_content(value: Any) -> str:
         return ""
     if isinstance(value, str):
         return value
+    if isinstance(value, dict):
+        return _text_chunk_content(value.get("text") or value.get("content") or "")
     if isinstance(value, list):
         parts: list[str] = []
         for item in value:
             if isinstance(item, dict):
-                parts.append(str(item.get("text") or item.get("content") or ""))
-            else:
+                parts.append(_text_chunk_content(item.get("text") or item.get("content") or ""))
+            elif isinstance(item, (str, int, float, bool)):
                 parts.append(str(item))
+            elif hasattr(item, "text"):
+                parts.append(_text_chunk_content(getattr(item, "text", "")))
+            elif hasattr(item, "content"):
+                parts.append(_text_chunk_content(getattr(item, "content", "")))
         return "".join(parts)
-    return str(value)
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if hasattr(value, "text"):
+        return _text_chunk_content(getattr(value, "text", ""))
+    if hasattr(value, "content"):
+        return _text_chunk_content(getattr(value, "content", ""))
+    return ""
+
+
+def _coerce_model_success(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("", "false", "0", "no"):
+            return False
+        return True
+    return bool(value)
 
 
 def _extract_sql_from_text(text: str) -> str:
@@ -116,7 +140,7 @@ def _response_from_model_text(text: str, require_sql: bool = True) -> DashboardA
         return DashboardAiSqlGenerateResponse(success=False, message="AI 返回格式不是 JSON 对象。", raw=text or "")
 
     sql = str(payload.get("sql") or payload.get("SQL") or "").strip()
-    success = bool(payload.get("success", bool(sql)))
+    success = _coerce_model_success(payload.get("success"), default=bool(sql))
     chart_type = str(payload.get("chart_type") or payload.get("chart-type") or payload.get("chartType") or "").strip()
     title = str(payload.get("brief") or payload.get("title") or payload.get("name") or "").strip()
     tables = payload.get("tables") if isinstance(payload.get("tables"), list) else []
@@ -293,6 +317,24 @@ def _invoke_llm_json(llm: Any, messages: list[Any], require_sql: bool = True) ->
     return _response_from_model_text(full_text, require_sql=require_sql)
 
 
+async def _async_invoke_llm_json(
+    llm: Any,
+    messages: list[Any],
+    require_sql: bool = True,
+) -> DashboardAiSqlGenerateResponse:
+    full_text = ""
+    if hasattr(llm, "astream"):
+        async for chunk in llm.astream(messages):
+            full_text += _text_chunk_content(getattr(chunk, "content", chunk))
+    elif hasattr(llm, "ainvoke"):
+        result = await llm.ainvoke(messages)
+        full_text = _text_chunk_content(getattr(result, "content", result))
+    else:
+        return await to_thread(_invoke_llm_json, llm, messages, require_sql)
+    AppLogUtil.info(f"Dashboard manual chart graph raw node result: {full_text}")
+    return _response_from_model_text(full_text, require_sql=require_sql)
+
+
 def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, Any]:
     session = state["session"]
     current_user = state["current_user"]
@@ -321,7 +363,7 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
         can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
     )
-    tracking_config, _tracking_list = find_tracking_prompt_context(session, tenant_id)
+    tracking_config, _tracking_list = find_tracking_prompt_context(session, tenant_id, int(request.datasource))
     return {
         "datasource": datasource,
         "tenant_id": tenant_id,
@@ -350,7 +392,7 @@ async def _async_node_understand_config(state: DashboardManualChartGraphState) -
     try:
         config = await get_default_config(state.get("skill_model_id"))
         llm = LLMFactory.create_llm(config).llm
-        understanding = _invoke_llm_json(llm, [
+        understanding = await _async_invoke_llm_json(llm, [
             SystemMessage(content=_dashboard_understanding_system_prompt()),
             HumanMessage(content=_dashboard_understanding_user_prompt(state)),
         ], require_sql=False)
@@ -360,6 +402,8 @@ async def _async_node_understand_config(state: DashboardManualChartGraphState) -
         summary["raw"] = understanding.raw
     except Exception as exc:
         AppLogUtil.warning(f"Dashboard manual chart understand_config fallback used: {exc}")
+        summary["understanding_failed"] = True
+        summary["understanding_error"] = str(exc)
     return {
         "config_summary": summary,
         "graph_trace": _append_trace(state, "understand_config"),
@@ -370,7 +414,7 @@ async def _async_node_understand_config(state: DashboardManualChartGraphState) -
 async def _async_node_diagnose_config(state: DashboardManualChartGraphState) -> dict[str, Any]:
     config = await get_default_config(state.get("skill_model_id"))
     llm = LLMFactory.create_llm(config).llm
-    response = _invoke_llm_json(llm, [
+    response = await _async_invoke_llm_json(llm, [
         SystemMessage(content=_dashboard_diagnosis_system_prompt()),
         HumanMessage(content=_dashboard_diagnosis_user_prompt(state)),
     ], require_sql=False)
@@ -397,7 +441,7 @@ def _route_after_diagnosis(state: DashboardManualChartGraphState) -> str:
 async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     config = await get_default_config(state.get("skill_model_id"))
     llm = LLMFactory.create_llm(config).llm
-    response = _invoke_llm_json(llm, [
+    response = await _async_invoke_llm_json(llm, [
         SystemMessage(content=_dashboard_sql_system_prompt()),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ])

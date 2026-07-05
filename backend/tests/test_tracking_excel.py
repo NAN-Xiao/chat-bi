@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 
 from apps.chat.models.chat_model import AiModelQuestion
 from apps.system.crud.tracking_config import build_tracking_prompt_context
+from apps.system.crud.tracking_config import filter_tracking_config_for_physical_schema
 from apps.system.crud.tracking_excel import (
     PhysicalFieldInfo,
     PhysicalTableInfo,
@@ -226,18 +227,18 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     assert event_field_row[4] == "event_name"
     assert event_field_row[5] == "text"
     assert any(row[0] == "event_value" and row[1] == "event_name" and row[10] == "login" for row in physical_event_rows)
-    assert any(not row[0] and not row[1] and row[10] == "pay_success" for row in physical_event_rows)
+    assert any(row[0] == "event_value" and row[1] == "event_name" and row[10] == "pay_success" for row in physical_event_rows)
     assert any(row[0] == "dictionary_field" and row[1] == "event_props.amount" and row[6] == "event_props" and row[7] == "$.amount" for row in physical_event_rows)
     battle_row_index = next(
         index
         for index, row in enumerate(physical_event_rows)
-        if not row[0] and row[1] == "event_props.battleResult" and row[7] == "$.battleResult"
+        if row[0] == "dictionary_field" and row[1] == "event_props.battleResult" and row[7] == "$.battleResult"
     )
     assert physical_event_rows[battle_row_index + 1][0] == "field_value"
     assert physical_event_rows[battle_row_index + 1][1] == "event_props.battleResult"
     assert physical_event_rows[battle_row_index + 1][10] == "1"
-    assert not physical_event_rows[battle_row_index + 2][0]
-    assert not physical_event_rows[battle_row_index + 2][1]
+    assert physical_event_rows[battle_row_index + 2][0] == "field_value"
+    assert physical_event_rows[battle_row_index + 2][1] == "event_props.battleResult"
     assert physical_event_rows[battle_row_index + 2][10] == "3"
 
     user_rows = _sheet_rows(workbook_bytes, "user_profile")
@@ -482,7 +483,7 @@ def test_export_infers_event_values_when_default_event_table_is_missing() -> Non
     info_rows = _sheet_rows(workbook_bytes, "_说明")
 
     assert any(row[0] == "event_value" and row[1] == "event" and row[10] == "login" for row in event_rows)
-    assert any(not row[0] and not row[1] and row[10] == "pay_success" for row in event_rows)
+    assert any(row[0] == "event_value" and row[1] == "event" and row[10] == "pay_success" for row in event_rows)
     assert any(row[1] == "event" and row[4] == "uid" and row[5] == "event" for row in table_rows)
     assert any(row[0] == "当前默认" and "事件名字段=event" in str(row[1]) for row in info_rows)
 
@@ -545,6 +546,105 @@ def test_import_excel_replaces_previous_tracking_config() -> None:
     assert "login" in event_names
     assert "pay_success" not in event_names
     assert "legacy_event" not in event_names
+    assert not any(field.field_name == "legacy_field" for field in parsed.editor.fields)
+
+
+def test_import_excel_deleting_field_removes_previous_dictionary_field() -> None:
+    """
+    是什么：验证 Excel 删除字段行后重新导入，不会把旧字段从 existing 合并回来。
+    """
+    config = _tracking_config()
+    workbook_bytes = tracking_config_excel(config, physical_schema=_physical_schema()).getvalue()
+    workbook = load_workbook(BytesIO(workbook_bytes))
+    sheet = workbook["event_log"]
+    for row_index in range(sheet.max_row, 1, -1):
+        if sheet.cell(row_index, 2).value == "event_props.amount":
+            sheet.delete_rows(row_index, 1)
+    output = BytesIO()
+    workbook.save(output)
+
+    existing = config.model_copy(
+        update={
+            "fields": [
+                *config.fields,
+                TenantTrackingFieldDTO(
+                    tenant_id=2001,
+                    table_name="event_log",
+                    field_name="legacy_field",
+                    field_comment="旧字段",
+                    semantic_type="text",
+                ),
+            ]
+        }
+    )
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        existing,
+        physical_schema=_physical_schema(),
+        datasource_type="postgresql",
+    )
+    field_names = {field.field_name for field in parsed.editor.fields}
+
+    assert "event_props.amount" not in field_names
+    assert "legacy_field" not in field_names
+
+
+def test_compact_rows_emit_context_warning() -> None:
+    """
+    是什么：旧紧凑行仍兼容导入，但会明确提示这种写法依赖行序。
+    """
+    workbook_bytes = tracking_config_excel(
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_event_physical_schema(),
+        template_only=True,
+    ).getvalue()
+    workbook = load_workbook(BytesIO(workbook_bytes))
+    sheet = workbook["event"]
+    for row_index in range(sheet.max_row, 1, -1):
+        sheet.delete_rows(row_index, 1)
+    sheet.append(["physical_field", "event", "事件名", "varchar", "event_name", "text"])
+    sheet.append(["event_value", "event", "", "", "event_name", "text", "", "", "", "", "login", "登录"])
+    sheet.append(["", "", "", "", "", "", "", "", "", "", "pay_success", "支付成功"])
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_event_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    assert any("省略 row_type/field_name" in warning for warning in parsed.warnings)
+    assert any(event.get("event_name") == "pay_success" for event in parsed.editor.event_name_mappings if isinstance(event, dict))
+
+
+def test_tracking_prompt_filters_schema_drifted_fields() -> None:
+    """
+    是什么：物理 schema 漂移后，AI prompt 不再暴露已经失效的字典字段。
+    """
+    config = _tracking_config()
+    config.fields.append(
+        TenantTrackingFieldDTO(
+            tenant_id=2001,
+            table_name="event_log",
+            field_name="missing_payload.amount",
+            field_comment="失效金额",
+            semantic_type="number",
+            source_field="missing_payload",
+            json_path="$.amount",
+            expression="missing expression",
+        )
+    )
+
+    filtered, validation = filter_tracking_config_for_physical_schema(config, _physical_schema())
+    context, summary = build_tracking_prompt_context(filtered, validation.warnings)
+
+    assert "event_log.event_props.amount" in context
+    assert "`event_log.missing_payload.amount`" not in context
+    assert "expression=missing expression" not in context
+    assert any("missing_payload" in warning for warning in validation.warnings)
+    assert any("schema校验" in item for item in summary)
 
 
 def test_chart_analysis_and_predict_prompts_share_tracking_semantics() -> None:

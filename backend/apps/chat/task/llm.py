@@ -1484,7 +1484,8 @@ class LLMService:
         做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
         tenant_id = require_current_tenant_id(self.current_user)
-        self.chat_question.tracking_config, _ = find_tracking_prompt_context(_session, tenant_id)
+        datasource_id = getattr(self.ds, "id", None) if self.ds is not None else None
+        self.chat_question.tracking_config, _ = find_tracking_prompt_context(_session, tenant_id, datasource_id)
 
     def choose_table_schema(self, _session: Session):
         """

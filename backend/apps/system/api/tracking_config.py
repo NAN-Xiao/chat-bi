@@ -52,16 +52,16 @@ def _require_workspace_admin(current_user: CurrentUser, current_tenant: CurrentT
 def _workspace_physical_schema(
     session: SessionDep,
     tenant_id: int,
-) -> tuple[dict[str, PhysicalTableInfo], str | None]:
+) -> tuple[dict[str, PhysicalTableInfo], str | None, int | None]:
     """
     是什么：读取当前工作空间绑定数据源的物理表字段，用于生成 Excel 模板和校验导入来源字段。
     """
     datasource_id = get_bound_datasource_id_for_tenant(session, int(tenant_id))
     if datasource_id is None:
-        return {}, None
+        return {}, None, None
     datasource = session.get(CoreDatasource, int(datasource_id))
     if datasource is None:
-        return {}, None
+        return {}, None, None
     tables = session.exec(
         select(CoreTable)
         .where(CoreTable.ds_id == int(datasource_id))
@@ -98,7 +98,7 @@ def _workspace_physical_schema(
                 if field.field_name
             ],
         )
-    return schema, datasource.type or datasource.type_name
+    return schema, datasource.type or datasource.type_name, int(datasource_id)
 
 
 def _excel_response(buffer, filename: str) -> StreamingResponse:
@@ -120,7 +120,8 @@ async def current_tracking_config(
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    return get_tracking_config(session, int(current_tenant.id))
+    _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
+    return get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
 
 
 @router.put("", response_model=TenantTrackingConfigDTO, include_in_schema=False)
@@ -143,10 +144,12 @@ async def update_current_tracking_config(
     做了什么：把系统管理相关的信息改成最新状态，并保存这些变化。
     """
     _require_workspace_admin(current_user, current_tenant)
+    _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
     return save_tracking_config(
         session,
         int(current_tenant.id),
         editor,
+        datasource_id=datasource_id,
         current_user_id=int(current_user.id) if getattr(current_user, "id", None) is not None else None,
     )
 
@@ -168,8 +171,8 @@ async def download_tracking_config_template(
     是什么：下载可填写的数据字典 Excel 模板。
     """
     _require_workspace_admin(current_user, current_tenant)
-    config = get_tracking_config(session, int(current_tenant.id))
-    physical_schema, _ = _workspace_physical_schema(session, int(current_tenant.id))
+    physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
+    config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
     result = await asyncio.to_thread(
         tracking_config_excel,
         config,
@@ -196,8 +199,8 @@ async def export_current_tracking_config(
     是什么：把当前工作空间数据字典导出为 Excel，方便运维离线批量维护。
     """
     _require_workspace_admin(current_user, current_tenant)
-    config = get_tracking_config(session, int(current_tenant.id))
-    physical_schema, _ = _workspace_physical_schema(session, int(current_tenant.id))
+    physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
+    config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
     result = await asyncio.to_thread(
         tracking_config_excel,
         config,
@@ -222,13 +225,13 @@ async def import_tracking_config_excel(
     file: UploadFile = File(...),
 ):
     """
-    是什么：上传 Excel 并生成/合并当前工作空间的数据字典语义配置。
+    是什么：上传 Excel 并以 Excel 为准替换当前工作空间当前数据源的数据字典语义配置。
     """
     _require_workspace_admin(current_user, current_tenant)
     AppFileUtils.validate_extension(file.filename, {".xlsx", ".xls"})
     content = await AppFileUtils.read_upload_limited(file)
-    existing = get_tracking_config(session, int(current_tenant.id))
-    physical_schema, datasource_type = _workspace_physical_schema(session, int(current_tenant.id))
+    physical_schema, datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
+    existing = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
     try:
         parsed = await asyncio.to_thread(
             parse_tracking_excel,
@@ -246,6 +249,7 @@ async def import_tracking_config_excel(
         session,
         int(current_tenant.id),
         parsed.editor,
+        datasource_id=datasource_id,
         current_user_id=int(current_user.id) if getattr(current_user, "id", None) is not None else None,
     )
     return TenantTrackingConfigImportDTO(config=saved, summary=import_summary(parsed))

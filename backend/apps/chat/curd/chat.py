@@ -277,7 +277,11 @@ def _saved_record_missing_event_projection(
             _unknown_event_notice,
         )
 
-        tracking_config, _ = find_tracking_prompt_context(session, _current_tenant_id(current_user))
+        tracking_config, _ = find_tracking_prompt_context(
+            session,
+            _current_tenant_id(current_user),
+            datasource_id,
+        )
         service = SimpleNamespace(
             ds=ds,
             chat_question=SimpleNamespace(tracking_config=tracking_config),

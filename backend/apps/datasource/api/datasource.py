@@ -540,6 +540,7 @@ def _tracking_json_path(row_or_name: TenantTrackingFieldModel | str | None) -> s
 def _tracking_fields_for_table(
         session: SessionDep,
         tenant_id: int | None,
+        datasource_id: int | None,
         table_name: str,
 ) -> dict[str, TenantTrackingFieldModel]:
     """
@@ -551,6 +552,7 @@ def _tracking_fields_for_table(
         select(TenantTrackingFieldModel)
         .where(
             TenantTrackingFieldModel.tenant_id == int(tenant_id),
+            TenantTrackingFieldModel.datasource_id == int(datasource_id) if datasource_id is not None else TenantTrackingFieldModel.datasource_id.is_(None),
             TenantTrackingFieldModel.table_name == table_name,
         )
         .order_by(TenantTrackingFieldModel.field_name, TenantTrackingFieldModel.id)
@@ -635,7 +637,7 @@ def _build_field_list_items(
     是什么：生成字段下拉项，合并物理字段和工作空间 tracking 字典字段。
     """
     tenant_id = _metadata_tenant_id(session, datasource, user)
-    tracking_by_name = _tracking_fields_for_table(session, tenant_id, table.table_name)
+    tracking_by_name = _tracking_fields_for_table(session, tenant_id, int(datasource.id), table.table_name)
     physical_names = {field.field_name for field in visible_fields if field.field_name}
     result = [
         _field_list_item_from_core(field, table.table_name, tracking_by_name.get(field.field_name))

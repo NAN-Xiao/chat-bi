@@ -845,6 +845,11 @@ def _merge_tracking_config(existing: TenantTrackingConfigDTO, imported: TenantTr
     return base
 
 
+def _dedupe_imported_tracking_config(imported: TenantTrackingConfigEditor) -> TenantTrackingConfigEditor:
+    empty_current = TenantTrackingConfigDTO(tenant_id=0, enabled=imported.enabled)
+    return _merge_tracking_config(empty_current, imported)
+
+
 def _physical_field_names(physical_schema: dict[str, PhysicalTableInfo], table_name: str) -> set[str]:
     table = physical_schema.get(table_name)
     if not table:
@@ -1159,12 +1164,20 @@ def _parse_generic_business_sheet(
                 row_type = "field_value"
                 row["row_type"] = row_type
             elif last_value_context:
+                _add_warning(
+                    warnings,
+                    f"{table_name} sheet 中有取值行省略 row_type/field_name，已按上一条取值上下文继承；建议补全上下文列，避免重排后导入错误。",
+                )
                 row_type = last_value_context.get("row_type", "")
                 row["row_type"] = row_type
                 for key in ("field_name", "field_display_name", "field_role", "semantic_type", "field_type", "source_field", "json_path"):
                     if not _text(row.get(key)) and last_value_context.get(key):
                         row[key] = last_value_context[key]
             elif last_field_context:
+                _add_warning(
+                    warnings,
+                    f"{table_name} sheet 中有取值行省略 row_type/field_name，已按上一条字段上下文继承；建议补全上下文列，避免重排后导入错误。",
+                )
                 row_type = "field_value"
                 row["row_type"] = row_type
                 for key in ("field_name", "field_display_name", "field_role", "semantic_type", "field_type", "source_field", "json_path"):
@@ -1186,6 +1199,10 @@ def _parse_generic_business_sheet(
             if not _text(row.get("field_type")) and last_field_context.get("field_type"):
                 row["field_type"] = last_field_context["field_type"]
         if not row_type and _text(row.get("value")) and last_value_context:
+            _add_warning(
+                warnings,
+                f"{table_name} sheet 中有取值行省略 row_type/field_name，已按上一条取值上下文继承；建议补全上下文列，避免重排后导入错误。",
+            )
             row_type = last_value_context.get("row_type", "")
             row["row_type"] = row_type
             for key in ("field_name", "field_role", "semantic_type", "field_type"):
@@ -1196,6 +1213,16 @@ def _parse_generic_business_sheet(
             continue
         if row_type in {"event_value", "field_value"} and not _text(row.get("field_name")):
             inherited_context = last_value_context or last_field_context
+            if not inherited_context:
+                _add_warning(
+                    warnings,
+                    f"{table_name} sheet 中 {row_type} 行缺少 field_name 且没有可继承上下文，已跳过。",
+                )
+                continue
+            _add_warning(
+                warnings,
+                f"{table_name} sheet 中 {row_type} 行缺少 field_name，已按上一条上下文继承；建议补全 field_name。",
+            )
             for key in ("field_name", "field_display_name", "field_role", "semantic_type", "field_type", "source_field", "json_path"):
                 if not _text(row.get(key)) and inherited_context.get(key):
                     row[key] = inherited_context[key]
@@ -1361,8 +1388,7 @@ def parse_tracking_excel(
                     f"{table.table_name} 不在当前绑定数据源 schema 中，配置会保存但不会出现在图表字段列表里。",
                 )
 
-    empty_current = TenantTrackingConfigDTO(tenant_id=existing.tenant_id, enabled=imported.enabled)
-    normalized = _merge_tracking_config(empty_current, imported)
+    normalized = _dedupe_imported_tracking_config(imported)
     return ParsedTrackingConfig(editor=normalized, profile=profile, warnings=warnings, skipped_rows=skipped_rows)
 
 
@@ -2274,7 +2300,7 @@ def tracking_config_excel(
                 json_source_field=_json_source_field_for_template(physical_fields),
             ))
         rows = _dedupe_business_rows(rows)
-        rows = _compact_value_rows(_organize_business_rows(rows))
+        rows = _organize_business_rows(rows)
         sheets.append((sheet_name_by_table[table_name], rows, BUSINESS_COLUMNS))
 
     sheets.extend([

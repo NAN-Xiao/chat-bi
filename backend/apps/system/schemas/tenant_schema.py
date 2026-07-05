@@ -261,6 +261,7 @@ class TenantTrackingTableDTO(TenantTrackingTableBase):
     """
     id: Optional[int] = None
     tenant_id: int = 0
+    datasource_id: Optional[int] = None
     create_by: Optional[int] = None
     update_by: Optional[int] = None
     create_time: int = 0
@@ -292,6 +293,7 @@ class TenantTrackingFieldDTO(TenantTrackingFieldBase):
     """
     id: Optional[int] = None
     tenant_id: int = 0
+    datasource_id: Optional[int] = None
     create_by: Optional[int] = None
     update_by: Optional[int] = None
     create_time: int = 0
@@ -328,6 +330,7 @@ class TenantTrackingConfigDTO(TenantTrackingConfigBase):
     """
     id: Optional[int] = None
     tenant_id: int
+    datasource_id: Optional[int] = None
     tables: list[TenantTrackingTableDTO] = Field(default_factory=list)
     fields: list[TenantTrackingFieldDTO] = Field(default_factory=list)
     create_by: Optional[int] = None
