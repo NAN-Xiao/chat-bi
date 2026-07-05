@@ -149,6 +149,86 @@ def test_chat_request_drops_client_context_when_permissions_apply(monkeypatch: p
     assert sanitized.messages[0].content == "继续分析"
 
 
+def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：分析助手实时 SQL 生成前通过 SQL Engine 统一业务库上下文取 schema、字典和 Data Skill。
+    """
+    datasource = analysis_api.CoreDatasource(
+        id=1,
+        name="测试项目",
+        type="postgresql",
+        type_name="PostgreSQL",
+        configuration="{}",
+    )
+    class _BusinessContext(SimpleNamespace):
+        def snapshot_metadata(self):
+            return {
+                "context_hash": "ctx",
+                "datasource_id": "1",
+                "sql_dialect": "postgres",
+                "allowed_tables": ["fact_payments"],
+            }
+
+    business_context = _BusinessContext(
+        datasource=datasource,
+        schema="【Schema】\n# Table: fact_payments",
+        allowed_tables=["fact_payments"],
+        data_skill="<Data-Skills>收入口径</Data-Skills>",
+        tracking_config="<Tracking>支付事件字典</Tracking>",
+    )
+    calls: list[dict] = []
+    snapshots: list[dict] = []
+
+    def _build_context(**kwargs):
+        calls.append(kwargs)
+        return business_context
+
+    class _Llm:
+        def stream(self, _messages):
+            raise AssertionError("本测试不消费 SSE 流，不应调用 LLM")
+
+    async def _no_rate_limit(*_args, **_kwargs):
+        return None
+
+    async def _fake_create_llm(*_args, **_kwargs):
+        return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
+
+    monkeypatch.setattr(analysis_api, "_sanitize_analysis_request_context_for_current_permissions", lambda _s, _u, req: req)
+    monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", _no_rate_limit)
+    monkeypatch.setattr(analysis_api, "_get_datasource", lambda *_args, **_kwargs: datasource)
+    monkeypatch.setattr(analysis_api, "_collect_custom_agent_context", lambda *_args, **_kwargs: ("", None))
+    monkeypatch.setattr(analysis_api.BusinessSqlContextService, "build", staticmethod(_build_context))
+    monkeypatch.setattr(
+        analysis_api,
+        "_create_llm",
+        _fake_create_llm,
+    )
+
+    def _snapshot(**kwargs):
+        snapshots.append(kwargs)
+        return {"snapshot": "ok"}
+
+    monkeypatch.setattr(analysis_api, "build_agent_context_snapshot", _snapshot)
+
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        data_skill_id=88,
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="看收入趋势")],
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+
+    assert response.media_type == "text/event-stream"
+    assert calls[0]["tenant_id"] == 2001
+    assert calls[0]["datasource_id"] == 1
+    assert calls[0]["question"] == "看收入趋势"
+    assert calls[0]["data_skill_id"] == 88
+    assert snapshots[0]["data_skill_text"] == (
+        "<Tracking>支付事件字典</Tracking>\n\n<Data-Skills>收入口径</Data-Skills>"
+    )
+    assert snapshots[0]["business_context"]["sql_dialect"] == "postgres"
+
+
 def test_export_report_rejects_client_snapshot_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：导出依赖客户端提交的数据快照；命中权限时直接拒绝，避免把旧数据写进文件。
@@ -174,3 +254,39 @@ def test_export_report_rejects_client_snapshot_when_permissions_apply(monkeypatc
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "没有查看权限"
+
+
+def test_report_interpretation_rejects_client_context_when_permissions_apply(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：图表/报表解读命中数据权限风险时，不把前端旧上下文交给模型解读。
+    """
+    monkeypatch.setattr(analysis_api, "_datasource_has_current_permission_risk", lambda *_args, **_kwargs: True)
+
+    def _unexpected_llm(*_args, **_kwargs):
+        raise AssertionError("权限风险下不应创建 LLM 或读取解读上下文")
+
+    monkeypatch.setattr(analysis_api, "_create_llm", _unexpected_llm)
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        context="旧图表数据：收入 12.5",
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")],
+    )
+
+    response = asyncio.run(analysis_api.report_interpretation(request, _user(), _FakeSession()))
+    body = b"".join(asyncio.run(_collect_stream_body(response)))
+
+    assert response.media_type == "text/event-stream"
+    assert "permission_denied" in body.decode()
+    assert "没有查看权限" in body.decode()
+
+
+async def _collect_stream_body(response) -> list[bytes]:
+    chunks: list[bytes] = []
+    async for chunk in response.body_iterator:
+        if isinstance(chunk, str):
+            chunks.append(chunk.encode())
+        else:
+            chunks.append(chunk)
+    return chunks

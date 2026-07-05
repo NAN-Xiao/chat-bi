@@ -15,12 +15,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
-from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_data_skills
+from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
 from apps.dashboard.models.dashboard_model import DashboardAiSqlGenerateRequest, DashboardAiSqlGenerateResponse
-from apps.datasource.crud.permission import has_datasource_access
+from apps.datasource.crud.sql_engine import BusinessSqlContext, BusinessSqlContextService
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.tracking_config import find_tracking_prompt_context
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
 from common.core.deps import CurrentUser, SessionDep
@@ -36,6 +35,10 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     request: DashboardAiSqlGenerateRequest
     datasource: CoreDatasource
     tenant_id: int
+    business_sql_context: BusinessSqlContext
+    schema: str
+    sql_dialect: str | None
+    allowed_tables: list[str]
     data_skill: str
     tracking_config: str
     skill_model_id: int | None
@@ -206,6 +209,10 @@ def _dashboard_config_prompt(
         datasource: CoreDatasource,
         data_skill: str,
         tracking_config: str,
+        *,
+        schema: str = "",
+        sql_dialect: str | None = None,
+        allowed_tables: list[str] | None = None,
 ) -> str:
     context = dict(request.context or {})
     if request.chart_type and not context.get("chartType"):
@@ -217,6 +224,15 @@ def _dashboard_config_prompt(
         "",
         f"用户意图：{(request.intent or '').strip() or '根据当前图表配置生成查询'}",
         f"数据源：{datasource.name} / {datasource.type_name or datasource.type}",
+        f"SQL 方言：{sql_dialect or datasource.type or datasource.type_name or 'unknown'}",
+        "",
+        "<business-sql-schema>",
+        _trim_text(schema, 12000),
+        "</business-sql-schema>",
+        "",
+        "<allowed-tables>",
+        _safe_json(allowed_tables or []),
+        "</allowed-tables>",
         "",
         "<manual-dashboard-context>",
         _safe_json(context),
@@ -267,6 +283,9 @@ def _dashboard_diagnosis_user_prompt(state: DashboardManualChartGraphState) -> s
             datasource,
             state.get("data_skill", ""),
             state.get("tracking_config", ""),
+            schema=state.get("schema", ""),
+            sql_dialect=state.get("sql_dialect"),
+            allowed_tables=state.get("allowed_tables") or [],
         ),
     ])
 
@@ -299,6 +318,9 @@ def _dashboard_sql_user_prompt(state: DashboardManualChartGraphState) -> str:
             datasource,
             state.get("data_skill", ""),
             state.get("tracking_config", ""),
+            schema=state.get("schema", ""),
+            sql_dialect=state.get("sql_dialect"),
+            allowed_tables=state.get("allowed_tables") or [],
         ),
     ])
 
@@ -342,34 +364,35 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
 
     if not request.datasource:
         raise HTTPException(status_code=400, detail="Dashboard datasource is required")
-    if not has_datasource_access(session, current_user, request.datasource):
-        raise HTTPException(status_code=403, detail=f"当前用户无权访问项目 {request.datasource}")
-
-    datasource = session.get(CoreDatasource, int(request.datasource))
-    if datasource is None:
-        raise HTTPException(status_code=404, detail="项目不存在")
 
     tenant_id = require_current_tenant_id(current_user)
-    question_text = _dashboard_config_prompt(request, datasource, "", "")
-    data_skill, _skill_list, skill_model_id = find_data_skills(
-        session,
-        int(request.datasource),
-        CustomPromptTargetScopeEnum.SMART_QA,
-        request.data_skill_id,
-        getattr(current_user, "id", None),
-        is_system_admin(current_user),
-        tenant_id,
+    seed_datasource = session.get(CoreDatasource, int(request.datasource))
+    if seed_datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    question_text = _dashboard_config_prompt(request, seed_datasource, "", "")
+    business_context = BusinessSqlContextService.build(
+        session=session,
+        current_user=current_user,
+        tenant_id=tenant_id,
+        datasource_id=int(request.datasource),
         question=question_text,
+        target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+        data_skill_id=request.data_skill_id,
+        embedding=False,
+        can_manage_all=is_system_admin(current_user),
         can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
         can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
     )
-    tracking_config, _tracking_list = find_tracking_prompt_context(session, tenant_id, int(request.datasource))
     return {
-        "datasource": datasource,
+        "datasource": business_context.datasource,
         "tenant_id": tenant_id,
-        "data_skill": data_skill,
-        "tracking_config": tracking_config,
-        "skill_model_id": skill_model_id,
+        "business_sql_context": business_context,
+        "schema": business_context.schema,
+        "sql_dialect": business_context.sql_dialect,
+        "allowed_tables": business_context.allowed_tables,
+        "data_skill": business_context.data_skill,
+        "tracking_config": business_context.tracking_config,
+        "skill_model_id": business_context.skill_model_id,
         "graph_trace": _append_trace(state, "collect_context"),
         "last_node": "collect_context",
     }

@@ -61,6 +61,7 @@ from apps.system.crud.schema_change_request import (
 )
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.tenant import TenantModel, TenantTrackingFieldModel
@@ -595,6 +596,7 @@ def _field_list_item_from_core(
 def _field_list_item_from_tracking(
         row: TenantTrackingFieldModel,
         *,
+        datasource: CoreDatasource,
         table: CoreTable,
         field_index: int,
 ) -> DatasourceFieldListItem:
@@ -603,6 +605,13 @@ def _field_list_item_from_tracking(
     """
     source_field = _tracking_source_field(row)
     json_path = _tracking_json_path(row)
+    expression = compile_tracking_json_expression(
+        table.table_name,
+        source_field,
+        json_path,
+        row.semantic_type,
+        getattr(datasource, "type", None) or getattr(datasource, "type_name", None),
+    ) if source_field and json_path else row.expression
     return DatasourceFieldListItem(
         id=f"tracking:{table.table_name}:{row.field_name}",
         ds_id=int(table.ds_id) if table.ds_id is not None else None,
@@ -616,7 +625,7 @@ def _field_list_item_from_tracking(
         display_name=_tracking_display_name(row),
         field_role=row.field_role,
         semantic_type=row.semantic_type,
-        expression=row.expression,
+        expression=expression or None,
         source_field=source_field,
         json_path=json_path,
         is_json_subfield=bool(json_path) or source_field != row.field_name,
@@ -650,7 +659,7 @@ def _build_field_list_items(
         source_field = _tracking_source_field(tracking)
         if source_field not in physical_names:
             continue
-        result.append(_field_list_item_from_tracking(tracking, table=table, field_index=next_index))
+        result.append(_field_list_item_from_tracking(tracking, datasource=datasource, table=table, field_index=next_index))
         next_index += 1
     return result
 

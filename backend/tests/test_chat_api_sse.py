@@ -395,6 +395,45 @@ def test_analysis_api_streams_sse_events(monkeypatch: pytest.MonkeyPatch) -> Non
     assert service.run_analysis_async_calls[-1]["base_record"].id == 7701
 
 
+def test_analysis_api_stops_when_chart_data_permission_denied(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：图表解读拿不到当前权限下的数据时，不能继续启动 LLM 解读权限失败占位数据。
+    """
+    monkeypatch.setattr(
+        chat_api,
+        "get_chart_data_with_user",
+        lambda *args, **kwargs: {
+            "status": "failed",
+            "fields": [],
+            "data": [],
+            "message": "没有查看权限",
+            "error_type": "permission_denied",
+        },
+    )
+
+    response = asyncio.run(
+        chat_api.analysis_or_predict(
+            session=FakeAnalysisSession(),
+            current_user=_user(),
+            chat_record_id=7701,
+            action_type="analysis",
+            current_assistant=None,
+            in_chat=True,
+            stream=True,
+        )
+    )
+    events = asyncio.run(_sse_events(response))
+
+    assert events == [
+        {
+            "content": "没有查看权限",
+            "type": "error",
+            "error_type": "permission_denied",
+        }
+    ]
+    assert FakeLLMService.create_calls == []
+
+
 def test_predict_api_non_stream_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：test_predict_api_non_stream_json 是一段测试代码，用来确认测试的某个场景没有问题。
@@ -423,6 +462,44 @@ def test_predict_api_non_stream_json(monkeypatch: pytest.MonkeyPatch) -> None:
         "origin_data": {"fields": []},
         "predict_data": [],
     }
+
+
+def test_predict_api_non_stream_stops_when_chart_data_permission_denied(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：非流式预测也不能在无权读取图表数据时继续创建预测任务。
+    """
+    monkeypatch.setattr(
+        chat_api,
+        "get_chart_data_with_user",
+        lambda *args, **kwargs: {
+            "status": "failed",
+            "fields": [],
+            "data": [],
+            "message": "没有查看权限",
+            "error_type": "permission_denied",
+        },
+    )
+
+    response = asyncio.run(
+        chat_api.analysis_or_predict(
+            session=FakeAnalysisSession(),
+            current_user=_user(),
+            chat_record_id=7701,
+            action_type="predict",
+            current_assistant=None,
+            in_chat=False,
+            stream=False,
+        )
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 403
+    assert json.loads(response.body) == {
+        "success": False,
+        "message": "没有查看权限",
+        "error_type": "permission_denied",
+    }
+    assert FakeLLMService.create_calls == []
 
 
 def test_analysis_api_invalid_action_returns_stream_error() -> None:

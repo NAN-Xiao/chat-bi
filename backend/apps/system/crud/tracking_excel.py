@@ -12,6 +12,10 @@ from typing import Any
 
 import pandas as pd
 
+from apps.system.crud.tracking_expression import (
+    json_path_segments as _json_path_segments,
+    normalize_json_path as _normalize_json_path,
+)
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
@@ -546,31 +550,6 @@ def _json_path_from_field_name(field_name: str) -> tuple[str, str]:
     return source.strip(), f"$.{child.strip()}" if child.strip() else ""
 
 
-def _normalize_json_path(value: str) -> str:
-    text = _text(value)
-    if not text:
-        return ""
-    if text.startswith("$"):
-        return text
-    return f"$.{text.lstrip('.')}"
-
-
-def _json_path_segments(json_path: str) -> list[str]:
-    text = _normalize_json_path(json_path)
-    if not text.startswith("$."):
-        return []
-    path = text[2:]
-    if not path:
-        return []
-    if re.search(r"[^A-Za-z0-9_.$\[\]]", path):
-        return []
-    return [
-        segment
-        for segment in re.split(r"\.", path)
-        if segment and "[" not in segment and "]" not in segment
-    ]
-
-
 def _json_child_name(source_field: str, field_name: str, json_path: str | None = None) -> str:
     source = _text(source_field)
     field_text = _text(field_name)
@@ -580,60 +559,6 @@ def _json_child_name(source_field: str, field_name: str, json_path: str | None =
     if path_segments:
         return ".".join(path_segments)
     return field_text
-
-
-def _datasource_family(datasource_type: str | None) -> str:
-    text = _text(datasource_type).lower()
-    if text in {"mysql", "mariadb"} or "mysql" in text:
-        return "mysql"
-    if text in {"pg", "postgres", "postgresql", "kingbase", "redshift", "excel"} or "postgres" in text:
-        return "postgres"
-    if text in {"clickhouse", "ck"} or "clickhouse" in text:
-        return "clickhouse"
-    return ""
-
-
-def _quote_identifier(identifier: str, family: str) -> str:
-    quote = '"' if family == "postgres" else "`"
-    escaped = identifier.replace(quote, quote + quote)
-    return f"{quote}{escaped}{quote}"
-
-
-def _qualified_field(table_name: str, field_name: str, family: str) -> str:
-    return f"{_quote_identifier(table_name, family)}.{_quote_identifier(field_name, family)}"
-
-
-def _json_expression(
-    table_name: str,
-    source_field: str,
-    json_path: str,
-    semantic_type: str,
-    datasource_type: str | None,
-) -> str:
-    family = _datasource_family(datasource_type)
-    if not family or not table_name or not source_field or not json_path:
-        return ""
-
-    column = _qualified_field(table_name, source_field, family)
-    path = _normalize_json_path(json_path)
-    semantic = _text(semantic_type).lower()
-    if family == "postgres":
-        segments = _json_path_segments(path)
-        if not segments:
-            return ""
-        base = f"({column}::jsonb #>> '{{{','.join(segments)}}}')"
-        if semantic == "number":
-            return f"NULLIF({base}, '')::numeric"
-        return base
-    if family == "clickhouse":
-        base = f"JSON_VALUE({column}, '{path}')"
-        if semantic == "number":
-            return f"toFloat64OrNull({base})"
-        return base
-    base = f"JSON_UNQUOTE(JSON_EXTRACT({column}, '{path}'))"
-    if semantic == "number":
-        return f"CAST({base} AS DECIMAL(38, 10))"
-    return base
 
 
 def _field_role(row_type: str, semantic_type: str, source_field: str, json_path: str, configured: str) -> str:
@@ -956,13 +881,11 @@ def _field_item(
         return None
 
     expression = _text(row.get("expression"))
-    if not expression and source_field and json_path:
-        expression = _json_expression(table_name, source_field, json_path, semantic_type, datasource_type)
-        if not expression:
-            _add_warning(
-                warnings,
-                f"{table_name}.{field_name} 已配置 JSON 路径，但未能按当前数据源生成 SQL 表达式；请在 Excel expression 列补充。",
-            )
+    if expression and source_field and json_path:
+        _add_warning(
+            warnings,
+            f"{table_name}.{field_name} 的 expression 列将作为兼容配置保存；运行时会按当前数据源方言重新编译 JSON 表达式。",
+        )
 
     aliases = _aliases_from_row(row, display_name, field_name)
     return TenantTrackingFieldBase(
@@ -1446,6 +1369,7 @@ def _config_field_map(config: TenantTrackingConfigDTO) -> dict[tuple[str, str], 
 def _business_row_from_field(field_item: Any, *, row_type: str) -> dict[str, Any]:
     source_field = _text(field_item.source_field)
     json_path = _text(field_item.json_path)
+    expression = "" if source_field and json_path else field_item.expression or ""
     return {
         "row_type": row_type,
         "field_name": field_item.field_name,
@@ -1455,7 +1379,7 @@ def _business_row_from_field(field_item: Any, *, row_type: str) -> dict[str, Any
         "semantic_type": field_item.semantic_type or "",
         "source_field": source_field,
         "json_path": json_path,
-        "expression": field_item.expression or "",
+        "expression": expression,
         "required": "Y" if field_item.required else "",
         "value": "",
         "value_display_name": "",
@@ -1552,6 +1476,7 @@ def _business_event_property_rows(config: TenantTrackingConfigDTO) -> list[dict[
                 inferred_source, inferred_path = _json_path_from_field_name(prop_name)
                 source_field = inferred_source
                 json_path = json_path or inferred_path
+            expression = "" if source_field and json_path else _text(prop.get("expression"))
             exported_field_name = prop_name
             if source_field and json_path and not prop_name.startswith(f"{source_field}."):
                 child_name = _json_child_name(source_field, prop_name, json_path)
@@ -1566,7 +1491,7 @@ def _business_event_property_rows(config: TenantTrackingConfigDTO) -> list[dict[
                 "semantic_type": _semantic_type(_first_text(prop.get("semantic_type"), prop.get("property_type"), prop.get("field_type"), prop.get("type"))),
                 "source_field": source_field,
                 "json_path": json_path,
-                "expression": _text(prop.get("expression")),
+                "expression": expression,
                 "required": "Y" if _parse_bool(prop.get("required")) else "",
                 "value": "",
                 "value_display_name": "",
@@ -1956,7 +1881,7 @@ def _info_rows(
         {"项目": "分组维护", "说明": "同一字段下面的后续取值行可以省略 row_type/field_name/字段角色/语义类型等上下文，导入时会继承上一条 event_value 或 field_value。"},
         {"项目": "事件取值", "说明": f"`{event_table}` sheet 中 field_name={event_field or 'event'} 且 row_type=event_value 的行，会写入事件字典；后续同字段事件值可只维护 value、中文名、标签、说明、别名。"},
         {"项目": "JSON 字段", "说明": "JSON 容器字段下面可维护 dictionary_field 子字段；紧跟 physical_field=ext/userinfo 等容器时，子字段可省略 source_field。字段取值紧跟子字段时，可用 field_value 维护 1/3/4 等枚举含义。"},
-        {"项目": "图表配置", "说明": "导入后的字段会出现在图表 SQL 构建器字段下拉中，表达式列会作为 SQL 生成优先使用的字段表达式。"},
+        {"项目": "图表配置", "说明": "导入后的字段会出现在图表 SQL 构建器字段下拉中；JSON 字段请维护 source_field、json_path 和 semantic_type，SQL 表达式会在运行时按当前数据源方言生成。"},
         {"项目": "SQL 规则", "说明": "`_SQL规则` 中维护跨字段口径、时间窗口、留存/漏斗等复杂规则；不要把复杂业务口径硬编码进平台。"},
         {"项目": "当前默认", "说明": f"事件表={event_table}；主体字段={subject_field or ''}；事件名字段={event_field or ''}；事件时间字段={event_time_field or ''}。"},
         {"项目": "config.enabled", "说明": "Y" if config.enabled else "N"},

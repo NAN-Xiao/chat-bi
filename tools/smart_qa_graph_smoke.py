@@ -5,6 +5,7 @@ import base64
 import datetime as dt
 import json
 import re
+import sys
 import threading
 import time
 import urllib.parse
@@ -18,6 +19,10 @@ import jwt
 import requests
 from sqlalchemy import MetaData, Table, delete, insert
 from sqlmodel import Session, create_engine, text
+
+TOOLS_DIR = Path(__file__).resolve().parent
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
 
 from core_system_db import core_system_db_url
 

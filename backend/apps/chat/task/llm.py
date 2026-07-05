@@ -17,7 +17,6 @@ from typing import Any, List, Optional, Union, Dict, Iterator
 import orjson
 import requests
 from langchain.chat_models.base import BaseChatModel
-from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlmodel import Session
@@ -47,7 +46,9 @@ from apps.datasource.crud.permission_errors import (
     permission_denied_result,
 )
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access
-from apps.datasource.crud.query_executor import (
+from apps.datasource.crud.sql_engine import (
+    BusinessSqlContext,
+    BusinessSqlContextService,
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
     user_data_unavailable_message,
@@ -1061,6 +1062,7 @@ class LLMService:
     current_logs: dict[OperationEnum, ChatLog]
     chunk_list: List[str]
     future: Future
+    business_sql_context: Optional[BusinessSqlContext] = None
 
     trans: I18nHelper = None
 
@@ -1089,6 +1091,7 @@ class LLMService:
         self.current_assistant = current_assistant
 
         self.table_name_list = []
+        self.business_sql_context = None
 
         chat_id = chat_question.chat_id
         chat: Chat | None = session.get(Chat, chat_id)
@@ -1357,6 +1360,7 @@ class LLMService:
             ai_model_id=self.chat_question.ai_modal_id,
             ai_model_name=self.chat_question.ai_modal_name,
             target_scope=target_scope.value if target_scope else None,
+            business_context=self.business_sql_context.snapshot_metadata() if self.business_sql_context else None,
         )
         save_agent_context_snapshot(session, self.record.id, snapshot)
 
@@ -1439,6 +1443,17 @@ class LLMService:
         谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
         做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
+        if (
+            self.business_sql_context is not None
+            and ds_id is not None
+            and self.business_sql_context.datasource_id == int(ds_id)
+            and self.business_sql_context.target_scope == (
+                target_scope.value if isinstance(target_scope, CustomPromptTargetScopeEnum) else str(target_scope)
+            )
+            and not self.current_assistant
+        ):
+            self.chat_question.data_skill = self.business_sql_context.data_skill
+            return
         calculate_ds_id = ds_id
         if self.current_assistant:
             if self.current_assistant.type == 1:
@@ -1483,9 +1498,55 @@ class LLMService:
         谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
         做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
         """
+        if self.business_sql_context is not None:
+            self.chat_question.tracking_config = self.business_sql_context.tracking_config
+            return
         tenant_id = require_current_tenant_id(self.current_user)
         datasource_id = getattr(self.ds, "id", None) if self.ds is not None else None
-        self.chat_question.tracking_config, _ = find_tracking_prompt_context(_session, tenant_id, datasource_id)
+        self.chat_question.tracking_config, _ = find_tracking_prompt_context(
+            _session,
+            tenant_id,
+            datasource_id,
+            datasource_type=getattr(self.ds, "type", None) or getattr(self.ds, "type_name", None),
+        )
+
+    def load_business_sql_context(
+            self,
+            _session: Session,
+            target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
+            *,
+            embedding: bool = True,
+    ) -> Optional[BusinessSqlContext]:
+        """
+        是什么：统一加载当前业务库的 SQL 生成上下文。
+        """
+        if not isinstance(self.ds, CoreDatasource):
+            return None
+        target_scope_value = target_scope.value if isinstance(target_scope, CustomPromptTargetScopeEnum) else str(target_scope)
+        if (
+            self.business_sql_context is not None
+            and self.business_sql_context.target_scope == target_scope_value
+        ):
+            return self.business_sql_context
+        tenant_id = require_current_tenant_id(self.current_user)
+        self.business_sql_context = BusinessSqlContextService.build(
+            session=_session,
+            current_user=self.current_user,
+            tenant_id=tenant_id,
+            datasource_id=int(self.ds.id),
+            question=self.chat_question.question,
+            target_scope=target_scope,
+            data_skill_id=self.chat_question.data_skill_id,
+            embedding=embedding,
+            can_manage_all=is_system_admin(self.current_user),
+            can_manage_public=_can_manage_tenant_prompt_runtime(self.current_user),
+            can_manage_platform_public=_can_manage_platform_prompt_runtime(self.current_user),
+        )
+        self.chat_question.db_schema = self.business_sql_context.schema
+        self.table_name_list = list(self.business_sql_context.allowed_tables)
+        self.chat_question.data_skill = self.business_sql_context.data_skill
+        self.chat_question.tracking_config = self.business_sql_context.tracking_config
+        return self.business_sql_context
 
     def choose_table_schema(self, _session: Session):
         """
@@ -1497,12 +1558,23 @@ class LLMService:
                                                                   operate=OperationEnum.CHOOSE_TABLE,
                                                                   record_id=self.record.id,
                                                                   local_operation=True)
-        self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
-            self.ds.id, self.chat_question.question) if self.out_ds_instance else get_ai_table_schema(
-            session=_session,
-            current_user=self.current_user,
-            ds=self.ds,
-            question=self.chat_question.question)
+        if self.out_ds_instance:
+            self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
+                self.ds.id, self.chat_question.question)
+        else:
+            context = self.load_business_sql_context(
+                _session,
+                CustomPromptTargetScopeEnum.SMART_QA,
+            )
+            if context:
+                tables = list(context.allowed_tables)
+            else:
+                self.chat_question.db_schema, tables = get_ai_table_schema(
+                    session=_session,
+                    current_user=self.current_user,
+                    ds=self.ds,
+                    question=self.chat_question.question,
+                )
 
         # AI 结构识别以工作空间数据字典为准，不通过样例数据探测物理表。
         self.chat_question.sample_data = ""
@@ -1526,6 +1598,7 @@ class LLMService:
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
+        self.load_business_sql_context(_session, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.load_tracking_config(_session)
 
@@ -1580,6 +1653,7 @@ class LLMService:
         self.chat_question.data = format_chart_data_for_agent_prompt(data)
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+        self.load_business_sql_context(_session, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.filter_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.load_tracking_config(_session)
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
@@ -1630,12 +1704,16 @@ class LLMService:
         做了什么：根据已有信息生成聊天问数据和 Agent的结果，比如答案、SQL、图表或建议。
         """
         if self.ds and not self.chat_question.db_schema:
-            self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
-                self.ds.id, self.chat_question.question) if self.out_ds_instance else get_ai_table_schema(
-                session=_session,
-                current_user=self.current_user, ds=self.ds,
-                question=self.chat_question.question,
-                embedding=False)
+            if self.out_ds_instance:
+                self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
+                    self.ds.id, self.chat_question.question)
+            else:
+                context = self.load_business_sql_context(
+                    _session,
+                    CustomPromptTargetScopeEnum.SMART_QA,
+                    embedding=False,
+                )
+                tables = list(context.allowed_tables if context else [])
 
             # 获取所有表的样例数据
             # if not self.out_ds_instance:
@@ -2581,28 +2659,6 @@ class LLMService:
                     raise SingleMessageError(msg)
             except Exception as e:
                 raise SingleMessageError(f"ds is invalid [{str(e)}]")
-
-
-def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
-    """
-    是什么：execute_sql_with_db 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
-    """
-    try:
-        # 执行查询
-        result = db.run(sql)
-
-        if not result:
-            return "Query executed successfully but returned no results."
-
-        # 格式化结果
-        return str(result)
-
-    except Exception as e:
-        error_msg = f"SQL execution failed: {str(e)}"
-        AppLogUtil.exception(error_msg)
-        raise RuntimeError(error_msg)
 
 
 def format_chart_data_for_agent_prompt(data: dict[str, Any]) -> str:

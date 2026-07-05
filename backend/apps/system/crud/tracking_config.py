@@ -16,6 +16,7 @@ from apps.system.models.tenant import (
     TenantTrackingFieldModel,
     TenantTrackingTableModel,
 )
+from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
@@ -219,6 +220,44 @@ def filter_tracking_config_for_physical_schema(
         invalid_tables=invalid_tables,
         invalid_fields=invalid_fields,
     )
+
+
+def compile_tracking_config_expressions(
+    config: TenantTrackingConfigDTO,
+    datasource_type: str | None,
+) -> tuple[TenantTrackingConfigDTO, list[str]]:
+    """
+    是什么：按当前数据源方言为 JSON 字典字段补运行时 expression，不把结果写回存储。
+    """
+    if hasattr(config, "model_copy"):
+        compiled = config.model_copy(deep=True)
+    else:
+        compiled = copy.deepcopy(config)
+    warnings: list[str] = []
+    for field in compiled.fields or []:
+        source_field = (getattr(field, "source_field", None) or "").strip()
+        json_path = (getattr(field, "json_path", None) or "").strip()
+        if not source_field or not json_path:
+            continue
+        expression = compile_tracking_json_expression(
+            getattr(field, "table_name", None) or "",
+            source_field,
+            json_path,
+            _normalized_semantic_type(
+                getattr(field, "field_role", None),
+                getattr(field, "semantic_type", None),
+            ),
+            datasource_type,
+        )
+        if expression:
+            field.expression = expression
+            continue
+        field.expression = None
+        warnings.append(
+            f"{getattr(field, 'table_name', '')}.{getattr(field, 'field_name', '')} "
+            "配置了 JSON 路径，但当前数据源方言无法编译表达式，已从 Agent 上下文中移除 expression。"
+        )
+    return compiled, warnings
 
 
 def _row_id(row) -> int | None:
@@ -509,12 +548,18 @@ def _format_json_for_prompt(value: Any) -> str:
 def build_tracking_prompt_context(
     config: TenantTrackingConfigDTO,
     validation_warnings: list[str] | None = None,
+    *,
+    datasource_type: str | None = None,
 ) -> tuple[str, list[str]]:
     """
     是什么：build_tracking_prompt_context 是一个可以复用的小步骤，负责系统管理相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
+    if datasource_type:
+        config, compile_warnings = compile_tracking_config_expressions(config, datasource_type)
+        validation_warnings = list(validation_warnings or []) + compile_warnings
+
     if not config.enabled:
         return "", []
 
@@ -602,8 +647,11 @@ def build_tracking_prompt_context(
             examples = _format_json_for_prompt(item.example_values)
             if examples:
                 parts.append(f"examples={examples}")
-            if item.expression:
-                parts.append(f"expression={item.expression}")
+            expression = item.expression
+            if item.source_field and item.json_path and not datasource_type:
+                expression = None
+            if expression:
+                parts.append(f"expression={expression}")
             if item.ai_notes:
                 parts.append(f"notes={item.ai_notes}")
             line = "; ".join(parts)
@@ -622,6 +670,7 @@ def find_tracking_prompt_context(
     datasource_id: int | None = None,
     *,
     include_legacy: bool = False,
+    datasource_type: str | None = None,
 ) -> tuple[str, list[str]]:
     """
     是什么：find_tracking_prompt_context 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -636,4 +685,4 @@ def find_tracking_prompt_context(
         physical_schema = datasource_physical_schema(session, int(datasource_id))
         config, validation = filter_tracking_config_for_physical_schema(config, physical_schema)
         validation_warnings = validation.warnings
-    return build_tracking_prompt_context(config, validation_warnings)
+    return build_tracking_prompt_context(config, validation_warnings, datasource_type=datasource_type)

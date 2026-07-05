@@ -13,7 +13,7 @@ from apps.datasource.crud.permission import can_access_table, current_tenant_id,
     get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
     has_datasource_access, is_normal_user
 from apps.datasource.crud.binding import datasource_bound_to_tenant
-from apps.datasource.crud.query_executor import execute_user_query_or_raise
+from apps.datasource.crud.sql_engine import execute_user_query_or_raise
 from apps.datasource.embedding.utils import embedding_payload_is_current
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, effective_db_schema, encrypt_datasource_configuration
@@ -29,6 +29,7 @@ from apps.system.crud.schema_metadata import (
 )
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tracking_config import (
+    compile_tracking_config_expressions,
     datasource_physical_schema,
     filter_tracking_config_for_physical_schema,
     get_tracking_config,
@@ -1017,6 +1018,11 @@ def _dictionary_schema_from_workspace(
             datasource_physical_schema(session, int(ds.id)),
         )
         tracking_validation_warnings = tracking_validation.warnings
+        tracking_config, expression_warnings = compile_tracking_config_expressions(
+            tracking_config,
+            getattr(ds, "type", None) or getattr(ds, "type_name", None),
+        )
+        tracking_validation_warnings.extend(expression_warnings)
     tracking_enabled = bool(getattr(tracking_config, "enabled", False))
     tracking_tables = {
         item.table_name: item
@@ -1145,7 +1151,8 @@ def _dictionary_schema_from_workspace(
     schema_str += (
         "【AI schema source】workspace data dictionary. "
         "Use only tables and fields declared below; do not infer missing structure from the physical database. "
-        "When a dictionary field declares expression=..., use that SQL expression rather than treating the dictionary field name as a physical column.\n"
+        "JSON dictionary expressions are compiled at runtime for the current datasource dialect; "
+        "when a dictionary field declares expression=..., use that SQL expression rather than treating the dictionary field name as a physical column.\n"
     )
     if tracking_validation_warnings:
         schema_str += "【Dictionary schema validation】\n"

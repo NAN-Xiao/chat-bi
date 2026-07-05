@@ -742,7 +742,7 @@ def _unsafe_exec_sql_after_validation(
     """底层数据源执行适配器。
 
     面向用户的分析入口不要直接调用这里，应通过
-    apps.datasource.crud.query_executor 先完成数据源、表、字段、行权限与审计友好的 SQL 标准化。
+    apps.datasource.crud.sql_engine 先完成数据源、表、字段、行权限与审计友好的 SQL 标准化。
     """
     while sql.endswith(';'):
         sql = sql[:-1]

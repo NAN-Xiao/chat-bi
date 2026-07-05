@@ -45,13 +45,14 @@ def build_agent_context_snapshot(
     ai_model_id: int | str | None = None,
     ai_model_name: str | None = None,
     target_scope: str | None = None,
+    business_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     是什么：build_agent_context_snapshot 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：创建或保存聊天问数据和 Agent需要的东西，让后续流程能继续往下走。
     """
-    return {
+    snapshot = {
         "version": AGENT_CONTEXT_SNAPSHOT_VERSION,
         "captured_at": datetime.utcnow().isoformat(timespec="seconds"),
         "surface": surface,
@@ -78,3 +79,6 @@ def build_agent_context_snapshot(
             "name": ai_model_name or None,
         },
     }
+    if business_context:
+        snapshot["business_context"] = business_context
+    return snapshot

@@ -229,6 +229,8 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     assert any(row[0] == "event_value" and row[1] == "event_name" and row[10] == "login" for row in physical_event_rows)
     assert any(row[0] == "event_value" and row[1] == "event_name" and row[10] == "pay_success" for row in physical_event_rows)
     assert any(row[0] == "dictionary_field" and row[1] == "event_props.amount" and row[6] == "event_props" and row[7] == "$.amount" for row in physical_event_rows)
+    amount_row = next(row for row in physical_event_rows if row[0] == "dictionary_field" and row[1] == "event_props.amount")
+    assert amount_row[8] in (None, "")
     battle_row_index = next(
         index
         for index, row in enumerate(physical_event_rows)
@@ -259,6 +261,8 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     assert any(table.table_name == "event_log" and "事件明细" in table.aliases for table in parsed.editor.tables)
     assert any(field.table_name == "event_log" and field.field_name == "event_props.amount" for field in parsed.editor.fields)
     assert any(field.table_name == "event_log" and field.field_name == "event_props.duration" for field in parsed.editor.fields)
+    amount_field = next(field for field in parsed.editor.fields if field.table_name == "event_log" and field.field_name == "event_props.amount")
+    assert amount_field.expression is None
     assert any(event.get("event_name") == "pay_success" for event in parsed.editor.event_name_mappings if isinstance(event, dict))
     login_event = next(event for event in parsed.editor.event_name_mappings if isinstance(event, dict) and event.get("event_name") == "login")
     assert "登录事件" in login_event.get("aliases", [])
@@ -270,9 +274,10 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     assert "注册国家" in country.aliases
     assert {"value": "US", "display_name": "美国", "category": "北美", "description": "美国用户"} in country.value_mappings
 
-    context, summary = build_tracking_prompt_context(parsed.editor)
+    context, summary = build_tracking_prompt_context(parsed.editor, datasource_type="postgresql")
     assert "<Workspace-Tracking-Rules>" in context
     assert "event_log.event_props.amount" in context
+    assert 'expression=NULLIF(("event_log"."event_props"::jsonb #>> \'{amount}\'), \'\')::numeric' in context
     assert "pay_success" in context
     assert "支付金额统一使用 event_props.amount" in context
     assert any("event_props.amount" in item for item in summary)
@@ -638,9 +643,10 @@ def test_tracking_prompt_filters_schema_drifted_fields() -> None:
     )
 
     filtered, validation = filter_tracking_config_for_physical_schema(config, _physical_schema())
-    context, summary = build_tracking_prompt_context(filtered, validation.warnings)
+    context, summary = build_tracking_prompt_context(filtered, validation.warnings, datasource_type="postgresql")
 
     assert "event_log.event_props.amount" in context
+    assert 'expression=NULLIF(("event_log"."event_props"::jsonb #>> \'{amount}\'), \'\')::numeric' in context
     assert "`event_log.missing_payload.amount`" not in context
     assert "expression=missing expression" not in context
     assert any("missing_payload" in warning for warning in validation.warnings)

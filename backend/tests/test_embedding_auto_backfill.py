@@ -310,7 +310,8 @@ def test_ai_table_schema_uses_workspace_dictionary_without_cached_field_fallback
     assert tracking_config_calls[0][1]["include_legacy"] is False
     assert "workspace data dictionary" in schema
     assert "(pay.pay2:number" in schema
-    assert "expression=JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay2'))" in schema
+    assert "expression=NULLIF((\"user\".\"pay\"::jsonb #>> '{pay2}'), '')::numeric" in schema
+    assert "expression=JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay2'))" not in schema
     assert "SQL must use expression instead of this dictionary field name" in schema
     assert "(uid:varchar" in schema
     assert "(pay:json" in schema

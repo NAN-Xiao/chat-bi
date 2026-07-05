@@ -281,6 +281,7 @@ def _saved_record_missing_event_projection(
             session,
             _current_tenant_id(current_user),
             datasource_id,
+            datasource_type=getattr(ds, "type", None) or getattr(ds, "type_name", None),
         )
         service = SimpleNamespace(
             ds=ds,

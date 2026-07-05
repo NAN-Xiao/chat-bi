@@ -115,8 +115,6 @@ def _row_matches_datasource(row, datasource: Optional[int]) -> bool:
     谁调用：运行时查找自定义 Agent 和 Data Skills 时调用。
     做了什么：全局记录直接放行；限定项目的记录必须命中当前 datasource。
     """
-    if row.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
-        return True
     if not row.get("specific_ds"):
         return True
     if datasource is None:
@@ -130,8 +128,6 @@ def _effective_datasource_scoped(row_or_skill) -> bool:
     谁调用：运行时 Prompt/Data Skill 组装和排序逻辑。
     做了什么：平台公共记录永远按通用能力处理，兼容历史上误带 datasource 绑定的脏数据。
     """
-    if row_or_skill.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
-        return False
     return bool(row_or_skill.get("specific_ds"))
 
 

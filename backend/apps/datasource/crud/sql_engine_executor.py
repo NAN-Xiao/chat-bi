@@ -1,7 +1,9 @@
 """
-脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
+脚本说明：SQL Engine 的内部执行实现。
+
+新业务代码应从 apps.datasource.crud.sql_engine 导入入口。
 """
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 import inspect
 import re
 import time
@@ -52,7 +54,7 @@ USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
 def looks_like_data_unavailable_error(message: str) -> bool:
     """
     是什么：判断 SQL 执行错误是否是缺表、缺字段或数据结构不可用。
-    谁调用：查询执行器和 Smart Q&A 错误处理。
+    谁调用：SQL Engine 和 Smart Q&A 错误处理。
     做了什么：把底层数据库错误归类为用户可理解的数据不可用反馈。
     """
     return common_looks_like_data_unavailable_error(message)
@@ -101,6 +103,92 @@ class QueryExecutionResult:
     execution_time_ms: int
 
 
+@dataclass
+class SqlEngineResult:
+    """
+    类说明：SQL Engine 对外标准执行结果对象，兼容旧 dict 返回结构。
+    """
+    status: str
+    fields: list[str] = field(default_factory=list)
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    requested_sql: str | None = None
+    executed_sql: str | None = None
+    tables: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    error_type: str | None = None
+    message: str = ""
+    sql: str | None = None
+    execution_time_ms: int | None = None
+
+    @classmethod
+    def from_query_execution(cls, query_result: QueryExecutionResult) -> "SqlEngineResult":
+        result = query_result.result or {}
+        return cls(
+            status="success",
+            fields=list(result.get("fields") or []),
+            rows=list(result.get("data") or []),
+            requested_sql=query_result.requested_sql,
+            executed_sql=query_result.executed_sql,
+            tables=sorted(query_result.tables or []),
+            warnings=[],
+            error_type=None,
+            message=str(result.get("message") or ""),
+            sql=result.get("sql"),
+            execution_time_ms=query_result.execution_time_ms,
+        )
+
+    @classmethod
+    def failed(
+        cls,
+        *,
+        message: str,
+        error_type: str | None = None,
+        requested_sql: str | None = None,
+        warnings: list[str] | None = None,
+    ) -> "SqlEngineResult":
+        return cls(
+            status="failed",
+            fields=[],
+            rows=[],
+            requested_sql=requested_sql,
+            executed_sql=None,
+            tables=[],
+            warnings=list(warnings or []),
+            error_type=error_type,
+            message=message,
+            sql=None,
+            execution_time_ms=None,
+        )
+
+    def to_legacy_dict(self, *, include_execution_meta: bool = False) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "status": self.status,
+            "fields": list(self.fields),
+            "data": list(self.rows),
+            "rows": list(self.rows),
+            "message": self.message,
+            "error_type": self.error_type,
+            "sql": self.sql,
+            "requested_sql": self.requested_sql,
+            "executed_sql": self.executed_sql,
+            "tables": list(self.tables),
+            "warnings": list(self.warnings),
+        }
+        if self.error_type is None:
+            result.pop("error_type", None)
+        if include_execution_meta:
+            result["_execution_meta"] = {
+                "requested_sql": self.requested_sql,
+                "executed_sql": self.executed_sql,
+                "execution_time_ms": self.execution_time_ms,
+                "tables": list(self.tables),
+            }
+        return result
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 def _failed_query_result(message: str, error_type: str | None = None) -> dict[str, Any]:
     """
     是什么：_failed_query_result 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -115,6 +203,15 @@ def _failed_query_result(message: str, error_type: str | None = None) -> dict[st
         "data": [],
         "message": message,
     }
+
+
+def _merge_standard_result_fields(result: dict[str, Any], engine_result: SqlEngineResult) -> dict[str, Any]:
+    standard = engine_result.to_legacy_dict(include_execution_meta=False)
+    for key, value in standard.items():
+        if key in {"message", "error_type", "warnings"} and result.get(key):
+            continue
+        result[key] = value
+    return result
 
 
 def safe_query_error_message(current_user: CurrentUser, message: str) -> str:
@@ -625,24 +722,19 @@ def execute_user_query(
             query_timeout=query_timeout,
             close_system_transaction_before_query=close_system_transaction_before_query,
         )
-        result = {
-            "status": "success",
-            "fields": query_result.result.get("fields", []),
-            "data": query_result.result.get("data", []),
-            "message": "",
-            "sql": query_result.result.get("sql"),
-        }
-        if include_execution_meta:
-            result["_execution_meta"] = {
-                "requested_sql": query_result.requested_sql,
-                "executed_sql": query_result.executed_sql,
-                "execution_time_ms": query_result.execution_time_ms,
-                "tables": sorted(query_result.tables),
-            }
-        return result
+        return SqlEngineResult.from_query_execution(query_result).to_legacy_dict(
+            include_execution_meta=include_execution_meta
+        )
     except DataUnavailableError as exc:
         AppLogUtil.error(f"User query data unavailable: {exc}")
-        return data_unavailable_data_result(str(exc))
+        return _merge_standard_result_fields(
+            data_unavailable_data_result(str(exc)),
+            SqlEngineResult.failed(
+                message=str(exc),
+                error_type=DATA_UNAVAILABLE_ERROR_TYPE,
+                requested_sql=sql,
+            ),
+        )
     except Exception as exc:
         AppLogUtil.error(f"User query execution failed: {exc}")
         message = safe_query_error_message(current_user, f"{exc}")
@@ -661,4 +753,11 @@ def execute_user_query(
         if error_type is None and classification.error_type == DATA_UNAVAILABLE_ERROR_TYPE:
             message = user_data_unavailable_message(str(exc))
             error_type = DATA_UNAVAILABLE_ERROR_TYPE
-        return _failed_query_result(message, error_type)
+        return _merge_standard_result_fields(
+            _failed_query_result(message, error_type),
+            SqlEngineResult.failed(
+                message=message,
+                error_type=error_type,
+                requested_sql=sql,
+            ),
+        )

@@ -60,12 +60,12 @@ from apps.chat.task.assistant_workflow import (
 from apps.chat.task.assistant_workflow import (
     session_scope as _session_scope,
 )
-from apps.datasource.crud.datasource import get_ai_table_schema
 from apps.datasource.crud.permission_errors import (
     audit_permission_denied,
     looks_like_permission_scope_error,
 )
-from apps.datasource.crud.query_executor import (
+from apps.datasource.crud.sql_engine import (
+    get_ai_table_schema,
     user_data_unavailable_message,
     validate_user_query_sql_or_raise,
 )
@@ -2112,6 +2112,16 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
                 embedding=False,
                 table_list=tables,
             )
+        elif getattr(service, "business_sql_context", None) is not None:
+            used_tables_schema = service.business_sql_context.schema
+            _used_tables = service.business_sql_context.allowed_tables
+        elif hasattr(service, "load_business_sql_context"):
+            context = service.load_business_sql_context(
+                session,
+                embedding=False,
+            )
+            used_tables_schema = context.schema if context else ""
+            _used_tables = context.allowed_tables if context else []
         else:
             used_tables_schema, _used_tables = get_ai_table_schema(
                 session=session,

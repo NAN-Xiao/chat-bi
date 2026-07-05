@@ -44,7 +44,7 @@ from apps.datasource.crud.permission import (
 )
 from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
-from apps.datasource.crud.query_executor import (
+from apps.datasource.crud.sql_engine import (
     execute_user_query,
     safe_query_error_message,
     safe_query_error_type,

@@ -102,3 +102,58 @@ def test_understand_config_marks_fallback_when_llm_fails(monkeypatch: pytest.Mon
     assert summary["intent"] == "看收入"
     assert summary["understanding_failed"] is True
     assert summary["understanding_error"] == "LLM unavailable"
+
+
+def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：看板 AI 生成 SQL 前通过 SQL Engine 统一业务库上下文取 schema、字典和 Data Skill。
+    """
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        intent="看登录人数",
+        chart_type="line",
+        context={"selectedFields": []},
+    )
+    datasource = SimpleNamespace(id=1, name="业务库", type="postgresql", type_name="PostgreSQL")
+    business_context = SimpleNamespace(
+        datasource=datasource,
+        schema="【Schema】\n# Table: event",
+        sql_dialect="postgres",
+        allowed_tables=["event"],
+        data_skill="<Data-Skills>口径</Data-Skills>",
+        tracking_config="<Tracking>事件字典</Tracking>",
+        skill_model_id=99,
+        warnings=[],
+        business_context_hash="ctx",
+    )
+    calls: list[dict[str, Any]] = []
+
+    class _Session:
+        def get(self, model, obj_id):
+            if getattr(model, "__name__", "") == "CoreDatasource":
+                return datasource
+            return None
+
+    def _build(**kwargs):
+        calls.append(kwargs)
+        return business_context
+
+    monkeypatch.setattr(ai_sql_generator, "require_current_tenant_id", lambda _user: 2001)
+    monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
+
+    result = ai_sql_generator._node_collect_context({
+        "session": _Session(),
+        "current_user": SimpleNamespace(id=1001, tenant_id=2001),
+        "request": request,
+        "graph_trace": [],
+    })
+
+    assert result["business_sql_context"] is business_context
+    assert result["schema"] == business_context.schema
+    assert result["sql_dialect"] == "postgres"
+    assert result["allowed_tables"] == ["event"]
+    assert result["data_skill"] == business_context.data_skill
+    assert result["tracking_config"] == business_context.tracking_config
+    assert calls[0]["tenant_id"] == 2001
+    assert calls[0]["datasource_id"] == 1
+    assert calls[0]["target_scope"] == ai_sql_generator.CustomPromptTargetScopeEnum.SMART_QA

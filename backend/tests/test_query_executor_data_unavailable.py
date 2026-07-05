@@ -1,9 +1,9 @@
 """
-脚本说明：验证查询执行器对缺表/缺字段错误的用户友好归类。
+脚本说明：验证 SQL Engine 对缺表/缺字段错误的用户友好归类。
 """
 from __future__ import annotations
 
-from apps.datasource.crud.query_executor import (
+from apps.datasource.crud.sql_engine import (
     looks_like_data_unavailable_error,
     user_data_unavailable_message,
 )

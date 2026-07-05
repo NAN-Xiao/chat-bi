@@ -1013,6 +1013,31 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
     if limited_response is not None:
         return limited_response
 
+    def _blocked_chart_data_response(data: dict[str, Any]):
+        message = str(data.get("message") or data.get("reason") or "没有查看权限")
+        error_type = data.get("error_type")
+        if stream:
+            def _err():
+                if in_chat:
+                    yield 'data:' + orjson.dumps({
+                        'content': message,
+                        'type': 'error',
+                        'error_type': error_type,
+                    }).decode() + '\n\n'
+                else:
+                    yield f'&#x274c; **ERROR:**\n'
+                    yield f'> {message}\n'
+
+            return StreamingResponse(_err(), media_type="text/event-stream")
+        return JSONResponse(
+            content={
+                'success': False,
+                'message': message,
+                'error_type': error_type,
+            },
+            status_code=403 if error_type == "permission_denied" else 500,
+        )
+
     try:
         if action_type != 'analysis' and action_type != 'predict':
             raise Exception(f"Type {action_type} Not Found")
@@ -1045,6 +1070,8 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
                 f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it")
 
         current_data = get_chart_data_with_user(session, current_user, record.id)
+        if isinstance(current_data, dict) and current_data.get("status") == "failed":
+            return _blocked_chart_data_response(current_data)
         record.data = orjson.dumps(current_data).decode()
 
         request_question = ChatQuestion(

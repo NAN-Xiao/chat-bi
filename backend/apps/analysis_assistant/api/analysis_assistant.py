@@ -23,7 +23,7 @@ from sqlalchemy import and_, or_, select
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
-from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
+from apps.datasource.crud.datasource import get_datasource_list
 from apps.datasource.crud.permission import has_applicable_permissions, has_datasource_access, is_normal_user
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
@@ -31,7 +31,8 @@ from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_RESULT_MESSAGE,
     looks_like_permission_scope_error,
 )
-from apps.datasource.crud.query_executor import (
+from apps.datasource.crud.sql_engine import (
+    BusinessSqlContextService,
     execute_user_analysis_query_or_raise,
     execute_user_query_or_raise,
     validate_user_query_sql_or_raise,
@@ -1663,7 +1664,13 @@ def _collect_tracking_context(
     """
     try:
         tenant_id = _current_tenant_id(current_user) if current_user is not None else None
-        tracking_text, _tracking_list = find_tracking_prompt_context(session, tenant_id, datasource_id)
+        datasource = session.get(CoreDatasource, int(datasource_id)) if datasource_id is not None else None
+        tracking_text, _tracking_list = find_tracking_prompt_context(
+            session,
+            tenant_id,
+            datasource_id,
+            datasource_type=getattr(datasource, "type", None) or getattr(datasource, "type_name", None),
+        )
         return tracking_text.strip()
     except Exception:
         traceback.print_exc()
@@ -3336,6 +3343,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
     datasource = CoreDatasource.model_construct(
         **_get_datasource(session, current_user, request.datasource_id).model_dump()
     )
+    question = request.messages[-1].content.strip()
+    tenant_id = require_current_tenant_id(current_user)
     custom_agent, custom_agent_model_id = _collect_custom_agent_context(
         session,
         datasource.id,
@@ -3343,16 +3352,22 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         current_user,
         target_scope,
     )
-    data_skill = _collect_data_skill_context(
-        session,
-        datasource.id,
-        request.data_skill_id,
-        current_user,
-        request.messages[-1].content.strip(),
-        target_scope,
+    business_context = BusinessSqlContextService.build(
+        session=session,
+        current_user=current_user,
+        tenant_id=tenant_id,
+        datasource_id=int(datasource.id),
+        question=question,
+        target_scope=target_scope,
+        data_skill_id=request.data_skill_id,
         include_all_target_scopes=False,
+        embedding=False,
+        can_manage_all=is_system_admin(current_user),
+        can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
+        can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
     )
-    tracking_context = _collect_tracking_context(session, current_user, datasource.id)
+    data_skill = business_context.data_skill
+    tracking_context = business_context.tracking_config
     semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, llm_config = await _create_llm(custom_agent_model_id)
     context_snapshot = build_agent_context_snapshot(
@@ -3367,6 +3382,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         ai_model_id=llm_config.model_id,
         ai_model_name=llm_config.model_name,
         target_scope=target_scope.value if target_scope else None,
+        business_context=business_context.snapshot_metadata(),
     )
 
     def generate():
@@ -3375,7 +3391,6 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         谁调用：外层函数 chat 跑到对应步骤时会调用它。
         做了什么：根据已有信息生成分析助手的结果，比如答案、SQL、图表或建议。
         """
-        question = request.messages[-1].content.strip()
         blocks: list[dict[str, Any]] = []
         success = False
         try:
@@ -3390,7 +3405,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 yield _sse({"type": "plan_delta", "content": "我会先理解你的分析目标，再拆解关键维度并结合数据给出结论和建议。"})
             yield _trace("正在确认本次分析使用的业务口径。")
             yield _trace("正在结合当前业务数据，梳理可分析的关键维度。")
-            schema, allowed_tables = get_ai_table_schema(session, current_user, datasource, question, embedding=False)
+            schema = business_context.schema
+            allowed_tables = business_context.allowed_tables
             if not allowed_tables:
                 raise RuntimeError("当前用户在该项目下没有可分析的数据表权限")
             sample_data = ""
