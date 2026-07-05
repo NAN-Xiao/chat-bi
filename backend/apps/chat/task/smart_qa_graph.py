@@ -60,7 +60,7 @@ from apps.chat.task.assistant_workflow import (
 from apps.chat.task.assistant_workflow import (
     session_scope as _session_scope,
 )
-from apps.datasource.crud.datasource import get_table_schema
+from apps.datasource.crud.datasource import get_ai_table_schema
 from apps.datasource.crud.permission_errors import (
     audit_permission_denied,
     looks_like_permission_scope_error,
@@ -2113,7 +2113,7 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
                 table_list=tables,
             )
         else:
-            used_tables_schema, _used_tables = get_table_schema(
+            used_tables_schema, _used_tables = get_ai_table_schema(
                 session=session,
                 current_user=service.current_user,
                 ds=service.ds,

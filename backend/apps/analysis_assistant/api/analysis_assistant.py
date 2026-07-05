@@ -23,7 +23,7 @@ from sqlalchemy import and_, or_, select
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
-from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
+from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
 from apps.datasource.crud.permission import has_applicable_permissions, has_datasource_access, is_normal_user
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
@@ -3386,17 +3386,11 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 yield _sse({"type": "plan_delta", "content": "我会先理解你的分析目标，再拆解关键维度并结合数据给出结论和建议。"})
             yield _trace("正在确认本次分析使用的业务口径。")
             yield _trace("正在结合当前业务数据，梳理可分析的关键维度。")
-            schema, allowed_tables = get_table_schema(session, current_user, datasource, question, embedding=False)
+            schema, allowed_tables = get_ai_table_schema(session, current_user, datasource, question, embedding=False)
             if not allowed_tables:
                 raise RuntimeError("当前用户在该项目下没有可分析的数据表权限")
-            sample_data = "" if is_normal_user(current_user) else get_tables_sample_data(session, current_user, datasource)
-            data_profile = "" if is_normal_user(current_user) else _get_data_profile(
-                session,
-                current_user,
-                datasource,
-                schema,
-                allowed_tables,
-            )
+            sample_data = ""
+            data_profile = ""
             if tracking_context.strip():
                 yield _trace("已应用当前工作空间数据字典/埋点方案，字段选择和事件口径将优先参考它。")
             if data_skill.strip():

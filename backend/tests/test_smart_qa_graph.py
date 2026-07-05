@@ -703,7 +703,7 @@ def test_missing_event_value_is_pruned_and_streamed_as_business_notice(monkeypat
     )
     monkeypatch.setattr(
         graph,
-        "get_table_schema",
+        "get_ai_table_schema",
         lambda **kwargs: ("table daily_metrics(event_date date, dau int, pdau int)", ["daily_metrics"]),
     )
     monkeypatch.setattr(
@@ -824,7 +824,7 @@ def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch:
     monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", _validate)
     monkeypatch.setattr(
         graph,
-        "get_table_schema",
+        "get_ai_table_schema",
         lambda **kwargs: ("table fact_sessions(...)\ntable fact_payments(...)", ["fact_sessions", "fact_payments"]),
     )
     monkeypatch.setattr(
@@ -954,7 +954,7 @@ def test_existing_event_zero_values_are_not_pruned(monkeypatch: pytest.MonkeyPat
     )
     monkeypatch.setattr(
         graph,
-        "get_table_schema",
+        "get_ai_table_schema",
         lambda **kwargs: ("table daily_metrics(event_date date, dau int, pdau int)", ["daily_metrics"]),
     )
     monkeypatch.setattr(
@@ -1303,7 +1303,7 @@ def test_non_stream_full_chart_returns_json_result(monkeypatch: pytest.MonkeyPat
     )
     monkeypatch.setattr(
         graph,
-        "get_table_schema",
+        "get_ai_table_schema",
         lambda **kwargs: ("table orders(value int)", ["orders"]),
     )
 
@@ -1348,7 +1348,7 @@ def test_chart_generation_tolerates_reasoning_only_chunk(monkeypatch: pytest.Mon
     )
     monkeypatch.setattr(
         graph,
-        "get_table_schema",
+        "get_ai_table_schema",
         lambda **kwargs: ("table orders(value int)", ["orders"]),
     )
 
@@ -1368,6 +1368,38 @@ def test_chart_generation_tolerates_reasoning_only_chunk(monkeypatch: pytest.Mon
     assert chart_result_events[0]["reasoning_content"] == "thinking chart"
     assert any(event["type"] == "chart" for event in events)
     assert events[-1]["type"] == "finish"
+
+
+def test_choose_table_schema_uses_ai_dictionary_schema_without_sample_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：Smart Q&A 生成 SQL 前的结构识别走 AI 字典 schema，不再通过样例数据探测物理库。
+    """
+    service = llm.LLMService.__new__(llm.LLMService)
+    service.record = SimpleNamespace(id=9001)
+    service.current_user = SimpleNamespace(id=1)
+    service.ds = SimpleNamespace(id=2)
+    service.out_ds_instance = None
+    service.chat_question = SimpleNamespace(question="次日 LTV", db_schema="", sample_data="old sample")
+    service.current_logs = {}
+
+    monkeypatch.setattr(llm, "start_log", lambda **kwargs: SimpleNamespace(id=1))
+    monkeypatch.setattr(llm, "end_log", lambda **kwargs: kwargs["log"])
+    monkeypatch.setattr(
+        llm,
+        "get_ai_table_schema",
+        lambda **kwargs: ("【AI schema source】workspace data dictionary\n# Table: user\n[(pay.pay2:number)]", ["user"]),
+    )
+
+    def _should_not_probe_sample_data(*_args, **_kwargs):
+        raise AssertionError("choose_table_schema should not query sample data")
+
+    monkeypatch.setattr(llm, "get_tables_sample_data", _should_not_probe_sample_data, raising=False)
+
+    tables = service.choose_table_schema(object())
+
+    assert tables == ["user"]
+    assert service.chat_question.db_schema.startswith("【AI schema source】workspace data dictionary")
+    assert service.chat_question.sample_data == ""
 
 
 def test_llm_service_routes_smart_qa_to_graph(monkeypatch: pytest.MonkeyPatch) -> None:

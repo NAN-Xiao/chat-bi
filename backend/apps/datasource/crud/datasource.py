@@ -3,7 +3,7 @@
 """
 import datetime
 import json
-from typing import List
+from typing import Any, List
 
 from fastapi import HTTPException
 from sqlalchemy import and_, text
@@ -28,6 +28,8 @@ from apps.system.crud.schema_metadata import (
     table_comment_map,
 )
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.crud.tracking_config import get_tracking_config
+from apps.system.models.tenant import TenantSchemaFieldModel, TenantSchemaTableModel
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
@@ -890,6 +892,267 @@ def _relation_id(value) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _schema_table_name(ds: CoreDatasource, db_name: str | None, table_name: str) -> str:
+    no_schema_types = ["mysql", "es", "sqlite", "hive", "doris", "starrocks"]
+    if ds.type not in no_schema_types and db_name:
+        return f"{db_name}.{table_name}"
+    return table_name
+
+
+def _schema_field_type(value: str | None, fallback: str = "text") -> str:
+    value = (value or "").strip()
+    return value or fallback
+
+
+def _schema_field_comment(*parts: str | None) -> str:
+    values = [part.strip() for part in parts if part and part.strip()]
+    return "; ".join(dict.fromkeys(values))
+
+
+def _dictionary_table_comment(table_name: str, comments: dict[str, str], tracking_tables: dict[str, Any]) -> str:
+    tracking_table = tracking_tables.get(table_name)
+    return _schema_field_comment(
+        comments.get(table_name),
+        getattr(tracking_table, "table_comment", None),
+        f"role={getattr(tracking_table, 'table_role', None)}" if getattr(tracking_table, "table_role", None) else None,
+        f"aliases={json.dumps(getattr(tracking_table, 'aliases', None), ensure_ascii=False)}" if getattr(tracking_table, "aliases", None) else None,
+        getattr(tracking_table, "ai_notes", None),
+    )
+
+
+def _dictionary_field_comment(field: Any, cached_comment: str | None = None) -> str:
+    aliases = getattr(field, "aliases", None)
+    examples = getattr(field, "example_values", None)
+    value_mappings = getattr(field, "value_mappings", None)
+    expression = getattr(field, "expression", None)
+    parts = [
+        cached_comment,
+        getattr(field, "field_comment", None),
+        f"role={getattr(field, 'field_role', None)}" if getattr(field, "field_role", None) else None,
+        f"source={getattr(field, 'source_field', None)}" if getattr(field, "source_field", None) else None,
+        f"json_path={getattr(field, 'json_path', None)}" if getattr(field, "json_path", None) else None,
+        "required=true" if getattr(field, "required", False) else None,
+        f"aliases={json.dumps(aliases, ensure_ascii=False)}" if aliases else None,
+        f"value_mappings={json.dumps(value_mappings, ensure_ascii=False)}" if value_mappings else None,
+        f"examples={json.dumps(examples, ensure_ascii=False)}" if examples else None,
+        f"expression={expression}" if expression else None,
+        "SQL must use expression instead of this dictionary field name" if expression else None,
+        getattr(field, "ai_notes", None),
+    ]
+    return _schema_field_comment(*parts)
+
+
+def _tracking_field_allowed_by_cached_permissions(
+        field: Any,
+        cached_fields_by_name: dict[str, CoreField],
+        has_cached_table: bool,
+) -> bool:
+    field_name = getattr(field, "field_name", None)
+    if not field_name:
+        return True
+    if not has_cached_table:
+        return True
+    if field_name in cached_fields_by_name:
+        return True
+    source_field = getattr(field, "source_field", None)
+    if source_field and source_field in cached_fields_by_name:
+        return True
+    if "." in field_name:
+        root_field = field_name.split(".", 1)[0]
+        return root_field in cached_fields_by_name
+    return False
+
+
+def _format_schema_table(
+        *,
+        ds: CoreDatasource,
+        db_name: str | None,
+        table_name: str,
+        table_comment: str,
+        fields: list[tuple[str, str, str]],
+) -> str:
+    schema_table = f"# Table: {_schema_table_name(ds, db_name, table_name)}"
+    schema_table += f", {table_comment}\n[\n" if table_comment else "\n[\n"
+    field_lines = []
+    for field_name, field_type, field_comment in fields:
+        if field_comment:
+            field_lines.append(f"({field_name}:{_schema_field_type(field_type)}, {field_comment})")
+        else:
+            field_lines.append(f"({field_name}:{_schema_field_type(field_type)})")
+    schema_table += ",\n".join(field_lines)
+    schema_table += "\n]\n"
+    return schema_table
+
+
+def _dictionary_schema_from_workspace(
+        *,
+        session: SessionDep,
+        current_user: CurrentUser,
+        ds: CoreDatasource,
+        tenant_id: int | None,
+        db_name: str | None,
+        table_list: list[str] | None,
+) -> tuple[str, list[str], bool]:
+    if tenant_id is None or ds is None or not has_datasource_access(session, current_user, ds.id):
+        return "", [], False
+
+    tracking_config = get_tracking_config(session, int(tenant_id))
+    tracking_enabled = bool(getattr(tracking_config, "enabled", False))
+    tracking_tables = {
+        item.table_name: item
+        for item in (tracking_config.tables or [])
+    } if tracking_enabled else {}
+    tracking_fields_by_table: dict[str, list[Any]] = {}
+    for field in ((tracking_config.fields or []) if tracking_enabled else []):
+        tracking_fields_by_table.setdefault(field.table_name, []).append(field)
+
+    schema_tables = session.exec(
+        select(TenantSchemaTableModel)
+        .where(TenantSchemaTableModel.tenant_id == int(tenant_id))
+        .order_by(TenantSchemaTableModel.table_name)
+    ).all()
+    schema_fields = session.exec(
+        select(TenantSchemaFieldModel)
+        .where(TenantSchemaFieldModel.tenant_id == int(tenant_id))
+        .order_by(TenantSchemaFieldModel.table_name, TenantSchemaFieldModel.field_name)
+    ).all()
+    schema_table_comments = {
+        row.table_name: row.table_comment or ""
+        for row in schema_tables
+    }
+    schema_field_comments = {
+        (row.table_name, row.field_name): row.field_comment or ""
+        for row in schema_fields
+    }
+    dictionary_configured = bool(
+        tracking_tables
+        or tracking_fields_by_table
+        or schema_table_comments
+        or schema_field_comments
+    )
+
+    table_names = set(schema_table_comments) | set(tracking_tables) | set(tracking_fields_by_table)
+    if table_list is not None:
+        requested = {str(table).strip() for table in table_list if str(table or "").strip()}
+        table_names = table_names & requested
+    table_names = {name for name in table_names if name}
+    if not table_names:
+        return "", [], dictionary_configured
+
+    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
+    cached_by_table = {obj.table.table_name: obj for obj in table_objs}
+    contain_rules = get_user_permission_rules(session, current_user, ds.id)
+    scoped_table_ids = get_user_scoped_table_ids(session, current_user, ds.id, contain_rules)
+
+    schema_parts: list[str] = []
+    table_name_list: list[str] = []
+    for table_name in sorted(table_names):
+        cached_obj = cached_by_table.get(table_name)
+        if cached_obj is not None and scoped_table_ids is not None and int(cached_obj.table.id) not in scoped_table_ids:
+            continue
+
+        cached_fields_by_name: dict[str, CoreField] = {}
+        if cached_obj is not None:
+            cached_fields = get_column_permission_fields(
+                session=session,
+                current_user=current_user,
+                table=cached_obj.table,
+                fields=cached_obj.fields or [],
+                contain_rules=contain_rules,
+            )
+            cached_fields_by_name = {field.field_name: field for field in cached_fields}
+
+        fields: list[tuple[str, str, str]] = []
+        seen_fields: set[str] = set()
+        for field in tracking_fields_by_table.get(table_name, []):
+            field_name = field.field_name
+            if not field_name or field_name in seen_fields:
+                continue
+            if not _tracking_field_allowed_by_cached_permissions(field, cached_fields_by_name, cached_obj is not None):
+                continue
+            cached_field = cached_fields_by_name.get(field_name)
+            cached_type = getattr(cached_field, "field_type", None)
+            field_type = _schema_field_type(getattr(field, "semantic_type", None), cached_type or "text")
+            field_comment = _dictionary_field_comment(
+                field,
+                schema_field_comments.get((table_name, field_name)),
+            )
+            fields.append((field_name, field_type, field_comment))
+            seen_fields.add(field_name)
+
+        for (schema_table, schema_field), field_comment in sorted(schema_field_comments.items()):
+            if schema_table != table_name or schema_field in seen_fields:
+                continue
+            cached_field = cached_fields_by_name.get(schema_field)
+            if cached_obj is not None and cached_field is None:
+                continue
+            field_type = _schema_field_type(getattr(cached_field, "field_type", None), "text")
+            fields.append((schema_field, field_type, field_comment or ""))
+            seen_fields.add(schema_field)
+
+        if not fields:
+            continue
+
+        table_comment = _dictionary_table_comment(table_name, schema_table_comments, tracking_tables)
+        schema_parts.append(_format_schema_table(
+            ds=ds,
+            db_name=db_name,
+            table_name=table_name,
+            table_comment=table_comment,
+            fields=fields,
+        ))
+        table_name_list.append(table_name)
+
+    if not schema_parts:
+        return "", [], dictionary_configured
+
+    schema_str = f"【DB_ID】 {db_name or ''}\n【Schema】\n"
+    schema_str += (
+        "【AI schema source】workspace data dictionary. "
+        "Use only tables and fields declared below; do not infer missing structure from the physical database. "
+        "When a dictionary field declares expression=..., use that SQL expression rather than treating the dictionary field name as a physical column.\n"
+    )
+    schema_str += "".join(schema_parts)
+    return schema_str, table_name_list, dictionary_configured
+
+
+def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
+                        embedding: bool = True, table_list: list[str] = None) -> tuple[str, list]:
+    """
+    是什么：为 AI 生成 SQL/分析计划提供结构上下文。
+    做了什么：优先读取工作空间数据字典和字段注释；物理库只在执行 SQL 时使用，不在这里探测结构。
+    """
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    db_name = effective_db_schema(ds.type, conf)
+    tenant_id = _schema_metadata_tenant_id(session, ds, current_user)
+    dictionary_schema, dictionary_tables, dictionary_configured = _dictionary_schema_from_workspace(
+        session=session,
+        current_user=current_user,
+        ds=ds,
+        tenant_id=tenant_id,
+        db_name=db_name,
+        table_list=table_list,
+    )
+    if dictionary_tables or dictionary_configured:
+        return dictionary_schema, dictionary_tables
+
+    schema, tables = get_table_schema(
+        session=session,
+        current_user=current_user,
+        ds=ds,
+        question=question,
+        embedding=embedding,
+        table_list=table_list,
+    )
+    if schema:
+        schema = schema.replace(
+            "【Schema】\n",
+            "【Schema】\n【AI schema source】cached datasource metadata. No live physical schema probing was performed.\n",
+            1,
+        )
+    return schema, tables
 
 
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,

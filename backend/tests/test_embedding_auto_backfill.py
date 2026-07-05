@@ -47,6 +47,30 @@ class _FakeExecuteSession:
         return SimpleNamespace(all=lambda: rows)
 
 
+class _FakeExecRows:
+    """
+    类说明：_FakeExecRows 模拟 SQLModel session.exec 返回值。
+    """
+
+    def __init__(self, rows: list[Any]) -> None:
+        self.rows = rows
+
+    def all(self) -> list[Any]:
+        return self.rows
+
+
+class _FakeSchemaSession:
+    """
+    类说明：_FakeSchemaSession 为 AI schema 字典测试提供最小 exec 能力。
+    """
+
+    def __init__(self, results: list[list[Any]]) -> None:
+        self.results = results
+
+    def exec(self, _stmt: Any) -> _FakeExecRows:
+        return _FakeExecRows(self.results.pop(0))
+
+
 class _FakeSessionMaker:
     """
     类说明：_FakeSessionMaker 模拟 scoped_session 的调用和 remove。
@@ -195,6 +219,151 @@ def test_legacy_table_embedding_queues_backfill_before_fallback(monkeypatch) -> 
 
     assert queued == [([10, 11], 1)]
     assert result == ["fact_a", "fact_b"]
+
+
+def test_ai_table_schema_uses_workspace_dictionary_without_cached_field_fallback(monkeypatch) -> None:
+    """
+    是什么：AI 识别结构时应以工作空间数据字典为主，不把未声明的缓存字段偷偷塞回 prompt。
+    """
+    monkeypatch.setattr(datasource_crud, "_schema_metadata_tenant_id", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(datasource_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda _value: json.dumps({"dbSchema": "public"}))
+    monkeypatch.setattr(datasource_crud, "get_user_permission_rules", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(datasource_crud, "get_user_scoped_table_ids", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(datasource_crud, "get_column_permission_fields", lambda **kwargs: kwargs["fields"])
+    monkeypatch.setattr(
+        datasource_crud,
+        "get_tracking_config",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            enabled=True,
+            tables=[
+                SimpleNamespace(
+                    table_name="user",
+                    table_comment="用户表",
+                    table_role="profile",
+                    aliases=["玩家"],
+                    ai_notes="以用户粒度保存注册、留存和付费属性。",
+                )
+            ],
+            fields=[
+                SimpleNamespace(
+                    table_name="user",
+                    field_name="pay.pay2",
+                    field_comment="注册后第2日累计付费金额，用于次日 LTV。",
+                    field_role="json_path_metric",
+                    semantic_type="number",
+                    source_field="pay",
+                    json_path="$.pay2",
+                    aliases=["次日LTV"],
+                    value_mappings=None,
+                    expression="JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay2'))",
+                    required=True,
+                    example_values=[1.25],
+                    ai_notes="次日 LTV 必须使用 pay2，不使用 pay1。",
+                )
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        datasource_crud,
+        "get_table_obj_by_ds",
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(
+                schema="public",
+                table=SimpleNamespace(id=10, ds_id=2, table_name="user", custom_comment="", embedding=None),
+                fields=[
+                    SimpleNamespace(id=100, field_name="uid", field_type="varchar", custom_comment="", field_comment="用户ID"),
+                    SimpleNamespace(id=101, field_name="pay", field_type="json", custom_comment="", field_comment="付费JSON"),
+                    SimpleNamespace(id=102, field_name="hidden_cache_only", field_type="text", custom_comment="", field_comment="缓存字段"),
+                ],
+            )
+        ],
+    )
+
+    session = _FakeSchemaSession(
+        [
+            [SimpleNamespace(table_name="user", table_comment="用户宽表")],
+            [
+                SimpleNamespace(table_name="user", field_name="uid", field_comment="用户ID"),
+                SimpleNamespace(table_name="user", field_name="pay", field_comment="付费JSON"),
+            ],
+        ]
+    )
+    schema, tables = datasource_crud.get_ai_table_schema(
+        session,
+        SimpleNamespace(id=1),
+        SimpleNamespace(id=2, type="pg", configuration="{}", table_relation=None),
+        "次日 LTV",
+        embedding=False,
+    )
+
+    assert tables == ["user"]
+    assert "workspace data dictionary" in schema
+    assert "(pay.pay2:number" in schema
+    assert "expression=JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay2'))" in schema
+    assert "SQL must use expression instead of this dictionary field name" in schema
+    assert "(uid:varchar" in schema
+    assert "(pay:json" in schema
+    assert "hidden_cache_only" not in schema
+
+
+def test_ai_table_schema_hides_tracking_field_when_source_field_permission_denied(monkeypatch) -> None:
+    """
+    是什么：字典派生字段依赖的源字段不可见时，AI schema 也不能暴露该派生字段。
+    """
+    monkeypatch.setattr(datasource_crud, "_schema_metadata_tenant_id", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(datasource_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda _value: json.dumps({"dbSchema": "public"}))
+    monkeypatch.setattr(datasource_crud, "get_user_permission_rules", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(datasource_crud, "get_user_scoped_table_ids", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(datasource_crud, "get_column_permission_fields", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        datasource_crud,
+        "get_tracking_config",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            enabled=True,
+            tables=[SimpleNamespace(table_name="user", table_comment="用户表", table_role="", aliases=[], ai_notes="")],
+            fields=[
+                SimpleNamespace(
+                    table_name="user",
+                    field_name="pay.pay2",
+                    field_comment="次日 LTV",
+                    field_role="json_path_metric",
+                    semantic_type="number",
+                    source_field="pay",
+                    json_path="$.pay2",
+                    aliases=[],
+                    value_mappings=None,
+                    expression="JSON_UNQUOTE(JSON_EXTRACT(pay, '$.pay2'))",
+                    required=False,
+                    example_values=[],
+                    ai_notes="",
+                )
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        datasource_crud,
+        "get_table_obj_by_ds",
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(
+                schema="public",
+                table=SimpleNamespace(id=10, ds_id=2, table_name="user", custom_comment="", embedding=None),
+                fields=[SimpleNamespace(id=101, field_name="pay", field_type="json", custom_comment="", field_comment="付费JSON")],
+            )
+        ],
+    )
+
+    schema, tables = datasource_crud.get_ai_table_schema(
+        _FakeSchemaSession([[SimpleNamespace(table_name="user", table_comment="用户宽表")], []]),
+        SimpleNamespace(id=1),
+        SimpleNamespace(id=2, type="pg", configuration="{}", table_relation=None),
+        "次日 LTV",
+        embedding=False,
+    )
+
+    assert schema == ""
+    assert tables == []
 
 
 def test_fill_empty_table_and_ds_embedding_detects_non_empty_stale_vectors(monkeypatch) -> None:

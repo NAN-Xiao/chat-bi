@@ -40,7 +40,7 @@ from apps.chat.curd.custom_prompt import (
 )
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog, OperationEnum, \
     ChatFinishStep, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
-from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
+from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_DISPLAY_MESSAGE,
@@ -1497,19 +1497,14 @@ class LLMService:
                                                                   record_id=self.record.id,
                                                                   local_operation=True)
         self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
-            self.ds.id, self.chat_question.question) if self.out_ds_instance else get_table_schema(
+            self.ds.id, self.chat_question.question) if self.out_ds_instance else get_ai_table_schema(
             session=_session,
             current_user=self.current_user,
             ds=self.ds,
             question=self.chat_question.question)
 
-        # 获取所有表的样例数据
-        if not self.out_ds_instance:
-            self.chat_question.sample_data = get_tables_sample_data(
-                session=_session,
-                current_user=self.current_user,
-                ds=self.ds,
-                table_list=tables)
+        # AI 结构识别以工作空间数据字典为准，不通过样例数据探测物理表。
+        self.chat_question.sample_data = ""
 
         self.current_logs[OperationEnum.CHOOSE_TABLE] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.CHOOSE_TABLE],
@@ -1635,7 +1630,7 @@ class LLMService:
         """
         if self.ds and not self.chat_question.db_schema:
             self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
-                self.ds.id, self.chat_question.question) if self.out_ds_instance else get_table_schema(
+                self.ds.id, self.chat_question.question) if self.out_ds_instance else get_ai_table_schema(
                 session=_session,
                 current_user=self.current_user, ds=self.ds,
                 question=self.chat_question.question,
