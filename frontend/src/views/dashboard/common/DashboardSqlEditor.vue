@@ -5,6 +5,7 @@ import { Delete, FolderAdd, Plus, WarningFilled } from '@element-plus/icons-vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { datasourceApi } from '@/api/datasource.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
+import { trackingConfigApi } from '@/api/system.ts'
 import { request } from '@/utils/request.ts'
 import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
@@ -73,7 +74,7 @@ type SqlBuilderFilter = {
 }
 type SqlBuilderMetricItem = {
   id: string
-  event: string
+  field: string
   metric: string
   aggregation: string
   alias: string
@@ -103,10 +104,20 @@ type SchemaFieldOption = {
   comment?: string
   tableComment?: string
   category?: string
+  semanticType?: string
   sourceField?: string
   jsonPath?: string
   expression?: string
   isJsonSubfield?: boolean
+  kind?: string
+  eventName?: string
+  eventCategory?: string
+  eventDescription?: string
+  collectSide?: string
+  eventTable?: string
+  eventNameField?: string
+  propertyName?: string
+  propertyType?: string
 }
 
 const mcpTextFallbacks: Record<string, string> = {
@@ -251,6 +262,7 @@ const mcpFilterOptionsLoading = ref(false)
 const mcpFilterOptions = ref<Record<string, string[]>>({})
 const schemaLoading = ref(false)
 const schemaTables = ref<any[]>([])
+const trackingEventCatalog = ref<any>(null)
 const datasourceInfo = ref<any>(null)
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
@@ -450,6 +462,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
       if (seen.has(value)) return
       seen.add(value)
       const type = field?.field_type || field?.fieldType || field?.type || ''
+      const semanticType = field?.semantic_type || field?.semanticType || ''
       const comment = field?.custom_comment || field?.customComment || field?.field_comment || field?.fieldComment || field?.comment || ''
       const displayName = field?.display_name || field?.displayName || ''
       const sourceField = field?.source_field || field?.sourceField || ''
@@ -466,6 +479,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
         comment,
         tableComment,
         category: field?.category || builderFieldCategory(type, fieldName),
+        semanticType,
         sourceField,
         jsonPath,
         expression: field?.expression || '',
@@ -476,6 +490,93 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
   return options
 })
 const builderFieldOptions = computed(() => schemaFieldOptions.value)
+const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
+  const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
+  return groups.flatMap((group: any) => {
+    const events = Array.isArray(group?.events) ? group.events : []
+    return events.map((event: any) => {
+      const eventTable = event?.event_table || event?.eventTable || trackingEventCatalog.value?.event_table || trackingEventCatalog.value?.eventTable || ''
+      const eventNameField = event?.event_name_field || event?.eventNameField || trackingEventCatalog.value?.event_name_field || trackingEventCatalog.value?.eventNameField || ''
+      const eventName = event?.event_name || event?.eventName || ''
+      const displayName = event?.display_name || event?.displayName || eventName
+      const category = event?.category || group?.label || '默认分组'
+      return {
+        label: displayName,
+        value: event?.value || `tracking-event:${eventTable}.${eventNameField}:${eventName}`,
+        table: eventTable,
+        tableLabel: '事件参数对照',
+        field: eventNameField,
+        displayName,
+        type: '事件',
+        comment: event?.description || '',
+        tableComment: '事件参数对照',
+        category,
+        kind: 'tracking-event',
+        eventName,
+        eventCategory: category,
+        eventDescription: event?.description || '',
+        collectSide: event?.collect_side || event?.collectSide || '',
+        eventTable,
+        eventNameField,
+      }
+    })
+  })
+})
+const trackingEventPropertyOptions = computed<SchemaFieldOption[]>(() => {
+  const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
+  return groups.flatMap((group: any) => {
+    const events = Array.isArray(group?.events) ? group.events : []
+    return events.flatMap((event: any) => {
+      const eventTable = event?.event_table || event?.eventTable || trackingEventCatalog.value?.event_table || trackingEventCatalog.value?.eventTable || ''
+      const eventNameField = event?.event_name_field || event?.eventNameField || trackingEventCatalog.value?.event_name_field || trackingEventCatalog.value?.eventNameField || ''
+      const eventName = event?.event_name || event?.eventName || ''
+      const eventDisplayName = event?.display_name || event?.displayName || eventName
+      const properties = Array.isArray(event?.properties) ? event.properties : []
+      return properties.map((property: any) => {
+        const propertyName = property?.property_name || property?.propertyName || property?.field_name || property?.fieldName || ''
+        const displayName = property?.display_name || property?.displayName || property?.property_display_name || property?.propertyDisplayName || propertyName
+        const sourceField = property?.source_field || property?.sourceField || ''
+        const jsonPath = property?.json_path || property?.jsonPath || ''
+        const propertyType = property?.property_type || property?.propertyType || property?.type || ''
+        return {
+          label: displayName,
+          value: property?.value || `tracking-property:${eventTable}.${eventNameField}:${eventName}:${propertyName}`,
+          table: eventTable,
+          tableLabel: `${eventDisplayName} 参数`,
+          field: propertyName,
+          displayName,
+        type: propertyType || '事件参数',
+        comment: property?.description || '',
+        tableComment: '事件参数对照',
+        category: propertyType || '事件参数',
+        semanticType: propertyType,
+        sourceField,
+          jsonPath,
+          isJsonSubfield: Boolean(sourceField || jsonPath),
+          kind: 'tracking-property',
+          eventName,
+          eventCategory: event?.category || group?.label || '默认分组',
+          eventTable,
+          eventNameField,
+          propertyName,
+          propertyType,
+        }
+      })
+    })
+  })
+})
+const trackingEventPropertyOptionsByEvent = computed(() => {
+  const groups = new Map<string, SchemaFieldOption[]>()
+  trackingEventPropertyOptions.value.forEach((option) => {
+    const key = option.eventName || ''
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)?.push(option)
+  })
+  return groups
+})
+const analysisFieldOptions = computed(() => trackingEventCatalogOptions.value)
 const builderMetricOptions = computed(() =>
   sqlBuilder.metricItems.map((item, index) => ({
     label: metricOutputAlias(item, index),
@@ -807,7 +908,7 @@ function emptyBuilderFilterGroup(): SqlBuilderFilter {
 function emptyMetricItem(): SqlBuilderMetricItem {
   return {
     id: nodeId('metric'),
-    event: '',
+    field: '',
     metric: '',
     aggregation: 'count',
     alias: '',
@@ -830,10 +931,9 @@ function emptyCalculatedMetricItem(): SqlBuilderCalculatedMetricItem {
 
 function addMetricItem() {
   const item = emptyMetricItem()
-  const eventField = schemaFieldOptions.value.find((field) => /(^|[._])event(name)?$/i.test(field.field))
   const numericField = schemaFieldOptions.value.find((field) => field.category === 'number')
-  item.event = eventField?.value || schemaFieldOptions.value[0]?.value || ''
-  item.metric = numericField?.value || item.event
+  item.field = analysisFieldOptions.value[0]?.value || ''
+  item.metric = numericField?.value || item.field
   item.alias = `指标${sqlBuilder.metricItems.length + 1}`
   sqlBuilder.metricItems.push(item)
 }
@@ -870,9 +970,9 @@ function removeCalculatedMetricItem(index: number) {
 }
 
 function metricTitle(item: SqlBuilderMetricItem, index: number) {
-  const event = schemaFieldOptions.value.find((field) => field.value === item.event)
+  const field = schemaFieldOptions.value.find((option) => option.value === item.field)
   const aggregation = builderAggregationOptions.find((option) => option.value === item.aggregation)
-  return `${event?.displayName || event?.label || event?.field || `指标${index + 1}`}.${aggregation?.label || '指标'}`
+  return `${field?.displayName || field?.label || field?.field || `指标${index + 1}`}.${aggregation?.label || '指标'}`
 }
 
 function metricOutputAlias(item: SqlBuilderMetricItem, index: number) {
@@ -1041,7 +1141,7 @@ function shouldHideBuilderAdviceItem(text: string, type: 'issue' | 'suggestion')
   if (/配置已转换|生成.*SQL|查询.*SQL/i.test(value)) {
     return true
   }
-  if (/分组项.*(event\.time|event\.dt|事件时间|时间字段|按天|按周|按月)|时间.*分组项|分组项.*时间/i.test(value)) {
+  if (/分组项.*(\b\w+\.(?:time|dt)\b|事件时间|时间字段|按天|按周|按月)|时间.*分组项|分组项.*时间/i.test(value)) {
     return true
   }
   if (type === 'suggestion' && !/(时间范围|分析指标|筛选条件|分组项|生成意图|字段选|聚合选|别名填|条件选|值填|值输入框|手动填|添加|改成)/.test(value)) {
@@ -1292,7 +1392,7 @@ function builderConfigForSave() {
     timeCustomRange: Array.isArray(sqlBuilder.timeCustomRange) ? [...sqlBuilder.timeCustomRange] : [],
     metricItems: sqlBuilder.metricItems.map((item) => ({
       id: item.id,
-      event: item.event || '',
+      field: item.field || '',
       metric: item.metric || '',
       aggregation: item.aggregation || 'count',
       alias: item.alias || '',
@@ -1333,7 +1433,7 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.metricItems = Array.isArray(value.metricItems)
     ? value.metricItems.map((item: any, index: number) => ({
         id: typeof item?.id === 'string' && item.id ? item.id : nodeId('metric'),
-        event: typeof item?.event === 'string' ? item.event : '',
+        field: typeof item?.field === 'string' ? item.field : '',
         metric: typeof item?.metric === 'string' ? item.metric : '',
         aggregation: builderAggregationOptions.some((option) => option.value === item?.aggregation)
           ? item.aggregation
@@ -1366,8 +1466,34 @@ function restoreSqlBuilderState(value: any) {
   restoreBuilderAgentAdvice(value.agentAdvice)
 }
 
+function builderTimeFieldPriority(option: SchemaFieldOption) {
+  const text = [
+    option.label,
+    option.displayName,
+    option.comment,
+    option.field,
+    option.value,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  if (/事件日期|event[_\s-]*date/.test(text)) return 0
+  if (/事件时间|event[_\s-]*time/.test(text)) return 1
+  if (/日期|date|day|dt/.test(text)) return 2
+  if (/时间|time|timestamp/.test(text)) return 3
+  return 4
+}
+
+function preferredBuilderTimeField() {
+  return builderTimeFieldOptions.value
+    .map((option, index) => ({ option, index, priority: builderTimeFieldPriority(option) }))
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)[0]?.option.value || ''
+}
+
 function fieldOptionByValue(value: string) {
-  return schemaFieldOptions.value.find((field) => field.value === value)
+  return trackingEventCatalogOptions.value.find((field) => field.value === value)
+    || trackingEventPropertyOptions.value.find((field) => field.value === value)
+    || schemaFieldOptions.value.find((field) => field.value === value)
 }
 
 function builderFieldLabel(value: string) {
@@ -1407,9 +1533,17 @@ function builderFilterOperatorLabel(value: string) {
 function recommendedMetricField(item: SqlBuilderMetricItem, preferredTable = '') {
   const current = fieldOptionByValue(metricMeasureField(item))
   if (preferredTable && current && current.table !== preferredTable) {
-    return fieldOptionByValue(item.event) || current
+    return fieldOptionByValue(item.field) || current
   }
-  return current || fieldOptionByValue(item.event)
+  return current || fieldOptionByValue(item.field)
+}
+
+function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
+  const eventOption = fieldOptionByValue(item.field)
+  if (eventOption?.kind !== 'tracking-event' || !eventOption.eventName) {
+    return []
+  }
+  return trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
 }
 
 function recommendedMetricAlias(item: SqlBuilderMetricItem, index: number) {
@@ -1423,7 +1557,7 @@ function recommendedMetricAlias(item: SqlBuilderMetricItem, index: number) {
 function describeBuilderMetricConfig(item: SqlBuilderMetricItem, index: number, preferredTable = '') {
   const alias = recommendedMetricAlias(item, index)
   const recommendedField = recommendedMetricField(item, preferredTable)
-  const field = quotedBuilderFieldLabel(recommendedField?.value || item.event || metricMeasureField(item))
+  const field = quotedBuilderFieldLabel(recommendedField?.value || item.field || metricMeasureField(item))
   const aggregation = builderAggregationLabel(item.aggregation)
   const metricField = item.aggregation === 'count'
     ? ''
@@ -1563,10 +1697,10 @@ function recoverMissingMetricFiltersFromSql() {
       return
     }
     const candidates = unique([
-      item.event,
+      item.field,
       metricMeasureField(item),
       ...schemaFieldOptions.value
-        .filter((field) => field.table === fieldOptionByValue(item.event)?.table)
+        .filter((field) => field.table === fieldOptionByValue(item.field)?.table)
         .map((field) => field.value),
     ])
     const restored = candidates
@@ -1597,7 +1731,7 @@ function filterFieldValues(filters: SqlBuilderFilter[]): string[] {
 }
 
 function metricMeasureField(item: SqlBuilderMetricItem) {
-  return item.aggregation === 'count' ? item.event : item.metric || item.event
+  return item.aggregation === 'count' ? item.field : item.metric || item.field
 }
 
 function currentSqlMainTable() {
@@ -1637,10 +1771,20 @@ function fieldOptionPayload(value: string) {
     type: option.type,
     comment: option.comment,
     category: option.category,
+    semanticType: option.semanticType,
     sourceField: option.sourceField,
     jsonPath: option.jsonPath,
     expression: option.expression,
     isJsonSubfield: option.isJsonSubfield,
+    kind: option.kind,
+    eventName: option.eventName,
+    eventCategory: option.eventCategory,
+    eventDescription: option.eventDescription,
+    collectSide: option.collectSide,
+    eventTable: option.eventTable,
+    eventNameField: option.eventNameField,
+    propertyName: option.propertyName,
+    propertyType: option.propertyType,
   }
 }
 
@@ -1672,7 +1816,7 @@ function filterContext(nodes: SqlBuilderFilter[]): any[] {
 function selectedBuilderFieldValues() {
   return unique([
     sqlBuilder.timeField,
-    ...sqlBuilder.metricItems.flatMap((item) => [item.event, item.metric]),
+    ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
     ...sqlBuilder.groups,
     ...filterFieldValues(sqlBuilder.globalFilters),
     ...sqlBuilder.metricItems.flatMap((item) => filterFieldValues(item.filters || [])),
@@ -1710,7 +1854,7 @@ function collectBuilderAiContext() {
       id: item.id,
       alias: metricOutputAlias(item, index),
       label: metricTitle(item, index),
-      eventField: fieldOptionPayload(item.event),
+      field: fieldOptionPayload(item.field),
       metricField: fieldOptionPayload(metricMeasureField(item)),
       aggregation: item.aggregation,
       filters: {
@@ -1788,19 +1932,12 @@ function collectLocalBuilderConfigIssues() {
     issues.push(`指标别名重复：${duplicateAlias}。`)
     suggestions.push('分析指标：把重复别名改成不同的业务名称。')
   }
-  const unfilteredCountMetrics = sqlBuilder.metricItems.filter(
-    (item) => item.aggregation === 'count' && !hasEffectiveBuilderFilters(item.filters || [])
-  )
-  if (unfilteredCountMetrics.length > 1) {
-    issues.push('多个“总次数”没有筛选，结果会一样。')
-    suggestions.push('分析指标：如果要统计不同对象，请改用不同字段/聚合方式，或给每个指标配置不同筛选条件。')
-  }
   const metricFingerprints = new Set<string>()
   sqlBuilder.metricItems.forEach((item, index) => {
     const alias = metricOutputAlias(item, index)
     const label = alias || `指标${index + 1}`
     const fingerprint = JSON.stringify({
-      event: item.event,
+      field: item.field,
       metric: metricMeasureField(item),
       aggregation: item.aggregation,
       filters: filterContext(item.filters || []),
@@ -2011,15 +2148,18 @@ async function loadSchemaTables() {
   if (!props.viewInfo?.datasource) {
     datasourceInfo.value = null
     schemaTables.value = previewSchemaTables()
+    trackingEventCatalog.value = null
     return
   }
   schemaLoading.value = true
   try {
-    const [datasource, tablesResult] = await Promise.all([
+    const [datasource, tablesResult, eventCatalogResult] = await Promise.all([
       datasourceApi.getDs(props.viewInfo.datasource).catch(() => null),
       datasourceApi.tableList(props.viewInfo.datasource),
+      trackingConfigApi.eventCatalog().catch(() => null),
     ])
     datasourceInfo.value = datasource
+    trackingEventCatalog.value = eventCatalogResult
     const tables: any[] = tablesResult
     const normalizedTables = Array.isArray(tables) ? tables : []
     const tablesWithFields = await Promise.all(
@@ -2031,7 +2171,7 @@ async function loadSchemaTables() {
           return { ...table, fields: [] }
         }
         try {
-          const fields = await datasourceApi.fieldList(table.id, { fieldName: '' })
+          const fields = await datasourceApi.fieldList(table.id, { fieldName: '', excludeContainerFields: true })
           return { ...table, fields: Array.isArray(fields) ? fields : [] }
         } catch {
           return { ...table, fields: [] }
@@ -2040,7 +2180,7 @@ async function loadSchemaTables() {
     )
     schemaTables.value = tablesWithFields.length ? tablesWithFields : previewSchemaTables()
     if (!sqlBuilder.timeField) {
-      sqlBuilder.timeField = builderTimeFieldOptions.value[0]?.value || ''
+      sqlBuilder.timeField = preferredBuilderTimeField()
     }
     if (!sqlBuilder.metricItems.length) {
       addMetricItem()
@@ -2048,6 +2188,7 @@ async function loadSchemaTables() {
   } catch {
     datasourceInfo.value = null
     schemaTables.value = previewSchemaTables()
+    trackingEventCatalog.value = null
   } finally {
     schemaLoading.value = false
   }
@@ -3841,11 +3982,11 @@ function closeDrawer() {
                       :class="{ 'has-metric-field': item.aggregation !== 'count' }"
                     >
                       <BuilderFieldPicker
-                        v-model="item.event"
-                        :options="builderFieldOptions"
+                        v-model="item.field"
+                        :options="analysisFieldOptions"
                         :loading="schemaLoading"
-                        mode="event"
-                        placeholder="事件/字段"
+                        mode="tracking-event"
+                        placeholder="分析字段"
                       />
                       <span class="metric-of">的</span>
                       <el-select v-model="item.aggregation" size="small" class="metric-aggregation">
@@ -3881,7 +4022,7 @@ function closeDrawer() {
                       v-if="item.filters.length"
                       :nodes="item.filters"
                       :logic="item.filterLogic"
-                      :field-options="builderFieldOptions"
+                      :field-options="metricFilterFieldOptions(item)"
                       :operator-options="builderFilterOperatorOptions"
                       :schema-loading="schemaLoading"
                       :show-toolbar="false"

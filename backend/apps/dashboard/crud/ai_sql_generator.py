@@ -180,11 +180,11 @@ def _dashboard_diagnosis_system_prompt() -> str:
         "重要：时间范围里的粒度（按天/按周/按月）已经是时间分组，不要建议用户再到“分组项”里添加时间字段。分组项只用于国家、平台、渠道等额外维度。\n"
         "一个分析指标可以有多个筛选条件或条件组；不要把多个筛选条件合并成一句含糊建议。涉及复合指标时，要同时说明“分析指标”和“计算指标”怎么配置。\n"
         "配置建议必须具体到界面动作，例如："
-        "“时间范围：字段选「事件时间 event.time」，粒度选「按天」，范围选「过去7天」”；"
-        "“分析指标1：字段选「用户ID event.uid」，聚合选「去重数」，计算字段选「用户ID event.uid」，别名填「业务指标名」”；"
-        "“分析指标1筛选条件：字段选「事件名 event.event」，条件选「等于」，最右侧值输入框手动填「业务口径里的事件值」”；"
+        "“时间范围：字段选「创建时间 orders.created_at」，粒度选「按天」，范围选「过去7天」”；"
+        "“分析指标1：字段选「用户ID orders.user_id」，聚合选「去重数」，计算字段选「用户ID orders.user_id」，别名填「业务指标名」”；"
+        "“分析指标1筛选条件：字段选「订单状态 orders.status」，条件选「等于」，最右侧值输入框手动填「业务口径里的状态值」”；"
         "“计算指标1：左侧选「指标A」，运算选「除以」，右侧选「指标B」，倍率填「1」，别名填「业务指标名」”；"
-        "“分组项：添加「国家 event.userinfo.country」”。"
+        "“分组项：添加「国家 users.country」”。"
     )
 
 
@@ -248,6 +248,8 @@ def _dashboard_config_prompt(
         "",
         "当前配置器可配置的控件：时间范围(time.field/time.grain/time.range)、分析指标(metrics: 字段/聚合/计算字段/别名/指标内筛选树)、计算指标(calculatedMetrics: 左指标/运算符/右指标/倍率/小数/别名)、全局筛选、分组项(groups)。",
         "配置器规则：time.field + time.grain 会自动生成日期维度；groups 只表示额外维度，不包含时间维度也不是错误。",
+        "当 metrics.field.kind 为 tracking-event 时，它表示从“事件参数对照”中选择的业务事件；生成 SQL 时必须使用 metrics.field.eventTable 和 metrics.field.eventNameField（或 table/field）定位事件名字段，并添加“事件名字段 = metrics.field.eventName”的过滤条件。",
+        "当指标内筛选 rules[].field.kind 为 tracking-property 时，它表示该业务事件下的事件参数；生成 SQL 时必须按 rules[].field.sourceField/jsonPath 或 field 在事件明细行中取值，再应用对应 operator/value。",
         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/calculatedMetrics/groups/filters 字段信息生成 SQL；不要编造未提供字段。",
     ])
 

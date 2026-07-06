@@ -11,7 +11,7 @@ from sqlmodel import select
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.tracking_config import get_tracking_config, save_tracking_config
+from apps.system.crud.tracking_config import build_tracking_event_catalog, get_tracking_config, save_tracking_config
 from apps.system.crud.tracking_excel import (
     PhysicalFieldInfo,
     PhysicalTableInfo,
@@ -22,6 +22,7 @@ from apps.system.crud.tracking_excel import (
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
+    TenantTrackingEventCatalogDTO,
     TenantTrackingConfigImportDTO,
 )
 from common.audit.models.log_model import OperationModules, OperationType
@@ -122,6 +123,19 @@ async def current_tracking_config(
     """
     _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
     return get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+
+
+@router.get("/event-catalog", response_model=TenantTrackingEventCatalogDTO, include_in_schema=False)
+async def current_tracking_event_catalog(
+    session: SessionDep,
+    current_tenant: CurrentTenant,
+):
+    """
+    是什么：给图表 SQL 构建器返回当前工作空间的业务事件选择目录。
+    """
+    _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
+    config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+    return build_tracking_event_catalog(config)
 
 
 @router.put("", response_model=TenantTrackingConfigDTO, include_in_schema=False)

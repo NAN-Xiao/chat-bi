@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 from apps.chat.models.chat_model import AiModelQuestion
 from apps.system.crud.tracking_config import build_tracking_prompt_context
@@ -56,6 +56,30 @@ def _event_physical_schema() -> dict[str, PhysicalTableInfo]:
                 PhysicalFieldInfo("event", "varchar", "事件名"),
                 PhysicalFieldInfo("time", "bigint", "事件时间"),
                 PhysicalFieldInfo("ext", "json", "事件属性"),
+            ],
+        ),
+    }
+
+
+def _event_user_physical_schema() -> dict[str, PhysicalTableInfo]:
+    return {
+        "event": PhysicalTableInfo(
+            table_name="event",
+            table_comment="事件明细表",
+            fields=[
+                PhysicalFieldInfo("uid", "varchar", "用户ID"),
+                PhysicalFieldInfo("event", "varchar", "事件名"),
+                PhysicalFieldInfo("time", "bigint", "事件时间"),
+                PhysicalFieldInfo("ext", "json", "事件参数"),
+            ],
+        ),
+        "user": PhysicalTableInfo(
+            table_name="user",
+            table_comment="用户表",
+            fields=[
+                PhysicalFieldInfo("account_id", "varchar", "账号ID"),
+                PhysicalFieldInfo("hero_detail", "json", "拥有的卡牌明细"),
+                PhysicalFieldInfo("total_revenue", "numeric", "累计付费金额"),
             ],
         ),
     }
@@ -188,6 +212,316 @@ def _sheet_rows(workbook_bytes: bytes, sheet_name: str) -> list[tuple[object, ..
     return list(sheet.iter_rows(min_row=2, values_only=True))
 
 
+LEGACY_BUSINESS_HEADERS = [
+    "row_type",
+    "field_name",
+    "field_display_name",
+    "field_type",
+    "field_role",
+    "semantic_type",
+    "source_field",
+    "json_path",
+    "expression",
+    "required",
+    "value",
+    "value_display_name",
+    "value_category",
+    "collect_side",
+    "event_name",
+    "event_display_name",
+    "event_category",
+    "example_values",
+    "description",
+    "ai_notes",
+    "aliases",
+]
+
+
+def _legacy_business_workbook(sheet_name: str, rows: list[list[object]]) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = sheet_name
+    sheet.append(LEGACY_BUSINESS_HEADERS)
+    for row in rows:
+        sheet.append(row)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_event_and_user_tables_export_attribute_sheet_format() -> None:
+    """
+    是什么：验证真实 event/user 表导出为业务属性表格式，不再暴露 row_type 等内部列。
+    """
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        enabled=True,
+        default_event_table="event",
+        default_subject_field="uid",
+        default_event_name_field="event",
+        default_event_time_field="time",
+        tables=[
+            TenantTrackingTableDTO(tenant_id=2001, table_name="event", table_role="event_fact", aliases=["事件表"]),
+            TenantTrackingTableDTO(tenant_id=2001, table_name="user", table_role="user_profile", aliases=["用户表"]),
+        ],
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="ext.battleResult",
+                field_comment="战斗结果字段",
+                field_role="json_path_dimension",
+                semantic_type="text",
+                source_field="ext",
+                json_path="$.battleResult",
+                aliases=["战斗结果"],
+            ),
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="user",
+                field_name="total_revenue",
+                field_comment="累计付费金额，每次充值成功时累加，单位：分",
+                semantic_type="number",
+                aliases=["累计付费金额"],
+                update_mode="user_add",
+            ),
+        ],
+    )
+
+    workbook_bytes = tracking_config_excel(config, physical_schema=_event_user_physical_schema()).getvalue()
+
+    expected_headers = ["属性名（必填）", "属性显示名", "属性类型（必填）", "更新方式", "属性说明", "属性标签"]
+    assert _headers(workbook_bytes, "event") == expected_headers
+    assert _headers(workbook_bytes, "user") == expected_headers
+    event_rows = _sheet_rows(workbook_bytes, "event")
+    user_rows = _sheet_rows(workbook_bytes, "user")
+    assert any(row[0] == "ext.battleResult" and row[1] == "战斗结果" and row[2] == "文本" for row in event_rows)
+    assert any(row[0] == "total_revenue" and row[1] == "累计付费金额" and row[2] == "数值" and row[3] == "user_add" for row in user_rows)
+    assert "row_type" not in _headers(workbook_bytes, "event")
+    assert "row_type" not in _headers(workbook_bytes, "user")
+
+
+def test_event_table_exports_event_parameter_mapping_sheet() -> None:
+    """
+    是什么：验证 event 表属性导出时，事件参数会单独放入“事件参数对照”sheet。
+    """
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        enabled=True,
+        default_event_table="event",
+        default_subject_field="uid",
+        default_event_name_field="event",
+        default_event_time_field="time",
+        tables=[
+            TenantTrackingTableDTO(tenant_id=2001, table_name="event", table_role="event_fact", aliases=["事件表"]),
+            TenantTrackingTableDTO(tenant_id=2001, table_name="user", table_role="user_profile", aliases=["用户表"]),
+        ],
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="ext.battleResult",
+                field_comment="战斗结果，固定值win",
+                field_role="json_path_dimension",
+                semantic_type="text",
+                source_field="ext",
+                json_path="$.battleResult",
+                aliases=["战斗结果"],
+                category="战斗",
+            ),
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="ext.hero_info.hero_level",
+                field_comment="卡牌等级",
+                field_role="json_path_dimension",
+                semantic_type="number",
+                source_field="ext",
+                json_path="$.hero_info.hero_level",
+                aliases=["卡牌等级"],
+                category="战斗",
+            ),
+        ],
+        event_name_mappings=[
+            {
+                "event_name": "BattleEnd",
+                "event_display_name": "战斗结束",
+                "event_category": "战斗",
+                "collect_side": "server,client",
+                "properties": [
+                    {
+                        "property_name": "battleResult",
+                        "property_display_name": "战斗结果",
+                        "property_type": "文本",
+                        "source_field": "ext",
+                        "json_path": "$.battleResult",
+                        "description": "战斗结果，固定值win",
+                    },
+                    {
+                        "property_name": "hero_info.hero_level",
+                        "property_display_name": "卡牌等级",
+                        "property_type": "数值",
+                        "source_field": "ext",
+                        "json_path": "$.hero_info.hero_level",
+                        "description": "卡牌等级",
+                    },
+                ],
+            }
+        ],
+    )
+
+    workbook_bytes = tracking_config_excel(config, physical_schema=_event_user_physical_schema()).getvalue()
+
+    workbook = load_workbook(BytesIO(workbook_bytes), read_only=True, data_only=True)
+    assert "事件参数对照" in workbook.sheetnames
+    assert _headers(workbook_bytes, "事件参数对照") == [
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "采集端",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ]
+    rows = _sheet_rows(workbook_bytes, "事件参数对照")
+    assert any(
+        row[0] == "BattleEnd"
+        and row[1] == "战斗结束"
+        and row[3] == "战斗"
+        and row[4] == "server,client"
+        and row[5] == "ext"
+        and row[6] == "battleResult"
+        and row[7] == "战斗结果"
+        and row[8] == "文本"
+        and row[9] == "战斗结果，固定值win"
+        for row in rows
+    )
+    assert any(row[6] == "hero_info.hero_level" and row[7] == "卡牌等级" and row[8] == "数值" for row in rows)
+    styled_workbook = load_workbook(BytesIO(workbook_bytes), read_only=False, data_only=True)
+    styled_sheet = styled_workbook["事件参数对照"]
+    merged_ranges = {str(merged_range) for merged_range in styled_sheet.merged_cells.ranges}
+    assert {"A2:A3", "B2:B3", "C2:C3", "D2:D3", "E2:E3"}.issubset(merged_ranges)
+    assert styled_sheet["A2"].value == "BattleEnd"
+    assert styled_sheet["A3"].value is None
+    assert styled_sheet["F2"].value == "ext"
+    assert styled_sheet["F3"].value == "ext"
+
+
+def test_event_parameter_mapping_sheet_imports_event_properties() -> None:
+    """
+    是什么：验证“事件参数对照”sheet 可以导入为事件与参数关系。
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "事件参数对照"
+    sheet.append([
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "采集端",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ])
+    sheet.append(["BattleEnd", "战斗结束", "战斗结算时上报", "战斗", "server", "ext", "battleResult", "战斗结果", "文本", "战斗结果字段"])
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_event_user_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    event = next(item for item in parsed.editor.event_name_mappings if isinstance(item, dict) and item.get("event_name") == "BattleEnd")
+    assert event["event_display_name"] == "战斗结束"
+    assert event["event_category"] == "战斗"
+    assert event["collect_side"] == "server"
+    prop = event["properties"][0]
+    assert prop["property_name"] == "ext.battleResult"
+    assert prop["property_display_name"] == "战斗结果"
+    assert prop["property_type"] == "文本"
+    assert prop["source_field"] == "ext"
+    assert prop["json_path"] == "$.battleResult"
+
+
+def test_event_parameter_mapping_compact_rows_inherit_event_context() -> None:
+    """
+    是什么：验证“事件参数对照”中后续属性行省略事件名时，会继承上一条事件上下文。
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "事件参数对照"
+    sheet.append([
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "采集端",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ])
+    sheet.append(["achievement_finish", "达成成就", "达成成就后上报", "任务与活动", "client", "achievement_id", "成就ID", "文本", "成就ID，建议挂维度表"])
+    sheet.append(["", "", "", "", "", "achievement_type", "成就类型", "文本", "成就类型枚举：collection(收集)/battle(战斗)/level(等级)/social(社交)等"])
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_event_user_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    event = next(item for item in parsed.editor.event_name_mappings if isinstance(item, dict) and item.get("event_name") == "achievement_finish")
+    props = event["properties"]
+    assert [prop["property_name"] for prop in props] == ["ext.achievement_id", "ext.achievement_type"]
+    assert props[1]["property_display_name"] == "成就类型"
+    assert props[1]["json_path"] == "$.achievement_type"
+    assert not parsed.warnings
+
+
+def test_user_attribute_sheet_imports_update_mode_and_json_subfield() -> None:
+    """
+    是什么：验证 user 表新版属性表格式可以导入更新方式，并能从点号属性名推断 JSON 子字段。
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "user"
+    sheet.append(["属性名（必填）", "属性显示名", "属性类型（必填）", "更新方式", "属性说明", "JSON路径", "样例", "属性标签"])
+    sheet.append(["total_revenue", "累计付费金额", "数值", "user_add", "累计付费金额，每次充值成功时累加，单位：分", "", "", "付费"])
+    sheet.append(["hero_detail.hero_level", "卡牌等级", "数值", "user_set", "卡牌等级", "$.hero_level", "12,15", "卡牌"])
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_event_user_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    total_revenue = next(field for field in parsed.editor.fields if field.table_name == "user" and field.field_name == "total_revenue")
+    assert total_revenue.semantic_type == "number"
+    assert total_revenue.aliases == ["累计付费金额"]
+    assert getattr(total_revenue, "update_mode") == "user_add"
+    assert getattr(total_revenue, "category") == "付费"
+    hero_level = next(field for field in parsed.editor.fields if field.table_name == "user" and field.field_name == "hero_detail.hero_level")
+    assert hero_level.source_field == "hero_detail"
+    assert hero_level.json_path == "$.hero_level"
+    assert getattr(hero_level, "update_mode") == "user_set"
+    assert hero_level.example_values == ["12", "15"]
+
+
 def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_context() -> None:
     """
     是什么：验证导出的 Excel 以物理表 sheet 作为唯一主维护入口，且能导入回项目语义。
@@ -201,9 +535,22 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     assert workbook.sheetnames == [
         "_说明",
         "_表映射",
+        "事件参数对照",
         "event_log",
         "user_profile",
         "_SQL规则",
+    ]
+    assert _headers(workbook_bytes, "事件参数对照") == [
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "采集端",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
     ]
     assert _headers(workbook_bytes, "event_log")[:13] == [
         "行类型",
@@ -337,42 +684,28 @@ def test_compact_event_value_rows_inherit_previous_context() -> None:
     assert any(event.get("event_name") == "pay_success" for event in parsed.editor.event_name_mappings if isinstance(event, dict))
 
 
-def test_compact_json_field_value_rows_inherit_nested_context() -> None:
+def test_event_table_legacy_row_type_sheet_is_not_imported() -> None:
     """
-    是什么：验证 ext 这类 JSON 嵌套字段也能按父子分组维护取值。
-    谁调用：跑测试时 pytest 会找到并执行它。
-    做了什么：模拟 ext.battleResult 下 1/3/4 枚举省略字段上下文，导入后仍形成字段值语义。
+    是什么：验证 event 表不再兼容旧 row_type 格式导入。
     """
-    workbook_bytes = tracking_config_excel(
-        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
-        physical_schema=_event_physical_schema(),
-        template_only=True,
-    ).getvalue()
-    workbook = load_workbook(BytesIO(workbook_bytes))
-    sheet = workbook["event"]
-    for row_index in range(sheet.max_row, 1, -1):
-        sheet.delete_rows(row_index, 1)
-    sheet.append(["physical_field", "ext", "事件参数", "json", "", "json"])
-    sheet.append(["dictionary_field", "ext.battleResult", "战斗结果", "text", "json_path_dimension", "text", "ext", "$.battleResult"])
-    sheet.append(["field_value", "", "", "", "", "", "", "", "", "", "1", "胜利", "战斗结果", "", "", "", "", "", "胜利时上报", "", "win"])
-    sheet.append(["", "", "", "", "", "", "", "", "", "", "3", "失败", "战斗结果", "", "", "", "", "", "失败时上报", "", "lose"])
-    sheet.append(["", "", "", "", "", "", "", "", "", "", "4", "平局", "战斗结果"])
-    output = BytesIO()
-    workbook.save(output)
-
     parsed = parse_tracking_excel(
-        output.getvalue(),
+        _legacy_business_workbook(
+            "event",
+            [
+                ["physical_field", "ext", "事件参数", "json", "", "json"],
+                ["dictionary_field", "ext.battleResult", "战斗结果", "text", "json_path_dimension", "text", "ext", "$.battleResult"],
+                ["field_value", "", "", "", "", "", "", "", "", "", "1", "胜利", "战斗结果", "", "", "", "", "", "胜利时上报", "", "win"],
+                ["", "", "", "", "", "", "", "", "", "", "3", "失败", "战斗结果", "", "", "", "", "", "失败时上报", "", "lose"],
+                ["", "", "", "", "", "", "", "", "", "", "4", "平局", "战斗结果"],
+            ],
+        ),
         TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
         physical_schema=_event_physical_schema(),
         datasource_type="mysql",
     )
 
-    battle_result = next(field for field in parsed.editor.fields if field.table_name == "event" and field.field_name == "ext.battleResult")
-    assert battle_result.source_field == "ext"
-    assert battle_result.json_path == "$.battleResult"
-    assert {"value": "1", "display_name": "胜利", "category": "战斗结果", "description": "胜利时上报", "aliases": ["win"]} in battle_result.value_mappings
-    assert {"value": "3", "display_name": "失败", "category": "战斗结果", "description": "失败时上报", "aliases": ["lose"]} in battle_result.value_mappings
-    assert {"value": "4", "display_name": "平局", "category": "战斗结果"} in battle_result.value_mappings
+    assert not any(field.table_name == "event" for field in parsed.editor.fields)
+    assert any("event sheet 使用旧 row_type 格式" in warning for warning in parsed.warnings)
 
 
 def test_single_event_sheet_can_maintain_event_values_and_defaults() -> None:
@@ -442,16 +775,16 @@ def test_single_event_sheet_can_maintain_event_values_and_defaults() -> None:
 
     assert parsed.editor.default_event_table == "event"
     assert parsed.editor.default_event_name_field == "event"
+    assert parsed.editor.default_subject_field == "uid"
+    assert parsed.editor.default_event_time_field == "time"
     assert any(field.table_name == "event" and field.field_name == "ext.duration" for field in parsed.editor.fields)
-    assert any(event.get("event_name") == "login" for event in parsed.editor.event_name_mappings if isinstance(event, dict))
-    assert any(event.get("event_name") == "pay_success" for event in parsed.editor.event_name_mappings if isinstance(event, dict))
 
 
 def test_export_infers_event_values_when_default_event_table_is_missing() -> None:
     """
-    是什么：验证旧默认事件表未保存时，导出仍能按当前数据源 event 表输出事件取值。
+    是什么：验证旧默认事件表未保存时，导出仍能按当前数据源 event 表推断默认字段。
     谁调用：跑测试时 pytest 会找到并执行它。
-    做了什么：只保留字段角色和事件值配置，不填 default_event_table，再检查 event sheet。
+    做了什么：只保留字段角色和事件值配置，不填 default_event_table，再检查 event sheet 和表映射。
     """
     base = _tracking_config()
     config = base.model_copy(
@@ -487,15 +820,16 @@ def test_export_infers_event_values_when_default_event_table_is_missing() -> Non
     table_rows = _sheet_rows(workbook_bytes, "_表映射")
     info_rows = _sheet_rows(workbook_bytes, "_说明")
 
-    assert any(row[0] == "event_value" and row[1] == "event" and row[10] == "login" for row in event_rows)
-    assert any(row[0] == "event_value" and row[1] == "event" and row[10] == "pay_success" for row in event_rows)
+    assert _headers(workbook_bytes, "event") == ["属性名（必填）", "属性显示名", "属性类型（必填）", "更新方式", "属性说明", "属性标签"]
+    assert any(row[0] == "event" and row[1] in (None, "") and row[2] == "文本" for row in event_rows)
+    assert not any(row[0] == "event_value" for row in event_rows)
     assert any(row[1] == "event" and row[4] == "uid" and row[5] == "event" for row in table_rows)
     assert any(row[0] == "当前默认" and "事件名字段=event" in str(row[1]) for row in info_rows)
 
 
 def test_template_contains_datasource_aligned_examples() -> None:
     """
-    是什么：验证模板不是空壳，事件表 sheet 会给出可照着改的事件值和 JSON 子字段样例。
+    是什么：验证模板不是空壳，事件表 sheet 会按属性维护格式列出当前数据源字段。
     谁调用：跑测试时 pytest 会找到并执行它。
     做了什么：按真实 event 表生成模板，并检查样例使用当前数据源里的 event/ext 字段。
     """
@@ -507,9 +841,9 @@ def test_template_contains_datasource_aligned_examples() -> None:
 
     event_rows = _sheet_rows(workbook_bytes, "event")
 
-    assert any(row[0] == "physical_field" and row[1] == "event" for row in event_rows)
-    assert any(row[0] == "event_value" and row[1] == "event" and row[10] == "login" for row in event_rows)
-    assert any(row[0] == "dictionary_field" and row[1] == "ext.battleResult" and row[6] == "ext" and row[7] == "$.battleResult" for row in event_rows)
+    assert _headers(workbook_bytes, "event") == ["属性名（必填）", "属性显示名", "属性类型（必填）", "更新方式", "属性说明", "属性标签"]
+    assert any(row[0] == "event" and row[2] == "文本" for row in event_rows)
+    assert any(row[0] == "ext" and row[2] == "对象组" for row in event_rows)
 
 
 def test_import_excel_replaces_previous_tracking_config() -> None:
@@ -525,6 +859,10 @@ def test_import_excel_replaces_previous_tracking_config() -> None:
     for row_index in range(sheet.max_row, 1, -1):
         if sheet.cell(row_index, 11).value in {"pay_success", "refund_success"}:
             sheet.delete_rows(row_index, 1)
+    event_parameter_sheet = workbook["事件参数对照"]
+    for row_index in range(event_parameter_sheet.max_row, 1, -1):
+        if event_parameter_sheet.cell(row_index, 1).value in {"pay_success", "refund_success"}:
+            event_parameter_sheet.delete_rows(row_index, 1)
     output = BytesIO()
     workbook.save(output)
 
@@ -594,34 +932,26 @@ def test_import_excel_deleting_field_removes_previous_dictionary_field() -> None
     assert "legacy_field" not in field_names
 
 
-def test_compact_rows_emit_context_warning() -> None:
+def test_event_legacy_compact_rows_are_not_imported() -> None:
     """
-    是什么：旧紧凑行仍兼容导入，但会明确提示这种写法依赖行序。
+    是什么：event 表旧紧凑行不再兼容导入。
     """
-    workbook_bytes = tracking_config_excel(
-        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
-        physical_schema=_event_physical_schema(),
-        template_only=True,
-    ).getvalue()
-    workbook = load_workbook(BytesIO(workbook_bytes))
-    sheet = workbook["event"]
-    for row_index in range(sheet.max_row, 1, -1):
-        sheet.delete_rows(row_index, 1)
-    sheet.append(["physical_field", "event", "事件名", "varchar", "event_name", "text"])
-    sheet.append(["event_value", "event", "", "", "event_name", "text", "", "", "", "", "login", "登录"])
-    sheet.append(["", "", "", "", "", "", "", "", "", "", "pay_success", "支付成功"])
-    output = BytesIO()
-    workbook.save(output)
-
     parsed = parse_tracking_excel(
-        output.getvalue(),
+        _legacy_business_workbook(
+            "event",
+            [
+                ["physical_field", "event", "事件名", "varchar", "event_name", "text"],
+                ["event_value", "event", "", "", "event_name", "text", "", "", "", "", "login", "登录"],
+                ["", "", "", "", "", "", "", "", "", "", "pay_success", "支付成功"],
+            ],
+        ),
         TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
         physical_schema=_event_physical_schema(),
         datasource_type="mysql",
     )
 
-    assert any("省略 row_type/field_name" in warning for warning in parsed.warnings)
-    assert any(event.get("event_name") == "pay_success" for event in parsed.editor.event_name_mappings if isinstance(event, dict))
+    assert any("event sheet 使用旧 row_type 格式" in warning for warning in parsed.warnings)
+    assert not any(event.get("event_name") == "pay_success" for event in parsed.editor.event_name_mappings if isinstance(event, dict))
 
 
 def test_tracking_prompt_filters_schema_drifted_fields() -> None:

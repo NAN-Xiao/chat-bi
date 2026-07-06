@@ -492,6 +492,9 @@ def _tracking_category(row: TenantTrackingFieldModel | None, field_type: str | N
     """
     是什么：把 tracking 语义类型映射成图表配置器的字段类别。
     """
+    configured = str(getattr(row, "category", "") or "").strip() if row is not None else ""
+    if configured:
+        return configured
     text = " ".join(
         str(value or "").lower()
         for value in (
@@ -506,6 +509,63 @@ def _tracking_category(row: TenantTrackingFieldModel | None, field_type: str | N
     if any(token in text for token in ("number", "metric", "amount", "decimal", "float", "double", "int", "rate", "ratio")):
         return "number"
     return "text"
+
+
+_FIELD_LIST_CONTAINER_TYPES = {
+    "对象组",
+    "对象",
+    "对象数组",
+    "数组",
+    "json",
+    "jsonb",
+    "object",
+    "objectarray",
+    "array",
+    "arrayobject",
+    "map",
+    "dict",
+    "dictionary",
+    "struct",
+    "record",
+}
+
+
+def _normalize_field_list_type(value: Any) -> str:
+    """
+    是什么：把字段类型归一化，便于识别对象组/json 等容器类型。
+    """
+    return (
+        str(value or "")
+        .strip()
+        .lower()
+        .removesuffix("类型")
+        .replace("_", "")
+        .replace("-", "")
+        .replace(" ", "")
+    )
+
+
+def _is_json_leaf_field_list_item(item: DatasourceFieldListItem) -> bool:
+    """
+    是什么：判断字段是否是可直接筛选的 JSON 叶子字段。
+    """
+    return bool(item.is_json_subfield or (item.source_field and item.json_path))
+
+
+def _is_selectable_field_list_item(item: DatasourceFieldListItem) -> bool:
+    """
+    是什么：判断 fieldList 输出项是否适合作为图表字段下拉候选。
+    """
+    if _is_json_leaf_field_list_item(item):
+        return True
+    normalized_type = _normalize_field_list_type(item.semantic_type or item.field_type)
+    if not normalized_type:
+        return True
+    if normalized_type in _FIELD_LIST_CONTAINER_TYPES:
+        return False
+    if "对象组" in normalized_type or "objectarray" in normalized_type or "json" in normalized_type:
+        return False
+    return True
 
 
 def _tracking_source_field(row_or_name: TenantTrackingFieldModel | str | None) -> str:
@@ -641,6 +701,8 @@ def _build_field_list_items(
         table: CoreTable,
         visible_fields: list[CoreField],
         user: CurrentUser,
+        *,
+        exclude_container_fields: bool = False,
 ) -> list[DatasourceFieldListItem]:
     """
     是什么：生成字段下拉项，合并物理字段和工作空间 tracking 字典字段。
@@ -661,6 +723,8 @@ def _build_field_list_items(
             continue
         result.append(_field_list_item_from_tracking(tracking, datasource=datasource, table=table, field_index=next_index))
         next_index += 1
+    if exclude_container_fields:
+        return [item for item in result if _is_selectable_field_list_item(item)]
     return result
 
 
@@ -1401,7 +1465,14 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
     fields = get_fields_by_table_id(session, id, field)
     visible_fields = get_column_permission_fields(session, current_user, table, fields, contain_rules)
     _apply_schema_comments(session, datasource, [table], {int(table.id): visible_fields}, current_user)
-    return _build_field_list_items(session, datasource, table, visible_fields, current_user)
+    return _build_field_list_items(
+        session,
+        datasource,
+        table,
+        visible_fields,
+        current_user,
+        exclude_container_fields=bool(field.excludeContainerFields),
+    )
 
 
 @router.post("/editLocalComment", include_in_schema=False)

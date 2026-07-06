@@ -20,6 +20,10 @@ from apps.system.crud.tracking_expression import compile_tracking_json_expressio
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
+    TenantTrackingEventCatalogDTO,
+    TenantTrackingEventCatalogGroup,
+    TenantTrackingEventCatalogItem,
+    TenantTrackingEventCatalogProperty,
     TenantTrackingFieldDTO,
     TenantTrackingTableDTO,
 )
@@ -37,6 +41,159 @@ def _clean_text(value: str | None, max_len: int | None = None) -> str | None:
     if not cleaned:
         return None
     return cleaned[:max_len] if max_len else cleaned
+
+
+def _plain_text(value: Any) -> str:
+    text = str(value or "").strip()
+    return text
+
+
+def _first_plain_text(*values: Any) -> str:
+    for value in values:
+        text = _plain_text(value)
+        if text:
+            return text
+    return ""
+
+
+def _normalize_tracking_type(value: Any) -> str:
+    return (
+        _plain_text(value)
+        .lower()
+        .removesuffix("类型")
+        .replace("_", "")
+        .replace("-", "")
+        .replace(" ", "")
+    )
+
+
+def _is_tracking_container_type(value: Any) -> bool:
+    normalized = _normalize_tracking_type(value)
+    return normalized in {
+        "对象组",
+        "对象",
+        "对象数组",
+        "数组",
+        "json",
+        "jsonb",
+        "object",
+        "objectarray",
+        "array",
+    }
+
+
+def _event_names_from_mapping(item: Any) -> list[str]:
+    if not isinstance(item, dict):
+        text = _plain_text(item)
+        return [text] if text else []
+    names: list[str] = []
+    for key in ("event_name", "name", "value"):
+        text = _plain_text(item.get(key))
+        if text:
+            names.append(text)
+    events = item.get("events")
+    if isinstance(events, list):
+        names.extend(_plain_text(value) for value in events if _plain_text(value))
+    merged: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        if name and name not in seen:
+            seen.add(name)
+            merged.append(name)
+    return merged
+
+
+def _tracking_event_properties(
+    mapping: dict[str, Any],
+    *,
+    event_table: str,
+    event_name_field: str,
+    event_name: str,
+) -> list[TenantTrackingEventCatalogProperty]:
+    properties = mapping.get("properties")
+    if not isinstance(properties, list):
+        return []
+    result: list[TenantTrackingEventCatalogProperty] = []
+    seen: set[str] = set()
+    for item in properties:
+        if not isinstance(item, dict):
+            continue
+        property_name = _first_plain_text(item.get("property_name"), item.get("field_name"), item.get("name"))
+        if not property_name or property_name in seen:
+            continue
+        property_type = _first_plain_text(item.get("property_type"), item.get("semantic_type"), item.get("field_type"), item.get("type"))
+        if _is_tracking_container_type(property_type):
+            continue
+        seen.add(property_name)
+        result.append(
+            TenantTrackingEventCatalogProperty(
+                value=f"tracking-property:{event_table}.{event_name_field}:{event_name}:{property_name}",
+                property_name=property_name,
+                display_name=_first_plain_text(
+                    item.get("property_display_name"),
+                    item.get("display_name"),
+                    item.get("label"),
+                    property_name,
+                ),
+                property_type=property_type,
+                source_field=_plain_text(item.get("source_field")),
+                json_path=_plain_text(item.get("json_path")),
+                description=_first_plain_text(item.get("description"), item.get("ai_notes")),
+                event_name=event_name,
+                event_table=event_table,
+                event_name_field=event_name_field,
+            )
+        )
+    return result
+
+
+def build_tracking_event_catalog(config: TenantTrackingConfigDTO) -> TenantTrackingEventCatalogDTO:
+    event_table = _plain_text(config.default_event_table) or "event"
+    event_name_field = _plain_text(config.default_event_name_field) or "event_name"
+    groups: dict[str, TenantTrackingEventCatalogGroup] = {}
+    for mapping in config.event_name_mappings or []:
+        if not isinstance(mapping, dict):
+            continue
+        category = _first_plain_text(mapping.get("event_category"), mapping.get("category"), mapping.get("metric")) or "默认分组"
+        group = groups.setdefault(
+            category,
+            TenantTrackingEventCatalogGroup(label=category, value=category, events=[]),
+        )
+        for event_name in _event_names_from_mapping(mapping):
+            display_name = _first_plain_text(
+                mapping.get("event_display_name"),
+                mapping.get("display_name"),
+                mapping.get("metric"),
+                mapping.get("name"),
+                event_name,
+            )
+            if any(item.event_name == event_name for item in group.events):
+                continue
+            group.events.append(
+                TenantTrackingEventCatalogItem(
+                    value=f"tracking-event:{event_table}.{event_name_field}:{event_name}",
+                    event_name=event_name,
+                    display_name=display_name,
+                    category=category,
+                    description=_first_plain_text(mapping.get("description"), mapping.get("event_description"), mapping.get("ai_notes")),
+                    collect_side=_plain_text(mapping.get("collect_side")),
+                    event_table=event_table,
+                    event_name_field=event_name_field,
+                    properties=_tracking_event_properties(
+                        mapping,
+                        event_table=event_table,
+                        event_name_field=event_name_field,
+                        event_name=event_name,
+                    ),
+                )
+            )
+    return TenantTrackingEventCatalogDTO(
+        tenant_id=int(config.tenant_id),
+        datasource_id=config.datasource_id,
+        event_table=event_table,
+        event_name_field=event_name_field,
+        groups=list(groups.values()),
+    )
 
 
 def _json_value(value: Any, default):
@@ -340,6 +497,8 @@ def _field_dto(row: TenantTrackingFieldModel) -> TenantTrackingFieldDTO:
         semantic_type=_normalized_semantic_type(row.field_role, row.semantic_type),
         source_field=row.source_field,
         json_path=row.json_path,
+        update_mode=getattr(row, "update_mode", None),
+        category=getattr(row, "category", None),
         aliases=_json_list(row.aliases),
         value_mappings=_json_list_or_dict(row.value_mappings),
         expression=row.expression,
@@ -517,6 +676,8 @@ def save_tracking_config(
                 ),
                 source_field=_clean_text(item.source_field, 255),
                 json_path=_clean_text(item.json_path, 1000),
+                update_mode=_clean_text(getattr(item, "update_mode", None), 64),
+                category=_clean_text(getattr(item, "category", None), 255),
                 aliases=_json_list(item.aliases),
                 value_mappings=_json_list_or_dict(item.value_mappings),
                 expression=_clean_text(item.expression),

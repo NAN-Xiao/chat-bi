@@ -1,5 +1,10 @@
 import { request } from '@/utils/request'
 
+type DatasourceFieldListQuery = {
+  fieldName?: string
+  excludeContainerFields?: boolean
+}
+
 export const datasourceApi = {
   check: (data: any) => request.post('/datasource/check', data),
   check_by_id: (id: any) => request.get(`/datasource/check/${id}`),
@@ -19,7 +24,7 @@ export const datasourceApi = {
     request.post(`/datasource/execSql/${id}`, { sql: sql }),
   chooseTables: (id: number, data: any) => request.post(`/datasource/chooseTables/${id}`, data),
   tableList: (id: number) => request.post(`/datasource/tableList/${id}`),
-  fieldList: (id: number, data = { fieldName: '' }) =>
+  fieldList: (id: number, data: DatasourceFieldListQuery = { fieldName: '' }) =>
     request.post(`/datasource/fieldList/${id}`, data),
   schemaMetadata: (id: number | string) => request.get(`/datasource/schema-metadata/${id}`),
   schemaChangeList: (id: number | string, limit = 20) =>

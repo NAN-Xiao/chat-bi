@@ -307,6 +307,7 @@ class FieldObj(BaseModel):
     类说明：FieldObj 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
     """
     fieldName: str | None
+    excludeContainerFields: bool = False
 
 
 class PreviewResponse(BaseModel):

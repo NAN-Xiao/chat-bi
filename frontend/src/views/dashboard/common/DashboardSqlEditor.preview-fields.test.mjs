@@ -48,6 +48,12 @@ const pivotGroupFieldWatcherMatch = source.match(
 const pivotEnabledWatcherMatch = source.match(
   /watch\(\s*\(\) => form\.pivotEnabled,([\s\S]*?)\r?\n\)\r?\n\r?\nwatch\(/
 )
+const builderTimeFieldPriorityMatch = source.match(
+  /function builderTimeFieldPriority\(option: SchemaFieldOption\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction preferredBuilderTimeField/
+)
+const preferredBuilderTimeFieldMatch = source.match(
+  /function preferredBuilderTimeField\(\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction fieldOptionByValue/
+)
 
 assert.ok(chartPreviewMatch, '图表预览组件需要声明 columns 绑定')
 assert.match(
@@ -113,6 +119,23 @@ assert.doesNotMatch(
   source,
   /pivotToggleDisabled/,
   '交互透视开关不应因 SQL 结果缺少日期字段而禁用'
+)
+assert.ok(builderTimeFieldPriorityMatch, '默认时间范围字段需要有明确的字段优先级规则')
+assert.match(
+  builderTimeFieldPriorityMatch?.[1] || '',
+  /事件日期|event_date/,
+  '默认时间范围字段应优先识别事件日期'
+)
+assert.ok(preferredBuilderTimeFieldMatch, '默认时间范围字段需要通过专门函数选择，不能依赖字段列表顺序')
+assert.match(
+  preferredBuilderTimeFieldMatch?.[1] || '',
+  /builderTimeFieldPriority/,
+  '默认时间范围字段应按优先级选择，而不是直接取第一个字段'
+)
+assert.match(
+  source,
+  /sqlBuilder\.timeField = preferredBuilderTimeField\(\)/,
+  '加载字段后默认时间范围字段应使用事件日期优先级函数'
 )
 assert.doesNotMatch(
   normalizePivotSelectionsMatch[1],

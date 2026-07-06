@@ -279,6 +279,8 @@ class TenantTrackingFieldBase(BaseModel):
     semantic_type: Optional[str] = Field(default=None, max_length=64)
     source_field: Optional[str] = Field(default=None, max_length=255)
     json_path: Optional[str] = Field(default=None, max_length=1000)
+    update_mode: Optional[str] = Field(default=None, max_length=64)
+    category: Optional[str] = Field(default=None, max_length=255)
     aliases: list[str] = Field(default_factory=list)
     value_mappings: Optional[Any] = None
     expression: Optional[str] = Field(default=None, max_length=4000)
@@ -358,6 +360,57 @@ class TenantTrackingConfigImportDTO(BaseModel):
     """
     config: TenantTrackingConfigDTO
     summary: TenantTrackingImportSummary
+
+
+class TenantTrackingEventCatalogProperty(BaseModel):
+    """
+    类说明：TenantTrackingEventCatalogProperty 描述业务事件下可用于筛选的事件参数。
+    """
+    value: str
+    property_name: str
+    display_name: str
+    property_type: str = ""
+    source_field: str = ""
+    json_path: str = ""
+    description: str = ""
+    event_name: str = ""
+    event_table: str = ""
+    event_name_field: str = ""
+
+
+class TenantTrackingEventCatalogItem(BaseModel):
+    """
+    类说明：TenantTrackingEventCatalogItem 描述 SQL 构建器可选择的业务事件。
+    """
+    value: str
+    event_name: str
+    display_name: str
+    category: str = "默认分组"
+    description: str = ""
+    collect_side: str = ""
+    event_table: str = ""
+    event_name_field: str = ""
+    properties: list[TenantTrackingEventCatalogProperty] = Field(default_factory=list)
+
+
+class TenantTrackingEventCatalogGroup(BaseModel):
+    """
+    类说明：TenantTrackingEventCatalogGroup 按事件标签聚合业务事件。
+    """
+    label: str
+    value: str
+    events: list[TenantTrackingEventCatalogItem] = Field(default_factory=list)
+
+
+class TenantTrackingEventCatalogDTO(BaseModel):
+    """
+    类说明：TenantTrackingEventCatalogDTO 给图表 SQL 构建器提供事件选择目录。
+    """
+    tenant_id: int
+    datasource_id: Optional[int] = None
+    event_table: str = ""
+    event_name_field: str = ""
+    groups: list[TenantTrackingEventCatalogGroup] = Field(default_factory=list)
 
 
 class TenantDataRequestCreator(BaseModel):

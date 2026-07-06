@@ -1,25 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
+import { isSelectableFieldOption } from './builderFieldPickerOptions'
+import type { FieldOption } from './builderFieldPickerOptions'
 
-type PickerMode = 'event' | 'property' | 'metric' | 'time'
-
-type FieldOption = {
-  label: string
-  value: string
-  table: string
-  tableLabel?: string
-  field: string
-  displayName?: string
-  type?: string
-  comment?: string
-  tableComment?: string
-  category?: string
-  sourceField?: string
-  jsonPath?: string
-  expression?: string
-  isJsonSubfield?: boolean
-}
+type PickerMode = 'field' | 'property' | 'metric' | 'time' | 'tracking-event'
 
 defineOptions({ name: 'BuilderFieldPicker' })
 
@@ -47,6 +32,7 @@ const emits = defineEmits<{
 const visible = ref(false)
 const keyword = ref('')
 const activeTab = ref('all')
+const activeEventCategory = ref('')
 const TABLE_TAB_PREFIX = 'table:'
 
 const selectedOption = computed(() =>
@@ -56,6 +42,9 @@ const selectedOption = computed(() =>
 const selectedLabel = computed(() =>
   selectedOption.value?.displayName || selectedOption.value?.label || selectedOption.value?.field || props.modelValue?.split('.').pop() || ''
 )
+
+const selectableOptions = computed(() => props.options.filter(isSelectableFieldOption))
+const isTrackingEventMode = computed(() => props.mode === 'tracking-event')
 
 function shortTableLabel(value = '') {
   const firstLine = String(value || '').split(/\r?\n/).find((line) => line.trim()) || ''
@@ -74,7 +63,7 @@ function tableTabLabel(tableName: string, label = '') {
 
 const tableTabs = computed(() => {
   const tableLabels = new Map<string, string>()
-  props.options.forEach((item) => {
+  selectableOptions.value.forEach((item) => {
     if (item.table) {
       const currentLabel = tableLabels.get(item.table)
       const nextLabel = shortTableLabel(item.tableLabel || item.tableComment)
@@ -144,7 +133,7 @@ function matchesKeyword(item: FieldOption, q: string) {
 const groupedOptions = computed(() => {
   const q = keyword.value.trim().toLowerCase()
   const tab = activeTab.value
-  const keywordRows = props.options.filter((item) => matchesKeyword(item, q))
+  const keywordRows = selectableOptions.value.filter((item) => matchesKeyword(item, q))
   const tabRows = keywordRows.filter((item) => matchesTab(item, tab))
   const rows = tabRows.length > 0 || tab === 'all' || tab.startsWith(TABLE_TAB_PREFIX)
     ? tabRows
@@ -170,7 +159,36 @@ const groupedOptions = computed(() => {
   }))
 })
 
+const eventRows = computed(() => {
+  const q = keyword.value.trim().toLowerCase()
+  return selectableOptions.value
+    .filter((item) => item.kind === 'tracking-event')
+    .filter((item) => matchesKeyword(item, q))
+})
+
+const eventGroups = computed(() => {
+  const groups = new Map<string, FieldOption[]>()
+  eventRows.value.forEach((item) => {
+    const key = item.eventCategory || item.category || '默认分组'
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)?.push(item)
+  })
+  return Array.from(groups.entries()).map(([name, items]) => ({
+    name,
+    items: items.sort((a, b) => displayFieldName(a).localeCompare(displayFieldName(b), undefined, { numeric: true, sensitivity: 'base' })),
+  }))
+})
+
+const activeEventItems = computed(() => {
+  const firstGroup = eventGroups.value[0]
+  const currentGroup = eventGroups.value.find((group) => group.name === activeEventCategory.value) || firstGroup
+  return currentGroup?.items || []
+})
+
 function fieldTypeLabel(option: FieldOption) {
+  if (option.kind === 'tracking-event') return '事件'
   if (option.isJsonSubfield) return 'JSON字段'
   if (option.type) return option.type
   if (isIdentifierField(option)) return '标识'
@@ -181,6 +199,9 @@ function fieldTypeLabel(option: FieldOption) {
 }
 
 function displayFieldName(option: FieldOption) {
+  if (option.kind === 'tracking-event') {
+    return option.displayName || option.label || option.eventName || option.field
+  }
   if (option.isJsonSubfield && option.sourceField && option.field.startsWith(`${option.sourceField}.`)) {
     return option.displayName || option.label || option.field.slice(option.sourceField.length + 1)
   }
@@ -191,6 +212,20 @@ function selectField(option: FieldOption) {
   emits('update:modelValue', option.value)
   visible.value = false
 }
+
+watch(
+  eventGroups,
+  (groups) => {
+    if (!groups.length) {
+      activeEventCategory.value = ''
+      return
+    }
+    if (!groups.some((group) => group.name === activeEventCategory.value)) {
+      activeEventCategory.value = groups[0].name
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -220,7 +255,62 @@ function selectField(option: FieldOption) {
         <el-icon><Search /></el-icon>
         <input v-model="keyword" placeholder="请输入搜索" />
       </div>
-      <div class="builder-field-picker-tabs">
+      <template v-if="isTrackingEventMode">
+        <div class="builder-field-picker-tabs builder-field-picker-tabs-static">
+          <button type="button" class="active">事件</button>
+        </div>
+        <div v-if="loading" class="builder-field-picker-empty">加载中...</div>
+        <div v-else-if="eventGroups.length === 0" class="builder-field-picker-empty">暂无事件</div>
+        <div v-else class="builder-event-picker-columns">
+          <div class="builder-event-category-list">
+            <button
+              v-for="group in eventGroups"
+              :key="group.name"
+              type="button"
+              :class="{ active: activeEventCategory === group.name }"
+              @click="activeEventCategory = group.name"
+            >
+              {{ group.name }}
+            </button>
+          </div>
+          <div class="builder-event-option-list">
+            <el-popover
+              v-for="item in activeEventItems"
+              :key="item.value"
+              trigger="hover"
+              placement="right"
+              :show-after="120"
+              :hide-after="0"
+              width="260"
+              popper-class="builder-field-hover-popper"
+              :popper-style="{ zIndex: 5002 }"
+            >
+              <template #reference>
+                <button
+                  type="button"
+                  class="builder-event-option"
+                  :class="{ active: item.value === modelValue }"
+                  @click="selectField(item)"
+                >
+                  <span class="event-title">{{ displayFieldName(item) }}</span>
+                  <span class="event-code">{{ item.eventName }}</span>
+                </button>
+              </template>
+              <div class="builder-field-hover-card">
+                <div class="hover-title">{{ displayFieldName(item) }}</div>
+                <div class="hover-subtitle">{{ item.eventName }}</div>
+                <div class="hover-comment">{{ item.eventDescription || item.comment || '暂无备注' }}</div>
+                <div class="hover-footer">
+                  <span>{{ item.eventCategory || item.category || '默认分组' }}</span>
+                  <span>{{ item.collectSide || '事件' }}</span>
+                </div>
+              </div>
+            </el-popover>
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <div class="builder-field-picker-tabs">
         <button
           v-for="tab in tabOptions"
           :key="tab.value"
@@ -230,54 +320,55 @@ function selectField(option: FieldOption) {
         >
           {{ tab.label }}
         </button>
-      </div>
-      <div v-if="loading" class="builder-field-picker-empty">加载中...</div>
-      <div v-else-if="groupedOptions.length === 0" class="builder-field-picker-empty">暂无数据</div>
-      <div v-else class="builder-field-picker-body">
-        <div class="builder-field-picker-list">
-          <template v-for="group in groupedOptions" :key="group.name">
-            <div class="builder-field-picker-group">{{ group.name }}</div>
-            <div class="builder-field-picker-options">
-              <el-popover
-                v-for="item in group.items"
-                :key="item.value"
-                trigger="hover"
-                placement="right"
-                :show-after="120"
-                :hide-after="0"
-                width="260"
-                popper-class="builder-field-hover-popper"
-                :popper-style="{ zIndex: 5002 }"
-              >
-                <template #reference>
-                  <button
-                    type="button"
-                    class="builder-field-picker-option"
-                    :class="{ active: item.value === modelValue, 'is-json-subfield': item.isJsonSubfield }"
-                    @click="selectField(item)"
-                  >
-                    <span class="field-name">{{ displayFieldName(item) }}</span>
-                    <span class="field-type">{{ fieldTypeLabel(item) }}</span>
-                  </button>
-                </template>
-                <div class="builder-field-hover-card">
-                  <div class="hover-title">{{ displayFieldName(item) }}</div>
-                  <div class="hover-subtitle">{{ item.value }}</div>
-                  <div v-if="item.isJsonSubfield" class="hover-json-meta">
-                    {{ item.sourceField }} · {{ item.jsonPath }}
-                  </div>
-                  <div v-if="item.expression" class="hover-expression">{{ item.expression }}</div>
-                  <div class="hover-comment">{{ item.comment || '暂无备注' }}</div>
-                  <div class="hover-footer">
-                    <span>{{ item.table || '当前结果' }}</span>
-                    <span>{{ fieldTypeLabel(item) }}</span>
-                  </div>
-                </div>
-              </el-popover>
-            </div>
-          </template>
         </div>
-      </div>
+        <div v-if="loading" class="builder-field-picker-empty">加载中...</div>
+        <div v-else-if="groupedOptions.length === 0" class="builder-field-picker-empty">暂无数据</div>
+        <div v-else class="builder-field-picker-body">
+          <div class="builder-field-picker-list">
+            <template v-for="group in groupedOptions" :key="group.name">
+              <div class="builder-field-picker-group">{{ group.name }}</div>
+              <div class="builder-field-picker-options">
+                <el-popover
+                  v-for="item in group.items"
+                  :key="item.value"
+                  trigger="hover"
+                  placement="right"
+                  :show-after="120"
+                  :hide-after="0"
+                  width="260"
+                  popper-class="builder-field-hover-popper"
+                  :popper-style="{ zIndex: 5002 }"
+                >
+                  <template #reference>
+                    <button
+                      type="button"
+                      class="builder-field-picker-option"
+                      :class="{ active: item.value === modelValue, 'is-json-subfield': item.isJsonSubfield }"
+                      @click="selectField(item)"
+                    >
+                      <span class="field-name">{{ displayFieldName(item) }}</span>
+                      <span class="field-type">{{ fieldTypeLabel(item) }}</span>
+                    </button>
+                  </template>
+                  <div class="builder-field-hover-card">
+                    <div class="hover-title">{{ displayFieldName(item) }}</div>
+                    <div class="hover-subtitle">{{ item.value }}</div>
+                    <div v-if="item.isJsonSubfield" class="hover-json-meta">
+                      {{ item.sourceField }} · {{ item.jsonPath }}
+                    </div>
+                    <div v-if="item.expression" class="hover-expression">{{ item.expression }}</div>
+                    <div class="hover-comment">{{ item.comment || '暂无备注' }}</div>
+                    <div class="hover-footer">
+                      <span>{{ item.table || '当前结果' }}</span>
+                      <span>{{ fieldTypeLabel(item) }}</span>
+                    </div>
+                  </div>
+                </el-popover>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
     </div>
   </el-popover>
 </template>
@@ -383,6 +474,93 @@ function selectField(option: FieldOption) {
   border-color: #315cff;
   color: #315cff;
   font-weight: 600;
+}
+
+.builder-field-picker-tabs-static {
+  gap: 18px;
+}
+
+.builder-event-picker-columns {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-height: 274px;
+}
+
+.builder-event-category-list {
+  max-height: 274px;
+  overflow-y: auto;
+  padding: 8px 6px;
+  border-right: 1px solid #edf0f5;
+}
+
+.builder-event-category-list button {
+  display: block;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+  font-size: 12px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder-event-category-list button:hover,
+.builder-event-category-list button.active {
+  background: #eef1f7;
+  color: #315cff;
+  font-weight: 600;
+}
+
+.builder-event-option-list {
+  max-height: 274px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.builder-event-option {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #1f2633;
+  cursor: pointer;
+  text-align: left;
+}
+
+.builder-event-option:hover,
+.builder-event-option.active {
+  background: #eef1f7;
+}
+
+.event-title,
+.event-code {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.event-code {
+  color: #8b93a3;
+  font-size: 11px;
 }
 
 .builder-field-picker-body {
