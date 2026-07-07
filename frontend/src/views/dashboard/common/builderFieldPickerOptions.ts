@@ -3,6 +3,7 @@ export type FieldOption = {
   value: string
   table: string
   tableLabel?: string
+  tableRole?: string
   field: string
   displayName?: string
   type?: string
@@ -43,6 +44,16 @@ const CONTAINER_FIELD_TYPES = new Set([
   'record',
 ])
 
+const OBJECT_GROUP_TABLE_ROLES = new Set([
+  'subject',
+  'subjectprofile',
+  'dailyusersnapshot',
+  'user',
+  'profile',
+  'profiletable',
+  'userprofile',
+])
+
 function normalizeFieldType(value = '') {
   return String(value || '')
     .trim()
@@ -51,8 +62,20 @@ function normalizeFieldType(value = '') {
     .replace(/[^a-z0-9\u4e00-\u9fa5]/gu, '')
 }
 
+function normalizeRole(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]/gu, '')
+}
+
 function isJsonSubfieldOption(option: Pick<FieldOption, 'sourceField' | 'jsonPath' | 'isJsonSubfield'>) {
   return Boolean(option.isJsonSubfield || (option.sourceField && option.jsonPath))
+}
+
+export function isObjectGroupTableOption(option: Pick<FieldOption, 'tableRole'>) {
+  const normalizedRole = normalizeRole(option.tableRole)
+  return Boolean(normalizedRole && OBJECT_GROUP_TABLE_ROLES.has(normalizedRole))
 }
 
 export function isContainerFieldOption(option: Pick<FieldOption, 'type' | 'semanticType' | 'sourceField' | 'jsonPath' | 'isJsonSubfield'>) {
@@ -72,5 +95,5 @@ export function isContainerFieldOption(option: Pick<FieldOption, 'type' | 'seman
 }
 
 export function isSelectableFieldOption(option: FieldOption) {
-  return !isContainerFieldOption(option)
+  return !isObjectGroupTableOption(option) && !isContainerFieldOption(option)
 }

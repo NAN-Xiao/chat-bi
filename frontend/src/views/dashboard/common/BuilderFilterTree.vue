@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Delete, FolderAdd, Plus } from '@element-plus/icons-vue'
+import { Delete, Plus } from '@element-plus/icons-vue'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 
 type FilterLogic = 'and' | 'or'
@@ -70,24 +70,8 @@ function emptyRule(): FilterNode {
   }
 }
 
-function emptyGroup(): FilterNode {
-  return {
-    id: nodeId('group'),
-    type: 'group',
-    field: '',
-    operator: 'eq',
-    value: '',
-    logic: 'and',
-    children: [emptyRule()],
-  }
-}
-
 function addRule(target: FilterNode[]) {
   target.push(emptyRule())
-}
-
-function addGroup(target: FilterNode[]) {
-  target.push(emptyGroup())
 }
 
 function removeNode(target: FilterNode[], index: number) {
@@ -117,17 +101,6 @@ function isGroup(node: FilterNode) {
 
 <template>
   <div class="builder-filter-tree" :class="{ 'is-nested': level > 0 }">
-    <div v-if="showToolbar" class="builder-filter-toolbar">
-      <el-button text class="builder-add-condition" @click="addRule(nodes)">
-        <el-icon><Plus /></el-icon>
-        <span>筛选条件</span>
-      </el-button>
-      <el-button text class="builder-add-condition" @click="addGroup(nodes)">
-        <el-icon><FolderAdd /></el-icon>
-        <span>条件组</span>
-      </el-button>
-    </div>
-
     <div v-if="nodes.length" class="builder-filter-node-list">
       <button
         v-if="nodes.length > 1"
@@ -146,7 +119,6 @@ function isGroup(node: FilterNode) {
       >
         <div v-if="isGroup(node)" class="builder-filter-group">
           <div class="builder-filter-group-head">
-            <span class="builder-filter-group-title">条件组</span>
             <div class="builder-filter-group-actions">
               <el-button text class="builder-remove-button" @click="removeNode(nodes, index)">
                 <el-icon><Delete /></el-icon>
@@ -197,6 +169,12 @@ function isGroup(node: FilterNode) {
       </div>
     </div>
     <div v-else class="builder-empty-row">{{ emptyText }}</div>
+    <div v-if="showToolbar" class="builder-filter-toolbar">
+      <el-button text class="builder-add-condition" @click="addRule(nodes)">
+        <el-icon><Plus /></el-icon>
+        <span>筛选条件</span>
+      </el-button>
+    </div>
   </div>
 </template>
 
@@ -227,7 +205,7 @@ function isGroup(node: FilterNode) {
   align-items: center;
   gap: 5px;
   min-height: 28px;
-  margin-bottom: 6px;
+  margin-top: 6px;
 }
 
 .builder-filter-node-list {

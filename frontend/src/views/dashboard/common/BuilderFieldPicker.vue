@@ -409,8 +409,15 @@ watch(
 }
 
 .builder-field-picker-arrow {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
   color: #5f687a;
   font-size: 14px;
+  line-height: 16px;
 }
 
 .builder-field-picker {

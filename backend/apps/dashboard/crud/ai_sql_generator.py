@@ -3,8 +3,10 @@
 """
 from __future__ import annotations
 
+import inspect
 import json
 import re
+import time
 from asyncio import to_thread
 from datetime import datetime
 from typing import Any, TypedDict
@@ -246,11 +248,14 @@ def _dashboard_config_prompt(
         _trim_text(tracking_config, 8000),
         "</tracking-config>",
         "",
-        "当前配置器可配置的控件：时间范围(time.field/time.grain/time.range)、分析指标(metrics: 字段/聚合/计算字段/别名/指标内筛选树)、计算指标(calculatedMetrics: 左指标/运算符/右指标/倍率/小数/别名)、全局筛选、分组项(groups)。",
+        "当前配置器可配置的控件：时间范围(time.field/time.grain/time.range)、分析指标(metrics: 字段/聚合/计算字段/别名/指标内筛选树)、公式指标(formulaMetrics/calculatedMetrics: token 化公式/小数/别名)、全局筛选、分组项(groups)。",
         "配置器规则：time.field + time.grain 会自动生成日期维度；groups 只表示额外维度，不包含时间维度也不是错误。",
+        "公式指标规则：formulaMetrics[].tokens 是公式 token 列表；token.type=metric 时只能引用 metrics 中已有指标，并使用 metricAlias 对应的基础指标结果；token.type=atomicMetric 时表示公式内部直接插入的事件指标，结构与 metrics 单项类似，必须按它自己的 field/metric/aggregation/filters 生成基础聚合；token.type=operator 只能是 + - * /；token.type=paren 只能是 ( )；token.type=number 只能是数字常量。",
+        "生成公式指标 SQL 时，必须先在内层/CTE 计算全部基础 metrics 和公式内 atomicMetric，再在外层 SELECT 中按 token 公式计算公式指标；除法必须使用 NULLIF(分母表达式, 0) 防止除零；小数位必须用 ROUND(公式表达式, decimalPlaces)；公式指标别名使用 alias。",
         "当 metrics.field.kind 为 tracking-event 时，它表示从“事件参数对照”中选择的业务事件；生成 SQL 时必须使用 metrics.field.eventTable 和 metrics.field.eventNameField（或 table/field）定位事件名字段，并添加“事件名字段 = metrics.field.eventName”的过滤条件。",
+        "如果多个 tracking-event 指标来自同一张事件表、同一个事件名字段，但 eventName 不同，必须在 WHERE 中使用“事件名字段 IN (这些 eventName)”先收窄扫描范围，再在各指标表达式里用 CASE WHEN 区分每个事件；不要只在 COUNT/SUM CASE 里写事件条件而让 WHERE 扫全表。",
         "当指标内筛选 rules[].field.kind 为 tracking-property 时，它表示该业务事件下的事件参数；生成 SQL 时必须按 rules[].field.sourceField/jsonPath 或 field 在事件明细行中取值，再应用对应 operator/value。",
-        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/calculatedMetrics/groups/filters 字段信息生成 SQL；不要编造未提供字段。",
+        "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters 字段信息生成 SQL；不要编造未提供字段。",
     ])
 
 
@@ -331,6 +336,104 @@ def _append_trace(state: DashboardManualChartGraphState, node: str, status: str 
     trace = list(state.get("graph_trace") or [])
     trace.append({"node": node, "status": status})
     return trace
+
+
+def _graph_node_log_context(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    request = state.get("request")
+    current_user = state.get("current_user")
+    return {
+        "datasource_id": getattr(request, "datasource", None),
+        "tenant_id": state.get("tenant_id") or getattr(current_user, "tenant_id", None),
+        "user_id": getattr(current_user, "id", None),
+    }
+
+
+def _log_graph_node_timing(
+        *,
+        node: str,
+        status: str,
+        elapsed_ms: int,
+        state: DashboardManualChartGraphState,
+        error: Exception | None = None,
+) -> None:
+    context = _graph_node_log_context(state)
+    message = (
+        f"Dashboard manual chart graph node {'failed' if error else 'finished'}: "
+        f"node={node}, "
+        f"status={status}, "
+        f"elapsed_ms={elapsed_ms}, "
+        f"datasource_id={context['datasource_id']}, "
+        f"tenant_id={context['tenant_id']}, "
+        f"user_id={context['user_id']}"
+    )
+    if error is not None:
+        message += f", error={error}"
+        AppLogUtil.warning(message)
+        return
+    AppLogUtil.info(message)
+
+
+async def _timed_graph_node(node: str, handler: Any, state: DashboardManualChartGraphState) -> dict[str, Any]:
+    started_at = time.perf_counter()
+    try:
+        result = handler(state)
+        if inspect.isawaitable(result):
+            result = await result
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        _log_graph_node_timing(
+            node=node,
+            status="ok",
+            elapsed_ms=elapsed_ms,
+            state=state,
+        )
+        return result
+    except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        _log_graph_node_timing(
+            node=node,
+            status="error",
+            elapsed_ms=elapsed_ms,
+            state=state,
+            error=exc,
+        )
+        raise
+
+
+def _timed_graph_node_sync(node: str, handler: Any, state: DashboardManualChartGraphState) -> dict[str, Any]:
+    started_at = time.perf_counter()
+    try:
+        result = handler(state)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        _log_graph_node_timing(
+            node=node,
+            status="ok",
+            elapsed_ms=elapsed_ms,
+            state=state,
+        )
+        return result
+    except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        _log_graph_node_timing(
+            node=node,
+            status="error",
+            elapsed_ms=elapsed_ms,
+            state=state,
+            error=exc,
+        )
+        raise
+
+
+def _timed_node(node: str, handler: Any):
+    if inspect.iscoroutinefunction(handler):
+        async def _async_wrapped(state: DashboardManualChartGraphState) -> dict[str, Any]:
+            return await _timed_graph_node(node, handler, state)
+
+        return _async_wrapped
+
+    def _wrapped(state: DashboardManualChartGraphState) -> dict[str, Any]:
+        return _timed_graph_node_sync(node, handler, state)
+
+    return _wrapped
 
 
 def _invoke_llm_json(llm: Any, messages: list[Any], require_sql: bool = True) -> DashboardAiSqlGenerateResponse:
@@ -516,12 +619,12 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
 
 def _build_manual_chart_graph():
     graph = StateGraph(DashboardManualChartGraphState)
-    graph.add_node("collect_context", _node_collect_context)
-    graph.add_node("understand_config", _async_node_understand_config)
-    graph.add_node("diagnose_config", _async_node_diagnose_config)
-    graph.add_node("generate_sql", _async_node_generate_sql)
-    graph.add_node("validate_sql", _node_validate_sql)
-    graph.add_node("finalize_response", _node_finalize_response)
+    graph.add_node("collect_context", _timed_node("collect_context", _node_collect_context))
+    graph.add_node("understand_config", _timed_node("understand_config", _async_node_understand_config))
+    graph.add_node("diagnose_config", _timed_node("diagnose_config", _async_node_diagnose_config))
+    graph.add_node("generate_sql", _timed_node("generate_sql", _async_node_generate_sql))
+    graph.add_node("validate_sql", _timed_node("validate_sql", _node_validate_sql))
+    graph.add_node("finalize_response", _timed_node("finalize_response", _node_finalize_response))
     graph.set_entry_point("collect_context")
     graph.add_edge("collect_context", "understand_config")
     graph.add_edge("understand_config", "diagnose_config")

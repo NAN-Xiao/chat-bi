@@ -72,6 +72,93 @@ def test_async_invoke_llm_json_uses_astream_not_sync_stream() -> None:
     assert response.sql == "select 1"
 
 
+def test_dashboard_prompt_describes_formula_metrics_contract() -> None:
+    """
+    是什么：手动图表 SQL 生成提示词必须明确公式指标结构和除零规则。
+    """
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            intent="看转化率",
+            chart_type="line",
+            context={
+                "metrics": [{"id": "m1", "alias": "注册人数"}, {"id": "m2", "alias": "登录人数"}],
+                "formulaMetrics": [
+                    {
+                        "id": "f1",
+                        "alias": "注册登录比",
+                        "decimalPlaces": 2,
+                        "tokens": [
+                            {"type": "metric", "metricId": "m1", "metricAlias": "注册人数"},
+                            {"type": "operator", "value": "/"},
+                            {"type": "metric", "metricId": "m2", "metricAlias": "登录人数"},
+                        ],
+                    }
+                ],
+                "groups": [],
+                "filters": {},
+                "selectedFields": [],
+            },
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="postgresql", type_name="PostgreSQL"),
+        data_skill="",
+        tracking_config="",
+    )
+
+    assert "formulaMetrics" in prompt
+    assert "atomicMetric" in prompt
+    assert "NULLIF" in prompt
+    assert "ROUND" in prompt
+    assert "外层 SELECT" in prompt
+
+
+def test_dashboard_prompt_requires_tracking_event_prefilter_for_multiple_event_metrics() -> None:
+    """
+    是什么：多个事件类指标共用事件名字段时，提示词要要求先用 WHERE IN 收窄扫描范围。
+    """
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            intent="看英雄养成事件",
+            chart_type="table",
+            context={
+                "metrics": [
+                    {
+                        "alias": "英雄升星次数",
+                        "field": {
+                            "kind": "tracking-event",
+                            "eventTable": "event",
+                            "eventNameField": "event",
+                            "eventName": "HeroStarUp",
+                        },
+                        "aggregation": "count",
+                    },
+                    {
+                        "alias": "英雄升级次数",
+                        "field": {
+                            "kind": "tracking-event",
+                            "eventTable": "event",
+                            "eventNameField": "event",
+                            "eventName": "HeroLevelUp",
+                        },
+                        "aggregation": "count",
+                    },
+                ],
+                "groups": [],
+                "filters": {},
+                "selectedFields": [],
+            },
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
+        data_skill="",
+        tracking_config="",
+    )
+
+    assert "WHERE" in prompt
+    assert "IN" in prompt
+    assert "收窄扫描范围" in prompt
+
+
 def test_understand_config_marks_fallback_when_llm_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：理解节点失败时，把降级状态写入 config_summary，供后续诊断感知。
@@ -157,3 +244,67 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     assert calls[0]["tenant_id"] == 2001
     assert calls[0]["datasource_id"] == 1
     assert calls[0]["target_scope"] == ai_sql_generator.CustomPromptTargetScopeEnum.SMART_QA
+
+
+def test_timed_graph_node_logs_sync_node_elapsed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：同步 graph 节点执行完成后，要记录节点名、状态、耗时和请求上下文。
+    """
+    logs: list[str] = []
+
+    monkeypatch.setattr(ai_sql_generator.AppLogUtil, "info", lambda message: logs.append(message))
+
+    def _handler(_state: dict[str, Any]) -> dict[str, Any]:
+        return {"result": "ok"}
+
+    result = asyncio.run(ai_sql_generator._timed_graph_node(
+        "collect_context",
+        _handler,
+        {
+            "request": DashboardAiSqlGenerateRequest(datasource=3),
+            "current_user": SimpleNamespace(id=1001, tenant_id=2001),
+        },
+    ))
+
+    assert result == {"result": "ok"}
+    assert len(logs) == 1
+    assert "Dashboard manual chart graph node finished" in logs[0]
+    assert "node=collect_context" in logs[0]
+    assert "status=ok" in logs[0]
+    assert "elapsed_ms=" in logs[0]
+    assert "datasource_id=3" in logs[0]
+    assert "tenant_id=2001" in logs[0]
+    assert "user_id=1001" in logs[0]
+
+
+def test_timed_graph_node_logs_async_node_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：异步 graph 节点异常时，也要记录失败状态和耗时，然后继续抛出原异常。
+    """
+    warnings: list[str] = []
+
+    monkeypatch.setattr(ai_sql_generator.AppLogUtil, "warning", lambda message: warnings.append(message))
+
+    async def _handler(_state: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("LLM unavailable")
+
+    with pytest.raises(RuntimeError, match="LLM unavailable"):
+        asyncio.run(ai_sql_generator._timed_graph_node(
+            "diagnose_config",
+            _handler,
+            {
+                "request": DashboardAiSqlGenerateRequest(datasource=3),
+                "tenant_id": 2001,
+                "current_user": SimpleNamespace(id=1001, tenant_id=2001),
+            },
+        ))
+
+    assert len(warnings) == 1
+    assert "Dashboard manual chart graph node failed" in warnings[0]
+    assert "node=diagnose_config" in warnings[0]
+    assert "status=error" in warnings[0]
+    assert "elapsed_ms=" in warnings[0]
+    assert "datasource_id=3" in warnings[0]
+    assert "tenant_id=2001" in warnings[0]
+    assert "user_id=1001" in warnings[0]
+    assert "error=LLM unavailable" in warnings[0]

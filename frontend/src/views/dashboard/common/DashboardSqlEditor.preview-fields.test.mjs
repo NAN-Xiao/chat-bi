@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path'
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const componentPath = join(currentDir, 'DashboardSqlEditor.vue')
 const source = readFileSync(componentPath, 'utf8')
+const filterTreePath = join(currentDir, 'BuilderFilterTree.vue')
+const filterTreeSource = readFileSync(filterTreePath, 'utf8')
 
 const chartPreviewMatch = source.match(/<ChartComponent[\s\S]*?:columns="([^"]+)"/)
 const previewTableFieldsMatch = source.match(
@@ -136,6 +138,307 @@ assert.match(
   source,
   /sqlBuilder\.timeField = preferredBuilderTimeField\(\)/,
   '加载字段后默认时间范围字段应使用事件日期优先级函数'
+)
+
+assert.match(
+  source,
+  /formulaTokensToText/,
+  '计算指标应使用公式 token 展示文本，而不是固定左右指标选择器'
+)
+assert.match(
+  source,
+  /<BuilderFieldPicker\s+v-model="item\.field"[\s\S]*?:options="analysisFieldOptions"[\s\S]*?:mode="analysisFieldPickerMode"/,
+  '普通分析指标字段应使用 BuilderFieldPicker，并在事件数据源下进入事件选择面板'
+)
+assert.match(
+  source,
+  /const hasTrackingEventCatalog = computed\(\(\) =>[\s\S]*trackingEventCatalog\.value[\s\S]*Array\.isArray\(trackingEventCatalog\.value\?\.groups\)/,
+  '应按事件目录是否存在识别事件上下文，不能只按事件数量判断'
+)
+assert.match(
+  source,
+  /const usesTrackingEventPicker = computed\(\(\) =>[\s\S]*hasTrackingEventCatalog\.value[\s\S]*hasTrackingEventOptions\.value/,
+  '事件目录为空时仍应保持事件选择器，避免静默回退到普通字段'
+)
+assert.match(
+  source,
+  /tableRole\?: string[\s\S]*const schemaFieldOptions/,
+  '字段选择器需要拿到 tracking 表角色，用于过滤对象组类型表'
+)
+assert.match(
+  source,
+  /trackingConfigApi\.get\(\)[\s\S]*trackingTableRoleByName[\s\S]*tableRole/,
+  '加载字段时应把 tracking 表角色补到字段 option'
+)
+assert.match(
+  source,
+  /const builderFieldOptions = computed\(\(\) =>\s*schemaFieldOptions\.value\.filter\(isSelectableFieldOption\)/,
+  '分组项、全局筛选等通用字段候选应统一过滤对象组类型字段'
+)
+assert.doesNotMatch(
+  source.match(/class="metric-chip-row"[\s\S]*?<span class="metric-of">/)?.[0] || '',
+  /<el-select\s+v-model="item\.field"/,
+  '普通分析指标字段不应继续使用扁平字段下拉，否则事件会退化成普通字段列表'
+)
+assert.doesNotMatch(
+  source.match(/class="metric-chip-row"[\s\S]*?<BuilderFilterTree/)?.[0] || '',
+  /v-model="item\.alias"|class="metric-alias"/,
+  '普通分析指标行不应展示别名输入框，应只保留事件、聚合、计算字段和删除操作'
+)
+assert.match(
+  source,
+  /\.metric-chip-row \{[\s\S]*grid-template-columns:\s*minmax\(220px,\s*320px\) 18px 104px 24px;/,
+  '普通分析指标事件选择框不应随整行拉满，需要限制最大宽度'
+)
+assert.doesNotMatch(
+  source,
+  /title="添加条件组"|<span>条件组<\/span>|<el-icon><FolderAdd \/><\/el-icon>/,
+  '页面编辑器筛选区域应屏蔽条件组新增入口'
+)
+assert.doesNotMatch(
+  filterTreeSource.match(/<div v-if="showToolbar" class="builder-filter-toolbar">[\s\S]*?<\/div>/)?.[0] || '',
+  /addGroup|FolderAdd|条件组/,
+  '通用筛选树工具栏应只保留筛选条件入口，不再提供条件组入口'
+)
+assert.doesNotMatch(
+  `${source}\n${filterTreeSource}`,
+  />\s*条件组\s*</,
+  '筛选 UI 中不应继续展示条件组文案'
+)
+assert.match(
+  filterTreeSource,
+  /class="builder-filter-node-list"[\s\S]*<div v-else class="builder-empty-row"[\s\S]*<div v-if="showToolbar" class="builder-filter-toolbar"/,
+  '筛选条件新增按钮应渲染在筛选输入行下面'
+)
+assert.match(
+  source,
+  /serializeFormulaTokensForContext/,
+  'AI SQL 上下文必须序列化公式 token，并把 metricId 转成指标别名'
+)
+assert.match(
+  source,
+  /formulaMetrics:/,
+  '手动图表配置上下文必须向后端提供 formulaMetrics'
+)
+assert.match(
+  source,
+  /appendFormulaToken/,
+  '页面需要提供公式 token 插入入口'
+)
+assert.match(
+  source,
+  /contenteditable="true"/,
+  '公式编辑区应是可聚焦的 contenteditable token editor'
+)
+assert.match(
+  source,
+  /formulaCursorIndex/,
+  '公式键盘插入应依赖当前光标位置'
+)
+assert.match(
+  source,
+  /appendFormulaAtomicMetric/,
+  '公式内部应支持直接插入事件指标'
+)
+assert.match(
+  source,
+  /插入事件/,
+  '公式按钮文案应为插入事件，贴近事件分析操作逻辑'
+)
+assert.match(
+  source,
+  /title="添加公式指标"[\s\S]*?>\s*Σ\s*<\/button>/,
+  '公式指标应通过分析指标标题区的 Σ 入口添加，贴近 ThinkingData 操作逻辑'
+)
+assert.match(
+  source,
+  /title="添加公式指标"[\s\S]*@click\.stop="addCalculatedMetricItem"/,
+  '添加公式指标入口必须阻止冒泡，避免被外层点击收起逻辑立刻关闭键盘'
+)
+assert.doesNotMatch(
+  source,
+  /添加计算指标|暂无计算指标|<span>计算指标<\/span>/,
+  '本地旧的计算指标独立操作流程应暂时屏蔽'
+)
+assert.doesNotMatch(
+  source,
+  /`计算指标\$\{/,
+  '新增公式指标默认名称不应继续使用计算指标文案'
+)
+assert.match(
+  source,
+  /class="formula-metric-head"/,
+  '公式指标应使用紧凑头部展示名称、精度和操作入口'
+)
+assert.match(
+  source,
+  /class="formula-decimal-pill"/,
+  '公式指标小数位应像 ThinkingData 一样显示为头部 pill'
+)
+assert.match(
+  source,
+  /class="formula-token-filter"/,
+  '公式内事件指标应保留筛选入口视觉位置'
+)
+assert.match(
+  source,
+  /formulaAtomicMetricLabel/,
+  '公式内事件指标 token 编辑后应刷新聚合展示标签'
+)
+assert.match(
+  source,
+  /activeFormulaAtomicMetricKey/,
+  '公式内已插入事件指标应记录当前编辑 token，支持原位编辑'
+)
+assert.match(
+  source,
+  /function startEditFormulaAtomicMetric/,
+  '点击已插入事件指标时应进入原位编辑态'
+)
+assert.match(
+  source,
+  /function syncFormulaAtomicMetric/,
+  '原位编辑事件、聚合方式或计算字段后应同步刷新 token 展示配置'
+)
+assert.match(
+  source,
+  /<template v-if="token\.type === 'atomicMetric'">[\s\S]*class="formula-token-editor-row"/,
+  '已插入事件指标应默认在原位置展示可编辑行'
+)
+assert.match(
+  source,
+  /class="formula-token-editor-row"[\s\S]*class="formula-insert-target"[\s\S]*@click\.stop="setFormulaCursor\(item, tokenIndex \+ 1\)"/,
+  '已插入事件指标的可编辑行后面必须保留独立插入点，允许在两个事件之间继续插入运算符'
+)
+assert.match(
+  source,
+  /@click="handleFormulaDisplayClick\(\$event, item\)"/,
+  '公式编辑框空白区域点击应按点击所在行定位光标，不能总是跳到公式末尾'
+)
+assert.match(
+  source,
+  /function handleFormulaDisplayClick\(event: MouseEvent, item: SqlBuilderCalculatedMetricItem\) \{[\s\S]*formula-token[\s\S]*getBoundingClientRect\(\)[\s\S]*setFormulaCursor\(item, tokenIndex \+ 1\)/,
+  '公式编辑框空白点击应根据同行 token 计算插入位置，点第一行右侧应插到第一行后'
+)
+assert.match(
+  source,
+  /\.formula-display \{[\s\S]*width:\s*100%;[\s\S]*box-sizing:\s*border-box;/,
+  '公式编辑框应撑满父容器，确保右侧空白区域也属于可点击输入范围'
+)
+assert.doesNotMatch(
+  source.match(/\.formula-display \{[\s\S]*?\n\}/)?.[0] || '',
+  /border:\s*1px\s+solid/,
+  '公式编辑框不应显示外层边框'
+)
+assert.doesNotMatch(
+  source.match(/\.formula-display\.is-invalid \{[\s\S]*?\n\}/)?.[0] || '',
+  /border-color/,
+  '公式编辑框校验错误时也不应重新显示外层边框'
+)
+assert.doesNotMatch(
+  source.match(/<template v-if="token\.type === 'atomicMetric'">[\s\S]*<template v-else>/)?.[0] || '',
+  /isEditingFormulaAtomicMetric/,
+  '已插入事件指标不应只有进入编辑态后才显示可编辑行'
+)
+assert.match(
+  source,
+  /v-model="token\.metric\.field"[\s\S]*:options="analysisFieldOptions"[\s\S]*:mode="analysisFieldPickerMode"/,
+  '原位编辑态的事件应复用上方同一套事件选择器'
+)
+assert.match(
+  source,
+  /v-model="token\.metric\.aggregation"[\s\S]*builderAggregationOptions/,
+  '原位编辑态应允许直接修改事件指标聚合方式'
+)
+assert.match(
+  source,
+  /v-if="token\.metric\.aggregation !== 'count'"[\s\S]*v-model="token\.metric\.metric"/,
+  '非总次数聚合时原位编辑态应允许修改计算字段'
+)
+assert.match(
+  source,
+  /class="formula-token-filter"[\s\S]*@click\.stop="toggleFormulaAtomicMetricFilter\(item, tokenIndex, token\.metric\)"/,
+  '公式内事件指标筛选图标必须切换该事件自己的筛选条件'
+)
+assert.match(
+  source,
+  /<BuilderFilterTree\s+v-if="token\.metric\.filters\.length"[\s\S]*:nodes="token\.metric\.filters"[\s\S]*:logic="token\.metric\.filterLogic"[\s\S]*@update:logic="token\.metric\.filterLogic = \$event"/,
+  '公式内事件指标筛选条件应在当前 token 下方展开并绑定 token.metric.filters'
+)
+assert.match(
+  source,
+  /class="formula-token-stack"[\s\S]*<BuilderFilterTree\s+v-if="token\.metric\.filters\.length"/,
+  '公式内事件指标筛选条件应归属到当前事件 token 容器里，点击哪个事件就显示在哪个事件下面'
+)
+assert.match(
+  source,
+  /class="formula-token-flow"[\s\S]*class="formula-token-editor-row"[\s\S]*class="formula-insert-target"[\s\S]*<BuilderFilterTree\s+v-if="token\.metric\.filters\.length"/,
+  '事件后面的输入插入点应保持在筛选树上方的公式输入流里，筛选条件只能显示在事件行下面'
+)
+assert.doesNotMatch(
+  source,
+  /class="formula-token-filter-panel"/,
+  '公式筛选条件不应再按公式整体统一渲染到下方'
+)
+assert.match(
+  source,
+  /function toggleFormulaAtomicMetricFilter\(item: SqlBuilderCalculatedMetricItem, tokenIndex: number, metric: FormulaAtomicMetric\)/,
+  '公式内事件指标需要专门的筛选展开函数，避免筛选按钮只是空图标'
+)
+assert.match(
+  source,
+  /\.formula-token-stack \{[\s\S]*display:\s*inline-flex;[\s\S]*flex-direction:\s*column;/,
+  '公式内事件指标筛选树应另起一整行显示，避免挤在公式 token 中间'
+)
+assert.match(
+  source,
+  /activeFormulaMetricId === item\.id/,
+  '公式键盘工具区应仅在当前公式激活时展开，避免常驻占位'
+)
+assert.match(
+  source,
+  /class="formula-toolbar-panel"/,
+  '公式键盘应使用贴近 ThinkingData 的浮层面板布局'
+)
+assert.doesNotMatch(
+  source.match(/class="formula-toolbar-panel"[\s\S]*?class="formula-keyboard-layout"/)?.[0] || '',
+  /formula-picker-row|v-model="item\.pendingEventField"|v-model="item\.pendingAggregation"/,
+  '公式键盘面板顶部不应再展示事件选择器，事件应插入后在公式行内原位编辑'
+)
+assert.match(
+  source,
+  /class="formula-number-pad"/,
+  '公式键盘数字区应独立成 3 列小键盘'
+)
+assert.match(
+  source,
+  /class="formula-operator-pad"/,
+  '公式键盘运算符区应独立成 2 列操作键盘'
+)
+assert.match(
+  source,
+  /class="formula-command-panel"/,
+  '公式键盘右侧应独立展示插入和清空操作'
+)
+assert.match(
+  source,
+  /Ctrl\+E/,
+  '插入事件按钮下方应展示 Ctrl+E 快捷键提示'
+)
+assert.match(
+  source,
+  /Ctrl\+D/,
+  '清空按钮下方应展示 Ctrl+D 快捷键提示'
+)
+assert.doesNotMatch(
+  source,
+  /插入指标/,
+  '公式编辑器不应继续暴露“插入指标”作为主入口'
+)
+assert.doesNotMatch(
+  source,
+  /leftMetricId: item\.leftMetricId/,
+  '新版计算指标保存不应继续依赖固定左指标字段'
 )
 assert.doesNotMatch(
   normalizePivotSelectionsMatch[1],

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Delete, FolderAdd, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { CopyDocument, Delete, Filter, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { datasourceApi } from '@/api/datasource.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
@@ -11,6 +11,17 @@ import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
+import { isSelectableFieldOption } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
+import {
+  formulaTokensToText,
+  insertFormulaTokenAt,
+  normalizeFormulaTokens,
+  serializeFormulaTokensForContext,
+  validateFormulaTokens,
+  type FormulaAtomicMetric,
+  type FormulaOperator,
+  type FormulaToken,
+} from '@/views/dashboard/common/formulaMetricUtils.ts'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type {
   ChartAxis,
@@ -81,15 +92,16 @@ type SqlBuilderMetricItem = {
   filterLogic: SqlBuilderFilterLogic
   filters: SqlBuilderFilter[]
 }
-type SqlBuilderCalculatedOperator = '+' | '-' | '*' | '/'
 type SqlBuilderCalculatedMetricItem = {
   id: string
-  leftMetricId: string
-  operator: SqlBuilderCalculatedOperator
-  rightMetricId: string
-  multiplier: number
   decimalPlaces: number
   alias: string
+  tokens: FormulaToken[]
+  pendingMetricId: string
+  pendingEventField: string
+  pendingAggregation: string
+  pendingMetricField: string
+  formulaCursorIndex: number
 }
 type BuilderSqlDialect = 'mysql' | 'postgres' | 'generic'
 type SchemaFieldOption = {
@@ -98,6 +110,7 @@ type SchemaFieldOption = {
   table: string
   tableId?: number | string
   tableLabel?: string
+  tableRole?: string
   field: string
   displayName?: string
   type?: string
@@ -264,6 +277,8 @@ const schemaLoading = ref(false)
 const schemaTables = ref<any[]>([])
 const trackingEventCatalog = ref<any>(null)
 const datasourceInfo = ref<any>(null)
+const activeFormulaMetricId = ref('')
+const activeFormulaAtomicMetricKey = ref('')
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
@@ -379,12 +394,14 @@ const builderAggregationOptions = [
   { label: '去重数', value: 'count_distinct' },
 ]
 
-const builderCalculationOperatorOptions: Array<{ label: string; value: SqlBuilderCalculatedOperator }> = [
-  { label: '加', value: '+' },
-  { label: '减', value: '-' },
-  { label: '乘', value: '*' },
-  { label: '除以', value: '/' },
+const builderCalculationOperatorOptions: Array<{ label: string; value: FormulaOperator }> = [
+  { label: '+', value: '+' },
+  { label: '-', value: '-' },
+  { label: '*', value: '*' },
+  { label: '/', value: '/' },
 ]
+const formulaNumberKeys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.']
+const formulaParenKeys: Array<'(' | ')'> = ['(', ')']
 
 const builderFilterOperatorOptions = [
   { label: '等于', value: 'eq' },
@@ -455,6 +472,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
     const tableComment = table?.custom_comment || table?.customComment || table?.table_comment || table?.tableComment || table?.comment || ''
     const tableDisplayName = table?.display_name || table?.displayName || ''
     const tableLabel = tableDisplayName || tableComment
+    const tableRole = table?.table_role || table?.tableRole || table?.role || ''
     ;(table?.fields || []).forEach((field: any) => {
       const fieldName = field?.field_name || field?.fieldName || field?.name || field?.column_name || field?.columnName || ''
       if (!fieldName) return
@@ -473,6 +491,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
         table: tableName,
         tableId: table?.id,
         tableLabel,
+        tableRole,
         field: fieldName,
         displayName,
         type,
@@ -489,7 +508,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
   })
   return options
 })
-const builderFieldOptions = computed(() => schemaFieldOptions.value)
+const builderFieldOptions = computed(() => schemaFieldOptions.value.filter(isSelectableFieldOption))
 const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
   const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
   return groups.flatMap((group: any) => {
@@ -576,7 +595,19 @@ const trackingEventPropertyOptionsByEvent = computed(() => {
   })
   return groups
 })
-const analysisFieldOptions = computed(() => trackingEventCatalogOptions.value)
+const hasTrackingEventCatalog = computed(() =>
+  Boolean(trackingEventCatalog.value && Array.isArray(trackingEventCatalog.value?.groups))
+)
+const hasTrackingEventOptions = computed(() => trackingEventCatalogOptions.value.length > 0)
+const usesTrackingEventPicker = computed(() => hasTrackingEventCatalog.value || hasTrackingEventOptions.value)
+const fallbackAnalysisFieldOptions = computed(() =>
+  schemaFieldOptions.value.length ? schemaFieldOptions.value : toFieldOptions(sourcePreview.fields)
+)
+const analysisFieldOptions = computed(() =>
+  usesTrackingEventPicker.value ? trackingEventCatalogOptions.value : fallbackAnalysisFieldOptions.value
+)
+const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? 'tracking-event' : 'property')
+const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
 const builderMetricOptions = computed(() =>
   sqlBuilder.metricItems.map((item, index) => ({
     label: metricOutputAlias(item, index),
@@ -868,7 +899,13 @@ function collectPivotGroupSourceValues(field: string) {
 }
 
 function toFieldOptions(fields: string[]) {
-  return fields.map((field) => ({ label: field, value: field }))
+  return fields.map((field) => ({
+    label: field,
+    value: field,
+    table: '',
+    tableRole: '',
+    field,
+  }))
 }
 
 function builderFieldCategory(type = '', field = '') {
@@ -893,18 +930,6 @@ function emptyBuilderFilter(): SqlBuilderFilter {
   }
 }
 
-function emptyBuilderFilterGroup(): SqlBuilderFilter {
-  return {
-    id: nodeId('group'),
-    type: 'group',
-    field: '',
-    operator: 'eq',
-    value: '',
-    logic: 'and',
-    children: [emptyBuilderFilter()],
-  }
-}
-
 function emptyMetricItem(): SqlBuilderMetricItem {
   return {
     id: nodeId('metric'),
@@ -920,12 +945,14 @@ function emptyMetricItem(): SqlBuilderMetricItem {
 function emptyCalculatedMetricItem(): SqlBuilderCalculatedMetricItem {
   return {
     id: nodeId('calc-metric'),
-    leftMetricId: '',
-    operator: '/',
-    rightMetricId: '',
-    multiplier: 1,
     decimalPlaces: 2,
     alias: '',
+    tokens: [],
+    pendingMetricId: '',
+    pendingEventField: '',
+    pendingAggregation: 'count',
+    pendingMetricField: '',
+    formulaCursorIndex: 0,
   }
 }
 
@@ -944,25 +971,25 @@ function removeMetricItem(index: number) {
     return
   }
   sqlBuilder.calculatedMetrics.forEach((item) => {
-    if (item.leftMetricId === removed.id) {
-      item.leftMetricId = ''
-    }
-    if (item.rightMetricId === removed.id) {
-      item.rightMetricId = ''
+    item.tokens = item.tokens.filter((token) => token.type !== 'metric' || token.metricId !== removed.id)
+    if (item.pendingMetricId === removed.id) {
+      item.pendingMetricId = ''
     }
   })
 }
 
 function addCalculatedMetricItem() {
-  while (sqlBuilder.metricItems.length < 2) {
+  if (!sqlBuilder.metricItems.length) {
     addMetricItem()
   }
   const options = builderMetricOptions.value
   const item = emptyCalculatedMetricItem()
-  item.leftMetricId = options[0]?.value || ''
-  item.rightMetricId = options[1]?.value || options[0]?.value || ''
-  item.alias = `计算指标${sqlBuilder.calculatedMetrics.length + 1}`
+  item.pendingMetricId = options[0]?.value || ''
+  item.pendingEventField = analysisFieldOptions.value[0]?.value || ''
+  item.pendingMetricField = schemaFieldOptions.value.find((field) => field.category === 'number')?.value || item.pendingEventField
+  item.alias = sqlBuilder.calculatedMetrics.length ? `自定义指标${sqlBuilder.calculatedMetrics.length + 1}` : '自定义指标'
   sqlBuilder.calculatedMetrics.push(item)
+  activeFormulaMetricId.value = item.id
 }
 
 function removeCalculatedMetricItem(index: number) {
@@ -980,7 +1007,244 @@ function metricOutputAlias(item: SqlBuilderMetricItem, index: number) {
 }
 
 function calculatedMetricTitle(item: SqlBuilderCalculatedMetricItem, index: number) {
-  return item.alias || `计算指标${index + 1}`
+  return item.alias || formulaTokensToText(item.tokens, builderMetricOptions.value) || `自定义指标${index + 1}`
+}
+
+function calculatedMetricFormulaText(item: SqlBuilderCalculatedMetricItem) {
+  return formulaTokensToText(item.tokens, builderMetricOptions.value) || '直接输入运算符或点击选择事件'
+}
+
+function calculatedMetricValidation(item: SqlBuilderCalculatedMetricItem) {
+  return validateFormulaTokens(item.tokens, builderMetricOptions.value)
+}
+
+function appendFormulaToken(item: SqlBuilderCalculatedMetricItem, token: FormulaToken) {
+  const cursorIndex = Number.isFinite(Number(item.formulaCursorIndex))
+    ? Number(item.formulaCursorIndex)
+    : item.tokens.length
+  item.tokens = insertFormulaTokenAt(item.tokens, cursorIndex, token)
+  item.formulaCursorIndex = Math.min(cursorIndex + 1, item.tokens.length)
+  activeFormulaMetricId.value = item.id
+  activeFormulaAtomicMetricKey.value = ''
+}
+
+function appendFormulaOperator(item: SqlBuilderCalculatedMetricItem, value: FormulaOperator) {
+  appendFormulaToken(item, { type: 'operator', value })
+}
+
+function appendFormulaParen(item: SqlBuilderCalculatedMetricItem, value: '(' | ')') {
+  appendFormulaToken(item, { type: 'paren', value })
+}
+
+function formulaAtomicMetricLabel(metric: FormulaAtomicMetric) {
+  const field = fieldOptionByValue(metric.field)
+  const aggregation = builderAggregationOptions.find((option) => option.value === metric.aggregation)
+  const fieldLabel = field?.displayName || field?.label || field?.field || metric.field || '事件'
+  return `${fieldLabel}.${aggregation?.label || '指标'}`
+}
+
+function formulaAtomicMetricKey(item: SqlBuilderCalculatedMetricItem, tokenIndex: number) {
+  return `${item.id}:${tokenIndex}`
+}
+
+function syncFormulaAtomicMetric(metric: FormulaAtomicMetric) {
+  metric.aggregation = metric.aggregation || 'count'
+  if (metric.aggregation === 'count') {
+    metric.metric = metric.field
+  } else if (!metric.metric) {
+    metric.metric = schemaFieldOptions.value.find((option) => option.category === 'number')?.value || metric.field
+  }
+  metric.label = formulaAtomicMetricLabel(metric)
+  if (!metric.alias) {
+    metric.alias = sqlAlias(metric.label || '事件指标', `事件指标${Date.now()}`)
+  }
+}
+
+function startEditFormulaAtomicMetric(item: SqlBuilderCalculatedMetricItem, tokenIndex: number, metric: FormulaAtomicMetric) {
+  setFormulaCursor(item, tokenIndex + 1)
+  syncFormulaAtomicMetric(metric)
+  activeFormulaMetricId.value = item.id
+  activeFormulaAtomicMetricKey.value = formulaAtomicMetricKey(item, tokenIndex)
+}
+
+function toggleFormulaAtomicMetricFilter(item: SqlBuilderCalculatedMetricItem, tokenIndex: number, metric: FormulaAtomicMetric) {
+  startEditFormulaAtomicMetric(item, tokenIndex, metric)
+  metric.filterLogic = metric.filterLogic === 'or' ? 'or' : 'and'
+  metric.filters = Array.isArray(metric.filters) ? metric.filters : []
+  if (!metric.filters.length) {
+    metric.filters.push(emptyBuilderFilter())
+  }
+}
+
+function buildPendingFormulaAtomicMetric(item: SqlBuilderCalculatedMetricItem): FormulaAtomicMetric | null {
+  const field = item.pendingEventField || analysisFieldOptions.value[0]?.value || ''
+  if (!field) return null
+  const aggregation = item.pendingAggregation || 'count'
+  const metricField = aggregation === 'count'
+    ? field
+    : item.pendingMetricField || schemaFieldOptions.value.find((option) => option.category === 'number')?.value || field
+  const alias = sqlAlias(formulaAtomicMetricLabel({
+    id: 'preview',
+    field,
+    metric: metricField,
+    aggregation,
+    alias: '',
+    filterLogic: 'and',
+    filters: [],
+  }), `事件指标${Date.now()}`)
+  return {
+    id: nodeId('formula-atomic'),
+    field,
+    metric: metricField,
+    aggregation,
+    alias,
+    label: formulaAtomicMetricLabel({
+      id: 'preview',
+      field,
+      metric: metricField,
+      aggregation,
+      alias,
+      filterLogic: 'and',
+      filters: [],
+    }),
+    filterLogic: 'and',
+    filters: [],
+  }
+}
+
+function appendFormulaAtomicMetric(item: SqlBuilderCalculatedMetricItem) {
+  const metric = buildPendingFormulaAtomicMetric(item)
+  if (!metric) {
+    ElMessage.warning('请先选择事件')
+    return
+  }
+  appendFormulaToken(item, { type: 'atomicMetric', metric })
+}
+
+function appendFormulaNumber(item: SqlBuilderCalculatedMetricItem, value: string) {
+  const cursorIndex = Number.isFinite(Number(item.formulaCursorIndex))
+    ? Number(item.formulaCursorIndex)
+    : item.tokens.length
+  const last = item.tokens[cursorIndex - 1]
+  if (last?.type === 'number') {
+    if (value === '.' && last.value.includes('.')) return
+    last.value = `${last.value}${value}`
+    return
+  }
+  appendFormulaToken(item, { type: 'number', value })
+}
+
+function deleteFormulaToken(item: SqlBuilderCalculatedMetricItem) {
+  const cursorIndex = Number.isFinite(Number(item.formulaCursorIndex))
+    ? Number(item.formulaCursorIndex)
+    : item.tokens.length
+  const last = item.tokens[cursorIndex - 1]
+  if (last?.type === 'number' && last.value.length > 1) {
+    last.value = last.value.slice(0, -1)
+    return
+  }
+  if (cursorIndex <= 0) return
+  item.tokens.splice(cursorIndex - 1, 1)
+  item.formulaCursorIndex = Math.max(0, cursorIndex - 1)
+  activeFormulaAtomicMetricKey.value = ''
+}
+
+function clearFormulaTokens(item: SqlBuilderCalculatedMetricItem) {
+  item.tokens = []
+  item.formulaCursorIndex = 0
+  activeFormulaMetricId.value = item.id
+  activeFormulaAtomicMetricKey.value = ''
+}
+
+function setFormulaCursor(item: SqlBuilderCalculatedMetricItem, index: number) {
+  item.formulaCursorIndex = Math.max(0, Math.min(index, item.tokens.length))
+  activeFormulaMetricId.value = item.id
+  activeFormulaAtomicMetricKey.value = ''
+}
+
+function handleFormulaDisplayClick(event: MouseEvent, item: SqlBuilderCalculatedMetricItem) {
+  const editor = event.currentTarget as HTMLElement | null
+  if (!editor) {
+    setFormulaCursor(item, item.tokens.length)
+    return
+  }
+  const target = event.target as HTMLElement | null
+  if (target?.closest('.formula-token, .formula-insert-target')) {
+    return
+  }
+  const tokenElements = Array.from(editor.querySelectorAll<HTMLElement>('.formula-token'))
+  const matchedToken = tokenElements.find((tokenElement) => {
+    const rect = tokenElement.getBoundingClientRect()
+    return event.clientY >= rect.top - 4 && event.clientY <= rect.bottom + 4
+  })
+  if (matchedToken) {
+    const tokenIndex = tokenElements.indexOf(matchedToken)
+    setFormulaCursor(item, tokenIndex + 1)
+    return
+  }
+  setFormulaCursor(item, item.tokens.length)
+}
+
+function formulaTokenText(token: FormulaToken) {
+  return formulaTokensToText([token], builderMetricOptions.value)
+}
+
+function formulaMetricPrecisionText(item: SqlBuilderCalculatedMetricItem) {
+  const decimalPlaces = Number.isFinite(Number(item.decimalPlaces)) ? Number(item.decimalPlaces) : 2
+  return `${decimalPlaces} 位小数`
+}
+
+function handleFormulaEditorFocusout(event: FocusEvent, item: SqlBuilderCalculatedMetricItem) {
+  const currentTarget = event.currentTarget as HTMLElement | null
+  const relatedTarget = event.relatedTarget as Node | null
+  if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
+    return
+  }
+  if (activeFormulaMetricId.value === item.id) {
+    activeFormulaMetricId.value = ''
+    activeFormulaAtomicMetricKey.value = ''
+  }
+}
+
+function handleFormulaEditorKeydown(event: KeyboardEvent, item: SqlBuilderCalculatedMetricItem) {
+  if (event.key === 'Backspace') {
+    event.preventDefault()
+    deleteFormulaToken(item)
+    return
+  }
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    setFormulaCursor(item, item.formulaCursorIndex - 1)
+    return
+  }
+  if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    setFormulaCursor(item, item.formulaCursorIndex + 1)
+    return
+  }
+  if (builderCalculationOperatorOptions.some((option) => option.value === event.key)) {
+    event.preventDefault()
+    appendFormulaOperator(item, event.key as FormulaOperator)
+    return
+  }
+  if (event.key === '(' || event.key === ')') {
+    event.preventDefault()
+    appendFormulaParen(item, event.key)
+    return
+  }
+  if (/^\d$/.test(event.key) || event.key === '.') {
+    event.preventDefault()
+    appendFormulaNumber(item, event.key)
+  }
+}
+
+function invalidFormulaMetricItems() {
+  return sqlBuilder.calculatedMetrics
+    .map((item, index) => ({
+      index,
+      validation: calculatedMetricValidation(item),
+    }))
+    .filter((item) => !item.validation.valid)
 }
 
 function currentBuilderDialect(): BuilderSqlDialect {
@@ -1401,12 +1665,12 @@ function builderConfigForSave() {
     })),
     calculatedMetrics: sqlBuilder.calculatedMetrics.map((item) => ({
       id: item.id,
-      leftMetricId: item.leftMetricId || '',
-      operator: item.operator,
-      rightMetricId: item.rightMetricId || '',
-      multiplier: Number.isFinite(Number(item.multiplier)) ? Number(item.multiplier) : 1,
       decimalPlaces: Number.isFinite(Number(item.decimalPlaces)) ? Number(item.decimalPlaces) : 2,
       alias: item.alias || '',
+      tokens: normalizeFormulaTokens(item.tokens),
+      pendingEventField: item.pendingEventField || '',
+      pendingAggregation: item.pendingAggregation || 'count',
+      pendingMetricField: item.pendingMetricField || '',
     })),
     groups: [...sqlBuilder.groups],
     globalFilters: compactBuilderFilters(sqlBuilder.globalFilters),
@@ -1444,17 +1708,32 @@ function restoreSqlBuilderState(value: any) {
       }))
     : []
   sqlBuilder.calculatedMetrics = Array.isArray(value.calculatedMetrics)
-    ? value.calculatedMetrics.map((item: any, index: number) => ({
-        id: typeof item?.id === 'string' && item.id ? item.id : nodeId('calc-metric'),
-        leftMetricId: typeof item?.leftMetricId === 'string' ? item.leftMetricId : '',
-        operator: builderCalculationOperatorOptions.some((option) => option.value === item?.operator)
-          ? item.operator
-          : '/',
-        rightMetricId: typeof item?.rightMetricId === 'string' ? item.rightMetricId : '',
-        multiplier: Number.isFinite(Number(item?.multiplier)) ? Number(item.multiplier) : 1,
-        decimalPlaces: Number.isFinite(Number(item?.decimalPlaces)) ? Number(item.decimalPlaces) : 2,
-        alias: typeof item?.alias === 'string' ? item.alias : `计算指标${index + 1}`,
-      }))
+    ? value.calculatedMetrics.map((item: any, index: number) => {
+        const legacyTokens = [
+          typeof item?.leftMetricId === 'string' && item.leftMetricId
+            ? { type: 'metric' as const, metricId: item.leftMetricId }
+            : null,
+          builderCalculationOperatorOptions.some((option) => option.value === item?.operator)
+            ? { type: 'operator' as const, value: item.operator as FormulaOperator }
+            : null,
+          typeof item?.rightMetricId === 'string' && item.rightMetricId
+            ? { type: 'metric' as const, metricId: item.rightMetricId }
+            : null,
+        ].filter(Boolean) as FormulaToken[]
+        return {
+          id: typeof item?.id === 'string' && item.id ? item.id : nodeId('calc-metric'),
+          decimalPlaces: Number.isFinite(Number(item?.decimalPlaces)) ? Number(item.decimalPlaces) : 2,
+          alias: typeof item?.alias === 'string' ? item.alias : `自定义指标${index + 1}`,
+          tokens: normalizeFormulaTokens(item?.tokens).length ? normalizeFormulaTokens(item.tokens) : legacyTokens,
+          pendingMetricId: typeof item?.pendingMetricId === 'string' ? item.pendingMetricId : '',
+          pendingEventField: typeof item?.pendingEventField === 'string' ? item.pendingEventField : '',
+          pendingAggregation: builderAggregationOptions.some((option) => option.value === item?.pendingAggregation)
+            ? item.pendingAggregation
+            : 'count',
+          pendingMetricField: typeof item?.pendingMetricField === 'string' ? item.pendingMetricField : '',
+          formulaCursorIndex: 0,
+        }
+      })
     : []
   sqlBuilder.groups = Array.isArray(value.groups)
     ? value.groups.filter((item: any) => typeof item === 'string')
@@ -1766,6 +2045,7 @@ function fieldOptionPayload(value: string) {
     value: option.value,
     table: option.table,
     tableLabel: option.tableLabel,
+    tableRole: option.tableRole,
     field: option.field,
     displayName: option.displayName || option.label || option.field,
     type: option.type,
@@ -1814,9 +2094,21 @@ function filterContext(nodes: SqlBuilderFilter[]): any[] {
 }
 
 function selectedBuilderFieldValues() {
+  const formulaFields = sqlBuilder.calculatedMetrics.flatMap((item) =>
+    item.tokens.flatMap((token) => {
+      if (token.type !== 'atomicMetric') return []
+      return [
+        token.metric.field,
+        token.metric.metric,
+        ...filterFieldValues((token.metric.filters || []) as SqlBuilderFilter[]),
+      ]
+    })
+  )
   return unique([
     sqlBuilder.timeField,
     ...sqlBuilder.metricItems.flatMap((item) => [item.field, item.metric]),
+    ...sqlBuilder.calculatedMetrics.flatMap((item) => [item.pendingEventField, item.pendingMetricField]),
+    ...formulaFields,
     ...sqlBuilder.groups,
     ...filterFieldValues(sqlBuilder.globalFilters),
     ...sqlBuilder.metricItems.flatMap((item) => filterFieldValues(item.filters || [])),
@@ -1864,12 +2156,17 @@ function collectBuilderAiContext() {
     })),
     calculatedMetrics: sqlBuilder.calculatedMetrics.map((item, index) => ({
       id: item.id,
-      alias: sqlAlias(item.alias || `计算指标${index + 1}`, `计算指标${index + 1}`),
-      leftMetric: metricAliasById.get(item.leftMetricId) || '',
-      operator: item.operator,
-      rightMetric: metricAliasById.get(item.rightMetricId) || '',
-      multiplier: item.multiplier,
+      alias: sqlAlias(item.alias || `公式指标${index + 1}`, `公式指标${index + 1}`),
       decimalPlaces: item.decimalPlaces,
+      formulaText: formulaTokensToText(item.tokens, builderMetricOptions.value),
+      tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById),
+    })),
+    formulaMetrics: sqlBuilder.calculatedMetrics.map((item, index) => ({
+      id: item.id,
+      alias: sqlAlias(item.alias || `公式指标${index + 1}`, `公式指标${index + 1}`),
+      decimalPlaces: item.decimalPlaces,
+      formulaText: formulaTokensToText(item.tokens, builderMetricOptions.value),
+      tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById),
     })),
     groups: sqlBuilder.groups.map(fieldOptionPayload).filter(Boolean),
     filters: {
@@ -1932,6 +2229,11 @@ function collectLocalBuilderConfigIssues() {
     issues.push(`指标别名重复：${duplicateAlias}。`)
     suggestions.push('分析指标：把重复别名改成不同的业务名称。')
   }
+  invalidFormulaMetricItems().forEach((item) => {
+    const label = sqlBuilder.calculatedMetrics[item.index]?.alias || `公式指标${item.index + 1}`
+    issues.push(`${label} 的公式语法错误：${item.validation.message}。`)
+    suggestions.push(`${label}：补全公式后再生成，例如选择一个分析指标、运算符，再选择另一个分析指标。`)
+  })
   const metricFingerprints = new Set<string>()
   sqlBuilder.metricItems.forEach((item, index) => {
     const alias = metricOutputAlias(item, index)
@@ -2054,6 +2356,21 @@ async function generateBuilderAiSql() {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
+  const invalidFormulaItems = invalidFormulaMetricItems()
+  if (invalidFormulaItems.length) {
+    const localAdvice = collectLocalBuilderConfigIssues()
+    setBuilderAgentAdvice({
+      severity: 'warning',
+      intent: inferBuilderIntentText(),
+      message: '公式指标公式语法错误',
+      advice: '请先补全公式指标公式，再生成 SQL。',
+      issues: localAdvice.issues,
+      suggestions: localAdvice.suggestions,
+      raw: '',
+    })
+    ElMessage.warning(invalidFormulaItems[0].validation.message || '公式指标公式语法错误')
+    return false
+  }
   let result: any = null
   try {
     await setLoadingPhase('正在分析')
@@ -2153,28 +2470,40 @@ async function loadSchemaTables() {
   }
   schemaLoading.value = true
   try {
-    const [datasource, tablesResult, eventCatalogResult] = await Promise.all([
+    const [datasource, tablesResult, eventCatalogResult, trackingConfigResult] = await Promise.all([
       datasourceApi.getDs(props.viewInfo.datasource).catch(() => null),
       datasourceApi.tableList(props.viewInfo.datasource),
       trackingConfigApi.eventCatalog().catch(() => null),
+      trackingConfigApi.get().catch(() => null),
     ])
     datasourceInfo.value = datasource
     trackingEventCatalog.value = eventCatalogResult
+    const trackingTableRoleByName = new Map<string, string>()
+    ;(Array.isArray(trackingConfigResult?.tables) ? trackingConfigResult.tables : []).forEach((table: any) => {
+      const tableName = String(table?.table_name || table?.tableName || '').trim()
+      const tableRole = String(table?.table_role || table?.tableRole || '').trim()
+      if (tableName && tableRole) {
+        trackingTableRoleByName.set(tableName, tableRole)
+      }
+    })
     const tables: any[] = tablesResult
     const normalizedTables = Array.isArray(tables) ? tables : []
     const tablesWithFields = await Promise.all(
       normalizedTables.map(async (table) => {
+        const tableName = table?.table_name || table?.tableName || table?.name || table?.table || ''
+        const tableRole = table?.table_role || table?.tableRole || trackingTableRoleByName.get(tableName) || ''
+        const tableWithRole = tableRole ? { ...table, tableRole } : table
         if (Array.isArray(table?.fields)) {
-          return table
+          return tableWithRole
         }
         if (!table?.id) {
-          return { ...table, fields: [] }
+          return { ...tableWithRole, fields: [] }
         }
         try {
           const fields = await datasourceApi.fieldList(table.id, { fieldName: '', excludeContainerFields: true })
-          return { ...table, fields: Array.isArray(fields) ? fields : [] }
+          return { ...tableWithRole, fields: Array.isArray(fields) ? fields : [] }
         } catch {
-          return { ...table, fields: [] }
+          return { ...tableWithRole, fields: [] }
         }
       })
     )
@@ -3911,6 +4240,7 @@ function closeDrawer() {
               v-loading="schemaLoading || builderLoading"
               :element-loading-text="builderLoading ? loadingText : ''"
               class="sql-builder-content"
+              @click="activeFormulaMetricId = ''"
             >
               <section class="builder-section builder-time-section">
               <div class="builder-section-head">
@@ -3966,6 +4296,9 @@ function closeDrawer() {
                   <button type="button" class="builder-icon-button" title="添加指标" @click="addMetricItem">
                     <el-icon><Plus /></el-icon>
                   </button>
+                  <button type="button" class="builder-icon-button formula-entry-button" title="添加公式指标" @click.stop="addCalculatedMetricItem">
+                    Σ
+                  </button>
                 </div>
               </div>
               <div class="metric-list">
@@ -3983,10 +4316,11 @@ function closeDrawer() {
                     >
                       <BuilderFieldPicker
                         v-model="item.field"
+                        class="metric-field-select"
                         :options="analysisFieldOptions"
                         :loading="schemaLoading"
-                        mode="tracking-event"
-                        placeholder="分析字段"
+                        :mode="analysisFieldPickerMode"
+                        :placeholder="formulaFieldPickerPlaceholder"
                       />
                       <span class="metric-of">的</span>
                       <el-select v-model="item.aggregation" size="small" class="metric-aggregation">
@@ -4004,15 +4338,6 @@ function closeDrawer() {
                         :loading="schemaLoading"
                         mode="metric"
                         placeholder="计算字段"
-                      />
-                      <el-input
-                        v-model="item.alias"
-                        class="metric-alias"
-                        size="small"
-                        clearable
-                        placeholder="别名"
-                        @keydown.stop
-                        @keyup.stop
                       />
                       <button type="button" class="builder-icon-button danger" @click="removeMetricItem(index)">
                         <el-icon><Delete /></el-icon>
@@ -4034,107 +4359,249 @@ function closeDrawer() {
                         <el-icon><Plus /></el-icon>
                         <span>筛选条件</span>
                       </button>
-                      <button type="button" class="builder-add-link" @click="item.filters.push(emptyBuilderFilterGroup())">
-                        <el-icon><FolderAdd /></el-icon>
-                        <span>条件组</span>
-                      </button>
                     </div>
                   </div>
                 </div>
               </div>
-            </section>
-
-            <section class="builder-section">
-              <div class="builder-section-head">
-                <div class="builder-section-title">
-                  <BuilderSectionIcon class="builder-section-icon" />
-                  <span>计算指标</span>
-                </div>
-                <div class="builder-section-actions">
-                  <button type="button" class="builder-icon-button" title="添加计算指标" @click="addCalculatedMetricItem">
-                    <el-icon><Plus /></el-icon>
-                  </button>
-                </div>
-              </div>
-              <div class="metric-list">
+              <div v-if="sqlBuilder.calculatedMetrics.length" class="metric-list formula-metric-list">
                 <div
                   v-for="(item, index) in sqlBuilder.calculatedMetrics"
                   :key="item.id"
-                  class="metric-item"
+                  class="metric-item formula-metric-item"
+                  @click.stop
                 >
-                  <div class="metric-index">{{ index + 1 }}</div>
+                  <div class="formula-drag-handle" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </div>
                   <div class="metric-body">
-                    <div class="metric-title">{{ calculatedMetricTitle(item, index) }}</div>
-                    <div class="metric-chip-row calculated-metric-row">
-                      <el-select
-                        v-model="item.leftMetricId"
-                        size="small"
-                        class="calculated-metric-select"
-                        placeholder="指标"
+                    <div class="formula-metric-head">
+                      <div class="formula-metric-title-wrap">
+                        <span class="formula-metric-title">{{ calculatedMetricTitle(item, index) }}</span>
+                        <span class="formula-decimal-pill">{{ formulaMetricPrecisionText(item) }}</span>
+                      </div>
+                      <div class="formula-metric-actions">
+                        <button type="button" class="formula-icon-button" title="筛选条件">
+                          <el-icon><Filter /></el-icon>
+                        </button>
+                        <button type="button" class="formula-icon-button" title="公式指标" @click="setFormulaCursor(item, item.tokens.length)">
+                          Σ
+                        </button>
+                        <button type="button" class="formula-icon-button" title="复制公式指标" @click="addCalculatedMetricItem">
+                          <el-icon><CopyDocument /></el-icon>
+                        </button>
+                        <el-dropdown trigger="click" placement="bottom-end">
+                          <button type="button" class="formula-icon-button" title="更多操作">
+                            <el-icon><MoreFilled /></el-icon>
+                          </button>
+                          <template #dropdown>
+                            <el-dropdown-menu>
+                              <el-dropdown-item @click="removeCalculatedMetricItem(index)">
+                                删除公式指标
+                              </el-dropdown-item>
+                            </el-dropdown-menu>
+                          </template>
+                        </el-dropdown>
+                      </div>
+                    </div>
+                    <div
+                      class="formula-editor"
+                      @focusin="activeFormulaMetricId = item.id"
+                      @focusout="handleFormulaEditorFocusout($event, item)"
+                    >
+                      <div
+                        class="formula-display"
+                        :class="{ 'is-empty': !item.tokens.length, 'is-invalid': item.tokens.length && !calculatedMetricValidation(item).valid }"
+                        contenteditable="true"
+                        spellcheck="false"
+                        role="textbox"
+                        tabindex="0"
+                        @click="handleFormulaDisplayClick($event, item)"
+                        @keydown.stop="handleFormulaEditorKeydown($event, item)"
+                        @beforeinput.prevent
+                        @paste.prevent
                       >
-                        <el-option
-                          v-for="option in builderMetricOptions"
-                          :key="option.value"
-                          :label="option.label"
-                          :value="option.value"
-                        />
-                      </el-select>
-                      <el-select v-model="item.operator" size="small" class="calculated-operator">
-                        <el-option
-                          v-for="option in builderCalculationOperatorOptions"
-                          :key="option.value"
-                          :label="option.label"
-                          :value="option.value"
-                        />
-                      </el-select>
-                      <el-select
-                        v-model="item.rightMetricId"
-                        size="small"
-                        class="calculated-metric-select"
-                        placeholder="指标"
+                        <span
+                          v-if="!item.tokens.length"
+                          class="formula-placeholder"
+                        >
+                          {{ calculatedMetricFormulaText(item) }}
+                        </span>
+                        <template v-for="(token, tokenIndex) in item.tokens" :key="`${item.id}-${tokenIndex}`">
+                          <span
+                            v-if="tokenIndex === 0 && item.formulaCursorIndex === 0"
+                            class="formula-cursor"
+                          />
+                          <template v-if="token.type === 'atomicMetric'">
+                            <span
+                              class="formula-token-stack"
+                              contenteditable="false"
+                              @click.stop="startEditFormulaAtomicMetric(item, tokenIndex, token.metric)"
+                            >
+                              <span class="formula-token-flow">
+                                <span
+                                  class="formula-token formula-token-atomicMetric"
+                                >
+                                  <span
+                                    class="formula-token-editor-row"
+                                    @click.stop="startEditFormulaAtomicMetric(item, tokenIndex, token.metric)"
+                                  >
+                                    <BuilderFieldPicker
+                                      v-model="token.metric.field"
+                                      :options="analysisFieldOptions"
+                                      :loading="schemaLoading"
+                                      :mode="analysisFieldPickerMode"
+                                      :placeholder="formulaFieldPickerPlaceholder"
+                                      @update:modelValue="syncFormulaAtomicMetric(token.metric)"
+                                    />
+                                    <button
+                                      type="button"
+                                      class="formula-token-filter"
+                                      title="事件筛选"
+                                      tabindex="-1"
+                                      @click.stop="toggleFormulaAtomicMetricFilter(item, tokenIndex, token.metric)"
+                                    >
+                                      <el-icon><Filter /></el-icon>
+                                    </button>
+                                    <span class="formula-token-of">的</span>
+                                    <el-select
+                                      v-model="token.metric.aggregation"
+                                      size="small"
+                                      class="formula-token-aggregation"
+                                      @change="syncFormulaAtomicMetric(token.metric)"
+                                    >
+                                      <el-option
+                                        v-for="option in builderAggregationOptions"
+                                        :key="option.value"
+                                        :label="option.label"
+                                        :value="option.value"
+                                      />
+                                    </el-select>
+                                    <BuilderFieldPicker
+                                      v-if="token.metric.aggregation !== 'count'"
+                                      v-model="token.metric.metric"
+                                      :options="builderFieldOptions"
+                                      :loading="schemaLoading"
+                                      mode="metric"
+                                      placeholder="计算字段"
+                                      @update:modelValue="syncFormulaAtomicMetric(token.metric)"
+                                    />
+                                  </span>
+                                </span>
+                                <span
+                                  class="formula-insert-target"
+                                  :class="{ 'is-active': item.formulaCursorIndex === tokenIndex + 1 }"
+                                  contenteditable="false"
+                                  @click.stop="setFormulaCursor(item, tokenIndex + 1)"
+                                >
+                                  <span
+                                    v-if="item.formulaCursorIndex === tokenIndex + 1"
+                                    class="formula-cursor"
+                                  />
+                                </span>
+                              </span>
+                              <BuilderFilterTree
+                                v-if="token.metric.filters.length"
+                                class="formula-token-filter-tree"
+                                :nodes="token.metric.filters"
+                                :logic="token.metric.filterLogic"
+                                :field-options="metricFilterFieldOptions(token.metric as any)"
+                                :operator-options="builderFilterOperatorOptions"
+                                :schema-loading="schemaLoading"
+                                :show-toolbar="true"
+                                empty-text="暂无事件筛选"
+                                @update:logic="token.metric.filterLogic = $event"
+                              />
+                            </span>
+                          </template>
+                          <template v-else>
+                            <span
+                              class="formula-token"
+                              :class="`formula-token-${token.type}`"
+                              contenteditable="false"
+                              @click.stop="setFormulaCursor(item, tokenIndex + 1)"
+                            >
+                              {{ formulaTokenText(token) }}
+                            </span>
+                          </template>
+                          <span
+                            v-if="token.type !== 'atomicMetric'"
+                            class="formula-insert-target"
+                            :class="{ 'is-active': item.formulaCursorIndex === tokenIndex + 1 }"
+                            contenteditable="false"
+                            @click.stop="setFormulaCursor(item, tokenIndex + 1)"
+                          >
+                            <span
+                              v-if="item.formulaCursorIndex === tokenIndex + 1"
+                              class="formula-cursor"
+                            />
+                          </span>
+                        </template>
+                      </div>
+                      <div
+                        v-if="item.tokens.length && !calculatedMetricValidation(item).valid"
+                        class="formula-error"
                       >
-                        <el-option
-                          v-for="option in builderMetricOptions"
-                          :key="option.value"
-                          :label="option.label"
-                          :value="option.value"
-                        />
-                      </el-select>
-                      <span class="metric-of">倍率</span>
-                      <el-input-number
-                        v-model="item.multiplier"
-                        class="calculated-number"
-                        size="small"
-                        :step="0.1"
-                        controls-position="right"
-                      />
-                      <span class="metric-of">小数</span>
-                      <el-input-number
-                        v-model="item.decimalPlaces"
-                        class="calculated-decimal"
-                        size="small"
-                        :min="0"
-                        :max="8"
-                        :step="1"
-                        controls-position="right"
-                      />
-                      <el-input
-                        v-model="item.alias"
-                        class="metric-alias"
-                        size="small"
-                        clearable
-                        placeholder="别名"
-                        @keydown.stop
-                        @keyup.stop
-                      />
-                      <button type="button" class="builder-icon-button danger" @click="removeCalculatedMetricItem(index)">
-                        <el-icon><Delete /></el-icon>
-                      </button>
+                        {{ calculatedMetricValidation(item).message }}
+                      </div>
+                      <div v-if="activeFormulaMetricId === item.id" class="formula-toolbar">
+                        <div class="formula-toolbar-panel">
+                          <div class="formula-keyboard-layout">
+                            <div class="formula-number-pad">
+                              <button
+                                v-for="numberKey in formulaNumberKeys"
+                                :key="numberKey"
+                                type="button"
+                                class="formula-key-button formula-number-key"
+                                @click="appendFormulaNumber(item, numberKey)"
+                              >
+                                {{ numberKey }}
+                              </button>
+                            </div>
+                            <div class="formula-operator-pad">
+                              <button
+                                v-for="option in builderCalculationOperatorOptions"
+                                :key="option.value"
+                                type="button"
+                                class="formula-key-button"
+                                @click="appendFormulaOperator(item, option.value)"
+                              >
+                                {{ option.label }}
+                              </button>
+                              <button
+                                v-for="paren in formulaParenKeys"
+                                :key="paren"
+                                type="button"
+                                class="formula-key-button"
+                                @click="appendFormulaParen(item, paren)"
+                              >
+                                {{ paren }}
+                              </button>
+                              <button type="button" class="formula-key-button formula-delete-key" @click="deleteFormulaToken(item)">
+                                ← Del
+                              </button>
+                            </div>
+                            <div class="formula-command-panel">
+                              <button type="button" class="formula-action-button" @click="appendFormulaAtomicMetric(item)">
+                                <el-icon><Plus /></el-icon>
+                                <span>插入事件</span>
+                              </button>
+                              <span class="formula-shortcut-hint">Ctrl+E</span>
+                              <button type="button" class="formula-action-button" @click="clearFormulaTokens(item)">
+                                <el-icon><Delete /></el-icon>
+                                <span>清空</span>
+                              </button>
+                              <span class="formula-shortcut-hint">Ctrl+D</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div v-if="!sqlBuilder.calculatedMetrics.length" class="builder-empty">
-                  暂无计算指标
                 </div>
               </div>
             </section>
@@ -4148,9 +4615,6 @@ function closeDrawer() {
                 <div class="builder-section-actions">
                   <button type="button" class="builder-icon-button" title="添加筛选条件" @click="sqlBuilder.globalFilters.push(emptyBuilderFilter())">
                     <el-icon><Plus /></el-icon>
-                  </button>
-                  <button type="button" class="builder-icon-button" title="添加条件组" @click="sqlBuilder.globalFilters.push(emptyBuilderFilterGroup())">
-                    <el-icon><FolderAdd /></el-icon>
                   </button>
                 </div>
               </div>
@@ -5054,6 +5518,25 @@ function closeDrawer() {
   font-weight: 700;
 }
 
+.formula-drag-handle {
+  width: 24px;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: repeat(2, 3px);
+  grid-auto-rows: 3px;
+  align-content: center;
+  justify-content: center;
+  gap: 4px;
+  color: #8f959e;
+}
+
+.formula-drag-handle span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .metric-body {
   min-width: 0;
 }
@@ -5068,7 +5551,7 @@ function closeDrawer() {
 
 .metric-chip-row {
   display: grid;
-  grid-template-columns: minmax(132px, 1fr) 18px 104px 116px 24px;
+  grid-template-columns: minmax(220px, 320px) 18px 104px 24px;
   column-gap: 8px;
   row-gap: 8px;
   align-items: center;
@@ -5076,11 +5559,86 @@ function closeDrawer() {
 }
 
 .metric-chip-row.has-metric-field {
-  grid-template-columns: minmax(112px, 1fr) 18px 104px minmax(112px, 1fr) 116px 24px;
+  grid-template-columns: minmax(180px, 240px) 18px 104px minmax(112px, 180px) 24px;
 }
 
 .metric-chip-row.calculated-metric-row {
-  grid-template-columns: minmax(90px, 1fr) 70px minmax(90px, 1fr) 28px 72px 28px 64px 100px 24px;
+  grid-template-columns: 28px 72px 28px minmax(100px, 1fr) 24px;
+}
+
+.formula-metric-list {
+  margin-top: 10px;
+}
+
+.formula-metric-item {
+  border-top: 1px solid #edf0f7;
+  padding-top: 10px;
+}
+
+.formula-metric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  margin-bottom: 6px;
+}
+
+.formula-metric-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.formula-metric-title {
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.formula-decimal-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: #f4f6fb;
+  color: #1f2329;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.formula-metric-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.formula-icon-button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #7b8190;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.formula-icon-button:hover {
+  background: #eef3ff;
+  color: #2f6bff;
+}
+
+.formula-icon-button.danger:hover {
+  background: #fff0f0;
+  color: #f56c6c;
 }
 
 .metric-chip-row :deep(.builder-field-picker-trigger) {
@@ -5094,19 +5652,301 @@ function closeDrawer() {
   text-align: center;
 }
 
+.metric-field-select,
 .metric-aggregation {
   width: 100%;
 }
 
-.metric-alias {
+.formula-entry-button {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.calculated-decimal {
   width: 100%;
 }
 
-.calculated-metric-select,
-.calculated-operator,
-.calculated-number,
-.calculated-decimal {
+.formula-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  max-width: 100%;
+}
+
+.formula-display {
+  display: flex;
   width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 32px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2329;
+  font-size: 13px;
+  line-height: 18px;
+  word-break: break-word;
+  outline: none;
+  cursor: text;
+}
+
+.formula-display.is-empty {
+  color: #a8abb2;
+}
+
+.formula-display.is-invalid {
+  background: #fff7f7;
+}
+
+.formula-error {
+  color: #f56c6c;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.formula-toolbar {
+  max-width: 100%;
+}
+
+.formula-toolbar-panel {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+  padding: 10px 12px;
+  border-radius: 0 0 12px 12px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(31, 35, 41, 0.12);
+}
+
+.formula-keyboard-layout {
+  display: grid;
+  grid-template-columns: 90px 64px 116px;
+  gap: 22px;
+  align-items: start;
+}
+
+.formula-number-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 26px);
+  gap: 6px;
+}
+
+.formula-operator-pad {
+  display: grid;
+  grid-template-columns: repeat(2, 26px);
+  gap: 6px;
+}
+
+.formula-command-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
+  justify-items: stretch;
+  gap: 2px;
+  min-width: 116px;
+}
+
+.formula-metric-select {
+  width: 88px;
+}
+
+.formula-placeholder {
+  color: #a8abb2;
+  pointer-events: none;
+}
+
+.formula-token {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #1f2329;
+  cursor: pointer;
+  user-select: none;
+  gap: 4px;
+}
+
+.formula-token-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.formula-token-flow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.formula-token-atomicMetric,
+.formula-token-metric {
+  color: #1f3a8a;
+}
+
+.formula-token-operator,
+.formula-token-paren {
+  padding: 2px 7px;
+  background: #f5f7fb;
+  color: #2f3542;
+  font-weight: 700;
+}
+
+.formula-token-number {
+  padding: 2px 7px;
+  background: #f2f5fb;
+  color: #1f3a8a;
+}
+
+.formula-atomic-event,
+.formula-atomic-metric {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: #f4f6fb;
+  color: #1f2329;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.formula-token-editor-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.formula-token-editor-row :deep(.builder-field-picker-trigger) {
+  width: 160px;
+  max-width: 180px;
+  background: #f4f6fb;
+}
+
+.formula-token-aggregation {
+  width: 88px;
+}
+
+.formula-token-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  background: #f4f6fb;
+  color: #7b8190;
+  cursor: pointer;
+}
+
+.formula-token-filter-tree {
+  margin: 0 0 2px;
+}
+
+.formula-token-of {
+  color: #8f959e;
+  font-size: 12px;
+}
+
+.formula-insert-target {
+  width: 10px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 10px;
+  border-radius: 4px;
+  cursor: text;
+}
+
+.formula-insert-target:hover {
+  background: #eef3ff;
+}
+
+.formula-insert-target.is-active {
+  background: transparent;
+}
+
+.formula-cursor {
+  width: 1px;
+  height: 20px;
+  background: #2f6bff;
+  animation: formula-cursor-blink 1s step-end infinite;
+}
+
+@keyframes formula-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.formula-key-button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: #f2f5fb;
+  color: #171d4f;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.formula-key-button:hover,
+.formula-action-button:hover {
+  background: #e8efff;
+  color: #2f6bff;
+}
+
+.formula-number-key:last-child {
+  grid-column: span 2;
+  width: auto;
+}
+
+.formula-delete-key {
+  grid-column: span 2;
+  width: auto;
+  text-align: center;
+}
+
+.formula-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  min-width: 116px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #f2f5fb;
+  color: #171d4f;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.formula-shortcut-hint {
+  color: #b8beca;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.formula-shortcut-hint + .formula-action-button {
+  margin-top: 8px;
 }
 
 .builder-add-link {
