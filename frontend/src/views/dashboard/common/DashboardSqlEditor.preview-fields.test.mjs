@@ -172,6 +172,31 @@ assert.match(
 )
 assert.match(
   source,
+  /tableReferenceLabel\?: string[\s\S]*const schemaFieldOptions/,
+  '事件参数字段需要保留事件明细表 label 引用，用于字段选择器展示来源'
+)
+assert.match(
+  source,
+  /function eventDetailTableLabel\(eventTable: string\)/,
+  '事件参数字段需要通过事件明细表名解析真实表 label，不能只显示事件参数对照'
+)
+assert.match(
+  source.match(/const trackingEventPropertyOptions = computed[\s\S]*?\n\}\)/)?.[0] || '',
+  /const tableReferenceLabel = eventDetailTableLabel\(eventTable\)[\s\S]*tableReferenceLabel,/,
+  '事件参数 option 应携带所属事件明细表 label 引用'
+)
+assert.match(
+  source,
+  /function eventDetailFieldOptions\(eventTable: string\)/,
+  '事件计算字段候选需要包含事件明细表普通字段，用于展示 prod 等字段 label'
+)
+assert.match(
+  source.match(/function metricMeasureFieldOptions[\s\S]*?\n\}/)?.[0] || '',
+  /\.\.\.eventProperties[\s\S]*\.\.\.eventDetailFieldOptions\(eventOption\.eventTable \|\| eventOption\.table\)/,
+  '事件计算字段候选应同时包含事件参数和事件明细字段'
+)
+assert.match(
+  source,
   /const builderFieldOptions = computed\(\(\) =>\s*schemaFieldOptions\.value\.filter\(isSelectableFieldOption\)/,
   '分组项、全局筛选等通用字段候选应统一过滤对象组类型字段'
 )

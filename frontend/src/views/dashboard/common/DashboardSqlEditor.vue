@@ -110,6 +110,7 @@ type SchemaFieldOption = {
   table: string
   tableId?: number | string
   tableLabel?: string
+  tableReferenceLabel?: string
   tableRole?: string
   field: string
   displayName?: string
@@ -462,15 +463,29 @@ const currentExternalMcpTenantId = computed(() =>
   )
 )
 const currentDashboardId = computed(() => stableId(props.dashboardInfo?.id || props.viewInfo?.dashboard_id || props.viewInfo?.dashboardId || props.viewInfo?.mcp?.dashboardId || props.viewInfo?.mcp?.dashboard_id))
+function schemaTableName(table: any) {
+  return table?.table_name || table?.tableName || table?.name || table?.table || ''
+}
+
+function schemaTableLabel(table: any) {
+  const tableComment = table?.custom_comment || table?.customComment || table?.table_comment || table?.tableComment || table?.comment || ''
+  const tableDisplayName = table?.display_name || table?.displayName || ''
+  return tableDisplayName || tableComment || schemaTableName(table)
+}
+
+function eventDetailTableLabel(eventTable: string) {
+  const table = (schemaTables.value || []).find((item: any) => schemaTableName(item) === eventTable)
+  return table ? schemaTableLabel(table) : eventTable
+}
+
 const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
   const options: SchemaFieldOption[] = []
   const seen = new Set<string>()
   ;(schemaTables.value || []).forEach((table: any) => {
-    const tableName = table?.table_name || table?.tableName || table?.name || table?.table || ''
+    const tableName = schemaTableName(table)
     if (!tableName) return
     const tableComment = table?.custom_comment || table?.customComment || table?.table_comment || table?.tableComment || table?.comment || ''
-    const tableDisplayName = table?.display_name || table?.displayName || ''
-    const tableLabel = tableDisplayName || tableComment
+    const tableLabel = schemaTableLabel(table)
     const tableRole = table?.table_role || table?.tableRole || table?.role || ''
     ;(table?.fields || []).forEach((field: any) => {
       const fieldName = field?.field_name || field?.fieldName || field?.name || field?.column_name || field?.columnName || ''
@@ -518,11 +533,13 @@ const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
       const eventName = event?.event_name || event?.eventName || ''
       const displayName = event?.display_name || event?.displayName || eventName
       const category = event?.category || group?.label || '默认分组'
+      const tableReferenceLabel = eventDetailTableLabel(eventTable)
       return {
         label: displayName,
         value: event?.value || `tracking-event:${eventTable}.${eventNameField}:${eventName}`,
         table: eventTable,
         tableLabel: '事件参数对照',
+        tableReferenceLabel,
         field: eventNameField,
         displayName,
         type: '事件',
@@ -549,6 +566,7 @@ const trackingEventPropertyOptions = computed<SchemaFieldOption[]>(() => {
       const eventNameField = event?.event_name_field || event?.eventNameField || trackingEventCatalog.value?.event_name_field || trackingEventCatalog.value?.eventNameField || ''
       const eventName = event?.event_name || event?.eventName || ''
       const eventDisplayName = event?.display_name || event?.displayName || eventName
+      const tableReferenceLabel = eventDetailTableLabel(eventTable)
       const properties = Array.isArray(event?.properties) ? event.properties : []
       return properties.map((property: any) => {
         const propertyName = property?.property_name || property?.propertyName || property?.field_name || property?.fieldName || ''
@@ -561,6 +579,7 @@ const trackingEventPropertyOptions = computed<SchemaFieldOption[]>(() => {
           value: property?.value || `tracking-property:${eventTable}.${eventNameField}:${eventName}:${propertyName}`,
           table: eventTable,
           tableLabel: `${eventDisplayName} 参数`,
+          tableReferenceLabel,
           field: propertyName,
           displayName,
         type: propertyType || '事件参数',
@@ -1769,6 +1788,7 @@ function fieldOptionByValue(value: string) {
   return trackingEventCatalogOptions.value.find((field) => field.value === value)
     || trackingEventPropertyOptions.value.find((field) => field.value === value)
     || schemaFieldOptions.value.find((field) => field.value === value)
+    || schemaFieldOptions.value.find((field) => field.field === value)
 }
 
 function builderFieldLabel(value: string) {
@@ -1825,22 +1845,29 @@ function metricMeasureFieldOptions(item: Pick<SqlBuilderMetricItem, 'field'>) {
   const eventOption = fieldOptionByValue(item.field)
   if (eventOption?.kind === 'tracking-event' && eventOption.eventName) {
     const eventProperties = trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
-    if (eventProperties.length) {
-      return eventProperties
-    }
+    return [
+      ...eventProperties,
+      ...eventDetailFieldOptions(eventOption.eventTable || eventOption.table),
+    ]
   }
   return builderFieldOptions.value
 }
 
-function isNumberMetricFieldOption(option: SchemaFieldOption) {
-  return builderFieldCategory(
-    option.semanticType || option.type || option.category || option.propertyType || '',
-    option.field || option.propertyName || option.value || ''
-  ) === 'number'
+function eventDetailFieldOptions(eventTable: string) {
+  if (!eventTable) {
+    return []
+  }
+  return builderFieldOptions.value
+    .filter((option) => option.table === eventTable)
+    .map((option) => ({
+      ...option,
+      tableReferenceLabel: option.tableReferenceLabel || option.tableLabel || option.tableComment,
+    }))
 }
 
 function defaultMetricFieldForEvent(field: string) {
-  return metricMeasureFieldOptions({ field }).find(isNumberMetricFieldOption)?.value || ''
+  void field
+  return ''
 }
 
 function recommendedMetricAlias(item: SqlBuilderMetricItem, index: number) {

@@ -37,6 +37,7 @@ const TABLE_TAB_PREFIX = 'table:'
 
 const selectedOption = computed(() =>
   props.options.find((item) => item.value === props.modelValue)
+  || props.options.find((item) => item.field === props.modelValue)
 )
 
 const selectedLabel = computed(() =>
@@ -53,29 +54,54 @@ function shortTableLabel(value = '') {
     .trim()
 }
 
-function tableTabLabel(tableName: string, label = '') {
+function tableTabLabel(tableName: string, label = '', referenceLabel = '') {
   const shortLabel = shortTableLabel(label)
-  if (!shortLabel || shortLabel.toLowerCase() === tableName.toLowerCase()) {
-    return tableName
+  const shortReferenceLabel = shortTableLabel(referenceLabel)
+  const baseLabel = !shortLabel || shortLabel.toLowerCase() === tableName.toLowerCase()
+    ? tableName
+    : `${shortLabel}(${tableName})`
+  if (!shortReferenceLabel || shortReferenceLabel === shortLabel || shortReferenceLabel.toLowerCase() === tableName.toLowerCase()) {
+    return baseLabel
   }
-  return `${shortLabel}(${tableName})`
+  return `${baseLabel} · ${shortReferenceLabel}`
+}
+
+function optionTableReferenceLabel(option: FieldOption) {
+  const label = shortTableLabel(option.tableReferenceLabel || '')
+  if (!label || label.toLowerCase() === String(option.table || '').toLowerCase()) {
+    return ''
+  }
+  return label
+}
+
+function fieldReferenceLabel(option: FieldOption) {
+  const label = optionTableReferenceLabel(option)
+  if (!label) {
+    return ''
+  }
+  const tableName = option.eventTable || option.table
+  return tableName ? `${label}(${tableName})` : label
 }
 
 const tableTabs = computed(() => {
-  const tableLabels = new Map<string, string>()
+  const tableLabels = new Map<string, { label: string; referenceLabel: string }>()
   selectableOptions.value.forEach((item) => {
     if (item.table) {
       const currentLabel = tableLabels.get(item.table)
       const nextLabel = shortTableLabel(item.tableLabel || item.tableComment)
-      if (!currentLabel || nextLabel) {
-        tableLabels.set(item.table, nextLabel || currentLabel || '')
+      const nextReferenceLabel = optionTableReferenceLabel(item)
+      if (!currentLabel || nextLabel || nextReferenceLabel) {
+        tableLabels.set(item.table, {
+          label: nextLabel || currentLabel?.label || '',
+          referenceLabel: nextReferenceLabel || currentLabel?.referenceLabel || '',
+        })
       }
     }
   })
   return Array.from(tableLabels.entries())
     .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }))
-    .map(([tableName, label]) => ({
-      label: tableTabLabel(tableName, label),
+    .map(([tableName, meta]) => ({
+      label: tableTabLabel(tableName, meta.label, meta.referenceLabel),
       value: `${TABLE_TAB_PREFIX}${tableName}`,
     }))
 })
@@ -140,7 +166,7 @@ const groupedOptions = computed(() => {
     : keywordRows
   const groups = new Map<string, FieldOption[]>()
   rows.forEach((item) => {
-    const key = tableTabLabel(item.table || '字段', item.tableLabel || item.tableComment)
+    const key = tableTabLabel(item.table || '字段', item.tableLabel || item.tableComment, optionTableReferenceLabel(item))
     if (!groups.has(key)) {
       groups.set(key, [])
     }
@@ -189,7 +215,10 @@ const activeEventItems = computed(() => {
 
 function fieldTypeLabel(option: FieldOption) {
   if (option.kind === 'tracking-event') return '事件'
-  if (option.isJsonSubfield) return 'JSON字段'
+  if (option.isJsonSubfield) {
+    const referenceLabel = fieldReferenceLabel(option)
+    return referenceLabel ? `${referenceLabel} · JSON字段` : 'JSON字段'
+  }
   if (option.type) return option.type
   if (isIdentifierField(option)) return '标识'
   if (option.category === 'time') return '时间'
@@ -354,6 +383,7 @@ watch(
                     <div class="hover-title">{{ displayFieldName(item) }}</div>
                     <div class="hover-subtitle">{{ item.value }}</div>
                     <div v-if="item.isJsonSubfield" class="hover-json-meta">
+                      <template v-if="fieldReferenceLabel(item)">事件明细：{{ fieldReferenceLabel(item) }} · </template>
                       {{ item.sourceField }} · {{ item.jsonPath }}
                     </div>
                     <div v-if="item.expression" class="hover-expression">{{ item.expression }}</div>
@@ -624,8 +654,12 @@ watch(
 
 .field-type {
   flex: 0 0 auto;
+  max-width: 190px;
+  overflow: hidden;
   color: #8b93a3;
   font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .builder-field-hover-card {

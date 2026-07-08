@@ -3,6 +3,7 @@ export type FieldOption = {
   value: string
   table: string
   tableLabel?: string
+  tableReferenceLabel?: string
   tableRole?: string
   field: string
   displayName?: string
