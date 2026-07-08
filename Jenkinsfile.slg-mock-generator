@@ -1,0 +1,284 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    skipDefaultCheckout(true)
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  parameters {
+    gitParameter(
+      name: 'BRANCH_NAME',
+      type: 'PT_BRANCH',
+      defaultValue: 'release_ha',
+      selectedValue: 'DEFAULT',
+      branchFilter: 'origin/(.*)',
+      sortMode: 'DESCENDING_SMART',
+      quickFilterEnabled: true,
+      useRepository: 'https://github.com/NAN-Xiao/chat-bi.git',
+      description: 'Git 分支'
+    )
+    string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
+    string(name: 'IMAGE_REGISTRY', defaultValue: '', description: '可选镜像仓库前缀，例如 registry.example.com/chat-bi；为空时只构建本地镜像')
+    booleanParam(name: 'PUBLISH_LATEST', defaultValue: false, description: '是否额外推送 latest 标签。生产建议使用不可变 tag')
+    booleanParam(name: 'DEPLOY_CONTAINER', defaultValue: false, description: '是否构建后重启本机 slg-mock-generator 容器')
+    booleanParam(name: 'CLEAN_OLD_IMAGES', defaultValue: false, description: '是否清理旧版本造数器镜像')
+  }
+
+  environment {
+    DOCKER_BUILDKIT = '1'
+    BUILDKIT_PROGRESS = 'plain'
+    GIT_URL = 'https://github.com/NAN-Xiao/chat-bi.git'
+    APP_HOME = '/home/chat-bi'
+    CONTAINER_NAME = 'slg-mock-generator'
+    IMAGE_REPOSITORY = 'chat-bi-slg-mock-generator'
+    DOCKERFILE = 'Dockerfile.slg-mock-generator'
+    GENERATOR_CONFIG_FILE = '/home/chat-bi/slg_mock_generator.yaml'
+    GENERATOR_ENV_FILE = '/home/chat-bi/slg-mock-generator.env'
+  }
+
+  stages {
+    stage('拉取代码') {
+      steps {
+        git branch: params.BRANCH_NAME, url: env.GIT_URL
+      }
+    }
+
+    stage('准备构建参数') {
+      steps {
+        script {
+          def shortCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          env.EFFECTIVE_IMAGE_TAG = params.IMAGE_TAG?.trim() ? params.IMAGE_TAG.trim() : "${env.BUILD_NUMBER}-${shortCommit}"
+          env.LOCAL_IMAGE = "${env.IMAGE_REPOSITORY}:${env.EFFECTIVE_IMAGE_TAG}"
+          env.IMAGE_REGISTRY = params.IMAGE_REGISTRY?.trim() ?: ''
+          env.PUBLISH_IMAGE = env.IMAGE_REGISTRY ? "${env.IMAGE_REGISTRY}/${env.IMAGE_REPOSITORY}:${env.EFFECTIVE_IMAGE_TAG}" : ''
+          env.PUBLISH_LATEST_IMAGE = env.IMAGE_REGISTRY ? "${env.IMAGE_REGISTRY}/${env.IMAGE_REPOSITORY}:latest" : ''
+          env.CLEAN_OLD_IMAGES = params.CLEAN_OLD_IMAGES.toString()
+          env.DEPLOY_CONTAINER = params.DEPLOY_CONTAINER.toString()
+          env.PUBLISH_LATEST = params.PUBLISH_LATEST.toString()
+        }
+        sh '''
+          set -eux
+          case "$EFFECTIVE_IMAGE_TAG" in
+            *[!A-Za-z0-9_.-]*|'')
+              echo "镜像标签不合法：$EFFECTIVE_IMAGE_TAG。只允许字母、数字、下划线、点和中横线。"
+              exit 1
+              ;;
+          esac
+          if [ -n "$IMAGE_REGISTRY" ]; then
+            case "$IMAGE_REGISTRY" in
+              *[!A-Za-z0-9_.:/-]*)
+                echo "镜像仓库前缀不合法：$IMAGE_REGISTRY。"
+                exit 1
+                ;;
+            esac
+          fi
+
+          command -v git
+          command -v docker
+          docker version
+          docker buildx version || echo "docker buildx 不可用，将使用 DOCKER_BUILDKIT=1 docker build。"
+
+          test -f "$DOCKERFILE"
+          test -f tools/slg_bi_mock_scheduled_generator.py
+          test -f tools/create_slg_bi_mock_db_prod.py
+          test -f deploy/slg_mock_generator.yaml
+
+          mkdir -p "$APP_HOME"
+          test -w "$APP_HOME" || {
+            echo "Jenkins 用户没有 $APP_HOME 写入权限，请先执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
+            exit 1
+          }
+
+          echo "本地镜像：$LOCAL_IMAGE"
+          if [ -n "$PUBLISH_IMAGE" ]; then
+            echo "发布镜像：$PUBLISH_IMAGE"
+          else
+            echo "未配置 IMAGE_REGISTRY，本次只构建本地镜像。"
+          fi
+          echo "是否部署容器：${DEPLOY_CONTAINER:-false}"
+          echo "是否清理旧镜像：${CLEAN_OLD_IMAGES:-false}"
+        '''
+      }
+    }
+
+    stage('构建造数器镜像') {
+      steps {
+        sh '''
+          set -eux
+          if docker buildx version >/dev/null 2>&1; then
+            docker buildx inspect --bootstrap
+            docker buildx build \
+              --load \
+              --tag "$LOCAL_IMAGE" \
+              -f "$DOCKERFILE" \
+              .
+          else
+            docker build \
+              --tag "$LOCAL_IMAGE" \
+              -f "$DOCKERFILE" \
+              .
+          fi
+        '''
+      }
+    }
+
+    stage('镜像 smoke test') {
+      steps {
+        sh '''
+          set -eux
+          tmp_container="$(docker create "$LOCAL_IMAGE" --help)"
+          trap 'docker rm -f "$tmp_container" >/dev/null 2>&1 || true' EXIT
+
+          docker cp "$tmp_container:/app/tools/slg_bi_mock_scheduled_generator.py" /tmp/slg_bi_mock_scheduled_generator.py
+          docker cp "$tmp_container:/app/tools/create_slg_bi_mock_db_prod.py" /tmp/create_slg_bi_mock_db_prod.py
+          test -s /tmp/slg_bi_mock_scheduled_generator.py
+          test -s /tmp/create_slg_bi_mock_db_prod.py
+
+          docker run --rm "$LOCAL_IMAGE" --help | tee /tmp/slg-mock-generator-help.txt
+          grep -Fq -- '--config-file' /tmp/slg-mock-generator-help.txt
+          grep -Fq -- '--run-once' /tmp/slg-mock-generator-help.txt
+
+          entrypoint="$(docker inspect "$LOCAL_IMAGE" --format '{{json .Config.Entrypoint}}')"
+          echo "镜像入口：$entrypoint"
+          echo "$entrypoint" | grep -Fq '/app/tools/slg_bi_mock_scheduled_generator.py'
+        '''
+      }
+    }
+
+    stage('发布镜像') {
+      when {
+        expression { return env.PUBLISH_IMAGE?.trim() }
+      }
+      steps {
+        sh '''
+          set -eux
+          docker tag "$LOCAL_IMAGE" "$PUBLISH_IMAGE"
+          docker push "$PUBLISH_IMAGE"
+
+          if [ "${PUBLISH_LATEST:-false}" = "true" ]; then
+            docker tag "$LOCAL_IMAGE" "$PUBLISH_LATEST_IMAGE"
+            docker push "$PUBLISH_LATEST_IMAGE"
+          else
+            echo "跳过 latest 标签发布。"
+          fi
+        '''
+      }
+    }
+
+    stage('部署本机造数器容器') {
+      when {
+        expression { return env.DEPLOY_CONTAINER == 'true' }
+      }
+      steps {
+        sh '''
+          set -eux
+          if [ ! -f "$GENERATOR_ENV_FILE" ]; then
+            echo "缺少造数器环境变量文件：$GENERATOR_ENV_FILE"
+            echo "请在该文件中维护 DB_HOST、DB_PORT、DB_NAME、DB_USER、DB_PASSWORD 等运行配置。"
+            exit 1
+          fi
+
+          if [ ! -f "$GENERATOR_CONFIG_FILE" ]; then
+            echo "未找到 $GENERATOR_CONFIG_FILE，将使用仓库默认配置生成一份。"
+            cp deploy/slg_mock_generator.yaml "$GENERATOR_CONFIG_FILE"
+            chmod 600 "$GENERATOR_CONFIG_FILE"
+          fi
+
+          docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          docker run -d \
+            --name "$CONTAINER_NAME" \
+            --restart unless-stopped \
+            --env-file "$GENERATOR_ENV_FILE" \
+            -e CONFIG_FILE=/app/config/slg_mock_generator.yaml \
+            -v "$GENERATOR_CONFIG_FILE:/app/config/slg_mock_generator.yaml:ro" \
+            "$LOCAL_IMAGE"
+
+          deadline=$(( $(date +%s) + 30 ))
+          while true; do
+            if docker ps --format '{{.Names}}' | grep -Fx "$CONTAINER_NAME" >/dev/null; then
+              echo "造数器容器已启动。"
+              docker ps --filter "name=^/${CONTAINER_NAME}$"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "等待造数器容器启动超时。"
+              docker ps -a --filter "name=^/${CONTAINER_NAME}$"
+              docker logs --tail=200 "$CONTAINER_NAME" || true
+              exit 1
+            fi
+            sleep 1
+          done
+        '''
+      }
+    }
+
+    stage('清理旧构建产物') {
+      steps {
+        sh '''
+          set -eu
+          IMAGE_KEEP_COUNT=3
+          RUNNING_IMAGE_IDS="$(docker ps --filter "name=^/${CONTAINER_NAME}$" --format '{{.ID}}' \
+            | xargs -r docker inspect --format='{{.Image}}' 2>/dev/null || true)"
+
+          if [ "${CLEAN_OLD_IMAGES:-false}" = "true" ]; then
+            docker images "$IMAGE_REPOSITORY" --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' \
+              | sort -k3,4r \
+              | awk -v keep="$IMAGE_KEEP_COUNT" -v running_ids="$RUNNING_IMAGE_IDS" '
+                  NR <= keep {
+                    print "保留镜像：" $1
+                    next
+                  }
+                  running_ids != "" && index(running_ids, $2) > 0 {
+                    print "跳过运行中镜像：" $1
+                    next
+                  }
+                  {
+                    print $1
+                  }
+                ' \
+              | while IFS= read -r image; do
+                  case "$image" in
+                    保留镜像：*|跳过运行中镜像：*)
+                      echo "$image"
+                      ;;
+                    "")
+                      ;;
+                    *)
+                      echo "删除旧镜像：$image"
+                      docker rmi "$image" || true
+                      ;;
+                  esac
+                done
+          else
+            echo "跳过旧版本镜像清理。"
+          fi
+
+          docker container prune -f || true
+          docker image prune -f || true
+          docker images "$IMAGE_REPOSITORY" || true
+          docker system df
+        '''
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "SLG BI Mock 造数器镜像构建完成：${env.LOCAL_IMAGE}"
+      echo "发布镜像：${env.PUBLISH_IMAGE ?: '未配置 IMAGE_REGISTRY，未推送'}"
+    }
+    failure {
+      sh '''
+        set +e
+        echo "造数器容器最近 300 行日志："
+        docker logs --tail=300 "$CONTAINER_NAME" || true
+        echo "当前造数器相关镜像："
+        docker images "$IMAGE_REPOSITORY" || true
+        exit 0
+      '''
+    }
+  }
+}
