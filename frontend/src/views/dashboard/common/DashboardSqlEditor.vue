@@ -3614,8 +3614,8 @@ function initEditor() {
   sourcePreview.data = viewInfo.data?.source_data || viewInfo.data?.data || []
   preview.fields = currentFields.length ? currentFields : fields
   preview.data = viewInfo.data?.data || []
-  preview.status = viewInfo.status || 'success'
-  preview.message = viewInfo.message || ''
+  preview.status = 'success'
+  preview.message = ''
   preview.raw = viewInfo.data?.raw
   setSourceResult('sql', normalizePreviewResultSnapshot(sourceConfig.sql?.lastResult))
   setSourceResult('external_mcp', normalizePreviewResultSnapshot(sourceConfig.mcp?.lastResult))
@@ -4022,8 +4022,6 @@ function sourceResultForSave(type: ChartDataSourceType) {
   return {
     fields: [...result.fields],
     data: [...result.data],
-    status: result.status,
-    message: result.message,
     ...(result.raw !== undefined ? { raw: result.raw } : {}),
   }
 }
@@ -4085,10 +4083,10 @@ function writeEditorStateToViewInfo(options: {
     delete nextData.source_data
   }
   props.viewInfo.data = nextData
-  props.viewInfo.status = preview.status
-  props.viewInfo.dataState = preview.status === 'failed' ? 'failed' : 'ready'
+  delete props.viewInfo.status
+  delete props.viewInfo.dataState
   props.viewInfo.loadingProgress = 100
-  props.viewInfo.message = preview.message
+  delete props.viewInfo.message
   props.viewInfo.chart = buildChart()
   props.viewInfo.pivot = buildPivotConfig()
   props.viewInfo.datasource = hasSqlSource.value ? props.viewInfo.datasource || null : null
