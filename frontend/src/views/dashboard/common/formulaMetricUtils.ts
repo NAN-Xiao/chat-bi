@@ -33,12 +33,58 @@ export type FormulaMetricOption = {
   value: string
 }
 
+export type FormulaAtomicMetricDisplay = {
+  label: string
+  alias: string
+}
+
 export type FormulaValidationResult = {
   valid: boolean
   message: string
 }
 
 const operatorValues = new Set(['+', '-', '*', '/'])
+
+function normalizeFilterLogic(value: unknown): 'and' | 'or' {
+  return value === 'or' ? 'or' : 'and'
+}
+
+function normalizeAtomicMetricFilters(value: unknown): FormulaAtomicMetricFilter[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item): FormulaAtomicMetricFilter | null => {
+      if (!item || typeof item !== 'object') return null
+      const filter = item as Record<string, unknown>
+      const id = String(filter.id || '').trim()
+      const type = filter.type === 'group' || Array.isArray(filter.children) ? 'group' : 'rule'
+      if (type === 'group') {
+        const children = normalizeAtomicMetricFilters(filter.children)
+        return id && children.length
+          ? {
+              id,
+              type: 'group',
+              field: '',
+              operator: '',
+              value: '',
+              logic: normalizeFilterLogic(filter.logic),
+              children,
+            }
+          : null
+      }
+      const field = String(filter.field || '').trim()
+      const operator = String(filter.operator || '').trim()
+      if (!id || !field || !operator) return null
+      return {
+        id,
+        type: 'rule',
+        field,
+        operator,
+        value: String(filter.value ?? ''),
+        logic: normalizeFilterLogic(filter.logic),
+      }
+    })
+    .filter(Boolean) as FormulaAtomicMetricFilter[]
+}
 
 function tokenKind(token: FormulaToken | undefined): 'operand' | 'operator' | 'leftParen' | 'rightParen' | 'unknown' {
   if (!token) return 'unknown'
@@ -77,7 +123,7 @@ export function normalizeFormulaTokens(value: unknown): FormulaToken[] {
                 alias: String(metric.alias || '').trim(),
                 label: String(metric.label || '').trim(),
                 filterLogic: metric.filterLogic === 'or' ? 'or' : 'and',
-                filters: Array.isArray(metric.filters) ? metric.filters : [],
+                filters: normalizeAtomicMetricFilters(metric.filters),
               },
             }
           : null
@@ -95,6 +141,19 @@ export function normalizeFormulaTokens(value: unknown): FormulaToken[] {
       return null
     })
     .filter(Boolean) as FormulaToken[]
+}
+
+export function normalizeFormulaAtomicMetricDisplay(
+  metric: FormulaAtomicMetric,
+  display: FormulaAtomicMetricDisplay
+): FormulaAtomicMetric {
+  const label = String(display.label || '').trim()
+  const alias = String(display.alias || '').trim()
+  return {
+    ...metric,
+    label,
+    alias,
+  }
 }
 
 export function validateFormulaTokens(

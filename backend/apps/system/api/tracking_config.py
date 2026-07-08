@@ -2,6 +2,7 @@
 脚本说明：这个脚本放系统管理的接口，把前端请求接进来并交给后面的业务逻辑处理。
 """
 import asyncio
+import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, UploadFile
@@ -28,6 +29,7 @@ from apps.system.schemas.tenant_schema import (
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import CurrentTenant, CurrentUser, SessionDep
+from common.observability.api_timing import log_api_timing
 from common.utils.file_utils import AppFileUtils
 from fastapi import HTTPException
 
@@ -114,6 +116,7 @@ def _excel_response(buffer, filename: str) -> StreamingResponse:
 @router.get("", response_model=TenantTrackingConfigDTO, include_in_schema=False)
 async def current_tracking_config(
     session: SessionDep,
+    current_user: CurrentUser,
     current_tenant: CurrentTenant,
 ):
     """
@@ -121,8 +124,26 @@ async def current_tracking_config(
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
-    return get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+    started_at = time.perf_counter()
+    status = "error"
+    datasource_id = None
+    config = None
+    try:
+        _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
+        config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+        status = "success"
+        return config
+    finally:
+        mappings = getattr(config, "event_name_mappings", None) if config is not None else None
+        log_api_timing(
+            "Tracking config get",
+            started_at=started_at,
+            tenant_id=getattr(current_tenant, "id", None),
+            user_id=getattr(current_user, "id", None),
+            datasource_id=datasource_id,
+            status=status,
+            event_mapping_count=len(mappings) if isinstance(mappings, list) else 0,
+        )
 
 
 @router.get("/event-catalog", response_model=TenantTrackingEventCatalogDTO, include_in_schema=False)

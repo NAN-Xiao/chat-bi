@@ -39,6 +39,7 @@ from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
+from common.observability.api_timing import log_api_timing
 from common.utils.utils import AppLogUtil
 
 router = APIRouter(
@@ -411,12 +412,37 @@ async def sql_preview_api(session: SessionDep, current_user: CurrentUser, reques
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    return await asyncio.to_thread(
-        preview_sql,
-        session=session,
-        current_user=current_user,
-        request=request,
+    started_at = time.perf_counter()
+    try:
+        result = await asyncio.to_thread(
+            preview_sql,
+            session=session,
+            current_user=current_user,
+            request=request,
+        )
+    except Exception as exc:
+        log_api_timing(
+            "Dashboard SQL preview",
+            started_at=started_at,
+            tenant_id=getattr(current_user, "tenant_id", None),
+            user_id=getattr(current_user, "id", None),
+            datasource_id=request.datasource,
+            status="error",
+            error=type(exc).__name__,
+        )
+        raise
+    log_api_timing(
+        "Dashboard SQL preview",
+        started_at=started_at,
+        tenant_id=getattr(current_user, "tenant_id", None),
+        user_id=getattr(current_user, "id", None),
+        datasource_id=request.datasource,
+        status=result.get("status") if isinstance(result, dict) else None,
+        row_count=len(result.get("data") or []) if isinstance(result, dict) else None,
+        field_count=len(result.get("fields") or []) if isinstance(result, dict) else None,
+        cache_hit=bool(result.get("cache_hit")) if isinstance(result, dict) else False,
     )
+    return result
 
 
 @router.post("/ai_sql_generate", response_model=DashboardAiSqlGenerateResponse, summary=f"{PLACEHOLDER_PREFIX}dashboard_ai_sql_generate")

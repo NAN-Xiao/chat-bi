@@ -9,6 +9,7 @@ import re
 import time
 from asyncio import to_thread
 from datetime import datetime
+from pathlib import Path
 from typing import Any, TypedDict
 
 import orjson
@@ -18,14 +19,28 @@ from langgraph.graph import END, StateGraph
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
-from apps.dashboard.models.dashboard_model import DashboardAiSqlGenerateRequest, DashboardAiSqlGenerateResponse
-from apps.datasource.crud.sql_engine import BusinessSqlContext, BusinessSqlContextService
+from apps.dashboard.models.dashboard_model import (
+    DashboardAiSqlGenerateRequest,
+    DashboardAiSqlGenerateResponse,
+)
+from apps.datasource.crud.sql_engine import (
+    BusinessSqlContext,
+    BusinessSqlContextService,
+)
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
+from apps.system.crud.user import (
+    is_platform_admin,
+    is_platform_workspace_delegate,
+    is_system_admin,
+)
 from apps.system.schemas.access_context import require_current_tenant_id
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.utils import AppLogUtil, extract_nested_json
+
+DASHBOARD_AI_SQL_LLM_OUTPUT_FILE = (
+    Path(__file__).resolve().parents[4] / "logs" / "dashboard_ai_sql_llm_outputs.jsonl"
+)
 
 
 class DashboardManualChartGraphState(TypedDict, total=False):
@@ -74,6 +89,38 @@ def _safe_json(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False, default=_json_default)
     except Exception:
         return json.dumps({}, ensure_ascii=False)
+
+
+def _write_llm_output_debug_file(node: str, full_text: str, require_sql: bool) -> None:
+    """
+    是什么：把手动看板生成 SQL 过程中的 LLM 原始输出追加到本地调试文件。
+    """
+    try:
+        output_file = Path(DASHBOARD_AI_SQL_LLM_OUTPUT_FILE)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "created_at": datetime.now().isoformat(timespec="milliseconds"),
+            "node": node,
+            "require_sql": require_sql,
+            "output": full_text or "",
+        }
+        with output_file.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(payload, ensure_ascii=False, default=_json_default) + "\n")
+    except Exception as exc:
+        AppLogUtil.warning(f"Dashboard manual chart LLM output debug file write failed: {exc}")
+
+
+async def _create_dashboard_ai_sql_llm(skill_model_id: int | None = None) -> Any:
+    """
+    是什么：创建手动看板 AI SQL 生成专用 LLM，并关闭模型思考输出。
+    """
+    config = await get_default_config(skill_model_id)
+    additional_params = dict(config.additional_params or {})
+    extra_body = dict(additional_params.get("extra_body") or {})
+    extra_body["enable_thinking"] = False
+    additional_params["extra_body"] = extra_body
+    config = config.model_copy(update={"additional_params": additional_params})
+    return LLMFactory.create_llm(config).llm
 
 
 def _text_chunk_content(value: Any) -> str:
@@ -167,6 +214,156 @@ def _response_from_model_text(text: str, require_sql: bool = True) -> DashboardA
         suggestions=[str(item) for item in suggestions if str(item or "").strip()],
         raw=text or "",
     )
+
+
+def _tracking_event_name_from_field(field: Any) -> str:
+    if isinstance(field, str):
+        parts = field.split(":")
+        if len(parts) >= 3 and parts[0] == "tracking-event":
+            return parts[-1].strip()
+        return ""
+    if isinstance(field, dict) and str(field.get("kind") or "") == "tracking-event":
+        return str(field.get("eventName") or field.get("event_name") or "").strip()
+    return ""
+
+
+def _iter_configured_metric_items(context: dict[str, Any]):
+    metrics = context.get("metrics")
+    if isinstance(metrics, list):
+        for metric in metrics:
+            if isinstance(metric, dict):
+                yield metric
+
+    for key in ("formulaMetrics", "calculatedMetrics"):
+        formula_metrics = context.get(key)
+        if not isinstance(formula_metrics, list):
+            continue
+        for formula_metric in formula_metrics:
+            if not isinstance(formula_metric, dict):
+                continue
+            tokens = formula_metric.get("tokens")
+            if not isinstance(tokens, list):
+                continue
+            for token in tokens:
+                if not isinstance(token, dict) or token.get("type") != "atomicMetric":
+                    continue
+                metric = token.get("metric")
+                if isinstance(metric, dict):
+                    yield metric
+
+
+def _configured_tracking_event_terms(request: DashboardAiSqlGenerateRequest) -> set[str]:
+    context = request.context if isinstance(request.context, dict) else {}
+    terms: set[str] = set()
+    for metric in _iter_configured_metric_items(context):
+        event_name = _tracking_event_name_from_field(metric.get("field"))
+        if not event_name:
+            continue
+        terms.add(event_name)
+        for key in ("label", "alias", "name", "metricAlias"):
+            value = str(metric.get(key) or "").strip()
+            if value:
+                terms.add(value)
+    return terms
+
+
+def _mentions_any_term(text: str, terms: set[str]) -> bool:
+    normalized = text or ""
+    return any(term and term in normalized for term in terms)
+
+
+def _is_implicit_tracking_event_filter_issue(issue: str, tracking_terms: set[str]) -> bool:
+    text = issue.strip()
+    if not text:
+        return False
+    if not _mentions_any_term(text, tracking_terms):
+        return False
+    event_filter_keywords = (
+        "事件筛选",
+        "事件=",
+        "事件名",
+        "event =",
+        "event=",
+        "未限定 event",
+        "限定 event",
+        "关联事件筛选",
+        "筛选限定",
+        "筛选条件缺失",
+    )
+    return any(keyword in text for keyword in event_filter_keywords)
+
+
+def _is_tracking_metric_alias_or_uncertainty_issue(issue: str, tracking_terms: set[str]) -> bool:
+    text = issue.strip()
+    if not text:
+        return False
+    alias_keywords = ("别名", "显示错误", "默认名", "业务含义不明")
+    if any(keyword in text for keyword in alias_keywords):
+        return True
+    uncertainty_keywords = ("逻辑存疑", "需确认", "无法确认", "不明确")
+    hard_block_keywords = ("缺少分母", "缺少分子", "缺少公式", "字段不存在", "未选择字段", "无法生成")
+    if any(keyword in text for keyword in hard_block_keywords):
+        return False
+    return _mentions_any_term(text, tracking_terms) and any(keyword in text for keyword in uncertainty_keywords)
+
+
+def _is_atomic_metric_metrics_list_false_issue(issue: str, tracking_terms: set[str]) -> bool:
+    text = issue.strip()
+    if not text or not _mentions_any_term(text, tracking_terms):
+        return False
+    atomic_metric_keywords = ("metrics 列表", "基础指标", "基础分析指标", "显式定义")
+    false_missing_keywords = ("未显式定义", "未在 metrics 中", "缺少明确", "公式引用可能失效", "重新配置")
+    return (
+        any(keyword in text for keyword in atomic_metric_keywords)
+        and any(keyword in text for keyword in false_missing_keywords)
+    )
+
+
+def _is_downgradable_tracking_event_diagnosis(issue: str, tracking_terms: set[str]) -> bool:
+    return (
+        _is_implicit_tracking_event_filter_issue(issue, tracking_terms)
+        or _is_tracking_metric_alias_or_uncertainty_issue(issue, tracking_terms)
+        or _is_atomic_metric_metrics_list_false_issue(issue, tracking_terms)
+    )
+
+
+def _downgrade_tracking_event_filter_false_block(
+        response: DashboardAiSqlGenerateResponse,
+        request: DashboardAiSqlGenerateRequest,
+) -> DashboardAiSqlGenerateResponse:
+    """
+    是什么：把 tracking-event 已自带事件名限定却被诊断模型当作缺筛选的误阻断降级为建议。
+    """
+    if response.success is not False:
+        return response
+    tracking_terms = _configured_tracking_event_terms(request)
+    if not tracking_terms:
+        return response
+
+    blocking_issues: list[str] = []
+    downgraded_issues: list[str] = []
+    for issue in response.issues or []:
+        issue_text = str(issue or "").strip()
+        if not issue_text:
+            continue
+        if _is_downgradable_tracking_event_diagnosis(issue_text, tracking_terms):
+            downgraded_issues.append(issue_text)
+        else:
+            blocking_issues.append(issue_text)
+
+    if not downgraded_issues:
+        return response
+
+    updated = response.model_copy(deep=True)
+    updated.issues = blocking_issues
+    updated.suggestions = list(response.suggestions or []) + downgraded_issues
+    if _is_downgradable_tracking_event_diagnosis(updated.message or "", tracking_terms):
+        updated.message = "配置仍存在需要修正的问题。" if blocking_issues else "当前事件指标配置可以继续生成 SQL。"
+    if _is_downgradable_tracking_event_diagnosis(updated.advice or "", tracking_terms):
+        updated.advice = "" if not blocking_issues else "请优先修正仍在 issues 中列出的配置问题。"
+    if not blocking_issues:
+        updated.success = True
+    return updated
 
 
 def _dashboard_diagnosis_system_prompt() -> str:
@@ -541,11 +738,17 @@ def _timed_node(node: str, handler: Any):
     return _wrapped
 
 
-def _invoke_llm_json(llm: Any, messages: list[Any], require_sql: bool = True) -> DashboardAiSqlGenerateResponse:
-    full_text = ""
-    for chunk in llm.stream(messages):
-        full_text += _text_chunk_content(getattr(chunk, "content", ""))
+def _invoke_llm_json(
+    llm: Any,
+    messages: list[Any],
+    require_sql: bool = True,
+    node: str | None = None,
+) -> DashboardAiSqlGenerateResponse:
+    result = llm.invoke(messages)
+    full_text = _text_chunk_content(getattr(result, "content", result))
     AppLogUtil.info(f"Dashboard manual chart graph raw node result: {full_text}")
+    if node:
+        _write_llm_output_debug_file(node=node, full_text=full_text, require_sql=require_sql)
     return _response_from_model_text(full_text, require_sql=require_sql)
 
 
@@ -553,17 +756,18 @@ async def _async_invoke_llm_json(
     llm: Any,
     messages: list[Any],
     require_sql: bool = True,
+    node: str | None = None,
 ) -> DashboardAiSqlGenerateResponse:
-    full_text = ""
-    if hasattr(llm, "astream"):
-        async for chunk in llm.astream(messages):
-            full_text += _text_chunk_content(getattr(chunk, "content", chunk))
-    elif hasattr(llm, "ainvoke"):
+    if hasattr(llm, "ainvoke"):
         result = await llm.ainvoke(messages)
         full_text = _text_chunk_content(getattr(result, "content", result))
+    elif hasattr(llm, "invoke"):
+        return await to_thread(_invoke_llm_json, llm, messages, require_sql, node)
     else:
-        return await to_thread(_invoke_llm_json, llm, messages, require_sql)
+        raise AttributeError("LLM does not support non-streaming invoke")
     AppLogUtil.info(f"Dashboard manual chart graph raw node result: {full_text}")
+    if node:
+        _write_llm_output_debug_file(node=node, full_text=full_text, require_sql=require_sql)
     return _response_from_model_text(full_text, require_sql=require_sql)
 
 
@@ -623,12 +827,11 @@ async def _async_node_understand_config(state: DashboardManualChartGraphState) -
         "selected_field_count": len(context.get("selectedFields") or []),
     }
     try:
-        config = await get_default_config(state.get("skill_model_id"))
-        llm = LLMFactory.create_llm(config).llm
+        llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
         understanding = await _async_invoke_llm_json(llm, [
             SystemMessage(content=_dashboard_understanding_system_prompt()),
             HumanMessage(content=_dashboard_understanding_user_prompt(state)),
-        ], require_sql=False)
+        ], require_sql=False, node="understand_config")
         summary["understood_intent"] = understanding.intent
         summary["understanding_message"] = understanding.message
         summary["uncertainties"] = list(understanding.issues or [])
@@ -645,15 +848,15 @@ async def _async_node_understand_config(state: DashboardManualChartGraphState) -
 
 
 async def _async_node_diagnose_config(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    config = await get_default_config(state.get("skill_model_id"))
-    llm = LLMFactory.create_llm(config).llm
+    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
     response = await _async_invoke_llm_json(llm, [
         SystemMessage(content=_dashboard_diagnosis_system_prompt()),
         HumanMessage(content=_dashboard_diagnosis_user_prompt(state)),
-    ], require_sql=False)
+    ], require_sql=False, node="diagnose_config")
     response.sql = ""
     if not response.intent:
         response.intent = str((state.get("config_summary") or {}).get("understood_intent") or "")
+    response = _downgrade_tracking_event_filter_false_block(response, state["request"])
     return {
         "diagnosis": response,
         "response": response if response.success is False else state.get("response"),
@@ -672,12 +875,11 @@ def _route_after_diagnosis(state: DashboardManualChartGraphState) -> str:
 
 
 async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    config = await get_default_config(state.get("skill_model_id"))
-    llm = LLMFactory.create_llm(config).llm
+    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
     response = await _async_invoke_llm_json(llm, [
         SystemMessage(content=_dashboard_sql_system_prompt()),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
-    ])
+    ], node="generate_sql")
     diagnosis = state.get("diagnosis")
     if diagnosis:
         response.intent = response.intent or diagnosis.intent

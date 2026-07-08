@@ -914,6 +914,39 @@ def _loads_record_data(data: str | None):
         return None
 
 
+def _saved_record_requires_business_projection(data: dict[str, Any] | None) -> bool:
+    """
+    是什么：判断历史记录是否需要重新做业务提示投影。
+    谁调用：历史详情组装记录时调用，避免正常缓存快照反复触发埋点复核。
+    做了什么：只让无缓存或已是业务提示的结果进入投影清洗路径。
+    """
+    if data is None:
+        return True
+    return data.get("status") == "business_notice"
+
+
+def _drop_stale_business_notice_analysis(analysis: str | None) -> str | None:
+    """
+    是什么：清理旧版本保存在 analysis 字段里的业务提示。
+    谁调用：正常缓存快照跳过埋点复核时调用。
+    做了什么：如果 analysis 只是业务提示 JSON，则不再把过期提示带回前端。
+    """
+    if not analysis:
+        return analysis
+    try:
+        payload = orjson.loads(analysis)
+    except Exception:
+        return analysis
+    if not isinstance(payload, dict):
+        return analysis
+    notice = payload.get("notice")
+    if not isinstance(notice, dict):
+        return analysis
+    if notice.get("reason") in {"event_existence_unknown", "missing_event", "data_unavailable"}:
+        return None
+    return analysis
+
+
 def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     """
     是什么：get_chart_data_with_user 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -957,14 +990,16 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
                 )
             data = _loads_record_data(row.data)
             if data is not None:
-                projection = _saved_record_missing_event_projection(
-                    session=session,
-                    current_user=current_user,
-                    record_id=chat_record_id,
-                    datasource_id=row.datasource,
-                    sql=row.sql,
-                    data=data,
-                )
+                projection = None
+                if _saved_record_requires_business_projection(data):
+                    projection = _saved_record_missing_event_projection(
+                        session=session,
+                        current_user=current_user,
+                        record_id=chat_record_id,
+                        datasource_id=row.datasource,
+                        sql=row.sql,
+                        data=data,
+                    )
                 if projection and projection.data is not None:
                     return projection.data
                 return data
@@ -1265,15 +1300,20 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         analysis_notice_value = None
         if include_cached_record_data and current_permission_allowed and row.datasource and row.sql:
             parsed_data = _loads_record_data(data_value) if isinstance(data_value, str) else None
-            projection = _saved_record_missing_event_projection(
-                session=session,
-                current_user=current_user,
-                record_id=row.id,
-                datasource_id=row.datasource,
-                sql=row.sql,
-                data=parsed_data,
-                chart=chart_value,
-            )
+            projection = None
+            requires_business_projection = _saved_record_requires_business_projection(parsed_data)
+            if requires_business_projection:
+                projection = _saved_record_missing_event_projection(
+                    session=session,
+                    current_user=current_user,
+                    record_id=row.id,
+                    datasource_id=row.datasource,
+                    sql=row.sql,
+                    data=parsed_data,
+                    chart=chart_value,
+                )
+            else:
+                analysis_value = _drop_stale_business_notice_analysis(analysis_value)
             if projection:
                 if projection.data is not None:
                     data_value = orjson.dumps(projection.data).decode()

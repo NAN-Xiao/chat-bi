@@ -200,6 +200,16 @@ assert.match(
   /const builderFieldOptions = computed\(\(\) =>\s*schemaFieldOptions\.value\.filter\(isSelectableFieldOption\)/,
   '分组项、全局筛选等通用字段候选应统一过滤对象组类型字段'
 )
+assert.match(
+  source,
+  /<div v-show="sqlBuilder\.activeTab === 'builder'" class="sql-builder-builder-pane">/,
+  '图表配置 tab 应使用 v-show 保留已挂载组件，避免从 SQL 明细切回时重建大量字段选择器'
+)
+assert.match(
+  source,
+  /<div v-show="sqlBuilder\.activeTab === 'sql'" class="sql-detail-pane">/,
+  'SQL 明细 tab 应使用 v-show 和图表配置并存，避免 tab 切换销毁另一侧内容'
+)
 assert.doesNotMatch(
   source.match(/class="metric-chip-row"[\s\S]*?<span class="metric-of">/)?.[0] || '',
   /<el-select\s+v-model="item\.field"/,
@@ -284,6 +294,21 @@ assert.match(
   source,
   /title="添加公式指标"[\s\S]*@click\.stop="addCalculatedMetricItem"/,
   '添加公式指标入口必须阻止冒泡，避免被外层点击收起逻辑立刻关闭键盘'
+)
+assert.doesNotMatch(
+  source.match(/function addCalculatedMetricItem\(\) \{[\s\S]*?\n\}/)?.[0] || '',
+  /addMetricItem\(\)/,
+  '新增公式指标时不应自动补普通分析指标，避免公式指标场景出现无关的默认指标'
+)
+assert.match(
+  source,
+  /if \(!sqlBuilder\.metricItems\.length && !sqlBuilder\.calculatedMetrics\.length\) \{\r?\n\s*addMetricItem\(\)/,
+  '加载字段后只有普通指标和公式指标都为空时才应自动补默认普通指标'
+)
+assert.match(
+  source,
+  /pruneAutoSeededMetricItemsForFormulaOnlyBuilder\(\)/,
+  '恢复已有配置时应清理公式指标场景下历史自动补出的默认普通指标'
 )
 assert.doesNotMatch(
   source,

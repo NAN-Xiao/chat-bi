@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRefs } from 'vue'
+import { computed, ref, toRefs } from 'vue'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import { Icon } from '@/components/icon-custom'
 import { useEmitt } from '@/utils/useEmitt.ts'
@@ -15,6 +15,7 @@ import { captureElementSharePreview } from '@/views/dashboard/utils/sharePreview
 const { t } = useI18n()
 const emits = defineEmits(['enlargeView', 'editSql'])
 const dashboardStore = dashboardStoreWithOut()
+const curDropdown = ref<null | { handleClose?: () => void }>(null)
 
 const props = defineProps({
   active: {
@@ -63,8 +64,13 @@ const isExternalSnapshotConfig = () =>
   props.configItem?.externalSnapshot === true ||
   ['external_mcp', 'mixed'].includes(props.configItem?.dataSourceType)
 
+const closeComponentDropdown = () => {
+  curDropdown.value?.handleClose?.()
+}
+
 const doPreview = () => {
   // do preview
+  closeComponentDropdown()
   emits('enlargeView')
 }
 
@@ -72,6 +78,7 @@ const doEditSql = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
   if (!props.canEdit) return
+  closeComponentDropdown()
   emits('editSql')
 }
 
@@ -79,6 +86,7 @@ const doDeleteComponent = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
   if (!props.canEdit) return
+  closeComponentDropdown()
   useEmitt().emitter.emit(`editor-delete-${props.canvasId}`, configItem.value.id)
 }
 
@@ -86,6 +94,7 @@ const doShareComponent = async (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
   if (!props.canShare) return
+  closeComponentDropdown()
   const previewImage = await captureElementSharePreview(
     document.getElementById(`canvas-item-${configItem.value.id}`) ||
       document.getElementById(`wrapper-outer-id-${configItem.value.id}`) ||

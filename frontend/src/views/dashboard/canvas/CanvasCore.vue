@@ -153,6 +153,10 @@ const openSqlEditor = (id: string) => {
 }
 
 const onSqlApplied = (viewInfo: any) => {
+  if (viewInfo?.id) {
+    dashboardStore.addCanvasViewInfo(viewInfo)
+  }
+  dashboardStore.markCanvasChanged()
   nextTick(() => {
     if (viewInfo?.id) {
       useEmitt().emitter.emit(`view-render-${viewInfo.id}`)

@@ -341,6 +341,40 @@ def test_chat_cached_data_reexecutes_when_row_permission_applies(monkeypatch):
     assert result["data"] == [{"order_id": 7}]
 
 
+def test_chat_record_data_skips_saved_record_projection_for_normal_cached_data(monkeypatch):
+    """
+    是什么：单条图表数据接口命中正常缓存时，不应重新触发埋点存在性投影。
+    """
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+
+    def _unexpected_projection(*_args, **_kwargs):
+        raise AssertionError("正常缓存数据不应重新做埋点复核投影")
+
+    class _Result:
+        def __iter__(self):
+            return iter([
+                SimpleNamespace(
+                    datasource=1,
+                    sql="select amount from orders",
+                    data=json.dumps({"fields": ["amount"], "data": [{"amount": 99}]}),
+                    analysis_record_id=None,
+                    predict_record_id=None,
+                )
+            ])
+
+    class _Session:
+        def execute(self, _stmt):
+            return _Result()
+
+    monkeypatch.setattr(chat_crud, "_saved_record_missing_event_projection", _unexpected_projection)
+    monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: False)
+
+    result = chat_crud.get_chart_data_with_user(_Session(), current_user, 1)
+
+    assert result == {"fields": ["amount"], "data": [{"amount": 99}]}
+
+
 def test_predict_cache_is_hidden_when_source_row_permission_applies():
     engine = _engine_with_chat_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)

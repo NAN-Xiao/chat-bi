@@ -15,6 +15,7 @@ import {
   shouldUseRememberedTask,
 } from './taskRestore'
 import { buildSmartQaTaskKey, smartQaTaskStore } from './smartQaTaskStore'
+import { applyChartDataResponseToRecord } from './chartDataResponse'
 
 const props = withDefaults(
   defineProps<{
@@ -492,12 +493,7 @@ function loadChartData(recordId?: number, isStale?: () => boolean) {
       }
       _currentChat.value.records.forEach((record) => {
         if (record.id === recordId) {
-          record.data = response
-          if (response?.status === 'business_notice') {
-            record.chart = ''
-            record.analysis_notice = response.notice
-            record.analysis = response.message || response.reason || record.analysis
-          }
+          applyChartDataResponseToRecord(record, response)
         }
       })
     })

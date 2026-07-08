@@ -13,8 +13,15 @@ import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import { isSelectableFieldOption } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
 import {
+  buildDashboardBuilderMetadataCacheKey,
+  buildTrackingEventCatalogFromConfig,
+  createFieldOptionIndex,
+  getCachedDashboardBuilderMetadata,
+} from '@/views/dashboard/common/dashboardBuilderMetadata.ts'
+import {
   formulaTokensToText,
   insertFormulaTokenAt,
+  normalizeFormulaAtomicMetricDisplay,
   normalizeFormulaTokens,
   serializeFormulaTokensForContext,
   validateFormulaTokens,
@@ -613,6 +620,13 @@ const trackingEventPropertyOptionsByEvent = computed(() => {
   })
   return groups
 })
+const fieldOptionIndex = computed(() =>
+  createFieldOptionIndex({
+    trackingEventOptions: trackingEventCatalogOptions.value,
+    trackingEventPropertyOptions: trackingEventPropertyOptions.value,
+    schemaFieldOptions: schemaFieldOptions.value,
+  })
+)
 const hasTrackingEventCatalog = computed(() =>
   Boolean(trackingEventCatalog.value && Array.isArray(trackingEventCatalog.value?.groups))
 )
@@ -997,12 +1011,7 @@ function removeMetricItem(index: number) {
 }
 
 function addCalculatedMetricItem() {
-  if (!sqlBuilder.metricItems.length) {
-    addMetricItem()
-  }
-  const options = builderMetricOptions.value
   const item = emptyCalculatedMetricItem()
-  item.pendingMetricId = options[0]?.value || ''
   item.pendingEventField = analysisFieldOptions.value[0]?.value || ''
   item.pendingMetricField = defaultMetricFieldForEvent(item.pendingEventField)
   item.alias = sqlBuilder.calculatedMetrics.length ? `自定义指标${sqlBuilder.calculatedMetrics.length + 1}` : '自定义指标'
@@ -1072,10 +1081,12 @@ function syncFormulaAtomicMetric(metric: FormulaAtomicMetric, resetMetric = fals
   } else if (resetMetric || !metric.metric || metric.metric === metric.field || fieldOptionByValue(metric.metric)?.kind === 'tracking-event') {
     metric.metric = defaultMetricFieldForEvent(metric.field)
   }
-  metric.label = formulaAtomicMetricLabel(metric)
-  if (!metric.alias) {
-    metric.alias = sqlAlias(metric.label || '事件指标', `事件指标${Date.now()}`)
-  }
+  const display = normalizeFormulaAtomicMetricDisplay(metric, {
+    label: formulaAtomicMetricLabel(metric),
+    alias: sqlAlias(formulaAtomicMetricLabel(metric), `事件指标${Date.now()}`),
+  })
+  metric.label = display.label
+  metric.alias = display.alias
 }
 
 function startEditFormulaAtomicMetric(item: SqlBuilderCalculatedMetricItem, tokenIndex: number, metric: FormulaAtomicMetric) {
@@ -1685,6 +1696,7 @@ function builderConfigForSave() {
       decimalPlaces: Number.isFinite(Number(item.decimalPlaces)) ? Number(item.decimalPlaces) : 2,
       alias: item.alias || '',
       tokens: normalizeFormulaTokens(item.tokens),
+      pendingMetricId: item.pendingMetricId || '',
       pendingEventField: item.pendingEventField || '',
       pendingAggregation: item.pendingAggregation || 'count',
       pendingMetricField: item.pendingMetricField || '',
@@ -1760,6 +1772,43 @@ function restoreSqlBuilderState(value: any) {
   restoreBuilderAgentAdvice(value.agentAdvice)
 }
 
+function formulaTokensReferenceMetricIds(tokens: FormulaToken[], metricIds: Set<string>) {
+  return (tokens || []).some((token) => token.type === 'metric' && metricIds.has(token.metricId))
+}
+
+function isAutoSeededMetricItem(item: SqlBuilderMetricItem, index: number) {
+  const alias = String(item.alias || '').trim()
+  return (
+    (alias === '' || alias === `指标${index + 1}`) &&
+    item.aggregation === 'count' &&
+    !hasEffectiveBuilderFilters(item.filters || [])
+  )
+}
+
+function pruneAutoSeededMetricItemsForFormulaOnlyBuilder() {
+  if (!sqlBuilder.calculatedMetrics.length || !sqlBuilder.metricItems.length) {
+    return
+  }
+  const outputFields = new Set([...form.columns, ...form.y].map((item) => String(item || '').trim()).filter(Boolean))
+  const metricIds = new Set(sqlBuilder.metricItems.map((item) => item.id))
+  const hasMetricTokenReference = sqlBuilder.calculatedMetrics.some((item) =>
+    formulaTokensReferenceMetricIds(item.tokens || [], metricIds)
+  )
+  if (hasMetricTokenReference) {
+    return
+  }
+  const nextItems = sqlBuilder.metricItems.filter((item, index) => {
+    if (!isAutoSeededMetricItem(item, index)) {
+      return true
+    }
+    const alias = metricOutputAlias(item, index)
+    return outputFields.has(alias) || outputFields.has(item.alias)
+  })
+  if (nextItems.length !== sqlBuilder.metricItems.length) {
+    sqlBuilder.metricItems = nextItems
+  }
+}
+
 function builderTimeFieldPriority(option: SchemaFieldOption) {
   const text = [
     option.label,
@@ -1785,10 +1834,7 @@ function preferredBuilderTimeField() {
 }
 
 function fieldOptionByValue(value: string) {
-  return trackingEventCatalogOptions.value.find((field) => field.value === value)
-    || trackingEventPropertyOptions.value.find((field) => field.value === value)
-    || schemaFieldOptions.value.find((field) => field.value === value)
-    || schemaFieldOptions.value.find((field) => field.field === value)
+  return fieldOptionIndex.value.find(value)
 }
 
 function builderFieldLabel(value: string) {
@@ -2032,6 +2078,164 @@ function recoverMissingMetricFiltersFromSql() {
     }
   })
   return recovered
+}
+
+function hasBuilderSelectionValidationSource() {
+  return Boolean(
+    schemaFieldOptions.value.length ||
+    trackingEventCatalogOptions.value.length ||
+    trackingEventPropertyOptions.value.length
+  )
+}
+
+function builderFieldExists(value: string) {
+  return !value || Boolean(fieldOptionByValue(value))
+}
+
+function optionExists(value: string, options: Array<{ value: string }>) {
+  return !value || options.some((option) => option.value === value)
+}
+
+function pruneInvalidBuilderFilters(filters: SqlBuilderFilter[]): { filters: SqlBuilderFilter[]; changed: boolean } {
+  let changed = false
+  const nextFilters = (filters || [])
+    .map((filter): SqlBuilderFilter | null => {
+      if (filter.type === 'group' || Array.isArray(filter.children)) {
+        const result = pruneInvalidBuilderFilters(filter.children || [])
+        changed = changed || result.changed
+        if (!result.filters.length) {
+          changed = true
+          return null
+        }
+        return {
+          id: filter.id,
+          type: 'group',
+          field: '',
+          operator: '',
+          value: '',
+          logic: builderLogic(filter.logic),
+          children: result.filters,
+        }
+      }
+      if (!builderFieldExists(filter.field)) {
+        changed = true
+        return null
+      }
+      return {
+        id: filter.id,
+        type: 'rule',
+        field: filter.field || '',
+        operator: filter.operator || 'eq',
+        value: filter.value ?? '',
+        logic: builderLogic(filter.logic),
+      }
+    })
+    .filter(Boolean) as SqlBuilderFilter[]
+  if (nextFilters.length !== (filters || []).length) {
+    changed = true
+  }
+  return { filters: nextFilters, changed }
+}
+
+function normalizeRestoredAtomicMetric(metric: FormulaAtomicMetric) {
+  let changed = false
+  const nextMetric: FormulaAtomicMetric = {
+    ...metric,
+    filters: metric.filters || [],
+  }
+  if (!builderFieldExists(nextMetric.field)) {
+    nextMetric.field = ''
+    nextMetric.metric = ''
+    nextMetric.filters = []
+    changed = true
+  } else if (
+    nextMetric.aggregation !== 'count' &&
+    !optionExists(nextMetric.metric, metricMeasureFieldOptions(nextMetric as any))
+  ) {
+    nextMetric.metric = ''
+    changed = true
+  }
+  const filterResult = pruneInvalidBuilderFilters(nextMetric.filters as any)
+  nextMetric.filters = filterResult.filters as any
+  changed = changed || filterResult.changed
+  const display = normalizeFormulaAtomicMetricDisplay(nextMetric, {
+    label: formulaAtomicMetricLabel(nextMetric),
+    alias: sqlAlias(formulaAtomicMetricLabel(nextMetric), `事件指标${Date.now()}`),
+  })
+  changed = changed || display.label !== nextMetric.label || display.alias !== nextMetric.alias
+  return { metric: display, changed }
+}
+
+function pruneInvalidFormulaTokens(tokens: FormulaToken[]): { tokens: FormulaToken[]; changed: boolean } {
+  let changed = false
+  const nextTokens = tokens.map((token) => {
+    if (token.type !== 'atomicMetric') {
+      return token
+    }
+    const result = normalizeRestoredAtomicMetric(token.metric)
+    changed = changed || result.changed
+    return {
+      ...token,
+      metric: result.metric,
+    }
+  })
+  return { tokens: nextTokens, changed }
+}
+
+function pruneInvalidBuilderSelections() {
+  if (!hasBuilderSelectionValidationSource()) {
+    return false
+  }
+  let changed = false
+  if (!builderFieldExists(sqlBuilder.timeField)) {
+    sqlBuilder.timeField = ''
+    changed = true
+  }
+  sqlBuilder.metricItems.forEach((item) => {
+    if (!builderFieldExists(item.field)) {
+      item.field = ''
+      item.metric = ''
+      item.filters = []
+      changed = true
+      return
+    }
+    if (item.aggregation !== 'count' && !optionExists(item.metric, metricMeasureFieldOptions(item))) {
+      item.metric = ''
+      changed = true
+    }
+    const filterResult = pruneInvalidBuilderFilters(item.filters || [])
+    item.filters = filterResult.filters
+    changed = changed || filterResult.changed
+  })
+  sqlBuilder.calculatedMetrics.forEach((item) => {
+    if (!optionExists(item.pendingMetricId, builderMetricOptions.value)) {
+      item.pendingMetricId = ''
+      changed = true
+    }
+    if (!builderFieldExists(item.pendingEventField)) {
+      item.pendingEventField = ''
+      item.pendingMetricField = ''
+      changed = true
+    } else if (
+      item.pendingAggregation !== 'count' &&
+      !optionExists(item.pendingMetricField, metricMeasureFieldOptions({ field: item.pendingEventField }))
+    ) {
+      item.pendingMetricField = ''
+      changed = true
+    }
+    const tokenResult = pruneInvalidFormulaTokens(item.tokens || [])
+    item.tokens = tokenResult.tokens
+    changed = changed || tokenResult.changed
+  })
+  const nextGroups = sqlBuilder.groups.filter(builderFieldExists)
+  if (nextGroups.length !== sqlBuilder.groups.length) {
+    sqlBuilder.groups = nextGroups
+    changed = true
+  }
+  const globalFilterResult = pruneInvalidBuilderFilters(sqlBuilder.globalFilters || [])
+  sqlBuilder.globalFilters = globalFilterResult.filters
+  changed = changed || globalFilterResult.changed
+  return changed
 }
 
 function filterFieldValues(filters: SqlBuilderFilter[]): string[] {
@@ -2511,48 +2715,58 @@ async function loadSchemaTables() {
   }
   schemaLoading.value = true
   try {
-    const [datasource, tablesResult, eventCatalogResult, trackingConfigResult] = await Promise.all([
-      datasourceApi.getDs(props.viewInfo.datasource).catch(() => null),
-      datasourceApi.tableList(props.viewInfo.datasource),
-      trackingConfigApi.eventCatalog().catch(() => null),
-      trackingConfigApi.get().catch(() => null),
-    ])
-    datasourceInfo.value = datasource
-    trackingEventCatalog.value = eventCatalogResult
-    const trackingTableRoleByName = new Map<string, string>()
-    ;(Array.isArray(trackingConfigResult?.tables) ? trackingConfigResult.tables : []).forEach((table: any) => {
-      const tableName = String(table?.table_name || table?.tableName || '').trim()
-      const tableRole = String(table?.table_role || table?.tableRole || '').trim()
-      if (tableName && tableRole) {
-        trackingTableRoleByName.set(tableName, tableRole)
-      }
+    const cacheKey = buildDashboardBuilderMetadataCacheKey({
+      datasourceId: props.viewInfo.datasource,
+      tenantId: currentExternalMcpTenantId.value,
     })
-    const tables: any[] = tablesResult
-    const normalizedTables = Array.isArray(tables) ? tables : []
-    const tablesWithFields = await Promise.all(
-      normalizedTables.map(async (table) => {
-        const tableName = table?.table_name || table?.tableName || table?.name || table?.table || ''
-        const tableRole = table?.table_role || table?.tableRole || trackingTableRoleByName.get(tableName) || ''
-        const tableWithRole = tableRole ? { ...table, tableRole } : table
-        if (Array.isArray(table?.fields)) {
-          return tableWithRole
-        }
-        if (!table?.id) {
-          return { ...tableWithRole, fields: [] }
-        }
-        try {
-          const fields = await datasourceApi.fieldList(table.id, { fieldName: '', excludeContainerFields: true })
-          return { ...tableWithRole, fields: Array.isArray(fields) ? fields : [] }
-        } catch {
-          return { ...tableWithRole, fields: [] }
+    const metadata = await getCachedDashboardBuilderMetadata(cacheKey, async () => {
+      const [datasource, tablesResult, trackingConfigResult] = await Promise.all([
+        datasourceApi.getDs(props.viewInfo.datasource).catch(() => null),
+        datasourceApi.tableList(props.viewInfo.datasource),
+        trackingConfigApi.get().catch(() => null),
+      ])
+      const trackingTableRoleByName = new Map<string, string>()
+      ;(Array.isArray(trackingConfigResult?.tables) ? trackingConfigResult.tables : []).forEach((table: any) => {
+        const tableName = String(table?.table_name || table?.tableName || '').trim()
+        const tableRole = String(table?.table_role || table?.tableRole || '').trim()
+        if (tableName && tableRole) {
+          trackingTableRoleByName.set(tableName, tableRole)
         }
       })
-    )
-    schemaTables.value = tablesWithFields.length ? tablesWithFields : previewSchemaTables()
+      const tables: any[] = tablesResult
+      const normalizedTables = Array.isArray(tables) ? tables : []
+      const tablesWithFields = await Promise.all(
+        normalizedTables.map(async (table) => {
+          const tableName = table?.table_name || table?.tableName || table?.name || table?.table || ''
+          const tableRole = table?.table_role || table?.tableRole || trackingTableRoleByName.get(tableName) || ''
+          const tableWithRole = tableRole ? { ...table, tableRole } : table
+          if (Array.isArray(table?.fields)) {
+            return tableWithRole
+          }
+          if (!table?.id) {
+            return { ...tableWithRole, fields: [] }
+          }
+          try {
+            const fields = await datasourceApi.fieldList(table.id, { fieldName: '', excludeContainerFields: true })
+            return { ...tableWithRole, fields: Array.isArray(fields) ? fields : [] }
+          } catch {
+            return { ...tableWithRole, fields: [] }
+          }
+        })
+      )
+      return {
+        datasource,
+        schemaTables: tablesWithFields,
+        trackingEventCatalog: buildTrackingEventCatalogFromConfig(trackingConfigResult),
+      }
+    })
+    datasourceInfo.value = metadata.datasource
+    trackingEventCatalog.value = metadata.trackingEventCatalog
+    schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
     if (!sqlBuilder.timeField) {
       sqlBuilder.timeField = preferredBuilderTimeField()
     }
-    if (!sqlBuilder.metricItems.length) {
+    if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
       addMetricItem()
     }
   } catch {
@@ -3608,6 +3822,7 @@ function initEditor() {
   form.columns = axisValues(chart.columns)
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
+  pruneAutoSeededMetricItemsForFormulaOnlyBuilder()
   form.series = axisValues(chart.series)[0] || ''
   form.multiQuotaName = t('dashboard.metric_type')
   sourcePreview.fields = fields
@@ -3640,7 +3855,9 @@ function initEditor() {
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
   void loadSchemaTables().then(() => {
-    if (recoverMissingMetricFiltersFromSql()) {
+    const prunedInvalidSelections = pruneInvalidBuilderSelections()
+    const recoveredFilters = recoverMissingMetricFiltersFromSql()
+    if (prunedInvalidSelections || recoveredFilters) {
       persistEditorDraftToViewInfo()
     }
   })
@@ -4274,7 +4491,7 @@ function closeDrawer() {
             </div>
           </div>
 
-          <div v-if="sqlBuilder.activeTab === 'builder'" class="sql-builder-builder-pane">
+          <div v-show="sqlBuilder.activeTab === 'builder'" class="sql-builder-builder-pane">
             <div
               v-loading="schemaLoading || builderLoading"
               :element-loading-text="builderLoading ? loadingText : ''"
@@ -4710,7 +4927,7 @@ function closeDrawer() {
 
           </div>
 
-          <div v-else class="sql-detail-pane">
+          <div v-show="sqlBuilder.activeTab === 'sql'" class="sql-detail-pane">
             <el-input
               v-model="form.sql"
               type="textarea"

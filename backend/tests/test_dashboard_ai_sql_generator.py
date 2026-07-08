@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from langchain_core.messages import HumanMessage
 
+from apps.ai_model.model_factory import LLMConfig
 from apps.dashboard.crud import ai_sql_generator
 from apps.dashboard.models.dashboard_model import DashboardAiSqlGenerateRequest
 
@@ -19,17 +21,33 @@ class _Chunk:
         self.content = content
 
 
-class _AsyncStreamOnlyLlm:
+class _AsyncInvokePreferredLlm:
     def __init__(self, content: str) -> None:
         self.content = content
-        self.astream_called = False
+        self.ainvoke_called = False
 
     def stream(self, _messages: list[Any]):
         raise AssertionError("async graph nodes must not call sync stream")
 
     async def astream(self, _messages: list[Any]):
-        self.astream_called = True
-        yield _Chunk(self.content)
+        raise AssertionError("dashboard AI SQL generation must not call streaming astream")
+
+    async def ainvoke(self, _messages: list[Any]):
+        self.ainvoke_called = True
+        return _Chunk(self.content)
+
+
+class _SyncInvokeOnlyLlm:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.invoke_called = False
+
+    def stream(self, _messages: list[Any]):
+        raise AssertionError("dashboard AI SQL generation must not call streaming stream")
+
+    def invoke(self, _messages: list[Any]):
+        self.invoke_called = True
+        return _Chunk(self.content)
 
 
 def test_response_from_model_text_parses_string_false_as_failed() -> None:
@@ -59,17 +77,89 @@ def test_text_chunk_content_skips_unknown_complex_list_items() -> None:
     assert content == '{"success":true,"sql":"select 1"}'
 
 
-def test_async_invoke_llm_json_uses_astream_not_sync_stream() -> None:
+def test_async_invoke_llm_json_uses_ainvoke_not_streaming() -> None:
     """
-    是什么：异步图节点的 LLM 调用走 astream，避免直接阻塞事件循环。
+    是什么：异步图节点的 LLM 调用走 ainvoke，避免手动看板生成 SQL 使用流式输出。
     """
-    llm = _AsyncStreamOnlyLlm('{"success":true,"sql":"select 1"}')
+    llm = _AsyncInvokePreferredLlm('{"success":true,"sql":"select 1"}')
 
     response = asyncio.run(ai_sql_generator._async_invoke_llm_json(llm, [HumanMessage(content="生成 SQL")]))
 
-    assert llm.astream_called is True
+    assert llm.ainvoke_called is True
     assert response.success is True
     assert response.sql == "select 1"
+
+
+def test_invoke_llm_json_uses_invoke_not_streaming() -> None:
+    """
+    是什么：同步兜底调用也走 invoke，避免手动看板生成 SQL 使用流式输出。
+    """
+    llm = _SyncInvokeOnlyLlm('{"success":true,"sql":"select 1"}')
+
+    response = ai_sql_generator._invoke_llm_json(llm, [HumanMessage(content="生成 SQL")])
+
+    assert llm.invoke_called is True
+    assert response.success is True
+    assert response.sql == "select 1"
+
+
+def test_create_dashboard_ai_sql_llm_disables_enable_thinking(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：手动看板三次 LLM 调用创建模型时，要统一关闭模型思考输出。
+    """
+    config = LLMConfig(
+        model_id=7,
+        model_type="openai",
+        model_name="qwen3.5-plus",
+        api_key="test-key",
+        api_base_url="https://example.test/v1",
+        additional_params={
+            "temperature": 0.6,
+            "extra_body": {"enable_thinking": True, "foo": "bar"},
+        },
+    )
+    captured: dict[str, Any] = {}
+
+    async def _fake_config(_model_id: int | None = None):
+        return config
+
+    def _fake_create_llm(updated_config: LLMConfig):
+        captured["config"] = updated_config
+        return SimpleNamespace(llm="fake-llm")
+
+    monkeypatch.setattr(ai_sql_generator, "get_default_config", _fake_config)
+    monkeypatch.setattr(ai_sql_generator.LLMFactory, "create_llm", _fake_create_llm)
+
+    llm = asyncio.run(ai_sql_generator._create_dashboard_ai_sql_llm(7))
+
+    assert llm == "fake-llm"
+    assert captured["config"].additional_params["temperature"] == 0.6
+    assert captured["config"].additional_params["extra_body"] == {
+        "enable_thinking": False,
+        "foo": "bar",
+    }
+
+
+def test_write_llm_output_debug_file_writes_jsonl(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：手动看板点击计算/生成时，LLM 原始输出要能落到 JSONL 文件便于排查。
+    """
+    output_file = tmp_path / "dashboard-ai-sql-llm-output.jsonl"
+    monkeypatch.setattr(ai_sql_generator, "DASHBOARD_AI_SQL_LLM_OUTPUT_FILE", output_file)
+
+    ai_sql_generator._write_llm_output_debug_file(
+        node="generate_sql",
+        full_text='{"success":true,"sql":"select 1"}',
+        require_sql=True,
+    )
+
+    lines = output_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["node"] == "generate_sql"
+    assert payload["require_sql"] is True
+    assert payload["output"] == '{"success":true,"sql":"select 1"}'
+    assert payload["created_at"]
 
 
 def test_dashboard_prompt_describes_formula_metrics_contract() -> None:
@@ -231,6 +321,232 @@ def test_dashboard_diagnosis_prompt_does_not_block_on_time_range_limit() -> None
     assert "success=false" in prompt
 
 
+def test_tracking_event_filter_false_block_is_downgraded() -> None:
+    """
+    是什么：公式原子指标的 tracking-event 字段已经表达事件名时，诊断模型不能再因 filters 为空阻断。
+    """
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        intent="看 ARPU 和 ARPPU",
+        chart_type="line",
+        context={
+            "formulaMetrics": [
+                {
+                    "id": "arpu",
+                    "alias": "ARPU",
+                    "tokens": [
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:ServerPayLog",
+                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
+                                "aggregation": "sum",
+                                "label": "后端充值.求和",
+                                "filters": [],
+                            },
+                        },
+                        {"type": "operator", "value": "/"},
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:UserActive",
+                                "metric": "event.uid",
+                                "aggregation": "count_distinct",
+                                "label": "当日活跃.去重数",
+                                "filters": [],
+                            },
+                        },
+                    ],
+                }
+            ],
+            "metrics": [],
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        message="原子指标未正确关联事件筛选。",
+        issues=[
+            "原子指标“后端充值.求和”未配置事件筛选条件，缺少“事件名 = ServerPayLog”的限定。",
+            "原子指标“当日活跃.去重数”未配置事件筛选条件，缺少“事件名 = UserActive”的限定。",
+            "计算指标中引用的原子指标别名显示错误，与实际业务含义不符。",
+        ],
+        suggestions=["建议检查指标别名。"],
+    )
+
+    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+
+    assert fixed.success is True
+    assert fixed.sql == ""
+    assert fixed.issues == []
+    assert any("后端充值.求和" in suggestion for suggestion in fixed.suggestions)
+    assert any("别名显示错误" in suggestion for suggestion in fixed.suggestions)
+
+
+def test_tracking_event_filter_downgrade_keeps_real_blocking_issue() -> None:
+    """
+    是什么：如果除了隐式事件筛选误判外还存在真实缺失，诊断仍要保持阻断。
+    """
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        intent="看 ARPU",
+        chart_type="line",
+        context={
+            "formulaMetrics": [
+                {
+                    "id": "arpu",
+                    "alias": "ARPU",
+                    "tokens": [
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:ServerPayLog",
+                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
+                                "aggregation": "sum",
+                                "label": "后端充值.求和",
+                                "filters": [],
+                            },
+                        },
+                    ],
+                }
+            ],
+            "metrics": [],
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        issues=[
+            "原子指标“后端充值.求和”未配置事件筛选条件，缺少“事件名 = ServerPayLog”的限定。",
+            "计算指标缺少分母，无法表达 ARPU。",
+        ],
+    )
+
+    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+
+    assert fixed.success is False
+    assert fixed.issues == ["计算指标缺少分母，无法表达 ARPU。"]
+    assert fixed.suggestions == [
+        "原子指标“后端充值.求和”未配置事件筛选条件，缺少“事件名 = ServerPayLog”的限定。"
+    ]
+
+
+def test_atomic_tracking_metric_does_not_require_metrics_list_entry() -> None:
+    """
+    是什么：公式内部 atomicMetric 是直接插入的基础聚合，不需要用户再手动添加同名分析指标。
+    """
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        intent="看 ARPU 和 ARPPU",
+        chart_type="table",
+        context={
+            "formulaMetrics": [
+                {
+                    "id": "arpu",
+                    "alias": "ARPU",
+                    "tokens": [
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:ServerPayLog",
+                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
+                                "aggregation": "sum",
+                                "label": "后端充值.求和",
+                                "filters": [],
+                            },
+                        },
+                        {"type": "operator", "value": "/"},
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:UserActive",
+                                "metric": "event.uid",
+                                "aggregation": "count_distinct",
+                                "label": "当日活跃.去重数",
+                                "filters": [],
+                            },
+                        },
+                    ],
+                }
+            ],
+            "metrics": [],
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        message="ARPU/ARPPU 公式中的分子未正确关联到 ServerPayLog 事件的金额字段。",
+        issues=[
+            "计算指标 arpu/arppu 的分子原子指标虽然选了 ServerPayLog 事件，但其聚合字段配置为 tracking-property:event.event:ServerPayLog:personal.money，而在 metrics 列表中并未显式定义该基础指标，导致公式引用可能失效或逻辑混乱。",
+            "计算指标 arpu 的分母原子指标选择了 UserActive 事件，但聚合字段配置为 event.uid，未在 metrics 中显式定义为“当日活跃去重数”基础指标。",
+            "缺少明确的“后端充值总额”基础分析指标配置：应基于 ServerPayLog 事件，对 personal.money 字段求和。",
+            "缺少明确的“当日活跃用户数”基础分析指标配置：应基于 UserActive 事件，对 uid 字段去重计数。",
+        ],
+    )
+
+    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+
+    assert fixed.success is True
+    assert fixed.issues == []
+    assert any("metrics 列表" in suggestion for suggestion in fixed.suggestions)
+    assert any("基础分析指标配置" in suggestion for suggestion in fixed.suggestions)
+
+
+def test_tracking_event_filter_downgrade_handles_compact_event_equals_text() -> None:
+    """
+    是什么：诊断模型写成“事件=ServerPayLog/筛选限定”时，也要识别为 tracking-event 隐式事件限定误判。
+    """
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        intent="看 ARPPU",
+        chart_type="table",
+        context={
+            "formulaMetrics": [
+                {
+                    "id": "arppu",
+                    "alias": "ARPPU",
+                    "tokens": [
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:ServerPayLog",
+                                "metric": "event.uid",
+                                "aggregation": "count_distinct",
+                                "label": "后端充值.去重数",
+                                "filters": [],
+                            },
+                        }
+                    ],
+                }
+            ],
+            "metrics": [],
+            "groups": [],
+            "filters": {},
+            "selectedFields": [],
+        },
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        message="分母指标的筛选条件缺失导致逻辑错误。",
+        advice="请为 ARPPU 的分母添加‘后端充值’事件筛选。",
+        issues=[
+            "ARPPU 计算公式的分母应为‘当日付费用户数’，但当前配置的原子指标仅选择了‘后端充值’事件下的 uid 去重，未在该指标内部添加‘事件=ServerPayLog’的筛选限定，导致分母可能统计错误。"
+        ],
+    )
+
+    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+
+    assert fixed.success is True
+    assert fixed.issues == []
+    assert any("事件=ServerPayLog" in suggestion for suggestion in fixed.suggestions)
+
+
 def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:
     """
     是什么：手动图表 SQL 生成提示词要把复杂分析优先引导为 CTE 分层结构。
@@ -269,7 +585,14 @@ def test_understand_config_marks_fallback_when_llm_fails(monkeypatch: pytest.Mon
     """
 
     async def _fake_config(_model_id: int | None = None):
-        return SimpleNamespace()
+        return LLMConfig(
+            model_id=1,
+            model_type="openai",
+            model_name="qwen3.5-plus",
+            api_key="test-key",
+            api_base_url="https://example.test/v1",
+            additional_params={},
+        )
 
     def _raising_invoke(*_args: Any, **_kwargs: Any):
         raise RuntimeError("LLM unavailable")

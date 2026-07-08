@@ -75,6 +75,7 @@ from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
+from common.observability.api_timing import log_api_timing
 from common.core.task_registry import register_builtin_tasks
 from common.core.task_queue import enqueue_task
 from common.utils.file_utils import AppFileUtils
@@ -960,22 +961,38 @@ async def get_datasource(
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
-    datasource = get_ds(session, id, user)
-    if datasource is None:
-        return None
-    data = datasource.model_dump()
-    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
-        data["configuration"] = decrypt_datasource_configuration_for_output(data.get("configuration"))
-    else:
-        data["configuration"] = None
-    tenant_ids = list_bound_tenant_ids_for_datasource(session, int(datasource.id))
-    tenant_names = _tenant_name_map(session, tenant_ids)
-    data["tenant_ids"] = tenant_ids
-    data["tenant_names"] = [tenant_names.get(tenant_id) for tenant_id in tenant_ids if tenant_names.get(tenant_id)]
-    data["tenant_id"] = tenant_ids[0] if tenant_ids else None
-    data["tenant_name"] = tenant_names.get(tenant_ids[0]) if tenant_ids else None
-    data["can_manage_metadata"] = _can_manage_datasource_metadata(user)
-    return data
+    started_at = time.perf_counter()
+    status = "error"
+    data = None
+    try:
+        datasource = get_ds(session, id, user)
+        if datasource is None:
+            status = "missing"
+            return None
+        data = datasource.model_dump()
+        if is_platform_admin(user) and not is_platform_workspace_delegate(user):
+            data["configuration"] = decrypt_datasource_configuration_for_output(data.get("configuration"))
+        else:
+            data["configuration"] = None
+        tenant_ids = list_bound_tenant_ids_for_datasource(session, int(datasource.id))
+        tenant_names = _tenant_name_map(session, tenant_ids)
+        data["tenant_ids"] = tenant_ids
+        data["tenant_names"] = [tenant_names.get(tenant_id) for tenant_id in tenant_ids if tenant_names.get(tenant_id)]
+        data["tenant_id"] = tenant_ids[0] if tenant_ids else None
+        data["tenant_name"] = tenant_names.get(tenant_ids[0]) if tenant_ids else None
+        data["can_manage_metadata"] = _can_manage_datasource_metadata(user)
+        status = "found"
+        return data
+    finally:
+        log_api_timing(
+            "Datasource get",
+            started_at=started_at,
+            tenant_id=getattr(user, "tenant_id", None),
+            user_id=getattr(user, "id", None),
+            datasource_id=id,
+            status=status,
+            bound_tenant_count=len(data.get("tenant_ids") or []) if isinstance(data, dict) else 0,
+        )
 
 
 @router.get("/schema-metadata/{id}", response_model=DatasourceSchemaMetadata, include_in_schema=False)
@@ -1428,19 +1445,39 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    _require_schema_metadata_admin(current_user)
-    datasource = get_ds(session, id, current_user)
-    if datasource is None:
-        raise HTTPException(status_code=404, detail="项目不存在")
-    tables = get_tables_by_ds_id(session, id)
-    _apply_schema_comments(session, datasource, tables, user=current_user)
-    if not is_normal_user(current_user):
-        return tables
-    contain_rules = get_user_permission_rules(session, current_user, id)
-    scoped_table_ids = get_user_scoped_table_ids(session, current_user, id, contain_rules)
-    if scoped_table_ids is None:
-        return tables
-    return [table for table in tables if int(table.id) in scoped_table_ids]
+    started_at = time.perf_counter()
+    result: list[CoreTable] | None = None
+    status = "error"
+    try:
+        _require_schema_metadata_admin(current_user)
+        datasource = get_ds(session, id, current_user)
+        if datasource is None:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        tables = get_tables_by_ds_id(session, id)
+        _apply_schema_comments(session, datasource, tables, user=current_user)
+        if not is_normal_user(current_user):
+            result = tables
+            status = "success"
+            return result
+        contain_rules = get_user_permission_rules(session, current_user, id)
+        scoped_table_ids = get_user_scoped_table_ids(session, current_user, id, contain_rules)
+        if scoped_table_ids is None:
+            result = tables
+            status = "success"
+            return result
+        result = [table for table in tables if int(table.id) in scoped_table_ids]
+        status = "success"
+        return result
+    finally:
+        log_api_timing(
+            "Datasource table list",
+            started_at=started_at,
+            tenant_id=getattr(current_user, "tenant_id", None),
+            user_id=getattr(current_user, "id", None),
+            datasource_id=id,
+            status=status,
+            table_count=len(result) if isinstance(result, list) else 0,
+        )
 
 
 @router.post("/fieldList/{id}", response_model=List[DatasourceFieldListItem], summary=f"{PLACEHOLDER_PREFIX}ds_field_list")
@@ -1452,27 +1489,52 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    _require_schema_metadata_admin(current_user)
-    table = session.get(CoreTable, id)
-    if table is None:
-        return []
-    datasource = get_ds(session, table.ds_id, current_user)
-    if datasource is None:
-        return []
-    contain_rules = get_user_permission_rules(session, current_user, table.ds_id) if is_normal_user(current_user) else []
-    if not can_access_table(session, current_user, table.ds_id, table.id, contain_rules):
-        return []
-    fields = get_fields_by_table_id(session, id, field)
-    visible_fields = get_column_permission_fields(session, current_user, table, fields, contain_rules)
-    _apply_schema_comments(session, datasource, [table], {int(table.id): visible_fields}, current_user)
-    return _build_field_list_items(
-        session,
-        datasource,
-        table,
-        visible_fields,
-        current_user,
-        exclude_container_fields=bool(field.excludeContainerFields),
-    )
+    started_at = time.perf_counter()
+    result: list[DatasourceFieldListItem] | None = None
+    datasource_id = None
+    status = "error"
+    try:
+        _require_schema_metadata_admin(current_user)
+        table = session.get(CoreTable, id)
+        if table is None:
+            result = []
+            status = "missing_table"
+            return result
+        datasource_id = table.ds_id
+        datasource = get_ds(session, table.ds_id, current_user)
+        if datasource is None:
+            result = []
+            status = "missing_datasource"
+            return result
+        contain_rules = get_user_permission_rules(session, current_user, table.ds_id) if is_normal_user(current_user) else []
+        if not can_access_table(session, current_user, table.ds_id, table.id, contain_rules):
+            result = []
+            status = "forbidden"
+            return result
+        fields = get_fields_by_table_id(session, id, field)
+        visible_fields = get_column_permission_fields(session, current_user, table, fields, contain_rules)
+        _apply_schema_comments(session, datasource, [table], {int(table.id): visible_fields}, current_user)
+        result = _build_field_list_items(
+            session,
+            datasource,
+            table,
+            visible_fields,
+            current_user,
+            exclude_container_fields=bool(field.excludeContainerFields),
+        )
+        status = "success"
+        return result
+    finally:
+        log_api_timing(
+            "Datasource field list",
+            started_at=started_at,
+            tenant_id=getattr(current_user, "tenant_id", None),
+            user_id=getattr(current_user, "id", None),
+            datasource_id=datasource_id,
+            table_id=id,
+            status=status,
+            field_count=len(result) if isinstance(result, list) else 0,
+        )
 
 
 @router.post("/editLocalComment", include_in_schema=False)

@@ -203,6 +203,100 @@ def test_default_history_loading_uses_cached_data_without_executing_sql(monkeypa
     assert chat_info.records[0]["predict_data"] == [{"day": "2026-07-01", "revenue": 14.0}]
 
 
+def test_default_history_loading_skips_saved_record_projection_for_normal_cached_data(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：默认历史回放已有正常图表快照时，只展示保存结果，不重新做埋点复核投影。
+    """
+
+    def _unexpected_projection(*_args, **_kwargs):
+        raise AssertionError("默认历史回放正常缓存数据时不应做埋点复核投影")
+
+    monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        chat_crud,
+        "_source_record_requires_live_data_for_current_permissions",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(chat_crud, "_saved_record_missing_event_projection", _unexpected_projection)
+
+    chat_info = chat_crud.get_chat_with_records(
+        session=_FakeSession(),
+        chart_id=8001,
+        current_user=_user(),
+        current_assistant=None,
+        with_data=False,
+    )
+
+    assert len(chat_info.records) == 1
+    assert chat_info.records[0]["chart"] == '{"type":"line"}'
+    assert chat_info.records[0]["analysis_notice"] is None
+    assert chat_info.records[0]["data"] == {
+        "fields": ["day", "revenue"],
+        "data": [{"day": "2026-06-30", "revenue": 12.5}],
+    }
+
+
+def test_default_history_loading_drops_stale_event_notice_analysis_for_normal_cached_data(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：正常缓存数据不再复核埋点时，也不能把旧 analysis JSON 里的待确认提示带回前端。
+    """
+    cached_data = json.dumps(
+        {
+            "fields": ["渠道", "新增用户数"],
+            "data": [{"渠道": "Facebook", "新增用户数": 46375}],
+        },
+        ensure_ascii=False,
+    )
+    stale_analysis = json.dumps(
+        {
+            "content": "未能确认 UserRegister 埋点是否存在，相关数值可能受数据源状态影响。",
+            "reasoning_content": "",
+            "notice": {
+                "notice_type": "data_scope_gap",
+                "severity": "warning",
+                "reason": "event_existence_unknown",
+                "items": ["UserRegister"],
+            },
+        },
+        ensure_ascii=False,
+    )
+
+    monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        chat_crud,
+        "_source_record_requires_live_data_for_current_permissions",
+        lambda *_args, **_kwargs: False,
+    )
+
+    chat_info = chat_crud.get_chat_with_records(
+        session=_SingleRecordSession(
+            _history_row(
+                sql="select channel, users from event where event = 'UserRegister'",
+                chart='{"type":"column"}',
+                data=cached_data,
+                analysis=stale_analysis,
+            )
+        ),
+        chart_id=8001,
+        current_user=_user(),
+        current_assistant=None,
+        with_data=False,
+    )
+
+    record = chat_info.records[0]
+    assert record["analysis"] is None
+    assert record["analysis_notice"] is None
+    assert record["data"]["data"] == [{"渠道": "Facebook", "新增用户数": 46375}]
+
+
 def test_lightweight_history_loading_omits_cached_data_and_skips_heavy_projection(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -361,15 +455,8 @@ def test_history_loading_hides_saved_chart_for_missing_event_notice(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    是什么：旧记录里即使保存过 0 指标图，缺失埋点业务清洗后也不能继续回显 chart。
+    是什么：旧记录已保存为缺失埋点业务提示时，历史回放仍会清掉不应展示的 chart。
     """
-    cached_data = json.dumps(
-        {
-            "fields": ["触发次数", "触发人数"],
-            "data": [{"触发次数": 0, "触发人数": 0}],
-        },
-        ensure_ascii=False,
-    )
     notice = {
         "notice_type": "data_scope_gap",
         "severity": "warning",
@@ -385,6 +472,7 @@ def test_history_loading_hides_saved_chart_for_missing_event_notice(
         "message": "当前数据源缺少 dragon_summon_success 埋点数据。",
         "notice": notice,
     }
+    cached_data = json.dumps(business_data, ensure_ascii=False)
 
     monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
