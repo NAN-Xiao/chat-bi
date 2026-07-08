@@ -1,0 +1,256 @@
+﻿事件分组,事件名称,事件中文名,CSV属性数,事件样本数,事件级判定,ext属性命中数,personal属性命中数,双字段命中数,未命中属性数,样本ext键,样本personal键
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,9,0,样本未覆盖,0,0,0,9,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,7,0,样本未覆盖,0,0,0,7,,
+Activity,GVGSignUp,GVG报名阶段信息统计,12,0,样本未覆盖,0,0,0,12,,
+Shop,ShopBuyItem,商店购买真实使用,4,0,样本未覆盖,0,0,0,4,,
+Hero,HeroAcquisition,英雄获得,0,0,样本未覆盖,0,0,0,0,,
+Activity,WorldCupPointReward,世界杯积分奖励,1,0,样本未覆盖,0,0,0,1,,
+Activity,WorldCupPointChange,世界杯积分变化,2,0,样本未覆盖,0,0,0,2,,
+Activity,WorldCupExchange,世界杯兑换,3,0,样本未覆盖,0,0,0,3,,
+Activity,WorldCupRoll,世界杯投掷,5,0,样本未覆盖,0,0,0,5,,
+Alliance,GiftJump,联盟礼物跳转,1,0,样本未覆盖,0,0,0,1,,
+Alliance,TakeAllianceGift,领取联盟礼物（更新后的 一次领取多个礼物触发一条）,5,0,样本未覆盖,0,0,0,5,,
+Login,GameStartState10InitSDKCallbackTimeUp,GameStartState10InitSDKCallbackTimeUp,0,0,样本未覆盖,0,0,0,0,,
+Login,GameStartState9InitSDKCallback,GameStartState9InitSDKCallback,0,0,样本未覆盖,0,0,0,0,,
+Login,GameStartState8InitSDK,GameStartState8InitSDK,0,0,样本未覆盖,0,0,0,0,,
+Login,GameStartState7InitStart,GameStartState7InitStart,0,0,样本未覆盖,0,0,0,0,,
+Login,GameStartState6OnEnter,GameStartState6OnEnter,0,0,样本未覆盖,0,0,0,0,,
+Login,Launcher5Start,Launcher5Start,0,0,样本未覆盖,0,0,0,0,,
+Login,Launcher4Awake,Launcher4Awake,0,0,样本未覆盖,0,0,0,0,,
+Activity,AdvancedPointIncrease,进阶试炼积分增长,5,0,样本未覆盖,0,0,0,5,,
+Pay,ep_pay_start,开始调用谷歌支付接口 拉起谷歌支付界面（中台支付流程）,1,30,personal 为主,0,1,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, productId, userId, payId, playerId"
+Pay,ep_pay_purchase_finish,玩家支付完成，商店/三方给到回调,2,30,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, code, productId, payload, orderId, payId, message, userId, playerId"
+World,WorldMarchRet,世界出征结果,18,30,personal 为主,0,14,0,4,,"country, ed_targetPosition, ed_mainBuildingLevel, ed_allianceId, ed_estimatedSeconds, ed_myTeamBattlePower, ed_marchType, channel, ed_myTeamArmy, ed_nowPosition, ed_result, ed_channel, ed_targetId, ed_collectResult, ed_myTeamHeroList, ed_marchId, ed_buffList, ed_language, ed_targetMetaId, ed_season, ed_kServerId, ed_serverId, ed_targetType"
+Pay,ActivityWheelCount,幸运转盘次数,5,0,样本未覆盖,0,0,0,5,,
+video,DeeplinkSetAdCategory,deeplink设置广告,0,0,样本未覆盖,0,0,0,0,,
+Pay,PayBuyRet,充值,10,24,personal 为主,0,10,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_popupFirstId, ed_num, ed_mainBuildingLevel, ed_resVersion, ed_popupSourceName, ed_popupName, ed_level, ed_popupSourceId, ed_currency, ed_isSuccess, ed_popupId, ed_popupFirstName, ed_productId, ed_money, ed_orderId, ed_payId, ed_localCurrency, ed_kServerId, ed_season, ed_localMoney, ed_serverId, ed_popupSourceButton"
+Block,BattleFieldGrid,内城关卡地格进度,2,30,personal 为主,0,2,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId, npcId"
+video,VideoWatchReward,看视频,1,0,样本未覆盖,0,0,0,1,,
+video,VideoGetReward,获取普通奖励,1,0,样本未覆盖,0,0,0,1,,
+video,VideoRewardPanel,看视频页面打开,0,0,样本未覆盖,0,0,0,0,,
+Pay,PayBuyRetSandBox,沙盒支付成功,0,15,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_num, ed_popupFirstId, ed_mainBuildingLevel, ed_resVersion, ed_popupSourceName, ed_popupName, ed_level, ed_popupSourceId, ed_currency, ed_isSuccess, ed_popupId, ed_popupFirstName, ed_productId, ed_money, ed_orderId, ed_payId, ed_localCurrency, ed_season, ed_kServerId, ed_localMoney, ed_serverId, ed_popupSourceButton"
+Pay,PayBuyRetBenifit,福利金支付成功,0,24,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_popupFirstId, ed_num, ed_mainBuildingLevel, ed_resVersion, ed_popupSourceName, ed_popupName, ed_level, ed_popupSourceId, ed_currency, ed_isSuccess, ed_popupId, ed_popupFirstName, ed_productId, ed_money, ed_orderId, ed_payId, ed_localCurrency, ed_kServerId, ed_season, ed_localMoney, ed_serverId, ed_popupSourceButton, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Pay,ep_get_product_details_failed,获取商品详情失败,2,1,personal 为主,0,2,0,0,,"ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version, productType, billingCode, message"
+Battle,PVEInstanceFPS_10_20,PVEInstanceFPS_10_20,2,30,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, instanceId, ed_resVersion, fps, ed_season, instanceGuid, ed_kServerId, ed_serverId"
+Login,ABTest,ABtest,1,0,样本未覆盖,0,0,0,1,,
+User,GuideJump,点击引导跳过,3,0,样本未覆盖,0,0,0,3,,
+User,TimelinePause,Timeline暂停,4,30,personal 为主,0,3,0,1,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, timeline_name, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+User,NewUserStep,新手引导后端,4,0,样本未覆盖,0,0,0,4,,
+User,PVEEnterScene,当玩家通过各种方式进入PVE关卡场景时打点,3,30,personal 为主,0,3,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, instanceId, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Activity,ArenaRefresh,竞技场刷新,1,0,样本未覆盖,0,0,0,1,,
+Activity,ArenaResults,巅峰竞技场战力结算,5,18,personal 为主,0,5,0,0,,"country, ed_mainBuildingLevel, rankBeforeBattle, rankAfterBattle, channel, currentRemainingAttempts, ed_channel, arenaBattleResults, combatPower, ed_language, ed_season, ed_kServerId, ed_serverId, playerId"
+Login,EnterGame,进入游戏,4,30,personal 为主,0,4,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_level, ed_isSuccess, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,GameServerLogin,请求登录游戏服成功,2,0,样本未覆盖,0,0,0,2,,
+Login,GameServerLoginFail,请求登录游戏服失败,1,0,样本未覆盖,0,0,0,1,,
+Login,ConnectGameServer,开始连接游戏网关服,1,0,样本未覆盖,0,0,0,1,,
+Login,ConnectGameServerBack,连接游戏网关服回调,1,0,样本未覆盖,0,0,0,1,,
+Login,EPSDKLogin,EPSDK 登录,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,GameInitState_OnEnter,进入游戏初始化状态,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,GotoLuaInitEnd,进入lua逻辑,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitAtlasSpriteData,图集初始化,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitManagers_End,Manager初始化结束,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitManagers_Start,Manager初始化开始,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitShader_Start,shader初始化,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitXmlManager,配置初始化开始,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitXmlManager_End,配置初始化结束,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,LoadingFinish,整个游戏初始化结束,2,30,样本未发现 CSV 属性,0,0,0,2,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,LocalFunction,热更模块结束，开始切游戏初始化状态,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,OnInitAtlasSpriteData,图集初始化结束,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,OnInitShaderEnd,shader初始化结束,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,SDK_AccountCallback,SDK回调,1,30,personal 为主,0,1,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, code, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,DownMainfestFailed,CDN请求FileList失败才会有，本地加载不会有,0,6,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion"
+Login,E_UpdateConfig_Fail,配置更新失败，有更新时才会有,0,6,CSV 未定义属性,0,0,0,0,,"ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version, gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion"
+Login,E_UpdateConfig_Suc,配置更新成功，有更新时才会有,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,E_UpdateResource_Fail,更新失败，FileList获取失败，也可能走这里,0,16,CSV 未定义属性,0,0,0,0,,"ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version, gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion"
+Login,E_UpdateResource_Suc,更新成功，也可能没有更新，但必定会打,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitMainfestSunc,初始化目标版本FileList成功，本地读取、CDN请求都会有,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,InitServerMainfest,初始化目标版本FileList，可能会请求CDN,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,OnResInitializeEnd,资源初始化,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,S_UpdateConfig,开始配置更新，有更新时才会有,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,S_UpdateResource,开始更新资源文件，有更新才触发,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,UpdateFullSuccess,完全更新成功，资源有更新才会触发，更新成功后删除冗余资源也在这里进行,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Activity,ActivityLimitRallyMonster,玩家向限时集结怪进攻的目标id,1,0,样本未覆盖,0,0,0,1,,
+Activity,ActivityWorldBoss,玩家向世界Boss进攻完成的目标id,1,0,样本未覆盖,0,0,0,1,,
+Activity,WorldBunker,迁城,9,30,personal 为主,0,7,0,2,,"country, ed_mainBuildingLevel, ed_allianceId, channel, moveProvinceId, relocateProvinceId, ed_channel, ed_language, position, ed_season, ed_kServerId, ed_serverId, bunkerType"
+Activity,activityCommanderAlliancePer,参与活动不同难度选择联盟数量,2,0,样本未覆盖,0,0,0,2,,
+Activity,activityCommanderAllianceTroubleNum,挑战的难度联盟数量（挑战中未全部完成）,2,0,样本未覆盖,0,0,0,2,,
+Activity,activityCommanderPer,参与活动不同难度的选择人数,2,0,样本未覆盖,0,0,0,2,,
+Activity,activityCommanderTroubleNum,玩家挑战的不同难度人数（挑战中未全部完成）,2,0,样本未覆盖,0,0,0,2,,
+Activity,ActivityArmsRaceTask,任务完成积分变化时,5,30,personal 为主,0,5,0,0,,"country, activityId, ed_mainBuildingLevel, ed_channel, pointChange, channel, pointTotal, ed_language, pointType, ed_season, ed_kServerId, ed_serverId"
+Activity,ActivityArmsRaceBoxOpen,积分宝箱发放,3,30,personal 为主,0,3,0,0,,"country, activityId, rewardId, ed_mainBuildingLevel, ed_channel, rewardIdMail, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Activity,ActivityArmsRaceGoalPoint,战备勋章结算（跨天重置前）,3,26,personal 为主,0,2,0,1,,"country, ed_mainBuildingLevel, armsRaceBadgeCount, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+User,ClickButton,点击按钮,3,30,personal 为主,0,2,0,1,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_clickUiName, ed_clickUiTime"
+User,NewUserGuide,新手引导结束,4,30,personal 为主,0,4,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_guideId, ed_resVersion, ed_kServerId, ed_season, ed_serverId"
+User,NewUserGuideStart,新手引导开始,3,30,personal 为主,0,3,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_guideId, ed_resVersion, ed_kServerId, ed_season, ed_serverId"
+Activity,honorExpedition,荣耀远征,6,30,personal 为主,0,4,0,2,,"expeditionId , expeditionDungeon, country, ed_mainBuildingLevel, ed_channel, channel, ed_language, stageLevel , ed_season, ed_kServerId, ed_serverId, expeditionDungeonResult"
+User,DungeonMiniGame,探索副本小玩法,4,0,样本未覆盖,0,0,0,4,,
+User,PVEInstanceKeyNPCKill,PVE关卡精英NPC与BOSSNPC被击杀时记录,5,30,personal 为主,0,5,0,0,,"ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version, gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, instanceId, ed_resVersion, npcClass, instanceGuid, ed_kServerId, ed_season, ed_serverId, npcId"
+User,PVEInstanceSkillCast,英雄主动释放技能时候打点,6,30,personal 为主,0,6,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, castType, skillId, ed_mainBuildingLevel, instanceId, skillType, ed_resVersion, ed_kServerId, ed_season, instanceGuid, skillLevel, ed_serverId"
+User,DungeonEventEnd,副本事件结束,7,0,样本未覆盖,0,0,0,7,,
+User,MobStageResult,mob关卡通过情况,5,0,样本未覆盖,0,0,0,5,,
+User,TimelineEnd,Timeline结束,4,30,personal 为主,0,4,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, time, ed_kServerId, ed_season, timeline_name, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+User,TimelineStart,Timeline开始,3,30,personal 为主,0,3,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, timeline_name, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,Launch,游戏启动,6,30,样本未发现 CSV 属性,0,0,0,6,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,LaunchVersion,WerbServer请求游戏版本信息,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,LaunchVersionRet,WerbServer平台版本信息返回,1,30,personal 为主,0,1,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_Source, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,LoadingStart,Unity闪屏后第一个点 （中台技术实现）,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,8,0,样本未覆盖,0,0,0,8,,
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,7,11,personal 为主,0,7,0,0,,"challengeLevel, country, ed_mainBuildingLevel, ed_allianceId, selectTime, channel, activityId, ed_channel, alliancePermission, monsterId, ed_language, ed_season, ed_kServerId, ed_serverId, playerId"
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,9,30,personal 为主,0,9,0,0,,"challengeLevel, country, ed_mainBuildingLevel, donationQuantity, ed_allianceId, selectTime, channel, donationBuffLevelBefore, activityId, ed_channel, donationBuffLevelAfter, alliancePermission, ed_language, ed_season, ed_kServerId, ed_serverId, playerId"
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,9,12,personal 为主,0,9,0,0,,"challengeLevel, country, ed_mainBuildingLevel, magnification, ed_allianceId, selectTime, rewardType, channel, activityId, rewardId, totalDamage, ed_channel, rewardRank, ed_language, ed_season, ed_kServerId, ed_serverId"
+Activity,multipleArena,3v3竞技场挑战结果,7,21,personal 为主,0,7,0,0,,"multipleArenaBattleResults, country, ed_mainBuildingLevel, rankBeforeBattle, rankAfterBattle, channel, currentRemainingAttempts, ed_channel, combatPower, ed_language, ed_season, ed_kServerId, ed_serverId, playerId"
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,7,3,personal 为主,0,7,0,0,,"country, ed_mainBuildingLevel, cityLevel, channel, cityId, attackAllianceId, defAllianceId, ed_channel, occupiedCitiesNum, ed_language, ed_season, ed_kServerId, ed_serverId"
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,7,0,样本未覆盖,0,0,0,7,,
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,13,3,personal 为主,0,13,0,0,,"country, ed_mainBuildingLevel, joinNum, originalAllianceId, cityLevel, channel, fightResult, cityId, allianceId, winAllianceId, ifFirstOccupy, ed_channel, occupiedCitiesNum, ed_language, getScore, ed_season, ed_kServerId, ed_serverId, uniqueId"
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,8,0,样本未覆盖,0,0,0,8,,
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,7,2,personal 为主,0,7,0,0,,"country, ed_mainBuildingLevel, cityLevel, channel, cityId, allianceId, ed_channel, occupiedCitiesNum, ed_language, ed_season, ed_kServerId, ed_serverId, allianIdentity"
+FightForCities,GiveUpOccupiedCitiesSuccess,据点争夺成功放弃占领的城市,6,2,personal 为主,0,6,0,0,,"allianceId, country, ed_mainBuildingLevel, ed_channel, occupiedCitiesNum, cityLevel, channel, ed_language, cityId, ed_season, ed_kServerId, ed_serverId"
+Battle,PVERetry,当关卡失败后，点击结算界面的重新挑战后打点,3,30,personal 为主,0,3,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, instanceId, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Radar,RadarMissionFail,雷达任务失败,4,30,personal 为主,0,4,0,0,,"ed_dungeonId, country, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_radarMissionId, ed_serverId"
+Shop,ShopBuyComplete,商店购买,6,0,样本未覆盖,0,0,0,6,,
+Battle,SwitchSceneStart,开始切场景,4,30,personal 为主,0,4,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, SceneNow, SceneTarget, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Battle,TrainingArenaResults,竞技场挑战结果,7,0,样本未覆盖,0,0,0,7,,
+Idle,IdleBoxOpenTimes,挂机宝箱开启,5,0,样本未覆盖,0,0,0,5,,
+Idle,IdleGetReward,挂机领取奖励,5,30,personal 为主,0,5,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_idleGetRewardBox, ed_language, ed_idleGetRewardRes, ed_season, ed_kServerId, ed_serverId, ed_idleGetRewardTime"
+Idle,IdleStageId,挂机推关数,3,30,personal 为主,0,3,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_idleStageId, ed_language, ed_season, ed_kServerId, ed_serverId"
+Battle,PVEInstanceResult,PVE关卡战斗结算,8,30,personal 为主,0,8,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, result, ed_mainBuildingLevel, instanceId, ed_resVersion, killinfos, ed_season, ed_kServerId, ed_serverId, mechLevel, totalPower, Heros, instanceGuid"
+Battle,PVEInstanceStart,PVE关卡战斗开始,7,30,personal 为主,0,7,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, instanceId, ed_resVersion, ed_kServerId, ed_season, instanceGuid, ed_serverId, totalPower, mechLevel, Heros"
+Alliance,AllianceGiftDistribute,联盟礼物发放,7,0,样本未覆盖,0,0,0,7,,
+Alliance,AllianceGiftReceive,联盟礼物领取,7,0,样本未覆盖,0,0,0,7,,
+Alliance,AllianceMilestones,联盟里程碑结束,10,30,personal 为主,0,5,0,5,,"country, ed_status, ed_mainBuildingLevel, ed_ServerId, ed_allianceId, channel, ed_allianceName, ed_startTime, ed_channel, ed_cur_progress, ed_allianceOwnerId, ed_finishTime, ed_language, ed_season, ed_kServerId, ed_serverId, ed_milestonesId, ed_total_progress"
+Alliance,AllianceTechnologyDonation,联盟捐献,10,30,personal 为主,0,10,0,0,,"country, ed_maxMemberNumber, ed_mainBuildingLevel, ed_allianceId, ed_allianceLanguage, channel, ed_techLevel, ed_allianceName, ed_currentMemberNumber, ed_critical, ed_donationCount, ed_alliancePoint, ed_allianceOwnerId, ed_serverId, ed_allianceOServerid, ed_alliancePointGet, ed_researchPoints, ed_techId, ed_requireMainBuildingLevel, ed_requirePower, ed_memberPoint, ed_needApply, ed_donationType, ed_playerLevel, ed_recommend"
+Alliance,AllianceTechRecommend,联盟推荐,8,16,personal 为主,0,6,0,2,,"country, ed_maxMemberNumber, ed_mainBuildingLevel, ed_techId, ed_allianceId, ed_allianceLanguage, channel, ed_techLevel, ed_allianceName, ed_currentMemberNumber, ed_requireMainBuildingLevel, ed_requirePower, ed_needApply, ed_allianceOwnerId, ed_serverId, ed_allianceOServerid, ed_playerLevel"
+Alliance,CreateAlliance,创建联盟,10,3,personal 为主,0,9,0,1,,"country, ed_maxMemberNumber, ed_mainBuildingLevel, ed_allianceId, ed_allianceLanguage, channel, ed_allianceFlag, ed_allianceName, ed_currentMemberNumber, ed_requireMainBuildingLevel, ed_allianceTag, ed_requirePower, ed_needApply, ed_allianceOwnerId, ed_serverId, ed_allianceOServerid, ed_playerLevel"
+Army,ArmyUpgrade,兵种升级,8,30,personal 为主,0,8,0,0,,"country, ed_mainBuildingLevel, ed_count, channel, ed_oldArmyLevel, ed_newArmyLevel, ed_newArmyId, ed_oldArmyId, ed_channel, ed_language, ed_isInstant, ed_season, ed_kServerId, ed_serverId"
+Building,BuildingIdleUpgrade,内城建筑升级,4,0,样本未覆盖,0,0,0,4,,
+Building,BuildingUpgrade,建筑创建/升级,8,30,personal 为主,0,7,0,1,,"country, ed_mainBuildingLevel, channel, ed_metaId, ed_oldLevel, ed_newLevel, ed_channel, ed_language, ed_buildingId, ed_isInstant, ed_season, ed_kServerId, ed_serverId"
+Hero,EquipmentLevelUp,装备升级,6,30,personal 为主,0,5,0,1,,"country, ed_mainBuildingLevel, ed_channel, ed_equipId, ed_equipNewLevel, channel, ed_language, ed_season, ed_kServerId, ed_serverId, ed_equipItemId"
+Resource,SpeedupUse,使用道具加速,12,30,personal 为主,0,11,0,1,,"country, ed_mainBuildingLevel, channel, speedTime, ed_targetCount, ed_channel, ed_targetId, ed_totalTime, ed_targetLevel, ed_language, ed_speedItem, ed_season, ed_kServerId, ed_serverId, ed_remainTime, ed_diamond, ed_targetType"
+Resource,PreciousChange,贵重物品变更,9,30,personal 为主,0,8,0,1,,"country, ed_mainBuildingLevel, channel, ed_isAdd, ed_itemId, ed_addValue, ed_regularNewValue, ed_productid, ed_channel, ed_targetId, ed_route, ed_orderId, ed_language, ed_season, ed_kServerId, ed_serverId, ed_targetType"
+Resource,ResourceChange,资源变动,7,30,personal 为主,0,6,0,1,,"country, ed_mainBuildingLevel, ed_channel, ed_route, channel, ed_language, ed_stock, ed_detailReason, ed_change, ed_season, ed_kServerId, ed_serverId"
+User,DialogueStart,弹出对话,3,30,personal 为主,0,3,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, dialogID, ed_season, ed_kServerId, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Activity,SwitchSceneEnd,切场景结束,2,30,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, SceneNowAfterSwitch, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Activity,ActivityChestCount,连续充值开箱子,1,0,样本未覆盖,0,0,0,1,,
+Alliance,AllianceAirshipAppointCaptain,联盟飞艇-委任艇长行为,3,18,personal 为主,0,3,0,0,,"allianceId, country, captainId, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId, captainPower"
+Alliance,AllianceAirshipFreeCreate,联盟飞艇-免费的飞艇创建,3,30,personal 为主,0,3,0,0,,"allianceId, country, ed_mainBuildingLevel, ed_channel, channel, ed_language, allianceMemberCount, ed_season, ed_kServerId, ed_serverId, alliancePowerRank"
+Alliance,AllianceAirshipRefreshCargo,联盟飞艇-艇长刷新飞艇货舱行为,3,8,personal 为主,0,3,0,0,,"allianceId, country, captainId, ed_mainBuildingLevel, ed_channel, channel, cargoHoldInfo, ed_language, ed_season, ed_kServerId, ed_serverId, captainPower"
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,8,1,personal 为主,0,8,0,0,,"country, captainId, ed_mainBuildingLevel, getReward, channel, battleResult, isGolden, captainPower, allianceId, ed_channel, robberPower, robberAllianceId, ed_language, ed_season, ed_kServerId, ed_serverId"
+Alliance,AllianceAirshipStart,联盟飞艇-飞艇出发,5,18,personal 为主,0,5,0,0,,"country, captainId, ed_mainBuildingLevel, channel, cargoHoldInfo, isGolden, allianceId, ed_channel, passengersNum, ed_language, ed_season, ed_kServerId, ed_serverId"
+Alliance,AllianceDuelAlliancePoint,联盟对决联盟积分变化,4,0,样本未覆盖,0,0,0,4,,
+Alliance,AllianceDuelBoxOpen,联盟对决个人宝箱发放,3,0,样本未覆盖,0,0,0,3,,
+Alliance,AllianceDuelPersonalPoint,联盟对决个人积分变化,4,0,样本未覆盖,0,0,0,4,,
+Legion,LegionSiegeEnd,军团围攻-结算,5,0,样本未覆盖,0,0,0,5,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,14,0,样本未覆盖,0,0,0,14,,
+World,RALLY_GO,集结出发,10,0,样本未覆盖,0,0,0,10,,
+Legion,LegionSiegeStart,军团围攻-召唤军团据点,5,0,样本未覆盖,0,0,0,5,,
+Login,Logout,登出游戏(服务端）,3,30,personal 为主,0,3,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_allianceMemberRank, ed_language, ed_playSeconds, ed_season, ed_kServerId, ed_serverId"
+Login,GameServerLoginRet,登录游戏服返回,3,30,personal 为主,0,3,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_level, ed_isSuccess, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,Login,登录游戏(服务端）,2,30,personal 为主,0,2,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Sys,CCU,CCU,4,30,personal 为主,0,4,0,0,,"ed_timestamp, country, ed_ccu, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+User,Register,注册游戏,3,30,personal 为主,0,3,0,0,,"country, ed_existAmount, ed_mainBuildingLevel, ed_channel, channel, ed_season, ed_kServerId, ed_serverId"
+Login,UserActive,当日活跃,0,30,CSV 未定义属性,0,0,0,0,,
+Login,UserLogin,用户登录,0,30,CSV 未定义属性,0,0,0,0,,
+Login,UserRegister,用户注册,0,30,CSV 未定义属性,0,0,0,0,,
+Activity,BingoBoxClaim,宾果任务领奖,1,0,样本未覆盖,0,0,0,1,,
+World,WorldMarch,世界出征,14,30,personal 为主,0,14,0,0,,"country, ed_targetPosition, ed_mainBuildingLevel, ed_allianceId, ed_estimatedSeconds, ed_myTeamBattlePower, ed_marchType, channel, ed_myTeamArmy, ed_nowPosition, ed_channel, ed_targetId, ed_myTeamHeroList, ed_marchId, ed_buffList, ed_language, ed_targetMetaId, ed_season, ed_kServerId, ed_serverId, ed_targetType, ed_rallyId"
+Timeline,TimelineResume,Timeline暂停重新开始,3,30,personal 为主,0,3,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, pause_time, ed_kServerId, ed_season, timeline_name, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Battle,SaveHeroBomb,查炸弹后的打点,3,30,personal 为主,0,3,0,0,,"country, ed_mainBuildingLevel, isInTime, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId, saveHeroId"
+Pay,ServerPayLog,后端充值,8,24,personal 为主,0,5,0,3,,"orderId, payChannel, money, productid, level"
+Activity,ActivityCommanderTask,行为完成积分变化（最强指挥官）,4,0,样本未覆盖,0,0,0,4,,
+Resource,GoldChange,钻石变化,9,30,personal 为主,0,9,0,0,,"country, ed_mainBuildingLevel, ed_changeFree, channel, ed_goldType, ed_type, ed_channel, ed_route, ed_remainFree, ed_language, ed_detailReason, ed_changePaid, ed_season, ed_kServerId, ed_serverId, ed_remainPaid"
+Login,BiReconnectMsgResult,静默重连请求服务器回调,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, reconnectType, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Activity,BuyCustomWeeklyPass,自选周卡,3,0,样本未覆盖,0,0,0,3,,
+Activity,merchandisePointsChange,累充积分变化,2,17,personal 为主,0,2,0,0,,"country, activityId, pointCount, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Launch,BiConnectGameServerResultForLogin,bi连接,0,0,样本未覆盖,0,0,0,0,,
+Login,BiReconnectMsgTimeOut,静默重连请求超时,0,9,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, count, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiReconnectMsgRequire,发送静默重连请求,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiConnectSocketFailInGame,Socket连接失败-游戏中,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiConnectSocketSuccessInGame,Socket建立成功-游戏中,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiStartConnectSocketInGame,开始建立游戏服Socket连接-游戏中,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiEnterGameFail,发送进入游戏请求【服务器回失败】,0,0,样本未覆盖,0,0,0,0,,
+Login,BiEnterGameTimeout,发送进入游戏请求超时,0,28,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiEnterGameSend,发送进入游戏请求,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiGameServerAccountLoginSuccess,发送登录请求成功【服务器回的成功】,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiGameServerLoginFail,发送登录请求失败【服务器回的失败】,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, code, ed_resVersion, ed_season, ed_kServerId, ed_serverId"
+Login,BiGameServerLoginTimeout,发送登录请求超时,0,14,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId"
+Login,BiGameServerLoginSend,发送登录请求,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiConnectSocketFail,开始Socket连接失败,0,27,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiConnectSocketSuccess,开始Socket建立成功,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BiStartConnectSocket,开始建立游戏服Socket连接,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,BISDKAccountLogin,SDK登录成功,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, result, ed_mainBuildingLevel, ed_resVersion, message, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,ConnectGameServerBackSuc,socket连接成功,0,0,样本未覆盖,0,0,0,0,,
+Login,ConnectGameServerBackFail,连接socket失败,1,0,样本未覆盖,0,0,0,1,,
+Login,UseLocalLaunchVersion,使用兜底总控,0,0,样本未覆盖,0,0,0,0,,
+Activity,tse,测试,1,0,样本未覆盖,0,0,0,1,,
+Battle,MobstageStart,mob关卡开始,3,0,样本未覆盖,0,0,0,3,,
+Pay,PayPopup,支付礼包曝光,9,30,personal 为主,0,9,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_popupFirstId, ed_mainBuildingLevel, ed_resVersion, ed_popupSourceName, ed_popupName, ed_popupSourceId, ed_popupId, ed_popupFirstName, ed_productIds, ed_kServerId, ed_season, ed_serverId, ed_popupSourceButton, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Pay,PayPopupClick,点击购买按钮,9,30,personal 为主,0,9,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_popupFirstId, ed_mainBuildingLevel, ed_resVersion, ed_popupSourceName, ed_popupName, ed_popupSourceId, ed_popupId, ed_popupFirstName, ed_productId, ed_kServerId, ed_season, ed_serverId, ed_popupSourceButton"
+Pay,ep_acknowledge_failed,确认失败（订阅商品才会有）,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_acknowledge_success,确认成功（订阅商品才会有）,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_query_purchases_success,查询未消耗订单成功,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_query_purchases_failed,查询未消耗订单失败,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_consume_failed,消耗失败（消耗型商品才会有，咱们目前使用的都是消耗型商品）,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_consume_success,消耗成功（消耗型商品才会有，咱们目前使用的都是消耗型商品,0,0,样本未覆盖,0,0,0,0,,
+Login,PingGoogleFail,ping google域名失败,0,0,样本未覆盖,0,0,0,0,,
+Login,PingGoogleSuccess,ping google域名成功,0,0,样本未覆盖,0,0,0,0,,
+Login,UpdateBaseUrlNull,获取总控域名为空,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_update_db_finish,中台支付更新数据库完成,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_start_process_purchases,中台开始购买,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_exec_launch_billing,中台 launch billing,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_insert_db_success,中台插入 db成功,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_insert_db_failed,中台插入 db失败,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_create_order_success,中台创建订单成功,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_not_complete_init,中台初始化未完成,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_query_product_success,中台查询商品成功,0,0,样本未覆盖,0,0,0,0,,
+Login,LaunchVersionBestRequest,请求最佳总控地址，参数domain,2,22,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, costTime, domain, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,LaunchPingFailed,ping总控地址失败,1,30,personal 为主,0,1,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, domain, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Login,LaunchPingSuccess,ping总控地址成功,2,30,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, costTime, domain, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Pay,PayFinish,BI-支付完成,2,30,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_productId, ed_payResult, ed_mainBuildingLevel, ed_resVersion, ed_message, ed_payCode, ed_orderId, ed_payId, ed_kServerId, ed_season, ed_serverId"
+Pay,ep_pay_pending,未完成付款，这种一般是线下支付的场景,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_create_order_failed,创建订单失败,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_pay_cancel,中台支付取消,0,0,样本未覆盖,0,0,0,0,,
+Pay,PayStart,开始支付前事件,1,30,personal 为主,0,1,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_popupFirstId, ed_mainBuildingLevel, ed_resVersion, ed_popupSourceName, ed_popupName, ed_popupSourceId, ed_popupId, ed_popupFirstName, ed_productId, ed_kServerId, ed_season, ed_serverId, ed_popupSourceButton"
+Login,LaunchVersionRequest,请求总控地址，参数domain,1,30,personal 为主,0,1,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, domain, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Pay,ep_report_receipt_failed,上报票据 上报失败（中台支付流程）,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_report_receipt_success,上报票据 上报成功（中台支付流程）,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_purchased,支付成功（中台支付流程）,0,24,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, revenue, quantity, productId, payload, orderId, currency, userId, transactionId, playerId"
+Pay,ep_pay_failed,支付失败（中台支付流程）,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_invoke_pay_failed,检查调用谷歌支付失败（中台支付流程）,0,0,样本未覆盖,0,0,0,0,,
+Pay,ep_init_store_failed,检查设备支付环境 初始化失败（中台支付流程）,0,1,CSV 未定义属性,0,0,0,0,,"ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version, billingCode, message"
+Sys,ep_dns_parse_success,sdk dns接些,2,9,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, elapsedTs, totalElapsedTs, parseService, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Battle,MobCopyidResult,mob小关通关情况,4,0,样本未覆盖,0,0,0,4,,
+Sys,AliDnsAnalyze,域名解析监控,3,0,样本未覆盖,0,0,0,3,,
+Launch,StaRecFirstData,收到服务器初始化数据前,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Launch,FirstSeeGame,首次看到游戏画面,0,30,CSV 未定义属性,0,0,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Popup,DialogueEnd,弹出对话打点（对话结束）,2,30,personal 为主,0,2,0,0,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, dialogID, ed_season, ed_kServerId, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Radar,RadarUpgrade,雷达升级,2,30,personal 为主,0,2,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId, ed_radarLevel"
+Radar,RadarTaskFinish,完成雷达任务,3,30,personal 为主,0,3,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_radarMissionId, ed_serverId, ed_radarLevel"
+Technology,TechnologyDonation,个人科技升级,4,30,personal 为主,0,4,0,0,,"country, ed_mainBuildingLevel, ed_channel, ed_techId, channel, ed_language, ed_isInstant, ed_techLevel, ed_season, ed_kServerId, ed_serverId"
+Block,BlockUnlock,地块解锁,2,30,personal 为主,0,2,0,0,,"country, ed_mainBuildingLevel, ed_channel, ed_blockId, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Shop,ShopSale,商品售卖比例,6,30,personal 为主,0,6,0,0,,"country, ed_mainBuildingLevel, ed_setNum, channel, ed_price, ed_goodsId, ed_currency, ed_channel, ed_goodsIdNum, ed_language, ed_season, ed_kServerId, ed_serverId"
+Alliance,AllianceHelp,联盟帮助,6,30,personal 为主,0,6,0,0,,"country, ed_maxMemberNumber, ed_mainBuildingLevel, ed_helpUid, ed_allianceId, ed_allianceLanguage, ed_helpType, channel, ed_allianceName, ed_currentMemberNumber, ed_requireMainBuildingLevel, ed_requirePower, ed_helpUniqId, ed_needApply, ed_allianceOwnerId, ed_helpInfo, ed_serverId, ed_allianceOServerid, ed_playerLevel, ed_isHelpOne"
+Alliance,ApplyAlliance,申请联盟,6,30,personal 为主,0,6,0,0,,"country, ed_maxMemberNumber, ed_mainBuildingLevel, ed_allianceId, ed_allianceLanguage, channel, ed_allianceName, ed_currentMemberNumber, ed_requireMainBuildingLevel, ed_requirePower, ed_needApply, ed_allianceOwnerId, ed_serverId, ed_allianceOServerid, ed_playerLevel"
+Alliance,DismissAlliance,解散联盟,6,0,样本未覆盖,0,0,0,6,,
+Alliance,JoinAlliance,加入联盟,7,30,personal 为主,0,7,0,0,,"country, ed_maxMemberNumber, ed_mainBuildingLevel, ed_allianceId, ed_allianceLanguage, channel, ed_allianceName, ed_currentMemberNumber, ed_requireMainBuildingLevel, ed_requirePower, ed_route, ed_needApply, ed_allianceOwnerId, ed_serverId, ed_allianceOServerid, ed_playerLevel"
+Alliance,LeaveAlliance,退出联盟,7,20,personal 为主,0,7,0,0,,"country, ed_maxMemberNumber, ed_mainBuildingLevel, ed_allianceId, ed_allianceLanguage, channel, ed_allianceName, ed_currentMemberNumber, ed_requireMainBuildingLevel, ed_requirePower, ed_route, ed_needApply, ed_allianceOwnerId, ed_serverId, ed_allianceOServerid, ed_playerLevel"
+Hero,HeroLevelUp,英雄升级,5,30,personal 为主,0,5,0,0,,"country, ed_mainBuildingLevel, ed_currentLevel, ed_heroStar, channel, ed_oldLevel, ed_channel, ed_heroId, ed_surplusExp, ed_language, ed_season, ed_kServerId, ed_serverId"
+Resource,HeroRecruit,酒馆抽卡,6,30,personal 为主,0,6,0,0,,"country, ed_recruitType, ed_mainBuildingLevel, channel, ed_recruitNumType, ed_drawResult, ed_recruitTimes, ed_channel, ed_cardType, ed_costType, ed_language, ed_season, ed_kServerId, ed_serverId, ed_isFree"
+Hero,HeroSkillUpgrade,英雄技能升级,7,30,personal 为主,0,7,0,0,,"country, ed_newSkillLevel, ed_mainBuildingLevel, ed_heroStar, channel, ed_oldSkillLevel, ed_skillId, ed_channel, ed_heroLevel, ed_heroId, ed_language, ed_season, ed_kServerId, ed_serverId"
+Hero,HeroStarUp,英雄升星,4,30,personal 为主,0,4,0,0,,"country, ed_mainBuildingLevel, ed_heroStar, channel, ed_newStar, ed_channel, ed_heroLevel, ed_oldStar, ed_heroId, ed_language, ed_season, ed_kServerId, ed_serverId"
+Task,DailyLivenessAdd,日常活跃度增加,3,30,personal 为主,0,3,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_livenessCount, ed_totalLiveness, ed_language, ed_season, ed_kServerId, ed_serverId"
+Task,DailyLivenessReward,领取日常活跃度宝箱奖励,2,30,personal 为主,0,2,0,0,,"country, ed_livenessId, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Task,ChapterTaskReward,领取章节总奖励,2,30,personal 为主,0,2,0,0,,"country, ed_mainBuildingLevel, ed_chapterId, ed_channel, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Task,TaskReward,任务奖励,3,30,personal 为主,0,3,0,0,,"country, ed_taskType, ed_mainBuildingLevel, ed_channel, ed_taskId, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Task,TaskFinish,任务完成,3,30,personal 为主,0,3,0,0,,"country, ed_taskType, ed_mainBuildingLevel, ed_channel, ed_taskId, channel, ed_language, ed_season, ed_kServerId, ed_serverId"
+Army,TrainArmy,训练军队,4,30,personal 为主,0,4,0,0,,"country, ed_mainBuildingLevel, ed_channel, ed_count, channel, ed_language, ed_isInstant, ed_season, ed_kServerId, ed_armyId, ed_serverId"
+Army,HealArmy,治疗军队,3,30,personal 为主,0,3,0,0,,"country, ed_mainBuildingLevel, ed_channel, channel, ed_language, ed_isInstant, ed_season, ed_kServerId, ed_serverId, ed_armyList"
+Dungeon,DungeonEventStart,副本事件开始,4,0,样本未覆盖,0,0,0,4,,
+Dungeon,DungeonResult,探索副本结束,5,0,样本未覆盖,0,0,0,5,,
+Dungeon,DungeonEnter,探索副本进入,3,0,样本未覆盖,0,0,0,3,,
+Popup,PopupShow,展示面板,6,30,personal 为主,0,3,0,3,,"gameId, epEnv, pkgId, channel, epSdkVersion, playServicesVersion, playStoreVersion, ed_mainBuildingLevel, ed_resVersion, ed_popupName, ed_pupupType, ed_kServerId, ed_season, ed_serverId, ep_play_store_version, ep_game_id, ep_channel, ep_play_services_available, ep_pkg_id, ep_play_services_version"
+Launch,OnLoadEnd,OnLoadEnd,0,0,样本未覆盖,0,0,0,0,,
+Launch,OnEnterNextState,OnEnterNextState,0,0,样本未覆盖,0,0,0,0,,
+Launch,OnLoadSceneFinished,加载场景返回,0,0,样本未覆盖,0,0,0,0,,
+Launch,OnUpdateEnd,OnUpdateEnd,0,0,样本未覆盖,0,0,0,0,,
+Login,DownLoadDataTableRet,下载数据表返回,2,0,样本未覆盖,0,0,0,2,,
+Login,DownLoadGameSceneRet,下载场景返回,2,0,样本未覆盖,0,0,0,2,,

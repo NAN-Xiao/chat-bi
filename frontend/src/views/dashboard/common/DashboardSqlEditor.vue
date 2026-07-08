@@ -2288,7 +2288,7 @@ function resultAdviceItems(result: any, key: 'issues' | 'suggestions') {
 
 function isNonBlockingBuilderAdviceItem(value: string) {
   const text = String(value || '')
-  return /别名|标题|图表类型|图表标题|业务名称|业务含义|分组维度|信息密度|展示|美观|冗余|selectedFields|已选字段|未使用|国家|渠道|平台/.test(text)
+  return /别名|标题|图表类型|图表标题|业务名称|业务含义|分组维度|信息密度|展示|美观|冗余|selectedFields|已选字段|未使用|国家|渠道|平台|事件筛选条件|事件名筛选|未限定\s*event/.test(text)
 }
 
 function resultBlockingIssueItems(result: any) {
@@ -4323,7 +4323,13 @@ function closeDrawer() {
                 >
                   <div class="metric-index">{{ index + 1 }}</div>
                   <div class="metric-body">
-                    <div class="metric-title">{{ metricTitle(item, index) }}</div>
+                    <el-input
+                      v-model="item.alias"
+                      class="metric-title-input"
+                      size="small"
+                      clearable
+                      :placeholder="metricTitle(item, index)"
+                    />
                     <div
                       class="metric-chip-row"
                       :class="{ 'has-metric-field': item.aggregation !== 'count' }"
@@ -4395,7 +4401,13 @@ function closeDrawer() {
                   <div class="metric-body">
                     <div class="formula-metric-head">
                       <div class="formula-metric-title-wrap">
-                        <span class="formula-metric-title">{{ calculatedMetricTitle(item, index) }}</span>
+                        <el-input
+                          v-model="item.alias"
+                          class="formula-metric-title-input"
+                          size="small"
+                          clearable
+                          :placeholder="calculatedMetricTitle(item, index)"
+                        />
                         <span class="formula-decimal-pill">{{ formulaMetricPrecisionText(item) }}</span>
                       </div>
                       <div class="formula-metric-actions">
@@ -5546,6 +5558,39 @@ function closeDrawer() {
   line-height: 20px;
 }
 
+.metric-title-input {
+  width: min(288px, 100%);
+  margin-bottom: 8px;
+}
+
+.metric-title-input :deep(.el-input__wrapper),
+.formula-metric-title-input :deep(.el-input__wrapper) {
+  min-height: 24px;
+  padding: 0 8px;
+  box-shadow: none;
+  background: #f7f8fb;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.metric-title-input :deep(.el-input__wrapper:hover),
+.metric-title-input :deep(.el-input__wrapper.is-focus),
+.formula-metric-title-input :deep(.el-input__wrapper:hover),
+.formula-metric-title-input :deep(.el-input__wrapper.is-focus) {
+  background: #fff;
+  border-color: #2f6bff;
+  box-shadow: none;
+}
+
+.metric-title-input :deep(.el-input__inner),
+.formula-metric-title-input :deep(.el-input__inner) {
+  height: 22px;
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
 .metric-chip-row {
   display: grid;
   grid-template-columns: minmax(220px, 320px) 18px 104px 24px;
@@ -5586,6 +5631,11 @@ function closeDrawer() {
   align-items: center;
   min-width: 0;
   gap: 8px;
+}
+
+.formula-metric-title-input {
+  width: min(220px, 100%);
+  flex: 0 1 220px;
 }
 
 .formula-metric-title {

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
 import { dataSkillApi } from '@/api/dataSkill'
+import { cachedRequest, clearRequestCache } from '@/utils/requestDedupe'
 import icon_ai from '@/assets/svg/icon_ai.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
@@ -41,6 +42,7 @@ const skillFormRef = ref()
 const skillDialogVisible = ref(false)
 const skillDialogTitle = ref('')
 const savingSkill = ref(false)
+const DATA_SKILL_SELECTOR_CACHE_PREFIX = 'data-skill-selector:'
 
 const defaultSkillForm = {
   id: null as number | string | null,
@@ -163,6 +165,9 @@ const buildListQuery = () => {
   return query ? `?${query}` : ''
 }
 
+const buildSkillsCacheKey = (query: string) =>
+  `${DATA_SKILL_SELECTOR_CACHE_PREFIX}${props.targetScope}|${query}`
+
 const selectSkill = (value: string | number | null) => {
   emit('update:modelValue', value)
   emit('change', value)
@@ -172,7 +177,10 @@ const selectSkill = (value: string | number | null) => {
 const loadSkills = async () => {
   loading.value = true
   try {
-    const res: any = await dataSkillApi.getList(1, 100, buildListQuery()).catch(() => ({ data: [] }))
+    const query = buildListQuery()
+    const res: any = await cachedRequest(buildSkillsCacheKey(query), () =>
+      dataSkillApi.getList(1, 100, query).catch(() => ({ data: [] }))
+    )
     skillList.value = (res?.data || [])
       .filter(
         (row: any) =>
@@ -253,6 +261,7 @@ const saveSkill = () => {
       .then(() => {
         ElMessage.success(t('common.save_success'))
         closeSkillForm()
+        clearRequestCache(DATA_SKILL_SELECTOR_CACHE_PREFIX)
         loadSkills()
         emit('saved')
       })

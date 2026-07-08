@@ -1,0 +1,72 @@
+{
+  "csv_path": "D:\\AIWork3\\djinchao\\chat-bi\\docs\\event.csv",
+  "database": "first_zombie",
+  "days": [
+    20251119,
+    20251118,
+    20251117,
+    20251116,
+    20251115,
+    20251114,
+    20251113,
+    20251112,
+    20251111,
+    20251110
+  ],
+  "samples_per_event_per_day": 3,
+  "daily_stats": [
+    {
+      "dt": 20251119,
+      "row_count": 272636,
+      "event_count": 172
+    },
+    {
+      "dt": 20251118,
+      "row_count": 377189,
+      "event_count": 178
+    },
+    {
+      "dt": 20251117,
+      "row_count": 364790,
+      "event_count": 173
+    },
+    {
+      "dt": 20251116,
+      "row_count": 421688,
+      "event_count": 173
+    },
+    {
+      "dt": 20251115,
+      "row_count": 665608,
+      "event_count": 175
+    },
+    {
+      "dt": 20251114,
+      "row_count": 387970,
+      "event_count": 170
+    },
+    {
+      "dt": 20251113,
+      "row_count": 315467,
+      "event_count": 171
+    },
+    {
+      "dt": 20251112,
+      "row_count": 347557,
+      "event_count": 180
+    },
+    {
+      "dt": 20251111,
+      "row_count": 365030,
+      "event_count": 181
+    },
+    {
+      "dt": 20251110,
+      "row_count": 508367,
+      "event_count": 182
+    }
+  ],
+  "sample_rows": 3989,
+  "ext_non_empty_rows": 0,
+  "personal_non_empty_rows": 3899
+}

@@ -209,6 +209,28 @@ def test_dashboard_prompt_treats_event_metric_filters_as_optional() -> None:
     assert "不要生成空 WHERE" in prompt
 
 
+def test_dashboard_diagnosis_prompt_does_not_require_extra_event_filter() -> None:
+    """
+    是什么：诊断节点不能把事件指标的额外事件筛选条件当成必填项。
+    """
+    prompt = ai_sql_generator._dashboard_diagnosis_system_prompt()
+
+    assert "事件指标自带事件名限定" in prompt
+    assert "不要因为没有额外事件筛选条件" in prompt
+    assert "success=false" in prompt
+
+
+def test_dashboard_diagnosis_prompt_does_not_block_on_time_range_limit() -> None:
+    """
+    是什么：配置诊断不能把时间范围当成必须限定的阻断条件。
+    """
+    prompt = ai_sql_generator._dashboard_diagnosis_system_prompt()
+
+    assert "时间范围只是查询窗口" in prompt
+    assert "不能因为未配置时间范围" in prompt
+    assert "success=false" in prompt
+
+
 def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:
     """
     是什么：手动图表 SQL 生成提示词要把复杂分析优先引导为 CTE 分层结构。

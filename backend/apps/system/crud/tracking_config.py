@@ -232,6 +232,14 @@ def _json_list_or_dict(value: Any):
     return parsed if isinstance(parsed, (list, dict)) else None
 
 
+def _json_dict(value: Any) -> dict:
+    """
+    是什么：把数据库或 DTO 中的 JSON 对象整理成字典，非法内容按空字典处理。
+    """
+    parsed = _json_value(value, {})
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _normalized_semantic_type(field_role: str | None, semantic_type: str | None) -> str | None:
     role = (field_role or "").strip().lower()
     if role == "event_name":
@@ -473,6 +481,7 @@ def _table_dto(row: TenantTrackingTableModel) -> TenantTrackingTableDTO:
         table_role=row.table_role,
         aliases=_json_list(row.aliases),
         ai_notes=row.ai_notes,
+        extra_properties=_json_dict(getattr(row, "extra_properties", None)),
         create_by=row.create_by,
         update_by=row.update_by,
         create_time=row.create_time,
@@ -505,6 +514,7 @@ def _field_dto(row: TenantTrackingFieldModel) -> TenantTrackingFieldDTO:
         required=bool(row.required),
         example_values=_json_list(row.example_values),
         ai_notes=row.ai_notes,
+        extra_properties=_json_dict(getattr(row, "extra_properties", None)),
         create_by=row.create_by,
         update_by=row.update_by,
         create_time=row.create_time,
@@ -643,6 +653,7 @@ def save_tracking_config(
                 table_role=_clean_text(item.table_role, 64),
                 aliases=_json_list(item.aliases),
                 ai_notes=_clean_text(item.ai_notes),
+                extra_properties=_json_dict(getattr(item, "extra_properties", None)),
                 create_by=current_user_id,
                 update_by=current_user_id,
                 create_time=now,
@@ -684,6 +695,7 @@ def save_tracking_config(
                 required=bool(item.required),
                 example_values=_json_list(item.example_values),
                 ai_notes=_clean_text(item.ai_notes),
+                extra_properties=_json_dict(getattr(item, "extra_properties", None)),
                 create_by=current_user_id,
                 update_by=current_user_id,
                 create_time=now,

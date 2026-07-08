@@ -235,6 +235,7 @@
                     :current-chat-id="currentChatId"
                     :record-id="message.record?.id"
                     :loading="isTyping"
+                    :defer-data-loading="true"
                     :message="message"
                     :reasoning-name="['sql_answer', 'chart_answer']"
                     @scroll-bottom="scrollToBottom"
@@ -519,6 +520,8 @@ import QuickQuestion from '@/views/chat/QuickQuestion.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
+import { createChatLoadScheduler } from './answer/chatLoadScheduler'
+import { isRestorableAnswerRecord, shouldMarkChatTypingOnRestore } from './answer/taskRestore'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -597,25 +600,9 @@ const isTyping = ref<boolean>(false)
 const loginBg = computed(() => {
   return appearanceStore.getLogin
 })
-function hasDisplayableAnswerRecord(record?: ChatRecord) {
-  return !!(
-    record?.local_answer ||
-    record?.chart ||
-    record?.analysis ||
-    record?.predict ||
-    record?.predict_content
-  )
-}
 function isUnfinishedAnswerRecord(record?: ChatRecord) {
-  return (
-    !!record &&
-    !record.first_chat &&
-    !record.finish &&
-    !record.finish_time &&
-    !record.error &&
-    !record.stopped &&
-    (!!record.task_id || !hasDisplayableAnswerRecord(record))
-  )
+  const recordIndex = record ? currentChat.value.records.indexOf(record) : -1
+  return isRestorableAnswerRecord(record, recordIndex === currentChat.value.records.length - 1)
 }
 function isRecordTyping(record?: ChatRecord, index = -1) {
   return (
@@ -656,6 +643,12 @@ const hasRealChatRecords = computed(() =>
 function hasUnfinishedRecord() {
   return currentChat.value.records.some((record) => isUnfinishedAnswerRecord(record))
 }
+function restoreChatTypingState(records = currentChat.value.records) {
+  const shouldType = shouldMarkChatTypingOnRestore(records)
+  isTyping.value = shouldType
+  loading.value = shouldType
+  return shouldType
+}
 const hasUnfinishedGeneration = computed(() => hasUnfinishedRecord())
 const hasActiveGeneration = computed(
   () => getRecommendQuestionsLoading.value || hasUnfinishedGeneration.value
@@ -689,6 +682,7 @@ const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
 }
 
 const resetChatContext = () => {
+  nextChatLoadVersion()
   currentChat.value = new ChatInfo()
   currentChatId.value = undefined
   chatList.value = []
@@ -718,9 +712,10 @@ async function loadChatById(chatId?: number) {
   if (!chatId) {
     return
   }
+  const version = nextChatLoadVersion()
   const res = await chatApi.get(chatId)
   const info = chatApi.toChatInfo(res)
-  if (!info) {
+  if (!info || version !== chatLoadVersion) {
     return
   }
   currentChat.value = info
@@ -730,6 +725,7 @@ async function loadChatById(chatId?: number) {
     chatList.value.unshift(info)
   }
   onClickHistory(info)
+  scheduleHistoricalChartDataLoads(version)
 }
 
 async function restoreCurrentChatFromSession() {
@@ -744,12 +740,10 @@ async function restoreCurrentChatFromSession() {
   loading.value = true
   try {
     await loadChatById(storedChatId)
-    if (hasUnfinishedRecord()) {
-      isTyping.value = true
+    if (restoreChatTypingState()) {
       restoreChartAnswers()
-    } else {
-      isTyping.value = false
     }
+    scheduleHistoricalChartDataLoads(chatLoadVersion)
   } catch (error) {
     console.error('Restore current chat failed:', error)
     forgetCurrentChat()
@@ -809,6 +803,7 @@ const handleScroll = (val: any) => {
 
 const createNewChatSimple = async () => {
   forgetCurrentChat()
+  nextChatLoadVersion()
   currentChat.value = new ChatInfo()
   currentChatId.value = undefined
   await createNewChat()
@@ -845,6 +840,7 @@ const createNewChat = async () => {
   forgetCurrentChat()
   goEmpty()
   if (!isCompletePage.value && !selectAssistantDs.value) {
+    nextChatLoadVersion()
     currentChat.value = new ChatInfo()
     currentChatId.value = undefined
     return
@@ -883,7 +879,10 @@ function onClickHistory(chat: ChatInfo) {
   if (chat?.id) {
     rememberCurrentChat(chat.id)
   }
+  restoreChatTypingState(chat?.records || [])
   scrollToBottom()
+  restoreChartAnswers()
+  scheduleHistoricalChartDataLoads(chatLoadVersion)
   forEach(chat?.records, (record: ChatRecord) => {
     // getChatData(record.id)
     if (record.predict_record_id) {
@@ -921,6 +920,7 @@ function showSideBar() {
 }
 
 function onChatCreatedQuick(chat: ChatInfo) {
+  nextChatLoadVersion()
   chatList.value.unshift(chat)
   currentChatId.value = chat.id
   currentChat.value = chat
@@ -1024,16 +1024,76 @@ function quickAsk(question: string) {
 const chartAnswerRef = ref()
 const getRecommendQuestionsLoading = ref(false)
 const restoringVisibleChat = ref(false)
+const chartLoadScheduler = createChatLoadScheduler({ maxConcurrency: 3 })
+let chatLoadVersion = 0
+
+function nextChatLoadVersion() {
+  chatLoadVersion += 1
+  chartLoadScheduler.cancel()
+  return chatLoadVersion
+}
+
+function getChartAnswerRefs() {
+  const refs = chartAnswerRef.value
+  if (!refs) {
+    return []
+  }
+  return refs instanceof Array ? refs : [refs]
+}
 
 function restoreChartAnswers() {
   nextTick(() => {
-    const refs = chartAnswerRef.value
-    if (!refs) {
+    getChartAnswerRefs().forEach((answer) => {
+      answer?.restoreRecordTask?.()
+    })
+  })
+}
+
+function recordHasChartData(record?: ChatRecord) {
+  if (!record?.data) {
+    return false
+  }
+  if (typeof record.data === 'string') {
+    return record.data.trim().length > 0
+  }
+  return true
+}
+
+function shouldScheduleChartData(record?: ChatRecord) {
+  return !!record?.id && !!record.chart && !recordHasChartData(record)
+}
+
+function findChartAnswerByRecordIndex(recordIndex: number) {
+  return getChartAnswerRefs().find((answer) => answer?.index?.() === recordIndex)
+}
+
+function scheduleHistoricalChartDataLoads(version = chatLoadVersion) {
+  nextTick(() => {
+    const chatId = currentChatId.value
+    if (!chatId || version !== chatLoadVersion) {
       return
     }
-    const answers = refs instanceof Array ? refs : [refs]
-    answers.forEach((answer) => {
-      answer?.restoreRecordTask?.()
+    currentChat.value.records.forEach((record, index) => {
+      if (!shouldScheduleChartData(record) || isUnfinishedAnswerRecord(record)) {
+        return
+      }
+      const distanceFromLatest = currentChat.value.records.length - index
+      const priority = distanceFromLatest <= 5 ? 50 - distanceFromLatest : 10 - distanceFromLatest
+      const isStale = () => version !== chatLoadVersion || currentChatId.value !== chatId
+      chartLoadScheduler
+        .enqueue({
+          key: `chat:${chatId}:record:${record.id}:chart-data`,
+          scope: `chat:${chatId}`,
+          priority,
+          isStale,
+          run: async () => {
+            const answer = findChartAnswerByRecordIndex(index)
+            await answer?.loadChartData?.(record.id, isStale)
+          },
+        })
+        .catch((error) => {
+          console.error('Load historical chart data failed:', error)
+        })
     })
   })
 }
@@ -1048,14 +1108,9 @@ async function restoreVisibleChatState() {
   restoringVisibleChat.value = true
   try {
     await loadChatById(currentChatId.value)
-    if (hasUnfinishedRecord()) {
-      loading.value = true
-      isTyping.value = true
-    } else {
-      loading.value = false
-      isTyping.value = false
-    }
+    restoreChatTypingState()
     restoreChartAnswers()
+    scheduleHistoricalChartDataLoads(chatLoadVersion)
   } catch (error) {
     console.error('Restore visible chat state failed:', error)
   } finally {
@@ -1414,6 +1469,7 @@ function clickInput() {
 }
 
 function stop(func?: (...p: any[]) => void, ...param: any[]) {
+  nextChatLoadVersion()
   if (recommendQuestionRef.value) {
     if (recommendQuestionRef.value instanceof Array) {
       for (let i = 0; i < recommendQuestionRef.value.length; i++) {

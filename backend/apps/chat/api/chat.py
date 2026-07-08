@@ -272,7 +272,8 @@ async def chats(session: SessionDep, current_user: CurrentUser,
 
 @router.get("/{chart_id}", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}get_chat")
 async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant,
-                   trans: Trans):
+                   trans: Trans,
+                   include_record_data: bool = Query(True, description="是否返回聊天记录缓存数据")):
     """
     是什么：get_chat 是一个接口入口，负责接住聊天问数据和 Agent相关请求。
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
@@ -285,7 +286,8 @@ async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int
         做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
         """
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user,
-                                     current_assistant=current_assistant, trans=trans)
+                                     current_assistant=current_assistant, trans=trans,
+                                     include_record_data=include_record_data)
 
     return await asyncio.to_thread(inner)
 

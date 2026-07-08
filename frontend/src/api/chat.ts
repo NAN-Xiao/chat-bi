@@ -481,7 +481,10 @@ export const chatApi = {
       datasourceId ? `/chat/list?datasource_id=${encodeURIComponent(datasourceId)}` : '/chat/list'
     )
   },
-  get: (id: number): Promise<ChatInfo> => {
+  get: (id: number, options?: { includeRecordData?: boolean }): Promise<ChatInfo> => {
+    if (options?.includeRecordData === false) {
+      return request.get(`/chat/${id}?include_record_data=false`)
+    }
     return request.get(`/chat/${id}`)
   },
   get_with_Data: (id: number, datasourceId?: number): Promise<ChatInfo> => {

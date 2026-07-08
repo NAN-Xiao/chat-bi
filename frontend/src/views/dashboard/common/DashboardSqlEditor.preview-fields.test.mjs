@@ -180,10 +180,15 @@ assert.doesNotMatch(
   /<el-select\s+v-model="item\.field"/,
   '普通分析指标字段不应继续使用扁平字段下拉，否则事件会退化成普通字段列表'
 )
-assert.doesNotMatch(
-  source.match(/class="metric-chip-row"[\s\S]*?<BuilderFilterTree/)?.[0] || '',
-  /v-model="item\.alias"|class="metric-alias"/,
-  '普通分析指标行不应展示别名输入框，应只保留事件、聚合、计算字段和删除操作'
+assert.match(
+  source.match(/class="metric-body"[\s\S]*?class="metric-chip-row"/)?.[0] || '',
+  /<el-input[\s\S]*v-model="item\.alias"[\s\S]*class="metric-title-input"/,
+  '普通分析指标标题应展示可编辑别名输入框，让用户能直接修改指标输出名称'
+)
+assert.match(
+  source.match(/class="formula-metric-title-wrap"[\s\S]*?class="formula-decimal-pill"/)?.[0] || '',
+  /<el-input[\s\S]*v-model="item\.alias"[\s\S]*class="formula-metric-title-input"/,
+  '公式指标标题应展示可编辑别名输入框，让用户能直接修改自定义指标名称'
 )
 assert.match(
   source,

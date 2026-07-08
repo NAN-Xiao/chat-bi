@@ -1093,7 +1093,7 @@ dynamic_ds_types = [1, 3]
 
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser,
                           current_assistant: CurrentAssistant, with_data: bool = False,
-                          trans: Trans = None) -> ChatInfo:
+                          trans: Trans = None, include_record_data: bool = True) -> ChatInfo:
     """
     是什么：get_chat_with_records 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -1128,20 +1128,28 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     predict_alias_log = aliased(ChatLog)
 
     tenant_id = _current_tenant_id(current_user)
-    stmt = (select(ChatRecord.id, ChatRecord.tenant_id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
-                   ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
-                   ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
-                   ChatRecord.regenerate_record_id,
-                   ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
-                   ChatRecord.agent_context_snapshot,
-                   ChatRecord.recommended_question, ChatRecord.first_chat,
-                   ChatRecord.finish, ChatRecord.error, ChatRecord.data, ChatRecord.predict_data,
-                   sql_alias_log.reasoning_content.label('sql_reasoning_content'),
-                   chart_alias_log.reasoning_content.label('chart_reasoning_content'),
-                   analysis_alias_log.reasoning_content.label('analysis_reasoning_content'),
-                   predict_alias_log.reasoning_content.label('predict_reasoning_content')
-                   )
+    include_cached_record_data = with_data or include_record_data
+    record_columns = [
+        ChatRecord.id, ChatRecord.tenant_id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
+        ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.datasource,
+        ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
+        ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
+        ChatRecord.regenerate_record_id,
+        ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
+        ChatRecord.agent_context_snapshot,
+        ChatRecord.recommended_question, ChatRecord.first_chat,
+        ChatRecord.finish, ChatRecord.error,
+    ]
+    if include_cached_record_data:
+        record_columns.extend([ChatRecord.data, ChatRecord.predict_data])
+    record_columns.extend([
+        sql_alias_log.reasoning_content.label('sql_reasoning_content'),
+        chart_alias_log.reasoning_content.label('chart_reasoning_content'),
+        analysis_alias_log.reasoning_content.label('analysis_reasoning_content'),
+        predict_alias_log.reasoning_content.label('predict_reasoning_content'),
+    ])
+
+    stmt = (select(*record_columns)
     .outerjoin(sql_alias_log, and_(sql_alias_log.pid == ChatRecord.id,
                                    sql_alias_log.type == TypeEnum.CHAT,
                                    sql_alias_log.operate == OperationEnum.GENERATE_SQL))
@@ -1162,7 +1170,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         ChatRecord.create_time))
     if with_data:
         stmt = select(ChatRecord.id, ChatRecord.tenant_id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
+                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.datasource,
                       ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                       ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                       ChatRecord.regenerate_record_id,
@@ -1231,6 +1239,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         current_permission_allowed = _record_allowed_by_current_permissions(session, current_user, row)
         record_cache_requires_scrub = (
             not with_data
+            and include_record_data
             and row.datasource
             and row.sql
             and current_permission_allowed
@@ -1243,7 +1252,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             source_record_id,
         ) if source_record_id else False
 
-        data_value = _row_value(row, "data")
+        data_value = _row_value(row, "data") if include_cached_record_data else None
         if with_data and row.datasource and (row.sql or row.analysis_record_id or row.predict_record_id):
             data_value = orjson.dumps(get_chart_data_with_user(
                 session=session,
@@ -1254,7 +1263,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         chart_value = row.chart
         analysis_value = row.analysis
         analysis_notice_value = None
-        if current_permission_allowed and row.datasource and row.sql:
+        if include_cached_record_data and current_permission_allowed and row.datasource and row.sql:
             parsed_data = _loads_record_data(data_value) if isinstance(data_value, str) else None
             projection = _saved_record_missing_event_projection(
                 session=session,
@@ -1278,7 +1287,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                     analysis_notice_value = projection.analysis_notice
 
         record_result: ChatRecordResult
-        predict_data_value = _row_value(row, "predict_data")
+        predict_data_value = _row_value(row, "predict_data") if include_cached_record_data else None
         if (
             record_cache_requires_scrub
             or (row.predict_record_id and (not current_permission_allowed or derived_cache_requires_scrub))

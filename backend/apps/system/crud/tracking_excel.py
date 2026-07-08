@@ -453,7 +453,9 @@ def _header_key(value: Any) -> str:
 
 def _canonical_header(value: Any) -> str:
     key = _header_key(value)
-    return HEADER_ALIASES.get(key, key)
+    if not key:
+        return ""
+    return HEADER_ALIASES.get(key, _text(value))
 
 
 def _read_sheet_rows(excel: pd.ExcelFile, sheet_name: str) -> tuple[list[dict[str, Any]], int]:
@@ -500,6 +502,53 @@ def _read_sheet_rows(excel: pd.ExcelFile, sheet_name: str) -> tuple[list[dict[st
         else:
             skipped += 1
     return rows, skipped
+
+
+KNOWN_IMPORT_COLUMNS = (
+    set(BUSINESS_COLUMNS)
+    | set(TABLE_MAP_COLUMNS)
+    | set(SQL_RULE_COLUMNS)
+    | set(ATTRIBUTE_COLUMNS)
+    | set(EVENT_PARAMETER_MAPPING_COLUMNS)
+    | set(HEADER_ALIASES.values())
+)
+
+
+def _extra_properties_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in row.items():
+        if not key or key in KNOWN_IMPORT_COLUMNS:
+            continue
+        text = _text(value)
+        if text:
+            result[key] = text
+    return result
+
+
+def _merge_extra_properties(old: dict[str, Any] | None, new: dict[str, Any] | None) -> dict[str, Any]:
+    result: dict[str, Any] = dict(old or {})
+    for key, value in (new or {}).items():
+        if _text(value):
+            result[key] = value
+    return result
+
+
+def _extra_properties(item: Any) -> dict[str, Any]:
+    value = getattr(item, "extra_properties", None)
+    return value if isinstance(value, dict) else {}
+
+
+def _columns_with_extra(base_columns: list[str], rows: list[dict[str, Any]]) -> list[str]:
+    columns = list(base_columns)
+    seen = set(columns)
+    for row in rows:
+        for key, value in row.items():
+            if key in seen or key in KNOWN_IMPORT_COLUMNS:
+                continue
+            if _text(value):
+                columns.append(key)
+                seen.add(key)
+    return columns
 
 
 def _row_type(value: Any) -> str:
@@ -651,6 +700,7 @@ def _table_base(item: Any) -> TenantTrackingTableBase:
         table_role=_text(getattr(item, "table_role", None) if not isinstance(item, dict) else item.get("table_role")) or None,
         aliases=list(getattr(item, "aliases", []) if not isinstance(item, dict) else item.get("aliases", []) or []),
         ai_notes=_text(getattr(item, "ai_notes", None) if not isinstance(item, dict) else item.get("ai_notes")) or None,
+        extra_properties=dict(getattr(item, "extra_properties", {}) if not isinstance(item, dict) else item.get("extra_properties", {}) or {}),
     )
 
 
@@ -671,6 +721,7 @@ def _field_base(item: Any) -> TenantTrackingFieldBase:
         required=bool(getattr(item, "required", False) if not isinstance(item, dict) else item.get("required", False)),
         example_values=list(getattr(item, "example_values", []) if not isinstance(item, dict) else item.get("example_values", []) or []),
         ai_notes=_text(getattr(item, "ai_notes", None) if not isinstance(item, dict) else item.get("ai_notes")) or None,
+        extra_properties=dict(getattr(item, "extra_properties", {}) if not isinstance(item, dict) else item.get("extra_properties", {}) or {}),
     )
 
 
@@ -815,6 +866,7 @@ def _merge_tracking_config(existing: TenantTrackingConfigDTO, imported: TenantTr
         current.table_role = _merge_text(current.table_role, table.table_role)
         current.aliases = _merge_list(current.aliases, table.aliases)
         current.ai_notes = _merge_text(current.ai_notes, table.ai_notes)
+        current.extra_properties = _merge_extra_properties(current.extra_properties, table.extra_properties)
     base.tables = list(table_by_name.values())
 
     field_by_key = {
@@ -841,6 +893,9 @@ def _merge_tracking_config(existing: TenantTrackingConfigDTO, imported: TenantTr
         current.required = bool(current.required or field_item.required)
         current.example_values = _merge_list(current.example_values, field_item.example_values)
         current.ai_notes = _merge_text(current.ai_notes, field_item.ai_notes)
+        current.update_mode = _merge_text(getattr(current, "update_mode", None), getattr(field_item, "update_mode", None))
+        current.category = _merge_text(getattr(current, "category", None), getattr(field_item, "category", None))
+        current.extra_properties = _merge_extra_properties(current.extra_properties, field_item.extra_properties)
     base.fields = list(field_by_key.values())
     return base
 
@@ -894,6 +949,7 @@ def _table_item(
     table_role: str = "",
     alias: str = "",
     ai_notes: str = "",
+    extra_properties: dict[str, Any] | None = None,
 ) -> TenantTrackingTableBase:
     aliases = _merge_list([], [alias] if alias and alias != table_name else [])
     return TenantTrackingTableBase(
@@ -902,6 +958,7 @@ def _table_item(
         table_role=table_role or None,
         aliases=aliases,
         ai_notes=ai_notes or None,
+        extra_properties=dict(extra_properties or {}),
     )
 
 
@@ -979,6 +1036,7 @@ def _field_item(
         ai_notes=_text(row.get("ai_notes")) or None,
         update_mode=_text(row.get("update_mode")) or None,
         category=_text(row.get("field_category")) or _text(row.get("category")) or None,
+        extra_properties=_extra_properties_from_row(row),
     )
 
 
@@ -1050,6 +1108,7 @@ def _parse_table_map(
                 table_role=_text(row.get("table_role")) or None,
                 aliases=_aliases_from_row(row, _text(row.get("table_display_name")), table_name),
                 ai_notes=_text(row.get("ai_notes")) or None,
+                extra_properties=_extra_properties_from_row(row),
             )
         )
         if _text(row.get("event_name_field")) and not editor.default_event_table:
@@ -1384,6 +1443,7 @@ def _parse_event_parameter_mapping_sheet(
     warnings: list[str],
 ) -> None:
     last_event: dict[str, Any] | None = None
+    last_source_field = ""
     for row in rows:
         event_name = _text(row.get("event_name"))
         if not event_name:
@@ -1401,11 +1461,13 @@ def _parse_event_parameter_mapping_sheet(
             }
             event = {key: value for key, value in event.items() if value}
             last_event = dict(event)
+            last_source_field = _text(row.get("source_field"))
         raw_property_name = _first_text(row.get("property_name"), row.get("field_name"))
         prop: dict[str, Any] | None = None
         if raw_property_name:
+            source_value = _text(row.get("source_field")) or last_source_field or "ext"
             source_field, property_name, json_path = _split_event_parameter_source(
-                row.get("source_field") or "ext",
+                source_value,
                 raw_property_name,
                 row.get("json_path"),
             )
@@ -1573,7 +1635,7 @@ def _business_row_from_field(field_item: Any, *, row_type: str) -> dict[str, Any
     source_field = _text(field_item.source_field)
     json_path = _text(field_item.json_path)
     expression = "" if source_field and json_path else field_item.expression or ""
-    return {
+    row = {
         "row_type": row_type,
         "field_name": field_item.field_name,
         "field_display_name": _first_alias(field_item),
@@ -1596,6 +1658,8 @@ def _business_row_from_field(field_item: Any, *, row_type: str) -> dict[str, Any
         "ai_notes": field_item.ai_notes or "",
         "aliases": _aliases_text(field_item),
     }
+    row.update(_extra_properties(field_item))
+    return row
 
 
 def _semantic_type_for_export(field_item: Any, physical_type: str = "") -> str:
@@ -2128,8 +2192,9 @@ def _attribute_row_from_field(
     description: str = "",
     update_mode: str = "",
     category: str = "",
+    extra_properties: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    row = {
         "field_name": field_name,
         "field_display_name": display_name,
         "field_type": _attribute_type_label(field_type),
@@ -2137,6 +2202,8 @@ def _attribute_row_from_field(
         "description": description,
         "field_category": category,
     }
+    row.update(extra_properties or {})
+    return row
 
 
 def _attribute_sheet_rows_for_table(
@@ -2158,6 +2225,7 @@ def _attribute_sheet_rows_for_table(
                 description=getattr(configured, "field_comment", None) or field_info.custom_comment or field_info.field_comment,
                 update_mode=_text(getattr(configured, "update_mode", None)),
                 category=_field_category(configured),
+                extra_properties=_extra_properties(configured),
             ))
             continue
         rows.append(_attribute_row_from_field(
@@ -2180,6 +2248,7 @@ def _attribute_sheet_rows_for_table(
                 description=getattr(configured, "field_comment", None),
                 update_mode=_text(getattr(configured, "update_mode", None)),
                 category=_field_category(configured),
+                extra_properties=_extra_properties(configured),
             ))
     return rows
 
@@ -2198,7 +2267,7 @@ def _append_table_map_defaults(
 ) -> None:
     if not table_name:
         return
-    table_rows.append({
+    row = {
         "sheet_name": sheet_name,
         "table_name": table_name,
         "table_display_name": _first_alias(table_item) if table_item else "",
@@ -2210,7 +2279,9 @@ def _append_table_map_defaults(
         "table_comment": _tracking_table_comment(table_item, table_info),
         "ai_notes": _text(getattr(table_item, "ai_notes", None)) if table_item else "",
         "aliases": _aliases_text(table_item) if table_item else "",
-    })
+    }
+    row.update(_extra_properties(table_item))
+    table_rows.append(row)
 
 
 def _info_rows(
@@ -2457,9 +2528,9 @@ def _dedupe_business_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _export_header_label(sheet_name: str, column: str, columns: list[str] | None = None) -> str:
-    if columns == ATTRIBUTE_COLUMNS:
+    if columns and columns[:len(ATTRIBUTE_COLUMNS)] == ATTRIBUTE_COLUMNS and column in ATTRIBUTE_COLUMNS:
         return ATTRIBUTE_EXPORT_COLUMN_LABELS.get(column, column)
-    if columns == EVENT_PARAMETER_MAPPING_COLUMNS:
+    if columns and columns[:len(EVENT_PARAMETER_MAPPING_COLUMNS)] == EVENT_PARAMETER_MAPPING_COLUMNS:
         if column == "source_field":
             return "数据源字段"
         if column == "description":
@@ -2541,7 +2612,7 @@ def tracking_config_excel(
         sheet_name = sheet_name_by_table[table_name]
         table_info = schema.get(table_name)
         configured = table_map.get(table_name)
-        table_rows.append({
+        row = {
             "sheet_name": sheet_name,
             "table_name": table_name,
             "table_display_name": _first_alias(configured) if configured else "",
@@ -2557,7 +2628,9 @@ def tracking_config_excel(
             ),
             "ai_notes": getattr(configured, "ai_notes", "") or "",
             "aliases": _aliases_text(configured) if configured else "",
-        })
+        }
+        row.update(_extra_properties(configured))
+        table_rows.append(row)
 
     sheets: list[tuple[str, list[dict[str, Any]], list[str]]] = [
         (
@@ -2572,7 +2645,7 @@ def tracking_config_excel(
             ),
             TRACKING_INFO_COLUMNS,
         ),
-        (TABLE_MAP_SHEET, table_rows, TABLE_MAP_COLUMNS),
+        (TABLE_MAP_SHEET, table_rows, _columns_with_extra(TABLE_MAP_COLUMNS, table_rows)),
         (EVENT_PARAMETER_MAPPING_SHEET, _event_parameter_mapping_rows(config), EVENT_PARAMETER_MAPPING_COLUMNS),
     ]
 
@@ -2585,7 +2658,7 @@ def tracking_config_excel(
                 field_map=field_map,
                 template_only=template_only,
             )
-            sheets.append((sheet_name_by_table[table_name], rows, ATTRIBUTE_COLUMNS))
+            sheets.append((sheet_name_by_table[table_name], rows, _columns_with_extra(ATTRIBUTE_COLUMNS, rows)))
             continue
 
         rows = _generic_sheet_rows_for_table(
@@ -2608,7 +2681,7 @@ def tracking_config_excel(
             ))
         rows = _dedupe_business_rows(rows)
         rows = _organize_business_rows(rows)
-        sheets.append((sheet_name_by_table[table_name], rows, BUSINESS_COLUMNS))
+        sheets.append((sheet_name_by_table[table_name], rows, _columns_with_extra(BUSINESS_COLUMNS, rows)))
 
     sheets.extend([
         (SQL_RULE_SHEET, [{"rule_name": "示例", "scope": "", "rule_text": config.sql_rules or "", "priority": ""}] if config.sql_rules and not template_only else [], SQL_RULE_COLUMNS),

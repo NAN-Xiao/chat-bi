@@ -172,7 +172,7 @@ function goHistory(chat: Chat) {
     _currentChatId.value = chat.id
     _loading.value = true
     chatApi
-      .get(chat.id)
+      .get(chat.id, { includeRecordData: false })
       .then((res) => {
         const info = chatApi.toChatInfo(res)
         if (info && info.id === _currentChatId.value) {

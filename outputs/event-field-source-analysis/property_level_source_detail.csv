@@ -1,0 +1,756 @@
+﻿事件分组,事件名称,事件中文名,属性名称,属性中文名,属性数据类型,判定位置,ext命中样本数,personal命中样本数,事件样本数,ext样例值,personal样例值
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,allianceId,联盟ID,字符串,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,battleResult,副本战斗结果,字符串,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,allianceScore,联盟获胜时的联盟总积分,数字,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,allianceMemberScore,联盟参与玩家的积分数组,字符串,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,selectTimeIndex,副本id,数字,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,teamId,当前报名的参与队伍ID,数字,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,seasonRound,当前赛季的第几轮活动,数字,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,seasonId,当前所处赛季序号,数字,样本未发现,0,0,0,,
+Activity,GVGBattleResult,GVG副本阶段战斗结果统计,serverId,联盟所在服务器ID,数字,样本未发现,0,0,0,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,matchResultId,匹配服结果流水号,数字,样本未发现,0,0,0,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,ifFake,匹配的队伍是否是假联盟,字符串,样本未发现,0,0,0,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,allianceId2,匹配对手联盟ID-2,字符串,样本未发现,0,0,0,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,allianceId1,匹配联盟ID-1,字符串,样本未发现,0,0,0,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,selectTimeIndex,副本id,数字,样本未发现,0,0,0,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,seasonRound,当前赛季的第几轮活动,数字,样本未发现,0,0,0,,
+Activity,GVGMatchResult,GVG匹配阶段匹配结果统计,seasonId,当前所处赛季序号,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,loseCount,当前赛季该联盟失败的场次数量,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,winCount,当前赛季该联盟获胜的场次数量,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,allianceTotalPower,联盟报名队伍总战力,字符串,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,subsititutesArray,替补玩家UID+战斗力数组,字符串,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,participantsArray,主力玩家UID+战斗力数组,字符串,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,allianceRank,在联盟战力排行榜的排名,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,selectTimeIndex,副本id,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,teamId,当前报名的参与队伍ID,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,seasonRound,当前赛季的第几轮活动,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,seasonId,当前所处赛季序号,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,serverId,报名联盟所在服务器ID,数字,样本未发现,0,0,0,,
+Activity,GVGSignUp,GVG报名阶段信息统计,allianceId,报名的联盟ID,字符串,样本未发现,0,0,0,,
+Shop,ShopBuyItem,商店购买真实使用,costItem,消耗道具的ID,字符串,样本未发现,0,0,0,,
+Shop,ShopBuyItem,商店购买真实使用,count,数量,数字,样本未发现,0,0,0,,
+Shop,ShopBuyItem,商店购买真实使用,shopItemId,商品ID,数字,样本未发现,0,0,0,,
+Shop,ShopBuyItem,商店购买真实使用,shopId,商店ID,数字,样本未发现,0,0,0,,
+Activity,WorldCupPointReward,世界杯积分奖励,rewardId,奖励ID,数字,样本未发现,0,0,0,,
+Activity,WorldCupPointChange,世界杯积分变化,totalNum,当日总积分,数字,样本未发现,0,0,0,,
+Activity,WorldCupPointChange,世界杯积分变化,changeSource,变更来源,数字,样本未发现,0,0,0,,
+Activity,WorldCupExchange,世界杯兑换,costNum,消耗数量,数字,样本未发现,0,0,0,,
+Activity,WorldCupExchange,世界杯兑换,itemNum,兑换数量,数字,样本未发现,0,0,0,,
+Activity,WorldCupExchange,世界杯兑换,itemId,道具ID,数字,样本未发现,0,0,0,,
+Activity,WorldCupRoll,世界杯投掷,rollNum,投掷的点数,数字,样本未发现,0,0,0,,
+Activity,WorldCupRoll,世界杯投掷,eventId,事件ID,数字,样本未发现,0,0,0,,
+Activity,WorldCupRoll,世界杯投掷,tileId,地格ID,数字,样本未发现,0,0,0,,
+Activity,WorldCupRoll,世界杯投掷,rollType,投掷类型,数字,样本未发现,0,0,0,,
+Activity,WorldCupRoll,世界杯投掷,activityId,活动ID,数字,样本未发现,0,0,0,,
+Alliance,GiftJump,联盟礼物跳转,rechargeId,礼包id,字符串,样本未发现,0,0,0,,
+Alliance,TakeAllianceGift,领取联盟礼物（更新后的 一次领取多个礼物触发一条）,ed_allianceOwnerId,盟主Uid,字符串,样本未发现,0,0,0,,
+Alliance,TakeAllianceGift,领取联盟礼物（更新后的 一次领取多个礼物触发一条）,ed_allianceName,联盟名称,字符串,样本未发现,0,0,0,,
+Alliance,TakeAllianceGift,领取联盟礼物（更新后的 一次领取多个礼物触发一条）,ed_allianceTakeGift,领取的联盟礼物ID及数量,字符串,样本未发现,0,0,0,,
+Alliance,TakeAllianceGift,领取联盟礼物（更新后的 一次领取多个礼物触发一条）,ed_allianceId,联盟Id,字符串,样本未发现,0,0,0,,
+Alliance,TakeAllianceGift,领取联盟礼物（更新后的 一次领取多个礼物触发一条）,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Activity,AdvancedPointIncrease,进阶试炼积分增长,ed_registDay,注册日,字符串,样本未发现,0,0,0,,
+Activity,AdvancedPointIncrease,进阶试炼积分增长,ed_taskGroup,任务组,字符串,样本未发现,0,0,0,,
+Activity,AdvancedPointIncrease,进阶试炼积分增长,ed_taskId,任务ID,字符串,样本未发现,0,0,0,,
+Activity,AdvancedPointIncrease,进阶试炼积分增长,ed_activityId,活动ID,字符串,样本未发现,0,0,0,,
+Activity,AdvancedPointIncrease,进阶试炼积分增长,ed_totalPoint,总积分,数字,样本未发现,0,0,0,,
+Pay,ep_pay_start,开始调用谷歌支付接口 拉起谷歌支付界面（中台支付流程）,payId,payId,字符串,personal,0,30,30,,bb3509a1c4ff422bb3999c0c6fe4f944 | 0d4185a8649c1a7f4bf324761ea820d6 | 03d1d74b548f76536a8f81a78181d775
+Pay,ep_pay_purchase_finish,玩家支付完成，商店/三方给到回调,code,code,字符串,personal,0,30,30,,0 | 52007 | 52007
+Pay,ep_pay_purchase_finish,玩家支付完成，商店/三方给到回调,payId,payId,字符串,personal,0,30,30,,bb3509a1c4ff422bb3999c0c6fe4f944 | 0d4185a8649c1a7f4bf324761ea820d6 | 03d1d74b548f76536a8f81a78181d775
+World,WorldMarchRet,世界出征结果,ed_result,战斗结果（4胜利 6失败）,字符串,personal,0,30,30,,4 | 4 | 4
+World,WorldMarchRet,世界出征结果,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+World,WorldMarchRet,世界出征结果,ed_myTeamBattlePoint,出征战力,字符串,样本未发现,0,0,30,,
+World,WorldMarchRet,世界出征结果,ed_myTeamHeroList,出征英雄,字符串,personal,0,30,30,,"[{""heroStarLevel"": 3, ""heroPower"": 63693, ""skillList"": [{""starSkill"": 13031, ""battleSkillLevel"": 1}, {""starSkill"": 13032 | [{""heroStarLevel"": 2, ""heroPower"": 74434, ""skillList"": [{""starSkill"": 14091, ""battleSkillLevel"": 1}, {""starSkill"": 14092 | [{""heroStarLevel"": 3, ""heroPower"": 63693, ""skillList"": [{""starSkill"": 13031, ""battleSkillLevel"": 1}, {""starSkill"": 13032"
+World,WorldMarchRet,世界出征结果,ed_NowPosition,当前坐标点,字符串,样本未发现,0,0,30,,
+World,WorldMarchRet,世界出征结果,ed_reallySeconds,实际行军时间,字符串,样本未发现,0,0,30,,
+World,WorldMarchRet,世界出征结果,ed_targetId,目标id,字符串,personal,0,30,30,,1061688033180418048 | 1061687981640810496 | 1061687844201857024
+World,WorldMarchRet,世界出征结果,ed_myTeamArmy,出征士兵,字符串,personal,0,30,30,,"[{""soldierId"": 401001, ""count"": 312}] | [{""soldierId"": 401002, ""count"": 221}, {""soldierId"": 401003, ""count"": 121}, {""soldierId"": 401001, ""count"": 112}] | [{""soldierId"": 401001, ""count"": 334}]"
+World,WorldMarchRet,世界出征结果,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463610 | 9341463610 | 9341463610
+World,WorldMarchRet,世界出征结果,ed_marchId,本次出征/集结的唯一id，与世界玩法相关联的行为（如战损/出征结果等）内的uuid一致,字符串,personal,0,30,30,,1058510067155894272 | 1059219973710315520 | 1058510067155894272
+World,WorldMarchRet,世界出征结果,ed_collectResult,采集结果,字符串,personal,0,30,30,,[] | [] | []
+World,WorldMarchRet,世界出征结果,ed_estimatedSeconds,预计耗时（秒）,字符串,personal,0,30,30,,1763596760989 | 1763596756641 | 1763596735212
+World,WorldMarchRet,世界出征结果,ed_targetPosition,目标坐标点,字符串,personal,0,30,30,,"21.0,121.0 | 20.0,120.0 | 22.0,121.0"
+World,WorldMarchRet,世界出征结果,ed_buffList,玩家所带BUFF,字符串,personal,0,30,30,,"[{""buffId"": 9041003, ""num"": 200}, {""buffId"": 9040202, ""num"": 43}, {""buffId"": 9041103, ""num"": 100}, {""buffId"": 9040302, "" | [{""buffId"": 9041003, ""num"": 200}, {""buffId"": 9040202, ""num"": 43}, {""buffId"": 9041103, ""num"": 100}, {""buffId"": 9040302, "" | [{""buffId"": 9041003, ""num"": 200}, {""buffId"": 9040202, ""num"": 43}, {""buffId"": 9041103, ""num"": 100}, {""buffId"": 9040302, """
+World,WorldMarchRet,世界出征结果,ed_targetMetaId,目标配置id,字符串,personal,0,30,30,,11212 | 11113 | 11212
+World,WorldMarchRet,世界出征结果,ed_battleResult,战斗结果,字符串,样本未发现,0,0,30,,
+World,WorldMarchRet,世界出征结果,ed_marchType,出征类型,字符串,personal,0,30,30,,ATTACK_NPC | ATTACK_NPC | ATTACK_NPC
+World,WorldMarchRet,世界出征结果,ed_targetType,目标类型,字符串,personal,0,30,30,,NPC | NPC | NPC
+Pay,ActivityWheelCount,幸运转盘次数,drawNum,转盘次数,数字,样本未发现,0,0,0,,
+Pay,ActivityWheelCount,幸运转盘次数,countChange,次数变更,数字,样本未发现,0,0,0,,
+Pay,ActivityWheelCount,幸运转盘次数,countTotal,总次数,数字,样本未发现,0,0,0,,
+Pay,ActivityWheelCount,幸运转盘次数,activityId,活动ID,字符串,样本未发现,0,0,0,,
+Pay,ActivityWheelCount,幸运转盘次数,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Pay,PayBuyRet,充值,ed_productId,礼包ID,字符串,personal,0,24,24,,90217 | 83014 | 83013
+Pay,PayBuyRet,充值,ed_popupName,面板名称,字符串,personal,0,22,24,,radar_main_panel | f_recharge_daily_group | f_recharge_daily_group
+Pay,PayBuyRet,充值,ed_currency,"配置货币类型(国际标准货币单位简写,如USD、CNY)",字符串,personal,0,24,24,,USD | USD | USD
+Pay,PayBuyRet,充值,ed_isSuccess,返回结果,字符串,personal,0,24,24,,True | True | True
+Pay,PayBuyRet,充值,ed_localCurrency,"当地货币类型(国际标准货币单位简写,如USD、CNY)",字符串,personal,0,24,24,,CAD | EUR | CAD
+Pay,PayBuyRet,充值,ed_localMoney,当地支付金额,数字,personal,0,24,24,,6.4899997711182 | 5.4899997711182 | 5.4899997711182
+Pay,PayBuyRet,充值,ed_mainBuildingLevel,大本等级,字符串,personal,0,24,24,,21 | 18 | 17
+Pay,PayBuyRet,充值,ed_money,配置金额,数字,personal,0,24,24,,4.99 | 4.99 | 3.99
+Pay,PayBuyRet,充值,ed_num,购买数量,字符串,personal,0,24,24,,1 | 1 | 1
+Pay,PayBuyRet,充值,ed_orderId,订单ID(支付平台),字符串,personal,0,24,24,,GPA.3393-0759-0525-83437 | GPA.3358-6895-9686-97349 | GPA.3302-3037-9814-48568
+Block,BattleFieldGrid,内城关卡地格进度,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,7 | 9 | 9
+Block,BattleFieldGrid,内城关卡地格进度,npcId,npcId,字符串,personal,0,30,30,,54 | 77 | 76
+video,VideoWatchReward,看视频,metaId,广告的配置id,数字,样本未发现,0,0,0,,
+video,VideoGetReward,获取普通奖励,metaId,广告配置id,数字,样本未发现,0,0,0,,
+Pay,ep_get_product_details_failed,获取商品详情失败,billingCode,错误码,字符串,personal,0,1,1,,2
+Pay,ep_get_product_details_failed,获取商品详情失败,message,错误信息,字符串,personal,0,1,1,,An internal error occurred.
+Battle,PVEInstanceFPS_10_20,PVEInstanceFPS_10_20,fps,fps,数字,personal,0,30,30,,61 | 59 | 60
+Battle,PVEInstanceFPS_10_20,PVEInstanceFPS_10_20,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,7 | 7 | 9
+Login,ABTest,ABtest,ed_abtest,abtest分组,字符串,样本未发现,0,0,0,,
+User,GuideJump,点击引导跳过,ed_guideId,引导步骤ID,字符串,样本未发现,0,0,0,,
+User,GuideJump,点击引导跳过,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+User,GuideJump,点击引导跳过,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+User,TimelinePause,Timeline暂停,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 1 | 2
+User,TimelinePause,Timeline暂停,timeline_name,TimeLine资源名字,字符串,personal,0,30,30,,Zombie_SangShiXiuCheKaiChe | Zombie_DaChuJingXia | Zombie_BossShiXiao
+User,TimelinePause,Timeline暂停,pause_time,暂停时间,字符串,样本未发现,0,0,30,,
+User,TimelinePause,Timeline暂停,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,1 | 1 | 2
+User,NewUserStep,新手引导后端,ed_guideGroup,引导组ID,字符串,样本未发现,0,0,0,,
+User,NewUserStep,新手引导后端,ed_guideId,引导步骤ID,字符串,样本未发现,0,0,0,,
+User,NewUserStep,新手引导后端,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+User,NewUserStep,新手引导后端,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+User,PVEEnterScene,当玩家通过各种方式进入PVE关卡场景时打点,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,23 | 7 | 7
+User,PVEEnterScene,当玩家通过各种方式进入PVE关卡场景时打点,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+User,PVEEnterScene,当玩家通过各种方式进入PVE关卡场景时打点,instanceId,进入的PVE关卡ID,字符串,personal,0,30,30,,51105 | 99042 | 99041
+Activity,ArenaRefresh,竞技场刷新,arenaRefresh,竞技场刷新,字符串,样本未发现,0,0,0,,
+Activity,ArenaResults,巅峰竞技场战力结算,arenaBattleResults,战斗结果（1. 胜利、2. 失败）,字符串,personal,0,18,18,,1 | 1 | 1
+Activity,ArenaResults,巅峰竞技场战力结算,combatPower,战斗时的玩家战力（统计上阵队伍）,字符串,personal,0,18,18,,732108 | 732108 | 732108
+Activity,ArenaResults,巅峰竞技场战力结算,currentRemainingAttempts,当前剩余次数,字符串,personal,0,18,18,,5 | 4 | 3
+Activity,ArenaResults,巅峰竞技场战力结算,rankAfterBattle,战斗后竞技场排名,字符串,personal,0,18,18,,178 | 178 | 178
+Activity,ArenaResults,巅峰竞技场战力结算,rankBeforeBattle,战斗前竞技场排名,字符串,personal,0,18,18,,178 | 178 | 178
+Login,EnterGame,进入游戏,ed_isSuccess,返回结果,字符串,personal,0,30,30,,True | True | True
+Login,EnterGame,进入游戏,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 7
+Login,EnterGame,进入游戏,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Login,EnterGame,进入游戏,ed_season,赛季,数字,personal,0,30,30,,0 | 0 | 0
+Login,GameServerLogin,请求登录游戏服成功,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Login,GameServerLogin,请求登录游戏服成功,ed_season,赛季,字符串,样本未发现,0,0,0,,
+Login,GameServerLoginFail,请求登录游戏服失败,code,错误码,字符串,样本未发现,0,0,0,,
+Login,ConnectGameServer,开始连接游戏网关服,method,方法，0：正常域名连接 1：dns解析域名成功后的连接 2：兜底的ip连接,字符串,样本未发现,0,0,0,,
+Login,ConnectGameServerBack,连接游戏网关服回调,result,错误码,字符串,样本未发现,0,0,0,,
+Login,LoadingFinish,整个游戏初始化结束,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,30,,
+Login,LoadingFinish,整个游戏初始化结束,loading_costtime,耗时,字符串,样本未发现,0,0,30,,
+Login,SDK_AccountCallback,SDK回调,code,错误码,字符串,personal,0,30,30,,0 | 0 | 0
+Activity,ActivityLimitRallyMonster,玩家向限时集结怪进攻的目标id,monsterId,目标怪物ID,字符串,样本未发现,0,0,0,,
+Activity,ActivityWorldBoss,玩家向世界Boss进攻完成的目标id,monsterId,目标怪物ID,字符串,样本未发现,0,0,0,,
+Activity,WorldBunker,迁城,bunkerType,迁城类型,字符串,personal,0,30,30,,14 | 10 | 10
+Activity,WorldBunker,迁城,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463610 | 0 | 0
+Activity,WorldBunker,迁城,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,4 | 2 | 3
+Activity,WorldBunker,迁城,moveProvinceId,迁城至所在省份ID,字符串,personal,0,30,30,,23 | 2 | 1
+Activity,WorldBunker,迁城,position,位置坐标,字符串,personal,0,30,30,,"{""x"": 20, ""y"": 149} | {""x"": 124, ""y"": 996} | {""x"": 61, ""y"": 943}"
+Activity,WorldBunker,迁城,relocateProvinceId,迁城至所在省份繁荣地ID：,字符串,personal,0,30,30,,1 | 1 | 1
+Activity,WorldBunker,迁城,ed_blockId,省份地块id,字符串,样本未发现,0,0,30,,
+Activity,WorldBunker,迁城,ed_prosperity,省份繁荣度,字符串,样本未发现,0,0,30,,
+Activity,WorldBunker,迁城,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Activity,activityCommanderAlliancePer,参与活动不同难度选择联盟数量,activityCommanderPer,进行难度选择的联盟数量,字符串,样本未发现,0,0,0,,
+Activity,activityCommanderAlliancePer,参与活动不同难度选择联盟数量,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Activity,activityCommanderAllianceTroubleNum,挑战的难度联盟数量（挑战中未全部完成）,activityCommanderTroubleNum,难度级别，已选当前难度的联盟数量,字符串,样本未发现,0,0,0,,
+Activity,activityCommanderAllianceTroubleNum,挑战的难度联盟数量（挑战中未全部完成）,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Activity,activityCommanderPer,参与活动不同难度的选择人数,activityCommanderPer,进行难度选择的玩家数量,字符串,样本未发现,0,0,0,,
+Activity,activityCommanderPer,参与活动不同难度的选择人数,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Activity,activityCommanderTroubleNum,玩家挑战的不同难度人数（挑战中未全部完成）,activityCommanderTroubleNum,难度级别，已选当前难度的人数,字符串,样本未发现,0,0,0,,
+Activity,activityCommanderTroubleNum,玩家挑战的不同难度人数（挑战中未全部完成）,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Activity,ActivityArmsRaceTask,任务完成积分变化时,activityId,活动ID,字符串,personal,0,30,30,,1994 | 1994 | 1994
+Activity,ActivityArmsRaceTask,任务完成积分变化时,pointChange,积分变化,字符串,personal,0,30,30,,100 | 2200 | 100
+Activity,ActivityArmsRaceTask,任务完成积分变化时,pointTotal,总积分,字符串,personal,0,30,30,,100 | 2200 | 100
+Activity,ActivityArmsRaceTask,任务完成积分变化时,pointType,积分类型,字符串,personal,0,30,30,,3001 | 3001 | 3001
+Activity,ActivityArmsRaceTask,任务完成积分变化时,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,7 | 23 | 9
+Activity,ActivityArmsRaceBoxOpen,积分宝箱发放,activityId,活动ID,字符串,personal,0,30,30,,1993 | 1993 | 1993
+Activity,ActivityArmsRaceBoxOpen,积分宝箱发放,rewardId,积分宝箱领取,字符串,personal,0,30,30,,[] | [] | [600115]
+Activity,ActivityArmsRaceBoxOpen,积分宝箱发放,rewardIdMail,积分宝箱发放,字符串,personal,0,30,30,,"[600109, 600110, 600111] | [600109, 600110, 600111] | []"
+Activity,ActivityArmsRaceGoalPoint,战备勋章结算（跨天重置前）,armsRaceBadgeChange,战备勋章变化,字符串,样本未发现,0,0,26,,
+Activity,ActivityArmsRaceGoalPoint,战备勋章结算（跨天重置前）,armsRaceBadgeCount,战备勋章结算点数,字符串,personal,0,26,26,,3 | 1 | 12
+Activity,ActivityArmsRaceGoalPoint,战备勋章结算（跨天重置前）,ed_mainBuildingLevel,大本等级,字符串,personal,0,26,26,,9 | 16 | 9
+User,ClickButton,点击按钮,ed_clickUiName,按钮[路径],字符串,personal,0,30,30,,UICanvas/Canvas/FunctionLayer/recruit_panel/content/center/c_btm/btm/ten_draw_btn | UICanvas/Canvas/FunctionLayer/hero_list_panel/bottom/recruit_btn | UICanvas/Canvas/HudLayer/main_panel_new/middle_bot/heroBtn/herobtn
+User,ClickButton,点击按钮,ed_clickUiTime,按钮点击时间,字符串,personal,0,30,30,,1763596799 | 1763596797 | 1763596795
+User,ClickButton,点击按钮,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,30,,
+User,NewUserGuide,新手引导结束,ed_guideId,引导步骤ID,字符串,personal,0,30,30,,9901551 | 9901551 | 9901552
+User,NewUserGuide,新手引导结束,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 23 | 23
+User,NewUserGuide,新手引导结束,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+User,NewUserGuide,新手引导结束,ed_season,赛季,字符串,personal,0,30,30,,0 | 0 | 0
+User,NewUserGuideStart,新手引导开始,ed_guideId,引导步骤ID,字符串,personal,0,30,30,,9901551 | 9901551 | 9901552
+User,NewUserGuideStart,新手引导开始,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 23 | 23
+User,NewUserGuideStart,新手引导开始,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Activity,honorExpedition,荣耀远征,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,20 | 20 | 20
+Activity,honorExpedition,荣耀远征,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,1 | 1 | 1
+Activity,honorExpedition,荣耀远征,expeditionDungeon,当前关卡,字符串,personal,0,30,30,,71333 | 71332 | 71331
+Activity,honorExpedition,荣耀远征,expeditionDungeonResult,结果 1：胜利 2：失败,字符串,personal,0,30,30,,2 | 1 | 1
+Activity,honorExpedition,荣耀远征,expeditionId,战场ID,字符串,样本未发现,0,0,30,,
+Activity,honorExpedition,荣耀远征,stageLevel,该战场的等级,字符串,样本未发现,0,0,30,,
+User,DungeonMiniGame,探索副本小玩法,areaId,地块ID,字符串,样本未发现,0,0,0,,
+User,DungeonMiniGame,探索副本小玩法,miniGameId,小玩法的Id,字符串,样本未发现,0,0,0,,
+User,DungeonMiniGame,探索副本小玩法,operationQuantity,操作数量,字符串,样本未发现,0,0,0,,
+User,DungeonMiniGame,探索副本小玩法,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+User,PVEInstanceKeyNPCKill,PVE关卡精英NPC与BOSSNPC被击杀时记录,instanceGuid,关卡唯一id,字符串,personal,0,30,30,,1763594294 | 1763594294 | 1763594284
+User,PVEInstanceKeyNPCKill,PVE关卡精英NPC与BOSSNPC被击杀时记录,instanceId,参与的PVE关卡ID,字符串,personal,0,30,30,,99100 | 99100 | 99057
+User,PVEInstanceKeyNPCKill,PVE关卡精英NPC与BOSSNPC被击杀时记录,npcClass,battleNPC表的npcClass,字符串,personal,0,30,30,,102 | 102 | 102
+User,PVEInstanceKeyNPCKill,PVE关卡精英NPC与BOSSNPC被击杀时记录,npcId,battleNPC表的NPC Id,字符串,personal,0,30,30,,9502644 | 9502643 | 9502742
+User,PVEInstanceKeyNPCKill,PVE关卡精英NPC与BOSSNPC被击杀时记录,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,13 | 13 | 9
+User,PVEInstanceSkillCast,英雄主动释放技能时候打点,castType,施放方式,字符串,personal,0,30,30,,1 | 1 | 1
+User,PVEInstanceSkillCast,英雄主动释放技能时候打点,instanceGuid,关卡唯一id,字符串,personal,0,30,30,,1763595598 | 1763595598 | 1763595598
+User,PVEInstanceSkillCast,英雄主动释放技能时候打点,instanceId,参与的PVE关卡ID,字符串,personal,0,30,30,,99042 | 99042 | 99042
+User,PVEInstanceSkillCast,英雄主动释放技能时候打点,skillId,释放的技能id,字符串,personal,0,30,30,,34032001 | 34042001 | 34102001
+User,PVEInstanceSkillCast,英雄主动释放技能时候打点,skillType,技能类型枚举,字符串,personal,0,30,30,,2 | 2 | 2
+User,PVEInstanceSkillCast,英雄主动释放技能时候打点,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,7 | 7 | 7
+User,DungeonEventEnd,副本事件结束,dungeonGuid,副本唯一id,字符串,样本未发现,0,0,0,,
+User,DungeonEventEnd,副本事件结束,dungeonId,副本id,字符串,样本未发现,0,0,0,,
+User,DungeonEventEnd,副本事件结束,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+User,DungeonEventEnd,副本事件结束,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+User,DungeonEventEnd,副本事件结束,eventId,副本事件id,字符串,样本未发现,0,0,0,,
+User,DungeonEventEnd,副本事件结束,eventResult,副本事件结果,字符串,样本未发现,0,0,0,,
+User,DungeonEventEnd,副本事件结束,eventTimes,副本事件耗时（单位秒）,字符串,样本未发现,0,0,0,,
+User,MobStageResult,mob关卡通过情况,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+User,MobStageResult,mob关卡通过情况,ed_mobResult,进入关卡结果,字符串,样本未发现,0,0,0,,
+User,MobStageResult,mob关卡通过情况,ed_mobStageId,mob关卡id,字符串,样本未发现,0,0,0,,
+User,MobStageResult,mob关卡通过情况,ed_mobTime,mob关卡消耗时长（单位秒）,字符串,样本未发现,0,0,0,,
+User,MobStageResult,mob关卡通过情况,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+User,TimelineEnd,Timeline结束,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+User,TimelineEnd,Timeline结束,time,持续时间（从开始到结束，包括卡屏的时间）单位：秒,字符串,personal,0,30,30,,5 | 7 | 27
+User,TimelineEnd,Timeline结束,timeline_name,TimeLine资源名字,字符串,personal,0,30,30,,Zombie_KongZhiShiBai | Zombie_BossPoHuai | Zombie_SangShiXiuCheKaiChe
+User,TimelineEnd,Timeline结束,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,1 | 1 | 1
+User,TimelineStart,Timeline开始,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+User,TimelineStart,Timeline开始,timeline_name,TimeLine资源名字,字符串,personal,0,30,30,,Zombie_BossPoHuai | Zombie_KongZhiShiBai | Zombie_QianJin
+User,TimelineStart,Timeline开始,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,1 | 1 | 1
+Login,Launch,游戏启动,height,分辨率高,字符串,样本未发现,0,0,30,,
+Login,Launch,游戏启动,memorySize,设备总内存,字符串,样本未发现,0,0,30,,
+Login,Launch,游戏启动,memory_current,可用内存,字符串,样本未发现,0,0,30,,
+Login,Launch,游戏启动,width,分辨率宽,字符串,样本未发现,0,0,30,,
+Login,Launch,游戏启动,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,30,,
+Login,Launch,游戏启动,ed_season,赛季,字符串,样本未发现,0,0,30,,
+Login,LaunchVersionRet,WerbServer平台版本信息返回,ed_Source,"返回类型Server,Cache,Local,Failed,",字符串,personal,0,30,30,,Server | Server | Server
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,activityId,活动ID,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,belongingIdentity,所属身份：车头&车身,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,challengeLevel,难度,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,damageValue,对目标ID总伤害值-每人一条,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,ed_allianceId,联盟id,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,marchId,行军ID,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,monsterId,目标怪物ID（对应报名难度）,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossBattleRet,联盟boss活动战斗结果,selectTime,选择活动时段,字符串,样本未发现,0,0,0,,
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,activityId,活动ID,字符串,personal,0,11,11,,21007 | 21007 | 21007
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,alliancePermission,联盟官职,字符串,personal,0,11,11,,R4 | R5 | R4
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,challengeLevel,难度,字符串,personal,0,11,11,,1 | 1 | 2
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,ed_allianceId,联盟id,字符串,personal,0,11,11,,5046496226 | 9341463566 | 9341463563
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,monsterId,目标怪物ID（对应报名难度）,字符串,personal,0,11,11,,1059954232192417792 | 1059884739621584896 | 1059627032993890304
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,playerId,玩家id,字符串,personal,0,11,11,,618201058705409 | 184375070359554 | 98475723128834
+Activity,ActivityAllianceBossChoose,联盟boss活动选择难度,selectTime,选择活动时段,字符串,personal,0,11,11,,2025-11-19 21:00:00 | 2025-11-19 15:00:00 | 2025-11-19 17:30:00
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,activityId,活动ID,字符串,personal,0,30,30,,21007 | 21007 | 21007
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,alliancePermission,联盟官职,字符串,personal,0,30,30,,R4 | R4 | R4
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,challengeLevel,难度,字符串,personal,0,30,30,,1 | 1 | 1
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,donationBuffLevelAfter,捐献后BUFF等级,字符串,personal,0,30,30,,4 | 4 | 4
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,donationBuffLevelBefore,捐献前BUFF等级,字符串,personal,0,30,30,,4 | 4 | 4
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,donationQuantity,捐献数量,字符串,personal,0,30,30,,1 | 1 | 1
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,ed_allianceId,联盟id,字符串,personal,0,30,30,,5046496226 | 5046496226 | 5046496226
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,playerId,玩家id,字符串,personal,0,30,30,,556559687614465 | 556559687614465 | 556559687614465
+Activity,ActivityAllianceBossDonation,联盟boss活动捐献,selectTime,选择活动时段,字符串,personal,0,30,30,,2025-11-19 21:00:00 | 2025-11-19 21:00:00 | 2025-11-19 21:00:00
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,activityId,活动ID,字符串,personal,0,12,12,,21007 | 21007 | 21007
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,challengeLevel,难度,字符串,personal,0,12,12,,2 | 2 | 2
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,ed_allianceId,联盟id,字符串,personal,0,12,12,,9341463563 | 9341463563 | 9341463563
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,magnification,个人伤害对应奖励倍率（个人总伤害榜）,字符串,personal,0,12,12,,10 | 1 | 1
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,rewardId,奖励ID,字符串,personal,0,12,12,,200209 | 200410 | 200406
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,rewardRank,奖励ID对应的伤害区间值真实值（排名）,字符串,personal,0,12,12,,0 | 0 | 0
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,rewardType,奖励类型,字符串,personal,0,12,12,,1 | 2 | 2
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,selectTime,选择活动时段,字符串,personal,0,12,12,,2025-11-19 17:30:00 | 2025-11-19 17:30:00 | 2025-11-19 17:30:00
+Activity,ActivityAllianceBossReward,联盟boss活动结算奖励,totalDamage,总伤害（对应联盟和个人）,字符串,personal,0,12,12,,133798213 | 6488230 | 130002
+Activity,multipleArena,3v3竞技场挑战结果,combatPower,战斗时玩家战斗力（统计上阵队伍参数1、2、3针对3个队伍）,字符串,personal,0,21,21,,9405691 | 9405691 | 10282948
+Activity,multipleArena,3v3竞技场挑战结果,currentRemainingAttempts,当前挑战剩余次数,字符串,personal,0,21,21,,28 | 29 | 22
+Activity,multipleArena,3v3竞技场挑战结果,ed_mainBuildingLevel,大本等级,字符串,personal,0,21,21,,22 | 22 | 21
+Activity,multipleArena,3v3竞技场挑战结果,ed_serverId,当前服务器ID,字符串,personal,0,21,21,,1 | 1 | 1
+Activity,multipleArena,3v3竞技场挑战结果,multipleArenaBattleResults,3v3竞技场战斗结果（1. 胜利、2. 失败）,字符串,personal,0,21,21,,1 | 1 | 1
+Activity,multipleArena,3v3竞技场挑战结果,rankAfterBattle,战斗后竞技场排名,字符串,personal,0,21,21,,3 | 42 | 2
+Activity,multipleArena,3v3竞技场挑战结果,rankBeforeBattle,战斗前竞技场排名,字符串,personal,0,21,21,,42 | 199 | 2
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,attackAllianceId,宣战联盟id,字符串,personal,0,3,3,,9341463600 | 9341463600 | 9341463600
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,cityId,城市id,字符串,personal,0,3,3,,115002 | 114003 | 113007
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,cityLevel,城市等级,字符串,personal,0,3,3,,5 | 4 | 3
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,defAllianceId,防守联盟id,字符串,personal,0,3,3,,9341463561 | 0 | 0
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,ed_mainBuildingLevel,大本等级,字符串,personal,0,3,3,,13 | 18 | 17
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,ed_serverId,当前服务器ID,字符串,personal,0,3,3,,2 | 2 | 2
+FightForCities,AllianceDeclareWar,据点争夺联盟宣战,occupiedCitiesNum,当前已占领城市数量,字符串,personal,0,3,3,,5 | 5 | 5
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,allianceId,联盟id,字符串,样本未发现,0,0,0,,
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,allianIdentity,联盟身份,字符串,样本未发现,0,0,0,,
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,cityId,城市id,字符串,样本未发现,0,0,0,,
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,cityLevel,城市等级,字符串,样本未发现,0,0,0,,
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+FightForCities,CancleGiveUpOccupiedCities,据点争夺取消放弃所占领的城市,occupiedCitiesNum,当前已占领城市数量,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,allianceId,联盟id,字符串,personal,0,3,3,,9341463600 | 9341463600 | 9341463600
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,cityId,城市id,字符串,personal,0,3,3,,115002 | 114003 | 113007
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,cityLevel,城市等级,字符串,personal,0,3,3,,5 | 4 | 3
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,ed_mainBuildingLevel,大本等级,字符串,personal,0,3,3,,1 | 1 | 1
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,ed_serverId,当前服务器ID,字符串,personal,0,3,3,,2 | 2 | 2
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,fightResult,攻击结果,字符串,personal,0,3,3,,1 | 1 | 1
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,getScore,获得的积分,字符串,personal,0,3,3,,88000 | 66000 | 44000
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,ifFirstOccupy,是否是首次占领,字符串,personal,0,3,3,,0 | 0 | 0
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,joinNum,参与的联盟人数,字符串,personal,0,3,3,,2 | 2 | 2
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,occupiedCitiesNum,当前已占领城市数量,字符串,personal,0,3,3,,5 | 5 | 5
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,originalAllianceId,城市原所属联盟id,字符串,personal,0,3,3,,9341463561 | 0 | 0
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,uniqueId,本场争夺唯一id,字符串,personal,0,3,3,,1762971078104 | 1762855332190 | 1762746835593
+FightForCities,FightForCitiesRet,据点争夺城皮归零结算（宣战方的）,winAllianceId,争夺结束后城市所属联盟id,字符串,personal,0,3,3,,9341463600 | 9341463600 | 9341463600
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,allianceId,联盟id,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,cityId,城市id,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,cityLevel,城市等级,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,joinNum,参与的联盟人数,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,occupiedCitiesNum,当前已占领城市数量,字符串,样本未发现,0,0,0,,
+FightForCities,FightForCitiesTimeOver,据点争夺宣战耗时结束,originalAllianceId,城市原所属联盟id,字符串,样本未发现,0,0,0,,
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,allianceId,联盟id,字符串,personal,0,2,2,,9341463600 | 9341463600
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,allianIdentity,联盟身份,字符串,personal,0,2,2,,5 | 5
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,cityId,城市id,字符串,personal,0,2,2,,113007 | 112007
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,cityLevel,城市等级,字符串,personal,0,2,2,,3 | 2
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,ed_mainBuildingLevel,大本等级,字符串,personal,0,2,2,,13 | 18
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,ed_serverId,当前服务器ID,字符串,personal,0,2,2,,2 | 2
+FightForCities,GiveUpOccupiedCities,据点争夺发起放弃占领的城市,occupiedCitiesNum,当前已占领城市数量,字符串,personal,0,2,2,,6 | 6
+FightForCities,GiveUpOccupiedCitiesSuccess,据点争夺成功放弃占领的城市,allianceId,联盟id,字符串,personal,0,2,2,,9341463600 | 9341463600
+FightForCities,GiveUpOccupiedCitiesSuccess,据点争夺成功放弃占领的城市,cityId,城市id,字符串,personal,0,2,2,,113007 | 112007
+FightForCities,GiveUpOccupiedCitiesSuccess,据点争夺成功放弃占领的城市,cityLevel,城市等级,字符串,personal,0,2,2,,3 | 2
+FightForCities,GiveUpOccupiedCitiesSuccess,据点争夺成功放弃占领的城市,ed_mainBuildingLevel,大本等级,字符串,personal,0,2,2,,1 | 1
+FightForCities,GiveUpOccupiedCitiesSuccess,据点争夺成功放弃占领的城市,ed_serverId,当前服务器ID,字符串,personal,0,2,2,,2 | 2
+FightForCities,GiveUpOccupiedCitiesSuccess,据点争夺成功放弃占领的城市,occupiedCitiesNum,当前已占领城市数量,字符串,personal,0,2,2,,6 | 6
+Battle,PVERetry,当关卡失败后，点击结算界面的重新挑战后打点,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+Battle,PVERetry,当关卡失败后，点击结算界面的重新挑战后打点,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Battle,PVERetry,当关卡失败后，点击结算界面的重新挑战后打点,instanceId,进入的PVE关卡ID,字符串,personal,0,30,30,,952003 | 952003 | 952003
+Radar,RadarMissionFail,雷达任务失败,ed_dungeonId,关卡id,字符串,personal,0,30,30,,100112 | 100115 | 100115
+Radar,RadarMissionFail,雷达任务失败,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 13 | 13
+Radar,RadarMissionFail,雷达任务失败,ed_radarMissionId,失败任务id,字符串,personal,0,30,30,,100112 | 100115 | 100115
+Radar,RadarMissionFail,雷达任务失败,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Shop,ShopBuyComplete,商店购买,allianceId,联盟id,字符串,样本未发现,0,0,0,,
+Shop,ShopBuyComplete,商店购买,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Shop,ShopBuyComplete,商店购买,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+Shop,ShopBuyComplete,商店购买,goodsId,商品id,字符串,样本未发现,0,0,0,,
+Shop,ShopBuyComplete,商店购买,num,数量,字符串,样本未发现,0,0,0,,
+Shop,ShopBuyComplete,商店购买,shopId,商店id,字符串,样本未发现,0,0,0,,
+Battle,SwitchSceneStart,开始切场景,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+Battle,SwitchSceneStart,开始切场景,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Battle,SwitchSceneStart,开始切场景,SceneNow,当前场景名称,字符串,personal,0,30,30,,worldmapscene | worldmapscene | worldmapscene
+Battle,SwitchSceneStart,开始切场景,SceneTarget,目标场景名称,字符串,personal,0,30,30,,worldmapscene | worldmapscene | worldmapscene
+Battle,TrainingArenaResults,竞技场挑战结果,combatPower,战斗时玩家战斗力（统计上阵队伍）,字符串,样本未发现,0,0,0,,
+Battle,TrainingArenaResults,竞技场挑战结果,currentRemainingAttempts,当前挑战剩余次数,字符串,样本未发现,0,0,0,,
+Battle,TrainingArenaResults,竞技场挑战结果,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Battle,TrainingArenaResults,竞技场挑战结果,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+Battle,TrainingArenaResults,竞技场挑战结果,rankAfterBattle,战斗后竞技场排名,字符串,样本未发现,0,0,0,,
+Battle,TrainingArenaResults,竞技场挑战结果,rankBeforeBattle,战斗前竞技场排名,字符串,样本未发现,0,0,0,,
+Battle,TrainingArenaResults,竞技场挑战结果,trainingArenaBattleResults,新兵训练营战斗结果（1. 胜利、2. 失败）,字符串,样本未发现,0,0,0,,
+Idle,IdleBoxOpenTimes,挂机宝箱开启,ed_boxIdNum,开启宝箱的id和数量,字符串,样本未发现,0,0,0,,
+Idle,IdleBoxOpenTimes,挂机宝箱开启,ed_idleBoxOpenItem,开启宝箱的内容,字符串,样本未发现,0,0,0,,
+Idle,IdleBoxOpenTimes,挂机宝箱开启,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Idle,IdleBoxOpenTimes,挂机宝箱开启,ed_quality,开启宝箱的稀有度,字符串,样本未发现,0,0,0,,
+Idle,IdleBoxOpenTimes,挂机宝箱开启,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+Idle,IdleGetReward,挂机领取奖励,ed_idleGetRewardBox,挂机领奖的宝箱数量,字符串,personal,0,30,30,,"[] | [{""num"": 1, ""id"": 105401}, {""num"": 5, ""id"": 105201}, {""num"": 2, ""id"": 105101}, {""num"": 2, ""id"": 105301}] | [{""num"": 6, ""id"": 105201}, {""num"": 4, ""id"": 105101}, {""num"": 1, ""id"": 105301}]"
+Idle,IdleGetReward,挂机领取奖励,ed_idleGetRewardRes,挂机领奖的资源数量,字符串,personal,0,30,30,,"[{""num"": 8500, ""id"": 2}, {""num"": 8500, ""id"": 3}, {""num"": 4833, ""id"": 1}, {""num"": 59316, ""id"": 106}] | [{""num"": 986000, ""id"": 2}, {""num"": 986000, ""id"": 3}, {""num"": 560628, ""id"": 1}, {""num"": 6880656, ""id"": 106}] | [{""num"": 149040, ""id"": 2}, {""num"": 149040, ""id"": 3}, {""num"": 49680, ""id"": 1}, {""num"": 231840, ""id"": 106}]"
+Idle,IdleGetReward,挂机领取奖励,ed_idleGetRewardTime,挂机领取奖励的时间,字符串,personal,0,30,30,,1763595888641 | 1763595547485 | 1763595523933
+Idle,IdleGetReward,挂机领取奖励,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,23 | 23 | 7
+Idle,IdleGetReward,挂机领取奖励,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Idle,IdleStageId,挂机推关数,ed_idleStageId,推关当前所在关卡,字符串,personal,0,30,30,,100105 | 100052 | 100051
+Idle,IdleStageId,挂机推关数,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,23 | 19 | 19
+Idle,IdleStageId,挂机推关数,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Battle,PVEInstanceResult,PVE关卡战斗结算,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+Battle,PVEInstanceResult,PVE关卡战斗结算,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Battle,PVEInstanceResult,PVE关卡战斗结算,Heros,英雄1号位,字符串,personal,0,30,30,,[] | [] | []
+Battle,PVEInstanceResult,PVE关卡战斗结算,instanceGuid,关卡唯一id,字符串,personal,0,24,30,,1763510253 | 1763510158 | 1763509944
+Battle,PVEInstanceResult,PVE关卡战斗结算,instanceId,参与的PVE关卡ID,字符串,personal,0,30,30,,1 | 1 | 1
+Battle,PVEInstanceResult,PVE关卡战斗结算,mechLevel,机甲等级,字符串,personal,0,30,30,,16 | 16 | 16
+Battle,PVEInstanceResult,PVE关卡战斗结算,result,关卡结果,字符串,personal,0,30,30,,1 | 1 | 1
+Battle,PVEInstanceResult,PVE关卡战斗结算,totalPower,队伍总战力,字符串,personal,0,30,30,,0 | 0 | 0
+Battle,PVEInstanceStart,PVE关卡战斗开始,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,7 | 7 | 9
+Battle,PVEInstanceStart,PVE关卡战斗开始,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Battle,PVEInstanceStart,PVE关卡战斗开始,Heros,英雄s,字符串,personal,0,30,30,,[] | [] | []
+Battle,PVEInstanceStart,PVE关卡战斗开始,instanceGuid,关卡唯一id,字符串,personal,0,30,30,,1763595598 | 1763595441 | 1763594755
+Battle,PVEInstanceStart,PVE关卡战斗开始,instanceId,参与的PVE关卡ID,字符串,personal,0,30,30,,99042 | 99041 | 952003
+Battle,PVEInstanceStart,PVE关卡战斗开始,mechLevel,机甲等级,字符串,personal,0,30,30,,10 | 9 | 13
+Battle,PVEInstanceStart,PVE关卡战斗开始,totalPower,队伍总战力,字符串,personal,0,30,30,,0 | 0 | 0
+Alliance,AllianceGiftDistribute,联盟礼物发放,ed_allianceId,联盟id,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftDistribute,联盟礼物发放,ed_allianceName,联盟名称,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftDistribute,联盟礼物发放,ed_allianceOwnerId,盟主id,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftDistribute,联盟礼物发放,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftDistribute,联盟礼物发放,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftDistribute,联盟礼物发放,giftId,礼物id,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftDistribute,联盟礼物发放,giftType,礼物类型,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftReceive,联盟礼物领取,ed_allianceId,联盟id,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftReceive,联盟礼物领取,ed_allianceName,联盟名称,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftReceive,联盟礼物领取,ed_allianceOwnerId,盟主id,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftReceive,联盟礼物领取,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftReceive,联盟礼物领取,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftReceive,联盟礼物领取,giftId,礼物id,字符串,样本未发现,0,0,0,,
+Alliance,AllianceGiftReceive,联盟礼物领取,giftType,礼物类型,字符串,样本未发现,0,0,0,,
+Alliance,AllianceMilestones,联盟里程碑结束,completeProgress,里程碑的进度（实际完成）,字符串,样本未发现,0,0,30,,
+Alliance,AllianceMilestones,联盟里程碑结束,costTime,耗时（小时）,字符串,样本未发现,0,0,30,,
+Alliance,AllianceMilestones,联盟里程碑结束,curProgress,里程碑的进度（要求）,字符串,样本未发现,0,0,30,,
+Alliance,AllianceMilestones,联盟里程碑结束,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463610 | 9341463610 | 9341463610
+Alliance,AllianceMilestones,联盟里程碑结束,ed_allianceName,联盟名称,字符串,personal,0,30,30,,harjinder  | harjinder  | harjinder 
+Alliance,AllianceMilestones,联盟里程碑结束,ed_allianceOwnerId,盟主id,字符串,personal,0,30,30,,942694572687362 | 942694572687362 | 942694572687362
+Alliance,AllianceMilestones,联盟里程碑结束,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,1 | 1 | 1
+Alliance,AllianceMilestones,联盟里程碑结束,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Alliance,AllianceMilestones,联盟里程碑结束,milestonesId,里程碑任务id,字符串,样本未发现,0,0,30,,
+Alliance,AllianceMilestones,联盟里程碑结束,status,结束状态,字符串,样本未发现,0,0,30,,
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463563 | 9341463563 | 9341463563
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_alliancePoint,联盟总积分,字符串,personal,0,30,30,,5103600 | 5103540 | 5103480
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_alliancePointGet,获得联盟积分,字符串,personal,0,30,30,,60 | 60 | 60
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_donationCount,捐献资源数量,字符串,personal,0,30,30,,0 | 0 | 0
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_donationType,捐献类型,字符串,personal,0,30,30,,resource | resource | resource
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,-1 | -1 | -1
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_memberPoint,成员当前积分,字符串,personal,0,30,30,,466000 | 465940 | 465820
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_techId,科技id,字符串,personal,0,30,30,,510 | 510 | 510
+Alliance,AllianceTechnologyDonation,联盟捐献,ed_techLevel,科技等级,字符串,personal,0,30,30,,1 | 1 | 1
+Alliance,AllianceTechRecommend,联盟推荐,ed_allianceId,联盟id,字符串,personal,0,16,16,,9341463607 | 9341463610 | 9341463608
+Alliance,AllianceTechRecommend,联盟推荐,ed_allianceName,联盟名称,字符串,personal,0,16,16,,habe keine Wahl | harjinder  | ninja
+Alliance,AllianceTechRecommend,联盟推荐,ed_allianceOwnerId,盟主id,字符串,personal,0,16,16,,907166592270338 | 942694572687362 | 909709213040642
+Alliance,AllianceTechRecommend,联盟推荐,ed_currentMemberNumber,联盟当前人数,字符串,personal,0,16,16,,9 | 35 | 5
+Alliance,AllianceTechRecommend,联盟推荐,ed_mainBuildingLevel,大本等级,字符串,personal,0,16,16,,-1 | -1 | -1
+Alliance,AllianceTechRecommend,联盟推荐,ed_recommendTechTimes,设置推荐科技次数,字符串,样本未发现,0,0,16,,
+Alliance,AllianceTechRecommend,联盟推荐,ed_serverId,当前服务器ID,字符串,personal,0,16,16,,2 | 2 | 2
+Alliance,AllianceTechRecommend,联盟推荐,techId,推荐的科技id,字符串,样本未发现,0,0,16,,
+Alliance,CreateAlliance,创建联盟,ed_allianceFlag,联盟旗帜,字符串,personal,0,3,3,,1111 | 1111 | 1111
+Alliance,CreateAlliance,创建联盟,ed_allianceId,联盟id,字符串,personal,0,3,3,,9341463610 | 9341463609 | 9341463608
+Alliance,CreateAlliance,创建联盟,ed_allianceLanguage,联盟语言,字符串,personal,0,3,3,,en | en | en
+Alliance,CreateAlliance,创建联盟,ed_allianceName,联盟名称,字符串,personal,0,3,3,,harjinder  | Kämperherz | ninja
+Alliance,CreateAlliance,创建联盟,ed_allianceNickName,联盟简称,字符串,样本未发现,0,0,3,,
+Alliance,CreateAlliance,创建联盟,ed_allianceOwnerId,盟主id,字符串,personal,0,3,3,,942694572687362 | 926957809172482 | 27625941368834
+Alliance,CreateAlliance,创建联盟,ed_currentMemberNumber,联盟当前人数,字符串,personal,0,3,3,,1 | 1 | 1
+Alliance,CreateAlliance,创建联盟,ed_mainBuildingLevel,大本等级,字符串,personal,0,3,3,,4 | 5 | 4
+Alliance,CreateAlliance,创建联盟,ed_maxMemberNumber,联盟人数上限,字符串,personal,0,3,3,,100 | 100 | 100
+Alliance,CreateAlliance,创建联盟,ed_serverId,当前服务器ID,字符串,personal,0,3,3,,2 | 2 | 2
+Army,ArmyUpgrade,兵种升级,ed_count,军队数量,字符串,personal,0,30,30,,155 | 513 | 481
+Army,ArmyUpgrade,兵种升级,ed_isInstant,是否立即完成,字符串,personal,0,30,30,,False | False | False
+Army,ArmyUpgrade,兵种升级,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,7 | 23 | 15
+Army,ArmyUpgrade,兵种升级,ed_newArmyId,升级后兵种id,字符串,personal,0,30,30,,401001 | 401006 | 401004
+Army,ArmyUpgrade,兵种升级,ed_newArmyLevel,升级后兵种等级,字符串,personal,0,30,30,,1 | 6 | 4
+Army,ArmyUpgrade,兵种升级,ed_oldArmyId,升级前兵种id,字符串,personal,0,30,30,,401002 | 401007 | 401005
+Army,ArmyUpgrade,兵种升级,ed_oldArmyLevel,升级前兵种等级,字符串,personal,0,30,30,,2 | 7 | 5
+Army,ArmyUpgrade,兵种升级,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Building,BuildingIdleUpgrade,内城建筑升级,ed_buildingId,建筑id,字符串,样本未发现,0,0,0,,
+Building,BuildingIdleUpgrade,内城建筑升级,ed_idleBuildingLevel,升级后建筑科技等级,字符串,样本未发现,0,0,0,,
+Building,BuildingIdleUpgrade,内城建筑升级,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+Building,BuildingIdleUpgrade,内城建筑升级,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+Building,BuildingUpgrade,建筑创建/升级,ed_buildingId,建筑group id,字符串,personal,0,30,30,,1053682766043971593 | 1047132989774004227 | 1022972673452572752
+Building,BuildingUpgrade,建筑创建/升级,ed_isInstant,是否立即完成,字符串,personal,0,30,30,,True | True | True
+Building,BuildingUpgrade,建筑创建/升级,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,13 | 20 | 10
+Building,BuildingUpgrade,建筑创建/升级,ed_metaId,建筑配表id,字符串,personal,0,30,30,,100022010 | 100320017 | 100070007
+Building,BuildingUpgrade,建筑创建/升级,ed_newLevel,升级后建筑等级,字符串,personal,0,30,30,,10 | 17 | 7
+Building,BuildingUpgrade,建筑创建/升级,ed_oldLevel,升级前建筑等级,字符串,personal,0,30,30,,9 | 16 | 6
+Building,BuildingUpgrade,建筑创建/升级,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Building,BuildingUpgrade,建筑创建/升级,ed_uuid,建筑uuid,字符串,样本未发现,0,0,30,,
+Hero,EquipmentLevelUp,装备升级,ed_equipId,装备唯一id,字符串,personal,0,30,30,,997846341676318721 | 1006380338614255620 | 1006380338614255620
+Hero,EquipmentLevelUp,装备升级,ed_equipItemId,装备itemId,字符串,personal,0,30,30,,14002 | 14003 | 14003
+Hero,EquipmentLevelUp,装备升级,ed_equipNewLevel,装备升级后等级,字符串,personal,0,30,30,,10 | 19 | 17
+Hero,EquipmentLevelUp,装备升级,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,13 | 13 | 13
+Hero,EquipmentLevelUp,装备升级,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,1 | 1 | 1
+Hero,EquipmentLevelUp,装备升级,ed_equipSpecialStar,装备精炼等级,字符串,样本未发现,0,0,30,,
+Resource,SpeedupUse,使用道具加速,ed_diamond,钻石使用数量,字符串,personal,0,30,30,,0 | 0 | 0
+Resource,SpeedupUse,使用道具加速,ed_itemCount,加速物品数量,字符串,样本未发现,0,0,30,,
+Resource,SpeedupUse,使用道具加速,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,23 | 23 | 23
+Resource,SpeedupUse,使用道具加速,ed_remainTime,当前剩余时间（秒）,字符串,personal,0,30,30,,81818 | 89076 | 98183
+Resource,SpeedupUse,使用道具加速,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Resource,SpeedupUse,使用道具加速,ed_speedItem,物品id/加速道具类型/加速物品数量,字符串,personal,0,30,30,,"[{""itemId"": 1061679883748409344, ""num"": 16, ""type"": ""speedItemNormal""}, {""itemId"": 1061679772079259648, ""num"": 3, ""type"" | [{""itemId"": 1061678852956258305, ""num"": 2, ""type"": ""speedItemNormal""}] | [{""itemId"": 1061521158937018369, ""num"": 12, ""type"": ""speedItemBuild""}, {""itemId"": 1061678526538743808, ""num"": 8, ""type"":"
+Resource,SpeedupUse,使用道具加速,ed_targetCount,加速目标数量,字符串,personal,0,30,30,,1 | 1 | 1
+Resource,SpeedupUse,使用道具加速,ed_targetId,加速目标id,字符串,personal,0,30,30,,"[{""num"": 1, ""id"": 100000023}] | [{""num"": 1, ""id"": 100000023}] | [{""num"": 1, ""id"": 100000023}]"
+Resource,SpeedupUse,使用道具加速,ed_targetLevel,目标等级，升级后的等级,字符串,personal,0,30,30,,23 | 23 | 23
+Resource,SpeedupUse,使用道具加速,ed_targetType,加速目标类型,字符串,personal,0,30,30,,build | build | build
+Resource,SpeedupUse,使用道具加速,ed_totalTime,总CD时间（秒）,字符串,personal,0,30,30,,288870 | 296070 | 305070
+Resource,SpeedupUse,使用道具加速,speedTime,使用加速时间（秒）,字符串,personal,0,30,30,,68400 | 7200 | 9000
+Resource,PreciousChange,贵重物品变更,ed_addValue,变动数量（正是增加，负是消耗）,字符串,personal,0,30,30,,50 | 30 | 30
+Resource,PreciousChange,贵重物品变更,ed_detailReason,作用对象配置ID,字符串,样本未发现,0,0,30,,
+Resource,PreciousChange,贵重物品变更,ed_isAdd,是否增加,字符串,personal,0,30,30,,True | True | True
+Resource,PreciousChange,贵重物品变更,ed_itemId,变更的贵重物品id,字符串,personal,0,30,30,,920008 | 816106 | 816106
+Resource,PreciousChange,贵重物品变更,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+Resource,PreciousChange,贵重物品变更,ed_regularNewValue,剩余数量,字符串,personal,0,30,30,,1080 | 139 | 49
+Resource,PreciousChange,贵重物品变更,ed_route,变化途径（变化原因）,字符串,personal,0,30,30,,draw_card | draw_card | draw_card
+Resource,PreciousChange,贵重物品变更,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Resource,PreciousChange,贵重物品变更,ed_targetType,作用对象类型（加速的建筑组，造兵的兵种类型）,字符串,personal,0,30,30,,{920008=50} | {816106=30} | {816106=30}
+Resource,ResourceChange,资源变动,ed_change,资源变化量,字符串,personal,0,30,30,,"{""HERO_EXP"": 10000} | {""MECH_LEVEL_UP"": 4170, ""STEEL"": 96000, ""PETROLEUM"": 136000, ""HERO_EXP"": 81000} | {""MECH_LEVEL_UP"": 7140, ""STEEL"": 192000, ""PETROLEUM"": 204000, ""HERO_EXP"": 138000}"
+Resource,ResourceChange,资源变动,ed_detailReason,详细原因,字符串,personal,0,30,30,,100501 |  | 
+Resource,ResourceChange,资源变动,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+Resource,ResourceChange,资源变动,ed_route,变化途径（变化原因）,字符串,personal,0,30,30,,useItem | opt_reward_box | opt_reward_box
+Resource,ResourceChange,资源变动,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Resource,ResourceChange,资源变动,ed_stock,资源存量（变化后）,字符串,personal,0,30,30,,"{""HERO_EXP"": 18743046} | {""MECH_LEVEL_UP"": 44770, ""STEEL"": 15539124, ""PETROLEUM"": 13982091, ""HERO_EXP"": 18733046} | {""MECH_LEVEL_UP"": 40600, ""STEEL"": 15443124, ""PETROLEUM"": 13846091, ""HERO_EXP"": 18652046}"
+Resource,ResourceChange,资源变动,ed_targetType,目标类型,字符串,样本未发现,0,0,30,,
+User,DialogueStart,弹出对话,dialogID,对话ID,字符串,personal,0,30,30,,980041 | 980013 | 980011
+User,DialogueStart,弹出对话,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+User,DialogueStart,弹出对话,ed_serverId,当前服务器ID,字符串,personal,0,30,30,,2 | 2 | 2
+Activity,SwitchSceneEnd,切场景结束,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+Activity,SwitchSceneEnd,切场景结束,SceneNowAfterSwitch,切换后当前场景名称,字符串,personal,0,30,30,,worldmapscene | worldmapscene | worldmapscene
+Activity,ActivityChestCount,连续充值开箱子,activityId,活动ID,字符串,样本未发现,0,0,0,,
+Alliance,AllianceAirshipAppointCaptain,联盟飞艇-委任艇长行为,allianceId,被委任艇长的玩家所在联盟ID,字符串,personal,0,18,18,,5046496226 | 9341463563 | 9341463563
+Alliance,AllianceAirshipAppointCaptain,联盟飞艇-委任艇长行为,captainId,被委任艇长的玩家UID,字符串,personal,0,18,18,,623492458414081 | 53189587107842 | 155512889540610
+Alliance,AllianceAirshipAppointCaptain,联盟飞艇-委任艇长行为,captainPower,被委任艇长的玩家总战力,字符串,personal,0,18,18,,21090119 | 22160235 | 23260687
+Alliance,AllianceAirshipFreeCreate,联盟飞艇-免费的飞艇创建,allianceId,创建飞艇的联盟Id,字符串,personal,0,30,30,,9341463583 | 9341463579 | 9341463569
+Alliance,AllianceAirshipFreeCreate,联盟飞艇-免费的飞艇创建,allianceMemberCount,创建飞艇的联盟成员数量,字符串,personal,0,30,30,,44 | 100 | 38
+Alliance,AllianceAirshipFreeCreate,联盟飞艇-免费的飞艇创建,alliancePowerRank,创建飞艇的联盟战力排行榜位次,字符串,personal,0,30,30,,17 | 11 | 14
+Alliance,AllianceAirshipRefreshCargo,联盟飞艇-艇长刷新飞艇货舱行为,allianceId,被委任艇长的玩家所在联盟ID,字符串,personal,0,8,8,,9341463563 | 9341463563 | 9341463563
+Alliance,AllianceAirshipRefreshCargo,联盟飞艇-艇长刷新飞艇货舱行为,captainPower,被委任艇长的玩家总战力,字符串,personal,0,8,8,,25133844 | 25133844 | 13360762
+Alliance,AllianceAirshipRefreshCargo,联盟飞艇-艇长刷新飞艇货舱行为,cargoHoldInfo,刷新货舱id和刷新后货舱的品质,字符串,personal,0,8,8,,"[{""cargoHoldId"": 1, ""quality"": 4}, {""cargoHoldId"": 2, ""quality"": 5}, {""cargoHoldId"": 3, ""quality"": 3}, {""cargoHoldId"": 4 | [{""cargoHoldId"": 1, ""quality"": 1}, {""cargoHoldId"": 2, ""quality"": 2}, {""cargoHoldId"": 3, ""quality"": 4}, {""cargoHoldId"": 4 | [{""cargoHoldId"": 1, ""quality"": 5}, {""cargoHoldId"": 2, ""quality"": 5}, {""cargoHoldId"": 3, ""quality"": 5}, {""cargoHoldId"": 4"
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,allianceId,被委任艇长的玩家所在联盟ID,字符串,personal,0,1,1,,9341463600
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,battleResult,1-抢劫成功，2-抢劫失败,字符串,personal,0,1,1,,2
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,captainId,艇长的玩家UID,字符串,personal,0,1,1,,851778675736578
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,captainPower,被委任艇长的玩家总战力,字符串,personal,0,1,1,,5378859
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,getReward,抢夺到的奖励id,字符串,personal,0,1,1,,[]
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,isGolden,0-普通飞艇，1-黄金飞艇,字符串,personal,0,1,1,,0
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,robberAllianceId,抢劫玩家所在联盟ID,字符串,personal,0,1,1,,9341463561
+Alliance,AllianceAirshipRobbed,联盟飞艇-掠夺行为,robberPower,抢劫飞艇的玩家战力,字符串,personal,0,1,1,,6799926
+Alliance,AllianceAirshipStart,联盟飞艇-飞艇出发,allianceId,飞艇归属的联盟Id,字符串,personal,0,18,18,,5046496226 | 9341463563 | 9341463563
+Alliance,AllianceAirshipStart,联盟飞艇-飞艇出发,captainId,艇长的玩家UID,字符串,personal,0,18,18,,623492458414081 | 53189587107842 | 155512889540610
+Alliance,AllianceAirshipStart,联盟飞艇-飞艇出发,cargoHoldInfo,货舱id对应的品质和乘客数量,字符串,personal,0,18,18,,"[{""num"": 1, ""cargoHoldInfo"": 1, ""quality"": 2}, {""num"": 0, ""cargoHoldInfo"": 2, ""quality"": 3}, {""num"": 0, ""cargoHoldInfo"": | [{""num"": 3, ""cargoHoldInfo"": 1, ""quality"": 1}, {""num"": 2, ""cargoHoldInfo"": 2, ""quality"": 2}, {""num"": 1, ""cargoHoldInfo"": | [{""num"": 5, ""cargoHoldInfo"": 1, ""quality"": 5}, {""num"": 0, ""cargoHoldInfo"": 2, ""quality"": 2}, {""num"": 0, ""cargoHoldInfo"":"
+Alliance,AllianceAirshipStart,联盟飞艇-飞艇出发,isGolden,0-普通飞艇，1-黄金飞艇,字符串,personal,0,18,18,,0 | 0 | 0
+Alliance,AllianceAirshipStart,联盟飞艇-飞艇出发,passengersNum,艇长上总的乘客数量,字符串,personal,0,18,18,,1 | 6 | 7
+Alliance,AllianceDuelAlliancePoint,联盟对决联盟积分变化,activityId,活动ID,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelAlliancePoint,联盟对决联盟积分变化,pointChange,积分变化,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelAlliancePoint,联盟对决联盟积分变化,pointTotal,总积分,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelAlliancePoint,联盟对决联盟积分变化,pointType,积分类型,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelBoxOpen,联盟对决个人宝箱发放,activityId,活动ID,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelBoxOpen,联盟对决个人宝箱发放,rewardId,积分宝箱领取,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelBoxOpen,联盟对决个人宝箱发放,rewardIdMail,积分宝箱发放,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelPersonalPoint,联盟对决个人积分变化,activityId,活动ID,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelPersonalPoint,联盟对决个人积分变化,pointChange,积分变化,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelPersonalPoint,联盟对决个人积分变化,pointTotal,总积分,字符串,样本未发现,0,0,0,,
+Alliance,AllianceDuelPersonalPoint,联盟对决个人积分变化,pointType,积分类型,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegeEnd,军团围攻-结算,allianceId,军团据点结算的联盟ID,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegeEnd,军团围攻-结算,alliancePower,联盟总战力,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegeEnd,军团围攻-结算,level,联盟选择开启的军团据点难度等级,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegeEnd,军团围攻-结算,totalActivityMember,联盟参与本次活动的玩家总数量,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegeEnd,军团围攻-结算,totalWave,联盟成功抵御总波数,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,allianceId,失败玩家的联盟ID,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,defender1,玩家驻防部队1战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,defender2,玩家驻防部队2战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,defender3,玩家驻防部队3战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,defender4,玩家驻防部队4战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,level,当前联盟选择的据点难度等级,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,playerPower,玩家个人总战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,reason,失败原因,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,reinforcement1,联盟增援部队1战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,reinforcement2,联盟增援部队2战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,reinforcement3,联盟增援部队3战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,reinforcement4,联盟增援部队4战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,result,防御最后的结果,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegePlayerResult,军团围攻-联盟玩家防御结果,wave,玩家在失败前抵御了多少波,数字,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,allianceid,联盟id,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,ed_mainBuildingLevel,大本等级,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,ed_marchId,本次出征/集结的唯一id，与世界玩法相关联的行为（如战损/出征结果等）内的uuid一致,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,ed_marchType,出征类型,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,ed_serverId,当前服务器ID,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,ed_targetMetaId,目标id,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,ed_targetType,目标类型,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,realWaitTime,等待时长（毫秒）,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,targetPosition,目标点坐标,字符串,样本未发现,0,0,0,,
+World,RALLY_GO,集结出发,totalMemberCount,集结组队人数,字符串,样本未发现,0,0,0,,
+Legion,LegionSiegeStart,军团围攻-召唤军团据点,activityMemberCount,联盟可参与活动玩家总数,数字,样本未发现,0,0,0,,
+Legion,LegionSiegeStart,军团围攻-召唤军团据点,allianceCurrentNum,联盟当前玩家总人数,数字,样本未发现,0,0,0,,
+Legion,LegionSiegeStart,军团围攻-召唤军团据点,alliancePower,联盟总战力,数字,样本未发现,0,0,0,,
+Legion,LegionSiegeStart,军团围攻-召唤军团据点,level,联盟选择开启的军团据点难度等级,数字,样本未发现,0,0,0,,
+Legion,LegionSiegeStart,军团围攻-召唤军团据点,allianceId,召唤军团据点的联盟ID,字符串,样本未发现,0,0,0,,
+Login,Logout,登出游戏(服务端）,ed_season,赛季,数字,personal,0,30,30,,0 | 0 | 0
+Login,Logout,登出游戏(服务端）,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 23 | 7
+Login,Logout,登出游戏(服务端）,ed_playSeconds,在线时长,数字,personal,0,30,30,,555 | 901 | 345
+Login,GameServerLoginRet,登录游戏服返回,ed_season,赛季,数字,personal,0,30,30,,0 | 0 | 0
+Login,GameServerLoginRet,登录游戏服返回,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 7
+Login,GameServerLoginRet,登录游戏服返回,ed_isSuccess,返回结果,字符串,personal,0,30,30,,True | True | True
+Login,Login,登录游戏(服务端）,ed_season,赛季,数字,personal,0,30,30,,0 | 0 | 0
+Login,Login,登录游戏(服务端）,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 7
+Sys,CCU,CCU,ed_timestamp,计算时间,数字,personal,0,30,30,,1763596710000 | 1763596707007 | 1763596682007
+Sys,CCU,CCU,ed_season,赛季,数字,personal,0,30,30,,0 | 0 | 0
+Sys,CCU,CCU,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,1 | 1 | 1
+Sys,CCU,CCU,ed_ccu,当前在线人数,数字,personal,0,30,30,,2 | 0 | 0
+User,Register,注册游戏,ed_existAmount,当前角色数量,字符串,personal,0,30,30,,1 | 1 | 1
+User,Register,注册游戏,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,1 | 1 | 1
+User,Register,注册游戏,ed_season,赛季,字符串,personal,0,30,30,,0 | 0 | 0
+Activity,BingoBoxClaim,宾果任务领奖,BoxClaimCount,领奖次数,数字,样本未发现,0,0,0,,
+World,WorldMarch,世界出征,ed_estimatedSeconds,预计耗时（秒）,数字,personal,0,30,30,,1763596760989 | 1763596756641 | 1763596729934
+World,WorldMarch,世界出征,ed_nowPosition,当前坐标点,字符串,personal,0,30,30,,"24.41,124.95 | 25.0,126.0 | 25.96,125.28"
+World,WorldMarch,世界出征,ed_targetMetaId,目标配置id,字符串,personal,0,30,30,,11212 | 11113 | 11212
+World,WorldMarch,世界出征,ed_myTeamArmy,出征士兵,字符串,personal,0,30,30,,"[{""soldierId"": 401001, ""count"": 457}] | [{""soldierId"": 401002, ""count"": 367}, {""soldierId"": 401003, ""count"": 203}, {""soldierId"": 401001, ""count"": 182}] | [{""soldierId"": 401001, ""count"": 635}]"
+World,WorldMarch,世界出征,ed_myTeamBattlePower,出征部队总战力,字符串,personal,0,30,30,,393658 | 557598 | 398108
+World,WorldMarch,世界出征,ed_myTeamHeroList,ed出征英雄,字符串,personal,0,30,30,,"[{""heroStarLevel"": 3, ""heroPower"": 63693, ""skillList"": [{""starSkill"": 13031, ""battleSkillLevel"": 1}, {""starSkill"": 13032 | [{""heroStarLevel"": 2, ""heroPower"": 74434, ""skillList"": [{""starSkill"": 14091, ""battleSkillLevel"": 1}, {""starSkill"": 14092 | [{""heroStarLevel"": 3, ""heroPower"": 63693, ""skillList"": [{""starSkill"": 13031, ""battleSkillLevel"": 1}, {""starSkill"": 13032"
+World,WorldMarch,世界出征,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463610 | 9341463610 | 9341463610
+World,WorldMarch,世界出征,ed_buffList,玩家所带BUFF,字符串,personal,0,30,30,,"[{""buffId"": 9041003, ""num"": 200}, {""buffId"": 9040202, ""num"": 43}, {""buffId"": 9041103, ""num"": 100}, {""buffId"": 9040302, "" | [{""buffId"": 9041003, ""num"": 200}, {""buffId"": 9040202, ""num"": 43}, {""buffId"": 9041103, ""num"": 100}, {""buffId"": 9040302, "" | [{""buffId"": 9041003, ""num"": 200}, {""buffId"": 9040202, ""num"": 43}, {""buffId"": 9041103, ""num"": 100}, {""buffId"": 9040302, """
+World,WorldMarch,世界出征,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+World,WorldMarch,世界出征,ed_marchId,本次出征/集结的唯一id，与世界玩法相关联的行为（如战损/出征结果等）内的uuid一致,字符串,personal,0,30,30,,1058510067155894272 | 1059219973710315520 | 1058510067155894272
+World,WorldMarch,世界出征,ed_marchType,出征类型,字符串,personal,0,30,30,,ATTACK_NPC | ATTACK_NPC | ATTACK_NPC
+World,WorldMarch,世界出征,ed_targetId,目标id,字符串,personal,0,30,30,,1061688033180418048 | 1061687981640810496 | 1061687732532707328
+World,WorldMarch,世界出征,ed_targetPosition,目标坐标点,字符串,personal,0,30,30,,"21.0,121.0 | 20.0,120.0 | 22.0,120.0"
+World,WorldMarch,世界出征,ed_targetType,目标类型,字符串,personal,0,30,30,,NPC | NPC | NPC
+Timeline,TimelineResume,Timeline暂停重新开始,pause_time,停止时间,数字,personal,0,30,30,,12 | 3 | 2
+Timeline,TimelineResume,Timeline暂停重新开始,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,1 | 1 | 2
+Timeline,TimelineResume,Timeline暂停重新开始,timeline_name,TimeLine资源名字,字符串,personal,0,30,30,,Zombie_SangShiXiuCheKaiChe | Zombie_DaChuJingXia | Zombie_BossShiXiao
+Battle,SaveHeroBomb,查炸弹后的打点,isInTime,是否再倒计时之内,字符串,personal,0,30,30,,True | True | True
+Battle,SaveHeroBomb,查炸弹后的打点,saveHeroId,拆炸弹事件ID,字符串,personal,0,30,30,,6 | 5 | 4
+Battle,SaveHeroBomb,查炸弹后的打点,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,5 | 5 | 5
+Pay,ServerPayLog,后端充值,orderId,订单ID,字符串,personal,0,24,24,,GPA.3393-0759-0525-83437 | GPA.3358-6895-9686-97349 | GPA.3302-3037-9814-48568
+Pay,ServerPayLog,后端充值,level,当前大本等级,数字,personal,0,24,24,,21 | 18 | 17
+Pay,ServerPayLog,后端充值,money,金额,数字,personal,0,24,24,,4.99 | 4.99 | 3.99
+Pay,ServerPayLog,后端充值,season,赛季,字符串,样本未发现,0,0,24,,
+Pay,ServerPayLog,后端充值,payChannel,支付渠道,字符串,personal,0,24,24,,gp | gp | gp
+Pay,ServerPayLog,后端充值,productid,礼包ID,字符串,personal,0,24,24,,90217 | 83014 | 83013
+Pay,ServerPayLog,后端充值,ret,返回结果,字符串,样本未发现,0,0,24,,
+Pay,ServerPayLog,后端充值,TempID,TempID,字符串,样本未发现,0,0,24,,
+Activity,ActivityCommanderTask,行为完成积分变化（最强指挥官）,pointTotal,总积分,数字,样本未发现,0,0,0,,
+Activity,ActivityCommanderTask,行为完成积分变化（最强指挥官）,pointType,积分类型,数字,样本未发现,0,0,0,,
+Activity,ActivityCommanderTask,行为完成积分变化（最强指挥官）,pointChange,积分变化,数字,样本未发现,0,0,0,,
+Activity,ActivityCommanderTask,行为完成积分变化（最强指挥官）,activityId,活动ID,数字,样本未发现,0,0,0,,
+Resource,GoldChange,钻石变化,ed_type,变化类型,数字,personal,0,30,30,,5 | 5 | 5
+Resource,GoldChange,钻石变化,ed_remainPaid,付费金币剩余,数字,personal,0,30,30,,0 | 0 | 0
+Resource,GoldChange,钻石变化,ed_remainFree,免费金币剩余,数字,personal,0,30,30,,5180 | 5160 | 5140
+Resource,GoldChange,钻石变化,ed_changeFree,免费金币变化,数字,personal,0,30,30,,20 | 20 | 20
+Resource,GoldChange,钻石变化,ed_changePaid,付费金币变化,数字,personal,0,30,30,,0 | 0 | 0
+Resource,GoldChange,钻石变化,ed_goldType,币种类型,字符串,personal,0,30,30,,DIAMOND | DIAMOND | DIAMOND
+Resource,GoldChange,钻石变化,ed_route,消耗/获取途径,字符串,personal,0,30,30,,activity_reward | activity_reward | activity_reward
+Resource,GoldChange,钻石变化,ed_detailReason,详细原因,字符串,personal,0,30,30,,21003 | 21003 | 21003
+Resource,GoldChange,钻石变化,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+Activity,BuyCustomWeeklyPass,自选周卡,DayX,玩家在活动开启后第几天购买,数字,样本未发现,0,0,0,,
+Activity,BuyCustomWeeklyPass,自选周卡,customRewardId,定制奖励,数字,样本未发现,0,0,0,,
+Activity,BuyCustomWeeklyPass,自选周卡,rechargeOpenId,活动编号,数字,样本未发现,0,0,0,,
+Activity,merchandisePointsChange,累充积分变化,pointCount,变化后当前的积分总值,数字,personal,0,17,17,,80 | 30 | 10
+Activity,merchandisePointsChange,累充积分变化,activityId,活动编号,数字,personal,0,17,17,,1010001 | 1010001 | 1010001
+Login,ConnectGameServerBackFail,连接socket失败,method,方法,字符串,样本未发现,0,0,0,,
+Activity,tse,测试,ed_allianceId,联盟id,字符串,样本未发现,0,0,0,,
+Battle,MobstageStart,mob关卡开始,mobStageStartType,mob关卡进入状态,字符串,样本未发现,0,0,0,,
+Battle,MobstageStart,mob关卡开始,mobStageId,mob关卡id,字符串,样本未发现,0,0,0,,
+Battle,MobstageStart,mob关卡开始,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+Pay,PayPopup,支付礼包曝光,ed_productIds,礼包id列表,字符串,personal,0,25,30,,"[""80041""] | [""90217""] | [""90217""]"
+Pay,PayPopup,支付礼包曝光,ed_popupSourceButton,来源面板Button,字符串,personal,0,30,30,,recruit_btn | RefreshGiftState | RefreshGiftState
+Pay,PayPopup,支付礼包曝光,ed_popupSourceId,来源面板ID,字符串,personal,0,30,30,,12 | radar_main_panel1763596750870 | radar_main_panel1763596488622
+Pay,PayPopup,支付礼包曝光,ed_popupSourceName,来源面板名称,字符串,personal,0,30,30,,hero_list_panel | radar_main_panel | radar_main_panel
+Pay,PayPopup,支付礼包曝光,ed_popupFirstId,首次展示含有礼包的面板生成的唯一ID,字符串,personal,0,30,30,,recruit_panel1763596797469 | radar_main_panel1763596750870 | radar_main_panel1763596488622
+Pay,PayPopup,支付礼包曝光,ed_popupFirstName,首次展示含有礼包的面板对应名称,字符串,personal,0,30,30,,QuickRecharge_10017 | radar_main_panel | radar_main_panel
+Pay,PayPopup,支付礼包曝光,ed_popupId,面板唯一ID,字符串,personal,0,30,30,,recruit_panel1763596797469 | radar_main_panel1763596750870 | radar_main_panel1763596488622
+Pay,PayPopup,支付礼包曝光,ed_popupName,面板名称,字符串,personal,0,30,30,,QuickRecharge_10017 | radar_main_panel | radar_main_panel
+Pay,PayPopup,支付礼包曝光,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,9 | 9 | 9
+Pay,PayPopupClick,点击购买按钮,ed_productId,礼包id,字符串,personal,0,30,30,,90217 | 80041 | 81053
+Pay,PayPopupClick,点击购买按钮,ed_popupSourceButton,来源面板Button,字符串,personal,0,30,30,,RefreshGiftState | tab_7 | auto
+Pay,PayPopupClick,点击购买按钮,ed_popupSourceId,来源面板ID,字符串,personal,0,30,30,,radar_main_panel1763588377628 | recharge_shop_group1763571958428 | 1000
+Pay,PayPopupClick,点击购买按钮,ed_popupSourceName,来源面板名称,字符串,personal,0,30,30,,radar_main_panel | recharge_shop_group | RechargeModule
+Pay,PayPopupClick,点击购买按钮,ed_popupFirstId,首次展示含有礼包的面板生成的唯一ID,字符串,personal,0,30,30,,f_speed_up_panel1763588215647 | f_speed_up_panel1763571675891 | f_recharge_limited_time_panel1763566206885
+Pay,PayPopupClick,点击购买按钮,ed_popupFirstName,首次展示含有礼包的面板对应名称,字符串,personal,0,30,30,,QuickRecharge_10002 | QuickRecharge_10001 | f_recharge_limited_time_panel
+Pay,PayPopupClick,点击购买按钮,ed_popupId,面板唯一ID,字符串,personal,0,30,30,,radar_main_panel1763588377628 | f_recharge_gift_shop_group1763571964563 | f_recharge_limited_time_panel1763566206885
+Pay,PayPopupClick,点击购买按钮,ed_popupName,面板名称,字符串,personal,0,30,30,,radar_main_panel | f_recharge_gift_shop_group | f_recharge_limited_time_panel
+Pay,PayPopupClick,点击购买按钮,ed_mainBuildingLevel,大本等级,字符串,personal,0,30,30,,21 | 17 | 12
+Login,LaunchVersionBestRequest,请求最佳总控地址，参数domain,costTime,耗时【毫秒】,数字,personal,0,22,22,,603 | 50 | 50
+Login,LaunchVersionBestRequest,请求最佳总控地址，参数domain,domain,域名,字符串,personal,0,22,22,,https://firstwar-web.elexapp.com/version | https://firstwar-aws-web.elexmobile.com/version | https://firstwar-aws-web.elexmobile.com/version
+Login,LaunchPingFailed,ping总控地址失败,domain,域名,字符串,personal,0,30,30,,firstwar-aws-web.elexmobile.com | firstwar-web.elexapp.com | firstwar-gcp-web.elexgoogle.com
+Login,LaunchPingSuccess,ping总控地址成功,costTime,耗时【毫秒】,数字,personal,0,30,30,,59 | 134 | 24
+Login,LaunchPingSuccess,ping总控地址成功,domain,域名,字符串,personal,0,30,30,,firstwar-web.elexapp.com | firstwar-gcp-web.elexgoogle.com | firstwar-aws-web.elexmobile.com
+Pay,PayFinish,BI-支付完成,ed_payCode,支付码,字符串,personal,0,30,30,,0 | 52007 | 52007
+Pay,PayFinish,BI-支付完成,ed_payResult,支付结果,字符串,personal,0,30,30,,success | cancel | cancel
+Pay,PayStart,开始支付前事件,ed_popupName,界面名,字符串,personal,0,28,30,,radar_main_panel | f_recharge_gift_shop_group | f_recharge_limited_time_panel
+Login,LaunchVersionRequest,请求总控地址，参数domain,domain,域名,字符串,personal,0,30,30,,https://firstwar-gcp-web.elexgoogle.com/version | https://firstwar-gcp-web.elexgoogle.com/version | https://firstwar-gcp-web.elexgoogle.com/version
+Sys,ep_dns_parse_success,sdk dns接些,elapsedTs,耗时(ms),字符串,personal,0,9,9,,659 | 3427 | 418
+Sys,ep_dns_parse_success,sdk dns接些,parseService,解析方式,字符串,personal,0,9,9,,HTTP | HTTP | HTTP
+Battle,MobCopyidResult,mob小关通关情况,ed_mobTime,mob小关消耗时长（单位秒）,字符串,样本未发现,0,0,0,,
+Battle,MobCopyidResult,mob小关通关情况,ed_mobResult,进入关卡结果,字符串,样本未发现,0,0,0,,
+Battle,MobCopyidResult,mob小关通关情况,ed_mobCopyId,mob小关id,字符串,样本未发现,0,0,0,,
+Battle,MobCopyidResult,mob小关通关情况,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+Sys,AliDnsAnalyze,域名解析监控,costTime,耗时/秒,数字,样本未发现,0,0,0,,
+Sys,AliDnsAnalyze,域名解析监控,url,域名,字符串,样本未发现,0,0,0,,
+Sys,AliDnsAnalyze,域名解析监控,result,是否解析成功,字符串,样本未发现,0,0,0,,
+Popup,DialogueEnd,弹出对话打点（对话结束）,dialogID,对话ID,字符串,personal,0,30,30,,980041 | 980013 | 980012
+Popup,DialogueEnd,弹出对话打点（对话结束）,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+Radar,RadarUpgrade,雷达升级,ed_radarLevel,当前雷达等级,字符串,personal,0,30,30,,9 | 3 | 5
+Radar,RadarUpgrade,雷达升级,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,23 | 7 | 10
+Radar,RadarTaskFinish,完成雷达任务,ed_radarMissionId,雷达任务id,字符串,personal,0,30,30,,66024 | 231021 | 231028
+Radar,RadarTaskFinish,完成雷达任务,ed_radarLevel,当前雷达等级,字符串,personal,0,30,30,,3 | 8 | 8
+Radar,RadarTaskFinish,完成雷达任务,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,7 | 23 | 23
+Technology,TechnologyDonation,个人科技升级,ed_techLevel,科技升级后等级,字符串,personal,0,30,30,,1 | 5 | 2
+Technology,TechnologyDonation,个人科技升级,ed_isInstant,是否立即完成,字符串,personal,0,30,30,,True | True | True
+Technology,TechnologyDonation,个人科技升级,ed_techId,科技id,字符串,personal,0,30,30,,103 | 807 | 101
+Technology,TechnologyDonation,个人科技升级,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,7 | 23 | 9
+Block,BlockUnlock,地块解锁,ed_blockId,地块id,字符串,personal,0,30,30,,16 | 26 | 25
+Block,BlockUnlock,地块解锁,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 15 | 15
+Shop,ShopSale,商品售卖比例,ed_price,货币价格,字符串,personal,0,30,30,,1152 | 2700 | 2800
+Shop,ShopSale,商品售卖比例,ed_currency,货币类型,字符串,personal,0,30,30,,5 | 102 | 5
+Shop,ShopSale,商品售卖比例,ed_setNum,上架数量,字符串,personal,0,30,30,,50 | 10 | 50
+Shop,ShopSale,商品售卖比例,ed_goodsIdNum,商品数量,字符串,personal,0,30,30,,16 | 3 | 14
+Shop,ShopSale,商品售卖比例,ed_goodsId,商品id,字符串,personal,0,30,30,,1010113 | 1010314 | 1010120
+Shop,ShopSale,商品售卖比例,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,23 | 23 | 17
+Alliance,AllianceHelp,联盟帮助,ed_isHelpOne,是否帮助单人,字符串,personal,0,30,30,,True | True | True
+Alliance,AllianceHelp,联盟帮助,ed_helpUniqId,帮助唯一id,字符串,personal,0,30,30,,9341463610_529 | 9341463610_530 | 9341463610_525
+Alliance,AllianceHelp,联盟帮助,ed_helpUid,被帮助人uid,字符串,personal,0,30,30,,944137683140610 | 944137683140610 | 942350975172610
+Alliance,AllianceHelp,联盟帮助,ed_helpType,请求的帮助类型,字符串,personal,0,30,30,,HELP_BUILDING | HELP_SCIENCE | HELP_BUILDING
+Alliance,AllianceHelp,联盟帮助,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463610 | 9341463610 | 9341463610
+Alliance,AllianceHelp,联盟帮助,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 7
+Alliance,ApplyAlliance,申请联盟,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463610 | 9341463610 | 9341463610
+Alliance,ApplyAlliance,申请联盟,ed_allianceName,联盟名称,字符串,personal,0,30,30,,harjinder  | harjinder  | harjinder 
+Alliance,ApplyAlliance,申请联盟,ed_allianceOwnerId,盟主id,字符串,personal,0,30,30,,942694572687362 | 942694572687362 | 942694572687362
+Alliance,ApplyAlliance,申请联盟,ed_currentMemberNumber,联盟当前人数,字符串,personal,0,30,30,,38 | 37 | 36
+Alliance,ApplyAlliance,申请联盟,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,-1 | -1 | -1
+Alliance,ApplyAlliance,申请联盟,ed_maxMemberNumber,联盟人数上限,字符串,personal,0,30,30,,100 | 100 | 100
+Alliance,DismissAlliance,解散联盟,ed_allianceId,联盟id,字符串,样本未发现,0,0,0,,
+Alliance,DismissAlliance,解散联盟,ed_allianceName,联盟名称,字符串,样本未发现,0,0,0,,
+Alliance,DismissAlliance,解散联盟,ed_allianceOwnerId,盟主id,字符串,样本未发现,0,0,0,,
+Alliance,DismissAlliance,解散联盟,ed_currentMemberNumber,联盟当前人数,字符串,样本未发现,0,0,0,,
+Alliance,DismissAlliance,解散联盟,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+Alliance,DismissAlliance,解散联盟,ed_maxMemberNumber,联盟人数上限,字符串,样本未发现,0,0,0,,
+Alliance,JoinAlliance,加入联盟,ed_allianceId,联盟id,字符串,personal,0,30,30,,9341463610 | 9341463610 | 9341463610
+Alliance,JoinAlliance,加入联盟,ed_allianceName,联盟名称,字符串,personal,0,30,30,,harjinder  | harjinder  | harjinder 
+Alliance,JoinAlliance,加入联盟,ed_allianceOwnerId,盟主id,字符串,personal,0,30,30,,942694572687362 | 942694572687362 | 942694572687362
+Alliance,JoinAlliance,加入联盟,ed_currentMemberNumber,联盟当前人数,字符串,personal,0,30,30,,38 | 37 | 36
+Alliance,JoinAlliance,加入联盟,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,-1 | -1 | -1
+Alliance,JoinAlliance,加入联盟,ed_maxMemberNumber,联盟人数上限,字符串,personal,0,30,30,,100 | 100 | 100
+Alliance,JoinAlliance,加入联盟,ed_route,加入联盟途径,字符串,personal,0,30,30,,apply | apply | apply
+Alliance,LeaveAlliance,退出联盟,ed_allianceId,联盟id,字符串,personal,0,20,20,,9341463603 | 9341463563 | 9341463563
+Alliance,LeaveAlliance,退出联盟,ed_allianceName,联盟名称,字符串,personal,0,20,20,,steamedhams | GutsNGiggles | GutsNGiggles
+Alliance,LeaveAlliance,退出联盟,ed_allianceOwnerId,盟主id,字符串,personal,0,20,20,,867584161611778 | 15943630061570 | 15943630061570
+Alliance,LeaveAlliance,退出联盟,ed_currentMemberNumber,联盟当前人数,字符串,personal,0,20,20,,93 | 68 | 69
+Alliance,LeaveAlliance,退出联盟,ed_mainBuildingLevel,大本等级,数字,personal,0,20,20,,8 | -1 | -1
+Alliance,LeaveAlliance,退出联盟,ed_maxMemberNumber,联盟人数上限,字符串,personal,0,20,20,,100 | 100 | 100
+Alliance,LeaveAlliance,退出联盟,ed_route,退出联盟途径,字符串,personal,0,20,20,,initiative | passive | passive
+Hero,HeroLevelUp,英雄升级,ed_currentLevel,升级后的英雄等级,字符串,personal,0,30,30,,85 | 88 | 87
+Hero,HeroLevelUp,英雄升级,ed_heroId,英雄id,字符串,personal,0,30,30,,1405 | 1405 | 1405
+Hero,HeroLevelUp,英雄升级,ed_heroStar,英雄星级,字符串,personal,0,30,30,,11 | 11 | 11
+Hero,HeroLevelUp,英雄升级,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,21 | 21 | 21
+Hero,HeroLevelUp,英雄升级,ed_oldLevel,升级前的英雄等级,字符串,personal,0,30,30,,84 | 87 | 86
+Resource,HeroRecruit,酒馆抽卡,ed_cardType,卡池类型,字符串,personal,0,30,30,,2 | 2 | 2
+Resource,HeroRecruit,酒馆抽卡,ed_costType,抽卡货币类型,字符串,personal,0,30,30,,1 | 1 | 1
+Resource,HeroRecruit,酒馆抽卡,ed_drawResult,抽卡结果,字符串,personal,0,30,30,,"[{""itemId"": 817003, ""itemNum"": 1}] | [{""itemId"": 816106, ""itemNum"": 30}] | [{""itemId"": 816106, ""itemNum"": 30}]"
+Resource,HeroRecruit,酒馆抽卡,ed_isFree,是否免费招募,字符串,personal,0,30,30,,True | True | False
+Resource,HeroRecruit,酒馆抽卡,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,7 | 9 | 9
+Resource,HeroRecruit,酒馆抽卡,ed_recruitTimes,抽取次数,字符串,personal,0,30,30,,1 | 1 | 1
+Hero,HeroSkillUpgrade,英雄技能升级,ed_heroId,英雄id,字符串,personal,0,30,30,,1410 | 1410 | 1410
+Hero,HeroSkillUpgrade,英雄技能升级,ed_heroLevel,英雄等级,字符串,personal,0,30,30,,45 | 45 | 50
+Hero,HeroSkillUpgrade,英雄技能升级,ed_heroStar,英雄星级,字符串,personal,0,30,30,,15 | 15 | 13
+Hero,HeroSkillUpgrade,英雄技能升级,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 10
+Hero,HeroSkillUpgrade,英雄技能升级,ed_newSkillLevel,升级后技能等级,字符串,personal,0,30,30,,7 | 6 | 4
+Hero,HeroSkillUpgrade,英雄技能升级,ed_oldSkillLevel,升级前技能等级,字符串,personal,0,30,30,,6 | 5 | 3
+Hero,HeroSkillUpgrade,英雄技能升级,ed_skillId,升级的技能id,字符串,personal,0,30,30,,14102 | 14102 | 14102
+Hero,HeroStarUp,英雄升星,ed_heroId,英雄id,字符串,personal,0,30,30,,1404 | 1404 | 1404
+Hero,HeroStarUp,英雄升星,ed_heroLevel,英雄等级,字符串,personal,0,30,30,,45 | 45 | 45
+Hero,HeroStarUp,英雄升星,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+Hero,HeroStarUp,英雄升星,ed_newStar,升星后的英雄星级,字符串,personal,0,30,30,,4 | 5 | 3
+Task,DailyLivenessAdd,日常活跃度增加,ed_totalLiveness,当前总活跃度数量,字符串,personal,0,30,30,,180 | 140 | 130
+Task,DailyLivenessAdd,日常活跃度增加,ed_livenessCount,增加活跃度数量,字符串,personal,0,30,30,,10 | 10 | 10
+Task,DailyLivenessAdd,日常活跃度增加,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,23 | 9 | 9
+Task,DailyLivenessReward,领取日常活跃度宝箱奖励,ed_livenessId,活跃度id,字符串,personal,0,30,30,,3 | 3 | 2
+Task,DailyLivenessReward,领取日常活跃度宝箱奖励,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,13 | 9 | 13
+Task,ChapterTaskReward,领取章节总奖励,ed_chapterId,章节id,字符串,personal,0,30,30,,3 | 2 | 1
+Task,ChapterTaskReward,领取章节总奖励,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,5 | 3 | 2
+Task,TaskReward,任务奖励,ed_taskType,任务类型,字符串,personal,0,30,30,,2 | 800103 | 800104
+Task,TaskReward,任务奖励,ed_taskId,任务id,字符串,personal,0,30,30,,9832161 | 800103 | 800104
+Task,TaskReward,任务奖励,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+Task,TaskFinish,任务完成,ed_taskType,任务类型,字符串,personal,0,30,30,,2 | 2 | 2
+Task,TaskFinish,任务完成,ed_taskId,任务id,字符串,personal,0,30,30,,9832161 | 9832160 | 9832159
+Task,TaskFinish,任务完成,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+Army,TrainArmy,训练军队,ed_count,军队数量,字符串,personal,0,30,30,,435 | 441 | 375
+Army,TrainArmy,训练军队,ed_isInstant,是否立即完成,字符串,personal,0,30,30,,False | False | False
+Army,TrainArmy,训练军队,ed_armyId,军队id,字符串,personal,0,30,30,,401004 | 401004 | 401003
+Army,TrainArmy,训练军队,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,13 | 13 | 9
+Army,HealArmy,治疗军队,ed_isInstant,是否立即完成,字符串,personal,0,30,30,,False | False | False
+Army,HealArmy,治疗军队,ed_armyList,军队构成,字符串,personal,0,30,30,,"[{""soldier"": ""401003"", ""count"": ""6""}] | [{""soldier"": ""401003"", ""count"": ""4""}] | [{""soldier"": ""401003"", ""count"": ""6""}]"
+Army,HealArmy,治疗军队,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+Dungeon,DungeonEventStart,副本事件开始,eventId,副本事件id,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonEventStart,副本事件开始,dungeonGuid,副本唯一id,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonEventStart,副本事件开始,dungeonId,副本id,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonEventStart,副本事件开始,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+Dungeon,DungeonResult,探索副本结束,dungeonTimes,副本累计耗时（单位秒）,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonResult,探索副本结束,dungeonResult,副本结果,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonResult,探索副本结束,dungeonGuid,副本唯一id,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonResult,探索副本结束,dungeonId,副本id,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonResult,探索副本结束,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+Dungeon,DungeonEnter,探索副本进入,dungeonGuid,副本唯一id,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonEnter,探索副本进入,dungeonId,副本id,字符串,样本未发现,0,0,0,,
+Dungeon,DungeonEnter,探索副本进入,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+Popup,PopupShow,展示面板,ed_popupName,面板名称,字符串,personal,0,30,30,,hero_list_panel | recruit_panel | recruit_reward_panel
+Popup,PopupShow,展示面板,ed_popupExplain,面板参数说明,字符串,样本未发现,0,0,30,,
+Popup,PopupShow,展示面板,ed_isActive,是否主动触发,字符串,样本未发现,0,0,30,,
+Popup,PopupShow,展示面板,ed_pupupType,页面类型,字符串,personal,0,30,30,,-1 | -1 | -1
+Popup,PopupShow,展示面板,ed_popupSource,页面跳转来源,字符串,样本未发现,0,0,30,,
+Popup,PopupShow,展示面板,ed_mainBuildingLevel,大本等级,数字,personal,0,30,30,,9 | 9 | 9
+Login,DownLoadDataTableRet,下载数据表返回,ed_isSuccess,返回结果,字符串,样本未发现,0,0,0,,
+Login,DownLoadDataTableRet,下载数据表返回,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,
+Login,DownLoadGameSceneRet,下载场景返回,ed_isSuccess,返回结果,字符串,样本未发现,0,0,0,,
+Login,DownLoadGameSceneRet,下载场景返回,ed_mainBuildingLevel,大本等级,数字,样本未发现,0,0,0,,

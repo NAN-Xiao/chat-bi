@@ -203,6 +203,48 @@ def test_default_history_loading_uses_cached_data_without_executing_sql(monkeypa
     assert chat_info.records[0]["predict_data"] == [{"day": "2026-07-01", "revenue": 14.0}]
 
 
+def test_lightweight_history_loading_omits_cached_data_and_skips_heavy_projection(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：验证轻量历史详情只返回记录元信息，把图表数据交给前端逐条后台加载。
+    """
+
+    def _unexpected_live_requirement(*_args, **_kwargs):
+        raise AssertionError("轻量历史加载不应做行权限实时数据判定")
+
+    def _unexpected_projection(*_args, **_kwargs):
+        raise AssertionError("轻量历史加载不应做保存结果投影清洗")
+
+    monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        chat_crud,
+        "_record_requires_live_data_for_current_permissions",
+        _unexpected_live_requirement,
+    )
+    monkeypatch.setattr(
+        chat_crud,
+        "_source_record_requires_live_data_for_current_permissions",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(chat_crud, "_saved_record_missing_event_projection", _unexpected_projection)
+
+    chat_info = chat_crud.get_chat_with_records(
+        session=_FakeSession(),
+        chart_id=8001,
+        current_user=_user(),
+        current_assistant=None,
+        with_data=False,
+        include_record_data=False,
+    )
+
+    assert len(chat_info.records) == 1
+    assert chat_info.records[0]["chart"] == '{"type":"line"}'
+    assert chat_info.records[0]["data"] is None
+    assert chat_info.records[0]["predict_data"] is None
+
+
 def test_history_loading_scrubs_cached_data_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：验证当前用户命中任意数据权限时，默认历史详情不会返回旧快照数据。

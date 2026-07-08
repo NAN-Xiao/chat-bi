@@ -253,6 +253,7 @@ class TenantTrackingTableBase(BaseModel):
     table_role: Optional[str] = Field(default=None, max_length=64)
     aliases: list[str] = Field(default_factory=list)
     ai_notes: Optional[str] = Field(default=None, max_length=4000)
+    extra_properties: dict[str, Any] = Field(default_factory=dict)
 
 
 class TenantTrackingTableDTO(TenantTrackingTableBase):
@@ -287,6 +288,7 @@ class TenantTrackingFieldBase(BaseModel):
     required: bool = False
     example_values: list[Any] = Field(default_factory=list)
     ai_notes: Optional[str] = Field(default=None, max_length=4000)
+    extra_properties: dict[str, Any] = Field(default_factory=dict)
 
 
 class TenantTrackingFieldDTO(TenantTrackingFieldBase):

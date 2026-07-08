@@ -5,6 +5,7 @@ import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
 import { promptApi } from '@/api/prompt'
 import { modelApi } from '@/api/system'
+import { cachedRequest, clearRequestCache } from '@/utils/requestDedupe'
 import icon_ai from '@/assets/svg/icon_ai.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
@@ -97,6 +98,7 @@ const usablePromptTypes = computed(() => {
 })
 
 const canCreateAgent = computed(() => true)
+const AGENT_SELECTOR_CACHE_PREFIX = 'agent-selector:'
 
 const selectedAgent = computed(() =>
   agentList.value.find((item) => String(item.id) === String(props.modelValue))
@@ -178,6 +180,9 @@ const buildListQuery = () => {
   return query ? `?${query}` : ''
 }
 
+const buildAgentsCacheKey = (query: string) =>
+  `${AGENT_SELECTOR_CACHE_PREFIX}${usablePromptTypes.value.join(',')}|${props.targetScope}|${query}`
+
 const selectAgent = (value: string | number | null) => {
   emit('update:modelValue', value)
   emit('change', value)
@@ -194,9 +199,11 @@ const loadAgents = async () => {
   loading.value = true
   try {
     const query = buildListQuery()
-    const responses = await Promise.all(
-      usablePromptTypes.value.map((type) =>
-        promptApi.getList(1, 100, type, query).catch(() => ({ data: [] }))
+    const responses = await cachedRequest(buildAgentsCacheKey(query), () =>
+      Promise.all(
+        usablePromptTypes.value.map((type) =>
+          promptApi.getList(1, 100, type, query).catch(() => ({ data: [] }))
+        )
       )
     )
     agentList.value = responses
@@ -274,6 +281,7 @@ const saveAgent = () => {
       .then(() => {
         ElMessage.success(t('common.save_success'))
         closeAgentForm()
+        clearRequestCache(AGENT_SELECTOR_CACHE_PREFIX)
         loadAgents()
         emit('saved')
       })

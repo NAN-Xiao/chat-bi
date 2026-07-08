@@ -212,6 +212,56 @@ def _sheet_rows(workbook_bytes: bytes, sheet_name: str) -> list[tuple[object, ..
     return list(sheet.iter_rows(min_row=2, values_only=True))
 
 
+def test_excel_unknown_columns_roundtrip_as_extra_properties() -> None:
+    """
+    是什么：验证数据字典 Excel 中未被系统识别的扩展列，导入后会保留并在导出时还原。
+    """
+    workbook_bytes = tracking_config_excel(_tracking_config(), physical_schema=_physical_schema()).getvalue()
+    workbook = load_workbook(BytesIO(workbook_bytes))
+
+    table_sheet = workbook["_表映射"]
+    table_extra_col = table_sheet.max_column + 1
+    table_sheet.cell(1, table_extra_col).value = "扩展_负责人"
+    for row_index in range(2, table_sheet.max_row + 1):
+        if table_sheet.cell(row_index, 2).value == "event_log":
+            table_sheet.cell(row_index, table_extra_col).value = "数仓团队"
+            break
+
+    field_sheet = workbook["event_log"]
+    field_extra_col = field_sheet.max_column + 1
+    field_sheet.cell(1, field_extra_col).value = "扩展_业务线"
+    for row_index in range(2, field_sheet.max_row + 1):
+        if field_sheet.cell(row_index, 2).value == "event_props.amount":
+            field_sheet.cell(row_index, field_extra_col).value = "商业化"
+            break
+
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_physical_schema(),
+        datasource_type="postgresql",
+    )
+
+    table = next(item for item in parsed.editor.tables if item.table_name == "event_log")
+    field = next(item for item in parsed.editor.fields if item.table_name == "event_log" and item.field_name == "event_props.amount")
+    assert table.extra_properties == {"扩展_负责人": "数仓团队"}
+    assert field.extra_properties == {"扩展_业务线": "商业化"}
+
+    exported = tracking_config_excel(parsed.editor, physical_schema=_physical_schema()).getvalue()
+    table_headers = _headers(exported, "_表映射")
+    field_headers = _headers(exported, "event_log")
+    assert table_headers[-1] == "扩展_负责人"
+    assert field_headers[-1] == "扩展_业务线"
+
+    table_owner_index = table_headers.index("扩展_负责人")
+    field_domain_index = field_headers.index("扩展_业务线")
+    assert any(row[1] == "event_log" and row[table_owner_index] == "数仓团队" for row in _sheet_rows(exported, "_表映射"))
+    assert any(row[1] == "event_props.amount" and row[field_domain_index] == "商业化" for row in _sheet_rows(exported, "event_log"))
+
+
 LEGACY_BUSINESS_HEADERS = [
     "row_type",
     "field_name",
@@ -487,6 +537,45 @@ def test_event_parameter_mapping_compact_rows_inherit_event_context() -> None:
     assert [prop["property_name"] for prop in props] == ["ext.achievement_id", "ext.achievement_type"]
     assert props[1]["property_display_name"] == "成就类型"
     assert props[1]["json_path"] == "$.achievement_type"
+    assert not parsed.warnings
+
+
+def test_event_parameter_mapping_compact_rows_inherit_source_field() -> None:
+    """
+    是什么：验证“事件参数对照”中同一事件的紧凑属性行，会继承上一行的数据源字段。
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "事件参数对照"
+    sheet.append([
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "采集端",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ])
+    sheet.append(["ServerPayLog", "后端充值", "", "Pay", "", "personal", "orderId", "订单ID", "文本", "订单ID"])
+    sheet.append(["", "", "", "", "", "", "money", "金额", "数值", "金额"])
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_event_user_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    event = next(item for item in parsed.editor.event_name_mappings if isinstance(item, dict) and item.get("event_name") == "ServerPayLog")
+    props = event["properties"]
+    assert [prop["property_name"] for prop in props] == ["personal.orderId", "personal.money"]
+    assert [prop["source_field"] for prop in props] == ["personal", "personal"]
+    assert [prop["json_path"] for prop in props] == ["$.orderId", "$.money"]
     assert not parsed.warnings
 
 

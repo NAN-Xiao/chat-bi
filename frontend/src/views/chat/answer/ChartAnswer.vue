@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import BusinessNotice from '@/views/chat/BusinessNotice.vue'
 import JSONBig from 'json-bigint'
 import { parseSseChunk } from '@/utils/sse'
+import {
+  hasStoredFinalAnswer,
+  shouldLookupRecordTask,
+  shouldRefreshRecordAfterNoActiveTask,
+  shouldRestoreWhenAnswerRecordChanges,
+  shouldUseRememberedTask,
+} from './taskRestore'
+import { buildSmartQaTaskKey, smartQaTaskStore } from './smartQaTaskStore'
 
 const props = withDefaults(
   defineProps<{
@@ -16,6 +24,7 @@ const props = withDefaults(
     currentChat?: ChatInfo
     message?: ChatMessage
     loading?: boolean
+    deferDataLoading?: boolean
     reasoningName: 'sql_answer' | 'chart_answer' | Array<'sql_answer' | 'chart_answer'>
   }>(),
   {
@@ -25,6 +34,7 @@ const props = withDefaults(
     currentChat: () => new ChatInfo(),
     message: undefined,
     loading: false,
+    deferDataLoading: false,
   }
 )
 
@@ -89,8 +99,8 @@ const stopFlag = ref(false)
 const restoringTask = ref(false)
 const finalAnswerReady = ref(!!(props.message?.record?.finish || props.message?.record?.finish_time))
 const POLL_INTERVAL_MS = 1000
-const EMPTY_EVENT_REFRESH_ROUNDS = 3
 const activeTaskStoragePrefix = 'chat.smartQa.activeTask.'
+const notifiedFinishRecordIds = new Set<number>()
 
 const showFinalAnswer = computed(() => {
   const record = props.message?.record
@@ -111,8 +121,28 @@ interface ActiveTaskState {
   offset: number
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
+function tenantTaskScope(record?: ChatRecord) {
+  return (
+    (record as any)?.tenant_id ||
+    (_currentChat.value as any)?.tenant_id ||
+    'default'
+  )
+}
+
+function taskKey(record: ChatRecord) {
+  return buildSmartQaTaskKey({
+    tenantId: tenantTaskScope(record),
+    chatId: _currentChatId.value || record.chat_id,
+    recordId: record.id,
+  })
+}
+
+function emitFinishOnce(recordId?: number) {
+  if (!recordId || notifiedFinishRecordIds.has(recordId)) {
+    return
+  }
+  notifiedFinishRecordIds.add(recordId)
+  emits('finish', recordId)
 }
 
 function normalizeTaskError(error?: unknown) {
@@ -150,19 +180,6 @@ function failCurrentRecord(currentRecord: ChatRecord, error?: unknown) {
   emits('error', currentRecord.id)
 }
 
-function hasStoredFinalAnswer(record?: ChatRecord) {
-  return !!(
-    record?.finish ||
-    record?.finish_time ||
-    record?.error ||
-    record?.stopped ||
-    record?.local_answer ||
-    record?.analysis ||
-    record?.predict ||
-    record?.predict_content
-  )
-}
-
 function activeTaskStorageKey(record: ChatRecord) {
   const chatId = record.chat_id || _currentChatId.value || 'unknown'
   const recordId = record.id || record.create_time || record.question || index.value
@@ -177,10 +194,6 @@ function rememberActiveTask(record: ChatRecord, taskId: string, offset = 0) {
       offset,
     })
   )
-}
-
-function forgetActiveTask(record: ChatRecord) {
-  sessionStorage.removeItem(activeTaskStorageKey(record))
 }
 
 function clearCurrentTask(record: ChatRecord) {
@@ -221,15 +234,19 @@ function rememberedActiveTask(record: ChatRecord): ActiveTaskState | undefined {
 }
 
 async function resolveActiveTask(record: ChatRecord): Promise<ActiveTaskState | undefined> {
+  if (!shouldUseRememberedTask(record)) {
+    return undefined
+  }
   const remembered = rememberedActiveTask(record)
   if (remembered) {
     return remembered
   }
-  if (!record.id || hasStoredFinalAnswer(record)) {
+  const recordId = record.id
+  if (!shouldLookupRecordTask(record) || recordId === undefined) {
     return undefined
   }
 
-  const recordTask = await questionApi.getRecordTask(record.id)
+  const recordTask = await questionApi.getRecordTask(recordId)
   if (!recordTask?.task_id || ['succeeded', 'failed'].includes(recordTask.status)) {
     return undefined
   }
@@ -328,7 +345,7 @@ async function handlePayload(
       _currentChat.value.records[index.value].finish = true
       await markFinalAnswerReady()
       clearCurrentTask(currentRecord)
-      emits('finish', currentRecord.id)
+      emitFinishOnce(currentRecord.id)
       break
   }
   await nextTick()
@@ -362,101 +379,6 @@ async function refreshCurrentRecord(recordId?: number) {
   }
 }
 
-async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initialOffset = 0) {
-  const state = {
-    sql_answer: _currentChat.value.records[index.value].sql_answer || '',
-    chart_answer: _currentChat.value.records[index.value].chart_answer || '',
-    analysis: _currentChat.value.records[index.value].analysis || '',
-    analysis_thinking: _currentChat.value.records[index.value].analysis_thinking || '',
-  }
-  let offset = initialOffset
-  let emptyEventRounds = 0
-
-  while (true) {
-    if (stopFlag.value) {
-      break
-    }
-
-    let eventPage
-    try {
-      eventPage = await questionApi.getTaskEvents(taskId, offset)
-    } catch (error) {
-      forgetActiveTask(currentRecord)
-      failCurrentRecord(currentRecord, error)
-      break
-    }
-    offset = eventPage.next_offset ?? offset
-    rememberActiveTask(currentRecord, taskId, offset)
-    const events = eventPage.events || []
-    if (events.length > 0) {
-      emptyEventRounds = 0
-    } else {
-      emptyEventRounds += 1
-    }
-    for (const eventChunk of events) {
-      const parsed = parseSseChunk('', eventChunk)
-      for (const payload of parsed.payloads) {
-        await handlePayload(payload, currentRecord, state)
-      }
-    }
-
-    if (['succeeded', 'failed'].includes(eventPage.status)) {
-      forgetActiveTask(currentRecord)
-      if (currentRecord.error || _currentChat.value.records[index.value]?.error) {
-        failCurrentRecord(currentRecord, currentRecord.error || _currentChat.value.records[index.value]?.error)
-      } else if (eventPage.status === 'failed') {
-        if (!currentRecord.error) {
-          failCurrentRecord(currentRecord, eventPage.error)
-        } else {
-          _loading.value = false
-        }
-      } else if (eventPage.status === 'succeeded') {
-        const finishAlreadyNotified =
-          currentRecord.finish || _currentChat.value.records[index.value]?.finish
-        currentRecord.finish = true
-        _currentChat.value.records[index.value].finish = true
-        await markFinalAnswerReady()
-        clearCurrentTask(currentRecord)
-        await refreshCurrentRecord(currentRecord.id)
-        getChatData(currentRecord.id)
-        if (!finishAlreadyNotified) {
-          emits('finish', currentRecord.id)
-        }
-      }
-      _loading.value = false
-      break
-    }
-
-    if (emptyEventRounds >= EMPTY_EVENT_REFRESH_ROUNDS) {
-      emptyEventRounds = 0
-      const refreshed = await refreshCurrentRecord(currentRecord.id)
-      const latestRecord = _currentChat.value.records[index.value]
-      if (refreshed && latestRecord?.error) {
-        forgetActiveTask(currentRecord)
-        failCurrentRecord(currentRecord, latestRecord.error)
-        break
-      }
-      if (refreshed && hasStoredFinalAnswer(latestRecord)) {
-        forgetActiveTask(currentRecord)
-        if (latestRecord?.finish || latestRecord?.finish_time) {
-          await markFinalAnswerReady()
-        }
-        clearCurrentTask(currentRecord)
-        _loading.value = false
-        if (latestRecord?.id) {
-          getChatData(latestRecord.id)
-        }
-        if (latestRecord?.finish) {
-          emits('finish', latestRecord.id)
-        }
-        break
-      }
-    }
-
-    await sleep(POLL_INTERVAL_MS)
-  }
-}
-
 const sendMessage = async () => {
   stopFlag.value = false
   finalAnswerReady.value = false
@@ -483,7 +405,7 @@ const sendMessage = async () => {
     if (currentRecord.task_id) {
       finalAnswerReady.value = false
       rememberActiveTask(currentRecord, currentRecord.task_id)
-      await pollQuestionTask(currentRecord.task_id, currentRecord)
+      attachGlobalTask(currentRecord, currentRecord.task_id)
       return
     }
 
@@ -502,7 +424,7 @@ const sendMessage = async () => {
     _currentChat.value.records[index.value].task_id = task.task_id
     finalAnswerReady.value = false
     rememberActiveTask(currentRecord, task.task_id)
-    await pollQuestionTask(task.task_id, currentRecord)
+    attachGlobalTask(currentRecord, task.task_id)
   } catch (error) {
     if (!currentRecord.error) {
       currentRecord.error = ''
@@ -549,19 +471,25 @@ function hasRecordData(record?: ChatRecord) {
   return Array.isArray(record.data?.data) && record.data.data.length > 0
 }
 
-function getChatData(recordId?: number) {
+function loadChartData(recordId?: number, isStale?: () => boolean) {
   if (!recordId) {
-    return
+    return Promise.resolve()
+  }
+  if (isStale?.()) {
+    return Promise.resolve()
   }
   const currentRecord = _currentChat.value.records.find((record) => record.id === recordId)
   if (hasRecordData(currentRecord)) {
-    return
+    return Promise.resolve()
   }
 
   loadingData.value = true
-  chatApi
+  return chatApi
     .get_chart_data(recordId)
     .then((response) => {
+      if (isStale?.()) {
+        return
+      }
       _currentChat.value.records.forEach((record) => {
         if (record.id === recordId) {
           record.data = response
@@ -579,13 +507,98 @@ function getChatData(recordId?: number) {
     })
 }
 
+function getChatData(recordId?: number) {
+  void loadChartData(recordId)
+}
+
+function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffset = 0) {
+  smartQaTaskStore.configure({
+    pollIntervalMs: POLL_INTERVAL_MS,
+    getTaskEvents: questionApi.getTaskEvents,
+  })
+  const taskState = {
+    sql_answer: currentRecord.sql_answer || '',
+    chart_answer: currentRecord.chart_answer || '',
+    analysis: currentRecord.analysis || '',
+    analysis_thinking: currentRecord.analysis_thinking || '',
+  }
+  const entry = smartQaTaskStore.ensureTask({
+    tenantId: tenantTaskScope(currentRecord),
+    chatId: _currentChatId.value || currentRecord.chat_id,
+    record: currentRecord,
+    taskId,
+    offset: initialOffset,
+    callbacks: {
+      onEvents: async ({ events }) => {
+        for (const eventChunk of events) {
+          const parsed = parseSseChunk('', eventChunk)
+          for (const payload of parsed.payloads) {
+            await handlePayload(payload, currentRecord, taskState)
+          }
+        }
+      },
+      refreshRecord: async ({ record }) => {
+        await refreshCurrentRecord(Number(record.id || currentRecord.id))
+        const latestRecord = _currentChat.value.records[index.value]
+        if (latestRecord?.finish || latestRecord?.finish_time) {
+          await markFinalAnswerReady()
+        }
+        if (latestRecord) {
+          clearCurrentTask(latestRecord)
+        }
+      },
+      loadRecordData: async ({ record }) => {
+        const recordId = Number(record.id || currentRecord.id)
+        if (recordId) {
+          await loadChartData(recordId)
+        }
+      },
+      onFinish: async ({ record }) => {
+        _loading.value = false
+        await markFinalAnswerReady()
+        emitFinishOnce(Number(record.id || currentRecord.id))
+      },
+      onError: ({ error }) => {
+        _loading.value = false
+        failCurrentRecord(currentRecord, error)
+      },
+    },
+  })
+  if (entry) {
+    _loading.value = true
+    if (currentRecord.id) {
+      void refreshCurrentRecord(currentRecord.id).then(async (refreshed) => {
+        const latestRecord = _currentChat.value.records[index.value]
+        if (refreshed && latestRecord && hasStoredFinalAnswer(latestRecord)) {
+          if (latestRecord.finish || latestRecord.finish_time) {
+            await markFinalAnswerReady()
+          }
+          clearCurrentTask(latestRecord)
+          _loading.value = false
+          if (latestRecord.id && latestRecord.chart && !hasRecordData(latestRecord)) {
+            getChatData(latestRecord.id)
+          }
+        }
+      })
+    }
+  }
+  return entry
+}
+
 function stop() {
+  const record = props.message?.record
+  if (record) {
+    smartQaTaskStore.pauseTask(taskKey(record))
+  }
   pausePolling()
   emits('stop')
 }
 
 onBeforeUnmount(() => {
-  pausePolling()
+  const record = props.message?.record
+  if (record) {
+    smartQaTaskStore.detachTaskCallbacks(taskKey(record))
+  }
 })
 
 async function restoreRecordTask() {
@@ -597,7 +610,7 @@ async function restoreRecordTask() {
     return
   }
   if (hasStoredFinalAnswer(record)) {
-    if (record.id && record.chart && !hasRecordData(record)) {
+    if (!props.deferDataLoading && record.id && record.chart && !hasRecordData(record)) {
       getChatData(record.id)
     }
     return
@@ -610,7 +623,11 @@ async function restoreRecordTask() {
       finalAnswerReady.value = false
       _loading.value = true
       record.task_id = activeTask.task_id
-      await pollQuestionTask(activeTask.task_id, record, activeTask.offset)
+      attachGlobalTask(record, activeTask.task_id, activeTask.offset)
+      return
+    }
+
+    if (!shouldRefreshRecordAfterNoActiveTask(record)) {
       return
     }
 
@@ -645,7 +662,17 @@ onMounted(() => {
   restoreRecordTask()
 })
 
-defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask })
+watch(
+  () => props.message?.record,
+  (record, previousRecord) => {
+    if (shouldRestoreWhenAnswerRecordChanges(previousRecord, record)) {
+      void restoreRecordTask()
+    }
+  },
+  { flush: 'post' }
+)
+
+defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask, loadChartData })
 </script>
 
 <template>
