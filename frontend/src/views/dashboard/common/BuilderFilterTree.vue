@@ -159,8 +159,10 @@ function isGroup(node: FilterNode) {
             size="small"
             clearable
             placeholder="手动输入筛选值"
+            @beforeinput.stop
             @keydown.stop
             @keyup.stop
+            @paste.stop
           />
           <el-button text class="builder-remove-button" @click="removeNode(nodes, index)">
             <el-icon><Delete /></el-icon>

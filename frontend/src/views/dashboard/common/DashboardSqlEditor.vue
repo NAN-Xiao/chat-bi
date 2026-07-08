@@ -226,7 +226,6 @@ const sqlBuilder = reactive({
   globalFilters: [] as SqlBuilderFilter[],
   globalFilterLogic: 'and' as SqlBuilderFilterLogic,
   approximate: false,
-  aiIntent: '',
 })
 const builderAgentAdvice = reactive({
   visible: false,
@@ -986,7 +985,7 @@ function addCalculatedMetricItem() {
   const item = emptyCalculatedMetricItem()
   item.pendingMetricId = options[0]?.value || ''
   item.pendingEventField = analysisFieldOptions.value[0]?.value || ''
-  item.pendingMetricField = schemaFieldOptions.value.find((field) => field.category === 'number')?.value || item.pendingEventField
+  item.pendingMetricField = defaultMetricFieldForEvent(item.pendingEventField)
   item.alias = sqlBuilder.calculatedMetrics.length ? `自定义指标${sqlBuilder.calculatedMetrics.length + 1}` : '自定义指标'
   sqlBuilder.calculatedMetrics.push(item)
   activeFormulaMetricId.value = item.id
@@ -1047,12 +1046,12 @@ function formulaAtomicMetricKey(item: SqlBuilderCalculatedMetricItem, tokenIndex
   return `${item.id}:${tokenIndex}`
 }
 
-function syncFormulaAtomicMetric(metric: FormulaAtomicMetric) {
+function syncFormulaAtomicMetric(metric: FormulaAtomicMetric, resetMetric = false) {
   metric.aggregation = metric.aggregation || 'count'
   if (metric.aggregation === 'count') {
     metric.metric = metric.field
-  } else if (!metric.metric) {
-    metric.metric = schemaFieldOptions.value.find((option) => option.category === 'number')?.value || metric.field
+  } else if (resetMetric || !metric.metric || metric.metric === metric.field || fieldOptionByValue(metric.metric)?.kind === 'tracking-event') {
+    metric.metric = defaultMetricFieldForEvent(metric.field)
   }
   metric.label = formulaAtomicMetricLabel(metric)
   if (!metric.alias) {
@@ -1082,7 +1081,7 @@ function buildPendingFormulaAtomicMetric(item: SqlBuilderCalculatedMetricItem): 
   const aggregation = item.pendingAggregation || 'count'
   const metricField = aggregation === 'count'
     ? field
-    : item.pendingMetricField || schemaFieldOptions.value.find((option) => option.category === 'number')?.value || field
+    : item.pendingMetricField || defaultMetricFieldForEvent(field)
   const alias = sqlAlias(formulaAtomicMetricLabel({
     id: 'preview',
     field,
@@ -1295,7 +1294,6 @@ function resetSqlBuilderState() {
   sqlBuilder.globalFilters = []
   sqlBuilder.globalFilterLogic = 'and'
   sqlBuilder.approximate = false
-  sqlBuilder.aiIntent = ''
   clearBuilderAgentAdvice()
 }
 
@@ -1408,7 +1406,7 @@ function shouldHideBuilderAdviceItem(text: string, type: 'issue' | 'suggestion')
   if (/分组项.*(\b\w+\.(?:time|dt)\b|事件时间|时间字段|按天|按周|按月)|时间.*分组项|分组项.*时间/i.test(value)) {
     return true
   }
-  if (type === 'suggestion' && !/(时间范围|分析指标|筛选条件|分组项|生成意图|字段选|聚合选|别名填|条件选|值填|值输入框|手动填|添加|改成)/.test(value)) {
+  if (type === 'suggestion' && !/(时间范围|分析指标|筛选条件|分组项|字段选|聚合选|别名填|条件选|值填|值输入框|手动填|添加|改成)/.test(value)) {
     return true
   }
   if (type === 'issue' && /表格无分组维度|仅显示时间.*指标|无法按天|分组维度/i.test(value)) {
@@ -1676,7 +1674,6 @@ function builderConfigForSave() {
     globalFilters: compactBuilderFilters(sqlBuilder.globalFilters),
     globalFilterLogic: builderLogic(sqlBuilder.globalFilterLogic),
     approximate: sqlBuilder.approximate === true,
-    aiIntent: sqlBuilder.aiIntent || '',
     agentAdvice: builderAgentAdviceForSave(),
   }
 }
@@ -1741,7 +1738,6 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.globalFilters = restoreBuilderFilters(value.globalFilters)
   sqlBuilder.globalFilterLogic = builderLogic(value.globalFilterLogic)
   sqlBuilder.approximate = value.approximate === true
-  sqlBuilder.aiIntent = typeof value.aiIntent === 'string' ? value.aiIntent : ''
   restoreBuilderAgentAdvice(value.agentAdvice)
 }
 
@@ -1825,6 +1821,28 @@ function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
   return trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
 }
 
+function metricMeasureFieldOptions(item: Pick<SqlBuilderMetricItem, 'field'>) {
+  const eventOption = fieldOptionByValue(item.field)
+  if (eventOption?.kind === 'tracking-event' && eventOption.eventName) {
+    const eventProperties = trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
+    if (eventProperties.length) {
+      return eventProperties
+    }
+  }
+  return builderFieldOptions.value
+}
+
+function isNumberMetricFieldOption(option: SchemaFieldOption) {
+  return builderFieldCategory(
+    option.semanticType || option.type || option.category || option.propertyType || '',
+    option.field || option.propertyName || option.value || ''
+  ) === 'number'
+}
+
+function defaultMetricFieldForEvent(field: string) {
+  return metricMeasureFieldOptions({ field }).find(isNumberMetricFieldOption)?.value || ''
+}
+
 function recommendedMetricAlias(item: SqlBuilderMetricItem, index: number) {
   const alias = metricOutputAlias(item, index)
   if (!/^指标\d+$/.test(alias)) {
@@ -1845,10 +1863,6 @@ function describeBuilderMetricConfig(item: SqlBuilderMetricItem, index: number, 
 }
 
 function inferBuilderIntentText() {
-  const explicitIntent = String(sqlBuilder.aiIntent || '').trim()
-  if (explicitIntent) {
-    return explicitIntent
-  }
   const metrics = sqlBuilder.metricItems
     .map((item, index) => metricOutputAlias(item, index))
     .filter(Boolean)
@@ -2216,7 +2230,7 @@ function collectLocalBuilderConfigIssues() {
   const selectedTables = unique(selectedOptions.map((item) => item.table).filter(Boolean))
   if (selectedTables.length > 1) {
     issues.push(`跨表了：当前同时用了 ${selectedTables.join('、')}。`)
-    suggestions.push(`先选一个主表：时间范围和分析指标都改到 ${selectedTables[0]} 表；确实跨表就在“生成意图”写：按哪个字段 JOIN、按哪个日期对齐。`)
+    suggestions.push(`先选一个主表：时间范围和分析指标都改到 ${selectedTables[0]} 表；需要跨表时先在数据模型或语义配置里补充明确关联关系。`)
   }
   const timeOption = fieldOptionByValue(sqlBuilder.timeField)
   if (timeOption && selectedTables.length > 1 && !selectedTables.every((table) => table === timeOption.table)) {
@@ -2378,7 +2392,7 @@ async function generateBuilderAiSql() {
     await setLoadingPhase('正在生成建议')
     result = await dashboardApi.generate_ai_sql({
       datasource: props.viewInfo.datasource,
-      intent: sqlBuilder.aiIntent,
+      intent: '',
       chart_type: form.chartType,
       title: form.title,
       context: collectBuilderAiContext(),
@@ -4334,7 +4348,7 @@ function closeDrawer() {
                       <BuilderFieldPicker
                         v-if="item.aggregation !== 'count'"
                         v-model="item.metric"
-                        :options="builderFieldOptions"
+                        :options="metricMeasureFieldOptions(item)"
                         :loading="schemaLoading"
                         mode="metric"
                         placeholder="计算字段"
@@ -4456,7 +4470,7 @@ function closeDrawer() {
                                       :loading="schemaLoading"
                                       :mode="analysisFieldPickerMode"
                                       :placeholder="formulaFieldPickerPlaceholder"
-                                      @update:modelValue="syncFormulaAtomicMetric(token.metric)"
+                                      @update:modelValue="syncFormulaAtomicMetric(token.metric, true)"
                                     />
                                     <button
                                       type="button"
@@ -4484,7 +4498,7 @@ function closeDrawer() {
                                     <BuilderFieldPicker
                                       v-if="token.metric.aggregation !== 'count'"
                                       v-model="token.metric.metric"
-                                      :options="builderFieldOptions"
+                                      :options="metricMeasureFieldOptions(token.metric as any)"
                                       :loading="schemaLoading"
                                       mode="metric"
                                       placeholder="计算字段"
@@ -4658,23 +4672,6 @@ function closeDrawer() {
                 </div>
                 <div v-if="!sqlBuilder.groups.length" class="builder-empty">暂无分组项</div>
               </div>
-            </section>
-
-            <section class="builder-section">
-              <div class="builder-section-head">
-                <div class="builder-section-title">
-                  <BuilderSectionIcon class="builder-section-icon" />
-                  <span>生成意图</span>
-                </div>
-              </div>
-              <el-input
-                v-model="sqlBuilder.aiIntent"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
-                placeholder="补充业务口径或想看的结论"
-                @keydown.stop
-                @keyup.stop
-              />
             </section>
 
             </div>

@@ -159,6 +159,88 @@ def test_dashboard_prompt_requires_tracking_event_prefilter_for_multiple_event_m
     assert "收窄扫描范围" in prompt
 
 
+def test_dashboard_prompt_treats_event_metric_filters_as_optional() -> None:
+    """
+    是什么：事件指标没有筛选条件也是合法配置，不能要求每个事件都补筛选。
+    """
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            intent="看 DAU",
+            chart_type="line",
+            context={
+                "metrics": [],
+                "formulaMetrics": [
+                    {
+                        "id": "f1",
+                        "alias": "DAU",
+                        "decimalPlaces": 2,
+                        "tokens": [
+                            {
+                                "type": "atomicMetric",
+                                "metric": {
+                                    "field": {
+                                        "kind": "tracking-event",
+                                        "eventTable": "event",
+                                        "eventNameField": "event",
+                                        "eventName": "UserActive",
+                                    },
+                                    "aggregation": "count_distinct",
+                                    "metric": {"table": "event", "field": "uid"},
+                                    "filters": {"logic": "and", "rules": []},
+                                },
+                            }
+                        ],
+                    }
+                ],
+                "groups": [{"field": {"table": "event", "field": "country"}}],
+                "filters": {},
+                "selectedFields": [],
+            },
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
+        data_skill="",
+        tracking_config="",
+    )
+
+    assert "指标内筛选 rules 是可选配置" in prompt
+    assert "没有 rules" in prompt
+    assert "不要要求补筛选条件" in prompt
+    assert "不要生成空 WHERE" in prompt
+
+
+def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:
+    """
+    是什么：手动图表 SQL 生成提示词要把复杂分析优先引导为 CTE 分层结构。
+    """
+    prompt = ai_sql_generator._dashboard_sql_system_prompt() + "\n" + ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            intent="按渠道看新增留存",
+            chart_type="table",
+            context={
+                "time": {"field": {"table": "users", "field": "created_at"}, "grain": "day", "range": "过去30天"},
+                "metrics": [{"alias": "用户注册用户数", "aggregation": "count_distinct"}],
+                "groups": [{"field": {"table": "users", "field": "channel"}}],
+                "filters": {},
+                "selectedFields": [],
+            },
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="postgresql", type_name="PostgreSQL"),
+        data_skill="",
+        tracking_config="",
+    )
+
+    assert "复杂分析" in prompt
+    assert "CTE" in prompt
+    assert "bounds" in prompt
+    assert "cohort" in prompt
+    assert "behavior" in prompt
+    assert "matched" in prompt
+    assert "aggregated" in prompt
+    assert "成熟窗口" in prompt
+
+
 def test_understand_config_marks_fallback_when_llm_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：理解节点失败时，把降级状态写入 config_summary，供后续诊断感知。
