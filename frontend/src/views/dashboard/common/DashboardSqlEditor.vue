@@ -4390,13 +4390,8 @@ function closeDrawer() {
                   class="metric-item formula-metric-item"
                   @click.stop
                 >
-                  <div class="formula-drag-handle" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                    <span />
+                  <div class="metric-index formula-metric-index">
+                    {{ sqlBuilder.metricItems.length + index + 1 }}
                   </div>
                   <div class="metric-body">
                     <div class="formula-metric-head">
@@ -5525,25 +5520,6 @@ function closeDrawer() {
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-}
-
-.formula-drag-handle {
-  width: 24px;
-  min-height: 28px;
-  display: grid;
-  grid-template-columns: repeat(2, 3px);
-  grid-auto-rows: 3px;
-  align-content: center;
-  justify-content: center;
-  gap: 4px;
-  color: #8f959e;
-}
-
-.formula-drag-handle span {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 .metric-body {

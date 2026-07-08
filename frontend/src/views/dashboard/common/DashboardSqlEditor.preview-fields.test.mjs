@@ -276,6 +276,11 @@ assert.match(
   '公式指标应使用紧凑头部展示名称、精度和操作入口'
 )
 assert.match(
+  source.match(/class="metric-item formula-metric-item"[\s\S]*?<div class="metric-body">/)?.[0] || '',
+  /class="metric-index formula-metric-index"[\s\S]*sqlBuilder\.metricItems\.length \+ index \+ 1/,
+  '公式指标左侧应延续普通分析指标序号，形成 1、2、3 的连续排列'
+)
+assert.match(
   source,
   /class="formula-decimal-pill"/,
   '公式指标小数位应像 ThinkingData 一样显示为头部 pill'
