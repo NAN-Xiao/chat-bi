@@ -124,7 +124,8 @@ const moveForm = reactive({
 })
 let reportStreamBuffer = ''
 const isPreviewSingleChart = computed(
-  () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
+  () =>
+    props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
 )
 const emptyCurrentViewInfo = computed(() => ({
   id: props.configItem?.id,
@@ -142,7 +143,9 @@ const emptyCurrentViewInfo = computed(() => ({
   loadingProgress: 0,
   refreshState: '',
 }))
-const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || emptyCurrentViewInfo.value)
+const currentViewInfo = computed(
+  () => props.canvasViewInfo?.[props.configItem.id] || emptyCurrentViewInfo.value
+)
 const currentChartType = computed(() => {
   const chart = currentViewInfo.value?.chart || {}
   return chart.type || chart.sourceType || 'table'
@@ -434,12 +437,29 @@ function refreshReportPromptHistory() {
   reportPromptHistory.value = loadReportPromptHistory(window.localStorage)
 }
 
-function rememberReportPrompt(text: string) {
-  reportPromptHistory.value = saveReportPromptHistory(window.localStorage, text)
+function rememberReportPrompt(text: string, answer = '') {
+  reportPromptHistory.value = saveReportPromptHistory(window.localStorage, {
+    text,
+    answer,
+    title: reportPromptTitle.value,
+    targetContext: reportTargetContext.value,
+  })
 }
 
-function selectReportPromptHistory(text: string) {
-  reportPromptText.value = text
+function selectReportPromptHistory(item: ReportPromptHistoryItem) {
+  if (!item.answer.trim()) {
+    reportPromptText.value = item.text
+    if (reportHasConversation.value) {
+      void submitReportPrompt()
+    }
+    return
+  }
+  abortReportGeneration(false)
+  resetReportConversation()
+  reportSubmittedQuestion.value = item.text
+  reportAnswer.value = item.answer
+  reportPromptText.value = ''
+  updateReportPopoverForConversation()
 }
 
 function abortReportGeneration(markStopped = false) {
@@ -537,9 +557,10 @@ function cleanFilename(name?: string) {
 }
 
 function cleanSheetName(name?: string, fallback?: string) {
-  return (name || fallback || t('dashboard.view'))
-    .replace(/[[\]:*?/\\]/g, '_')
-    .slice(0, 31) || t('dashboard.view')
+  return (
+    (name || fallback || t('dashboard.view')).replace(/[[\]:*?/\\]/g, '_').slice(0, 31) ||
+    t('dashboard.view')
+  )
 }
 
 function normalizeDatasourceId(value: any) {
@@ -675,9 +696,7 @@ function visibleValueWhitelist(rows: Record<string, any>[], preferredFields: str
   const lines = fields
     .map((field) => {
       const values = unique(
-        rows
-          .map((row) => normalizeReportGroupValue(row?.[field]))
-          .filter((value) => value !== '')
+        rows.map((row) => normalizeReportGroupValue(row?.[field])).filter((value) => value !== '')
       ).slice(0, 30)
       return values.length ? `${field}: ${values.join(', ')}` : ''
     })
@@ -910,7 +929,9 @@ async function submitReportPrompt() {
     return
   }
   const rawQuestion = reportPromptText.value.trim()
-  const nextQuestion = rawQuestion || (!reportHasConversation.value ? reportPromptTitle.value : reportSubmittedQuestion.value)
+  const nextQuestion =
+    rawQuestion ||
+    (!reportHasConversation.value ? reportPromptTitle.value : reportSubmittedQuestion.value)
   if (!nextQuestion) {
     return
   }
@@ -919,10 +940,10 @@ async function submitReportPrompt() {
   if (!datasourceId) {
     resetReportConversation()
     reportAnswer.value = t('dashboard.chart_report_no_datasource')
+    rememberReportPrompt(nextQuestion, reportAnswer.value)
     reportPromptText.value = ''
     return
   }
-  rememberReportPrompt(rawQuestion)
 
   resetReportConversation()
   updateReportPopoverForConversation()
@@ -972,6 +993,9 @@ async function submitReportPrompt() {
     if (!reportStopped.value && !reportAnswer.value.trim()) {
       reportAnswer.value = t('dashboard.chart_report_empty')
     }
+    if (reportAnswer.value.trim()) {
+      rememberReportPrompt(nextQuestion, reportAnswer.value)
+    }
     reportGenerating.value = false
     reportController.value = null
     reportProgress.value = ''
@@ -1019,7 +1043,12 @@ function uniqueSheetNames(names: string[]) {
   })
 }
 
-function buildWorksheetXml(sheetName: string, title: string, fields: string[], rows: Record<string, any>[]) {
+function buildWorksheetXml(
+  sheetName: string,
+  title: string,
+  fields: string[],
+  rows: Record<string, any>[]
+) {
   const headerRow = `<Row>${fields
     .map((field) => `<Cell><Data ss:Type="String">${xmlText(field)}</Data></Cell>`)
     .join('')}</Row>`
@@ -1067,7 +1096,9 @@ async function refreshChartData() {
       }
       try {
         const previousData = Array.isArray(viewInfo.data?.data) ? [...viewInfo.data.data] : []
-        const previousDataFields = Array.isArray(viewInfo.data?.fields) ? [...viewInfo.data.fields] : []
+        const previousDataFields = Array.isArray(viewInfo.data?.fields)
+          ? [...viewInfo.data.fields]
+          : []
         const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
         const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
         const hasPreviousShape = hasChartShape(viewInfo)
@@ -1171,7 +1202,9 @@ function exportChartTableData() {
 
   const sheetNames = uniqueSheetNames(rawSheets.map((sheet) => sheet.title))
   const worksheets = rawSheets
-    .map((sheet, index) => buildWorksheetXml(sheetNames[index], sheet.title, sheet.fields, sheet.rows))
+    .map((sheet, index) =>
+      buildWorksheetXml(sheetNames[index], sheet.title, sheet.fields, sheet.rows)
+    )
     .join('')
   const workbook = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -1231,7 +1264,12 @@ defineExpose({
         />
       </div>
     </div>
-    <div v-if="isPreviewReportTarget && !readonlyTemplate" class="preview-chart-actions" @click.stop @mousedown.stop>
+    <div
+      v-if="isPreviewReportTarget && !readonlyTemplate"
+      class="preview-chart-actions"
+      @click.stop
+      @mousedown.stop
+    >
       <el-button
         v-if="canShowReportInterpret"
         class="preview-action-btn"
@@ -1381,7 +1419,7 @@ defineExpose({
               type="button"
               class="report-prompt-history-item"
               :title="item.text"
-              @click="selectReportPromptHistory(item.text)"
+              @click="selectReportPromptHistory(item)"
             >
               {{ item.text }}
             </button>
@@ -1391,12 +1429,7 @@ defineExpose({
               <el-icon size="15"><ChatLineSquare /></el-icon>
               <span>{{ reportPromptTitle }}</span>
             </div>
-            <el-button
-              class="report-prompt-send"
-              circle
-              type="primary"
-              @click="submitReportPrompt"
-            >
+            <el-button class="report-prompt-send" circle type="primary" @click="submitReportPrompt">
               <el-icon size="16">
                 <icon_send_filled />
               </el-icon>
@@ -1421,50 +1454,64 @@ defineExpose({
               {{ reportProgress }}
             </div>
           </div>
-          <div class="report-answer-tip">
-            {{ t('dashboard.chart_report_ai_tip') }}
-          </div>
-          <div class="report-target-context" :title="reportTargetContext">
-            {{ reportTargetContext }}
-          </div>
-          <div class="report-conversation-tools">
-            <el-button class="report-icon-tool" text circle @click="submitReportPrompt">
-              <el-icon size="15"><RefreshRight /></el-icon>
-            </el-button>
-          </div>
-          <div class="report-chat-input">
-            <el-input
-              v-model="reportPromptText"
-              class="report-followup-input"
-              :placeholder="t('dashboard.chart_report_followup_placeholder')"
-              type="textarea"
-              :autosize="{ minRows: 1, maxRows: 3 }"
-              :disabled="reportGenerating"
-              @keydown.enter.exact.prevent="submitReportPrompt"
-              @keydown.stop
-              @keyup.stop
-            />
-            <el-button
-              v-if="reportGenerating"
-              class="report-stop-circle"
-              circle
-              :aria-label="t('dashboard.chart_report_stop')"
-              @click="stopReportGeneration"
-            >
-              <span class="stop-square"></span>
-            </el-button>
-            <el-button
-              v-else
-              class="report-prompt-send"
-              circle
-              type="primary"
-              :disabled="!reportPromptText.trim()"
-              @click="submitReportPrompt"
-            >
-              <el-icon size="16">
-                <icon_send_filled />
-              </el-icon>
-            </el-button>
+          <div class="report-conversation-footer">
+            <div class="report-answer-tip">
+              {{ t('dashboard.chart_report_ai_tip') }}
+            </div>
+            <div class="report-target-context" :title="reportTargetContext">
+              {{ reportTargetContext }}
+            </div>
+            <div class="report-conversation-tools">
+              <el-button class="report-icon-tool" text circle @click="submitReportPrompt">
+                <el-icon size="15"><RefreshRight /></el-icon>
+              </el-button>
+            </div>
+            <div v-if="reportPromptHistory.length" class="report-prompt-history">
+              <button
+                v-for="item in reportPromptHistory"
+                :key="`conversation-${item.updatedAt}-${item.text}`"
+                type="button"
+                class="report-prompt-history-item"
+                :title="item.text"
+                @click="selectReportPromptHistory(item)"
+              >
+                {{ item.text }}
+              </button>
+            </div>
+            <div class="report-chat-input">
+              <el-input
+                v-model="reportPromptText"
+                class="report-followup-input"
+                :placeholder="t('dashboard.chart_report_followup_placeholder')"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: 3 }"
+                :disabled="reportGenerating"
+                @keydown.enter.exact.prevent="submitReportPrompt"
+                @keydown.stop
+                @keyup.stop
+              />
+              <el-button
+                v-if="reportGenerating"
+                class="report-stop-circle"
+                circle
+                :aria-label="t('dashboard.chart_report_stop')"
+                @click="stopReportGeneration"
+              >
+                <span class="stop-square"></span>
+              </el-button>
+              <el-button
+                v-else
+                class="report-prompt-send"
+                circle
+                type="primary"
+                :disabled="!reportPromptText.trim()"
+                @click="submitReportPrompt"
+              >
+                <el-icon size="16">
+                  <icon_send_filled />
+                </el-icon>
+              </el-button>
+            </div>
           </div>
         </template>
       </div>
@@ -1661,4 +1708,17 @@ defineExpose({
   }
 }
 
+.report-conversation-footer {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding-top: 8px;
+  background: #ffffff;
+}
+
+.report-conversation-footer .report-prompt-history {
+  max-height: 58px;
+  margin-top: 6px;
+  padding-bottom: 0;
+  overflow: hidden;
+}
 </style>

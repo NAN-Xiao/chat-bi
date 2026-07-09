@@ -151,9 +151,7 @@ function visibleValueWhitelist(rows: Record<string, any>[], preferredFields: str
   const lines = fields
     .map((field) => {
       const values = unique(
-        rows
-          .map((row) => normalizeReportGroupValue(row?.[field]))
-          .filter((value) => value !== '')
+        rows.map((row) => normalizeReportGroupValue(row?.[field])).filter((value) => value !== '')
       ).slice(0, 30)
       return values.length ? `${field}: ${values.join(', ')}` : ''
     })
@@ -311,12 +309,29 @@ function refreshReportPromptHistory() {
   reportPromptHistory.value = loadReportPromptHistory(window.localStorage)
 }
 
-function rememberReportPrompt(text: string) {
-  reportPromptHistory.value = saveReportPromptHistory(window.localStorage, text)
+function rememberReportPrompt(text: string, answer = '') {
+  reportPromptHistory.value = saveReportPromptHistory(window.localStorage, {
+    text,
+    answer,
+    title: reportPromptTitle.value,
+    targetContext: reportTargetContext.value,
+  })
 }
 
-function selectReportPromptHistory(text: string) {
-  reportPromptText.value = text
+function selectReportPromptHistory(item: ReportPromptHistoryItem) {
+  if (!item.answer.trim()) {
+    reportPromptText.value = item.text
+    if (reportHasConversation.value) {
+      void submitReportPrompt()
+    }
+    return
+  }
+  abortReportGeneration(false)
+  resetReportConversation()
+  reportSubmittedQuestion.value = item.text
+  reportAnswer.value = item.answer
+  reportPromptText.value = ''
+  updateReportPopoverForConversation()
 }
 
 function abortReportGeneration(markStopped = false) {
@@ -447,7 +462,9 @@ async function submitReportPrompt() {
     return
   }
   const rawQuestion = reportPromptText.value.trim()
-  const nextQuestion = rawQuestion || (!reportHasConversation.value ? reportPromptTitle.value : reportSubmittedQuestion.value)
+  const nextQuestion =
+    rawQuestion ||
+    (!reportHasConversation.value ? reportPromptTitle.value : reportSubmittedQuestion.value)
   if (!nextQuestion) {
     return
   }
@@ -456,10 +473,10 @@ async function submitReportPrompt() {
   if (!datasourceId) {
     resetReportConversation()
     reportAnswer.value = t('dashboard.dashboard_report_no_datasource')
+    rememberReportPrompt(nextQuestion, reportAnswer.value)
     reportPromptText.value = ''
     return
   }
-  rememberReportPrompt(rawQuestion)
 
   resetReportConversation()
   updateReportPopoverForConversation()
@@ -508,6 +525,9 @@ async function submitReportPrompt() {
   } finally {
     if (!reportStopped.value && !reportAnswer.value.trim()) {
       reportAnswer.value = t('dashboard.chart_report_empty')
+    }
+    if (reportAnswer.value.trim()) {
+      rememberReportPrompt(nextQuestion, reportAnswer.value)
     }
     reportGenerating.value = false
     reportController.value = null
@@ -568,7 +588,7 @@ onBeforeUnmount(() => {
             type="button"
             class="report-prompt-history-item"
             :title="item.text"
-            @click="selectReportPromptHistory(item.text)"
+            @click="selectReportPromptHistory(item)"
           >
             {{ item.text }}
           </button>
@@ -578,12 +598,7 @@ onBeforeUnmount(() => {
             <el-icon size="15"><ChatLineSquare /></el-icon>
             <span>{{ reportPromptTitle }}</span>
           </div>
-          <el-button
-            class="report-prompt-send"
-            circle
-            type="primary"
-            @click="submitReportPrompt"
-          >
+          <el-button class="report-prompt-send" circle type="primary" @click="submitReportPrompt">
             <el-icon size="16">
               <icon_send_filled />
             </el-icon>
@@ -608,50 +623,64 @@ onBeforeUnmount(() => {
             {{ reportProgress }}
           </div>
         </div>
-        <div class="report-answer-tip">
-          {{ t('dashboard.chart_report_ai_tip') }}
-        </div>
-        <div class="report-target-context" :title="reportTargetContext">
-          {{ reportTargetContext }}
-        </div>
-        <div class="report-conversation-tools">
-          <el-button class="report-icon-tool" text circle @click="submitReportPrompt">
-            <el-icon size="15"><RefreshRight /></el-icon>
-          </el-button>
-        </div>
-        <div class="report-chat-input">
-          <el-input
-            v-model="reportPromptText"
-            class="report-followup-input"
-            :placeholder="t('dashboard.chart_report_followup_placeholder')"
-            type="textarea"
-            :autosize="{ minRows: 1, maxRows: 3 }"
-            :disabled="reportGenerating"
-            @keydown.enter.exact.prevent="submitReportPrompt"
-            @keydown.stop
-            @keyup.stop
-          />
-          <el-button
-            v-if="reportGenerating"
-            class="report-stop-circle"
-            circle
-            :aria-label="t('dashboard.chart_report_stop')"
-            @click="stopReportGeneration"
-          >
-            <span class="stop-square"></span>
-          </el-button>
-          <el-button
-            v-else
-            class="report-prompt-send"
-            circle
-            type="primary"
-            :disabled="!reportPromptText.trim()"
-            @click="submitReportPrompt"
-          >
-            <el-icon size="16">
-              <icon_send_filled />
-            </el-icon>
-          </el-button>
+        <div class="report-conversation-footer">
+          <div class="report-answer-tip">
+            {{ t('dashboard.chart_report_ai_tip') }}
+          </div>
+          <div class="report-target-context" :title="reportTargetContext">
+            {{ reportTargetContext }}
+          </div>
+          <div class="report-conversation-tools">
+            <el-button class="report-icon-tool" text circle @click="submitReportPrompt">
+              <el-icon size="15"><RefreshRight /></el-icon>
+            </el-button>
+          </div>
+          <div v-if="reportPromptHistory.length" class="report-prompt-history">
+            <button
+              v-for="item in reportPromptHistory"
+              :key="`conversation-${item.updatedAt}-${item.text}`"
+              type="button"
+              class="report-prompt-history-item"
+              :title="item.text"
+              @click="selectReportPromptHistory(item)"
+            >
+              {{ item.text }}
+            </button>
+          </div>
+          <div class="report-chat-input">
+            <el-input
+              v-model="reportPromptText"
+              class="report-followup-input"
+              :placeholder="t('dashboard.chart_report_followup_placeholder')"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 3 }"
+              :disabled="reportGenerating"
+              @keydown.enter.exact.prevent="submitReportPrompt"
+              @keydown.stop
+              @keyup.stop
+            />
+            <el-button
+              v-if="reportGenerating"
+              class="report-stop-circle"
+              circle
+              :aria-label="t('dashboard.chart_report_stop')"
+              @click="stopReportGeneration"
+            >
+              <span class="stop-square"></span>
+            </el-button>
+            <el-button
+              v-else
+              class="report-prompt-send"
+              circle
+              type="primary"
+              :disabled="!reportPromptText.trim()"
+              @click="submitReportPrompt"
+            >
+              <el-icon size="16">
+                <icon_send_filled />
+              </el-icon>
+            </el-button>
+          </div>
         </div>
       </template>
     </div>
@@ -860,6 +889,20 @@ onBeforeUnmount(() => {
   }
 }
 
+.report-conversation-footer {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding-top: 8px;
+  background: #ffffff;
+}
+
+.report-conversation-footer .report-prompt-history {
+  max-height: 58px;
+  margin-top: 6px;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
 .report-prompt-title,
 .report-dialog-title {
   min-width: 0;
@@ -1021,7 +1064,7 @@ onBeforeUnmount(() => {
   flex: 0 0 54px;
   height: 54px;
   min-height: 54px;
-  margin-top: 12px;
+  margin-top: 8px;
   border: 1px solid #e3e9f2;
   border-radius: 8px;
   background: #ffffff;

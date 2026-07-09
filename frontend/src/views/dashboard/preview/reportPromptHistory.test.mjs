@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import esbuild from 'esbuild'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const build = await esbuild.build({
   entryPoints: ['src/views/dashboard/preview/reportPromptHistory.ts'],
@@ -65,6 +68,26 @@ assert.equal(REPORT_PROMPT_HISTORY_TTL_MS, 3 * 24 * 60 * 60 * 1000, '报表解�
 }
 
 {
+  const storage = createStorage()
+  saveReportPromptHistory(
+    storage,
+    {
+      text: '问题带结果',
+      answer: '这是解读结果',
+      title: '英雄养成情况',
+      targetContext: '解读对象：英雄养成情况',
+    },
+    now
+  )
+
+  const history = loadReportPromptHistory(storage, now)
+  assert.equal(history[0].text, '问题带结果', '历史应保留问题')
+  assert.equal(history[0].answer, '这是解读结果', '历史应同时保留本次解读结果')
+  assert.equal(history[0].title, '英雄养成情况', '历史应保留可读标题')
+  assert.equal(history[0].targetContext, '解读对象：英雄养成情况', '历史应保留解读对象')
+}
+
+{
   const storage = createStorage(
     JSON.stringify([
       { text: '已过期', updatedAt: now - REPORT_PROMPT_HISTORY_TTL_MS - 1, expiresAt: now - 1 },
@@ -85,9 +108,59 @@ assert.equal(REPORT_PROMPT_HISTORY_TTL_MS, 3 * 24 * 60 * 60 * 1000, '报表解�
 }
 
 {
+  const storage = createStorage(
+    JSON.stringify([{ text: '旧问题', updatedAt: now - 1000, expiresAt: now + 1000 }])
+  )
+
+  const history = loadReportPromptHistory(storage, now)
+  assert.equal(history[0].text, '旧问题', '旧版只有问题的历史记录仍应可读取')
+  assert.equal(history[0].answer, '', '旧版历史没有结果时应使用空字符串')
+}
+
+{
   const storage = createStorage()
   saveReportPromptHistory(storage, '   ', now)
   assert.deepEqual(loadReportPromptHistory(storage, now), [], '空白输入不能写入历史')
 }
 
 console.log('report prompt history tests passed')
+
+const currentDir = dirname(fileURLToPath(import.meta.url))
+const componentSources = [
+  {
+    name: '整张看板解读',
+    source: readFileSync(join(currentDir, 'SQPreviewHead.vue'), 'utf8'),
+  },
+  {
+    name: '图表区域解读',
+    source: readFileSync(join(currentDir, 'SQComponentWrapper.vue'), 'utf8'),
+  },
+]
+
+for (const component of componentSources) {
+  const historyListCount = (
+    component.source.match(
+      /<div v-if="reportPromptHistory\.length" class="report-prompt-history">/g
+    ) || []
+  ).length
+  assert.equal(historyListCount, 2, `${component.name}应在初始输入态和回答追问态都展示输入历史`)
+  assert.match(
+    component.source,
+    /<div class="report-conversation-footer">[\s\S]*?<div class="report-answer-tip">[\s\S]*?<div v-if="reportPromptHistory\.length" class="report-prompt-history">[\s\S]*?<div class="report-chat-input">/,
+    `${component.name}回答态历史和输入框应放在同一个底部 footer 中，避免被回答滚动区遮挡`
+  )
+  assert.match(
+    component.source,
+    /@click="selectReportPromptHistory\(item\)"/,
+    `${component.name}点击历史时应恢复整条历史记录，而不是只回填问题文本`
+  )
+  const selectHistoryMatch = component.source.match(
+    /function selectReportPromptHistory\(item: ReportPromptHistoryItem\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction abortReportGeneration/
+  )
+  assert.ok(selectHistoryMatch, `${component.name}应保留历史点击处理函数`)
+  assert.match(
+    selectHistoryMatch[1],
+    /if \(reportHasConversation\.value\) \{[\s\S]*?submitReportPrompt\(\)/,
+    `${component.name}在回答态点击旧版只有问题的历史时，应重新生成对应问题的解读内容`
+  )
+}
