@@ -5,6 +5,27 @@ import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.sv
 import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { ElMessage } from 'element-plus-secondary'
+const CHART_STATUS = Object.freeze({
+  LOADING: 'loading',
+  SUCCESS: 'success',
+  FAILED: 'failed',
+})
+const CHART_RESULT_STATES = Object.freeze({
+  LOADING: 'loading',
+  READY: 'ready',
+  FAILED: 'failed',
+})
+const CHART_REFRESH_STATES = Object.freeze({
+  IDLE: '',
+  WAITING: 'waiting',
+  QUEUED: 'queued',
+  LOADING: 'loading',
+})
+const PENDING_CHART_REFRESH_STATES = new Set<string>([
+  CHART_REFRESH_STATES.WAITING,
+  CHART_REFRESH_STATES.QUEUED,
+  CHART_REFRESH_STATES.LOADING,
+])
 const props = defineProps({
   viewInfo: {
     type: Object,
@@ -16,7 +37,12 @@ const props = defineProps({
         fields: [],
       },
       fields: [],
-      status: 'success',
+      // 初始状态改为 loading，避免组件在尚未开始请求时误显示“没有找到数据”
+      status: 'loading',
+      // 明确 dataState 为 loading，加载进度从 0 开始
+      dataState: 'loading',
+      loadingProgress: 0,
+      refreshState: '',
     }),
   },
   outerId: {
@@ -93,6 +119,34 @@ let pivotRefreshTimer: number | undefined
 let refreshRequestSeq = 0
 let blockingRefreshRequestSeq = 0
 
+function isChartRefreshPendingState(refreshState: any) {
+  return PENDING_CHART_REFRESH_STATES.has(String(refreshState || CHART_REFRESH_STATES.IDLE))
+}
+
+function isChartResultPendingState(viewInfo: any, loading: boolean) {
+  if (!viewInfo?.id || viewInfo?.status === CHART_STATUS.FAILED) {
+    return false
+  }
+  return (
+    loading ||
+    isChartRefreshPendingState(viewInfo?.refreshState) ||
+    viewInfo?.status !== CHART_STATUS.SUCCESS ||
+    viewInfo?.dataState !== CHART_RESULT_STATES.READY
+  )
+}
+
+function isChartEmptyResultState(viewInfo: any, hasData: boolean, hasSourceData: boolean, loading: boolean) {
+  return (
+    !loading &&
+    !isChartRefreshPendingState(viewInfo?.refreshState) &&
+    viewInfo?.status === CHART_STATUS.SUCCESS &&
+    viewInfo?.dataState === CHART_RESULT_STATES.READY &&
+    Boolean(viewInfo?.id) &&
+    !hasSourceData &&
+    !hasData
+  )
+}
+
 function ensureViewInfoShape() {
   if (!props.viewInfo || typeof props.viewInfo !== 'object') {
     return
@@ -106,7 +160,19 @@ function ensureViewInfoShape() {
   props.viewInfo.data.data = Array.isArray(props.viewInfo.data.data) ? props.viewInfo.data.data : []
   props.viewInfo.data.fields = Array.isArray(props.viewInfo.data.fields) ? props.viewInfo.data.fields : []
   props.viewInfo.fields = Array.isArray(props.viewInfo.fields) ? props.viewInfo.fields : props.viewInfo.data.fields
-  props.viewInfo.status = props.viewInfo.status || 'success'
+  if (!props.viewInfo.status) {
+    props.viewInfo.status = hasChartShape(props.viewInfo) ? CHART_STATUS.SUCCESS : CHART_STATUS.LOADING
+  }
+  if (!props.viewInfo.dataState) {
+    props.viewInfo.dataState =
+      props.viewInfo.status === CHART_STATUS.FAILED
+        ? CHART_RESULT_STATES.FAILED
+        : hasChartShape(props.viewInfo)
+          ? CHART_RESULT_STATES.READY
+          : CHART_RESULT_STATES.LOADING
+  }
+  props.viewInfo.loadingProgress = clampChartLoadingProgress(props.viewInfo.loadingProgress)
+  props.viewInfo.refreshState = props.viewInfo.refreshState || CHART_REFRESH_STATES.IDLE
 }
 
 watch(
@@ -1655,19 +1721,11 @@ const chartLoading = computed(
 const hasRenderedChartData = computed(() => {
   return displayData.value.length > 0
 })
-const refreshStatePending = computed(() =>
-  ['waiting', 'queued', 'loading'].includes(String(props.viewInfo?.refreshState || ''))
-)
+const hasSourceChartData = computed(() => {
+  return rawChartData.value.length > 0
+})
 const chartResultPending = computed(() => {
-  if (!props.viewInfo?.id || props.viewInfo?.status === 'failed') {
-    return false
-  }
-  return (
-    chartLoading.value ||
-    refreshStatePending.value ||
-    props.viewInfo?.status !== 'success' ||
-    props.viewInfo?.dataState !== 'ready'
-  )
+  return isChartResultPendingState(props.viewInfo, chartLoading.value)
 })
 const showFullChartLoading = computed(
   () =>
@@ -1680,13 +1738,11 @@ const chartLoadingText = computed(() =>
     : t('dashboard.chart_data_loading')
 )
 const showEmptyChartState = computed(() => {
-  return (
-    !chartLoading.value &&
-    !refreshStatePending.value &&
-    props.viewInfo?.status === 'success' &&
-    props.viewInfo?.dataState === 'ready' &&
-    props.viewInfo?.id &&
-    !hasRenderedChartData.value
+  return isChartEmptyResultState(
+    props.viewInfo,
+    hasRenderedChartData.value,
+    hasSourceChartData.value,
+    chartLoading.value
   )
 })
 const showChartContent = computed(() => {
@@ -1733,6 +1789,9 @@ async function recoverStaleLoadingState() {
     return
   }
   if (props.viewInfo?.dataState !== 'loading' && props.viewInfo?.status !== 'loading') {
+    return
+  }
+  if (isChartRefreshPendingState(props.viewInfo?.refreshState)) {
     return
   }
   if (normalizeLoadedChartState()) {

@@ -12,6 +12,11 @@ import {
   resolveReportPopoverStyle,
   type ReportPopoverStyle,
 } from '@/views/dashboard/preview/reportPopoverPosition'
+import {
+  loadReportPromptHistory,
+  saveReportPromptHistory,
+  type ReportPromptHistoryItem,
+} from '@/views/dashboard/preview/reportPromptHistory'
 const { t } = useI18n()
 const router = useRouter()
 
@@ -63,6 +68,7 @@ const reportController = ref<AbortController | null>(null)
 const reportPanelRef = ref<HTMLElement | null>(null)
 const reportTriggerRef = ref<HTMLElement | null>(null)
 const reportPopoverStyle = ref<ReportPopoverStyle | null>(null)
+const reportPromptHistory = ref<ReportPromptHistoryItem[]>([])
 let reportStreamBuffer = ''
 
 const reportPromptTitle = computed(() =>
@@ -301,6 +307,18 @@ function resetReportConversation() {
   reportStreamBuffer = ''
 }
 
+function refreshReportPromptHistory() {
+  reportPromptHistory.value = loadReportPromptHistory(window.localStorage)
+}
+
+function rememberReportPrompt(text: string) {
+  reportPromptHistory.value = saveReportPromptHistory(window.localStorage, text)
+}
+
+function selectReportPromptHistory(text: string) {
+  reportPromptText.value = text
+}
+
 function abortReportGeneration(markStopped = false) {
   if (!reportGenerating.value && !reportController.value) {
     return
@@ -344,6 +362,7 @@ function openReportPanel(event?: MouseEvent) {
   reportPromptText.value = ''
   reportSubmittedQuestion.value = ''
   reportTriggerRef.value = (event?.currentTarget as HTMLElement | null) || null
+  refreshReportPromptHistory()
   reportPopoverStyle.value = resolveReportPopoverStyle(reportTriggerRef.value, {
     width: 480,
     height: 220,
@@ -440,6 +459,7 @@ async function submitReportPrompt() {
     reportPromptText.value = ''
     return
   }
+  rememberReportPrompt(rawQuestion)
 
   resetReportConversation()
   updateReportPopoverForConversation()
@@ -541,6 +561,18 @@ onBeforeUnmount(() => {
           @keydown.stop
           @keyup.stop
         />
+        <div v-if="reportPromptHistory.length" class="report-prompt-history">
+          <button
+            v-for="item in reportPromptHistory"
+            :key="`${item.updatedAt}-${item.text}`"
+            type="button"
+            class="report-prompt-history-item"
+            :title="item.text"
+            @click="selectReportPromptHistory(item.text)"
+          >
+            {{ item.text }}
+          </button>
+        </div>
         <div class="report-prompt-footer">
           <div class="report-prompt-title">
             <el-icon size="15"><ChatLineSquare /></el-icon>
@@ -792,6 +824,40 @@ onBeforeUnmount(() => {
 .report-prompt-footer {
   gap: 12px;
   margin-top: 10px;
+}
+
+.report-prompt-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 64px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.report-prompt-history-item {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(79, 125, 243, 0.2);
+  border-radius: 6px;
+  background: rgba(79, 125, 243, 0.08);
+  color: #2f4b7c;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus {
+    border-color: rgba(47, 107, 255, 0.45);
+    background: rgba(47, 107, 255, 0.12);
+    color: #1f4ed8;
+  }
 }
 
 .report-prompt-title,

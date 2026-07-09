@@ -1,16 +1,58 @@
-# Windows 本地一键编排说明
+# Windows 本地启动说明
 
-`tools/stack-local.ps1` 用来把本地开发环境的核心服务串起来：
+日常开发优先使用 `tools/dev-local.ps1`。它只管理三个应用进程：
 
-- PostgreSQL：默认检查 `127.0.0.1:15432`。
-- Redis：默认检查 `127.0.0.1:6379`。
+- frontend：Vite，默认 `0.0.0.0:5173`。
+- backend API：Uvicorn `main:app`，默认 `0.0.0.0:8000`。
+- MCP app：Uvicorn `main:mcp_app`，默认 `0.0.0.0:8001`。
+
+脚本会使用核心应用数据库 `10.1.5.28:5432/zhishu_bi` 和核心 Redis `10.1.5.28:6379`，不会回退到旧的本地系统库。日志写入 `.codex-runtime`。
+
+## 日常启动/重启
+
+启动：
+
+```powershell
+.\tools\dev-local.ps1 -Action start
+```
+
+重启：
+
+```powershell
+.\tools\dev-local.ps1 -Action restart
+```
+
+查看状态：
+
+```powershell
+.\tools\dev-local.ps1 -Action status
+```
+
+停止：
+
+```powershell
+.\tools\dev-local.ps1 -Action stop
+```
+
+如果要临时连接另一个应用系统库，只改库名，仍使用同一套核心 DB 主机、端口、用户和 Redis：
+
+```powershell
+.\tools\dev-local.ps1 -Action restart -AppDbName zhishu_bi_test
+```
+
+## 扩展本地栈
+
+`tools/stack-local.ps1` 用来把更完整的本地开发环境串起来：
+
+- PostgreSQL：默认检查核心应用数据库 `10.1.5.28:5432`。
+- Redis：默认检查核心 Redis `10.1.5.28:6379`。
 - backend：默认单副本 `8000`。
 - Nginx：默认监听 `8080`。
 - worker：默认启动 1 个，用于消费 Redis 任务队列。
 
 脚本会优先探测端口。PostgreSQL 和 Redis 如果已经在运行，就不会重复启动；如果没运行，只有在你提供服务名或可执行文件路径时才会尝试拉起。
 
-## 开发单副本
+### 开发单副本
 
 ```powershell
 .\tools\stack-local.ps1 -Action start
@@ -28,7 +70,7 @@
 .\tools\stack-local.ps1 -Action start -SkipWorker
 ```
 
-## 多副本压测/生产模拟
+### 多副本压测/生产模拟
 
 多副本会让 backend 本地脚本自动切到 Redis 缓存：
 
@@ -42,7 +84,7 @@ Nginx 会把流量分发到这些 backend 端口：
 http://127.0.0.1:8080/
 ```
 
-## 启动 PostgreSQL 或 Redis
+### 启动 PostgreSQL 或 Redis
 
 如果 PostgreSQL / Redis 已经是 Windows 服务，可以传服务名：
 
@@ -62,7 +104,7 @@ http://127.0.0.1:8080/
 .\tools\stack-local.ps1 -Action start -PostgresBin "D:\tools\postgres\bin" -PostgresData "D:\data\postgres"
 ```
 
-## 停止
+### 停止
 
 ```powershell
 .\tools\stack-local.ps1 -Action stop
