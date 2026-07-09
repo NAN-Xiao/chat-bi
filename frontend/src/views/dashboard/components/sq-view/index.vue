@@ -1056,7 +1056,7 @@ function normalizeLoadedChartState() {
   if (props.viewInfo?.dataState !== 'loading' && props.viewInfo?.status !== 'loading') {
     return false
   }
-  if (!hasChartResult(props.viewInfo)) {
+  if (!hasChartShape(props.viewInfo)) {
     return false
   }
   if (props.viewInfo.status === 'loading') {
@@ -1119,7 +1119,7 @@ async function previewMixedChartWithCacheFallback(viewInfo: any, forceRefresh = 
 
 async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
-  const forceRefresh = options.forceRefresh !== false
+  const forceRefresh = options.forceRefresh === true
   const blocking = options.blocking === true || !silent
   if (props.platformTemplate) {
     normalizePlatformTemplateSnapshotState()
@@ -1726,14 +1726,12 @@ async function recoverStaleLoadingState() {
     scheduleRenderChart()
     return
   }
-  const canRecoverChart = isMixedChart(props.viewInfo)
-    ? canRefreshMixedChart(props.viewInfo)
-    : isExternalSnapshotChart(props.viewInfo)
-      ? canRefreshExternalMcpSnapshotChart(props.viewInfo)
-      : !!(props.viewInfo?.datasource && props.viewInfo?.sql?.trim())
-  if (props.showPosition === 'canvas' && canRecoverChart) {
-    await refreshData({ silent: true, forceRefresh: false })
-  }
+  // 打开看板只恢复持久化状态，不主动执行 SQL；用户可通过刷新按钮重新查询。
+  props.viewInfo.status = props.viewInfo.status === 'failed' ? 'failed' : 'success'
+  props.viewInfo.dataState = props.viewInfo.status === 'failed' ? 'failed' : 'ready'
+  props.viewInfo.loadingProgress = 100
+  props.viewInfo.refreshState = ''
+  scheduleRenderChart()
 }
 
 watch(

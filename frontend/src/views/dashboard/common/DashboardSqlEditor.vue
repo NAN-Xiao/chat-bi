@@ -22,7 +22,6 @@ import {
   formulaTokensToText,
   insertFormulaTokenAt,
   normalizeFormulaAtomicMetricDisplay,
-  normalizeFormulaTokens,
   serializeFormulaTokensForContext,
   validateFormulaTokens,
   type FormulaAtomicMetric,
@@ -223,7 +222,7 @@ const form = reactive({
   mcpValueField: '',
 })
 const sqlBuilder = reactive({
-  activeTab: 'builder',
+  activeTab: 'sql',
   timeField: '',
   timeGrain: 'day',
   timeRange: '30d',
@@ -1313,7 +1312,7 @@ function quoteIdentifier(value: string) {
 }
 
 function resetSqlBuilderState() {
-  sqlBuilder.activeTab = 'builder'
+  sqlBuilder.activeTab = 'sql'
   sqlBuilder.timeField = ''
   sqlBuilder.timeGrain = 'day'
   sqlBuilder.timeRange = '30d'
@@ -1677,30 +1676,10 @@ function restoreBuilderFilters(value: any): SqlBuilderFilter[] {
 
 function builderConfigForSave() {
   return {
-    activeTab: sqlBuilder.activeTab === 'sql' ? 'sql' : 'builder',
     timeField: sqlBuilder.timeField || '',
     timeGrain: sqlBuilder.timeGrain || 'day',
     timeRange: sqlBuilder.timeRange || '30d',
     timeCustomRange: Array.isArray(sqlBuilder.timeCustomRange) ? [...sqlBuilder.timeCustomRange] : [],
-    metricItems: sqlBuilder.metricItems.map((item) => ({
-      id: item.id,
-      field: item.field || '',
-      metric: item.metric || '',
-      aggregation: item.aggregation || 'count',
-      alias: item.alias || '',
-      filterLogic: builderLogic(item.filterLogic),
-      filters: compactBuilderFilters(item.filters || []),
-    })),
-    calculatedMetrics: sqlBuilder.calculatedMetrics.map((item) => ({
-      id: item.id,
-      decimalPlaces: Number.isFinite(Number(item.decimalPlaces)) ? Number(item.decimalPlaces) : 2,
-      alias: item.alias || '',
-      tokens: normalizeFormulaTokens(item.tokens),
-      pendingMetricId: item.pendingMetricId || '',
-      pendingEventField: item.pendingEventField || '',
-      pendingAggregation: item.pendingAggregation || 'count',
-      pendingMetricField: item.pendingMetricField || '',
-    })),
     groups: [...sqlBuilder.groups],
     globalFilters: compactBuilderFilters(sqlBuilder.globalFilters),
     globalFilterLogic: builderLogic(sqlBuilder.globalFilterLogic),
@@ -1715,53 +1694,11 @@ function restoreSqlBuilderState(value: any) {
   }
   const timeGrainValues = builderTimeGrainOptions.map((item) => item.value)
   const timeRangeValues = builderTimeRangeOptions.map((item) => item.value)
-  sqlBuilder.activeTab = value.activeTab === 'sql' ? 'sql' : 'builder'
   sqlBuilder.timeField = typeof value.timeField === 'string' ? value.timeField : ''
   sqlBuilder.timeGrain = timeGrainValues.includes(value.timeGrain) ? value.timeGrain : 'day'
   sqlBuilder.timeRange = timeRangeValues.includes(value.timeRange) ? value.timeRange : '30d'
   sqlBuilder.timeCustomRange = Array.isArray(value.timeCustomRange)
     ? value.timeCustomRange.filter((item: any) => typeof item === 'string')
-    : []
-  sqlBuilder.metricItems = Array.isArray(value.metricItems)
-    ? value.metricItems.map((item: any, index: number) => ({
-        id: typeof item?.id === 'string' && item.id ? item.id : nodeId('metric'),
-        field: typeof item?.field === 'string' ? item.field : '',
-        metric: typeof item?.metric === 'string' ? item.metric : '',
-        aggregation: builderAggregationOptions.some((option) => option.value === item?.aggregation)
-          ? item.aggregation
-          : 'count',
-        alias: typeof item?.alias === 'string' ? item.alias : `指标${index + 1}`,
-        filterLogic: builderLogic(item?.filterLogic),
-        filters: restoreBuilderFilters(item?.filters),
-      }))
-    : []
-  sqlBuilder.calculatedMetrics = Array.isArray(value.calculatedMetrics)
-    ? value.calculatedMetrics.map((item: any, index: number) => {
-        const legacyTokens = [
-          typeof item?.leftMetricId === 'string' && item.leftMetricId
-            ? { type: 'metric' as const, metricId: item.leftMetricId }
-            : null,
-          builderCalculationOperatorOptions.some((option) => option.value === item?.operator)
-            ? { type: 'operator' as const, value: item.operator as FormulaOperator }
-            : null,
-          typeof item?.rightMetricId === 'string' && item.rightMetricId
-            ? { type: 'metric' as const, metricId: item.rightMetricId }
-            : null,
-        ].filter(Boolean) as FormulaToken[]
-        return {
-          id: typeof item?.id === 'string' && item.id ? item.id : nodeId('calc-metric'),
-          decimalPlaces: Number.isFinite(Number(item?.decimalPlaces)) ? Number(item.decimalPlaces) : 2,
-          alias: typeof item?.alias === 'string' ? item.alias : `自定义指标${index + 1}`,
-          tokens: normalizeFormulaTokens(item?.tokens).length ? normalizeFormulaTokens(item.tokens) : legacyTokens,
-          pendingMetricId: typeof item?.pendingMetricId === 'string' ? item.pendingMetricId : '',
-          pendingEventField: typeof item?.pendingEventField === 'string' ? item.pendingEventField : '',
-          pendingAggregation: builderAggregationOptions.some((option) => option.value === item?.pendingAggregation)
-            ? item.pendingAggregation
-            : 'count',
-          pendingMetricField: typeof item?.pendingMetricField === 'string' ? item.pendingMetricField : '',
-          formulaCursorIndex: 0,
-        }
-      })
     : []
   sqlBuilder.groups = Array.isArray(value.groups)
     ? value.groups.filter((item: any) => typeof item === 'string')
@@ -2776,6 +2713,19 @@ async function loadSchemaTables() {
   } finally {
     schemaLoading.value = false
   }
+}
+
+function ensureBuilderSchemaLoaded() {
+  if (sqlBuilder.activeTab !== 'builder') {
+    return
+  }
+  void loadSchemaTables().then(() => {
+    const prunedInvalidSelections = pruneInvalidBuilderSelections()
+    const recoveredFilters = recoverMissingMetricFiltersFromSql()
+    if (prunedInvalidSelections || recoveredFilters) {
+      persistEditorDraftToViewInfo()
+    }
+  })
 }
 
 function chartSupportsExplicitSeries(chartType: ChartTypes) {
@@ -3854,13 +3804,6 @@ function initEditor() {
   initPivotConfig(viewInfo.pivot)
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
-  void loadSchemaTables().then(() => {
-    const prunedInvalidSelections = pruneInvalidBuilderSelections()
-    const recoveredFilters = recoverMissingMetricFiltersFromSql()
-    if (prunedInvalidSelections || recoveredFilters) {
-      persistEditorDraftToViewInfo()
-    }
-  })
   if (hasMcpSource.value) {
     void loadMcpServers().then(() => loadMcpTools())
   } else {
@@ -3869,6 +3812,15 @@ function initEditor() {
     mcpFilterOptions.value = {}
   }
 }
+
+watch(
+  () => sqlBuilder.activeTab,
+  (activeTab) => {
+    if (activeTab === 'builder') {
+      ensureBuilderSchemaLoaded()
+    }
+  }
+)
 
 watch(
   () => activePivotGroupValueField.value,
@@ -4491,7 +4443,7 @@ function closeDrawer() {
             </div>
           </div>
 
-          <div v-show="sqlBuilder.activeTab === 'builder'" class="sql-builder-builder-pane">
+          <div v-if="sqlBuilder.activeTab === 'builder'" class="sql-builder-builder-pane">
             <div
               v-loading="schemaLoading || builderLoading"
               :element-loading-text="builderLoading ? loadingText : ''"
@@ -4927,7 +4879,7 @@ function closeDrawer() {
 
           </div>
 
-          <div v-show="sqlBuilder.activeTab === 'sql'" class="sql-detail-pane">
+          <div v-if="sqlBuilder.activeTab === 'sql'" class="sql-detail-pane">
             <el-input
               v-model="form.sql"
               type="textarea"

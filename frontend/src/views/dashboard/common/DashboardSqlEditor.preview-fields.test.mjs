@@ -17,7 +17,7 @@ const showPivotGroupValueConfigMatch = source.match(
   /const showPivotGroupValueConfig = ([\s\S]*?)const pivotGroupValueOptions/
 )
 const previewDisplayDataMatch = source.match(
-  /const previewDisplayData = computed\(\(\) => \{([\s\S]*?)\r?\n\}\)\r?\nconst hasPreviewData/
+  /const previewDisplayData = ([\s\S]*?)const hasPreviewData/
 )
 const pivotGroupValueOptionsMatch = source.match(
   /const pivotGroupValueOptions = computed\(\(\) => \{([\s\S]*?)\r?\n\}\)\r?\nconst previewDisplayData/
@@ -197,18 +197,18 @@ assert.match(
 )
 assert.match(
   source,
-  /const builderFieldOptions = computed\(\(\) =>\s*schemaFieldOptions\.value\.filter\(isSelectableFieldOption\)/,
+  /const builderFieldOptions = computed\([\s\S]*schemaFieldOptions\.value\.filter\(isSelectableFieldOption\)/,
   '分组项、全局筛选等通用字段候选应统一过滤对象组类型字段'
 )
 assert.match(
   source,
-  /<div v-show="sqlBuilder\.activeTab === 'builder'" class="sql-builder-builder-pane">/,
-  '图表配置 tab 应使用 v-show 保留已挂载组件，避免从 SQL 明细切回时重建大量字段选择器'
+  /<div v-if="sqlBuilder\.activeTab === 'builder'" class="sql-builder-builder-pane">/,
+  '图表配置 tab 应使用 v-if 懒挂载，避免打开 SQL 明细时提前渲染大量字段选择器'
 )
 assert.match(
   source,
-  /<div v-show="sqlBuilder\.activeTab === 'sql'" class="sql-detail-pane">/,
-  'SQL 明细 tab 应使用 v-show 和图表配置并存，避免 tab 切换销毁另一侧内容'
+  /<div v-if="sqlBuilder\.activeTab === 'sql'" class="sql-detail-pane">/,
+  'SQL 明细 tab 应独立挂载，避免和图表配置面板同时参与首屏渲染'
 )
 assert.doesNotMatch(
   source.match(/class="metric-chip-row"[\s\S]*?<span class="metric-of">/)?.[0] || '',
