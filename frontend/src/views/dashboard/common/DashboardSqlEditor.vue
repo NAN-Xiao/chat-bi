@@ -291,6 +291,7 @@ const lastPreviewSignature = ref('')
 const initializedPivotGroupValueField = ref('')
 const PIVOT_GROUP_SELECT_ALL_VALUE = '__dashboard_pivot_group_select_all__'
 const PIVOT_GROUP_SELECT_NONE_VALUE = '__dashboard_pivot_group_select_none__'
+let builderSchemaLoadSeq = 0
 
 async function setLoadingPhase(text: string) {
   builderLoading.value = true
@@ -2643,23 +2644,48 @@ async function calculateBuilderSql() {
   await generateBuilderAiSql()
 }
 
-async function loadSchemaTables() {
-  if (!props.viewInfo?.datasource) {
+function isCurrentBuilderSchemaLoad(startViewInfo: any, requestSeq: number) {
+  return (
+    requestSeq === builderSchemaLoadSeq &&
+    visible.value &&
+    props.viewInfo === startViewInfo &&
+    sqlBuilder.activeTab === 'builder'
+  )
+}
+
+async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
+  function isCurrentSchemaLoad() {
+    return (
+      requestSeq === builderSchemaLoadSeq &&
+      visible.value &&
+      props.viewInfo === startViewInfo &&
+      sqlBuilder.activeTab === 'builder'
+    )
+  }
+  const datasourceId = startViewInfo?.datasource
+  const tenantId = currentExternalMcpTenantId.value
+  if (!datasourceId) {
+    if (!isCurrentSchemaLoad()) {
+      return
+    }
     datasourceInfo.value = null
     schemaTables.value = previewSchemaTables()
     trackingEventCatalog.value = null
     return
   }
+  if (!isCurrentSchemaLoad()) {
+    return
+  }
   schemaLoading.value = true
   try {
     const cacheKey = buildDashboardBuilderMetadataCacheKey({
-      datasourceId: props.viewInfo.datasource,
-      tenantId: currentExternalMcpTenantId.value,
+      datasourceId,
+      tenantId,
     })
     const metadata = await getCachedDashboardBuilderMetadata(cacheKey, async () => {
       const [datasource, tablesResult, trackingConfigResult] = await Promise.all([
-        datasourceApi.getDs(props.viewInfo.datasource).catch(() => null),
-        datasourceApi.tableList(props.viewInfo.datasource),
+        datasourceApi.getDs(datasourceId).catch(() => null),
+        datasourceApi.tableList(datasourceId),
         trackingConfigApi.get().catch(() => null),
       ])
       const trackingTableRoleByName = new Map<string, string>()
@@ -2697,6 +2723,9 @@ async function loadSchemaTables() {
         trackingEventCatalog: buildTrackingEventCatalogFromConfig(trackingConfigResult),
       }
     })
+    if (!isCurrentSchemaLoad()) {
+      return
+    }
     datasourceInfo.value = metadata.datasource
     trackingEventCatalog.value = metadata.trackingEventCatalog
     schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
@@ -2707,11 +2736,16 @@ async function loadSchemaTables() {
       addMetricItem()
     }
   } catch {
+    if (!isCurrentSchemaLoad()) {
+      return
+    }
     datasourceInfo.value = null
     schemaTables.value = previewSchemaTables()
     trackingEventCatalog.value = null
   } finally {
-    schemaLoading.value = false
+    if (requestSeq === builderSchemaLoadSeq) {
+      schemaLoading.value = false
+    }
   }
 }
 
@@ -2719,7 +2753,12 @@ function ensureBuilderSchemaLoaded() {
   if (sqlBuilder.activeTab !== 'builder') {
     return
   }
-  void loadSchemaTables().then(() => {
+  const startViewInfo = props.viewInfo
+  const requestSeq = ++builderSchemaLoadSeq
+  void loadSchemaTables(startViewInfo, requestSeq).then(() => {
+    if (!isCurrentBuilderSchemaLoad(startViewInfo, requestSeq)) {
+      return
+    }
     const prunedInvalidSelections = pruneInvalidBuilderSelections()
     const recoveredFilters = recoverMissingMetricFiltersFromSql()
     if (prunedInvalidSelections || recoveredFilters) {
@@ -4230,6 +4269,8 @@ function writeEditorStateToViewInfo(options: {
     return false
   }
   const existingSourceConfig = chartSourceConfig(props.viewInfo)
+  const { builder: _legacyBuilder, ...sourceConfigBase } = existingSourceConfig
+  void _legacyBuilder
   props.viewInfo.sql = hasSqlSource.value ? form.sql.trim() : null
   const nextData: Record<string, any> = {
     ...(props.viewInfo.data || {}),
@@ -4260,7 +4301,7 @@ function writeEditorStateToViewInfo(options: {
   props.viewInfo.pivot = buildPivotConfig()
   props.viewInfo.datasource = hasSqlSource.value ? props.viewInfo.datasource || null : null
   props.viewInfo.sourceConfig = {
-    ...existingSourceConfig,
+    ...sourceConfigBase,
     sources: [...form.sourceTypes],
     mode: isMixedSource.value ? 'mixed' : isExternalSnapshot.value ? 'external_mcp' : 'sql',
     primarySource: isExternalSnapshot.value ? 'external_mcp' : 'sql',

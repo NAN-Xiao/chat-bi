@@ -58,5 +58,15 @@ assert.match(
   /builder:\s*builderConfigForSave\(\)/,
   'SQL sourceConfig 仍保留轻量 builder 信息入口，避免影响时间范围等非红框配置'
 )
+assert.match(
+  source,
+  /const\s+\{\s*builder:\s*_legacyBuilder[\s\S]*?\}\s*=\s*existingSourceConfig/,
+  '写回 sourceConfig 前应显式丢弃历史顶层 builder，避免旧红框配置继续随图表持久化'
+)
+assert.doesNotMatch(
+  writeEditorStateMatch[0],
+  /\.\.\.existingSourceConfig/,
+  '写回 sourceConfig 时不能直接展开 existingSourceConfig，否则历史顶层 builder 会残留'
+)
 
 console.log('dashboard SQL builder persistence tests passed')

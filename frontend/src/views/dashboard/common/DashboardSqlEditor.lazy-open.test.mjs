@@ -13,9 +13,17 @@ const resetBuilderMatch = source.match(
 const initEditorMatch = source.match(
   /function initEditor\(\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nwatch\(\r?\n  \(\) => sqlBuilder\.activeTab/
 )
+const loadSchemaTablesMatch = source.match(
+  /async function loadSchemaTables\(([\s\S]*?)\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction ensureBuilderSchemaLoaded/
+)
+const ensureBuilderSchemaLoadedMatch = source.match(
+  /function ensureBuilderSchemaLoaded\(\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction chartSupportsExplicitSeries/
+)
 
 assert.ok(resetBuilderMatch, '需要保留 SQL 编辑器状态重置逻辑')
 assert.ok(initEditorMatch, '需要保留 SQL 编辑器初始化逻辑')
+assert.ok(loadSchemaTablesMatch, '需要保留图表配置元数据加载入口')
+assert.ok(ensureBuilderSchemaLoadedMatch, '需要保留进入图表配置时按需加载元数据的入口')
 
 assert.match(
   resetBuilderMatch[1],
@@ -36,6 +44,41 @@ assert.match(
   source,
   /\(\) => sqlBuilder\.activeTab[\s\S]*if \(activeTab === 'builder'\)[\s\S]*ensureBuilderSchemaLoaded/,
   '切到图表配置时才触发字段/事件元数据加载'
+)
+assert.match(
+  source,
+  /const startViewInfo = props\.viewInfo/,
+  '按需加载图表配置元数据时应记录触发时的图表对象'
+)
+assert.match(
+  source,
+  /const requestSeq = \+\+builderSchemaLoadSeq/,
+  '每次进入图表配置加载元数据时应生成请求序号，避免旧请求覆盖新状态'
+)
+assert.match(
+  ensureBuilderSchemaLoadedMatch[1],
+  /loadSchemaTables\(startViewInfo,\s*requestSeq\)/,
+  '图表配置元数据加载应使用触发时的图表对象和请求序号'
+)
+assert.match(
+  loadSchemaTablesMatch[1],
+  /startViewInfo: any,\s*requestSeq: number/,
+  'loadSchemaTables 应接收触发时的图表对象和请求序号'
+)
+assert.match(
+  loadSchemaTablesMatch[2],
+  /function isCurrentSchemaLoad\(\)[\s\S]*requestSeq === builderSchemaLoadSeq[\s\S]*visible\.value[\s\S]*props\.viewInfo === startViewInfo[\s\S]*sqlBuilder\.activeTab === 'builder'/,
+  'loadSchemaTables 内部应能判断当前异步请求是否仍有效'
+)
+assert.match(
+  loadSchemaTablesMatch[2],
+  /if \(!isCurrentSchemaLoad\(\)\) \{[\s\S]*?return[\s\S]*?\}[\s\S]*datasourceInfo\.value = metadata\.datasource/,
+  'loadSchemaTables 必须在写入 datasource/schema 响应式状态前拦截旧请求'
+)
+assert.match(
+  ensureBuilderSchemaLoadedMatch[1],
+  /if \(!isCurrentBuilderSchemaLoad\(startViewInfo,\s*requestSeq\)\)/,
+  '元数据异步加载完成后应确认抽屉仍打开且仍是同一个图表，避免取消后写回草稿'
 )
 assert.match(
   source,
