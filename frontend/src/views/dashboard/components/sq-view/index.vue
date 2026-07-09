@@ -1655,18 +1655,36 @@ const chartLoading = computed(
 const hasRenderedChartData = computed(() => {
   return displayData.value.length > 0
 })
+const refreshStatePending = computed(() =>
+  ['waiting', 'queued', 'loading'].includes(String(props.viewInfo?.refreshState || ''))
+)
+const chartResultPending = computed(() => {
+  if (!props.viewInfo?.id || props.viewInfo?.status === 'failed') {
+    return false
+  }
+  return (
+    chartLoading.value ||
+    refreshStatePending.value ||
+    props.viewInfo?.status !== 'success' ||
+    props.viewInfo?.dataState !== 'ready'
+  )
+})
 const showFullChartLoading = computed(
-  () => chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)
+  () =>
+    (chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)) ||
+    (chartResultPending.value && !hasRenderedChartData.value)
 )
 const chartLoadingText = computed(() =>
-  props.viewInfo?.refreshState === 'waiting'
+  ['waiting', 'queued'].includes(String(props.viewInfo?.refreshState || ''))
     ? t('dashboard.chart_data_waiting')
     : t('dashboard.chart_data_loading')
 )
 const showEmptyChartState = computed(() => {
   return (
     !chartLoading.value &&
-    props.viewInfo?.status !== 'failed' &&
+    !refreshStatePending.value &&
+    props.viewInfo?.status === 'success' &&
+    props.viewInfo?.dataState === 'ready' &&
     props.viewInfo?.id &&
     !hasRenderedChartData.value
   )

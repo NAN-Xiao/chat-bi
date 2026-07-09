@@ -251,10 +251,7 @@ function hasUsableResultSnapshot(result: any) {
     return false
   }
   const rows = result?.data
-  return (
-    (Array.isArray(rows) && rows.length > 0) ||
-    (Array.isArray(result?.fields) && result.fields.length > 0)
-  )
+  return Array.isArray(rows) && rows.length > 0
 }
 
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {

@@ -202,6 +202,36 @@ def test_dashboard_prompt_describes_formula_metrics_contract() -> None:
     assert "外层 SELECT" in prompt
 
 
+def test_dashboard_prompt_for_mysql_forbids_full_outer_join() -> None:
+    """
+    是什么：MySQL 数据源下手动图表 SQL 生成提示词要禁止生成 FULL OUTER JOIN。
+    """
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            intent="看美国地区 ARPU",
+            chart_type="table",
+            context={
+                "time": {"field": {"table": "event", "field": "dt"}, "grain": "day", "range": "30d"},
+                "metrics": [{"alias": "后端充值"}, {"alias": "当日活跃"}],
+                "formulaMetrics": [{"alias": "ARPU"}],
+                "groups": [],
+                "filters": {"logic": "and", "rules": [{"field": {"table": "event", "field": "country"}, "operator": "eq", "value": "US"}]},
+                "selectedFields": [],
+            },
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
+        data_skill="",
+        tracking_config="",
+        sql_dialect="mysql",
+    )
+
+    assert "FULL OUTER JOIN" in prompt
+    assert "不能使用" in prompt
+    assert "UNION" in prompt
+    assert "条件聚合" in prompt
+
+
 def test_dashboard_prompt_requires_tracking_event_prefilter_for_multiple_event_metrics() -> None:
     """
     是什么：多个事件类指标共用事件名字段时，提示词要要求先用 WHERE IN 收窄扫描范围。
@@ -435,6 +465,74 @@ def test_tracking_event_filter_downgrade_keeps_real_blocking_issue() -> None:
     ]
 
 
+def test_tracking_event_selected_fields_detail_warning_does_not_block_sql_generation() -> None:
+    """
+    是什么：selectedFields 是配置器内部字段上下文，不应被诊断成表格展示维度并阻断生成。
+    """
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        intent="看近 30 天 ARPU",
+        chart_type="table",
+        context={
+            "formulaMetrics": [
+                {
+                    "id": "arpu",
+                    "alias": "ARPU",
+                    "tokens": [
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:ServerPayLog",
+                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
+                                "aggregation": "sum",
+                                "label": "后端充值.求和",
+                                "filters": [],
+                            },
+                        },
+                        {"type": "operator", "value": "/"},
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:UserActive",
+                                "metric": "event.uid",
+                                "aggregation": "count_distinct",
+                                "label": "当日活跃.去重数",
+                                "filters": [],
+                            },
+                        },
+                    ],
+                }
+            ],
+            "metrics": [],
+            "groups": [],
+            "filters": {},
+            "selectedFields": [
+                {"value": "event.uid", "displayName": "用户 ID"},
+                {"value": "tracking-event:event.event:ServerPayLog", "displayName": "ServerPayLog"},
+                {"value": "tracking-event:event.event:UserActive", "displayName": "UserActive"},
+            ],
+        },
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        message="当前配置在表格中包含了高基数的明细字段，且分子分母事件筛选条件缺失。",
+        issues=[
+            "selectedFields 中包含 event.uid 及多个 tracking-event 类型字段（ServerPayLog, UserActive），这些作为维度会导致数据行数爆炸且破坏按日聚合逻辑。",
+            "计算指标 arpu 的分子原子指标（后端充值）未配置事件筛选条件，未限定 event = 'ServerPayLog'。",
+            "计算指标 arpu 的分母原子指标（当日活跃）未配置事件筛选条件，未限定 event = 'UserActive'。",
+        ],
+        suggestions=[],
+    )
+
+    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+
+    assert fixed.success is True
+    assert fixed.issues == []
+    assert any("selectedFields" in suggestion for suggestion in fixed.suggestions)
+    assert any("ServerPayLog" in suggestion for suggestion in fixed.suggestions)
+    assert any("UserActive" in suggestion for suggestion in fixed.suggestions)
+
+
 def test_atomic_tracking_metric_does_not_require_metrics_list_entry() -> None:
     """
     是什么：公式内部 atomicMetric 是直接插入的基础聚合，不需要用户再手动添加同名分析指标。
@@ -545,6 +643,80 @@ def test_tracking_event_filter_downgrade_handles_compact_event_equals_text() -> 
     assert fixed.success is True
     assert fixed.issues == []
     assert any("事件=ServerPayLog" in suggestion for suggestion in fixed.suggestions)
+
+
+def test_global_dimension_filter_false_block_is_downgraded_for_formula_metrics() -> None:
+    """
+    是什么：同一事件明细表上的全局国家筛选是合法口径，诊断模型不能误判为分母被充值用户收窄。
+    """
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        intent="看 US 近 30 天每日 ARPU",
+        chart_type="table",
+        context={
+            "formulaMetrics": [
+                {
+                    "id": "arpu",
+                    "alias": "ARPU",
+                    "tokens": [
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:ServerPayLog",
+                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
+                                "aggregation": "sum",
+                                "label": "后端充值.求和",
+                                "filters": [],
+                            },
+                        },
+                        {"type": "operator", "value": "/"},
+                        {
+                            "type": "atomicMetric",
+                            "metric": {
+                                "field": "tracking-event:event.event:UserActive",
+                                "metric": "event.uid",
+                                "aggregation": "count_distinct",
+                                "label": "当日活跃.去重数",
+                                "filters": [],
+                            },
+                        },
+                    ],
+                }
+            ],
+            "metrics": [],
+            "groups": [],
+            "filters": {
+                "logic": "and",
+                "rules": [
+                    {
+                        "field": {"table": "event", "field": "currentinfo.country", "displayName": "国家"},
+                        "operator": "eq",
+                        "value": "US",
+                    }
+                ],
+            },
+            "selectedFields": [],
+        },
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=False,
+        message="全局筛选条件错误地限制了分母指标。",
+        advice="移除全局筛选中的国家限制，改为在计算指标的分子和分母原子指标中分别添加国家=US。",
+        issues=[
+            "全局筛选条件“国家=US”同时作用于分子（ServerPayLog）和分母（UserActive），导致分母被错误收窄为发生过充值的 US 用户中的活跃记录，违背 ARPU=总充值/全量活跃用户的业务口径。"
+        ],
+        suggestions=[
+            "全局筛选：删除“国家”相关的筛选规则，保持全局无国家限制。",
+        ],
+    )
+
+    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+
+    assert fixed.success is True
+    assert fixed.issues == []
+    assert fixed.message == "当前事件指标配置可以继续生成 SQL。"
+    assert fixed.advice == ""
+    assert any("全局筛选条件" in suggestion for suggestion in fixed.suggestions)
 
 
 def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:

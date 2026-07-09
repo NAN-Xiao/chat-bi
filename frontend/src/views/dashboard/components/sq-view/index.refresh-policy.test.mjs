@@ -16,10 +16,18 @@ const normalizeLoadedChartStateMatch = source.match(
 const recoverStaleLoadingStateMatch = source.match(
   /async function recoverStaleLoadingState\(\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nwatch\(/
 )
+const previewShowSource = readFileSync(
+  join(currentDir, '..', '..', 'preview', 'SQPreviewShow.vue'),
+  'utf8'
+)
+const usableResultSnapshotMatch = previewShowSource.match(
+  /function hasUsableResultSnapshot\(result: any\) \{([\s\S]*?)\r?\n\}/
+)
 
 assert.ok(refreshDataMatch, '需要保留看板图表 refreshData 入口')
 assert.ok(normalizeLoadedChartStateMatch, '需要保留持久化图表结果恢复逻辑')
 assert.ok(recoverStaleLoadingStateMatch, '需要保留看板图表 loading 状态恢复入口')
+assert.ok(usableResultSnapshotMatch, '需要保留看板初始加载缓存结果可用性判断')
 assert.match(
   refreshDataMatch[1],
   /const forceRefresh = options\.forceRefresh === true/,
@@ -49,4 +57,14 @@ assert.doesNotMatch(
   recoverStaleLoadingStateMatch[1],
   /refreshData\(\{ silent: true, forceRefresh: false \}\)/,
   '打开看板或编辑页恢复 loading 状态时不能主动请求 SQL，应等待用户手动刷新'
+)
+assert.match(
+  usableResultSnapshotMatch[1],
+  /Array\.isArray\(rows\) && rows\.length > 0/,
+  '首次加载时只有字段没有数据行的缓存不能算可用，否则会把旧空缓存误显示为“没有找到数据”'
+)
+assert.doesNotMatch(
+  usableResultSnapshotMatch[1],
+  /Array\.isArray\(result\?\.fields\) && result\.fields\.length > 0/,
+  '首次加载 cache_only 返回字段-only 空结果时必须继续查数据库确认'
 )

@@ -319,11 +319,124 @@ def _is_atomic_metric_metrics_list_false_issue(issue: str, tracking_terms: set[s
     )
 
 
-def _is_downgradable_tracking_event_diagnosis(issue: str, tracking_terms: set[str]) -> bool:
+def _is_selected_fields_detail_display_false_issue(
+        issue: str,
+        request: DashboardAiSqlGenerateRequest,
+        tracking_terms: set[str],
+) -> bool:
+    """
+    是什么：识别把 selectedFields 内部上下文误当成表格展示维度的诊断误阻断。
+    """
+    text = issue.strip()
+    if not text:
+        return False
+    context = request.context if isinstance(request.context, dict) else {}
+    groups = context.get("groups")
+    if isinstance(groups, list) and any(groups):
+        return False
+    internal_field_keywords = (
+        "selectedFields",
+        "已选字段",
+        "选中字段",
+        "选中的字段",
+        "字段列表",
+    )
+    detail_display_keywords = (
+        "高基数",
+        "明细字段",
+        "明细行",
+        "明细级",
+        "作为维度",
+        "展示维度",
+        "表格展示",
+        "行数爆炸",
+        "结果集行数",
+        "数据行数",
+        "原始事件流水",
+        "uid",
+        "用户 ID",
+        "用户ID",
+    )
+    return (
+        _mentions_any_term(text, tracking_terms)
+        and any(keyword in text for keyword in internal_field_keywords)
+        and any(keyword in text for keyword in detail_display_keywords)
+    )
+
+
+def _iter_builder_filter_rules(value: Any):
+    if isinstance(value, list):
+        for item in value:
+            yield from _iter_builder_filter_rules(item)
+        return
+    if not isinstance(value, dict):
+        return
+    children = value.get("children")
+    rules = value.get("rules")
+    if isinstance(children, list):
+        yield from _iter_builder_filter_rules(children)
+    if isinstance(rules, list):
+        yield from _iter_builder_filter_rules(rules)
+    if value.get("field") or value.get("value") not in (None, ""):
+        yield value
+
+
+def _has_global_builder_filter(request: DashboardAiSqlGenerateRequest) -> bool:
+    context = request.context if isinstance(request.context, dict) else {}
+    filters = context.get("filters")
+    return any(True for _ in _iter_builder_filter_rules(filters))
+
+
+def _is_global_filter_scope_false_issue(
+        issue: str,
+        tracking_terms: set[str],
+        request: DashboardAiSqlGenerateRequest,
+) -> bool:
+    """
+    是什么：识别把同表全局维度筛选误判成复合指标分子/分母口径错误的诊断误阻断。
+    """
+    text = issue.strip()
+    if not text or not _has_global_builder_filter(request):
+        return False
+    if not tracking_terms:
+        return False
+    global_filter_keywords = ("全局筛选", "全局过滤", "全局条件", "global filter")
+    formula_keywords = ("分子", "分母", "公式指标", "计算指标", "复合指标", "比率", "ARPU", "ARPPU")
+    false_scope_keywords = (
+        "错误",
+        "误",
+        "限制",
+        "收窄",
+        "同时作用",
+        "移除全局",
+        "删除",
+        "分别添加",
+        "业务口径",
+    )
+    return (
+        any(keyword in text for keyword in global_filter_keywords)
+        and any(keyword in text for keyword in formula_keywords)
+        and any(keyword in text for keyword in false_scope_keywords)
+    )
+
+
+def _is_downgradable_tracking_event_diagnosis(
+        issue: str,
+        tracking_terms: set[str],
+        request: DashboardAiSqlGenerateRequest | None = None,
+) -> bool:
     return (
         _is_implicit_tracking_event_filter_issue(issue, tracking_terms)
         or _is_tracking_metric_alias_or_uncertainty_issue(issue, tracking_terms)
         or _is_atomic_metric_metrics_list_false_issue(issue, tracking_terms)
+        or (
+            request is not None
+            and _is_selected_fields_detail_display_false_issue(issue, request, tracking_terms)
+        )
+        or (
+            request is not None
+            and _is_global_filter_scope_false_issue(issue, tracking_terms, request)
+        )
     )
 
 
@@ -346,7 +459,7 @@ def _downgrade_tracking_event_filter_false_block(
         issue_text = str(issue or "").strip()
         if not issue_text:
             continue
-        if _is_downgradable_tracking_event_diagnosis(issue_text, tracking_terms):
+        if _is_downgradable_tracking_event_diagnosis(issue_text, tracking_terms, request):
             downgraded_issues.append(issue_text)
         else:
             blocking_issues.append(issue_text)
@@ -357,9 +470,9 @@ def _downgrade_tracking_event_filter_false_block(
     updated = response.model_copy(deep=True)
     updated.issues = blocking_issues
     updated.suggestions = list(response.suggestions or []) + downgraded_issues
-    if _is_downgradable_tracking_event_diagnosis(updated.message or "", tracking_terms):
+    if _is_downgradable_tracking_event_diagnosis(updated.message or "", tracking_terms, request):
         updated.message = "配置仍存在需要修正的问题。" if blocking_issues else "当前事件指标配置可以继续生成 SQL。"
-    if _is_downgradable_tracking_event_diagnosis(updated.advice or "", tracking_terms):
+    if _is_downgradable_tracking_event_diagnosis(updated.advice or "", tracking_terms, request):
         updated.advice = "" if not blocking_issues else "请优先修正仍在 issues 中列出的配置问题。"
     if not blocking_issues:
         updated.success = True
@@ -403,6 +516,20 @@ def _dashboard_understanding_system_prompt() -> str:
 def _trim_text(value: Any, limit: int = 12000) -> str:
     text = str(value or "")
     return text if len(text) <= limit else text[:limit] + "\n...（已截断）"
+
+
+def _dashboard_sql_dialect_rules(sql_dialect: str | None, datasource: CoreDatasource) -> list[str]:
+    dialect_text = " ".join([
+        str(sql_dialect or ""),
+        str(getattr(datasource, "type", "") or ""),
+        str(getattr(datasource, "type_name", "") or ""),
+    ]).lower()
+    if "mysql" in dialect_text or "mariadb" in dialect_text:
+        return [
+            "MySQL/MariaDB 方言约束：不能使用 FULL OUTER JOIN；MySQL 不支持该语法。",
+            "如果需要合并两个按日期/维度聚合的结果集，优先用一个 key_set CTE 通过 UNION/UNION ALL 去重收集日期或维度键，再分别 LEFT JOIN 各聚合结果；也可以在同一事实表中用 SUM/COUNT(DISTINCT CASE WHEN ...) 做条件聚合。",
+        ]
+    return []
 
 
 def _dashboard_config_prompt(
@@ -456,6 +583,7 @@ def _dashboard_config_prompt(
         "当指标内筛选 rules[].field.kind 为 tracking-property 时，它表示该业务事件下的事件参数；生成 SQL 时必须按 rules[].field.sourceField/jsonPath 或 field 在事件明细行中取值，再应用对应 operator/value。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters 字段信息生成 SQL；不要编造未提供字段。",
+        *_dashboard_sql_dialect_rules(sql_dialect, datasource),
     ])
 
 
