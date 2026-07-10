@@ -19,15 +19,28 @@ const emptyFunctionMatch = source.match(
 const refreshFunctionMatch = source.match(
   /function isChartRefreshPendingState\(refreshState: any\) \{([\s\S]*?)\r?\n\}/
 )
+const unsnapshottedFunctionMatch = source.match(
+  /function isRefreshableChartWithoutSnapshot\(viewInfo: any\) \{([\s\S]*?)\r?\n\}/
+)
+const shapeFunctionMatch = source.match(
+  /function ensureViewInfoShape\(\) \{([\s\S]*?)\r?\n\}/
+)
 
 assert.ok(pendingFunctionMatch, '需要用状态机函数判断图表结果是否仍在 pending')
 assert.ok(emptyFunctionMatch, '需要用状态机函数判断图表是否是真实空结果')
 assert.ok(refreshFunctionMatch, '需要用状态机函数判断刷新等待/排队/加载状态')
+assert.ok(unsnapshottedFunctionMatch, '需要识别有查询但没有结果快照的图表')
+assert.ok(shapeFunctionMatch, '需要在 viewInfo 归一化入口统一修正旧保存态')
 
 assert.match(
   pendingFunctionMatch[1],
   /viewInfo\?\.dataState !== CHART_RESULT_STATES\.READY/,
   '图表结果未 ready 时必须视为 pending'
+)
+assert.match(
+  pendingFunctionMatch[1],
+  /isRefreshableChartWithoutSnapshot\(viewInfo\)/,
+  '有 SQL 但没有结果快照的保存态必须视为 pending，不能直接显示空态'
 )
 assert.match(
   pendingFunctionMatch[1],
@@ -53,6 +66,16 @@ assert.match(
   emptyFunctionMatch[1],
   /!isChartRefreshPendingState\(viewInfo\?\.refreshState\)/,
   '刷新等待或排队期间不能显示空结果'
+)
+assert.match(
+  unsnapshottedFunctionMatch[1],
+  /chartSnapshotRefreshedAt\(viewInfo\) <= 0/,
+  '只有没有刷新完成戳的图表才需要从保存态强制回到 loading'
+)
+assert.match(
+  shapeFunctionMatch[1],
+  /isRefreshableChartWithoutSnapshot\(props\.viewInfo\)[\s\S]*?props\.viewInfo\.status = CHART_STATUS\.LOADING[\s\S]*?props\.viewInfo\.dataState = CHART_RESULT_STATES\.LOADING[\s\S]*?props\.viewInfo\.refreshState = CHART_REFRESH_STATES\.WAITING/,
+  'viewInfo 归一化时必须把有查询但无快照的旧 success/ready 空保存态改成 loading/waiting'
 )
 
 const computedWiringMatch = source.match(

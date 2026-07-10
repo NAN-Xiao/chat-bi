@@ -129,6 +129,7 @@ function isChartResultPendingState(viewInfo: any, loading: boolean) {
   }
   return (
     loading ||
+    isRefreshableChartWithoutSnapshot(viewInfo) ||
     isChartRefreshPendingState(viewInfo?.refreshState) ||
     viewInfo?.status !== CHART_STATUS.SUCCESS ||
     viewInfo?.dataState !== CHART_RESULT_STATES.READY
@@ -147,6 +148,44 @@ function isChartEmptyResultState(viewInfo: any, hasData: boolean, hasSourceData:
   )
 }
 
+function chartSnapshotRefreshedAt(viewInfo: any) {
+  const values = [
+    viewInfo?.snapshotRefreshedAt,
+    viewInfo?.data?.snapshotRefreshedAt,
+    viewInfo?.refreshed_at,
+    viewInfo?.data?.refreshed_at,
+    viewInfo?.sourceConfig?.sql?.lastResult?.refreshed_at,
+    viewInfo?.sourceConfig?.sql?.lastResult?.cache_refreshed_at,
+  ]
+  for (const value of values) {
+    const timestamp = Number(value)
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+      return timestamp
+    }
+  }
+  return 0
+}
+
+function canLookupChartResult(viewInfo: any) {
+  if (isMixedChart(viewInfo)) {
+    return canRefreshMixedChart(viewInfo)
+  }
+  if (isExternalSnapshotChart(viewInfo)) {
+    return canRefreshExternalMcpSnapshotChart(viewInfo)
+  }
+  return !!(viewInfo?.datasource && viewInfo?.sql?.trim())
+}
+
+function isRefreshableChartWithoutSnapshot(viewInfo: any) {
+  return (
+    !!viewInfo &&
+    !isChartRefreshPendingState(viewInfo?.refreshState) &&
+    canLookupChartResult(viewInfo) &&
+    !hasChartResult(viewInfo) &&
+    chartSnapshotRefreshedAt(viewInfo) <= 0
+  )
+}
+
 function ensureViewInfoShape() {
   if (!props.viewInfo || typeof props.viewInfo !== 'object') {
     return
@@ -160,6 +199,12 @@ function ensureViewInfoShape() {
   props.viewInfo.data.data = Array.isArray(props.viewInfo.data.data) ? props.viewInfo.data.data : []
   props.viewInfo.data.fields = Array.isArray(props.viewInfo.data.fields) ? props.viewInfo.data.fields : []
   props.viewInfo.fields = Array.isArray(props.viewInfo.fields) ? props.viewInfo.fields : props.viewInfo.data.fields
+  if (isRefreshableChartWithoutSnapshot(props.viewInfo)) {
+    props.viewInfo.status = CHART_STATUS.LOADING
+    props.viewInfo.dataState = CHART_RESULT_STATES.LOADING
+    props.viewInfo.loadingProgress = 0
+    props.viewInfo.refreshState = CHART_REFRESH_STATES.WAITING
+  }
   if (!props.viewInfo.status) {
     props.viewInfo.status = hasChartShape(props.viewInfo) ? CHART_STATUS.SUCCESS : CHART_STATUS.LOADING
   }
