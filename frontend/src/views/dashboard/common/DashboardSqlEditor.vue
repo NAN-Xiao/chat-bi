@@ -60,17 +60,20 @@ const props = withDefaults(
     viewInfo?: any
     dashboardInfo?: any
     allowStaticApply?: boolean
+    canEditSql?: boolean
   }>(),
   {
     modelValue: false,
     viewInfo: null,
     dashboardInfo: null,
     allowStaticApply: false,
+    canEditSql: false,
   }
 )
 
 const emits = defineEmits(['update:modelValue', 'applied'])
 const { t } = useI18n()
+const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
 type ChartDataSourceType = 'sql' | 'external_mcp'
 type PreviewResultSnapshot = {
   fields: string[]
@@ -676,9 +679,13 @@ const pivotGroupFieldOptions = computed(() => {
     .forEach((field) => options.set(field, field))
   return Array.from(options.entries()).map(([value, label]) => ({ value, label }))
 })
-const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && hasSqlSource.value)
+const canUseSqlEditor = computed(() => props.canEditSql === true)
+const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && hasSqlSource.value && canUseSqlEditor.value)
 const canRunEditorPreview = computed(() => {
   if (!hasSqlSource.value && !hasMcpSource.value) {
+    return false
+  }
+  if (hasSqlSource.value && !canUseSqlEditor.value) {
     return false
   }
   if (hasSqlSource.value && !props.viewInfo?.datasource) {
@@ -2357,10 +2364,6 @@ function collectBuilderAiContext() {
       rules: filterContext(sqlBuilder.globalFilters),
     },
     selectedFields,
-    availableJsonFields: schemaFieldOptions.value
-      .filter((field) => field.isJsonSubfield)
-      .map((field) => fieldOptionPayload(field.value))
-      .filter(Boolean),
     approximate: sqlBuilder.approximate,
   }
 }
@@ -2449,10 +2452,14 @@ function collectLocalBuilderConfigIssues() {
   }
 }
 
-function resultAdviceItems(result: any, key: 'issues' | 'suggestions') {
+function resultAdviceItems(result: any, key: 'issues' | 'warnings' | 'suggestions') {
   return Array.isArray(result?.[key])
     ? result[key].map((item: any) => String(item || '')).filter(Boolean)
     : []
+}
+
+function resultWarningItems(result: any) {
+  return resultAdviceItems(result, 'warnings')
 }
 
 function isNonBlockingBuilderAdviceItem(value: string) {
@@ -2486,6 +2493,7 @@ function stopBuilderExecutionWithAdvice(result: any, generatedSql = '') {
     issues: unique([...localAdvice.issues, ...resultBlockingIssueItems(result)]),
     suggestions: unique([
       ...localAdvice.suggestions,
+      ...resultWarningItems(result),
       ...resultNonBlockingIssueItems(result),
       ...resultAdviceItems(result, 'suggestions'),
     ]),
@@ -2527,6 +2535,7 @@ function updateBuilderAgentAdviceFromResult(result: any, fallbackMessage = '') {
     ]),
     suggestions: unique([
       ...localAdvice.suggestions,
+      ...resultWarningItems(result),
       ...resultNonBlockingIssueItems(result),
       ...resultAdviceItems(result, 'suggestions'),
     ]),
@@ -2535,6 +2544,10 @@ function updateBuilderAgentAdviceFromResult(result: any, fallbackMessage = '') {
 }
 
 async function generateBuilderAiSql() {
+  if (!canUseSqlEditor.value) {
+    ElMessage.warning(sqlEditorPermissionMessage)
+    return false
+  }
   if (!props.viewInfo?.datasource) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
@@ -4031,6 +4044,10 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
     ElMessage.warning(mt('chart_source_required'))
     return false
   }
+  if (hasSqlSource.value && !canUseSqlEditor.value) {
+    ElMessage.warning(sqlEditorPermissionMessage)
+    return false
+  }
   const useGlobalLoading = options.useGlobalLoading !== false
   if (useGlobalLoading) {
     loadingText.value = loadingText.value || '正在执行'
@@ -4143,6 +4160,10 @@ function buildChart() {
 function validateBeforeApply() {
   if (form.sourceTypes.length === 0) {
     ElMessage.warning(mt('chart_source_required'))
+    return false
+  }
+  if (hasSqlSource.value && !canUseSqlEditor.value) {
+    ElMessage.warning(sqlEditorPermissionMessage)
     return false
   }
   if (hasSqlSource.value && !form.sql.trim()) {
@@ -4443,11 +4464,11 @@ function closeDrawer() {
   >
     <div v-loading="loading" class="sql-editor-body">
       <el-form label-position="top">
-        <div v-if="!hasSqlSource" class="source-section-toggle">
+        <div v-if="!hasSqlSource && canUseSqlEditor" class="source-section-toggle">
           <div class="source-section-title">SQL 数据源</div>
           <el-checkbox v-model="sqlSourceEnabled" class="source-inline-checkbox">SQL</el-checkbox>
         </div>
-        <div v-if="hasSqlSource" class="sql-builder-panel">
+        <div v-if="hasSqlSource && canUseSqlEditor" class="sql-builder-panel">
           <div class="sql-builder-header">
             <div class="sql-builder-tabs">
               <button
@@ -4946,6 +4967,13 @@ function closeDrawer() {
             </el-button>
           </div>
         </div>
+        <el-alert
+          v-else-if="hasSqlSource"
+          class="editor-alert"
+          type="warning"
+          :title="sqlEditorPermissionMessage"
+          :closable="false"
+        />
         <div class="source-section-toggle">
           <div class="source-section-title">MCP 数据源</div>
           <el-checkbox v-model="mcpSourceEnabled" class="source-inline-checkbox">MCP</el-checkbox>

@@ -15,3 +15,14 @@ assert.match(
   /事件筛选条件|事件名筛选|未限定\s*event/,
   '事件类指标已自带 eventName，Agent 误报“缺少事件筛选条件”时不能阻断 SQL 生成'
 )
+
+assert.match(
+  source,
+  /function resultWarningItems\(result: any\)/,
+  '后端 warnings 必须作为非阻断提示进入前端展示'
+)
+assert.match(
+  source.match(/function updateBuilderAgentAdviceFromResult\(result: any[\s\S]*?\n\}/)?.[0] || '',
+  /resultWarningItems\(result\)/,
+  '生成 SQL 成功后，warnings 应进入建议区而不是阻断区'
+)

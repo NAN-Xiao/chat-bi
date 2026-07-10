@@ -329,49 +329,37 @@ def test_dashboard_prompt_treats_event_metric_filters_as_optional() -> None:
     assert "不要生成空 WHERE" in prompt
 
 
-def test_dashboard_diagnosis_prompt_does_not_require_extra_event_filter() -> None:
-    """
-    是什么：诊断节点不能把事件指标的额外事件筛选条件当成必填项。
-    """
-    prompt = ai_sql_generator._dashboard_diagnosis_system_prompt()
-
-    assert "事件指标自带事件名限定" in prompt
-    assert "不要因为没有额外事件筛选条件" in prompt
-    assert "success=false" in prompt
-
-
-def test_dashboard_diagnosis_prompt_does_not_block_on_time_range_limit() -> None:
-    """
-    是什么：配置诊断不能把时间范围当成必须限定的阻断条件。
-    """
-    prompt = ai_sql_generator._dashboard_diagnosis_system_prompt()
-
-    assert "时间范围只是查询窗口" in prompt
-    assert "不能因为未配置时间范围" in prompt
-    assert "success=false" in prompt
-
-
-def test_tracking_event_filter_false_block_is_downgraded() -> None:
-    """
-    是什么：公式原子指标的 tracking-event 字段已经表达事件名时，诊断模型不能再因 filters 为空阻断。
-    """
-    request = DashboardAiSqlGenerateRequest(
+def _cross_event_arpu_formula_request() -> DashboardAiSqlGenerateRequest:
+    return DashboardAiSqlGenerateRequest(
         datasource=1,
-        intent="看 ARPU 和 ARPPU",
+        intent="看近 30 天每日 ARPU",
         chart_type="line",
         context={
+            "metrics": [],
             "formulaMetrics": [
                 {
                     "id": "arpu",
                     "alias": "ARPU",
+                    "decimalPlaces": 2,
                     "tokens": [
                         {
                             "type": "atomicMetric",
                             "metric": {
-                                "field": "tracking-event:event.event:ServerPayLog",
-                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
+                                "id": "revenue",
+                                "field": {
+                                    "kind": "tracking-event",
+                                    "eventTable": "event",
+                                    "eventNameField": "event",
+                                    "eventName": "ServerPayLog",
+                                },
+                                "metric": {
+                                    "table": "event",
+                                    "field": "personal.money",
+                                    "category": "number",
+                                },
                                 "aggregation": "sum",
-                                "label": "后端充值.求和",
+                                "alias": "后端充值金额",
+                                "label": "后端充值金额求和",
                                 "filters": [],
                             },
                         },
@@ -379,344 +367,444 @@ def test_tracking_event_filter_false_block_is_downgraded() -> None:
                         {
                             "type": "atomicMetric",
                             "metric": {
-                                "field": "tracking-event:event.event:UserActive",
-                                "metric": "event.uid",
+                                "id": "active_users",
+                                "field": {
+                                    "kind": "tracking-event",
+                                    "eventTable": "event",
+                                    "eventNameField": "event",
+                                    "eventName": "UserActive",
+                                },
+                                "metric": {
+                                    "table": "event",
+                                    "field": "uid",
+                                    "category": "string",
+                                },
                                 "aggregation": "count_distinct",
-                                "label": "当日活跃.去重数",
+                                "alias": "当日活跃用户数",
+                                "label": "当日活跃用户去重数",
                                 "filters": [],
                             },
                         },
                     ],
                 }
             ],
-            "metrics": [],
             "groups": [],
             "filters": {},
             "selectedFields": [],
         },
     )
-    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
-        success=False,
-        message="原子指标未正确关联事件筛选。",
-        issues=[
-            "原子指标“后端充值.求和”未配置事件筛选条件，缺少“事件名 = ServerPayLog”的限定。",
-            "原子指标“当日活跃.去重数”未配置事件筛选条件，缺少“事件名 = UserActive”的限定。",
-            "计算指标中引用的原子指标别名显示错误，与实际业务含义不符。",
-        ],
-        suggestions=["建议检查指标别名。"],
-    )
-
-    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
-
-    assert fixed.success is True
-    assert fixed.sql == ""
-    assert fixed.issues == []
-    assert any("后端充值.求和" in suggestion for suggestion in fixed.suggestions)
-    assert any("别名显示错误" in suggestion for suggestion in fixed.suggestions)
 
 
-def test_tracking_event_filter_downgrade_keeps_real_blocking_issue() -> None:
+def test_formula_ir_allows_cross_event_atomic_metric_formula_without_blocking() -> None:
     """
-    是什么：如果除了隐式事件筛选误判外还存在真实缺失，诊断仍要保持阻断。
+    是什么：ARPU 这类跨事件 atomicMetric 公式要解析成 IR，并由代码层判定可继续生成 SQL。
     """
-    request = DashboardAiSqlGenerateRequest(
-        datasource=1,
-        intent="看 ARPU",
-        chart_type="line",
-        context={
-            "formulaMetrics": [
-                {
-                    "id": "arpu",
-                    "alias": "ARPU",
-                    "tokens": [
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:ServerPayLog",
-                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
-                                "aggregation": "sum",
-                                "label": "后端充值.求和",
-                                "filters": [],
-                            },
-                        },
-                    ],
-                }
-            ],
-            "metrics": [],
-            "groups": [],
-            "filters": {},
-            "selectedFields": [],
-        },
-    )
-    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
-        success=False,
-        issues=[
-            "原子指标“后端充值.求和”未配置事件筛选条件，缺少“事件名 = ServerPayLog”的限定。",
-            "计算指标缺少分母，无法表达 ARPU。",
-        ],
-    )
+    request = _cross_event_arpu_formula_request()
 
-    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
 
-    assert fixed.success is False
-    assert fixed.issues == ["计算指标缺少分母，无法表达 ARPU。"]
-    assert fixed.suggestions == [
-        "原子指标“后端充值.求和”未配置事件筛选条件，缺少“事件名 = ServerPayLog”的限定。"
+    assert validation.success is True
+    assert validation.issues == []
+    assert any("不同事件" in warning for warning in validation.warnings)
+    formula = formula_ir["formulas"][0]
+    assert formula["alias"] == "ARPU"
+    assert formula["decimal_places"] == 2
+    assert formula["expression"]["type"] == "binary"
+    assert formula["expression"]["operator"] == "/"
+    assert {item["event"] for item in formula["base_metrics"]} == {"ServerPayLog", "UserActive"}
+
+
+def test_formula_ir_allows_arppu_atomic_metric_formula_without_blocking() -> None:
+    """
+    是什么：ARPPU 由同一事件下的收入和付费用户数组成，也应由 IR 正常表达并通过校验。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.intent = "看近 30 天每日 ARPPU"
+    request.context["formulaMetrics"][0]["id"] = "arppu"
+    request.context["formulaMetrics"][0]["alias"] = "ARPPU"
+    request.context["formulaMetrics"][0]["tokens"][2]["metric"]["id"] = "paying_users"
+    request.context["formulaMetrics"][0]["tokens"][2]["metric"]["field"]["eventName"] = "ServerPayLog"
+    request.context["formulaMetrics"][0]["tokens"][2]["metric"]["alias"] = "付费用户数"
+    request.context["formulaMetrics"][0]["tokens"][2]["metric"]["label"] = "付费用户去重数"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is True
+    assert validation.issues == []
+    assert validation.warnings == []
+
+
+def test_formula_ir_allows_payer_rate_and_conversion_cross_event_formulas_without_blocking() -> None:
+    """
+    是什么：付费率、转化率这类跨事件分子分母公式不能因为跨事件本身被阻断。
+    """
+    for alias, numerator_event, denominator_event in [
+        ("付费率", "ServerPayLog", "UserActive"),
+        ("注册登录转化率", "UserLogin", "UserRegister"),
+    ]:
+        request = _cross_event_arpu_formula_request()
+        request.context["formulaMetrics"][0]["id"] = alias
+        request.context["formulaMetrics"][0]["alias"] = alias
+        request.context["formulaMetrics"][0]["tokens"][0]["metric"] = {
+            "id": "numerator_users",
+            "field": {
+                "kind": "tracking-event",
+                "eventTable": "event",
+                "eventNameField": "event",
+                "eventName": numerator_event,
+            },
+            "metric": {"table": "event", "field": "uid", "category": "string"},
+            "aggregation": "count_distinct",
+            "alias": "分子用户数",
+            "label": "分子用户去重数",
+            "filters": [],
+        }
+        request.context["formulaMetrics"][0]["tokens"][2]["metric"] = {
+            "id": "denominator_users",
+            "field": {
+                "kind": "tracking-event",
+                "eventTable": "event",
+                "eventNameField": "event",
+                "eventName": denominator_event,
+            },
+            "metric": {"table": "event", "field": "uid", "category": "string"},
+            "aggregation": "count_distinct",
+            "alias": "分母用户数",
+            "label": "分母用户去重数",
+            "filters": [],
+        }
+
+        normalized = ai_sql_generator._normalize_manual_config(request)
+        formula_ir = ai_sql_generator._build_formula_ir(normalized)
+        validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+        assert validation.success is True
+        assert validation.issues == []
+        assert any("不同事件" in warning for warning in validation.warnings)
+
+
+def test_formula_ir_blocks_incomplete_formula_token_sequence() -> None:
+    """
+    是什么：公式 token 不完整要由确定性校验阻断，不再交给 LLM 猜测。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"] = request.context["formulaMetrics"][0]["tokens"][:2]
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is False
+    assert any("除号后缺少指标或数字" in issue for issue in validation.issues)
+
+
+def test_formula_ir_blocks_dividing_by_literal_zero() -> None:
+    """
+    是什么：明确除以常量 0 属于确定性阻断，不能交给 SQL 节点自由生成。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"] = [
+        request.context["formulaMetrics"][0]["tokens"][0],
+        {"type": "operator", "value": "/"},
+        {"type": "number", "value": "0"},
     ]
 
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
 
-def test_tracking_event_selected_fields_detail_warning_does_not_block_sql_generation() -> None:
+    assert validation.success is False
+    assert any("除以常量 0" in issue for issue in validation.issues)
+
+
+def test_formula_ir_blocks_sum_on_known_non_numeric_field() -> None:
     """
-    是什么：selectedFields 是配置器内部字段上下文，不应被诊断成表格展示维度并阻断生成。
+    是什么：字段元数据明确是非数值时，sum/avg 要在确定性校验阶段阻断。
     """
-    request = DashboardAiSqlGenerateRequest(
-        datasource=1,
-        intent="看近 30 天 ARPU",
-        chart_type="table",
-        context={
-            "formulaMetrics": [
-                {
-                    "id": "arpu",
-                    "alias": "ARPU",
-                    "tokens": [
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:ServerPayLog",
-                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
-                                "aggregation": "sum",
-                                "label": "后端充值.求和",
-                                "filters": [],
-                            },
-                        },
-                        {"type": "operator", "value": "/"},
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:UserActive",
-                                "metric": "event.uid",
-                                "aggregation": "count_distinct",
-                                "label": "当日活跃.去重数",
-                                "filters": [],
-                            },
-                        },
-                    ],
-                }
-            ],
-            "metrics": [],
-            "groups": [],
-            "filters": {},
-            "selectedFields": [
-                {"value": "event.uid", "displayName": "用户 ID"},
-                {"value": "tracking-event:event.event:ServerPayLog", "displayName": "ServerPayLog"},
-                {"value": "tracking-event:event.event:UserActive", "displayName": "UserActive"},
-            ],
-        },
-    )
-    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
-        success=False,
-        message="当前配置在表格中包含了高基数的明细字段，且分子分母事件筛选条件缺失。",
-        issues=[
-            "selectedFields 中包含 event.uid 及多个 tracking-event 类型字段（ServerPayLog, UserActive），这些作为维度会导致数据行数爆炸且破坏按日聚合逻辑。",
-            "计算指标 arpu 的分子原子指标（后端充值）未配置事件筛选条件，未限定 event = 'ServerPayLog'。",
-            "计算指标 arpu 的分母原子指标（当日活跃）未配置事件筛选条件，未限定 event = 'UserActive'。",
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["metric"]["category"] = "string"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is False
+    assert any("不是数值字段" in issue for issue in validation.issues)
+
+
+def test_formula_ir_blocks_atomic_metric_missing_aggregation() -> None:
+    """
+    是什么：公式内 atomicMetric 必须显式声明聚合方式，不能静默降级为 count。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"].pop("aggregation")
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is False
+    assert any("缺少聚合方式" in issue for issue in validation.issues)
+
+
+def test_formula_ir_blocks_atomic_metric_missing_metric_field_even_for_count() -> None:
+    """
+    是什么：公式内 atomicMetric 缺少计算字段要阻断，即使聚合方式是 count。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["aggregation"] = "count"
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"].pop("metric")
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is False
+    assert any("缺少计算字段" in issue for issue in validation.issues)
+
+
+def test_formula_ir_allows_sum_on_integer_category_field() -> None:
+    """
+    是什么：字段 category/type 是 int、bigint、decimal 等数值类型名时，sum 不应被误阻断。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["metric"]["category"] = "bigint"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is True
+    assert not any("不是数值字段" in issue for issue in validation.issues)
+
+
+def test_formula_ir_blocks_formula_referencing_another_formula_metric() -> None:
+    """
+    是什么：第一版不支持公式引用另一个公式指标，需要明确阻断。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"].append({
+        "id": "double_arpu",
+        "alias": "双倍 ARPU",
+        "tokens": [
+            {"type": "metric", "metricId": "arpu"},
+            {"type": "operator", "value": "*"},
+            {"type": "number", "value": "2"},
         ],
-        suggestions=[],
-    )
+    })
 
-    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
 
-    assert fixed.success is True
-    assert fixed.issues == []
-    assert any("selectedFields" in suggestion for suggestion in fixed.suggestions)
-    assert any("ServerPayLog" in suggestion for suggestion in fixed.suggestions)
-    assert any("UserActive" in suggestion for suggestion in fixed.suggestions)
+    assert validation.success is False
+    assert any("暂不支持公式引用另一个公式指标" in issue for issue in validation.issues)
 
 
-def test_atomic_tracking_metric_does_not_require_metrics_list_entry() -> None:
+def test_deterministic_validation_blocks_unsupported_aggregation() -> None:
     """
-    是什么：公式内部 atomicMetric 是直接插入的基础聚合，不需要用户再手动添加同名分析指标。
+    是什么：后端不能信任前端传入的任意聚合方式，未知聚合要阻断。
     """
-    request = DashboardAiSqlGenerateRequest(
-        datasource=1,
-        intent="看 ARPU 和 ARPPU",
-        chart_type="table",
-        context={
-            "formulaMetrics": [
-                {
-                    "id": "arpu",
-                    "alias": "ARPU",
-                    "tokens": [
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:ServerPayLog",
-                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
-                                "aggregation": "sum",
-                                "label": "后端充值.求和",
-                                "filters": [],
-                            },
-                        },
-                        {"type": "operator", "value": "/"},
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:UserActive",
-                                "metric": "event.uid",
-                                "aggregation": "count_distinct",
-                                "label": "当日活跃.去重数",
-                                "filters": [],
-                            },
-                        },
-                    ],
-                }
-            ],
-            "metrics": [],
-            "groups": [],
-            "filters": {},
-            "selectedFields": [],
-        },
-    )
-    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
-        success=False,
-        message="ARPU/ARPPU 公式中的分子未正确关联到 ServerPayLog 事件的金额字段。",
-        issues=[
-            "计算指标 arpu/arppu 的分子原子指标虽然选了 ServerPayLog 事件，但其聚合字段配置为 tracking-property:event.event:ServerPayLog:personal.money，而在 metrics 列表中并未显式定义该基础指标，导致公式引用可能失效或逻辑混乱。",
-            "计算指标 arpu 的分母原子指标选择了 UserActive 事件，但聚合字段配置为 event.uid，未在 metrics 中显式定义为“当日活跃去重数”基础指标。",
-            "缺少明确的“后端充值总额”基础分析指标配置：应基于 ServerPayLog 事件，对 personal.money 字段求和。",
-            "缺少明确的“当日活跃用户数”基础分析指标配置：应基于 UserActive 事件，对 uid 字段去重计数。",
-        ],
-    )
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["aggregation"] = "median"
 
-    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
 
-    assert fixed.success is True
-    assert fixed.issues == []
-    assert any("metrics 列表" in suggestion for suggestion in fixed.suggestions)
-    assert any("基础分析指标配置" in suggestion for suggestion in fixed.suggestions)
+    assert validation.success is False
+    assert any("不支持的聚合方式" in issue for issue in validation.issues)
 
 
-def test_tracking_event_filter_downgrade_handles_compact_event_equals_text() -> None:
+def test_deterministic_validation_blocks_tracking_event_missing_required_metadata() -> None:
     """
-    是什么：诊断模型写成“事件=ServerPayLog/筛选限定”时，也要识别为 tracking-event 隐式事件限定误判。
+    是什么：tracking-event 缺少事件表、事件名字段或事件名时，不能进入 SQL 生成。
     """
-    request = DashboardAiSqlGenerateRequest(
-        datasource=1,
-        intent="看 ARPPU",
-        chart_type="table",
-        context={
-            "formulaMetrics": [
-                {
-                    "id": "arppu",
-                    "alias": "ARPPU",
-                    "tokens": [
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:ServerPayLog",
-                                "metric": "event.uid",
-                                "aggregation": "count_distinct",
-                                "label": "后端充值.去重数",
-                                "filters": [],
-                            },
-                        }
-                    ],
-                }
-            ],
-            "metrics": [],
-            "groups": [],
-            "filters": {},
-            "selectedFields": [],
-        },
-    )
-    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
-        success=False,
-        message="分母指标的筛选条件缺失导致逻辑错误。",
-        advice="请为 ARPPU 的分母添加‘后端充值’事件筛选。",
-        issues=[
-            "ARPPU 计算公式的分母应为‘当日付费用户数’，但当前配置的原子指标仅选择了‘后端充值’事件下的 uid 去重，未在该指标内部添加‘事件=ServerPayLog’的筛选限定，导致分母可能统计错误。"
-        ],
-    )
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["field"] = {
+        "kind": "tracking-event",
+        "eventTable": "event",
+        "eventNameField": "event",
+        "eventName": "",
+    }
 
-    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
 
-    assert fixed.success is True
-    assert fixed.issues == []
-    assert any("事件=ServerPayLog" in suggestion for suggestion in fixed.suggestions)
+    assert validation.success is False
+    assert any("缺少事件名" in issue for issue in validation.issues)
 
 
-def test_global_dimension_filter_false_block_is_downgraded_for_formula_metrics() -> None:
+def test_deterministic_validation_blocks_unauthorized_table_field() -> None:
     """
-    是什么：同一事件明细表上的全局国家筛选是合法口径，诊断模型不能误判为分母被充值用户收窄。
+    是什么：字段所属表不在 allowed_tables 时要阻断，避免绕过数据源权限上下文。
     """
-    request = DashboardAiSqlGenerateRequest(
-        datasource=1,
-        intent="看 US 近 30 天每日 ARPU",
-        chart_type="table",
-        context={
-            "formulaMetrics": [
-                {
-                    "id": "arpu",
-                    "alias": "ARPU",
-                    "tokens": [
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:ServerPayLog",
-                                "metric": "tracking-property:event.event:ServerPayLog:personal.money",
-                                "aggregation": "sum",
-                                "label": "后端充值.求和",
-                                "filters": [],
-                            },
-                        },
-                        {"type": "operator", "value": "/"},
-                        {
-                            "type": "atomicMetric",
-                            "metric": {
-                                "field": "tracking-event:event.event:UserActive",
-                                "metric": "event.uid",
-                                "aggregation": "count_distinct",
-                                "label": "当日活跃.去重数",
-                                "filters": [],
-                            },
-                        },
-                    ],
-                }
-            ],
-            "metrics": [],
-            "groups": [],
-            "filters": {
-                "logic": "and",
-                "rules": [
-                    {
-                        "field": {"table": "event", "field": "currentinfo.country", "displayName": "国家"},
-                        "operator": "eq",
-                        "value": "US",
-                    }
-                ],
-            },
-            "selectedFields": [],
-        },
-    )
-    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
-        success=False,
-        message="全局筛选条件错误地限制了分母指标。",
-        advice="移除全局筛选中的国家限制，改为在计算指标的分子和分母原子指标中分别添加国家=US。",
-        issues=[
-            "全局筛选条件“国家=US”同时作用于分子（ServerPayLog）和分母（UserActive），导致分母被错误收窄为发生过充值的 US 用户中的活跃记录，违背 ARPU=总充值/全量活跃用户的业务口径。"
-        ],
-        suggestions=[
-            "全局筛选：删除“国家”相关的筛选规则，保持全局无国家限制。",
-        ],
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["field"]["eventTable"] = "secret_payments"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        formula_ir,
+        allowed_tables=["event"],
     )
 
-    fixed = ai_sql_generator._downgrade_tracking_event_filter_false_block(response, request)
+    assert validation.success is False
+    assert any("无权限" in issue and "secret_payments" in issue for issue in validation.issues)
 
-    assert fixed.success is True
-    assert fixed.issues == []
-    assert fixed.message == "当前事件指标配置可以继续生成 SQL。"
-    assert fixed.advice == ""
-    assert any("全局筛选条件" in suggestion for suggestion in fixed.suggestions)
+
+def test_deterministic_validation_blocks_field_missing_from_schema() -> None:
+    """
+    是什么：字段不在当前 schema 白名单时要阻断，避免把不存在字段交给 SQL 节点猜。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["metric"]["field"] = "not_exists"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        formula_ir,
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"event", "uid", "personal.money"}},
+    )
+
+    assert validation.success is False
+    assert any("字段不存在或无权限" in issue and "not_exists" in issue for issue in validation.issues)
+
+
+def test_deterministic_validation_blocks_cross_table_formula_without_join_rule() -> None:
+    """
+    是什么：第一版没有显式关联规则时，跨物理表公式要阻断；同一事件表内的跨事件公式仍允许。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["field"]["eventTable"] = "payments"
+    request.context["formulaMetrics"][0]["tokens"][2]["metric"]["field"]["eventTable"] = "sessions"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        formula_ir,
+        allowed_tables=["payments", "sessions"],
+    )
+
+    assert validation.success is False
+    assert any("跨表" in issue and "关联规则" in issue for issue in validation.issues)
+
+
+def test_explain_advice_keeps_success_when_deterministic_validation_passed() -> None:
+    """
+    是什么：advice 层只能合并 warning/suggestion，不能把已通过的确定性校验改成失败。
+    """
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(success=True, sql="select 1")
+    validation = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        warnings=["公式分子分母来自不同事件，系统会先分别聚合再相除。"],
+        suggestions=["建议把公式别名改成业务可读名称。"],
+    )
+
+    result = ai_sql_generator._node_explain_advice({
+        "response": response,
+        "validation_result": validation,
+        "graph_trace": [],
+    })
+
+    merged = result["response"]
+    assert merged.success is True
+    assert merged.sql == "select 1"
+    assert merged.issues == []
+    assert merged.warnings == validation.warnings
+    assert merged.suggestions == validation.suggestions
+
+
+def test_route_after_deterministic_validation_ignores_legacy_diagnosis_failure() -> None:
+    """
+    是什么：是否继续生成 SQL 只看确定性校验结果，不能再被旧 LLM diagnosis 失败状态阻断。
+    """
+    route = ai_sql_generator._route_after_deterministic_validate({
+        "validation_result": ai_sql_generator.DashboardAiSqlGenerateResponse(success=True),
+        "diagnosis": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=False,
+            issues=["LLM 误判：跨事件公式不能生成。"],
+        ),
+    })
+
+    assert route == "build_sql_plan"
+
+
+def test_validate_sql_rejects_multiple_statements_even_when_first_is_select() -> None:
+    """
+    是什么：SQL 校验不能只看开头；SELECT 后拼接写操作也必须阻断。
+    """
+    result = ai_sql_generator._node_validate_sql({
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=True,
+            sql="SELECT 1; DROP TABLE users;",
+        ),
+        "datasource": SimpleNamespace(type="postgresql", type_name="PostgreSQL"),
+        "graph_trace": [],
+    })["response"]
+
+    assert result.success is False
+    assert any("只读" in issue or "exactly one statement" in issue for issue in result.issues)
+
+
+def test_validate_sql_demotes_model_issues_after_readonly_sql_passed() -> None:
+    """
+    是什么：确定性校验和只读 SQL 校验通过后，LLM 生成节点的业务建议不能继续作为阻断 issues。
+    """
+    model_issue = "公式分母逻辑可能与业务口径不符，建议确认是否应使用付费用户数。"
+    result = ai_sql_generator._node_validate_sql({
+        "response": ai_sql_generator.DashboardAiSqlGenerateResponse(
+            success=False,
+            sql="SELECT 1",
+            issues=[model_issue],
+        ),
+        "datasource": SimpleNamespace(type="postgresql", type_name="PostgreSQL"),
+        "graph_trace": [],
+    })["response"]
+
+    assert result.success is True
+    assert result.issues == []
+    assert model_issue in result.suggestions
+
+
+def test_dashboard_sql_prompt_includes_formula_ir_and_sql_plan() -> None:
+    """
+    是什么：SQL 生成节点要读取公式 IR 和 SQL plan，而不是依赖自然语言诊断猜公式。
+    """
+    request = _cross_event_arpu_formula_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    sql_plan = ai_sql_generator._build_sql_plan(normalized, formula_ir)
+
+    prompt = ai_sql_generator._dashboard_sql_user_prompt({
+        "request": request,
+        "datasource": SimpleNamespace(name="测试数据源", type="postgresql", type_name="PostgreSQL"),
+        "validation_result": ai_sql_generator.DashboardAiSqlGenerateResponse(success=True),
+        "formula_ir": formula_ir,
+        "sql_plan": sql_plan,
+        "data_skill": "",
+        "tracking_config": "",
+        "allowed_tables": ["event"],
+    })
+
+    assert "<deterministic-validation>" in prompt
+    assert "<formula-ir>" in prompt
+    assert "<sql-plan>" in prompt
+    assert "ServerPayLog" in prompt
+    assert "UserActive" in prompt
+    assert "NULLIF" in prompt
 
 
 def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:
@@ -751,45 +839,6 @@ def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:
     assert "成熟窗口" in prompt
 
 
-def test_understand_config_marks_fallback_when_llm_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    是什么：理解节点失败时，把降级状态写入 config_summary，供后续诊断感知。
-    """
-
-    async def _fake_config(_model_id: int | None = None):
-        return LLMConfig(
-            model_id=1,
-            model_type="openai",
-            model_name="qwen3.5-plus",
-            api_key="test-key",
-            api_base_url="https://example.test/v1",
-            additional_params={},
-        )
-
-    def _raising_invoke(*_args: Any, **_kwargs: Any):
-        raise RuntimeError("LLM unavailable")
-
-    monkeypatch.setattr(ai_sql_generator, "get_default_config", _fake_config)
-    monkeypatch.setattr(ai_sql_generator.LLMFactory, "create_llm", lambda _config: SimpleNamespace(llm=object()))
-    monkeypatch.setattr(ai_sql_generator, "_async_invoke_llm_json", _raising_invoke)
-
-    result = asyncio.run(ai_sql_generator._async_node_understand_config({
-        "request": DashboardAiSqlGenerateRequest(
-            datasource=1,
-            intent="看收入",
-            chart_type="line",
-            context={"metrics": [], "groups": [], "filters": {}, "selectedFields": []},
-        ),
-        "datasource": SimpleNamespace(name="测试数据源", type_name="PostgreSQL", type="pg"),
-        "graph_trace": [],
-    }))
-
-    summary = result["config_summary"]
-    assert summary["intent"] == "看收入"
-    assert summary["understanding_failed"] is True
-    assert summary["understanding_error"] == "LLM unavailable"
-
-
 def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：看板 AI 生成 SQL 前通过 SQL Engine 统一业务库上下文取 schema、字典和 Data Skill。
@@ -803,7 +852,7 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     datasource = SimpleNamespace(id=1, name="业务库", type="postgresql", type_name="PostgreSQL")
     business_context = SimpleNamespace(
         datasource=datasource,
-        schema="【Schema】\n# Table: event",
+        schema="【Schema】\n# Table: event\n[(event_name:text)]\n",
         sql_dialect="postgres",
         allowed_tables=["event"],
         data_skill="<Data-Skills>口径</Data-Skills>",
@@ -838,6 +887,7 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     assert result["schema"] == business_context.schema
     assert result["sql_dialect"] == "postgres"
     assert result["allowed_tables"] == ["event"]
+    assert result["allowed_fields_by_table"]["event"] == {"event_name"}
     assert result["data_skill"] == business_context.data_skill
     assert result["tracking_config"] == business_context.tracking_config
     assert calls[0]["tenant_id"] == 2001
@@ -889,7 +939,7 @@ def test_timed_graph_node_logs_async_node_failure(monkeypatch: pytest.MonkeyPatc
 
     with pytest.raises(RuntimeError, match="LLM unavailable"):
         asyncio.run(ai_sql_generator._timed_graph_node(
-            "diagnose_config",
+            "deterministic_validate",
             _handler,
             {
                 "request": DashboardAiSqlGenerateRequest(datasource=3),
@@ -900,7 +950,7 @@ def test_timed_graph_node_logs_async_node_failure(monkeypatch: pytest.MonkeyPatc
 
     assert len(warnings) == 1
     assert "Dashboard manual chart graph node failed" in warnings[0]
-    assert "node=diagnose_config" in warnings[0]
+    assert "node=deterministic_validate" in warnings[0]
     assert "status=error" in warnings[0]
     assert "elapsed_ms=" in warnings[0]
     assert "datasource_id=3" in warnings[0]

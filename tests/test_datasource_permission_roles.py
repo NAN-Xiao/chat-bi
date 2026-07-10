@@ -614,7 +614,7 @@ def test_schema_change_request_is_saved_without_mutating_readonly_datasource(mon
     assert request_count == 1
 
 
-def test_workspace_member_cannot_directly_browse_schema_metadata(monkeypatch):
+def test_workspace_member_can_load_builder_schema_metadata_through_permission_filtered_list_apis(monkeypatch):
     engine = _engine_with_permission_tables()
     monkeypatch.setattr(permission_schema, "engine", engine)
     member = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
@@ -629,16 +629,14 @@ def test_workspace_member_cannot_directly_browse_schema_metadata(monkeypatch):
         try:
             with pytest.raises(HTTPException) as schema_exc:
                 asyncio.run(datasource_api.schema_metadata(session, member, 1))
-            with pytest.raises(HTTPException) as table_exc:
-                asyncio.run(datasource_api.table_list(session, member, 1))
-            with pytest.raises(HTTPException) as field_exc:
-                asyncio.run(datasource_api.field_list(session, member, FieldObj(fieldName=""), 10))
+            tables = asyncio.run(datasource_api.table_list(session, member, 1))
+            fields = asyncio.run(datasource_api.field_list(session, member, FieldObj(fieldName=""), 10))
         finally:
             permission_schema.RequestContext.reset(token)
 
         assert schema_exc.value.status_code == 403
-        assert table_exc.value.status_code == 403
-        assert field_exc.value.status_code == 403
+        assert [table.table_name for table in tables] == ["orders", "payments"]
+        assert [field.field_name for field in fields] == ["order_id", "amount"]
 
 
 def test_platform_workspace_delegate_cannot_preview_datasource_rows(monkeypatch):

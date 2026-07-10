@@ -967,8 +967,10 @@ const findPositionX = (width: number) => {
       <DashboardEditor
         v-if="dataInitState"
         ref="dashboardEditorInnerRef"
+        :dashboard-info="dashboardInfo"
         :canvas-component-data="componentData"
         :canvas-view-info="canvasViewInfo"
+        :can-edit-sql="dashboardInfo.canEdit !== false"
         :platform-template="Boolean(state.platformTemplateId)"
       >
       </DashboardEditor>

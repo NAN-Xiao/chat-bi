@@ -28,6 +28,7 @@ from apps.datasource.crud.sql_engine import (
     BusinessSqlContextService,
 )
 from apps.datasource.models.datasource import CoreDatasource
+from apps.db.db import check_sql_read
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import (
     is_platform_admin,
@@ -56,11 +57,14 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     schema: str
     sql_dialect: str | None
     allowed_tables: list[str]
+    allowed_fields_by_table: dict[str, set[str]]
     data_skill: str
     tracking_config: str
     skill_model_id: int | None
-    config_summary: dict[str, Any]
-    diagnosis: DashboardAiSqlGenerateResponse
+    normalized_config: dict[str, Any]
+    formula_ir: dict[str, Any]
+    validation_result: DashboardAiSqlGenerateResponse
+    sql_plan: dict[str, Any]
     response: DashboardAiSqlGenerateResponse
     graph_trace: list[dict[str, Any]]
     last_node: str
@@ -200,6 +204,7 @@ def _response_from_model_text(text: str, require_sql: bool = True) -> DashboardA
     message = str(payload.get("message") or payload.get("reason") or "").strip()
     advice = str(payload.get("advice") or payload.get("diagnosis") or payload.get("analysis") or "").strip()
     issues = payload.get("issues") if isinstance(payload.get("issues"), list) else []
+    warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
     suggestions = payload.get("suggestions") if isinstance(payload.get("suggestions"), list) else []
     return DashboardAiSqlGenerateResponse(
         success=success and (bool(sql) if require_sql else True),
@@ -211,6 +216,7 @@ def _response_from_model_text(text: str, require_sql: bool = True) -> DashboardA
         message=message if success and (sql or not require_sql) else message or "AI 未生成可执行 SQL。",
         advice=advice,
         issues=[str(item) for item in issues if str(item or "").strip()],
+        warnings=[str(item) for item in warnings if str(item or "").strip()],
         suggestions=[str(item) for item in suggestions if str(item or "").strip()],
         raw=text or "",
     )
@@ -227,290 +233,819 @@ def _tracking_event_name_from_field(field: Any) -> str:
     return ""
 
 
-def _iter_configured_metric_items(context: dict[str, Any]):
-    metrics = context.get("metrics")
-    if isinstance(metrics, list):
-        for metric in metrics:
-            if isinstance(metric, dict):
-                yield metric
+_FORMULA_OPERATORS = {"+", "-", "*", "/"}
+_FORMULA_PRECEDENCE = {"+": 1, "-": 1, "*": 2, "/": 2}
+_SUPPORTED_METRIC_AGGREGATIONS = {"count", "count_distinct", "sum", "avg", "max", "min"}
+_NUMERIC_TYPE_KEYWORDS = ("int", "float", "double", "decimal", "number", "numeric", "real")
+_NON_NUMERIC_TYPE_KEYWORDS = ("char", "text", "string", "date", "time", "bool", "json")
 
+
+def _unique_text_items(items: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _list_dict_items(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _formula_metric_items_from_context(context: dict[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for key in ("formulaMetrics", "calculatedMetrics"):
-        formula_metrics = context.get(key)
-        if not isinstance(formula_metrics, list):
-            continue
-        for formula_metric in formula_metrics:
-            if not isinstance(formula_metric, dict):
+        for item in _list_dict_items(context.get(key)):
+            item_id = str(item.get("id") or "").strip()
+            fingerprint = item_id or _safe_json(item.get("tokens") or [])
+            if fingerprint in seen:
                 continue
-            tokens = formula_metric.get("tokens")
-            if not isinstance(tokens, list):
-                continue
-            for token in tokens:
-                if not isinstance(token, dict) or token.get("type") != "atomicMetric":
-                    continue
-                metric = token.get("metric")
-                if isinstance(metric, dict):
-                    yield metric
+            seen.add(fingerprint)
+            items.append(item)
+    return items
 
 
-def _configured_tracking_event_terms(request: DashboardAiSqlGenerateRequest) -> set[str]:
-    context = request.context if isinstance(request.context, dict) else {}
-    terms: set[str] = set()
-    for metric in _iter_configured_metric_items(context):
-        event_name = _tracking_event_name_from_field(metric.get("field"))
-        if not event_name:
-            continue
-        terms.add(event_name)
-        for key in ("label", "alias", "name", "metricAlias"):
-            value = str(metric.get(key) or "").strip()
-            if value:
-                terms.add(value)
-    return terms
+def _metric_item_id(metric: dict[str, Any], index: int) -> str:
+    return str(metric.get("id") or metric.get("alias") or metric.get("label") or f"metric_{index + 1}").strip()
 
 
-def _mentions_any_term(text: str, terms: set[str]) -> bool:
-    normalized = text or ""
-    return any(term and term in normalized for term in terms)
+def _formula_item_id(formula: dict[str, Any], index: int) -> str:
+    return str(formula.get("id") or formula.get("alias") or f"formula_{index + 1}").strip()
 
 
-def _is_implicit_tracking_event_filter_issue(issue: str, tracking_terms: set[str]) -> bool:
-    text = issue.strip()
-    if not text:
+def _field_table_name(field: Any) -> str:
+    if isinstance(field, dict):
+        if str(field.get("kind") or "") == "tracking-event":
+            return str(field.get("eventTable") or field.get("event_table") or field.get("table") or "").strip()
+        return str(field.get("table") or "").strip()
+    text = str(field or "").strip()
+    if text.startswith("tracking-event:") or text.startswith("tracking-property:"):
+        parts = text.split(":")
+        if len(parts) >= 2:
+            table_field = parts[1]
+            return table_field.split(".", 1)[0].strip()
+    if "." in text:
+        return text.split(".", 1)[0].strip()
+    return ""
+
+
+def _field_reference_text(field: Any) -> str:
+    if isinstance(field, dict):
+        return " ".join([
+            str(field.get("category") or ""),
+            str(field.get("type") or ""),
+            str(field.get("fieldType") or ""),
+            str(field.get("field_type") or ""),
+            str(field.get("propertyType") or ""),
+            str(field.get("property_type") or ""),
+            str(field.get("semanticType") or ""),
+            str(field.get("semantic_type") or ""),
+        ]).lower()
+    return str(field or "").lower()
+
+
+def _text_has_numeric_type_hint(text: str) -> bool:
+    return any(keyword in text for keyword in _NUMERIC_TYPE_KEYWORDS)
+
+
+def _text_has_non_numeric_type_hint(text: str) -> bool:
+    return any(keyword in text for keyword in _NON_NUMERIC_TYPE_KEYWORDS)
+
+
+def _field_has_resolvable_reference(field: Any) -> bool:
+    if isinstance(field, str):
+        return bool(field.strip())
+    if not isinstance(field, dict):
         return False
-    if not _mentions_any_term(text, tracking_terms):
-        return False
-    event_filter_keywords = (
-        "事件筛选",
-        "事件=",
-        "事件名",
-        "event =",
-        "event=",
-        "未限定 event",
-        "限定 event",
-        "关联事件筛选",
-        "筛选限定",
-        "筛选条件缺失",
+    if str(field.get("kind") or "") == "tracking-event":
+        return bool(
+            (field.get("eventTable") or field.get("event_table") or field.get("table"))
+            and (field.get("eventNameField") or field.get("event_name_field") or field.get("field"))
+            and (field.get("eventName") or field.get("event_name"))
+        )
+    return any(
+        str(field.get(key) or "").strip()
+        for key in ("field", "sourceField", "source_field", "expression", "value")
     )
-    return any(keyword in text for keyword in event_filter_keywords)
 
 
-def _is_tracking_metric_alias_or_uncertainty_issue(issue: str, tracking_terms: set[str]) -> bool:
-    text = issue.strip()
-    if not text:
+def _tracking_event_metadata_issues(field: Any, label: str) -> list[str]:
+    issues: list[str] = []
+    if isinstance(field, str):
+        if not field.startswith("tracking-event:"):
+            return []
+        parts = field.split(":")
+        if len(parts) < 3 or not parts[-1].strip():
+            issues.append(f"{label} 缺少事件名。")
+        if len(parts) < 2 or "." not in parts[1]:
+            issues.append(f"{label} 缺少事件表或事件名字段。")
+        return issues
+    if not isinstance(field, dict) or str(field.get("kind") or "") != "tracking-event":
+        return []
+    if not str(field.get("eventTable") or field.get("event_table") or field.get("table") or "").strip():
+        issues.append(f"{label} 缺少事件表。")
+    if not str(field.get("eventNameField") or field.get("event_name_field") or field.get("field") or "").strip():
+        issues.append(f"{label} 缺少事件名字段。")
+    if not str(field.get("eventName") or field.get("event_name") or "").strip():
+        issues.append(f"{label} 缺少事件名。")
+    return issues
+
+
+def _metric_measure_field(metric: dict[str, Any]) -> Any:
+    return metric.get("metricField") or metric.get("metric") or metric.get("measureField")
+
+
+def _aggregation_value(metric: dict[str, Any]) -> str:
+    return str(metric.get("aggregation") or "count").strip().lower()
+
+
+def _field_is_known_non_numeric(field: Any) -> bool:
+    if not isinstance(field, dict):
         return False
-    alias_keywords = ("别名", "显示错误", "默认名", "业务含义不明")
-    if any(keyword in text for keyword in alias_keywords):
+    category = str(field.get("category") or "").strip().lower()
+    if category:
+        if _text_has_numeric_type_hint(category) or category in {"measure"}:
+            return False
+        if _text_has_non_numeric_type_hint(category):
+            return True
+    type_text = _field_reference_text(field)
+    if not type_text.strip():
+        return False
+    if _text_has_numeric_type_hint(type_text):
+        return False
+    return _text_has_non_numeric_type_hint(type_text)
+
+
+def _validate_metric_item(
+        metric: dict[str, Any],
+        label: str,
+        *,
+        require_aggregation: bool = False,
+        require_metric_field_for_count: bool = False,
+) -> list[str]:
+    issues: list[str] = []
+    raw_aggregation = str(metric.get("aggregation") or "").strip().lower()
+    aggregation = raw_aggregation or "count"
+    field = metric.get("field")
+    metric_field = _metric_measure_field(metric)
+    if require_aggregation and not raw_aggregation:
+        issues.append(f"{label} 缺少聚合方式。")
+    if aggregation not in _SUPPORTED_METRIC_AGGREGATIONS:
+        issues.append(f"{label} 使用了不支持的聚合方式：{aggregation}。")
+    if not field:
+        issues.append(f"{label} 缺少事件字段或分析字段。")
+    elif not _field_has_resolvable_reference(field):
+        issues.append(f"{label} 的分析字段配置不完整。")
+    issues.extend(_tracking_event_metadata_issues(field, label))
+    should_require_metric_field = aggregation != "count" or require_metric_field_for_count
+    if should_require_metric_field and not metric_field:
+        issues.append(f"{label} 缺少计算字段。")
+    elif should_require_metric_field and not _field_has_resolvable_reference(metric_field):
+        issues.append(f"{label} 的计算字段配置不完整。")
+    if aggregation in {"sum", "avg"} and metric_field and _field_is_known_non_numeric(metric_field):
+        issues.append(f"{label} 使用 {aggregation} 聚合，但计算字段不是数值字段。")
+    return issues
+
+
+def _metric_base_ir(
+        metric: dict[str, Any],
+        *,
+        metric_id: str,
+        source: str,
+) -> dict[str, Any]:
+    field = metric.get("field")
+    metric_field = _metric_measure_field(metric)
+    return {
+        "id": metric_id,
+        "source": source,
+        "event": _tracking_event_name_from_field(field),
+        "table": _field_table_name(field) or _field_table_name(metric_field),
+        "field": field,
+        "metric_field": metric_field,
+        "aggregation": _aggregation_value(metric),
+        "alias": str(metric.get("alias") or metric.get("label") or metric_id).strip(),
+        "label": str(metric.get("label") or metric.get("alias") or metric_id).strip(),
+        "filters": metric.get("filters") or [],
+    }
+
+
+def _normalize_manual_config(request: DashboardAiSqlGenerateRequest) -> dict[str, Any]:
+    """
+    是什么：把前端手动配置归一化成后端稳定结构，供公式 IR 和确定性校验使用。
+    """
+    context = dict(request.context or {})
+    metrics = _list_dict_items(context.get("metrics"))
+    formula_metrics = _formula_metric_items_from_context(context)
+    return {
+        "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
+            "title": request.title,
+            "type": request.chart_type,
+        },
+        "datasource": context.get("datasource") if isinstance(context.get("datasource"), dict) else {},
+        "time": context.get("time") if isinstance(context.get("time"), dict) else {},
+        "metrics": metrics,
+        "formula_metrics": formula_metrics,
+        "groups": _list_dict_items(context.get("groups")),
+        "filters": context.get("filters") if isinstance(context.get("filters"), dict) else {},
+        "selected_fields": _list_dict_items(context.get("selectedFields")),
+        "approximate": context.get("approximate") is True,
+        "raw_context": context,
+    }
+
+
+def _formula_token_kind(token: dict[str, Any] | None) -> str:
+    if not token:
+        return "unknown"
+    token_type = token.get("type")
+    if token_type in {"metric", "atomicMetric", "number"}:
+        return "operand"
+    if token_type == "operator":
+        return "operator"
+    if token_type == "paren" and token.get("value") == "(":
+        return "leftParen"
+    if token_type == "paren" and token.get("value") == ")":
+        return "rightParen"
+    return "unknown"
+
+
+def _is_valid_formula_number(value: Any) -> bool:
+    return bool(re.match(r"^(?:\d+(?:\.\d*)?|\.\d+)$", str(value or "").strip()))
+
+
+def _formula_number_is_zero(value: Any) -> bool:
+    try:
+        return float(str(value).strip()) == 0
+    except Exception:
+        return False
+
+
+def _expression_is_zero_number(expression: dict[str, Any]) -> bool:
+    return expression.get("type") == "number" and _formula_number_is_zero(expression.get("value"))
+
+
+def _expression_has_divide_by_zero(expression: dict[str, Any] | None) -> bool:
+    if not isinstance(expression, dict):
+        return False
+    if expression.get("type") == "binary":
+        if expression.get("operator") == "/" and _expression_is_zero_number(expression.get("right") or {}):
+            return True
+        return (
+            _expression_has_divide_by_zero(expression.get("left"))
+            or _expression_has_divide_by_zero(expression.get("right"))
+        )
+    return False
+
+
+def _apply_formula_operator(values: list[dict[str, Any]], operators: list[str], issues: list[str]) -> None:
+    if not operators:
+        issues.append("公式运算符缺失。")
+        return
+    operator = operators.pop()
+    if len(values) < 2:
+        issues.append("运算符前后缺少指标或数字。")
+        return
+    right = values.pop()
+    left = values.pop()
+    values.append({
+        "type": "binary",
+        "operator": operator,
+        "left": left,
+        "right": right,
+    })
+
+
+def _parse_formula_expression(
+        formula: dict[str, Any],
+        *,
+        formula_index: int,
+        metric_by_id: dict[str, dict[str, Any]],
+        formula_metric_ids: set[str],
+) -> dict[str, Any]:
+    tokens = formula.get("tokens") if isinstance(formula.get("tokens"), list) else []
+    formula_id = _formula_item_id(formula, formula_index)
+    alias = str(formula.get("alias") or formula_id or f"公式指标{formula_index + 1}").strip()
+    issues: list[str] = []
+    base_metric_by_id: dict[str, dict[str, Any]] = {}
+
+    if not tokens:
+        issues.append("公式不能为空。")
+
+    balance = 0
+    previous_kind = "unknown"
+    previous_token: dict[str, Any] | None = None
+    normalized_tokens: list[dict[str, Any]] = []
+
+    for token in tokens:
+        if not isinstance(token, dict):
+            issues.append("公式包含无法识别的 token。")
+            continue
+        token_type = token.get("type")
+        current_kind = _formula_token_kind(token)
+        if current_kind == "unknown":
+            issues.append("公式包含当前版本不支持的 token。")
+            continue
+
+        if token_type == "metric":
+            metric_id = str(token.get("metricId") or "").strip()
+            if metric_id in formula_metric_ids:
+                issues.append("第一版暂不支持公式引用另一个公式指标。")
+            elif metric_id not in metric_by_id:
+                issues.append("公式引用的分析指标不存在。")
+        elif token_type == "atomicMetric":
+            metric = token.get("metric") if isinstance(token.get("metric"), dict) else {}
+            label = str(metric.get("label") or metric.get("alias") or f"{alias} 内事件指标").strip()
+            issues.extend(_validate_metric_item(
+                metric,
+                label,
+                require_aggregation=True,
+                require_metric_field_for_count=True,
+            ))
+        elif token_type == "number" and not _is_valid_formula_number(token.get("value")):
+            issues.append("数字格式不正确。")
+        elif token_type == "operator" and str(token.get("value") or "") not in _FORMULA_OPERATORS:
+            issues.append("公式包含当前版本不支持的运算符。")
+
+        if current_kind == "leftParen":
+            if previous_kind in {"operand", "rightParen"}:
+                issues.append("括号前缺少运算符。")
+            balance += 1
+        elif current_kind == "rightParen":
+            if balance <= 0:
+                issues.append("括号不配对。")
+            if previous_kind in {"operator", "leftParen", "unknown"}:
+                issues.append("右括号前缺少指标或数字。")
+            balance -= 1
+        elif current_kind == "operator":
+            if previous_kind in {"unknown", "operator", "leftParen"}:
+                issues.append("运算符前缺少指标或数字。")
+        elif current_kind == "operand":
+            if previous_kind in {"operand", "rightParen"}:
+                issues.append("两个指标或数字之间缺少运算符。")
+
+        normalized_tokens.append(token)
+        previous_kind = current_kind
+        previous_token = token
+
+    if balance != 0:
+        issues.append("括号不配对。")
+    if previous_kind == "operator":
+        operator = previous_token.get("value") if isinstance(previous_token, dict) else ""
+        issues.append("除号后缺少指标或数字。" if operator == "/" else "运算符后缺少指标或数字。")
+    if previous_kind == "leftParen":
+        issues.append("左括号后缺少指标或数字。")
+
+    if issues:
+        return {
+            "id": formula_id,
+            "alias": alias,
+            "decimal_places": formula.get("decimalPlaces"),
+            "expression": None,
+            "base_metrics": [],
+            "issues": _unique_text_items(issues),
+        }
+
+    values: list[dict[str, Any]] = []
+    operators: list[str] = []
+    parse_issues: list[str] = []
+
+    for index, token in enumerate(normalized_tokens):
+        token_type = token.get("type")
+        if token_type == "number":
+            values.append({"type": "number", "value": str(token.get("value") or "").strip()})
+            continue
+        if token_type == "metric":
+            metric_id = str(token.get("metricId") or "").strip()
+            metric = metric_by_id[metric_id]
+            base_metric = _metric_base_ir(metric, metric_id=metric_id, source="metric")
+            base_metric_by_id[metric_id] = base_metric
+            values.append({"type": "metric_ref", "id": metric_id})
+            continue
+        if token_type == "atomicMetric":
+            metric = token.get("metric") if isinstance(token.get("metric"), dict) else {}
+            metric_id = str(metric.get("id") or f"{formula_id}__atomic_{index + 1}").strip()
+            base_metric = _metric_base_ir(metric, metric_id=metric_id, source="atomicMetric")
+            base_metric_by_id[metric_id] = base_metric
+            values.append({"type": "metric_ref", "id": metric_id})
+            continue
+        if token_type == "operator":
+            operator = str(token.get("value") or "")
+            while (
+                operators
+                and operators[-1] != "("
+                and _FORMULA_PRECEDENCE[operators[-1]] >= _FORMULA_PRECEDENCE[operator]
+            ):
+                _apply_formula_operator(values, operators, parse_issues)
+            operators.append(operator)
+            continue
+        if token_type == "paren" and token.get("value") == "(":
+            operators.append("(")
+            continue
+        if token_type == "paren" and token.get("value") == ")":
+            while operators and operators[-1] != "(":
+                _apply_formula_operator(values, operators, parse_issues)
+            if operators and operators[-1] == "(":
+                operators.pop()
+
+    while operators:
+        if operators[-1] == "(":
+            parse_issues.append("括号不配对。")
+            operators.pop()
+            continue
+        _apply_formula_operator(values, operators, parse_issues)
+
+    expression = values[0] if len(values) == 1 and not parse_issues else None
+    if expression is None:
+        parse_issues.append("公式无法解析为单个表达式。")
+    if _expression_has_divide_by_zero(expression):
+        parse_issues.append("公式明确除以常量 0。")
+
+    return {
+        "id": formula_id,
+        "alias": alias,
+        "decimal_places": formula.get("decimalPlaces"),
+        "expression": expression,
+        "base_metrics": list(base_metric_by_id.values()),
+        "issues": _unique_text_items(parse_issues),
+    }
+
+
+def _build_formula_ir(normalized_config: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：把公式指标 token 解析为可校验的表达式树。
+    """
+    metrics = _list_dict_items(normalized_config.get("metrics"))
+    formula_metrics = _list_dict_items(normalized_config.get("formula_metrics"))
+    metric_by_id = {
+        _metric_item_id(metric, index): metric
+        for index, metric in enumerate(metrics)
+        if _metric_item_id(metric, index)
+    }
+    formula_metric_ids = {
+        _formula_item_id(formula, index)
+        for index, formula in enumerate(formula_metrics)
+        if _formula_item_id(formula, index)
+    }
+    formulas: list[dict[str, Any]] = []
+    issues: list[str] = []
+    warnings: list[str] = []
+    base_metric_by_id: dict[str, dict[str, Any]] = {}
+
+    for index, formula in enumerate(formula_metrics):
+        formula_ir = _parse_formula_expression(
+            formula,
+            formula_index=index,
+            metric_by_id=metric_by_id,
+            formula_metric_ids=formula_metric_ids,
+        )
+        formulas.append(formula_ir)
+        for issue in formula_ir.get("issues") or []:
+            issues.append(f"{formula_ir['alias']} 的公式语法错误：{issue}")
+        events = {
+            str(metric.get("event") or "").strip()
+            for metric in formula_ir.get("base_metrics") or []
+            if str(metric.get("event") or "").strip()
+        }
+        if len(events) > 1:
+            warnings.append(f"{formula_ir['alias']} 的公式分子分母来自不同事件，系统会先分别聚合再相除。")
+        for base_metric in formula_ir.get("base_metrics") or []:
+            metric_id = str(base_metric.get("id") or "").strip()
+            if metric_id:
+                base_metric_by_id[metric_id] = base_metric
+
+    return {
+        "formulas": formulas,
+        "base_metrics": list(base_metric_by_id.values()),
+        "issues": _unique_text_items(issues),
+        "warnings": _unique_text_items(warnings),
+    }
+
+
+def _normalized_table_candidates(table_name: str) -> set[str]:
+    normalized = str(table_name or "").strip().strip('"`[]').lower()
+    if not normalized:
+        return set()
+    candidates = {normalized}
+    if "." in normalized:
+        candidates.add(normalized.split(".")[-1])
+    return candidates
+
+
+def _normalized_identifier(value: Any) -> str:
+    return str(value or "").strip().strip('"`[]').lower()
+
+
+def _schema_table_lookup_keys(table_name: str) -> set[str]:
+    candidates = _normalized_table_candidates(table_name)
+    for candidate in list(candidates):
+        if "." in candidate:
+            candidates.add(candidate.split(".")[-1])
+    return {item for item in candidates if item}
+
+
+def _schema_field_candidates(field: Any) -> set[str]:
+    candidates: set[str] = set()
+    if isinstance(field, dict):
+        field_name = str(field.get("field") or field.get("field_name") or "").strip()
+        source_field = str(field.get("sourceField") or field.get("source_field") or "").strip()
+        value = str(field.get("value") or "").strip()
+        if str(field.get("kind") or "") == "tracking-event":
+            field_name = str(field.get("eventNameField") or field.get("event_name_field") or field_name).strip()
+        for item in (field_name, source_field):
+            if item:
+                candidates.add(_normalized_identifier(item))
+        table_name = _field_table_name(field)
+        if value:
+            normalized_value = _normalized_identifier(value)
+            candidates.add(normalized_value)
+            for table_key in _schema_table_lookup_keys(table_name):
+                prefix = f"{table_key}."
+                if normalized_value.startswith(prefix):
+                    candidates.add(normalized_value[len(prefix):])
+        if field_name and (field.get("isJsonSubfield") or field.get("jsonPath") or field.get("expression")):
+            candidates.add(_normalized_identifier(field_name.split(".", 1)[0]))
+        return {item for item in candidates if item}
+
+    text = str(field or "").strip()
+    if not text:
+        return set()
+    if text.startswith("tracking-event:"):
+        parts = text.split(":")
+        if len(parts) >= 2 and "." in parts[1]:
+            candidates.add(_normalized_identifier(parts[1].split(".", 1)[1]))
+        return {item for item in candidates if item}
+    if text.startswith("tracking-property:"):
+        parts = text.split(":")
+        if len(parts) >= 4:
+            candidates.add(_normalized_identifier(parts[3]))
+            candidates.add(_normalized_identifier(parts[3].split(".", 1)[0]))
+        return {item for item in candidates if item}
+    normalized = _normalized_identifier(text)
+    candidates.add(normalized)
+    if "." in normalized:
+        candidates.add(normalized.split(".", 1)[1])
+    return {item for item in candidates if item}
+
+
+def _allowed_fields_by_table_from_schema(schema: str) -> dict[str, set[str]]:
+    """
+    是什么：从 AI schema 文本里提取当前用户可见字段，供手动配置确定性校验使用。
+    """
+    result: dict[str, set[str]] = {}
+    current_table = ""
+    for line in str(schema or "").splitlines():
+        table_match = re.match(r"\s*#\s*Table:\s*(.+?)\s*$", line)
+        if table_match:
+            current_table = table_match.group(1).strip()
+            for table_key in _schema_table_lookup_keys(current_table):
+                result.setdefault(table_key, set())
+            continue
+        if not current_table:
+            continue
+        field_names = [
+            _normalized_identifier(match.group(1))
+            for match in re.finditer(r"\(([^():,\[\]]+?)\s*:", line)
+        ]
+        if not field_names:
+            continue
+        for table_key in _schema_table_lookup_keys(current_table):
+            result.setdefault(table_key, set()).update(field_names)
+    return {table: fields for table, fields in result.items() if fields}
+
+
+def _canonical_table_name(table_name: str) -> str:
+    normalized = str(table_name or "").strip().strip('"`[]').lower()
+    if "." in normalized:
+        return normalized.split(".")[-1]
+    return normalized
+
+
+def _allowed_table_name_set(allowed_tables: list[str] | None) -> set[str]:
+    allowed: set[str] = set()
+    for table_name in allowed_tables or []:
+        allowed.update(_normalized_table_candidates(table_name))
+    return allowed
+
+
+def _table_is_allowed(table_name: str, allowed_tables: list[str] | None) -> bool:
+    allowed = _allowed_table_name_set(allowed_tables)
+    if not allowed:
         return True
-    uncertainty_keywords = ("逻辑存疑", "需确认", "无法确认", "不明确")
-    hard_block_keywords = ("缺少分母", "缺少分子", "缺少公式", "字段不存在", "未选择字段", "无法生成")
-    if any(keyword in text for keyword in hard_block_keywords):
-        return False
-    return _mentions_any_term(text, tracking_terms) and any(keyword in text for keyword in uncertainty_keywords)
+    return bool(_normalized_table_candidates(table_name) & allowed)
 
 
-def _is_atomic_metric_metrics_list_false_issue(issue: str, tracking_terms: set[str]) -> bool:
-    text = issue.strip()
-    if not text or not _mentions_any_term(text, tracking_terms):
-        return False
-    atomic_metric_keywords = ("metrics 列表", "基础指标", "基础分析指标", "显式定义")
-    false_missing_keywords = ("未显式定义", "未在 metrics 中", "缺少明确", "公式引用可能失效", "重新配置")
-    return (
-        any(keyword in text for keyword in atomic_metric_keywords)
-        and any(keyword in text for keyword in false_missing_keywords)
-    )
+def _field_table_permission_issues(field: Any, label: str, allowed_tables: list[str] | None) -> list[str]:
+    table_name = _field_table_name(field)
+    if not table_name or _table_is_allowed(table_name, allowed_tables):
+        return []
+    return [f"{label} 使用了无权限的数据表：{table_name}。"]
 
 
-def _is_selected_fields_detail_display_false_issue(
-        issue: str,
-        request: DashboardAiSqlGenerateRequest,
-        tracking_terms: set[str],
-) -> bool:
-    """
-    是什么：识别把 selectedFields 内部上下文误当成表格展示维度的诊断误阻断。
-    """
-    text = issue.strip()
-    if not text:
-        return False
-    context = request.context if isinstance(request.context, dict) else {}
-    groups = context.get("groups")
-    if isinstance(groups, list) and any(groups):
-        return False
-    internal_field_keywords = (
-        "selectedFields",
-        "已选字段",
-        "选中字段",
-        "选中的字段",
-        "字段列表",
-    )
-    detail_display_keywords = (
-        "高基数",
-        "明细字段",
-        "明细行",
-        "明细级",
-        "作为维度",
-        "展示维度",
-        "表格展示",
-        "行数爆炸",
-        "结果集行数",
-        "数据行数",
-        "原始事件流水",
-        "uid",
-        "用户 ID",
-        "用户ID",
-    )
-    return (
-        _mentions_any_term(text, tracking_terms)
-        and any(keyword in text for keyword in internal_field_keywords)
-        and any(keyword in text for keyword in detail_display_keywords)
-    )
+def _field_schema_permission_issues(
+        field: Any,
+        label: str,
+        allowed_fields_by_table: dict[str, set[str]] | None,
+) -> list[str]:
+    table_name = _field_table_name(field)
+    if not table_name or not allowed_fields_by_table:
+        return []
+    allowed_fields: set[str] = set()
+    for table_key in _schema_table_lookup_keys(table_name):
+        allowed_fields.update(allowed_fields_by_table.get(table_key) or set())
+    if not allowed_fields:
+        return []
+    field_candidates = _schema_field_candidates(field)
+    if not field_candidates or field_candidates & allowed_fields:
+        return []
+    field_text = str(
+        (field.get("field") or field.get("value") or field.get("sourceField"))
+        if isinstance(field, dict)
+        else field
+    ).strip()
+    return [f"{label} 使用了字段不存在或无权限的字段：{table_name}.{field_text}。"]
 
 
-def _iter_builder_filter_rules(value: Any):
+def _metric_permission_issues(
+        metric: dict[str, Any],
+        label: str,
+        allowed_tables: list[str] | None,
+        allowed_fields_by_table: dict[str, set[str]] | None = None,
+) -> list[str]:
+    issues: list[str] = []
+    issues.extend(_field_table_permission_issues(metric.get("field"), label, allowed_tables))
+    issues.extend(_field_schema_permission_issues(metric.get("field"), label, allowed_fields_by_table))
+    metric_field = _metric_measure_field(metric)
+    if metric_field:
+        issues.extend(_field_table_permission_issues(metric_field, label, allowed_tables))
+        issues.extend(_field_schema_permission_issues(metric_field, label, allowed_fields_by_table))
+    return _unique_text_items(issues)
+
+
+def _configured_field_permission_issues(
+        normalized_config: dict[str, Any],
+        *,
+        allowed_tables: list[str] | None,
+        allowed_fields_by_table: dict[str, set[str]] | None,
+) -> list[str]:
+    issues: list[str] = []
+    time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
+    time_field = time_config.get("field")
+    if time_field:
+        issues.extend(_field_table_permission_issues(time_field, "时间字段", allowed_tables))
+        issues.extend(_field_schema_permission_issues(time_field, "时间字段", allowed_fields_by_table))
+    for index, group in enumerate(_list_dict_items(normalized_config.get("groups"))):
+        label = f"分组项{index + 1}"
+        issues.extend(_field_table_permission_issues(group, label, allowed_tables))
+        issues.extend(_field_schema_permission_issues(group, label, allowed_fields_by_table))
+    for index, field in enumerate(_iter_filter_rule_fields(normalized_config.get("filters"))):
+        label = f"全局筛选{index + 1}"
+        issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+        issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+    return _unique_text_items(issues)
+
+
+def _iter_filter_rule_fields(value: Any):
     if isinstance(value, list):
         for item in value:
-            yield from _iter_builder_filter_rules(item)
+            yield from _iter_filter_rule_fields(item)
         return
     if not isinstance(value, dict):
         return
-    children = value.get("children")
-    rules = value.get("rules")
-    if isinstance(children, list):
-        yield from _iter_builder_filter_rules(children)
-    if isinstance(rules, list):
-        yield from _iter_builder_filter_rules(rules)
-    if value.get("field") or value.get("value") not in (None, ""):
-        yield value
+    if value.get("field") is not None:
+        yield value.get("field")
+    for key in ("rules", "children"):
+        child_value = value.get(key)
+        if isinstance(child_value, list):
+            yield from _iter_filter_rule_fields(child_value)
 
 
-def _has_global_builder_filter(request: DashboardAiSqlGenerateRequest) -> bool:
-    context = request.context if isinstance(request.context, dict) else {}
-    filters = context.get("filters")
-    return any(True for _ in _iter_builder_filter_rules(filters))
+def _metric_effective_table(metric: dict[str, Any]) -> str:
+    return _field_table_name(metric.get("field")) or _field_table_name(_metric_measure_field(metric))
 
 
-def _is_global_filter_scope_false_issue(
-        issue: str,
-        tracking_terms: set[str],
+def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir: dict[str, Any]) -> set[str]:
+    tables: set[str] = set()
+    time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
+    table_name = _field_table_name(time_config.get("field"))
+    if table_name:
+        tables.add(table_name)
+    for metric in _list_dict_items(normalized_config.get("metrics")):
+        table_name = _metric_effective_table(metric)
+        if table_name:
+            tables.add(table_name)
+    for group in _list_dict_items(normalized_config.get("groups")):
+        table_name = _field_table_name(group)
+        if table_name:
+            tables.add(table_name)
+    filters = normalized_config.get("filters")
+    for field in _iter_filter_rule_fields(filters):
+        table_name = _field_table_name(field)
+        if table_name:
+            tables.add(table_name)
+    for base_metric in _list_dict_items(formula_ir.get("base_metrics")):
+        table_name = str(base_metric.get("table") or "").strip()
+        if table_name:
+            tables.add(table_name)
+    return tables
+
+
+def _deterministic_validate_manual_config(
         request: DashboardAiSqlGenerateRequest,
-) -> bool:
-    """
-    是什么：识别把同表全局维度筛选误判成复合指标分子/分母口径错误的诊断误阻断。
-    """
-    text = issue.strip()
-    if not text or not _has_global_builder_filter(request):
-        return False
-    if not tracking_terms:
-        return False
-    global_filter_keywords = ("全局筛选", "全局过滤", "全局条件", "global filter")
-    formula_keywords = ("分子", "分母", "公式指标", "计算指标", "复合指标", "比率", "ARPU", "ARPPU")
-    false_scope_keywords = (
-        "错误",
-        "误",
-        "限制",
-        "收窄",
-        "同时作用",
-        "移除全局",
-        "删除",
-        "分别添加",
-        "业务口径",
-    )
-    return (
-        any(keyword in text for keyword in global_filter_keywords)
-        and any(keyword in text for keyword in formula_keywords)
-        and any(keyword in text for keyword in false_scope_keywords)
-    )
-
-
-def _is_downgradable_tracking_event_diagnosis(
-        issue: str,
-        tracking_terms: set[str],
-        request: DashboardAiSqlGenerateRequest | None = None,
-) -> bool:
-    return (
-        _is_implicit_tracking_event_filter_issue(issue, tracking_terms)
-        or _is_tracking_metric_alias_or_uncertainty_issue(issue, tracking_terms)
-        or _is_atomic_metric_metrics_list_false_issue(issue, tracking_terms)
-        or (
-            request is not None
-            and _is_selected_fields_detail_display_false_issue(issue, request, tracking_terms)
-        )
-        or (
-            request is not None
-            and _is_global_filter_scope_false_issue(issue, tracking_terms, request)
-        )
-    )
-
-
-def _downgrade_tracking_event_filter_false_block(
-        response: DashboardAiSqlGenerateResponse,
-        request: DashboardAiSqlGenerateRequest,
+        normalized_config: dict[str, Any],
+        formula_ir: dict[str, Any],
+        *,
+        allowed_tables: list[str] | None = None,
+        allowed_fields_by_table: dict[str, set[str]] | None = None,
 ) -> DashboardAiSqlGenerateResponse:
     """
-    是什么：把 tracking-event 已自带事件名限定却被诊断模型当作缺筛选的误阻断降级为建议。
+    是什么：由代码层判断当前配置能否进入 SQL 生成，LLM 不能覆盖这个结果。
     """
-    if response.success is not False:
-        return response
-    tracking_terms = _configured_tracking_event_terms(request)
-    if not tracking_terms:
-        return response
+    issues: list[str] = []
+    warnings: list[str] = list(formula_ir.get("warnings") or [])
+    suggestions: list[str] = []
 
-    blocking_issues: list[str] = []
-    downgraded_issues: list[str] = []
-    for issue in response.issues or []:
-        issue_text = str(issue or "").strip()
-        if not issue_text:
-            continue
-        if _is_downgradable_tracking_event_diagnosis(issue_text, tracking_terms, request):
-            downgraded_issues.append(issue_text)
-        else:
-            blocking_issues.append(issue_text)
+    if not request.datasource:
+        issues.append("没有数据源，无法生成 SQL。")
 
-    if not downgraded_issues:
-        return response
+    metrics = _list_dict_items(normalized_config.get("metrics"))
+    formula_metrics = _list_dict_items(normalized_config.get("formula_metrics"))
+    if not metrics and not formula_metrics:
+        issues.append("至少需要配置一个分析指标或公式指标。")
 
-    updated = response.model_copy(deep=True)
-    updated.issues = blocking_issues
-    updated.suggestions = list(response.suggestions or []) + downgraded_issues
-    if _is_downgradable_tracking_event_diagnosis(updated.message or "", tracking_terms, request):
-        updated.message = "配置仍存在需要修正的问题。" if blocking_issues else "当前事件指标配置可以继续生成 SQL。"
-    if _is_downgradable_tracking_event_diagnosis(updated.advice or "", tracking_terms, request):
-        updated.advice = "" if not blocking_issues else "请优先修正仍在 issues 中列出的配置问题。"
-    if not blocking_issues:
-        updated.success = True
-    return updated
+    for index, metric in enumerate(metrics):
+        label = str(metric.get("alias") or metric.get("label") or f"分析指标{index + 1}").strip()
+        issues.extend(_validate_metric_item(metric, label))
+        issues.extend(_metric_permission_issues(metric, label, allowed_tables, allowed_fields_by_table))
 
-
-def _dashboard_diagnosis_system_prompt() -> str:
-    return (
-        "你是 BI 手动看板配置诊断节点。先使用 understand_config 节点对用户当前配置的理解，再结合业务口径、字段字典、事件字典判断配置是否能表达用户意图；不生成 SQL。\n"
-        "输出必须是单个 JSON 对象："
-        '{"success":true,"sql":"","tables":[],"chart_type":"","brief":"","intent":"一句话用户意图","message":"一句话错误结论","advice":"一句话核心改法","issues":["异常点"],"suggestions":["修改建议"]}。\n'
-        "intent 只说用户想用当前配置看什么；issues 只写当前配置与该意图/业务口径不一致或缺失的地方；suggestions 只写当前界面怎么点。\n"
-        "只有字段、聚合、筛选条件、计算指标公式、时间范围与业务口径不一致，或缺少生成查询必需配置时，success 才能是 false。"
-        "标题、图表类型、指标别名、是否添加国家/渠道/平台分组、信息密度、展示美观、字段已选但未使用，只能作为 suggestions/advice，不能放进阻断性 issues，也不能让 success=false。\n"
-        "不要输出 selectedFields、manual-dashboard-context、context、raw、Data Skills、Schema、系统口径、SQL 已转换、已自动添加、已自动应用、UTC+8 等内部技术或执行过程。\n"
-        "不要告诉用户系统已经自动做了什么；只告诉用户在当前界面还要怎么显式配置。不要从表名/字段名/示例里臆造业务事件值或指标公式；业务口径必须来自已给的业务口径文本、字段字典、事件字典或用户当前配置。缺少口径时要明确说“缺少这个指标的业务口径配置”。\n"
-        "重要：时间范围里的粒度（按天/按周/按月）已经是时间分组，不要建议用户再到“分组项”里添加时间字段。分组项只用于国家、平台、渠道等额外维度。\n"
-        "时间范围只是查询窗口，不是业务口径本身；不能因为未配置时间范围、时间范围较宽或时间范围与推荐窗口不同就让 success=false，除非用户意图明确要求某个时间窗口且当前配置与之冲突。\n"
-        "事件指标自带事件名限定；不要因为没有额外事件筛选条件、未在 rules 里再限定 event，或没有把 event 写成单独筛选条件就让 success=false。\n"
-        "一个分析指标可以有多个筛选条件或条件组；不要把多个筛选条件合并成一句含糊建议。涉及复合指标时，要同时说明“分析指标”和“计算指标”怎么配置。\n"
-        "配置建议必须具体到界面动作，例如："
-        "“时间范围：字段选「创建时间 orders.created_at」，粒度选「按天」，范围选「过去7天」”；"
-        "“分析指标1：字段选「用户ID orders.user_id」，聚合选「去重数」，计算字段选「用户ID orders.user_id」，别名填「业务指标名」”；"
-        "“分析指标1筛选条件：字段选「订单状态 orders.status」，条件选「等于」，最右侧值输入框手动填「业务口径里的状态值」”；"
-        "“计算指标1：左侧选「指标A」，运算选「除以」，右侧选「指标B」，倍率填「1」，别名填「业务指标名」”；"
-        "“分组项：添加「国家 users.country」”。"
+    issues.extend(str(item) for item in formula_ir.get("issues") or [])
+    for base_metric in _list_dict_items(formula_ir.get("base_metrics")):
+        label = str(base_metric.get("label") or base_metric.get("alias") or base_metric.get("id") or "公式内基础指标")
+        for field_key in ("field", "metric_field"):
+            field = base_metric.get(field_key)
+            if field:
+                issues.extend(_field_table_permission_issues(field, label, allowed_tables))
+                issues.extend(_field_schema_permission_issues(field, label, allowed_fields_by_table))
+    issues.extend(_configured_field_permission_issues(
+        normalized_config,
+        allowed_tables=allowed_tables,
+        allowed_fields_by_table=allowed_fields_by_table,
+    ))
+    reference_tables = _config_reference_table_names(normalized_config, formula_ir)
+    if len({_canonical_table_name(table) for table in reference_tables if table}) > 1:
+        table_text = "、".join(sorted(reference_tables))
+        issues.append(f"当前配置涉及跨表计算（{table_text}），但没有明确关联规则。")
+    issues = _unique_text_items(issues)
+    warnings = _unique_text_items(warnings)
+    success = not issues
+    return DashboardAiSqlGenerateResponse(
+        success=success,
+        sql="",
+        intent=(request.intent or "").strip(),
+        message="配置可以生成 SQL。" if success else issues[0],
+        advice="" if success else "请先修正阻断问题，再生成 SQL。",
+        issues=issues,
+        warnings=warnings,
+        suggestions=_unique_text_items(suggestions),
     )
 
 
-def _dashboard_understanding_system_prompt() -> str:
-    return (
-        "你是 BI 手动看板配置意图理解节点。只读取用户当前手动配置，推断用户可能想分析什么；不要生成 SQL，不要纠错，不要套业务口径。\n"
-        "输出必须是单个 JSON 对象："
-        '{"success":true,"sql":"","tables":[],"chart_type":"","brief":"","intent":"当前配置表达的分析意图","message":"一句话概括当前配置","advice":"","issues":["仅列出无法从配置确定的疑点"],"suggestions":[]}。\n'
-        "理解依据只能是用户填写的生成意图、图表标题、时间范围、分析指标、计算指标、筛选、全局筛选、分组项和字段中文名。"
-        "如果指标别名是“指标1/指标2”这种默认名，要结合字段、聚合和筛选推断意图，但保留不确定性。"
-        "不要使用业务口径、事件字典去替用户补配置；这些留给诊断节点处理。标题、别名、分组维度不明确只是疑点，不代表配置无法表达意图。"
-    )
+def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：把已通过校验的手动配置整理成 SQL 生成计划，作为 LLM SQL 节点的结构化上下文。
+    """
+    return {
+        "time": normalized_config.get("time") or {},
+        "groups": normalized_config.get("groups") or [],
+        "filters": normalized_config.get("filters") or {},
+        "metrics": normalized_config.get("metrics") or [],
+        "formula_metrics": [
+            {
+                "id": formula.get("id"),
+                "alias": formula.get("alias"),
+                "decimal_places": formula.get("decimal_places"),
+                "expression": formula.get("expression"),
+                "base_metric_ids": [
+                    base_metric.get("id")
+                    for base_metric in formula.get("base_metrics") or []
+                    if base_metric.get("id")
+                ],
+            }
+            for formula in formula_ir.get("formulas") or []
+        ],
+        "base_aggregations": formula_ir.get("base_metrics") or [],
+        "generation_rules": [
+            "先计算 metrics 和公式内 atomicMetric 对应的基础聚合。",
+            "再在外层 SELECT 根据公式 IR 计算公式指标。",
+            "除法必须使用 NULLIF(分母表达式, 0)。",
+            "decimal_places 有值时使用 ROUND 包裹公式表达式。",
+        ],
+    }
 
 
 def _trim_text(value: Any, limit: int = 12000) -> str:
@@ -587,47 +1122,9 @@ def _dashboard_config_prompt(
     ])
 
 
-def _dashboard_understanding_user_prompt(state: DashboardManualChartGraphState) -> str:
-    return "\n".join([
-        "请先理解当前手动图表配置表达的分析意图。",
-        "",
-        _dashboard_config_prompt(
-            state["request"],
-            state["datasource"],
-            "",
-            "",
-        ),
-    ])
-
-
-def _dashboard_diagnosis_user_prompt(state: DashboardManualChartGraphState) -> str:
-    request = state["request"]
-    datasource = state["datasource"]
-    return "\n".join([
-        "请诊断当前配置是否能表达 understand_config 节点理解出的用户意图。",
-        "工作顺序：1) 先复述当前配置表达的分析意图；2) 对照业务口径/字段字典/事件字典检查缺什么；3) 用当前配置器控件给出逐条配置方式。",
-        "如果用户当前配置表达的是 ARPU/ARPPU/付费率/留存/转化率等复合指标，建议里要拆成基础分析指标和计算指标：例如分子、分母分别怎么配，计算指标怎么选左指标/运算符/右指标/倍率/别名。",
-        "如果一个指标需要多个筛选条件，要逐条输出：分析指标N筛选条件1、分析指标N筛选条件2；不要合并成一句。",
-        "",
-        "<understood-intent>",
-        _safe_json(state.get("config_summary") or {}),
-        "</understood-intent>",
-        "",
-        _dashboard_config_prompt(
-            request,
-            datasource,
-            state.get("data_skill", ""),
-            state.get("tracking_config", ""),
-            schema=state.get("schema", ""),
-            sql_dialect=state.get("sql_dialect"),
-            allowed_tables=state.get("allowed_tables") or [],
-        ),
-    ])
-
-
 def _dashboard_sql_system_prompt() -> str:
     return (
-        "你是 BI 手动看板 SQL 生成节点。诊断节点已经通过，你只负责根据当前配置生成只读 SELECT SQL。\n"
+        "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
         "必须使用配置里的时间字段、时间粒度、指标、筛选、分组、计算指标；time.field + time.grain 要生成日期维度；groups 只生成额外维度。不要编造未提供字段。\n"
         "当用户问题或当前配置涉及复杂分析，例如留存、转化、活跃、复购、漏斗、cohort 分析、分组比率、时间窗口对比时，优先使用 CTE 分层结构。"
         "CTE 只是组织结构范式，所有表名、字段名、事件名、日期表达式、过滤条件、分子分母和成熟窗口必须来自当前配置、business-sql-schema、data-skill 或用户明确规则；不得照抄占位符，也不得编造未提供字段。\n"
@@ -738,17 +1235,21 @@ def _dashboard_sql_system_prompt() -> str:
 def _dashboard_sql_user_prompt(state: DashboardManualChartGraphState) -> str:
     request = state["request"]
     datasource = state["datasource"]
-    diagnosis = state.get("diagnosis")
+    validation = state.get("validation_result")
     return "\n".join([
-        "诊断已通过，请生成 SQL。",
+        "确定性校验已通过，请生成 SQL。",
         "",
-        "<diagnosis>",
-        _safe_json(diagnosis.model_dump() if diagnosis else {}),
-        "</diagnosis>",
+        "<deterministic-validation>",
+        _safe_json(validation.model_dump() if validation else {}),
+        "</deterministic-validation>",
         "",
-        "<understood-intent>",
-        _safe_json(state.get("config_summary") or {}),
-        "</understood-intent>",
+        "<formula-ir>",
+        _safe_json(state.get("formula_ir") or {}),
+        "</formula-ir>",
+        "",
+        "<sql-plan>",
+        _safe_json(state.get("sql_plan") or {}),
+        "</sql-plan>",
         "",
         _dashboard_config_prompt(
             request,
@@ -932,6 +1433,7 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         "schema": business_context.schema,
         "sql_dialect": business_context.sql_dialect,
         "allowed_tables": business_context.allowed_tables,
+        "allowed_fields_by_table": _allowed_fields_by_table_from_schema(business_context.schema),
         "data_skill": business_context.data_skill,
         "tracking_config": business_context.tracking_config,
         "skill_model_id": business_context.skill_model_id,
@@ -940,66 +1442,56 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
     }
 
 
-async def _async_node_understand_config(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    request = state["request"]
-    context = dict(request.context or {})
-    metrics = context.get("metrics") if isinstance(context.get("metrics"), list) else []
-    groups = context.get("groups") if isinstance(context.get("groups"), list) else []
-    filters = context.get("filters") if isinstance(context.get("filters"), dict) else {}
-    summary = {
-        "intent": (request.intent or "").strip(),
-        "chart_type": request.chart_type or context.get("chart", {}).get("type"),
-        "metric_count": len(metrics),
-        "group_count": len(groups),
-        "has_filters": bool(filters.get("rules")),
-        "selected_field_count": len(context.get("selectedFields") or []),
-    }
-    try:
-        llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
-        understanding = await _async_invoke_llm_json(llm, [
-            SystemMessage(content=_dashboard_understanding_system_prompt()),
-            HumanMessage(content=_dashboard_understanding_user_prompt(state)),
-        ], require_sql=False, node="understand_config")
-        summary["understood_intent"] = understanding.intent
-        summary["understanding_message"] = understanding.message
-        summary["uncertainties"] = list(understanding.issues or [])
-        summary["raw"] = understanding.raw
-    except Exception as exc:
-        AppLogUtil.warning(f"Dashboard manual chart understand_config fallback used: {exc}")
-        summary["understanding_failed"] = True
-        summary["understanding_error"] = str(exc)
+def _node_normalize_manual_config(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    normalized_config = _normalize_manual_config(state["request"])
     return {
-        "config_summary": summary,
-        "graph_trace": _append_trace(state, "understand_config"),
-        "last_node": "understand_config",
+        "normalized_config": normalized_config,
+        "graph_trace": _append_trace(state, "normalize_manual_config"),
+        "last_node": "normalize_manual_config",
     }
 
 
-async def _async_node_diagnose_config(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    llm = await _create_dashboard_ai_sql_llm(state.get("skill_model_id"))
-    response = await _async_invoke_llm_json(llm, [
-        SystemMessage(content=_dashboard_diagnosis_system_prompt()),
-        HumanMessage(content=_dashboard_diagnosis_user_prompt(state)),
-    ], require_sql=False, node="diagnose_config")
-    response.sql = ""
-    if not response.intent:
-        response.intent = str((state.get("config_summary") or {}).get("understood_intent") or "")
-    response = _downgrade_tracking_event_filter_false_block(response, state["request"])
+def _node_build_formula_ir(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    formula_ir = _build_formula_ir(state.get("normalized_config") or {})
     return {
-        "diagnosis": response,
-        "response": response if response.success is False else state.get("response"),
-        "graph_trace": _append_trace(state, "diagnose_config"),
-        "last_node": "diagnose_config",
+        "formula_ir": formula_ir,
+        "graph_trace": _append_trace(state, "build_formula_ir"),
+        "last_node": "build_formula_ir",
     }
 
 
-def _route_after_diagnosis(state: DashboardManualChartGraphState) -> str:
-    diagnosis = state.get("diagnosis")
-    if diagnosis is None:
+def _node_deterministic_validate(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    validation = _deterministic_validate_manual_config(
+        state["request"],
+        state.get("normalized_config") or {},
+        state.get("formula_ir") or {},
+        allowed_tables=state.get("allowed_tables") or [],
+        allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+    )
+    return {
+        "validation_result": validation,
+        "response": validation if validation.success is False else state.get("response"),
+        "graph_trace": _append_trace(state, "deterministic_validate"),
+        "last_node": "deterministic_validate",
+    }
+
+
+def _route_after_deterministic_validate(state: DashboardManualChartGraphState) -> str:
+    validation = state.get("validation_result")
+    if validation is None:
         return "finalize_response"
-    if diagnosis.success is False:
+    if validation.success is False:
         return "finalize_response"
-    return "generate_sql"
+    return "build_sql_plan"
+
+
+def _node_build_sql_plan(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    sql_plan = _build_sql_plan(state.get("normalized_config") or {}, state.get("formula_ir") or {})
+    return {
+        "sql_plan": sql_plan,
+        "graph_trace": _append_trace(state, "build_sql_plan"),
+        "last_node": "build_sql_plan",
+    }
 
 
 async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
@@ -1008,9 +1500,9 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
         SystemMessage(content=_dashboard_sql_system_prompt()),
         HumanMessage(content=_dashboard_sql_user_prompt(state)),
     ], node="generate_sql")
-    diagnosis = state.get("diagnosis")
-    if diagnosis:
-        response.intent = response.intent or diagnosis.intent
+    validation = state.get("validation_result")
+    if validation:
+        response.intent = response.intent or validation.intent
     return {
         "response": response,
         "graph_trace": _append_trace(state, "generate_sql"),
@@ -1021,6 +1513,13 @@ async def _async_node_generate_sql(state: DashboardManualChartGraphState) -> dic
 def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
     sql = (response.sql or "").strip()
+
+    def _mark_sql_valid() -> None:
+        response.success = True
+        if response.issues:
+            response.suggestions = _unique_text_items(list(response.suggestions or []) + list(response.issues or []))
+            response.issues = []
+
     if not sql:
         response.success = False
         response.message = response.message or "Agent 未生成 SQL。"
@@ -1029,9 +1528,23 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.success = False
         response.message = "SQL 不是只读查询。"
         response.advice = "只能生成 SELECT/WITH 查询，请重新生成。"
-        response.issues = list(response.issues or []) + ["生成 SQL 不是只读查询。"]
+        response.issues = list(response.issues or []) + ["生成 SQL 不是只读 SELECT/WITH 查询。"]
+    elif state.get("datasource") is not None:
+        try:
+            is_read, reason = check_sql_read(sql, state["datasource"])
+        except Exception as exc:
+            is_read, reason = False, str(exc)
+        if not is_read:
+            response.success = False
+            response.message = "SQL 不是只读查询。"
+            response.advice = "只能生成单条 SELECT/WITH 查询，请重新生成。"
+            response.issues = _unique_text_items(
+                list(response.issues or []) + [f"生成 SQL 不是只读查询：{reason or '未通过只读校验'}。"]
+            )
+        else:
+            _mark_sql_valid()
     else:
-        response.success = True
+        _mark_sql_valid()
     return {
         "response": response,
         "graph_trace": _append_trace(state, "validate_sql"),
@@ -1039,8 +1552,25 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
     }
 
 
+def _node_explain_advice(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    response = state.get("response") or DashboardAiSqlGenerateResponse(success=False)
+    validation = state.get("validation_result")
+    if validation:
+        updated = response.model_copy(deep=True)
+        if validation.intent and not updated.intent:
+            updated.intent = validation.intent
+        updated.warnings = _unique_text_items(list(updated.warnings or []) + list(validation.warnings or []))
+        updated.suggestions = _unique_text_items(list(updated.suggestions or []) + list(validation.suggestions or []))
+        response = updated
+    return {
+        "response": response,
+        "graph_trace": _append_trace(state, "explain_advice"),
+        "last_node": "explain_advice",
+    }
+
+
 def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    response = state.get("response") or state.get("diagnosis") or DashboardAiSqlGenerateResponse(
+    response = state.get("response") or state.get("validation_result") or DashboardAiSqlGenerateResponse(
         success=False,
         message="Agent 没有返回可用结果。",
         advice="请补充生成意图或检查配置后重试。",
@@ -1055,17 +1585,23 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
 def _build_manual_chart_graph():
     graph = StateGraph(DashboardManualChartGraphState)
     graph.add_node("collect_context", _timed_node("collect_context", _node_collect_context))
-    graph.add_node("understand_config", _timed_node("understand_config", _async_node_understand_config))
-    graph.add_node("diagnose_config", _timed_node("diagnose_config", _async_node_diagnose_config))
+    graph.add_node("normalize_manual_config", _timed_node("normalize_manual_config", _node_normalize_manual_config))
+    graph.add_node("build_formula_ir", _timed_node("build_formula_ir", _node_build_formula_ir))
+    graph.add_node("deterministic_validate", _timed_node("deterministic_validate", _node_deterministic_validate))
+    graph.add_node("build_sql_plan", _timed_node("build_sql_plan", _node_build_sql_plan))
     graph.add_node("generate_sql", _timed_node("generate_sql", _async_node_generate_sql))
     graph.add_node("validate_sql", _timed_node("validate_sql", _node_validate_sql))
+    graph.add_node("explain_advice", _timed_node("explain_advice", _node_explain_advice))
     graph.add_node("finalize_response", _timed_node("finalize_response", _node_finalize_response))
     graph.set_entry_point("collect_context")
-    graph.add_edge("collect_context", "understand_config")
-    graph.add_edge("understand_config", "diagnose_config")
-    graph.add_conditional_edges("diagnose_config", _route_after_diagnosis)
+    graph.add_edge("collect_context", "normalize_manual_config")
+    graph.add_edge("normalize_manual_config", "build_formula_ir")
+    graph.add_edge("build_formula_ir", "deterministic_validate")
+    graph.add_conditional_edges("deterministic_validate", _route_after_deterministic_validate)
+    graph.add_edge("build_sql_plan", "generate_sql")
     graph.add_edge("generate_sql", "validate_sql")
-    graph.add_edge("validate_sql", "finalize_response")
+    graph.add_edge("validate_sql", "explain_advice")
+    graph.add_edge("explain_advice", "finalize_response")
     graph.add_edge("finalize_response", END)
     return graph.compile()
 
@@ -1081,7 +1617,7 @@ async def generate_dashboard_ai_sql(
     """
     是什么：根据手动看板配置运行专用 Agent graph。
     谁调用：dashboard AI 生成 SQL 接口调用。
-    做了什么：按 collect_context -> understand_config -> diagnose_config -> generate_sql -> validate_sql -> finalize_response 编排。
+    做了什么：按 collect_context -> normalize_manual_config -> build_formula_ir -> deterministic_validate -> build_sql_plan -> generate_sql -> validate_sql -> explain_advice -> finalize_response 编排。
     """
     try:
         final_state = await MANUAL_CHART_GRAPH.ainvoke({

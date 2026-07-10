@@ -64,7 +64,7 @@ const props = defineProps({
   },
   canEditSql: {
     type: Boolean,
-    default: true,
+    default: false,
   },
   platformTemplate: {
     type: Boolean,

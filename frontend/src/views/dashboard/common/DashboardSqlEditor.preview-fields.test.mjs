@@ -260,6 +260,11 @@ assert.match(
   /formulaMetrics:/,
   '手动图表配置上下文必须向后端提供 formulaMetrics'
 )
+assert.doesNotMatch(
+  source,
+  /availableJsonFields:/,
+  '手动图表 AI SQL 上下文不应携带 availableJsonFields 全量 JSON 子字段，避免 prompt 过大导致生成变慢'
+)
 assert.match(
   source,
   /appendFormulaToken/,

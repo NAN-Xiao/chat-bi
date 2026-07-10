@@ -1438,7 +1438,7 @@ async def sync_fields(session: SessionDep,
 
 
 @router.post("/tableList/{id}", response_model=List[CoreTable], summary=f"{PLACEHOLDER_PREFIX}ds_table_list")
-@require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
+@require_permissions(permission=AppPermission(type='ds', keyExpression="id"))
 async def table_list(session: SessionDep, current_user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     """
     是什么：table_list 是一个接口入口，负责接住数据源相关请求。
@@ -1449,7 +1449,6 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
     result: list[CoreTable] | None = None
     status = "error"
     try:
-        _require_schema_metadata_admin(current_user)
         datasource = get_ds(session, id, current_user)
         if datasource is None:
             raise HTTPException(status_code=404, detail="项目不存在")
@@ -1481,7 +1480,7 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
 
 
 @router.post("/fieldList/{id}", response_model=List[DatasourceFieldListItem], summary=f"{PLACEHOLDER_PREFIX}ds_field_list")
-@require_permissions(permission=AppPermission(role=['admin'], type='table', keyExpression="id"))
+@require_permissions(permission=AppPermission(type='table', keyExpression="id"))
 async def field_list(session: SessionDep, current_user: CurrentUser, field: FieldObj,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
     """
@@ -1494,7 +1493,6 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
     datasource_id = None
     status = "error"
     try:
-        _require_schema_metadata_admin(current_user)
         table = session.get(CoreTable, id)
         if table is None:
             result = []

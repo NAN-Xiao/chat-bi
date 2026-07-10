@@ -456,6 +456,7 @@ class DashboardAiSqlGenerateResponse(BaseModel):
     message: str = ''
     advice: str = ''
     issues: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
     raw: str = ''
 

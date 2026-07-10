@@ -58,7 +58,7 @@ const props = defineProps({
   },
   canEditSql: {
     type: Boolean,
-    default: true,
+    default: false,
   },
   readonlyTemplate: {
     type: Boolean,

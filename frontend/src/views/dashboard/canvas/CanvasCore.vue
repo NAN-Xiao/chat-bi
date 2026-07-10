@@ -12,8 +12,10 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackgroundSvgMain.vue
 import { useI18n } from 'vue-i18n'
 import { isMainCanvas } from '@/views/dashboard/utils/canvasUtils.ts'
 import DashboardSqlEditor from '@/views/dashboard/common/DashboardSqlEditor.vue'
+import { ElMessage } from 'element-plus-secondary'
 
 const { t } = useI18n()
+const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(['parentAddItemBox'])
@@ -96,7 +98,7 @@ const props = defineProps({
   },
   canEditSql: {
     type: Boolean,
-    default: true,
+    default: false,
   },
   platformTemplate: {
     type: Boolean,
@@ -144,6 +146,10 @@ const dashboardCanShare = computed(() => {
 })
 
 const editSql = (id: string) => {
+  if (!dashboardCanEdit.value || props.canEditSql !== true) {
+    ElMessage.warning(sqlEditorPermissionMessage)
+    return
+  }
   editingViewId.value = id
   sqlEditorVisible.value = true
 }
@@ -1714,6 +1720,7 @@ defineExpose({
       :view-info="editingViewInfo"
       :dashboard-info="dashboardInfo"
       :allow-static-apply="platformTemplate"
+      :can-edit-sql="canEditSql"
       @applied="onSqlApplied"
     />
   </div>
