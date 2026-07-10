@@ -1803,12 +1803,9 @@ async function recoverStaleLoadingState() {
     scheduleRenderChart()
     return
   }
-  // 打开看板只恢复持久化状态，不主动执行 SQL；用户可通过刷新按钮重新查询。
-  props.viewInfo.status = props.viewInfo.status === 'failed' ? 'failed' : 'success'
-  props.viewInfo.dataState = props.viewInfo.status === 'failed' ? 'failed' : 'ready'
-  props.viewInfo.loadingProgress = 100
-  props.viewInfo.refreshState = ''
-  scheduleRenderChart()
+  if (!hasChartShape(props.viewInfo)) {
+    return
+  }
 }
 
 watch(

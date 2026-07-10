@@ -1102,6 +1102,8 @@ async function refreshChartData() {
         const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
         const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
         const hasPreviousShape = hasChartShape(viewInfo)
+        viewInfo.dataState = 'loading'
+        viewInfo.refreshState = 'loading'
         const result = await previewChartSql(viewInfo, undefined, true)
         const fields = getResultFields(result)
         const data = Array.isArray(result?.data) ? result.data : []
@@ -1134,6 +1136,7 @@ async function refreshChartData() {
             viewInfo.refreshState = ''
           }
         } else {
+          viewInfo.dataState = 'ready'
           viewInfo.refreshState = ''
           markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
           successCount += 1

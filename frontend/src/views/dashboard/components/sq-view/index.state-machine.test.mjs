@@ -74,3 +74,13 @@ assert.match(
   /isChartRefreshPendingState\(props\.viewInfo\?\.refreshState\)/,
   '刷新等待/排队/加载中的图表不能被陈旧状态恢复改成 ready，否则会短暂误显示“没有找到数据”'
 )
+assert.doesNotMatch(
+  staleRecoveryMatch[1],
+  /props\.viewInfo\.status = props\.viewInfo\.status === 'failed' \? 'failed' : 'success'/,
+  '没有持久化图表形状或快照时，陈旧 loading 恢复不能直接落成 success/ready，否则空数组会被误判为真实空结果'
+)
+assert.match(
+  staleRecoveryMatch[1],
+  /if \(!hasChartShape\(props\.viewInfo\)\) \{\s*return\s*\}/,
+  '陈旧 loading 恢复必须要求已有持久化图表形状或快照；新建/新增看板等待接口期间应保持 loading'
+)

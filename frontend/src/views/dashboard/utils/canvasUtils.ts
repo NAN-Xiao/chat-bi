@@ -12,6 +12,18 @@ const datasourceContext = useDatasourceContextStore()
 const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboardStore)
 type DashboardResourceCallback = (response: any) => void
 
+function parseDashboardJsonPayload<T>(value: unknown, fallback: T): T {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+  try {
+    return JSON.parse(String(value)) as T
+  } catch (error) {
+    console.error('parse_dashboard_payload', error)
+    return fallback
+  }
+}
+
 export const load_resource_prepare = (
   params: any,
   callBack: (obj: any) => void,
@@ -47,9 +59,9 @@ export const load_resource_prepare = (
         canSetDefault: canvasInfo.can_set_default,
         dashboardRefreshPolicy: canvasInfo.dashboard_refresh_policy || null,
       }
-      const canvasDataResult = JSON.parse(canvasInfo.component_data)
-      const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
-      const canvasViewInfoPreview = JSON.parse(canvasInfo.canvas_view_info || '{}')
+      const canvasDataResult = parseDashboardJsonPayload<any[]>(canvasInfo.component_data, [])
+      const canvasStyleResult = parseDashboardJsonPayload<Record<string, any>>(canvasInfo.canvas_style_data, {})
+      const canvasViewInfoPreview = parseDashboardJsonPayload<Record<string, any>>(canvasInfo.canvas_view_info, {})
       callBack({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview })
     })
     .catch((err) => {
