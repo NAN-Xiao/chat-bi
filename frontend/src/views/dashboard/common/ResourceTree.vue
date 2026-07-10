@@ -1137,7 +1137,10 @@ const operation = async (opt: string, data: SQTreeNode) => {
     try {
       const record = await dashboardApi.default_copy({ dashboard_id: resourceId })
       ElMessage.success(t('dashboard.copy_default_dashboard_success'))
+      selectedNodeKey.value = record.id
+      returnMounted.value = true
       await openCopiedDashboard(record)
+      await getTree()
     } finally {
       copyLoading.value = false
     }
