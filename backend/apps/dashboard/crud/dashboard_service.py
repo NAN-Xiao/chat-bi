@@ -1264,6 +1264,36 @@ def _dashboard_tree_dashboard_ids(
     return dashboard_ids
 
 
+def _dashboard_has_tree_position(
+        session: SessionDep,
+        current_user: CurrentUser,
+        scope: str,
+        dashboard_id: str,
+) -> bool:
+    row = session.exec(
+        select(CoreDashboardTree.id)
+        .where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(current_user),
+                CoreDashboardTree.scope == _dashboard_tree_scope(scope),
+                CoreDashboardTree.dashboard_id == dashboard_id,
+            )
+        )
+        .limit(1)
+    ).first()
+    return row is not None
+
+
+def _dashboard_delete_would_remove_default_leaf(
+        session: SessionDep,
+        current_user: CurrentUser,
+        record: CoreDashboard,
+) -> bool:
+    if record.node_type != "leaf":
+        return False
+    return bool(record.is_default) or _dashboard_has_tree_position(session, current_user, "default", record.id)
+
+
 def _dashboard_tree_upsert_position(
         session: SessionDep,
         current_user: CurrentUser,
@@ -3708,23 +3738,21 @@ def load_default_resource(session: SessionDep, dashboard: QueryDashboard, curren
     )
 
 
-def copy_default_resource(session: SessionDep, user: CurrentUser, request: DashboardDefaultCopyRequest):
-    """
-    是什么：copy_default_resource 是一个可以复用的小步骤，负责仪表盘相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    source = _load_dashboard_or_404(session, request.dashboard_id, user)
-    if source.node_type != "leaf" or not source.is_default:
-        raise HTTPException(status_code=404, detail="Default dashboard does not exist")
-
+def _clone_default_dashboard_record(
+        session: SessionDep,
+        user: CurrentUser,
+        source: CoreDashboard,
+        sort: int | None = 0,
+        require_datasource: bool = True,
+) -> CoreDashboard:
     datasource_id = _effective_dashboard_datasource(source)
     if datasource_id is None:
-        raise HTTPException(status_code=400, detail="Default dashboard datasource is required")
-    if not datasource_bound_to_tenant(session, int(datasource_id), _current_tenant_id(user)):
-        raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
-    _ensure_datasource_access(session, user, datasource_id, required=True)
-    _require_create_permission(session, user, datasource_id, "root")
+        if require_datasource:
+            raise HTTPException(status_code=400, detail="Default dashboard datasource is required")
+    else:
+        if not datasource_bound_to_tenant(session, int(datasource_id), _current_tenant_id(user)):
+            raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
+        _ensure_datasource_access(session, user, datasource_id, required=True)
 
     now = int(time.time())
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
@@ -3750,7 +3778,7 @@ def copy_default_resource(session: SessionDep, user: CurrentUser, request: Dashb
         status=1,
         self_watermark_status=source.self_watermark_status or 0,
         is_default=0,
-        sort=0,
+        sort=int(sort or 0),
         create_by=operator_id,
         update_by=operator_id,
         create_time=now,
@@ -3762,6 +3790,27 @@ def copy_default_resource(session: SessionDep, user: CurrentUser, request: Dashb
     )
     session.add(record)
     session.flush()
+    return record
+
+
+def copy_default_resource(session: SessionDep, user: CurrentUser, request: DashboardDefaultCopyRequest):
+    """
+    是什么：copy_default_resource 是一个可以复用的小步骤，负责仪表盘相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
+    """
+    source = _load_dashboard_or_404(session, request.dashboard_id, user)
+    if source.node_type != "leaf" or not source.is_default:
+        raise HTTPException(status_code=404, detail="Default dashboard does not exist")
+
+    datasource_id = _effective_dashboard_datasource(source)
+    if datasource_id is None:
+        raise HTTPException(status_code=400, detail="Default dashboard datasource is required")
+    _require_create_permission(session, user, datasource_id, "root")
+
+    now = int(time.time())
+    operator_id = _asset_operator_id(session, user)
+    record = _clone_default_dashboard_record(session, user, source, sort=0)
     _dashboard_tree_upsert_position(
         session,
         user,
@@ -3775,6 +3824,58 @@ def copy_default_resource(session: SessionDep, user: CurrentUser, request: Dashb
     session.commit()
     session.refresh(record)
     return record
+
+
+def repair_my_tree_default_dashboard_copies(session: SessionDep, user: CurrentUser) -> list[CoreDashboard]:
+    """
+    将历史上误挂到“我的看板”的推荐看板源 id 转换为独立副本。
+    """
+    my_rows = session.exec(
+        select(CoreDashboardTree).where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(user),
+                CoreDashboardTree.scope == "my",
+            )
+        )
+    ).scalars().all()
+    dashboard_ids = [row.dashboard_id for row in my_rows if row.dashboard_id]
+    if not dashboard_ids:
+        return []
+
+    records = session.exec(
+        select(CoreDashboard).where(
+            and_(
+                _active_dashboard_filter(),
+                CoreDashboard.tenant_id == _current_tenant_id(user),
+                CoreDashboard.id.in_(list(dict.fromkeys(dashboard_ids))),
+                CoreDashboard.node_type == "leaf",
+            )
+        )
+    ).scalars().all()
+    record_by_id = {record.id: record for record in records}
+    default_dashboard_ids = set(_dashboard_tree_dashboard_ids(session, user, "default"))
+
+    now = int(time.time())
+    operator_id = _asset_operator_id(session, user)
+    repaired: list[CoreDashboard] = []
+    for row in my_rows:
+        source = record_by_id.get(row.dashboard_id)
+        if source is None:
+            continue
+        if not (bool(source.is_default) or source.id in default_dashboard_ids):
+            continue
+        copied = _clone_default_dashboard_record(session, user, source, sort=row.sort, require_datasource=False)
+        row.dashboard_id = copied.id
+        row.update_by = operator_id
+        row.update_time = now
+        session.add(row)
+        repaired.append(copied)
+
+    if repaired:
+        session.commit()
+        for record in repaired:
+            session.refresh(record)
+    return repaired
 
 
 def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
@@ -4694,8 +4795,8 @@ def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id:
         raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
     if coreDashboard.datasource:
         _ensure_datasource_access(session, current_user, coreDashboard.datasource)
-    if coreDashboard.is_default:
-        _require_set_default_permission(current_user)
+    if _dashboard_delete_would_remove_default_leaf(session, current_user, coreDashboard):
+        raise HTTPException(status_code=400, detail="推荐看板不能直接删除，请先取消推荐或复制为独立看板")
     tree_rows = session.exec(
         select(CoreDashboardTree).where(
             and_(
