@@ -31,6 +31,10 @@ from common.utils.snowflake import snowflake
 from common.utils.time import get_timestamp
 
 
+TRACKING_EVENT_MAPPING_PROMPT_BUDGET = 16_000
+TRACKING_FIELD_PROMPT_BUDGET = 16_000
+
+
 def _clean_text(value: str | None, max_len: int | None = None) -> str | None:
     """
     是什么：_clean_text 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -718,11 +722,253 @@ def _format_json_for_prompt(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def _event_mapping_match_texts(mapping: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
+    for key in ("event_name", "event_display_name", "event_category", "metric", "description"):
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            texts.append(value.strip())
+    for key in ("events", "aliases"):
+        value = mapping.get(key)
+        if isinstance(value, list):
+            texts.extend(str(item).strip() for item in value if str(item).strip())
+    for property_item in mapping.get("properties") or []:
+        if not isinstance(property_item, dict):
+            continue
+        for key in ("property_name", "property_display_name", "description", "aliases"):
+            value = property_item.get(key)
+            if isinstance(value, list):
+                texts.extend(str(item).strip() for item in value if str(item).strip())
+            elif isinstance(value, str) and value.strip():
+                texts.append(value.strip())
+    return texts
+
+
+def _event_mapping_matches_question(mapping: dict[str, Any], question: str) -> bool:
+    normalized_question = question.casefold().strip()
+    if not normalized_question:
+        return False
+    for text in _event_mapping_match_texts(mapping):
+        normalized_text = text.casefold().strip()
+        if len(normalized_text) >= 2 and normalized_text in normalized_question:
+            return True
+    return False
+
+
+def _lightweight_event_mapping(mapping: dict[str, Any]) -> dict[str, Any]:
+    projected = {
+        key: mapping[key]
+        for key in ("event_name", "event_display_name", "event_category")
+        if mapping.get(key) not in (None, "", [], {})
+    }
+    if projected:
+        return projected
+    return {
+        key: copy.deepcopy(mapping[key])
+        for key in ("metric", "events", "description")
+        if mapping.get(key) not in (None, "", [], {})
+    }
+
+
+def _event_mapping_prompt_chars(mapping: dict[str, Any]) -> int:
+    return len(_format_json_for_prompt(mapping))
+
+
+def _project_event_name_mappings(
+    mappings: list[Any],
+    question: str | None,
+    *,
+    data_skill_text: str | None = None,
+    budget: int = TRACKING_EVENT_MAPPING_PROMPT_BUDGET,
+) -> list[Any]:
+    if not question or not question.strip():
+        return copy.deepcopy(mappings)
+
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    passthrough: list[Any] = []
+    for index, item in enumerate(mappings):
+        if not isinstance(item, dict):
+            passthrough.append(copy.deepcopy(item))
+            continue
+        question_match = _event_mapping_matches_question(item, question)
+        data_skill_match = _event_mapping_matches_question(item, data_skill_text or "")
+        priority = 2 if question_match else 1 if data_skill_match else 0
+        ranked.append((priority, index, item))
+
+    selected: list[Any] = []
+    used_chars = 0
+
+    def add(item: Any) -> bool:
+        nonlocal used_chars
+        serialized = _format_json_for_prompt(item)
+        separator_chars = 1 if selected else 0
+        if used_chars + separator_chars + len(serialized) > budget:
+            return False
+        selected.append(item)
+        used_chars += separator_chars + len(serialized)
+        return True
+
+    for priority, _index, mapping in sorted(ranked, key=lambda item: (-item[0], item[1])):
+        if priority:
+            if not add(copy.deepcopy(mapping)):
+                add(_lightweight_event_mapping(mapping))
+    for priority, _index, mapping in ranked:
+        if not priority:
+            add(_lightweight_event_mapping(mapping))
+    for item in passthrough:
+        add(item)
+    return selected
+
+
+def _tracking_field_match_texts(field: TenantTrackingFieldDTO) -> list[str]:
+    texts: list[str] = []
+    for value in (
+        field.field_name,
+        field.field_comment,
+        field.field_role,
+        field.semantic_type,
+        field.source_field,
+        field.json_path,
+        field.ai_notes,
+    ):
+        if isinstance(value, str) and value.strip():
+            texts.append(value.strip())
+    for value in (field.aliases, field.value_mappings, field.example_values):
+        if value not in (None, [], {}):
+            texts.append(_format_json_for_prompt(value))
+    return texts
+
+
+def _tracking_field_matches_question(field: TenantTrackingFieldDTO, question: str) -> bool:
+    normalized_question = question.casefold().strip()
+    if not normalized_question:
+        return False
+    for text in _tracking_field_match_texts(field):
+        normalized_text = text.casefold().strip()
+        if len(normalized_text) >= 2 and normalized_text in normalized_question:
+            return True
+    return False
+
+
+def _tracking_field_matches_data_skill(field: TenantTrackingFieldDTO, data_skill_text: str) -> bool:
+    normalized_skill = data_skill_text.casefold().strip()
+    if not normalized_skill:
+        return False
+    candidates = [field.field_name]
+    if field.source_field and field.json_path:
+        candidates.append(f"{field.source_field}.{field.json_path.removeprefix('$.')}")
+    for candidate in candidates:
+        normalized_candidate = str(candidate or "").casefold().strip()
+        if len(normalized_candidate) >= 2 and normalized_candidate in normalized_skill:
+            return True
+    return False
+
+
+def _tracking_field_is_default(field: TenantTrackingFieldDTO, config: TenantTrackingConfigDTO) -> bool:
+    default_table = config.default_event_table
+    default_fields = {
+        config.default_subject_field,
+        config.default_event_name_field,
+        config.default_event_time_field,
+    }
+    if default_table and field.table_name == default_table and field.field_name in default_fields:
+        return True
+    return field.field_role in {"subject_id", "event_name", "event_time", "partition_date", "snapshot_date"}
+
+
+def _tracking_field_context_line(field: TenantTrackingFieldDTO, datasource_type: str | None) -> str:
+    parts = [f"- `{field.table_name}.{field.field_name}`"]
+    if field.field_role:
+        parts.append(f"role={field.field_role}")
+    semantic_type = _normalized_semantic_type(field.field_role, field.semantic_type)
+    if semantic_type:
+        parts.append(f"type={semantic_type}")
+    if field.source_field:
+        parts.append(f"source={field.source_field}")
+    if field.json_path:
+        parts.append(f"json_path={field.json_path}")
+    if field.required:
+        parts.append("required=true")
+    if field.field_comment:
+        parts.append(f"comment={field.field_comment}")
+    aliases = _format_json_for_prompt(field.aliases)
+    if aliases:
+        parts.append(f"aliases={aliases}")
+    mappings = _format_json_for_prompt(field.value_mappings)
+    if mappings:
+        parts.append(f"value_mappings={mappings}")
+    examples = _format_json_for_prompt(field.example_values)
+    if examples:
+        parts.append(f"examples={examples}")
+    expression = field.expression
+    if field.source_field and field.json_path and not datasource_type:
+        expression = None
+    if expression:
+        parts.append(f"expression={expression}")
+    if field.ai_notes:
+        parts.append(f"notes={field.ai_notes}")
+    return "; ".join(parts)
+
+
+def _lightweight_tracking_field(field: TenantTrackingFieldDTO) -> TenantTrackingFieldDTO:
+    projected = copy.deepcopy(field)
+    projected.field_comment = None
+    projected.aliases = []
+    projected.value_mappings = []
+    projected.expression = None
+    projected.example_values = []
+    projected.ai_notes = None
+    return projected
+
+
+def _project_tracking_fields(
+    config: TenantTrackingConfigDTO,
+    question: str | None,
+    *,
+    datasource_type: str | None,
+    data_skill_text: str | None = None,
+    budget: int = TRACKING_FIELD_PROMPT_BUDGET,
+) -> list[TenantTrackingFieldDTO]:
+    fields = config.fields or []
+    if not question or not question.strip():
+        return copy.deepcopy(fields)
+
+    ranked: list[tuple[int, int, TenantTrackingFieldDTO]] = []
+    for index, field in enumerate(fields):
+        is_default = _tracking_field_is_default(field, config)
+        is_question_match = _tracking_field_matches_question(field, question)
+        is_data_skill_match = _tracking_field_matches_data_skill(field, data_skill_text or "")
+        priority = 3 if is_default else 2 if is_question_match else 1 if is_data_skill_match else 0
+        if priority:
+            ranked.append((priority, index, field))
+
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    selected: list[TenantTrackingFieldDTO] = []
+    used_chars = 0
+
+    def add(field: TenantTrackingFieldDTO) -> bool:
+        nonlocal used_chars
+        line = _tracking_field_context_line(field, datasource_type)
+        separator_chars = 1 if selected else 0
+        if used_chars + separator_chars + len(line) > budget:
+            return False
+        selected.append(field)
+        used_chars += separator_chars + len(line)
+        return True
+
+    for _priority, _index, field in ranked:
+        if not add(copy.deepcopy(field)):
+            add(_lightweight_tracking_field(field))
+    return selected
+
+
 def build_tracking_prompt_context(
     config: TenantTrackingConfigDTO,
     validation_warnings: list[str] | None = None,
     *,
     datasource_type: str | None = None,
+    question: str | None = None,
+    data_skill_text: str | None = None,
 ) -> tuple[str, list[str]]:
     """
     是什么：build_tracking_prompt_context 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -764,7 +1010,13 @@ def build_tracking_prompt_context(
         lines.append(value)
         summary_parts.append(f"字段角色映射: {value}")
     if config.event_name_mappings:
-        value = _format_json_for_prompt(config.event_name_mappings)
+        value = _format_json_for_prompt(
+            _project_event_name_mappings(
+                config.event_name_mappings,
+                question,
+                data_skill_text=data_skill_text,
+            )
+        )
         lines.append("\n## 事件名映射")
         lines.append(value)
         summary_parts.append(f"事件名映射: {value}")
@@ -794,40 +1046,16 @@ def build_tracking_prompt_context(
             lines.append(line)
             summary_parts.append(line)
 
-    if config.fields:
+    projected_fields = _project_tracking_fields(
+        config,
+        question,
+        datasource_type=datasource_type,
+        data_skill_text=data_skill_text,
+    )
+    if projected_fields:
         lines.append("\n## 字段注释与角色")
-        for item in config.fields:
-            parts = [f"- `{item.table_name}.{item.field_name}`"]
-            if item.field_role:
-                parts.append(f"role={item.field_role}")
-            semantic_type = _normalized_semantic_type(item.field_role, item.semantic_type)
-            if semantic_type:
-                parts.append(f"type={semantic_type}")
-            if item.source_field:
-                parts.append(f"source={item.source_field}")
-            if item.json_path:
-                parts.append(f"json_path={item.json_path}")
-            if item.required:
-                parts.append("required=true")
-            if item.field_comment:
-                parts.append(f"comment={item.field_comment}")
-            aliases = _format_json_for_prompt(item.aliases)
-            if aliases:
-                parts.append(f"aliases={aliases}")
-            mappings = _format_json_for_prompt(item.value_mappings)
-            if mappings:
-                parts.append(f"value_mappings={mappings}")
-            examples = _format_json_for_prompt(item.example_values)
-            if examples:
-                parts.append(f"examples={examples}")
-            expression = item.expression
-            if item.source_field and item.json_path and not datasource_type:
-                expression = None
-            if expression:
-                parts.append(f"expression={expression}")
-            if item.ai_notes:
-                parts.append(f"notes={item.ai_notes}")
-            line = "; ".join(parts)
+        for item in projected_fields:
+            line = _tracking_field_context_line(item, datasource_type)
             lines.append(line)
             summary_parts.append(line)
 
@@ -844,6 +1072,8 @@ def find_tracking_prompt_context(
     *,
     include_legacy: bool = False,
     datasource_type: str | None = None,
+    question: str | None = None,
+    data_skill_text: str | None = None,
 ) -> tuple[str, list[str]]:
     """
     是什么：find_tracking_prompt_context 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -858,4 +1088,10 @@ def find_tracking_prompt_context(
         physical_schema = datasource_physical_schema(session, int(datasource_id))
         config, validation = filter_tracking_config_for_physical_schema(config, physical_schema)
         validation_warnings = validation.warnings
-    return build_tracking_prompt_context(config, validation_warnings, datasource_type=datasource_type)
+    return build_tracking_prompt_context(
+        config,
+        validation_warnings,
+        datasource_type=datasource_type,
+        question=question,
+        data_skill_text=data_skill_text,
+    )

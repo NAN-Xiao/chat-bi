@@ -155,6 +155,8 @@ class BusinessSqlContextService:
             tenant_id,
             int(datasource_id),
             datasource_type=datasource_type,
+            question=question,
+            data_skill_text=data_skill,
         )
         warnings = [
             item[len("schema校验: ") :]

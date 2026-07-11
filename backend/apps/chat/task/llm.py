@@ -1508,6 +1508,8 @@ class LLMService:
             tenant_id,
             datasource_id,
             datasource_type=getattr(self.ds, "type", None) or getattr(self.ds, "type_name", None),
+            question=self.chat_question.question,
+            data_skill_text=self.chat_question.data_skill,
         )
 
     def load_business_sql_context(

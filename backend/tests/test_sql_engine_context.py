@@ -41,7 +41,14 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
         return "<Data-Skills>口径</Data-Skills>", ["口径"], 99
 
     def _tracking(session, tenant_id, datasource_id, **kwargs):
-        calls.append(("tracking", tenant_id, datasource_id, kwargs.get("datasource_type")))
+        calls.append((
+            "tracking",
+            tenant_id,
+            datasource_id,
+            kwargs.get("datasource_type"),
+            kwargs.get("question"),
+            kwargs.get("data_skill_text"),
+        ))
         return "<Tracking>事件字典</Tracking>", ["schema校验: ok"]
 
     monkeypatch.setattr(sql_engine, "get_ai_table_schema", _schema)
@@ -77,7 +84,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
     assert calls == [
         ("schema", 1, "看登录人数"),
         ("skills", 1, CustomPromptTargetScopeEnum.SMART_QA, "看登录人数"),
-        ("tracking", 2001, 1, "postgresql"),
+        ("tracking", 2001, 1, "postgresql", "看登录人数", "<Data-Skills>口径</Data-Skills>"),
     ]
 
 
