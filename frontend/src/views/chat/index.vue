@@ -320,6 +320,7 @@
                         :questions="message.recommended_question"
                         :first-chat="message.first_chat"
                         :disabled="isTyping"
+                        :pending="isRecommendQuestionPending(message.record?.id)"
                         @click-question="quickAsk"
                         @loading-over="loadingOver"
                         @stop="onChatStop"
@@ -522,6 +523,12 @@ import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { createChatLoadScheduler } from './answer/chatLoadScheduler'
 import { isRestorableAnswerRecord, shouldMarkChatTypingOnRestore } from './answer/taskRestore'
+import {
+  POST_ANSWER_ACTION_RETRY_DELAY_MS,
+  isPostAnswerActionPending,
+  shouldRetryPostAnswerActionStart,
+  shouldRunPostAnswerActions,
+} from './answer/postAnswerActions'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -889,6 +896,9 @@ function onClickHistory(chat: ChatInfo) {
       // getChatPredictData(record.id)
     }
   })
+  nextTick(() => {
+    ensurePostAnswerActions(latestAnswerRecord())
+  })
 }
 
 function onChatDeleted(id: number) {
@@ -996,22 +1006,105 @@ function onNoDatasource() {
   appendNoDatasourceAnswer(inputMessage.value)
 }
 
-function getRecommendQuestions(id?: number) {
-  nextTick(() => {
-    if (recommendQuestionRef.value) {
-      if (recommendQuestionRef.value instanceof Array) {
-        for (let i = 0; i < recommendQuestionRef.value.length; i++) {
-          const _id = recommendQuestionRef.value[i].id()
-          if (_id === id) {
-            recommendQuestionRef.value[i].getRecommendQuestions()
-            break
-          }
-        }
-      } else {
-        recommendQuestionRef.value.getRecommendQuestions()
+async function getRecommendQuestions(id?: number) {
+  await nextTick()
+  if (!recommendQuestionRef.value) {
+    return false
+  }
+
+  if (recommendQuestionRef.value instanceof Array) {
+    for (let i = 0; i < recommendQuestionRef.value.length; i++) {
+      const _id = recommendQuestionRef.value[i].id()
+      if (_id === id) {
+        recommendQuestionRef.value[i].getRecommendQuestions()
+        return true
       }
     }
-  })
+    return false
+  }
+
+  recommendQuestionRef.value.getRecommendQuestions()
+  return true
+}
+
+function waitPostAnswerRetryDelay() {
+  return new Promise((resolve) => window.setTimeout(resolve, POST_ANSWER_ACTION_RETRY_DELAY_MS))
+}
+
+function latestAnswerRecord() {
+  for (let i = currentChat.value.records.length - 1; i >= 0; i -= 1) {
+    const record = currentChat.value.records[i]
+    if (!record.first_chat && record.question) {
+      return record
+    }
+  }
+  return undefined
+}
+
+function hasAnyPostAnswerPending() {
+  return pendingPostAnswerRecordIds.value.size > 0
+}
+
+function setPostAnswerPending(recordId: number, pending: boolean) {
+  const nextPendingIds = new Set(pendingPostAnswerRecordIds.value)
+  if (pending) {
+    nextPendingIds.add(recordId)
+  } else {
+    nextPendingIds.delete(recordId)
+  }
+  pendingPostAnswerRecordIds.value = nextPendingIds
+}
+
+function clearPostAnswerPending() {
+  pendingPostAnswerRecordIds.value = new Set()
+}
+
+function isRecommendQuestionPending(recordId?: number) {
+  return isPostAnswerActionPending(recordId, pendingPostAnswerRecordIds.value)
+}
+
+function isStalePostAnswerAction(recordId: number, chatId: number | undefined, version: number) {
+  return (
+    version !== chatLoadVersion ||
+    currentChatId.value !== chatId ||
+    !currentChat.value.records.some((record) => record.id === recordId)
+  )
+}
+
+async function ensurePostAnswerActions(record?: ChatRecord) {
+  if (!shouldRunPostAnswerActions(record)) {
+    return
+  }
+  const recordId = record?.id
+  if (!recordId || pendingPostAnswerRecordIds.value.has(recordId)) {
+    return
+  }
+
+  const chatId = currentChatId.value
+  const version = chatLoadVersion
+  setPostAnswerPending(recordId, true)
+  getRecommendQuestionsLoading.value = true
+
+  for (let attempt = 1; ; attempt += 1) {
+    if (isStalePostAnswerAction(recordId, chatId, version)) {
+      setPostAnswerPending(recordId, false)
+      getRecommendQuestionsLoading.value = hasAnyPostAnswerPending()
+      return
+    }
+
+    const started = await getRecommendQuestions(recordId)
+    if (started) {
+      return
+    }
+
+    if (!shouldRetryPostAnswerActionStart(started, attempt)) {
+      setPostAnswerPending(recordId, false)
+      getRecommendQuestionsLoading.value = hasAnyPostAnswerPending()
+      return
+    }
+
+    await waitPostAnswerRetryDelay()
+  }
 }
 
 function quickAsk(question: string) {
@@ -1025,6 +1118,7 @@ const chartAnswerRef = ref()
 const getRecommendQuestionsLoading = ref(false)
 const restoringVisibleChat = ref(false)
 const chartLoadScheduler = createChatLoadScheduler({ maxConcurrency: 3 })
+const pendingPostAnswerRecordIds = ref<Set<number>>(new Set())
 let chatLoadVersion = 0
 
 function nextChatLoadVersion() {
@@ -1111,6 +1205,7 @@ async function restoreVisibleChatState() {
     restoreChatTypingState()
     restoreChartAnswers()
     scheduleHistoricalChartDataLoads(chatLoadVersion)
+    await ensurePostAnswerActions(latestAnswerRecord())
   } catch (error) {
     console.error('Restore visible chat state failed:', error)
   } finally {
@@ -1129,15 +1224,15 @@ async function onChartAnswerFinish(id: number) {
   if (id !== lastRecord?.id) {
     return
   }
-  getRecommendQuestionsLoading.value = true
   loading.value = false
   isTyping.value = false
   getRecordUsage(id)
-  getRecommendQuestions(id)
+  await ensurePostAnswerActions(lastRecord)
 }
 
 const loadingOver = () => {
   getRecommendQuestionsLoading.value = false
+  clearPostAnswerPending()
 }
 
 function onChartAnswerError(id: number) {
@@ -1150,6 +1245,7 @@ function onChatStop() {
   clearInterval(scrollTime)
   scrollTime = null
   getRecommendQuestionsLoading.value = false
+  clearPostAnswerPending()
   currentChat.value.records.forEach((record) => {
     if (isUnfinishedAnswerRecord(record)) {
       record.stopped = true

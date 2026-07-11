@@ -369,6 +369,14 @@ LIMIT 24
   "message":"flam 新增 cohort LTV 回连 user 快照时必须在 JOIN 条件中限定成熟快照分区，例如 `s.dt IN (c.d1_dt, c.d2_dt, c.d3_dt, c.d7_dt)`；不能只按 uid/prod 连接全量用户日快照。"
 }},
 {{
+  "name":"snapshot_partition_bounds_required",
+  "match":["ltv","LTV","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","次日LTV","次日 LTV","2日LTV","2 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
+  "forbidden_sql_patterns":[
+    "LEFT\\\\s+JOIN\\\\s+(?:`?first_zombie`?\\\\s*\\\\.\\\\s*)?`?user`?\\\\s+(?:AS\\\\s+)?`?s`?\\\\s+ON\\\\s+(?!(?:(?!\\\\b(?:WHERE|GROUP\\\\s+BY|ORDER\\\\s+BY|LIMIT|LEFT\\\\s+JOIN|RIGHT\\\\s+JOIN|INNER\\\\s+JOIN|JOIN)\\\\b)[\\\\s\\\\S])*`?s`?\\\\s*\\\\.\\\\s*`?dt`?\\\\s+BETWEEN)(?:(?!\\\\b(?:WHERE|GROUP\\\\s+BY|ORDER\\\\s+BY|LIMIT|LEFT\\\\s+JOIN|RIGHT\\\\s+JOIN|INNER\\\\s+JOIN|JOIN)\\\\b)[\\\\s\\\\S])*`?s`?\\\\s*\\\\.\\\\s*`?dt`?\\\\s+IN\\\\s*\\\\("
+  ],
+  "message":"flam 新增 cohort LTV 回连 user 快照时，除了 `s.dt IN (...)` 精确成熟日，还必须为回连快照别名 `s` 增加固定分区边界。若在 `pay_windows` 等后续 CTE 中使用 `b.snapshot_start_dt` / `b.snapshot_end_dt`，必须在该 CTE 自身的 FROM 中先写 `FROM cohort c JOIN bounds b ON 1 = 1`；CTE 之间不会继承表别名作用域。随后才写 `LEFT JOIN user s ON s.uid = c.uid AND s.prod = 110000038 AND s.dt BETWEEN b.snapshot_start_dt AND b.snapshot_end_dt`，避免 ADS/MySQL 对 user 快照做大范围动态扫描。"
+}},
+{{
   "match":["次日LTV","次日 LTV"],
   "forbidden_sql_all_contains":[["pay1","次日"]],
   "message":"flam 次日 LTV 是注册第 2 个自然日累计窗口，应读取 pay.pay2 和 cohort_dt + 1 快照；pay.pay1 只能用于首日/1日 LTV。"
@@ -398,7 +406,8 @@ LIMIT 24
 - LTV 命名必须区分：首日/1日 LTV 使用 `pay1` 和注册日快照；次日/2日 LTV 使用 `pay2` 和注册后第 1 天快照。不要把“次日 LTV”写成 `pay1`。
 - `pay1/pay2/pay3/pay7` 字段名中的数字是累计窗口名，不是 `DATE_ADD` 的日期偏移量。新增 cohort LTV 快照映射必须写成：1 日/首日 LTV = 注册日快照 `s.dt = cohort_dt` 读取 `pay1`；次日/2 日 LTV = 注册后第 1 天快照 `cohort_dt + 1` 读取 `pay2`；3 日 LTV = 注册后第 2 天快照 `cohort_dt + 2` 读取 `pay3`；7 日 LTV = 注册后第 6 天快照 `cohort_dt + 6` 读取 `pay7`；14 日 LTV = `cohort_dt + 13` 读取 `pay14`；30 日 LTV = `cohort_dt + 29` 读取 `pay30`。
 - 禁止把新增 cohort LTV 的 `d1_dt/d2_dt/d3_dt/d7_dt/d14_dt/d30_dt` 分别写成 `+1/+2/+3/+7/+14/+30`；正确偏移是 `+0/+1/+2/+6/+13/+29`。如果业务库最大 `dt` 尚未覆盖对应快照，应返回 NULL，而不是错位读取下一天或更晚快照。
-- 新增 cohort LTV 回连 `user` 日快照时，`JOIN` 条件必须同时限定 `uid`、`prod` 和目标成熟快照分区；推荐写法是 `LEFT JOIN user s ON s.uid = c.uid AND s.prod = 110000038 AND s.dt IN (c.d1_dt, c.d2_dt, c.d3_dt, c.d7_dt, ...)`。禁止只写 `s.uid = c.uid AND s.prod = 110000038` 后再在 `SUM(CASE WHEN s.dt = ... THEN ...)` 中判断日期，这会扫描同一用户所有历史快照并导致 ADS/MySQL 超时。
+- 新增 cohort LTV 回连 `user` 日快照时，`JOIN` 条件必须同时限定 `uid`、`prod`、固定分区边界和目标成熟快照分区。`bounds` 是单行 CTE；每个需要使用 `b.*` 的后续 CTE 都必须在自身的 `FROM` 中引入它，例如 `pay_windows AS (... FROM cohort c JOIN bounds b ON 1 = 1 LEFT JOIN user s ON s.uid = c.uid AND s.prod = 110000038 AND s.dt BETWEEN b.snapshot_start_dt AND b.snapshot_end_dt AND s.dt IN (c.d1_dt, c.d2_dt, c.d3_dt, c.d7_dt, ...))`。CTE 之间不会继承表别名作用域，不能只在 `cohort` CTE 中定义 `b` 后就在 `pay_windows` 中引用 `b.snapshot_start_dt`。禁止只写 `s.uid = c.uid AND s.prod = 110000038` 后再在 `SUM(CASE WHEN s.dt = ... THEN ...)` 中判断日期，这会扫描同一用户所有历史快照并导致 ADS/MySQL 超时。
+- `snapshot_start_dt` 应等于 cohort 起始注册日，`snapshot_end_dt` 应等于本次需要的最大成熟快照日与业务库最新完整 `dt` 的较小值；例如只查 1/3/7 日 LTV 时最多到 cohort 结束日 + 6，查 30 日 LTV 时最多到 cohort 结束日 + 29。
 - 新增首日付费金额固定取注册日快照行的 `pay.pay1` 求和，不要从后续快照 `MAX(pay1)`。
 - 用户询问“最近 N 天新增用户的平均付费金额/人均付费”但没有说明首日、累计或生命周期窗口时，不要静默只返回单一 `pay1` 口径；优先同时输出 `新增用户数`、`首日付费金额`、`首日人均付费`、`截至最新完整分区累计付费金额`、`截至最新完整分区累计人均付费`，并在回答中标明两套口径。
 - 用户明确说“首日/D0/当天付费/新增当天付费/新增用户中的付费用户占比”时，使用注册日快照的 `pay.pay1` 判断付费金额与付费用户。

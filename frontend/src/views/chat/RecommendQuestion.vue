@@ -13,6 +13,7 @@ const props = withDefaults(
     firstChat?: boolean
     disabled?: boolean
     position?: string
+    pending?: boolean
   }>(),
   {
     recordId: undefined,
@@ -21,12 +22,14 @@ const props = withDefaults(
     firstChat: false,
     disabled: false,
     position: 'chat',
+    pending: false,
   }
 )
 
 const emits = defineEmits(['clickQuestion', 'update:currentChat', 'stop', 'loadingOver'])
 
 const loading = ref(false)
+const effectiveLoading = computed(() => loading.value || props.pending)
 
 const _currentChat = computed({
   get() {
@@ -171,12 +174,12 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
 </script>
 
 <template>
-  <div v-if="computedQuestions.length > 0 || loading" class="recommend-questions">
+  <div v-if="computedQuestions.length > 0 || effectiveLoading" class="recommend-questions">
     <template v-if="position === 'chat'">
       <div v-if="firstChat" style="margin-bottom: 8px">{{ t('qa.guess_u_ask') }}</div>
       <div v-else class="continue-ask">{{ t('qa.continue_to_ask') }}</div>
     </template>
-    <div v-if="loading">
+    <div v-if="effectiveLoading">
       <div v-if="position === 'input'" style="margin-bottom: 8px">{{ t('qa.guess_u_ask') }}</div>
       <el-button style="min-width: unset" type="primary" link loading />
     </div>

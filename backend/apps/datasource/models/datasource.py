@@ -187,6 +187,9 @@ class TableObj(BaseModel):
 
 
 # 数据源配置信息
+DEFAULT_DATASOURCE_TIMEOUT_SECONDS = 90
+
+
 class DatasourceConf(BaseModel):
     """
     类说明：DatasourceConf 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
@@ -202,7 +205,7 @@ class DatasourceConf(BaseModel):
     filename: str = ''
     sheets: List = ''
     mode: str = ''
-    timeout: int = 30
+    timeout: int = DEFAULT_DATASOURCE_TIMEOUT_SECONDS
     lowVersion: bool = False
     ssl: bool = False
 

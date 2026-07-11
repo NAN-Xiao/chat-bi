@@ -126,7 +126,7 @@ const form = ref<any>({
   filename: '',
   sheets: [],
   mode: 'service_name',
-  timeout: 30,
+  timeout: 90,
   lowVersion: false,
   ssl: false,
 })
@@ -171,7 +171,7 @@ const initForm = (item: any, editTable: boolean = false) => {
       form.value.filename = configuration.filename
       form.value.sheets = configuration.sheets
       form.value.mode = configuration.mode
-      form.value.timeout = configuration.timeout ? configuration.timeout : 30
+      form.value.timeout = configuration.timeout ? configuration.timeout : 90
       form.value.lowVersion =
         configuration.lowVersion !== null && configuration.lowVersion !== undefined
           ? configuration.lowVersion
@@ -248,7 +248,7 @@ const initForm = (item: any, editTable: boolean = false) => {
       filename: '',
       sheets: [],
       mode: 'service_name',
-      timeout: 30,
+      timeout: 90,
       lowVersion: false,
       ssl: false,
     }

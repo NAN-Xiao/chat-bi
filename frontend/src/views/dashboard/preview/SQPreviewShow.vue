@@ -313,6 +313,17 @@ function canLookupChartCache(viewInfo: any) {
     : !!(viewInfo?.datasource && viewInfo?.sql?.trim())
 }
 
+function inheritDashboardDatasource(viewInfo: any) {
+  if (!viewInfo || typeof viewInfo !== 'object') {
+    return
+  }
+  const dashboardDatasource = state.dashboardInfo?.datasource
+  if (viewInfo.datasource || !dashboardDatasource) {
+    return
+  }
+  viewInfo.datasource = dashboardDatasource
+}
+
 function scheduleNextDashboardAutoRefresh(loadVersion: number) {
   if (loadVersion !== dashboardLoadVersion) {
     return
@@ -564,6 +575,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     if (!viewInfo) {
       return
     }
+    inheritDashboardDatasource(viewInfo)
     if (isExternalSnapshotChart(viewInfo)) {
       keepChartSnapshotState(viewInfo)
       return
@@ -794,6 +806,7 @@ const loadCanvasData = (params: any) => {
         dashboardMode,
       }
       collectDashboardCharts(canvasDataResult).forEach((entry) => {
+        inheritDashboardDatasource(entry.viewInfo)
         if (entry.viewInfo && canLookupChartCache(entry.viewInfo)) {
           ensureChartSnapshotRefreshedAt(entry.viewInfo)
         }

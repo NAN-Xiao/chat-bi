@@ -25,7 +25,13 @@ import redshift_connector
 from sqlalchemy import create_engine, text, Engine
 from sqlalchemy.orm import sessionmaker
 
-from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
+from apps.datasource.models.datasource import (
+    CoreDatasource,
+    DEFAULT_DATASOURCE_TIMEOUT_SECONDS,
+    DatasourceConf,
+    TableSchema,
+    ColumnSchema,
+)
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB, ConnectType
 from apps.db.engine import get_engine_config
@@ -221,7 +227,7 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema, timeout: int = 0):
     做了什么：把数据库连接需要的数据找出来，整理成后面好用的样子。
     """
     if isinstance(ds, AssistantOutDsSchema):
-        out_conf = get_out_ds_conf(ds, 30)
+        out_conf = get_out_ds_conf(ds, DEFAULT_DATASOURCE_TIMEOUT_SECONDS)
         ds.configuration = out_conf
 
     engine = get_engine(ds, timeout=timeout)

@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from starlette.middleware.cors import CORSMiddleware
 
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
-from apps.datasource.models.datasource import CoreDatasource
+from apps.datasource.models.datasource import CoreDatasource, DEFAULT_DATASOURCE_TIMEOUT_SECONDS
 from apps.datasource.utils.utils import aes_encrypt
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -368,7 +368,7 @@ class AssistantOutDsFactory:
         return AssistantOutDs(assistant)
 
 
-def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = 30) -> str:
+def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = DEFAULT_DATASOURCE_TIMEOUT_SECONDS) -> str:
     """
     是什么：get_out_ds_conf 是一个可以复用的小步骤，负责系统管理相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -383,7 +383,7 @@ def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = 30) -> str:
         "driver": '',
         "extraJdbc": ds.extraParams or '',
         "dbSchema": ds.db_schema or '',
-        "timeout": timeout or 30,
+        "timeout": timeout or DEFAULT_DATASOURCE_TIMEOUT_SECONDS,
         "mode": ds.mode or ''
     }
     conf["extraJdbc"] = ''

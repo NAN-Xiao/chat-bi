@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { reactive, ref, h } from 'vue'
+import { computed, reactive, ref, h } from 'vue'
 import { ElButton, ElMessage } from 'element-plus-secondary'
 import {
   findNextComponentIndex,
@@ -14,6 +14,7 @@ import { guid } from '@/utils/canvas.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { getRecommendedDashboardChartFrame } from '@/views/dashboard/utils/chartSizing.ts'
 import { useRouter } from 'vue-router'
+import { flattenSelectableDashboardOptions } from '@/views/dashboard/utils/dashboardOptions.ts'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -38,6 +39,7 @@ const state = reactive({
 
 const resourceDialogShow = ref(false)
 const loading = ref(false)
+const dashboardOptions = computed(() => flattenSelectableDashboardOptions(state.dashboardList))
 const resourceForm = reactive({
   addType: 'history',
   dashboardId: '',
@@ -296,11 +298,15 @@ defineExpose({
           :placeholder="t('dashboard.select_dashboard')"
         >
           <el-option
-            v-for="item in state.dashboardList"
+            v-for="item in dashboardOptions"
             :key="item.id"
             :label="item.name"
             :value="item.id"
-          />
+          >
+            <span class="dashboard-option" :style="{ paddingLeft: `${item.level * 14}px` }">
+              {{ item.name }}
+            </span>
+          </el-option>
         </el-select>
       </el-form-item>
     </el-form>
@@ -358,5 +364,12 @@ defineExpose({
 
 .custom-tree-folder {
   color: rgb(255, 198, 10);
+}
+
+.dashboard-option {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
