@@ -55,12 +55,54 @@ const OBJECT_GROUP_TABLE_ROLES = new Set([
   'userprofile',
 ])
 
+const NUMERIC_FIELD_TYPES = new Set([
+  'number',
+  'numeric',
+  'decimal',
+  'double',
+  'float',
+  'int',
+  'integer',
+  'long',
+  'bigint',
+  'real',
+  '数值',
+  '数字',
+  '整数',
+  '小数',
+])
+
+const TIME_FIELD_TYPES = new Set([
+  'date',
+  'datetime',
+  'timestamp',
+  'timestamptz',
+  'timestampms',
+  'time',
+  '日期',
+  '时间',
+])
+
 function normalizeFieldType(value = '') {
   return String(value || '')
     .trim()
     .toLowerCase()
     .replace(/类型$/u, '')
     .replace(/[^a-z0-9\u4e00-\u9fa5]/gu, '')
+}
+
+function fieldTypeValues(option: Pick<FieldOption, 'category' | 'semanticType' | 'propertyType' | 'type'>) {
+  return [option.category, option.semanticType, option.propertyType, option.type]
+    .map((value) => normalizeFieldType(value))
+    .filter(Boolean)
+}
+
+export function isNumericFieldOption(option: Pick<FieldOption, 'category' | 'semanticType' | 'propertyType' | 'type'>) {
+  return fieldTypeValues(option).some((value) => NUMERIC_FIELD_TYPES.has(value))
+}
+
+export function isTimeFieldOption(option: Pick<FieldOption, 'category' | 'semanticType' | 'propertyType' | 'type'>) {
+  return fieldTypeValues(option).some((value) => TIME_FIELD_TYPES.has(value))
 }
 
 function normalizeRole(value = '') {

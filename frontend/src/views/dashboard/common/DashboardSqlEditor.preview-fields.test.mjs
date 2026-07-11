@@ -637,3 +637,24 @@ assert.doesNotMatch(
   /hasOwnProperty/,
   '分组字段不能只按 key 存在判断，空字符串/空值字段不能触发分组过滤'
 )
+
+assert.match(
+  source,
+  /isNumericFieldOption/,
+  '图表配置器需要复用统一的数值字段判断'
+)
+assert.match(
+  source,
+  /schemaFieldOptions\.value\.find\(isNumericFieldOption\)/,
+  '新增指标时需要优先选择统一判断后的数值字段'
+)
+assert.match(
+  source,
+  /\['sum', 'avg'\]\.includes\(item\.aggregation\)[\s\S]*?!isNumericFieldOption\(metricField\)/,
+  '求和和平均值校验都需要使用统一数值判断，文本字段仍然会被拦截'
+)
+assert.match(
+  source,
+  /schemaFieldOptions\.value\.filter\(isTimeFieldOption\)/,
+  '时间范围字段需要复用统一的时间字段判断'
+)

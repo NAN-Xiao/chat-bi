@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { isSelectableFieldOption } from './builderFieldPickerOptions'
+import { isNumericFieldOption, isSelectableFieldOption, isTimeFieldOption } from './builderFieldPickerOptions'
 import type { FieldOption } from './builderFieldPickerOptions'
 
 type PickerMode = 'field' | 'property' | 'metric' | 'time' | 'tracking-event'
@@ -221,8 +221,8 @@ function fieldTypeLabel(option: FieldOption) {
   }
   if (option.type) return option.type
   if (isIdentifierField(option)) return '标识'
-  if (option.category === 'time') return '时间'
-  if (option.category === 'number') return '数值'
+  if (isTimeFieldOption(option)) return '时间'
+  if (isNumericFieldOption(option)) return '数值'
   if (option.category === 'text') return '文本'
   return '字段'
 }

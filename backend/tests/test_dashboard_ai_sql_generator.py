@@ -536,6 +536,37 @@ def test_formula_ir_blocks_sum_on_known_non_numeric_field() -> None:
     assert any("不是数值字段" in issue for issue in validation.issues)
 
 
+def test_formula_ir_blocks_avg_on_chinese_text_category_field() -> None:
+    """
+    是什么：中文 tracking 元数据的“文本”类别同样必须阻断平均值聚合。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["aggregation"] = "avg"
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["metric"]["category"] = "文本"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is False
+    assert any("不是数值字段" in issue for issue in validation.issues)
+
+
+def test_formula_ir_allows_sum_on_chinese_numeric_category_field() -> None:
+    """
+    是什么：中文 tracking 元数据的“数值”类别允许求和。
+    """
+    request = _cross_event_arpu_formula_request()
+    request.context["formulaMetrics"][0]["tokens"][0]["metric"]["metric"]["category"] = "数值"
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+    validation = ai_sql_generator._deterministic_validate_manual_config(request, normalized, formula_ir)
+
+    assert validation.success is True
+    assert not any("不是数值字段" in issue for issue in validation.issues)
+
+
 def test_formula_ir_blocks_atomic_metric_missing_aggregation() -> None:
     """
     是什么：公式内 atomicMetric 必须显式声明聚合方式，不能静默降级为 count。

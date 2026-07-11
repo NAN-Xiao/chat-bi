@@ -11,7 +11,11 @@ import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
-import { isSelectableFieldOption } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
+import {
+  isNumericFieldOption,
+  isSelectableFieldOption,
+  isTimeFieldOption,
+} from '@/views/dashboard/common/builderFieldPickerOptions.ts'
 import {
   buildDashboardBuilderMetadataCacheKey,
   buildTrackingEventCatalogFromConfig,
@@ -650,7 +654,7 @@ const builderMetricOptions = computed(() =>
   }))
 )
 const builderTimeFieldOptions = computed(() => {
-  const timeFields = schemaFieldOptions.value.filter((item) => item.category === 'time')
+  const timeFields = schemaFieldOptions.value.filter(isTimeFieldOption)
   return timeFields.length ? timeFields : schemaFieldOptions.value
 })
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
@@ -948,6 +952,9 @@ function toFieldOptions(fields: string[]) {
 }
 
 function builderFieldCategory(type = '', field = '') {
+  const option = { label: field, value: field, table: '', field, type }
+  if (isTimeFieldOption(option)) return 'time'
+  if (isNumericFieldOption(option)) return 'number'
   const text = `${type} ${field}`.toLowerCase()
   if (/date|time|timestamp|dt|day|日期|时间/.test(text)) return 'time'
   if (/int|decimal|double|float|numeric|number|amount|price|count|rate|ratio|score|value/.test(text)) return 'number'
@@ -997,7 +1004,7 @@ function emptyCalculatedMetricItem(): SqlBuilderCalculatedMetricItem {
 
 function addMetricItem() {
   const item = emptyMetricItem()
-  const numericField = schemaFieldOptions.value.find((field) => field.category === 'number')
+  const numericField = schemaFieldOptions.value.find(isNumericFieldOption)
   item.field = analysisFieldOptions.value[0]?.value || ''
   item.metric = numericField?.value || item.field
   item.alias = `指标${sqlBuilder.metricItems.length + 1}`
@@ -2438,10 +2445,10 @@ function collectLocalBuilderConfigIssues() {
     if (/^指标\d+$/.test(alias)) {
       suggestions.push(`${describeBuilderMetricConfig(item, index)}。把最后输入框从「${label}」改成业务名。`)
     }
-    if (item.aggregation === 'sum') {
+    if (['sum', 'avg'].includes(item.aggregation)) {
       const metricField = fieldOptionByValue(metricMeasureField(item))
-      if (metricField && metricField.category !== 'number') {
-        issues.push(`${label} 用了“求和”，但计算字段不是数值。`)
+      if (metricField && !isNumericFieldOption(metricField)) {
+        issues.push(`${label} 使用了“${builderAggregationLabel(item.aggregation)}”，但计算字段不是数值。`)
         suggestions.push(`分析指标${index + 1}：计算字段改选金额/数量类数值字段，或聚合改成「去重数」「总次数」。`)
       }
     }

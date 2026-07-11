@@ -44,3 +44,39 @@ assert.equal(
   true,
   'JSON 叶子字段不是对象组容器，应继续展示'
 )
+
+assert.equal(
+  options.isNumericFieldOption({
+    label: '金额',
+    value: 'event.personal.money',
+    table: 'event',
+    field: 'personal.money',
+    semanticType: '数值',
+  }),
+  true,
+  '中文数值语义类型应可用于数值聚合'
+)
+
+assert.equal(
+  options.isNumericFieldOption({
+    label: '用户标识',
+    value: 'event.uid',
+    table: 'event',
+    field: 'uid',
+    category: '文本',
+  }),
+  false,
+  '中文文本类别不能被当作数值字段'
+)
+
+assert.equal(
+  options.isTimeFieldOption({
+    label: '事件日期',
+    value: 'event.dt',
+    table: 'event',
+    field: 'dt',
+    propertyType: '日期',
+  }),
+  true,
+  '中文日期属性类型应作为时间范围字段'
+)

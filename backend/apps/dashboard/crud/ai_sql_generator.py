@@ -236,8 +236,14 @@ def _tracking_event_name_from_field(field: Any) -> str:
 _FORMULA_OPERATORS = {"+", "-", "*", "/"}
 _FORMULA_PRECEDENCE = {"+": 1, "-": 1, "*": 2, "/": 2}
 _SUPPORTED_METRIC_AGGREGATIONS = {"count", "count_distinct", "sum", "avg", "max", "min"}
-_NUMERIC_TYPE_KEYWORDS = ("int", "float", "double", "decimal", "number", "numeric", "real")
-_NON_NUMERIC_TYPE_KEYWORDS = ("char", "text", "string", "date", "time", "bool", "json")
+_NUMERIC_TYPE_KEYWORDS = (
+    "int", "float", "double", "decimal", "number", "numeric", "real",
+    "数值", "数字", "整数", "小数",
+)
+_NON_NUMERIC_TYPE_KEYWORDS = (
+    "char", "text", "string", "date", "time", "bool", "json",
+    "文本", "字符串", "字符", "日期", "时间", "布尔", "对象", "数组",
+)
 
 
 def _unique_text_items(items: list[Any]) -> list[str]:
