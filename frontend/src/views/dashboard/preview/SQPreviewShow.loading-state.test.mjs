@@ -9,8 +9,20 @@ const source = readFileSync(join(currentDir, 'SQPreviewShow.vue'), 'utf8')
 const inheritDatasourceMatch = source.match(
   /function inheritDashboardDatasource\(viewInfo: any\) \{([\s\S]*?)\r?\n\}/
 )
-const loadCanvasChartsMatch = source.match(
-  /collectDashboardCharts\(canvasDataResult\)\.forEach\(\(entry\) => \{([\s\S]*?)\r?\n      \}\)/
+const normalizedChartsMatch = source.match(
+  /function collectNormalizedDashboardCharts\(canvasData: any = state\.canvasDataPreview\) \{([\s\S]*?)\r?\n\}/
+)
+const prepareChartsMatch = source.match(
+  /function prepareDashboardCharts\(canvasData: any\) \{([\s\S]*?)\r?\n\}/
+)
+const refreshChartsMatch = source.match(
+  /async function refreshDashboardCharts\([\s\S]*?\n\}/
+)
+const autoRefreshMatch = source.match(
+  /function scheduleNextDashboardAutoRefresh\([\s\S]*?\n\}/
+)
+const loadCanvasMatch = source.match(
+  /const loadCanvasData = \(params: any\) => \{([\s\S]*?)\r?\n\}/
 )
 
 assert.ok(
@@ -33,9 +45,33 @@ assert.match(
   '缺失 datasource 的 SQL 图表应继承看板级 datasource，才能进入 loading 并刷新'
 )
 
-assert.ok(loadCanvasChartsMatch, '预览页加载看板后需要遍历图表做状态初始化')
+assert.ok(normalizedChartsMatch, '预览页需要提供统一的图表归一化入口')
 assert.match(
-  loadCanvasChartsMatch[1],
-  /inheritDashboardDatasource\(entry\.viewInfo\)[\s\S]*?canLookupChartCache\(entry\.viewInfo\)/,
-  '必须先继承看板 datasource，再判断图表是否可查询；否则会直接显示“没有找到数据”'
+  normalizedChartsMatch[1],
+  /collectDashboardCharts\(canvasData\)[\s\S]*?inheritDashboardDatasource\(entry\.viewInfo\)/,
+  '归一化入口必须先收集图表，并为缺失 datasource 的图表继承看板数据源'
+)
+assert.ok(prepareChartsMatch, '首次加载需要通过统一的图表准备入口初始化状态')
+assert.match(
+  prepareChartsMatch[1],
+  /collectNormalizedDashboardCharts\(canvasData\)[\s\S]*?canLookupChartCache\(entry\.viewInfo\)[\s\S]*?prepareChartPreviewState\(entry\.viewInfo\)/,
+  '首次加载必须在归一化后再判断是否可查询并设置 loading 状态'
+)
+assert.ok(refreshChartsMatch, '刷新队列需要存在')
+assert.match(
+  refreshChartsMatch[0],
+  /const allChartEntries = collectNormalizedDashboardCharts\(\)/,
+  '刷新队列必须从归一化后的图表集合开始，不能绕过数据源继承'
+)
+assert.ok(autoRefreshMatch, '自动刷新调度需要存在')
+assert.match(
+  autoRefreshMatch[0],
+  /collectNormalizedDashboardCharts\(\)/,
+  '自动刷新必须从归一化后的图表集合筛选可查询图表'
+)
+assert.ok(loadCanvasMatch, '看板加载入口需要存在')
+assert.match(
+  loadCanvasMatch[0],
+  /prepareDashboardCharts\(canvasDataResult\)/,
+  '看板加载后必须通过统一的图表准备入口初始化，不能在调用点分散继承数据源'
 )

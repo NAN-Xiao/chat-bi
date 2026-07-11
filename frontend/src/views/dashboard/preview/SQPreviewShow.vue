@@ -324,11 +324,27 @@ function inheritDashboardDatasource(viewInfo: any) {
   viewInfo.datasource = dashboardDatasource
 }
 
+function collectNormalizedDashboardCharts(canvasData: any = state.canvasDataPreview) {
+  return collectDashboardCharts(canvasData).map((entry) => {
+    inheritDashboardDatasource(entry.viewInfo)
+    return entry
+  })
+}
+
+function prepareDashboardCharts(canvasData: any) {
+  collectNormalizedDashboardCharts(canvasData).forEach((entry) => {
+    if (entry.viewInfo && canLookupChartCache(entry.viewInfo)) {
+      ensureChartSnapshotRefreshedAt(entry.viewInfo)
+    }
+    prepareChartPreviewState(entry.viewInfo)
+  })
+}
+
 function scheduleNextDashboardAutoRefresh(loadVersion: number) {
   if (loadVersion !== dashboardLoadVersion) {
     return
   }
-  const refreshableViewInfos = collectDashboardCharts(state.canvasDataPreview)
+  const refreshableViewInfos = collectNormalizedDashboardCharts()
     .map((entry) => entry.viewInfo)
     .filter((viewInfo) => viewInfo && canLookupChartCache(viewInfo))
   const delay = nextDashboardRefreshDelayMs(
@@ -569,13 +585,12 @@ async function runChartQueue(
 }
 
 async function refreshDashboardCharts(loadVersion: number, controller: AbortController) {
-  const allChartEntries = collectDashboardCharts(state.canvasDataPreview)
+  const allChartEntries = collectNormalizedDashboardCharts()
   allChartEntries.forEach((entry) => {
     const viewInfo = entry.viewInfo
     if (!viewInfo) {
       return
     }
-    inheritDashboardDatasource(viewInfo)
     if (isExternalSnapshotChart(viewInfo)) {
       keepChartSnapshotState(viewInfo)
       return
@@ -805,13 +820,7 @@ const loadCanvasData = (params: any) => {
         ...dashboardInfo,
         dashboardMode,
       }
-      collectDashboardCharts(canvasDataResult).forEach((entry) => {
-        inheritDashboardDatasource(entry.viewInfo)
-        if (entry.viewInfo && canLookupChartCache(entry.viewInfo)) {
-          ensureChartSnapshotRefreshedAt(entry.viewInfo)
-        }
-        prepareChartPreviewState(entry.viewInfo)
-      })
+      prepareDashboardCharts(canvasDataResult)
       loadingDashboardId.value = null
       dataInitState.value = true
       scheduleDashboardChartRefresh(loadVersion)
