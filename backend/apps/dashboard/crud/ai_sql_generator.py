@@ -371,13 +371,12 @@ def _tracking_event_metadata_issues(field: Any, label: str) -> list[str]:
 def _json_subfield_mapping_issues(field: Any, label: str) -> list[str]:
     if not isinstance(field, dict):
         return []
+    source_field = str(field.get("sourceField") or field.get("source_field") or "").strip()
+    json_path = str(field.get("jsonPath") or field.get("json_path") or "").strip()
     is_json_subfield = bool(
-        field.get("isJsonSubfield")
-        or field.get("is_json_subfield")
-        or field.get("sourceField")
-        or field.get("source_field")
-        or field.get("jsonPath")
-        or field.get("json_path")
+        field.get("isJsonSubfield") is True
+        or field.get("is_json_subfield") is True
+        or (source_field and json_path)
     )
     if not is_json_subfield:
         return []
@@ -496,7 +495,11 @@ def _json_subfield_requirements(*values: Any) -> list[dict[str, str]]:
             return
         source_field = str(value.get("sourceField") or value.get("source_field") or "").strip()
         json_path = _normalized_json_path(value.get("jsonPath") or value.get("json_path"))
-        is_json_subfield = bool(value.get("isJsonSubfield") or value.get("is_json_subfield") or source_field or json_path)
+        is_json_subfield = bool(
+            value.get("isJsonSubfield") is True
+            or value.get("is_json_subfield") is True
+            or (source_field and json_path)
+        )
         if is_json_subfield and source_field and json_path:
             key = (source_field, json_path)
             if key not in seen:

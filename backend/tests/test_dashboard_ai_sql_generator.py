@@ -468,6 +468,25 @@ def test_deterministic_validation_blocks_json_subfield_without_mapping() -> None
     assert any("JSON 字段映射不完整" in issue for issue in validation.issues)
 
 
+def test_deterministic_validation_allows_non_json_field_with_source_metadata() -> None:
+    """
+    是什么：普通物理字段即使带有 sourceField 元数据，也不能被误判为 JSON 子字段。
+    """
+    request = _cross_event_arpu_formula_request()
+    active_users = request.context["formulaMetrics"][0]["tokens"][2]["metric"]["metric"]
+    active_users.update({"sourceField": "uid", "isJsonSubfield": False})
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    validation = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+    )
+
+    assert validation.success is True
+    assert not any("当日活跃用户数" in issue and "JSON 字段映射" in issue for issue in validation.issues)
+
+
 def test_json_subfield_sql_validation_rejects_wrong_host_column() -> None:
     """
     是什么：LLM 把 JSON 宿主列或路径写错时，即使 SQL 语法有效也必须被拒绝。
