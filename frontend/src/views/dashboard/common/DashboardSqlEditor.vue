@@ -2356,14 +2356,14 @@ function collectBuilderAiContext() {
       alias: sqlAlias(item.alias || `公式指标${index + 1}`, `公式指标${index + 1}`),
       decimalPlaces: item.decimalPlaces,
       formulaText: formulaTokensToText(item.tokens, builderMetricOptions.value),
-      tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById),
+      tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById, fieldOptionPayload),
     })),
     formulaMetrics: sqlBuilder.calculatedMetrics.map((item, index) => ({
       id: item.id,
       alias: sqlAlias(item.alias || `公式指标${index + 1}`, `公式指标${index + 1}`),
       decimalPlaces: item.decimalPlaces,
       formulaText: formulaTokensToText(item.tokens, builderMetricOptions.value),
-      tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById),
+      tokens: serializeFormulaTokensForContext(item.tokens, metricAliasById, fieldOptionPayload),
     })),
     groups: sqlBuilder.groups.map(fieldOptionPayload).filter(Boolean),
     filters: {

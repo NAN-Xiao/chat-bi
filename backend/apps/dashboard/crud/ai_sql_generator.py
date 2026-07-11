@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import copy
 import inspect
 import json
 import re
@@ -16,6 +17,7 @@ import orjson
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
+from sqlglot import exp, parse_one
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
@@ -30,6 +32,7 @@ from apps.datasource.crud.sql_engine import (
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_sql_read
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.crud.user import (
     is_platform_admin,
     is_platform_workspace_delegate,
@@ -63,6 +66,7 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     skill_model_id: int | None
     normalized_config: dict[str, Any]
     formula_ir: dict[str, Any]
+    json_subfield_requirements: list[dict[str, str]]
     validation_result: DashboardAiSqlGenerateResponse
     sql_plan: dict[str, Any]
     response: DashboardAiSqlGenerateResponse
@@ -364,6 +368,179 @@ def _tracking_event_metadata_issues(field: Any, label: str) -> list[str]:
     return issues
 
 
+def _json_subfield_mapping_issues(field: Any, label: str) -> list[str]:
+    if not isinstance(field, dict):
+        return []
+    is_json_subfield = bool(
+        field.get("isJsonSubfield")
+        or field.get("is_json_subfield")
+        or field.get("sourceField")
+        or field.get("source_field")
+        or field.get("jsonPath")
+        or field.get("json_path")
+    )
+    if not is_json_subfield:
+        return []
+    missing = [
+        key
+        for key, value in (
+            ("sourceField", field.get("sourceField") or field.get("source_field")),
+            ("jsonPath", field.get("jsonPath") or field.get("json_path")),
+            ("expression", field.get("expression")),
+        )
+        if not str(value or "").strip()
+    ]
+    if not missing:
+        return []
+    return [f"{label} 的 JSON 字段映射不完整，缺少：{'、'.join(missing)}。请重新选择字段。"]
+
+
+def _compile_json_subfield_field(field: Any, datasource_type: str | None) -> Any:
+    if not isinstance(field, dict):
+        return field
+    source_field = str(field.get("sourceField") or field.get("source_field") or "").strip()
+    json_path = str(field.get("jsonPath") or field.get("json_path") or "").strip()
+    if not source_field or not json_path or not datasource_type:
+        return field
+    compiled = copy.deepcopy(field)
+    expression = compile_tracking_json_expression(
+        _field_table_name(compiled),
+        source_field,
+        json_path,
+        str(compiled.get("semanticType") or compiled.get("semantic_type") or compiled.get("category") or ""),
+        datasource_type,
+    )
+    compiled["sourceField"] = source_field
+    compiled["jsonPath"] = json_path
+    compiled["isJsonSubfield"] = True
+    compiled["expression"] = expression
+    return compiled
+
+
+def _compile_json_subfield_fields(value: Any, datasource_type: str | None) -> Any:
+    if isinstance(value, list):
+        return [_compile_json_subfield_fields(item, datasource_type) for item in value]
+    if not isinstance(value, dict):
+        return value
+    compiled = _compile_json_subfield_field(value, datasource_type)
+    return {
+        key: _compile_json_subfield_fields(item, datasource_type)
+        for key, item in compiled.items()
+    }
+
+
+def _normalized_json_path(value: Any, *, postgres: bool = False) -> str:
+    path = str(value or "").strip().strip("'\"")
+    if postgres and path.startswith("{") and path.endswith("}"):
+        segments = [segment.strip() for segment in path[1:-1].split(",") if segment.strip()]
+        return "$." + ".".join(segments) if segments else "$"
+    if not path:
+        return ""
+    return path if path.startswith("$") else f"$.{path.lstrip('.')}"
+
+
+def _json_expression_column_name(expression: Any) -> str:
+    if isinstance(expression, exp.Column):
+        return str(expression.name or "").strip()
+    if isinstance(expression, exp.Cast):
+        return _json_expression_column_name(expression.this)
+    return ""
+
+
+def _json_expression_path(value: Any, *, dialect: str) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, exp.JSONPath):
+        return _normalized_json_path(value.sql(dialect=dialect))
+    return _normalized_json_path(value.sql(dialect=dialect), postgres=dialect == "postgres")
+
+
+def _sql_json_field_pairs(sql: str, dialect: str) -> tuple[set[tuple[str, str]], list[str]]:
+    normalized_dialect = str(dialect or "").strip().lower()
+    if normalized_dialect not in {"mysql", "postgres", "clickhouse"}:
+        return set(), ["当前数据源方言无法校验 JSON 字段映射。"]
+    try:
+        statement = parse_one(sql, read=normalized_dialect)
+    except Exception as exc:
+        return set(), [f"无法解析生成 SQL 的 JSON 字段映射：{exc}"]
+
+    pairs: set[tuple[str, str]] = set()
+    for expression in statement.walk():
+        if isinstance(expression, exp.JSONExtract):
+            column = _json_expression_column_name(expression.this)
+            path = _json_expression_path(expression.expression, dialect=normalized_dialect)
+        elif isinstance(expression, exp.JSONBExtractScalar):
+            column = _json_expression_column_name(expression.this)
+            path = _json_expression_path(expression.expression, dialect=normalized_dialect)
+        elif isinstance(expression, exp.Anonymous) and expression.name.upper() == "JSON_VALUE":
+            arguments = list(expression.expressions)
+            column = _json_expression_column_name(arguments[0]) if arguments else ""
+            path = _json_expression_path(arguments[1], dialect=normalized_dialect) if len(arguments) > 1 else ""
+        else:
+            continue
+        if column and path:
+            pairs.add((column, path))
+    return pairs, []
+
+
+def _json_subfield_requirements(*values: Any) -> list[dict[str, str]]:
+    requirements: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, dict):
+            return
+        source_field = str(value.get("sourceField") or value.get("source_field") or "").strip()
+        json_path = _normalized_json_path(value.get("jsonPath") or value.get("json_path"))
+        is_json_subfield = bool(value.get("isJsonSubfield") or value.get("is_json_subfield") or source_field or json_path)
+        if is_json_subfield and source_field and json_path:
+            key = (source_field, json_path)
+            if key not in seen:
+                seen.add(key)
+                requirements.append({
+                    "label": str(value.get("displayName") or value.get("label") or value.get("field") or "JSON 字段"),
+                    "source_field": source_field,
+                    "json_path": json_path,
+                })
+        for item in value.values():
+            visit(item)
+
+    for value in values:
+        visit(value)
+    return requirements
+
+
+def _json_subfield_sql_issues(
+        sql: str,
+        requirements: list[dict[str, str]],
+        *,
+        dialect: str,
+) -> list[str]:
+    if not requirements:
+        return []
+    actual_pairs, parse_issues = _sql_json_field_pairs(sql, dialect)
+    if parse_issues:
+        return parse_issues
+    expected_pairs = {
+        (str(item.get("source_field") or "").strip(), _normalized_json_path(item.get("json_path")))
+        for item in requirements
+    }
+    issues: list[str] = []
+    for item in requirements:
+        expected = (str(item.get("source_field") or "").strip(), _normalized_json_path(item.get("json_path")))
+        if expected not in actual_pairs:
+            issues.append(
+                f"{item.get('label') or 'JSON 字段'} 未使用配置的 JSON 列或路径：{expected[0]} + {expected[1]}。"
+            )
+    for source_field, json_path in sorted(actual_pairs - expected_pairs):
+        issues.append(f"生成 SQL 使用了未配置的 JSON 列或路径：{source_field} + {json_path}。")
+    return _unique_text_items(issues)
+
+
 def _metric_measure_field(metric: dict[str, Any]) -> Any:
     return metric.get("metricField") or metric.get("metric") or metric.get("measureField")
 
@@ -410,11 +587,15 @@ def _validate_metric_item(
     elif not _field_has_resolvable_reference(field):
         issues.append(f"{label} 的分析字段配置不完整。")
     issues.extend(_tracking_event_metadata_issues(field, label))
+    issues.extend(_json_subfield_mapping_issues(field, label))
     should_require_metric_field = aggregation != "count" or require_metric_field_for_count
     if should_require_metric_field and not metric_field:
         issues.append(f"{label} 缺少计算字段。")
     elif should_require_metric_field and not _field_has_resolvable_reference(metric_field):
         issues.append(f"{label} 的计算字段配置不完整。")
+    issues.extend(_json_subfield_mapping_issues(metric_field, label))
+    for filter_field in _iter_filter_rule_fields(metric.get("filters")):
+        issues.extend(_json_subfield_mapping_issues(filter_field, f"{label} 的筛选字段"))
     if aggregation in {"sum", "avg"} and metric_field and _field_is_known_non_numeric(metric_field):
         issues.append(f"{label} 使用 {aggregation} 聚合，但计算字段不是数值字段。")
     return issues
@@ -442,11 +623,15 @@ def _metric_base_ir(
     }
 
 
-def _normalize_manual_config(request: DashboardAiSqlGenerateRequest) -> dict[str, Any]:
+def _normalize_manual_config(
+        request: DashboardAiSqlGenerateRequest,
+        *,
+        datasource_type: str | None = None,
+) -> dict[str, Any]:
     """
     是什么：把前端手动配置归一化成后端稳定结构，供公式 IR 和确定性校验使用。
     """
-    context = dict(request.context or {})
+    context = _compile_json_subfield_fields(copy.deepcopy(dict(request.context or {})), datasource_type)
     metrics = _list_dict_items(context.get("metrics"))
     formula_metrics = _formula_metric_items_from_context(context)
     return {
@@ -1122,6 +1307,7 @@ def _dashboard_config_prompt(
         "当 metrics.field.kind 为 tracking-event 时，它表示从“事件参数对照”中选择的业务事件；生成 SQL 时必须使用 metrics.field.eventTable 和 metrics.field.eventNameField（或 table/field）定位事件名字段，并添加“事件名字段 = metrics.field.eventName”的过滤条件。",
         "如果多个 tracking-event 指标来自同一张事件表、同一个事件名字段，但 eventName 不同，必须在 WHERE 中使用“事件名字段 IN (这些 eventName)”先收窄扫描范围，再在各指标表达式里用 CASE WHEN 区分每个事件；不要只在 COUNT/SUM CASE 里写事件条件而让 WHERE 扫全表。",
         "当指标内筛选 rules[].field.kind 为 tracking-property 时，它表示该业务事件下的事件参数；生成 SQL 时必须按 rules[].field.sourceField/jsonPath 或 field 在事件明细行中取值，再应用对应 operator/value。",
+        "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters 字段信息生成 SQL；不要编造未提供字段。",
         *_dashboard_sql_dialect_rules(sql_dialect, datasource),
@@ -1449,7 +1635,11 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
 
 
 def _node_normalize_manual_config(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    normalized_config = _normalize_manual_config(state["request"])
+    datasource = state.get("datasource")
+    normalized_config = _normalize_manual_config(
+        state["request"],
+        datasource_type=getattr(datasource, "type", None) or getattr(datasource, "type_name", None),
+    )
     return {
         "normalized_config": normalized_config,
         "graph_trace": _append_trace(state, "normalize_manual_config"),
@@ -1458,9 +1648,11 @@ def _node_normalize_manual_config(state: DashboardManualChartGraphState) -> dict
 
 
 def _node_build_formula_ir(state: DashboardManualChartGraphState) -> dict[str, Any]:
-    formula_ir = _build_formula_ir(state.get("normalized_config") or {})
+    normalized_config = state.get("normalized_config") or {}
+    formula_ir = _build_formula_ir(normalized_config)
     return {
         "formula_ir": formula_ir,
+        "json_subfield_requirements": _json_subfield_requirements(normalized_config, formula_ir),
         "graph_trace": _append_trace(state, "build_formula_ir"),
         "last_node": "build_formula_ir",
     }
@@ -1535,6 +1727,15 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "SQL 不是只读查询。"
         response.advice = "只能生成 SELECT/WITH 查询，请重新生成。"
         response.issues = list(response.issues or []) + ["生成 SQL 不是只读 SELECT/WITH 查询。"]
+    elif json_issues := _json_subfield_sql_issues(
+        sql,
+        state.get("json_subfield_requirements") or [],
+        dialect=state.get("sql_dialect") or "",
+    ):
+        response.success = False
+        response.message = "生成 SQL 的 JSON 字段映射与当前配置不一致。"
+        response.advice = "请重新选择事件参数后生成 SQL。"
+        response.issues = _unique_text_items(list(response.issues or []) + json_issues)
     elif state.get("datasource") is not None:
         try:
             is_read, reason = check_sql_read(sql, state["datasource"])

@@ -356,6 +356,10 @@ def _cross_event_arpu_formula_request() -> DashboardAiSqlGenerateRequest:
                                     "table": "event",
                                     "field": "personal.money",
                                     "category": "number",
+                                    "isJsonSubfield": True,
+                                    "sourceField": "personal",
+                                    "jsonPath": "$.money",
+                                    "expression": "CAST(JSON_UNQUOTE(JSON_EXTRACT(`event`.`personal`, '$.money')) AS DECIMAL(38, 10))",
                                 },
                                 "aggregation": "sum",
                                 "alias": "后端充值金额",
@@ -414,6 +418,117 @@ def test_formula_ir_allows_cross_event_atomic_metric_formula_without_blocking() 
     assert formula["expression"]["type"] == "binary"
     assert formula["expression"]["operator"] == "/"
     assert {item["event"] for item in formula["base_metrics"]} == {"ServerPayLog", "UserActive"}
+
+
+def test_formula_ir_preserves_json_subfield_mapping() -> None:
+    """
+    是什么：公式事件指标的 JSON 子字段映射必须完整进入公式 IR，供 SQL 节点确定性使用。
+    """
+    request = _cross_event_arpu_formula_request()
+
+    formula = ai_sql_generator._build_formula_ir(
+        ai_sql_generator._normalize_manual_config(request)
+    )["formulas"][0]
+    revenue = next(item for item in formula["base_metrics"] if item["id"] == "revenue")
+
+    assert revenue["metric_field"]["sourceField"] == "personal"
+    assert revenue["metric_field"]["jsonPath"] == "$.money"
+
+
+def test_normalize_manual_config_compiles_json_subfield_expression() -> None:
+    """
+    是什么：后端必须按当前方言从 sourceField/jsonPath 编译受控 JSON 表达式。
+    """
+    request = _cross_event_arpu_formula_request()
+
+    normalized = ai_sql_generator._normalize_manual_config(request, datasource_type="mysql")
+    metric_field = normalized["formula_metrics"][0]["tokens"][0]["metric"]["metric"]
+
+    assert metric_field["expression"] == (
+        "CAST(JSON_UNQUOTE(JSON_EXTRACT(`event`.`personal`, '$.money')) AS DECIMAL(38, 10))"
+    )
+
+
+def test_deterministic_validation_blocks_json_subfield_without_mapping() -> None:
+    """
+    是什么：JSON 子字段没有物理列、路径或受控表达式时，不能让 LLM 猜测 SQL。
+    """
+    request = _cross_event_arpu_formula_request()
+    measure = request.context["formulaMetrics"][0]["tokens"][0]["metric"]["metric"]
+    measure.update({"sourceField": "", "jsonPath": "", "expression": ""})
+
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    validation = ai_sql_generator._deterministic_validate_manual_config(
+        request,
+        normalized,
+        ai_sql_generator._build_formula_ir(normalized),
+    )
+
+    assert validation.success is False
+    assert any("JSON 字段映射不完整" in issue for issue in validation.issues)
+
+
+def test_json_subfield_sql_validation_rejects_wrong_host_column() -> None:
+    """
+    是什么：LLM 把 JSON 宿主列或路径写错时，即使 SQL 语法有效也必须被拒绝。
+    """
+    requirements = [{"label": "后端充值金额", "source_field": "personal", "json_path": "$.money"}]
+    sql = "SELECT JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.personal.money')) FROM event e"
+
+    issues = ai_sql_generator._json_subfield_sql_issues(sql, requirements, dialect="mysql")
+
+    assert any("JSON 列或路径" in issue for issue in issues)
+
+
+def test_json_subfield_sql_validation_accepts_matching_mysql_host_column() -> None:
+    """
+    是什么：MySQL SQL 使用当前字段配置的宿主列和路径时必须通过校验。
+    """
+    requirements = [{"label": "后端充值金额", "source_field": "personal", "json_path": "$.money"}]
+    sql = "SELECT JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')) FROM event e"
+
+    assert ai_sql_generator._json_subfield_sql_issues(sql, requirements, dialect="mysql") == []
+
+
+def test_json_subfield_sql_validation_accepts_postgres_json_path() -> None:
+    """
+    是什么：PostgreSQL 的 JSONB 路径语法也必须映射到同一份字段元数据。
+    """
+    requirements = [{"label": "收入", "source_field": "personal", "json_path": "$.money"}]
+    sql = "SELECT (e.personal::jsonb #>> '{money}') FROM event e"
+
+    assert ai_sql_generator._json_subfield_sql_issues(sql, requirements, dialect="postgres") == []
+
+
+def test_json_subfield_sql_validation_accepts_clickhouse_json_path() -> None:
+    """
+    是什么：ClickHouse 的 JSON_VALUE 路径也必须映射到同一份字段元数据。
+    """
+    requirements = [{"label": "收入", "source_field": "personal", "json_path": "$.money"}]
+    sql = "SELECT JSON_VALUE(e.personal, '$.money') FROM event e"
+
+    assert ai_sql_generator._json_subfield_sql_issues(sql, requirements, dialect="clickhouse") == []
+
+
+def test_validate_sql_node_blocks_json_subfield_mapping_mismatch() -> None:
+    """
+    是什么：图节点必须在只读校验前拒绝宿主列或路径错误的 JSON SQL。
+    """
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql="SELECT JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.personal.money')) FROM event e",
+    )
+
+    result = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "json_subfield_requirements": [
+            {"label": "后端充值金额", "source_field": "personal", "json_path": "$.money"}
+        ],
+        "sql_dialect": "mysql",
+    })
+
+    assert result["response"].success is False
+    assert "JSON 字段映射" in result["response"].message
 
 
 def test_formula_ir_allows_arppu_atomic_metric_formula_without_blocking() -> None:

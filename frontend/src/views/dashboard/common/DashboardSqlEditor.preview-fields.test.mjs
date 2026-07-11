@@ -257,6 +257,11 @@ assert.match(
 )
 assert.match(
   source,
+  /serializeFormulaTokensForContext\(item\.tokens, metricAliasById, fieldOptionPayload\)/,
+  '公式 token 上下文必须经 fieldOptionPayload 保留 JSON sourceField/jsonPath'
+)
+assert.match(
+  source,
   /formulaMetrics:/,
   '手动图表配置上下文必须向后端提供 formulaMetrics'
 )

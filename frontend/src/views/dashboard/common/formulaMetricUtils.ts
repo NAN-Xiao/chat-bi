@@ -43,6 +43,11 @@ export type FormulaValidationResult = {
   message: string
 }
 
+type FormulaAtomicMetricFilterContext = Omit<FormulaAtomicMetricFilter, 'field' | 'children'> & {
+  field: unknown
+  children?: FormulaAtomicMetricFilterContext[]
+}
+
 const operatorValues = new Set(['+', '-', '*', '/'])
 
 function normalizeFilterLogic(value: unknown): 'and' | 'or' {
@@ -230,13 +235,44 @@ export function validateFormulaTokens(
   return { valid: true, message: '' }
 }
 
-export function serializeFormulaTokensForContext(tokens: FormulaToken[], metricAliasById: Map<string, string>) {
-  return tokens.map((token) => {
-    if (token.type !== 'metric') return { ...token }
+function serializeFormulaFilterForContext(
+  filter: FormulaAtomicMetricFilter,
+  resolveField: (value: string) => unknown
+): FormulaAtomicMetricFilterContext {
+  if (filter.type === 'group') {
     return {
-      type: 'metric' as const,
-      metricId: token.metricId,
-      metricAlias: metricAliasById.get(token.metricId) || '',
+      ...filter,
+      children: (filter.children || []).map((child) => serializeFormulaFilterForContext(child, resolveField)),
+    }
+  }
+  return {
+    ...filter,
+    field: resolveField(filter.field),
+  }
+}
+
+export function serializeFormulaTokensForContext(
+  tokens: FormulaToken[],
+  metricAliasById: Map<string, string>,
+  resolveField: (value: string) => unknown = (value) => value
+) {
+  return tokens.map((token) => {
+    if (token.type === 'metric') {
+      return {
+        type: 'metric' as const,
+        metricId: token.metricId,
+        metricAlias: metricAliasById.get(token.metricId) || '',
+      }
+    }
+    if (token.type !== 'atomicMetric') return { ...token }
+    return {
+      ...token,
+      metric: {
+        ...token.metric,
+        field: resolveField(token.metric.field),
+        metric: resolveField(token.metric.metric),
+        filters: token.metric.filters.map((filter) => serializeFormulaFilterForContext(filter, resolveField)),
+      },
     }
   })
 }
