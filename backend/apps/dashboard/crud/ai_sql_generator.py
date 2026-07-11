@@ -600,7 +600,16 @@ def _validate_metric_item(
     for filter_field in _iter_filter_rule_fields(metric.get("filters")):
         issues.extend(_json_subfield_mapping_issues(filter_field, f"{label} 的筛选字段"))
     if aggregation in {"sum", "avg"} and metric_field and _field_is_known_non_numeric(metric_field):
-        issues.append(f"{label} 使用 {aggregation} 聚合，但计算字段不是数值字段。")
+        field_name = str(
+            metric_field.get("displayName")
+            or metric_field.get("label")
+            or metric_field.get("field")
+            or metric_field.get("value")
+            or metric_field.get("sourceField")
+            or metric_field.get("source_field")
+            or "当前字段"
+        ).strip()
+        issues.append(f"{label} 使用 {aggregation} 聚合，但计算字段“{field_name}”不是数值字段。")
     return issues
 
 

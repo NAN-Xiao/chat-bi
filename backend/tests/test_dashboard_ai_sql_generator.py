@@ -668,6 +668,7 @@ def test_formula_ir_blocks_sum_on_known_non_numeric_field() -> None:
 
     assert validation.success is False
     assert any("不是数值字段" in issue for issue in validation.issues)
+    assert any("personal.money" in issue for issue in validation.issues)
 
 
 def test_formula_ir_blocks_avg_on_chinese_text_category_field() -> None:

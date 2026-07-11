@@ -1092,7 +1092,13 @@ function syncFormulaAtomicMetric(metric: FormulaAtomicMetric, resetMetric = fals
   metric.aggregation = metric.aggregation || 'count'
   if (metric.aggregation === 'count') {
     metric.metric = metric.field
-  } else if (resetMetric || !metric.metric || metric.metric === metric.field || fieldOptionByValue(metric.metric)?.kind === 'tracking-event') {
+  } else if (
+    resetMetric ||
+    !metric.metric ||
+    metric.metric === metric.field ||
+    fieldOptionByValue(metric.metric)?.kind === 'tracking-event' ||
+    !optionExists(metric.metric, metricMeasureFieldOptions(metric))
+  ) {
     metric.metric = defaultMetricFieldForEvent(metric.field)
   }
   const display = normalizeFormulaAtomicMetricDisplay(metric, {
@@ -1839,16 +1845,21 @@ function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
   return trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
 }
 
-function metricMeasureFieldOptions(item: Pick<SqlBuilderMetricItem, 'field'>) {
+function metricMeasureFieldOptions(item: Pick<SqlBuilderMetricItem, 'field'> & { aggregation?: string }) {
   const eventOption = fieldOptionByValue(item.field)
+  let options: SchemaFieldOption[]
   if (eventOption?.kind === 'tracking-event' && eventOption.eventName) {
     const eventProperties = trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
-    return [
+    options = [
       ...eventProperties,
       ...eventDetailFieldOptions(eventOption.eventTable || eventOption.table),
     ]
+  } else {
+    options = builderFieldOptions.value
   }
-  return builderFieldOptions.value
+  return ['sum', 'avg'].includes(item.aggregation || '')
+    ? options.filter(isNumericFieldOption)
+    : options
 }
 
 function eventDetailFieldOptions(eventTable: string) {
@@ -2170,7 +2181,10 @@ function pruneInvalidBuilderSelections() {
       changed = true
     } else if (
       item.pendingAggregation !== 'count' &&
-      !optionExists(item.pendingMetricField, metricMeasureFieldOptions({ field: item.pendingEventField }))
+      !optionExists(item.pendingMetricField, metricMeasureFieldOptions({
+        field: item.pendingEventField,
+        aggregation: item.pendingAggregation,
+      }))
     ) {
       item.pendingMetricField = ''
       changed = true
@@ -4606,7 +4620,12 @@ function closeDrawer() {
                         :placeholder="formulaFieldPickerPlaceholder"
                       />
                       <span class="metric-of">的</span>
-                      <el-select v-model="item.aggregation" size="small" class="metric-aggregation">
+                        <el-select
+                          v-model="item.aggregation"
+                          size="small"
+                          class="metric-aggregation"
+                          @change="item.metric = optionExists(item.metric, metricMeasureFieldOptions(item)) ? item.metric : ''"
+                        >
                         <el-option
                           v-for="option in builderAggregationOptions"
                           :key="option.value"
