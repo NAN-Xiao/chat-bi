@@ -163,10 +163,9 @@ DATA_SKILLS: list[dict[str, str]] = [
   `time_label`、`hour_label`、`online_users`、`pay_count`、`cumulative_pay_count`；图表配置用中文 `name` 展示、英文 `value` 绑定字段。
 - ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板用 `tools/repair_flam_first_zombie_realtime_dashboard.py` 先探测最近可用业务日，再把 SQL 固化为常量 `dt`/业务日期窗口。
 - 实时付费优先展示 UTC+8 业务今天；如果今天没有付费事件，回退到最近有付费事件的业务日。回退是为了展示“最近可用实时趋势”，不得虚构今天数据。
-- 实时付费事件次数使用事件：
-  `PayBuyRet`, `PayBuyRetBenifit`, `PayBuyRetSandBox`, `PayFinish`, `ServerPayLog`, `ep_pay_purchase_finish`, `ep_pay_update_db_finish`
-- 累计付费事件次数应先按业务小时聚合，再对小时做累计求和。
-- 在线人数的业务字段是 `event='CCU'` 的 `ext.ed_ccu`。如果当前数据行的 `ext` 没有 `ed_ccu`，应说明数据侧缺少当前在线人数值，不要把 CCU 事件条数或空 `uid` 去重数当成真实在线人数。
+- 实时真实交易次数使用 `event='ServerPayLog'` 的订单行；支付流程事件只能作为独立流程事件量，不能命名为真实充值次数。
+- 累计真实交易次数应先按业务小时聚合，再对小时做累计求和。
+- 在线人数的业务字段是 `CCU.personal.ed_ccu`。如果当前数据行的 `personal` 没有 `ed_ccu`，应说明数据侧缺少当前在线人数值，不要把 CCU 事件条数或空 `uid` 去重数当成真实在线人数。
 
 ## 禁止事项
 - 不要在 flam 实时问题里直接用 `CURDATE()` / `NOW()` 作为业务日口径。
@@ -185,18 +184,18 @@ WITH latest_dt AS (
                    AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
       AND e.event = 'CCU'
-      AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+      AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
     GROUP BY e.dt
     ORDER BY e.dt DESC
     LIMIT 1
 )
 SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS time_label,
-       MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
+       MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
 FROM `event` e
 JOIN latest_dt ld ON e.dt = ld.dt
 WHERE e.prod = 110000038
   AND e.event = 'CCU'
-  AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+  AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
 GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), time_label
 ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
 LIMIT 24
@@ -210,7 +209,7 @@ WITH latest_dt AS (
     WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
                    AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
-      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')
+      AND e.event = 'ServerPayLog'
     GROUP BY e.dt
     ORDER BY e.dt DESC
     LIMIT 1
@@ -220,7 +219,7 @@ SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:
 FROM `event` e
 JOIN latest_dt ld ON e.dt = ld.dt
 WHERE e.prod = 110000038
-  AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')
+  AND e.event = 'ServerPayLog'
 GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), hour_label
 ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
 LIMIT 24
@@ -234,7 +233,7 @@ WITH latest_dt AS (
     WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
                    AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
-      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')
+      AND e.event = 'ServerPayLog'
     GROUP BY e.dt
     ORDER BY e.dt DESC
     LIMIT 1
@@ -246,7 +245,7 @@ hourly AS (
     FROM `event` e
     JOIN latest_dt ld ON e.dt = ld.dt
     WHERE e.prod = 110000038
-      AND e.event IN ('PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish','ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish')
+      AND e.event = 'ServerPayLog'
     GROUP BY hour_index, hour_label
 )
 SELECT hour_label,
@@ -279,7 +278,7 @@ LIMIT 24
 - D1 留存分子：先固定注册事件 cohort，再在该 cohort 的精确次日 `UserActive` 中查同一 `uid`；不能只读取注册当天，也不要跨多日 `MAX(remain1)`。
 - 默认只展示已成熟 cohort：近月看板以当前日前一完整分区为成熟截止，D1 默认窗口排除最近 1 天，D7 默认窗口排除最近 7 天，避免把未成熟 cohort 当 0%。
 - 用户问“最近 N 天新增用户留存/滞留情况”且未指定 D3/D7 时，默认按 D1 精确日留存理解；cohort 窗口应取最近 N 个已成熟注册日。例如系统日期为 2026-06-30 时，“最近三天新增用户留存”应统计注册日 2026-06-26、2026-06-27、2026-06-28，对应活跃观察日 2026-06-27、2026-06-28、2026-06-29；不要把 2026-06-29 注册 cohort 纳入 D1 留存分母。
-- flam ADS 对 `MAX(user.dt)` / `MAX(event.dt)` 这类大视图聚合较慢；持久看板优先用 `CURDATE()` 派生固定 `dt` 分区窗口，并显式过滤 `prod = 110000038`。
+- flam ADS 对 `MAX(user.dt)` / `MAX(event.dt)` 这类大视图聚合较慢；持久看板以 `CURDATE()` 前一日派生最近完整 `dt` 分区窗口，并显式过滤 `prod = 110000038`。
 
 ## 推荐输出
 - 默认优先使用中文 SQL 输出别名：`日期`、`新增用户数`、`次日留存用户数`、`次日留存率`；图表配置的 `value` 必须与 SQL 返回字段完全一致。
@@ -303,8 +302,8 @@ LIMIT 24
 - 适用于 `核心看板`、`新增看板`、`活跃看板`、`付费概览`、`渠道分析`、`投放看板` 等离线历史看板的日期窗口选择。
 
 ## 日期窗口
-- flam 的 ADS 视图对 `MAX(dt)`、`DISTINCT dt` 和先取最大分区的 CTE 计划较重；历史活跃、DAU/WAU/MAU、ARPU/ARPPU 这类近月趋势优先直接使用 `CURDATE()` 生成 `dt` 分区窗口，并显式过滤 `prod = 110000038` 和目标事件。
-- DAU/活跃趋势默认使用 `dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)`，避免额外扫描事件视图获取最大分区。
+- flam 的 ADS 视图对 `MAX(dt)`、`DISTINCT dt` 和先取最大分区的 CTE 计划较重；历史活跃、DAU/WAU/MAU、ARPU/ARPPU 这类近月趋势以 `CURDATE()` 前一日生成最近完整 `dt` 分区窗口，并显式过滤 `prod = 110000038` 和目标事件。
+- DAU/活跃趋势默认使用最近完整日为结束分区、向前回溯 29 天的 30 日窗口，避免额外扫描事件视图获取最大分区。
 - 指标需要成熟 cohort 或最新快照语义时，使用当前日前一完整分区或排除对应成熟窗口，例如新增留存、7 日 LTV、当前等级分布；这类问题不能把未成熟 cohort 当 0。
 - 需要计算 D1/D3/D7 留存或 7 日 LTV 时，只展示成熟 cohort：D1 默认排除最近 1 天，D7 默认排除最近 7 天。
 - 实时看板继续遵循 `flam 实时数据时区与日期口径` Data Skill 的 UTC+8 规则；不要把实时规则套到历史离线看板。
@@ -328,7 +327,7 @@ LIMIT 24
 ## 活跃用户
 - DAU/WAU/MAU 使用 `event` 表的归一化活跃事件 `UserActive` 计算 `uid` 去重，并显式过滤 `prod = 110000038` 以帮助 ADS 分区/条件下推。
 - 按渠道/系统拆分活跃时，使用活跃事件行上的 `adinfo` / `deviceinfo`。
-- 历史活跃趋势遵循 `flam 历史看板日期窗口口径`：直接用 `CURDATE()` 生成近 1 个月 `dt` 分区窗口，不要为了取最大分区对大视图做 `MAX(dt)` / `DISTINCT dt` 聚合。
+- 历史活跃趋势遵循 `flam 历史看板日期窗口口径`：以 `CURDATE()` 前一日生成近 1 个月最近完整 `dt` 分区窗口，不要为了取最大分区对大视图做 `MAX(dt)` / `DISTINCT dt` 聚合。
 - DAU 展示最近 30 个业务分区；WAU/周登录天数按自然周聚合，观察窗口应扩展到完整周，不能只拿最近 30 天后再按周聚合；MAU 按自然月聚合，观察窗口应扩展到完整月。
 - 活跃生命周期先用 `UserActive` 确定当日活跃 `uid`，再关联同日 `user` 快照读取 `lastinfo.regnday` 分层：`<=1` 新增期，`<=7` 成长期，`<=30` 稳定期，其余成熟期。
 
@@ -390,13 +389,14 @@ LIMIT 24
 
 ## 付费与累计
 - `user.pay.paytotal` 是用户截至该 `dt` 的累计付费快照，可用于累计付费金额、累计付费用户、当前等级段累计人均付费等快照指标。
-- 日付费金额不能直接按日汇总 `paytotal`。日付费金额应按同一用户相邻 `dt` 的 `paytotal` 差分计算，并将负差分截为 0。
-- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 应避免对 30 天以上用户快照全量使用 `LAG()` 窗口排序；优先先从付费事件中取 `pay_event_users(dt, uid)` 缩小候选用户，再回连 `user` 当前日快照和前一日快照计算 `paytotal` 差分。
-- 近月 ARPU/ARPPU 和付费概览使用 `CURDATE()` 生成活跃与付费快照窗口，并额外取前一日快照作为差分基线；不要为了这类趋势先扫描 `user` 视图获取最大分区。
-- 只有结果需要按渠道/系统等维度拆分时才解析 `adinfo` / `deviceinfo` JSON；ARPU/ARPPU 总览不应在中间层提取未使用的渠道字段。
-- 日充值次数优先使用 `event` 表中的付费事件次数：`PayBuyRet`,`PayBuyRetBenifit`,`PayBuyRetSandBox`,`PayFinish`,`ServerPayLog`,`ep_pay_purchase_finish`,`ep_pay_update_db_finish`。
-- 日充值用户数使用付费事件用户去重；日新增充值用户数使用用户首次付费事件日期。
-- 近 7 日累充排名使用最近 7 天付费事件先收敛付费 `uid`，再用观察日累计 `paytotal` 减去 7 天前累计 `paytotal`；不是取 30 日窗口内 `MAX(paytotal)`。
+- 历史日充值金额直接汇总 `event='ServerPayLog'` 的 `personal.money`；不要按日汇总 `paytotal`，也不要用支付流程事件筛人后再推导交易金额。
+- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；最近窗口以 `CURDATE()` 前一日为最近完整业务日，不扫描大视图取得最大分区。
+- 只有结果需要按渠道/系统等维度拆分时才解析交易事件行的 `adinfo` / `deviceinfo` JSON；国家拆分统一使用活跃事件和 `ServerPayLog` 事件各自行的 `userinfo.country`，不使用 `currentinfo.country`。
+- 日充值次数使用 `ServerPayLog.personal.orderId` 去重；日充值用户数使用同日 `ServerPayLog.uid` 去重。
+- 日新增充值用户数使用 `user.pay.firstpaytime` 转换的首付业务日；不得使用分析窗口内最小付费事件日期。
+- `firstpaytime` 为毫秒时间戳，历史首付日使用 `DATE_FORMAT(FROM_UNIXTIME(firstpaytime / 1000), '%Y%m%d')`；抽样与 `ServerPayLog.dt` 对齐，不额外套用实时 UTC+8 转换。
+- 近 7 日累充排名直接汇总最近 7 天 `ServerPayLog.personal.money`；不能把支付流程事件或窗口内 `paytotal` 差分当交易金额。
+- 支付流程事件可以按 `event` 名展示流程量，但不得命名为充值次数、真实订单数、付费人数、ARPU 或 ARPPU。
 - ARPU 分母是同日 `UserActive` 活跃用户数，ARPPU 分母是同日付费用户数，二者分母不同。
 
 ## 留存与 LTV
@@ -439,9 +439,9 @@ LIMIT 24
 
 ## SQL 口径
 - 核心看板 `礼包购买情况` 当前使用 `event='ServerPayLog'` 作为落地口径。
-- `购买礼包ID` 取 `personal.productid`：`NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')), '')`；该字段为空的支付事件不进入礼包排行。
+- `购买礼包ID` 取 `ServerPayLog.personal.productid`：`NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')), '')`；该字段为空的支付事件不进入礼包排行。
 - `购买次数` 统计符合条件的 `ServerPayLog` 事件行数；`购买人数` 统计去重 `uid`。
-- 历史窗口遵循 `flam 历史看板日期窗口口径`：优先使用 `CURDATE()` 派生最近 30 天 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口遵循 `flam 历史看板日期窗口口径`：优先使用 `CURDATE()` 前一日派生最近 30 个完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
 - 生成核心看板 `礼包购买情况` 的 SQL 时，不要再使用 `ext.payId` / `ext.rechargeId` / `ext.productId` / `ext.goodsId` 作为该组件的礼包标识。
@@ -520,7 +520,7 @@ LIMIT 24
 - 渠道投放注册必须先固定注册日 cohort：`user.userinfo.regdate = user.dt`，按 `uid` 去重。
 - 渠道归因取注册日快照行的 `adinfo.mediaSource`，缺失时用 `adinfo.campaignName`，仍缺失记为“未知”。
 - 首日付费金额固定读取注册日快照 `pay.pay1`；7 日累计付费读取注册日后第 6 天快照的 `pay.pay7`，未成熟时返回空值；累计付费读取当前日前一完整快照的 `pay.paytotal`。
-- 历史窗口优先使用 `CURDATE()` 派生最近 30 天 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口优先使用 `CURDATE()` 前一日派生最近 30 个完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
 - 不要用活跃事件行的渠道覆盖注册归因。
@@ -545,12 +545,12 @@ LIMIT 24
 
 ## SQL 口径
 - 周累充分布使用 `user` 用户日快照。持久看板按每周固定快照分区取数：历史完整周取周末分区，当前周取当前日前一完整分区；不要在 ADS 上对每个用户/每周动态 `MAX(dt)`。
-- 付费事件集合为 `PayBuyRet`,`PayBuyRetBenifit`,`PayBuyRetSandBox`,`PayFinish`,`ServerPayLog`,`ep_pay_purchase_finish`,`ep_pay_update_db_finish`。
-- 商品/礼包标识优先从 `ext.payId` 取，其次 `ext.rechargeId`、`ext.productId`、`ext.goodsId`，均缺失时回退为事件名。
-- 周累充分布按累计 `pay.paytotal` 分段；付费事件分布统计事件行数，不从 `paytotal` 差分反推商品。
+- 支付流程事件分布使用 `PayBuyRet`,`PayBuyRetBenifit`,`PayBuyRetSandBox`,`PayFinish`,`ep_pay_purchase_finish`,`ep_pay_update_db_finish`，只按 `event` 展示流程事件量。
+- 真实商品/礼包购买结构只使用 `ServerPayLog.personal.productid`；未验证流程事件的商品字段不做 `ext` 回退，也不回退为交易商品名。
+- 周累充分布按累计 `pay.paytotal` 分段；支付流程事件分布统计流程事件行数，不从 `paytotal` 差分反推商品或交易金额。
 
 ## 禁止事项
-- 不要漏掉 `ep_pay_update_db_finish`。
+- 不要把 `ep_pay_update_db_finish` 或其它支付流程事件混入真实交易金额、订单、付费人数或 ARPU 指标。
 - 不要按天快照直接累计用户数；持久看板必须使用每周一个快照分区，避免一名用户在同一周被多天重复计入。
 
 ## 持久看板 SQL
@@ -574,8 +574,9 @@ LIMIT 24
 - “每周活动参与次数分布”当前落地为近7天按活动类型统计参与次数、参与人数和人均参与次数；活动类型取 `event`，参与次数为事件行数，参与人数为 `uid` 去重。
 - 活动参与率的分母为同日 `UserActive` DAU。
 - “各等级段参与日常活动的人数分布”优先读取 `personal.ed_mainBuildingLevel`，每3个等级一个段，最大到31级；过滤等级为空或不在1-31之间的记录，不输出未知等级段。
-- 活动后续留存先固定用户首次参与活动日，再在精确 D1/D7 用户快照读取 `remain.remain1/remain7`，并排除 D7 未成熟参与日。
-- 活动后续付费先固定用户首次参与活动日，再读取参与日及成熟窗口内的付费字段；不要把所有历史付费用户混入活动参与 cohort。
+- 活动后续留存先固定用户首次参与活动日，再在参与日后的精确 D1/D7 `UserActive` 事件中按 `uid` 去重；D7 未成熟参与日不进入分母。
+- 活动后续付费先固定用户首次参与活动日，再在参与日后的精确目标日 `ServerPayLog` 事件中按 `uid` 去重；金额读取 `personal.money`，订单读取 `personal.orderId`。
+- 活动后续质量不得使用注册 cohort 的 `remain.remain1/remain7` 或 `pay1/pay7`，也不要把所有历史付费用户混入活动参与 cohort。
 
 ## 禁止事项
 - 不要把活动事件次数当参与人数。
@@ -604,7 +605,7 @@ LIMIT 24
 - “免费钻石获取途径分布”只统计 `personal.ed_changeFree > 0` 的获取记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，仅输出获取途径和免费钻石获取量。
 - “钻石消耗途径分布”只统计 `personal.ed_changeFree < 0` 或 `personal.ed_changePaid < 0` 的消耗记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，分别输出免费钻石消耗量和付费钻石消耗量。
 - 获取/消耗途径优先取 `personal.ed_route`，缺失时取 `personal.ed_detailReason`，仍缺失记为“未知”。
-- 历史窗口优先使用 `CURDATE()` 派生最近 30 天 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口优先使用 `CURDATE()` 前一日派生最近 30 个完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
 - 不要再从 `ext.ed_changeFree/ext.ed_changePaid` 读取钻石变化；当前 `GoldChange` 样本中 `ext` 为空，字段在 `personal`。
@@ -660,8 +661,8 @@ LIMIT 24
 - 出征/竞技/演习事件集合为 `WorldMarch`,`WorldMarchRet`,`ActivityWorldBoss`,`ActivityAllianceBossBattleRet`,`honorExpedition`,`ArenaResults`,`TrainingArenaResults`,`multipleArena`。
 - “过去7日各兵种出征情况”当前落地为 `WorldMarch` 出征维度分析：出征类型取 `personal.ed_marchType`，目标类型取 `personal.ed_targetType`，大本等级取 `personal.ed_mainBuildingLevel`，出征 ID 取 `personal.ed_marchId`，预计耗时取 `personal.ed_estimatedSeconds`，出征战力取 `personal.ed_myTeamBattlePower`。
 - “近七天英雄出征量分布”使用 `WorldMarch` 的 `personal.ed_myTeamHeroList`，该字段是英雄对象 JSON 数组；需按数组下标展开并读取每个对象的 `heroId`，不要把整段 JSON 当英雄 ID，也不要按逗号拆字符串。
-- 主城等级优先取事件参数 `ext.ed_mainBuildingLevel`。
-- 平均战力优先取 `ext.combatPower`，缺失时取 `ext.captainPower`。
+- 主城等级优先取事件参数 `personal.ed_mainBuildingLevel`。
+- 平均战力优先取 `personal.ed_myTeamBattlePower`；未验证的 ext 战力字段不得作为回退。
 - “各等级出征胜率”使用 `WorldMarchRet` 结果事件，按 `personal.ed_mainBuildingLevel` 和 `personal.ed_targetType` 分组；胜利判断优先取 `personal.ed_result`，其次 `personal.ed_battleResult`，值为 `4`、`win`、`success`、`1`、`胜利` 计为胜利。
 - “各英雄出征胜率”使用 `WorldMarch` 的 `personal.ed_myTeamHeroList` 展开英雄阵容，再按 `uid + personal.ed_marchId` 回连 `WorldMarchRet` 结果事件；出征次数按 `uid + ed_marchId + hero_id` 去重统计，胜率分母为该英雄参与且有结果回包的出征次数，不输出出征用户数。
 - 出征分布、胜率、将领/主城等级拆分会解析 JSON 并做高基数分组，持久看板默认使用近 7 天窗口；指标卡只查昨天、前天、上周同日三个目标分区。
@@ -716,10 +717,10 @@ LIMIT 24
 
 ## SQL 口径
 - 当前主城等级类指标使用 `user` 当前日前一完整分区的 `lastinfo.blevel`，按 `uid` 去重，并过滤 `prod = 110000038`。
-- 主城/建筑升级事件使用 `BuildingUpgrade`,`BuildingIdleUpgrade`；建筑 ID 优先取 `ext.ed_buildingId`，其次 `ext.ed_metaId`。
+- 主城/建筑升级事件使用 `BuildingUpgrade`,`BuildingIdleUpgrade`；建筑 ID 优先取 `personal.ed_buildingId`，其次 `personal.ed_metaId`。
 - 科技升级类事件只使用 `TechnologyDonation`。
 - 招募情况使用 `event='HeroRecruit'`，招募池 ID 取 `personal.ed_cardType`，招募方式取 `personal.ed_recruitNumType`；`ONE` 映射为“单抽”，`TEN` 映射为“十连抽”，缺失或其它值归为“未知”。
-- 加速使用从 `BuildingUpgrade`,`BuildingIdleUpgrade`,`ArmyUpgrade` 中识别，类型优先取 `ext.ed_detailReason`，其次 `ext.ed_route`。
+- 加速类型当前没有已验证字段映射；组件必须显示“待补充字段映射”，不得从 `ext.ed_detailReason`、`ext.ed_route` 或其他相邻字段猜测类型。
 - 主城升级漏斗使用最新快照主城等级阈值，而不是历史升级事件次数。
 
 ## 禁止事项
@@ -751,7 +752,7 @@ LIMIT 24
 - 用户未指定沉默天数时，默认 `沉默用户` 为最近 3 到 6 个完整业务日没有 `UserActive`、且此前 30 天内有过 `UserActive` 的用户。
 - 用户未指定回流天数时，默认 `回流用户` 为当前观察日 `UserActive`，且此前连续 7 个完整业务日没有 `UserActive`，再往前 30 天内有过 `UserActive` 的用户。
 - 流失前画像可以按渠道、系统、区服、等级、主城等级、付费分层、最近一次活动/付费/建筑/出征行为拆分；涉及当前状态时使用 `user` 当前日前一完整分区。
-- 历史窗口优先使用 `CURDATE()` 派生固定 `dt` 分区，并过滤 `prod = 110000038`；避免先对 ADS 大视图做 `MAX(dt)` 或全历史扫描。
+- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt` 分区，并过滤 `prod = 110000038`；避免先对 ADS 大视图做 `MAX(dt)` 或全历史扫描。
 
 ## 推荐输出
 - 留存矩阵输出字段建议为 `cohort_date`、`cohort_users`、`retained_users_d1/d3/d7`、`retention_rate_d1/d3/d7`。
@@ -787,7 +788,7 @@ LIMIT 24
 - 行为人群使用 `event` 表先固定行为 cohort，再回连同日或当前快照读取画像字段。
 - 高价值用户、付费用户、未付费用户等金额相关人群必须遵守字段权限；如果当前用户无权读取 `pay`，不得生成金额或 ARPU/ARPPU 相关 SQL。
 - 交叉分析默认输出每个分层的用户数、占比；需要业务效果时再追加 DAU、付费用户数、付费金额、留存率等指标。
-- 历史窗口优先使用 `CURDATE()` 派生固定 `dt`，并过滤 `prod = 110000038`。
+- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt`，并过滤 `prod = 110000038`。
 
 ## 推荐输出
 - 人群分层表字段建议为 `分层名称`、`用户数`、`占比`。
@@ -822,7 +823,7 @@ LIMIT 24
 - 区服付费用户和充值次数使用付费事件集合；区服累计付费金额使用当前日前一完整分区 `user.pay.paytotal`，金额字段需遵守权限。
 - 区服留存先固定区服注册 cohort，再看精确 D1/D3/D7 `UserActive`；不要用当前区服活跃用户反推注册留存。
 - 区服健康度默认同时看最近 7 天 DAU 趋势、新增趋势、付费用户数、付费金额、D1/D7 留存和流失/回流；没有成本字段时不要输出 ROI。
-- 历史窗口优先使用 `CURDATE()` 派生固定 `dt`，并过滤 `prod = 110000038`。
+- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt`，并过滤 `prod = 110000038`。
 
 ## 推荐输出
 - 区服排行榜字段建议为 `区服ID`、`新增用户数`、`DAU`、`付费用户数`、`付费金额`、`D1留存率`、`开服天数`。
@@ -852,7 +853,7 @@ LIMIT 24
 - JSON 字段空值判断使用 `NULLIF(JSON_UNQUOTE(JSON_EXTRACT(...)), '') IS NULL`，同时兼容 JSON path 不存在和空字符串。
 - 事件波动默认按最近 7 天与前 7 天对比，输出事件量、事件用户数、环比变化；用户要求同比时再查上周同日或更长窗口。
 - 版本、系统、设备、渠道、国家等维度需先确认字段存在：常见来源为 `deviceinfo._platform`、`deviceinfo._osVersion`、`deviceinfo._model`、`adinfo.mediaSource`、`adinfo.campaignName`、`userinfo.country`。
-- 历史窗口优先使用 `CURDATE()` 派生固定 `dt`，并过滤 `prod = 110000038`；避免大范围 JSON_KEYS 聚合或全历史扫描。
+- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt`，并过滤 `prod = 110000038`；避免大范围 JSON_KEYS 聚合或全历史扫描。
 
 ## 推荐输出
 - 事件健康表字段建议为 `日期`、`事件名`、`事件量`、`触发用户数`、`较前期变化率`。
@@ -881,11 +882,13 @@ def _upsert_skill(cur, *, tenant_id: int, datasource_id: int, skill: dict[str, s
         FROM custom_prompt
         WHERE type = 'DATA_SKILL'
           AND tenant_id = %s
+          AND specific_ds = TRUE
+          AND datasource_ids = %s::jsonb
           AND position(%s in COALESCE(prompt, '')) > 0
         ORDER BY id
         LIMIT 1
         """,
-        (tenant_id, marker),
+        (tenant_id, Jsonb([datasource_id]), marker),
     )
     row = cur.fetchone()
     values = (
@@ -915,9 +918,15 @@ def _upsert_skill(cur, *, tenant_id: int, datasource_id: int, skill: dict[str, s
                 embedding = NULL,
                 embedding_signature = NULL
             WHERE id = %s
+              AND tenant_id = %s
+              AND type = 'DATA_SKILL'
+              AND specific_ds = TRUE
+              AND datasource_ids = %s::jsonb
             """,
-            (*values, skill_id),
+            (*values, skill_id, tenant_id, Jsonb([datasource_id])),
         )
+        if cur.rowcount != 1:
+            raise RuntimeError(f"Data Skill 作用域已变化，拒绝更新: {skill_id}")
         return skill_id
 
     cur.execute(
@@ -948,7 +957,7 @@ def _upsert_skill(cur, *, tenant_id: int, datasource_id: int, skill: dict[str, s
     return int(cur.fetchone()[0])
 
 
-def _delete_stale_skills(cur, *, tenant_id: int) -> list[int]:
+def _delete_stale_skills(cur, *, tenant_id: int, datasource_id: int) -> list[int]:
     stale_ids: list[int] = []
     for marker in STALE_SKILL_MARKERS:
         cur.execute(
@@ -957,10 +966,13 @@ def _delete_stale_skills(cur, *, tenant_id: int) -> list[int]:
             FROM custom_prompt
             WHERE tenant_id = %s
               AND type = 'DATA_SKILL'
+              AND specific_ds = TRUE
+              AND datasource_ids = %s::jsonb
               AND position(%s in COALESCE(prompt, '')) > 0
             ORDER BY id
+            FOR UPDATE
             """,
-            (tenant_id, marker),
+            (tenant_id, Jsonb([datasource_id]), marker),
         )
         ids = [int(row[0]) for row in cur.fetchall()]
         if not ids:
@@ -977,10 +989,12 @@ def _delete_stale_skills(cur, *, tenant_id: int) -> list[int]:
             """
             DELETE FROM custom_prompt
              WHERE tenant_id = %s
-               AND type = 'DATA_SKILL'
-               AND position(%s in COALESCE(prompt, '')) > 0
+                AND type = 'DATA_SKILL'
+                AND specific_ds = TRUE
+                AND datasource_ids = %s::jsonb
+                AND position(%s in COALESCE(prompt, '')) > 0
             """,
-            (tenant_id, marker),
+            (tenant_id, Jsonb([datasource_id]), marker),
         )
     return stale_ids
 
@@ -1009,7 +1023,11 @@ def main() -> None:
         with conn.cursor() as cur:
             for skill in DATA_SKILLS:
                 ids.append(_upsert_skill(cur, tenant_id=TENANT_ID, datasource_id=DATASOURCE_ID, skill=skill, now=now))
-            deleted_stale_ids = _delete_stale_skills(cur, tenant_id=TENANT_ID)
+            deleted_stale_ids = _delete_stale_skills(
+                cur,
+                tenant_id=TENANT_ID,
+                datasource_id=DATASOURCE_ID,
+            )
         conn.commit()
     saved = _save_embeddings(ids, TENANT_ID)
     print(f"Upserted flam data skills: {ids}; deleted stale skills: {deleted_stale_ids}; embeddings saved: {saved}")

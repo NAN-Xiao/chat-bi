@@ -28,12 +28,15 @@ REGISTER_EVENTS = [
     "UserRegister",
 ]
 
-PAY_EVENTS = [
+TRANSACTION_EVENTS = [
+    "ServerPayLog",
+]
+
+PAYMENT_PROCESS_EVENTS = [
     "PayBuyRet",
     "PayBuyRetBenifit",
     "PayBuyRetSandBox",
     "PayFinish",
-    "ServerPayLog",
     "ep_pay_purchase_finish",
     "ep_pay_update_db_finish",
 ]
@@ -101,8 +104,41 @@ TRACKING_CONFIG = {
     "event_name_mappings": [
         {"metric": "new_user_registration", "events": REGISTER_EVENTS, "description": "新增用户/注册 cohort 使用 UserRegister 归一化注册事件；需要快照字段时再回连 user 注册日快照"},
         {"metric": "active_user", "events": LOGIN_EVENTS, "description": "DAU/WAU/MAU/活跃拆分使用 UserActive 归一化活跃事件"},
-        {"metric": "payment_event", "events": PAY_EVENTS, "description": "充值次数、充值用户、实时付费事件使用的付费事件集合"},
-        {"metric": "ccu", "events": ["CCU"], "description": "实时在线人数事件；在线人数读取 ext.ed_ccu"},
+        {
+            "metric": "payment_transaction",
+            "events": TRANSACTION_EVENTS,
+            "description": "充值金额、订单、付费人数、ARPU/ARPPU 和首付只使用 ServerPayLog.personal。",
+            "properties": [
+                {
+                    "property_name": "personal.money",
+                    "property_display_name": "充值金额",
+                    "property_type": "number",
+                    "source_field": "personal",
+                    "json_path": "$.money",
+                },
+                {
+                    "property_name": "personal.orderId",
+                    "property_display_name": "订单 ID",
+                    "property_type": "identifier",
+                    "source_field": "personal",
+                    "json_path": "$.orderId",
+                },
+                {
+                    "property_name": "personal.productid",
+                    "property_display_name": "商品 ID",
+                    "property_type": "identifier",
+                    "source_field": "personal",
+                    "json_path": "$.productid",
+                },
+                {
+                    "property_name": "uid",
+                    "property_display_name": "用户 ID",
+                    "property_type": "identifier",
+                },
+            ],
+        },
+        {"metric": "payment_process_event", "events": PAYMENT_PROCESS_EVENTS, "description": "支付流程事件量，不得作为充值金额、真实订单数或付费人数。"},
+        {"metric": "ccu", "events": ["CCU"], "description": "实时在线人数事件；在线人数读取 personal.ed_ccu。"},
         {"metric": "onboarding_funnel", "events": ONBOARDING_EVENTS, "description": "新手引导漏斗事件集合；默认起点仍为 user 注册 cohort，不是全量登录用户"},
         {"metric": "activity_participation", "events": ACTIVITY_EVENTS, "description": "活动参与率、人均参与次数、活动参与频次和活动后续质量使用的活动事件集合"},
         {"metric": "expedition_drill", "events": EXPEDITION_EVENTS, "description": "出征、竞技场、荣耀远征、世界 Boss、联盟 Boss 和演习类看板使用的事件集合"},
@@ -114,20 +150,23 @@ TRACKING_CONFIG = {
     ],
     "sql_rules": "\n".join(
         [
-            "flam 近月趋势、成熟 cohort 和当前快照类看板优先用 CURDATE() 生成固定 dt 分区窗口，并过滤 prod=110000038；避免对 ADS 大视图先做 MAX(dt)。",
+            "flam 历史趋势、成熟 cohort 和当前快照类看板以 CURDATE() 的前一日作为最近完整业务日，并过滤 prod=110000038；避免对 ADS 大视图先做 MAX(dt)。",
             "event.time 为毫秒时间戳；实时业务日按 UTC+8 转换，历史离线看板优先使用 dt 分区。",
             "JSON 子字段使用 JSON_UNQUOTE(JSON_EXTRACT(field, '$.path')) 提取，空字符串需要 NULLIF 后再 COALESCE。",
             "活跃用户必须过滤 UserActive 归一化活跃事件后按 uid 去重，不使用 event 全事件去重，也不直接用 user 快照行数代替。",
             "核心看板新手引导漏斗默认以 user 注册日 cohort 为起点，后续步骤按 cohort 内 uid 去重统计。",
-            "礼包购买结构使用付费事件集合，并从 ext.payId/rechargeId/productId/goodsId 提取礼包或商品标识。",
+            "真实交易只使用 ServerPayLog：金额为 personal.money，订单为 personal.orderId，礼包/商品 ID 为 personal.productid；支付流程事件只可按 event 名称统计流程量。",
+            "日新增充值用户使用 user.pay.firstpaytime 转换的首付业务日，不得使用分析窗口内 MIN(event.dt) 代替。",
+            "user.pay.firstpaytime 是毫秒时间戳；历史首付日使用 DATE_FORMAT(FROM_UNIXTIME(firstpaytime / 1000), '%Y%m%d')，采样已与 ServerPayLog.dt 对齐，不额外套用实时 UTC+8 转换。",
             "新增 cohort 可使用 UserRegister 注册事件按 uid 去重；需要读取 pay、remain、当前等级等快照字段时，再回连 user 注册日或成熟生命周期日快照。",
             "新增首日付费固定取注册日快照 pay.pay1，不从后续快照取 MAX(pay1)。",
-            "新增 cohort LTV 中，首日/1日 LTV 使用 pay.pay1；次日/2日 LTV 使用 pay.pay2；3日/7日/14日/30日 LTV 分别使用 pay.pay3/pay7/pay14/pay30。不要把“次日 LTV”写成 pay1。",
-            "留存标记 remain1/remain3/remain7 必须在注册后精确第 1/3/7 日快照读取；未成熟 cohort 不按 0 处理。",
+            "新增 cohort LTV 中，首日/1日 LTV 使用 pay.pay1；次日/2日 LTV 使用 pay.pay2；3日/7日/14日/30日 LTV 分别使用 pay.pay3/pay7/pay14/pay30。不要把“次日 LTV”写成 pay1；目标日期超过最近完整日的未成熟 cohort 返回 NULL。",
+            "留存标记 remain1/remain3/remain7 必须在注册后精确第 1/3/7 日快照读取；未成熟 cohort 返回 NULL，不按 0 处理。",
             "付费用户周累充分布必须先按自然周取每个 uid 的最新 user 快照，再按 pay.paytotal 分段，避免多日快照重复计数。",
             "活动参与率分母是同日 UserActive DAU，分子是活动事件 uid 去重；活动后续留存/付费必须先固定参与 cohort。",
             "钻石经济使用 GoldChange，变化字段在 personal.ed_changeFree 与 personal.ed_changePaid；正数计获取，负数绝对值计消耗。",
-            "出征和演习胜率分母是出征/竞技事件行，胜利结果读取 ext.battleResult 或 ext.expeditionDungeonResult。",
+            "出征和演习胜率分母是出征/竞技事件行；已验证字段使用对应 personal JSON 路径，未验证字段不得从 ext 猜测回退。",
+            "CCU 使用 personal.ed_ccu；建筑 ID/主城等级和出征战力使用对应 personal JSON 路径。加速类型暂无已验证字段映射，必须显示待补充字段映射状态。",
             "当前主城等级和主城升级漏斗使用 user 最新快照 lastinfo.blevel；不要用历史升级事件次数替代当前玩家数。",
             "英雄当前等级分布需要先按 uid 与英雄 ID 取最近一条养成事件，再统计人数；不要把升级事件次数当等级分布。",
         ]
@@ -141,7 +180,7 @@ TABLES = [
         "table_comment": "事件明细表。每行是一条用户行为或系统事件记录，核心字段为 uid、event、time、dt、prod，多个属性列为 JSON 文本。",
         "table_role": "event_fact",
         "aliases": ["事件表", "埋点表", "行为明细"],
-        "ai_notes": "查询特定行为必须先过滤 event，再解析 ext/userinfo/deviceinfo/adinfo/lastinfo 等 JSON 子字段。",
+        "ai_notes": "查询特定行为必须先过滤 event；已验证交易、CCU、建筑和出征字段从 personal 解析，userinfo/deviceinfo/adinfo/lastinfo 按各自 JSON 字段解析。未经采样验证的 ext 子字段不得作为指标口径。",
     },
     {
         "table_name": "user",
@@ -175,7 +214,7 @@ FIELDS = [
     {
         "table_name": "event",
         "field_name": "dt",
-        "field_comment": "事件业务日期分区，格式 yyyyMMdd。flam 持久历史看板优先用 CURDATE() 派生固定 dt 窗口，避免先扫 event 做 MAX(dt)。",
+        "field_comment": "事件业务日期分区，格式 yyyyMMdd。flam 持久历史看板以 CURDATE() 前一日派生最近完整 dt 窗口，避免先扫 event 做 MAX(dt)。",
         "field_role": "partition_date",
         "semantic_type": "date",
         "aliases": ["事件日期", "分区日期", "业务日期"],
@@ -295,54 +334,30 @@ FIELDS = [
     {
         "table_name": "event",
         "field_name": "personal",
-        "field_comment": "个人行为上下文 JSON 文本；钻石经济等字段在 personal.ed_changeFree/personal.ed_changePaid。",
+        "field_comment": "事件业务载荷 JSON 文本；交易、CCU、建筑与出征的已验证子字段都在 personal。",
         "field_role": "event_params_json",
         "semantic_type": "json",
         "aliases": ["个人参数", "个人信息"],
-        "example_values": ["ed_changeFree", "ed_changePaid", "ed_route"],
+        "example_values": ["money", "orderId", "productid", "ed_ccu", "ed_buildingId", "ed_mainBuildingLevel", "ed_myTeamBattlePower", "ed_changeFree", "ed_changePaid"],
     },
     {
         "table_name": "event",
         "field_name": "ext",
-        "field_comment": "事件参数 JSON；不同 event 有不同参数结构，必须先按 event 过滤后再解析 ext 子字段。",
+        "field_comment": "扩展参数 JSON；当前采样未验证可用于交易、CCU、建筑、出征或加速指标的 ext 子字段。",
         "field_role": "event_params_json",
         "semantic_type": "json",
         "aliases": ["事件参数", "扩展参数"],
-        "example_values": [
-            "payId",
-            "rechargeId",
-            "productId",
-            "goodsId",
-            "ed_ccu",
-            "ed_changeFree",
-            "ed_changePaid",
-            "ed_route",
-            "ed_detailReason",
-            "ed_mainBuildingLevel",
-            "ed_buildingId",
-            "ed_metaId",
-            "ed_heroId",
-            "captainId",
-            "ed_currentLevel",
-            "ed_heroLevel",
-            "ed_heroStar",
-            "ed_newStar",
-            "ed_newArmyId",
-            "ed_oldArmyId",
-            "ed_count",
-            "battleResult",
-            "expeditionDungeonResult",
-        ],
-        "ai_notes": "礼包购买结构优先用 payId，其次 rechargeId/productId/goodsId；实时在线人数使用 CCU.ext.ed_ccu；钻石经济、出征、主城、英雄和兵种指标都需要先按对应 event 过滤后再解析对应 JSON 子路径，GoldChange 钻石字段在 personal。",
+        "example_values": [],
+        "ai_notes": "不要把 ext 子字段作为当前已验证交易、CCU、建筑、出征或加速口径；需要新字段时先按事件抽样并配置对应路径。",
     },
     {
         "table_name": "event",
-        "field_name": "ext.ed_ccu",
+        "field_name": "personal.ed_ccu",
         "field_comment": "CCU 事件中的实时在线人数值；实时在线人数取该字段最大值或最新值，不按 CCU 事件条数统计。",
         "field_role": "json_path_metric",
         "semantic_type": "number",
         "aliases": ["在线人数", "CCU人数"],
-        "expression": "JSON_UNQUOTE(JSON_EXTRACT(ext, '$.ed_ccu'))",
+        "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_ccu'))",
         "example_values": ["1234"],
         "ai_notes": "仅在 event='CCU' 时作为在线人数使用；没有该字段时应提示数据缺失。",
     },
@@ -371,7 +386,7 @@ FIELDS = [
     {
         "table_name": "event",
         "field_name": "personal.ed_route",
-        "field_comment": "资源变化、加速或功能行为的入口/路径；钻石获取消耗途径优先使用该字段。",
+        "field_comment": "资源变化或功能行为的入口/路径；钻石获取消耗途径优先使用该字段。",
         "field_role": "json_path_dimension",
         "semantic_type": "category",
         "aliases": ["路径", "来源途径", "消耗途径"],
@@ -601,7 +616,7 @@ FIELDS = [
     {
         "table_name": "user",
         "field_name": "dt",
-        "field_comment": "用户快照业务日期，格式 yyyyMMdd。flam 持久看板优先用 CURDATE() 派生固定 dt 窗口，当前快照默认取当前日前一完整分区。",
+        "field_comment": "用户快照业务日期，格式 yyyyMMdd。flam 持久看板以 CURDATE() 前一日派生最近完整 dt 窗口，当前快照默认取最近完整分区。",
         "field_role": "snapshot_date",
         "semantic_type": "date",
         "aliases": ["快照日期", "业务日期"],
@@ -811,6 +826,124 @@ FIELDS = [
 ]
 
 
+# These historical ext mappings were sampled empty for their target events.
+# Keep the literal declarations above only so old seed revisions remain easy to
+# identify; remove them before every upsert and delete them from the tenant.
+LEGACY_UNVERIFIED_EXT_FIELDS = frozenset(
+    {
+        "ext.ed_changeFree",
+        "ext.ed_changePaid",
+        "ext.ed_route",
+        "ext.ed_ccu",
+        "ext.ed_detailReason",
+        "ext.ed_mainBuildingLevel",
+        "ext.ed_buildingId",
+        "ext.ed_metaId",
+        "ext.ed_heroId",
+        "ext.captainId",
+        "ext.ed_currentLevel",
+        "ext.ed_heroLevel",
+        "ext.ed_heroStar",
+        "ext.ed_newStar",
+        "ext.ed_newArmyId",
+        "ext.ed_oldArmyId",
+        "ext.ed_count",
+        "ext.battleResult",
+        "ext.expeditionDungeonResult",
+        "ext.combatPower",
+        "ext.captainPower",
+        "ext.payId",
+        "ext.rechargeId",
+        "ext.productId",
+        "ext.goodsId",
+    }
+)
+
+FIELDS = [item for item in FIELDS if item["field_name"] not in LEGACY_UNVERIFIED_EXT_FIELDS]
+FIELDS.extend(
+    [
+        {
+            "table_name": "event",
+            "field_name": "personal.money",
+            "field_comment": "ServerPayLog 的真实充值金额；金额单位/币种待业务确认，不可未经确认称为净收入。",
+            "field_role": "json_path_metric",
+            "semantic_type": "number",
+            "aliases": ["充值金额", "付费金额", "交易金额"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.money'))",
+            "example_values": ["0.99", "9.99", "99.99"],
+            "ai_notes": "仅在 event='ServerPayLog' 时使用；日充值金额、ARPU、ARPPU 和付费率都以此字段为交易分子。",
+        },
+        {
+            "table_name": "event",
+            "field_name": "personal.orderId",
+            "field_comment": "ServerPayLog 的真实交易订单 ID；充值次数可按该字段去重。",
+            "field_role": "json_path_dimension",
+            "semantic_type": "identifier",
+            "aliases": ["订单ID", "交易订单", "充值订单"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.orderId'))",
+            "ai_notes": "仅在 event='ServerPayLog' 时作为真实订单使用；不同支付流程事件的同名字段不能直接关联。",
+        },
+        {
+            "table_name": "event",
+            "field_name": "personal.productid",
+            "field_comment": "ServerPayLog 的礼包/商品 ID；礼包购买结构只使用该字段。",
+            "field_role": "json_path_dimension",
+            "semantic_type": "identifier",
+            "aliases": ["商品ID", "礼包ID", "充值商品"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.productid'))",
+            "ai_notes": "只适用于 ServerPayLog；未验证支付流程事件的商品字段不做回退映射。",
+        },
+        {
+            "table_name": "event",
+            "field_name": "personal.ed_mainBuildingLevel",
+            "field_comment": "建筑和出征事件中的主城等级。",
+            "field_role": "json_path_dimension",
+            "semantic_type": "number",
+            "aliases": ["主城等级", "基地等级", "建筑主等级"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_mainBuildingLevel'))",
+            "example_values": ["1", "10", "20"],
+        },
+        {
+            "table_name": "event",
+            "field_name": "personal.ed_buildingId",
+            "field_comment": "BuildingUpgrade 事件中的建筑 ID。",
+            "field_role": "json_path_dimension",
+            "semantic_type": "identifier",
+            "aliases": ["建筑ID", "建筑"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_buildingId'))",
+        },
+        {
+            "table_name": "event",
+            "field_name": "personal.ed_metaId",
+            "field_comment": "建筑事件中的配置 ID；建筑 ID 缺失时的已验证回退标识。",
+            "field_role": "json_path_dimension",
+            "semantic_type": "identifier",
+            "aliases": ["配置ID", "MetaID"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_metaId'))",
+        },
+        {
+            "table_name": "event",
+            "field_name": "personal.ed_myTeamBattlePower",
+            "field_comment": "WorldMarch/WorldMarchRet 中的出征队伍战力。",
+            "field_role": "json_path_metric",
+            "semantic_type": "number",
+            "aliases": ["战力", "出征战力", "队伍战力"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(personal, '$.ed_myTeamBattlePower'))",
+        },
+        {
+            "table_name": "user",
+            "field_name": "pay.firstpaytime",
+            "field_comment": "用户首付毫秒时间戳；日新增充值用户按该字段转换的首付业务日统计。",
+            "field_role": "json_path_timestamp_ms",
+            "semantic_type": "timestamp_ms",
+            "aliases": ["首付时间", "首次充值时间", "新增付费日期"],
+            "expression": "JSON_UNQUOTE(JSON_EXTRACT(pay, '$.firstpaytime'))",
+            "ai_notes": "首付用户使用 firstpaytime > 0；不能用分析窗口内最小支付事件日期替代。",
+        },
+    ]
+)
+
+
 def _json_path_expr(table_name: str, field_name: str) -> str | None:
     if "." not in field_name:
         return None
@@ -886,12 +1019,12 @@ def upsert_config(cur, now: int) -> None:
     cur.execute(
         """
         INSERT INTO public.sys_tenant_tracking_config (
-            id, tenant_id, enabled, default_event_table, default_subject_field,
+            id, tenant_id, datasource_id, enabled, default_event_table, default_subject_field,
             default_event_name_field, default_event_time_field, field_role_mappings,
             event_name_mappings, sql_rules, notes, create_by, update_by, create_time, update_time
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (tenant_id) DO UPDATE SET
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (tenant_id, datasource_id) DO UPDATE SET
             enabled = EXCLUDED.enabled,
             default_event_table = EXCLUDED.default_event_table,
             default_subject_field = EXCLUDED.default_subject_field,
@@ -907,6 +1040,7 @@ def upsert_config(cur, now: int) -> None:
         (
             _snowflake_id(),
             TENANT_ID,
+            DATASOURCE_ID,
             TRACKING_CONFIG["enabled"],
             TRACKING_CONFIG["default_event_table"],
             TRACKING_CONFIG["default_subject_field"],
@@ -929,11 +1063,11 @@ def upsert_tables(cur, now: int) -> None:
         cur.execute(
             """
             INSERT INTO public.sys_tenant_tracking_table (
-                id, tenant_id, table_name, table_comment, table_role, aliases,
+                id, tenant_id, datasource_id, table_name, table_comment, table_role, aliases,
                 ai_notes, create_by, update_by, create_time, update_time
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (tenant_id, table_name) DO UPDATE SET
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, datasource_id, table_name) DO UPDATE SET
                 table_comment = EXCLUDED.table_comment,
                 table_role = EXCLUDED.table_role,
                 aliases = EXCLUDED.aliases,
@@ -944,6 +1078,7 @@ def upsert_tables(cur, now: int) -> None:
             (
                 _snowflake_id(),
                 TENANT_ID,
+                DATASOURCE_ID,
                 item["table_name"],
                 item["table_comment"],
                 item["table_role"],
@@ -962,12 +1097,12 @@ def upsert_fields(cur, now: int) -> None:
         cur.execute(
             """
             INSERT INTO public.sys_tenant_tracking_field (
-                id, tenant_id, table_name, field_name, field_comment, field_role,
+                id, tenant_id, datasource_id, table_name, field_name, field_comment, field_role,
                 semantic_type, source_field, json_path, aliases, value_mappings, expression, required,
                 example_values, ai_notes, create_by, update_by, create_time, update_time
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (tenant_id, table_name, field_name) DO UPDATE SET
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, datasource_id, table_name, field_name) DO UPDATE SET
                 field_comment = EXCLUDED.field_comment,
                 field_role = EXCLUDED.field_role,
                 semantic_type = EXCLUDED.semantic_type,
@@ -985,6 +1120,7 @@ def upsert_fields(cur, now: int) -> None:
             (
                 _snowflake_id(),
                 TENANT_ID,
+                DATASOURCE_ID,
                 item["table_name"],
                 item["field_name"],
                 item.get("field_comment"),
@@ -1011,10 +1147,11 @@ def delete_stale_fields(cur) -> int:
         """
         DELETE FROM public.sys_tenant_tracking_field
         WHERE tenant_id = %s
+          AND datasource_id = %s
           AND table_name = 'event'
-          AND field_name IN ('ext.ed_changeFree', 'ext.ed_changePaid', 'ext.ed_route')
+          AND field_name = ANY(%s)
         """,
-        (TENANT_ID,),
+        (TENANT_ID, DATASOURCE_ID, sorted(LEGACY_UNVERIFIED_EXT_FIELDS)),
     )
     return int(cur.rowcount or 0)
 

@@ -1,29 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Normalize flam dashboard historical date windows to data max dt.
-
-This repair is intentionally datasource scoped. It preserves existing chart
-metric formulas and field mappings, and only replaces system-date windows such
-as CURDATE()-29..CURDATE() with the matching fact table's MAX(dt) window.
-"""
+"""已安全下线的 First Zombie 广域日期窗口修复入口。"""
 
 from __future__ import annotations
 
 import json
 import re
-import time
 from pathlib import Path
 from typing import Any
 
-import psycopg
-
-from core_system_db import core_system_db_config
-from flam_first_zombie_dashboard_sql import DATASOURCE_ID, TENANT_ID
+from flam_first_zombie_date_sql import complete_business_dt_expr
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKUP_DIR = ROOT / ".codex-runtime" / "pg-backups"
-SYSTEM_DB = core_system_db_config()
 UPDATE_BY = "codex"
+STRICT_MIGRATION_SCRIPT = "tools/repair_flam_first_zombie_semantic_dashboards.py"
 
 OLD_END_RE = r"CAST\s*\(\s*DATE_FORMAT\s*\(\s*CURDATE\s*\(\s*\)\s*,\s*'%Y%m%d'\s*\)\s+AS\s+SIGNED\s*\)"
 OLD_START_RE = (
@@ -32,20 +23,13 @@ OLD_START_RE = (
 )
 
 
-def max_dt_expr(table: str) -> str:
-    return f"(SELECT MAX(dt) FROM `{table}`)"
-
-
 def start_dt_expr(table: str, days: str) -> str:
-    return (
-        "CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST("
-        + max_dt_expr(table)
-        + f" AS CHAR), '%Y%m%d'), INTERVAL {days} DAY), '%Y%m%d') AS SIGNED)"
-    )
+    del table
+    return complete_business_dt_expr(max(int(days) - 1, 0))
 
 
 def range_expr(table: str, days: str) -> str:
-    return f"{start_dt_expr(table, days)} AND {max_dt_expr(table)}"
+    return f"{start_dt_expr(table, days)} AND {complete_business_dt_expr()}"
 
 
 def replace_qualified_between(sql: str, alias: str, table: str) -> str:
@@ -65,7 +49,8 @@ def replace_select_max_window(sql: str, table: str) -> str:
         + rf"\s+AND\s+{OLD_END_RE}",
         re.IGNORECASE,
     )
-    return pattern.sub(f"SELECT MAX(dt) FROM `{table}`", sql)
+    del table
+    return pattern.sub(complete_business_dt_expr(), sql)
 
 
 def replace_from_table_unqualified_between(sql: str, table: str) -> str:
@@ -132,79 +117,20 @@ def backup_dashboard(row: dict[str, Any], backup_path: Path) -> None:
     backup_path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _raise_legacy_repair_disabled() -> None:
+    raise RuntimeError(
+        "该广域日期窗口修复脚本已安全下线，避免改写未审计组件；"
+        f"请使用 {STRICT_MIGRATION_SCRIPT}。"
+    )
+
+
 def repair_dashboards(conn: Any) -> None:
-    backup_path = BACKUP_DIR / f"flam_dashboard_date_windows_before_repair_{int(time.time())}.json"
-    changed_views: list[dict[str, Any]] = []
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT id, name, canvas_view_info
-            FROM public.core_dashboard
-            WHERE tenant_id = %s
-              AND datasource = %s
-              AND COALESCE(delete_flag, 0) = 0
-              AND type = 'dashboard'
-            FOR UPDATE
-            """,
-            (TENANT_ID, DATASOURCE_ID),
-        )
-        for dashboard_id, dashboard_name, canvas_view_info_text in cur.fetchall():
-            canvas_view_info = json.loads(canvas_view_info_text or "{}")
-            touched: list[str] = []
-            for view_id, view in canvas_view_info.items():
-                if not isinstance(view, dict):
-                    continue
-                sql = view.get("sql") or ""
-                if not re.search(r"\bCURDATE\s*\(|\bNOW\s*\(", sql, re.IGNORECASE):
-                    continue
-                next_sql = normalize_sql_date_window(sql)
-                if next_sql == sql:
-                    continue
-                view["sql"] = next_sql
-                clear_result(view)
-                touched.append(view_id)
-            if not touched:
-                continue
-            backup_dashboard(
-                {
-                    "id": dashboard_id,
-                    "name": dashboard_name,
-                    "canvas_view_info": canvas_view_info_text,
-                },
-                backup_path,
-            )
-            cur.execute(
-                """
-                UPDATE public.core_dashboard
-                   SET canvas_view_info = %s,
-                       update_time = %s,
-                       update_by = %s
-                 WHERE id = %s
-                   AND tenant_id = %s
-                """,
-                (
-                    json.dumps(canvas_view_info, ensure_ascii=False, separators=(",", ":")),
-                    int(time.time()),
-                    UPDATE_BY,
-                    dashboard_id,
-                    TENANT_ID,
-                ),
-            )
-            changed_views.append(
-                {
-                    "dashboard_id": dashboard_id,
-                    "dashboard_name": dashboard_name,
-                    "views": touched,
-                    "updated_rows": cur.rowcount,
-                }
-            )
-    print(json.dumps({"backup": str(backup_path), "changed": changed_views}, ensure_ascii=False, indent=2))
+    del conn
+    _raise_legacy_repair_disabled()
 
 
 def main() -> None:
-    with psycopg.connect(**SYSTEM_DB) as conn:
-        with conn.transaction():
-            repair_dashboards(conn)
+    _raise_legacy_repair_disabled()
 
 
 if __name__ == "__main__":

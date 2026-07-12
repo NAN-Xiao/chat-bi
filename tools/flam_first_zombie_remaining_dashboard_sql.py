@@ -6,7 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from flam_first_zombie_active_dashboard_sql import SQL_ACTIVE_BY_CHANNEL
-from flam_first_zombie_dashboard_sql import CHANNEL_EXPR_U, DATASOURCE_ID, LOGIN_EVENTS, PAY_EVENTS, PROD_ID, TENANT_ID
+from flam_first_zombie_dashboard_sql import (
+    CHANNEL_EXPR_U,
+    LOGIN_EVENTS,
+    PAYMENT_FLOW_EVENTS,
+    PROD_ID,
+)
+from flam_first_zombie_date_sql import complete_business_date_expr, complete_business_dt_expr
 
 
 @dataclass(frozen=True)
@@ -34,12 +40,13 @@ def _pay_value(alias: str, field: str = "paytotal") -> str:
 
 
 def _date_expr(days_ago: int = 0) -> str:
-    if days_ago <= 0:
-        return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
-    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days_ago} DAY), '%Y%m%d') AS SIGNED)"
+    return complete_business_dt_expr(max(days_ago - 1, 0))
 
 
-LATEST_WEEK_START = "DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL WEEKDAY(DATE_SUB(CURDATE(), INTERVAL 1 DAY)) DAY)"
+LATEST_WEEK_START = (
+    f"DATE_SUB({complete_business_date_expr()}, "
+    f"INTERVAL WEEKDAY({complete_business_date_expr()}) DAY)"
+)
 
 
 def _week_snapshot_dt_expr(weeks_ago: int) -> str:
@@ -101,12 +108,9 @@ TECH_EVENTS = "'TechnologyDonation'"
 HERO_EVENTS = "'HeroAcquisition','HeroLevelUp','HeroStarUp','HeroSkillUpgrade','HeroRecruit'"
 
 HERO_ID = f"COALESCE({_json_text('e', 'ext', 'ed_heroId')}, {_json_text('e', 'ext', 'captainId')}, '未知')"
-CITY_LEVEL_E = f"COALESCE({_json_text('e', 'ext', 'ed_mainBuildingLevel')}, '未知')"
+CITY_LEVEL_E = f"COALESCE({_json_text('e', 'personal', 'ed_mainBuildingLevel')}, '未知')"
 ARMY_ID = f"COALESCE({_json_text('e', 'ext', 'ed_newArmyId')}, {_json_text('e', 'ext', 'ed_oldArmyId')}, '未知')"
-PRODUCT_ID = (
-    f"COALESCE({_json_text('e', 'ext', 'payId')}, {_json_text('e', 'ext', 'rechargeId')}, "
-    f"{_json_text('e', 'ext', 'productId')}, {_json_text('e', 'ext', 'goodsId')}, e.event)"
-)
+EXPEDITION_POWER = f"CAST({_json_text('e', 'personal', 'ed_myTeamBattlePower')} AS DECIMAL(18,4))"
 
 SQL_EXPEDITION_COUNT = _metric_sql("event", "出征事件数", f"e.event IN ({EXPEDITION_EVENTS})")
 SQL_ARMY_UPGRADE_COUNT = _metric_sql("event", "兵种升级事件数", "e.event = 'ArmyUpgrade'")
@@ -115,26 +119,23 @@ SQL_HONOR_EXPEDITION_COUNT = _metric_sql("event", "荣耀远征事件数", "e.ev
 SQL_EXPEDITION_AVG_POWER = f"""
 WITH metric AS (
     SELECT
-        (SELECT AVG(COALESCE(CAST({_json_text('e', 'ext', 'combatPower')} AS DECIMAL(18,4)),
-                             CAST({_json_text('e', 'ext', 'captainPower')} AS DECIMAL(18,4))))
+        (SELECT AVG({EXPEDITION_POWER})
          FROM `event` e
          WHERE e.dt = {_date_expr(1)}
-           AND e.event IN ({EXPEDITION_EVENTS})
+           AND e.event = 'WorldMarch'
            AND e.prod = {PROD_ID}) AS today_value,
-        (SELECT AVG(COALESCE(CAST({_json_text('e', 'ext', 'combatPower')} AS DECIMAL(18,4)),
-                             CAST({_json_text('e', 'ext', 'captainPower')} AS DECIMAL(18,4))))
+        (SELECT AVG({EXPEDITION_POWER})
          FROM `event` e
          WHERE e.dt = {_date_expr(2)}
-           AND e.event IN ({EXPEDITION_EVENTS})
+           AND e.event = 'WorldMarch'
            AND e.prod = {PROD_ID}) AS yesterday_value,
-        (SELECT AVG(COALESCE(CAST({_json_text('e', 'ext', 'combatPower')} AS DECIMAL(18,4)),
-                             CAST({_json_text('e', 'ext', 'captainPower')} AS DECIMAL(18,4))))
+        (SELECT AVG({EXPEDITION_POWER})
          FROM `event` e
          WHERE e.dt = {_date_expr(8)}
-           AND e.event IN ({EXPEDITION_EVENTS})
+           AND e.event = 'WorldMarch'
            AND e.prod = {PROD_ID}) AS last_week_value
 )
-SELECT ROUND(COALESCE(today_value, 0), 2) AS `竞技场/出征平均战力`,
+SELECT ROUND(COALESCE(today_value, 0), 2) AS `出征平均战力`,
        ROUND((COALESCE(today_value, 0) - COALESCE(yesterday_value, 0)) / NULLIF(yesterday_value, 0) * 100, 2) AS `日环比`,
        ROUND((COALESCE(today_value, 0) - COALESCE(last_week_value, 0)) / NULLIF(last_week_value, 0) * 100, 2) AS `周同比`
 FROM metric
@@ -255,8 +256,8 @@ LIMIT 1000;
 SQL_HERO_WIN_RATE = f"""
 WITH bounds AS (
     SELECT
-        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-        CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED) AS end_dt
+        {_date_expr(6)} AS start_dt,
+        {_date_expr()} AS end_dt
 ),
 march_heroes AS (
     SELECT DISTINCT
@@ -372,18 +373,18 @@ LIMIT 300
 """.strip()
 
 SQL_PAY_EVENT_DISTRIBUTION = f"""
-WITH pay_events AS (
-    SELECT {PRODUCT_ID} AS gift_name
+WITH payment_process_events AS (
+    SELECT e.event AS process_event
     FROM `event` e
     WHERE {_dt_between("e", 29)}
-      AND e.event IN ({PAY_EVENTS})
+      AND e.event IN ({PAYMENT_FLOW_EVENTS})
       AND e.prod = {PROD_ID}
 )
-SELECT gift_name AS `购买礼包名`,
-       COUNT(*) AS `购买次数`
-FROM pay_events
-GROUP BY gift_name
-ORDER BY `购买次数` DESC
+SELECT process_event AS `支付流程事件`,
+       COUNT(*) AS `事件次数`
+FROM payment_process_events
+GROUP BY process_event
+ORDER BY `事件次数` DESC
 LIMIT 50
 """.strip()
 
@@ -523,25 +524,31 @@ LIMIT 1000
 
 SQL_NEWBIE_ACTIVITY_RETENTION = f"""
 WITH participants AS (
-    SELECT e.uid, MIN(e.dt) AS participate_dt
+    SELECT DISTINCT e.uid, e.dt AS participate_dt
     FROM `event` e
-    WHERE {_dt_between("e", 35)}
+    WHERE e.dt BETWEEN {_date_expr(35)} AND {_date_expr(8)}
       AND e.event IN ('ActivityCommanderTask','ActivityArmsRaceTask','ActivityChestCount')
       AND e.prod = {PROD_ID}
-    GROUP BY e.uid
+), active_events AS (
+    SELECT DISTINCT e.uid, e.dt
+    FROM `event` e
+    WHERE e.dt BETWEEN {_date_expr(35)} AND {_date_expr(1)}
+      AND e.event = 'UserActive'
+      AND e.prod = {PROD_ID}
 ), retained AS (
     SELECT p.participate_dt,
            COUNT(DISTINCT p.uid) AS participants,
-           COUNT(DISTINCT CASE WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-                                AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain1')) = '1' THEN p.uid END) AS r1,
-           COUNT(DISTINCT CASE WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
-                                AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain7')) = '1' THEN p.uid END) AS r7
+           COUNT(DISTINCT CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+                                THEN p.uid END) AS r1,
+           COUNT(DISTINCT CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+                                THEN p.uid END) AS r7
     FROM participants p
-    LEFT JOIN `user` u
-      ON u.uid = p.uid
-     AND u.dt BETWEEN p.participate_dt AND {_date_expr(1)}
-     AND u.prod = {PROD_ID}
-    WHERE p.participate_dt <= {_date_expr(8)}
+    LEFT JOIN active_events a
+      ON a.uid = p.uid
+     AND a.dt IN (
+         CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED),
+         CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+     )
     GROUP BY p.participate_dt
 )
 SELECT STR_TO_DATE(CAST(participate_dt AS CHAR), '%Y%m%d') AS `日期`,
@@ -554,26 +561,36 @@ ORDER BY participate_dt
 
 SQL_FESTIVAL_PAY_RETENTION = f"""
 WITH participants AS (
-    SELECT e.uid, MIN(e.dt) AS participate_dt
+    SELECT DISTINCT e.uid, e.dt AS participate_dt
     FROM `event` e
-    WHERE {_dt_between("e", 35)}
+    WHERE e.dt BETWEEN {_date_expr(35)} AND {_date_expr(8)}
       AND e.event IN ('ActivityAllianceBossBattleRet','ActivityAllianceBossChoose','ActivityAllianceBossDonation','ActivityAllianceBossReward','ActivityWorldBoss','AllianceDuelAlliancePoint','AllianceDuelPersonalPoint','AllianceDuelBoxOpen')
       AND e.prod = {PROD_ID}
-    GROUP BY e.uid
+), pay_events AS (
+    SELECT DISTINCT e.uid, e.dt
+    FROM `event` e
+    WHERE e.dt BETWEEN {_date_expr(35)} AND {_date_expr(1)}
+      AND e.event = 'ServerPayLog'
+      AND e.prod = {PROD_ID}
 ), user_pay AS (
     SELECT p.participate_dt,
            COUNT(DISTINCT p.uid) AS participants,
-           COUNT(DISTINCT CASE WHEN {_pay_value('u', 'pay1')} > 0 THEN p.uid END) AS pay0,
-           COUNT(DISTINCT CASE WHEN {_pay_value('u', 'pay7')} > 0 THEN p.uid END) AS pay7
+           COUNT(DISTINCT CASE WHEN pay.dt = p.participate_dt THEN p.uid END) AS pay0,
+           COUNT(DISTINCT CASE WHEN pay.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+                               THEN p.uid END) AS pay_d7
     FROM participants p
-    LEFT JOIN `user` u ON u.uid = p.uid AND u.dt = p.participate_dt AND u.prod = {PROD_ID}
-    WHERE p.participate_dt <= {_date_expr(8)}
+    LEFT JOIN pay_events pay
+      ON pay.uid = p.uid
+     AND pay.dt IN (
+         p.participate_dt,
+         CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+     )
     GROUP BY p.participate_dt
 )
 SELECT STR_TO_DATE(CAST(participate_dt AS CHAR), '%Y%m%d') AS `日期`,
        participants AS `参与节日活动用户数`,
        ROUND(pay0 / NULLIF(participants, 0) * 100, 2) AS `当日`,
-       ROUND(pay7 / NULLIF(participants, 0) * 100, 2) AS `第7日`
+       ROUND(pay_d7 / NULLIF(participants, 0) * 100, 2) AS `第7日`
 FROM user_pay
 ORDER BY participate_dt
 """.strip()
@@ -666,7 +683,7 @@ WITH pay_events AS (
       ON p.uid = s.uid
      AND p.dt > s.first_buy_dt
      AND p.dt <= CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(s.first_buy_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
-    WHERE s.first_buy_dt <= {_date_expr(7)}
+    WHERE s.first_buy_dt <= {_date_expr(8)}
     GROUP BY s.uid, s.first_buy_dt
 )
 SELECT
@@ -686,7 +703,7 @@ WITH month_card_buyers AS (
         e.uid,
         MIN(e.dt) AS buy_dt
     FROM `event` e
-    WHERE e.dt BETWEEN {_date_expr(60)} AND {_date_expr(30)}
+    WHERE e.dt BETWEEN {_date_expr(60)} AND {_date_expr(31)}
       AND e.prod = {PROD_ID}
       AND e.event = 'ServerPayLog'
       AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')) = '190002'
@@ -806,7 +823,7 @@ ORDER BY CAST(`主城等级` AS SIGNED)
 LIMIT 50
 """.strip()
 
-BUILDING_ID = f"COALESCE({_json_text('e', 'ext', 'ed_buildingId')}, {_json_text('e', 'ext', 'ed_metaId')}, e.event)"
+BUILDING_ID = f"COALESCE({_json_text('e', 'personal', 'ed_buildingId')}, {_json_text('e', 'personal', 'ed_metaId')}, e.event)"
 
 SQL_BUILDING_BY_TYPE = f"""
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
@@ -883,21 +900,9 @@ ORDER BY `招募池ID`, `招募方式`
 LIMIT 100;
 """.strip()
 
-SPEEDUP_TYPE = f"COALESCE({_json_text('e', 'ext', 'ed_detailReason')}, {_json_text('e', 'ext', 'ed_route')}, e.event)"
-
-SQL_SPEEDUP = f"""
-SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
-       {SPEEDUP_TYPE} AS `加速类型`,
-       COUNT(*) AS `使用加速次数`,
-       COUNT(DISTINCT e.uid) AS `使用加速人数`,
-       ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均使用加速次数`
-FROM `event` e
-WHERE {_dt_between("e", 29)}
-  AND e.event IN ('BuildingUpgrade','BuildingIdleUpgrade','ArmyUpgrade')
-  AND e.prod = {PROD_ID}
-GROUP BY e.dt, `加速类型`
-ORDER BY e.dt, `使用加速次数` DESC
-LIMIT 300
+SQL_SPEEDUP = """
+SELECT '待补充字段映射' AS `状态`,
+       '未验证可用于加速类型的字段，暂不按类型统计' AS `说明`
 """.strip()
 
 SQL_CITY_FUNNEL = f"""
@@ -925,7 +930,7 @@ ORDER BY step_order
 REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "9d4add7a8be048ea9c7beb62a43e50cc": ViewSql("出征数据", "出征事件数", "metric", ("出征事件数", "日环比", "周同比"), y_axis=("出征事件数", "日环比", "周同比"), sql=SQL_EXPEDITION_COUNT),
     "9325211a9f594376bf818cec639aa103": ViewSql("出征数据", "兵种升级事件数", "metric", ("兵种升级事件数", "日环比", "周同比"), y_axis=("兵种升级事件数", "日环比", "周同比"), sql=SQL_ARMY_UPGRADE_COUNT),
-    "440303dfdf39408ba86ffb222f3334f2": ViewSql("出征数据", "竞技场/出征平均战力", "metric", ("竞技场/出征平均战力", "日环比", "周同比"), y_axis=("竞技场/出征平均战力", "日环比", "周同比"), sql=SQL_EXPEDITION_AVG_POWER),
+    "440303dfdf39408ba86ffb222f3334f2": ViewSql("出征数据", "出征平均战力", "metric", ("出征平均战力", "日环比", "周同比"), y_axis=("出征平均战力", "日环比", "周同比"), sql=SQL_EXPEDITION_AVG_POWER),
     "0b849c96c0a3480c9e940b92995d5e3e": ViewSql("出征数据", "荣耀远征事件数", "metric", ("荣耀远征事件数", "日环比", "周同比"), y_axis=("荣耀远征事件数", "日环比", "周同比"), sql=SQL_HONOR_EXPEDITION_COUNT),
     "f2be189bf85f4181bc7191cd5138561f": ViewSql("出征数据", "出征相关明细", "table", ("日期", "出征事件数", "人均事件数", "参与用户数"), columns=("日期", "出征事件数", "人均事件数", "参与用户数"), sql=SQL_EXPEDITION_DETAIL),
     "e02bdbafdd364d3cba9f991f94896c86": ViewSql("出征数据", "过去7日各兵种出征情况", "table", ("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), columns=("日期", "出征类型", "目标类型", "大本等级", "出征次数", "出征用户数", "出征ID数", "人均出征次数", "平均预计耗时分钟", "平均出征战力", "出征总战力"), sql=SQL_ARMY_7D),
@@ -935,14 +940,14 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "61c21b5974844638a3d7370971de58c9": ViewSql("出征数据", "各主城等级参与演习次数", "line", ("日期", "主城等级", "参与演习次数"), ("日期",), ("参与演习次数",), sql=SQL_DRILL_BY_CITY_LEVEL),
     "f6ca362eb4274830b3298b0227a8ab88": ViewSql("付费概览", "充值用户周累充分布", "table", ("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), columns=("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), sql=SQL_WEEKLY_PAY_DISTRIBUTION),
     "4045ede9004f48de9fb8b8aed5f79287": ViewSql("渠道分析", "各渠道充值用户周累充分布", "table", ("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), columns=("事件发生时间", "渠道", "全部用户", "(-∞, 500)", "[500, 1000)", "[1000, 2000)", "[2000, +∞)"), sql=SQL_WEEKLY_PAY_DISTRIBUTION),
-    "fdb8f135e2644bcb80b7634882809f7e": ViewSql("付费概览", "付费事件分布", "column", ("购买礼包名", "购买次数"), ("购买礼包名",), ("购买次数",), sql=SQL_PAY_EVENT_DISTRIBUTION),
+    "fdb8f135e2644bcb80b7634882809f7e": ViewSql("付费概览", "支付流程事件分布", "column", ("支付流程事件", "事件次数"), ("支付流程事件",), ("事件次数",), sql=SQL_PAY_EVENT_DISTRIBUTION),
     "531012d01f104a509da2d1926692ee1d": ViewSql("投放看板", "各渠道注册与付费", "table", ("日期", "渠道", "账号注册用户数", "首日付费金额", "7日累计付费金额", "累计付费金额"), columns=("日期", "渠道", "账号注册用户数", "首日付费金额", "7日累计付费金额", "累计付费金额"), sql=SQL_ACQUISITION_CHANNEL_PAY),
     "c794f6521d8b44d39f78eabdf109896b": ViewSql("活动分析", "各类活动参与率", "line", ("日期", "活动类型", "活动参与率"), ("日期",), ("活动参与率",), sql=SQL_ACTIVITY_PARTICIPATION_RATE),
     "6266951d0e1842e2b259121ab06f7a61": ViewSql("活动分析", "各类活动人均参与次数", "line", ("日期", "活动类型", "人均参与次数"), ("日期",), ("人均参与次数",), sql=SQL_ACTIVITY_AVG_TIMES),
     "13d554014c854e508ff016d93a6f3899": ViewSql("活动分析", "各等级段参与日常活动的人数分布", "column", ("等级段", "参与人数"), ("等级段",), ("参与人数",), columns=("等级段", "参与人数"), sql=SQL_ACTIVITY_LEVEL),
     "161fd0d2996a49a29e82606e6db7d95b": ViewSql("活动分析", "每周活动参与次数分布", "column", ("活动类型", "参与次数", "参与人数", "人均参与次数"), ("活动类型",), ("参与次数",), columns=("活动类型", "参与次数", "参与人数", "人均参与次数"), sql=SQL_WEEKLY_ACTIVITY_DISTRIBUTION),
     "9684a569ed034fb0b8a106a9817effaa": ViewSql("活动分析", "参与新手活动的后续7日留存率", "table", ("日期", "参与新手活动用户数", "第1日", "第7日"), columns=("日期", "参与新手活动用户数", "第1日", "第7日"), sql=SQL_NEWBIE_ACTIVITY_RETENTION),
-    "095b1cf41cd64844b1f78f07ceccb7bf": ViewSql("活动分析", "参与节日活动的后续7日付费留存率", "table", ("日期", "参与节日活动用户数", "当日", "第7日"), columns=("日期", "参与节日活动用户数", "当日", "第7日"), sql=SQL_FESTIVAL_PAY_RETENTION),
+    "095b1cf41cd64844b1f78f07ceccb7bf": ViewSql("活动分析", "参与节日活动用户的当日/D7付费率", "table", ("日期", "参与节日活动用户数", "当日", "第7日"), columns=("日期", "参与节日活动用户数", "当日", "第7日"), sql=SQL_FESTIVAL_PAY_RETENTION),
     "4cc60cadf26e4b2f945c672f2648d205": ViewSql("经济系统", "钻石消耗获取情况", "line", ("日期", "免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), ("日期",), ("免费钻石获取量", "免费钻石消耗量", "免费钻石存量变化", "付费钻石获取量", "付费钻石消耗量", "付费钻石存量变化"), sql=SQL_GOLD_CHANGE),
     "df837cb59810483f84fb0e7cd420646a": ViewSql("经济系统", "免费钻石获取途径分布", "column", ("获取途径", "免费钻石获取量"), ("获取途径",), ("免费钻石获取量",), columns=("获取途径", "免费钻石获取量"), sql=SQL_GOLD_SOURCE),
     "fda6854e188c44c4b35e75c9af6d9854": ViewSql("经济系统", "钻石消耗途径分布", "column", ("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), ("消耗途径",), ("免费钻石消耗量", "付费钻石消耗量"), columns=("消耗途径", "免费钻石消耗量", "付费钻石消耗量"), sql=SQL_GOLD_SINK),
@@ -961,7 +966,7 @@ REMAINING_VIEW_SQL: dict[str, ViewSql] = {
     "697c622479fb4ab0b768e02c360e6c6f": ViewSql("主城建设", "各科技升级次数", "table", ("科技名称", "升级科技.总次数"), columns=("科技名称", "升级科技.总次数"), sql=SQL_TECH_BY_TYPE),
     "725f639c5ed24cc6a13d6e1fa2430c8a": ViewSql("主城建设", "各主城等级用户科技升级情况", "line", ("日期", "主城等级", "科技升级次数"), ("日期",), ("科技升级次数",), sql=SQL_TECH_BY_CITY),
     "1e41ffdca6b041a6abea363fcb1b8cd2": ViewSql("主城建设", "招募情况", "table", ("招募池ID", "招募方式", "招募次数", "招募用户数"), columns=("招募池ID", "招募方式", "招募次数", "招募用户数"), sql=SQL_ARMY_RECRUIT),
-    "1c5f7aa5ae6f47ecb3dcfab37ee5e34e": ViewSql("主城建设", "各类型加速情况", "table", ("日期", "加速类型", "使用加速次数", "使用加速人数", "人均使用加速次数"), columns=("日期", "加速类型", "使用加速次数", "使用加速人数", "人均使用加速次数"), sql=SQL_SPEEDUP),
+    "1c5f7aa5ae6f47ecb3dcfab37ee5e34e": ViewSql("主城建设", "各类型加速情况（待字段映射）", "table", ("状态", "说明"), columns=("状态", "说明"), sql=SQL_SPEEDUP),
     "a547eb9c1a1a4f4eba00191abbd9ac62": ViewSql("主城建设", "主城升级漏斗", "funnel", ("主城升级步骤", "用户数"), ("主城升级步骤",), ("用户数",), ("主城升级步骤", "用户数"), sql=SQL_CITY_FUNNEL),
 }
 

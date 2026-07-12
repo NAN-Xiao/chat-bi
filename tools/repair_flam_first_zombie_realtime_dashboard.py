@@ -8,6 +8,7 @@ from that Data Skill and writes them into the existing dashboard components.
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import os
 import re
@@ -48,10 +49,7 @@ EXPECTED_VIEW_IDS = {
 
 PROD_ID = 110000038
 LOOKBACK_DAYS = 15
-PAY_EVENTS = (
-    "'PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish',"
-    "'ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish'"
-)
+TRANSACTION_EVENT = "ServerPayLog"
 
 REALTIME_VIEW_FIELDS = {
     "e3fe7e4819e64b71b76d9329a3023359": {
@@ -120,7 +118,7 @@ def load_skill_sql_blocks(cur: Any) -> dict[str, str]:
           AND active = TRUE
           AND visible = TRUE
           AND specific_ds = TRUE
-          AND datasource_ids @> %s::jsonb
+          AND datasource_ids = %s::jsonb
           AND position(%s in COALESCE(prompt, '')) > 0
         ORDER BY id
         LIMIT 1
@@ -206,7 +204,7 @@ def load_latest_pay_business_date(conf: Any) -> date | None:
             WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL {LOOKBACK_DAYS} DAY), '%Y%m%d') AS SIGNED)
                            AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
               AND e.prod = {PROD_ID}
-              AND e.event IN ({PAY_EVENTS})
+              AND e.event = '{TRANSACTION_EVENT}'
             GROUP BY e.dt
             ORDER BY e.dt DESC
             LIMIT 1
@@ -216,7 +214,7 @@ def load_latest_pay_business_date(conf: Any) -> date | None:
         FROM `event` e
         JOIN latest_dt ld ON e.dt = ld.dt
         WHERE e.prod = {PROD_ID}
-          AND e.event IN ({PAY_EVENTS})
+          AND e.event = '{TRANSACTION_EVENT}'
         """.strip(),
     )
     raw_value = row.get("biz_date") if row else None
@@ -238,7 +236,7 @@ def load_latest_ccu_business_date(conf: Any) -> date | None:
                            AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
               AND e.prod = {PROD_ID}
               AND e.event = 'CCU'
-              AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+              AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
             GROUP BY e.dt
             ORDER BY e.dt DESC
             LIMIT 1
@@ -249,7 +247,7 @@ def load_latest_ccu_business_date(conf: Any) -> date | None:
         JOIN latest_dt ld ON e.dt = ld.dt
         WHERE e.prod = {PROD_ID}
           AND e.event = 'CCU'
-          AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+          AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
         """.strip(),
     )
     raw_value = row.get("biz_date") if row else None
@@ -309,14 +307,14 @@ def build_online_sql(biz_date: date) -> str:
     biz_date_text = biz_date.isoformat()
     return f"""
 SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS time_label,
-       MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
+       MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
 FROM `event` e
 WHERE e.dt BETWEEN {start_dt} AND {end_dt}
   AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= '{biz_date_text}'
   AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
   AND e.event = 'CCU'
   AND e.prod = {PROD_ID}
-  AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+  AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
 GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), time_label
 ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
 LIMIT 24
@@ -335,7 +333,7 @@ FROM `event` e
 WHERE e.dt BETWEEN {start_dt} AND {end_dt}
   AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= '{biz_date_text}'
   AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
-  AND e.event IN ({PAY_EVENTS})
+  AND e.event = '{TRANSACTION_EVENT}'
   AND e.prod = {PROD_ID}
 GROUP BY hour_index, hour_label
 """.strip()
@@ -388,10 +386,11 @@ def repair_dashboard(system_conn: Any, conf: Any, sql_blocks: dict[str, str]) ->
             FROM public.core_dashboard
             WHERE id = %s
               AND tenant_id = %s
+              AND datasource = %s
               AND COALESCE(delete_flag, 0) = 0
             FOR UPDATE
             """,
-            (DASHBOARD_ID, TENANT_ID),
+            (DASHBOARD_ID, TENANT_ID, DATASOURCE_ID),
         )
         dashboard = cur.fetchone()
         if not dashboard:
@@ -400,21 +399,15 @@ def repair_dashboard(system_conn: Any, conf: Any, sql_blocks: dict[str, str]) ->
         if datasource != DATASOURCE_ID:
             raise RuntimeError(f"Dashboard datasource={datasource}, expected {DATASOURCE_ID}")
 
-        backup_path = backup_dashboard(
-            {
-                "id": dashboard_id,
-                "name": dashboard_name,
-                "datasource": datasource,
-                "tenant_id": tenant_id,
-                "canvas_view_info": canvas_view_info_text,
-            }
-        )
-        print(f"backup={backup_path}")
-
-        canvas_view_info = json.loads(canvas_view_info_text or "{}")
+        original_canvas_view_info = json.loads(canvas_view_info_text or "{}")
+        if not isinstance(original_canvas_view_info, dict):
+            raise RuntimeError(f"看板画布格式无效: {DASHBOARD_ID}")
+        canvas_view_info = deepcopy(original_canvas_view_info)
+        changed_view_ids: list[str] = []
         for view_id, sql in sql_blocks.items():
             view = canvas_view_info.get(view_id)
-            if not isinstance(view, dict):
+            original_view = original_canvas_view_info.get(view_id)
+            if not isinstance(view, dict) or not isinstance(original_view, dict):
                 raise RuntimeError(f"View not found in dashboard {DASHBOARD_ID}: {view_id}")
             fields, rows = run_chart_sql(conf, sql)
             chart = view.setdefault("chart", {})
@@ -448,7 +441,8 @@ def repair_dashboard(system_conn: Any, conf: Any, sql_blocks: dict[str, str]) ->
             view["message"] = ""
             view["dataState"] = "ready"
             view["loadingProgress"] = 100
-            view["snapshotRefreshedAt"] = int(time.time() * 1000)
+            if view != original_view:
+                changed_view_ids.append(view_id)
             print(
                 json.dumps(
                     {
@@ -461,6 +455,25 @@ def repair_dashboard(system_conn: Any, conf: Any, sql_blocks: dict[str, str]) ->
                 )
             )
 
+        if not changed_view_ids:
+            print(f"skipped_dashboard={DASHBOARD_ID} reason=内容未变化")
+            return
+
+        snapshot_refreshed_at = int(time.time() * 1000)
+        for view_id in changed_view_ids:
+            canvas_view_info[view_id]["snapshotRefreshedAt"] = snapshot_refreshed_at
+
+        backup_path = backup_dashboard(
+            {
+                "id": dashboard_id,
+                "name": dashboard_name,
+                "datasource": datasource,
+                "tenant_id": tenant_id,
+                "canvas_view_info": canvas_view_info_text,
+            }
+        )
+        print(f"backup={backup_path}")
+
         cur.execute(
             """
             UPDATE public.core_dashboard
@@ -469,15 +482,22 @@ def repair_dashboard(system_conn: Any, conf: Any, sql_blocks: dict[str, str]) ->
                    update_by = %s
              WHERE id = %s
                AND tenant_id = %s
+               AND datasource = %s
+               AND COALESCE(delete_flag, 0) = 0
             """,
             (
                 json.dumps(canvas_view_info, ensure_ascii=False, separators=(",", ":")),
                 int(time.time()),
                 UPDATE_BY,
-                DASHBOARD_ID,
-                TENANT_ID,
+                dashboard_id,
+                tenant_id,
+                datasource,
             ),
         )
+        if cur.rowcount != 1:
+            raise RuntimeError(
+                f"实时看板精确更新失败: dashboard_id={dashboard_id}, affected_rows={cur.rowcount}"
+            )
         print(f"updated_dashboard={DASHBOARD_ID} rows={cur.rowcount}")
 
 
@@ -489,10 +509,9 @@ def verify_data_side(conf: Any) -> None:
                    UTC_TIMESTAMP() AS utc_time,
                    DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR) AS business_time
         """,
-        "ccu_payload": """
+        "ccu_availability": """
             SELECT COUNT(*) AS ccu_rows,
-                   SUM(JSON_EXTRACT(e.ext, '$.ed_ccu') IS NOT NULL) AS rows_with_ed_ccu,
-                   MIN(e.ext) AS sample_ext
+                   SUM(JSON_EXTRACT(e.personal, '$.ed_ccu') IS NOT NULL) AS rows_with_ed_ccu
             FROM `event` e
             WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
                            AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)

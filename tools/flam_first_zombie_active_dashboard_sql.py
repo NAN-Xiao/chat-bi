@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from flam_first_zombie_date_sql import complete_business_date_expr, complete_business_dt_expr
+
 
 TENANT_ID = 7477202383789887488
 DATASOURCE_ID = 3
@@ -16,11 +18,11 @@ PROD_ID = 110000038
 
 
 def _active_start_dt_expr(days: int = 29) -> str:
-    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days} DAY), '%Y%m%d') AS SIGNED)"
+    return complete_business_dt_expr(max(days - 1, 0))
 
 
 def _active_end_dt_expr() -> str:
-    return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
+    return complete_business_dt_expr()
 
 
 @dataclass(frozen=True)
@@ -68,7 +70,7 @@ ORDER BY e.dt
 
 SQL_WAU = f"""
 WITH weeks AS (
-    SELECT DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS latest_week_start
+    SELECT DATE_SUB({complete_business_date_expr()}, INTERVAL WEEKDAY({complete_business_date_expr()}) DAY) AS latest_week_start
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(latest_week_start, INTERVAL 11 WEEK), '%Y%m%d') AS SIGNED) AS start_dt,
            CAST(DATE_FORMAT(DATE_ADD(latest_week_start, INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS end_dt
@@ -87,7 +89,7 @@ ORDER BY `周`
 
 SQL_MAU = f"""
 WITH months AS (
-    SELECT DATE_FORMAT(CURDATE(), '%Y-%m-01') AS latest_month_start
+    SELECT DATE_FORMAT({complete_business_date_expr()}, '%Y-%m-01') AS latest_month_start
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(latest_month_start, '%Y-%m-%d'), INTERVAL 11 MONTH), '%Y%m%d') AS SIGNED) AS start_dt,
            CAST(DATE_FORMAT(LAST_DAY(STR_TO_DATE(latest_month_start, '%Y-%m-%d')), '%Y%m%d') AS SIGNED) AS end_dt
@@ -166,7 +168,7 @@ LIMIT 300
 
 SQL_WEEKLY_LOGIN_DAYS = f"""
 WITH weeks AS (
-    SELECT DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS latest_week_start
+    SELECT DATE_SUB({complete_business_date_expr()}, INTERVAL WEEKDAY({complete_business_date_expr()}) DAY) AS latest_week_start
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(latest_week_start, INTERVAL 11 WEEK), '%Y%m%d') AS SIGNED) AS start_dt,
            CAST(DATE_FORMAT(DATE_ADD(latest_week_start, INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS end_dt

@@ -185,15 +185,22 @@ assert.match(
   /const tableReferenceLabel = eventDetailTableLabel\(eventTable\)[\s\S]*tableReferenceLabel,/,
   '事件参数 option 应携带所属事件明细表 label 引用'
 )
+const metricMeasureFieldOptionsMatch = source.match(/function metricMeasureFieldOptions[\s\S]*?\n\}/)
+assert.ok(metricMeasureFieldOptionsMatch, '需要保留事件计算字段候选函数')
 assert.match(
   source,
   /function eventDetailFieldOptions\(eventTable: string\)/,
-  '事件计算字段候选需要包含事件明细表普通字段，用于展示 prod 等字段 label'
+  '事件计算字段候选需要包含事件明细表普通字段'
 )
 assert.match(
-  source.match(/function metricMeasureFieldOptions[\s\S]*?\n\}/)?.[0] || '',
+  metricMeasureFieldOptionsMatch[0],
   /\.\.\.eventProperties[\s\S]*\.\.\.eventDetailFieldOptions\(eventOption\.eventTable \|\| eventOption\.table\)/,
   '事件计算字段候选应同时包含事件参数和事件明细字段'
+)
+assert.match(
+  metricMeasureFieldOptionsMatch[0],
+  /\['sum', 'avg'\]\.includes\(item\.aggregation \|\| ''\)[\s\S]*options\.filter\(isNumericFieldOption\)/,
+  '求和和平均值应继续只展示数值字段'
 )
 assert.match(
   source,

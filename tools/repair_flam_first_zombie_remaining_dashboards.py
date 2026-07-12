@@ -1,29 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Repair remaining flam dashboards from datasource-scoped SQL definitions."""
+"""已安全下线的 First Zombie 广域看板修复入口。"""
 
 from __future__ import annotations
 
 import json
 import re
-import time
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import psycopg
-
-from core_system_db import core_system_db_config
 from flam_first_zombie_active_dashboard_sql import VIEW_SQL as ACTIVE_VIEW_SQL, axis as active_axis
 from flam_first_zombie_dashboard_sql import DATASOURCE_ID, TENANT_ID
 from flam_first_zombie_remaining_dashboard_sql import REMAINING_VIEW_SQL, axis as remaining_axis
-from repair_flam_first_zombie_realtime_dashboard import build_fixed_realtime_sql, load_flam_mysql_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKUP_DIR = ROOT / ".codex-runtime" / "pg-backups"
-SYSTEM_DB = core_system_db_config()
 UPDATE_BY = "codex"
+STRICT_MIGRATION_SCRIPT = "tools/repair_flam_first_zombie_semantic_dashboards.py"
 REALTIME_VIEW_IDS = (
     "e3fe7e4819e64b71b76d9329a3023359",
     "4fc570b4be7d406c9f648d9088f760bb",
@@ -59,7 +54,7 @@ def load_realtime_sql_blocks(cur: Any) -> dict[str, str]:
           AND active = TRUE
           AND visible = TRUE
           AND specific_ds = TRUE
-          AND datasource_ids @> %s::jsonb
+          AND datasource_ids = %s::jsonb
           AND position('<!-- data-skill-source:flam:first-zombie:timezone-realtime -->' in COALESCE(prompt, '')) > 0
         ORDER BY id
         LIMIT 1
@@ -146,86 +141,25 @@ def backup_dashboard(row: dict[str, Any], backup_path: Path) -> None:
     backup_path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def missing_required_views(touched_view_ids: set[str]) -> list[str]:
+    """仅要求每份看板都包含剩余看板定义，实时组件可按部署情况缺失。"""
+    return sorted(set(REMAINING_VIEW_SQL).difference(touched_view_ids))
+
+
+def _raise_legacy_repair_disabled() -> None:
+    raise RuntimeError(
+        "该广域修复脚本已安全下线，避免覆盖未审计组件；"
+        f"请使用 {STRICT_MIGRATION_SCRIPT}。"
+    )
+
+
 def repair_dashboards(conn: Any, realtime_sql: dict[str, str]) -> None:
-    expected = set(REMAINING_VIEW_SQL) | set(REALTIME_VIEW_IDS)
-    touched_all: set[str] = set()
-    backup_path = BACKUP_DIR / f"flam_remaining_dashboards_before_skill_sql_repair_{int(time.time())}.json"
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT id, name, datasource, tenant_id, canvas_view_info
-            FROM public.core_dashboard
-            WHERE tenant_id = %s
-              AND datasource = %s
-              AND COALESCE(delete_flag, 0) = 0
-              AND type = 'dashboard'
-            FOR UPDATE
-            """,
-            (TENANT_ID, DATASOURCE_ID),
-        )
-        for dashboard_id, dashboard_name, datasource, tenant_id, canvas_view_info_text in cur.fetchall():
-            canvas_view_info = json.loads(canvas_view_info_text or "{}")
-            touched: list[str] = []
-            for view_id, view in canvas_view_info.items():
-                if view_id not in expected or not isinstance(view, dict):
-                    continue
-                if apply_chart_config(view, view_id, realtime_sql):
-                    touched.append(view_id)
-                    touched_all.add(view_id)
-            if not touched:
-                continue
-            backup_dashboard(
-                {
-                    "id": dashboard_id,
-                    "name": dashboard_name,
-                    "datasource": datasource,
-                    "tenant_id": tenant_id,
-                    "canvas_view_info": canvas_view_info_text,
-                },
-                backup_path,
-            )
-            cur.execute(
-                """
-                UPDATE public.core_dashboard
-                   SET canvas_view_info = %s,
-                       update_time = %s,
-                       update_by = %s
-                 WHERE id = %s
-                   AND tenant_id = %s
-                """,
-                (
-                    json.dumps(canvas_view_info, ensure_ascii=False, separators=(",", ":")),
-                    int(time.time()),
-                    UPDATE_BY,
-                    dashboard_id,
-                    TENANT_ID,
-                ),
-            )
-            print(
-                json.dumps(
-                    {
-                        "dashboard_id": dashboard_id,
-                        "dashboard_name": dashboard_name,
-                        "views": touched,
-                        "updated_rows": cur.rowcount,
-                    },
-                    ensure_ascii=False,
-                )
-            )
-    missing = sorted(expected.difference(touched_all))
-    if missing:
-        raise RuntimeError(f"Expected remaining views not found in dashboards: {missing}")
-    print(json.dumps({"backup": str(backup_path), "repaired_views": len(touched_all)}, ensure_ascii=False))
+    del conn, realtime_sql
+    _raise_legacy_repair_disabled()
 
 
 def main() -> None:
-    with psycopg.connect(**SYSTEM_DB) as conn:
-        with conn.cursor() as cur:
-            realtime_sql = load_realtime_sql_blocks(cur)
-            conf = load_flam_mysql_config(cur)
-        realtime_sql = build_fixed_realtime_sql(realtime_sql, conf)
-        with conn.transaction():
-            repair_dashboards(conn, realtime_sql)
+    _raise_legacy_repair_disabled()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from flam_first_zombie_active_dashboard_sql import SQL_DAU
+from flam_first_zombie_date_sql import complete_business_dt_expr
 from flam_first_zombie_dashboard_sql import VIEW_SQL as SHARED_VIEW_SQL
 
 
@@ -13,17 +14,11 @@ TENANT_ID = 7477202383789887488
 DATASOURCE_ID = 3
 DASHBOARD_ID = "6d50bd7dfc9f46ba961d636814c3294d"
 
-PAY_EVENTS = (
-    "'PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish',"
-    "'ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish'"
-)
 PROD_ID = 110000038
 
 
 def _date_expr(days_ago: int = 0) -> str:
-    if days_ago <= 0:
-        return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
-    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days_ago} DAY), '%Y%m%d') AS SIGNED)"
+    return complete_business_dt_expr(max(days_ago - 1, 0))
 
 
 @dataclass(frozen=True)

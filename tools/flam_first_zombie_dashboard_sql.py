@@ -6,13 +6,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from flam_first_zombie_date_sql import complete_business_dt_expr
+
 
 TENANT_ID = 7477202383789887488
 DATASOURCE_ID = 3
 
-PAY_EVENTS = (
+TRANSACTION_EVENT = "ServerPayLog"
+PAYMENT_FLOW_EVENTS = (
     "'PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish',"
-    "'ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish'"
+    "'ep_pay_purchase_finish','ep_pay_update_db_finish'"
 )
 ACTIVE_EVENT = 'UserActive'
 LOGIN_EVENTS = f"'{ACTIVE_EVENT}'"
@@ -21,11 +24,11 @@ PROD_ID = 110000038
 
 
 def _date_window_start_expr(days: int) -> str:
-    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days} DAY), '%Y%m%d') AS SIGNED)"
+    return complete_business_dt_expr(max(days - 1, 0))
 
 
 def _date_window_end_expr() -> str:
-    return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
+    return complete_business_dt_expr()
 
 
 def _bounds_cte(start_days: int = 30, alias: str = "bounds") -> str:
@@ -273,7 +276,7 @@ LIMIT 300
 SQL_LTV_7D = f"""
 WITH bounds AS (
     SELECT {_date_window_start_expr(30)} AS start_dt,
-           {_date_window_start_expr(1)} AS end_dt
+           {_date_window_start_expr(1)} AS data_end_dt
 ), cohort AS (
     SELECT u.dt AS cohort_dt,
            u.uid,
@@ -283,7 +286,7 @@ WITH bounds AS (
            CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 13 DAY), '%Y%m%d') AS SIGNED) AS d14_dt,
            CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS d30_dt
     FROM `user` u
-    JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.end_dt
+    JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.data_end_dt
     WHERE u.prod = {PROD_ID}
       AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
 ), cohort_size AS (
@@ -291,6 +294,16 @@ WITH bounds AS (
            COUNT(DISTINCT uid) AS new_users
     FROM cohort
     GROUP BY cohort_dt
+), maturity AS (
+    SELECT c.cohort_dt,
+           MAX(CASE WHEN c.d1_dt <= b.data_end_dt THEN 1 ELSE 0 END) AS mature_1d,
+           MAX(CASE WHEN c.d3_dt <= b.data_end_dt THEN 1 ELSE 0 END) AS mature_3d,
+           MAX(CASE WHEN c.d7_dt <= b.data_end_dt THEN 1 ELSE 0 END) AS mature_7d,
+           MAX(CASE WHEN c.d14_dt <= b.data_end_dt THEN 1 ELSE 0 END) AS mature_14d,
+           MAX(CASE WHEN c.d30_dt <= b.data_end_dt THEN 1 ELSE 0 END) AS mature_30d
+    FROM cohort c
+    JOIN bounds b ON 1 = 1
+    GROUP BY c.cohort_dt
 ), pay_windows AS (
     SELECT c.cohort_dt,
            COUNT(DISTINCT CASE WHEN s.dt = c.d1_dt THEN s.uid END) AS users_1d,
@@ -304,52 +317,37 @@ WITH bounds AS (
            SUM(CASE WHEN s.dt = c.d14_dt THEN {_pay_value("s", "pay14")} END) AS pay_14d,
            SUM(CASE WHEN s.dt = c.d30_dt THEN {_pay_value("s", "pay30")} END) AS pay_30d
     FROM cohort c
+    JOIN bounds b ON 1 = 1
     LEFT JOIN `user` s
       ON s.uid = c.uid
      AND s.prod = {PROD_ID}
      AND s.dt IN (c.d1_dt, c.d3_dt, c.d7_dt, c.d14_dt, c.d30_dt)
+     AND s.dt BETWEEN b.start_dt AND b.data_end_dt
     GROUP BY c.cohort_dt
 )
 SELECT DATE_FORMAT(STR_TO_DATE(CAST(cs.cohort_dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS cohort_date,
        cs.new_users,
-       ROUND(CASE WHEN pw.users_1d > 0 THEN pw.pay_1d / NULLIF(cs.new_users, 0) END, 4) AS ltv_1d,
-       ROUND(CASE WHEN pw.users_3d > 0 THEN pw.pay_3d / NULLIF(cs.new_users, 0) END, 4) AS ltv_3d,
-       ROUND(CASE WHEN pw.users_7d > 0 THEN pw.pay_7d / NULLIF(cs.new_users, 0) END, 4) AS ltv_7d,
-       ROUND(CASE WHEN pw.users_14d > 0 THEN pw.pay_14d / NULLIF(cs.new_users, 0) END, 4) AS ltv_14d,
-       ROUND(CASE WHEN pw.users_30d > 0 THEN pw.pay_30d / NULLIF(cs.new_users, 0) END, 4) AS ltv_30d
+       ROUND(CASE WHEN m.mature_1d THEN pw.pay_1d / NULLIF(cs.new_users, 0) END, 4) AS ltv_1d,
+       ROUND(CASE WHEN m.mature_3d THEN pw.pay_3d / NULLIF(cs.new_users, 0) END, 4) AS ltv_3d,
+       ROUND(CASE WHEN m.mature_7d THEN pw.pay_7d / NULLIF(cs.new_users, 0) END, 4) AS ltv_7d,
+       ROUND(CASE WHEN m.mature_14d THEN pw.pay_14d / NULLIF(cs.new_users, 0) END, 4) AS ltv_14d,
+       ROUND(CASE WHEN m.mature_30d THEN pw.pay_30d / NULLIF(cs.new_users, 0) END, 4) AS ltv_30d
 FROM cohort_size cs
+JOIN maturity m ON m.cohort_dt = cs.cohort_dt
 JOIN pay_windows pw ON pw.cohort_dt = cs.cohort_dt
 ORDER BY cs.cohort_dt
 """.strip()
 
 SQL_DAILY_REVENUE_BASE = f"""
-WITH pay_event_users AS (
+WITH daily_pay AS (
     SELECT e.dt,
-           e.uid
+           ROUND(SUM(CAST({_json_text("e", "personal", "money")} AS DECIMAL(18, 4))), 2) AS pay_amount,
+           COUNT(DISTINCT e.uid) AS pay_users
     FROM `event` e
     WHERE {_dt_between("e", 30)}
-      AND e.event IN ({PAY_EVENTS})
+      AND e.event = '{TRANSACTION_EVENT}'
       AND e.prod = {PROD_ID}
-    GROUP BY e.dt, e.uid
-), user_pay_delta AS (
-    SELECT pe.dt,
-           pe.uid,
-           GREATEST({_pay_value("u")} - COALESCE({_pay_value("p")}, 0), 0) AS pay_amount
-    FROM pay_event_users pe
-    JOIN `user` u
-      ON u.dt = pe.dt
-     AND u.uid = pe.uid
-     AND u.prod = {PROD_ID}
-    LEFT JOIN `user` p
-      ON p.uid = pe.uid
-     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-     AND p.prod = {PROD_ID}
-), daily_pay AS (
-    SELECT dt,
-           ROUND(SUM(pay_amount), 2) AS pay_amount,
-           COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS pay_users
-    FROM user_pay_delta
-    GROUP BY dt
+    GROUP BY e.dt
 ), daily_active AS (
     SELECT e.dt,
            COUNT(DISTINCT e.uid) AS active_users
@@ -362,36 +360,16 @@ WITH pay_event_users AS (
 """.strip()
 
 SQL_ARPU_ARPPU = f"""
-WITH pay_event_users AS (
+WITH daily_pay AS (
     SELECT e.dt,
-           e.uid,
-           {COUNTRY_EXPR_E} AS country
+           {COUNTRY_EXPR_E} AS country,
+           ROUND(SUM(CAST({_json_text("e", "personal", "money")} AS DECIMAL(18, 4))), 2) AS pay_amount,
+           COUNT(DISTINCT e.uid) AS pay_users
     FROM `event` e
     WHERE {_dt_between("e", 30)}
-      AND e.event IN ({PAY_EVENTS})
+      AND e.event = '{TRANSACTION_EVENT}'
       AND e.prod = {PROD_ID}
-    GROUP BY e.dt, e.uid, country
-), user_pay_delta AS (
-    SELECT pe.dt,
-           pe.country,
-           pe.uid,
-           GREATEST({_pay_value("u")} - COALESCE({_pay_value("p")}, 0), 0) AS pay_amount
-    FROM pay_event_users pe
-    JOIN `user` u
-      ON u.dt = pe.dt
-     AND u.uid = pe.uid
-     AND u.prod = {PROD_ID}
-    LEFT JOIN `user` p
-      ON p.uid = pe.uid
-     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-     AND p.prod = {PROD_ID}
-), daily_pay AS (
-    SELECT dt,
-           country,
-           ROUND(SUM(pay_amount), 2) AS pay_amount,
-           COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS pay_users
-    FROM user_pay_delta
-    GROUP BY dt, country
+    GROUP BY e.dt, country
 ), daily_active AS (
     SELECT e.dt,
            {COUNTRY_EXPR_E} AS country,
@@ -426,10 +404,10 @@ ORDER BY d.dt
 
 SQL_DAILY_PAY_EVENT_COUNT = f"""
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
-       COUNT(*) AS `充值次数`
+       COUNT(DISTINCT {_json_text("e", "personal", "orderId")}) AS `充值次数`
 FROM `event` e
 WHERE {_dt_between("e", 30)}
-  AND e.event IN ({PAY_EVENTS})
+  AND e.event = '{TRANSACTION_EVENT}'
   AND e.prod = {PROD_ID}
 GROUP BY e.dt
 ORDER BY e.dt
@@ -440,16 +418,16 @@ WITH pay_users AS (
     SELECT e.dt, e.uid
     FROM `event` e
     WHERE {_dt_between("e", 30)}
-      AND e.event IN ({PAY_EVENTS})
+      AND e.event = '{TRANSACTION_EVENT}'
       AND e.prod = {PROD_ID}
     GROUP BY e.dt, e.uid
 ), first_pay AS (
-    SELECT e.uid, MIN(e.dt) AS first_pay_dt
-    FROM `event` e
-    WHERE {_dt_between("e", 30)}
-      AND e.event IN ({PAY_EVENTS})
-      AND e.prod = {PROD_ID}
-    GROUP BY e.uid
+    SELECT u.uid,
+           CAST(DATE_FORMAT(FROM_UNIXTIME(CAST({_json_text("u", "pay", "firstpaytime")} AS DECIMAL(18, 0)) / 1000), '%Y%m%d') AS SIGNED) AS first_pay_dt
+    FROM `user` u
+    WHERE u.dt = {_date_window_end_expr()}
+      AND u.prod = {PROD_ID}
+      AND CAST({_json_text("u", "pay", "firstpaytime")} AS DECIMAL(18, 0)) > 0
 )
 SELECT STR_TO_DATE(CAST(p.dt AS CHAR), '%Y%m%d') AS `日期`,
        COUNT(DISTINCT p.uid) AS `日充值用户数`,
@@ -461,75 +439,42 @@ ORDER BY p.dt
 """.strip()
 
 SQL_7D_PAY_RANK = f"""
-WITH pay_users AS (
-    SELECT e.uid
+WITH pay_rank AS (
+    SELECT e.uid,
+           {CHANNEL_EXPR_E} AS channel_name,
+           COALESCE({_json_text("e", "userinfo", "_serverId")}, {_json_text("e", "lastinfo", "_serverId")}, '未知') AS server_id,
+           ROUND(SUM(CAST({_json_text("e", "personal", "money")} AS DECIMAL(18, 4))), 2) AS pay_amount
     FROM `event` e
     WHERE e.dt BETWEEN {_date_window_start_expr(8)} AND {_date_window_start_expr(1)}
-      AND e.event IN ({PAY_EVENTS})
+      AND e.event = '{TRANSACTION_EVENT}'
       AND e.prod = {PROD_ID}
-    GROUP BY e.uid
-), latest AS (
-    SELECT u.uid,
-           {CHANNEL_EXPR_U} AS channel_name,
-           COALESCE({_json_text("u", "userinfo", "_serverId")}, {_json_text("u", "lastinfo", "_serverId")}, '未知') AS server_id,
-           {_pay_value("u")} AS paytotal
-    FROM `user` u
-    JOIN pay_users pu ON pu.uid = u.uid
-    WHERE u.dt = {_date_window_start_expr(1)}
-      AND u.prod = {PROD_ID}
-), baseline AS (
-    SELECT u.uid,
-           {_pay_value("u")} AS paytotal
-    FROM `user` u
-    JOIN pay_users pu ON pu.uid = u.uid
-    WHERE u.dt = {_date_window_start_expr(8)}
-      AND u.prod = {PROD_ID}
-), ranked AS (
-    SELECT l.uid,
-           l.channel_name,
-           l.server_id,
-           ROUND(GREATEST(l.paytotal - COALESCE(b.paytotal, 0), 0), 2) AS pay_amount
-    FROM latest l
-    LEFT JOIN baseline b ON b.uid = l.uid
-    WHERE GREATEST(l.paytotal - COALESCE(b.paytotal, 0), 0) > 0
+    GROUP BY e.uid, channel_name, server_id
 )
 SELECT CAST(uid AS CHAR) AS `账号ID`,
        channel_name AS `来源渠道`,
        CAST(server_id AS CHAR) AS `区服ID`,
        pay_amount AS `付费总额`
-FROM ranked
+FROM pay_rank
 ORDER BY pay_amount DESC
 LIMIT 100
 """.strip()
 
 SQL_CHANNEL_PAY_AMOUNT = f"""
-WITH pay_event_users AS (
+WITH daily_pay AS (
     SELECT e.dt,
-           e.uid
+           {CHANNEL_EXPR_E} AS channel,
+           ROUND(SUM(CAST({_json_text("e", "personal", "money")} AS DECIMAL(18, 4))), 2) AS pay_amount,
+           COUNT(DISTINCT e.uid) AS pay_users
     FROM `event` e
     WHERE {_dt_between("e", 30)}
-      AND e.event IN ({PAY_EVENTS})
+      AND e.event = '{TRANSACTION_EVENT}'
       AND e.prod = {PROD_ID}
-    GROUP BY e.dt, e.uid
-), user_pay_delta AS (
-    SELECT pe.dt,
-           pe.uid,
-           {CHANNEL_EXPR_U} AS channel,
-           GREATEST({_pay_value("u")} - COALESCE({_pay_value("p")}, 0), 0) AS pay_amount
-    FROM pay_event_users pe
-    JOIN `user` u
-      ON u.dt = pe.dt
-     AND u.uid = pe.uid
-     AND u.prod = {PROD_ID}
-    LEFT JOIN `user` p
-      ON p.uid = pe.uid
-     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-     AND p.prod = {PROD_ID}
+    GROUP BY e.dt, channel
 )
 SELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS `日期`,
        channel AS `渠道`,
        ROUND(SUM(pay_amount), 2) AS `付费金额`
-FROM user_pay_delta
+FROM daily_pay
 GROUP BY dt, channel
 ORDER BY dt, channel
 LIMIT 300
@@ -537,7 +482,7 @@ LIMIT 300
 
 SQL_CHANNEL_PAY_USERS = SQL_CHANNEL_PAY_AMOUNT.replace(
     "ROUND(SUM(pay_amount), 2) AS `付费金额`",
-    "COUNT(DISTINCT CASE WHEN pay_amount > 0 THEN uid END) AS `付费用户数`",
+    "SUM(pay_users) AS `付费用户数`",
 )
 
 SQL_CHANNEL_CUMULATIVE_PAY_RANK = f"""
