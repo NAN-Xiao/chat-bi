@@ -244,10 +244,6 @@ function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
 }
 
-function isDashboardQueryBusy(result: any) {
-  return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
-}
-
 function isPermissionDeniedResult(result: any) {
   return result?.status === 'failed' && result?.error_type === 'permission_denied'
 }
