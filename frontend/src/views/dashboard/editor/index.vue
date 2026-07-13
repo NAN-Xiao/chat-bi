@@ -59,6 +59,26 @@ const CHART_DATABASE_REFRESH_CONCURRENCY = 4
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 160
 const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
 const CHART_TRANSIENT_MAX_RETRIES = 6
+const permissionDeniedChartIds = new Set<string>()
+
+function chartEntryId(entry: { component: any; viewInfo: any }) {
+  const id = entry?.component?.id
+  return id === undefined || id === null ? '' : String(id)
+}
+
+function markPermissionDeniedChart(entry: { component: any; viewInfo: any }) {
+  const id = chartEntryId(entry)
+  if (id) permissionDeniedChartIds.add(id)
+}
+
+function isPermissionDeniedChart(entry: { component: any; viewInfo: any }) {
+  const id = chartEntryId(entry)
+  return Boolean(id && permissionDeniedChartIds.has(id))
+}
+
+function resetPermissionDeniedCharts() {
+  permissionDeniedChartIds.clear()
+}
 
 const canUseCanvasDraft = (sourceKey?: string | null) => Boolean(sourceKey?.startsWith('create:'))
 
@@ -447,12 +467,16 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
 }
 
 async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
-  const chartEntries = collectDashboardCharts(componentData.value).filter((entry) =>
-    Boolean(
-      isMixedChart(entry.viewInfo)
-        ? canRefreshMixedChart(entry.viewInfo)
-        : !isExternalSnapshotChart(entry.viewInfo) && entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim()
-    )
+  const chartEntries = collectDashboardCharts(componentData.value).filter(
+    (entry) =>
+      !isPermissionDeniedChart(entry) &&
+      Boolean(
+        isMixedChart(entry.viewInfo)
+          ? canRefreshMixedChart(entry.viewInfo)
+          : !isExternalSnapshotChart(entry.viewInfo) &&
+            entry.viewInfo?.datasource &&
+            entry.viewInfo?.sql?.trim()
+      )
   )
   if (!chartEntries.length) {
     return
@@ -503,7 +527,10 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
           return
         }
-        if (
+        if (isPermissionDeniedResult(cachedResult)) {
+          markPermissionDeniedChart(entry)
+          withAutoChartUpdate(() => applyChartResult(viewInfo, cachedResult))
+        } else if (
           isDashboardCacheMiss(cachedResult) ||
           cachedResult?.status === 'failed' ||
           !hasUsableResultSnapshot(cachedResult)
@@ -554,14 +581,13 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         withAutoChartUpdate(() => {
           if (result?.status === 'failed') {
             if (isPermissionDeniedResult(result)) {
+              markPermissionDeniedChart(entry)
               applyChartResult(viewInfo, result)
             } else {
               keepChartSnapshotOrLoading(viewInfo)
-            }
-            if (!hasChartSnapshot(viewInfo) && isDashboardQueryBusy(result)) {
-              transientPendingCount += 1
-            } else if (!hasChartSnapshot(viewInfo)) {
-              transientPendingCount += 1
+              if (!hasChartSnapshot(viewInfo)) {
+                transientPendingCount += 1
+              }
             }
           } else {
             if (isMixedChart(viewInfo)) {
@@ -644,6 +670,7 @@ const loadCanvasFromRoute = async () => {
   const loadVersion = ++routeLoadVersion
   persistCanvasDraft()
   cancelDashboardChartRefresh()
+  resetPermissionDeniedCharts()
   chartRefreshRetryCount = 0
   canvasStateReady = false
   syncRouteState()
