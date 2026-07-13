@@ -84,11 +84,10 @@ API 定义在 `frontend/src/api/system.ts`：
 
 | 列名 | 必填 | 说明 |
 | --- | --- | --- |
-| 事件标签 | 否 | 事件分类或业务标签，例如 `战斗`、`任务与活动`。 |
-| 采集端 | 否 | 事件采集端，例如 `client`、`server`、`server,client`。 |
 | 事件名 | 是 | 上报事件名，例如 `battle_end`。 |
 | 事件显示名 | 否 | 事件中文名，例如 `战斗结束`。 |
 | 事件说明 | 否 | 事件用途、触发时机或业务说明。 |
+| 事件标签 | 否 | 事件分类或业务标签，例如 `战斗`、`任务与活动`。 |
 | 数据源字段 | 否 | 参数所在 JSON 容器字段，默认可推断为 `ext`。 |
 | 属性名 | 否 | 参数短名，例如 `battleResult`。事件无参数时可为空。 |
 | 属性显示名 | 否 | 参数中文名，例如 `战斗结果`。 |
@@ -104,11 +103,10 @@ API 定义在 `frontend/src/api/system.ts`：
    - 内部为 `ext.battleResult`，导出「数据源字段」=`ext`，「属性名」=`battleResult`。
    - 内部为 `battleResult` 且有 `source_field=ext`，导出「数据源字段」=`ext`，「属性名」=`battleResult`。
 5. `json_path=$.battleResult` 时，属性名优先取 JSON 路径末段 `battleResult`。
-6. `collect_side` 导出到「采集端」。
-7. `event_category` 导出到「事件标签」。
-8. `event_display_name` 导出到「事件显示名」。
-9. `description` 或 `event_description` 导出到「事件说明」。
-10. `property_type` 导出到「属性类型」，如果为空则用 `semantic_type` 或 `field_type` 兜底。
+6. `event_category` 导出到「事件标签」。
+7. `event_display_name` 导出到「事件显示名」。
+8. `description` 或 `event_description` 导出到「事件说明」。
+9. `property_type` 导出到「属性类型」，如果为空则用 `semantic_type` 或 `field_type` 兜底。
 
 ### 导入规则
 
@@ -119,7 +117,6 @@ API 定义在 `frontend/src/api/system.ts`：
    - `event_name`
    - `event_display_name`
    - `event_category`
-   - `collect_side`
    - `description`
 5. 如果「属性名」为空，只维护事件定义，不创建属性。
 6. 如果「数据源字段」为空，默认使用 `ext`。
@@ -210,7 +207,6 @@ API 定义在 `frontend/src/api/system.ts`：
 | 中文表头 | 内部字段 |
 | --- | --- |
 | 事件标签 | `event_category` |
-| 采集端 | `collect_side` |
 | 事件名 | `event_name` |
 | 事件显示名 | `event_display_name` |
 | 事件说明 | `event_description` |
@@ -240,6 +236,7 @@ API 定义在 `frontend/src/api/system.ts`：
 3. 新格式和旧格式同时存在时，建议以 `事件参数对照` 为准，旧格式解析后可被新 sheet 同名事件/同名属性覆盖。
 4. 导出只输出新格式事件关系，避免用户继续维护旧事件行。
 5. `event/user` 表导入时同时支持新版属性表格式和历史通用格式。判断依据是表头：存在「属性名（必填）」和「属性类型（必填）」时走新版属性表解析，否则走 `_parse_generic_business_sheet(...)`。
+6. 历史 Excel 中的“采集端”列仍可导入，但平台会忽略该列，后续导出不再包含它。
 
 ## 建议新增函数
 
@@ -384,7 +381,6 @@ API 定义在 `frontend/src/api/system.ts`：
   - 事件名：`battle_end`
   - 事件显示名：`战斗结束`
   - 事件标签：`战斗`
-  - 采集端：`server`
   - 数据源字段：`ext`
   - 属性名：`battleResult`
   - 属性显示名：`战斗结果`

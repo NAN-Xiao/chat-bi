@@ -74,7 +74,6 @@ JSON 嵌套结构属于某张真实表内部的字段视图，不属于左侧表
 | event_name | 否 | 事件名；`event` 和 `event_property` 行使用 |
 | event_display_name | 否 | 事件展示名 |
 | event_category | 否 | 事件分类 |
-| collect_side | 否 | 采集端，例如 client、server、etl、import |
 | field_view | 否 | 字段视图。JSON 子字段建议写成 `ext view`、`payload view`，导出时会按同一 view 合并单元格 |
 | field_name | 是 | 物理字段名或逻辑字典字段名 |
 | field_display_name | 否 | 字段展示名 |
@@ -106,11 +105,12 @@ JSON 嵌套结构属于某张真实表内部的字段视图，不属于左侧表
 | event_display_name | 否 | 展示名 |
 | event_description | 否 | 事件说明 |
 | event_category | 否 | 分类标签，例如登录、支付、订单、生产、告警 |
-| collect_side | 否 | 采集端，例如 client、server、etl、import |
 | source_table | 否 | 所在物理表 |
 | status | 否 | draft、active、deprecated |
 | owner | 否 | 维护人 |
 | ai_notes | 否 | 该事件的 SQL/分析注意事项 |
+
+历史 Excel 中的“采集端”列仍可导入，但平台会忽略该列，后续导出不再包含它。
 
 ### 5. 兼容竞品格式的事件属性
 
