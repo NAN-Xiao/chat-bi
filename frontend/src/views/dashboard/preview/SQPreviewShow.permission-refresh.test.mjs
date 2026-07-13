@@ -9,18 +9,19 @@ const autoRefresh = source.match(/function scheduleNextDashboardAutoRefresh\([\s
 const refreshCharts = source.match(/async function refreshDashboardCharts\([\s\S]*?\n\}/)?.[0] || ''
 const loadCanvas = source.match(/const loadCanvasData = \(params: any\) => \{([\s\S]*?)\r?\n\}/)?.[0] || ''
 
-assert.match(source, /const permissionDeniedChartIds = new Set<string>\(\)/)
-assert.match(source, /function markPermissionDeniedChart\(entry: [^)]*\)/)
-assert.match(source, /function isPermissionDeniedChart\(entry: [^)]*\)/)
-assert.match(source, /function resetPermissionDeniedCharts\(\)/)
-assert.match(autoRefresh, /filter\(\s*\(entry\) =>[\s\S]*?!isPermissionDeniedChart\(entry\)/)
-assert.match(refreshCharts, /filter\(\s*\(entry\) =>[\s\S]*?!isPermissionDeniedChart\(entry\)/)
+assert.match(source, /createPermissionDeniedChartRegistry/)
+assert.match(source, /dashboardCacheRefreshDisposition/)
+assert.match(source, /shouldRetryDashboardChartFailure/)
+assert.match(source, /const permissionDeniedCharts = createPermissionDeniedChartRegistry\(\)/)
+assert.match(autoRefresh, /filter\(\s*\(entry\) =>[\s\S]*?!permissionDeniedCharts\.has\(entry\)/)
+assert.match(refreshCharts, /filter\(\s*\(entry\) =>[\s\S]*?!permissionDeniedCharts\.has\(entry\)/)
 assert.match(
   refreshCharts,
-  /isPermissionDeniedResult\(cachedResult\)[\s\S]*?markPermissionDeniedChart\(entry\)[\s\S]*?applyChartResult\(viewInfo, cachedResult\)/
+  /dashboardCacheRefreshDisposition\(\s*cachedResult,[\s\S]*?cacheDisposition === 'permission_denied'[\s\S]*?permissionDeniedCharts\.mark\(entry\)[\s\S]*?applyChartResult\(viewInfo, cachedResult\)/
 )
 assert.match(
   refreshCharts,
-  /isPermissionDeniedResult\(result\)[\s\S]*?markPermissionDeniedChart\(entry\)[\s\S]*?applyChartResult\(viewInfo, result\)/
+  /isPermissionDeniedResult\(result\)[\s\S]*?permissionDeniedCharts\.mark\(entry\)[\s\S]*?applyChartResult\(viewInfo, result\)/
 )
-assert.match(loadCanvas, /resetPermissionDeniedCharts\(\)/)
+assert.match(refreshCharts, /shouldRetryDashboardChartFailure\(result,/)
+assert.match(loadCanvas, /permissionDeniedCharts\.reset\(\)/)
