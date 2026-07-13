@@ -63,7 +63,6 @@ BUSINESS_COLUMNS = [
     "value",
     "value_display_name",
     "value_category",
-    "collect_side",
     "event_name",
     "event_display_name",
     "event_category",
@@ -108,7 +107,6 @@ EVENT_PARAMETER_MAPPING_COLUMNS = [
     "event_display_name",
     "event_description",
     "event_category",
-    "collect_side",
     "source_field",
     "property_name",
     "property_display_name",
@@ -149,7 +147,6 @@ EXPORT_COLUMN_LABELS = {
     "event_name": "事件名（必填）",
     "event_display_name": "事件显示名",
     "event_category": "事件标签",
-    "collect_side": "采集端",
     "event_description": "事件说明",
     "field_name": "字段名",
     "field_display_name": "字段显示名",
@@ -209,7 +206,6 @@ BUSINESS_EXPORT_COLUMN_LABELS = {
     "value": "字段/事件取值",
     "value_display_name": "取值显示名",
     "value_category": "取值标签",
-    "collect_side": "采集端",
     "event_name": "适用事件名",
     "event_display_name": "适用事件显示名",
     "event_category": "适用事件标签",
@@ -1109,7 +1105,6 @@ def _event_mapping(row: dict[str, Any]) -> dict[str, Any] | None:
         "event_name": event_name,
         "event_display_name": _first_text(row.get("value_display_name"), row.get("event_display_name")),
         "event_category": _first_text(row.get("value_category"), row.get("event_category")),
-        "collect_side": _text(row.get("collect_side")),
         "description": _first_text(row.get("event_description"), row.get("description")),
         "ai_notes": _text(row.get("ai_notes")),
         "aliases": _split_list(row.get("aliases")),
@@ -1517,7 +1512,6 @@ def _parse_event_parameter_mapping_sheet(
                 "event_name": event_name,
                 "event_display_name": _text(row.get("event_display_name")),
                 "event_category": _text(row.get("event_category")),
-                "collect_side": _text(row.get("collect_side")),
                 "description": _first_text(row.get("event_description"), row.get("description_2")),
             }
             event = {key: value for key, value in event.items() if value}
@@ -1841,7 +1835,6 @@ def _business_row_from_field(field_item: Any, *, row_type: str) -> dict[str, Any
         "value": "",
         "value_display_name": "",
         "value_category": "",
-        "collect_side": "",
         "event_name": "",
         "event_display_name": "",
         "event_category": "",
@@ -1901,7 +1894,6 @@ def _business_event_value_rows(config: TenantTrackingConfigDTO, *, event_field: 
                 "value": event_name,
                 "value_display_name": _event_display_from_mapping(mapping, event_name),
                 "value_category": _event_category_from_mapping(mapping),
-                "collect_side": _event_collect_side_from_mapping(mapping),
                 "event_name": "",
                 "event_display_name": "",
                 "event_category": "",
@@ -1955,7 +1947,6 @@ def _business_event_property_rows(config: TenantTrackingConfigDTO) -> list[dict[
                 "value": "",
                 "value_display_name": "",
                 "value_category": "",
-                "collect_side": "",
                 "event_name": event_name,
                 "event_display_name": _event_display_from_mapping(mapping, event_name) if event_name else "",
                 "event_category": _event_category_from_mapping(mapping),
@@ -2021,7 +2012,6 @@ def _event_parameter_mapping_rows(config: TenantTrackingConfigDTO) -> list[dict[
                     "event_display_name": _event_display_from_mapping(mapping, event_name),
                     "event_description": _event_description_from_mapping(mapping),
                     "event_category": _event_category_from_mapping(mapping),
-                    "collect_side": _event_collect_side_from_mapping(mapping),
                     "source_field": source_field,
                     "property_name": property_name,
                     "property_display_name": _first_text(
@@ -2102,7 +2092,6 @@ def _field_value_rows(field_item: Any) -> list[dict[str, Any]]:
             "value": value,
             "value_display_name": display_name,
             "value_category": category,
-            "collect_side": "",
             "event_name": "",
             "event_display_name": "",
             "event_category": "",
@@ -2287,12 +2276,6 @@ def _event_category_from_mapping(item: Any) -> str:
     if not isinstance(item, dict):
         return ""
     return _first_text(item.get("event_category"), item.get("category"), item.get("metric"))
-
-
-def _event_collect_side_from_mapping(item: Any) -> str:
-    if not isinstance(item, dict):
-        return ""
-    return _text(item.get("collect_side"))
 
 
 def _tracking_table_comment(table_item: Any, table_info: PhysicalTableInfo | None = None) -> str:
@@ -2568,7 +2551,6 @@ def _generic_sheet_rows_for_table(
                 "value": "",
                 "value_display_name": "",
                 "value_category": "",
-                "collect_side": "",
                 "event_name": "",
                 "event_display_name": "",
                 "event_category": "",
@@ -2620,7 +2602,6 @@ def _template_example_rows(
             "value": "login",
             "value_display_name": "登录",
             "value_category": "基础事件",
-            "collect_side": "client",
             "event_name": "",
             "event_display_name": "",
             "event_category": "",
@@ -2643,7 +2624,6 @@ def _template_example_rows(
             "value": "pay_success",
             "value_display_name": "支付成功",
             "value_category": "付费事件",
-            "collect_side": "server",
             "event_name": "",
             "event_display_name": "",
             "event_category": "",
@@ -2666,7 +2646,6 @@ def _template_example_rows(
             "value": "",
             "value_display_name": "",
             "value_category": "",
-            "collect_side": "",
             "event_name": "battle_end",
             "event_display_name": "战斗结束",
             "event_category": "玩法事件",
@@ -2689,7 +2668,6 @@ def _template_example_rows(
             "value": "1",
             "value_display_name": "胜利",
             "value_category": "战斗结果",
-            "collect_side": "",
             "event_name": "",
             "event_display_name": "",
             "event_category": "",
@@ -2712,7 +2690,6 @@ def _template_example_rows(
             "value": "3",
             "value_display_name": "失败",
             "value_category": "战斗结果",
-            "collect_side": "",
             "event_name": "",
             "event_display_name": "",
             "event_category": "",
@@ -2779,7 +2756,7 @@ def _write_tracking_sheet(writer, sheet_name: str, rows: list[dict[str, Any]], c
         worksheet.set_column(col_index, col_index, min(max(max_len + 2, min_width), 44), text_format)
     if columns == EVENT_PARAMETER_MAPPING_COLUMNS and rows:
         merge_format = workbook.add_format({"text_wrap": True, "valign": "top"})
-        merge_columns = ["event_name", "event_display_name", "event_description", "event_category", "collect_side"]
+        merge_columns = ["event_name", "event_display_name", "event_description", "event_category"]
         start_index = 0
         while start_index < len(rows):
             current_key = tuple(_text(rows[start_index].get(column)) for column in merge_columns)

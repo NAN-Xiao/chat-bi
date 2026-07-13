@@ -181,7 +181,6 @@ def _tracking_config() -> TenantTrackingConfigDTO:
                 "event_name": "login",
                 "event_display_name": "登录",
                 "event_category": "基础事件",
-                "collect_side": "client",
                 "description": "用户登录事件",
                 "aliases": ["登录事件"],
                 "properties": [
@@ -578,7 +577,6 @@ def test_event_table_exports_event_parameter_mapping_sheet() -> None:
                 "event_name": "BattleEnd",
                 "event_display_name": "战斗结束",
                 "event_category": "战斗",
-                "collect_side": "server,client",
                 "properties": [
                     {
                         "property_name": "battleResult",
@@ -610,7 +608,6 @@ def test_event_table_exports_event_parameter_mapping_sheet() -> None:
         "事件显示名",
         "事件说明",
         "事件标签",
-        "采集端",
         "数据源字段",
         "属性名（必填）",
         "属性显示名",
@@ -622,23 +619,22 @@ def test_event_table_exports_event_parameter_mapping_sheet() -> None:
         row[0] == "BattleEnd"
         and row[1] == "战斗结束"
         and row[3] == "战斗"
-        and row[4] == "server,client"
-        and row[5] == "ext"
-        and row[6] == "battleResult"
-        and row[7] == "战斗结果"
-        and row[8] == "文本"
-        and row[9] == "战斗结果，固定值win"
+        and row[4] == "ext"
+        and row[5] == "battleResult"
+        and row[6] == "战斗结果"
+        and row[7] == "文本"
+        and row[8] == "战斗结果，固定值win"
         for row in rows
     )
-    assert any(row[6] == "hero_info.hero_level" and row[7] == "卡牌等级" and row[8] == "数值" for row in rows)
+    assert any(row[5] == "hero_info.hero_level" and row[6] == "卡牌等级" and row[7] == "数值" for row in rows)
     styled_workbook = load_workbook(BytesIO(workbook_bytes), read_only=False, data_only=True)
     styled_sheet = styled_workbook["事件参数对照"]
     merged_ranges = {str(merged_range) for merged_range in styled_sheet.merged_cells.ranges}
-    assert {"A2:A3", "B2:B3", "C2:C3", "D2:D3", "E2:E3"}.issubset(merged_ranges)
+    assert {"A2:A3", "B2:B3", "C2:C3", "D2:D3"}.issubset(merged_ranges)
     assert styled_sheet["A2"].value == "BattleEnd"
     assert styled_sheet["A3"].value is None
-    assert styled_sheet["F2"].value == "ext"
-    assert styled_sheet["F3"].value == "ext"
+    assert styled_sheet["E2"].value == "ext"
+    assert styled_sheet["E3"].value == "ext"
 
 
 def test_event_parameter_mapping_sheet_imports_event_properties() -> None:
@@ -674,7 +670,7 @@ def test_event_parameter_mapping_sheet_imports_event_properties() -> None:
     event = next(item for item in parsed.editor.event_name_mappings if isinstance(item, dict) and item.get("event_name") == "BattleEnd")
     assert event["event_display_name"] == "战斗结束"
     assert event["event_category"] == "战斗"
-    assert event["collect_side"] == "server"
+    assert "collect_side" not in event
     prop = event["properties"][0]
     assert prop["property_name"] == "ext.battleResult"
     assert prop["property_display_name"] == "战斗结果"
@@ -816,7 +812,6 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
         "事件显示名",
         "事件说明",
         "事件标签",
-        "采集端",
         "数据源字段",
         "属性名（必填）",
         "属性显示名",
@@ -899,6 +894,48 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     assert "pay_success" in context
     assert "支付金额统一使用 event_props.amount" in context
     assert any("event_props.amount" in item for item in summary)
+
+
+def test_legacy_collect_side_column_is_silently_ignored() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "事件参数对照"
+    sheet.append([
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "采集端",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ])
+    sheet.append([
+        "login",
+        "用户登录",
+        "登录成功事件",
+        "基础事件",
+        "client",
+        "ext",
+        "serverId",
+        "服务器ID",
+        "文本",
+        "服务器ID",
+    ])
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, datasource_id=3, enabled=True),
+    )
+
+    event = parsed.editor.event_name_mappings[0]
+    assert event["event_name"] == "login"
+    assert "collect_side" not in event
+    assert "collectSide" not in event
 
 
 def test_event_sheet_event_value_rows_can_roundtrip_event_dictionary() -> None:
