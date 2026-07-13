@@ -8,8 +8,10 @@ import pytest
 from fastapi import HTTPException
 
 from apps.system.api import tracking_config as tracking_config_api
+from apps.system.crud import tracking_config as tracking_config_crud
 from apps.system.crud.tracking_config import (
     _event_group_dto,
+    save_tracking_config,
     validate_tracking_event_groups,
 )
 from apps.system.models.tenant import TenantTrackingEventGroupModel
@@ -45,6 +47,18 @@ def test_event_group_rejects_duplicate_member() -> None:
         validate_tracking_event_groups(groups, [{"event_name": "PayFinish"}])
 
 
+def test_event_group_accepts_camel_case_event_name_mapping() -> None:
+    groups = [
+        TenantTrackingEventGroupBase(
+            group_key="payment_process",
+            group_name="支付流程事件",
+            event_names=["PayFinish"],
+        )
+    ]
+
+    validate_tracking_event_groups(groups, [{"eventName": "PayFinish"}])
+
+
 def test_editor_omitted_event_groups_means_preserve() -> None:
     editor = TenantTrackingConfigEditor()
 
@@ -59,6 +73,48 @@ def test_event_group_model_is_unique_within_tenant_datasource() -> None:
     }
 
     assert ("tenant_id", "datasource_id", "group_key") in constraint_columns
+
+
+def test_event_group_model_requires_datasource_scope() -> None:
+    assert TenantTrackingEventGroupModel.__table__.c.datasource_id.nullable is False
+
+
+def test_event_group_migration_requires_datasource_scope() -> None:
+    migration_path = Path(__file__).parents[1] / "alembic" / "versions" / "142_tracking_event_groups.py"
+    content = migration_path.read_text(encoding="utf-8")
+
+    assert 'sa.Column("datasource_id", sa.BigInteger(), nullable=False)' in content
+
+
+def test_save_rejects_event_groups_without_datasource_before_database_access() -> None:
+    class UnexpectedSession:
+        def exec(self, *_args, **_kwargs):
+            raise AssertionError("无数据源分组不应访问数据库")
+
+    editor = TenantTrackingConfigEditor(
+        event_name_mappings=[{"event_name": "PayFinish"}],
+        event_groups=[
+            TenantTrackingEventGroupBase(
+                group_key="payment_process",
+                group_name="支付流程事件",
+                event_names=["PayFinish"],
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="绑定数据源"):
+        save_tracking_config(UnexpectedSession(), 2001, editor, datasource_id=None)
+
+
+def test_tracking_scope_statements_lock_config_and_event_groups() -> None:
+    config_statement, event_group_statement = tracking_config_crud._tracking_scope_statements(
+        2001,
+        3,
+        for_update=True,
+    )
+
+    assert "FOR UPDATE" in str(config_statement)
+    assert "FOR UPDATE" in str(event_group_statement)
 
 
 def test_event_group_dto_preserves_scope_and_member_order() -> None:

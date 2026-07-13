@@ -35,6 +35,7 @@ TABLE_MAP_SHEET = "_表映射"
 SQL_RULE_SHEET = "_SQL规则"
 EVENT_PARAMETER_MAPPING_SHEET = "事件参数对照"
 EVENT_GROUP_SHEET = "事件分组"
+EXCEL_ROW_NUMBER_KEY = "__excel_row_number__"
 
 SYSTEM_SHEETS = {
     INFO_SHEET,
@@ -124,6 +125,15 @@ EVENT_GROUP_COLUMNS = [
     "event_order",
     "enabled",
 ]
+EVENT_GROUP_MIN_WIDTHS = {
+    "group_key": 20,
+    "group_name": 20,
+    "group_description": 28,
+    "group_sort_order": 12,
+    "event_name": 24,
+    "event_order": 12,
+    "enabled": 10,
+}
 
 ATTRIBUTE_EXPORT_COLUMN_LABELS = {
     "field_name": "属性名（必填）",
@@ -492,7 +502,13 @@ def _canonical_header(value: Any) -> str:
     return HEADER_ALIASES.get(key, _text(value))
 
 
-def _read_sheet_rows(excel: pd.ExcelFile, sheet_name: str) -> tuple[list[dict[str, Any]], int]:
+def _read_sheet_rows(
+    excel: pd.ExcelFile,
+    sheet_name: str,
+    *,
+    require_recognized_header: bool = False,
+    include_row_number: bool = False,
+) -> tuple[list[dict[str, Any]], int]:
     raw = pd.read_excel(excel, sheet_name=sheet_name, header=None, dtype=object).fillna("")
     if raw.empty:
         return [], 0
@@ -506,6 +522,13 @@ def _read_sheet_rows(excel: pd.ExcelFile, sheet_name: str) -> tuple[list[dict[st
             break
 
     if header_index is None:
+        nonempty_row_count = sum(
+            1
+            for _, row in raw.iterrows()
+            if any(_text(value) for value in row.tolist())
+        )
+        if require_recognized_header and nonempty_row_count > 1:
+            raise ValueError(f"{sheet_name} sheet 表头无法识别，请使用平台导出的固定表头。")
         return [], len(raw.index)
 
     canonical_headers: list[str] = []
@@ -521,7 +544,7 @@ def _read_sheet_rows(excel: pd.ExcelFile, sheet_name: str) -> tuple[list[dict[st
 
     rows: list[dict[str, Any]] = []
     skipped = 0
-    for _, raw_row in raw.iloc[header_index + 1 :].iterrows():
+    for raw_index, raw_row in raw.iloc[header_index + 1 :].iterrows():
         row: dict[str, Any] = {}
         has_value = False
         for col_index, header in enumerate(canonical_headers):
@@ -532,6 +555,8 @@ def _read_sheet_rows(excel: pd.ExcelFile, sheet_name: str) -> tuple[list[dict[st
             if _text(value):
                 has_value = True
         if has_value:
+            if include_row_number:
+                row[EXCEL_ROW_NUMBER_KEY] = int(raw_index) + 1
             rows.append(row)
         else:
             skipped += 1
@@ -1544,9 +1569,13 @@ def _event_group_enabled(value: Any, *, row_number: int) -> bool:
     raise ValueError(f"事件分组 sheet 第 {row_number} 行：启用只能填写是或否。")
 
 
-def _parse_event_group_sheet(rows: list[dict[str, Any]]) -> list[TenantTrackingEventGroupBase]:
+def _parse_event_group_sheet(
+    rows: list[dict[str, Any]],
+) -> tuple[list[TenantTrackingEventGroupBase], dict[tuple[str, str], int]]:
     grouped: dict[str, dict[str, Any]] = {}
-    for row_number, row in enumerate(rows, start=2):
+    event_row_numbers: dict[tuple[str, str], int] = {}
+    for fallback_row_number, row in enumerate(rows, start=2):
+        row_number = int(row.get(EXCEL_ROW_NUMBER_KEY) or fallback_row_number)
         group_key = _text(row.get("group_key"))
         group_name = _text(row.get("group_name"))
         event_name = _text(row.get("event_name"))
@@ -1592,6 +1621,7 @@ def _parse_event_group_sheet(rows: list[dict[str, Any]]) -> list[TenantTrackingE
             )
         current["seen"].add(event_name)
         current["events"].append((event_order, row_number, event_name))
+        event_row_numbers[(group_key, event_name)] = row_number
 
     result: list[TenantTrackingEventGroupBase] = []
     for group_key, current in grouped.items():
@@ -1612,7 +1642,7 @@ def _parse_event_group_sheet(rows: list[dict[str, Any]]) -> list[TenantTrackingE
             )
         except Exception as exc:
             raise ValueError(f"事件分组 {group_key} 配置无效：{exc}") from exc
-    return sorted(result, key=lambda item: (item.sort_order, item.group_key))
+    return sorted(result, key=lambda item: (item.sort_order, item.group_key)), event_row_numbers
 
 
 def parse_tracking_excel(
@@ -1634,6 +1664,7 @@ def parse_tracking_excel(
         event_name_mappings=[],
     )
     sheet_to_table: dict[str, str] = {}
+    event_group_row_numbers: dict[tuple[str, str], int] = {}
 
     if INFO_SHEET in excel.sheet_names:
         rows, skipped = _read_sheet_rows(excel, INFO_SHEET)
@@ -1656,10 +1687,15 @@ def parse_tracking_excel(
         _parse_event_parameter_mapping_sheet(rows, imported, warnings)
 
     if EVENT_GROUP_SHEET in excel.sheet_names:
-        rows, skipped = _read_sheet_rows(excel, EVENT_GROUP_SHEET)
+        rows, skipped = _read_sheet_rows(
+            excel,
+            EVENT_GROUP_SHEET,
+            require_recognized_header=True,
+            include_row_number=True,
+        )
         skipped_rows += skipped
         if rows:
-            imported.event_groups = _parse_event_group_sheet(rows)
+            imported.event_groups, event_group_row_numbers = _parse_event_group_sheet(rows)
 
     for sheet_name in excel.sheet_names:
         if sheet_name in SYSTEM_SHEETS:
@@ -1716,6 +1752,21 @@ def parse_tracking_excel(
     normalized = _dedupe_imported_tracking_config(imported)
     groups_to_validate = normalized.event_groups or list(existing.event_groups or [])
     if groups_to_validate:
+        known_event_names = {
+            event_name
+            for mapping in normalized.event_name_mappings or []
+            for event_name in _event_names_from_mapping(mapping)
+        }
+        for group in normalized.event_groups or []:
+            for event_name in group.event_names:
+                if event_name in known_event_names:
+                    continue
+                row_number = event_group_row_numbers.get((group.group_key, event_name))
+                if row_number is not None:
+                    raise ValueError(
+                        f"事件分组 sheet 第 {row_number} 行：分组 {group.group_key} "
+                        f"引用的事件 {event_name} 不存在于当前事件参数字典。"
+                    )
         validate_tracking_event_groups(groups_to_validate, normalized.event_name_mappings)
     return ParsedTrackingConfig(editor=normalized, profile=profile, warnings=warnings, skipped_rows=skipped_rows)
 
@@ -2204,7 +2255,7 @@ def _event_names_from_mapping(item: Any) -> list[str]:
         text = _text(item)
         return [text] if text else []
     names: list[str] = []
-    for key in ("event_name", "name", "value"):
+    for key in ("event_name", "eventName", "name", "value"):
         text = _text(item.get(key))
         if text:
             names.append(text)
@@ -2724,7 +2775,8 @@ def _write_tracking_sheet(writer, sheet_name: str, rows: list[dict[str, Any]], c
         header_label = _export_header_label(sheet_name, column, columns)
         worksheet.write(0, col_index, header_label, header_format)
         max_len = max([len(str(header_label))] + [len(str(row.get(column, ""))) for row in rows[:200]])
-        worksheet.set_column(col_index, col_index, min(max(max_len + 2, 12), 44), text_format)
+        min_width = EVENT_GROUP_MIN_WIDTHS.get(column, 12) if sheet_name == EVENT_GROUP_SHEET else 12
+        worksheet.set_column(col_index, col_index, min(max(max_len + 2, min_width), 44), text_format)
     if columns == EVENT_PARAMETER_MAPPING_COLUMNS and rows:
         merge_format = workbook.add_format({"text_wrap": True, "valign": "top"})
         merge_columns = ["event_name", "event_display_name", "event_description", "event_category", "collect_side"]

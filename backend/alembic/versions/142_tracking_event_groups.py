@@ -1,10 +1,10 @@
 """新增工作空间事件分组表。"""
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "142trackinggroups"
 down_revision = "141trackingextra"
@@ -30,7 +30,7 @@ def upgrade() -> None:
         TABLE_NAME,
         sa.Column("id", sa.BigInteger(), nullable=False),
         sa.Column("tenant_id", sa.BigInteger(), nullable=False),
-        sa.Column("datasource_id", sa.BigInteger(), nullable=True),
+        sa.Column("datasource_id", sa.BigInteger(), nullable=False),
         sa.Column("group_key", sa.String(length=128), nullable=False),
         sa.Column("group_name", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),

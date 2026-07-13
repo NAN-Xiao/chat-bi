@@ -261,6 +261,28 @@ def test_event_groups_export_as_independent_sheet() -> None:
         ("payment_process", "支付流程事件", "只统计流程量", 10, "pay_success", 1, "是"),
         ("payment_process", "支付流程事件", "只统计流程量", 10, "refund_success", 2, "是"),
     ]
+    workbook = load_workbook(BytesIO(workbook_bytes), read_only=False, data_only=True)
+    sheet = workbook["事件分组"]
+    assert sheet.column_dimensions["A"].width >= 18
+    assert sheet.column_dimensions["A"].max >= 2
+
+
+def test_event_parameter_mapping_exports_camel_case_event_name() -> None:
+    config = _tracking_config().model_copy(
+        update={
+            "event_name_mappings": [
+                {
+                    "eventName": "pay_success",
+                    "event_display_name": "支付成功",
+                    "properties": [],
+                }
+            ]
+        }
+    )
+
+    workbook_bytes = tracking_config_excel(config, physical_schema=_physical_schema()).getvalue()
+
+    assert _sheet_rows(workbook_bytes, "事件参数对照")[0][0] == "pay_success"
 
 
 def test_event_group_sheet_imports_authoritative_groups() -> None:
@@ -294,8 +316,41 @@ def test_event_group_sheet_rejects_unknown_event() -> None:
         [["payment_process", "支付流程事件", "只统计流程量", 10, "PayFinish2", 10, "是"]]
     )
 
-    with pytest.raises(ValueError, match="PayFinish2"):
+    with pytest.raises(ValueError, match="第 2 行.*PayFinish2"):
         parse_tracking_excel(content, _tracking_config(), physical_schema=_physical_schema())
+
+
+def test_event_group_sheet_rejects_unrecognized_header_with_data() -> None:
+    content = _workbook_with_event_group_rows(
+        [["payment_process", "支付流程事件", "只统计流程量", 10, "pay_success", 10, "是"]]
+    )
+    workbook = load_workbook(BytesIO(content))
+    sheet = workbook["事件分组"]
+    for column_index in range(1, len(EVENT_GROUP_HEADERS) + 1):
+        sheet.cell(1, column_index).value = f"错误列{column_index}"
+    output = BytesIO()
+    workbook.save(output)
+
+    with pytest.raises(ValueError, match="事件分组.*表头无法识别"):
+        parse_tracking_excel(output.getvalue(), _tracking_config(), physical_schema=_physical_schema())
+
+
+def test_event_group_sheet_with_unrecognized_header_but_no_data_is_ignored() -> None:
+    content = _workbook_with_event_group_rows([])
+    workbook = load_workbook(BytesIO(content))
+    sheet = workbook["事件分组"]
+    for column_index in range(1, len(EVENT_GROUP_HEADERS) + 1):
+        sheet.cell(1, column_index).value = f"错误列{column_index}"
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        _tracking_config(),
+        physical_schema=_physical_schema(),
+    )
+
+    assert parsed.editor.event_groups is None
 
 
 def test_event_group_sheet_reports_row_for_invalid_group_key() -> None:

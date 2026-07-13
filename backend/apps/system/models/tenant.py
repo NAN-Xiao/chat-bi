@@ -268,7 +268,7 @@ class TenantTrackingEventGroupModel(SnowflakeBase, table=True):
     )
 
     tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
-    datasource_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    datasource_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
     group_key: str = Field(sa_column=Column(String(128), nullable=False))
     group_name: str = Field(sa_column=Column(String(255), nullable=False))
     description: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))

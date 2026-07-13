@@ -124,7 +124,7 @@ def _event_names_from_mapping(item: Any) -> list[str]:
         text = _plain_text(item)
         return [text] if text else []
     names: list[str] = []
-    for key in ("event_name", "name", "value"):
+    for key in ("event_name", "eventName", "name", "value"):
         text = _plain_text(item.get(key))
         if text:
             names.append(text)
@@ -592,6 +592,30 @@ def _datasource_read_filter(model: Any, datasource_id: int | None, include_legac
     return model.datasource_id == int(datasource_id)
 
 
+def _tracking_scope_statements(
+    tenant_id: int,
+    datasource_id: int | None,
+    *,
+    for_update: bool = False,
+):
+    config_statement = select(TenantTrackingConfigModel).where(
+        TenantTrackingConfigModel.tenant_id == int(tenant_id),
+        _datasource_filter(TenantTrackingConfigModel, datasource_id),
+    )
+    event_group_statement = (
+        select(TenantTrackingEventGroupModel)
+        .where(
+            TenantTrackingEventGroupModel.tenant_id == int(tenant_id),
+            _datasource_filter(TenantTrackingEventGroupModel, datasource_id),
+        )
+        .order_by(TenantTrackingEventGroupModel.sort_order, TenantTrackingEventGroupModel.group_key)
+    )
+    if for_update:
+        config_statement = config_statement.with_for_update()
+        event_group_statement = event_group_statement.with_for_update()
+    return config_statement, event_group_statement
+
+
 def get_tracking_config(
     session: Session,
     tenant_id: int,
@@ -672,16 +696,18 @@ def save_tracking_config(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
-    now = get_timestamp()
-    existing_event_group_rows = session.exec(
-        select(TenantTrackingEventGroupModel)
-        .where(
-            TenantTrackingEventGroupModel.tenant_id == int(tenant_id),
-            _datasource_filter(TenantTrackingEventGroupModel, datasource_id),
-        )
-        .order_by(TenantTrackingEventGroupModel.sort_order, TenantTrackingEventGroupModel.group_key)
-    ).all()
     requested_event_groups = list(editor.event_groups or [])
+    if requested_event_groups and datasource_id is None:
+        raise ValueError("事件分组必须在工作空间已绑定数据源后保存。")
+
+    now = get_timestamp()
+    config_statement, event_group_statement = _tracking_scope_statements(
+        tenant_id,
+        datasource_id,
+        for_update=True,
+    )
+    config = session.exec(config_statement).first()
+    existing_event_group_rows = session.exec(event_group_statement).all()
     groups_to_validate = requested_event_groups or [
         TenantTrackingEventGroupBase(
             group_key=row.group_key,
@@ -695,12 +721,6 @@ def save_tracking_config(
     ]
     validate_tracking_event_groups(groups_to_validate, list(editor.event_name_mappings or []))
 
-    config = session.exec(
-        select(TenantTrackingConfigModel).where(
-            TenantTrackingConfigModel.tenant_id == int(tenant_id),
-            _datasource_filter(TenantTrackingConfigModel, datasource_id),
-        )
-    ).first()
     if config is None:
         config = TenantTrackingConfigModel(
             id=snowflake.generate_id(),
