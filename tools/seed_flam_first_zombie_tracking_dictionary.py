@@ -87,6 +87,30 @@ ARMY_EVENTS = ["ArmyUpgrade"]
 GOLD_EVENTS = ["GoldChange"]
 
 
+DEFAULT_EVENT_NAMES = list(
+    dict.fromkeys(
+        REGISTER_EVENTS
+        + LOGIN_EVENTS
+        + TRANSACTION_EVENTS
+        + PAYMENT_PROCESS_EVENTS
+        + ["CCU"]
+        + ONBOARDING_EVENTS
+        + ACTIVITY_EVENTS
+        + EXPEDITION_EVENTS
+        + ARMY_EVENTS
+        + GOLD_EVENTS
+        + BUILDING_EVENTS
+        + TECH_EVENTS
+        + HERO_EVENTS
+    )
+)
+
+DEFAULT_EVENT_MAPPINGS = [
+    {"event_name": event_name, "properties": []}
+    for event_name in DEFAULT_EVENT_NAMES
+]
+
+
 EVENT_GROUPS = [
     {
         "group_key": "new_user_registration",
@@ -195,7 +219,7 @@ TRACKING_CONFIG = {
         {"role": "partition_date", "table": "event", "field": "dt", "description": "业务日期分区 yyyyMMdd"},
         {"role": "snapshot_date", "table": "user", "field": "dt", "description": "用户快照日期 yyyyMMdd"},
     ],
-    "event_name_mappings": [],
+    "event_name_mappings": DEFAULT_EVENT_MAPPINGS,
     "sql_rules": "\n".join(
         [
             "flam 历史趋势、成熟 cohort 和当前快照类看板以 CURDATE() 的前一日作为最近完整业务日，并过滤 prod=110000038；避免对 ADS 大视图先做 MAX(dt)。",
@@ -1105,19 +1129,48 @@ def upsert_config(cur, now: int) -> None:
     )
 
 
-def validate_event_group_defaults(groups: list[dict], event_name_mappings: list[dict]) -> None:
-    known_events: set[str] = set()
-    for mapping in event_name_mappings or []:
-        if not isinstance(mapping, dict):
+def _event_names_from_mapping(item: object) -> set[str]:
+    if not isinstance(item, dict):
+        return set()
+    names: set[str] = set()
+    for key in ("event_name", "eventName", "name", "value"):
+        value = str(item.get(key) or "").strip()
+        if value:
+            names.add(value)
+    for value in item.get("events") or []:
+        text = str(value or "").strip()
+        if text:
+            names.add(text)
+    return names
+
+
+def merge_missing_event_mappings(
+    existing: list,
+    defaults: list[dict] | None = None,
+) -> tuple[list, int]:
+    merged = json.loads(json.dumps(existing or [], ensure_ascii=False))
+    known_events = {
+        event_name
+        for item in merged
+        for event_name in _event_names_from_mapping(item)
+    }
+    inserted = 0
+    for item in defaults if defaults is not None else DEFAULT_EVENT_MAPPINGS:
+        event_names = _event_names_from_mapping(item)
+        if not event_names or event_names <= known_events:
             continue
-        for key in ("event_name", "eventName", "name", "value"):
-            value = str(mapping.get(key) or "").strip()
-            if value:
-                known_events.add(value)
-        for value in mapping.get("events") or []:
-            text = str(value or "").strip()
-            if text:
-                known_events.add(text)
+        merged.append(json.loads(json.dumps(item, ensure_ascii=False)))
+        known_events.update(event_names)
+        inserted += 1
+    return merged, inserted
+
+
+def validate_event_group_defaults(groups: list[dict], event_name_mappings: list[dict]) -> None:
+    known_events = {
+        event_name
+        for mapping in event_name_mappings or []
+        for event_name in _event_names_from_mapping(mapping)
+    }
     missing = {
         item["group_key"]: [name for name in item["event_names"] if name not in known_events]
         for item in groups
@@ -1126,6 +1179,32 @@ def validate_event_group_defaults(groups: list[dict], event_name_mappings: list[
     if missing:
         details = "；".join(f"{key}: {', '.join(names)}" for key, names in missing.items())
         raise RuntimeError(f"事件分组默认值引用了字典中不存在的事件：{details}")
+
+
+def ensure_default_event_mappings(cur, now: int) -> int:
+    cur.execute(
+        """
+        SELECT event_name_mappings
+        FROM public.sys_tenant_tracking_config
+        WHERE tenant_id = %s AND datasource_id = %s
+        FOR UPDATE
+        """,
+        (TENANT_ID, DATASOURCE_ID),
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("First Zombie 事件字典配置不存在。")
+    merged, inserted = merge_missing_event_mappings(row[0] or [])
+    if inserted:
+        cur.execute(
+            """
+            UPDATE public.sys_tenant_tracking_config
+            SET event_name_mappings = %s, update_by = %s, update_time = %s
+            WHERE tenant_id = %s AND datasource_id = %s
+            """,
+            (Jsonb(merged), UPDATE_BY, now, TENANT_ID, DATASOURCE_ID),
+        )
+    return inserted
 
 
 def upsert_event_groups(cur, now: int) -> int:
@@ -1336,6 +1415,7 @@ def main(*, seed_event_groups: bool = False) -> None:
     with psycopg.connect(**DB) as conn:
         with conn.cursor() as cur:
             upsert_config(cur, now)
+            inserted_events = ensure_default_event_mappings(cur, now)
             inserted_event_groups = upsert_event_groups(cur, now) if seed_event_groups else 0
             upsert_tables(cur, now)
             upsert_fields(cur, now)
@@ -1346,6 +1426,7 @@ def main(*, seed_event_groups: bool = False) -> None:
         json.dumps(
             {
                 "tracking_config": 1,
+                "inserted_events": inserted_events,
                 "inserted_event_groups": inserted_event_groups,
                 "tables": len(TABLES),
                 "fields": len(FIELDS),

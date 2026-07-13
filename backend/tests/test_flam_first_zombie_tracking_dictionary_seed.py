@@ -19,7 +19,7 @@ def test_tracking_dictionary_separates_transactions_and_removes_unverified_ext()
     groups = {item["group_key"]: item for item in tracking.EVENT_GROUPS}
     field_names = {item["field_name"] for item in tracking.FIELDS}
 
-    assert tracking.TRACKING_CONFIG["event_name_mappings"] == []
+    assert tracking.TRACKING_CONFIG["event_name_mappings"] == tracking.DEFAULT_EVENT_MAPPINGS
     assert groups["payment_transaction"]["event_names"] == ["ServerPayLog"]
     assert "ServerPayLog" not in groups["payment_process_event"]["event_names"]
     assert len(groups) == 13
@@ -54,6 +54,78 @@ def test_tracking_dictionary_seed_does_not_overwrite_user_dictionary_or_groups()
     assert "event_name_mappings = EXCLUDED.event_name_mappings" not in content
     assert "ON CONFLICT (tenant_id, datasource_id, group_key) DO NOTHING" in content
     assert "value_mappings = EXCLUDED.value_mappings" not in content
+
+
+def test_tracking_dictionary_keeps_events_without_properties() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    events = {item["event_name"]: item for item in tracking.DEFAULT_EVENT_MAPPINGS}
+
+    assert events["UserActive"]["properties"] == []
+    assert events["UserRegister"]["properties"] == []
+
+
+def test_tracking_dictionary_merges_only_missing_events() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    existing = [
+        {
+            "event_name": "UserActive",
+            "event_display_name": "用户维护的活跃事件",
+            "properties": [{"property_name": "custom.value"}],
+        }
+    ]
+    defaults = [
+        {"event_name": "UserActive", "properties": []},
+        {"event_name": "UserRegister", "properties": []},
+    ]
+
+    merged, inserted = tracking.merge_missing_event_mappings(existing, defaults)
+
+    assert inserted == 1
+    assert merged[0] == existing[0]
+    assert merged[1] == {"event_name": "UserRegister", "properties": []}
+    assert existing == [
+        {
+            "event_name": "UserActive",
+            "event_display_name": "用户维护的活跃事件",
+            "properties": [{"property_name": "custom.value"}],
+        }
+    ]
+
+
+def test_tracking_dictionary_event_merge_is_idempotent() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    first, first_inserted = tracking.merge_missing_event_mappings(
+        [], tracking.DEFAULT_EVENT_MAPPINGS
+    )
+    second, second_inserted = tracking.merge_missing_event_mappings(
+        first, tracking.DEFAULT_EVENT_MAPPINGS
+    )
+
+    assert first_inserted == len(tracking.DEFAULT_EVENT_MAPPINGS)
+    assert second_inserted == 0
+    assert second == first
+
+
+def test_tracking_dictionary_default_groups_reference_existing_events() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    tracking.validate_event_group_defaults(
+        tracking.EVENT_GROUPS,
+        tracking.DEFAULT_EVENT_MAPPINGS,
+    )
+
+
+def test_tracking_dictionary_event_repair_is_scoped() -> None:
+    content = (
+        ROOT / "tools" / "seed_flam_first_zombie_tracking_dictionary.py"
+    ).read_text(encoding="utf-8")
+
+    assert "WHERE tenant_id = %s AND datasource_id = %s" in content
+    assert "event_name_mappings = EXCLUDED.event_name_mappings" not in content
+    assert "ensure_default_event_mappings(cur, now)" in content
 
 
 def test_event_group_defaults_require_explicit_validated_seed() -> None:
