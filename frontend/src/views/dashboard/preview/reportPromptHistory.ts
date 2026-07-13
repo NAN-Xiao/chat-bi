@@ -18,7 +18,15 @@ export type ReportPromptHistorySaveInput =
       targetContext?: string
     }
 
+export type ReportPromptHistoryScope = {
+  tenantId: string | number | null | undefined
+  userUid: string | number | null | undefined
+  dashboardUid: string | number | null | undefined
+  targetScope: string | null | undefined
+}
+
 export const REPORT_PROMPT_HISTORY_STORAGE_KEY = 'dashboard_report_prompt_history:v1'
+export const REPORT_PROMPT_HISTORY_STORAGE_PREFIX = 'dashboard_report_prompt_history:v2'
 export const REPORT_PROMPT_HISTORY_LIMIT = 4
 export const REPORT_PROMPT_HISTORY_TTL_MS = 3 * 24 * 60 * 60 * 1000
 
@@ -71,37 +79,63 @@ function parseHistory(raw: string | null): ReportPromptHistoryItem[] {
   }
 }
 
-function persistHistory(storage: ReportPromptStorage, history: ReportPromptHistoryItem[]) {
+export function buildReportPromptHistoryStorageKey(scope: ReportPromptHistoryScope): string | null {
+  const parts = [scope.tenantId, scope.userUid, scope.dashboardUid, scope.targetScope].map(
+    (value) => `${value ?? ''}`.trim()
+  )
+  if (parts.some((value) => !value)) {
+    return null
+  }
+  return `${REPORT_PROMPT_HISTORY_STORAGE_PREFIX}:${parts.map(encodeURIComponent).join(':')}`
+}
+
+function persistHistory(
+  storage: ReportPromptStorage,
+  storageKey: string,
+  history: ReportPromptHistoryItem[]
+) {
   if (history.length === 0) {
-    storage.removeItem(REPORT_PROMPT_HISTORY_STORAGE_KEY)
+    storage.removeItem(storageKey)
     return
   }
-  storage.setItem(REPORT_PROMPT_HISTORY_STORAGE_KEY, JSON.stringify(history))
+  storage.setItem(storageKey, JSON.stringify(history))
 }
 
 export function loadReportPromptHistory(
   storage: ReportPromptStorage,
+  scope: ReportPromptHistoryScope,
   now = Date.now()
 ): ReportPromptHistoryItem[] {
-  const history = parseHistory(storage.getItem(REPORT_PROMPT_HISTORY_STORAGE_KEY))
+  storage.removeItem(REPORT_PROMPT_HISTORY_STORAGE_KEY)
+  const storageKey = buildReportPromptHistoryStorageKey(scope)
+  if (!storageKey) {
+    return []
+  }
+  const history = parseHistory(storage.getItem(storageKey))
     .filter((item) => item.expiresAt > now)
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, REPORT_PROMPT_HISTORY_LIMIT)
 
-  persistHistory(storage, history)
+  persistHistory(storage, storageKey, history)
   return history
 }
 
 export function saveReportPromptHistory(
   storage: ReportPromptStorage,
+  scope: ReportPromptHistoryScope,
   input: ReportPromptHistorySaveInput,
   now = Date.now()
 ): ReportPromptHistoryItem[] {
+  storage.removeItem(REPORT_PROMPT_HISTORY_STORAGE_KEY)
+  const storageKey = buildReportPromptHistoryStorageKey(scope)
+  if (!storageKey) {
+    return []
+  }
   const normalizedInput = normalizeSaveInput(input)
   if (!normalizedInput.text) {
-    return loadReportPromptHistory(storage, now)
+    return loadReportPromptHistory(storage, scope, now)
   }
-  const deduped = loadReportPromptHistory(storage, now).filter(
+  const deduped = loadReportPromptHistory(storage, scope, now).filter(
     (item) => item.text !== normalizedInput.text
   )
   const history = [
@@ -116,6 +150,6 @@ export function saveReportPromptHistory(
     ...deduped,
   ].slice(0, REPORT_PROMPT_HISTORY_LIMIT)
 
-  persistHistory(storage, history)
+  persistHistory(storage, storageKey, history)
   return history
 }
