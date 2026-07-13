@@ -3,6 +3,8 @@ import { useCache } from '@/utils/useCache'
 import colorFunctions from 'less/lib/less/functions/color.js'
 import colorTree from 'less/lib/less/tree/color.js'
 
+export { formatArg } from '@/utils/formatArg'
+
 const { wsCache } = useCache()
 const getCheckDate = (timestamp: any) => {
   if (!timestamp) return false
@@ -291,23 +293,4 @@ export const getShuzhiAddr = (portEnd?: boolean) => {
     return addr
   }
   return addr.substring(0, addr.length - 1)
-}
-
-export const formatArg = (text: string) => {
-  if (!text) {
-    return false
-  }
-  const mappingArray = ['true', 'false', '1', '0']
-  const match = mappingArray.some((item: string) => {
-    return item === text.toLocaleLowerCase()
-  })
-  if (!match) {
-    return text
-  }
-  try {
-    return JSON.parse(text)
-  } catch (e: any) {
-    console.warn(e)
-    return text
-  }
 }
