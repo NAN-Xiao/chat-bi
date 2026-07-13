@@ -749,6 +749,9 @@ def execute_user_query(
                 datasource_id=datasource_id,
                 operation="execute_user_query.permission_scope",
                 reason=str(exc),
+                fields=getattr(exc, "fields", None),
+                json_paths=getattr(exc, "json_paths", None),
+                rule_type=getattr(exc, "rule_type", None),
             )
         if error_type is None and classification.error_type == DATA_UNAVAILABLE_ERROR_TYPE:
             message = user_data_unavailable_message(str(exc))

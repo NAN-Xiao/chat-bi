@@ -15,6 +15,21 @@ from common.user_facing_errors import (
 from common.utils.utils import AppLogUtil
 
 
+class SqlPermissionScopeError(ValueError):
+    def __init__(
+            self,
+            message: str,
+            *,
+            fields: list[str] | set[str] | tuple[str, ...] | None = None,
+            json_paths: list[str] | set[str] | tuple[str, ...] | None = None,
+            rule_type: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.fields = tuple(sorted({str(item) for item in fields or []}))
+        self.json_paths = tuple(sorted({str(item) for item in json_paths or []}))
+        self.rule_type = rule_type
+
+
 def looks_like_permission_scope_error(message: str) -> bool:
     """
     是什么：looks_like_permission_scope_error 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -42,6 +57,7 @@ def audit_permission_denied(
         reason: str,
         tables: list[str] | set[str] | tuple[str, ...] | None = None,
         fields: list[str] | set[str] | tuple[str, ...] | None = None,
+        json_paths: list[str] | set[str] | tuple[str, ...] | None = None,
         rule_type: str | None = None,
 ) -> None:
     """
@@ -58,6 +74,7 @@ def audit_permission_denied(
         "record_id": record_id,
         "tables": sorted({str(item) for item in tables or [] if str(item).strip()}),
         "fields": sorted({str(item) for item in fields or [] if str(item).strip()}),
+        "json_paths": sorted({str(item) for item in json_paths or [] if str(item).strip()}),
         "rule_type": rule_type,
         "reason": reason,
     }

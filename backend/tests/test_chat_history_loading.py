@@ -188,7 +188,16 @@ def test_default_history_loading_uses_cached_data_without_executing_sql(monkeypa
     )
 
     chat_info = chat_crud.get_chat_with_records(
-        session=_FakeSession(),
+        session=_SingleRecordSession(_history_row(
+            sql="select day, revenue from fact_payments",
+            data=json.dumps({
+                "fields": ["day", "revenue"],
+                "data": [{"day": "2026-06-30", "revenue": 12.5}],
+            }),
+            analysis="旧分析结论",
+            predict="旧预测结论",
+            predict_data=json.dumps([{"day": "2026-07-01", "revenue": 14.0}]),
+        )),
         chart_id=8001,
         current_user=_user(),
         current_assistant=None,
@@ -201,6 +210,60 @@ def test_default_history_loading_uses_cached_data_without_executing_sql(monkeypa
         "data": [{"day": "2026-06-30", "revenue": 12.5}],
     }
     assert chat_info.records[0]["predict_data"] == [{"day": "2026-07-01", "revenue": 14.0}]
+
+
+def test_history_refresh_check_ignores_applicable_column_permissions(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _history_row(sql="select order_id from orders", datasource=1)
+    current_user = SimpleNamespace(
+        id=2, isAdmin=False, system_role="viewer", tenant_id=1, tenant_role="member"
+    )
+    monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        chat_crud,
+        "validate_sql_scope",
+        lambda *_args, **_kwargs: ([], {"orders"}, {}),
+    )
+    monkeypatch.setattr(
+        chat_crud,
+        "has_applicable_row_permissions",
+        lambda *_args, **_kwargs: False,
+        raising=False,
+    )
+
+    assert chat_crud._record_requires_live_data_for_current_permissions(
+        _FakeSession(),
+        current_user,
+        row,
+    ) is False
+
+
+def test_history_refresh_check_detects_applicable_row_permissions(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _history_row(sql="select order_id from orders", datasource=1)
+    current_user = SimpleNamespace(
+        id=2, isAdmin=False, system_role="viewer", tenant_id=1, tenant_role="member"
+    )
+    monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        chat_crud,
+        "validate_sql_scope",
+        lambda *_args, **_kwargs: ([], {"orders"}, {}),
+    )
+    monkeypatch.setattr(
+        chat_crud,
+        "has_applicable_row_permissions",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+
+    assert chat_crud._record_requires_live_data_for_current_permissions(
+        _FakeSession(),
+        current_user,
+        row,
+    ) is True
 
 
 def test_default_history_loading_skips_saved_record_projection_for_normal_cached_data(
@@ -339,15 +402,21 @@ def test_lightweight_history_loading_omits_cached_data_and_skips_heavy_projectio
     assert chat_info.records[0]["predict_data"] is None
 
 
-def test_history_loading_scrubs_cached_data_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_history_loading_refreshes_cached_data_when_row_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    是什么：验证当前用户命中任意数据权限时，默认历史详情不会返回旧快照数据。
+    是什么：验证当前用户命中行权限时，默认历史详情返回按当前权限重新执行的数据。
     """
+    live_calls = []
 
-    def _unexpected_live_data(*_args, **_kwargs):
-        raise AssertionError("默认历史加载不应执行历史 SQL")
+    def _live_data(*_args, **_kwargs):
+        live_calls.append(True)
+        return {
+            "status": "success",
+            "fields": ["day", "revenue"],
+            "data": [{"day": "2026-06-30", "revenue": 8.0}],
+        }
 
-    monkeypatch.setattr(chat_crud, "get_chart_data_with_user", _unexpected_live_data)
+    monkeypatch.setattr(chat_crud, "get_chart_data_with_user", _live_data)
     monkeypatch.setattr(chat_crud, "has_datasource_access", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: True)
@@ -366,9 +435,12 @@ def test_history_loading_scrubs_cached_data_when_permissions_apply(monkeypatch: 
     )
 
     assert len(chat_info.records) == 1
-    assert chat_info.records[0]["data"]["status"] == "failed"
-    assert chat_info.records[0]["data"]["error_type"] == "permission_denied"
-    assert chat_info.records[0]["data"]["message"] == "没有查看权限"
+    assert live_calls == [True]
+    assert chat_info.records[0]["data"]["status"] == "success"
+    assert chat_info.records[0]["data"]["data"] == [{"day": "2026-06-30", "revenue": 8.0}]
+    assert chat_info.records[0]["error"] is None
+    assert chat_info.records[0]["analysis"] is None
+    assert chat_info.records[0]["predict"] is None
     assert chat_info.records[0]["predict_data"] is None
 
 

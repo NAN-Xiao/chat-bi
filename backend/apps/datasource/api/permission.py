@@ -15,6 +15,7 @@ from apps.datasource.crud.permission_rules import (
     normalize_rule_scope,
     save_rule_dto,
 )
+from apps.datasource.crud.permission_fields import normalize_permission_field_entries
 from apps.datasource.crud.permission import has_datasource_access
 from apps.system.schemas.business_access import require_chatbi_business_or_platform_admin
 from apps.system.schemas.permission import AppPermission, require_permissions
@@ -169,6 +170,18 @@ def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule
             raise HTTPException(status_code=404, detail="Datasource not found")
         if table is None or int(table.ds_id) != datasource_id:
             raise HTTPException(status_code=400, detail="Permission table does not belong to datasource")
+        if str(permission.get("type") or "").strip().lower() == "column":
+            try:
+                permission["permissions"] = normalize_permission_field_entries(
+                    session,
+                    tenant_id=int(rule_data.get("tenant_id")),
+                    scope=str(rule_data.get("scope") or ""),
+                    datasource_id=datasource_id,
+                    table=table,
+                    entries=permission.get("permissions"),
+                )
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/ds_permission/list")

@@ -23,7 +23,7 @@ from apps.datasource.crud.permission_errors import (
 )
 from apps.datasource.crud.permission import (
     get_accessible_datasource_ids,
-    has_applicable_permissions,
+    has_applicable_row_permissions,
     has_datasource_access,
     is_normal_user,
 )
@@ -508,7 +508,7 @@ def _record_requires_live_data_for_current_permissions(session: SessionDep, curr
         if datasource is None or not has_datasource_access(session, current_user, datasource_id):
             return True
         _statements, tables, _scope = validate_sql_scope(session, current_user, datasource, sql)
-        return has_applicable_permissions(
+        return has_applicable_row_permissions(
             session=session,
             current_user=current_user,
             ds=datasource,
@@ -1272,7 +1272,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         # 获取令牌总消耗
         total_tokens = token_usage_map.get(row.id, 0)
         current_permission_allowed = _record_allowed_by_current_permissions(session, current_user, row)
-        record_cache_requires_scrub = (
+        record_cache_requires_refresh = (
             not with_data
             and include_record_data
             and row.datasource
@@ -1288,15 +1288,26 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         ) if source_record_id else False
 
         data_value = _row_value(row, "data") if include_cached_record_data else None
-        if with_data and row.datasource and (row.sql or row.analysis_record_id or row.predict_record_id):
-            data_value = orjson.dumps(get_chart_data_with_user(
+        refreshed_data = None
+        if (
+            (with_data or record_cache_requires_refresh)
+            and row.datasource
+            and (row.sql or row.analysis_record_id or row.predict_record_id)
+        ):
+            refreshed_data = get_chart_data_with_user(
                 session=session,
                 current_user=current_user,
                 chat_record_id=row.id,
-            )).decode()
+            )
+            data_value = orjson.dumps(refreshed_data).decode()
 
         chart_value = row.chart
         analysis_value = row.analysis
+        predict_value = row.predict
+        if record_cache_requires_refresh:
+            # 行权限刷新后，旧分析/预测文本可能基于未过滤数据，不能继续复用。
+            analysis_value = None
+            predict_value = None
         analysis_notice_value = None
         if include_cached_record_data and current_permission_allowed and row.datasource and row.sql:
             parsed_data = _loads_record_data(data_value) if isinstance(data_value, str) else None
@@ -1329,7 +1340,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         record_result: ChatRecordResult
         predict_data_value = _row_value(row, "predict_data") if include_cached_record_data else None
         if (
-            record_cache_requires_scrub
+            record_cache_requires_refresh
             or (row.predict_record_id and (not current_permission_allowed or derived_cache_requires_scrub))
         ):
             predict_data_value = None
@@ -1342,7 +1353,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              datasource=row.datasource,
                                              chart_answer=row.chart_answer, chart=chart_value,
                                              analysis=analysis_value, analysis_notice=analysis_notice_value,
-                                             predict=row.predict,
+                                             predict=predict_value,
                                              datasource_select_answer=row.datasource_select_answer,
                                              analysis_record_id=row.analysis_record_id,
                                              predict_record_id=row.predict_record_id,
@@ -1367,7 +1378,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              datasource=row.datasource,
                                              chart_answer=row.chart_answer, chart=chart_value,
                                              analysis=analysis_value, analysis_notice=analysis_notice_value,
-                                             predict=row.predict,
+                                             predict=predict_value,
                                              datasource_select_answer=row.datasource_select_answer,
                                              analysis_record_id=row.analysis_record_id,
                                              predict_record_id=row.predict_record_id,
@@ -1389,7 +1400,11 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             if preserve_scrubbed_error:
                 record_result.error = original_error
                 record_result.data = None
-        elif record_cache_requires_scrub:
+        elif (
+            record_cache_requires_refresh
+            and isinstance(refreshed_data, dict)
+            and refreshed_data.get("error_type") == PERMISSION_DENIED_ERROR_TYPE
+        ):
             record_result.data = orjson.dumps(_failed_permission_data()).decode()
             record_result.error = _USER_PERMISSION_DENIED_MESSAGE
         elif derived_cache_requires_scrub:

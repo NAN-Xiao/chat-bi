@@ -17,8 +17,6 @@ import orjson
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
-from sqlglot import exp, parse_one
-
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
 from apps.dashboard.models.dashboard_model import (
@@ -40,6 +38,7 @@ from apps.system.crud.user import (
 )
 from apps.system.schemas.access_context import require_current_tenant_id
 from common.core.deps import CurrentUser, SessionDep
+from common.sql_json_paths import extract_sql_json_field_pairs, normalize_json_path
 from common.utils.utils import AppLogUtil, extract_nested_json
 
 DASHBOARD_AI_SQL_LLM_OUTPUT_FILE = (
@@ -429,57 +428,11 @@ def _compile_json_subfield_fields(value: Any, datasource_type: str | None) -> An
 
 
 def _normalized_json_path(value: Any, *, postgres: bool = False) -> str:
-    path = str(value or "").strip().strip("'\"")
-    if postgres and path.startswith("{") and path.endswith("}"):
-        segments = [segment.strip() for segment in path[1:-1].split(",") if segment.strip()]
-        return "$." + ".".join(segments) if segments else "$"
-    if not path:
-        return ""
-    return path if path.startswith("$") else f"$.{path.lstrip('.')}"
-
-
-def _json_expression_column_name(expression: Any) -> str:
-    if isinstance(expression, exp.Column):
-        return str(expression.name or "").strip()
-    if isinstance(expression, exp.Cast):
-        return _json_expression_column_name(expression.this)
-    return ""
-
-
-def _json_expression_path(value: Any, *, dialect: str) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, exp.JSONPath):
-        return _normalized_json_path(value.sql(dialect=dialect))
-    return _normalized_json_path(value.sql(dialect=dialect), postgres=dialect == "postgres")
+    return normalize_json_path(value, postgres=postgres)
 
 
 def _sql_json_field_pairs(sql: str, dialect: str) -> tuple[set[tuple[str, str]], list[str]]:
-    normalized_dialect = str(dialect or "").strip().lower()
-    if normalized_dialect not in {"mysql", "postgres", "clickhouse"}:
-        return set(), ["当前数据源方言无法校验 JSON 字段映射。"]
-    try:
-        statement = parse_one(sql, read=normalized_dialect)
-    except Exception as exc:
-        return set(), [f"无法解析生成 SQL 的 JSON 字段映射：{exc}"]
-
-    pairs: set[tuple[str, str]] = set()
-    for expression in statement.walk():
-        if isinstance(expression, exp.JSONExtract):
-            column = _json_expression_column_name(expression.this)
-            path = _json_expression_path(expression.expression, dialect=normalized_dialect)
-        elif isinstance(expression, exp.JSONBExtractScalar):
-            column = _json_expression_column_name(expression.this)
-            path = _json_expression_path(expression.expression, dialect=normalized_dialect)
-        elif isinstance(expression, exp.Anonymous) and expression.name.upper() == "JSON_VALUE":
-            arguments = list(expression.expressions)
-            column = _json_expression_column_name(arguments[0]) if arguments else ""
-            path = _json_expression_path(arguments[1], dialect=normalized_dialect) if len(arguments) > 1 else ""
-        else:
-            continue
-        if column and path:
-            pairs.add((column, path))
-    return pairs, []
+    return extract_sql_json_field_pairs(sql, dialect)
 
 
 def _json_subfield_requirements(*values: Any) -> list[dict[str, str]]:

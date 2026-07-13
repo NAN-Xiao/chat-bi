@@ -26,7 +26,7 @@ from apps.db.engine import get_engine_conn
 from apps.datasource.crud.permission import (
     can_access_table,
     current_tenant_id,
-    get_column_permission_fields,
+    get_column_permission_scope,
     get_user_permission_rules,
     get_user_scoped_table_ids,
     is_normal_user,
@@ -75,6 +75,7 @@ from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
+from common.sql_json_paths import json_paths_intersect, normalize_json_path
 from common.observability.api_timing import log_api_timing
 from common.core.task_registry import register_builtin_tasks
 from common.core.task_queue import enqueue_task
@@ -704,6 +705,7 @@ def _build_field_list_items(
         user: CurrentUser,
         *,
         exclude_container_fields: bool = False,
+        denied_json_paths: dict[str, set[str]] | None = None,
 ) -> list[DatasourceFieldListItem]:
     """
     是什么：生成字段下拉项，合并物理字段和工作空间 tracking 字典字段。
@@ -724,6 +726,18 @@ def _build_field_list_items(
             continue
         result.append(_field_list_item_from_tracking(tracking, datasource=datasource, table=table, field_index=next_index))
         next_index += 1
+    denied_json_paths = denied_json_paths or {}
+    if denied_json_paths:
+        result = [
+            item for item in result
+            if not (
+                _is_json_leaf_field_list_item(item)
+                and any(
+                    json_paths_intersect(normalize_json_path(item.json_path), denied_path)
+                    for denied_path in denied_json_paths.get(str(item.source_field or "").strip().lower(), set())
+                )
+            )
+        ]
     if exclude_container_fields:
         return [item for item in result if _is_selectable_field_list_item(item)]
     return result
@@ -1510,7 +1524,8 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
             status = "forbidden"
             return result
         fields = get_fields_by_table_id(session, id, field)
-        visible_fields = get_column_permission_fields(session, current_user, table, fields, contain_rules)
+        column_scope = get_column_permission_scope(session, current_user, table, fields, contain_rules)
+        visible_fields = column_scope.fields
         _apply_schema_comments(session, datasource, [table], {int(table.id): visible_fields}, current_user)
         result = _build_field_list_items(
             session,
@@ -1519,6 +1534,7 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
             visible_fields,
             current_user,
             exclude_container_fields=bool(field.excludeContainerFields),
+            denied_json_paths=column_scope.denied_json_paths,
         )
         status = "success"
         return result

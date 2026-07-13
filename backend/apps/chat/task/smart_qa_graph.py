@@ -1448,6 +1448,9 @@ def _execute_saas_skill(state: SmartQAGraphState) -> dict[str, Any]:
                 record_id=getattr(getattr(service, "record", None), "id", None),
                 operation="smart_qa.saas_skill_execute",
                 reason=str(execute_error),
+                fields=getattr(execute_error, "fields", None),
+                json_paths=getattr(execute_error, "json_paths", None),
+                rule_type=getattr(execute_error, "rule_type", None),
             )
             trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
             failed_result = service.save_permission_denied_data(session=session)
@@ -1792,6 +1795,9 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 operation="smart_qa.prepare_sql_permission",
                 reason=str(permission_error),
                 tables=service.table_name_list,
+                fields=getattr(permission_error, "fields", None),
+                json_paths=getattr(permission_error, "json_paths", None),
+                rule_type=getattr(permission_error, "rule_type", None),
             )
             sql = service.save_checked_sql(session=session, sql=sql)
             failed_result = service.save_permission_denied_data(session=session)
@@ -1971,6 +1977,9 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 operation="smart_qa.execute_sql_permission",
                 reason=str(execute_error),
                 tables=execute_allowed_tables,
+                fields=getattr(execute_error, "fields", None),
+                json_paths=getattr(execute_error, "json_paths", None),
+                rule_type=getattr(execute_error, "rule_type", None),
             )
             trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
             failed_result = service.save_permission_denied_data(session=session)
