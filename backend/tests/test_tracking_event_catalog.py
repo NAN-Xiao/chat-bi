@@ -14,6 +14,7 @@ def test_build_tracking_event_catalog_groups_events_by_event_category():
                 "event_display_name": "用户登录",
                 "event_category": "基础事件",
                 "collect_side": "client",
+                "collectSide": "server",
                 "description": "登录成功后上报",
                 "properties": [
                     {
@@ -56,6 +57,9 @@ def test_build_tracking_event_catalog_groups_events_by_event_category():
     assert [event.event_name for event in catalog.groups[0].events] == ["login", "account_register"]
     assert catalog.groups[0].events[0].display_name == "用户登录"
     assert catalog.groups[0].events[0].description == "登录成功后上报"
+    event_payload = catalog.groups[0].events[0].model_dump()
+    assert "collect_side" not in event_payload
+    assert "collectSide" not in event_payload
     assert catalog.groups[0].events[0].properties[0].display_name == "加入联盟"
     assert catalog.groups[0].events[0].properties[0].property_name == "ext.allianceId"
     assert catalog.groups[0].events[0].properties[0].source_field == "ext"

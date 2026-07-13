@@ -213,7 +213,6 @@ def build_tracking_event_catalog(config: TenantTrackingConfigDTO) -> TenantTrack
                     display_name=display_name,
                     category=category,
                     description=_first_plain_text(mapping.get("description"), mapping.get("event_description"), mapping.get("ai_notes")),
-                    collect_side=_plain_text(mapping.get("collect_side")),
                     event_table=event_table,
                     event_name_field=event_name_field,
                     properties=_tracking_event_properties(
@@ -257,6 +256,19 @@ def _json_list(value: Any) -> list:
     """
     parsed = _json_value(value, [])
     return parsed if isinstance(parsed, list) else []
+
+
+def _sanitize_event_name_mappings(value: Any) -> list[Any]:
+    sanitized: list[Any] = []
+    for item in _json_list(value):
+        if not isinstance(item, dict):
+            sanitized.append(copy.deepcopy(item))
+            continue
+        cleaned = copy.deepcopy(item)
+        cleaned.pop("collect_side", None)
+        cleaned.pop("collectSide", None)
+        sanitized.append(cleaned)
+    return sanitized
 
 
 def _json_list_or_dict(value: Any):
@@ -493,7 +505,7 @@ def _config_dto(row: TenantTrackingConfigModel | None, tenant_id: int, datasourc
         default_event_name_field=row.default_event_name_field,
         default_event_time_field=row.default_event_time_field,
         field_role_mappings=_json_list(row.field_role_mappings),
-        event_name_mappings=_json_list(row.event_name_mappings),
+        event_name_mappings=_sanitize_event_name_mappings(row.event_name_mappings),
         sql_rules=row.sql_rules,
         notes=row.notes,
         create_by=row.create_by,
@@ -737,7 +749,7 @@ def save_tracking_config(
     config.default_event_name_field = _clean_text(editor.default_event_name_field, 255)
     config.default_event_time_field = _clean_text(editor.default_event_time_field, 255)
     config.field_role_mappings = _json_list(editor.field_role_mappings)
-    config.event_name_mappings = _json_list(editor.event_name_mappings)
+    config.event_name_mappings = _sanitize_event_name_mappings(editor.event_name_mappings)
     config.sql_rules = _clean_text(editor.sql_rules)
     config.notes = _clean_text(editor.notes)
     config.update_by = current_user_id
@@ -914,6 +926,7 @@ def _project_event_name_mappings(
     data_skill_text: str | None = None,
     budget: int = TRACKING_EVENT_MAPPING_PROMPT_BUDGET,
 ) -> list[Any]:
+    mappings = _sanitize_event_name_mappings(mappings)
     if not question or not question.strip():
         return copy.deepcopy(mappings)
 

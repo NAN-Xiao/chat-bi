@@ -414,7 +414,6 @@ class TenantTrackingEventCatalogItem(BaseModel):
     display_name: str
     category: str = "默认分组"
     description: str = ""
-    collect_side: str = ""
     event_table: str = ""
     event_name_field: str = ""
     properties: list[TenantTrackingEventCatalogProperty] = Field(default_factory=list)
