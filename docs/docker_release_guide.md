@@ -9,12 +9,10 @@
 | 文件 | 当前定位 | 注意事项 |
 | --- | --- | --- |
 | `Dockerfile` | 当前 Docker 应用镜像构建主入口 | 运行目录为 `/opt/shuzhi` |
-| `Dockerfile.slg-mock-generator` | SLG BI Mock 独立定时造数器镜像 | 独立于主应用镜像发布，不启动 API、前端、MCP 或 worker |
 | `Dockerfile-base` | 构建本地基础镜像 | 可作为 `Dockerfile` 的基础镜像来源 |
 | `start.sh` | 容器入口脚本 | 通过 `APP_ROLE` 控制容器角色 |
 | `Jenkinsfile` | 当前推荐的 Docker 发布主线 | 构建镜像、执行迁移、重启 systemd 管理的 Docker 实例、发布前端静态文件 |
 | `docker-compose.yaml` | 单容器本地/简易部署参考 | 使用 `/opt/shuzhi` 路径 |
-| `deploy/slg_mock_generator.yaml` | SLG BI Mock 造数器默认配置 | 只用于 demo 明细库造数，不是系统库配置 |
 | `installer/shuzhi/docker-compose.yml` | 历史安装包模板 | 使用前需要校准镜像名、端口和环境变量 |
 | `deploy/systemd/*.service` | 历史非 Docker systemd 模板 | 直接运行 Python 虚拟环境，不是当前 Jenkins Docker 发布方式 |
 
@@ -63,28 +61,9 @@ Git 分支
 
 注意：README 中旧示例使用过 `BASE_IMAGE` / `RUNTIME_IMAGE`，历史安装包里也会出现旧命名，但当前 `Dockerfile` 的实际参数名是 `SHUZHI_BUILD_BASE_IMAGE` / `SHUZHI_RUNTIME_IMAGE`。
 
-## 四、SLG BI Mock 造数器镜像
+## 四、本地构建
 
-`SLG BI Mock` 定时造数器使用独立镜像：
-
-```bash
-docker build \
-  -f Dockerfile.slg-mock-generator \
-  -t chat-bi-slg-mock-generator:local \
-  .
-```
-
-它不依赖 `Dockerfile-base`，不使用 `APP_ROLE`，不暴露服务端口，只运行：
-
-```text
-python /app/tools/slg_bi_mock_scheduled_generator.py
-```
-
-详细构建、发布、回滚和排障流程见 `docs/slg_bi_mock_docker_release.md`。主应用 Docker 发布和造数器 Docker 发布应拆成两个 job；主应用升级不要求重启造数器，造数器升级也不影响 API、前端、MCP 或 worker。
-
-## 五、本地构建
-
-### 5.1 使用本地基础镜像构建
+### 4.1 使用本地基础镜像构建
 
 ```bash
 export DOCKER_BUILDKIT=1
@@ -103,7 +82,7 @@ docker buildx build \
   .
 ```
 
-### 5.2 覆盖基础镜像
+### 4.2 覆盖基础镜像
 
 如果有内网镜像仓库，可以通过 `SHUZHI_BUILD_BASE_IMAGE` / `SHUZHI_RUNTIME_IMAGE` 覆盖基础镜像来源：
 
@@ -120,7 +99,7 @@ docker buildx build \
 
 `Dockerfile-base` 只有一个最终镜像阶段，默认的 `shuzhi-base:latest` 和 `shuzhi-python-pg:latest` 两个 tag 指向同一个本地基础镜像，分别供 `SHUZHI_BUILD_BASE_IMAGE` 和 `SHUZHI_RUNTIME_IMAGE` 引用。
 
-## 六、单容器运行
+## 五、单容器运行
 
 单容器模式适合本地验证或小规模试运行。它会在同一个容器中启动 PostgreSQL、迁移、G2 SSR、可选 MCP 和 API。
 
@@ -167,7 +146,7 @@ http://服务器IP:8000/
 
 实际默认密码以 `DEFAULT_PWD` 和初始化数据为准。
 
-## 七、容器角色
+## 六、容器角色
 
 `start.sh` 通过 `APP_ROLE` 控制容器行为：
 
@@ -190,7 +169,7 @@ MCP：默认关闭，确需开启时单独评估访问控制
 G2 SSR：可单独运行，或由单容器/all 模式后台启动
 ```
 
-## 八、核心运行环境变量
+## 七、核心运行环境变量
 
 | 变量 | 说明 |
 | --- | --- |
@@ -218,7 +197,7 @@ G2 SSR：可单独运行，或由单容器/all 模式后台启动
 - 只有在实际连接 Oracle 数据源时，系统才会尝试初始化 Oracle thick mode。
 - 如果镜像或宿主机未提供 Oracle Instant Client，非 Oracle 场景仍应正常启动。
 
-## 九、Jenkins 发布流程
+## 八、Jenkins 发布流程
 
 当前 `Jenkinsfile` 的参数：
 
@@ -252,7 +231,7 @@ Jenkins 发布阶段：
 9. 从镜像复制 `/opt/shuzhi/frontend/dist` 到 Nginx 静态目录。
 10. 根据参数清理旧镜像、退出容器和悬空镜像。
 
-## 十、生产发布前检查清单
+## 九、生产发布前检查清单
 
 发布前建议确认：
 
@@ -283,7 +262,7 @@ CACHE_TYPE=redis
 
 原因是认证状态、助手状态、任务队列、限流和共享缓存不能依赖进程本地内存。
 
-## 十一、systemd Docker 实例要求
+## 十、systemd Docker 实例要求
 
 当前 Jenkinsfile 不安装 systemd unit，只提示：
 
@@ -363,7 +342,7 @@ sudo systemctl enable chat-bi-api@8000.service chat-bi-api@8002.service
 sudo systemctl enable chat-bi-worker@1.service chat-bi-worker@2.service
 ```
 
-## 十二、Nginx 发布与代理
+## 十一、Nginx 发布与代理
 
 Jenkins 会把前端构建产物从镜像中复制出来：
 
@@ -399,9 +378,9 @@ upstream chat_bi_backend {
 }
 ```
 
-## 十三、回滚方案
+## 十二、回滚方案
 
-### 13.1 镜像回滚
+### 12.1 镜像回滚
 
 1. 查看可用镜像：
 
@@ -422,7 +401,7 @@ sudo systemctl restart chat-bi-api@8000.service chat-bi-api@8002.service
 sudo systemctl restart chat-bi-worker@1.service chat-bi-worker@2.service
 ```
 
-### 13.2 前端静态文件回滚
+### 12.2 前端静态文件回滚
 
 Jenkins 发布前端时会临时生成 `html.prev.*`，发布失败会自动恢复。发布成功后备份目录会删除，因此若需要可审计回滚，建议发布前手动归档：
 
@@ -430,7 +409,7 @@ Jenkins 发布前端时会临时生成 `html.prev.*`，发布失败会自动恢�
 tar -czf /home/chat-bi/nginx/html-$(date +%Y%m%d_%H%M%S).tar.gz -C /home/chat-bi/nginx html
 ```
 
-### 13.3 数据库回滚
+### 12.3 数据库回滚
 
 数据库迁移不可简单依赖镜像回滚自动逆转。生产发布前应先备份系统库：
 
@@ -440,9 +419,9 @@ pg_dump -h 10.1.5.28 -p 5432 -U root -Fc shuzhi_bi > shuzhi_bi-before-release.du
 
 如需回滚数据库，应按 Alembic 迁移内容和备份策略单独评估。
 
-## 十四、常见排障
+## 十三、常见排障
 
-### 14.1 构建失败：基础镜像不存在
+### 13.1 构建失败：基础镜像不存在
 
 检查：
 
@@ -459,7 +438,7 @@ docker build -f Dockerfile-base -t shuzhi-base:latest -t shuzhi-python-pg:latest
 
 如果使用内网镜像仓库，通过 `SHUZHI_BUILD_BASE_IMAGE` / `SHUZHI_RUNTIME_IMAGE` 覆盖。
 
-### 14.2 前端 API 地址不对
+### 13.2 前端 API 地址不对
 
 当前 Jenkins 使用：
 
@@ -469,7 +448,7 @@ VITE_API_BASE_URL=./api/v1
 
 这要求 Nginx 同域代理 `/api/v1/` 到后端。若前后端分域部署，需要重新构建镜像并设置合适的 `VITE_API_BASE_URL`。
 
-### 14.3 API 多副本登录态异常
+### 13.3 API 多副本登录态异常
 
 检查是否使用 Redis：
 
@@ -479,7 +458,7 @@ grep -E '^(CACHE_TYPE|REDIS_HOST|REDIS_PORT|REDIS_DB)=' /home/chat-bi/chat-bi.ru
 
 多副本模式下不要使用 `CACHE_TYPE=memory`。
 
-### 14.4 迁移失败
+### 13.4 迁移失败
 
 查看迁移容器日志：
 
@@ -493,7 +472,7 @@ docker logs chat-bi-migrate
 tail -n 300 /home/chat-bi/data/shuzhi/logs/*.log
 ```
 
-### 14.5 systemd 服务启动失败
+### 13.5 systemd 服务启动失败
 
 检查：
 
@@ -513,7 +492,7 @@ IMAGE 指向的镜像是否存在
 API 端口是否被占用
 ```
 
-### 14.6 路径混用导致文件找不到
+### 13.6 路径混用导致文件找不到
 
 当前 Docker 镜像内部路径是：
 
@@ -525,7 +504,7 @@ API 端口是否被占用
 
 使用 Docker 发布时，容器内挂载目标应以 `/opt/shuzhi` 为准；宿主机目录当前 Jenkins 使用 `/home/chat-bi`。
 
-## 十五、建议改进项
+## 十四、建议改进项
 
 1. 将 Docker 版 `chat-bi-api@.service` 和 `chat-bi-worker@.service` 模板纳入仓库，避免宿主机手工配置不可追溯。
 2. 更新 README 中旧的 `BASE_IMAGE` / `RUNTIME_IMAGE` 示例参数，避免和当前 `Dockerfile` 不一致。
