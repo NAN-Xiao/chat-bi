@@ -375,6 +375,7 @@ class TenantTrackingImportSummary(BaseModel):
     table_count: int = 0
     field_count: int = 0
     event_count: int = 0
+    event_group_count: int = 0
     skipped_rows: int = 0
     warning_count: int = 0
     warnings: list[str] = Field(default_factory=list)

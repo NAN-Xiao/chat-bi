@@ -113,6 +113,28 @@ def _excel_response(buffer, filename: str) -> StreamingResponse:
     )
 
 
+def _save_tracking_config_or_400(
+    session: SessionDep,
+    *,
+    tenant_id: int,
+    editor: TenantTrackingConfigEditor,
+    datasource_id: int | None,
+    current_user_id: int | None,
+) -> TenantTrackingConfigDTO:
+    """把配置校验错误转换成可定位的客户端错误并回滚事务。"""
+    try:
+        return save_tracking_config(
+            session,
+            int(tenant_id),
+            editor,
+            datasource_id=datasource_id,
+            current_user_id=current_user_id,
+        )
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("", response_model=TenantTrackingConfigDTO, include_in_schema=False)
 async def current_tracking_config(
     session: SessionDep,
@@ -180,10 +202,10 @@ async def update_current_tracking_config(
     """
     _require_workspace_admin(current_user, current_tenant)
     _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
-    return save_tracking_config(
+    return _save_tracking_config_or_400(
         session,
-        int(current_tenant.id),
-        editor,
+        tenant_id=int(current_tenant.id),
+        editor=editor,
         datasource_id=datasource_id,
         current_user_id=int(current_user.id) if getattr(current_user, "id", None) is not None else None,
     )
@@ -280,10 +302,10 @@ async def import_tracking_config_excel(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Excel 解析失败：{exc}") from exc
 
-    saved = save_tracking_config(
+    saved = _save_tracking_config_or_400(
         session,
-        int(current_tenant.id),
-        parsed.editor,
+        tenant_id=int(current_tenant.id),
+        editor=parsed.editor,
         datasource_id=datasource_id,
         current_user_id=int(current_user.id) if getattr(current_user, "id", None) is not None else None,
     )

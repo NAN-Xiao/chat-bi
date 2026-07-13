@@ -5,7 +5,9 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
+from apps.system.api import tracking_config as tracking_config_api
 from apps.system.crud.tracking_config import _event_group_dto, validate_tracking_event_groups
 from apps.system.models.tenant import TenantTrackingEventGroupModel
 from apps.system.schemas.tenant_schema import (
@@ -91,3 +93,30 @@ def test_event_group_migration_follows_current_alembic_head() -> None:
 
     assert module.revision == "142trackinggroups"
     assert module.down_revision == "141trackingextra"
+
+
+def test_tracking_config_save_validation_rolls_back_and_returns_400(monkeypatch) -> None:
+    class FakeSession:
+        rolled_back = False
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    def fail_save(*args, **kwargs):
+        raise ValueError("事件分组 payment_process 引用了未知事件 PayFinish2")
+
+    session = FakeSession()
+    monkeypatch.setattr(tracking_config_api, "save_tracking_config", fail_save)
+
+    with pytest.raises(HTTPException) as error:
+        tracking_config_api._save_tracking_config_or_400(
+            session,
+            tenant_id=2001,
+            editor=TenantTrackingConfigEditor(),
+            datasource_id=3,
+            current_user_id=1,
+        )
+
+    assert error.value.status_code == 400
+    assert "PayFinish2" in str(error.value.detail)
+    assert session.rolled_back is True

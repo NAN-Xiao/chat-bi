@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import pytest
 from openpyxl import Workbook, load_workbook
 
 from apps.chat.models.chat_model import AiModelQuestion
@@ -18,6 +19,7 @@ from apps.system.crud.tracking_excel import (
 )
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
+    TenantTrackingEventGroupDTO,
     TenantTrackingFieldDTO,
     TenantTrackingTableDTO,
 )
@@ -210,6 +212,128 @@ def _sheet_rows(workbook_bytes: bytes, sheet_name: str) -> list[tuple[object, ..
     workbook = load_workbook(BytesIO(workbook_bytes), read_only=True, data_only=True)
     sheet = workbook[sheet_name]
     return list(sheet.iter_rows(min_row=2, values_only=True))
+
+
+EVENT_GROUP_HEADERS = [
+    "分组标识（必填）",
+    "分组名称（必填）",
+    "分组说明",
+    "分组排序",
+    "事件名（必填）",
+    "事件排序",
+    "启用",
+]
+
+
+def _workbook_with_event_group_rows(rows: list[list[object]]) -> bytes:
+    workbook_bytes = tracking_config_excel(_tracking_config(), physical_schema=_physical_schema()).getvalue()
+    workbook = load_workbook(BytesIO(workbook_bytes))
+    sheet = workbook["事件分组"]
+    for row in rows:
+        sheet.append(row)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_event_groups_export_as_independent_sheet() -> None:
+    config = _tracking_config().model_copy(
+        update={
+            "event_groups": [
+                TenantTrackingEventGroupDTO(
+                    tenant_id=2001,
+                    group_key="payment_process",
+                    group_name="支付流程事件",
+                    description="只统计流程量",
+                    event_names=["pay_success", "refund_success"],
+                    sort_order=10,
+                )
+            ]
+        }
+    )
+
+    workbook_bytes = tracking_config_excel(config, physical_schema=_physical_schema()).getvalue()
+
+    assert _headers(workbook_bytes, "事件分组") == EVENT_GROUP_HEADERS
+    assert _sheet_rows(workbook_bytes, "事件分组") == [
+        ("payment_process", "支付流程事件", "只统计流程量", 10, "pay_success", 1, "是"),
+        ("payment_process", "支付流程事件", "只统计流程量", 10, "refund_success", 2, "是"),
+    ]
+
+
+def test_event_group_sheet_imports_authoritative_groups() -> None:
+    content = _workbook_with_event_group_rows(
+        [
+            ["payment_process", "支付流程事件", "只统计流程量", 10, "refund_success", 20, "是"],
+            ["payment_process", "支付流程事件", "只统计流程量", 10, "pay_success", 10, "是"],
+        ]
+    )
+
+    parsed = parse_tracking_excel(content, _tracking_config(), physical_schema=_physical_schema())
+
+    assert parsed.editor.event_groups is not None
+    assert len(parsed.editor.event_groups) == 1
+    group = parsed.editor.event_groups[0]
+    assert group.group_key == "payment_process"
+    assert group.event_names == ["pay_success", "refund_success"]
+    assert group.sort_order == 10
+
+
+def test_empty_event_group_sheet_preserves_existing_groups() -> None:
+    content = _workbook_with_event_group_rows([])
+
+    parsed = parse_tracking_excel(content, _tracking_config(), physical_schema=_physical_schema())
+
+    assert parsed.editor.event_groups is None
+
+
+def test_event_group_sheet_rejects_unknown_event() -> None:
+    content = _workbook_with_event_group_rows(
+        [["payment_process", "支付流程事件", "只统计流程量", 10, "PayFinish2", 10, "是"]]
+    )
+
+    with pytest.raises(ValueError, match="PayFinish2"):
+        parse_tracking_excel(content, _tracking_config(), physical_schema=_physical_schema())
+
+
+def test_event_group_sheet_reports_row_for_invalid_group_key() -> None:
+    content = _workbook_with_event_group_rows(
+        [["Payment-Process", "支付流程事件", "只统计流程量", 10, "pay_success", 10, "是"]]
+    )
+
+    with pytest.raises(ValueError, match="第 2 行.*分组标识"):
+        parse_tracking_excel(content, _tracking_config(), physical_schema=_physical_schema())
+
+
+def test_event_dictionary_import_rejects_removing_group_member() -> None:
+    existing = _tracking_config().model_copy(
+        update={
+            "event_groups": [
+                TenantTrackingEventGroupDTO(
+                    tenant_id=2001,
+                    group_key="payment_process",
+                    group_name="支付流程事件",
+                    event_names=["pay_success"],
+                )
+            ]
+        }
+    )
+    workbook_bytes = tracking_config_excel(existing, physical_schema=_physical_schema()).getvalue()
+    workbook = load_workbook(BytesIO(workbook_bytes))
+    workbook.remove(workbook["事件分组"])
+    event_parameter_sheet = workbook["事件参数对照"]
+    for row_index in range(event_parameter_sheet.max_row, 1, -1):
+        if event_parameter_sheet.cell(row_index, 1).value == "pay_success":
+            event_parameter_sheet.delete_rows(row_index, 1)
+    event_sheet = workbook["event_log"]
+    for row_index in range(event_sheet.max_row, 1, -1):
+        if event_sheet.cell(row_index, 11).value == "pay_success":
+            event_sheet.delete_rows(row_index, 1)
+    output = BytesIO()
+    workbook.save(output)
+
+    with pytest.raises(ValueError, match="payment_process.*pay_success"):
+        parse_tracking_excel(output.getvalue(), existing, physical_schema=_physical_schema())
 
 
 def test_excel_unknown_columns_roundtrip_as_extra_properties() -> None:
@@ -625,6 +749,7 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
         "_说明",
         "_表映射",
         "事件参数对照",
+        "事件分组",
         "event_log",
         "user_profile",
         "_SQL规则",

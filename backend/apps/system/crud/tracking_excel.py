@@ -16,9 +16,11 @@ from apps.system.crud.tracking_expression import (
     json_path_segments as _json_path_segments,
     normalize_json_path as _normalize_json_path,
 )
+from apps.system.crud.tracking_config import validate_tracking_event_groups
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
+    TenantTrackingEventGroupBase,
     TenantTrackingFieldBase,
     TenantTrackingImportSummary,
     TenantTrackingTableBase,
@@ -30,12 +32,14 @@ INFO_SHEET = "_说明"
 TABLE_MAP_SHEET = "_表映射"
 SQL_RULE_SHEET = "_SQL规则"
 EVENT_PARAMETER_MAPPING_SHEET = "事件参数对照"
+EVENT_GROUP_SHEET = "事件分组"
 
 SYSTEM_SHEETS = {
     INFO_SHEET,
     TABLE_MAP_SHEET,
     SQL_RULE_SHEET,
     EVENT_PARAMETER_MAPPING_SHEET,
+    EVENT_GROUP_SHEET,
     "数据类型设计原则",
     "公共事件属性设置方式",
     "多端接入注意点",
@@ -109,6 +113,16 @@ EVENT_PARAMETER_MAPPING_COLUMNS = [
     "description",
 ]
 
+EVENT_GROUP_COLUMNS = [
+    "group_key",
+    "group_name",
+    "group_description",
+    "group_sort_order",
+    "event_name",
+    "event_order",
+    "enabled",
+]
+
 ATTRIBUTE_EXPORT_COLUMN_LABELS = {
     "field_name": "属性名（必填）",
     "field_display_name": "属性显示名",
@@ -161,6 +175,12 @@ EXPORT_COLUMN_LABELS = {
     "scope": "适用范围",
     "rule_text": "规则内容",
     "priority": "优先级",
+    "group_key": "分组标识（必填）",
+    "group_name": "分组名称（必填）",
+    "group_description": "分组说明",
+    "group_sort_order": "分组排序",
+    "event_order": "事件排序",
+    "enabled": "启用",
 }
 
 BUSINESS_EXPORT_COLUMN_LABELS = {
@@ -361,6 +381,18 @@ HEADER_ALIASES = {
     "规则内容": "rule_text",
     "priority": "priority",
     "优先级": "priority",
+    "groupkey": "group_key",
+    "分组标识": "group_key",
+    "groupname": "group_name",
+    "分组名称": "group_name",
+    "groupdescription": "group_description",
+    "分组说明": "group_description",
+    "groupsortorder": "group_sort_order",
+    "分组排序": "group_sort_order",
+    "eventorder": "event_order",
+    "事件排序": "event_order",
+    "enabled": "enabled",
+    "启用": "enabled",
 }
 
 ROW_TYPE_ALIASES = {
@@ -510,6 +542,7 @@ KNOWN_IMPORT_COLUMNS = (
     | set(SQL_RULE_COLUMNS)
     | set(ATTRIBUTE_COLUMNS)
     | set(EVENT_PARAMETER_MAPPING_COLUMNS)
+    | set(EVENT_GROUP_COLUMNS)
     | set(HEADER_ALIASES.values())
 )
 
@@ -853,6 +886,7 @@ def _merge_tracking_config(existing: TenantTrackingConfigDTO, imported: TenantTr
     base.event_name_mappings = _merge_event_mappings(base.event_name_mappings, imported.event_name_mappings)
     base.sql_rules = _merge_text(base.sql_rules, imported.sql_rules)
     base.notes = _merge_text(base.notes, imported.notes)
+    base.event_groups = imported.event_groups
 
     table_by_name = {table.table_name: table for table in base.tables if table.table_name}
     for table in imported.tables or []:
@@ -1484,6 +1518,101 @@ def _parse_event_parameter_mapping_sheet(
         _append_event_mapping(editor.event_name_mappings, event, prop)
 
 
+def _event_group_int(value: Any, *, row_number: int, field_name: str, default: int) -> int:
+    text = _text(value)
+    if not text:
+        return default
+    try:
+        number = float(text)
+    except ValueError as exc:
+        raise ValueError(f"事件分组 sheet 第 {row_number} 行：{field_name}必须是整数。") from exc
+    if not number.is_integer():
+        raise ValueError(f"事件分组 sheet 第 {row_number} 行：{field_name}必须是整数。")
+    return int(number)
+
+
+def _event_group_enabled(value: Any, *, row_number: int) -> bool:
+    text = _text(value).lower()
+    if not text:
+        return True
+    if text in {"1", "y", "yes", "true", "t", "是", "启用"}:
+        return True
+    if text in {"0", "n", "no", "false", "f", "否", "停用"}:
+        return False
+    raise ValueError(f"事件分组 sheet 第 {row_number} 行：启用只能填写是或否。")
+
+
+def _parse_event_group_sheet(rows: list[dict[str, Any]]) -> list[TenantTrackingEventGroupBase]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for row_number, row in enumerate(rows, start=2):
+        group_key = _text(row.get("group_key"))
+        group_name = _text(row.get("group_name"))
+        event_name = _text(row.get("event_name"))
+        if not group_key:
+            raise ValueError(f"事件分组 sheet 第 {row_number} 行：缺少分组标识。")
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,127}", group_key):
+            raise ValueError(
+                f"事件分组 sheet 第 {row_number} 行：分组标识必须以小写字母开头，"
+                "且只能包含小写字母、数字和下划线。"
+            )
+        if not group_name:
+            raise ValueError(f"事件分组 sheet 第 {row_number} 行：缺少分组名称。")
+        if not event_name:
+            raise ValueError(f"事件分组 sheet 第 {row_number} 行：缺少事件名。")
+
+        description = _text(row.get("group_description"))
+        sort_order = _event_group_int(
+            row.get("group_sort_order"),
+            row_number=row_number,
+            field_name="分组排序",
+            default=0,
+        )
+        event_order = _event_group_int(
+            row.get("event_order"),
+            row_number=row_number,
+            field_name="事件排序",
+            default=row_number - 1,
+        )
+        enabled = _event_group_enabled(row.get("enabled"), row_number=row_number)
+        metadata = (group_name, description, sort_order, enabled)
+        current = grouped.get(group_key)
+        if current is None:
+            current = {"metadata": metadata, "events": [], "seen": set()}
+            grouped[group_key] = current
+        elif current["metadata"] != metadata:
+            raise ValueError(
+                f"事件分组 sheet 第 {row_number} 行：分组 {group_key} "
+                "的名称、说明、排序或启用状态与前面行不一致。"
+            )
+        if event_name in current["seen"]:
+            raise ValueError(
+                f"事件分组 sheet 第 {row_number} 行：分组 {group_key} 包含重复事件 {event_name}。"
+            )
+        current["seen"].add(event_name)
+        current["events"].append((event_order, row_number, event_name))
+
+    result: list[TenantTrackingEventGroupBase] = []
+    for group_key, current in grouped.items():
+        group_name, description, sort_order, enabled = current["metadata"]
+        try:
+            result.append(
+                TenantTrackingEventGroupBase(
+                    group_key=group_key,
+                    group_name=group_name,
+                    description=description or None,
+                    event_names=[
+                        event_name
+                        for _event_order, _row_number, event_name in sorted(current["events"])
+                    ],
+                    sort_order=sort_order,
+                    enabled=enabled,
+                )
+            )
+        except Exception as exc:
+            raise ValueError(f"事件分组 {group_key} 配置无效：{exc}") from exc
+    return sorted(result, key=lambda item: (item.sort_order, item.group_key))
+
+
 def parse_tracking_excel(
     content: bytes,
     existing: TenantTrackingConfigDTO,
@@ -1523,6 +1652,12 @@ def parse_tracking_excel(
         rows, skipped = _read_sheet_rows(excel, EVENT_PARAMETER_MAPPING_SHEET)
         skipped_rows += skipped
         _parse_event_parameter_mapping_sheet(rows, imported, warnings)
+
+    if EVENT_GROUP_SHEET in excel.sheet_names:
+        rows, skipped = _read_sheet_rows(excel, EVENT_GROUP_SHEET)
+        skipped_rows += skipped
+        if rows:
+            imported.event_groups = _parse_event_group_sheet(rows)
 
     for sheet_name in excel.sheet_names:
         if sheet_name in SYSTEM_SHEETS:
@@ -1577,6 +1712,9 @@ def parse_tracking_excel(
                 )
 
     normalized = _dedupe_imported_tracking_config(imported)
+    groups_to_validate = normalized.event_groups or list(existing.event_groups or [])
+    if groups_to_validate:
+        validate_tracking_event_groups(groups_to_validate, normalized.event_name_mappings)
     return ParsedTrackingConfig(editor=normalized, profile=profile, warnings=warnings, skipped_rows=skipped_rows)
 
 
@@ -1586,6 +1724,7 @@ def import_summary(parsed: ParsedTrackingConfig) -> TenantTrackingImportSummary:
         table_count=len(parsed.editor.tables or []),
         field_count=len(parsed.editor.fields or []),
         event_count=len(parsed.editor.event_name_mappings or []),
+        event_group_count=len(parsed.editor.event_groups or []),
         skipped_rows=parsed.skipped_rows,
         warning_count=len(parsed.warnings),
         warnings=parsed.warnings[:50],
@@ -1845,6 +1984,29 @@ def _event_parameter_mapping_rows(config: TenantTrackingConfigDTO) -> list[dict[
                     ) if prop_dict else "",
                     "description": _first_text(prop_dict.get("description"), prop_dict.get("ai_notes")),
                 })
+    return rows
+
+
+def _event_group_rows(config: TenantTrackingConfigDTO) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    groups = sorted(
+        list(config.event_groups or []),
+        key=lambda item: (int(getattr(item, "sort_order", 0) or 0), _text(getattr(item, "group_key", ""))),
+    )
+    for group in groups:
+        event_names = [_text(name) for name in getattr(group, "event_names", []) if _text(name)]
+        for event_order, event_name in enumerate(event_names, start=1):
+            rows.append(
+                {
+                    "group_key": _text(getattr(group, "group_key", "")),
+                    "group_name": _text(getattr(group, "group_name", "")),
+                    "group_description": _text(getattr(group, "description", "")),
+                    "group_sort_order": int(getattr(group, "sort_order", 0) or 0),
+                    "event_name": event_name,
+                    "event_order": event_order,
+                    "enabled": "是" if bool(getattr(group, "enabled", True)) else "否",
+                }
+            )
     return rows
 
 
@@ -2647,6 +2809,7 @@ def tracking_config_excel(
         ),
         (TABLE_MAP_SHEET, table_rows, _columns_with_extra(TABLE_MAP_COLUMNS, table_rows)),
         (EVENT_PARAMETER_MAPPING_SHEET, _event_parameter_mapping_rows(config), EVENT_PARAMETER_MAPPING_COLUMNS),
+        (EVENT_GROUP_SHEET, _event_group_rows(config), EVENT_GROUP_COLUMNS),
     ]
 
     for table_name in all_table_names:
