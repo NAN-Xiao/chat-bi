@@ -1,4 +1,7 @@
 """验证 tracking 采集端字段被统一清理。"""
+import importlib.util
+from pathlib import Path
+
 from apps.system.crud import tracking_config
 from apps.system.models.tenant import TenantTrackingConfigModel
 from apps.system.schemas.tenant_schema import TenantTrackingConfigDTO
@@ -51,3 +54,24 @@ def test_tracking_prompt_hides_collect_side_from_direct_config() -> None:
 
     assert "collect_side" not in context
     assert "collectSide" not in context
+
+
+def test_collect_side_migration_cleans_json_and_follows_head() -> None:
+    migration_path = (
+        Path(__file__).parents[1]
+        / "alembic"
+        / "versions"
+        / "143_remove_tracking_collect_side.py"
+    )
+    spec = importlib.util.spec_from_file_location("remove_tracking_collect_side", migration_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.revision == "143trackingcollectside"
+    assert module.down_revision == "142trackinggroups"
+    sql = str(module.CLEAN_EVENT_MAPPINGS_SQL)
+    assert "WITH ORDINALITY" in sql
+    assert "- 'collect_side'" in sql
+    assert "- 'collectSide'" in sql
+    assert "ORDER BY item_order" in sql
