@@ -4458,6 +4458,7 @@ def load_platform_dashboard_template(
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     template = _load_platform_template_or_404(session, template_id, user)
+    _repair_platform_template_snapshot_if_needed(session, template)
     return _dashboard_payload(
         session,
         user,

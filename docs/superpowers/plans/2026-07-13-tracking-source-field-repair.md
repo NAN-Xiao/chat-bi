@@ -89,7 +89,7 @@ Expected: 全部 PASS。
 ### Task 3: 备份、应用和数据验收
 
 **Files:**
-- Read: `outputs/event-field-source-analysis/tracking_dictionary_current_fixed_mixed_merged.xlsx`
+- Read: `outputs/event-parameter-mapping/tracking_dictionary_current_fixed_mixed_merged.xlsx`
 - Generate: `.codex-runtime/pg-backups/*` 或 `.codex-runtime/event-source-backups/*.json`
 - Generate: `outputs/event-parameter-mapping/tracking_dictionary_current_repaired.xlsx`
 
@@ -105,13 +105,13 @@ Expected: 输出 `.codex-runtime/pg-backups/zhishu_bi-<timestamp>.dump`；若本
 
 - [ ] **Step 2: dry-run 校验修复输入**
 
-Run: `backend\.venv\Scripts\python.exe tools/repair_flam_first_zombie_event_sources.py --workbook outputs/event-field-source-analysis/tracking_dictionary_current_fixed_mixed_merged.xlsx`
+Run: `backend\.venv\Scripts\python.exe tools/repair_flam_first_zombie_event_sources.py --workbook outputs/event-parameter-mapping/tracking_dictionary_current_fixed_mixed_merged.xlsx`
 
 Expected: `changed=true`、当前分布 `ext=755`、目标分布 `personal=469/ext=286`，数据库不变化。
 
 - [ ] **Step 3: 应用修复并重复运行验证幂等**
 
-Run: `backend\.venv\Scripts\python.exe tools/repair_flam_first_zombie_event_sources.py --workbook outputs/event-field-source-analysis/tracking_dictionary_current_fixed_mixed_merged.xlsx --apply`
+Run: `backend\.venv\Scripts\python.exe tools/repair_flam_first_zombie_event_sources.py --workbook outputs/event-parameter-mapping/tracking_dictionary_current_fixed_mixed_merged.xlsx --apply`
 
 Run again without `--apply`。
 

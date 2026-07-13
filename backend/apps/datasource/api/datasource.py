@@ -459,10 +459,14 @@ def _apply_schema_comments(
             continue
         for field in fields:
             key = (table_name, field.field_name)
-            if key in field_comments:
+            if not hasattr(field, "_physical_custom_comment"):
+                object.__setattr__(field, "_physical_custom_comment", field.custom_comment)
+            workspace_comment_configured = key in field_comments
+            object.__setattr__(field, "_workspace_comment_configured", workspace_comment_configured)
+            if workspace_comment_configured:
                 field.custom_comment = field_comments[key] or ""
             else:
-                field.custom_comment = field.custom_comment or ""
+                field.custom_comment = getattr(field, "_physical_custom_comment", None) or ""
 
 
 def _tracking_json_list(value: Any) -> list[Any]:
@@ -632,7 +636,10 @@ def _field_list_item_from_core(
     是什么：把物理字段与 tracking 注释合并成字段下拉项。
     """
     display_name = _tracking_display_name(tracking)
-    comment = (field.custom_comment or field.field_comment or "").strip() or getattr(tracking, "field_comment", None)
+    if getattr(field, "_workspace_comment_configured", False):
+        comment = (field.custom_comment or "").strip()
+    else:
+        comment = (field.custom_comment or field.field_comment or "").strip() or getattr(tracking, "field_comment", None)
     return DatasourceFieldListItem(
         id=int(field.id),
         ds_id=int(field.ds_id) if field.ds_id is not None else None,

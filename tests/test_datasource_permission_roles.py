@@ -26,7 +26,7 @@ from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_RESULT_MESSAGE,
 )
 from apps.datasource.crud.sql_permission import validate_sql_scope
-from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreTable, TableObj
+from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable, TableObj
 from apps.datasource.models.datasource import FieldObj
 from apps.system.schemas import permission as permission_schema
 from apps.analysis_assistant.api import analysis_assistant as analysis_assistant_api
@@ -583,11 +583,46 @@ def test_workspace_schema_comments_override_physical_custom_comments(monkeypatch
     assert amount["custom_comment"] == "workspace amount comment"
     assert order_id["custom_comment"] == ""
     assert tables == ["orders", "payments"]
-    assert "# Table: orders, workspace orders comment" in schema
+    assert "# Table: public.orders, workspace orders comment" in schema
     assert "(amount:numeric, workspace amount comment)" in schema
     assert "(order_id:int)" in schema
     assert "orders, orders" not in schema
     assert "order_id, order_id" not in schema
+
+
+def test_workspace_comment_state_does_not_leak_across_reused_field_objects(monkeypatch):
+    datasource = SimpleNamespace(id=1, tenant_id=1)
+    table = SimpleNamespace(id=10, table_name="orders", custom_comment="")
+    field = CoreField(
+        id=100,
+        ds_id=1,
+        table_id=10,
+        checked=True,
+        field_name="amount",
+        field_type="numeric",
+        field_comment="physical comment",
+        custom_comment="physical custom comment",
+        field_index=0,
+    )
+    field_comment_maps = iter([{("orders", "amount")}, set()])
+
+    monkeypatch.setattr(datasource_api, "_metadata_tenant_id", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(datasource_api, "table_comment_map", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        datasource_api,
+        "field_comment_map",
+        lambda *args, **kwargs: {
+            key: "" for key in next(field_comment_maps)
+        },
+    )
+
+    datasource_api._apply_schema_comments(None, datasource, [table], {10: [field]})
+    first = datasource_api._field_list_item_from_core(field, "orders", None)
+    datasource_api._apply_schema_comments(None, datasource, [table], {10: [field]})
+    second = datasource_api._field_list_item_from_core(field, "orders", None)
+
+    assert first.custom_comment == ""
+    assert second.custom_comment == "physical custom comment"
 
 
 def test_schema_change_request_is_saved_without_mutating_readonly_datasource(monkeypatch):
@@ -1776,7 +1811,7 @@ def test_table_permission_whitelist_keeps_default_viewer_access(monkeypatch):
         )
 
         assert "payments" in tables
-        assert "# Table: payments" in schema
+        assert "# Table: public.payments" in schema
 
 
 def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
@@ -1801,8 +1836,8 @@ def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
         )
 
         assert tables == ["orders", "payments"]
-        assert "# Table: orders" in schema
-        assert "# Table: payments" in schema
+        assert "# Table: public.orders" in schema
+        assert "# Table: public.payments" in schema
         assert "order_id" in schema
         assert "amount" not in schema
         assert permission.get_user_scoped_table_ids(session, current_user, 1) == {10, 11}
@@ -2461,8 +2496,8 @@ def test_user_schema_filters_relationships_outside_column_scope(monkeypatch):
         )
 
         assert tables == ["orders", "payments"]
-        assert "# Table: orders" in schema
-        assert "# Table: payments" in schema
+        assert "# Table: public.orders" in schema
+        assert "# Table: public.payments" in schema
         assert "amount" not in schema
         assert "【Foreign keys】" not in schema
         assert "orders.amount=payments.payment_id" not in schema

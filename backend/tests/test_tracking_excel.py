@@ -692,13 +692,14 @@ def test_event_parameter_mapping_compact_rows_inherit_event_context() -> None:
         "事件说明",
         "事件标签",
         "采集端",
+        "数据源字段",
         "属性名（必填）",
         "属性显示名",
         "属性类型（必填）",
         "属性说明",
     ])
-    sheet.append(["achievement_finish", "达成成就", "达成成就后上报", "任务与活动", "client", "achievement_id", "成就ID", "文本", "成就ID，建议挂维度表"])
-    sheet.append(["", "", "", "", "", "achievement_type", "成就类型", "文本", "成就类型枚举：collection(收集)/battle(战斗)/level(等级)/social(社交)等"])
+    sheet.append(["achievement_finish", "达成成就", "达成成就后上报", "任务与活动", "client", "ext", "achievement_id", "成就ID", "文本", "成就ID，建议挂维度表"])
+    sheet.append(["", "", "", "", "", "", "achievement_type", "成就类型", "文本", "成就类型枚举：collection(收集)/battle(战斗)/level(等级)/social(社交)等"])
     output = BytesIO()
     workbook.save(output)
 
@@ -754,6 +755,70 @@ def test_event_parameter_mapping_compact_rows_inherit_source_field() -> None:
     assert [prop["source_field"] for prop in props] == ["personal", "personal"]
     assert [prop["json_path"] for prop in props] == ["$.orderId", "$.money"]
     assert not parsed.warnings
+
+
+def test_event_parameter_mapping_requires_source_field() -> None:
+    """来源字段无法推断时必须拒绝导入，不能静默使用 ext。"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "事件参数对照"
+    sheet.append([
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ])
+    sheet.append(["ServerPayLog", "后端充值", "", "Pay", "", "money", "金额", "数值", "金额"])
+    output = BytesIO()
+    workbook.save(output)
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_tracking_excel(
+            output.getvalue(),
+            TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+            physical_schema=_event_user_physical_schema(),
+            datasource_type="mysql",
+        )
+
+    message = str(exc_info.value)
+    assert "事件参数对照" in message
+    assert "第 2 行" in message
+    assert "数据源字段" in message
+
+
+def test_event_parameter_mapping_does_not_inherit_source_across_events() -> None:
+    """切换事件后必须重新指定来源字段。"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "事件参数对照"
+    sheet.append([
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ])
+    sheet.append(["ServerPayLog", "后端充值", "", "Pay", "personal", "money", "金额", "数值", "金额"])
+    sheet.append(["UserActive", "当日活跃", "", "Login", "", "sessionId", "会话ID", "文本", "会话ID"])
+    output = BytesIO()
+    workbook.save(output)
+
+    with pytest.raises(ValueError, match="第 3 行.*数据源字段"):
+        parse_tracking_excel(
+            output.getvalue(),
+            TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+            physical_schema=_event_user_physical_schema(),
+            datasource_type="mysql",
+        )
 
 
 def test_user_attribute_sheet_imports_update_mode_and_json_subfield() -> None:

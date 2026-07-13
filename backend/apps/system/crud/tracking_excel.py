@@ -1520,12 +1520,19 @@ def _parse_event_parameter_mapping_sheet(
         raw_property_name = _first_text(row.get("property_name"), row.get("field_name"))
         prop: dict[str, Any] | None = None
         if raw_property_name:
-            source_value = _text(row.get("source_field")) or last_source_field or "ext"
+            source_value = _text(row.get("source_field")) or last_source_field
             source_field, property_name, json_path = _split_event_parameter_source(
                 source_value,
                 raw_property_name,
                 row.get("json_path"),
             )
+            if not source_field:
+                row_number = int(row.get(EXCEL_ROW_NUMBER_KEY) or 0)
+                raise ValueError(
+                    f"{EVENT_PARAMETER_MAPPING_SHEET} sheet 第 {row_number} 行属性 {raw_property_name} "
+                    "缺少数据源字段；请填写 personal/ext 等真实 JSON 宿主字段，"
+                    "或使用 personal.money 形式的属性名。"
+                )
             internal_name = f"{source_field}.{property_name}" if source_field and property_name else property_name
             prop = {
                 "property_name": internal_name,
@@ -1676,7 +1683,11 @@ def parse_tracking_excel(
         imported.sql_rules = _parse_sql_rules(rows) or None
 
     if EVENT_PARAMETER_MAPPING_SHEET in excel.sheet_names:
-        rows, skipped = _read_sheet_rows(excel, EVENT_PARAMETER_MAPPING_SHEET)
+        rows, skipped = _read_sheet_rows(
+            excel,
+            EVENT_PARAMETER_MAPPING_SHEET,
+            include_row_number=True,
+        )
         skipped_rows += skipped
         _parse_event_parameter_mapping_sheet(rows, imported, warnings)
 

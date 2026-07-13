@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from apps.dashboard.crud import dashboard_service
-from apps.datasource.crud import query_executor
+from apps.datasource.crud import sql_engine_executor as query_executor
 import pytest
 from fastapi import HTTPException
 
@@ -857,6 +857,22 @@ def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private
         workspace_status="platform_workspace_delegate",
     )
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_chart_permission_audit",
+        lambda *args, **kwargs: (None, False),
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "execute_user_query",
+        lambda *args, **kwargs: {
+            "status": "success",
+            "fields": ["v"],
+            "data": [{"v": 1}],
+            "message": "",
+            "error_type": None,
+        },
+    )
 
     with Session(engine) as session:
         session.add(
@@ -1199,6 +1215,18 @@ def test_platform_template_load_repairs_legacy_loading_template_snapshot(monkeyp
         workspace_status="platform_admin",
     )
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_platform_template_source_user_context",
+        lambda *args, **kwargs: platform_admin,
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "_materialize_dashboard_template_canvas_view_info",
+        lambda _session, _user, _dashboard, canvas_view_info: (
+            dashboard_service._prepare_dashboard_template_canvas_view_info(canvas_view_info)
+        ),
+    )
 
     with Session(engine) as session:
         session.add(
@@ -2757,7 +2785,7 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
     chart = json.loads(resource["canvas_view_info"])["chart-1"]
     assert exec_calls == []
     assert chart["status"] == "failed"
-    assert chart["message"] == "SQL 超出当前数据权限范围"
+    assert chart["message"] == "没有查看权限"
     assert "payments" not in chart["message"]
 
 
@@ -2820,7 +2848,7 @@ def test_dashboard_structure_load_clears_unauthorized_chart_snapshot(monkeypatch
     assert exec_calls == []
     assert chart["status"] == "failed"
     assert chart["error_type"] == "permission_denied"
-    assert chart["message"] == "SQL 超出当前数据权限范围"
+    assert chart["message"] == "没有查看权限"
     assert chart["fields"] == []
     assert chart["data"]["fields"] == []
     assert chart["data"]["data"] == []
@@ -2850,7 +2878,7 @@ def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch)
 
     assert exec_calls == []
     assert result["status"] == "failed"
-    assert result["message"] == "SQL 超出当前数据权限范围"
+    assert result["message"] == "没有查看权限"
     assert "amount" not in result["message"]
 
 
@@ -2908,7 +2936,7 @@ def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch
 
     assert exec_calls == []
     assert result["status"] == "failed"
-    assert result["message"] == "SQL 超出当前数据权限范围"
+    assert result["message"] == "没有查看权限"
 
 
 def test_dashboard_preview_builds_pivot_sql(monkeypatch):
@@ -3740,7 +3768,7 @@ def test_load_shared_resource_returns_permission_denied_state_without_access(mon
     assert result["can_use"] is False
     assert result["preview_image"] == "data:image/jpeg;base64,preview"
     assert chart["status"] == "failed"
-    assert chart["message"] == "SQL 超出当前数据权限范围"
+    assert chart["message"] == "没有查看权限"
 
 
 def test_delete_shared_resource_soft_deletes_for_creator(monkeypatch):
