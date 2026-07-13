@@ -2471,7 +2471,10 @@ class LLMService:
         idle_rounds = 0
         max_idle_rounds = max(1, settings.LLM_REQUEST_TIMEOUT * 2)
         started_at = time.monotonic()
-        max_wait_seconds = max(settings.LLM_REQUEST_TIMEOUT * 20, settings.LLM_REQUEST_TIMEOUT + 300)
+        max_wait_seconds = max(
+            settings.LLM_TASK_MAX_WAIT_SECONDS,
+            settings.LLM_REQUEST_TIMEOUT,
+        )
         while self.is_running():
             emitted = False
             while True:
