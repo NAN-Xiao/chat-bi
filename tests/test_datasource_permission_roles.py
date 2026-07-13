@@ -29,6 +29,7 @@ from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable, TableObj
 from apps.datasource.models.datasource import FieldObj
 from apps.system.schemas import permission as permission_schema
+from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.analysis_assistant.api import analysis_assistant as analysis_assistant_api
 
 
@@ -1139,7 +1140,8 @@ def _insert_json_subfield_permission_fixture(session: Session) -> None:
             (id, ds_id, table_id, checked, field_name, field_type, field_comment, custom_comment, field_index)
         VALUES
             (100, 1, 10, 1, 'personal', 'json', '玩家属性', '玩家属性', 1),
-            (101, 1, 10, 1, 'uid', 'text', '用户 ID', '用户 ID', 2)
+            (101, 1, 10, 1, 'uid', 'text', '用户 ID', '用户 ID', 2),
+            (102, 1, 10, 1, 'abtest', 'json', '实验分组', '实验分组', 3)
         """
     ))
     session.execute(text(
@@ -1149,7 +1151,9 @@ def _insert_json_subfield_permission_fixture(session: Session) -> None:
              field_role, semantic_type, source_field, json_path, create_time, update_time)
         VALUES
             (1000, 2, 1, 'event', 'personal.money', '充值金额',
-             'json_path_metric', 'number', 'personal', '$.money', 1, 1)
+             'json_path_metric', 'number', 'personal', '$.money', 1, 1),
+            (1099, 2, 1, 'event', 'abtest.1001', '实验 1001',
+             'json_path_dimension', 'text', 'abtest', '$.1001', 1, 1)
         """
     ))
     session.commit()
@@ -1169,6 +1173,28 @@ def _json_subfield_rule_payload(json_path: str = "$.money") -> dict:
                 "field_comment": "充值金额",
                 "source_field": "personal",
                 "json_path": json_path,
+                "is_json_subfield": True,
+                "enable": False,
+            }],
+        }],
+        "users": [2],
+    }
+
+
+def _numeric_json_key_rule_payload() -> dict:
+    return {
+        "name": "数字 JSON 键规则",
+        "permissions": [{
+            "name": "event 实验字段限制",
+            "type": "column",
+            "ds_id": 1,
+            "table_id": 10,
+            "permissions": [{
+                "field_id": "tracking:event:abtest.1001",
+                "field_name": "abtest.1001",
+                "field_comment": "实验 1001",
+                "source_field": "abtest",
+                "json_path": '$["1001"]',
                 "is_json_subfield": True,
                 "enable": False,
             }],
@@ -1199,6 +1225,145 @@ def test_permission_save_normalizes_json_subfield_from_workspace_metadata():
             "is_json_subfield": True,
             "enable": False,
         }
+
+
+def test_numeric_json_key_permission_is_normalized_and_precise():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            workspace_admin,
+            _numeric_json_key_rule_payload(),
+        ))
+        entry = saved["permissions"][0]["permissions"][0]
+        assert entry["json_path"] == '$["1001"]'
+
+        datasource = session.get(CoreDatasource, 1)
+        validate_sql_scope(
+            session,
+            _json_restricted_user(),
+            datasource,
+            "SELECT JSON_EXTRACT(e.abtest, '$[\"1002\"]') FROM event e",
+        )
+        with pytest.raises(ValueError, match="无权限|字段权限"):
+            validate_sql_scope(
+                session,
+                _json_restricted_user(),
+                datasource,
+                "SELECT JSON_EXTRACT(e.abtest, '$[\"1001\"]') FROM event e",
+            )
+
+
+def test_postgres_numeric_json_key_permission_cannot_be_bypassed():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+        datasource = session.get(CoreDatasource, 1)
+        datasource.type = "postgresql"
+        session.add(datasource)
+        session.commit()
+
+        asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            workspace_admin,
+            _numeric_json_key_rule_payload(),
+        ))
+
+        validate_sql_scope(
+            session,
+            _json_restricted_user(),
+            datasource,
+            "SELECT e.abtest::jsonb ->> 1001 FROM event e",
+        )
+        with pytest.raises(ValueError, match="无权限|字段权限"):
+            validate_sql_scope(
+                session,
+                _json_restricted_user(),
+                datasource,
+                "SELECT e.abtest::jsonb ->> '1001' FROM event e",
+            )
+        with pytest.raises(ValueError, match="无权限|字段权限"):
+            validate_sql_scope(
+                session,
+                _json_restricted_user(),
+                datasource,
+                "SELECT e.abtest::jsonb #>> '{1001}' FROM event e",
+            )
+
+
+def test_postgres_quoted_comma_json_key_permission_uses_compiled_path():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+        session.execute(text(
+            """
+            INSERT INTO sys_tenant_tracking_field
+                (id, tenant_id, datasource_id, table_name, field_name, field_comment,
+                 field_role, semantic_type, source_field, json_path, create_time, update_time)
+            VALUES
+                (1098, 2, 1, 'event', 'personal.a,b', '逗号键',
+                 'json_path_dimension', 'text', 'personal', '$["a,b"]', 1, 1)
+            """
+        ))
+        datasource = session.get(CoreDatasource, 1)
+        datasource.type = "postgresql"
+        session.add(datasource)
+        session.commit()
+
+        payload = _numeric_json_key_rule_payload()
+        payload["name"] = "逗号 JSON 键规则"
+        entry = payload["permissions"][0]["permissions"][0]
+        entry.update({
+            "field_id": "tracking:event:personal.a,b",
+            "field_name": "personal.a,b",
+            "field_comment": "逗号键",
+            "source_field": "personal",
+            "json_path": '$["a,b"]',
+        })
+        asyncio.run(permission_api.save_rule.__wrapped__(session, workspace_admin, payload))
+
+        compiled = compile_tracking_json_expression(
+            "event",
+            "personal",
+            '$["a,b"]',
+            "text",
+            "postgresql",
+        )
+        with pytest.raises(ValueError, match="无权限|字段权限"):
+            validate_sql_scope(
+                session,
+                _json_restricted_user(),
+                datasource,
+                f"SELECT {compiled} FROM event",
+            )
+
+
+def test_field_list_normalizes_numeric_json_object_key():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+        datasource = session.get(CoreDatasource, 1)
+        table = session.get(CoreTable, 10)
+        fields = session.query(datasource_api.CoreField).filter(
+            datasource_api.CoreField.table_id == 10
+        ).all()
+
+        items = datasource_api._build_field_list_items(
+            session,
+            datasource,
+            table,
+            fields,
+            workspace_admin,
+        )
+
+        numeric_item = next(item for item in items if item.field_name == "abtest.1001")
+        assert numeric_item.json_path == '$["1001"]'
 
 
 def test_permission_save_rejects_forged_json_subfield_path():

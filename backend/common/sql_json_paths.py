@@ -54,7 +54,7 @@ def json_path_segments(value: Any) -> tuple[str, ...] | None:
     offset = 1
     while offset < len(path):
         if path[offset] == ".":
-            match = re.match(r"\.([A-Za-z_][A-Za-z0-9_]*)", path[offset:])
+            match = re.match(r"\.([A-Za-z_][A-Za-z0-9_]*|\d+)", path[offset:])
             if not match:
                 return None
             segments.append(match.group(1))
@@ -154,6 +154,22 @@ def _path_from_expression(value: exp.Expression | None, *, dialect: str) -> str:
     return ""
 
 
+def _is_ambiguous_postgres_numeric_path(
+        value: exp.Expression | None,
+        *,
+        dialect: str,
+) -> bool:
+    if dialect != "postgres" or not isinstance(value, exp.Literal) or not value.is_string:
+        return False
+    path = str(value.this or "").strip()
+    if not (path.startswith("{") and path.endswith("}")):
+        return False
+    return any(
+        item.strip().strip("'\"").isdigit()
+        for item in path[1:-1].split(",")
+    )
+
+
 def _json_node_parts(
         expression: exp.Expression,
         *,
@@ -165,6 +181,8 @@ def _json_node_parts(
         return expression, [], None
     if isinstance(expression, _JSON_EXPRESSION_TYPES):
         column, paths, issue = _json_node_parts(expression.this, dialect=dialect)
+        if _is_ambiguous_postgres_numeric_path(expression.expression, dialect=dialect):
+            return column, paths, issue or "ambiguous_numeric_path"
         path = _path_from_expression(expression.expression, dialect=dialect)
         if not path:
             return column, paths, "dynamic_path"

@@ -955,7 +955,7 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
     context, summary = build_tracking_prompt_context(parsed.editor, datasource_type="postgresql")
     assert "<Workspace-Tracking-Rules>" in context
     assert "event_log.event_props.amount" in context
-    assert 'expression=NULLIF(("event_log"."event_props"::jsonb #>> \'{amount}\'), \'\')::numeric' in context
+    assert 'expression=NULLIF(("event_log"."event_props"::jsonb ->> \'amount\'), \'\')::numeric' in context
     assert "pay_success" in context
     assert "支付金额统一使用 event_props.amount" in context
     assert any("event_props.amount" in item for item in summary)
@@ -1349,7 +1349,7 @@ def test_tracking_prompt_filters_schema_drifted_fields() -> None:
     context, summary = build_tracking_prompt_context(filtered, validation.warnings, datasource_type="postgresql")
 
     assert "event_log.event_props.amount" in context
-    assert 'expression=NULLIF(("event_log"."event_props"::jsonb #>> \'{amount}\'), \'\')::numeric' in context
+    assert 'expression=NULLIF(("event_log"."event_props"::jsonb ->> \'amount\'), \'\')::numeric' in context
     assert "`event_log.missing_payload.amount`" not in context
     assert "expression=missing expression" not in context
     assert any("missing_payload" in warning for warning in validation.warnings)

@@ -193,6 +193,27 @@ def test_tracking_json_expression_compiles_by_runtime_datasource_type() -> None:
         "clickhouse",
     )
 
-    assert postgres_expression == 'NULLIF(("event_log"."event_props"::jsonb #>> \'{amount}\'), \'\')::numeric'
+    assert postgres_expression == 'NULLIF(("event_log"."event_props"::jsonb ->> \'amount\'), \'\')::numeric'
     assert mysql_expression == "CAST(JSON_UNQUOTE(JSON_EXTRACT(`event_log`.`event_props`, '$.amount')) AS DECIMAL(38, 10))"
     assert clickhouse_expression == "toFloat64OrNull(JSON_VALUE(`event_log`.`event_props`, '$.amount'))"
+
+
+def test_tracking_json_expression_normalizes_numeric_object_key() -> None:
+    postgres_expression = compile_tracking_json_expression(
+        "event_log", "abtest", "$.1001", "text", "postgresql"
+    )
+    mysql_expression = compile_tracking_json_expression(
+        "event_log", "abtest", "$.1001", "text", "mysql"
+    )
+    clickhouse_expression = compile_tracking_json_expression(
+        "event_log", "abtest", "$.1001", "text", "clickhouse"
+    )
+
+    postgres_array_expression = compile_tracking_json_expression(
+        "event_log", "abtest", "$[1001]", "text", "postgresql"
+    )
+
+    assert postgres_expression == '("event_log"."abtest"::jsonb ->> \'1001\')'
+    assert postgres_array_expression == '("event_log"."abtest"::jsonb ->> 1001)'
+    assert mysql_expression == 'JSON_UNQUOTE(JSON_EXTRACT(`event_log`.`abtest`, \'$["1001"]\'))'
+    assert clickhouse_expression == 'JSON_VALUE(`event_log`.`abtest`, \'$["1001"]\')'

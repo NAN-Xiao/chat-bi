@@ -3,7 +3,8 @@
 """
 from __future__ import annotations
 
-import re
+from common.sql_json_paths import json_path_segments as _json_path_segments
+from common.sql_json_paths import normalize_json_path as _normalize_json_path
 
 
 def _text(value) -> str:
@@ -11,27 +12,18 @@ def _text(value) -> str:
 
 
 def normalize_json_path(value: str | None) -> str:
-    text = _text(value)
-    if not text:
-        return ""
-    if text.startswith("$"):
-        return text
-    return f"$.{text.lstrip('.')}"
+    return _normalize_json_path(value)
 
 
 def json_path_segments(json_path: str | None) -> list[str]:
-    text = normalize_json_path(json_path)
-    if not text.startswith("$."):
-        return []
-    path = text[2:]
-    if not path:
-        return []
-    if re.search(r"[^A-Za-z0-9_.$\[\]]", path):
+    segments = _json_path_segments(normalize_json_path(json_path))
+    if segments is None:
         return []
     return [
-        segment
-        for segment in re.split(r"\.", path)
-        if segment and "[" not in segment and "]" not in segment
+        segment[1:-1]
+        if segment.startswith("[") and segment.endswith("]") and segment[1:-1].isdigit()
+        else segment
+        for segment in segments
     ]
 
 
@@ -56,6 +48,20 @@ def qualified_field(table_name: str, field_name: str, family: str) -> str:
     return f"{quote_identifier(table_name, family)}.{quote_identifier(field_name, family)}"
 
 
+def _postgres_typed_json_expression(column: str, segments: tuple[str, ...]) -> str:
+    expression = f"{column}::jsonb"
+    for index, segment in enumerate(segments):
+        is_array_index = (
+            segment.startswith("[")
+            and segment.endswith("]")
+            and segment[1:-1].isdigit()
+        )
+        operand = segment[1:-1] if is_array_index else f"'{segment}'"
+        operator = "->>" if index == len(segments) - 1 else "->"
+        expression = f"{expression} {operator} {operand}"
+    return f"({expression})"
+
+
 def compile_tracking_json_expression(
     table_name: str,
     source_field: str,
@@ -74,10 +80,10 @@ def compile_tracking_json_expression(
     path = normalize_json_path(json_path)
     semantic = _text(semantic_type).lower()
     if family == "postgres":
-        segments = json_path_segments(path)
-        if not segments:
+        typed_segments = _json_path_segments(path)
+        if typed_segments is None or not typed_segments:
             return ""
-        base = f"({column}::jsonb #>> '{{{','.join(segments)}}}')"
+        base = _postgres_typed_json_expression(column, typed_segments)
         if semantic == "number":
             return f"NULLIF({base}, '')::numeric"
         return base

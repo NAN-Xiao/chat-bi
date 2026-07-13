@@ -595,13 +595,13 @@ def _tracking_json_path(row_or_name: TenantTrackingFieldModel | str | None) -> s
     if isinstance(row_or_name, TenantTrackingFieldModel):
         configured = str(getattr(row_or_name, "json_path", None) or "").strip()
         if configured:
-            return configured if configured.startswith("$") else f"$.{configured.lstrip('.')}"
+            return normalize_json_path(configured) or None
         text = str(row_or_name.field_name or "").strip()
     else:
         text = str(row_or_name or "").strip()
     if "." not in text:
         return None
-    return "$." + text.split(".", 1)[1]
+    return normalize_json_path(text.split(".", 1)[1]) or None
 
 
 def _tracking_fields_for_table(

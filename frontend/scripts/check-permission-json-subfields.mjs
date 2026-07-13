@@ -22,7 +22,11 @@ mkdirSync(tempDir, { recursive: true })
 const tempModulePath = resolve(tempDir, `permissionFieldEntries-${Date.now()}.mjs`)
 writeFileSync(tempModulePath, compiled, 'utf8')
 
-const { fieldOptionsToPermissionEntries, permissionRulesToSaveEntries } = await import(pathToFileURL(tempModulePath).href)
+const {
+  fieldOptionsToPermissionEntries,
+  permissionRulesToSaveEntries,
+  sortPermissionEntriesRestrictedFirst,
+} = await import(pathToFileURL(tempModulePath).href)
 const options = [{
   id: 'tracking:event:personal.money',
   field_name: 'personal.money',
@@ -68,7 +72,10 @@ assert.equal(
 const sourceEntries = [{
   id: 34,
   type: 'column',
-  permissions: [{ field_id: 101, field_name: 'uid', field_comment: '', enable: true }],
+  permissions: [
+    { field_id: 101, field_name: 'uid', field_comment: '', enable: true },
+    { field_id: 102, field_name: 'amount', field_comment: '', enable: false },
+  ],
   expression_tree: {},
 }, {
   id: 35,
@@ -84,13 +91,25 @@ const sourceEntries = [{
 
 const saveEntries = permissionRulesToSaveEntries(sourceEntries)
 assert.equal(Array.isArray(saveEntries[0].permissions), true)
-assert.deepEqual(saveEntries[0].permissions, sourceEntries[0].permissions)
+assert.deepEqual(saveEntries[0].permissions, [sourceEntries[0].permissions[1]])
 assert.deepEqual(saveEntries[0].expression_tree, {})
 assert.deepEqual(saveEntries[1].permissions, [])
 assert.deepEqual(saveEntries[1].expression_tree, sourceEntries[1].expression_tree)
 assert.deepEqual(saveEntries[2].permissions, [])
 assert.deepEqual(saveEntries[2].expression_tree, {})
 assert.deepEqual(saveEntries.map((entry) => entry.permission_list), [[], [], []])
+
+const displayEntries = [
+  { field_id: 101, field_name: 'uid', field_comment: '', enable: true },
+  { field_id: 102, field_name: 'amount', field_comment: '', enable: false },
+  { field_id: 103, field_name: 'cost', field_comment: '', enable: false },
+  { field_id: 104, field_name: 'country', field_comment: '', enable: true },
+]
+assert.deepEqual(
+  sortPermissionEntriesRestrictedFirst(displayEntries).map((entry) => entry.field_id),
+  [102, 103, 101, 104]
+)
+assert.deepEqual(displayEntries.map((entry) => entry.field_id), [101, 102, 103, 104])
 
 const permissionSaveConsumers = [
   'src/views/system/permission/index.vue',

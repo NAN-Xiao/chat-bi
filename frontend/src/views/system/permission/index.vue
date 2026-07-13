@@ -18,7 +18,11 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
 import { normalizeIdString } from '@/utils/id'
-import { fieldOptionsToPermissionEntries, permissionRulesToSaveEntries } from './permissionFieldEntries'
+import {
+  fieldOptionsToPermissionEntries,
+  permissionRulesToSaveEntries,
+  sortPermissionEntriesRestrictedFirst,
+} from './permissionFieldEntries'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -117,10 +121,12 @@ const ruleListWithSearch = computed(() => {
   })
 })
 const tableColumnData = computed<any[]>(() => {
-  if (!searchColumn.value) return columnForm.permissions
-  return columnForm.permissions.filter((ele) =>
-    (ele.field_name || '').toLowerCase().includes(searchColumn.value.toLowerCase())
-  )
+  const entries = searchColumn.value
+    ? columnForm.permissions.filter((ele) =>
+        (ele.field_name || '').toLowerCase().includes(searchColumn.value.toLowerCase())
+      )
+    : columnForm.permissions
+  return sortPermissionEntriesRestrictedFirst(entries)
 })
 provide('filedList', fieldListOptions)
 const setDrawerTitle = () => {

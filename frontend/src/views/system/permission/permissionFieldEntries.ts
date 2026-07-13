@@ -56,7 +56,15 @@ export const permissionRulesToSaveEntries = (
 ): PermissionRuleSaveEntry[] =>
   entries.map((entry) => ({
     ...entry,
-    permissions: entry.type === 'column' ? entry.permissions || [] : [],
+    permissions:
+      entry.type === 'column'
+        ? (entry.permissions || []).filter((item) => item.enable === false)
+        : [],
     permission_list: [],
     expression_tree: entry.type === 'row' ? entry.expression_tree || {} : {},
   }))
+
+export const sortPermissionEntriesRestrictedFirst = (
+  entries: PermissionFieldEntry[]
+): PermissionFieldEntry[] =>
+  [...entries].sort((left, right) => Number(left.enable) - Number(right.enable))
