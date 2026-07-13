@@ -229,7 +229,7 @@ const form = reactive({
   mcpValueField: '',
 })
 const sqlBuilder = reactive({
-  activeTab: 'sql',
+  activeTab: 'builder',
   timeField: '',
   timeGrain: 'day',
   timeRange: '30d',
@@ -1333,7 +1333,7 @@ function quoteIdentifier(value: string) {
 }
 
 function resetSqlBuilderState() {
-  sqlBuilder.activeTab = 'sql'
+  sqlBuilder.activeTab = 'builder'
   sqlBuilder.timeField = ''
   sqlBuilder.timeGrain = 'day'
   sqlBuilder.timeRange = '30d'
@@ -3884,6 +3884,7 @@ function initEditor() {
     mcpTools.value = []
     mcpFilterOptions.value = {}
   }
+  ensureBuilderSchemaLoaded()
 }
 
 watch(

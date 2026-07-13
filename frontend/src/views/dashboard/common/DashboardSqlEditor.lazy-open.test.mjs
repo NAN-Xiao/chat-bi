@@ -26,14 +26,24 @@ assert.ok(loadSchemaTablesMatch, '需要保留图表配置元数据加载入口'
 assert.ok(ensureBuilderSchemaLoadedMatch, '需要保留进入图表配置时按需加载元数据的入口')
 
 assert.match(
+  source,
+  /const sqlBuilder = reactive\(\{\s*activeTab: 'builder'/,
+  '编辑图表首次打开时应默认进入图表配置'
+)
+assert.match(
   resetBuilderMatch[1],
-  /sqlBuilder\.activeTab = 'sql'/,
-  '点击“编辑 SQL”默认应进入 SQL 明细，避免先渲染图表配置构建器'
+  /sqlBuilder\.activeTab = 'builder'/,
+  '每次打开编辑图表都应重置到图表配置'
+)
+assert.match(
+  initEditorMatch[1],
+  /restoreSqlBuilderState\([\s\S]*ensureBuilderSchemaLoaded\(\)/,
+  '编辑器恢复当前图表状态后应主动请求图表配置元数据，保证关闭后重开仍会加载'
 )
 assert.doesNotMatch(
   initEditorMatch[1],
   /loadSchemaTables\(\)/,
-  '打开 SQL 编辑器时不应立即加载字段/事件元数据，应等用户进入图表配置时再加载'
+  '编辑器初始化应复用图表配置元数据加载入口，不应绕过请求有效性校验'
 )
 assert.match(
   source,
