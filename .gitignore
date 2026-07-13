@@ -193,6 +193,7 @@ cython_debug/
 test.py
 dump.rdb
 appendonlydir/
+.worktrees/
 
 
 !/.venv/
