@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -1106,7 +1107,40 @@ def upsert_config(cur, now: int) -> None:
     )
 
 
+def validate_event_group_defaults(groups: list[dict], event_name_mappings: list[dict]) -> None:
+    known_events: set[str] = set()
+    for mapping in event_name_mappings or []:
+        if not isinstance(mapping, dict):
+            continue
+        for key in ("event_name", "eventName", "name", "value"):
+            value = str(mapping.get(key) or "").strip()
+            if value:
+                known_events.add(value)
+        for value in mapping.get("events") or []:
+            text = str(value or "").strip()
+            if text:
+                known_events.add(text)
+    missing = {
+        item["group_key"]: [name for name in item["event_names"] if name not in known_events]
+        for item in groups
+    }
+    missing = {key: names for key, names in missing.items() if names}
+    if missing:
+        details = "；".join(f"{key}: {', '.join(names)}" for key, names in missing.items())
+        raise RuntimeError(f"事件分组默认值引用了字典中不存在的事件：{details}")
+
+
 def upsert_event_groups(cur, now: int) -> int:
+    cur.execute(
+        """
+        SELECT event_name_mappings
+        FROM public.sys_tenant_tracking_config
+        WHERE tenant_id = %s AND datasource_id = %s
+        """,
+        (TENANT_ID, DATASOURCE_ID),
+    )
+    config_row = cur.fetchone()
+    validate_event_group_defaults(EVENT_GROUPS, config_row[0] if config_row else [])
     cur.execute("SELECT to_regclass('public.sys_tenant_tracking_event_group')")
     if not cur.fetchone()[0]:
         raise RuntimeError("缺少事件分组表，请先执行 Alembic 迁移 142trackinggroups。")
@@ -1296,7 +1330,7 @@ def upsert_schema_comments(cur, now: int) -> tuple[int, int]:
     return table_count, field_count
 
 
-def main() -> None:
+def main(*, seed_event_groups: bool = False) -> None:
     apply_chart_builder_expressions()
     now = int(time.time())
     schema_tables = 0
@@ -1304,7 +1338,7 @@ def main() -> None:
     with psycopg.connect(**DB) as conn:
         with conn.cursor() as cur:
             upsert_config(cur, now)
-            inserted_event_groups = upsert_event_groups(cur, now)
+            inserted_event_groups = upsert_event_groups(cur, now) if seed_event_groups else 0
             upsert_tables(cur, now)
             upsert_fields(cur, now)
             deleted_stale_fields = delete_stale_fields(cur)
@@ -1327,4 +1361,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="初始化 First Zombie 工作空间 tracking 元数据。")
+    parser.add_argument(
+        "--seed-event-groups",
+        action="store_true",
+        help="显式校验当前事件字典后，仅创建缺失的默认事件分组。",
+    )
+    args = parser.parse_args()
+    main(seed_event_groups=args.seed_event_groups)

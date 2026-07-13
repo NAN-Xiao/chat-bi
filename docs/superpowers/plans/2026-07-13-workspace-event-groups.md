@@ -249,7 +249,7 @@ git commit -m "功能：向语义上下文注入事件分组"
 
 **Interfaces:**
 - Produces: 独立 `EVENT_GROUPS` 常量。
-- Produces: `upsert_event_groups(cur, now)`，普通执行只创建缺失分组。
+- Produces: `upsert_event_groups(cur, now)`，仅在显式 `--seed-event-groups` 时校验并创建缺失分组。
 - Changes: `upsert_config` 冲突更新不再写 `event_name_mappings`。
 
 - [ ] **Step 1: 写分组分离和防覆盖测试**
@@ -281,7 +281,7 @@ Expected: FAIL，分析集合仍位于 `event_name_mappings`。
 
 - [ ] **Step 4: 增加缺失分组幂等插入**
 
-`upsert_event_groups` 按当前 `TENANT_ID/DATASOURCE_ID` 插入 JSONB 事件数组，冲突时 `DO NOTHING`。`main` 在主配置之后调用；数据库尚未执行 142 迁移时给出明确错误，不自动退回旧写法。
+`upsert_event_groups` 先读取当前 `event_name_mappings`，验证全部默认成员存在，再按当前 `TENANT_ID/DATASOURCE_ID` 插入 JSONB 事件数组，冲突时 `DO NOTHING`。`main` 默认不调用，只有 `--seed-event-groups` 显式启用；字典缺少成员或数据库尚未执行 142 迁移时给出明确错误，不自动删减成员或退回旧写法。
 
 - [ ] **Step 5: 运行种子回归并确认 GREEN**
 
@@ -340,7 +340,7 @@ Run: `git diff --check; git status --short`
 
 - [ ] **Step 4: 记录受控数据恢复步骤但不直接执行共享库变更**
 
-运行时顺序必须是：先用 `tools/postgres-backup-local.ps1` 备份；再执行 Alembic 142；再运行更新后的 First Zombie seed 创建缺失分组；最后导入业务确认的正常 `tracking_dictionary_current.xlsx` 恢复完整事件字典。实现会交付代码和迁移，不在自动测试阶段直接修改 `10.1.5.28` 共享系统库。
+运行时顺序必须是：先用 `tools/postgres-backup-local.ps1` 备份；再执行 Alembic 142；导入业务确认的正常 `tracking_dictionary_current.xlsx` 恢复完整事件字典；事件分组通过 Excel 维护。只有业务确认默认分组中的每个事件都已进入权威字典后，才可显式运行 `--seed-event-groups` 创建缺失分组。实现会交付代码和迁移，不在自动测试阶段直接修改 `10.1.5.28` 共享系统库。
 
 - [ ] **Step 5: 最终提交（仅设计文档因实现变化而同步时）**
 

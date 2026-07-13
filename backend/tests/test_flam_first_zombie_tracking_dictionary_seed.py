@@ -1,8 +1,11 @@
 """First Zombie tracking dictionary semantic regression tests."""
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS_DIR = ROOT / "tools"
@@ -51,3 +54,14 @@ def test_tracking_dictionary_seed_does_not_overwrite_user_dictionary_or_groups()
     assert "event_name_mappings = EXCLUDED.event_name_mappings" not in content
     assert "ON CONFLICT (tenant_id, datasource_id, group_key) DO NOTHING" in content
     assert "value_mappings = EXCLUDED.value_mappings" not in content
+
+
+def test_event_group_defaults_require_explicit_validated_seed() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    assert inspect.signature(tracking.main).parameters["seed_event_groups"].default is False
+    with pytest.raises(RuntimeError, match="UserRegister"):
+        tracking.validate_event_group_defaults(
+            tracking.EVENT_GROUPS,
+            [{"event_name": "ServerPayLog"}],
+        )
