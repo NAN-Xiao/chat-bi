@@ -79,11 +79,9 @@ function parseHistory(raw: string | null): ReportPromptHistoryItem[] {
   }
 }
 
-export function buildReportPromptHistoryStorageKey(
-  scope: ReportPromptHistoryScope
-): string | null {
-  const parts = [scope.tenantId, scope.userUid, scope.dashboardUid, scope.targetScope].map((value) =>
-    `${value ?? ''}`.trim()
+export function buildReportPromptHistoryStorageKey(scope: ReportPromptHistoryScope): string | null {
+  const parts = [scope.tenantId, scope.userUid, scope.dashboardUid, scope.targetScope].map(
+    (value) => `${value ?? ''}`.trim()
   )
   if (parts.some((value) => !value)) {
     return null

@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { analysisAssistantApi, type AnalysisAssistantMessage } from '@/api/analysisAssistant'
+import { useUserStore } from '@/stores/user'
 import { parseSseChunk } from '@/utils/sse'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
@@ -16,9 +17,11 @@ import {
   loadReportPromptHistory,
   saveReportPromptHistory,
   type ReportPromptHistoryItem,
+  type ReportPromptHistoryScope,
 } from '@/views/dashboard/preview/reportPromptHistory'
 const { t } = useI18n()
 const router = useRouter()
+const userStore = useUserStore()
 
 const edit = () => {
   router.push({
@@ -69,6 +72,12 @@ const reportPanelRef = ref<HTMLElement | null>(null)
 const reportTriggerRef = ref<HTMLElement | null>(null)
 const reportPopoverStyle = ref<ReportPopoverStyle | null>(null)
 const reportPromptHistory = ref<ReportPromptHistoryItem[]>([])
+const reportHistoryScope = computed<ReportPromptHistoryScope>(() => ({
+  tenantId: userStore.getTenantId,
+  userUid: userStore.getUid,
+  dashboardUid: props.dashboardInfo?.id,
+  targetScope: 'dashboard',
+}))
 let reportStreamBuffer = ''
 
 const reportPromptTitle = computed(() =>
@@ -306,16 +315,20 @@ function resetReportConversation() {
 }
 
 function refreshReportPromptHistory() {
-  reportPromptHistory.value = loadReportPromptHistory(window.localStorage)
+  reportPromptHistory.value = loadReportPromptHistory(window.localStorage, reportHistoryScope.value)
 }
 
 function rememberReportPrompt(text: string, answer = '') {
-  reportPromptHistory.value = saveReportPromptHistory(window.localStorage, {
-    text,
-    answer,
-    title: reportPromptTitle.value,
-    targetContext: reportTargetContext.value,
-  })
+  reportPromptHistory.value = saveReportPromptHistory(
+    window.localStorage,
+    reportHistoryScope.value,
+    {
+      text,
+      answer,
+      title: reportPromptTitle.value,
+      targetContext: reportTargetContext.value,
+    }
+  )
 }
 
 function selectReportPromptHistory(item: ReportPromptHistoryItem) {

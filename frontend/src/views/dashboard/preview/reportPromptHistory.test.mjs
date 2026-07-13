@@ -220,4 +220,30 @@ for (const component of componentSources) {
     /if \(reportHasConversation\.value\) \{[\s\S]*?submitReportPrompt\(\)/,
     `${component.name}在回答态点击旧版只有问题的历史时，应重新生成对应问题的解读内容`
   )
+  assert.match(
+    component.source,
+    /loadReportPromptHistory\(\s*window\.localStorage,\s*reportHistoryScope\.value\s*\)/,
+    `${component.name}读取历史时必须显式传入当前作用域`
+  )
+  assert.match(
+    component.source,
+    /saveReportPromptHistory\(\s*window\.localStorage,\s*reportHistoryScope\.value,/,
+    `${component.name}保存历史时必须显式传入当前作用域`
+  )
 }
+
+assert.match(
+  componentSources[0].source,
+  /targetScope:\s*'dashboard'/,
+  '整张看板解读历史应使用 dashboard 目标作用域'
+)
+assert.match(
+  componentSources[1].source,
+  /return `chart:\$\{[^}]+\}`/,
+  '普通图表解读历史应使用图表组件 UID'
+)
+assert.match(
+  componentSources[1].source,
+  /return `tab:\$\{[^}]+\}:\$\{[^}]+\}`/,
+  'Tab 报表区域历史应同时使用容器 UID 和当前 Tab UID'
+)

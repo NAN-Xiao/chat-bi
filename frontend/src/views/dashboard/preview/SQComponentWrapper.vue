@@ -15,6 +15,7 @@ import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { analysisAssistantApi, type AnalysisAssistantMessage } from '@/api/analysisAssistant'
 import { dashboardApi } from '@/api/dashboard.ts'
+import { useUserStore } from '@/stores/user'
 import { parseSseChunk } from '@/utils/sse'
 import { useEmitt } from '@/utils/useEmitt.ts'
 import { guid } from '@/utils/canvas.ts'
@@ -30,6 +31,7 @@ import {
   loadReportPromptHistory,
   saveReportPromptHistory,
   type ReportPromptHistoryItem,
+  type ReportPromptHistoryScope,
 } from '@/views/dashboard/preview/reportPromptHistory'
 import {
   applyMixedChartResult,
@@ -42,6 +44,7 @@ import {
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
 const { emitter } = useEmitt()
+const userStore = useUserStore()
 const CHART_REFRESH_CONCURRENCY = 2
 
 const props = defineProps({
@@ -163,6 +166,20 @@ const isPreviewReportTarget = computed(
     !props.frameless
 )
 const canShowReportInterpret = computed(() => isPreviewReportTarget.value)
+const reportHistoryTargetScope = computed(() => {
+  const componentId = `${props.configItem?.id || ''}`.trim()
+  if (props.configItem?.component === 'SQTab') {
+    const activeTabName = `${getActiveTabItem(props.configItem)?.name || ''}`.trim()
+    return `tab:${componentId}:${activeTabName}`
+  }
+  return `chart:${componentId}`
+})
+const reportHistoryScope = computed<ReportPromptHistoryScope>(() => ({
+  tenantId: userStore.getTenantId,
+  userUid: userStore.getUid,
+  dashboardUid: props.dashboardInfo?.id,
+  targetScope: reportHistoryTargetScope.value,
+}))
 const reportScopeTitle = computed(() => {
   if (props.configItem?.component === 'SQTab') {
     const activeTab = getActiveTabItem(props.configItem)
@@ -434,16 +451,20 @@ function resetReportConversation() {
 }
 
 function refreshReportPromptHistory() {
-  reportPromptHistory.value = loadReportPromptHistory(window.localStorage)
+  reportPromptHistory.value = loadReportPromptHistory(window.localStorage, reportHistoryScope.value)
 }
 
 function rememberReportPrompt(text: string, answer = '') {
-  reportPromptHistory.value = saveReportPromptHistory(window.localStorage, {
-    text,
-    answer,
-    title: reportPromptTitle.value,
-    targetContext: reportTargetContext.value,
-  })
+  reportPromptHistory.value = saveReportPromptHistory(
+    window.localStorage,
+    reportHistoryScope.value,
+    {
+      text,
+      answer,
+      title: reportPromptTitle.value,
+      targetContext: reportTargetContext.value,
+    }
+  )
 }
 
 function selectReportPromptHistory(item: ReportPromptHistoryItem) {
