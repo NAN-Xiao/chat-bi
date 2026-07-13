@@ -8,14 +8,16 @@ from sqlglot import exp
 from sqlalchemy import and_
 
 from apps.datasource.crud.permission import (
-    get_column_permission_fields,
+    get_column_permission_scope,
     get_user_permission_rules,
     get_user_scoped_table_ids,
     is_normal_user,
 )
+from apps.datasource.crud.permission_errors import SqlPermissionScopeError
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from apps.db.db import get_sqlglot_dialect
 from common.core.deps import CurrentUser, SessionDep
+from common.sql_json_paths import extract_json_accesses, json_paths_intersect
 
 
 def normalize_identifier(value: str | None) -> str:
@@ -91,18 +93,22 @@ def build_permission_scope(
         table_fields = fields_by_table.get(int(table.id), [])
         all_field_names = {normalize_identifier(field.field_name) for field in table_fields}
         if is_normal_user(current_user):
-            table_fields = get_column_permission_fields(
+            column_scope = get_column_permission_scope(
                 session=session,
                 current_user=current_user,
                 table=table,
                 fields=table_fields,
                 contain_rules=contain_rules,
             )
+            table_fields = column_scope.fields
+        else:
+            column_scope = None
         allowed_field_names = {normalize_identifier(field.field_name) for field in table_fields}
         scope[normalize_identifier(table.table_name)] = {
             "table": table,
             "fields": allowed_field_names,
             "denied_fields": all_field_names - allowed_field_names,
+            "denied_json_paths": column_scope.denied_json_paths if column_scope else {},
         }
     return scope
 
@@ -319,6 +325,7 @@ def validate_sql_columns(
         current_user: CurrentUser,
         *,
         enforce: bool = False,
+        dialect: str | None = None,
 ) -> None:
     """
     是什么：validate_sql_columns 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -329,6 +336,7 @@ def validate_sql_columns(
         return
 
     denied_columns: set[str] = set()
+    denied_json_paths: set[str] = set()
     star_tables: set[str] = set()
     for statement in statements:
         cte_names = {
@@ -341,6 +349,40 @@ def validate_sql_columns(
             selected_aliases = selected_table_aliases(select_expr, cte_names)
             output_aliases = _select_output_aliases(select_expr)
             cte_aliases = selected_cte_aliases(select_expr, cte_columns)
+            json_extraction = extract_json_accesses(
+                select_expr,
+                dialect=dialect or "mysql",
+                current_select_only=True,
+            )
+            consumed_column_ids = set(json_extraction.consumed_column_ids)
+            for access in json_extraction.accesses:
+                normalized_source = normalize_identifier(access.source_field)
+                normalized_alias = normalize_identifier(access.table_alias)
+                physical_table = selected_aliases.get(normalized_alias) if normalized_alias else None
+                if physical_table is None:
+                    candidates = {
+                        table_name
+                        for table_name in set(selected_aliases.values())
+                        if normalized_source in permission_scope.get(table_name, {}).get("denied_json_paths", {})
+                    }
+                    physical_table = next(iter(candidates)) if len(candidates) == 1 else None
+                restrictions = permission_scope.get(physical_table or "", {}).get("denied_json_paths", {})
+                for denied_path in restrictions.get(normalized_source, set()):
+                    if json_paths_intersect(access.json_path, denied_path):
+                        denied_columns.add(access.source_field)
+                        denied_json_paths.add(access.json_path)
+
+            for issue in json_extraction.issues:
+                normalized_source = normalize_identifier(issue.source_field)
+                normalized_alias = normalize_identifier(issue.table_alias)
+                physical_table = selected_aliases.get(normalized_alias) if normalized_alias else None
+                candidate_tables = {physical_table} if physical_table else set(selected_aliases.values())
+                if any(
+                        normalized_source in permission_scope.get(table_name, {}).get("denied_json_paths", {})
+                        for table_name in candidate_tables
+                ):
+                    denied_columns.add(issue.source_field or "JSON")
+                    denied_json_paths.add("<dynamic>")
             for star in select_expr.find_all(exp.Star):
                 if not _is_in_current_select_scope(star, select_expr):
                     continue
@@ -354,6 +396,28 @@ def validate_sql_columns(
                 if not _is_in_current_select_scope(column, select_expr):
                     continue
                 if isinstance(column.this, exp.Star):
+                    continue
+                if id(column) in consumed_column_ids:
+                    if not _column_can_resolve(
+                            column.name,
+                            column.table,
+                            selected_aliases,
+                            permission_scope,
+                            output_aliases,
+                            cte_aliases,
+                    ):
+                        denied_columns.add(column.sql())
+                    continue
+                normalized_column = normalize_identifier(column.name)
+                normalized_table = normalize_identifier(column.table)
+                physical_table = selected_aliases.get(normalized_table) if normalized_table else None
+                candidate_tables = {physical_table} if physical_table else set(selected_aliases.values())
+                if any(
+                        normalized_column in permission_scope.get(table_name, {}).get("denied_json_paths", {})
+                        for table_name in candidate_tables
+                ):
+                    denied_columns.add(column.sql())
+                    denied_json_paths.add("$")
                     continue
                 if not _column_can_resolve(
                         column.name,
@@ -369,13 +433,23 @@ def validate_sql_columns(
         table_name
         for table_name in star_tables
         if permission_scope.get(table_name, {}).get("denied_fields")
+        or permission_scope.get(table_name, {}).get("denied_json_paths")
     }
     if restricted_star_tables:
-        raise ValueError(
+        raise SqlPermissionScopeError(
             "SQL 使用了 SELECT *，无法安全应用字段权限；请显式选择授权字段"
+            , rule_type="json_path" if any(
+                permission_scope.get(table_name, {}).get("denied_json_paths")
+                for table_name in restricted_star_tables
+            ) else "column"
         )
     if denied_columns:
-        raise ValueError(f"SQL 包含无权限字段：{', '.join(sorted(denied_columns))}")
+        raise SqlPermissionScopeError(
+            f"SQL 包含无权限字段：{', '.join(sorted(denied_columns))}",
+            fields=denied_columns,
+            json_paths=denied_json_paths,
+            rule_type="json_path" if denied_json_paths else "column",
+        )
 
 
 def validate_sql_scope(
@@ -399,7 +473,12 @@ def validate_sql_scope(
     if unauthorized_tables:
         raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
 
-    validate_sql_columns(statements, permission_scope, current_user)
+    validate_sql_columns(
+        statements,
+        permission_scope,
+        current_user,
+        dialect=get_sqlglot_dialect(datasource.type),
+    )
     return statements, actual_tables, permission_scope
 
 

@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "vue-tsc -b && vite --host 0.0.0.0",
     "test:format-arg": "node --test tests/formatArg.test.ts",
+    "test:permission-json-fields": "node scripts/check-permission-json-subfields.mjs",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx --fix"

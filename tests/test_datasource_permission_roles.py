@@ -18,7 +18,7 @@ from apps.datasource.api import datasource as datasource_api
 from apps.datasource.api import permission as permission_api
 from apps.datasource.crud.binding import bind_tenant_to_datasource
 from apps.datasource.crud import permission
-from apps.datasource.crud import query_executor
+from apps.datasource.crud import sql_engine_executor as query_executor
 from apps.datasource.crud.permission_rules import delete_permission_records_for_datasources
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
@@ -168,6 +168,35 @@ def _engine_with_permission_tables():
         ))
         conn.execute(text(
             """
+            CREATE TABLE sys_tenant_tracking_field (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER,
+                table_name VARCHAR(255) NOT NULL,
+                field_name VARCHAR(255) NOT NULL,
+                field_comment TEXT,
+                field_role VARCHAR(64),
+                semantic_type VARCHAR(64),
+                source_field VARCHAR(255),
+                json_path VARCHAR(1000),
+                update_mode VARCHAR(64),
+                category VARCHAR(255),
+                aliases TEXT,
+                value_mappings TEXT,
+                expression TEXT,
+                required BOOLEAN NOT NULL DEFAULT 0,
+                example_values TEXT,
+                ai_notes TEXT,
+                extra_properties TEXT,
+                create_by INTEGER,
+                update_by INTEGER,
+                create_time INTEGER NOT NULL DEFAULT 0,
+                update_time INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        ))
+        conn.execute(text(
+            """
             CREATE TABLE ds_rules (
                 id INTEGER PRIMARY KEY,
                 enable BOOLEAN NOT NULL,
@@ -281,12 +310,12 @@ def _engine_with_permission_tables():
     return engine
 
 
-def _datasource(datasource_id=1, create_by=9, tenant_id=1):
+def _datasource(datasource_id=1, create_by=9, tenant_id=1, ds_type="pg"):
     return CoreDatasource(
         id=datasource_id,
         tenant_id=tenant_id,
         name=f"Project {datasource_id}",
-        type="pg",
+        type=ds_type,
         configuration="{}",
         create_by=create_by,
         recommended_config=1,
@@ -1059,6 +1088,241 @@ def test_workspace_admin_can_add_and_delete_workspace_permission_rule_group():
 
         assert asyncio.run(permission_api.delete.__wrapped__(session, workspace_admin, saved_id)) is True
         assert session.execute(text("SELECT id FROM ds_rules WHERE id = :id"), {"id": saved_id}).first() is None
+
+
+def _insert_json_subfield_permission_fixture(session: Session) -> None:
+    session.add(_datasource(1, tenant_id=2))
+    session.execute(text(
+        """
+        INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+        VALUES (10, 1, 1, 'event', 'event', 'event')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO core_field
+            (id, ds_id, table_id, checked, field_name, field_type, field_comment, custom_comment, field_index)
+        VALUES
+            (100, 1, 10, 1, 'personal', 'json', '玩家属性', '玩家属性', 1),
+            (101, 1, 10, 1, 'uid', 'text', '用户 ID', '用户 ID', 2)
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO sys_tenant_tracking_field
+            (id, tenant_id, datasource_id, table_name, field_name, field_comment,
+             field_role, semantic_type, source_field, json_path, create_time, update_time)
+        VALUES
+            (1000, 2, 1, 'event', 'personal.money', '充值金额',
+             'json_path_metric', 'number', 'personal', '$.money', 1, 1)
+        """
+    ))
+    session.commit()
+
+
+def _json_subfield_rule_payload(json_path: str = "$.money") -> dict:
+    return {
+        "name": "JSON 子字段规则",
+        "permissions": [{
+            "name": "event 字段限制",
+            "type": "column",
+            "ds_id": 1,
+            "table_id": 10,
+            "permissions": [{
+                "field_id": "tracking:event:personal.money",
+                "field_name": "personal.money",
+                "field_comment": "充值金额",
+                "source_field": "personal",
+                "json_path": json_path,
+                "is_json_subfield": True,
+                "enable": False,
+            }],
+        }],
+        "users": [2],
+    }
+
+
+def test_permission_save_normalizes_json_subfield_from_workspace_metadata():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            workspace_admin,
+            _json_subfield_rule_payload(),
+        ))
+
+        entry = saved["permissions"][0]["permissions"][0]
+        assert entry == {
+            "field_id": "tracking:event:personal.money",
+            "field_name": "personal.money",
+            "field_comment": "充值金额",
+            "source_field": "personal",
+            "json_path": "$.money",
+            "is_json_subfield": True,
+            "enable": False,
+        }
+
+
+def test_permission_save_rejects_forged_json_subfield_path():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(permission_api.save_rule.__wrapped__(
+                session,
+                workspace_admin,
+                _json_subfield_rule_payload("$.channel"),
+            ))
+
+        assert exc_info.value.status_code == 400
+
+
+def test_permission_save_normalizes_physical_field_identity():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+        payload = _json_subfield_rule_payload()
+        payload["permissions"][0]["permissions"] = [{
+            "field_id": 101,
+            "field_name": "uid",
+            "field_comment": "用户 ID",
+            "enable": False,
+        }]
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(session, workspace_admin, payload))
+
+        assert saved["permissions"][0]["permissions"][0] == {
+            "field_id": 101,
+            "field_name": "uid",
+            "field_comment": "用户 ID",
+            "enable": False,
+        }
+
+
+def test_permission_save_rejects_json_subfield_flag_with_physical_field_id():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    with Session(engine) as session:
+        _insert_json_subfield_permission_fixture(session)
+        payload = _json_subfield_rule_payload()
+        payload["permissions"][0]["permissions"] = [{
+            "field_id": 101,
+            "field_name": "uid",
+            "source_field": "personal",
+            "json_path": "$.money",
+            "is_json_subfield": True,
+            "enable": False,
+        }]
+
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(permission_api.save_rule.__wrapped__(session, workspace_admin, payload))
+
+        assert exc_info.value.status_code == 400
+
+
+def _json_restricted_user() -> SimpleNamespace:
+    return SimpleNamespace(
+        id=2,
+        isAdmin=False,
+        system_role="viewer",
+        tenant_id=2,
+        tenant_role="member",
+    )
+
+
+def _insert_json_subfield_rule(session: Session) -> CoreDatasource:
+    _insert_json_subfield_permission_fixture(session)
+    datasource = session.get(CoreDatasource, 1)
+    datasource.type = "mysql"
+    session.add(datasource)
+    session.commit()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    asyncio.run(permission_api.save_rule.__wrapped__(
+        session,
+        workspace_admin,
+        _json_subfield_rule_payload(),
+    ))
+    return datasource
+
+
+def test_json_subfield_permission_allows_sibling_path():
+    engine = _engine_with_permission_tables()
+    with Session(engine) as session:
+        datasource = _insert_json_subfield_rule(session)
+
+        validate_sql_scope(
+            session,
+            _json_restricted_user(),
+            datasource,
+            "SELECT JSON_EXTRACT(e.personal, '$.channel') FROM event e",
+        )
+
+
+@pytest.mark.parametrize("sql", [
+    "SELECT JSON_EXTRACT(e.personal, '$.money') FROM event e",
+    "SELECT JSON_EXTRACT(e.personal, '$.money.currency') FROM event e",
+    "SELECT JSON_EXTRACT(e.personal, '$') FROM event e",
+    "SELECT e.personal FROM event e",
+    "SELECT e.* FROM event e",
+    "SELECT * FROM event e",
+    "SELECT JSON_EXTRACT(e.personal, e.uid) FROM event e",
+])
+def test_json_subfield_permission_rejects_sensitive_access(sql):
+    engine = _engine_with_permission_tables()
+    with Session(engine) as session:
+        datasource = _insert_json_subfield_rule(session)
+
+        with pytest.raises(ValueError, match="无权限|字段权限"):
+            validate_sql_scope(session, _json_restricted_user(), datasource, sql)
+
+
+def test_field_list_hides_only_denied_json_subfield():
+    engine = _engine_with_permission_tables()
+    with Session(engine) as session:
+        datasource = _insert_json_subfield_rule(session)
+        session.execute(text(
+            """
+            INSERT INTO sys_tenant_tracking_field
+                (id, tenant_id, datasource_id, table_name, field_name, field_comment,
+                 field_role, semantic_type, source_field, json_path, create_time, update_time)
+            VALUES
+                (1001, 2, 1, 'event', 'personal.channel', '渠道',
+                 'json_path_dimension', 'text', 'personal', '$.channel', 1, 1)
+            """
+        ))
+        session.commit()
+        table = session.get(CoreTable, 10)
+        fields = session.query(datasource_api.CoreField).filter(
+            datasource_api.CoreField.table_id == 10
+        ).all()
+        contain_rules = permission.get_user_permission_rules(session, _json_restricted_user(), 1)
+        column_scope = permission.get_column_permission_scope(
+            session,
+            _json_restricted_user(),
+            table,
+            fields,
+            contain_rules,
+        )
+
+        items = datasource_api._build_field_list_items(
+            session,
+            datasource,
+            table,
+            column_scope.fields,
+            _json_restricted_user(),
+            denied_json_paths=column_scope.denied_json_paths,
+        )
+
+        names = {item.field_name for item in items}
+        assert "personal.money" not in names
+        assert "personal.channel" in names
+        assert "uid" in names
 
 
 def test_permission_rule_group_can_be_created_without_users():

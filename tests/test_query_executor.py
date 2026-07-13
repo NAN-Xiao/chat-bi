@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.datasource.crud import query_executor
+from apps.datasource.crud import sql_engine_executor as query_executor
 
 
 def _user():

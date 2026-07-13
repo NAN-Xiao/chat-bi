@@ -18,6 +18,7 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
 import { normalizeIdString } from '@/utils/id'
+import { fieldOptionsToPermissionEntries } from './permissionFieldEntries'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -359,10 +360,7 @@ const handleTableIdChange = (val: any) => {
   datasourceApi.fieldList(val.id).then((res: any) => {
     fieldListOptions.value = res || []
     if (columnForm.type === 'row') return
-    columnForm.permissions = fieldListOptions.value.map((ele) => {
-      const { id, field_name, field_comment } = ele
-      return { field_id: id, field_name, field_comment, enable: true }
-    })
+    columnForm.permissions = fieldOptionsToPermissionEntries(fieldListOptions.value)
   })
 }
 
@@ -377,14 +375,10 @@ const handleEditeTable = (val: any) => {
     .then((res: any) => {
       fieldListOptions.value = res || []
       if (columnForm.type === 'row') return
-      const enableMap = columnForm.permissions.reduce((pre, next) => {
-        pre[next.field_id] = next.enable
-        return pre
-      }, {})
-      columnForm.permissions = fieldListOptions.value.map((ele) => {
-        const { id, field_name, field_comment } = ele
-        return { field_id: id, field_name, field_comment, enable: enableMap[id] ?? true }
-      })
+      columnForm.permissions = fieldOptionsToPermissionEntries(
+        fieldListOptions.value,
+        columnForm.permissions
+      )
     })
     .finally(() => {
       if (columnForm.type !== 'row') return

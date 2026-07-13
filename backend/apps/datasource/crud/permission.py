@@ -3,6 +3,7 @@
 """
 import datetime
 import json
+from dataclasses import dataclass
 from typing import Any, List, Optional
 
 from sqlalchemy import and_, inspect
@@ -19,6 +20,7 @@ from apps.datasource.crud.binding import datasource_tenant_binding_active
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceTenantBinding, CoreDatasourceUser, CoreField, CoreTable
 from apps.system.models.tenant import TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
+from common.sql_json_paths import normalize_json_path
 from apps.system.crud.user import (
     SYSTEM_ADMIN_ROLES,
     is_system_admin,
@@ -848,32 +850,73 @@ def has_applicable_permissions(
     return False
 
 
-def get_column_permission_fields(session: SessionDep, current_user: CurrentUser, table: CoreTable,
-                                 fields: list[CoreField], contain_rules: list[Any]):
+@dataclass(frozen=True)
+class ColumnPermissionScope:
+    fields: list[CoreField]
+    denied_json_paths: dict[str, set[str]]
+
+
+def get_column_permission_scope(
+        session: SessionDep,
+        current_user: CurrentUser,
+        table: CoreTable,
+        fields: list[CoreField],
+        contain_rules: list[Any],
+) -> ColumnPermissionScope:
     """
     是什么：get_column_permission_fields 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
-    if is_normal_user(current_user):
-        column_permissions = list_permission_records(
-            session,
-            ds_id=table.ds_id,
-            table_id=table.id,
-            permission_type='column',
-            enable=True,
-        )
-        if column_permissions is not None:
-            for permission in column_permissions:
-                if _permission_applies_to_user(permission, contain_rules, current_user):
-                    try:
-                        permission_list = json.loads(permission.permissions or "[]")
-                    except Exception as exc:
-                        raise ValueError("字段权限配置格式无效") from exc
-                    if not isinstance(permission_list, list):
-                        raise ValueError("字段权限配置格式无效")
-                    fields = filter_list(fields, permission_list)
-    return fields
+    denied_json_paths: dict[str, set[str]] = {}
+    if not is_normal_user(current_user):
+        return ColumnPermissionScope(fields=list(fields), denied_json_paths=denied_json_paths)
+    column_permissions = list_permission_records(
+        session,
+        ds_id=table.ds_id,
+        table_id=table.id,
+        permission_type='column',
+        enable=True,
+    )
+    for permission in column_permissions or []:
+        if not _permission_applies_to_user(permission, contain_rules, current_user):
+            continue
+        try:
+            permission_list = json.loads(permission.permissions or "[]")
+        except Exception as exc:
+            raise ValueError("字段权限配置格式无效") from exc
+        if not isinstance(permission_list, list):
+            raise ValueError("字段权限配置格式无效")
+        physical_entries: list[dict[str, Any]] = []
+        for entry in permission_list:
+            if not isinstance(entry, dict) or "field_id" not in entry or "enable" not in entry:
+                raise ValueError("字段权限配置格式无效")
+            field_id = entry.get("field_id")
+            is_json_subfield = bool(entry.get("is_json_subfield")) or (
+                isinstance(field_id, str) and field_id.strip().startswith("tracking:")
+            )
+            if not is_json_subfield:
+                physical_entries.append(entry)
+                continue
+            source_field = str(entry.get("source_field") or "").strip().lower()
+            json_path = normalize_json_path(entry.get("json_path"))
+            if not source_field or not json_path:
+                raise ValueError("JSON 子字段权限配置格式无效")
+            if not bool(entry.get("enable")):
+                denied_json_paths.setdefault(source_field, set()).add(json_path)
+        fields = filter_list(fields, physical_entries)
+    return ColumnPermissionScope(fields=list(fields), denied_json_paths=denied_json_paths)
+
+
+def get_column_permission_fields(session: SessionDep, current_user: CurrentUser, table: CoreTable,
+                                 fields: list[CoreField], contain_rules: list[Any]):
+    return get_column_permission_scope(
+        session=session,
+        current_user=current_user,
+        table=table,
+        fields=fields,
+        contain_rules=contain_rules,
+    ).fields
 
 
 def is_normal_user(current_user: CurrentUser):
