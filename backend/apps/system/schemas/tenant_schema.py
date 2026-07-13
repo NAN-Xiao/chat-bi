@@ -304,6 +304,29 @@ class TenantTrackingFieldDTO(TenantTrackingFieldBase):
     update_time: int = 0
 
 
+class TenantTrackingEventGroupBase(BaseModel):
+    """工作空间事件分组的可编辑字段。"""
+
+    group_key: str = Field(pattern=r"^[a-z][a-z0-9_]{1,127}$")
+    group_name: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=4000)
+    event_names: list[str] = Field(default_factory=list)
+    sort_order: int = 0
+    enabled: bool = True
+
+
+class TenantTrackingEventGroupDTO(TenantTrackingEventGroupBase):
+    """包含工作空间和数据源边界的事件分组返回结构。"""
+
+    id: Optional[int] = None
+    tenant_id: int = 0
+    datasource_id: Optional[int] = None
+    create_by: Optional[int] = None
+    update_by: Optional[int] = None
+    create_time: int = 0
+    update_time: int = 0
+
+
 class TenantTrackingConfigBase(BaseModel):
     """
     类说明：TenantTrackingConfigBase 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
@@ -325,7 +348,7 @@ class TenantTrackingConfigEditor(TenantTrackingConfigBase):
     """
     类说明：TenantTrackingConfigEditor 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
     """
-    pass
+    event_groups: Optional[list[TenantTrackingEventGroupBase]] = None
 
 
 class TenantTrackingConfigDTO(TenantTrackingConfigBase):
@@ -337,6 +360,7 @@ class TenantTrackingConfigDTO(TenantTrackingConfigBase):
     datasource_id: Optional[int] = None
     tables: list[TenantTrackingTableDTO] = Field(default_factory=list)
     fields: list[TenantTrackingFieldDTO] = Field(default_factory=list)
+    event_groups: list[TenantTrackingEventGroupDTO] = Field(default_factory=list)
     create_by: Optional[int] = None
     update_by: Optional[int] = None
     create_time: int = 0

@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 from apps.datasource.models.datasource import CoreField, CoreTable
 from apps.system.models.tenant import (
     TenantTrackingConfigModel,
+    TenantTrackingEventGroupModel,
     TenantTrackingFieldModel,
     TenantTrackingTableModel,
 )
@@ -24,6 +25,8 @@ from apps.system.schemas.tenant_schema import (
     TenantTrackingEventCatalogGroup,
     TenantTrackingEventCatalogItem,
     TenantTrackingEventCatalogProperty,
+    TenantTrackingEventGroupBase,
+    TenantTrackingEventGroupDTO,
     TenantTrackingFieldDTO,
     TenantTrackingTableDTO,
 )
@@ -33,6 +36,38 @@ from common.utils.time import get_timestamp
 
 TRACKING_EVENT_MAPPING_PROMPT_BUDGET = 16_000
 TRACKING_FIELD_PROMPT_BUDGET = 16_000
+
+
+def validate_tracking_event_groups(
+    event_groups: list[TenantTrackingEventGroupBase],
+    event_name_mappings: list[Any],
+) -> None:
+    """校验事件分组只能引用当前工作空间事件字典中的事件。"""
+    known_events = {
+        event_name
+        for mapping in event_name_mappings or []
+        for event_name in _event_names_from_mapping(mapping)
+    }
+    seen_group_keys: set[str] = set()
+    for group in event_groups or []:
+        if group.group_key in seen_group_keys:
+            raise ValueError(f"事件分组存在重复分组标识 {group.group_key}。")
+        seen_group_keys.add(group.group_key)
+        seen_events: set[str] = set()
+        if not group.event_names:
+            raise ValueError(f"事件分组 {group.group_key} 至少需要一个事件。")
+        for raw_event_name in group.event_names:
+            event_name = _plain_text(raw_event_name)
+            if not event_name:
+                raise ValueError(f"事件分组 {group.group_key} 包含空事件名。")
+            if event_name in seen_events:
+                raise ValueError(f"事件分组 {group.group_key} 包含重复事件 {event_name}。")
+            seen_events.add(event_name)
+            if event_name not in known_events:
+                raise ValueError(
+                    f"事件分组 {group.group_key} 引用的事件 {event_name} "
+                    "不存在于当前事件参数字典。"
+                )
 
 
 def _clean_text(value: str | None, max_len: int | None = None) -> str | None:
@@ -526,6 +561,25 @@ def _field_dto(row: TenantTrackingFieldModel) -> TenantTrackingFieldDTO:
     )
 
 
+def _event_group_dto(row: TenantTrackingEventGroupModel) -> TenantTrackingEventGroupDTO:
+    """把事件分组数据库记录转换为当前工作空间 DTO。"""
+    return TenantTrackingEventGroupDTO(
+        id=_row_id(row),
+        tenant_id=int(row.tenant_id),
+        datasource_id=int(row.datasource_id) if row.datasource_id is not None else None,
+        group_key=row.group_key,
+        group_name=row.group_name,
+        description=row.description,
+        event_names=[_plain_text(item) for item in _json_list(row.event_names) if _plain_text(item)],
+        sort_order=int(row.sort_order or 0),
+        enabled=bool(row.enabled),
+        create_by=row.create_by,
+        update_by=row.update_by,
+        create_time=row.create_time,
+        update_time=row.update_time,
+    )
+
+
 def _datasource_filter(model: Any, datasource_id: int | None):
     if datasource_id is None:
         return model.datasource_id.is_(None)
@@ -586,9 +640,22 @@ def get_tracking_config(
             TenantTrackingFieldModel.id,
         )
     ).all()
+    event_groups = session.exec(
+        select(TenantTrackingEventGroupModel)
+        .where(
+            TenantTrackingEventGroupModel.tenant_id == int(tenant_id),
+            _datasource_read_filter(TenantTrackingEventGroupModel, datasource_id, read_legacy),
+        )
+        .order_by(
+            TenantTrackingEventGroupModel.sort_order,
+            TenantTrackingEventGroupModel.group_key,
+            TenantTrackingEventGroupModel.id,
+        )
+    ).all()
     dto = _config_dto(config, int(tenant_id), datasource_id)
     dto.tables = [_table_dto(row) for row in tables]
     dto.fields = [_field_dto(row) for row in fields]
+    dto.event_groups = [_event_group_dto(row) for row in event_groups]
     if dto.datasource_id is None and datasource_id is not None and (config is None or include_legacy):
         dto.datasource_id = int(datasource_id)
     return dto
@@ -608,6 +675,28 @@ def save_tracking_config(
     做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     now = get_timestamp()
+    existing_event_group_rows = session.exec(
+        select(TenantTrackingEventGroupModel)
+        .where(
+            TenantTrackingEventGroupModel.tenant_id == int(tenant_id),
+            _datasource_filter(TenantTrackingEventGroupModel, datasource_id),
+        )
+        .order_by(TenantTrackingEventGroupModel.sort_order, TenantTrackingEventGroupModel.group_key)
+    ).all()
+    requested_event_groups = list(editor.event_groups or [])
+    groups_to_validate = requested_event_groups or [
+        TenantTrackingEventGroupBase(
+            group_key=row.group_key,
+            group_name=row.group_name,
+            description=row.description,
+            event_names=_json_list(row.event_names),
+            sort_order=int(row.sort_order or 0),
+            enabled=bool(row.enabled),
+        )
+        for row in existing_event_group_rows
+    ]
+    validate_tracking_event_groups(groups_to_validate, list(editor.event_name_mappings or []))
+
     config = session.exec(
         select(TenantTrackingConfigModel).where(
             TenantTrackingConfigModel.tenant_id == int(tenant_id),
@@ -706,6 +795,32 @@ def save_tracking_config(
                 update_time=now,
             )
         )
+
+    if requested_event_groups:
+        session.exec(
+            delete(TenantTrackingEventGroupModel).where(
+                TenantTrackingEventGroupModel.tenant_id == int(tenant_id),
+                _datasource_filter(TenantTrackingEventGroupModel, datasource_id),
+            )
+        )
+        for item in requested_event_groups:
+            session.add(
+                TenantTrackingEventGroupModel(
+                    id=snowflake.generate_id(),
+                    tenant_id=int(tenant_id),
+                    datasource_id=int(datasource_id) if datasource_id is not None else None,
+                    group_key=_plain_text(item.group_key),
+                    group_name=_plain_text(item.group_name),
+                    description=_clean_text(item.description),
+                    event_names=[_plain_text(name) for name in item.event_names],
+                    sort_order=int(item.sort_order or 0),
+                    enabled=bool(item.enabled),
+                    create_by=current_user_id,
+                    update_by=current_user_id,
+                    create_time=now,
+                    update_time=now,
+                )
+            )
 
     session.commit()
     return get_tracking_config(session, int(tenant_id), datasource_id, include_legacy=False)

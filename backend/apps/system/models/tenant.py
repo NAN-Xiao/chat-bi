@@ -241,6 +241,38 @@ class TenantTrackingFieldModel(SnowflakeBase, table=True):
     update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
 
 
+class TenantTrackingEventGroupModel(SnowflakeBase, table=True):
+    """工作空间当前数据源下的可复用事件分组。"""
+
+    __tablename__ = "sys_tenant_tracking_event_group"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "datasource_id",
+            "group_key",
+            name="uq_sys_tenant_tracking_event_group_key",
+        ),
+        Index(
+            "idx_sys_tenant_tracking_event_group_datasource",
+            "tenant_id",
+            "datasource_id",
+        ),
+    )
+
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    datasource_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    group_key: str = Field(sa_column=Column(String(128), nullable=False))
+    group_name: str = Field(sa_column=Column(String(255), nullable=False))
+    description: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    event_names: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    sort_order: int = Field(default=0, sa_column=Column(BigInteger(), nullable=False, server_default="0"))
+    enabled: bool = Field(default=True, sa_column=Column(Boolean(), nullable=False, server_default="true"))
+    create_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    update_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+
+
 class TenantSchemaTableModel(SnowflakeBase, table=True):
     """
     类说明：TenantSchemaTableModel 表示系统管理里的一类数据，通常用来和数据库表或业务对象对应。
