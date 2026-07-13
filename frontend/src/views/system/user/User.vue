@@ -781,6 +781,7 @@ import { userApi } from '@/api/user'
 import { tenantApi } from '@/api/tenant'
 import { datasourceApi } from '@/api/datasource'
 import { getList as getPermissionList, savePermissions } from '@/api/permissions'
+import { permissionRulesToSaveEntries } from '@/views/system/permission/permissionFieldEntries'
 import { decrypted } from '@/views/ds/js/aes'
 import field_text from '@/assets/svg/field_text.svg'
 import field_time from '@/assets/svg/field_time.svg'
@@ -1151,22 +1152,7 @@ const serializePermissionRule = (rule: any, users: string[]) => {
   return {
     id: rule.id,
     name: rule.name,
-    permissions: (rule.permissions || []).map((item: any) => ({
-      ...item,
-      permissions:
-        item.type !== 'row'
-          ? typeof item.permissions === 'object'
-            ? JSON.stringify(item.permissions || [])
-            : item.permissions || JSON.stringify(item.permission_list || [])
-          : JSON.stringify([]),
-      permission_list: [],
-      expression_tree:
-        item.type === 'row'
-          ? typeof item.expression_tree === 'object'
-            ? JSON.stringify(item.expression_tree || item.tree || {})
-            : item.expression_tree || JSON.stringify(parseJsonValue(item.tree, {}))
-          : JSON.stringify({}),
-    })),
+    permissions: permissionRulesToSaveEntries(rule.permissions || []),
     users,
   }
 }

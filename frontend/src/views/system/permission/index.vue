@@ -18,7 +18,7 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
 import { normalizeIdString } from '@/utils/id'
-import { fieldOptionsToPermissionEntries } from './permissionFieldEntries'
+import { fieldOptionsToPermissionEntries, permissionRulesToSaveEntries } from './permissionFieldEntries'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -584,24 +584,7 @@ const save = () => {
   }
   const { id, name, permissions, users } = cloneDeep(currentPermission)
 
-  const permissionsObj = permissions.map((ele: any) => {
-    return {
-      ...cloneDeep(ele),
-      permissions:
-        ele.type !== 'row'
-          ? typeof ele.permissions === 'object'
-            ? JSON.stringify(ele.permissions || [])
-            : ele.permissions
-          : JSON.stringify([]),
-      permission_list: [],
-      expression_tree:
-        ele.type === 'row'
-          ? typeof ele.expression_tree === 'object'
-            ? JSON.stringify(ele.expression_tree || {})
-            : ele.expression_tree
-          : JSON.stringify({}),
-    }
-  })
+  const permissionsObj = permissionRulesToSaveEntries(permissions)
   const obj = {
     id,
     name,

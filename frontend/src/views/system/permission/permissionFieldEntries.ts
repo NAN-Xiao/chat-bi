@@ -17,6 +17,14 @@ export interface PermissionFieldEntry {
   enable: boolean
 }
 
+export interface PermissionRuleSaveEntry {
+  type?: string
+  permissions?: PermissionFieldEntry[]
+  permission_list?: unknown[]
+  expression_tree?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 const fieldIdKey = (value: number | string): string =>
   `${typeof value}:${String(value)}`
 
@@ -42,3 +50,13 @@ export const fieldOptionsToPermissionEntries = (
     return entry
   })
 }
+
+export const permissionRulesToSaveEntries = (
+  entries: PermissionRuleSaveEntry[]
+): PermissionRuleSaveEntry[] =>
+  entries.map((entry) => ({
+    ...entry,
+    permissions: entry.type === 'column' ? entry.permissions || [] : [],
+    permission_list: [],
+    expression_tree: entry.type === 'row' ? entry.expression_tree || {} : {},
+  }))

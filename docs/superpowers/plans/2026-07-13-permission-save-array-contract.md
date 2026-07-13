@@ -4,7 +4,7 @@
 
 **Goal:** 修复权限规则保存时把字段权限数组转换成字符串的回归，并保持后端严格数组校验。
 
-**Architecture:** 在现有 `permissionFieldEntries.ts` 中增加一个纯载荷转换函数，统一生成 `column`、`row`、`table` 三类权限的结构化请求。权限页面只调用该函数，后端验证和持久化逻辑保持不变。
+**Architecture:** 在现有 `permissionFieldEntries.ts` 中增加一个纯载荷转换函数，统一生成 `column`、`row`、`table` 三类权限的结构化请求。权限设置、用户管理和工作空间成员管理三个保存入口都调用该函数，后端验证和持久化逻辑保持不变。
 
 **Tech Stack:** Vue 3、TypeScript 5.7、Node.js assert、FastAPI、pytest
 
@@ -22,6 +22,8 @@
 **Files:**
 - Modify: `frontend/src/views/system/permission/permissionFieldEntries.ts`
 - Modify: `frontend/src/views/system/permission/index.vue:580-604`
+- Modify: `frontend/src/views/system/user/User.vue:1150-1172`
+- Modify: `frontend/src/views/system/tenant-access/TenantAccess.vue:805-825`
 - Test: `frontend/scripts/check-permission-json-subfields.mjs`
 
 **Interfaces:**
@@ -59,6 +61,17 @@ assert.deepEqual(saveEntries[1].expression_tree, sourceEntries[1].expression_tre
 assert.deepEqual(saveEntries[2].permissions, [])
 assert.deepEqual(saveEntries[2].expression_tree, {})
 assert.deepEqual(saveEntries.map((entry) => entry.permission_list), [[], [], []])
+
+const permissionSaveConsumers = [
+  'src/views/system/permission/index.vue',
+  'src/views/system/user/User.vue',
+  'src/views/system/tenant-access/TenantAccess.vue',
+]
+permissionSaveConsumers.forEach((relativePath) => {
+  const consumerSource = readFileSync(resolve(root, relativePath), 'utf8')
+  assert.match(consumerSource, /permissionRulesToSaveEntries\(/)
+  assert.doesNotMatch(consumerSource, /JSON\.stringify\((?:item|ele)\.permissions/)
+})
 ```
 
 - [ ] **Step 2: 运行测试并确认失败**
@@ -91,7 +104,7 @@ export const permissionRulesToSaveEntries = <T extends PermissionRuleSaveEntry>(
   }))
 ```
 
-在 `frontend/src/views/system/permission/index.vue` 导入该函数，并把现有 `permissions.map` 与 `JSON.stringify` 转换替换为：
+在三个保存入口导入该函数，并把各自现有的 `permissions.map` 与 `JSON.stringify` 转换替换为：
 
 ```typescript
 const permissionsObj = permissionRulesToSaveEntries(permissions)
