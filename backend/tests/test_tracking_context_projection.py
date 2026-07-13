@@ -6,7 +6,11 @@ from __future__ import annotations
 from copy import deepcopy
 
 from apps.system.crud.tracking_config import build_tracking_prompt_context
-from apps.system.schemas.tenant_schema import TenantTrackingConfigDTO, TenantTrackingFieldDTO
+from apps.system.schemas.tenant_schema import (
+    TenantTrackingConfigDTO,
+    TenantTrackingEventGroupDTO,
+    TenantTrackingFieldDTO,
+)
 
 
 def _tracking_config() -> TenantTrackingConfigDTO:
@@ -148,3 +152,39 @@ def test_tracking_prompt_keeps_data_skill_referenced_field_when_question_uses_bu
 
     assert "`event_log.event_props.amount`" in context
     assert "`event_log.event_props.battle_result`" not in context
+
+
+def test_tracking_prompt_includes_only_enabled_event_groups_without_mutating_config() -> None:
+    config = _tracking_config().model_copy(
+        update={
+            "event_groups": [
+                TenantTrackingEventGroupDTO(
+                    tenant_id=1,
+                    group_key="payment_process",
+                    group_name="支付流程事件",
+                    description="只统计流程量",
+                    event_names=["pay_success"],
+                    sort_order=20,
+                    enabled=True,
+                ),
+                TenantTrackingEventGroupDTO(
+                    tenant_id=1,
+                    group_key="disabled_group",
+                    group_name="停用分组",
+                    event_names=["login"],
+                    sort_order=10,
+                    enabled=False,
+                ),
+            ]
+        }
+    )
+    original_mappings = deepcopy(config.event_name_mappings)
+
+    context, summary = build_tracking_prompt_context(config)
+
+    assert "## 事件分组" in context
+    assert "payment_process" in context
+    assert "pay_success" in context
+    assert "disabled_group" not in context
+    assert any("事件分组" in item and "payment_process" in item for item in summary)
+    assert config.event_name_mappings == original_mappings

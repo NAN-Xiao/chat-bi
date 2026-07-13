@@ -1077,6 +1077,23 @@ def _project_tracking_fields(
     return selected
 
 
+def _event_groups_for_prompt(config: TenantTrackingConfigDTO) -> list[dict[str, Any]]:
+    """生成稳定、独立的启用事件分组上下文。"""
+    groups = sorted(
+        [group for group in config.event_groups or [] if group.enabled],
+        key=lambda group: (group.sort_order, group.group_key),
+    )
+    return [
+        {
+            "group_key": group.group_key,
+            "group_name": group.group_name,
+            **({"description": group.description} if group.description else {}),
+            "event_names": list(group.event_names),
+        }
+        for group in groups
+    ]
+
+
 def build_tracking_prompt_context(
     config: TenantTrackingConfigDTO,
     validation_warnings: list[str] | None = None,
@@ -1135,6 +1152,12 @@ def build_tracking_prompt_context(
         lines.append("\n## 事件名映射")
         lines.append(value)
         summary_parts.append(f"事件名映射: {value}")
+    event_groups = _event_groups_for_prompt(config)
+    if event_groups:
+        value = _format_json_for_prompt(event_groups)
+        lines.append("\n## 事件分组")
+        lines.append(value)
+        summary_parts.append(f"事件分组: {value}")
     if config.sql_rules:
         lines.append("\n## SQL 约束")
         lines.append(config.sql_rules)
