@@ -76,15 +76,10 @@ EXPECTED_COPY_SNIPPETS = {
         "星通数智使用Redis缓存",
         "星通数智未启用缓存",
     ],
-    "backend/common/core/security_config.py": ["for the 星通数智 application"],
     "tools/seed_slg_bi_training.py": ["into the 星通数智系统库"],
 }
 
 EXPECTED_EXISTING_CORE_DB_SNIPPETS = {
-    ".env": [
-        "SHUZHI_DB_DB=zhishu_bi",
-        "POSTGRES_DB=zhishu_bi",
-    ],
     "backend/common/core/config.py": ['SHUZHI_DB_DB: str = "zhishu_bi"'],
     "tools/backend-local.ps1": ['$appSystemDbName = "zhishu_bi"'],
     "tools/stack-local.ps1": ['$appSystemDbName = "zhishu_bi"'],

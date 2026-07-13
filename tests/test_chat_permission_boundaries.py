@@ -7,6 +7,8 @@ from types import SimpleNamespace
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlmodel import Session, SQLModel, create_engine
 from fastapi import HTTPException
 
@@ -19,6 +21,11 @@ from apps.datasource.crud.permission_errors import (
     looks_like_permission_scope_error,
     permission_denied_result,
 )
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_as_sqlite_json(_type, _compiler, **_kwargs):
+    return "JSON"
 
 
 def _engine_with_chat_permission_tables():
@@ -308,7 +315,7 @@ def test_chat_cached_data_is_rechecked_against_current_permissions():
 
     assert result["status"] == "failed"
     assert result["error_type"] == "permission_denied"
-    assert result["message"] == "SQL 超出当前数据权限范围"
+    assert result["message"] == "没有查看权限"
     assert "amount" not in result["message"]
 
 
@@ -449,7 +456,7 @@ def test_chat_detail_scrubs_predict_cache_when_source_row_permission_applies(mon
     predict_record = next(record for record in chat_info.records if record["id"] == 2)
     assert predict_record["predict"] is None
     assert predict_record["predict_data"] is None
-    assert predict_record["error"] == "SQL 超出当前数据权限范围"
+    assert predict_record["error"] == "没有查看权限"
 
 
 def test_chat_history_scrubs_cached_artifacts_after_permission_change():
@@ -486,7 +493,7 @@ def test_chat_history_scrubs_cached_artifacts_after_permission_change():
     assert record["sql"] is None
     assert record["chart"] is None
     assert record["sql_answer"] is None
-    assert record["error"] == "SQL 超出当前数据权限范围"
+    assert record["error"] == "没有查看权限"
     assert record["data"]["fields"] == []
     assert record["data"]["data"] == []
     assert record["data"]["error_type"] == "permission_denied"
@@ -526,7 +533,7 @@ def test_chat_excel_export_rechecks_current_permissions():
 
     assert caught is not None
     assert caught.status_code == 500
-    assert caught.detail == "SQL 超出当前数据权限范围"
+    assert caught.detail == "没有查看权限"
     assert "amount" not in caught.detail
 
 

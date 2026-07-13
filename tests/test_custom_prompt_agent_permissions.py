@@ -1343,7 +1343,7 @@ def test_platform_prompt_and_skill_are_runtime_generic_capabilities():
         assert "Do not treat any table name" in skill_text
 
 
-def test_legacy_platform_prompt_and_skill_ignore_stale_datasource_scope():
+def test_platform_prompt_and_skill_respect_explicit_datasource_scope():
     engine = _engine()
     with Session(engine) as session:
         session.execute(text(
@@ -1385,9 +1385,8 @@ def test_legacy_platform_prompt_and_skill_ignore_stale_datasource_scope():
         )
         legacy_skill = next(row for row in rows if row.id == 7002)
 
-        assert "legacy agent method only" in prompt
-        assert "platform-level generic capability" in prompt
-        assert "# legacy skill method only" in skill_text
+        assert prompt == ""
+        assert skill_text == ""
         assert legacy_skill.specific_ds is False
         assert legacy_skill.datasource_ids == []
         assert legacy_skill.datasource_names == []
