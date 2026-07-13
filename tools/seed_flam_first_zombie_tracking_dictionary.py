@@ -88,6 +88,101 @@ ARMY_EVENTS = ["ArmyUpgrade"]
 GOLD_EVENTS = ["GoldChange"]
 
 
+EVENT_GROUPS = [
+    {
+        "group_key": "new_user_registration",
+        "group_name": "新增用户注册",
+        "description": "新增用户/注册 cohort 使用 UserRegister 归一化注册事件；需要快照字段时再回连 user 注册日快照",
+        "event_names": REGISTER_EVENTS,
+        "sort_order": 10,
+    },
+    {
+        "group_key": "active_user",
+        "group_name": "活跃用户",
+        "description": "DAU/WAU/MAU/活跃拆分使用 UserActive 归一化活跃事件",
+        "event_names": LOGIN_EVENTS,
+        "sort_order": 20,
+    },
+    {
+        "group_key": "payment_transaction",
+        "group_name": "真实充值交易",
+        "description": "充值金额、订单、付费人数、ARPU/ARPPU 和首付只使用 ServerPayLog.personal。",
+        "event_names": TRANSACTION_EVENTS,
+        "sort_order": 30,
+    },
+    {
+        "group_key": "payment_process_event",
+        "group_name": "支付流程事件",
+        "description": "支付流程事件量，不得作为充值金额、真实订单数或付费人数。",
+        "event_names": PAYMENT_PROCESS_EVENTS,
+        "sort_order": 40,
+    },
+    {
+        "group_key": "ccu",
+        "group_name": "实时在线人数",
+        "description": "实时在线人数事件；在线人数读取 personal.ed_ccu。",
+        "event_names": ["CCU"],
+        "sort_order": 50,
+    },
+    {
+        "group_key": "onboarding_funnel",
+        "group_name": "新手引导漏斗",
+        "description": "新手引导漏斗事件集合；默认起点仍为 user 注册 cohort，不是全量登录用户",
+        "event_names": ONBOARDING_EVENTS,
+        "sort_order": 60,
+    },
+    {
+        "group_key": "activity_participation",
+        "group_name": "活动参与",
+        "description": "活动参与率、人均参与次数、活动参与频次和活动后续质量使用的活动事件集合",
+        "event_names": ACTIVITY_EVENTS,
+        "sort_order": 70,
+    },
+    {
+        "group_key": "expedition_drill",
+        "group_name": "出征与演习",
+        "description": "出征、竞技场、荣耀远征、世界 Boss、联盟 Boss 和演习类看板使用的事件集合",
+        "event_names": EXPEDITION_EVENTS,
+        "sort_order": 80,
+    },
+    {
+        "group_key": "army_upgrade",
+        "group_name": "兵种升级",
+        "description": "兵种升级、兵种招募和兵种相关主城成长指标使用的事件",
+        "event_names": ARMY_EVENTS,
+        "sort_order": 90,
+    },
+    {
+        "group_key": "gold_economy",
+        "group_name": "钻石经济",
+        "description": "钻石获取、消耗和存量变化使用 GoldChange，并读取 personal.ed_changeFree/personal.ed_changePaid",
+        "event_names": GOLD_EVENTS,
+        "sort_order": 100,
+    },
+    {
+        "group_key": "city_building_upgrade",
+        "group_name": "主城建筑升级",
+        "description": "主城/建筑升级类指标使用的建筑升级事件集合",
+        "event_names": BUILDING_EVENTS,
+        "sort_order": 110,
+    },
+    {
+        "group_key": "technology_upgrade",
+        "group_name": "科技升级",
+        "description": "科技升级类指标只使用个人科技升级事件 TechnologyDonation",
+        "event_names": TECH_EVENTS,
+        "sort_order": 120,
+    },
+    {
+        "group_key": "hero_growth",
+        "group_name": "英雄养成",
+        "description": "英雄获取、升级、升星、技能升级和招募相关养成指标使用的事件集合",
+        "event_names": HERO_EVENTS,
+        "sort_order": 130,
+    },
+]
+
+
 TRACKING_CONFIG = {
     "enabled": True,
     "default_event_table": "event",
@@ -101,53 +196,7 @@ TRACKING_CONFIG = {
         {"role": "partition_date", "table": "event", "field": "dt", "description": "业务日期分区 yyyyMMdd"},
         {"role": "snapshot_date", "table": "user", "field": "dt", "description": "用户快照日期 yyyyMMdd"},
     ],
-    "event_name_mappings": [
-        {"metric": "new_user_registration", "events": REGISTER_EVENTS, "description": "新增用户/注册 cohort 使用 UserRegister 归一化注册事件；需要快照字段时再回连 user 注册日快照"},
-        {"metric": "active_user", "events": LOGIN_EVENTS, "description": "DAU/WAU/MAU/活跃拆分使用 UserActive 归一化活跃事件"},
-        {
-            "metric": "payment_transaction",
-            "events": TRANSACTION_EVENTS,
-            "description": "充值金额、订单、付费人数、ARPU/ARPPU 和首付只使用 ServerPayLog.personal。",
-            "properties": [
-                {
-                    "property_name": "personal.money",
-                    "property_display_name": "充值金额",
-                    "property_type": "number",
-                    "source_field": "personal",
-                    "json_path": "$.money",
-                },
-                {
-                    "property_name": "personal.orderId",
-                    "property_display_name": "订单 ID",
-                    "property_type": "identifier",
-                    "source_field": "personal",
-                    "json_path": "$.orderId",
-                },
-                {
-                    "property_name": "personal.productid",
-                    "property_display_name": "商品 ID",
-                    "property_type": "identifier",
-                    "source_field": "personal",
-                    "json_path": "$.productid",
-                },
-                {
-                    "property_name": "uid",
-                    "property_display_name": "用户 ID",
-                    "property_type": "identifier",
-                },
-            ],
-        },
-        {"metric": "payment_process_event", "events": PAYMENT_PROCESS_EVENTS, "description": "支付流程事件量，不得作为充值金额、真实订单数或付费人数。"},
-        {"metric": "ccu", "events": ["CCU"], "description": "实时在线人数事件；在线人数读取 personal.ed_ccu。"},
-        {"metric": "onboarding_funnel", "events": ONBOARDING_EVENTS, "description": "新手引导漏斗事件集合；默认起点仍为 user 注册 cohort，不是全量登录用户"},
-        {"metric": "activity_participation", "events": ACTIVITY_EVENTS, "description": "活动参与率、人均参与次数、活动参与频次和活动后续质量使用的活动事件集合"},
-        {"metric": "expedition_drill", "events": EXPEDITION_EVENTS, "description": "出征、竞技场、荣耀远征、世界 Boss、联盟 Boss 和演习类看板使用的事件集合"},
-        {"metric": "army_upgrade", "events": ARMY_EVENTS, "description": "兵种升级、兵种招募和兵种相关主城成长指标使用的事件"},
-        {"metric": "gold_economy", "events": GOLD_EVENTS, "description": "钻石获取、消耗和存量变化使用 GoldChange，并读取 personal.ed_changeFree/personal.ed_changePaid"},
-        {"metric": "city_building_upgrade", "events": BUILDING_EVENTS, "description": "主城/建筑升级类指标使用的建筑升级事件集合"},
-        {"metric": "technology_upgrade", "events": TECH_EVENTS, "description": "科技升级类指标只使用个人科技升级事件 TechnologyDonation"},
-        {"metric": "hero_growth", "events": HERO_EVENTS, "description": "英雄获取、升级、升星、技能升级和招募相关养成指标使用的事件集合"},
-    ],
+    "event_name_mappings": [],
     "sql_rules": "\n".join(
         [
             "flam 历史趋势、成熟 cohort 和当前快照类看板以 CURDATE() 的前一日作为最近完整业务日，并过滤 prod=110000038；避免对 ADS 大视图先做 MAX(dt)。",
@@ -1031,7 +1080,6 @@ def upsert_config(cur, now: int) -> None:
             default_event_name_field = EXCLUDED.default_event_name_field,
             default_event_time_field = EXCLUDED.default_event_time_field,
             field_role_mappings = EXCLUDED.field_role_mappings,
-            event_name_mappings = EXCLUDED.event_name_mappings,
             sql_rules = EXCLUDED.sql_rules,
             notes = EXCLUDED.notes,
             update_by = EXCLUDED.update_by,
@@ -1056,6 +1104,40 @@ def upsert_config(cur, now: int) -> None:
             now,
         ),
     )
+
+
+def upsert_event_groups(cur, now: int) -> int:
+    cur.execute("SELECT to_regclass('public.sys_tenant_tracking_event_group')")
+    if not cur.fetchone()[0]:
+        raise RuntimeError("缺少事件分组表，请先执行 Alembic 迁移 142trackinggroups。")
+    inserted = 0
+    for item in EVENT_GROUPS:
+        cur.execute(
+            """
+            INSERT INTO public.sys_tenant_tracking_event_group (
+                id, tenant_id, datasource_id, group_key, group_name, description,
+                event_names, sort_order, enabled, create_by, update_by, create_time, update_time
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, datasource_id, group_key) DO NOTHING
+            """,
+            (
+                _snowflake_id(),
+                TENANT_ID,
+                DATASOURCE_ID,
+                item["group_key"],
+                item["group_name"],
+                item.get("description"),
+                Jsonb(item["event_names"]),
+                int(item.get("sort_order", 0)),
+                UPDATE_BY,
+                UPDATE_BY,
+                now,
+                now,
+            ),
+        )
+        inserted += int(cur.rowcount or 0)
+    return inserted
 
 
 def upsert_tables(cur, now: int) -> None:
@@ -1109,7 +1191,6 @@ def upsert_fields(cur, now: int) -> None:
                 source_field = EXCLUDED.source_field,
                 json_path = EXCLUDED.json_path,
                 aliases = EXCLUDED.aliases,
-                value_mappings = EXCLUDED.value_mappings,
                 expression = EXCLUDED.expression,
                 required = EXCLUDED.required,
                 example_values = EXCLUDED.example_values,
@@ -1223,6 +1304,7 @@ def main() -> None:
     with psycopg.connect(**DB) as conn:
         with conn.cursor() as cur:
             upsert_config(cur, now)
+            inserted_event_groups = upsert_event_groups(cur, now)
             upsert_tables(cur, now)
             upsert_fields(cur, now)
             deleted_stale_fields = delete_stale_fields(cur)
@@ -1232,6 +1314,7 @@ def main() -> None:
         json.dumps(
             {
                 "tracking_config": 1,
+                "inserted_event_groups": inserted_event_groups,
                 "tables": len(TABLES),
                 "fields": len(FIELDS),
                 "deleted_stale_fields": deleted_stale_fields,

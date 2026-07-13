@@ -13,27 +13,13 @@ if str(TOOLS_DIR) not in sys.path:
 def test_tracking_dictionary_separates_transactions_and_removes_unverified_ext() -> None:
     import seed_flam_first_zombie_tracking_dictionary as tracking
 
-    mappings = {item["metric"]: item for item in tracking.TRACKING_CONFIG["event_name_mappings"]}
+    groups = {item["group_key"]: item for item in tracking.EVENT_GROUPS}
     field_names = {item["field_name"] for item in tracking.FIELDS}
 
-    assert mappings["payment_transaction"]["events"] == ["ServerPayLog"]
-    transaction_properties = {
-        item["property_name"]: item
-        for item in mappings["payment_transaction"]["properties"]
-    }
-    assert transaction_properties["personal.money"] == {
-        "property_name": "personal.money",
-        "property_display_name": "充值金额",
-        "property_type": "number",
-        "source_field": "personal",
-        "json_path": "$.money",
-    }
-    assert transaction_properties["uid"] == {
-        "property_name": "uid",
-        "property_display_name": "用户 ID",
-        "property_type": "identifier",
-    }
-    assert "ServerPayLog" not in mappings["payment_process_event"]["events"]
+    assert tracking.TRACKING_CONFIG["event_name_mappings"] == []
+    assert groups["payment_transaction"]["event_names"] == ["ServerPayLog"]
+    assert "ServerPayLog" not in groups["payment_process_event"]["event_names"]
+    assert len(groups) == 13
     assert {
         "personal.money",
         "personal.orderId",
@@ -56,3 +42,12 @@ def test_tracking_dictionary_upserts_are_scoped_by_tenant_and_datasource() -> No
     assert "ON CONFLICT (tenant_id, datasource_id, table_name)" in content
     assert "ON CONFLICT (tenant_id, datasource_id, table_name, field_name)" in content
     assert "AND datasource_id = %s" in content
+
+
+def test_tracking_dictionary_seed_does_not_overwrite_user_dictionary_or_groups() -> None:
+    seed_script = ROOT / "tools" / "seed_flam_first_zombie_tracking_dictionary.py"
+    content = seed_script.read_text(encoding="utf-8")
+
+    assert "event_name_mappings = EXCLUDED.event_name_mappings" not in content
+    assert "ON CONFLICT (tenant_id, datasource_id, group_key) DO NOTHING" in content
+    assert "value_mappings = EXCLUDED.value_mappings" not in content
