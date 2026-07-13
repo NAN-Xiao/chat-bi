@@ -950,6 +950,49 @@ def _collect_canvas_view_component_ids(items: list) -> list[str]:
     return result
 
 
+def validate_dashboard_report_target(
+        session: SessionDep,
+        current_user: CurrentUser,
+        dashboard_id: str,
+        datasource_id: int | None,
+        component_ids: list[str],
+) -> None:
+    """
+    校验实时报表解读目标确实属于当前用户可查看的看板和数据源。
+    """
+    record = _load_dashboard_or_404(session, dashboard_id, current_user)
+    if not _can_view_dashboard_resource(session, current_user, record):
+        raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+
+    requested_datasource = _normalize_datasource_id(datasource_id)
+    dashboard_datasource = _normalize_datasource_id(record.datasource)
+    if requested_datasource is None or (
+        dashboard_datasource is not None and requested_datasource != dashboard_datasource
+    ):
+        raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+    _ensure_datasource_access(session, current_user, requested_datasource, required=True)
+
+    requested_component_ids = {
+        str(component_id).strip()
+        for component_id in component_ids
+        if str(component_id).strip()
+    }
+    available_component_ids = set(
+        _collect_canvas_view_component_ids(_parse_canvas_component_data(record.component_data))
+    )
+    if not requested_component_ids or not requested_component_ids.issubset(available_component_ids):
+        raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+
+    canvas_view_info = _parse_canvas_view_info(record.canvas_view_info)
+    for component_id in requested_component_ids:
+        view_info = canvas_view_info.get(component_id)
+        if not isinstance(view_info, dict):
+            continue
+        view_datasource = _normalize_datasource_id(view_info.get("datasource"))
+        if view_datasource is not None and view_datasource != requested_datasource:
+            raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+
+
 def _canvas_view_candidate_ids(view_id: Any, view_info: Any, id_map: dict[str, str] | None = None) -> list[str]:
     candidates: list[str] = []
     id_map = id_map or {}

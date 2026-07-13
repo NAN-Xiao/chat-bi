@@ -33,6 +33,7 @@ import {
   type ReportPromptHistoryItem,
   type ReportPromptHistoryScope,
 } from '@/views/dashboard/preview/reportPromptHistory'
+import { buildReportInterpretationTarget } from '@/views/dashboard/preview/reportInterpretationTarget'
 import {
   applyMixedChartResult,
   canRefreshMixedChart,
@@ -979,11 +980,18 @@ async function submitReportPrompt() {
   const messages: AnalysisAssistantMessage[] = [{ role: 'user', content: question }]
 
   try {
+    const entries = getReportChartEntries()
+    const reportTarget = buildReportInterpretationTarget(
+      props.dashboardInfo?.id,
+      entries,
+      getReportContextSnapshots()
+    )
     const response = await analysisAssistantApi.reportInterpretation(
       messages,
       buildReportContext(),
       datasourceId,
       null,
+      reportTarget,
       controller
     )
     if (!response.ok) {

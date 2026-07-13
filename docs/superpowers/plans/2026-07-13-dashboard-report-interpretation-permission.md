@@ -24,6 +24,7 @@
 - Modify: `backend/apps/dashboard/crud/dashboard_service.py`
 - Modify: `backend/apps/analysis_assistant/api/analysis_assistant.py`
 - Test: `backend/tests/test_analysis_assistant_permissions.py`
+- Test: `tests/test_dashboard_service.py`
 
 **Interfaces:**
 - Consumes: `CoreDashboard.component_data`、`_can_view_dashboard_resource(...)`、`has_datasource_access(...)`。
@@ -112,7 +113,7 @@ Expected: 两个 Node 测试脚本输出通过，`vue-tsc` 退出码为 0。
 
 - [ ] **Step 1: 运行后端相关测试集**
 
-Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_analysis_assistant_permissions.py backend/tests/test_dashboard_permission_cache.py backend/tests/test_dashboard_service.py -q`
+Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_analysis_assistant_permissions.py backend/tests/test_dashboard_permission_cache.py tests/test_dashboard_service.py -q`
 
 Expected: 全部通过。
 

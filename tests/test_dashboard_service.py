@@ -180,6 +180,88 @@ def _engine_with_dashboard_permission_tables():
     return engine
 
 
+def test_validate_dashboard_report_target_accepts_visible_dashboard_component(monkeypatch):
+    """实时解读目标属于当前可见看板和数据源时应通过校验。"""
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-report-target",
+                tenant_id=1,
+                name="可解读看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                is_default=1,
+                create_by="1",
+                delete_flag=0,
+                component_data=json.dumps(
+                    [{"id": "chart-1", "component": "SQView"}],
+                    ensure_ascii=False,
+                ),
+            )
+        )
+        session.commit()
+
+        dashboard_service.validate_dashboard_report_target(
+            session,
+            current_user,
+            "dashboard-report-target",
+            2,
+            ["chart-1"],
+        )
+
+
+@pytest.mark.parametrize(
+    ("datasource_id", "component_ids"),
+    [
+        (3, ["chart-1"]),
+        (2, ["forged-chart"]),
+        (2, []),
+    ],
+)
+def test_validate_dashboard_report_target_rejects_mismatched_target(
+        monkeypatch,
+        datasource_id,
+        component_ids,
+):
+    """数据源不匹配、组件伪造或空目标都不能进入报表解读。"""
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-report-target",
+                tenant_id=1,
+                name="可解读看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                is_default=1,
+                create_by="1",
+                delete_flag=0,
+                component_data=json.dumps([{"id": "chart-1", "component": "SQView"}]),
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.validate_dashboard_report_target(
+                session,
+                current_user,
+                "dashboard-report-target",
+                datasource_id,
+                component_ids,
+            )
+
+    assert exc_info.value.status_code == 403
+
+
 def _create_simple_datasource_table(session: Session):
     session.execute(text(
         """

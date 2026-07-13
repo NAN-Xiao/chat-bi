@@ -19,6 +19,7 @@ import {
   type ReportPromptHistoryItem,
   type ReportPromptHistoryScope,
 } from '@/views/dashboard/preview/reportPromptHistory'
+import { buildReportInterpretationTarget } from '@/views/dashboard/preview/reportInterpretationTarget'
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
@@ -504,11 +505,17 @@ async function submitReportPrompt() {
   const messages: AnalysisAssistantMessage[] = [{ role: 'user', content: question }]
 
   try {
+    const reportTarget = buildReportInterpretationTarget(
+      props.dashboardInfo?.id,
+      getDashboardChartEntries(),
+      getRuntimeReportContextSnapshots()
+    )
     const response = await analysisAssistantApi.reportInterpretation(
       messages,
       buildDashboardReportContext(),
       datasourceId,
       null,
+      reportTarget,
       controller
     )
     if (!response.ok) {

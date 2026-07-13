@@ -282,6 +282,89 @@ def test_report_interpretation_rejects_client_context_when_permissions_apply(
     assert "没有查看权限" in body.decode()
 
 
+def test_report_interpretation_allows_permission_filtered_visible_data(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：实时看板目标已经通过资源校验且有可见数据时，行权限不能再整体禁止解读。
+    """
+    monkeypatch.setattr(analysis_api, "_datasource_has_current_permission_risk", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(analysis_api, "validate_dashboard_report_target", lambda *_args, **_kwargs: None)
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        context="当前可见图表数据：收入 12.5",
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")],
+        report_target=analysis_api.ReportInterpretationTarget(
+            dashboard_id="dashboard-1",
+            component_ids=["chart-1"],
+            has_visible_data=True,
+            has_permission_denied=False,
+        ),
+    )
+
+    response = analysis_api._report_interpretation_preflight(request, _user(), _FakeSession())
+
+    assert response is None
+
+
+def test_report_interpretation_rejects_permission_denied_chart(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：当前图表已经返回权限失败时，实时解读不能复用旧的成功数据。
+    """
+    validate_calls = []
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_dashboard_report_target",
+        lambda *_args, **_kwargs: validate_calls.append(True),
+    )
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        context="旧图表数据：收入 12.5",
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")],
+        report_target=analysis_api.ReportInterpretationTarget(
+            dashboard_id="dashboard-1",
+            component_ids=["chart-1"],
+            has_visible_data=True,
+            has_permission_denied=True,
+        ),
+    )
+
+    response = analysis_api._report_interpretation_preflight(request, _user(), _FakeSession())
+    body = b"".join(asyncio.run(_collect_stream_body(response)))
+
+    assert validate_calls == []
+    assert "permission_denied" in body.decode()
+    assert "没有查看权限" in body.decode()
+
+
+def test_report_interpretation_returns_no_data_for_valid_empty_target(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    是什么：目标合法但没有当前可见行时，应提示无数据而不是误报无权限。
+    """
+    monkeypatch.setattr(analysis_api, "validate_dashboard_report_target", lambda *_args, **_kwargs: None)
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        context="当前图表没有可见行",
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")],
+        report_target=analysis_api.ReportInterpretationTarget(
+            dashboard_id="dashboard-1",
+            component_ids=["chart-1"],
+            has_visible_data=False,
+            has_permission_denied=False,
+        ),
+    )
+
+    response = analysis_api._report_interpretation_preflight(request, _user(), _FakeSession())
+    body = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "当前没有可解读的数据" in body
+    assert "没有查看权限" not in body
+
+
 async def _collect_stream_body(response) -> list[bytes]:
     chunks: list[bytes] = []
     async for chunk in response.body_iterator:

@@ -38,6 +38,7 @@ from apps.datasource.crud.sql_engine import (
     validate_user_query_sql_or_raise,
 )
 from apps.datasource.models.datasource import CoreDatasource
+from apps.dashboard.crud.dashboard_service import validate_dashboard_report_target
 from apps.db.constant import DB
 from apps.analysis_assistant.models import (
     AnalysisAssistantConversation,
@@ -93,6 +94,15 @@ class AnalysisAssistantMessage(BaseModel):
     content: str = Field(default="")
 
 
+class ReportInterpretationTarget(BaseModel):
+    """描述实时看板解读所对应的资源和当前可见结果状态。"""
+
+    dashboard_id: str = Field(min_length=1, max_length=50)
+    component_ids: list[str] = Field(default_factory=list, max_length=200)
+    has_visible_data: bool = False
+    has_permission_denied: bool = False
+
+
 class AnalysisAssistantRequest(BaseModel):
     """
     类说明：AnalysisAssistantRequest 用来描述分析助手的数据格式，让请求入参、返回结果和内部传值更清楚。
@@ -103,6 +113,7 @@ class AnalysisAssistantRequest(BaseModel):
     custom_prompt_id: int | None = None
     data_skill_id: int | None = None
     target_scope: CustomPromptTargetScopeEnum | None = None
+    report_target: ReportInterpretationTarget | None = None
 
 
 class AnalysisAssistantExportBlock(BaseModel):
@@ -214,6 +225,7 @@ MAX_ANALYSIS_QUERIES = 4
 MAX_SQL_ROWS = 200
 MAX_FORECAST_QUERIES = 4
 ANALYSIS_NO_PERMISSION_MESSAGE = "没有查看权限"
+ANALYSIS_NO_DATA_MESSAGE = "当前没有可解读的数据"
 
 
 PLAN_PROMPT = """请基于用户问题、页面上下文和数据库 schema，生成综合分析计划。
@@ -720,6 +732,48 @@ def _permission_denied_stream_response():
         yield _sse({"type": "finish"})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _no_data_stream_response():
+    """返回合法报表目标没有当前可见数据的流式提示。"""
+    def generate():
+        yield _sse({"type": "error", "content": ANALYSIS_NO_DATA_MESSAGE, "error_type": "no_data"})
+        yield _sse({"type": "finish"})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _report_interpretation_preflight(
+        request: AnalysisAssistantRequest,
+        current_user: CurrentUser,
+        session: SessionDep,
+) -> StreamingResponse | None:
+    """区分实时目标可解读、无数据和无权限三种状态。"""
+    target = request.report_target
+    if target is None:
+        if str(request.context or "").strip() and _datasource_has_current_permission_risk(
+            session,
+            current_user,
+            request.datasource_id,
+        ):
+            return _permission_denied_stream_response()
+        return None
+
+    if target.has_permission_denied:
+        return _permission_denied_stream_response()
+    try:
+        validate_dashboard_report_target(
+            session,
+            current_user,
+            target.dashboard_id,
+            request.datasource_id,
+            target.component_ids,
+        )
+    except Exception:
+        return _permission_denied_stream_response()
+    if not target.has_visible_data:
+        return _no_data_stream_response()
+    return None
 
 
 def _conversation_detail(
@@ -3564,12 +3618,9 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         raise RuntimeError("Unauthorized")
     if not request.messages or not request.messages[-1].content.strip():
         raise RuntimeError("Question cannot be Empty")
-    if str(request.context or "").strip() and _datasource_has_current_permission_risk(
-        session,
-        current_user,
-        request.datasource_id,
-    ):
-        return _permission_denied_stream_response()
+    preflight_response = _report_interpretation_preflight(request, current_user, session)
+    if preflight_response is not None:
+        return preflight_response
     limited_response = await _tenant_rate_limit_response(session, current_user)
     if limited_response is not None:
         return limited_response

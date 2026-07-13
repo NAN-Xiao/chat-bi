@@ -7,6 +7,13 @@ export interface AnalysisAssistantMessage {
   content: string
 }
 
+export interface ReportInterpretationTarget {
+  dashboard_id: string
+  component_ids: string[]
+  has_visible_data: boolean
+  has_permission_denied: boolean
+}
+
 export interface AnalysisAssistantHistoryMessage extends AnalysisAssistantMessage {
   plan?: any
   planText?: string
@@ -91,6 +98,7 @@ export const analysisAssistantApi = {
     context?: string,
     datasourceId?: number,
     dataSkillId?: number | string | null,
+    reportTarget?: ReportInterpretationTarget,
     controller?: AbortController
   ) =>
     request.fetchStream(
@@ -100,6 +108,7 @@ export const analysisAssistantApi = {
         context,
         datasource_id: datasourceId,
         data_skill_id: dataSkillId,
+        report_target: reportTarget,
       },
       controller
     ),
