@@ -47,6 +47,9 @@ if (-not $QueueName) {
     $computerSlug = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "local" }
     $QueueName = "local-$computerSlug-$workspaceSlug" -replace "[^A-Za-z0-9_.-]", "-"
 }
+if ($QueueName -eq "default" -or -not $QueueName.StartsWith("local-")) {
+    throw "Local stack queue must start with 'local-' and cannot be 'default': $QueueName"
+}
 if (-not $PostgresData) {
     $defaultSystemPgData = Join-Path $runtimeRoot "pgdata"
     if (Test-Path -LiteralPath (Join-Path $defaultSystemPgData "PG_VERSION")) {
@@ -55,7 +58,8 @@ if (-not $PostgresData) {
 }
 if (-not $PostgresBin) {
     $defaultPostgresBin = "E:\installOK\postgresql\bin"
-    if (Test-Path -LiteralPath (Join-Path $defaultPostgresBin "pg_ctl.exe")) {
+    $defaultPgCtl = "$defaultPostgresBin\pg_ctl.exe"
+    if (Test-Path -LiteralPath $defaultPgCtl -ErrorAction SilentlyContinue) {
         $PostgresBin = $defaultPostgresBin
     }
 }
@@ -182,7 +186,7 @@ function Assert-AppSystemDatabaseReady {
     }
     if (-not $psql) {
         $candidate = "E:\installOK\postgresql\bin\psql.exe"
-        if (Test-Path -LiteralPath $candidate) {
+        if (Test-Path -LiteralPath $candidate -ErrorAction SilentlyContinue) {
             $psql = $candidate
         }
     }
@@ -321,6 +325,9 @@ function Stop-Backend {
         RedisPort = $RedisPort
         QueueName = $QueueName
     }
+    if ($Action -eq "stop" -or $Action -eq "restart") {
+        $backendParams.ForcePortStop = $true
+    }
     if ($StartMcp) {
         $backendParams.StartMcp = $true
     }
@@ -332,8 +339,7 @@ function Start-Workers {
         return
     }
     if (-not (Test-TcpPort -HostName $RedisHost -Port $RedisPort)) {
-        Write-Warning "Task worker start skipped because Redis is not listening on ${RedisHost}:$RedisPort"
-        return
+        throw "Task worker requires Redis on ${RedisHost}:$RedisPort, but it is not reachable."
     }
     & $workerScript -Action start -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort -QueueName $QueueName
 }
@@ -402,18 +408,6 @@ function Show-StackStatus {
             State = if (Test-TcpPort -HostName "127.0.0.1" -Port 8001) { "listening" } else { "closed" }
         }
     }
-    if (-not $SkipWorker) {
-        foreach ($index in 1..$Workers) {
-            $pidFile = Join-Path $runtimeRoot "task-workers\worker-$index.pid"
-            $pidValue = if (Test-Path -LiteralPath $pidFile) { Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
-            $process = if ($pidValue) { Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue } else { $null }
-            $rows += [pscustomobject]@{
-                Component = "worker-$index"
-                Endpoint = "redis:${RedisPort}"
-                State = if ($process) { "running pid=$($process.Id)" } else { "stopped" }
-            }
-        }
-    }
     if (-not $SkipNginx) {
         $rows += [pscustomobject]@{
             Component = "nginx"
@@ -422,6 +416,9 @@ function Show-StackStatus {
         }
     }
     $rows | Format-Table -AutoSize
+    if (-not $SkipWorker) {
+        & $workerScript -Action status -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort -QueueName $QueueName
+    }
 }
 
 if ($Action -eq "status") {

@@ -8,8 +8,8 @@ Scope: entire repository.
 
 ## Local Dev Runbook
 
-- For local Windows development, treat the stack as three separate local services:
-  `frontend` Vite on `0.0.0.0:5173`, backend API on `0.0.0.0:8000`, and MCP server on `0.0.0.0:8001`.
+- For local Windows development, treat the stack as four local services/processes:
+  `frontend` Vite on `0.0.0.0:5173`, backend API on `0.0.0.0:8000`, MCP server on `0.0.0.0:8001`, and one local task Worker using the same isolated `local-*` queue as the API.
 - Before retrying random ports or passwords, use the known-good core app database and Redis settings from the repo root `.env`:
   `SHUZHI_DB_HOST=10.1.5.28`, `SHUZHI_DB_PORT=5432`, `SHUZHI_DB_DB=zhishu_bi`, `SHUZHI_DB_USER=root`, `SHUZHI_DB_PASSWORD=Password123@pg`;
   `SHUZHI_REDIS_HOST=10.1.5.28`, `SHUZHI_REDIS_PORT=6379`;
@@ -41,7 +41,11 @@ Scope: entire repository.
   `MCP_IMAGE_PATH=<repo-root>/.codex-runtime/images`, `EXCEL_PATH=<repo-root>/.codex-runtime/excel`.
 - MCP tools are disabled by default in this workspace. Set `MCP_ENABLED=false` for local backend/MCP startup unless you are explicitly testing MCP access controls.
 - In this local workspace, embedding uses the remote OpenAI-compatible `text-embedding-v4` model from the repo root `.env`; do not set `EMBEDDING_ENABLED=false` or `TABLE_EMBEDDING_ENABLED=false` unless you are intentionally disabling semantic retrieval.
-- Known-good local startup commands on Windows PowerShell are:
+- 本地大模型配置必须固定解析为 `LLM_REQUEST_TIMEOUT=120`、`LLM_TASK_MAX_WAIT_SECONDS=900`、`LLM_MAX_RETRIES=1`；启动或重启后的验证必须输出并核对这三个值。
+- 在本仓库中，无修饰的“启动”“重启”“重新启动”均指 `D:\AIWork3\chat-bi` 本地开发环境；除非用户明确指定生产、远程、Jenkins 或具体服务器，否则不得操作生产环境、SSH、Docker 或远程容器。
+- 默认本地启动必须包含前端 `5173`、API `8000`、MCP `8001` 和一个本地任务 Worker；API 与 Worker 必须使用 `tools/stack-local.ps1` 生成的同一本地独立队列，不得使用生产 `default` 队列。标准命令分别为 `.\tools\stack-local.ps1 -Action start -BackendPorts 8000 -StartMcp -SkipDatabase -SkipRedis -SkipNginx`、`.\tools\stack-local.ps1 -Action restart -BackendPorts 8000 -StartMcp -SkipDatabase -SkipRedis -SkipNginx` 和 `.\tools\stack-local.ps1 -Action status -BackendPorts 8000 -StartMcp -SkipDatabase -SkipRedis -SkipNginx`；前端仍通过 `frontend` 目录的 `npm run dev` 单独管理。这些参数确保无修饰的“启动”“重启”“查看状态”只编排当前工作区的前端、API、MCP 和一个 Worker，不启动或停止远程 PostgreSQL、远程 Redis 或本地 Nginx。
+- 本地状态检查除执行上述 `stack-local.ps1 -Action status` 外，还必须独立输出前端 `5173` 状态，最小命令为 `Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,OwningProcess`；状态报告必须覆盖四个本地服务。
+- The following service-specific Windows PowerShell commands are fallback diagnostics, not the complete default local startup because they do not start the required local task worker:
   backend API:
   ``$workspaceRoot=(Resolve-Path '.').Path; $workspaceRootUnix=$workspaceRoot.Replace('\','/'); $backendRoot=Join-Path $workspaceRoot 'backend'; $runtimeRoot=Join-Path $workspaceRoot '.codex-runtime'; $env:SHUZHI_DB_HOST='10.1.5.28'; $env:SHUZHI_DB_PORT='5432'; $env:SHUZHI_DB_DB='zhishu_bi'; $env:SHUZHI_DB_USER='root'; $env:SHUZHI_DB_PASSWORD='Password123@pg'; $env:POSTGRES_SERVER='10.1.5.28'; $env:POSTGRES_PORT='5432'; $env:POSTGRES_DB='zhishu_bi'; $env:POSTGRES_USER='root'; $env:POSTGRES_PASSWORD='Password123@pg'; $env:SHUZHI_REDIS_HOST='10.1.5.28'; $env:SHUZHI_REDIS_PORT='6379'; $env:REDIS_HOST='10.1.5.28'; $env:REDIS_PORT='6379'; $env:CACHE_TYPE='redis'; $env:AUTO_RUN_MIGRATIONS='false'; $env:FRONTEND_HOST='http://localhost:5173'; $env:BACKEND_CORS_ORIGINS='http://localhost:5173,http://127.0.0.1:5173'; $env:BASE_DIR="$workspaceRootUnix/.codex-runtime/shuzhi"; $env:UPLOAD_DIR="$workspaceRootUnix/.codex-runtime/file"; $env:MCP_IMAGE_PATH="$workspaceRootUnix/.codex-runtime/images"; $env:EXCEL_PATH="$workspaceRootUnix/.codex-runtime/excel"; $env:MCP_ENABLED='false'; Start-Process -FilePath (Join-Path $backendRoot '.venv\Scripts\python.exe') -WorkingDirectory $backendRoot -ArgumentList '-m','uvicorn','main:app','--host','0.0.0.0','--port','8000' -RedirectStandardOutput (Join-Path $runtimeRoot 'backend-8000.current.out.log') -RedirectStandardError (Join-Path $runtimeRoot 'backend-8000.current.err.log') -WindowStyle Hidden``
   MCP:

@@ -26,9 +26,16 @@ if (-not $QueueName) {
     $computerSlug = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "local" }
     $QueueName = "local-$computerSlug-$workspaceSlug" -replace "[^A-Za-z0-9_.-]", "-"
 }
+if ($QueueName -eq "default" -or -not $QueueName.StartsWith("local-")) {
+    throw "Local worker queue must start with 'local-' and cannot be 'default': $QueueName"
+}
 
 function Get-PidFile([int]$Index) {
     return Join-Path $workerRuntime "worker-$Index.pid"
+}
+
+function Get-QueueFile([int]$Index) {
+    return Join-Path $workerRuntime "worker-$Index.queue"
 }
 
 function Set-WorkerEnvironment {
@@ -53,6 +60,9 @@ function Set-WorkerEnvironment {
     $env:SHUZHI_REDIS_PORT = [string]$RedisPort
     $env:AUTO_RUN_MIGRATIONS = "false"
     $env:TASK_QUEUE_NAME = $QueueName
+    $env:LLM_REQUEST_TIMEOUT = "120"
+    $env:LLM_TASK_MAX_WAIT_SECONDS = "900"
+    $env:LLM_MAX_RETRIES = "1"
 
     $env:BASE_DIR = "$runtimeRootForEnv/shuzhi"
     $env:UPLOAD_DIR = "$runtimeRootForEnv/file"
@@ -71,13 +81,35 @@ function Get-WorkerProcess([int]$Index) {
     if (-not $pidValue) {
         return $null
     }
-    return Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
+    $process = Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
+    if (-not $process) {
+        Remove-Item -LiteralPath $pidFile, (Get-QueueFile -Index $Index) -ErrorAction SilentlyContinue
+        return $null
+    }
+    $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $($process.Id)" -ErrorAction SilentlyContinue
+    $commandLine = if ($processInfo) { [string]$processInfo.CommandLine } else { "" }
+    if (
+        -not $processInfo -or
+        -not $commandLine.Contains($pythonExe) -or
+        -not $commandLine.Contains("scripts.task_worker")
+    ) {
+        Remove-Item -LiteralPath $pidFile, (Get-QueueFile -Index $Index) -ErrorAction SilentlyContinue
+        return $null
+    }
+    return $process
 }
 
 function Start-Worker([int]$Index) {
     $existing = Get-WorkerProcess -Index $Index
     if ($existing) {
-        Write-Host "worker $Index already running pid=$($existing.Id)"
+        $queueFile = Get-QueueFile -Index $Index
+        $managedQueue = if (Test-Path -LiteralPath $queueFile) {
+            Get-Content -LiteralPath $queueFile -ErrorAction SilentlyContinue | Select-Object -First 1
+        } else { $null }
+        if ([string]$managedQueue -ne $QueueName) {
+            throw "Worker $Index is already running, but its local queue cannot be verified. Run with -Action restart."
+        }
+        Write-Host "worker $Index already running pid=$($existing.Id) queue=$managedQueue"
         return
     }
 
@@ -96,7 +128,16 @@ function Start-Worker([int]$Index) {
         -WindowStyle Hidden `
         -PassThru
 
-    Set-Content -LiteralPath (Get-PidFile -Index $Index) -Value $process.Id -Encoding ASCII
+    $pidFile = Get-PidFile -Index $Index
+    $queueFile = Get-QueueFile -Index $Index
+    Set-Content -LiteralPath $pidFile -Value $process.Id -Encoding ASCII
+    Set-Content -LiteralPath $queueFile -Value $QueueName -Encoding ASCII
+    Start-Sleep -Milliseconds 1000
+    $process.Refresh()
+    if ($process.HasExited) {
+        Remove-Item -LiteralPath $pidFile, $queueFile -ErrorAction SilentlyContinue
+        throw "Worker $Index exited during startup with code $($process.ExitCode). Check $stderr"
+    }
     Write-Host "worker $Index started pid=$($process.Id)"
 }
 
@@ -108,15 +149,24 @@ function Stop-Worker([int]$Index) {
         Write-Host "worker $Index stopped pid=$($process.Id)"
     }
     Remove-Item -LiteralPath (Get-PidFile -Index $Index) -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Get-QueueFile -Index $Index) -ErrorAction SilentlyContinue
 }
 
 function Show-Status {
     foreach ($i in 1..$Workers) {
         $process = Get-WorkerProcess -Index $i
+        $queueFile = Get-QueueFile -Index $i
+        $managedQueue = if (Test-Path -LiteralPath $queueFile) {
+            Get-Content -LiteralPath $queueFile -ErrorAction SilentlyContinue | Select-Object -First 1
+        } else { $null }
+        if ($process -and [string]$managedQueue -ne $QueueName) {
+            throw "Worker $i is running on unexpected queue '$managedQueue'; expected '$QueueName'."
+        }
         [pscustomobject]@{
             Worker = $i
             Running = [bool]$process
             Pid = if ($process) { $process.Id } else { $null }
+            Queue = $managedQueue
             PidFile = Get-PidFile -Index $i
         }
     }

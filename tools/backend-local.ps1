@@ -2,7 +2,7 @@ param(
     [ValidateSet("start", "stop", "restart", "status")]
     [string]$Action = "start",
     [int[]]$BackendPorts = @(8000),
-    [string]$HostAddress = "127.0.0.1",
+    [string]$HostAddress = "0.0.0.0",
     [ValidateSet("auto", "memory", "redis", "none")]
     [string]$CacheType = "auto",
     [string]$RedisHost = "10.1.5.28",
@@ -38,6 +38,9 @@ if (-not $QueueName) {
     $computerSlug = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "local" }
     $QueueName = "local-$computerSlug-$workspaceSlug" -replace "[^A-Za-z0-9_.-]", "-"
 }
+if ($QueueName -eq "default" -or -not $QueueName.StartsWith("local-")) {
+    throw "Local backend queue must start with 'local-' and cannot be 'default': $QueueName"
+}
 
 function Resolve-CacheType {
     if ($CacheType -ne "auto") {
@@ -53,6 +56,18 @@ function Get-PortOwner([int]$Port) {
         return $null
     }
     return $connection.OwningProcess
+}
+
+function Wait-PortOwner([int]$Port, [int]$TimeoutSeconds = 30) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $owner = Get-PortOwner -Port $Port
+        if ($owner) {
+            return $owner
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return $null
 }
 
 function Test-TcpPort([string]$HostName, [int]$Port, [int]$TimeoutMilliseconds = 5000) {
@@ -73,6 +88,49 @@ function Test-TcpPort([string]$HostName, [int]$Port, [int]$TimeoutMilliseconds =
 
 function Get-PidFile([string]$Name) {
     return Join-Path $replicaRuntime "$Name.pid"
+}
+
+function Get-QueueFile([string]$Name) {
+    return Join-Path $replicaRuntime "$Name.queue"
+}
+
+function Test-UvicornCommandLine([string]$CommandLine, [string]$AppTarget) {
+    return (
+        $CommandLine.Contains($pythonExe) -and
+        $CommandLine.Contains("uvicorn") -and
+        $CommandLine.Contains($AppTarget)
+    )
+}
+
+function Test-WorkspaceUvicornProcess([int]$ProcessId, [string]$AppTarget) {
+    $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+    if (-not $processInfo) {
+        return $false
+    }
+    if (Test-UvicornCommandLine -CommandLine ([string]$processInfo.CommandLine) -AppTarget $AppTarget) {
+        return $true
+    }
+
+    $parentInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $($processInfo.ParentProcessId)" -ErrorAction SilentlyContinue
+    return (
+        $parentInfo -and
+        (Test-UvicornCommandLine -CommandLine ([string]$parentInfo.CommandLine) -AppTarget $AppTarget)
+    )
+}
+
+function Test-ListenerOwnedByLauncher([int]$ListenerProcessId, [int]$LauncherProcessId) {
+    if ($ListenerProcessId -eq $LauncherProcessId) {
+        return $true
+    }
+    $listenerInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ListenerProcessId" -ErrorAction SilentlyContinue
+    return $listenerInfo -and ([int]$listenerInfo.ParentProcessId -eq $LauncherProcessId)
+}
+
+function Get-AppTarget([string]$Name) {
+    if ($Name -eq "mcp") {
+        return "main:mcp_app"
+    }
+    return "main:app"
 }
 
 function Test-BackendHealth([int]$Port) {
@@ -131,6 +189,9 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:MCP_ENABLED = "false"
     $env:AUTO_RUN_MIGRATIONS = "false"
     $env:TASK_QUEUE_NAME = $QueueName
+    $env:LLM_REQUEST_TIMEOUT = "120"
+    $env:LLM_TASK_MAX_WAIT_SECONDS = "900"
+    $env:LLM_MAX_RETRIES = "1"
 
     $env:CACHE_TYPE = $ResolvedCacheType
     if ($ResolvedCacheType -eq "redis") {
@@ -210,8 +271,24 @@ except Exception as exc:
 function Start-UvicornApp([string]$Name, [string]$AppTarget, [int]$Port, [string]$ResolvedCacheType) {
     $owner = Get-PortOwner -Port $Port
     if ($owner) {
+        $instanceName = "$Name-$Port"
+        $pidFile = Get-PidFile -Name $instanceName
+        $queueFile = Get-QueueFile -Name $instanceName
+        $managedPid = if (Test-Path -LiteralPath $pidFile) {
+            Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1
+        } else { $null }
+        $managedQueue = if (Test-Path -LiteralPath $queueFile) {
+            Get-Content -LiteralPath $queueFile -ErrorAction SilentlyContinue | Select-Object -First 1
+        } else { $null }
+        if (
+            [string]$managedPid -ne [string]$owner -or
+            [string]$managedQueue -ne $QueueName -or
+            -not (Test-WorkspaceUvicornProcess -ProcessId $owner -AppTarget $AppTarget)
+        ) {
+            throw "$Name port $Port is already occupied, but its local queue or process ownership cannot be verified. Run with -Action restart."
+        }
         $healthy = Test-BackendHealth -Port $Port
-        Write-Host "$Name port $Port is already listening by pid $owner. healthy=$healthy"
+        Write-Host "$Name port $Port is already listening by managed pid $owner. healthy=$healthy queue=$managedQueue"
         return
     }
 
@@ -232,48 +309,73 @@ function Start-UvicornApp([string]$Name, [string]$AppTarget, [int]$Port, [string
 
     if ($AppTarget -eq "main:app") {
         $ready = Wait-BackendReady -Port $Port
-        $owner = Get-PortOwner -Port $Port
-        if ($owner) {
-            Set-Content -LiteralPath (Get-PidFile -Name "$Name-$Port") -Value $owner -Encoding ASCII
-        } else {
-            Set-Content -LiteralPath (Get-PidFile -Name "$Name-$Port") -Value $process.Id -Encoding ASCII
+        $owner = Wait-PortOwner -Port $Port -TimeoutSeconds 5
+        if (-not $owner) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Name $Port did not create a listening process. Check $stderr"
         }
+        if (-not (Test-ListenerOwnedByLauncher -ListenerProcessId $owner -LauncherProcessId $process.Id)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Name $Port listener pid=$owner was not created by launcher pid=$($process.Id)."
+        }
+        if (-not (Test-WorkspaceUvicornProcess -ProcessId $owner -AppTarget $AppTarget)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Name $Port listener pid=$owner is not the expected workspace uvicorn $AppTarget process."
+        }
+        Set-Content -LiteralPath (Get-PidFile -Name "$Name-$Port") -Value $owner -Encoding ASCII
+        Set-Content -LiteralPath (Get-QueueFile -Name "$Name-$Port") -Value $QueueName -Encoding ASCII
         Write-Host "$Name $Port started launcher_pid=$($process.Id) listen_pid=$owner ready=$ready"
         if (-not $ready) {
             Write-Warning "Backend $Port did not become ready within timeout. Check $stderr"
         }
     } else {
-        Start-Sleep -Seconds 1
-        $owner = Get-PortOwner -Port $Port
-        if ($owner) {
-            Set-Content -LiteralPath (Get-PidFile -Name "$Name-$Port") -Value $owner -Encoding ASCII
-        } else {
-            Set-Content -LiteralPath (Get-PidFile -Name "$Name-$Port") -Value $process.Id -Encoding ASCII
+        $owner = Wait-PortOwner -Port $Port
+        if (-not $owner) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Name $Port did not create a listening process. Check $stderr"
         }
+        if (-not (Test-ListenerOwnedByLauncher -ListenerProcessId $owner -LauncherProcessId $process.Id)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Name $Port listener pid=$owner was not created by launcher pid=$($process.Id)."
+        }
+        if (-not (Test-WorkspaceUvicornProcess -ProcessId $owner -AppTarget $AppTarget)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Name $Port listener pid=$owner is not the expected workspace uvicorn $AppTarget process."
+        }
+        Set-Content -LiteralPath (Get-PidFile -Name "$Name-$Port") -Value $owner -Encoding ASCII
+        Set-Content -LiteralPath (Get-QueueFile -Name "$Name-$Port") -Value $QueueName -Encoding ASCII
         Write-Host "$Name $Port started launcher_pid=$($process.Id) listen_pid=$owner"
     }
 }
 
 function Stop-ByPidFile([string]$Name, [int]$Port) {
     $pidFile = Get-PidFile -Name "$Name-$Port"
+    $queueFile = Get-QueueFile -Name "$Name-$Port"
+    $appTarget = Get-AppTarget -Name $Name
+    $owner = Get-PortOwner -Port $Port
     $stopped = $false
     if (Test-Path -LiteralPath $pidFile) {
         $pidValue = (Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
-        if ($pidValue) {
+        if ($pidValue -and [string]$pidValue -eq [string]$owner) {
             $process = Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
-            if ($process) {
+            if ($process -and (Test-WorkspaceUvicornProcess -ProcessId $process.Id -AppTarget $appTarget)) {
                 Stop-Process -Id $process.Id -Force
                 $process.WaitForExit(5000)
                 Write-Host "Stopped $Name $Port pid=$($process.Id)"
                 $stopped = $true
             }
+        } elseif ($pidValue) {
+            Write-Warning "Ignoring stale $Name PID file for port ${Port}: recorded=$pidValue owner=$owner"
         }
-        Remove-Item -LiteralPath $pidFile -ErrorAction SilentlyContinue
     }
+    Remove-Item -LiteralPath $pidFile, $queueFile -ErrorAction SilentlyContinue
 
     if (-not $stopped -and ($ForcePortStop -or $Action -eq "restart")) {
         $owner = Get-PortOwner -Port $Port
         if ($owner) {
+            if (-not (Test-WorkspaceUvicornProcess -ProcessId $owner -AppTarget $appTarget)) {
+                throw "Refusing to stop unrelated process on port $Port pid=$owner; expected workspace uvicorn $appTarget."
+            }
             $process = Get-Process -Id $owner -ErrorAction SilentlyContinue
             Stop-Process -Id $owner -Force
             if ($process) {
