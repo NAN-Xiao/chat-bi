@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from repair_flam_first_zombie_event_sources import (
     repair_summary,
     source_distribution,
