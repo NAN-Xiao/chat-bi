@@ -3,7 +3,15 @@
 """
 import secrets
 
-from sqlalchemy import BigInteger, Boolean, Column, Index, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
 

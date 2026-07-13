@@ -10,11 +10,9 @@ import time
 from pathlib import Path
 
 import psycopg
-from psycopg.types.json import Jsonb
-
 from core_system_db import core_system_db_config
 from flam_first_zombie_dashboard_sql import DATASOURCE_ID, TENANT_ID
-
+from psycopg.types.json import Jsonb
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "backend"

@@ -8,7 +8,10 @@ import pytest
 from fastapi import HTTPException
 
 from apps.system.api import tracking_config as tracking_config_api
-from apps.system.crud.tracking_config import _event_group_dto, validate_tracking_event_groups
+from apps.system.crud.tracking_config import (
+    _event_group_dto,
+    validate_tracking_event_groups,
+)
 from apps.system.models.tenant import TenantTrackingEventGroupModel
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigEditor,
@@ -102,7 +105,7 @@ def test_tracking_config_save_validation_rolls_back_and_returns_400(monkeypatch)
         def rollback(self) -> None:
             self.rolled_back = True
 
-    def fail_save(*args, **kwargs):
+    def fail_save(*_args, **_kwargs):
         raise ValueError("事件分组 payment_process 引用了未知事件 PayFinish2")
 
     session = FakeSession()

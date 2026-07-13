@@ -5,14 +5,18 @@ import asyncio
 import time
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlmodel import select
 
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.tracking_config import build_tracking_event_catalog, get_tracking_config, save_tracking_config
+from apps.system.crud.tracking_config import (
+    build_tracking_event_catalog,
+    get_tracking_config,
+    save_tracking_config,
+)
 from apps.system.crud.tracking_excel import (
     PhysicalFieldInfo,
     PhysicalTableInfo,
@@ -23,15 +27,14 @@ from apps.system.crud.tracking_excel import (
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
-    TenantTrackingEventCatalogDTO,
     TenantTrackingConfigImportDTO,
+    TenantTrackingEventCatalogDTO,
 )
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import CurrentTenant, CurrentUser, SessionDep
 from common.observability.api_timing import log_api_timing
 from common.utils.file_utils import AppFileUtils
-from fastapi import HTTPException
 
 router = APIRouter(tags=["TenantTrackingConfig"], prefix="/system/tracking-config")
 

@@ -1,23 +1,22 @@
 """
 脚本说明：这个脚本封装系统管理的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
-import json
 import copy
+import json
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete
-from sqlalchemy import or_
+from sqlalchemy import delete, or_
 from sqlmodel import Session, select
 
 from apps.datasource.models.datasource import CoreField, CoreTable
+from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.models.tenant import (
     TenantTrackingConfigModel,
     TenantTrackingEventGroupModel,
     TenantTrackingFieldModel,
     TenantTrackingTableModel,
 )
-from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
@@ -32,7 +31,6 @@ from apps.system.schemas.tenant_schema import (
 )
 from common.utils.snowflake import snowflake
 from common.utils.time import get_timestamp
-
 
 TRACKING_EVENT_MAPPING_PROMPT_BUDGET = 16_000
 TRACKING_FIELD_PROMPT_BUDGET = 16_000

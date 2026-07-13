@@ -12,11 +12,13 @@ from typing import Any
 
 import pandas as pd
 
+from apps.system.crud.tracking_config import validate_tracking_event_groups
 from apps.system.crud.tracking_expression import (
     json_path_segments as _json_path_segments,
+)
+from apps.system.crud.tracking_expression import (
     normalize_json_path as _normalize_json_path,
 )
-from apps.system.crud.tracking_config import validate_tracking_event_groups
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingConfigEditor,
@@ -1990,7 +1992,7 @@ def _event_parameter_mapping_rows(config: TenantTrackingConfigDTO) -> list[dict[
 def _event_group_rows(config: TenantTrackingConfigDTO) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     groups = sorted(
-        list(config.event_groups or []),
+        config.event_groups or [],
         key=lambda item: (int(getattr(item, "sort_order", 0) or 0), _text(getattr(item, "group_key", ""))),
     )
     for group in groups:

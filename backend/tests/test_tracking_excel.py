@@ -9,8 +9,10 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 from apps.chat.models.chat_model import AiModelQuestion
-from apps.system.crud.tracking_config import build_tracking_prompt_context
-from apps.system.crud.tracking_config import filter_tracking_config_for_physical_schema
+from apps.system.crud.tracking_config import (
+    build_tracking_prompt_context,
+    filter_tracking_config_for_physical_schema,
+)
 from apps.system.crud.tracking_excel import (
     PhysicalFieldInfo,
     PhysicalTableInfo,
