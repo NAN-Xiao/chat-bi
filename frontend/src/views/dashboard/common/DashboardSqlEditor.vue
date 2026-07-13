@@ -140,7 +140,6 @@ type SchemaFieldOption = {
   eventName?: string
   eventCategory?: string
   eventDescription?: string
-  collectSide?: string
   eventTable?: string
   eventNameField?: string
   propertyName?: string
@@ -564,7 +563,6 @@ const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
         eventName,
         eventCategory: category,
         eventDescription: event?.description || '',
-        collectSide: event?.collect_side || event?.collectSide || '',
         eventTable,
         eventNameField,
       }
@@ -2271,7 +2269,6 @@ function fieldOptionPayload(value: string) {
     eventName: option.eventName,
     eventCategory: option.eventCategory,
     eventDescription: option.eventDescription,
-    collectSide: option.collectSide,
     eventTable: option.eventTable,
     eventNameField: option.eventNameField,
     propertyName: option.propertyName,

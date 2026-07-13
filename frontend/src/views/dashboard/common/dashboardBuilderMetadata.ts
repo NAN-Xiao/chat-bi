@@ -29,7 +29,6 @@ type TrackingEventCatalogItem = {
   display_name: string
   category: string
   description: string
-  collect_side: string
   event_table: string
   event_name_field: string
   properties: TrackingEventCatalogProperty[]
@@ -179,7 +178,6 @@ export function buildTrackingEventCatalogFromConfig(config: any): TrackingEventC
         display_name: firstPlainText(mapping.event_display_name, mapping.eventDisplayName, mapping.display_name, mapping.displayName, mapping.metric, mapping.name, eventName),
         category,
         description: firstPlainText(mapping.description, mapping.event_description, mapping.eventDescription, mapping.ai_notes, mapping.aiNotes),
-        collect_side: plainText(mapping.collect_side || mapping.collectSide),
         event_table: eventTable,
         event_name_field: eventNameField,
         properties: trackingEventProperties(mapping, eventTable, eventNameField, eventName),

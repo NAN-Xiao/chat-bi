@@ -57,6 +57,8 @@ const catalog = buildTrackingEventCatalogFromConfig({
       event_name: 'ServerPayLog',
       event_display_name: '后端充值',
       event_category: 'Pay',
+      collect_side: 'server',
+      collectSide: 'client',
       properties: [
         {
           property_name: 'money',
@@ -74,6 +76,8 @@ assert.equal(catalog.datasource_id, 3)
 assert.equal(catalog.groups.length, 1)
 assert.equal(catalog.groups[0].label, 'Pay')
 assert.equal(catalog.groups[0].events[0].value, 'tracking-event:event.event:ServerPayLog')
+assert.equal('collect_side' in catalog.groups[0].events[0], false)
+assert.equal('collectSide' in catalog.groups[0].events[0], false)
 assert.equal(catalog.groups[0].events[0].properties[0].value, 'tracking-property:event.event:ServerPayLog:money')
 
 const fieldIndex = createFieldOptionIndex({
