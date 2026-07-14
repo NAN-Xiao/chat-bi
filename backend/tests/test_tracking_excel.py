@@ -1219,6 +1219,89 @@ def test_template_contains_datasource_aligned_examples() -> None:
     assert any(row[0] == "ext" and row[2] == "对象组" for row in event_rows)
 
 
+def test_template_keeps_existing_event_dictionary_fields() -> None:
+    """
+    验证下载模板时不会丢失当前工作空间已经配置的 JSON 字典字段。
+    """
+    physical_schema = {
+        "event": PhysicalTableInfo(
+            table_name="event",
+            fields=[
+                PhysicalFieldInfo("event", "varchar", "事件名"),
+                PhysicalFieldInfo("adinfo", "json", "广告信息"),
+                PhysicalFieldInfo("allianceinfo", "json", "联盟信息"),
+            ],
+        ),
+        "user": PhysicalTableInfo(
+            table_name="user",
+            fields=[
+                PhysicalFieldInfo("uid", "varchar", "用户ID"),
+                PhysicalFieldInfo("personal", "json", "个人属性"),
+            ],
+        ),
+    }
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="adinfo.adsetId",
+                field_comment="广告组ID",
+                semantic_type="text",
+                source_field="adinfo",
+                json_path="$.adsetId",
+            ),
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="allianceinfo.allianceid",
+                field_comment="联盟ID",
+                semantic_type="text",
+                source_field="allianceinfo",
+                json_path="$.allianceid",
+            ),
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="user",
+                field_name="personal.nickname",
+                field_comment="昵称",
+                semantic_type="text",
+                source_field="personal",
+                json_path="$.nickname",
+            ),
+        ],
+    )
+
+    workbook_bytes = tracking_config_excel(
+        config,
+        physical_schema=physical_schema,
+        template_only=True,
+    ).getvalue()
+
+    event_rows = _sheet_rows(workbook_bytes, "event")
+    field_names = {row[0] for row in event_rows}
+
+    assert "adinfo.adsetId" in field_names
+    assert "allianceinfo.allianceid" in field_names
+
+    user_rows = _sheet_rows(workbook_bytes, "user")
+    assert "personal.nickname" in {row[0] for row in user_rows}
+
+    parsed = parse_tracking_excel(
+        workbook_bytes,
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=physical_schema,
+        datasource_type="postgresql",
+    )
+    imported_fields = {
+        (field.table_name, field.field_name, field.source_field, field.json_path)
+        for field in parsed.editor.fields
+    }
+    assert ("event", "adinfo.adsetId", "adinfo", "$.adsetId") in imported_fields
+    assert ("user", "personal.nickname", "personal", "$.nickname") in imported_fields
+
+
 def test_import_excel_replaces_previous_tracking_config() -> None:
     """
     是什么：验证 Excel 是维护源，导入不会把 Excel 已删除的旧事件/字段悄悄合并回来。

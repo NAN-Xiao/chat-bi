@@ -2420,13 +2420,12 @@ def _attribute_sheet_rows_for_table(
     *,
     physical_fields: list[PhysicalFieldInfo],
     field_map: dict[tuple[str, str], Any],
-    template_only: bool,
 ) -> list[dict[str, Any]]:
     physical_names = {field_info.field_name for field_info in physical_fields}
     rows: list[dict[str, Any]] = []
     for field_info in physical_fields:
         configured = field_map.get((table_name, field_info.field_name))
-        if configured and not template_only:
+        if configured:
             rows.append(_attribute_row_from_field(
                 field_name=configured.field_name,
                 display_name=_first_alias(configured),
@@ -2443,22 +2442,21 @@ def _attribute_sheet_rows_for_table(
             description=field_info.custom_comment or field_info.field_comment,
         ))
 
-    if not template_only:
-        configured_fields = [
-            configured
-            for (field_table, _), configured in field_map.items()
-            if field_table == table_name and configured.field_name not in physical_names
-        ]
-        for configured in sorted(configured_fields, key=_business_field_sort_key):
-            rows.append(_attribute_row_from_field(
-                field_name=configured.field_name,
-                display_name=_first_alias(configured),
-                field_type=getattr(configured, "semantic_type", None),
-                description=getattr(configured, "field_comment", None),
-                update_mode=_text(getattr(configured, "update_mode", None)),
-                category=_field_category(configured),
-                extra_properties=_extra_properties(configured),
-            ))
+    configured_fields = [
+        configured
+        for (field_table, _), configured in field_map.items()
+        if field_table == table_name and configured.field_name not in physical_names
+    ]
+    for configured in sorted(configured_fields, key=_business_field_sort_key):
+        rows.append(_attribute_row_from_field(
+            field_name=configured.field_name,
+            display_name=_first_alias(configured),
+            field_type=getattr(configured, "semantic_type", None),
+            description=getattr(configured, "field_comment", None),
+            update_mode=_text(getattr(configured, "update_mode", None)),
+            category=_field_category(configured),
+            extra_properties=_extra_properties(configured),
+        ))
     return rows
 
 
@@ -2861,7 +2859,6 @@ def tracking_config_excel(
                 table_name,
                 physical_fields=physical_fields,
                 field_map=field_map,
-                template_only=template_only,
             )
             sheets.append((sheet_name_by_table[table_name], rows, _columns_with_extra(ATTRIBUTE_COLUMNS, rows)))
             continue

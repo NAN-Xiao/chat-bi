@@ -3108,6 +3108,7 @@ def _repair_sql(
     sample_data: str,
     data_profile: str = "",
     custom_agent: str = "",
+    tracking_context: str = "",
     data_skill: str = "",
 ) -> str:
     """
@@ -3115,13 +3116,21 @@ def _repair_sql(
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    tracking_block = ""
+    if tracking_context.strip():
+        tracking_block = (
+            "工作空间数据字典/埋点方案（补充字段和事件语义；不能覆盖前述 Data Skill 口径）：\n"
+            f"{tracking_context[:12000]}\n\n"
+        )
     prompt = (
         f"用户问题：{question}\n"
         f"数据块标题：{raw_query.get('title')}\n"
         f"分析目的：{raw_query.get('purpose')}\n"
         f"原始 SQL：\n{failed_sql}\n\n"
         f"执行错误：\n{str(error)[:3000]}\n\n"
-        f"{_context_blocks(custom_agent, data_skill)}"
+        f"{_data_skill_block(data_skill)}"
+        f"{tracking_block}"
+        f"{_custom_agent_block(custom_agent)}"
         f"{_sql_generation_semantic_mappings(schema)}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
         f"样例数据：\n{sample_data[:6000]}\n\n"
@@ -3573,7 +3582,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
                         repaired_sql = _repair_sql(
                             llm, question, raw_query, sql, first_error, schema, sample_data, data_profile,
-                            custom_agent, semantic_context
+                            custom_agent, tracking_context, data_skill
                         )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables
@@ -3593,7 +3602,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
                         repaired_sql = _repair_sql(
                             llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data,
-                            data_profile, custom_agent, semantic_context
+                            data_profile, custom_agent, tracking_context, data_skill
                         )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables

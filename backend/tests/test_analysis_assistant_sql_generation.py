@@ -1,5 +1,7 @@
 """验证分析助手生成 SQL 时会显式接收语义字段表达式。"""
 
+from types import SimpleNamespace
+
 from apps.analysis_assistant.api import analysis_assistant as analysis_api
 
 
@@ -32,3 +34,36 @@ def test_all_sql_generation_prompts_require_aggregate_bounds_outside_where() -> 
         assert "聚合函数或窗口函数不得出现在同一查询层级的 WHERE" in prompt
         assert "WITH bounds AS" in prompt
         assert "FROM source_table" in prompt
+
+
+def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
+    """失败重试不能让长埋点上下文截断数据源专属 SQL 示例。"""
+    class CaptureLLM:
+        def __init__(self) -> None:
+            self.messages = []
+
+        def invoke(self, messages):
+            self.messages = messages
+            return SimpleNamespace(content='{"sql":"SELECT 1"}')
+
+    llm = CaptureLLM()
+    data_skill = "D7 规则\n" + "d" * 19000 + "\n## 七日留存 SQL 示例\nWITH bounds AS (...)"
+    tracking_context = "埋点上下文\n" + "t" * 25000
+
+    analysis_api._repair_sql(
+        llm,
+        question="近14天的七日留存趋势",
+        raw_query={"title": "七日留存趋势", "purpose": "查看 D7 留存"},
+        failed_sql="SELECT broken",
+        error=ValueError("执行失败"),
+        schema="",
+        sample_data="",
+        tracking_context=tracking_context,
+        data_skill=data_skill,
+    )
+
+    prompt = llm.messages[-1].content
+    assert "## 七日留存 SQL 示例" in prompt
+    assert "工作空间数据字典/埋点方案" in prompt
+    assert tracking_context[:12000] in prompt
+    assert tracking_context[12000:] not in prompt
