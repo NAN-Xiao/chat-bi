@@ -28,6 +28,12 @@ import {
   ensureChartSnapshotRefreshedAt,
   nextDashboardRefreshDelayMs,
 } from '@/views/dashboard/utils/dashboardRefreshPolicy'
+import {
+  createPermissionDeniedChartRegistry,
+  dashboardCacheRefreshDisposition,
+  isPermissionDeniedRefreshResult as isPermissionDeniedResult,
+  shouldRetryDashboardChartFailure,
+} from '@/views/dashboard/utils/dashboardPermissionRefresh'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -80,6 +86,7 @@ const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
 const CHART_TRANSIENT_MAX_RETRIES = 6
 const DASHBOARD_MODE_DEFAULT = 'default'
 const DASHBOARD_MODE_MY = 'my'
+const permissionDeniedCharts = createPermissionDeniedChartRegistry()
 
 function clampChartLoadingProgress(progress: unknown) {
   const numericProgress = Number(progress)
@@ -345,8 +352,13 @@ function scheduleNextDashboardAutoRefresh(loadVersion: number) {
     return
   }
   const refreshableViewInfos = collectNormalizedDashboardCharts()
+    .filter(
+      (entry) =>
+        entry.viewInfo &&
+        canLookupChartCache(entry.viewInfo) &&
+        !permissionDeniedCharts.has(entry)
+    )
     .map((entry) => entry.viewInfo)
-    .filter((viewInfo) => viewInfo && canLookupChartCache(viewInfo))
   const delay = nextDashboardRefreshDelayMs(
     refreshableViewInfos,
     state.dashboardInfo?.dashboardRefreshPolicy
@@ -387,18 +399,6 @@ function applyChartResult(viewInfo: any, result: any) {
   viewInfo.loadingProgress = 100
   viewInfo.refreshState = ''
   return viewInfo.status !== 'failed' && data.length > 0
-}
-
-function isDashboardCacheMiss(result: any) {
-  return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
-}
-
-function isDashboardQueryBusy(result: any) {
-  return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
-}
-
-function isPermissionDeniedResult(result: any) {
-  return result?.status === 'failed' && result?.error_type === 'permission_denied'
 }
 
 function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {
@@ -603,7 +603,9 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
       failChartWithoutSnapshot(viewInfo, { message: t('dashboard.sql_editor_empty_sql') })
     }
   })
-  const chartEntries = allChartEntries.filter((entry) => canLookupChartCache(entry.viewInfo))
+  const chartEntries = allChartEntries.filter(
+    (entry) => canLookupChartCache(entry.viewInfo) && !permissionDeniedCharts.has(entry)
+  )
   const total = chartEntries.length
   if (!total) {
     if (chartRefreshController === controller) {
@@ -653,11 +655,14 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
         if (loadVersion !== dashboardLoadVersion || controller.signal.aborted) {
           return
         }
-        if (
-          isDashboardCacheMiss(cachedResult) ||
-          cachedResult?.status === 'failed' ||
-          !hasUsableResultSnapshot(cachedResult)
-        ) {
+        const cacheDisposition = dashboardCacheRefreshDisposition(
+          cachedResult,
+          hasUsableResultSnapshot(cachedResult)
+        )
+        if (cacheDisposition === 'permission_denied') {
+          permissionDeniedCharts.mark(entry)
+          applyChartResult(viewInfo, cachedResult)
+        } else if (cacheDisposition === 'refresh_database') {
           databaseRefreshEntries.push(entry)
         } else {
           if (isMixedChart(viewInfo)) {
@@ -697,15 +702,11 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
         }
         if (result?.status === 'failed') {
           if (isPermissionDeniedResult(result)) {
+            permissionDeniedCharts.mark(entry)
             applyChartResult(viewInfo, result)
-          } else if (isDashboardQueryBusy(result)) {
-            keepChartSnapshotOrLoading(viewInfo)
-            if (!hasUsableChartSnapshot(viewInfo)) {
-              transientPendingCount += 1
-            }
           } else {
             keepChartSnapshotOrLoading(viewInfo)
-            if (!hasUsableChartSnapshot(viewInfo)) {
+            if (shouldRetryDashboardChartFailure(result, hasUsableChartSnapshot(viewInfo))) {
               transientPendingCount += 1
             }
           }
@@ -775,6 +776,7 @@ const loadCanvasData = (params: any) => {
     loadingDashboardId.value === loadingKey
   ) return
   cancelDashboardWork()
+  permissionDeniedCharts.reset()
   chartRefreshRetryCount = 0
   const loadVersion = ++dashboardLoadVersion
   const loadController = new AbortController()

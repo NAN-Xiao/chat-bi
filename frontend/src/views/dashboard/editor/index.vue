@@ -28,6 +28,12 @@ import {
   isMixedChart,
   refreshMixedChartData,
 } from '@/views/dashboard/utils/mixedChartData'
+import {
+  createPermissionDeniedChartRegistry,
+  dashboardCacheRefreshDisposition,
+  isPermissionDeniedRefreshResult as isPermissionDeniedResult,
+  shouldRetryDashboardChartFailure,
+} from '@/views/dashboard/utils/dashboardPermissionRefresh'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -59,6 +65,7 @@ const CHART_DATABASE_REFRESH_CONCURRENCY = 4
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 160
 const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
 const CHART_TRANSIENT_MAX_RETRIES = 6
+const permissionDeniedCharts = createPermissionDeniedChartRegistry()
 
 const canUseCanvasDraft = (sourceKey?: string | null) => Boolean(sourceKey?.startsWith('create:'))
 
@@ -218,18 +225,6 @@ function normalizePermissionDeniedChart(viewInfo: any) {
   viewInfo.dataState = 'failed'
   viewInfo.loadingProgress = 100
   viewInfo.refreshState = ''
-}
-
-function isDashboardCacheMiss(result: any) {
-  return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
-}
-
-function isDashboardQueryBusy(result: any) {
-  return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
-}
-
-function isPermissionDeniedResult(result: any) {
-  return result?.status === 'failed' && result?.error_type === 'permission_denied'
 }
 
 function chartSqlPayload(viewInfo: any) {
@@ -447,12 +442,16 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
 }
 
 async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
-  const chartEntries = collectDashboardCharts(componentData.value).filter((entry) =>
-    Boolean(
-      isMixedChart(entry.viewInfo)
-        ? canRefreshMixedChart(entry.viewInfo)
-        : !isExternalSnapshotChart(entry.viewInfo) && entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim()
-    )
+  const chartEntries = collectDashboardCharts(componentData.value).filter(
+    (entry) =>
+      !permissionDeniedCharts.has(entry) &&
+      Boolean(
+        isMixedChart(entry.viewInfo)
+          ? canRefreshMixedChart(entry.viewInfo)
+          : !isExternalSnapshotChart(entry.viewInfo) &&
+            entry.viewInfo?.datasource &&
+            entry.viewInfo?.sql?.trim()
+      )
   )
   if (!chartEntries.length) {
     return
@@ -503,11 +502,14 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
           return
         }
-        if (
-          isDashboardCacheMiss(cachedResult) ||
-          cachedResult?.status === 'failed' ||
-          !hasUsableResultSnapshot(cachedResult)
-        ) {
+        const cacheDisposition = dashboardCacheRefreshDisposition(
+          cachedResult,
+          hasUsableResultSnapshot(cachedResult)
+        )
+        if (cacheDisposition === 'permission_denied') {
+          permissionDeniedCharts.mark(entry)
+          withAutoChartUpdate(() => applyChartResult(viewInfo, cachedResult))
+        } else if (cacheDisposition === 'refresh_database') {
           if (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo)) {
             databaseRefreshEntries.push(entry)
           }
@@ -554,14 +556,13 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         withAutoChartUpdate(() => {
           if (result?.status === 'failed') {
             if (isPermissionDeniedResult(result)) {
+              permissionDeniedCharts.mark(entry)
               applyChartResult(viewInfo, result)
             } else {
               keepChartSnapshotOrLoading(viewInfo)
-            }
-            if (!hasChartSnapshot(viewInfo) && isDashboardQueryBusy(result)) {
-              transientPendingCount += 1
-            } else if (!hasChartSnapshot(viewInfo)) {
-              transientPendingCount += 1
+              if (shouldRetryDashboardChartFailure(result, hasChartSnapshot(viewInfo))) {
+                transientPendingCount += 1
+              }
             }
           } else {
             if (isMixedChart(viewInfo)) {
@@ -644,6 +645,7 @@ const loadCanvasFromRoute = async () => {
   const loadVersion = ++routeLoadVersion
   persistCanvasDraft()
   cancelDashboardChartRefresh()
+  permissionDeniedCharts.reset()
   chartRefreshRetryCount = 0
   canvasStateReady = false
   syncRouteState()
