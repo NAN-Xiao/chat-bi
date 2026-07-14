@@ -1,8 +1,15 @@
 import json
+from types import SimpleNamespace
 
 from apps.chat.task import llm as llm_module
 from apps.chat.task.llm import LLMService
 from common.core.config import Settings
+
+
+def test_model_engine_label_omits_datasource_server_version():
+    datasource = SimpleNamespace(type="mysql", type_name="MySQL")
+
+    assert llm_module.model_engine_label(datasource) == "MySQL"
 
 
 def test_llm_timeout_defaults_are_decoupled(monkeypatch):

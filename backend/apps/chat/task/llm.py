@@ -56,7 +56,6 @@ from apps.datasource.crud.sql_engine import (
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import get_version
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
@@ -1039,6 +1038,14 @@ def _ensure_chart_covers_metric_fields(
 
 
 
+def model_engine_label(datasource: CoreDatasource | AssistantOutDsSchema) -> str:
+    """返回用于模型提示词的数据库类型，不包含服务端版本号。"""
+    datasource_type = str(getattr(datasource, "type", "") or "")
+    if datasource_type.lower() == "excel":
+        return "PostgreSQL"
+    return str(getattr(datasource, "type_name", "") or datasource_type)
+
+
 class LLMService:
     """
     类说明：LLMService 把聊天问数据和 Agent的一组操作放在一起，对外提供更容易调用的业务能力。
@@ -1125,12 +1132,12 @@ class LLMService:
                 ds = self.out_ds_instance.get_ds(chat.datasource)
                 if not ds:
                     raise SingleMessageError("当前没有可用项目，请联系管理员创建或分配项目")
-                chat_question.engine = ds.type + get_version(ds)
+                chat_question.engine = ds.type
             else:
                 ds = session.get(CoreDatasource, chat.datasource)
                 if not ds:
                     raise SingleMessageError("当前没有可用项目，请联系管理员创建或分配项目")
-                chat_question.engine = (ds.type_name if ds.type != 'excel' else 'PostgreSQL') + get_version(ds)
+                chat_question.engine = model_engine_label(ds)
 
         self.generate_sql_logs = list_generate_sql_logs(session=session, chart_id=chat_id)
         self.generate_chart_logs = list_generate_chart_logs(session=session, chart_id=chat_id)
@@ -1848,7 +1855,7 @@ class LLMService:
                 if self.current_assistant and self.current_assistant.type in dynamic_ds_types:
                     _ds = self.out_ds_instance.get_ds(data['id'])
                     self.ds = _ds
-                    self.chat_question.engine = _ds.type + get_version(self.ds)
+                    self.chat_question.engine = _ds.type
 
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type
@@ -1863,8 +1870,7 @@ class LLMService:
                         _datasource = None
                         raise SingleMessageError(f"当前用户无权访问项目 {forbidden_datasource}")
                     self.ds = CoreDatasource(**_ds.model_dump())
-                    self.chat_question.engine = (_ds.type_name if _ds.type != 'excel' else 'PostgreSQL') + get_version(
-                        self.ds)
+                    self.chat_question.engine = model_engine_label(_ds)
 
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
