@@ -1,0 +1,2578 @@
+[
+  {
+    "event": "ABTest",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      100
+    ]
+  },
+  {
+    "event": "ActivityAllianceBossBattleRet",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityAllianceBossChoose",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityAllianceBossDonation",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityAllianceBossReward",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityArmsRaceBoxOpen",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityArmsRaceGoalPoint",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      160
+    ]
+  },
+  {
+    "event": "ActivityArmsRaceTask",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityChestCount",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityCommanderTask",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityLimitRallyMonster",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ActivityWheelCount",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      77,
+      78,
+      79,
+      80,
+      81
+    ]
+  },
+  {
+    "event": "ActivityWorldBoss",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "AdvancedPointIncrease",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      51,
+      52,
+      53,
+      54,
+      55
+    ]
+  },
+  {
+    "event": "AliDnsAnalyze",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceAirshipAppointCaptain",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceAirshipFreeCreate",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceAirshipRefreshCargo",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceAirshipRobbed",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceAirshipStart",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceDeclareWar",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 40,
+    "sample_states": {
+      "personal": 40
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceDuelAlliancePoint",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceDuelBoxOpen",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceDuelPersonalPoint",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceGiftDistribute",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceGiftReceive",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceHelp",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "AllianceMilestones",
+    "dictionary_rows": 10,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      374,
+      375,
+      376,
+      382,
+      383
+    ]
+  },
+  {
+    "event": "AllianceTechRecommend",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      399,
+      401
+    ]
+  },
+  {
+    "event": "AllianceTechnologyDonation",
+    "dictionary_rows": 10,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ApplyAlliance",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ArenaRefresh",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ArenaResults",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ArmyUpgrade",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "BattleFieldGrid",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "BingoBoxClaim",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "BlockUnlock",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "BuildingIdleUpgrade",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "BuildingUpgrade",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      431
+    ]
+  },
+  {
+    "event": "BuyCustomWeeklyPass",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 32,
+    "sample_states": {
+      "personal": 32
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      596,
+      597,
+      598
+    ]
+  },
+  {
+    "event": "CCU",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "CancleGiveUpOccupiedCities",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ChapterTaskReward",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ClickButton",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      165
+    ]
+  },
+  {
+    "event": "ConnectGameServer",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ConnectGameServerBack",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ConnectGameServerBackFail",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "CreateAlliance",
+    "dictionary_rows": 10,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 30,
+    "sample_states": {
+      "personal": 30
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      406
+    ]
+  },
+  {
+    "event": "DailyLivenessAdd",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "DailyLivenessReward",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "DialogueEnd",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "DialogueStart",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "DismissAlliance",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 11,
+    "sample_states": {
+      "personal": 11
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      673,
+      674,
+      675,
+      676,
+      677,
+      678
+    ]
+  },
+  {
+    "event": "DownLoadDataTableRet",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "DownLoadGameSceneRet",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "DungeonEnter",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "DungeonEventEnd",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "DungeonEventStart",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "DungeonMiniGame",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "DungeonResult",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "EnterGame",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "EquipmentLevelUp",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      437
+    ]
+  },
+  {
+    "event": "FightForCitiesRet",
+    "dictionary_rows": 13,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 15,
+    "sample_states": {
+      "personal": 15
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "FightForCitiesTimeOver",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 25,
+    "sample_states": {
+      "personal": 25
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      287,
+      288,
+      289,
+      290,
+      291,
+      292,
+      293,
+      294
+    ]
+  },
+  {
+    "event": "GVGBattleResult",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 18,
+    "sample_states": {
+      "personal": 18
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ]
+  },
+  {
+    "event": "GVGMatchResult",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 15,
+    "sample_states": {
+      "personal": 15
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ]
+  },
+  {
+    "event": "GVGSignUp",
+    "dictionary_rows": 12,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "GameServerLogin",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "GameServerLoginFail",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "GameServerLoginRet",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "GiftJump",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 3,
+    "sample_states": {
+      "personal": 3
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      45
+    ]
+  },
+  {
+    "event": "GiveUpOccupiedCities",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 7,
+    "sample_states": {
+      "personal": 7
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "GiveUpOccupiedCitiesSuccess",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 6,
+    "sample_states": {
+      "personal": 6
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "GoldChange",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "GuideJump",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "HealArmy",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "HeroLevelUp",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "HeroRecruit",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "HeroSkillUpgrade",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "HeroStarUp",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "IdleBoxOpenTimes",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "IdleGetReward",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "IdleStageId",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "JoinAlliance",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "Launch",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      213,
+      214,
+      215,
+      216,
+      217,
+      218
+    ]
+  },
+  {
+    "event": "LaunchPingFailed",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "LaunchPingSuccess",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "LaunchVersionBestRequest",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "LaunchVersionRequest",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "LaunchVersionRet",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "LeaveAlliance",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "LegionSiegeEnd",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 6,
+    "sample_states": {
+      "personal": 6
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      505,
+      506,
+      507,
+      508,
+      509
+    ]
+  },
+  {
+    "event": "LegionSiegePlayerResult",
+    "dictionary_rows": 14,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      510,
+      511,
+      512,
+      513,
+      514,
+      515,
+      516,
+      517,
+      518,
+      519,
+      520,
+      521,
+      522,
+      523
+    ]
+  },
+  {
+    "event": "LegionSiegeStart",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      534,
+      535,
+      536,
+      537,
+      538
+    ]
+  },
+  {
+    "event": "LoadingFinish",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      130,
+      131
+    ]
+  },
+  {
+    "event": "Login",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "Logout",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "MobCopyidResult",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "MobStageResult",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "MobstageStart",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "NewUserGuide",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "NewUserGuideStart",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "NewUserStep",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "PVEEnterScene",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PVEInstanceFPS_10_20",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PVEInstanceKeyNPCKill",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PVEInstanceResult",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PVEInstanceSkillCast",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PVEInstanceStart",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PVERetry",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PayBuyRet",
+    "dictionary_rows": 10,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PayFinish",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PayPopup",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PayPopupClick",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PayStart",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "PopupShow",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      748,
+      749,
+      751
+    ]
+  },
+  {
+    "event": "PreciousChange",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      451
+    ]
+  },
+  {
+    "event": "RALLY_GO",
+    "dictionary_rows": 10,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "RadarMissionFail",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "RadarTaskFinish",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "RadarUpgrade",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "Register",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ResourceChange",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      465
+    ]
+  },
+  {
+    "event": "SDK_AccountCallback",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "SaveHeroBomb",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ServerPayLog",
+    "dictionary_rows": 8,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      578,
+      581,
+      582
+    ]
+  },
+  {
+    "event": "ShopBuyComplete",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ShopBuyItem",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      30,
+      31,
+      32,
+      33
+    ]
+  },
+  {
+    "event": "ShopSale",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "SpeedupUse",
+    "dictionary_rows": 12,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      439
+    ]
+  },
+  {
+    "event": "SwitchSceneEnd",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "SwitchSceneStart",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TakeAllianceGift",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      46,
+      47,
+      48,
+      49,
+      50
+    ]
+  },
+  {
+    "event": "TaskFinish",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TaskReward",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TechnologyDonation",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TimelineEnd",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TimelinePause",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      106
+    ]
+  },
+  {
+    "event": "TimelineResume",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TimelineStart",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TrainArmy",
+    "dictionary_rows": 4,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "TrainingArenaResults",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "VideoGetReward",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "VideoWatchReward",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "WorldBunker",
+    "dictionary_rows": 9,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      141,
+      142
+    ]
+  },
+  {
+    "event": "WorldCupExchange",
+    "dictionary_rows": 3,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "WorldCupPointChange",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "WorldCupPointReward",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "WorldCupRoll",
+    "dictionary_rows": 5,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "WorldMarch",
+    "dictionary_rows": 14,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "WorldMarchRet",
+    "dictionary_rows": 18,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      61,
+      63,
+      64,
+      74
+    ]
+  },
+  {
+    "event": "activityCommanderAlliancePer",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "activityCommanderAllianceTroubleNum",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "activityCommanderPer",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "activityCommanderTroubleNum",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ep_dns_parse_success",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ep_get_product_details_failed",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  },
+  {
+    "event": "ep_pay_purchase_finish",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "ep_pay_start",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "honorExpedition",
+    "dictionary_rows": 6,
+    "dictionary_sources": [
+      "ext",
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": [
+      177,
+      178
+    ]
+  },
+  {
+    "event": "merchandisePointsChange",
+    "dictionary_rows": 2,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "multipleArena",
+    "dictionary_rows": 7,
+    "dictionary_sources": [
+      "personal"
+    ],
+    "sample_rows": 100,
+    "sample_states": {
+      "personal": 100
+    },
+    "observed_sources": [
+      "personal"
+    ],
+    "expected_source": "personal",
+    "wrong_rows": []
+  },
+  {
+    "event": "tse",
+    "dictionary_rows": 1,
+    "dictionary_sources": [
+      "ext"
+    ],
+    "sample_rows": 0,
+    "sample_states": {},
+    "observed_sources": [],
+    "expected_source": null,
+    "wrong_rows": []
+  }
+]
