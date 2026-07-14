@@ -75,6 +75,20 @@ def test_activity_quality_skill_uses_participation_cohort_observation_events() -
     assert "不得使用注册 cohort 的 `remain.remain1/remain7` 或 `pay1/pay7`" in activity_section
 
 
+def test_retention_skill_provides_mature_d7_cohort_sql_example() -> None:
+    """七日留存生成 SQL 时必须参考已验证的 bounds + D7 快照范式。"""
+    content = SEED_SCRIPT.read_text(encoding="utf-8")
+    start = content.index('"name": "flam 留存流失与回流口径"')
+    end = content.index('"name": "flam 用户分层与人群分析口径"', start)
+    retention_section = content[start:end]
+
+    assert "## 七日留存 SQL 示例（MySQL/StarRocks）" in retention_section
+    assert "WITH bounds AS (" in retention_section
+    assert "SELECT MAX(dt) AS max_dt" in retention_section
+    assert "JSON_UNQUOTE(JSON_EXTRACT(r.remain, '$.remain7'))" in retention_section
+    assert "不得在 `WHERE` 中直接使用 `MAX(dt)`" in retention_section
+
+
 def test_stale_skill_deletion_locks_exact_datasource_scope_before_preferences(monkeypatch) -> None:
     import seed_flam_first_zombie_data_skills as seed
 

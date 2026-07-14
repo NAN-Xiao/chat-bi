@@ -256,6 +256,9 @@ JSON 格式：
 - 不要查询不存在于 schema 的表或字段。
 - SELECT 输出别名就是图表、表头和指标卡可见的字段名；优先使用用户语言中的自然业务名作为输出别名，例如 PostgreSQL 中使用 `AS "订单数"`。
 - SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
+- 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
+- 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
+- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - ORDER BY、GROUP BY、HAVING 中引用的字段必须来自当前查询可见字段；ORDER BY 使用的别名必须在最终 SELECT 列表中真实输出。
 - 具体指标定义、字段选择、计算算法、时间窗口和异常判断必须严格遵循用户本次选择的 Data Skill，或用户本次明确给出的规则。
@@ -301,6 +304,9 @@ JSON 格式：
 - 不要查询不存在于 schema 的表或字段。
 - SELECT 输出别名就是图表、表头和指标卡可见的字段名；优先使用用户语言中的自然业务名作为输出别名，例如 PostgreSQL 中使用 `AS "预测值"`、`AS "置信度"`。
 - SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
+- 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
+- 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
+- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - 预测必须尽量基于明细事实表在查询时计算，不要假设存在 agg/kpi/snapshot 表。
 - 预测结果要区分已观测值、历史基准、预测值和置信度；数据不足时要明确说明不确定性，不要把无数据当成确定结论。
@@ -324,6 +330,9 @@ JSON 格式：
 修正规则：
 - SQL 只能 SELECT 或 WITH，不允许 INSERT/UPDATE/DELETE/DDL。
 - 不要查询不存在于 schema 的表或字段。
+- 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
+- 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
+- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
 - 保持原分析目的和时间范围，不要扩大或缩小口径。
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
 - 输出字段别名应保持或恢复为面向用户的业务展示名；如果使用中文、空格或特殊字符别名，必须按 PostgreSQL 语法加双引号，并确保图表字段配置能用同名别名取数。
@@ -1775,6 +1784,31 @@ def _context_blocks(custom_agent: str = "", data_skill: str = "") -> str:
     return f"{_data_skill_block(data_skill)}{_custom_agent_block(custom_agent)}"
 
 
+def _sql_generation_semantic_mappings(schema: str) -> str:
+    """提取 JSON 子字段的可执行表达式，供 SQL 生成阶段直接使用。"""
+    mappings: list[str] = []
+    pattern = re.compile(
+        r"^\((?P<field>[^:()]+):[^\n]*?;\s*expression=(?P<expression>.*?);\s*SQL must use expression",
+        re.MULTILINE,
+    )
+    for match in pattern.finditer(schema or ""):
+        field = match.group("field").strip()
+        if "." not in field:
+            continue
+        expression = match.group("expression").strip()
+        if not expression:
+            continue
+        leaf_name = field.rsplit(".", 1)[-1]
+        mappings.append(
+            f"- 逻辑字段：{field}\n"
+            f"  SQL 表达式：{expression}\n"
+            f"  约束：不得把 JSON 子字段末段 {leaf_name} 当作物理列。"
+        )
+    if not mappings:
+        return ""
+    return "SQL 字段映射（以下表达式优先于同名逻辑字段）：\n" + "\n".join(mappings) + "\n\n"
+
+
 def _custom_agent_final_system_rules(custom_agent: str = "") -> str:
     """
     是什么：_custom_agent_final_system_rules 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3088,6 +3122,7 @@ def _repair_sql(
         f"原始 SQL：\n{failed_sql}\n\n"
         f"执行错误：\n{str(error)[:3000]}\n\n"
         f"{_context_blocks(custom_agent, data_skill)}"
+        f"{_sql_generation_semantic_mappings(schema)}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
         f"样例数据：\n{sample_data[:6000]}\n\n"
         f"实际数据画像（必须优先使用这些真实字段取值与枚举样本，不要编造当前数据中不存在的枚举值）：\n{data_profile[:12000]}"
@@ -3283,6 +3318,7 @@ def _build_plan(
         for item in request.messages[-6:-1]
         if item.content.strip()
     ]
+    semantic_mappings = _sql_generation_semantic_mappings(schema)
     user_content = (
         f"今天日期：{now}\n"
         f"项目：{datasource.name}（{datasource.type}）\n"
@@ -3290,6 +3326,7 @@ def _build_plan(
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
         f"{_context_blocks(custom_agent, data_skill)}"
+        f"{semantic_mappings}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
         f"样例数据：\n{sample_data[:6000]}\n\n"
         f"实际数据画像（必须优先使用这些真实字段取值与枚举样本，不要编造当前数据中不存在的枚举值）：\n{data_profile[:12000]}"
@@ -3339,6 +3376,7 @@ def _build_forecast_plan(
         for item in request.messages[-6:-1]
         if item.content.strip()
     ]
+    semantic_mappings = _sql_generation_semantic_mappings(schema)
     user_content = (
         f"今天日期：{now}\n"
         f"项目：{datasource.name}（{datasource.type}）\n"
@@ -3346,6 +3384,7 @@ def _build_forecast_plan(
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
         f"{_context_blocks(custom_agent, data_skill)}"
+        f"{semantic_mappings}"
         f"数据库 schema：\n{schema[:22000]}\n\n"
         f"样例数据：\n{sample_data[:8000]}\n\n"
         f"实际数据画像（必须优先使用这些真实字段取值与枚举样本，不要编造当前数据中不存在的枚举值）：\n{data_profile[:12000]}"

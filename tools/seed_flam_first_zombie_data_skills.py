@@ -754,6 +754,56 @@ LIMIT 24
 - 流失前画像可以按渠道、系统、区服、等级、主城等级、付费分层、最近一次活动/付费/建筑/出征行为拆分；涉及当前状态时使用 `user` 当前日前一完整分区。
 - 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt` 分区，并过滤 `prod = 110000038`；避免先对 ADS 大视图做 `MAX(dt)` 或全历史扫描。
 
+## 七日留存 SQL 示例（MySQL/StarRocks）
+当用户要求查看最近一段已成熟 cohort 的 D7 留存趋势时，使用以下结构作为生成 SQL 的参照。可以按用户指定的 cohort 数量调整窗口，但必须保留 `bounds`、注册 cohort 和第 7 日快照三层结构。
+
+```sql
+WITH bounds AS (
+  SELECT MAX(dt) AS max_dt
+  FROM `user`
+  WHERE prod = 110000038
+),
+cohorts AS (
+  SELECT
+    u.uid,
+    u.dt AS cohort_dt
+  FROM `user` u
+  CROSS JOIN bounds b
+  WHERE u.prod = 110000038
+    AND u.dt BETWEEN
+      CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(b.max_dt AS CHAR), '%Y%m%d'), INTERVAL 20 DAY), '%Y%m%d') AS SIGNED)
+      AND CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(b.max_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+    AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
+),
+retention_snapshot AS (
+  SELECT
+    c.cohort_dt,
+    c.uid,
+    JSON_UNQUOTE(JSON_EXTRACT(r.remain, '$.remain7')) AS remain7
+  FROM cohorts c
+  LEFT JOIN `user` r
+    ON r.uid = c.uid
+   AND r.prod = 110000038
+   AND r.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+)
+SELECT
+  cohort_dt AS `注册日期`,
+  COUNT(DISTINCT uid) AS `新增用户数`,
+  COUNT(DISTINCT CASE WHEN remain7 = '1' THEN uid END) AS `七日留存人数`,
+  ROUND(
+    COUNT(DISTINCT CASE WHEN remain7 = '1' THEN uid END) * 100.0
+    / NULLIF(COUNT(DISTINCT uid), 0),
+    2
+  ) AS `七日留存率`
+FROM retention_snapshot
+GROUP BY cohort_dt
+ORDER BY cohort_dt;
+```
+
+- 上例展示最近 14 个已成熟 D7 cohort：`max_dt - 20` 到 `max_dt - 7`。
+- `remain7` 必须从 `cohort_dt + 7` 的 `r.remain` 快照读取，不能写成物理列 `u.remain7`，也不能读取注册日快照。
+- 不得在 `WHERE` 中直接使用 `MAX(dt)`；最大分区只能在 `bounds` CTE/子查询中计算，再通过 `b.max_dt` 引用。
+
 ## 推荐输出
 - 留存矩阵输出字段建议为 `cohort_date`、`cohort_users`、`retained_users_d1/d3/d7`、`retention_rate_d1/d3/d7`。
 - 流失/沉默/回流输出字段建议为 `日期`、`用户数`，拆分分析增加 `渠道`、`系统`、`区服ID`、`等级段`、`付费分层` 等维度。
