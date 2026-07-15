@@ -95,10 +95,19 @@ JSON_FIELD_PARSING_HEADERS = [
     "来源字段",
     "JSON路径",
     "生成字段名",
+    "字段显示名",
     "类型",
     "属性说明",
 ]
-LEGACY_JSON_FIELD_PARSING_HEADERS = JSON_FIELD_PARSING_HEADERS[1:]
+SOURCE_TABLE_JSON_FIELD_PARSING_HEADERS = [
+    "来源表",
+    "来源字段",
+    "JSON路径",
+    "生成字段名",
+    "类型",
+    "属性说明",
+]
+LEGACY_JSON_FIELD_PARSING_HEADERS = SOURCE_TABLE_JSON_FIELD_PARSING_HEADERS[1:]
 
 
 def _json_overview_physical_schema() -> dict[str, PhysicalTableInfo]:
@@ -143,8 +152,24 @@ def test_json_field_parsing_sheet_imports_fields_and_prefers_event_table() -> No
     parsed = parse_tracking_excel(
         _json_overview_workbook(
             [
-                ["", "userinfo", "$._appVersion", "userinfo._appVersion", "文本", "应用版本"],
-                ["", "profile_json", "$.country", "profile_json.country", "文本", "注册国家"],
+                [
+                    "",
+                    "userinfo",
+                    "$._appVersion",
+                    "userinfo._appVersion",
+                    "应用版本",
+                    "文本",
+                    "客户端应用版本",
+                ],
+                [
+                    "",
+                    "profile_json",
+                    "$.country",
+                    "profile_json.country",
+                    "",
+                    "文本",
+                    "注册国家",
+                ],
             ]
         ),
         TenantTrackingConfigDTO(
@@ -161,7 +186,8 @@ def test_json_field_parsing_sheet_imports_fields_and_prefers_event_table() -> No
     assert app_version.source_field == "userinfo"
     assert app_version.json_path == "$._appVersion"
     assert app_version.semantic_type == "text"
-    assert app_version.field_comment == "应用版本"
+    assert app_version.aliases == ["应用版本"]
+    assert app_version.field_comment == "客户端应用版本"
     assert ("user", "profile_json.country") in fields
     assert not any(item.table_name == "JSON字段解析" for item in parsed.editor.tables)
 
@@ -192,7 +218,17 @@ def _json_overview_with_event_field(*, event_type: str, overview_type: str) -> b
     event_sheet.append(["userinfo.country", "国家", event_type, "", "国家", "用户"])
     overview = workbook.create_sheet("JSON字段解析")
     overview.append(JSON_FIELD_PARSING_HEADERS)
-    overview.append(["", "userinfo", "$.country", "userinfo.country", overview_type, "注册国家"])
+    overview.append(
+        [
+            "",
+            "userinfo",
+            "$.country",
+            "userinfo.country",
+            "注册国家",
+            overview_type,
+            "注册国家说明",
+        ]
+    )
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -202,8 +238,16 @@ def test_json_field_parsing_sheet_skips_incomplete_rows_and_preserves_null_type(
     parsed = parse_tracking_excel(
         _json_overview_workbook(
             [
-                ["", "userinfo", "$._appVersion", "userinfo._appVersion", "空值", "尚无非空样本"],
-                ["", "userinfo", "", "", "文本", "空对象，暂不生成字段"],
+                [
+                    "",
+                    "userinfo",
+                    "$._appVersion",
+                    "userinfo._appVersion",
+                    "",
+                    "空值",
+                    "尚无非空样本",
+                ],
+                ["", "userinfo", "", "", "", "文本", "空对象，暂不生成字段"],
             ]
         ),
         TenantTrackingConfigDTO(
@@ -226,7 +270,7 @@ def test_json_field_parsing_sheet_rejects_generated_name_mismatch() -> None:
     with pytest.raises(ValueError, match=r"第 2 行.*生成字段名.*userinfo\.country"):
         parse_tracking_excel(
             _json_overview_workbook(
-                [["", "userinfo", "$.country", "userinfo.wrong", "文本", "国家"]]
+                [["", "userinfo", "$.country", "userinfo.wrong", "", "文本", "国家"]]
             ),
             TenantTrackingConfigDTO(
                 tenant_id=2001,
@@ -242,7 +286,7 @@ def test_json_field_parsing_sheet_rejects_invalid_json_path() -> None:
     with pytest.raises(ValueError, match=r"第 2 行.*JSON路径.*无效"):
         parse_tracking_excel(
             _json_overview_workbook(
-                [["", "userinfo", "$.country[", "userinfo.country", "文本", "国家"]]
+                [["", "userinfo", "$.country[", "userinfo.country", "", "文本", "国家"]]
             ),
             TenantTrackingConfigDTO(
                 tenant_id=2001,
@@ -266,7 +310,7 @@ def test_json_field_parsing_sheet_rejects_ambiguous_source_without_event_candida
     with pytest.raises(ValueError, match=r"第 2 行.*profile_a.*profile_b"):
         parse_tracking_excel(
             _json_overview_workbook(
-                [["", "payload", "$.country", "payload.country", "文本", "国家"]]
+                [["", "payload", "$.country", "payload.country", "", "文本", "国家"]]
             ),
             TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
             physical_schema=schema,
@@ -278,8 +322,24 @@ def test_json_field_parsing_sheet_honors_explicit_source_table() -> None:
     parsed = parse_tracking_excel(
         _json_overview_workbook(
             [
-                ["event", "userinfo", "$.country", "userinfo.country", "文本", "事件国家"],
-                ["user", "userinfo", "$.country_code", "userinfo.country_code", "文本", "注册国家码"],
+                [
+                    "event",
+                    "userinfo",
+                    "$.country",
+                    "userinfo.country",
+                    "",
+                    "文本",
+                    "事件国家",
+                ],
+                [
+                    "user",
+                    "userinfo",
+                    "$.country_code",
+                    "userinfo.country_code",
+                    "",
+                    "文本",
+                    "注册国家码",
+                ],
             ]
         ),
         TenantTrackingConfigDTO(
@@ -317,6 +377,7 @@ def test_json_field_parsing_sheet_rejects_invalid_explicit_source_table(
                         source_field,
                         "$.country",
                         f"{source_field}.country",
+                        "",
                         "文本",
                         "国家",
                     ]
@@ -330,6 +391,30 @@ def test_json_field_parsing_sheet_rejects_invalid_explicit_source_table(
             physical_schema=_json_overview_physical_schema(),
             datasource_type="mysql",
         )
+
+
+def test_json_field_parsing_sheet_legacy_six_columns_preserves_explicit_source_table() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [["user", "userinfo", "$.country", "userinfo.country", "文本", "国家"]],
+            headers=SOURCE_TABLE_JSON_FIELD_PARSING_HEADERS,
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    field = next(
+        item for item in parsed.editor.fields if item.field_name == "userinfo.country"
+    )
+    assert field.table_name == "user"
+    assert field.aliases == []
+    assert field.source_field == "userinfo"
+    assert field.json_path == "$.country"
 
 
 def test_json_field_parsing_sheet_legacy_five_columns_still_prefers_event() -> None:
@@ -351,6 +436,9 @@ def test_json_field_parsing_sheet_legacy_five_columns_still_prefers_event() -> N
         item for item in parsed.editor.fields if item.field_name == "userinfo.country"
     )
     assert field.table_name == "event"
+    assert field.aliases == []
+    assert field.source_field == "userinfo"
+    assert field.json_path == "$.country"
 
 
 def test_json_field_parsing_sheet_deduplicates_matching_table_definition() -> None:
@@ -367,7 +455,8 @@ def test_json_field_parsing_sheet_deduplicates_matching_table_definition() -> No
 
     matches = [item for item in parsed.editor.fields if item.field_name == "userinfo.country"]
     assert len(matches) == 1
-    assert matches[0].field_comment == "注册国家"
+    assert matches[0].aliases == ["注册国家"]
+    assert matches[0].field_comment == "注册国家说明"
 
 
 def test_json_field_parsing_sheet_rejects_conflicting_table_definition() -> None:
@@ -827,7 +916,8 @@ def test_event_and_user_tables_export_attribute_sheet_format() -> None:
         and row[1] == "ext"
         and row[2] == "$.battleResult"
         and row[3] == "ext.battleResult"
-        and row[4] == "文本"
+        and row[4] == "战斗结果"
+        and row[5] == "文本"
         for row in json_rows
     )
     assert any(row[0] == "total_revenue" and row[1] == "累计付费金额" and row[2] == "数值" and row[3] == "user_add" for row in user_rows)
@@ -1645,17 +1735,28 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
             ],
         ),
     }
+    field = TenantTrackingFieldDTO(
+        tenant_id=2001,
+        table_name="event",
+        field_name="adinfo.adsetId",
+        field_comment="广告组标识说明",
+        semantic_type="text",
+        source_field="adinfo",
+        json_path="$.adsetId",
+        aliases=["广告组 ID"],
+    )
     config = TenantTrackingConfigDTO(
         tenant_id=2001,
         fields=[
+            field,
             TenantTrackingFieldDTO(
                 tenant_id=2001,
                 table_name="event",
-                field_name="adinfo.adsetId",
-                field_comment="广告组ID",
+                field_name="adinfo.adId",
+                field_comment="来源字段 adinfo 中的 JSON 属性 adId",
                 semantic_type="text",
                 source_field="adinfo",
-                json_path="$.adsetId",
+                json_path="$.adId",
             ),
             TenantTrackingFieldDTO(
                 tenant_id=2001,
@@ -1686,12 +1787,30 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
 
     assert _headers(workbook_bytes, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
     json_rows = _sheet_rows(workbook_bytes, "JSON字段解析")
-    assert ("event", "adinfo", "$.adsetId", "adinfo.adsetId", "文本", "广告组ID") in json_rows
+    assert (
+        "event",
+        "adinfo",
+        "$.adsetId",
+        "adinfo.adsetId",
+        "广告组 ID",
+        "文本",
+        "广告组标识说明",
+    ) in json_rows
+    assert (
+        "event",
+        "adinfo",
+        "$.adId",
+        "adinfo.adId",
+        None,
+        "文本",
+        "来源字段 adinfo 中的 JSON 属性 adId",
+    ) in json_rows
     assert (
         "event",
         "allianceinfo",
         "$.allianceid",
         "allianceinfo.allianceid",
+        None,
         "文本",
         "联盟ID",
     ) in json_rows
@@ -1700,6 +1819,7 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
         "personal",
         "$.nickname",
         "personal.nickname",
+        None,
         "文本",
         "昵称",
     ) in json_rows
@@ -1728,6 +1848,14 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
     }
     assert ("event", "adinfo.adsetId", "adinfo", "$.adsetId") in imported_fields
     assert ("user", "personal.nickname", "personal", "$.nickname") in imported_fields
+    imported = next(
+        item for item in parsed.editor.fields if item.field_name == "adinfo.adsetId"
+    )
+    assert imported.aliases == ["广告组 ID"]
+    assert imported.field_comment == "广告组标识说明"
+    field = next(item for item in parsed.editor.fields if item.field_name == "adinfo.adId")
+    assert field.aliases == []
+    assert field.field_comment == "来源字段 adinfo 中的 JSON 属性 adId"
 
 
 def test_json_field_parsing_export_preserves_observed_null_type() -> None:
@@ -1755,7 +1883,7 @@ def test_json_field_parsing_export_preserves_observed_null_type() -> None:
     ).getvalue()
 
     assert _sheet_rows(output, "JSON字段解析") == [
-        ("event", "allianceinfo", "$.power", "allianceinfo.power", "空值", None),
+        ("event", "allianceinfo", "$.power", "allianceinfo.power", None, "空值", None),
     ]
 
 
@@ -1795,8 +1923,8 @@ def test_json_field_parsing_export_keeps_cross_table_source_definitions() -> Non
 
     assert _headers(output, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
     assert _sheet_rows(output, "JSON字段解析") == [
-        ("event", "payload", "$.event_key", "payload.event_key", "文本", None),
-        ("user", "payload", "$.user_key", "payload.user_key", "文本", None),
+        ("event", "payload", "$.event_key", "payload.event_key", None, "文本", None),
+        ("user", "payload", "$.user_key", "payload.user_key", None, "文本", None),
     ]
 
     workbook = load_workbook(BytesIO(output))

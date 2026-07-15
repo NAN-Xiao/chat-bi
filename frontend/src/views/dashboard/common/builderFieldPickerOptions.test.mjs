@@ -3,6 +3,46 @@ import assert from 'node:assert/strict'
 const options = await import('./builderFieldPickerOptions.ts')
 
 assert.equal(
+  options.fieldOptionDisplayName({
+    label: 'adinfo.adId',
+    value: 'event.adinfo.adId',
+    table: 'event',
+    field: 'adinfo.adId',
+    displayName: '广告 ID',
+    sourceField: 'adinfo',
+    jsonPath: '$.adId',
+    isJsonSubfield: true,
+  }),
+  '广告 ID',
+  'JSON 子字段应优先显示显式业务名称'
+)
+
+assert.equal(
+  options.fieldOptionDisplayName({
+    label: 'adinfo.adId',
+    value: 'event.adinfo.adId',
+    table: 'event',
+    field: 'adinfo.adId',
+    sourceField: 'adinfo',
+    jsonPath: '$.adId',
+    isJsonSubfield: true,
+  }),
+  'adId',
+  'JSON 子字段没有显示名时应显示叶子属性名'
+)
+
+assert.equal(
+  options.fieldOptionDisplayName({
+    label: '业务日期（分区字段）',
+    value: 'event.dt',
+    table: 'event',
+    field: 'dt',
+  }),
+  '业务日期（分区字段）',
+  '普通字段继续使用现有 label'
+)
+
+assert.equal(
   options.isSelectableFieldOption({
     label: '用户画像字段',
     value: 'user.country',

@@ -1,7 +1,27 @@
+from types import SimpleNamespace
+
 from apps.datasource.api.datasource import (
     DatasourceFieldListItem,
+    _field_list_item_from_tracking,
     _is_selectable_field_list_item,
+    _tracking_display_name,
 )
+
+
+def _tracking_json_field(*, aliases: list[str] | None = None):
+    return SimpleNamespace(
+        field_name="adinfo.adId",
+        aliases=aliases or [],
+        field_comment="来源字段 adinfo 中的 JSON 属性 adId",
+        field_role="json_path_dimension",
+        semantic_type="text",
+        source_field="adinfo",
+        json_path="$.adId",
+        expression=None,
+        category=None,
+        value_mappings=None,
+        example_values=None,
+    )
 
 
 def test_field_list_item_filters_top_level_json_container_fields() -> None:
@@ -41,3 +61,32 @@ def test_field_list_item_keeps_json_leaf_subfields() -> None:
     )
 
     assert _is_selectable_field_list_item(item) is True
+
+
+def test_tracking_json_field_does_not_use_comment_as_display_name() -> None:
+    item = _field_list_item_from_tracking(
+        _tracking_json_field(),
+        datasource=SimpleNamespace(type="mysql", type_name="MySQL"),
+        table=SimpleNamespace(table_name="event", ds_id=6, id=10),
+        field_index=1,
+    )
+
+    assert item.display_name is None
+    assert item.field_name == "adinfo.adId"
+    assert item.custom_comment == "来源字段 adinfo 中的 JSON 属性 adId"
+
+
+def test_tracking_json_field_prefers_explicit_alias() -> None:
+    item = _field_list_item_from_tracking(
+        _tracking_json_field(aliases=["广告 ID"]),
+        datasource=SimpleNamespace(type="mysql", type_name="MySQL"),
+        table=SimpleNamespace(table_name="event", ds_id=6, id=10),
+        field_index=1,
+    )
+
+    assert item.display_name == "广告 ID"
+
+
+def test_tracking_display_name_keeps_physical_comment_fallback() -> None:
+    row = SimpleNamespace(aliases=[], field_comment="业务日期（分区字段），按天统计")
+    assert _tracking_display_name(row) == "业务日期（分区字段）"

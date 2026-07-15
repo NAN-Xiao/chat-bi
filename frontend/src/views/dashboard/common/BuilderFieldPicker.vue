@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { isNumericFieldOption, isSelectableFieldOption, isTimeFieldOption } from './builderFieldPickerOptions'
+import {
+  fieldOptionDisplayName,
+  isNumericFieldOption,
+  isSelectableFieldOption,
+  isTimeFieldOption,
+} from './builderFieldPickerOptions'
 import type { FieldOption } from './builderFieldPickerOptions'
 
 type PickerMode = 'field' | 'property' | 'metric' | 'time' | 'tracking-event'
@@ -40,9 +45,7 @@ const selectedOption = computed(() =>
   || props.options.find((item) => item.field === props.modelValue)
 )
 
-const selectedLabel = computed(() =>
-  selectedOption.value?.displayName || selectedOption.value?.label || selectedOption.value?.field || props.modelValue?.split('.').pop() || ''
-)
+const selectedLabel = computed(() => fieldOptionDisplayName(selectedOption.value, props.modelValue))
 
 const selectableOptions = computed(() => props.options.filter(isSelectableFieldOption))
 const isTrackingEventMode = computed(() => props.mode === 'tracking-event')
@@ -203,7 +206,7 @@ const eventGroups = computed(() => {
   })
   return Array.from(groups.entries()).map(([name, items]) => ({
     name,
-    items: items.sort((a, b) => displayFieldName(a).localeCompare(displayFieldName(b), undefined, { numeric: true, sensitivity: 'base' })),
+    items: items.sort((a, b) => fieldOptionDisplayName(a).localeCompare(fieldOptionDisplayName(b), undefined, { numeric: true, sensitivity: 'base' })),
   }))
 })
 
@@ -225,16 +228,6 @@ function fieldTypeLabel(option: FieldOption) {
   if (isNumericFieldOption(option)) return '数值'
   if (option.category === 'text') return '文本'
   return '字段'
-}
-
-function displayFieldName(option: FieldOption) {
-  if (option.kind === 'tracking-event') {
-    return option.displayName || option.label || option.eventName || option.field
-  }
-  if (option.isJsonSubfield && option.sourceField && option.field.startsWith(`${option.sourceField}.`)) {
-    return option.displayName || option.label || option.field.slice(option.sourceField.length + 1)
-  }
-  return option.displayName || option.label || option.field
 }
 
 function selectField(option: FieldOption) {
@@ -321,12 +314,12 @@ watch(
                   :class="{ active: item.value === modelValue }"
                   @click="selectField(item)"
                 >
-                  <span class="event-title">{{ displayFieldName(item) }}</span>
+                  <span class="event-title">{{ fieldOptionDisplayName(item) }}</span>
                   <span class="event-code">{{ item.eventName }}</span>
                 </button>
               </template>
               <div class="builder-field-hover-card">
-                <div class="hover-title">{{ displayFieldName(item) }}</div>
+                <div class="hover-title">{{ fieldOptionDisplayName(item) }}</div>
                 <div class="hover-subtitle">{{ item.eventName }}</div>
                 <div class="hover-comment">{{ item.eventDescription || item.comment || '暂无备注' }}</div>
                 <div class="hover-footer">
@@ -375,12 +368,12 @@ watch(
                       :class="{ active: item.value === modelValue, 'is-json-subfield': item.isJsonSubfield }"
                       @click="selectField(item)"
                     >
-                      <span class="field-name">{{ displayFieldName(item) }}</span>
+                      <span class="field-name">{{ fieldOptionDisplayName(item) }}</span>
                       <span class="field-type">{{ fieldTypeLabel(item) }}</span>
                     </button>
                   </template>
                   <div class="builder-field-hover-card">
-                    <div class="hover-title">{{ displayFieldName(item) }}</div>
+                    <div class="hover-title">{{ fieldOptionDisplayName(item) }}</div>
                     <div class="hover-subtitle">{{ item.value }}</div>
                     <div v-if="item.isJsonSubfield" class="hover-json-meta">
                       <template v-if="fieldReferenceLabel(item)">事件明细：{{ fieldReferenceLabel(item) }} · </template>
