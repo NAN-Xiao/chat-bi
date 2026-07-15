@@ -106,21 +106,31 @@ APP_ENV=production python -m scripts.db_migrate
 `deploy/scripts/shuzhi-postgres-backup.sh`。备份 service 使用独立的 `shuzhi-backup` 系统账号，并从权限为 `0600` 的
 `/etc/shuzhi/shuzhi-backup.env` 读取数据库连接参数。timer 按服务器时区每天
 `12:00` 精确执行，备份默认保存到 `/var/backups/shuzhi/postgres` 并保留 14 天。
-先确认环境变量中已配置：
+先确认该环境文件中已配置以下连接参数和备份选项：
 
 ```bash
+POSTGRES_SERVER=10.1.5.28
+POSTGRES_PORT=5432
+POSTGRES_DB=zhishu_bi
+POSTGRES_USER=root
 BACKUP_DIR=/var/backups/shuzhi/postgres
 BACKUP_RETENTION_DAYS=14
 PG_DUMP_BIN=pg_dump
 PG_RESTORE_BIN=pg_restore
 ```
 
+`POSTGRES_PASSWORD` 只在远端服务器安全写入该文件，不进入 Git、命令输出或 journal。
+
 部署时安装脚本和 timer：
 
 ```bash
 id -u shuzhi-backup >/dev/null 2>&1 || \
   useradd --system --home-dir /var/lib/shuzhi-backup --create-home --shell /sbin/nologin shuzhi-backup
-install -o root -g root -m 0600 /dev/null /etc/shuzhi/shuzhi-backup.env
+if [[ ! -e /etc/shuzhi/shuzhi-backup.env ]]; then
+  install -o root -g root -m 0600 /dev/null /etc/shuzhi/shuzhi-backup.env
+fi
+chown root:root /etc/shuzhi/shuzhi-backup.env
+chmod 0600 /etc/shuzhi/shuzhi-backup.env
 install -o root -g root -m 0755 deploy/scripts/shuzhi-postgres-backup.sh /opt/shuzhi/deploy/scripts/shuzhi-postgres-backup.sh
 install -o root -g root -m 0644 deploy/systemd/shuzhi-postgres-backup.service /etc/systemd/system/shuzhi-postgres-backup.service
 install -o root -g root -m 0644 deploy/systemd/shuzhi-postgres-backup.timer /etc/systemd/system/shuzhi-postgres-backup.timer

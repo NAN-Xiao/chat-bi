@@ -178,6 +178,17 @@ def test_production_postgres_backup_deployment_artifacts_are_present():
     assert "/etc/shuzhi/shuzhi-backup.env" in readiness_doc
     assert "12:00" in readiness_doc
     assert "shuzhi-backup" in readiness_doc
+    assert """if [[ ! -e /etc/shuzhi/shuzhi-backup.env ]]; then
+  install -o root -g root -m 0600 /dev/null /etc/shuzhi/shuzhi-backup.env
+fi""" in readiness_doc
+    assert "chown root:root /etc/shuzhi/shuzhi-backup.env" in readiness_doc
+    assert "chmod 0600 /etc/shuzhi/shuzhi-backup.env" in readiness_doc
+    assert "POSTGRES_SERVER=10.1.5.28" in readiness_doc
+    assert "POSTGRES_PORT=5432" in readiness_doc
+    assert "POSTGRES_DB=zhishu_bi" in readiness_doc
+    assert "POSTGRES_USER=root" in readiness_doc
+    assert "POSTGRES_PASSWORD" in readiness_doc
+    assert "不进入 Git、命令输出或 journal" in readiness_doc
     assert "自动定时备份编排" not in readiness_doc
 
 
