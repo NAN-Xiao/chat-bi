@@ -729,7 +729,15 @@ def test_event_and_user_tables_export_attribute_sheet_format() -> None:
     assert _headers(workbook_bytes, "user") == expected_headers
     event_rows = _sheet_rows(workbook_bytes, "event")
     user_rows = _sheet_rows(workbook_bytes, "user")
-    assert any(row[0] == "ext.battleResult" and row[1] == "战斗结果" and row[2] == "文本" for row in event_rows)
+    json_rows = _sheet_rows(workbook_bytes, "JSON字段解析")
+    assert not any(row[0] == "ext.battleResult" for row in event_rows)
+    assert any(
+        row[0] == "ext"
+        and row[1] == "$.battleResult"
+        and row[2] == "ext.battleResult"
+        and row[3] == "文本"
+        for row in json_rows
+    )
     assert any(row[0] == "total_revenue" and row[1] == "累计付费金额" and row[2] == "数值" and row[3] == "user_add" for row in user_rows)
     assert "row_type" not in _headers(workbook_bytes, "event")
     assert "row_type" not in _headers(workbook_bytes, "user")
@@ -1072,6 +1080,7 @@ def test_tracking_excel_uses_physical_table_sheets_and_roundtrips_to_prompt_cont
         "_表映射",
         "事件参数对照",
         "事件分组",
+        "JSON字段解析",
         "event_log",
         "user_profile",
         "_SQL规则",
@@ -1338,7 +1347,7 @@ def test_single_event_sheet_can_maintain_event_values_and_defaults() -> None:
     workbook_bytes = tracking_config_excel(config, physical_schema=_event_physical_schema()).getvalue()
     workbook = load_workbook(BytesIO(workbook_bytes))
     for sheet_name in list(workbook.sheetnames):
-        if sheet_name != "event":
+        if sheet_name not in {"event", "JSON字段解析"}:
             del workbook[sheet_name]
     output = BytesIO()
     workbook.save(output)
@@ -1421,9 +1430,11 @@ def test_template_contains_datasource_aligned_examples() -> None:
     assert _headers(workbook_bytes, "event") == ["属性名（必填）", "属性显示名", "属性类型（必填）", "更新方式", "属性说明", "属性标签"]
     assert any(row[0] == "event" and row[2] == "文本" for row in event_rows)
     assert any(row[0] == "ext" and row[2] == "对象组" for row in event_rows)
+    assert _headers(workbook_bytes, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
+    assert _sheet_rows(workbook_bytes, "JSON字段解析") == []
 
 
-def test_template_keeps_existing_event_dictionary_fields() -> None:
+def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None:
     """
     验证下载模板时不会丢失当前工作空间已经配置的 JSON 字典字段。
     """
@@ -1483,18 +1494,27 @@ def test_template_keeps_existing_event_dictionary_fields() -> None:
         template_only=True,
     ).getvalue()
 
+    assert _headers(workbook_bytes, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
+    json_rows = _sheet_rows(workbook_bytes, "JSON字段解析")
+    assert ("adinfo", "$.adsetId", "adinfo.adsetId", "文本", "广告组ID") in json_rows
+    assert ("allianceinfo", "$.allianceid", "allianceinfo.allianceid", "文本", "联盟ID") in json_rows
+    assert ("personal", "$.nickname", "personal.nickname", "文本", "昵称") in json_rows
+
     event_rows = _sheet_rows(workbook_bytes, "event")
     field_names = {row[0] for row in event_rows}
-
-    assert "adinfo.adsetId" in field_names
-    assert "allianceinfo.allianceid" in field_names
+    assert "adinfo.adsetId" not in field_names
+    assert "allianceinfo.allianceid" not in field_names
 
     user_rows = _sheet_rows(workbook_bytes, "user")
-    assert "personal.nickname" in {row[0] for row in user_rows}
+    assert "personal.nickname" not in {row[0] for row in user_rows}
 
     parsed = parse_tracking_excel(
         workbook_bytes,
-        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
         physical_schema=physical_schema,
         datasource_type="postgresql",
     )
@@ -1504,6 +1524,71 @@ def test_template_keeps_existing_event_dictionary_fields() -> None:
     }
     assert ("event", "adinfo.adsetId", "adinfo", "$.adsetId") in imported_fields
     assert ("user", "personal.nickname", "personal", "$.nickname") in imported_fields
+
+
+def test_json_field_parsing_export_preserves_observed_null_type() -> None:
+    field = TenantTrackingFieldDTO(
+        tenant_id=2001,
+        table_name="event",
+        field_name="allianceinfo.power",
+        semantic_type="text",
+        source_field="allianceinfo",
+        json_path="$.power",
+        extra_properties={"json_observed_type": "空值"},
+    )
+    output = tracking_config_excel(
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            default_event_table="event",
+            fields=[field],
+        ),
+        physical_schema={
+            "event": PhysicalTableInfo(
+                "event",
+                fields=[PhysicalFieldInfo("allianceinfo", "text")],
+            ),
+        },
+    ).getvalue()
+
+    assert _sheet_rows(output, "JSON字段解析") == [
+        ("allianceinfo", "$.power", "allianceinfo.power", "空值", None),
+    ]
+
+
+def test_json_field_parsing_export_rejects_cross_table_source_conflict() -> None:
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        default_event_table="event",
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="payload.event_key",
+                semantic_type="text",
+                source_field="payload",
+                json_path="$.event_key",
+            ),
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="user",
+                field_name="payload.user_key",
+                semantic_type="text",
+                source_field="payload",
+                json_path="$.user_key",
+            ),
+        ],
+    )
+    schema = {
+        "event": PhysicalTableInfo(
+            "event", fields=[PhysicalFieldInfo("payload", "text")]
+        ),
+        "user": PhysicalTableInfo(
+            "user", fields=[PhysicalFieldInfo("payload", "text")]
+        ),
+    }
+
+    with pytest.raises(ValueError, match=r"JSON字段解析.*payload.*event.*user"):
+        tracking_config_excel(config, physical_schema=schema)
 
 
 def test_import_excel_replaces_previous_tracking_config() -> None:
@@ -1559,9 +1644,9 @@ def test_import_excel_deleting_field_removes_previous_dictionary_field() -> None
     config = _tracking_config()
     workbook_bytes = tracking_config_excel(config, physical_schema=_physical_schema()).getvalue()
     workbook = load_workbook(BytesIO(workbook_bytes))
-    sheet = workbook["event_log"]
+    sheet = workbook["JSON字段解析"]
     for row_index in range(sheet.max_row, 1, -1):
-        if sheet.cell(row_index, 2).value == "event_props.amount":
+        if sheet.cell(row_index, 3).value == "event_props.amount":
             sheet.delete_rows(row_index, 1)
     output = BytesIO()
     workbook.save(output)

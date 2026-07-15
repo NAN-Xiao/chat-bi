@@ -158,6 +158,13 @@ ATTRIBUTE_EXPORT_COLUMN_LABELS = {
     "description": "属性说明",
     "field_category": "属性标签",
 }
+JSON_FIELD_PARSING_EXPORT_COLUMN_LABELS = {
+    "source_field": "来源字段",
+    "json_path": "JSON路径",
+    "field_name": "生成字段名",
+    "field_type": "类型",
+    "description": "属性说明",
+}
 
 EXPORT_COLUMN_LABELS = {
     "row_type": "行类型",
@@ -598,6 +605,7 @@ KNOWN_IMPORT_COLUMNS = (
     | set(EVENT_PARAMETER_MAPPING_COLUMNS)
     | set(EVENT_GROUP_COLUMNS)
     | set(HEADER_ALIASES.values())
+    | {EXCEL_ROW_NUMBER_KEY}
 )
 
 
@@ -1610,8 +1618,9 @@ def _parse_json_field_parsing_sheet(
     datasource_type: str | None,
     warnings: list[str],
     physical_schema: dict[str, PhysicalTableInfo],
-) -> int:
+) -> tuple[int, set[tuple[str, str]]]:
     skipped = 0
+    authoritative_keys: set[tuple[str, str]] = set()
     for row in rows:
         row_number = int(row.get(EXCEL_ROW_NUMBER_KEY) or 0)
         source_field = _text(row.get("source_field"))
@@ -1666,7 +1675,8 @@ def _parse_json_field_parsing_sheet(
                 field_item,
                 row_number=row_number,
             )
-    return skipped
+            authoritative_keys.add((field_item.table_name, field_item.field_name))
+    return skipped, authoritative_keys
 
 
 def _parse_event_parameter_mapping_sheet(
@@ -1822,6 +1832,32 @@ def _parse_event_group_sheet(
     return sorted(result, key=lambda item: (item.sort_order, item.group_key)), event_row_numbers
 
 
+def _event_property_field_keys(
+    editor: TenantTrackingConfigEditor,
+) -> set[tuple[str, str]]:
+    table_name = _text(editor.default_event_table)
+    if not table_name:
+        return set()
+    result: set[tuple[str, str]] = set()
+    for mapping in editor.event_name_mappings or []:
+        if not isinstance(mapping, dict):
+            continue
+        for prop in mapping.get("properties") or []:
+            if not isinstance(prop, dict):
+                continue
+            source_field = _text(prop.get("source_field"))
+            property_name = _text(prop.get("property_name"))
+            if not source_field or not property_name:
+                continue
+            field_name = (
+                property_name
+                if property_name.startswith(f"{source_field}.")
+                else f"{source_field}.{property_name}"
+            )
+            result.add((table_name, field_name))
+    return result
+
+
 def parse_tracking_excel(
     content: bytes,
     existing: TenantTrackingConfigDTO,
@@ -1927,7 +1963,7 @@ def parse_tracking_excel(
             header_aliases=JSON_FIELD_PARSING_HEADER_ALIASES,
         )
         skipped_rows += skipped
-        skipped_rows += _parse_json_field_parsing_sheet(
+        json_skipped, authoritative_json_fields = _parse_json_field_parsing_sheet(
             rows,
             imported,
             existing,
@@ -1935,6 +1971,20 @@ def parse_tracking_excel(
             warnings=warnings,
             physical_schema=schema,
         )
+        skipped_rows += json_skipped
+        event_property_fields = _event_property_field_keys(imported)
+        imported.fields = [
+            field_item
+            for field_item in imported.fields
+            if not (
+                _text(field_item.source_field)
+                and _normalize_json_path(field_item.json_path)
+            )
+            or (field_item.table_name, field_item.field_name)
+            in authoritative_json_fields
+            or (field_item.table_name, field_item.field_name)
+            in event_property_fields
+        ]
 
     if not imported.tables and not imported.fields and not imported.event_name_mappings:
         raise ValueError("Excel 中没有可识别的表、字段或事件配置，请使用平台导出的物理表 sheet 格式。")
@@ -2609,6 +2659,91 @@ def _attribute_row_from_field(
     return row
 
 
+def _is_json_dictionary_field(field_item: Any) -> bool:
+    return bool(
+        _text(getattr(field_item, "source_field", None))
+        and _normalize_json_path(getattr(field_item, "json_path", None))
+    )
+
+
+def _json_field_type_for_export(field_item: Any) -> str:
+    observed = _text(_extra_properties(field_item).get(JSON_OBSERVED_TYPE_KEY))
+    if observed:
+        return observed
+    return _attribute_type_label(getattr(field_item, "semantic_type", None))
+
+
+def _json_field_export_signature(field_item: Any) -> tuple[str, str, str, str]:
+    return (
+        _text(getattr(field_item, "field_name", None)),
+        _normalize_json_path(getattr(field_item, "json_path", None)),
+        _text(getattr(field_item, "semantic_type", None)),
+        _text(getattr(field_item, "field_comment", None)),
+    )
+
+
+def _json_field_parsing_rows(
+    config: TenantTrackingConfigDTO,
+    *,
+    event_table: str,
+) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, list[Any]]] = {}
+    for field_item in config.fields or []:
+        if not _is_json_dictionary_field(field_item):
+            continue
+        source_field = _text(field_item.source_field)
+        grouped.setdefault(source_field, {}).setdefault(
+            _text(field_item.table_name), []
+        ).append(field_item)
+
+    selected: list[Any] = []
+    for source_field, by_table in grouped.items():
+        if len(by_table) == 1:
+            selected.extend(next(iter(by_table.values())))
+            continue
+        if event_table not in by_table:
+            raise ValueError(
+                f"{JSON_FIELD_PARSING_SHEET} 无法表达来源字段 {source_field} 的多表归属："
+                f"{', '.join(sorted(by_table))}。"
+            )
+        event_signatures = {
+            _json_field_export_signature(item)
+            for item in by_table[event_table]
+        }
+        for table_name, fields in by_table.items():
+            if table_name == event_table:
+                continue
+            signatures = {
+                _json_field_export_signature(item)
+                for item in fields
+            }
+            if signatures != event_signatures:
+                raise ValueError(
+                    f"{JSON_FIELD_PARSING_SHEET} 无法表达来源字段 {source_field} "
+                    f"在 {event_table} 与 {table_name} 中的不同定义。"
+                )
+        selected.extend(by_table[event_table])
+
+    rows = [
+        {
+            "source_field": _text(field_item.source_field),
+            "json_path": _normalize_json_path(field_item.json_path),
+            "field_name": _text(field_item.field_name),
+            "field_type": _json_field_type_for_export(field_item),
+            "description": _text(field_item.field_comment),
+        }
+        for field_item in selected
+    ]
+    return sorted(
+        rows,
+        key=lambda row: (
+            _text(row["source_field"]),
+            _text(row["json_path"]),
+            _text(row["field_name"]),
+        ),
+    )
+
+
 def _attribute_sheet_rows_for_table(
     table_name: str,
     *,
@@ -2639,7 +2774,9 @@ def _attribute_sheet_rows_for_table(
     configured_fields = [
         configured
         for (field_table, _), configured in field_map.items()
-        if field_table == table_name and configured.field_name not in physical_names
+        if field_table == table_name
+        and configured.field_name not in physical_names
+        and not _is_json_dictionary_field(configured)
     ]
     for configured in sorted(configured_fields, key=_business_field_sort_key):
         rows.append(_attribute_row_from_field(
@@ -2768,7 +2905,8 @@ def _generic_sheet_rows_for_table(
         configured_fields = [
             configured
             for (field_table, _), configured in field_map.items()
-            if field_table == table_name and configured.field_name not in physical_names
+            if field_table == table_name
+            and configured.field_name not in physical_names
         ]
         for configured in sorted(configured_fields, key=_business_field_sort_key):
             rows.append(_business_row_from_field(configured, row_type="dictionary_field"))
@@ -2923,6 +3061,8 @@ def _dedupe_business_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _export_header_label(sheet_name: str, column: str, columns: list[str] | None = None) -> str:
+    if columns == JSON_FIELD_PARSING_COLUMNS:
+        return JSON_FIELD_PARSING_EXPORT_COLUMN_LABELS.get(column, column)
     if columns and columns[:len(ATTRIBUTE_COLUMNS)] == ATTRIBUTE_COLUMNS and column in ATTRIBUTE_COLUMNS:
         return ATTRIBUTE_EXPORT_COLUMN_LABELS.get(column, column)
     if columns and columns[:len(EVENT_PARAMETER_MAPPING_COLUMNS)] == EVENT_PARAMETER_MAPPING_COLUMNS:
@@ -2999,6 +3139,10 @@ def tracking_config_excel(
     event_field = _resolve_export_event_field(config, event_table, schema)
     subject_field = _resolve_export_subject_field(config, event_table, schema)
     event_time_field = _resolve_export_event_time_field(config, event_table, schema)
+    json_field_rows = _json_field_parsing_rows(
+        config,
+        event_table=event_table,
+    )
 
     for table_name in all_table_names:
         sheet_name_by_table[table_name] = _safe_sheet_name(table_name, used_sheet_names)
@@ -3044,6 +3188,11 @@ def tracking_config_excel(
         (TABLE_MAP_SHEET, table_rows, _columns_with_extra(TABLE_MAP_COLUMNS, table_rows)),
         (EVENT_PARAMETER_MAPPING_SHEET, _event_parameter_mapping_rows(config), EVENT_PARAMETER_MAPPING_COLUMNS),
         (EVENT_GROUP_SHEET, _event_group_rows(config), EVENT_GROUP_COLUMNS),
+        (
+            JSON_FIELD_PARSING_SHEET,
+            json_field_rows,
+            JSON_FIELD_PARSING_COLUMNS,
+        ),
     ]
 
     for table_name in all_table_names:
