@@ -4,7 +4,7 @@
 
 **Goal:** 让平台直接导入和导出独立的 `JSON字段解析` Sheet，并使其中的有效字段进入现有 JSON SQL 生成链路。
 
-**Architecture:** 在 `tracking_excel.py` 内增加固定 Sheet 契约和专用解析器，复用现有 `_field_item(...)`、字段配置模型与运行时 JSON 表达式编译器。导入时先解析物理表，再解析独立 Sheet；导出时把带 `source_field/json_path` 的普通字段集中写入独立 Sheet，并从物理表 Sheet 排除。
+**Architecture:** 在 `tracking_excel.py` 内增加固定 Sheet 契约和专用解析器，复用现有 `_field_item(...)`、字段配置模型与运行时 JSON 表达式编译器。导入时先解析物理表，再解析独立 Sheet；导出时把带 `source_field/json_path` 的普通字段集中写入独立 Sheet，并从 `event/user` 属性 Sheet 排除。通用表保留枚举兼容行，但独立 Sheet 的字段集合保持权威。
 
 **Tech Stack:** Python 3.11、pandas、openpyxl、xlsxwriter、Pydantic、pytest。
 
@@ -797,14 +797,17 @@ if columns == JSON_FIELD_PARSING_COLUMNS:
     return JSON_FIELD_PARSING_EXPORT_COLUMN_LABELS.get(column, column)
 ```
 
-- [ ] **Step 4: 从物理表 Sheet 排除 JSON 字典字段并添加新 Sheet**
+- [ ] **Step 4: 从 event/user 属性 Sheet 排除 JSON 字典字段并添加新 Sheet**
 
-在 `_attribute_sheet_rows_for_table(...)` 和 `_generic_sheet_rows_for_table(...)` 的
-`configured_fields` 列表中增加：
+在 `_attribute_sheet_rows_for_table(...)` 的 `configured_fields` 列表中增加：
 
 ```python
 and not _is_json_dictionary_field(configured)
 ```
+
+`_generic_sheet_rows_for_table(...)` 继续保留 JSON `dictionary_field/field_value` 兼容行，
+避免五列总览丢失字段枚举；导入时按独立 Sheet 的权威字段集合清除已从总览删除的
+普通 JSON 字段，并保留 `事件参数对照` 引用的事件专属属性。
 
 在 `tracking_config_excel(...)` 解析出 `event_table` 后生成：
 
@@ -927,7 +930,7 @@ xiuxian_workbook_validation=PASS json_fields=160 skipped_placeholders=2
 Run:
 
 ```powershell
-backend\.venv\Scripts\python.exe -m pytest backend/tests/test_tracking_excel.py backend/tests/test_tracking_expression.py backend/tests/test_datasource_field_list_items.py -q
+backend\.venv\Scripts\python.exe -m pytest backend/tests/test_tracking_excel.py backend/tests/test_sql_engine_context.py backend/tests/test_sql_json_paths.py backend/tests/test_datasource_field_list_items.py -q
 git diff --check
 git status --short
 ```

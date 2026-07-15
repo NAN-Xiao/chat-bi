@@ -26,8 +26,9 @@ event/user Sheet”的要求，因此本次同时补齐导入和导出闭环。
 - 把有效记录转换为现有 `TenantTrackingFieldBase` 字段元数据。
 - 同一来源字段同时存在于事件表和用户表时，优先归属默认事件表。
 - 复用现有运行时 SQL 方言编译器，不在 Excel 中保存方言相关表达式。
-- 导出当前配置时，将普通 JSON 字典字段只写入 `JSON字段解析` Sheet。
-- `event/user` 属性 Sheet 只写物理字段和非 JSON 派生字段。
+- 导出当前配置时，将普通 JSON 字典字段写入 `JSON字段解析` Sheet。
+- `event/user` 属性 Sheet 只写物理字段和非 JSON 派生字段；通用表可保留承载
+  枚举值映射的兼容行，但字段集合仍以独立 Sheet 为权威。
 - 对空路径确认行给出明确警告并跳过，不生成可查询字段。
 - 保持事件专属属性继续由 `事件参数对照` 维护，不迁移到总览 Sheet。
 
@@ -133,9 +134,11 @@ Sheet 名固定为 `JSON字段解析`，有效数据行必须同时包含：
 - 如果没有默认事件表候选，或其他表存在不同的 JSON 子字段定义，导出必须明确失败，
   不能生成一个再次导入后会改变表归属的歧义工作簿。
 
-`_attribute_sheet_rows_for_table(...)` 和通用表导出逻辑应排除上述 JSON 字典字段，
-确保其不再写入 `event/user` 或其他物理表 Sheet。没有 `source_field/json_path` 的
-普通派生字段仍保留在原物理表 Sheet。
+`_attribute_sheet_rows_for_table(...)` 应排除上述 JSON 字典字段，确保其不再写入
+`event/user` 属性 Sheet。通用表的旧格式可以继续导出 `dictionary_field/field_value`
+兼容行，以保留五列总览无法表达的枚举值映射；存在独立 Sheet 时，导入后的 JSON
+字段集合、来源字段和路径仍以独立 Sheet 为权威。没有 `source_field/json_path` 的
+普通派生字段继续保留在原物理表 Sheet。
 
 事件映射中的 `event_name_mappings[].properties` 继续只导出到 `事件参数对照`，
 不重复写入 `JSON字段解析`。

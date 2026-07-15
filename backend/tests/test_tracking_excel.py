@@ -13,13 +13,13 @@ from apps.system.crud.tracking_config import (
     build_tracking_prompt_context,
     filter_tracking_config_for_physical_schema,
 )
-from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.crud.tracking_excel import (
     PhysicalFieldInfo,
     PhysicalTableInfo,
     parse_tracking_excel,
     tracking_config_excel,
 )
+from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.schemas.tenant_schema import (
     TenantTrackingConfigDTO,
     TenantTrackingEventGroupDTO,
