@@ -354,6 +354,152 @@ def test_set_default_resource_allows_same_name_in_another_workspace(monkeypatch)
         assert copied.name == "pay dashboard"
 
 
+def test_remove_independent_recommended_dashboard_soft_deletes_only_copy(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    original_session_get = Session.get
+
+    def session_get(current_session, entity, ident, *args, **kwargs):
+        if entity is dashboard_service.CoreDatasource:
+            return SimpleNamespace(id=ident)
+        return original_session_get(current_session, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "get", session_get)
+    monkeypatch.setattr(dashboard_service, "_require_set_default_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *_args, **_kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="source",
+                tenant_id=1,
+                name="付费",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=0,
+                status=1,
+                delete_flag=0,
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="recommended-copy",
+                tenant_id=1,
+                name="付费",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=1,
+                status=1,
+                delete_flag=0,
+            )
+        )
+        session.add(
+            CoreDashboardTree(
+                id="tree-my",
+                tenant_id=1,
+                scope="my",
+                dashboard_id="source",
+                parent_id="root",
+                sort=1,
+            )
+        )
+        session.add(
+            CoreDashboardTree(
+                id="tree-default",
+                tenant_id=1,
+                scope="default",
+                dashboard_id="recommended-copy",
+                parent_id="root",
+                sort=1,
+            )
+        )
+        session.commit()
+
+        dashboard_service.set_default_resource(
+            session,
+            current_user,
+            DashboardDefaultRequest(dashboard_id="recommended-copy", is_default=False),
+        )
+        source = session.get(CoreDashboard, "source")
+        copied = session.get(CoreDashboard, "recommended-copy")
+        positions = session.exec(select(CoreDashboardTree)).all()
+
+        assert source is not None and source.delete_flag == 0
+        assert copied is not None and copied.delete_flag == 1 and copied.is_default == 0
+        assert [(row.scope, row.dashboard_id) for row in positions] == [("my", "source")]
+
+
+def test_remove_legacy_dual_tree_dashboard_keeps_my_dashboard(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    original_session_get = Session.get
+
+    def session_get(current_session, entity, ident, *args, **kwargs):
+        if entity is dashboard_service.CoreDatasource:
+            return SimpleNamespace(id=ident)
+        return original_session_get(current_session, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "get", session_get)
+    monkeypatch.setattr(dashboard_service, "_require_set_default_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *_args, **_kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="legacy",
+                tenant_id=1,
+                name="历史看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=1,
+                status=1,
+                delete_flag=0,
+            )
+        )
+        session.add(
+            CoreDashboardTree(
+                id="legacy-my",
+                tenant_id=1,
+                scope="my",
+                dashboard_id="legacy",
+                parent_id="root",
+                sort=1,
+            )
+        )
+        session.add(
+            CoreDashboardTree(
+                id="legacy-default",
+                tenant_id=1,
+                scope="default",
+                dashboard_id="legacy",
+                parent_id="root",
+                sort=1,
+            )
+        )
+        session.commit()
+
+        dashboard_service.set_default_resource(
+            session,
+            current_user,
+            DashboardDefaultRequest(dashboard_id="legacy", is_default=False),
+        )
+        record = session.get(CoreDashboard, "legacy")
+        positions = session.exec(
+            select(CoreDashboardTree).where(CoreDashboardTree.dashboard_id == "legacy")
+        ).all()
+
+        assert record is not None and record.delete_flag == 0 and record.is_default == 0
+        assert [(row.scope, row.dashboard_id) for row in positions] == [("my", "legacy")]
+
+
 def test_repair_my_tree_default_dashboard_copies_repoints_my_tree(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")

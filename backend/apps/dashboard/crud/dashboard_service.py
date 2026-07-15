@@ -4263,9 +4263,14 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
     ).scalars().all()
     for position in default_positions:
         session.delete(position)
+    has_my_position = _dashboard_has_tree_position(session, user, "my", record.id)
     record.is_default = 0
     record.update_by = operator_id
     record.update_time = now
+    if not has_my_position:
+        record.delete_flag = 1
+        record.delete_by = operator_id
+        record.delete_time = now
     session.add(record)
     session.commit()
     session.refresh(record)
