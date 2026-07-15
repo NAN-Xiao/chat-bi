@@ -1,13 +1,13 @@
 [Unit]
 Description=星通数智 PostgreSQL backup
-After=network-online.target postgresql.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=shuzhi
-Group=shuzhi
-EnvironmentFile=/etc/shuzhi/shuzhi.env
+User=shuzhi-backup
+Group=shuzhi-backup
+EnvironmentFile=/etc/shuzhi/shuzhi-backup.env
 ExecStart=/opt/shuzhi/deploy/scripts/shuzhi-postgres-backup.sh
 Nice=10
 IOSchedulingClass=best-effort

@@ -152,14 +152,19 @@ def test_production_postgres_backup_deployment_artifacts_are_present():
     assert "source \"$ENV_FILE\"" not in script
     assert "sha256sum" in script or "shasum" in script
     assert "find \"$BACKUP_DIR\"" in script
+    assert 'partial_file="$backup_file.partial"' in script
+    assert "trap cleanup EXIT" in script
+    assert 'mv -- "$partial_file" "$backup_file"' in script
 
-    assert "EnvironmentFile=/etc/shuzhi/shuzhi.env" in service
+    assert "EnvironmentFile=/etc/shuzhi/shuzhi-backup.env" in service
     assert "ExecStart=/opt/shuzhi/deploy/scripts/shuzhi-postgres-backup.sh" in service
-    assert "User=shuzhi" in service
+    assert "User=shuzhi-backup" in service
+    assert "Group=shuzhi-backup" in service
     assert "NoNewPrivileges=true" in service
 
-    assert "OnCalendar=*-*-* 02:30:00" in timer
-    assert "RandomizedDelaySec=1800" in timer
+    assert "OnCalendar=*-*-* 12:00:00" in timer
+    assert "AccuracySec=1s" in timer
+    assert "RandomizedDelaySec" not in timer
     assert "Persistent=true" in timer
     assert "WantedBy=timers.target" in timer
 
@@ -170,6 +175,9 @@ def test_production_postgres_backup_deployment_artifacts_are_present():
 
     assert "shuzhi-postgres-backup.timer" in readiness_doc
     assert "systemctl enable --now shuzhi-postgres-backup.timer" in readiness_doc
+    assert "/etc/shuzhi/shuzhi-backup.env" in readiness_doc
+    assert "12:00" in readiness_doc
+    assert "shuzhi-backup" in readiness_doc
     assert "自动定时备份编排" not in readiness_doc
 
 

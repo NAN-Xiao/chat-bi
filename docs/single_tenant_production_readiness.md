@@ -103,7 +103,9 @@ APP_ENV=production python -m scripts.db_migrate
 ## 备份恢复
 
 本地 Windows 可继续使用 `tools/postgres-backup-local.ps1`。生产 Linux 使用
-`deploy/scripts/shuzhi-postgres-backup.sh`，默认从 `/etc/shuzhi/shuzhi.env` 读取数据库连接信息。
+`deploy/scripts/shuzhi-postgres-backup.sh`。备份 service 使用独立的 `shuzhi-backup` 系统账号，并从权限为 `0600` 的
+`/etc/shuzhi/shuzhi-backup.env` 读取数据库连接参数。timer 按服务器时区每天
+`12:00` 精确执行，备份默认保存到 `/var/backups/shuzhi/postgres` 并保留 14 天。
 先确认环境变量中已配置：
 
 ```bash
@@ -116,10 +118,13 @@ PG_RESTORE_BIN=pg_restore
 部署时安装脚本和 timer：
 
 ```bash
+id -u shuzhi-backup >/dev/null 2>&1 || \
+  useradd --system --home-dir /var/lib/shuzhi-backup --create-home --shell /sbin/nologin shuzhi-backup
+install -o root -g root -m 0600 /dev/null /etc/shuzhi/shuzhi-backup.env
 install -o root -g root -m 0755 deploy/scripts/shuzhi-postgres-backup.sh /opt/shuzhi/deploy/scripts/shuzhi-postgres-backup.sh
 install -o root -g root -m 0644 deploy/systemd/shuzhi-postgres-backup.service /etc/systemd/system/shuzhi-postgres-backup.service
 install -o root -g root -m 0644 deploy/systemd/shuzhi-postgres-backup.timer /etc/systemd/system/shuzhi-postgres-backup.timer
-install -o shuzhi -g shuzhi -m 0700 -d /var/backups/shuzhi/postgres
+install -o shuzhi-backup -g shuzhi-backup -m 0700 -d /var/backups/shuzhi/postgres
 systemctl daemon-reload
 ```
 
