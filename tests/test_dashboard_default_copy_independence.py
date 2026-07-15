@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,7 @@ from apps.dashboard.models.dashboard_model import (
     CoreDashboardShare,
     CoreDashboardTree,
     DashboardDefaultCopyRequest,
+    DashboardDefaultRequest,
 )
 
 
@@ -148,6 +150,79 @@ def test_copy_default_resource_creates_independent_my_dashboard(monkeypatch):
     assert my_tree_row.parent_id == "root"
     assert "chart-1" not in copied.component_data
     assert "chart-1" not in copied.canvas_view_info
+
+
+def test_set_default_resource_creates_independent_recommended_dashboard(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    original_session_get = Session.get
+
+    def session_get(current_session, entity, ident, *args, **kwargs):
+        if entity is dashboard_service.CoreDatasource:
+            return SimpleNamespace(id=ident)
+        return original_session_get(current_session, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "get", session_get)
+    monkeypatch.setattr(dashboard_service, "_require_set_default_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *_args, **_kwargs: True)
+
+    with Session(engine) as session:
+        source = CoreDashboard(
+            id="my-dashboard",
+            tenant_id=1,
+            name="付费",
+            pid="root",
+            datasource=2,
+            node_type="leaf",
+            type="dashboard",
+            create_by="2",
+            create_time=100,
+            update_time=101,
+            delete_flag=0,
+            is_default=0,
+            mobile_layout=1,
+            component_data='[{"id":"chart-1","_dragId":"chart-1","component":"SQView"}]',
+            canvas_style_data='{"width":1920}',
+            canvas_view_info='{"chart-1":{"id":"chart-1","chart":{"id":"chart-1"},"datasource":2,"sql":"select 1"}}',
+        )
+        session.add(source)
+        session.add(
+            CoreDashboardTree(
+                id="tree-my",
+                tenant_id=1,
+                scope="my",
+                dashboard_id=source.id,
+                parent_id="root",
+                sort=1,
+            )
+        )
+        session.commit()
+
+        response = dashboard_service.set_default_resource(
+            session,
+            current_user,
+            DashboardDefaultRequest(dashboard_id=source.id, is_default=True),
+        )
+        source_after = session.get(CoreDashboard, source.id)
+        copied = session.get(CoreDashboard, response.id)
+        copied_positions = session.exec(
+            select(CoreDashboardTree).where(CoreDashboardTree.dashboard_id == response.id)
+        ).all()
+
+        assert response.id != source.id
+        assert source_after is not None
+        assert source_after.is_default == 0
+        assert source_after.update_time == 101
+        assert copied is not None
+        assert copied.is_default == 1
+        assert copied.name == "付费"
+        assert copied.datasource == 2
+        assert copied.mobile_layout == 1
+        assert json.loads(copied.canvas_style_data) == {"width": 1920}
+        assert "chart-1" not in copied.component_data
+        assert "chart-1" not in copied.canvas_view_info
+        assert [(row.scope, row.parent_id) for row in copied_positions] == [("default", "root")]
 
 
 def test_repair_my_tree_default_dashboard_copies_repoints_my_tree(monkeypatch):

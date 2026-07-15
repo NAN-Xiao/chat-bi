@@ -3781,15 +3781,20 @@ def load_default_resource(session: SessionDep, dashboard: QueryDashboard, curren
     )
 
 
-def _clone_default_dashboard_record(
+def _clone_dashboard_record(
         session: SessionDep,
         user: CurrentUser,
         source: CoreDashboard,
+        *,
         sort: int | None = 0,
+        is_default: bool = False,
         require_datasource: bool = True,
 ) -> CoreDashboard:
     datasource_id = _effective_dashboard_datasource(source)
-    if datasource_id is None:
+    if _is_external_mcp_dashboard(source):
+        if not _external_mcp_dashboard_bound_to_current_tenant(session, user, source):
+            raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+    elif datasource_id is None:
         if require_datasource:
             raise HTTPException(status_code=400, detail="Default dashboard datasource is required")
     else:
@@ -3810,6 +3815,7 @@ def _clone_default_dashboard_record(
         name=source.name,
         pid="root",
         datasource=datasource_id,
+        external_mcp_server_id=source.external_mcp_server_id,
         org_id=source.org_id or "",
         level=source.level or 1,
         node_type="leaf",
@@ -3820,12 +3826,14 @@ def _clone_default_dashboard_record(
         mobile_layout=source.mobile_layout or 0,
         status=1,
         self_watermark_status=source.self_watermark_status or 0,
-        is_default=0,
+        is_default=_smallint_flag(is_default),
         sort=int(sort or 0),
         create_by=operator_id,
         update_by=operator_id,
         create_time=now,
         update_time=now,
+        remark=source.remark,
+        source=DASHBOARD_SOURCE_EXTERNAL_MCP if _is_external_mcp_dashboard(source) else None,
         delete_flag=0,
         version=source.version or 3,
         content_id="0",
@@ -3834,6 +3842,23 @@ def _clone_default_dashboard_record(
     session.add(record)
     session.flush()
     return record
+
+
+def _clone_default_dashboard_record(
+        session: SessionDep,
+        user: CurrentUser,
+        source: CoreDashboard,
+        sort: int | None = 0,
+        require_datasource: bool = True,
+) -> CoreDashboard:
+    return _clone_dashboard_record(
+        session,
+        user,
+        source,
+        sort=sort,
+        is_default=False,
+        require_datasource=require_datasource,
+    )
 
 
 def copy_default_resource(session: SessionDep, user: CurrentUser, request: DashboardDefaultCopyRequest):
@@ -4173,36 +4198,41 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
             )
         ).first()
         max_sort = _first_scalar_value(max_sort_row)
-        sort_value = _dashboard_tree_sort_value(
+        sort_value = int(max_sort or 0) + 1
+        copied = _clone_dashboard_record(
+            session,
+            user,
             record,
-            _dashboard_tree_position_map(session, user, "default", [record.id]).get(record.id),
+            sort=sort_value,
+            is_default=True,
+            require_datasource=False,
         )
-        if sort_value == 0:
-            sort_value = int(max_sort or 0) + 1
         _dashboard_tree_upsert_position(
             session,
             user,
             "default",
-            record.id,
+            copied.id,
             "root",
             sort_value,
             operator_id,
             now,
         )
-        record.sort = sort_value
-    else:
-        default_positions = session.exec(
-            select(CoreDashboardTree).where(
-                and_(
-                    CoreDashboardTree.tenant_id == _current_tenant_id(user),
-                    CoreDashboardTree.scope == "default",
-                    CoreDashboardTree.dashboard_id == record.id,
-                )
+        session.commit()
+        session.refresh(copied)
+        return _dashboard_base_response(session, user, copied, effective_datasource)
+
+    default_positions = session.exec(
+        select(CoreDashboardTree).where(
+            and_(
+                CoreDashboardTree.tenant_id == _current_tenant_id(user),
+                CoreDashboardTree.scope == "default",
+                CoreDashboardTree.dashboard_id == record.id,
             )
-        ).scalars().all()
-        for position in default_positions:
-            session.delete(position)
-    record.is_default = 1 if request.is_default else 0
+        )
+    ).scalars().all()
+    for position in default_positions:
+        session.delete(position)
+    record.is_default = 0
     record.update_by = operator_id
     record.update_time = now
     session.add(record)
