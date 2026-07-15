@@ -126,6 +126,7 @@ EVENT_GROUP_COLUMNS = [
     "enabled",
 ]
 JSON_FIELD_PARSING_COLUMNS = [
+    "source_table",
     "source_field",
     "json_path",
     "field_name",
@@ -133,6 +134,7 @@ JSON_FIELD_PARSING_COLUMNS = [
     "description",
 ]
 JSON_FIELD_PARSING_HEADER_ALIASES = {
+    "来源表": "source_table",
     "来源字段": "source_field",
     "json路径": "json_path",
     "生成字段名": "field_name",
@@ -1535,11 +1537,28 @@ def _parse_attribute_sheet(
 def _resolve_json_field_table(
     source_field: str,
     *,
+    explicit_table: str,
     imported: TenantTrackingConfigEditor,
     existing: TenantTrackingConfigDTO,
     physical_schema: dict[str, PhysicalTableInfo],
     row_number: int,
 ) -> str:
+    if explicit_table:
+        if explicit_table not in physical_schema:
+            raise ValueError(
+                f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+                f"来源表 {explicit_table} 不存在于当前物理 schema。"
+            )
+        table_fields = {
+            item.field_name for item in physical_schema[explicit_table].fields
+        }
+        if source_field not in table_fields:
+            raise ValueError(
+                f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+                f"来源表 {explicit_table} 不包含来源字段 {source_field}。"
+            )
+        return explicit_table
+
     candidates = [
         table_name
         for table_name, table_info in physical_schema.items()
@@ -1646,8 +1665,10 @@ def _parse_json_field_parsing_sheet(
                 f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
                 f"生成字段名应为 {expected_name}，实际为 {field_name}。"
             )
+        explicit_table = _text(row.get("source_table"))
         table_name = _resolve_json_field_table(
             source_field,
+            explicit_table=explicit_table,
             imported=editor,
             existing=existing,
             physical_schema=physical_schema,

@@ -90,7 +90,15 @@ def _event_user_physical_schema() -> dict[str, PhysicalTableInfo]:
     }
 
 
-JSON_FIELD_PARSING_HEADERS = ["来源字段", "JSON路径", "生成字段名", "类型", "属性说明"]
+JSON_FIELD_PARSING_HEADERS = [
+    "来源表",
+    "来源字段",
+    "JSON路径",
+    "生成字段名",
+    "类型",
+    "属性说明",
+]
+LEGACY_JSON_FIELD_PARSING_HEADERS = JSON_FIELD_PARSING_HEADERS[1:]
 
 
 def _json_overview_physical_schema() -> dict[str, PhysicalTableInfo]:
@@ -115,11 +123,15 @@ def _json_overview_physical_schema() -> dict[str, PhysicalTableInfo]:
     }
 
 
-def _json_overview_workbook(rows: list[list[object]]) -> bytes:
+def _json_overview_workbook(
+    rows: list[list[object]],
+    *,
+    headers: list[str] = JSON_FIELD_PARSING_HEADERS,
+) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "JSON字段解析"
-    sheet.append(JSON_FIELD_PARSING_HEADERS)
+    sheet.append(headers)
     for row in rows:
         sheet.append(row)
     output = BytesIO()
@@ -131,8 +143,8 @@ def test_json_field_parsing_sheet_imports_fields_and_prefers_event_table() -> No
     parsed = parse_tracking_excel(
         _json_overview_workbook(
             [
-                ["userinfo", "$._appVersion", "userinfo._appVersion", "文本", "应用版本"],
-                ["profile_json", "$.country", "profile_json.country", "文本", "注册国家"],
+                ["", "userinfo", "$._appVersion", "userinfo._appVersion", "文本", "应用版本"],
+                ["", "profile_json", "$.country", "profile_json.country", "文本", "注册国家"],
             ]
         ),
         TenantTrackingConfigDTO(
@@ -180,7 +192,7 @@ def _json_overview_with_event_field(*, event_type: str, overview_type: str) -> b
     event_sheet.append(["userinfo.country", "国家", event_type, "", "国家", "用户"])
     overview = workbook.create_sheet("JSON字段解析")
     overview.append(JSON_FIELD_PARSING_HEADERS)
-    overview.append(["userinfo", "$.country", "userinfo.country", overview_type, "注册国家"])
+    overview.append(["", "userinfo", "$.country", "userinfo.country", overview_type, "注册国家"])
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -190,8 +202,8 @@ def test_json_field_parsing_sheet_skips_incomplete_rows_and_preserves_null_type(
     parsed = parse_tracking_excel(
         _json_overview_workbook(
             [
-                ["userinfo", "$._appVersion", "userinfo._appVersion", "空值", "尚无非空样本"],
-                ["userinfo", "", "", "文本", "空对象，暂不生成字段"],
+                ["", "userinfo", "$._appVersion", "userinfo._appVersion", "空值", "尚无非空样本"],
+                ["", "userinfo", "", "", "文本", "空对象，暂不生成字段"],
             ]
         ),
         TenantTrackingConfigDTO(
@@ -214,7 +226,7 @@ def test_json_field_parsing_sheet_rejects_generated_name_mismatch() -> None:
     with pytest.raises(ValueError, match=r"第 2 行.*生成字段名.*userinfo\.country"):
         parse_tracking_excel(
             _json_overview_workbook(
-                [["userinfo", "$.country", "userinfo.wrong", "文本", "国家"]]
+                [["", "userinfo", "$.country", "userinfo.wrong", "文本", "国家"]]
             ),
             TenantTrackingConfigDTO(
                 tenant_id=2001,
@@ -230,7 +242,7 @@ def test_json_field_parsing_sheet_rejects_invalid_json_path() -> None:
     with pytest.raises(ValueError, match=r"第 2 行.*JSON路径.*无效"):
         parse_tracking_excel(
             _json_overview_workbook(
-                [["userinfo", "$.country[", "userinfo.country", "文本", "国家"]]
+                [["", "userinfo", "$.country[", "userinfo.country", "文本", "国家"]]
             ),
             TenantTrackingConfigDTO(
                 tenant_id=2001,
@@ -254,12 +266,91 @@ def test_json_field_parsing_sheet_rejects_ambiguous_source_without_event_candida
     with pytest.raises(ValueError, match=r"第 2 行.*profile_a.*profile_b"):
         parse_tracking_excel(
             _json_overview_workbook(
-                [["payload", "$.country", "payload.country", "文本", "国家"]]
+                [["", "payload", "$.country", "payload.country", "文本", "国家"]]
             ),
             TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
             physical_schema=schema,
             datasource_type="mysql",
         )
+
+
+def test_json_field_parsing_sheet_honors_explicit_source_table() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [
+                ["event", "userinfo", "$.country", "userinfo.country", "文本", "事件国家"],
+                ["user", "userinfo", "$.country_code", "userinfo.country_code", "文本", "注册国家码"],
+            ]
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    fields = {(item.table_name, item.field_name): item for item in parsed.editor.fields}
+    assert fields[("event", "userinfo.country")].json_path == "$.country"
+    assert fields[("user", "userinfo.country_code")].json_path == "$.country_code"
+
+
+@pytest.mark.parametrize(
+    ("table_name", "source_field", "message"),
+    [
+        ("missing", "userinfo", r"第 2 行.*来源表 missing.*不存在"),
+        ("user", "event_only", r"第 2 行.*来源表 user.*不包含来源字段 event_only"),
+    ],
+)
+def test_json_field_parsing_sheet_rejects_invalid_explicit_source_table(
+    table_name: str,
+    source_field: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        parse_tracking_excel(
+            _json_overview_workbook(
+                [
+                    [
+                        table_name,
+                        source_field,
+                        "$.country",
+                        f"{source_field}.country",
+                        "文本",
+                        "国家",
+                    ]
+                ]
+            ),
+            TenantTrackingConfigDTO(
+                tenant_id=2001,
+                enabled=True,
+                default_event_table="event",
+            ),
+            physical_schema=_json_overview_physical_schema(),
+            datasource_type="mysql",
+        )
+
+
+def test_json_field_parsing_sheet_legacy_five_columns_still_prefers_event() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [["userinfo", "$.country", "userinfo.country", "文本", "国家"]],
+            headers=LEGACY_JSON_FIELD_PARSING_HEADERS,
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    field = next(
+        item for item in parsed.editor.fields if item.field_name == "userinfo.country"
+    )
+    assert field.table_name == "event"
 
 
 def test_json_field_parsing_sheet_deduplicates_matching_table_definition() -> None:
