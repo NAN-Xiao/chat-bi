@@ -29,7 +29,7 @@
 
 ---
 
-### 任务 1：确保备份原子落盘并清理失败残留
+### Task 1：确保备份原子落盘并清理失败残留
 
 **文件：**
 - 创建：`tests/shell/test_shuzhi_postgres_backup.sh`
@@ -196,7 +196,7 @@ git commit -m "修复：保证数据库备份原子落盘"
 
 ---
 
-### 任务 2：配置独立账号和每日 12 点 systemd timer
+### Task 2：配置独立账号和每日 12 点 systemd timer
 
 **文件：**
 - 修改：`tests/test_production_readiness.py:139`
@@ -325,7 +325,7 @@ git commit -m "运维：配置每日十二点数据库备份"
 
 ---
 
-### 任务 3：部署到 10.1.5.28 并完成首次备份验收
+### Task 3：部署到 10.1.5.28 并完成首次备份验收
 
 **文件：**
 - 部署：`/opt/shuzhi/deploy/scripts/shuzhi-postgres-backup.sh`

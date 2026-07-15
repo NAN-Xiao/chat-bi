@@ -1,9 +1,9 @@
 [Unit]
-Description=Run 星通数智 PostgreSQL backup daily
+Description=Run 星通数智 PostgreSQL backup daily at 12:00
 
 [Timer]
-OnCalendar=*-*-* 02:30:00
-RandomizedDelaySec=1800
+OnCalendar=*-*-* 12:00:00
+AccuracySec=1s
 Persistent=true
 Unit=shuzhi-postgres-backup.service
 

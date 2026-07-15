@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE="${ENV_FILE:-/etc/shuzhi/shuzhi.env}"
+ENV_FILE="${ENV_FILE:-/etc/shuzhi/shuzhi-backup.env}"
 
 read_env_var() {
   local name="$1"
@@ -51,13 +51,28 @@ if ! command -v "$PG_DUMP_BIN" >/dev/null 2>&1; then
   exit 2
 fi
 
+if command -v sha256sum >/dev/null 2>&1; then
+  checksum_tool="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  checksum_tool="shasum"
+else
+  echo "Cannot find SHA-256 checksum tool (sha256sum or shasum)." >&2
+  exit 2
+fi
+
 umask 077
 mkdir -p "$BACKUP_DIR"
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 safe_db_name="${POSTGRES_DB//[^A-Za-z0-9_.-]/_}"
 backup_file="$BACKUP_DIR/${safe_db_name}-${timestamp}.dump"
+partial_file="$backup_file.partial"
 checksum_file="$backup_file.sha256"
+
+cleanup() {
+  rm -f -- "$partial_file"
+}
+trap cleanup EXIT
 
 export PGPASSWORD="$POSTGRES_PASSWORD"
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-10}"
@@ -71,19 +86,20 @@ export PGSSLMODE="${PGSSLMODE:-prefer}"
   --format=custom \
   --no-owner \
   --no-acl \
-  --file="$backup_file"
+  --file="$partial_file"
 
 unset PGPASSWORD
 
-if [[ ! -s "$backup_file" ]]; then
-  echo "Backup file is empty: $backup_file" >&2
-  rm -f "$backup_file" "$checksum_file"
+if [[ ! -s "$partial_file" ]]; then
+  echo "Backup file is empty: $partial_file" >&2
   exit 1
 fi
 
-if command -v sha256sum >/dev/null 2>&1; then
+mv -- "$partial_file" "$backup_file"
+
+if [[ "$checksum_tool" == "sha256sum" ]]; then
   sha256sum "$backup_file" > "$checksum_file"
-elif command -v shasum >/dev/null 2>&1; then
+else
   shasum -a 256 "$backup_file" > "$checksum_file"
 fi
 
