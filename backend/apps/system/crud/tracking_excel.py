@@ -2244,7 +2244,7 @@ def _split_event_parameter_source(
     name = _text(property_name)
     path = _normalize_json_path(_text(json_path))
     inferred_source, inferred_path = _json_path_from_field_name(name)
-    if inferred_source:
+    if inferred_source and (not source or inferred_source == source):
         source = source or inferred_source
         name = name.split(".", 1)[1]
     if path:

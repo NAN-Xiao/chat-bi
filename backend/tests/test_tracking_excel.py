@@ -941,6 +941,57 @@ def test_event_table_exports_event_parameter_mapping_sheet() -> None:
     assert styled_sheet["E3"].value == "ext"
 
 
+def test_event_parameter_mapping_nested_path_round_trips() -> None:
+    """平台导出的嵌套事件属性再次导入时必须保留完整 JSON 路径。"""
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        enabled=True,
+        default_event_table="event",
+        default_subject_field="uid",
+        default_event_name_field="event",
+        default_event_time_field="time",
+        tables=[
+            TenantTrackingTableDTO(tenant_id=2001, table_name="event", table_role="event_fact"),
+            TenantTrackingTableDTO(tenant_id=2001, table_name="user", table_role="user_profile"),
+        ],
+        event_name_mappings=[
+            {
+                "event_name": "BattleEnd",
+                "properties": [
+                    {
+                        "property_name": "hero_info.hero_level",
+                        "property_display_name": "卡牌等级",
+                        "property_type": "数值",
+                        "source_field": "ext",
+                        "json_path": "$.hero_info.hero_level",
+                    }
+                ],
+            }
+        ],
+    )
+    workbook_bytes = tracking_config_excel(
+        config,
+        physical_schema=_event_user_physical_schema(),
+    ).getvalue()
+
+    parsed = parse_tracking_excel(
+        workbook_bytes,
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=_event_user_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    event = next(
+        item
+        for item in parsed.editor.event_name_mappings
+        if isinstance(item, dict) and item.get("event_name") == "BattleEnd"
+    )
+    prop = event["properties"][0]
+    assert prop["property_name"] == "ext.hero_info.hero_level"
+    assert prop["source_field"] == "ext"
+    assert prop["json_path"] == "$.hero_info.hero_level"
+
+
 def test_event_parameter_mapping_sheet_imports_event_properties() -> None:
     """
     是什么：验证“事件参数对照”sheet 可以导入为事件与参数关系。
@@ -981,6 +1032,53 @@ def test_event_parameter_mapping_sheet_imports_event_properties() -> None:
     assert prop["property_type"] == "文本"
     assert prop["source_field"] == "ext"
     assert prop["json_path"] == "$.battleResult"
+
+
+def test_event_parameter_mapping_preserves_nested_paths_with_explicit_source() -> None:
+    """显式来源字段不能吞掉嵌套 JSON 路径的第一段。"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "事件参数对照"
+    sheet.append([
+        "事件名（必填）",
+        "事件显示名",
+        "事件说明",
+        "事件标签",
+        "数据源字段",
+        "属性名（必填）",
+        "属性显示名",
+        "属性类型（必填）",
+        "属性说明",
+    ])
+    sheet.append(["ResourceChange", "资源变化", "", "资源", "personal", "ed_change.FOOD", "食物变化", "数值", ""])
+    sheet.append(["", "", "", "", "personal", "ed_stock.FOOD", "食物存量", "数值", ""])
+    output = BytesIO()
+    workbook.save(output)
+
+    parsed = parse_tracking_excel(
+        output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema={
+            "event": PhysicalTableInfo(
+                table_name="event",
+                fields=[PhysicalFieldInfo("personal", "json", "事件属性")],
+            )
+        },
+        datasource_type="mysql",
+    )
+
+    event = next(
+        item
+        for item in parsed.editor.event_name_mappings
+        if isinstance(item, dict) and item.get("event_name") == "ResourceChange"
+    )
+    assert [
+        (item["property_name"], item["source_field"], item["json_path"])
+        for item in event["properties"]
+    ] == [
+        ("personal.ed_change.FOOD", "personal", "$.ed_change.FOOD"),
+        ("personal.ed_stock.FOOD", "personal", "$.ed_stock.FOOD"),
+    ]
 
 
 def test_event_parameter_mapping_compact_rows_inherit_event_context() -> None:
