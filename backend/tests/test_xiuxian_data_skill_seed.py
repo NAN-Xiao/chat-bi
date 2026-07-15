@@ -56,12 +56,11 @@ def test_xiuxian_payment_skill_documents_verified_paybuyret_formula() -> None:
     assert "不能代替订单号" in prompt
 
 
-def test_xiuxian_payment_skill_declares_all_recursive_with_column_aliases() -> None:
+def test_xiuxian_payment_skill_declares_recursive_ctes_with_column_aliases() -> None:
     """修仙 AnalyticDB 要求 WITH RECURSIVE 块内所有 CTE 显式声明输出列名。"""
     prompt = _payment_skill()["prompt"]
 
     for declaration in (
-        "bounds (start_dt, end_dt) AS (",
         "params (end_date, start_date) AS (",
         "days (calendar_date, end_date) AS (",
         "pay (pay_date, uid, ed_money) AS (",
@@ -74,24 +73,53 @@ def test_xiuxian_payment_skill_uses_partition_bounds_for_recent_seven_days() -> 
     """近七天查询直接使用系统日期边界限制整数分区。"""
     prompt = _payment_skill()["prompt"]
 
-    assert "MAX(" not in prompt.upper()
-    assert "bounds (start_dt, end_dt) AS (" in prompt
+    assert "SELECT MAX(" not in prompt.upper()
+    assert "bounds (start_dt, end_dt) AS (" not in prompt
+    assert "CROSS JOIN bounds" not in prompt
     assert "DATE_SUB(CURDATE(), INTERVAL 7 DAY)" in prompt
     assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
-    assert "e.dt BETWEEN b.start_dt AND b.end_dt" in prompt
+    assert "WHERE e.dt BETWEEN" in prompt
 
 
 def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
     """通用日期口径根据问题动态生成边界，不扫描最大分区。"""
     prompt = _date_skill()["prompt"]
 
-    assert "MAX(" not in prompt.upper()
+    assert "SELECT MAX(" not in prompt.upper()
+    assert "WITH bounds AS" not in prompt
+    assert "CROSS JOIN bounds" not in prompt
     assert "## 标准聚合 SQL" not in prompt
     assert "未指定日期窗口时，默认查询截至昨天的最近 28 个自然日" in prompt
     assert "用户指定相对日期窗口" in prompt
     assert "用户指定绝对起止日期" in prompt
     assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" in prompt
     assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
+    assert "禁止使用 `MAX(dt)`" in prompt
+
+
+def test_xiuxian_date_skill_rejects_max_dt_partition_probe() -> None:
+    """修仙日期口径禁止通过 MAX(dt) 全表扫描探测最大业务日期。"""
+    prompt = _date_skill()["prompt"]
+    message = "修仙数据源禁止使用 MAX(dt) 扫描最大业务日期；请根据用户时间范围或默认最近 28 天直接生成 dt 分区边界。"
+
+    assert _data_skill_sql_validation_error(
+        "查看近七天日活",
+        "SELECT MAX(dt) AS max_dt FROM event",
+        prompt,
+    ) == message
+    assert _data_skill_sql_validation_error(
+        "查看近七天日活",
+        "SELECT MAX(e.dt) AS max_dt FROM event e",
+        prompt,
+    ) == message
+
+
+def test_xiuxian_date_skill_allows_non_partition_max_aggregate() -> None:
+    """禁止分区探测不能误伤普通 MAX 聚合。"""
+    prompt = _date_skill()["prompt"]
+    sql = "SELECT e.dt, MAX(e.level) FROM event e WHERE e.dt = 20260714 GROUP BY e.dt"
+
+    assert _data_skill_sql_validation_error("查看昨日最高等级", sql, prompt) is None
 
 
 def test_xiuxian_payment_skill_rejects_cumulative_snapshot_arppu_sql() -> None:

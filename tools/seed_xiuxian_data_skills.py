@@ -25,6 +25,12 @@ DATA_SKILLS: list[dict[str, str]] = [
         "name": "修仙业务日期与按日聚合口径",
         "description": "规范修仙数据源 event、user 表中 YYYYMMDD 数字分区字段 dt 的过滤、聚合和输出格式。",
         "prompt": """<!-- data-skill-source:xiuxian:date-partition-aggregation -->
+<!-- data-skill-sql-validation:{
+  "forbidden_sql_patterns":[
+    "\\\\bMAX\\\\s*\\\\(\\\\s*(?:`?[A-Za-z_][A-Za-z0-9_]*`?\\\\s*\\\\.\\\\s*)?`?dt`?\\\\s*\\\\)"
+  ],
+  "message":"修仙数据源禁止使用 MAX(dt) 扫描最大业务日期；请根据用户时间范围或默认最近 28 天直接生成 dt 分区边界。"
+} -->
 # 修仙业务日期与按日聚合口径
 
 ## 适用范围
@@ -53,23 +59,22 @@ DATA_SKILLS: list[dict[str, str]] = [
 - 用户未指定日期窗口时，默认查询截至昨天的最近 28 个自然日。
 - 起止日期均包含。最近 `N` 个完整自然日使用当前日期减 `N` 天作为开始日期、当前日期减 1 天作为结束日期。
 - 下面 SQL 只展示一种相对日期边界写法；其中 29 天是示例参数，不表示固定查询范围，必须按用户问题替换。
+- 动态边界必须直接写入每个大表别名自己的 `WHERE` 或 `JOIN ON` 分区条件，禁止先生成单行 `bounds` CTE 后再通过 `JOIN` / `CROSS JOIN` 引用。
 
 ```sql
-WITH bounds AS (
-    SELECT
-        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS end_dt
-)
+WHERE e.dt BETWEEN
+    CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED)
+    AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
 ```
 
-- 后续 CTE 必须通过 `JOIN bounds b` 或 `CROSS JOIN bounds b` 引用边界，并使用 `e.dt BETWEEN b.start_dt AND b.end_dt` 过滤原始整数分区字段。
-- 不得通过额外聚合或扫描日期字段来推断查询边界；日期边界必须来自用户问题或上述默认窗口。
+- 后续每个读取 `event`、`user` 等大表的 CTE 都必须在自身的 `WHERE` 或 `JOIN ON` 中直接限制对应别名的原始整数 `dt` 分区字段。
+- 禁止使用 `MAX(dt)`、`MAX(e.dt)` 或其它 `MAX(<别名>.dt)` 聚合扫描最大业务日期；也不得通过额外聚合或扫描日期字段来推断查询边界。日期边界必须来自用户问题或上述默认窗口。
 - 当前窗口没有业务分区时，明确返回当前窗口无数据；不得回退为全历史无界扫描。
 
 ## 禁止事项
 
 - 不要直接 `SELECT dt` 后把八位日期交给前端按数值展示。
-- 不得为确定日期边界对 `event` 或 `user` 额外执行日期聚合扫描。
+- 不得为确定日期边界对 `event` 或 `user` 额外执行日期聚合扫描，包括 `MAX(dt)` 最大分区探测。
 - 不要只依赖字段名猜测日期；本 Data Skill 只声明当前数据源已经确认的 `event.dt`、`user.dt` 语义。
 - 不要把本口径传播到其他数据源。
 """,
@@ -132,16 +137,10 @@ WITH bounds AS (
 ## MySQL 8 近七天 ARPPU 参考 SQL
 
 ```sql
-WITH RECURSIVE bounds (start_dt, end_dt) AS (
+WITH RECURSIVE params (end_date, start_date) AS (
     SELECT
-        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS end_dt
-),
-params (end_date, start_date) AS (
-    SELECT
-        STR_TO_DATE(CAST(end_dt AS CHAR), '%Y%m%d') AS end_date,
-        STR_TO_DATE(CAST(start_dt AS CHAR), '%Y%m%d') AS start_date
-    FROM bounds
+        DATE_SUB(CURDATE(), INTERVAL 1 DAY) AS end_date,
+        DATE_SUB(CURDATE(), INTERVAL 7 DAY) AS start_date
 ),
 days (calendar_date, end_date) AS (
     SELECT start_date AS calendar_date, end_date
@@ -160,8 +159,9 @@ pay (pay_date, uid, ed_money) AS (
             AS DECIMAL(18, 4)
         ) AS ed_money
     FROM `event` e
-    CROSS JOIN bounds b
-    WHERE e.dt BETWEEN b.start_dt AND b.end_dt
+    WHERE e.dt BETWEEN
+          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+      AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
       AND e.event = 'PayBuyRet'
       AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
       AND CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')), '') AS DECIMAL(18, 4)) > 0
