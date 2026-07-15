@@ -153,6 +153,46 @@ def test_copy_default_resource_creates_independent_my_dashboard(monkeypatch):
     assert "chart-1" not in copied.canvas_view_info
 
 
+def test_copy_default_resource_does_not_inherit_source_tracking_metadata(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_require_create_permission", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="default-with-metadata",
+                name=" 推荐看板 ",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                is_default=1,
+                remark="source_dashboard_id=legacy-source",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        copied = dashboard_service.copy_default_resource(
+            session=session,
+            user=current_user,
+            request=DashboardDefaultCopyRequest(dashboard_id="default-with-metadata"),
+        )
+
+        assert copied.name == " 推荐看板 "
+        assert copied.remark is None
+        assert copied.source is None
+        assert copied.external_mcp_server_id is None
+
+
 def test_set_default_resource_creates_independent_recommended_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")

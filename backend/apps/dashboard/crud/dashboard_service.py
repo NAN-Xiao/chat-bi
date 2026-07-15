@@ -3846,10 +3846,10 @@ def _clone_dashboard_record(
     record = CoreDashboard(
         id=uuid.uuid4().hex,
         tenant_id=_current_tenant_id(user),
-        name=(source.name or "").strip(),
+        name=(source.name or "").strip() if is_default else source.name,
         pid="root",
         datasource=datasource_id,
-        external_mcp_server_id=source.external_mcp_server_id,
+        external_mcp_server_id=source.external_mcp_server_id if is_default else None,
         org_id=source.org_id or "",
         level=source.level or 1,
         node_type="leaf",
@@ -3866,8 +3866,12 @@ def _clone_dashboard_record(
         update_by=operator_id,
         create_time=now,
         update_time=now,
-        remark=source.remark,
-        source=DASHBOARD_SOURCE_EXTERNAL_MCP if _is_external_mcp_dashboard(source) else None,
+        remark=source.remark if is_default else None,
+        source=(
+            DASHBOARD_SOURCE_EXTERNAL_MCP
+            if is_default and _is_external_mcp_dashboard(source)
+            else None
+        ),
         delete_flag=0,
         version=source.version or 3,
         content_id="0",
