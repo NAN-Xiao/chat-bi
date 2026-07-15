@@ -71,11 +71,12 @@ def test_xiuxian_payment_skill_declares_all_recursive_with_column_aliases() -> N
 
 
 def test_xiuxian_payment_skill_bounds_recent_business_date_search() -> None:
-    """近七天查询只扫描有限分区寻找最大可用业务日期。"""
+    """近七天查询在最近 28 天分区内寻找最大可用业务日期。"""
     prompt = _payment_skill()["prompt"]
 
-    assert "DATE_SUB(CURDATE(), INTERVAL 7 DAY)" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 27 DAY)" in prompt
     assert "不得对 `event` 执行无分区边界的 `MAX(dt)`" in prompt
+    assert "WHERE start_date IS NOT NULL" in prompt
 
 
 def test_xiuxian_date_skill_bounds_default_business_date_search() -> None:
@@ -94,6 +95,24 @@ def test_xiuxian_payment_skill_rejects_cumulative_snapshot_arppu_sql() -> None:
              / NULLIF(COUNT(DISTINCT uid), 0) AS ARPPU
     FROM `user`
     GROUP BY dt
+    """
+
+    assert _data_skill_sql_validation_error("查看近七天的 ARPPU", wrong_sql, prompt) == (
+        "修仙付费趋势必须使用 PayBuyRet 的成功事件、personal.ed_money 和去重 uid；"
+        "paytotal 是累计快照，不能计算当日收入、当日付费人数或 ARPPU。"
+    )
+
+
+def test_xiuxian_payment_skill_rejects_non_distinct_arppu_denominator() -> None:
+    prompt = _payment_skill()["prompt"]
+    wrong_sql = """
+    SELECT e.dt,
+           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')) AS DECIMAL(18, 4)))
+             / NULLIF(COUNT(*), 0) AS ARPPU
+    FROM `event` e
+    WHERE e.event = 'PayBuyRet'
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
+    GROUP BY e.dt
     """
 
     assert _data_skill_sql_validation_error("查看近七天的 ARPPU", wrong_sql, prompt) == (

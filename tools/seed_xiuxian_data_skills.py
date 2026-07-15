@@ -122,6 +122,10 @@ ORDER BY e.dt;
   {
     "match":["ARPPU","arppu"],
     "required_sql_contains":["PayBuyRet","ed_money","ed_isSuccess"],
+    "required_sql_patterns":[
+      "SUM\\\\s*\\\\([\\\\s\\\\S]{0,240}ed_money",
+      "COUNT\\\\s*\\\\(\\\\s*DISTINCT\\\\s+(?:`?\\\\w+`?\\\\s*\\\\.\\\\s*)?`?uid`?\\\\s*\\\\)"
+    ],
     "forbidden_sql_contains":["paytotal"],
     "message":"修仙付费趋势必须使用 PayBuyRet 的成功事件、personal.ed_money 和去重 uid；paytotal 是累计快照，不能计算当日收入、当日付费人数或 ARPPU。"
   },
@@ -162,7 +166,7 @@ ORDER BY e.dt;
 
 - 日期过滤、输出和最大业务日期锚点遵守“修仙业务日期与按日聚合口径”。
 - “近七天”必须以最大可用业务日期为结束日期，向前包含七个自然日。
-- 只在系统当前日期向前 7 天到当前日期的分区边界内查找最大可用业务日期；不得对 `event` 执行无分区边界的 `MAX(dt)`。
+- 只在系统当前日期向前 27 天到当前日期的分区边界内查找最大可用业务日期；不得对 `event` 执行无分区边界的 `MAX(dt)`。
 - 趋势必须补齐自然日；无付费日期的金额和人数为 0，ARPPU 为 `NULL`。
 
 ## MySQL 8 近七天 ARPPU 参考 SQL
@@ -172,7 +176,7 @@ WITH RECURSIVE bounds (end_dt) AS (
     SELECT MAX(e.dt) AS end_dt
     FROM `event` e
     WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
           AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
 ),
 params (end_date, start_date) AS (
@@ -184,6 +188,7 @@ params (end_date, start_date) AS (
 days (calendar_date, end_date) AS (
     SELECT start_date AS calendar_date, end_date
     FROM params
+    WHERE start_date IS NOT NULL
     UNION ALL
     SELECT DATE_ADD(calendar_date, INTERVAL 1 DAY), end_date
     FROM days
