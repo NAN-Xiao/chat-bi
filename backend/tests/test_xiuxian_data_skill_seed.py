@@ -122,6 +122,35 @@ def test_xiuxian_date_skill_allows_non_partition_max_aggregate() -> None:
     assert _data_skill_sql_validation_error("查看昨日最高等级", sql, prompt) is None
 
 
+def test_xiuxian_date_skill_rejects_bounds_cte_join_for_partition_filter() -> None:
+    """修仙日期口径禁止通过 bounds CTE 关联事件大表。"""
+    prompt = _date_skill()["prompt"]
+    wrong_sql = """
+    WITH bounds AS (
+        SELECT
+            CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
+            CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS end_dt
+    ),
+    daily_active AS (
+        SELECT e.dt, COUNT(DISTINCT e.uid) AS dau
+        FROM event e
+        CROSS JOIN bounds b
+        WHERE e.dt BETWEEN b.start_dt AND b.end_dt
+        GROUP BY e.dt
+    )
+    SELECT * FROM daily_active
+    """
+
+    assert _data_skill_sql_validation_error(
+        "使用堆叠面积图展示近七天各平台的日活跃用户数变化",
+        wrong_sql,
+        prompt,
+    ) == (
+        "修仙数据源禁止使用 bounds CTE 关联事件或快照大表；"
+        "请把动态日期表达式直接写入每个表别名自己的 dt 分区条件。"
+    )
+
+
 def test_xiuxian_payment_skill_rejects_cumulative_snapshot_arppu_sql() -> None:
     prompt = _payment_skill()["prompt"]
     wrong_sql = """

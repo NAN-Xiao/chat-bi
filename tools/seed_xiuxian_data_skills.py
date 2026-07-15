@@ -25,12 +25,21 @@ DATA_SKILLS: list[dict[str, str]] = [
         "name": "修仙业务日期与按日聚合口径",
         "description": "规范修仙数据源 event、user 表中 YYYYMMDD 数字分区字段 dt 的过滤、聚合和输出格式。",
         "prompt": """<!-- data-skill-source:xiuxian:date-partition-aggregation -->
-<!-- data-skill-sql-validation:{
-  "forbidden_sql_patterns":[
-    "\\\\bMAX\\\\s*\\\\(\\\\s*(?:`?[A-Za-z_][A-Za-z0-9_]*`?\\\\s*\\\\.\\\\s*)?`?dt`?\\\\s*\\\\)"
-  ],
-  "message":"修仙数据源禁止使用 MAX(dt) 扫描最大业务日期；请根据用户时间范围或默认最近 28 天直接生成 dt 分区边界。"
-} -->
+<!-- data-skill-sql-validation:[
+  {
+    "forbidden_sql_patterns":[
+      "\\\\bMAX\\\\s*\\\\(\\\\s*(?:`?[A-Za-z_][A-Za-z0-9_]*`?\\\\s*\\\\.\\\\s*)?`?dt`?\\\\s*\\\\)"
+    ],
+    "message":"修仙数据源禁止使用 MAX(dt) 扫描最大业务日期；请根据用户时间范围或默认最近 28 天直接生成 dt 分区边界。"
+  },
+  {
+    "forbidden_sql_patterns":[
+      "\\\\bWITH\\\\s+(?:RECURSIVE\\\\s+)?`?bounds`?\\\\s*(?:\\\\([^)]*\\\\)\\\\s*)?AS\\\\s*\\\\(",
+      "\\\\b(?:CROSS\\\\s+JOIN|JOIN|FROM)\\\\s+`?bounds`?\\\\b"
+    ],
+    "message":"修仙数据源禁止使用 bounds CTE 关联事件或快照大表；请把动态日期表达式直接写入每个表别名自己的 dt 分区条件。"
+  }
+] -->
 # 修仙业务日期与按日聚合口径
 
 ## 适用范围
