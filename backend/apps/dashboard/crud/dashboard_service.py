@@ -181,6 +181,7 @@ DASHBOARD_DRAFT_STATUSES = {
 DASHBOARD_SOURCE_PLATFORM_DELEGATE = "platform_delegate"
 DASHBOARD_SOURCE_PLATFORM_TEMPLATE = "platform_template"
 DASHBOARD_SOURCE_EXTERNAL_MCP = "external_mcp"
+RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE = "推荐看板中已存在同名看板"
 DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "图表数据正在后台刷新"
 DASHBOARD_CHART_NO_PERMISSION_MESSAGE = "没有查看权限"
 DASHBOARD_REFRESH_POLICY_DEFAULT = {
@@ -3049,6 +3050,34 @@ def _active_dashboard_filter():
     )
 
 
+def _normalize_recommended_dashboard_name(name: str | None) -> str:
+    return (name or "").strip().lower()
+
+
+def _recommended_dashboard_name_exists(
+        session: SessionDep,
+        user: CurrentUser,
+        name: str | None,
+) -> bool:
+    normalized_name = _normalize_recommended_dashboard_name(name)
+    if not normalized_name:
+        raise HTTPException(status_code=400, detail="Dashboard name is required")
+    duplicate = session.exec(
+        select(CoreDashboard.id)
+        .where(
+            and_(
+                _active_dashboard_filter(),
+                CoreDashboard.tenant_id == _current_tenant_id(user),
+                CoreDashboard.node_type == "leaf",
+                CoreDashboard.is_default == 1,
+                func.lower(func.trim(CoreDashboard.name)) == normalized_name,
+            )
+        )
+        .limit(1)
+    ).first()
+    return duplicate is not None
+
+
 def _platform_template_source_remark(source: CoreDashboard) -> str:
     """
     是什么：_platform_template_source_remark 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -3812,7 +3841,7 @@ def _clone_dashboard_record(
     record = CoreDashboard(
         id=uuid.uuid4().hex,
         tenant_id=_current_tenant_id(user),
-        name=source.name,
+        name=(source.name or "").strip(),
         pid="root",
         datasource=datasource_id,
         external_mcp_server_id=source.external_mcp_server_id,
@@ -4188,6 +4217,8 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
     now = int(time.time())
     operator_id = _asset_operator_id(session, user)
     if request.is_default:
+        if _recommended_dashboard_name_exists(session, user, record.name):
+            raise HTTPException(status_code=409, detail=RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE)
         max_sort_row = session.exec(
             select(func.max(func.coalesce(CoreDashboardTree.sort, 0)))
             .where(

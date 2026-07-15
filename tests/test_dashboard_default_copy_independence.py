@@ -225,6 +225,135 @@ def test_set_default_resource_creates_independent_recommended_dashboard(monkeypa
         assert [(row.scope, row.parent_id) for row in copied_positions] == [("default", "root")]
 
 
+def test_set_default_resource_rejects_trimmed_case_insensitive_duplicate_name(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    original_session_get = Session.get
+
+    def session_get(current_session, entity, ident, *args, **kwargs):
+        if entity is dashboard_service.CoreDatasource:
+            return SimpleNamespace(id=ident)
+        return original_session_get(current_session, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "get", session_get)
+    monkeypatch.setattr(dashboard_service, "_require_set_default_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *_args, **_kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="existing-default",
+                tenant_id=1,
+                name="Pay Dashboard",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=1,
+                status=1,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="source",
+                tenant_id=1,
+                name="  pay dashboard  ",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=0,
+                status=1,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            dashboard_service.set_default_resource(
+                session,
+                current_user,
+                DashboardDefaultRequest(dashboard_id="source", is_default=True),
+            )
+        records = session.exec(select(CoreDashboard)).all()
+
+        assert exc.value.status_code == 409
+        assert exc.value.detail == dashboard_service.RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE
+        assert {record.id for record in records} == {"existing-default", "source"}
+
+
+def test_set_default_resource_allows_same_name_in_another_workspace(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    original_session_get = Session.get
+
+    def session_get(current_session, entity, ident, *args, **kwargs):
+        if entity is dashboard_service.CoreDatasource:
+            return SimpleNamespace(id=ident)
+        return original_session_get(current_session, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "get", session_get)
+    monkeypatch.setattr(dashboard_service, "_require_set_default_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *_args, **_kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="tenant-2-default",
+                tenant_id=2,
+                name="Pay Dashboard",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=1,
+                status=1,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="tenant-1-source",
+                tenant_id=1,
+                name="pay dashboard",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=0,
+                status=1,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        response = dashboard_service.set_default_resource(
+            session,
+            current_user,
+            DashboardDefaultRequest(dashboard_id="tenant-1-source", is_default=True),
+        )
+        copied = session.get(CoreDashboard, response.id)
+
+        assert copied is not None
+        assert copied.tenant_id == 1
+        assert copied.name == "pay dashboard"
+
+
 def test_repair_my_tree_default_dashboard_copies_repoints_my_tree(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
