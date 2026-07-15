@@ -41,7 +41,7 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## SQL 规则
 
 - WHERE 使用原始字段，例如 `e.dt BETWEEN 20260616 AND 20260715`；不要在 WHERE 中对 `dt` 包裹 `STR_TO_DATE`。
-- 用户未指定日期窗口时，以相关明细表的最大可用业务日期为结束日期，默认查询最近 28 个自然日。
+- 用户未指定日期窗口时，只在系统当前日期向前 27 天到当前日期的分区边界内查找最大可用业务日期，并以它为结束日期查询最近 28 个自然日。
 - 按日聚合使用 `GROUP BY e.dt`，并使用 `ORDER BY e.dt`。
 - SELECT 输出使用 `DATE_FORMAT(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS dt`。
 - 表格中的 `dt` 展示为 `YYYY-MM-DD`；趋势图横轴绑定 `dt`，不要把它作为数值轴或添加千分位。
@@ -72,7 +72,8 @@ WITH bounds AS (
 
 - 后续 CTE 必须通过 `JOIN bounds b` 或 `CROSS JOIN bounds b` 引用边界，并使用 `e.dt BETWEEN b.start_dt AND b.end_dt` 过滤原始整数分区字段。
 - 不得在计算 `MAX(dt)` 的同一查询层的 `WHERE` 中再次使用 `MAX(dt)`，也不得生成 `WHERE dt >= 包含 MAX(dt) 的表达式`。
-- 如果数据可能延迟、停更或存在未来分区，必须改用下方以最大可用业务日期为锚点的标准聚合 SQL。
+- 如果最近 28 个自然日边界内没有业务分区，明确返回当前窗口无数据；不得回退为全历史无界扫描。
+- 如果数据可能延迟、停更或存在未来分区，必须改用下方带明确搜索边界、以最大可用业务日期为锚点的标准聚合 SQL。
 
 ## 标准聚合 SQL
 
@@ -80,6 +81,9 @@ WITH bounds AS (
 WITH bounds AS (
     SELECT MAX(e.dt) AS end_dt
     FROM `event` e
+    WHERE e.dt BETWEEN
+          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
+          AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
 )
 SELECT
     DATE_FORMAT(
@@ -105,10 +109,136 @@ ORDER BY e.dt;
 ## 禁止事项
 
 - 不要直接 `SELECT dt` 后把八位日期交给前端按数值展示。
+- 不得对 `event` 或 `user` 执行无分区边界的 `MAX(dt)`；必须先限定与问题窗口匹配的业务日期搜索范围。
 - 不要只依赖字段名猜测日期；本 Data Skill 只声明当前数据源已经确认的 `event.dt`、`user.dt` 语义。
 - 不要把本口径传播到其他数据源。
 """,
-    }
+    },
+    {
+        "name": "修仙付费收入与 ARPPU 口径",
+        "description": "规范修仙 PayBuyRet 成功付费事件的人民币收入、付费用户、付费事件次数和 ARPPU，禁止把累计 paytotal 当作当日指标。",
+        "prompt": """<!-- data-skill-source:xiuxian:paybuyret-monetization-arppu -->
+<!-- data-skill-sql-validation:[
+  {
+    "match":["ARPPU","arppu"],
+    "required_sql_contains":["PayBuyRet","ed_money","ed_isSuccess"],
+    "required_sql_patterns":[
+      "SUM\\\\s*\\\\([\\\\s\\\\S]{0,240}ed_money",
+      "COUNT\\\\s*\\\\(\\\\s*DISTINCT\\\\s+(?:`?\\\\w+`?\\\\s*\\\\.\\\\s*)?`?uid`?\\\\s*\\\\)"
+    ],
+    "forbidden_sql_contains":["paytotal"],
+    "message":"修仙付费趋势必须使用 PayBuyRet 的成功事件、personal.ed_money 和去重 uid；paytotal 是累计快照，不能计算当日收入、当日付费人数或 ARPPU。"
+  },
+  {
+    "match":["当日付费金额","每日付费金额","付费金额趋势","当日付费用户","每日付费用户","付费用户趋势","每日收入","收入趋势","每日流水","流水趋势","近七天收入","近7天收入"],
+    "required_sql_contains":["PayBuyRet","ed_money","ed_isSuccess"],
+    "forbidden_sql_contains":["paytotal"],
+    "message":"修仙当日付费指标必须使用 PayBuyRet 的成功事件和 personal.ed_money；paytotal 只表示累计付费快照。"
+  }
+] -->
+# 修仙付费收入与 ARPPU 口径
+
+## 适用范围
+
+- 仅适用于当前修仙工作空间的数据源，datasource_id=6。
+- 适用于付费金额、收入、流水、付费用户、付费事件次数和 ARPPU。
+- ARPU、付费率需要另行确认活跃用户事件和分母，不得根据字段名猜测。
+
+## 已确认事件与字段
+
+- 成功付费事件：`event = 'PayBuyRet'`。
+- 人民币当次金额：`personal.ed_money`，SQL 路径为 `$.ed_money`。
+- 成功标识：`personal.ed_isSuccess`，仅保留 `true` 或 `1`。
+- 付费用户标识：`uid`。
+- 支付平台订单号：`personal.ed_orderId`，但当前数据为空，不能用于订单去重。
+- `personal.ed_payId` 会被多个用户和多笔支付复用，不是唯一交易号，不能代替订单号。
+
+## 指标定义
+
+- 当日付费金额：成功且 `ed_money > 0` 的 `PayBuyRet` 事件金额求和。
+- 当日付费用户数：同一口径下 `COUNT(DISTINCT uid)`。
+- 当日付费事件次数：同一口径下 `COUNT(*)`；不能命名为去重订单数。
+- 当日 ARPPU：`SUM(ed_money) / NULLIF(COUNT(DISTINCT uid), 0)`。
+- `pay.paytotal` 和 `allianceinfo.paytotal` 是累计快照，不能用于当日付费金额、当日付费人数或 ARPPU。
+- 周/月 ARPPU 必须在周期内重新计算成功付费金额除以周期去重付费用户数，不能汇总或平均每日 ARPPU。
+
+## 日期与空值
+
+- 日期过滤、输出和最大业务日期锚点遵守“修仙业务日期与按日聚合口径”。
+- “近七天”必须以最大可用业务日期为结束日期，向前包含七个自然日。
+- 只在系统当前日期向前 27 天到当前日期的分区边界内查找最大可用业务日期；不得对 `event` 执行无分区边界的 `MAX(dt)`。
+- 趋势必须补齐自然日；无付费日期的金额和人数为 0，ARPPU 为 `NULL`。
+
+## MySQL 8 近七天 ARPPU 参考 SQL
+
+```sql
+WITH RECURSIVE bounds (end_dt) AS (
+    SELECT MAX(e.dt) AS end_dt
+    FROM `event` e
+    WHERE e.dt BETWEEN
+          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
+          AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+),
+params (end_date, start_date) AS (
+    SELECT
+        STR_TO_DATE(CAST(end_dt AS CHAR), '%Y%m%d') AS end_date,
+        DATE_SUB(STR_TO_DATE(CAST(end_dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY) AS start_date
+    FROM bounds
+),
+days (calendar_date, end_date) AS (
+    SELECT start_date AS calendar_date, end_date
+    FROM params
+    WHERE start_date IS NOT NULL
+    UNION ALL
+    SELECT DATE_ADD(calendar_date, INTERVAL 1 DAY), end_date
+    FROM days
+    WHERE calendar_date < end_date
+),
+pay (pay_date, uid, ed_money) AS (
+    SELECT
+        STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS pay_date,
+        e.uid,
+        CAST(
+            NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')), '')
+            AS DECIMAL(18, 4)
+        ) AS ed_money
+    FROM `event` e
+    CROSS JOIN bounds b
+    WHERE e.dt BETWEEN
+          CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(b.end_dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED)
+          AND b.end_dt
+      AND e.event = 'PayBuyRet'
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
+      AND CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')), '') AS DECIMAL(18, 4)) > 0
+),
+daily_pay (pay_date, revenue, payers, payment_event_count) AS (
+    SELECT
+        pay_date,
+        SUM(ed_money) AS revenue,
+        COUNT(DISTINCT uid) AS payers,
+        COUNT(*) AS payment_event_count
+    FROM pay
+    GROUP BY pay_date
+)
+SELECT
+    DATE_FORMAT(d.calendar_date, '%Y-%m-%d') AS dt,
+    ROUND(COALESCE(p.revenue, 0), 2) AS revenue,
+    COALESCE(p.payers, 0) AS payers,
+    COALESCE(p.payment_event_count, 0) AS payment_event_count,
+    ROUND(p.revenue / NULLIF(p.payers, 0), 2) AS arppu
+FROM days d
+LEFT JOIN daily_pay p ON p.pay_date = d.calendar_date
+ORDER BY d.calendar_date;
+```
+
+## 禁止事项
+
+- 不要使用 `user.pay.paytotal` 的日快照求和或累计付费人数计算 ARPPU。
+- 不要把 `ed_payId` 当订单号去重。
+- 不要在当前 Skill 中猜测 ARPU、付费率、退款或净收入口径。
+- 不要把本口径传播到其他数据源。
+""",
+    },
 ]
 
 
