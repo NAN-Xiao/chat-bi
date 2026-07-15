@@ -10,6 +10,8 @@ fail() {
   exit 1
 }
 
+BASH_BIN="$(command -v bash)"
+
 FAKE_PG_DUMP="$TEST_ROOT/fake-pg-dump"
 cat > "$FAKE_PG_DUMP" <<'EOF'
 #!/usr/bin/env bash
@@ -52,6 +54,41 @@ if run_backup "$failure_dir" 1; then
 fi
 if find "$failure_dir" -maxdepth 1 -type f \( -name '*.partial' -o -name '*.dump' \) | grep -q .; then
   fail "pg_dump 失败后残留了备份文件"
+fi
+
+no_checksum_path="$TEST_ROOT/no-checksum-path"
+mkdir -p "$no_checksum_path"
+for command_name in bash mkdir date rm mv ln find; do
+  command_path="$(command -v "$command_name")"
+  printf '#!%s\nexec "%s" "$@"\n' "$BASH_BIN" "$command_path" > "$no_checksum_path/$command_name"
+  chmod 0755 "$no_checksum_path/$command_name"
+done
+
+checksum_missing_dir="$TEST_ROOT/checksum-missing"
+checksum_missing_output="$TEST_ROOT/checksum-missing.log"
+if env \
+  PATH="$no_checksum_path" \
+  ENV_FILE="$TEST_ROOT/missing.env" \
+  POSTGRES_SERVER="10.1.5.28" \
+  POSTGRES_PORT="5432" \
+  POSTGRES_DB="zhishu_bi" \
+  POSTGRES_USER="root" \
+  POSTGRES_PASSWORD="test-only" \
+  BACKUP_DIR="$checksum_missing_dir" \
+  BACKUP_RETENTION_DAYS="14" \
+  PG_DUMP_BIN="$FAKE_PG_DUMP" \
+  "$BASH_BIN" "$SCRIPT" > "$checksum_missing_output" 2>&1
+then
+  fail "缺少 SHA-256 校验工具时脚本仍返回成功"
+fi
+if ! grep -q "Cannot find SHA-256 checksum tool" "$checksum_missing_output"; then
+  fail "缺少 SHA-256 校验工具时未输出明确错误"
+fi
+if [[ -d "$checksum_missing_dir" ]] && \
+  find "$checksum_missing_dir" -maxdepth 1 \
+    \( -name '*.dump' -o -name '*.sha256' -o -name '*latest*' \) | grep -q .
+then
+  fail "缺少 SHA-256 校验工具时生成了备份、校验或 latest 文件"
 fi
 
 success_dir="$TEST_ROOT/success"

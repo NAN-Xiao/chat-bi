@@ -126,6 +126,8 @@ PG_RESTORE_BIN=pg_restore
 ```bash
 id -u shuzhi-backup >/dev/null 2>&1 || \
   useradd --system --home-dir /var/lib/shuzhi-backup --create-home --shell /sbin/nologin shuzhi-backup
+install -o root -g root -m 0755 -d /opt/shuzhi/deploy/scripts
+install -o root -g root -m 0755 -d /etc/shuzhi
 if [[ ! -e /etc/shuzhi/shuzhi-backup.env ]]; then
   install -o root -g root -m 0600 /dev/null /etc/shuzhi/shuzhi-backup.env
 fi
@@ -142,7 +144,7 @@ systemctl daemon-reload
 
 ```bash
 systemctl start shuzhi-postgres-backup.service
-systemctl status shuzhi-postgres-backup.service --no-pager
+systemctl show shuzhi-postgres-backup.service -p Result -p ExecMainStatus
 ls -lh /var/backups/shuzhi/postgres
 ```
 

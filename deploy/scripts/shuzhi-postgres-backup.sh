@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE="${ENV_FILE:-/etc/shuzhi/shuzhi.env}"
+ENV_FILE="${ENV_FILE:-/etc/shuzhi/shuzhi-backup.env}"
 
 read_env_var() {
   local name="$1"
@@ -51,6 +51,15 @@ if ! command -v "$PG_DUMP_BIN" >/dev/null 2>&1; then
   exit 2
 fi
 
+if command -v sha256sum >/dev/null 2>&1; then
+  checksum_tool="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  checksum_tool="shasum"
+else
+  echo "Cannot find SHA-256 checksum tool (sha256sum or shasum)." >&2
+  exit 2
+fi
+
 umask 077
 mkdir -p "$BACKUP_DIR"
 
@@ -88,9 +97,9 @@ fi
 
 mv -- "$partial_file" "$backup_file"
 
-if command -v sha256sum >/dev/null 2>&1; then
+if [[ "$checksum_tool" == "sha256sum" ]]; then
   sha256sum "$backup_file" > "$checksum_file"
-elif command -v shasum >/dev/null 2>&1; then
+else
   shasum -a 256 "$backup_file" > "$checksum_file"
 fi
 
