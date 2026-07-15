@@ -116,6 +116,24 @@ function isJsonSubfieldOption(option: Pick<FieldOption, 'sourceField' | 'jsonPat
   return Boolean(option.isJsonSubfield || (option.sourceField && option.jsonPath))
 }
 
+export function fieldOptionDisplayName(option?: FieldOption, fallback = '') {
+  if (!option) {
+    return fallback.split('.').pop() || ''
+  }
+  if (option.kind === 'tracking-event') {
+    return option.displayName || option.label || option.eventName || option.field
+  }
+  if (
+    isJsonSubfieldOption(option) &&
+    option.sourceField &&
+    option.field.startsWith(`${option.sourceField}.`)
+  ) {
+    const explicitLabel = option.label && option.label !== option.field ? option.label : ''
+    return option.displayName || explicitLabel || option.field.slice(option.sourceField.length + 1)
+  }
+  return option.displayName || option.label || option.field
+}
+
 export function isObjectGroupTableOption(option: Pick<FieldOption, 'tableRole'>) {
   const normalizedRole = normalizeRole(option.tableRole)
   return Boolean(normalizedRole && OBJECT_GROUP_TABLE_ROLES.has(normalizedRole))
