@@ -129,14 +129,6 @@ class BusinessSqlContextService:
         datasource_type = getattr(datasource, "type", None) or getattr(datasource, "type_name", None)
         sql_dialect = get_sqlglot_dialect(datasource_type)
 
-        schema, allowed_tables = get_ai_table_schema(
-            session=session,
-            current_user=current_user,
-            ds=datasource,
-            question=question or "",
-            embedding=embedding,
-            table_list=table_list,
-        )
         data_skill, skill_list, skill_model_id = find_data_skills(
             session,
             int(datasource_id),
@@ -149,6 +141,15 @@ class BusinessSqlContextService:
             include_all_target_scopes=include_all_target_scopes,
             can_manage_public=can_manage_public,
             can_manage_platform_public=can_manage_platform_public,
+        )
+        schema, allowed_tables = get_ai_table_schema(
+            session=session,
+            current_user=current_user,
+            ds=datasource,
+            question=question or "",
+            embedding=embedding,
+            table_list=table_list,
+            data_skill_text=data_skill,
         )
         tracking_config, tracking_summary = find_tracking_prompt_context(
             session,

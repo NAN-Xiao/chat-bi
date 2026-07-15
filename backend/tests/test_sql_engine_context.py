@@ -33,7 +33,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
     monkeypatch.setattr(sql_engine, "has_datasource_access", lambda *_args, **_kwargs: True)
 
     def _schema(**kwargs):
-        calls.append(("schema", kwargs["ds"].id, kwargs["question"]))
+        calls.append(("schema", kwargs["ds"].id, kwargs["question"], kwargs.get("data_skill_text")))
         return "【Schema】\n# Table: event\n[(event_name:text)]\n", ["event"]
 
     def _skills(*args, **kwargs):
@@ -82,8 +82,8 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
     assert snapshot["tracking_warnings"] == ["ok"]
     assert snapshot["data_skill_count"] == 1
     assert calls == [
-        ("schema", 1, "看登录人数"),
         ("skills", 1, CustomPromptTargetScopeEnum.SMART_QA, "看登录人数"),
+        ("schema", 1, "看登录人数", "<Data-Skills>口径</Data-Skills>"),
         ("tracking", 2001, 1, "postgresql", "看登录人数", "<Data-Skills>口径</Data-Skills>"),
     ]
 
