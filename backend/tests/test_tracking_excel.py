@@ -13,6 +13,7 @@ from apps.system.crud.tracking_config import (
     build_tracking_prompt_context,
     filter_tracking_config_for_physical_schema,
 )
+from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.crud.tracking_excel import (
     PhysicalFieldInfo,
     PhysicalTableInfo,
@@ -87,6 +88,79 @@ def _event_user_physical_schema() -> dict[str, PhysicalTableInfo]:
             ],
         ),
     }
+
+
+JSON_FIELD_PARSING_HEADERS = ["来源字段", "JSON路径", "生成字段名", "类型", "属性说明"]
+
+
+def _json_overview_physical_schema() -> dict[str, PhysicalTableInfo]:
+    return {
+        "event": PhysicalTableInfo(
+            table_name="event",
+            fields=[
+                PhysicalFieldInfo("uid", "varchar", "用户ID"),
+                PhysicalFieldInfo("event", "varchar", "事件名"),
+                PhysicalFieldInfo("userinfo", "text", "用户信息 JSON"),
+                PhysicalFieldInfo("event_only", "text", "事件独有 JSON"),
+            ],
+        ),
+        "user": PhysicalTableInfo(
+            table_name="user",
+            fields=[
+                PhysicalFieldInfo("uid", "varchar", "用户ID"),
+                PhysicalFieldInfo("userinfo", "text", "用户信息 JSON"),
+                PhysicalFieldInfo("profile_json", "text", "用户独有 JSON"),
+            ],
+        ),
+    }
+
+
+def _json_overview_workbook(rows: list[list[object]]) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "JSON字段解析"
+    sheet.append(JSON_FIELD_PARSING_HEADERS)
+    for row in rows:
+        sheet.append(row)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_json_field_parsing_sheet_imports_fields_and_prefers_event_table() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [
+                ["userinfo", "$._appVersion", "userinfo._appVersion", "文本", "应用版本"],
+                ["profile_json", "$.country", "profile_json.country", "文本", "注册国家"],
+            ]
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    fields = {(item.table_name, item.field_name): item for item in parsed.editor.fields}
+    app_version = fields[("event", "userinfo._appVersion")]
+    assert app_version.source_field == "userinfo"
+    assert app_version.json_path == "$._appVersion"
+    assert app_version.semantic_type == "text"
+    assert app_version.field_comment == "应用版本"
+    assert ("user", "profile_json.country") in fields
+    assert not any(item.table_name == "JSON字段解析" for item in parsed.editor.tables)
+
+    expression = compile_tracking_json_expression(
+        app_version.table_name,
+        app_version.source_field,
+        app_version.json_path,
+        app_version.semantic_type,
+        "mysql",
+    )
+    assert expression == "JSON_UNQUOTE(JSON_EXTRACT(`event`.`userinfo`, '$._appVersion'))"
 
 
 def _tracking_config() -> TenantTrackingConfigDTO:

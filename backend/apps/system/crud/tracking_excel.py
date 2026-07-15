@@ -35,6 +35,7 @@ TABLE_MAP_SHEET = "_表映射"
 SQL_RULE_SHEET = "_SQL规则"
 EVENT_PARAMETER_MAPPING_SHEET = "事件参数对照"
 EVENT_GROUP_SHEET = "事件分组"
+JSON_FIELD_PARSING_SHEET = "JSON字段解析"
 EXCEL_ROW_NUMBER_KEY = "__excel_row_number__"
 
 SYSTEM_SHEETS = {
@@ -43,6 +44,7 @@ SYSTEM_SHEETS = {
     SQL_RULE_SHEET,
     EVENT_PARAMETER_MAPPING_SHEET,
     EVENT_GROUP_SHEET,
+    JSON_FIELD_PARSING_SHEET,
     "数据类型设计原则",
     "公共事件属性设置方式",
     "多端接入注意点",
@@ -123,6 +125,21 @@ EVENT_GROUP_COLUMNS = [
     "event_order",
     "enabled",
 ]
+JSON_FIELD_PARSING_COLUMNS = [
+    "source_field",
+    "json_path",
+    "field_name",
+    "field_type",
+    "description",
+]
+JSON_FIELD_PARSING_HEADER_ALIASES = {
+    "来源字段": "source_field",
+    "json路径": "json_path",
+    "生成字段名": "field_name",
+    "类型": "field_type",
+    "属性说明": "description",
+}
+JSON_OBSERVED_TYPE_KEY = "json_observed_type"
 EVENT_GROUP_MIN_WIDTHS = {
     "group_key": 20,
     "group_name": 20,
@@ -491,10 +508,15 @@ def _header_key(value: Any) -> str:
     return text
 
 
-def _canonical_header(value: Any) -> str:
+def _canonical_header(
+    value: Any,
+    header_aliases: dict[str, str] | None = None,
+) -> str:
     key = _header_key(value)
     if not key:
         return ""
+    if header_aliases and key in header_aliases:
+        return header_aliases[key]
     return HEADER_ALIASES.get(key, _text(value))
 
 
@@ -504,15 +526,24 @@ def _read_sheet_rows(
     *,
     require_recognized_header: bool = False,
     include_row_number: bool = False,
+    header_aliases: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     raw = pd.read_excel(excel, sheet_name=sheet_name, header=None, dtype=object).fillna("")
     if raw.empty:
         return [], 0
 
     header_index = None
+    recognized_headers = (
+        set(HEADER_ALIASES.values())
+        | set((header_aliases or {}).values())
+        | set(BUSINESS_COLUMNS)
+    )
     for index, row in raw.iterrows():
-        headers = [_canonical_header(value) for value in row.tolist()]
-        known_count = sum(1 for value in headers if value in HEADER_ALIASES.values() or value in BUSINESS_COLUMNS)
+        headers = [
+            _canonical_header(value, header_aliases)
+            for value in row.tolist()
+        ]
+        known_count = sum(1 for value in headers if value in recognized_headers)
         if known_count >= 2:
             header_index = int(index)
             break
@@ -530,7 +561,7 @@ def _read_sheet_rows(
     canonical_headers: list[str] = []
     used: dict[str, int] = {}
     for value in raw.iloc[header_index].tolist():
-        header = _canonical_header(value)
+        header = _canonical_header(value, header_aliases)
         if not header:
             canonical_headers.append("")
             continue
@@ -1493,6 +1524,87 @@ def _parse_attribute_sheet(
                     editor.default_event_time_field = field_item.field_name
 
 
+def _resolve_json_field_table(
+    source_field: str,
+    *,
+    imported: TenantTrackingConfigEditor,
+    existing: TenantTrackingConfigDTO,
+    physical_schema: dict[str, PhysicalTableInfo],
+    row_number: int,
+) -> str:
+    candidates = [
+        table_name
+        for table_name, table_info in physical_schema.items()
+        if source_field in {item.field_name for item in table_info.fields}
+    ]
+    event_table = _text(imported.default_event_table) or _text(existing.default_event_table)
+    if event_table in candidates:
+        return event_table
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise ValueError(
+            f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+            f"来源字段 {source_field} 不存在于当前物理 schema。"
+        )
+    raise ValueError(
+        f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+        f"来源字段 {source_field} 同时存在于 {', '.join(candidates)}，"
+        "且无法按默认事件表消歧。"
+    )
+
+
+def _parse_json_field_parsing_sheet(
+    rows: list[dict[str, Any]],
+    editor: TenantTrackingConfigEditor,
+    existing: TenantTrackingConfigDTO,
+    *,
+    datasource_type: str | None,
+    warnings: list[str],
+    physical_schema: dict[str, PhysicalTableInfo],
+) -> int:
+    skipped = 0
+    for row in rows:
+        row_number = int(row.get(EXCEL_ROW_NUMBER_KEY) or 0)
+        source_field = _text(row.get("source_field"))
+        json_path = _normalize_json_path(_text(row.get("json_path")))
+        field_name = _text(row.get("field_name"))
+        if not json_path or not field_name:
+            _add_warning(
+                warnings,
+                f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+                f"来源字段 {source_field or '（空）'} 缺少 JSON路径或生成字段名，已跳过。",
+            )
+            skipped += 1
+            continue
+        table_name = _resolve_json_field_table(
+            source_field,
+            imported=editor,
+            existing=existing,
+            physical_schema=physical_schema,
+            row_number=row_number,
+        )
+        observed_type = _text(row.get("field_type"))
+        normalized = dict(row)
+        normalized["row_type"] = "dictionary_field"
+        normalized["semantic_type"] = (
+            "text" if observed_type == "空值" else _semantic_type(observed_type)
+        )
+        if observed_type == "空值":
+            normalized[JSON_OBSERVED_TYPE_KEY] = observed_type
+        field_item = _field_item(
+            normalized,
+            table_name,
+            row_type="dictionary_field",
+            datasource_type=datasource_type,
+            warnings=warnings,
+            physical_schema=physical_schema,
+        )
+        if field_item:
+            editor.fields.append(field_item)
+    return skipped
+
+
 def _parse_event_parameter_mapping_sheet(
     rows: list[dict[str, Any]],
     editor: TenantTrackingConfigEditor,
@@ -1741,6 +1853,24 @@ def parse_tracking_excel(
                 warnings=warnings,
                 physical_schema=schema,
             )
+
+    if JSON_FIELD_PARSING_SHEET in excel.sheet_names:
+        rows, skipped = _read_sheet_rows(
+            excel,
+            JSON_FIELD_PARSING_SHEET,
+            require_recognized_header=True,
+            include_row_number=True,
+            header_aliases=JSON_FIELD_PARSING_HEADER_ALIASES,
+        )
+        skipped_rows += skipped
+        skipped_rows += _parse_json_field_parsing_sheet(
+            rows,
+            imported,
+            existing,
+            datasource_type=datasource_type,
+            warnings=warnings,
+            physical_schema=schema,
+        )
 
     if not imported.tables and not imported.fields and not imported.event_name_mappings:
         raise ValueError("Excel 中没有可识别的表、字段或事件配置，请使用平台导出的物理表 sheet 格式。")
