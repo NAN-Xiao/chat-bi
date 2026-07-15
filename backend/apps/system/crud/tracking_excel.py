@@ -130,6 +130,7 @@ JSON_FIELD_PARSING_COLUMNS = [
     "source_field",
     "json_path",
     "field_name",
+    "field_display_name",
     "field_type",
     "description",
 ]
@@ -138,6 +139,7 @@ JSON_FIELD_PARSING_HEADER_ALIASES = {
     "来源字段": "source_field",
     "json路径": "json_path",
     "生成字段名": "field_name",
+    "字段显示名": "field_display_name",
     "类型": "field_type",
     "属性说明": "description",
 }
@@ -165,6 +167,7 @@ JSON_FIELD_PARSING_EXPORT_COLUMN_LABELS = {
     "source_field": "来源字段",
     "json_path": "JSON路径",
     "field_name": "生成字段名",
+    "field_display_name": "字段显示名",
     "field_type": "类型",
     "description": "属性说明",
 }
@@ -1623,6 +1626,7 @@ def _merge_json_sheet_field(
             f"{field_item.table_name}.{field_item.field_name} "
             "与物理表 sheet 中的定义冲突。"
         )
+    existing.aliases = list(field_item.aliases or [])
     existing.field_comment = field_item.field_comment or existing.field_comment
     existing.extra_properties = _merge_extra_properties(
         existing.extra_properties,
@@ -2707,6 +2711,7 @@ def _json_field_parsing_rows(
             "source_field": _text(field_item.source_field),
             "json_path": _normalize_json_path(field_item.json_path),
             "field_name": _text(field_item.field_name),
+            "field_display_name": _first_alias(field_item),
             "field_type": _json_field_type_for_export(field_item),
             "description": _text(field_item.field_comment),
         }
