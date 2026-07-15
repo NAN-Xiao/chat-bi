@@ -31,9 +31,13 @@ def test_xiuxian_date_partition_skill_is_scoped_and_actionable():
 
     assert module.TENANT_ID == 7482727237662281728
     assert module.DATASOURCE_ID == 6
-    assert len(module.DATA_SKILLS) == 1
+    assert len(module.DATA_SKILLS) == 2
 
-    skill = module.DATA_SKILLS[0]
+    skill = next(
+        skill
+        for skill in module.DATA_SKILLS
+        if "data-skill-source:xiuxian:date-partition-aggregation" in skill["prompt"]
+    )
     prompt = skill["prompt"]
     assert prompt.lstrip().startswith(
         "<!-- data-skill-source:xiuxian:date-partition-aggregation -->"
@@ -45,11 +49,14 @@ def test_xiuxian_date_partition_skill_is_scoped_and_actionable():
     assert "STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d')" in prompt
     assert "'%Y-%m-%d'" in prompt
     assert "AS dt" in prompt
-    assert "MAX(e.dt) AS end_dt" in prompt
-    assert "INTERVAL 27 DAY" in prompt
-    assert "## 最近 30 个完整自然日窗口" in prompt
-    assert "仅当问题明确要求最近 30 个完整自然日" in prompt
-    assert "DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY)" in prompt
+    assert "MAX(" not in prompt.upper()
+    assert "## 标准聚合 SQL" not in prompt
+    assert "## 日期窗口规则" in prompt
+    assert "用户指定绝对起止日期" in prompt
+    assert "用户指定相对日期窗口" in prompt
+    assert "未指定日期窗口时，默认查询截至昨天的最近 28 个自然日" in prompt
+    assert "29 天是示例参数，不表示固定查询范围" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" in prompt
     assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
     assert "AS start_dt" in prompt
 

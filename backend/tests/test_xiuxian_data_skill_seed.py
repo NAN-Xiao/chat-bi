@@ -61,7 +61,7 @@ def test_xiuxian_payment_skill_declares_all_recursive_with_column_aliases() -> N
     prompt = _payment_skill()["prompt"]
 
     for declaration in (
-        "bounds (end_dt) AS (",
+        "bounds (start_dt, end_dt) AS (",
         "params (end_date, start_date) AS (",
         "days (calendar_date, end_date) AS (",
         "pay (pay_date, uid, ed_money) AS (",
@@ -70,21 +70,28 @@ def test_xiuxian_payment_skill_declares_all_recursive_with_column_aliases() -> N
         assert declaration in prompt
 
 
-def test_xiuxian_payment_skill_bounds_recent_business_date_search() -> None:
-    """近七天查询在最近 28 天分区内寻找最大可用业务日期。"""
+def test_xiuxian_payment_skill_uses_partition_bounds_for_recent_seven_days() -> None:
+    """近七天查询直接使用系统日期边界限制整数分区。"""
     prompt = _payment_skill()["prompt"]
 
-    assert "DATE_SUB(CURDATE(), INTERVAL 27 DAY)" in prompt
-    assert "不得对 `event` 执行无分区边界的 `MAX(dt)`" in prompt
-    assert "WHERE start_date IS NOT NULL" in prompt
+    assert "MAX(" not in prompt.upper()
+    assert "bounds (start_dt, end_dt) AS (" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 7 DAY)" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
+    assert "e.dt BETWEEN b.start_dt AND b.end_dt" in prompt
 
 
-def test_xiuxian_date_skill_bounds_default_business_date_search() -> None:
-    """通用日期口径也不能在 AnalyticDB 大表上无界扫描最大分区。"""
+def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
+    """通用日期口径根据问题动态生成边界，不扫描最大分区。"""
     prompt = _date_skill()["prompt"]
 
-    assert "DATE_SUB(CURDATE(), INTERVAL 27 DAY)" in prompt
-    assert "不得对 `event` 或 `user` 执行无分区边界的 `MAX(dt)`" in prompt
+    assert "MAX(" not in prompt.upper()
+    assert "## 标准聚合 SQL" not in prompt
+    assert "未指定日期窗口时，默认查询截至昨天的最近 28 个自然日" in prompt
+    assert "用户指定相对日期窗口" in prompt
+    assert "用户指定绝对起止日期" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
 
 
 def test_xiuxian_payment_skill_rejects_cumulative_snapshot_arppu_sql() -> None:

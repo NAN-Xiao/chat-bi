@@ -40,76 +40,36 @@ DATA_SKILLS: list[dict[str, str]] = [
 
 ## SQL 规则
 
-- WHERE 使用原始字段，例如 `e.dt BETWEEN 20260616 AND 20260715`；不要在 WHERE 中对 `dt` 包裹 `STR_TO_DATE`。
-- 用户未指定日期窗口时，只在系统当前日期向前 27 天到当前日期的分区边界内查找最大可用业务日期，并以它为结束日期查询最近 28 个自然日。
+- WHERE 使用原始字段，例如 `WHERE e.dt BETWEEN 20260616 AND 20260715`；不要在 WHERE 中对 `dt` 包裹 `STR_TO_DATE`。
 - 按日聚合使用 `GROUP BY e.dt`，并使用 `ORDER BY e.dt`。
 - SELECT 输出使用 `DATE_FORMAT(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS dt`。
 - 表格中的 `dt` 展示为 `YYYY-MM-DD`；趋势图横轴绑定 `dt`，不要把它作为数值轴或添加千分位。
 - 计数、金额等指标保持各自的数值类型，不要因为日期格式化而转成文本。
 
-## 最近 30 个完整自然日窗口
+## 日期窗口规则
 
-- 仅当问题明确要求最近 30 个完整自然日，并且当前数据每天稳定产出完整分区时，才使用昨天作为结束日期。
-- 起止日期均包含在内；昨天减 29 天到昨天，共覆盖 30 个自然日。
+- 用户指定绝对起止日期时，直接将用户日期转换为 `YYYYMMDD` 整数边界。
+- 用户指定相对日期窗口时，根据用户要求的窗口长度动态计算边界，结束日期默认为昨天。
+- 用户未指定日期窗口时，默认查询截至昨天的最近 28 个自然日。
+- 起止日期均包含。最近 `N` 个完整自然日使用当前日期减 `N` 天作为开始日期、当前日期减 1 天作为结束日期。
+- 下面 SQL 只展示一种相对日期边界写法；其中 29 天是示例参数，不表示固定查询范围，必须按用户问题替换。
 
 ```sql
 WITH bounds AS (
     SELECT
-        CAST(
-            DATE_FORMAT(
-                DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY),
-                '%Y%m%d'
-            ) AS SIGNED
-        ) AS start_dt,
-        CAST(
-            DATE_FORMAT(
-                DATE_SUB(CURDATE(), INTERVAL 1 DAY),
-                '%Y%m%d'
-            ) AS SIGNED
-        ) AS end_dt
+        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
+        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS end_dt
 )
 ```
 
 - 后续 CTE 必须通过 `JOIN bounds b` 或 `CROSS JOIN bounds b` 引用边界，并使用 `e.dt BETWEEN b.start_dt AND b.end_dt` 过滤原始整数分区字段。
-- 不得在计算 `MAX(dt)` 的同一查询层的 `WHERE` 中再次使用 `MAX(dt)`，也不得生成 `WHERE dt >= 包含 MAX(dt) 的表达式`。
-- 如果最近 28 个自然日边界内没有业务分区，明确返回当前窗口无数据；不得回退为全历史无界扫描。
-- 如果数据可能延迟、停更或存在未来分区，必须改用下方带明确搜索边界、以最大可用业务日期为锚点的标准聚合 SQL。
-
-## 标准聚合 SQL
-
-```sql
-WITH bounds AS (
-    SELECT MAX(e.dt) AS end_dt
-    FROM `event` e
-    WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
-          AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
-)
-SELECT
-    DATE_FORMAT(
-        STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'),
-        '%Y-%m-%d'
-    ) AS dt,
-    COUNT(*) AS total_count
-FROM `event` e
-CROSS JOIN bounds b
-WHERE e.dt BETWEEN
-      CAST(
-          DATE_FORMAT(
-              DATE_SUB(STR_TO_DATE(CAST(b.end_dt AS CHAR), '%Y%m%d'), INTERVAL 27 DAY),
-              '%Y%m%d'
-          ) AS SIGNED
-      )
-      AND b.end_dt
-  AND e.event = 'ClickTenDraw'
-GROUP BY e.dt
-ORDER BY e.dt;
-```
+- 不得通过额外聚合或扫描日期字段来推断查询边界；日期边界必须来自用户问题或上述默认窗口。
+- 当前窗口没有业务分区时，明确返回当前窗口无数据；不得回退为全历史无界扫描。
 
 ## 禁止事项
 
 - 不要直接 `SELECT dt` 后把八位日期交给前端按数值展示。
-- 不得对 `event` 或 `user` 执行无分区边界的 `MAX(dt)`；必须先限定与问题窗口匹配的业务日期搜索范围。
+- 不得为确定日期边界对 `event` 或 `user` 额外执行日期聚合扫描。
 - 不要只依赖字段名猜测日期；本 Data Skill 只声明当前数据源已经确认的 `event.dt`、`user.dt` 语义。
 - 不要把本口径传播到其他数据源。
 """,
@@ -164,31 +124,28 @@ ORDER BY e.dt;
 
 ## 日期与空值
 
-- 日期过滤、输出和最大业务日期锚点遵守“修仙业务日期与按日聚合口径”。
-- “近七天”必须以最大可用业务日期为结束日期，向前包含七个自然日。
-- 只在系统当前日期向前 27 天到当前日期的分区边界内查找最大可用业务日期；不得对 `event` 执行无分区边界的 `MAX(dt)`。
+- 日期过滤、输出和动态边界规则遵守“修仙业务日期与按日聚合口径”。
+- “近七天”默认以昨天为结束日期，使用当前日期减 7 天作为开始日期，起止均包含。
+- 用户明确指定其他绝对或相对日期范围时，必须按用户要求替换示例边界。
 - 趋势必须补齐自然日；无付费日期的金额和人数为 0，ARPPU 为 `NULL`。
 
 ## MySQL 8 近七天 ARPPU 参考 SQL
 
 ```sql
-WITH RECURSIVE bounds (end_dt) AS (
-    SELECT MAX(e.dt) AS end_dt
-    FROM `event` e
-    WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
-          AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+WITH RECURSIVE bounds (start_dt, end_dt) AS (
+    SELECT
+        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
+        CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS end_dt
 ),
 params (end_date, start_date) AS (
     SELECT
         STR_TO_DATE(CAST(end_dt AS CHAR), '%Y%m%d') AS end_date,
-        DATE_SUB(STR_TO_DATE(CAST(end_dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY) AS start_date
+        STR_TO_DATE(CAST(start_dt AS CHAR), '%Y%m%d') AS start_date
     FROM bounds
 ),
 days (calendar_date, end_date) AS (
     SELECT start_date AS calendar_date, end_date
     FROM params
-    WHERE start_date IS NOT NULL
     UNION ALL
     SELECT DATE_ADD(calendar_date, INTERVAL 1 DAY), end_date
     FROM days
@@ -204,9 +161,7 @@ pay (pay_date, uid, ed_money) AS (
         ) AS ed_money
     FROM `event` e
     CROSS JOIN bounds b
-    WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(b.end_dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED)
-          AND b.end_dt
+    WHERE e.dt BETWEEN b.start_dt AND b.end_dt
       AND e.event = 'PayBuyRet'
       AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
       AND CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')), '') AS DECIMAL(18, 4)) > 0
