@@ -1005,6 +1005,24 @@ def test_dashboard_prompt_recommends_cte_layers_for_complex_analysis() -> None:
     assert "成熟窗口" in prompt
 
 
+def test_dashboard_prompt_requires_safe_cte_time_boundaries() -> None:
+    """
+    是什么：时间边界层必须先独立计算聚合结果，不能把聚合或窗口函数放进同层 WHERE。
+    """
+    prompt = ai_sql_generator._dashboard_sql_system_prompt()
+
+    assert "bounds CTE 必须只返回一行时间边界" in prompt
+    assert "聚合函数和窗口函数不得出现在同一查询层的 WHERE 条件中" in prompt
+    assert "必须先在独立 CTE 中计算最大日期" in prompt
+    assert "禁止生成 WHERE date_field >= <包含 MAX(date_field) 的表达式>" in prompt
+    assert "具体日期函数、日期格式和分区字段类型必须服从当前 SQL 方言与 Data Skill" in prompt
+    assert "MySQL/MariaDB 最近 30 个完整自然日边界示例" in prompt
+    assert "仅当当前 SQL 方言为 MySQL/MariaDB" in prompt
+    assert "DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY)" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
+    assert "'%Y%m%d'" in prompt
+
+
 def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：看板 AI 生成 SQL 前通过 SQL Engine 统一业务库上下文取 schema、字典和 Data Skill。
