@@ -485,6 +485,34 @@ async function testSmartQaTaskStoreReplaysBufferedEventsWhenCallbacksReattach() 
   await entry.promise
 }
 
+function testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh() {
+  const chartAnswerSource = fs.readFileSync(
+    path.join(root, 'src/views/chat/answer/ChartAnswer.vue'),
+    'utf8'
+  )
+  const handlePayloadStart = chartAnswerSource.indexOf('async function handlePayload')
+  const refreshRecordStart = chartAnswerSource.indexOf('async function refreshCurrentRecord')
+  const handlePayloadSource = chartAnswerSource.slice(handlePayloadStart, refreshRecordStart)
+  const finishCaseSource = handlePayloadSource.match(/case 'finish':[\s\S]*?break/)?.[0]
+
+  assert.ok(finishCaseSource, 'ChartAnswer 应包含流式 finish 事件处理')
+  assert.doesNotMatch(
+    finishCaseSource,
+    /emitFinishOnce/,
+    '流式 finish 只能结束答案状态，不能提前启动完成后动作'
+  )
+  assert.match(
+    chartAnswerSource,
+    /chatApi\.get\(_currentChatId\.value,\s*\{\s*includeRecordData:\s*false\s*}\)/,
+    '任务终态刷新应排除图表数据，避免旧的整会话大响应延迟覆盖推荐问题'
+  )
+  assert.match(
+    chartAnswerSource,
+    /onFinish:\s*async\s*\(\{ record }\)\s*=>\s*\{[\s\S]*?emitFinishOnce\(Number\(record\.id \|\| currentRecord\.id\)\)/,
+    '任务终态刷新完成后仍应统一通知父组件启动完成后动作'
+  )
+}
+
 await testTerminalRecordsDoNotRestoreTasks()
 await testSchedulerHonorsConcurrencyAndPriority()
 await testSchedulerDedupesCancelsAndSkipsStaleApply()
@@ -494,3 +522,4 @@ await testSmartQaTaskStoreSkipsTerminalRecords()
 await testSmartQaTaskStoreRefreshesCallbacksWithoutDuplicatePolling()
 await testSmartQaTaskStoreDetachesCallbacksButKeepsPolling()
 await testSmartQaTaskStoreReplaysBufferedEventsWhenCallbacksReattach()
+testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh()

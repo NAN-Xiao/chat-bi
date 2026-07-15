@@ -346,7 +346,6 @@ async function handlePayload(
       _currentChat.value.records[index.value].finish = true
       await markFinalAnswerReady()
       clearCurrentTask(currentRecord)
-      emitFinishOnce(currentRecord.id)
       break
   }
   await nextTick()
@@ -358,7 +357,7 @@ async function refreshCurrentRecord(recordId?: number) {
   }
 
   try {
-    const chat = await chatApi.get(_currentChatId.value)
+    const chat = await chatApi.get(_currentChatId.value, { includeRecordData: false })
     const latestRecord = recordId
       ? chat?.records?.find((record) => record.id === recordId)
       : chat?.records?.[index.value]
