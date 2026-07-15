@@ -14,7 +14,7 @@ from orjson import orjson
 from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import String, case, cast, select, and_, or_, text, func, inspect
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from apps.dashboard.models.dashboard_model import (
     CoreDashboard,
@@ -182,6 +182,7 @@ DASHBOARD_SOURCE_PLATFORM_DELEGATE = "platform_delegate"
 DASHBOARD_SOURCE_PLATFORM_TEMPLATE = "platform_template"
 DASHBOARD_SOURCE_EXTERNAL_MCP = "external_mcp"
 RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE = "推荐看板中已存在同名看板"
+RECOMMENDED_DASHBOARD_NAME_UNIQUE_INDEX = "uq_core_dashboard_recommended_name"
 DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "图表数据正在后台刷新"
 DASHBOARD_CHART_NO_PERMISSION_MESSAGE = "没有查看权限"
 DASHBOARD_REFRESH_POLICY_DEFAULT = {
@@ -3054,6 +3055,10 @@ def _normalize_recommended_dashboard_name(name: str | None) -> str:
     return (name or "").strip().lower()
 
 
+def _is_recommended_name_integrity_error(exc: IntegrityError) -> bool:
+    return RECOMMENDED_DASHBOARD_NAME_UNIQUE_INDEX in str(exc.orig or exc)
+
+
 def _recommended_dashboard_name_exists(
         session: SessionDep,
         user: CurrentUser,
@@ -4248,7 +4253,16 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
             operator_id,
             now,
         )
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            if _is_recommended_name_integrity_error(exc):
+                raise HTTPException(
+                    status_code=409,
+                    detail=RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE,
+                ) from exc
+            raise
         session.refresh(copied)
         return _dashboard_base_response(session, user, copied, effective_datasource)
 

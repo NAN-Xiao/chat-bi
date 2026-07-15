@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from apps.dashboard.crud import dashboard_service
@@ -498,6 +499,77 @@ def test_remove_legacy_dual_tree_dashboard_keeps_my_dashboard(monkeypatch):
 
         assert record is not None and record.delete_flag == 0 and record.is_default == 0
         assert [(row.scope, row.dashboard_id) for row in positions] == [("my", "legacy")]
+
+
+def test_recommended_name_integrity_error_is_converted_to_conflict(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    original_session_get = Session.get
+
+    def session_get(current_session, entity, ident, *args, **kwargs):
+        if entity is dashboard_service.CoreDatasource:
+            return SimpleNamespace(id=ident)
+        return original_session_get(current_session, entity, ident, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "get", session_get)
+    monkeypatch.setattr(dashboard_service, "_require_set_default_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_recommended_dashboard_name_exists",
+        lambda *_args, **_kwargs: False,
+    )
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="source",
+                tenant_id=1,
+                name="付费",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                is_default=0,
+                status=1,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+        original_rollback = session.rollback
+        rollback_called = False
+
+        def conflicting_commit():
+            raise IntegrityError(
+                "insert",
+                {},
+                RuntimeError(
+                    'duplicate key violates unique constraint "uq_core_dashboard_recommended_name"'
+                ),
+            )
+
+        def tracked_rollback():
+            nonlocal rollback_called
+            rollback_called = True
+            return original_rollback()
+
+        monkeypatch.setattr(session, "commit", conflicting_commit)
+        monkeypatch.setattr(session, "rollback", tracked_rollback)
+
+        with pytest.raises(HTTPException) as exc:
+            dashboard_service.set_default_resource(
+                session,
+                current_user,
+                DashboardDefaultRequest(dashboard_id="source", is_default=True),
+            )
+
+        assert rollback_called is True
+        assert exc.value.status_code == 409
+        assert exc.value.detail == dashboard_service.RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE
 
 
 def test_repair_my_tree_default_dashboard_copies_repoints_my_tree(monkeypatch):
