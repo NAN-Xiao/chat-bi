@@ -41,7 +41,7 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## SQL 规则
 
 - WHERE 使用原始字段，例如 `e.dt BETWEEN 20260616 AND 20260715`；不要在 WHERE 中对 `dt` 包裹 `STR_TO_DATE`。
-- 用户未指定日期窗口时，以相关明细表的最大可用业务日期为结束日期，默认查询最近 28 个自然日。
+- 用户未指定日期窗口时，只在系统当前日期向前 27 天到当前日期的分区边界内查找最大可用业务日期，并以它为结束日期查询最近 28 个自然日。
 - 按日聚合使用 `GROUP BY e.dt`，并使用 `ORDER BY e.dt`。
 - SELECT 输出使用 `DATE_FORMAT(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS dt`。
 - 表格中的 `dt` 展示为 `YYYY-MM-DD`；趋势图横轴绑定 `dt`，不要把它作为数值轴或添加千分位。
@@ -72,7 +72,8 @@ WITH bounds AS (
 
 - 后续 CTE 必须通过 `JOIN bounds b` 或 `CROSS JOIN bounds b` 引用边界，并使用 `e.dt BETWEEN b.start_dt AND b.end_dt` 过滤原始整数分区字段。
 - 不得在计算 `MAX(dt)` 的同一查询层的 `WHERE` 中再次使用 `MAX(dt)`，也不得生成 `WHERE dt >= 包含 MAX(dt) 的表达式`。
-- 如果数据可能延迟、停更或存在未来分区，必须改用下方以最大可用业务日期为锚点的标准聚合 SQL。
+- 如果最近 28 个自然日边界内没有业务分区，明确返回当前窗口无数据；不得回退为全历史无界扫描。
+- 如果数据可能延迟、停更或存在未来分区，必须改用下方带明确搜索边界、以最大可用业务日期为锚点的标准聚合 SQL。
 
 ## 标准聚合 SQL
 
@@ -80,6 +81,9 @@ WITH bounds AS (
 WITH bounds AS (
     SELECT MAX(e.dt) AS end_dt
     FROM `event` e
+    WHERE e.dt BETWEEN
+          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
+          AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
 )
 SELECT
     DATE_FORMAT(
@@ -105,6 +109,7 @@ ORDER BY e.dt;
 ## 禁止事项
 
 - 不要直接 `SELECT dt` 后把八位日期交给前端按数值展示。
+- 不得对 `event` 或 `user` 执行无分区边界的 `MAX(dt)`；必须先限定与问题窗口匹配的业务日期搜索范围。
 - 不要只依赖字段名猜测日期；本 Data Skill 只声明当前数据源已经确认的 `event.dt`、`user.dt` 语义。
 - 不要把本口径传播到其他数据源。
 """,
@@ -157,22 +162,26 @@ ORDER BY e.dt;
 
 - 日期过滤、输出和最大业务日期锚点遵守“修仙业务日期与按日聚合口径”。
 - “近七天”必须以最大可用业务日期为结束日期，向前包含七个自然日。
+- 只在系统当前日期向前 7 天到当前日期的分区边界内查找最大可用业务日期；不得对 `event` 执行无分区边界的 `MAX(dt)`。
 - 趋势必须补齐自然日；无付费日期的金额和人数为 0，ARPPU 为 `NULL`。
 
 ## MySQL 8 近七天 ARPPU 参考 SQL
 
 ```sql
-WITH RECURSIVE bounds AS (
-    SELECT MAX(dt) AS end_dt
-    FROM `event`
+WITH RECURSIVE bounds (end_dt) AS (
+    SELECT MAX(e.dt) AS end_dt
+    FROM `event` e
+    WHERE e.dt BETWEEN
+          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+          AND CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
 ),
-params AS (
+params (end_date, start_date) AS (
     SELECT
         STR_TO_DATE(CAST(end_dt AS CHAR), '%Y%m%d') AS end_date,
         DATE_SUB(STR_TO_DATE(CAST(end_dt AS CHAR), '%Y%m%d'), INTERVAL 6 DAY) AS start_date
     FROM bounds
 ),
-days AS (
+days (calendar_date, end_date) AS (
     SELECT start_date AS calendar_date, end_date
     FROM params
     UNION ALL
@@ -180,7 +189,7 @@ days AS (
     FROM days
     WHERE calendar_date < end_date
 ),
-pay AS (
+pay (pay_date, uid, ed_money) AS (
     SELECT
         STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS pay_date,
         e.uid,
@@ -197,7 +206,7 @@ pay AS (
       AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
       AND CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')), '') AS DECIMAL(18, 4)) > 0
 ),
-daily_pay AS (
+daily_pay (pay_date, revenue, payers, payment_event_count) AS (
     SELECT
         pay_date,
         SUM(ed_money) AS revenue,

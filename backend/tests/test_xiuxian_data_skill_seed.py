@@ -22,6 +22,14 @@ def _payment_skill() -> dict[str, str]:
     )
 
 
+def _date_skill() -> dict[str, str]:
+    return next(
+        skill
+        for skill in seed.DATA_SKILLS
+        if "data-skill-source:xiuxian:date-partition-aggregation" in skill["prompt"]
+    )
+
+
 def test_xiuxian_payment_skill_is_scoped_and_keeps_date_skill() -> None:
     assert seed.TENANT_ID == 7482727237662281728
     assert seed.DATASOURCE_ID == 6
@@ -46,6 +54,36 @@ def test_xiuxian_payment_skill_documents_verified_paybuyret_formula() -> None:
     assert "ed_orderId" in prompt
     assert "ed_payId" in prompt
     assert "不能代替订单号" in prompt
+
+
+def test_xiuxian_payment_skill_declares_all_recursive_with_column_aliases() -> None:
+    """修仙 AnalyticDB 要求 WITH RECURSIVE 块内所有 CTE 显式声明输出列名。"""
+    prompt = _payment_skill()["prompt"]
+
+    for declaration in (
+        "bounds (end_dt) AS (",
+        "params (end_date, start_date) AS (",
+        "days (calendar_date, end_date) AS (",
+        "pay (pay_date, uid, ed_money) AS (",
+        "daily_pay (pay_date, revenue, payers, payment_event_count) AS (",
+    ):
+        assert declaration in prompt
+
+
+def test_xiuxian_payment_skill_bounds_recent_business_date_search() -> None:
+    """近七天查询只扫描有限分区寻找最大可用业务日期。"""
+    prompt = _payment_skill()["prompt"]
+
+    assert "DATE_SUB(CURDATE(), INTERVAL 7 DAY)" in prompt
+    assert "不得对 `event` 执行无分区边界的 `MAX(dt)`" in prompt
+
+
+def test_xiuxian_date_skill_bounds_default_business_date_search() -> None:
+    """通用日期口径也不能在 AnalyticDB 大表上无界扫描最大分区。"""
+    prompt = _date_skill()["prompt"]
+
+    assert "DATE_SUB(CURDATE(), INTERVAL 27 DAY)" in prompt
+    assert "不得对 `event` 或 `user` 执行无分区边界的 `MAX(dt)`" in prompt
 
 
 def test_xiuxian_payment_skill_rejects_cumulative_snapshot_arppu_sql() -> None:
