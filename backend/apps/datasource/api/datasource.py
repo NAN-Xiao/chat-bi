@@ -478,7 +478,11 @@ def _tracking_json_list(value: Any) -> list[Any]:
     return []
 
 
-def _tracking_display_name(row: TenantTrackingFieldModel | None) -> str | None:
+def _tracking_display_name(
+        row: TenantTrackingFieldModel | None,
+        *,
+        allow_comment_fallback: bool = True,
+) -> str | None:
     """
     是什么：从 tracking 字段中取面向图表配置器展示的名称。
     """
@@ -488,6 +492,8 @@ def _tracking_display_name(row: TenantTrackingFieldModel | None) -> str | None:
         text = str(item or "").strip()
         if text:
             return text
+    if not allow_comment_fallback:
+        return None
     comment = (row.field_comment or "").strip()
     if not comment:
         return None
@@ -691,7 +697,7 @@ def _field_list_item_from_tracking(
         field_comment=row.field_comment,
         custom_comment=row.field_comment,
         field_index=field_index,
-        display_name=_tracking_display_name(row),
+        display_name=_tracking_display_name(row, allow_comment_fallback=False),
         field_role=row.field_role,
         semantic_type=row.semantic_type,
         expression=expression or None,
