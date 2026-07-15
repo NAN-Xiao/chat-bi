@@ -823,10 +823,11 @@ def test_event_and_user_tables_export_attribute_sheet_format() -> None:
     json_rows = _sheet_rows(workbook_bytes, "JSON字段解析")
     assert not any(row[0] == "ext.battleResult" for row in event_rows)
     assert any(
-        row[0] == "ext"
-        and row[1] == "$.battleResult"
-        and row[2] == "ext.battleResult"
-        and row[3] == "文本"
+        row[0] == "event"
+        and row[1] == "ext"
+        and row[2] == "$.battleResult"
+        and row[3] == "ext.battleResult"
+        and row[4] == "文本"
         for row in json_rows
     )
     assert any(row[0] == "total_revenue" and row[1] == "累计付费金额" and row[2] == "数值" and row[3] == "user_add" for row in user_rows)
@@ -1587,9 +1588,23 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
 
     assert _headers(workbook_bytes, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
     json_rows = _sheet_rows(workbook_bytes, "JSON字段解析")
-    assert ("adinfo", "$.adsetId", "adinfo.adsetId", "文本", "广告组ID") in json_rows
-    assert ("allianceinfo", "$.allianceid", "allianceinfo.allianceid", "文本", "联盟ID") in json_rows
-    assert ("personal", "$.nickname", "personal.nickname", "文本", "昵称") in json_rows
+    assert ("event", "adinfo", "$.adsetId", "adinfo.adsetId", "文本", "广告组ID") in json_rows
+    assert (
+        "event",
+        "allianceinfo",
+        "$.allianceid",
+        "allianceinfo.allianceid",
+        "文本",
+        "联盟ID",
+    ) in json_rows
+    assert (
+        "user",
+        "personal",
+        "$.nickname",
+        "personal.nickname",
+        "文本",
+        "昵称",
+    ) in json_rows
 
     event_rows = _sheet_rows(workbook_bytes, "event")
     field_names = {row[0] for row in event_rows}
@@ -1642,11 +1657,11 @@ def test_json_field_parsing_export_preserves_observed_null_type() -> None:
     ).getvalue()
 
     assert _sheet_rows(output, "JSON字段解析") == [
-        ("allianceinfo", "$.power", "allianceinfo.power", "空值", None),
+        ("event", "allianceinfo", "$.power", "allianceinfo.power", "空值", None),
     ]
 
 
-def test_json_field_parsing_export_rejects_cross_table_source_conflict() -> None:
+def test_json_field_parsing_export_keeps_cross_table_source_definitions() -> None:
     config = TenantTrackingConfigDTO(
         tenant_id=2001,
         default_event_table="event",
@@ -1678,8 +1693,30 @@ def test_json_field_parsing_export_rejects_cross_table_source_conflict() -> None
         ),
     }
 
-    with pytest.raises(ValueError, match=r"JSON字段解析.*payload.*event.*user"):
-        tracking_config_excel(config, physical_schema=schema)
+    output = tracking_config_excel(config, physical_schema=schema).getvalue()
+
+    assert _headers(output, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
+    assert _sheet_rows(output, "JSON字段解析") == [
+        ("event", "payload", "$.event_key", "payload.event_key", "文本", None),
+        ("user", "payload", "$.user_key", "payload.user_key", "文本", None),
+    ]
+
+    workbook = load_workbook(BytesIO(output))
+    assert workbook["JSON字段解析"].column_dimensions["A"].hidden is not True
+
+    parsed = parse_tracking_excel(
+        output,
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=schema,
+        datasource_type="mysql",
+    )
+    imported = {(item.table_name, item.field_name) for item in parsed.editor.fields}
+    assert ("event", "payload.event_key") in imported
+    assert ("user", "payload.user_key") in imported
 
 
 def test_import_excel_replaces_previous_tracking_config() -> None:
@@ -1736,8 +1773,13 @@ def test_import_excel_deleting_field_removes_previous_dictionary_field() -> None
     workbook_bytes = tracking_config_excel(config, physical_schema=_physical_schema()).getvalue()
     workbook = load_workbook(BytesIO(workbook_bytes))
     sheet = workbook["JSON字段解析"]
+    field_name_column = next(
+        cell.column
+        for cell in sheet[1]
+        if cell.value == "生成字段名"
+    )
     for row_index in range(sheet.max_row, 1, -1):
-        if sheet.cell(row_index, 3).value == "event_props.amount":
+        if sheet.cell(row_index, field_name_column).value == "event_props.amount":
             sheet.delete_rows(row_index, 1)
     output = BytesIO()
     workbook.save(output)

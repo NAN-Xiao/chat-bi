@@ -70,17 +70,18 @@ JSON 嵌套结构仍属于某张真实表的字段元数据，不属于左侧表
 
 | 列名 | 必填 | 说明 |
 | --- | --- | --- |
+| 来源表 | 否 | JSON 来源字段所在物理表；显式填写时必须存在且包含来源字段 |
 | 来源字段 | 是 | 承载 JSON 文本的物理字段，例如 `userinfo`、`payload` |
 | JSON路径 | 是 | 规范 JSON 路径，例如 `$._appVersion`、`$.items[0].sku` |
 | 生成字段名 | 是 | 可查询字段名，必须与来源字段和路径一致，例如 `userinfo._appVersion` |
 | 类型 | 是 | 文本、数值、布尔、时间、数组、对象或空值 |
 | 属性说明 | 否 | 字段业务说明，进入字段注释和语义上下文 |
 
-导入时根据当前绑定数据源的物理 schema 查找来源字段所在表。来源字段同时存在于多张表时优先默认事件表；没有默认事件表候选且无法唯一确定时导入失败。JSON 路径或生成字段名为空的确认行会返回警告并跳过，不生成 SQL 字段。
+显式填写来源表时，导入器严格校验该表存在于当前绑定数据源的物理 schema，且该表确实包含来源字段；校验通过后直接使用该表，不再应用默认事件表优先规则。旧五列工作簿或来源表为空时，继续根据物理 schema 查找来源字段所在表：来源字段同时存在于多张表时优先默认事件表；没有默认事件表候选且无法唯一确定时导入失败。JSON 路径或生成字段名为空的确认行会返回警告并跳过，不生成 SQL 字段。
 
 该 Sheet 中的有效字段会保存为 `tracking_config.fields` 的 `table_name/source_field/json_path/semantic_type` 元数据。SQL 表达式在运行时按当前 MySQL、PostgreSQL 或 ClickHouse 方言编译，Excel 不保存方言相关表达式。
 
-平台导出时，`event/user` 属性 Sheet 只保留物理字段和非 JSON 派生字段，普通 JSON 子字段只写入 `JSON字段解析`。事件专属属性继续由 `事件参数对照` 维护。通用表为保留既有字段枚举可以继续导出兼容的 `dictionary_field/field_value` 行；存在独立 Sheet 时，字段是否存在及其来源路径仍以 `JSON字段解析` 为准。
+平台导出时，`来源表`是 `JSON字段解析` 的可见第一列；event/user 中同名来源字段按表分别输出，不跨表去重。`event/user` 属性 Sheet 只保留物理字段和非 JSON 派生字段，普通 JSON 子字段只写入 `JSON字段解析`。事件专属属性继续由 `事件参数对照` 维护。通用表为保留既有字段枚举可以继续导出兼容的 `dictionary_field/field_value` 行；存在独立 Sheet 时，字段是否存在及其来源路径仍以 `JSON字段解析` 为准。
 
 ### 4. 业务表 sheet
 
@@ -215,7 +216,7 @@ JSON 嵌套结构仍属于某张真实表的字段元数据，不属于左侧表
 ## 导入映射
 
 - `_表映射` -> `tracking_config.tables` 与默认字段。
-- `JSON字段解析` -> 带 `source_field/json_path` 的 `tracking_config.fields`；同名来源字段优先默认事件表。
+- `JSON字段解析` -> 带 `table_name/source_field/json_path` 的 `tracking_config.fields`；显式来源表优先，旧五列或空来源表的同名来源字段优先默认事件表。
 - 业务表 sheet 的 `physical_field` / `json_view` / `dictionary_field` -> `tracking_config.fields`。
 - 业务表 sheet 的 `event` / `event_property` -> `tracking_config.event_name_mappings` 与字段说明。
 - `_枚举与值域` -> 字段 `value_mappings` 或事件集合映射。
@@ -248,7 +249,7 @@ JSON 嵌套结构仍属于某张真实表的字段元数据，不属于左侧表
 ## 运维原则
 
 - 模板表达字段和事件，不表达复杂分析口径。
-- 普通 JSON 子字段必须在 `JSON字段解析` 中显式维护来源字段、JSON 路径和生成字段名；事件专属属性维护在 `事件参数对照`。
+- 普通 JSON 子字段必须在 `JSON字段解析` 中维护来源表、来源字段、JSON 路径和生成字段名；事件专属属性维护在 `事件参数对照`。新版导出固定写出来源表，旧五列导入仍兼容。
 - Excel 导出会用 `field_view` 合并单元格展示 JSON view；导入时 `field_view=ext view` 且 `field_name=foo` 会被识别为 `source_field=ext`、`json_path=$.foo`、内部字段名 `ext.foo`。
 - JSON 字段表达式由平台按当前数据源方言运行时编译，不在 Excel 中维护 MySQL、PostgreSQL 或 ClickHouse 专用 SQL。
 - 导入时遇到缺失来源字段、非法 JSON 路径、重复字段或不支持类型，应给出错误清单，不做静默替换。

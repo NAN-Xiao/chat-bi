@@ -161,6 +161,7 @@ ATTRIBUTE_EXPORT_COLUMN_LABELS = {
     "field_category": "属性标签",
 }
 JSON_FIELD_PARSING_EXPORT_COLUMN_LABELS = {
+    "source_table": "来源表",
     "source_field": "来源字段",
     "json_path": "JSON路径",
     "field_name": "生成字段名",
@@ -2694,70 +2695,28 @@ def _json_field_type_for_export(field_item: Any) -> str:
     return _attribute_type_label(getattr(field_item, "semantic_type", None))
 
 
-def _json_field_export_signature(field_item: Any) -> tuple[str, str, str, str]:
-    return (
-        _text(getattr(field_item, "field_name", None)),
-        _normalize_json_path(getattr(field_item, "json_path", None)),
-        _text(getattr(field_item, "semantic_type", None)),
-        _text(getattr(field_item, "field_comment", None)),
-    )
-
-
 def _json_field_parsing_rows(
     config: TenantTrackingConfigDTO,
     *,
     event_table: str,
 ) -> list[dict[str, Any]]:
-    grouped: dict[str, dict[str, list[Any]]] = {}
-    for field_item in config.fields or []:
-        if not _is_json_dictionary_field(field_item):
-            continue
-        source_field = _text(field_item.source_field)
-        grouped.setdefault(source_field, {}).setdefault(
-            _text(field_item.table_name), []
-        ).append(field_item)
-
-    selected: list[Any] = []
-    for source_field, by_table in grouped.items():
-        if len(by_table) == 1:
-            selected.extend(next(iter(by_table.values())))
-            continue
-        if event_table not in by_table:
-            raise ValueError(
-                f"{JSON_FIELD_PARSING_SHEET} 无法表达来源字段 {source_field} 的多表归属："
-                f"{', '.join(sorted(by_table))}。"
-            )
-        event_signatures = {
-            _json_field_export_signature(item)
-            for item in by_table[event_table]
-        }
-        for table_name, fields in by_table.items():
-            if table_name == event_table:
-                continue
-            signatures = {
-                _json_field_export_signature(item)
-                for item in fields
-            }
-            if signatures != event_signatures:
-                raise ValueError(
-                    f"{JSON_FIELD_PARSING_SHEET} 无法表达来源字段 {source_field} "
-                    f"在 {event_table} 与 {table_name} 中的不同定义。"
-                )
-        selected.extend(by_table[event_table])
-
+    del event_table
     rows = [
         {
+            "source_table": _text(field_item.table_name),
             "source_field": _text(field_item.source_field),
             "json_path": _normalize_json_path(field_item.json_path),
             "field_name": _text(field_item.field_name),
             "field_type": _json_field_type_for_export(field_item),
             "description": _text(field_item.field_comment),
         }
-        for field_item in selected
+        for field_item in config.fields or []
+        if _is_json_dictionary_field(field_item)
     ]
     return sorted(
         rows,
         key=lambda row: (
+            _text(row["source_table"]),
             _text(row["source_field"]),
             _text(row["json_path"]),
             _text(row["field_name"]),
