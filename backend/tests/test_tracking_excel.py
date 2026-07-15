@@ -163,6 +163,136 @@ def test_json_field_parsing_sheet_imports_fields_and_prefers_event_table() -> No
     assert expression == "JSON_UNQUOTE(JSON_EXTRACT(`event`.`userinfo`, '$._appVersion'))"
 
 
+def _json_overview_with_event_field(*, event_type: str, overview_type: str) -> bytes:
+    workbook = Workbook()
+    event_sheet = workbook.active
+    event_sheet.title = "event"
+    event_sheet.append(
+        [
+            "属性名（必填）",
+            "属性显示名",
+            "属性类型（必填）",
+            "更新方式",
+            "属性说明",
+            "属性标签",
+        ]
+    )
+    event_sheet.append(["userinfo.country", "国家", event_type, "", "国家", "用户"])
+    overview = workbook.create_sheet("JSON字段解析")
+    overview.append(JSON_FIELD_PARSING_HEADERS)
+    overview.append(["userinfo", "$.country", "userinfo.country", overview_type, "注册国家"])
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_json_field_parsing_sheet_skips_incomplete_rows_and_preserves_null_type() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [
+                ["userinfo", "$._appVersion", "userinfo._appVersion", "空值", "尚无非空样本"],
+                ["userinfo", "", "", "文本", "空对象，暂不生成字段"],
+            ]
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    field = next(item for item in parsed.editor.fields if item.field_name == "userinfo._appVersion")
+    assert field.semantic_type == "text"
+    assert field.extra_properties["json_observed_type"] == "空值"
+    assert parsed.skipped_rows == 1
+    assert any("第 3 行" in warning and "已跳过" in warning for warning in parsed.warnings)
+
+
+def test_json_field_parsing_sheet_rejects_generated_name_mismatch() -> None:
+    with pytest.raises(ValueError, match=r"第 2 行.*生成字段名.*userinfo\.country"):
+        parse_tracking_excel(
+            _json_overview_workbook(
+                [["userinfo", "$.country", "userinfo.wrong", "文本", "国家"]]
+            ),
+            TenantTrackingConfigDTO(
+                tenant_id=2001,
+                enabled=True,
+                default_event_table="event",
+            ),
+            physical_schema=_json_overview_physical_schema(),
+            datasource_type="mysql",
+        )
+
+
+def test_json_field_parsing_sheet_rejects_invalid_json_path() -> None:
+    with pytest.raises(ValueError, match=r"第 2 行.*JSON路径.*无效"):
+        parse_tracking_excel(
+            _json_overview_workbook(
+                [["userinfo", "$.country[", "userinfo.country", "文本", "国家"]]
+            ),
+            TenantTrackingConfigDTO(
+                tenant_id=2001,
+                enabled=True,
+                default_event_table="event",
+            ),
+            physical_schema=_json_overview_physical_schema(),
+            datasource_type="mysql",
+        )
+
+
+def test_json_field_parsing_sheet_rejects_ambiguous_source_without_event_candidate() -> None:
+    schema = {
+        "profile_a": PhysicalTableInfo(
+            "profile_a", fields=[PhysicalFieldInfo("payload", "text")]
+        ),
+        "profile_b": PhysicalTableInfo(
+            "profile_b", fields=[PhysicalFieldInfo("payload", "text")]
+        ),
+    }
+    with pytest.raises(ValueError, match=r"第 2 行.*profile_a.*profile_b"):
+        parse_tracking_excel(
+            _json_overview_workbook(
+                [["payload", "$.country", "payload.country", "文本", "国家"]]
+            ),
+            TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+            physical_schema=schema,
+            datasource_type="mysql",
+        )
+
+
+def test_json_field_parsing_sheet_deduplicates_matching_table_definition() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_with_event_field(event_type="文本", overview_type="文本"),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="mysql",
+    )
+
+    matches = [item for item in parsed.editor.fields if item.field_name == "userinfo.country"]
+    assert len(matches) == 1
+    assert matches[0].field_comment == "注册国家"
+
+
+def test_json_field_parsing_sheet_rejects_conflicting_table_definition() -> None:
+    with pytest.raises(ValueError, match="定义冲突"):
+        parse_tracking_excel(
+            _json_overview_with_event_field(event_type="数值", overview_type="文本"),
+            TenantTrackingConfigDTO(
+                tenant_id=2001,
+                enabled=True,
+                default_event_table="event",
+            ),
+            physical_schema=_json_overview_physical_schema(),
+            datasource_type="mysql",
+        )
+
+
 def _tracking_config() -> TenantTrackingConfigDTO:
     return TenantTrackingConfigDTO(
         tenant_id=2001,

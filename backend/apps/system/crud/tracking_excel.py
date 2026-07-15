@@ -1554,6 +1554,54 @@ def _resolve_json_field_table(
     )
 
 
+def _expected_json_field_name(source_field: str, json_path: str) -> str:
+    path = _normalize_json_path(json_path)
+    if not source_field or not path or path == "$":
+        return ""
+    return f"{source_field}{path[1:]}"
+
+
+def _merge_json_sheet_field(
+    editor: TenantTrackingConfigEditor,
+    field_item: TenantTrackingFieldBase,
+    *,
+    row_number: int,
+) -> None:
+    existing = next(
+        (
+            item
+            for item in editor.fields
+            if item.table_name == field_item.table_name
+            and item.field_name == field_item.field_name
+        ),
+        None,
+    )
+    if existing is None:
+        editor.fields.append(field_item)
+        return
+    old_signature = (
+        _text(existing.source_field),
+        _normalize_json_path(existing.json_path),
+        _text(existing.semantic_type),
+    )
+    new_signature = (
+        _text(field_item.source_field),
+        _normalize_json_path(field_item.json_path),
+        _text(field_item.semantic_type),
+    )
+    if old_signature != new_signature:
+        raise ValueError(
+            f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+            f"{field_item.table_name}.{field_item.field_name} "
+            "与物理表 sheet 中的定义冲突。"
+        )
+    existing.field_comment = field_item.field_comment or existing.field_comment
+    existing.extra_properties = _merge_extra_properties(
+        existing.extra_properties,
+        field_item.extra_properties,
+    )
+
+
 def _parse_json_field_parsing_sheet(
     rows: list[dict[str, Any]],
     editor: TenantTrackingConfigEditor,
@@ -1567,9 +1615,9 @@ def _parse_json_field_parsing_sheet(
     for row in rows:
         row_number = int(row.get(EXCEL_ROW_NUMBER_KEY) or 0)
         source_field = _text(row.get("source_field"))
-        json_path = _normalize_json_path(_text(row.get("json_path")))
+        raw_json_path = _text(row.get("json_path"))
         field_name = _text(row.get("field_name"))
-        if not json_path or not field_name:
+        if not raw_json_path or not field_name:
             _add_warning(
                 warnings,
                 f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
@@ -1577,6 +1625,18 @@ def _parse_json_field_parsing_sheet(
             )
             skipped += 1
             continue
+        json_path = _normalize_json_path(raw_json_path)
+        if not json_path:
+            raise ValueError(
+                f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+                f"JSON路径 {raw_json_path} 无效。"
+            )
+        expected_name = _expected_json_field_name(source_field, json_path)
+        if field_name != expected_name:
+            raise ValueError(
+                f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
+                f"生成字段名应为 {expected_name}，实际为 {field_name}。"
+            )
         table_name = _resolve_json_field_table(
             source_field,
             imported=editor,
@@ -1601,7 +1661,11 @@ def _parse_json_field_parsing_sheet(
             physical_schema=physical_schema,
         )
         if field_item:
-            editor.fields.append(field_item)
+            _merge_json_sheet_field(
+                editor,
+                field_item,
+                row_number=row_number,
+            )
     return skipped
 
 
