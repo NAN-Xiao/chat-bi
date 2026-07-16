@@ -15,7 +15,7 @@ def require_roi_workspace_admin(current_user: CurrentUser) -> AccessContext:
     context = resolve_access_context(current_user)
     if (
         not context.has_workspace_context
-        or context.is_platform_workspace_delegate
+        or context.is_platform_admin
         or context.tenant_role not in TENANT_ADMIN_ROLES
     ):
         raise HTTPException(status_code=403, detail="仅空间拥有者和管理员可访问 ROI 看板")

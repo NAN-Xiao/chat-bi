@@ -97,14 +97,15 @@ def test_member_cannot_access_roi() -> None:
     assert exc.value.status_code == 403
 
 
-def test_global_platform_admin_cannot_access_roi_without_workspace_role() -> None:
+def test_global_platform_admin_cannot_use_default_workspace_owner_role() -> None:
     from apps.roi_dashboard.permissions import require_roi_workspace_admin
 
     user = make_user(
-        tenant_id=None,
-        tenant_role="admin",
+        tenant_id=1,
+        tenant_role="owner",
         system_role="system_admin",
     )
+    user.workspace_role = "owner"
 
     with pytest.raises(HTTPException) as exc:
         require_roi_workspace_admin(user)
