@@ -1368,9 +1368,12 @@ def apply_dashboard_repairs(
     rewritten_sql_by_view: Mapping[str, str],
     *,
     tenant_id: int,
-    update_time: datetime,
+    update_time: int,
 ) -> int:
     """在一个事务中按原始 canvas 做 CAS，仅替换目标抽屉 SQL。"""
+
+    if isinstance(update_time, bool) or not isinstance(update_time, int):
+        raise TypeError("update_time 必须是整数 Unix 秒")
 
     requested = {str(view_id): sql for view_id, sql in rewritten_sql_by_view.items()}
     applied: set[str] = set()

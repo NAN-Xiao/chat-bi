@@ -289,13 +289,12 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
         "release_publish_lock",
         lambda connection: calls.append(f"unlock:{connection.name}"),
     )
-    monkeypatch.setattr(
-        publisher,
-        "apply_dashboard_repairs",
-        lambda connection, rows, rewritten, **kwargs: (
-            calls.append("apply_dashboards") or 4
-        ),
-    )
+    def apply_dashboards(connection, rows, rewritten, **kwargs):
+        assert type(kwargs["update_time"]) is int
+        calls.append("apply_dashboards")
+        return 4
+
+    monkeypatch.setattr(publisher, "apply_dashboard_repairs", apply_dashboards)
     monkeypatch.setattr(
         publisher,
         "backup_and_write_skill_snapshot",

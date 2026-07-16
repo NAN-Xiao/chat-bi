@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -603,7 +604,7 @@ def run_publish(
                 dashboards,
                 repairs,
                 tenant_id=TENANT_ID,
-                update_time=dt.datetime.now(),
+                update_time=int(time.time()),
             )
             phase = PublishPhase.DASHBOARDS_APPLIED
             backup_and_write_skill_snapshot(

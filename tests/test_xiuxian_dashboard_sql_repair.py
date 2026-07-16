@@ -738,7 +738,7 @@ def test_apply_dashboard_repairs_uses_exact_canvas_compare_and_preserves_metadat
         [dashboard],
         {"view-1": "SELECT new"},
         tenant_id=7482727237662281728,
-        update_time=datetime(2026, 7, 16, 12, 0, 0),
+        update_time=1784175253,
     )
 
     assert updated == 1
@@ -749,7 +749,35 @@ def test_apply_dashboard_repairs_uses_exact_canvas_compare_and_preserves_metadat
     assert "AND canvas_view_info = %s" in sql
     saved_canvas = json.loads(params[0])
     assert saved_canvas["view-1"] == {**original_view, "sql": "SELECT new"}
+    assert params[1] == 1784175253
+    assert type(params[1]) is int
     assert params[-1] == dashboard.canvas_view_info
+
+
+@pytest.mark.parametrize(
+    "invalid_update_time",
+    [datetime(2026, 7, 16, 12, 0, 0), True],
+    ids=("datetime", "bool"),
+)
+def test_apply_dashboard_repairs_rejects_non_integer_update_time(
+    invalid_update_time,
+):
+    dashboard = _dashboard_snapshot(
+        "dashboard-1", {"view-1": {"sql": "SELECT old"}}
+    )
+    connection = _CasConnection([1])
+
+    with pytest.raises(TypeError, match="update_time"):
+        repair.apply_dashboard_repairs(
+            connection,
+            [dashboard],
+            {"view-1": "SELECT new"},
+            tenant_id=7482727237662281728,
+            update_time=invalid_update_time,
+        )
+
+    assert connection.cursor_instance.calls == []
+    assert connection.committed is False
 
 
 def test_apply_dashboard_repairs_rolls_back_all_updates_on_cas_conflict():
@@ -765,7 +793,7 @@ def test_apply_dashboard_repairs_rolls_back_all_updates_on_cas_conflict():
             dashboards,
             {"view-1": "new-1", "view-2": "new-2"},
             tenant_id=7482727237662281728,
-            update_time=datetime(2026, 7, 16, 12, 0, 0),
+            update_time=1784175253,
         )
 
     assert connection.committed is False
