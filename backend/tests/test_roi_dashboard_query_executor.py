@@ -342,6 +342,37 @@ def test_roi_query_allows_dialect_safe_anonymous_builtins(
     assert result.status == "success"
 
 
+@pytest.mark.parametrize(
+    ("datasource_type", "sql"),
+    [
+        ("pg", "SELECT evil.jsonb_build_object('amount', 1)"),
+        ("mysql", "SELECT evil.FIND_IN_SET('a', 'a,b')"),
+        ("mysql", "SELECT evil.JSON_UNQUOTE('\"value\"')"),
+    ],
+)
+def test_roi_query_rejects_qualified_allowlisted_anonymous_functions(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    datasource_type: str,
+    sql: str,
+) -> None:
+    _prepare_authorized_query(
+        monkeypatch,
+        session,
+        datasource_type=datasource_type,
+    )
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("限定调用不应到达执行层"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(session, make_user(), sql)
+
+    assert exc.value.status_code == 400
+
+
 def test_roi_query_still_rejects_unknown_anonymous_udf(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,

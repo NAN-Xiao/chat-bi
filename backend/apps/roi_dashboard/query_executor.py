@@ -127,6 +127,8 @@ def validate_roi_read_sql(sql: str, datasource: CoreDatasource) -> None:
             function_name = str(node.name or "").casefold()
             if function_name == "nextval":
                 raise ValueError("SQL 包含序列取值副作用")
+            if isinstance(node.parent, exp.Dot):
+                raise ValueError("SQL 不允许限定命名空间的匿名函数")
             if function_name in safe_anonymous_functions:
                 continue
             raise ValueError("SQL 包含无法识别的自定义函数")

@@ -3,6 +3,9 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
+from apps.datasource.models.datasource import DatasourceConf
 from apps.db import db as db_module
 
 
@@ -38,9 +41,11 @@ class FakeResult:
 class FakeSqlAlchemySession:
     def __init__(self, result: FakeResult) -> None:
         self.result = result
+        self.statements: list[tuple[str, object]] = []
 
     def execute(self, statement, _params=None):
         sql = str(statement)
+        self.statements.append((sql, _params))
         if sql.lstrip().upper().startswith("SELECT"):
             return self.result
         return None
@@ -188,3 +193,182 @@ def test_es_keeps_ordinary_30_second_default_and_accepts_explicit_override(
     )
 
     assert observed_timeouts == [30, 7]
+
+
+@pytest.mark.parametrize(
+    ("datasource_type", "expected_timeout_statement"),
+    [
+        ("pg", "SET LOCAL statement_timeout"),
+        ("mysql", "SET SESSION MAX_EXECUTION_TIME"),
+    ],
+)
+def test_sqlalchemy_branches_apply_query_timeout_to_session_and_statement(
+    monkeypatch,
+    datasource_type: str,
+    expected_timeout_statement: str,
+) -> None:
+    session = FakeSqlAlchemySession(FakeResult([(1,)]))
+    session_timeouts: list[int] = []
+
+    def get_session(_datasource, *, timeout: int):
+        session_timeouts.append(timeout)
+        return session
+
+    monkeypatch.setattr(db_module, "get_session", get_session)
+
+    db_module._unsafe_exec_sql_after_validation(
+        SimpleNamespace(type=datasource_type, configuration="{}"),
+        "SELECT 1 AS value",
+        query_timeout=7,
+        require_controlled_timeout=True,
+    )
+
+    assert session_timeouts == [7]
+    assert any(
+        expected_timeout_statement in sql and params == {"timeout_ms": 7000}
+        for sql, params in session.statements
+    )
+
+
+def test_sqlserver_branch_passes_query_timeout_to_pymssql_driver(monkeypatch) -> None:
+    session = FakeSqlAlchemySession(FakeResult([(1,)]))
+    connect_kwargs: list[dict] = []
+
+    def connect(**kwargs):
+        connect_kwargs.append(kwargs)
+        return object()
+
+    def get_session(_datasource, *, timeout: int):
+        db_module.get_origin_connect(
+            "sqlServer",
+            DatasourceConf(
+                host="db",
+                port=1433,
+                username="user",
+                password="secret",
+                database="analytics",
+                timeout=timeout,
+            ),
+        )
+        return session
+
+    monkeypatch.setattr(db_module.pymssql, "connect", connect)
+    monkeypatch.setattr(db_module, "get_session", get_session)
+
+    db_module._unsafe_exec_sql_after_validation(
+        SimpleNamespace(type="sqlServer", configuration="{}"),
+        "SELECT 1 AS value",
+        query_timeout=7,
+        require_controlled_timeout=True,
+    )
+
+    assert connect_kwargs[0]["timeout"] == 7
+
+
+class FakeDriverCursor:
+    description = [("value",)]
+
+    def __init__(self) -> None:
+        self.executed_sql: list[str] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        return None
+
+    def execute(self, sql: str, *_args, **_kwargs) -> None:
+        self.executed_sql.append(sql)
+
+    def fetchmany(self, _size: int):
+        return [(1,)]
+
+
+class FakeDriverConnection:
+    def __init__(self, cursor: FakeDriverCursor) -> None:
+        self._cursor = cursor
+        self.readonly_values: list[bool] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        return None
+
+    def cursor(self) -> FakeDriverCursor:
+        return self._cursor
+
+    def set_session(self, *, readonly: bool) -> None:
+        self.readonly_values.append(readonly)
+
+
+@pytest.mark.parametrize("datasource_type", ["doris", "starrocks"])
+def test_mysql_driver_branches_apply_read_timeout_override(
+    monkeypatch,
+    datasource_type: str,
+) -> None:
+    cursor = FakeDriverCursor()
+    connection = FakeDriverConnection(cursor)
+    connect_kwargs: list[dict] = []
+    configuration = json.dumps(
+        {
+            "host": "db",
+            "port": 9030,
+            "username": "user",
+            "password": "secret",
+            "database": "analytics",
+            "timeout": 90,
+        }
+    )
+    monkeypatch.setattr(db_module, "aes_decrypt", lambda _value: configuration)
+
+    def connect(**kwargs):
+        connect_kwargs.append(kwargs)
+        return connection
+
+    monkeypatch.setattr(db_module.pymysql, "connect", connect)
+
+    db_module._unsafe_exec_sql_after_validation(
+        SimpleNamespace(type=datasource_type, configuration="encrypted"),
+        "SELECT 1 AS value",
+        query_timeout=7,
+        require_controlled_timeout=True,
+    )
+
+    assert connect_kwargs[0]["connect_timeout"] == 7
+    assert connect_kwargs[0]["read_timeout"] == 7
+    assert cursor.executed_sql[-1] == "SELECT 1 AS value"
+
+
+def test_kingbase_branch_applies_statement_timeout_override(monkeypatch) -> None:
+    cursor = FakeDriverCursor()
+    connection = FakeDriverConnection(cursor)
+    connect_kwargs: list[dict] = []
+    configuration = json.dumps(
+        {
+            "host": "db",
+            "port": 54321,
+            "username": "user",
+            "password": "secret",
+            "database": "analytics",
+            "timeout": 90,
+        }
+    )
+    monkeypatch.setattr(db_module, "aes_decrypt", lambda _value: configuration)
+
+    def connect(**kwargs):
+        connect_kwargs.append(kwargs)
+        return connection
+
+    monkeypatch.setattr(db_module.psycopg2, "connect", connect)
+
+    db_module._unsafe_exec_sql_after_validation(
+        SimpleNamespace(type="kingbase", configuration="encrypted"),
+        "SELECT 1 AS value",
+        query_timeout=7,
+        require_controlled_timeout=True,
+    )
+
+    assert connect_kwargs[0]["options"] == "-c statement_timeout=7000"
+    assert connection.readonly_values == [True]
+    assert cursor.executed_sql == ["SELECT 1 AS value"]
