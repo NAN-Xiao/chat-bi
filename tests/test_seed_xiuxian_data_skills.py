@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from contextlib import nullcontext
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -111,6 +112,92 @@ def test_build_data_skills_produces_one_base_and_twelve_topics():
         for prompt in prompts
     )
     assert all("datasource_id=6" in prompt for prompt in prompts)
+
+
+def test_new_user_retention_is_a_strong_keyword_candidate_for_channel_d1_question(
+    monkeypatch,
+):
+    module = _load_seed_module()
+    backend_path = str(ROOT / "backend")
+    monkeypatch.syspath_prepend(backend_path)
+    from apps.chat.curd import custom_prompt as custom_prompt_runtime
+    from apps.chat.curd.custom_prompt_embedding import skill_definition_signature
+
+    question = "各渠道新增用户次日留存"
+    original_selector = custom_prompt_runtime._select_ranked_data_skills
+
+    class QueryEmbeddingModel:
+        @staticmethod
+        def embed_query(_text):
+            return [1.0, 0.0]
+
+    def build_and_rank(topics):
+        monkeypatch.setattr(module, "TOPICS", topics)
+        skills = module.build_data_skills(_dashboard_snapshots(module))
+        rows = []
+        for index, skill in enumerate(skills, start=1):
+            rows.append(
+                {
+                    "id": index,
+                    **skill,
+                    "visibility_scope": "ADMIN_PUBLIC",
+                    "embedding": [1.0, 0.0],
+                    "embedding_signature": skill_definition_signature(
+                        skill["name"],
+                        skill["description"],
+                        skill["prompt"],
+                        dim=2,
+                    ),
+                }
+            )
+        embedding_names = {
+            "修仙渠道新增与投放获客",
+            "修仙新增用户总量与系统归因",
+        }
+        selector_calls = 0
+
+        def select_embedding_then_keywords(scored, skill_rows):
+            nonlocal selector_calls
+            selector_calls += 1
+            if selector_calls == 1:
+                return [row for row in skill_rows if row["name"] in embedding_names]
+            return original_selector(scored, skill_rows)
+
+        monkeypatch.setattr(
+            custom_prompt_runtime,
+            "_select_ranked_data_skills",
+            select_embedding_then_keywords,
+        )
+        monkeypatch.setattr(custom_prompt_runtime.settings, "EMBEDDING_ENABLED", True)
+        monkeypatch.setattr(
+            custom_prompt_runtime.EmbeddingModelCache,
+            "get_model",
+            lambda: QueryEmbeddingModel(),
+        )
+        selected = custom_prompt_runtime._rank_auto_data_skills_by_embedding(
+            rows,
+            question,
+        )
+        retention = next(row for row in rows if row["name"] == "修仙新增 cohort 留存")
+        return (
+            {row["name"] for row in selected},
+            custom_prompt_runtime._score_data_skill(retention, question),
+        )
+
+    old_topics = tuple(
+        replace(topic, description="新增 cohort D1/D3/D7 留存。")
+        if topic.slug == "new-user-retention"
+        else topic
+        for topic in module.TOPICS
+    )
+    old_selected, old_score = build_and_rank(old_topics)
+    current_selected, current_score = build_and_rank(
+        importlib.import_module("xiuxian_dashboard_skill_catalog").TOPICS
+    )
+
+    assert "修仙新增 cohort 留存" not in old_selected
+    assert "修仙新增 cohort 留存" in current_selected
+    assert current_score > old_score
 
 
 def test_build_data_skills_fails_closed_when_a_dashboard_view_is_missing():

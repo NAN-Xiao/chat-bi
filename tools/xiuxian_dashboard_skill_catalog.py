@@ -82,7 +82,7 @@ TOPICS = (
     TopicDefinition(
         "new-user-retention",
         "修仙新增 cohort 留存",
-        "新增 cohort D1/D3/D7 留存。",
+        "渠道新增用户次日留存与 D1/D3/D7 cohort 留存。",
         (
             "f99d0fb5f3624192953bdbfa31549abd",
             "531bc723e3cb42f0a1fe2c412d7f05b0",
