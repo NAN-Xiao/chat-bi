@@ -42,6 +42,8 @@ class RoiDashboardUpdate(BaseModel):
 
 
 class RoiChartPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str
     sql: str
     chart_type: str

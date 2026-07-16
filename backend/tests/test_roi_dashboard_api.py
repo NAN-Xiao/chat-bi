@@ -1,9 +1,11 @@
 """验证独立 ROI 看板 API 的路由、DTO 和安全边界。"""
 
+import asyncio
 from types import SimpleNamespace
 
+import httpx
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.routing import APIRoute
 
 from apps import api as apps_api
@@ -21,6 +23,8 @@ from apps.roi_dashboard.schemas import (
 )
 from apps.roi_dashboard.service import list_roi_charts
 from apps.system.schemas.business_access import require_chatbi_business_user
+from common.core.db import get_session
+from common.core.deps import get_current_user
 
 
 def make_user(
@@ -97,6 +101,75 @@ def test_roi_request_dtos_do_not_accept_tenant_or_chart_datasource_forgery() -> 
     assert "datasource_id" not in RoiChartPreviewRequest.model_fields
     assert "datasource_id" not in RoiChartCreate.model_fields
     assert "datasource_id" not in RoiChartUpdate.model_fields
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "service_name", "payload"),
+    [
+        (
+            "/dashboard/roi/301/charts/preview",
+            "post",
+            "preview_roi_chart",
+            {
+                "title": "预览",
+                "sql": "SELECT 1",
+                "chart_type": "table",
+                "datasource_id": 101,
+            },
+        ),
+        (
+            "/dashboard/roi/301/charts",
+            "post",
+            "create_roi_chart",
+            {
+                "title": "新图表",
+                "sql": "SELECT 1",
+                "chart_type": "table",
+                "datasource_id": 101,
+            },
+        ),
+        (
+            "/dashboard/roi/301/charts/901",
+            "put",
+            "update_roi_chart",
+            {
+                "title": "更新图表",
+                "sql": "SELECT 1",
+                "chart_type": "table",
+                "version": 1,
+                "datasource_id": 101,
+            },
+        ),
+    ],
+)
+def test_roi_chart_endpoints_reject_client_datasource_id(
+    monkeypatch,
+    path: str,
+    method: str,
+    service_name: str,
+    payload: dict[str, object],
+) -> None:
+    def unexpected_service_call(*_args, **_kwargs):
+        raise HTTPException(status_code=418, detail="请求不应进入 service")
+
+    monkeypatch.setattr(roi_api, service_name, unexpected_service_call)
+    app = FastAPI()
+    app.include_router(roi_api.router)
+    app.dependency_overrides[require_chatbi_business_user] = lambda: None
+    app.dependency_overrides[get_session] = lambda: None
+    app.dependency_overrides[get_current_user] = lambda: make_user()
+
+    async def send_request() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            return await client.request(method, path, json=payload)
+
+    response = asyncio.run(send_request())
+
+    assert response.status_code == 422
 
 
 def test_roi_datasource_response_contains_only_non_sensitive_fields() -> None:
