@@ -138,6 +138,89 @@ def _event_partition_predicate(sql: str) -> str:
     raise AssertionError("未找到 event.dt 分区谓词")
 
 
+def _apply_business_mutation(tree: exp.Select, mutation: str) -> None:
+    if mutation == "aggregate":
+        aggregate = next(tree.find_all(exp.Sum))
+        aggregate.replace(exp.Count(this=aggregate.this.copy()))
+        return
+    if mutation == "field":
+        column = next(
+            column
+            for column in tree.find_all(exp.Column)
+            if column.name.lower() == "uid"
+        )
+        column.set("this", exp.to_identifier("uid_changed"))
+        return
+    if mutation == "event-literal":
+        event_column = next(
+            column
+            for column in tree.find_all(exp.Column)
+            if column.name.lower() == "event"
+        )
+        predicate = event_column.parent
+        while predicate is not None and not isinstance(predicate, (exp.EQ, exp.In)):
+            predicate = predicate.parent
+        assert predicate is not None
+        literal = next(
+            item for item in predicate.find_all(exp.Literal) if item.is_string
+        )
+        literal.set("this", literal.this + "_changed")
+        return
+    if mutation == "json-path":
+        path = next(tree.find_all(exp.JSONPath))
+        replacement = sqlglot.parse_one(
+            "SELECT JSON_EXTRACT(payload, '$.changed')",
+            read="mysql",
+        ).find(exp.JSONPath)
+        assert replacement is not None
+        path.replace(replacement.copy())
+        return
+    if mutation == "where":
+        select = next(
+            item for item in tree.find_all(exp.Select) if item.args.get("where")
+        )
+        where = select.args["where"]
+        where.set(
+            "this",
+            exp.and_(
+                where.this,
+                exp.EQ(
+                    this=exp.Literal.number(1),
+                    expression=exp.Literal.number(1),
+                ),
+            ),
+        )
+        return
+    if mutation == "having":
+        select = next(
+            item
+            for item in tree.find_all(exp.Select)
+            if item.args.get("group") and item.args.get("having") is None
+        )
+        select.set(
+            "having",
+            exp.Having(
+                this=exp.GTE(
+                    this=exp.Count(this=exp.Star()),
+                    expression=exp.Literal.number(0),
+                )
+            ),
+        )
+        return
+    if mutation == "distinct":
+        tree.set("distinct", exp.Distinct())
+        return
+    if mutation == "nested-select":
+        cte = next(
+            cte
+            for cte in tree.args["with_"].expressions
+            if cte.alias_or_name.lower() not in SCALAR_CTES
+        )
+        cte.this.append("expressions", exp.alias_(exp.Literal.number(1), "changed"))
+        return
+    raise AssertionError(f"未知测试变异：{mutation}")
+
+
 def test_fixture_is_exactly_the_eleven_whitelisted_sql_statements():
     assert len(FIXTURES) == 11
     assert {item["view_id"] for item in FIXTURES} == set(repair.REPAIR_SPECS)
@@ -233,6 +316,114 @@ def test_validate_rewritten_sql_rejects_max_dt():
 def test_validate_rewritten_sql_rejects_unbounded_large_table_alias():
     with pytest.raises(repair.UnsafeRewriteError, match="dt"):
         repair.validate_rewritten_sql("SELECT e.uid FROM event e")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "aggregate",
+        "field",
+        "event-literal",
+        "json-path",
+        "where",
+        "having",
+        "distinct",
+        "nested-select",
+    ],
+)
+def test_business_equivalence_rejects_non_date_ast_mutations(mutation):
+    view_id = "a6eb26710f7b4dc6ab69ded704c32fee"
+    original = SQL_BY_VIEW[view_id]
+    tree = _parse(repair.rewrite_bounds_sql(view_id, original))
+    _apply_business_mutation(tree, mutation)
+
+    with pytest.raises(repair.UnsafeRewriteError, match="业务 AST"):
+        repair.validate_business_equivalence(
+            original,
+            tree.sql(dialect="mysql", pretty=True),
+        )
+
+
+def test_business_equivalence_mask_is_independent_from_production_inline(monkeypatch):
+    view_id = "a6eb26710f7b4dc6ab69ded704c32fee"
+    original = SQL_BY_VIEW[view_id]
+    rewritten = repair.rewrite_bounds_sql(view_id, original)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("业务等价 mask 不得调用生产 scalar 内联")
+
+    monkeypatch.setattr(repair, "_resolve_scalar_cte_values", fail_if_called)
+    monkeypatch.setattr(repair, "_inline_scalar_joins", fail_if_called)
+    monkeypatch.setattr(repair, "_drop_unreferenced_scalar_ctes", fail_if_called)
+
+    repair.validate_business_equivalence(original, rewritten)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        (
+            "SELECT e.uid FROM event e "
+            "JOIN dim_date d ON e.dt = d.dt"
+        ),
+        (
+            "SELECT e.uid FROM event e "
+            "JOIN dim_date d ON e.dt BETWEEN d.start_dt AND d.end_dt"
+        ),
+        (
+            "WITH date_dim AS (SELECT d.dt FROM dim_date d) "
+            "SELECT e.uid FROM event e "
+            "JOIN date_dim d ON e.dt = d.dt"
+        ),
+        (
+            "WITH date_bounds AS (SELECT 20260701 AS start_dt) "
+            "SELECT e.uid FROM event e "
+            "JOIN date_bounds d ON e.dt = d.start_dt"
+        ),
+        (
+            "WITH date_dim AS ("
+            "SELECT d.dt AS boundary_dt "
+            "FROM event e "
+            "JOIN dim_date d ON d.dt = e.dt "
+            "WHERE e.dt BETWEEN 20260701 AND 20260715"
+            ") "
+            "SELECT u.uid FROM user u "
+            "JOIN date_dim d ON u.dt = d.boundary_dt"
+        ),
+        (
+            "WITH counted_dates AS ("
+            "SELECT COUNT(DISTINCT e.dt) AS dt_count "
+            "FROM event e "
+            "WHERE e.dt BETWEEN 20260701 AND 20260715"
+            ") "
+            "SELECT u.uid FROM user u "
+            "JOIN counted_dates c ON u.dt = c.dt_count"
+        ),
+    ],
+    ids=[
+        "dimension-equality",
+        "dimension-range",
+        "unproven-cte-output",
+        "source-free-constant-cte",
+        "unrelated-cte-output",
+        "aggregated-dt-output",
+    ],
+)
+def test_validate_rewritten_sql_rejects_unproven_date_lineage(sql):
+    with pytest.raises(repair.UnsafeRewriteError, match="dt"):
+        repair.validate_rewritten_sql(sql)
+
+
+def test_validate_rewritten_sql_accepts_proven_cte_date_lineage():
+    repair.validate_rewritten_sql(
+        "WITH cohort AS ("
+        "SELECT e.dt AS cohort_dt "
+        "FROM event e "
+        "WHERE e.dt BETWEEN 20260701 AND 20260715"
+        ") "
+        "SELECT u.uid FROM user u "
+        "JOIN cohort c ON u.dt = c.cohort_dt"
+    )
 
 
 @pytest.mark.parametrize(

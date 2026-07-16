@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
@@ -14,6 +15,25 @@ from sqlglot.errors import ParseError
 
 ALLOWED_SCALAR_CTES = frozenset({"bounds", "weeks", "months"})
 LARGE_PARTITIONED_TABLES = frozenset({"event", "user"})
+ALLOWED_DATE_FUNCTIONS = frozenset(
+    {
+        "CURRENT_DATE",
+        "CURDATE",
+        "DATE_ADD",
+        "DATE_SUB",
+        "LAST_DAY",
+        "STR_TO_DATE",
+        "DATE_FORMAT",
+        "WEEKDAY",
+    }
+)
+DATE_LINEAGE_FUNCTIONS = ALLOWED_DATE_FUNCTIONS | frozenset(
+    {
+        "CAST",
+        "TIME_TO_STR",
+        "TS_OR_DS_TO_TIMESTAMP",
+    }
+)
 
 REPAIR_SOURCE_HASHES = {
     "95d8497afac14f0a90342031fb43bc04": "815c35585e7769575fa01ca6eb13069eaf47821da3943080b0968255b999b503",
@@ -51,6 +71,12 @@ REPAIR_SPECS = {
     view_id: RepairSpec(view_id=view_id, source_sha256=source_sha256)
     for view_id, source_sha256 in REPAIR_SOURCE_HASHES.items()
 }
+
+
+@dataclass(frozen=True)
+class _SelectBusinessMask:
+    scalar_projection_indexes: tuple[tuple[int, str], ...]
+    partition_shapes: tuple[tuple[str, tuple[str, ...]], ...]
 
 
 def _sha256_text(value: str) -> str:
@@ -106,6 +132,282 @@ def _direct_predicates(select: exp.Select) -> list[exp.Expression]:
         if (on := join.args.get("on")) is not None
     )
     return predicates
+
+
+def _business_selects(tree: exp.Select) -> dict[str, exp.Select]:
+    selects = {"__root__": tree}
+    with_clause = tree.args.get("with_")
+    if with_clause is None:
+        return selects
+    for cte in with_clause.expressions:
+        name = cte.alias_or_name.lower()
+        if name in ALLOWED_SCALAR_CTES:
+            continue
+        if not isinstance(cte.this, exp.Select):
+            raise UnsafeRewriteError(f"业务 CTE {name} 不是 SELECT")
+        selects[f"cte:{name}"] = cte.this
+    return selects
+
+
+def _mask_conjuncts(expression: exp.Expression) -> list[exp.Expression]:
+    expression = _unwrap_parentheses(expression)
+    if isinstance(expression, exp.And):
+        return _mask_conjuncts(expression.this) + _mask_conjuncts(
+            expression.expression
+        )
+    return [expression]
+
+
+def _partition_shape(
+    expression: exp.Expression,
+    large_aliases: set[str],
+) -> tuple[str, tuple[str, ...]] | None:
+    expression = _unwrap_parentheses(expression)
+    if not isinstance(
+        expression,
+        (exp.Between, exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.In),
+    ):
+        return None
+    aliases = tuple(
+        sorted(
+            {
+                column.table.lower()
+                for column in expression.find_all(exp.Column)
+                if column.table.lower() in large_aliases
+                and column.name.lower() == "dt"
+            }
+        )
+    )
+    if not aliases:
+        return None
+    return type(expression).__name__, aliases
+
+
+def _derive_business_masks(
+    tree: exp.Select,
+) -> dict[str, _SelectBusinessMask]:
+    masks: dict[str, _SelectBusinessMask] = {}
+    for owner, select in _business_selects(tree).items():
+        scalar_joins = [
+            join
+            for join in select.args.get("joins") or []
+            if isinstance(join.this, exp.Table)
+            and join.this.name.lower() in ALLOWED_SCALAR_CTES
+        ]
+        scalar_aliases = {
+            alias
+            for join in scalar_joins
+            for alias in (
+                join.this.name.lower(),
+                join.this.alias_or_name.lower(),
+            )
+        }
+        large_aliases = {
+            table.alias_or_name.lower()
+            for table in _direct_tables(select)
+            if table.name.lower() in LARGE_PARTITIONED_TABLES
+        }
+        projections = tuple(
+            (index, projection.alias_or_name)
+            for index, projection in enumerate(select.expressions)
+            if any(
+                column.table.lower() in scalar_aliases
+                for column in projection.find_all(exp.Column)
+            )
+        )
+
+        partition_shapes: list[tuple[str, tuple[str, ...]]] = []
+        where = select.args.get("where")
+        if where is not None:
+            for term in _mask_conjuncts(where.this):
+                shape = _partition_shape(term, large_aliases)
+                if shape is not None and any(
+                    column.table.lower() in scalar_aliases
+                    for column in term.find_all(exp.Column)
+                ):
+                    partition_shapes.append(shape)
+        for join in scalar_joins:
+            on = join.args.get("on")
+            if on is None or _is_true(on):
+                continue
+            terms = _mask_conjuncts(on)
+            matched = 0
+            for term in terms:
+                shape = _partition_shape(term, large_aliases)
+                if shape is not None and any(
+                    column.table.lower() in scalar_aliases
+                    for column in term.find_all(exp.Column)
+                ):
+                    partition_shapes.append(shape)
+                    matched += 1
+            if matched != len(terms):
+                raise UnsafeRewriteError("scalar JOIN ON 包含非日期业务条件")
+
+        masks[owner] = _SelectBusinessMask(
+            scalar_projection_indexes=projections,
+            partition_shapes=tuple(partition_shapes),
+        )
+    return masks
+
+
+def _partition_placeholder(
+    index: int,
+    shape: tuple[str, tuple[str, ...]],
+) -> exp.Expression:
+    operator, aliases = shape
+    name = f"__allowed_partition_{index}_{operator}_{'_'.join(aliases)}"
+    return exp.EQ(
+        this=exp.to_identifier(name),
+        expression=exp.Literal.number(1),
+    )
+
+
+def _rebuild_masked_where(
+    select: exp.Select,
+    terms: list[exp.Expression],
+    shapes: tuple[tuple[str, tuple[str, ...]], ...],
+) -> None:
+    all_terms = terms + [
+        _partition_placeholder(index, shape)
+        for index, shape in enumerate(shapes)
+    ]
+    if not all_terms:
+        select.set("where", None)
+        return
+    predicate = all_terms[0]
+    for term in all_terms[1:]:
+        predicate = exp.and_(predicate, term)
+    select.set("where", exp.Where(this=predicate))
+
+
+def _mask_scalar_projections(
+    select: exp.Select,
+    spec: _SelectBusinessMask,
+) -> None:
+    projections = list(select.expressions)
+    for index, output_name in spec.scalar_projection_indexes:
+        if index >= len(projections) or projections[index].alias_or_name != output_name:
+            raise UnsafeRewriteError("改写改变了 scalar-derived 投影位置或输出名")
+        projections[index] = exp.alias_(
+            exp.to_identifier("__allowed_scalar_value__"),
+            output_name,
+        )
+    select.set("expressions", projections)
+
+
+def _drop_masked_scalar_infrastructure(tree: exp.Select) -> None:
+    with_clause = tree.args.get("with_")
+    if with_clause is not None:
+        with_clause.set(
+            "expressions",
+            [
+                cte
+                for cte in with_clause.expressions
+                if cte.alias_or_name.lower() not in ALLOWED_SCALAR_CTES
+            ],
+        )
+        if not with_clause.expressions:
+            tree.set("with_", None)
+    for select in tree.find_all(exp.Select):
+        select.set(
+            "joins",
+            [
+                join
+                for join in select.args.get("joins") or []
+                if not (
+                    isinstance(join.this, exp.Table)
+                    and join.this.name.lower() in ALLOWED_SCALAR_CTES
+                )
+            ],
+        )
+
+
+def _mask_original_business_tree(
+    tree: exp.Select,
+    masks: Mapping[str, _SelectBusinessMask],
+) -> exp.Select:
+    selects = _business_selects(tree)
+    if set(selects) != set(masks):
+        raise UnsafeRewriteError("原 SQL 的业务 SELECT 所有者集合不稳定")
+    for owner, select in selects.items():
+        spec = masks[owner]
+        scalar_aliases = {
+            alias
+            for join in select.args.get("joins") or []
+            if isinstance(join.this, exp.Table)
+            and join.this.name.lower() in ALLOWED_SCALAR_CTES
+            for alias in (
+                join.this.name.lower(),
+                join.this.alias_or_name.lower(),
+            )
+        }
+        _mask_scalar_projections(select, spec)
+        where = select.args.get("where")
+        terms = _mask_conjuncts(where.this) if where is not None else []
+        business_terms = [
+            term
+            for term in terms
+            if not any(
+                column.table.lower() in scalar_aliases
+                for column in term.find_all(exp.Column)
+            )
+        ]
+        removed_count = len(terms) - len(business_terms)
+        on_count = len(spec.partition_shapes) - removed_count
+        if removed_count < 0 or on_count < 0:
+            raise UnsafeRewriteError("原 SQL 日期分区 mask 数量无效")
+        _rebuild_masked_where(select, business_terms, spec.partition_shapes)
+    _drop_masked_scalar_infrastructure(tree)
+    return tree
+
+
+def _mask_rewritten_business_tree(
+    tree: exp.Select,
+    masks: Mapping[str, _SelectBusinessMask],
+) -> exp.Select:
+    selects = _business_selects(tree)
+    if set(selects) != set(masks):
+        raise UnsafeRewriteError("改写改变了业务 SELECT/CTE 所有者集合")
+    for owner, select in selects.items():
+        spec = masks[owner]
+        _mask_scalar_projections(select, spec)
+        large_aliases = {
+            table.alias_or_name.lower()
+            for table in _direct_tables(select)
+            if table.name.lower() in LARGE_PARTITIONED_TABLES
+        }
+        where = select.args.get("where")
+        terms = _mask_conjuncts(where.this) if where is not None else []
+        remaining = list(terms)
+        for shape in spec.partition_shapes:
+            matches = [
+                index
+                for index, term in enumerate(remaining)
+                if _partition_shape(term, large_aliases) == shape
+            ]
+            if len(matches) != 1:
+                raise UnsafeRewriteError("无法唯一定位改写后的日期分区合取项")
+            remaining.pop(matches[0])
+        _rebuild_masked_where(select, remaining, spec.partition_shapes)
+    _drop_masked_scalar_infrastructure(tree)
+    return tree
+
+
+def _normalized_ast_dump(tree: exp.Select) -> list[dict]:
+    normalized = _parse_mysql(tree.sql(dialect="mysql"))
+    return normalized.dump()
+
+
+def validate_business_equivalence(original_sql: str, rewritten_sql: str) -> None:
+    """独立验证除明确日期基础设施外的完整业务 AST 结构不变。"""
+
+    original = _parse_mysql(original_sql)
+    rewritten = _parse_mysql(rewritten_sql)
+    masks = _derive_business_masks(original)
+    masked_original = _mask_original_business_tree(original, masks)
+    masked_rewritten = _mask_rewritten_business_tree(rewritten, masks)
+    if _normalized_ast_dump(masked_original) != _normalized_ast_dump(masked_rewritten):
+        raise UnsafeRewriteError("改写改变了完整业务 AST")
 
 
 def _projection_signature(select: exp.Select) -> tuple[str, ...]:
@@ -407,12 +709,78 @@ def _large_dt_alias(
 def _is_external_boundary(
     expression: exp.Expression,
     large_aliases: set[str],
+    proven_columns_by_alias: Mapping[str, frozenset[str]],
 ) -> bool:
-    columns = list(expression.find_all(exp.Column))
-    return all(
-        bool(column.table) and column.table.lower() not in large_aliases
-        for column in columns
+    return _has_proven_date_lineage(
+        expression,
+        large_aliases=large_aliases,
+        bounded_large_aliases=set(),
+        proven_columns_by_alias=proven_columns_by_alias,
     )
+
+
+def _has_date_origin(expression: exp.Expression) -> bool:
+    for literal in expression.find_all(exp.Literal):
+        value = str(literal.this)
+        if re.fullmatch(r"\d{8}", value) or re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}",
+            value,
+        ):
+            return True
+    return any(
+        _date_function_name(function) in ALLOWED_DATE_FUNCTIONS
+        for function in expression.find_all(exp.Func)
+    )
+
+
+def _date_function_name(function: exp.Func) -> str:
+    if isinstance(function, exp.Anonymous):
+        return function.name.upper()
+    return function.sql_name().upper()
+
+
+def _uses_only_date_lineage_operations(expression: exp.Expression) -> bool:
+    if any(
+        _date_function_name(function) not in DATE_LINEAGE_FUNCTIONS
+        for function in expression.find_all(exp.Func)
+    ):
+        return False
+    return not any(
+        True
+        for _ in expression.find_all(
+            (exp.Add, exp.Sub, exp.Mul, exp.Div, exp.Mod)
+        )
+    )
+
+
+def _has_proven_date_lineage(
+    expression: exp.Expression,
+    *,
+    large_aliases: set[str],
+    bounded_large_aliases: set[str],
+    proven_columns_by_alias: Mapping[str, frozenset[str]],
+) -> bool:
+    if any(True for _ in expression.find_all(exp.Select)):
+        return False
+    columns = list(expression.find_all(exp.Column))
+    if not columns:
+        return _has_date_origin(expression)
+    if not _uses_only_date_lineage_operations(expression):
+        return False
+
+    for column in columns:
+        alias = column.table.lower()
+        name = column.name.lower()
+        if not alias:
+            return False
+        if alias in large_aliases:
+            if alias not in bounded_large_aliases or name != "dt":
+                return False
+            continue
+        proven_columns = proven_columns_by_alias.get(alias)
+        if proven_columns is None or name not in proven_columns:
+            return False
+    return True
 
 
 def _predicate_scopes(
@@ -447,6 +815,7 @@ def _predicate_scopes(
 def _bounded_large_aliases(
     select: exp.Select,
     large_aliases: set[str],
+    proven_columns_by_alias: Mapping[str, frozenset[str]],
 ) -> set[str]:
     bounded: set[str] = set()
     equality_edges: set[tuple[str, str]] = set()
@@ -464,8 +833,16 @@ def _bounded_large_aliases(
                     alias is not None
                     and low is not None
                     and high is not None
-                    and _is_external_boundary(low, large_aliases)
-                    and _is_external_boundary(high, large_aliases)
+                    and _is_external_boundary(
+                        low,
+                        large_aliases,
+                        proven_columns_by_alias,
+                    )
+                    and _is_external_boundary(
+                        high,
+                        large_aliases,
+                        proven_columns_by_alias,
+                    )
                     and alias in eligible_aliases
                 ):
                     bounded.add(alias)
@@ -489,12 +866,20 @@ def _bounded_large_aliases(
                     continue
                 if (
                     left_alias in eligible_aliases
-                    and _is_external_boundary(right, large_aliases)
+                    and _is_external_boundary(
+                        right,
+                        large_aliases,
+                        proven_columns_by_alias,
+                    )
                 ):
                     bounded.add(left_alias)
                 if (
                     right_alias in eligible_aliases
-                    and _is_external_boundary(left, large_aliases)
+                    and _is_external_boundary(
+                        left,
+                        large_aliases,
+                        proven_columns_by_alias,
+                    )
                 ):
                     bounded.add(right_alias)
                 continue
@@ -506,7 +891,14 @@ def _bounded_large_aliases(
                     alias is not None
                     and alias in eligible_aliases
                     and values
-                    and all(_is_external_boundary(value, large_aliases) for value in values)
+                    and all(
+                        _is_external_boundary(
+                            value,
+                            large_aliases,
+                            proven_columns_by_alias,
+                        )
+                        for value in values
+                    )
                 ):
                     bounded.add(alias)
 
@@ -518,6 +910,90 @@ def _bounded_large_aliases(
                 bounded.add(target_alias)
                 changed = True
     return bounded
+
+
+def _cte_columns_by_alias(
+    select: exp.Select,
+    cte_lineage: Mapping[str, frozenset[str]],
+) -> dict[str, frozenset[str]]:
+    columns_by_alias: dict[str, frozenset[str]] = {}
+    for table in _direct_tables(select):
+        proven_columns = cte_lineage.get(table.name.lower())
+        if proven_columns is not None:
+            columns_by_alias[table.alias_or_name.lower()] = proven_columns
+    return columns_by_alias
+
+
+def _validate_select_partition_lineage(
+    select: exp.Select,
+    cte_lineage: Mapping[str, frozenset[str]],
+) -> tuple[set[str], dict[str, frozenset[str]]]:
+    large_tables = [
+        table
+        for table in _direct_tables(select)
+        if table.name.lower() in LARGE_PARTITIONED_TABLES
+    ]
+    large_aliases = {table.alias_or_name.lower() for table in large_tables}
+    proven_columns_by_alias = _cte_columns_by_alias(select, cte_lineage)
+    bounded_aliases = _bounded_large_aliases(
+        select,
+        large_aliases,
+        proven_columns_by_alias,
+    )
+    for table in large_tables:
+        alias = table.alias_or_name.lower()
+        if alias not in bounded_aliases:
+            raise UnsafeRewriteError(
+                f"大表 {table.name} 别名 {alias} 所在 SELECT 缺少直接 dt 条件"
+            )
+    return bounded_aliases, proven_columns_by_alias
+
+
+def _validate_partition_lineage(tree: exp.Select) -> None:
+    cte_lineage: dict[str, frozenset[str]] = {}
+    processed_selects: set[int] = set()
+    with_clause = tree.args.get("with_")
+    if with_clause is not None:
+        for cte in with_clause.expressions:
+            name = cte.alias_or_name.lower()
+            if not isinstance(cte.this, exp.Select):
+                raise UnsafeRewriteError(f"业务 CTE {name} 不是 SELECT")
+            select = cte.this
+            processed_selects.add(id(select))
+            bounded_aliases, proven_columns_by_alias = (
+                _validate_select_partition_lineage(select, cte_lineage)
+            )
+            has_proven_source = bool(bounded_aliases) or any(
+                proven_columns_by_alias.values()
+            )
+            proven_outputs: set[str] = set()
+            if has_proven_source:
+                large_aliases = {
+                    table.alias_or_name.lower()
+                    for table in _direct_tables(select)
+                    if table.name.lower() in LARGE_PARTITIONED_TABLES
+                }
+                for projection in select.expressions:
+                    output_name = projection.alias_or_name.lower()
+                    value = (
+                        projection.this
+                        if isinstance(projection, exp.Alias)
+                        else projection
+                    )
+                    if output_name and _has_proven_date_lineage(
+                        value,
+                        large_aliases=large_aliases,
+                        bounded_large_aliases=bounded_aliases,
+                        proven_columns_by_alias=proven_columns_by_alias,
+                    ):
+                        proven_outputs.add(output_name)
+            cte_lineage[name] = frozenset(proven_outputs)
+
+    processed_selects.add(id(tree))
+    _validate_select_partition_lineage(tree, cte_lineage)
+    for select in tree.find_all(exp.Select):
+        if id(select) not in processed_selects:
+            _validate_select_partition_lineage(select, cte_lineage)
 
 
 def validate_rewritten_sql(sql: str) -> None:
@@ -541,20 +1017,7 @@ def validate_rewritten_sql(sql: str) -> None:
     ):
         raise UnsafeRewriteError("改写后禁止出现 MAX(dt)")
 
-    for select in tree.find_all(exp.Select):
-        large_tables = [
-            table
-            for table in _direct_tables(select)
-            if table.name.lower() in LARGE_PARTITIONED_TABLES
-        ]
-        large_aliases = {table.alias_or_name.lower() for table in large_tables}
-        bounded_aliases = _bounded_large_aliases(select, large_aliases)
-        for table in large_tables:
-            alias = table.alias_or_name.lower()
-            if alias not in bounded_aliases:
-                raise UnsafeRewriteError(
-                    f"大表 {table.name} 别名 {alias} 所在 SELECT 缺少直接 dt 条件"
-                )
+    _validate_partition_lineage(tree)
 
 
 def rewrite_bounds_sql(view_id: str, sql: str) -> str:
@@ -570,6 +1033,7 @@ def rewrite_bounds_sql(view_id: str, sql: str) -> str:
         raise UnsafeRewriteError("改写改变了业务 CTE、字段、JOIN、GROUP、ORDER 或 LIMIT")
 
     rewritten = tree.sql(dialect="mysql", pretty=True)
+    validate_business_equivalence(sql, rewritten)
     validate_rewritten_sql(rewritten)
     if _surface_signature(_parse_mysql(rewritten)) != original_surface:
         raise UnsafeRewriteError("SQL 序列化改变了业务表面签名")
