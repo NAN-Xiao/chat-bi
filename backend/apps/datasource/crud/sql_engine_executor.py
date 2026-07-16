@@ -3,6 +3,7 @@
 
 新业务代码应从 apps.datasource.crud.sql_engine 导入入口。
 """
+import inspect
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -447,16 +448,31 @@ def _execute_after_validation(
     做了什么：调用底层 SQL 执行器，并在执行器支持时传递查询超时时间。
     """
     try:
+        try:
+            parameters = inspect.signature(
+                _unsafe_exec_sql_after_validation
+            ).parameters
+            accepts_extra_keywords = any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+        except (TypeError, ValueError):
+            parameters = {}
+            accepts_extra_keywords = False
+
+        def accepts(keyword: str) -> bool:
+            return accepts_extra_keywords or keyword in parameters
+
         kwargs: dict[str, Any] = {
             "ds": ds,
             "sql": sql,
             "origin_column": origin_column,
         }
-        if query_timeout and query_timeout > 0:
+        if query_timeout and query_timeout > 0 and accepts("query_timeout"):
             kwargs["query_timeout"] = query_timeout
-        if max_result_rows is not ...:
+        if max_result_rows is not ... and accepts("max_result_rows"):
             kwargs["max_result_rows"] = max_result_rows
-        if require_controlled_timeout:
+        if require_controlled_timeout and accepts("require_controlled_timeout"):
             kwargs["require_controlled_timeout"] = True
         return _unsafe_exec_sql_after_validation(**kwargs)
     except Exception as exc:

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.datasource.crud import sql_engine_executor
 from apps.datasource.models.datasource import DatasourceConf
 from apps.db import db as db_module
 
@@ -372,3 +373,77 @@ def test_kingbase_branch_applies_statement_timeout_override(monkeypatch) -> None
     assert connect_kwargs[0]["options"] == "-c statement_timeout=7000"
     assert connection.readonly_values == [True]
     assert cursor.executed_sql == ["SELECT 1 AS value"]
+
+
+def test_execute_adapter_omits_new_keywords_for_legacy_callable(monkeypatch) -> None:
+    calls: list[tuple[object, str, bool]] = []
+
+    def legacy_execute(ds, sql, origin_column=False):
+        calls.append((ds, sql, origin_column))
+        return {"status": "success"}
+
+    datasource = SimpleNamespace(type="pg")
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_unsafe_exec_sql_after_validation",
+        legacy_execute,
+    )
+
+    result = sql_engine_executor._execute_after_validation(
+        datasource,
+        "SELECT 1",
+        origin_column=True,
+        query_timeout=7,
+        max_result_rows=None,
+        require_controlled_timeout=True,
+    )
+
+    assert result == {"status": "success"}
+    assert calls == [(datasource, "SELECT 1", True)]
+
+
+def test_execute_adapter_passes_roi_controls_to_modern_callable(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def modern_execute(
+        ds,
+        sql,
+        origin_column=False,
+        query_timeout=None,
+        max_result_rows=...,
+        require_controlled_timeout=False,
+    ):
+        captured.update(
+            ds=ds,
+            sql=sql,
+            origin_column=origin_column,
+            query_timeout=query_timeout,
+            max_result_rows=max_result_rows,
+            require_controlled_timeout=require_controlled_timeout,
+        )
+        return {"status": "success"}
+
+    datasource = SimpleNamespace(type="pg")
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_unsafe_exec_sql_after_validation",
+        modern_execute,
+    )
+
+    sql_engine_executor._execute_after_validation(
+        datasource,
+        "SELECT 1",
+        origin_column=True,
+        query_timeout=7,
+        max_result_rows=None,
+        require_controlled_timeout=True,
+    )
+
+    assert captured == {
+        "ds": datasource,
+        "sql": "SELECT 1",
+        "origin_column": True,
+        "query_timeout": 7,
+        "max_result_rows": None,
+        "require_controlled_timeout": True,
+    }
