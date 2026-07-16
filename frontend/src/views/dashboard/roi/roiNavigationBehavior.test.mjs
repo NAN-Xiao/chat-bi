@@ -20,9 +20,39 @@ const build = await esbuild.build({
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0].text).toString('base64')}`
 const {
   createDashboardNodeClickPlan,
+  canAccessRoiDashboard,
   publishCurrentTreeBranch,
+  resolveRoiPreviewAccessPlan,
+  shouldResetOrdinaryDashboardStore,
   shouldInitializeOrdinaryDashboardCanvas,
 } = await import(moduleUrl)
+
+assert.equal(typeof resolveRoiPreviewAccessPlan, 'function', '必须提供 ROI 直达权限计划')
+assert.equal(typeof shouldResetOrdinaryDashboardStore, 'function', '必须提供普通 store 重置判断')
+
+for (const role of ['owner', 'admin']) {
+  assert.deepEqual(resolveRoiPreviewAccessPlan('roi', canAccessRoiDashboard({ getTenantRole: role })), {
+    shortCircuitOrdinaryDashboard: true,
+    renderRoiDashboard: true,
+    redirectToLanding: false,
+  })
+}
+for (const userState of [
+  { getTenantRole: 'member' },
+  { getTenantRole: 'owner', isPlatformWorkspaceDelegate: true },
+  { getTenantRole: 'owner', isSystemAdminUser: true },
+]) {
+  assert.deepEqual(resolveRoiPreviewAccessPlan('roi', canAccessRoiDashboard(userState)), {
+    shortCircuitOrdinaryDashboard: true,
+    renderRoiDashboard: false,
+    redirectToLanding: true,
+  })
+}
+assert.deepEqual(resolveRoiPreviewAccessPlan('my', canAccessRoiDashboard({ getTenantRole: 'member' })), {
+  shortCircuitOrdinaryDashboard: false,
+  renderRoiDashboard: false,
+  redirectToLanding: false,
+})
 
 assert.deepEqual(createDashboardNodeClickPlan('roi'), {
   resetOrdinaryDashboardSelection: false,
@@ -34,6 +64,9 @@ assert.deepEqual(createDashboardNodeClickPlan('my'), {
   syncRoute: true,
   emitNodeClick: true,
 })
+assert.equal(shouldResetOrdinaryDashboardStore('default'), true)
+assert.equal(shouldResetOrdinaryDashboardStore('my'), true)
+assert.equal(shouldResetOrdinaryDashboardStore('roi'), false)
 assert.equal(shouldInitializeOrdinaryDashboardCanvas('preview', 'roi'), false)
 assert.equal(shouldInitializeOrdinaryDashboardCanvas('preview', 'my'), true)
 

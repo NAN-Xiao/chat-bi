@@ -19,7 +19,11 @@ import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { useUserStore } from '@/stores/user'
 import { useRoiDashboardStore } from '@/stores/roiDashboard'
-import { shouldInitializeOrdinaryDashboardCanvas } from '@/views/dashboard/roi/roiNavigationBehavior'
+import { canAccessRoiDashboard } from '@/utils/workspacePermission'
+import {
+  resolveRoiPreviewAccessPlan,
+  shouldInitializeOrdinaryDashboardCanvas,
+} from '@/views/dashboard/roi/roiNavigationBehavior'
 import {
   applyMixedChartResult,
   canRefreshMixedChart,
@@ -128,11 +132,17 @@ const routeDashboardMode = computed(() => {
   if (mode === ROI_SCOPE) return ROI_SCOPE
   return mode === DASHBOARD_MODE_DEFAULT ? DASHBOARD_MODE_DEFAULT : DASHBOARD_MODE_MY
 })
-const isRoiDashboardMode = computed(() => routeDashboardMode.value === ROI_SCOPE)
+const canAccessRoiDashboardMode = computed(() => canAccessRoiDashboard(userStore))
+const roiPreviewAccessPlan = computed(() =>
+  resolveRoiPreviewAccessPlan(routeDashboardMode.value, canAccessRoiDashboardMode.value)
+)
+const isAuthorizedRoiDashboardMode = computed(
+  () => roiPreviewAccessPlan.value.renderRoiDashboard
+)
 const canCreateDashboard = computed(() => {
   return (
     !props.defaultMode &&
-    !isRoiDashboardMode.value &&
+    !roiPreviewAccessPlan.value.shortCircuitOrdinaryDashboard &&
     resourceTreeRef.value?.canCreateDashboard === true
   )
 })
@@ -901,6 +911,28 @@ const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
 
+const redirectUnauthorizedRoi = async () => {
+  if (resolvingDashboardTarget.value) return
+  cancelDashboardWork()
+  loadingDashboardId.value = null
+  dataInitState.value = true
+  stateInit()
+  const rejectedResourceId = routeDashboardId.value
+  resolvingDashboardTarget.value = true
+  try {
+    const target = await resolveBusinessDashboardLandingTarget(userStore)
+    const stillRejected =
+      routeDashboardMode.value === ROI_SCOPE &&
+      routeDashboardId.value === rejectedResourceId &&
+      !canAccessRoiDashboard(userStore)
+    if (stillRejected && !isCurrentRouteTarget(target)) {
+      await router.replace(target)
+    }
+  } finally {
+    resolvingDashboardTarget.value = false
+  }
+}
+
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
 onBeforeMount(() => {
   if (
@@ -917,11 +949,17 @@ onBeforeUnmount(() => {
   roiDashboardStore.reset()
 })
 watch(
-  () => [routeDashboardId.value, routeDashboardMode.value],
-  ([resourceId, dashboardMode], previous) => {
+  () =>
+    [routeDashboardId.value, routeDashboardMode.value, canAccessRoiDashboardMode.value] as const,
+  ([resourceId, dashboardMode, canAccessRoi], previous) => {
     const previousMode = previous?.[1]
     if (previousMode === ROI_SCOPE && dashboardMode !== ROI_SCOPE) {
       roiDashboardStore.reset()
+    }
+    const accessPlan = resolveRoiPreviewAccessPlan(dashboardMode, canAccessRoi)
+    if (!props.defaultMode && accessPlan.redirectToLanding) {
+      void redirectUnauthorizedRoi()
+      return
     }
     if (!props.defaultMode && resourceId) {
       loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })
@@ -991,7 +1029,7 @@ defineExpose({
     <section
       class="preview-area"
       :class="{
-        'is-empty': !isRoiDashboardMode && !previewShowFlag,
+        'is-empty': !isAuthorizedRoiDashboardMode && !previewShowFlag,
         'sidebar-collapsed': !sideTreeStatus,
         'sidebar-collapsed-with-create': !sideTreeStatus && canCreateDashboard,
       }"
@@ -999,7 +1037,7 @@ defineExpose({
       <div class="preview-stage">
         <!-- dashboardMode=roi 使用独立 RoiDashboardPanel。 -->
         <RoiDashboardPanel
-          v-if="isRoiDashboardMode"
+          v-if="isAuthorizedRoiDashboardMode"
           :dashboard-id="routeDashboardId"
         />
         <template v-else>

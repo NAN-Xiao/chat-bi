@@ -24,6 +24,18 @@ assert.match(
   /const clickPlan = createDashboardNodeClickPlan\(getDashboardScope\(data\)\)[\s\S]*if \(clickPlan\.resetOrdinaryDashboardSelection\)/
 )
 
+const nodeClick = source.match(/const nodeClick = \(data: SQTreeNode, node: any\) => \{([\s\S]*?)\n\}/)
+assert.ok(nodeClick, '节点点击入口必须存在')
+assert.ok(
+  nodeClick[1].indexOf('createDashboardNodeClickPlan') < nodeClick[1].indexOf('isVirtualNode(data)'),
+  'default/my 虚拟根必须先应用普通 store 清理计划，再处理 virtual return'
+)
+
+const resetTreeState = source.match(/const resetTreeState = \(\) => \{([\s\S]*?)\n\}/)
+assert.ok(resetTreeState, '树重置入口必须存在')
+assert.match(resetTreeState[1], /shouldResetOrdinaryDashboardStore\(currentRouteDashboardScope\(\)\)/)
+assert.match(resetTreeState[1], /roiDashboardStore\.reset\(\)/)
+
 const roiMenu = source.match(
   /if \(isRoiGroupNode\(data\)\) \{([\s\S]*?)\r?\n  \}\r?\n  if \(isDefaultGroupNode/
 )

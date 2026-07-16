@@ -12,6 +12,28 @@ assert.match(previewSource, /useRoiDashboardStore/)
 assert.match(previewSource, /roiDashboardStore\.reset\(\)/)
 assert.match(previewSource, /<RoiDashboardPanel[\s\S]*dashboard-id="routeDashboardId"/)
 assert.match(previewSource, /shouldInitializeOrdinaryDashboardCanvas/)
+assert.match(previewSource, /resolveRoiPreviewAccessPlan/)
+assert.match(previewSource, /canAccessRoiDashboard/)
+assert.match(previewSource, /v-if="isAuthorizedRoiDashboardMode"/)
+
+const unauthorizedRedirect = previewSource.match(
+  /const redirectUnauthorizedRoi = async \(\) => \{([\s\S]*?)\n\}/
+)
+assert.ok(unauthorizedRedirect, '未授权 ROI 重定向入口必须存在')
+assert.match(unauthorizedRedirect[1], /resolveBusinessDashboardLandingTarget\(userStore\)/)
+assert.match(unauthorizedRedirect[1], /!canAccessRoiDashboard\(userStore\)/)
+
+const routeWatchStart = previewSource.indexOf(
+  '() => [routeDashboardId.value, routeDashboardMode.value, canAccessRoiDashboardMode.value]'
+)
+const routeWatchEnd = previewSource.indexOf('{ immediate: true }', routeWatchStart)
+const routeWatch = previewSource.slice(routeWatchStart, routeWatchEnd)
+assert.ok(routeWatchStart >= 0 && routeWatchEnd > routeWatchStart, 'ROI 路由 watcher 必须存在')
+assert.ok(
+  routeWatch.indexOf('if (!props.defaultMode && accessPlan.redirectToLanding)') <
+    routeWatch.indexOf('loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })'),
+  '未授权 ROI 必须在普通看板加载前重定向并 return'
+)
 
 const beforeMount = previewSource.match(/onBeforeMount\(\(\) => \{([\s\S]*?)\n\}\)/)
 assert.ok(beforeMount, '挂载初始化入口必须存在')

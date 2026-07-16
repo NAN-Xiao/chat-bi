@@ -1,10 +1,28 @@
+import { canAccessRoiDashboard } from '@/utils/workspacePermission'
+
+export { canAccessRoiDashboard }
+
 export type RoiDashboardScope = 'default' | 'roi' | 'my'
 
+export const shouldResetOrdinaryDashboardStore = (scope: RoiDashboardScope) => scope !== 'roi'
+
 export const createDashboardNodeClickPlan = (scope: RoiDashboardScope) => ({
-  resetOrdinaryDashboardSelection: scope !== 'roi',
+  resetOrdinaryDashboardSelection: shouldResetOrdinaryDashboardStore(scope),
   syncRoute: true,
   emitNodeClick: true,
 })
+
+export const resolveRoiPreviewAccessPlan = (
+  scope: RoiDashboardScope,
+  canAccessRoi: boolean
+) => {
+  const isRoiRoute = scope === 'roi'
+  return {
+    shortCircuitOrdinaryDashboard: isRoiRoute,
+    renderRoiDashboard: isRoiRoute && canAccessRoi,
+    redirectToLanding: isRoiRoute && !canAccessRoi,
+  }
+}
 
 export const shouldInitializeOrdinaryDashboardCanvas = (
   showPosition: string,

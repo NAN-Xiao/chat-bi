@@ -36,6 +36,7 @@ import type { RoiDashboard } from '@/views/dashboard/roi/types'
 import {
   createDashboardNodeClickPlan,
   publishCurrentTreeBranch,
+  shouldResetOrdinaryDashboardStore,
 } from '@/views/dashboard/roi/roiNavigationBehavior'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
@@ -406,7 +407,11 @@ const resetTreeState = () => {
   expandedArray.value = []
   state.originResourceTree = []
   state.resourceTree = []
-  dashboardStore.canvasDataInit()
+  if (shouldResetOrdinaryDashboardStore(currentRouteDashboardScope())) {
+    dashboardStore.canvasDataInit()
+  } else {
+    roiDashboardStore.reset()
+  }
   nextTick(() => {
     resourceListTree.value?.setCurrentKey?.(null)
     resourceListTree.value?.filter?.(filterText.value)
@@ -522,13 +527,13 @@ const emitDashboardNodeClick = (data?: SQTreeNode) => {
 }
 
 const nodeClick = (data: SQTreeNode, node: any) => {
-  if (isVirtualNode(data)) {
-    resourceListTree.value?.setCurrentKey?.(null)
-    return
-  }
   const clickPlan = createDashboardNodeClickPlan(getDashboardScope(data))
   if (clickPlan.resetOrdinaryDashboardSelection) {
     dashboardStore.setCurComponent({ component: null, index: null })
+  }
+  if (isVirtualNode(data)) {
+    resourceListTree.value?.setCurrentKey?.(null)
+    return
   }
   if (node.disabled) {
     nextTick(() => {
