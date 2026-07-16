@@ -4,6 +4,7 @@ import time
 
 from fastapi import HTTPException
 from sqlalchemy import func, update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from apps.datasource.models.datasource import CoreDatasource
@@ -26,6 +27,7 @@ from apps.roi_dashboard.schemas import (
 from common.core.deps import CurrentUser, SessionDep
 
 VERSION_CONFLICT_MESSAGE = "数据已被其他人修改，请刷新后重试"
+CONFIG_CONFLICT_MESSAGE = "ROI 配置已被其他人创建或修改，请刷新后重试"
 
 
 def _now() -> int:
@@ -45,6 +47,14 @@ def _active_config_statement(tenant_id: int):
         CoreRoiWorkspaceConfig.tenant_id == tenant_id,
         CoreRoiWorkspaceConfig.deleted.is_(False),
     )
+
+
+def lock_active_roi_config(
+    session: SessionDep,
+    tenant_id: int,
+) -> CoreRoiWorkspaceConfig | None:
+    """锁定当前租户活动配置，供换源与图表写入共享同一事务协议。"""
+    return session.exec(_active_config_statement(tenant_id).with_for_update()).first()
 
 
 def _active_dashboard_statement(tenant_id: int):
@@ -108,12 +118,12 @@ def set_roi_config(
     if not has_roi_datasource_access(session, current_user, request.datasource_id):
         raise HTTPException(status_code=403, detail="当前账号无此 ROI 数据源权限")
 
-    record = session.exec(_active_config_statement(tenant_id)).first()
+    record = lock_active_roi_config(session, tenant_id)
     now = _now()
     operator_id = _operator_id(current_user)
     if record is None:
         if request.version is not None:
-            raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
+            raise HTTPException(status_code=409, detail=CONFIG_CONFLICT_MESSAGE)
         record = CoreRoiWorkspaceConfig(
             tenant_id=tenant_id,
             datasource_id=request.datasource_id,
@@ -125,7 +135,11 @@ def set_roi_config(
             deleted=False,
         )
         session.add(record)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(status_code=409, detail=CONFIG_CONFLICT_MESSAGE) from exc
         session.refresh(record)
         return _config_response(session, record)
 

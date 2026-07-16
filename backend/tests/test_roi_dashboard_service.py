@@ -1,10 +1,13 @@
 """验证 ROI 配置和工作空间共享看板服务。"""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql.dml import Update
 from sqlmodel import Session, create_engine, select
 
 from apps.roi_dashboard.models import (
@@ -318,6 +321,67 @@ def test_existing_config_requires_matching_version(session: Session) -> None:
     assert updated.version == 4
 
 
+def test_existing_config_update_locks_active_config_row(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from apps.roi_dashboard.service import lock_active_roi_config
+
+    user = make_user(id=1, tenant_id=11, tenant_role="owner")
+    add_datasource(session, 101)
+    grant_datasource(session, user_id=1, datasource_id=101)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+    session.commit()
+    original_exec = session.exec
+    locked_selects = []
+
+    def recording_exec(statement, *args, **kwargs):
+        if getattr(statement, "_for_update_arg", None) is not None:
+            locked_selects.append(statement)
+        return original_exec(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "exec", recording_exec)
+
+    updated = set_roi_config(
+        session,
+        user,
+        RoiConfigUpdate(datasource_id=101, version=1),
+    )
+
+    assert lock_active_roi_config is not None
+    assert len(locked_selects) == 1
+    assert updated.version == 2
+
+
+def test_first_config_integrity_conflict_rolls_back_and_returns_409(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = make_user(id=1, tenant_id=11, tenant_role="owner")
+    add_datasource(session, 101)
+    grant_datasource(session, user_id=1, datasource_id=101)
+    session.commit()
+    rollback = Mock(wraps=session.rollback)
+    monkeypatch.setattr(session, "rollback", rollback)
+    monkeypatch.setattr(
+        session,
+        "commit",
+        Mock(side_effect=IntegrityError("unique conflict", {}, Exception("duplicate"))),
+    )
+
+    assert_http_error(
+        409,
+        lambda: set_roi_config(
+            session,
+            user,
+            RoiConfigUpdate(datasource_id=101, version=None),
+        ),
+    )
+
+    rollback.assert_called_once_with()
+    assert session.exec(text("SELECT 1")).one()[0] == 1
+
+
 def test_cannot_change_datasource_when_any_active_chart_exists(session: Session) -> None:
     user = make_user(id=1, tenant_id=11, tenant_role="owner")
     add_datasource(session, 202)
@@ -334,6 +398,10 @@ def test_cannot_change_datasource_when_any_active_chart_exists(session: Session)
             RoiConfigUpdate(datasource_id=202, version=1),
         ),
     )
+    persisted = session.exec(
+        select(CoreRoiWorkspaceConfig).where(CoreRoiWorkspaceConfig.tenant_id == 11)
+    ).one()
+    assert (persisted.datasource_id, persisted.version) == (101, 1)
 
 
 def test_empty_dashboard_and_inactive_chart_do_not_block_datasource_change(
@@ -482,6 +550,57 @@ def test_reorder_conflict_does_not_partially_update(session: Session) -> None:
     )
     session.refresh(first)
     assert (first.sort, first.version) == (0, 1)
+
+
+def test_reorder_execution_conflict_rolls_back_prior_update(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = make_user(id=2, tenant_id=11, tenant_role="admin")
+    seed_roi_dashboard(
+        session, dashboard_id=301, tenant_id=11, name="第一", sort=0, version=1
+    )
+    seed_roi_dashboard(
+        session, dashboard_id=302, tenant_id=11, name="第二", sort=1, version=4
+    )
+    original_exec = session.exec
+    dashboard_update_count = 0
+
+    def conflict_on_second_update(statement, *args, **kwargs):
+        nonlocal dashboard_update_count
+        if isinstance(statement, Update) and statement.table.name == "core_roi_dashboard":
+            dashboard_update_count += 1
+            if dashboard_update_count == 2:
+                return SimpleNamespace(rowcount=0)
+        return original_exec(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "exec", conflict_on_second_update)
+
+    assert_http_error(
+        409,
+        lambda: reorder_roi_dashboards(
+            session,
+            user,
+            RoiDashboardReorderRequest(
+                items=[
+                    RoiDashboardOrderItem(id="301", sort=8, version=1),
+                    RoiDashboardOrderItem(id="302", sort=9, version=4),
+                ]
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(session, "exec", original_exec)
+    session.expire_all()
+    persisted = session.exec(
+        select(CoreRoiDashboard).where(CoreRoiDashboard.tenant_id == 11)
+        .order_by(CoreRoiDashboard.id)
+    ).all()
+    assert dashboard_update_count == 2
+    assert [(item.id, item.sort, item.version) for item in persisted] == [
+        (301, 0, 1),
+        (302, 1, 4),
+    ]
 
 
 def test_reorder_cross_tenant_id_returns_404(session: Session) -> None:
