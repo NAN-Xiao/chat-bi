@@ -1,8 +1,14 @@
-"""ROI 配置和工作空间共享看板服务。"""
+"""ROI 配置、共享看板和图表服务。"""
 
+import hashlib
+import json
 import time
+from dataclasses import asdict
+from typing import Any, Protocol
 
 from fastapi import HTTPException
+from redis import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
@@ -17,17 +23,85 @@ from apps.roi_dashboard.permissions import (
     has_roi_datasource_access,
     require_roi_workspace_admin,
 )
+from apps.roi_dashboard.query_executor import RoiQueryResult, execute_roi_read_query
 from apps.roi_dashboard.schemas import (
+    RoiChartCreate,
+    RoiChartPreviewRequest,
+    RoiChartReorderRequest,
+    RoiChartUpdate,
     RoiConfigResponse,
     RoiConfigUpdate,
     RoiDashboardCreate,
     RoiDashboardReorderRequest,
     RoiDashboardUpdate,
 )
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
+from common.core.redis_client import build_redis_url, user_redis_key
+from common.utils.utils import AppLogUtil
 
 VERSION_CONFLICT_MESSAGE = "数据已被其他人修改，请刷新后重试"
 CONFIG_CONFLICT_MESSAGE = "ROI 配置已被其他人创建或修改，请刷新后重试"
+ROI_DATASOURCE_PERMISSION_MESSAGE = "当前账号无此数据源权限"
+
+
+class RoiChartCacheAdapter(Protocol):
+    """ROI 图表缓存的最小可注入接口。"""
+
+    def get(self, key: str) -> dict[str, Any] | None: ...
+
+    def set(self, key: str, value: dict[str, Any]) -> None: ...
+
+    def delete_pattern(self, pattern: str) -> None: ...
+
+
+class RedisRoiChartCache:
+    """独立 Redis ROI 缓存；连接失败时不使用普通看板缓存兜底。"""
+
+    def __init__(self) -> None:
+        self._client: Redis | None = None
+
+    def _redis(self) -> Redis:
+        if self._client is None:
+            self._client = Redis.from_url(
+                build_redis_url(),
+                decode_responses=True,
+                socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT,
+                health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
+                max_connections=settings.REDIS_MAX_CONNECTIONS,
+            )
+        return self._client
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        try:
+            value = self._redis().get(key)
+            return None if value is None else json.loads(value)
+        except (RedisError, ValueError, TypeError) as exc:
+            AppLogUtil.warning(f"ROI chart cache read failed: {type(exc).__name__}")
+            return None
+
+    def set(self, key: str, value: dict[str, Any]) -> None:
+        try:
+            self._redis().setex(
+                key,
+                settings.DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS,
+                json.dumps(value, ensure_ascii=False, default=str),
+            )
+        except (RedisError, ValueError, TypeError) as exc:
+            AppLogUtil.warning(f"ROI chart cache write failed: {type(exc).__name__}")
+
+    def delete_pattern(self, pattern: str) -> None:
+        try:
+            client = self._redis()
+            keys = list(client.scan_iter(match=pattern, count=200))
+            if keys:
+                client.delete(*keys)
+        except RedisError as exc:
+            AppLogUtil.warning(f"ROI chart cache invalidation failed: {type(exc).__name__}")
+
+
+_ROI_CHART_CACHE = RedisRoiChartCache()
 
 
 def _now() -> int:
@@ -40,6 +114,73 @@ def _tenant_id(current_user: CurrentUser) -> int:
 
 def _operator_id(current_user: CurrentUser) -> int:
     return int(current_user.id)
+
+
+def _cache(cache_adapter: RoiChartCacheAdapter | None) -> RoiChartCacheAdapter:
+    return cache_adapter or _ROI_CHART_CACHE
+
+
+def _sql_hash(sql: str) -> str:
+    return hashlib.sha256(sql.encode("utf-8")).hexdigest()
+
+
+def roi_chart_cache_key(
+    tenant_id: int,
+    user_id: int,
+    datasource_id: int,
+    dashboard_id: int,
+    chart_id: int,
+    version: int,
+    sql_hash: str,
+) -> str:
+    """构造完整隔离的 ROI 图表缓存键。"""
+    return user_redis_key(
+        tenant_id,
+        user_id,
+        "roi-chart",
+        datasource_id,
+        dashboard_id,
+        chart_id,
+        version,
+        sql_hash,
+    )
+
+
+def _roi_chart_cache_pattern(
+    tenant_id: int,
+    *,
+    datasource_id: int | str = "*",
+    dashboard_id: int | str = "*",
+    chart_id: int | str = "*",
+) -> str:
+    return user_redis_key(
+        tenant_id,
+        "*",
+        "roi-chart",
+        datasource_id,
+        dashboard_id,
+        chart_id,
+        "*",
+        "*",
+    )
+
+
+def _invalidate_roi_chart_cache(
+    cache_adapter: RoiChartCacheAdapter | None,
+    tenant_id: int,
+    *,
+    datasource_id: int | str = "*",
+    dashboard_id: int | str = "*",
+    chart_id: int | str = "*",
+) -> None:
+    _cache(cache_adapter).delete_pattern(
+        _roi_chart_cache_pattern(
+            tenant_id,
+            datasource_id=datasource_id,
+            dashboard_id=dashboard_id,
+            chart_id=chart_id,
+        )
+    )
 
 
 def _active_config_statement(tenant_id: int):
@@ -112,6 +253,8 @@ def set_roi_config(
     session: SessionDep,
     current_user: CurrentUser,
     request: RoiConfigUpdate,
+    *,
+    cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> RoiConfigResponse:
     """创建或按版本更新当前工作空间的 ROI 数据源配置。"""
     tenant_id = _tenant_id(current_user)
@@ -141,6 +284,7 @@ def set_roi_config(
             session.rollback()
             raise HTTPException(status_code=409, detail=CONFIG_CONFLICT_MESSAGE) from exc
         session.refresh(record)
+        _invalidate_roi_chart_cache(cache_adapter, tenant_id)
         return _config_response(session, record)
 
     if request.version is None or request.version != record.version:
@@ -179,6 +323,7 @@ def set_roi_config(
         session.rollback()
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
     session.commit()
+    _invalidate_roi_chart_cache(cache_adapter, tenant_id)
     updated = session.exec(_active_config_statement(tenant_id)).first()
     if updated is None:
         raise HTTPException(status_code=404, detail="ROI 配置不存在")
@@ -355,3 +500,355 @@ def reorder_roi_dashboards(
             raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
     session.commit()
     return list_roi_dashboards(session, current_user)
+
+
+def _load_chart_or_404(
+    session: SessionDep,
+    tenant_id: int,
+    dashboard_id: int,
+    chart_id: int,
+) -> CoreRoiDashboardChart:
+    record = session.exec(
+        select(CoreRoiDashboardChart).where(
+            CoreRoiDashboardChart.id == chart_id,
+            CoreRoiDashboardChart.tenant_id == tenant_id,
+            CoreRoiDashboardChart.roi_dashboard_id == dashboard_id,
+            CoreRoiDashboardChart.deleted.is_(False),
+            CoreRoiDashboardChart.status == 1,
+        )
+    ).first()
+    if record is None:
+        raise HTTPException(status_code=404, detail="ROI 图表不存在")
+    return record
+
+
+def _load_config_or_409(
+    session: SessionDep,
+    tenant_id: int,
+) -> CoreRoiWorkspaceConfig:
+    config = session.exec(_active_config_statement(tenant_id)).first()
+    if config is None:
+        raise HTTPException(status_code=409, detail="当前工作空间尚未配置 ROI 数据源")
+    return config
+
+
+def _require_roi_chart_write_access(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+) -> CoreRoiWorkspaceConfig:
+    config = _load_config_or_409(session, tenant_id)
+    if not has_roi_datasource_access(session, current_user, config.datasource_id):
+        raise HTTPException(status_code=403, detail=ROI_DATASOURCE_PERMISSION_MESSAGE)
+    return config
+
+
+def _require_successful_query(result: RoiQueryResult) -> None:
+    if result.status != "success":
+        raise HTTPException(
+            status_code=400,
+            detail=result.message or "ROI SQL 执行失败，图表未保存",
+        )
+
+
+def preview_roi_chart(
+    session: SessionDep,
+    current_user: CurrentUser,
+    dashboard_id: int,
+    request: RoiChartPreviewRequest,
+) -> RoiQueryResult:
+    """执行图表草稿 SQL，但不创建或修改图表。"""
+    tenant_id = _tenant_id(current_user)
+    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    return execute_roi_read_query(session, current_user, request.sql)
+
+
+def list_roi_charts(
+    session: SessionDep,
+    current_user: CurrentUser,
+    dashboard_id: int,
+    *,
+    cache_adapter: RoiChartCacheAdapter | None = None,
+) -> list[dict[str, Any]]:
+    """读取图表结构；只有当前账号仍有数据源权限时才读缓存或执行。"""
+    tenant_id = _tenant_id(current_user)
+    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    charts = list(
+        session.exec(
+            select(CoreRoiDashboardChart)
+            .where(
+                CoreRoiDashboardChart.tenant_id == tenant_id,
+                CoreRoiDashboardChart.roi_dashboard_id == dashboard_id,
+                CoreRoiDashboardChart.deleted.is_(False),
+                CoreRoiDashboardChart.status == 1,
+            )
+            .order_by(
+                CoreRoiDashboardChart.sort.asc(),
+                CoreRoiDashboardChart.create_time.asc(),
+                CoreRoiDashboardChart.id.asc(),
+            )
+        ).all()
+    )
+    config = session.exec(_active_config_statement(tenant_id)).first()
+    can_execute = bool(
+        config is not None
+        and has_roi_datasource_access(session, current_user, config.datasource_id)
+    )
+    permission_error = (
+        None
+        if can_execute
+        else (
+            ROI_DATASOURCE_PERMISSION_MESSAGE
+            if config is not None
+            else "当前工作空间尚未配置 ROI 数据源"
+        )
+    )
+    result: list[dict[str, Any]] = []
+    for chart in charts:
+        item = chart.model_dump()
+        item.update(
+            can_execute=can_execute,
+            can_edit=can_execute,
+            error=permission_error,
+            query_result=None,
+        )
+        if not can_execute:
+            result.append(item)
+            continue
+
+        key = roi_chart_cache_key(
+            tenant_id,
+            _operator_id(current_user),
+            int(config.datasource_id),
+            dashboard_id,
+            int(chart.id),
+            chart.version,
+            _sql_hash(chart.sql),
+        )
+        cached = _cache(cache_adapter).get(key)
+        if cached is not None:
+            item["query_result"] = cached
+            result.append(item)
+            continue
+
+        try:
+            query_result = execute_roi_read_query(session, current_user, chart.sql)
+            query_payload = asdict(query_result)
+            item["query_result"] = query_payload
+            if query_result.status == "success":
+                _cache(cache_adapter).set(key, query_payload)
+            else:
+                item["error"] = query_result.message or "ROI SQL 执行失败"
+        except HTTPException as exc:
+            item["error"] = str(exc.detail)
+        result.append(item)
+    return result
+
+
+def create_roi_chart(
+    session: SessionDep,
+    current_user: CurrentUser,
+    dashboard_id: int,
+    request: RoiChartCreate,
+    *,
+    cache_adapter: RoiChartCacheAdapter | None = None,
+) -> CoreRoiDashboardChart:
+    """锁定统一配置后重新执行 SQL，成功才创建图表。"""
+    tenant_id = _tenant_id(current_user)
+    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    config = lock_active_roi_config(session, tenant_id)
+    if config is None:
+        raise HTTPException(status_code=409, detail="当前工作空间尚未配置 ROI 数据源")
+    if not has_roi_datasource_access(session, current_user, config.datasource_id):
+        raise HTTPException(status_code=403, detail=ROI_DATASOURCE_PERMISSION_MESSAGE)
+    query_result = execute_roi_read_query(session, current_user, request.sql)
+    _require_successful_query(query_result)
+
+    now = _now()
+    operator_id = _operator_id(current_user)
+    record = CoreRoiDashboardChart(
+        tenant_id=tenant_id,
+        roi_dashboard_id=dashboard_id,
+        title=request.title,
+        sql=request.sql,
+        chart_type=request.chart_type,
+        chart_config=request.chart_config,
+        layout_span=request.layout_span,
+        sort=request.sort,
+        status=1,
+        version=1,
+        create_by=operator_id,
+        update_by=operator_id,
+        create_time=now,
+        update_time=now,
+        deleted=False,
+    )
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    _invalidate_roi_chart_cache(
+        cache_adapter,
+        tenant_id,
+        datasource_id=config.datasource_id,
+        dashboard_id=dashboard_id,
+        chart_id=record.id,
+    )
+    return record
+
+
+def update_roi_chart(
+    session: SessionDep,
+    current_user: CurrentUser,
+    dashboard_id: int,
+    chart_id: int,
+    request: RoiChartUpdate,
+    *,
+    cache_adapter: RoiChartCacheAdapter | None = None,
+) -> CoreRoiDashboardChart:
+    """重新执行提交 SQL 后按版本原子更新活动图表。"""
+    tenant_id = _tenant_id(current_user)
+    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    record = _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
+    config = _require_roi_chart_write_access(session, current_user, tenant_id)
+    if record.version != request.version:
+        raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
+    query_result = execute_roi_read_query(session, current_user, request.sql)
+    _require_successful_query(query_result)
+
+    result = session.exec(
+        update(CoreRoiDashboardChart)
+        .where(
+            CoreRoiDashboardChart.id == chart_id,
+            CoreRoiDashboardChart.tenant_id == tenant_id,
+            CoreRoiDashboardChart.roi_dashboard_id == dashboard_id,
+            CoreRoiDashboardChart.deleted.is_(False),
+            CoreRoiDashboardChart.status == 1,
+            CoreRoiDashboardChart.version == request.version,
+        )
+        .values(
+            title=request.title,
+            sql=request.sql,
+            chart_type=request.chart_type,
+            chart_config=request.chart_config,
+            layout_span=request.layout_span,
+            sort=request.sort,
+            version=request.version + 1,
+            update_by=_operator_id(current_user),
+            update_time=_now(),
+        )
+    )
+    if result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
+    session.commit()
+    _invalidate_roi_chart_cache(
+        cache_adapter,
+        tenant_id,
+        datasource_id=config.datasource_id,
+        dashboard_id=dashboard_id,
+        chart_id=chart_id,
+    )
+    return _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
+
+
+def delete_roi_chart(
+    session: SessionDep,
+    current_user: CurrentUser,
+    dashboard_id: int,
+    chart_id: int,
+    *,
+    cache_adapter: RoiChartCacheAdapter | None = None,
+) -> bool:
+    """按租户和看板边界软删除活动图表。"""
+    tenant_id = _tenant_id(current_user)
+    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
+    config = _require_roi_chart_write_access(session, current_user, tenant_id)
+    session.exec(
+        update(CoreRoiDashboardChart)
+        .where(
+            CoreRoiDashboardChart.id == chart_id,
+            CoreRoiDashboardChart.tenant_id == tenant_id,
+            CoreRoiDashboardChart.roi_dashboard_id == dashboard_id,
+            CoreRoiDashboardChart.deleted.is_(False),
+            CoreRoiDashboardChart.status == 1,
+        )
+        .values(
+            deleted=True,
+            update_by=_operator_id(current_user),
+            update_time=_now(),
+        )
+    )
+    session.commit()
+    _invalidate_roi_chart_cache(
+        cache_adapter,
+        tenant_id,
+        datasource_id=config.datasource_id,
+        dashboard_id=dashboard_id,
+        chart_id=chart_id,
+    )
+    return True
+
+
+def reorder_roi_charts(
+    session: SessionDep,
+    current_user: CurrentUser,
+    dashboard_id: int,
+    request: RoiChartReorderRequest,
+    *,
+    cache_adapter: RoiChartCacheAdapter | None = None,
+) -> list[dict[str, Any]]:
+    """全量预验证后在单事务中更新图表顺序、宽度和版本。"""
+    tenant_id = _tenant_id(current_user)
+    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    records: list[tuple[CoreRoiDashboardChart, Any]] = []
+    seen_ids: set[int] = set()
+    for item in request.items:
+        chart_id = int(item.id)
+        if chart_id in seen_ids:
+            raise HTTPException(status_code=400, detail="ROI 图表排序项不能重复")
+        seen_ids.add(chart_id)
+        record = _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
+        if record.version != item.version:
+            raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
+        records.append((record, item))
+
+    config = _require_roi_chart_write_access(session, current_user, tenant_id)
+
+    now = _now()
+    operator_id = _operator_id(current_user)
+    for record, item in records:
+        result = session.exec(
+            update(CoreRoiDashboardChart)
+            .where(
+                CoreRoiDashboardChart.id == record.id,
+                CoreRoiDashboardChart.tenant_id == tenant_id,
+                CoreRoiDashboardChart.roi_dashboard_id == dashboard_id,
+                CoreRoiDashboardChart.deleted.is_(False),
+                CoreRoiDashboardChart.status == 1,
+                CoreRoiDashboardChart.version == item.version,
+            )
+            .values(
+                sort=item.sort,
+                layout_span=item.layout_span,
+                version=item.version + 1,
+                update_by=operator_id,
+                update_time=now,
+            )
+        )
+        if result.rowcount != 1:
+            session.rollback()
+            raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
+    session.commit()
+    _invalidate_roi_chart_cache(
+        cache_adapter,
+        tenant_id,
+        datasource_id=config.datasource_id,
+        dashboard_id=dashboard_id,
+    )
+    return list_roi_charts(
+        session,
+        current_user,
+        dashboard_id,
+        cache_adapter=cache_adapter,
+    )
