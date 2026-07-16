@@ -13,7 +13,7 @@ TOOLS_DIR = ROOT / "tools"
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
-import seed_xiuxian_data_skills as seed
+import seed_xiuxian_data_skills as seed  # noqa: E402
 
 
 @lru_cache(maxsize=1)
