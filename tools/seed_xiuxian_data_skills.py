@@ -10,7 +10,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-import psycopg
 from psycopg.types.json import Jsonb
 
 from core_system_db import core_system_db_config, export_postgres_compat_env
@@ -233,11 +232,13 @@ def _find_skill_by_marker(cur: Any, marker: str) -> tuple[Any, ...] | None:
           AND datasource_ids = %s::jsonb
           AND position(%s in COALESCE(prompt, '')) > 0
         ORDER BY id
-        LIMIT 1
         """,
         (TENANT_ID, Jsonb([DATASOURCE_ID]), marker),
     )
-    return cur.fetchone()
+    rows = cur.fetchall()
+    if len(rows) > 1:
+        raise RuntimeError(f"Data Skill marker 重复，拒绝发布: {marker}")
+    return rows[0] if rows else None
 
 
 def _upsert_skill(cur, *, skill: dict[str, str], now: dt.datetime) -> int:
@@ -249,8 +250,13 @@ def _upsert_skill(cur, *, skill: dict[str, str], now: dt.datetime) -> int:
         (lock_key,),
     )
     row = _find_skill_by_marker(cur, marker)
-    if row is None and marker == SERVERPAYLOG_MARKER:
-        row = _find_skill_by_marker(cur, LEGACY_PAYMENT_MARKER)
+    if marker == SERVERPAYLOG_MARKER:
+        legacy_row = _find_skill_by_marker(cur, LEGACY_PAYMENT_MARKER)
+        if row is not None and legacy_row is not None:
+            raise RuntimeError(
+                "ServerPayLog current marker 与 legacy marker 同时存在，拒绝发布"
+            )
+        row = row or legacy_row
     values = (
         TENANT_ID,
         skill["name"][:255],
@@ -396,6 +402,15 @@ _RESTORE_SKILL_COLUMNS = (
     "datasource_ids",
 )
 _RESTORE_JSONB_COLUMNS = frozenset({"datasource_ids"})
+_PUBLISHED_STABLE_COLUMNS = tuple(
+    column
+    for column in ("id", *_RESTORE_SKILL_COLUMNS)
+    if column not in {"embedding", "embedding_signature"}
+)
+
+
+class SkillRestoreConflictError(RuntimeError):
+    """当前 Skill 已偏离本轮发布状态，恢复不能覆盖并发修改。"""
 
 
 def _restore_skill_value(column: str, value: Any) -> Any:
@@ -404,37 +419,112 @@ def _restore_skill_value(column: str, value: Any) -> Any:
     return value
 
 
+def _stable_skill_state(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {column: row.get(column) for column in _PUBLISHED_STABLE_COLUMNS}
+
+
+def load_skill_states_by_ids(
+    cur: Any,
+    skill_ids: Sequence[int],
+    *,
+    for_update: bool = False,
+) -> dict[int, dict[str, Any]]:
+    """按 ID 读取 Skill 行；恢复时锁行以保证比较与写入原子。"""
+
+    normalized_ids = sorted({int(skill_id) for skill_id in skill_ids})
+    if not normalized_ids:
+        return {}
+    suffix = " FOR UPDATE" if for_update else ""
+    cur.execute(
+        f"""
+        SELECT to_jsonb(cp)
+        FROM custom_prompt cp
+        WHERE cp.id = ANY(%s)
+          AND cp.tenant_id = %s
+        ORDER BY cp.id{suffix}
+        """,
+        (normalized_ids, TENANT_ID),
+    )
+    return {
+        int(row[0]["id"]): dict(row[0])
+        for row in cur.fetchall()
+    }
+
+
 def restore_skills(
     cur: Any,
     backup: Mapping[str, Sequence[Mapping[str, Any]]],
     *,
     affected_ids: Sequence[int],
+    expected_states: Mapping[int, Mapping[str, Any]],
 ) -> None:
-    """恢复原有 Skill，并删除本次发布新增的记录。"""
+    """仅在仍匹配本轮发布状态时恢复，且不触碰既有 Skill 偏好。"""
 
     affected = sorted({int(skill_id) for skill_id in affected_ids})
     original_skills = [dict(row) for row in backup.get("skills", ())]
-    original_ids = {int(row["id"]) for row in original_skills}
-    cur.execute(
-        """
-        DELETE FROM custom_prompt_user_preference
-        WHERE tenant_id = %s
-          AND custom_prompt_id = ANY(%s)
-        """,
-        (TENANT_ID, affected),
-    )
-    new_ids = sorted(set(affected).difference(original_ids))
-    cur.execute(
-        """
-        DELETE FROM custom_prompt
-        WHERE tenant_id = %s
-          AND id = ANY(%s)
-        """,
-        (TENANT_ID, new_ids),
-    )
+    original_by_id = {int(row["id"]): row for row in original_skills}
+    original_ids = set(original_by_id)
+    normalized_expected = {
+        int(skill_id): dict(state)
+        for skill_id, state in expected_states.items()
+        if int(skill_id) in affected
+    }
+    if set(normalized_expected) != set(affected):
+        missing = sorted(set(affected).difference(normalized_expected))
+        raise SkillRestoreConflictError(
+            f"缺少本轮发布期望态，拒绝恢复 Skill: {missing}"
+        )
+    current_states = load_skill_states_by_ids(cur, affected, for_update=True)
+    restore_ids: list[int] = []
+    conflicts: list[int] = []
+    for skill_id in affected:
+        current = current_states.get(skill_id)
+        expected = normalized_expected[skill_id]
+        original = original_by_id.get(skill_id)
+        if current is not None and _stable_skill_state(
+            current
+        ) == _stable_skill_state(expected):
+            restore_ids.append(skill_id)
+        elif original is not None and current is not None and _stable_skill_state(
+            current
+        ) == _stable_skill_state(original):
+            continue
+        elif original is None and current is None:
+            continue
+        else:
+            conflicts.append(skill_id)
+    if conflicts:
+        raise SkillRestoreConflictError(
+            f"Skill 恢复冲突，已保留并发修改: {conflicts}"
+        )
+
+    new_ids = sorted(set(restore_ids).difference(original_ids))
+    if new_ids:
+        cur.execute(
+            """
+            DELETE FROM custom_prompt_user_preference
+            WHERE tenant_id = %s
+              AND custom_prompt_id = ANY(%s)
+            """,
+            (TENANT_ID, new_ids),
+        )
+        cur.execute(
+            """
+            DELETE FROM custom_prompt
+            WHERE tenant_id = %s
+              AND id = ANY(%s)
+            """,
+            (TENANT_ID, new_ids),
+        )
+        if cur.rowcount != len(new_ids):
+            raise SkillRestoreConflictError(
+                f"新增 Skill 删除数量变化，拒绝提交恢复: {new_ids}"
+            )
 
     assignments = ", ".join(f"{column} = %s" for column in _RESTORE_SKILL_COLUMNS)
     for row in original_skills:
+        if int(row["id"]) not in restore_ids:
+            continue
         cur.execute(
             f"UPDATE custom_prompt SET {assignments} WHERE id = %s AND tenant_id = %s",
             (
@@ -446,31 +536,10 @@ def restore_skills(
                 TENANT_ID,
             ),
         )
-
-    for row_value in backup.get("preferences", ()):
-        row = dict(row_value)
-        cur.execute(
-            """
-            INSERT INTO custom_prompt_user_preference (
-                id, tenant_id, custom_prompt_id, user_id, enabled, update_time
-            ) OVERRIDING SYSTEM VALUE
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE
-            SET tenant_id = EXCLUDED.tenant_id,
-                custom_prompt_id = EXCLUDED.custom_prompt_id,
-                user_id = EXCLUDED.user_id,
-                enabled = EXCLUDED.enabled,
-                update_time = EXCLUDED.update_time
-            """,
-            (
-                row.get("id"),
-                row.get("tenant_id"),
-                row.get("custom_prompt_id"),
-                row.get("user_id"),
-                row.get("enabled"),
-                row.get("update_time"),
-            ),
-        )
+        if cur.rowcount != 1:
+            raise SkillRestoreConflictError(
+                f"既有 Skill 恢复数量变化，拒绝提交恢复: {row['id']}"
+            )
 
 
 def verify_embeddings(
@@ -576,42 +645,13 @@ def _release_publish_lock(cur: Any) -> None:
     )
 
 
-def main() -> None:
-    now = dt.datetime.now()
-    with psycopg.connect(**DB) as conn:
-        ids: list[int] = []
-        backup: dict[str, list[dict[str, Any]]] = {"skills": [], "preferences": []}
-        with conn.cursor() as cur:
-            _acquire_publish_lock(cur)
-        try:
-            dashboards = _load_recommended_dashboards(conn)
-            skills = build_data_skills(dashboards)
-            markers = [skill["prompt"].splitlines()[0].strip() for skill in skills]
-            markers.append(LEGACY_PAYMENT_MARKER)
-            with conn.cursor() as cur:
-                backup = backup_existing_skills(cur, markers)
-            with conn.cursor() as cur:
-                ids = upsert_skills(cur, skills, now=now)
-            conn.commit()
-            saved = _save_embeddings(ids)
-            if saved != len(ids):
-                raise RuntimeError(
-                    f"Data Skill embedding 保存不完整: 期望 {len(ids)}，实际 {saved}"
-                )
-            with conn.cursor() as cur:
-                verify_embeddings(cur, ids, model=_embedding_model())
-        except BaseException:
-            conn.rollback()
-            if ids:
-                with conn.cursor() as cur:
-                    restore_skills(cur, backup, affected_ids=ids)
-                conn.commit()
-            raise
-        finally:
-            with conn.cursor() as cur:
-                _release_publish_lock(cur)
-    print(f"修仙 Data Skills 已写入: {ids}; embeddings 已保存: {saved}")
+def main(argv: Sequence[str] | None = None) -> int:
+    """兼容旧脚本入口，但所有写入统一交给正式发布器。"""
+
+    from publish_xiuxian_dashboard_data_skills import main as publisher_main
+
+    return publisher_main([*(argv or ()), "--mode", "apply"])
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

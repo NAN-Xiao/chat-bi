@@ -25,13 +25,16 @@ from seed_xiuxian_data_skills import (
     BACKEND_DIR,
     DATASOURCE_ID,
     LEGACY_PAYMENT_MARKER,
+    SERVERPAYLOG_MARKER,
     TENANT_ID,
     _acquire_publish_lock,
     _embedding_model,
     _release_publish_lock,
     _save_embeddings,
+    SkillRestoreConflictError,
     backup_existing_skills,
     build_data_skills,
+    load_skill_states_by_ids,
     restore_skills,
     upsert_skills,
     verify_embeddings,
@@ -53,6 +56,8 @@ from xiuxian_dashboard_sql_repair import (
     rewrite_bounds_sql,
     validate_explain_plan,
 )
+
+__all__ = ("SkillRestoreConflictError",)
 
 
 EXPECTED_REPAIR_COUNT = 11
@@ -302,6 +307,143 @@ def _skill_markers(skills: Sequence[Mapping[str, str]]) -> list[str]:
     return markers
 
 
+def _prompt_marker(prompt: Any) -> str:
+    text = str(prompt or "")
+    return text.splitlines()[0].strip() if text else ""
+
+
+def validate_skill_preflight(
+    cursor: Any,
+    skills: Sequence[Mapping[str, str]],
+) -> None:
+    """写入前拒绝目标 marker 重复，含 ServerPayLog 新旧 marker 并存。"""
+
+    target_markers = _skill_markers(skills)[:-1]
+    if len(target_markers) != 13 or len(set(target_markers)) != 13:
+        raise RuntimeError("修仙发布目录必须包含 13 个唯一 target marker")
+    cursor.execute(
+        """
+        SELECT id, prompt
+        FROM custom_prompt
+        WHERE tenant_id = %s
+          AND type = 'DATA_SKILL'
+          AND specific_ds = TRUE
+          AND datasource_ids = %s::jsonb
+        ORDER BY id
+        """,
+        (TENANT_ID, json.dumps([DATASOURCE_ID])),
+    )
+    checked_markers = [*target_markers, LEGACY_PAYMENT_MARKER]
+    counts: dict[str, list[int]] = {marker: [] for marker in checked_markers}
+    for skill_id, prompt in cursor.fetchall():
+        prompt_text = str(prompt or "")
+        for marker in checked_markers:
+            if marker in prompt_text:
+                counts[marker].append(int(skill_id))
+    for marker in target_markers:
+        if len(counts.get(marker, ())) > 1:
+            raise RuntimeError(
+                f"Data Skill marker 重复，拒绝发布: {marker}, ids={counts[marker]}"
+            )
+    payment_ids = counts.get(SERVERPAYLOG_MARKER, []) + counts.get(
+        LEGACY_PAYMENT_MARKER, []
+    )
+    if len(payment_ids) > 1:
+        raise RuntimeError(
+            "ServerPayLog current marker 与 legacy marker 重复，拒绝发布: "
+            f"ids={payment_ids}"
+        )
+
+
+def validate_published_skill_set(
+    cursor: Any,
+    skills: Sequence[Mapping[str, str]],
+    ids: Sequence[int],
+) -> None:
+    """发布后验证修仙作用域恰好是本轮 13 条目标 Skill。"""
+
+    expected_ids = {int(skill_id) for skill_id in ids}
+    target_markers = _skill_markers(skills)[:-1]
+    expected_by_marker = {
+        _prompt_marker(skill.get("prompt")): skill for skill in skills
+    }
+    cursor.execute(
+        """
+        SELECT to_jsonb(cp)
+        FROM custom_prompt cp
+        WHERE cp.tenant_id = %s
+          AND cp.type = 'DATA_SKILL'
+          AND cp.specific_ds = TRUE
+          AND cp.datasource_ids = %s::jsonb
+          AND position('data-skill-source:xiuxian:' in COALESCE(cp.prompt, '')) > 0
+        ORDER BY cp.id
+        """,
+        (TENANT_ID, json.dumps([DATASOURCE_ID])),
+    )
+    rows = [dict(row[0]) for row in cursor.fetchall()]
+    marker_rows: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        marker_rows.setdefault(_prompt_marker(row.get("prompt")), []).append(row)
+    checked_markers = [*target_markers, LEGACY_PAYMENT_MARKER]
+    occurrence_ids = {
+        marker: [
+            int(row["id"])
+            for row in rows
+            if marker in str(row.get("prompt") or "")
+        ]
+        for marker in checked_markers
+    }
+    duplicates = {
+        marker: matching_ids
+        for marker, matching_ids in occurrence_ids.items()
+        if len(matching_ids) > 1
+    }
+    missing = [
+        marker for marker in target_markers if len(occurrence_ids[marker]) != 1
+    ]
+    extras = sorted(set(marker_rows).difference(target_markers))
+    actual_ids = {int(row["id"]) for row in rows}
+    if (
+        len(rows) != 13
+        or duplicates
+        or missing
+        or extras
+        or occurrence_ids[LEGACY_PAYMENT_MARKER]
+        or actual_ids != expected_ids
+    ):
+        raise RuntimeError(
+            "修仙发布后 Skill 集合不是恰好 13 条本轮目标记录: "
+            f"count={len(rows)}, duplicates={duplicates}, missing={missing}, "
+            f"extra={extras}, ids={sorted(actual_ids)}"
+        )
+    for marker, expected in expected_by_marker.items():
+        row = marker_rows[marker][0]
+        expected_fields = {
+            "tenant_id": TENANT_ID,
+            "type": "DATA_SKILL",
+            "name": str(expected.get("name") or "")[:255],
+            "description": expected.get("description"),
+            "target_scope": "ALL",
+            "active": True,
+            "visible": True,
+            "ai_model_id": None,
+            "create_by": None,
+            "visibility_scope": "ADMIN_PUBLIC",
+            "prompt": str(expected.get("prompt") or "").strip(),
+            "specific_ds": True,
+            "datasource_ids": [DATASOURCE_ID],
+        }
+        mismatched = [
+            field
+            for field, expected_value in expected_fields.items()
+            if row.get(field) != expected_value
+        ]
+        if mismatched:
+            raise RuntimeError(
+                f"Data Skill {row['id']} 发布字段不一致: {mismatched}"
+            )
+
+
 def _json_default(value: Any) -> str:
     if isinstance(value, (dt.date, dt.datetime)):
         return value.isoformat()
@@ -439,11 +581,20 @@ def release_publish_lock(connection: Any) -> None:
 
 
 def upsert_and_commit_skills(
-    connection: Any, skills: Sequence[dict[str, str]]
+    connection: Any,
+    skills: Sequence[dict[str, str]],
+    *,
+    expected_states: dict[int, dict[str, Any]],
 ) -> list[int]:
     try:
         with _cursor_scope(connection) as cursor:
             ids = upsert_skills(cursor, skills, now=dt.datetime.now())
+            validate_published_skill_set(cursor, skills, ids)
+            captured = load_skill_states_by_ids(cursor, ids)
+            if set(captured) != {int(skill_id) for skill_id in ids}:
+                raise RuntimeError("无法构造完整的本轮 Skill 发布期望态")
+            expected_states.clear()
+            expected_states.update(captured)
         connection.commit()
         return ids
     except BaseException:
@@ -475,6 +626,8 @@ def restore_published_skills(
     connection: Any,
     backup: Mapping[str, Sequence[Mapping[str, Any]]],
     markers: Sequence[str],
+    *,
+    expected_states: Mapping[int, Mapping[str, Any]],
 ) -> None:
     """按本轮 marker 查询当前记录，再用原快照恢复。"""
 
@@ -485,8 +638,18 @@ def restore_published_skills(
     try:
         with _cursor_scope(connection) as cursor:
             current = backup_existing_skills(cursor, markers)
-            affected_ids = [int(row["id"]) for row in current.get("skills", ())]
-            restore_skills(cursor, backup, affected_ids=affected_ids)
+            affected_ids = sorted(
+                {
+                    *(int(row["id"]) for row in current.get("skills", ())),
+                    *(int(skill_id) for skill_id in expected_states),
+                }
+            )
+            restore_skills(
+                cursor,
+                backup,
+                affected_ids=affected_ids,
+                expected_states=expected_states,
+            )
         connection.commit()
     except BaseException:
         connection.rollback()
@@ -503,6 +666,7 @@ def _restore_with_new_connection(
     system_connection_factory: Callable[[], Any],
     backup: Mapping[str, Sequence[Mapping[str, Any]]],
     markers: Sequence[str],
+    expected_states: Mapping[int, Mapping[str, Any]],
     *,
     original_lock_held: bool,
 ) -> None:
@@ -514,7 +678,12 @@ def _restore_with_new_connection(
             acquire_publish_lock(recovery_connection)
             recovery_lock_held = True
         try:
-            restore_published_skills(recovery_connection, backup, markers)
+            restore_published_skills(
+                recovery_connection,
+                backup,
+                markers,
+                expected_states=expected_states,
+            )
         finally:
             if recovery_lock_held and _connection_is_usable(recovery_connection):
                 release_publish_lock(recovery_connection)
@@ -595,10 +764,13 @@ def run_publish(
         acquire_publish_lock(system_write_connection)
         publish_error: BaseException | None = None
         ids: list[int] = []
+        expected_states: dict[int, dict[str, Any]] = {}
         skill_backup: dict[str, list[dict[str, Any]]] | None = None
         skill_publish_started = False
         markers = _skill_markers(skills)
         try:
+            with _cursor_scope(system_write_connection) as cursor:
+                validate_skill_preflight(cursor, skills)
             updated = apply_dashboard_repairs(
                 system_write_connection,
                 dashboards,
@@ -612,21 +784,28 @@ def run_publish(
             )
             skill_backup = verify_skill_backup(backup_path)
             skill_publish_started = True
-            ids = upsert_and_commit_skills(system_write_connection, skills)
+            ids = upsert_and_commit_skills(
+                system_write_connection,
+                skills,
+                expected_states=expected_states,
+            )
             phase = PublishPhase.SKILLS_APPLIED
             refresh_and_verify_embeddings(
                 system_write_connection, ids, refresher
             )
+            with _cursor_scope(system_write_connection) as cursor:
+                validate_published_skill_set(cursor, skills, ids)
             phase = PublishPhase.EMBEDDINGS_VERIFIED
             retrieval_results = verify_retrieval(checker)
             phase = PublishPhase.RETRIEVAL_VERIFIED
         except BaseException as exc:
             publish_error = exc
-            if skill_backup is not None and skill_publish_started:
+            if skill_backup is not None and skill_publish_started and expected_states:
                 _restore_with_new_connection(
                     system_factory,
                     skill_backup,
                     markers,
+                    expected_states,
                     original_lock_held=_connection_is_usable(
                         system_write_connection
                     ),

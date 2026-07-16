@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import types
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime
@@ -277,7 +278,7 @@ class _FakeCursor:
         return self.fetchone_result
 
     def fetchall(self):
-        return []
+        return [self.fetchone_result] if self.fetchone_result is not None else []
 
 
 class _FakeConnection:
@@ -371,7 +372,51 @@ def test_serverpaylog_upsert_migrates_legacy_marker_in_place():
     assert module.LEGACY_PAYMENT_MARKER not in skill["prompt"]
 
 
-def test_backup_and_restore_skills_include_user_preferences():
+def test_upsert_fails_closed_when_current_marker_is_duplicated():
+    module = _load_seed_module()
+
+    class DuplicateCursor(_FakeCursor):
+        def fetchall(self):
+            return [(7,), (8,)]
+
+    with pytest.raises(RuntimeError, match="marker.*重复|重复.*marker"):
+        module._upsert_skill(
+            DuplicateCursor(),
+            skill=module.DATA_SKILLS[0],
+            now=datetime(2026, 7, 16, 12, 0, 0),
+        )
+
+
+def test_serverpaylog_upsert_fails_when_current_and_legacy_markers_coexist():
+    module = _load_seed_module()
+    skill = next(
+        item
+        for item in module.build_data_skills(_dashboard_snapshots(module))
+        if item["prompt"].startswith(module.SERVERPAYLOG_MARKER)
+    )
+
+    class CoexistingCursor(_FakeCursor):
+        def execute(self, sql, params=None):
+            normalized = " ".join(str(sql).split())
+            self.statements.append(normalized)
+            self.calls.append((normalized, params))
+            self.rowcount = 0
+            if "pg_advisory_xact_lock" in normalized:
+                self.fetchone_result = (None,)
+            elif normalized.startswith("SELECT id FROM custom_prompt"):
+                self.fetchone_result = (
+                    (7,) if params[2] == module.SERVERPAYLOG_MARKER else (8,)
+                )
+
+    with pytest.raises(RuntimeError, match="ServerPayLog.*legacy|legacy.*ServerPayLog"):
+        module._upsert_skill(
+            CoexistingCursor(),
+            skill=skill,
+            now=datetime(2026, 7, 16, 12, 0, 0),
+        )
+
+
+def test_backup_skills_includes_user_preferences():
     module = _load_seed_module()
 
     class SnapshotCursor:
@@ -417,22 +462,6 @@ def test_backup_and_restore_skills_include_user_preferences():
 
     assert backup["skills"][0]["id"] == 7
     assert backup["preferences"][0]["custom_prompt_id"] == 7
-
-    module.restore_skills(cursor, backup, affected_ids=[7, 8])
-
-    written = "\n".join(sql for sql, _params in cursor.statements)
-    assert "DELETE FROM custom_prompt_user_preference" in written
-    assert "DELETE FROM custom_prompt" in written
-    assert "UPDATE custom_prompt" in written
-    assert "INSERT INTO custom_prompt_user_preference" in written
-    update_params = next(
-        params
-        for sql, params in cursor.statements
-        if sql.startswith("UPDATE custom_prompt")
-    )
-    datasource_ids_index = module._RESTORE_SKILL_COLUMNS.index("datasource_ids")
-    assert isinstance(update_params[datasource_ids_index], module.Jsonb)
-
 
 def test_verify_embeddings_checks_vector_dimension_and_signature():
     module = _load_seed_module()
@@ -489,45 +518,11 @@ def test_verify_embeddings_rejects_missing_vector():
         )
 
 
-def test_main_fails_when_embedding_cannot_be_saved(monkeypatch):
+def test_main_delegates_exclusively_to_formal_publisher_apply_cli(monkeypatch):
     module = _load_seed_module()
-    connection = _FakeConnection()
-    monkeypatch.setattr(module.psycopg, "connect", lambda **_kwargs: connection)
-    monkeypatch.setattr(
-        module,
-        "_load_recommended_dashboards",
-        lambda _connection: _dashboard_snapshots(module),
-    )
-    monkeypatch.setattr(module, "_save_embeddings", lambda _ids: 0)
-
-    with pytest.raises(RuntimeError, match="embedding"):
-        module.main()
-
-    assert connection.committed is True
-    assert connection.rolled_back is True
-    written_sql = " ".join(connection.cursor_instance.statements)
-    assert "DELETE FROM custom_prompt" in written_sql
-    calls = connection.cursor_instance.calls
-    lock_index = next(
-        index
-        for index, (sql, _params) in enumerate(calls)
-        if "pg_advisory_lock(" in sql
-    )
-    backup_index = next(
-        index
-        for index, (sql, _params) in enumerate(calls)
-        if "SELECT to_jsonb(cp)" in sql
-    )
-    restore_index = max(
-        index
-        for index, (sql, _params) in enumerate(calls)
-        if sql.startswith("DELETE FROM custom_prompt")
-    )
-    unlock_index = next(
-        index
-        for index, (sql, _params) in enumerate(calls)
-        if "pg_advisory_unlock(" in sql
-    )
-    assert lock_index < backup_index < restore_index < unlock_index
-    assert calls[lock_index][1] == (module.PUBLISH_LOCK_KEY,)
-    assert calls[unlock_index][1] == (module.PUBLISH_LOCK_KEY,)
+    observed = []
+    fake_publisher = types.ModuleType("publish_xiuxian_dashboard_data_skills")
+    fake_publisher.main = lambda argv: observed.append(list(argv)) or 23
+    monkeypatch.setitem(sys.modules, fake_publisher.__name__, fake_publisher)
+    assert module.main(["--backup-root", "backup-dir"]) == 23
+    assert observed == [["--backup-root", "backup-dir", "--mode", "apply"]]
