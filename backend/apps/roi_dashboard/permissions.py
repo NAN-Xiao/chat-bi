@@ -13,7 +13,11 @@ from common.core.deps import CurrentUser, SessionDep
 def require_roi_workspace_admin(current_user: CurrentUser) -> AccessContext:
     """要求当前账号以拥有者或管理员角色进入真实工作空间。"""
     context = resolve_access_context(current_user)
-    if not context.has_workspace_context or context.tenant_role not in TENANT_ADMIN_ROLES:
+    if (
+        not context.has_workspace_context
+        or context.is_platform_workspace_delegate
+        or context.tenant_role not in TENANT_ADMIN_ROLES
+    ):
         raise HTTPException(status_code=403, detail="仅空间拥有者和管理员可访问 ROI 看板")
     return context
 
