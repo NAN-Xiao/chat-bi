@@ -30,6 +30,7 @@ BACKEND_DIR = ROOT / "backend"
 DB = core_system_db_config()
 TENANT_ID = 7482727237662281728
 DATASOURCE_ID = 6
+PUBLISH_LOCK_KEY = f"xiuxian-data-skills:{TENANT_ID}:{DATASOURCE_ID}"
 
 _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
     {
@@ -394,6 +395,13 @@ _RESTORE_SKILL_COLUMNS = (
     "specific_ds",
     "datasource_ids",
 )
+_RESTORE_JSONB_COLUMNS = frozenset({"datasource_ids"})
+
+
+def _restore_skill_value(column: str, value: Any) -> Any:
+    if column in _RESTORE_JSONB_COLUMNS and value is not None:
+        return value if isinstance(value, Jsonb) else Jsonb(value)
+    return value
 
 
 def restore_skills(
@@ -430,7 +438,10 @@ def restore_skills(
         cur.execute(
             f"UPDATE custom_prompt SET {assignments} WHERE id = %s AND tenant_id = %s",
             (
-                *(row.get(column) for column in _RESTORE_SKILL_COLUMNS),
+                *(
+                    _restore_skill_value(column, row.get(column))
+                    for column in _RESTORE_SKILL_COLUMNS
+                ),
                 int(row["id"]),
                 TENANT_ID,
             ),
@@ -551,17 +562,34 @@ def _load_recommended_dashboards(connection: Any) -> list[Any]:
     return load_recommended_dashboards(connection)
 
 
+def _acquire_publish_lock(cur: Any) -> None:
+    cur.execute(
+        "SELECT pg_advisory_lock(hashtextextended(%s, 0))",
+        (PUBLISH_LOCK_KEY,),
+    )
+
+
+def _release_publish_lock(cur: Any) -> None:
+    cur.execute(
+        "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
+        (PUBLISH_LOCK_KEY,),
+    )
+
+
 def main() -> None:
     now = dt.datetime.now()
     with psycopg.connect(**DB) as conn:
-        dashboards = _load_recommended_dashboards(conn)
-        skills = build_data_skills(dashboards)
-        markers = [skill["prompt"].splitlines()[0].strip() for skill in skills]
-        markers.append(LEGACY_PAYMENT_MARKER)
         ids: list[int] = []
+        backup: dict[str, list[dict[str, Any]]] = {"skills": [], "preferences": []}
         with conn.cursor() as cur:
-            backup = backup_existing_skills(cur, markers)
+            _acquire_publish_lock(cur)
         try:
+            dashboards = _load_recommended_dashboards(conn)
+            skills = build_data_skills(dashboards)
+            markers = [skill["prompt"].splitlines()[0].strip() for skill in skills]
+            markers.append(LEGACY_PAYMENT_MARKER)
+            with conn.cursor() as cur:
+                backup = backup_existing_skills(cur, markers)
             with conn.cursor() as cur:
                 ids = upsert_skills(cur, skills, now=now)
             conn.commit()
@@ -579,6 +607,9 @@ def main() -> None:
                     restore_skills(cur, backup, affected_ids=ids)
                 conn.commit()
             raise
+        finally:
+            with conn.cursor() as cur:
+                _release_publish_lock(cur)
     print(f"修仙 Data Skills 已写入: {ids}; embeddings 已保存: {saved}")
 
 

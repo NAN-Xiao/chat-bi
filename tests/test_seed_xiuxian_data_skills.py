@@ -167,10 +167,12 @@ class _FakeCursor:
         self.fetchone_result = None
         self.rowcount = 0
         self.statements: list[str] = []
+        self.calls: list[tuple[str, object]] = []
 
-    def execute(self, sql, _params=None):
+    def execute(self, sql, params=None):
         normalized = " ".join(str(sql).split())
         self.statements.append(normalized)
+        self.calls.append((normalized, params))
         self.rowcount = 0
         if "pg_advisory_xact_lock" in normalized:
             self.fetchone_result = (None,)
@@ -301,6 +303,7 @@ def test_backup_and_restore_skills_include_user_preferences():
                             "tenant_id": module.TENANT_ID,
                             "name": "旧 Skill",
                             "prompt": "旧 Prompt",
+                            "datasource_ids": [module.DATASOURCE_ID],
                         },
                     )
                 ]
@@ -335,6 +338,13 @@ def test_backup_and_restore_skills_include_user_preferences():
     assert "DELETE FROM custom_prompt" in written
     assert "UPDATE custom_prompt" in written
     assert "INSERT INTO custom_prompt_user_preference" in written
+    update_params = next(
+        params
+        for sql, params in cursor.statements
+        if sql.startswith("UPDATE custom_prompt")
+    )
+    datasource_ids_index = module._RESTORE_SKILL_COLUMNS.index("datasource_ids")
+    assert isinstance(update_params[datasource_ids_index], module.Jsonb)
 
 
 def test_verify_embeddings_checks_vector_dimension_and_signature():
@@ -410,3 +420,27 @@ def test_main_fails_when_embedding_cannot_be_saved(monkeypatch):
     assert connection.rolled_back is True
     written_sql = " ".join(connection.cursor_instance.statements)
     assert "DELETE FROM custom_prompt" in written_sql
+    calls = connection.cursor_instance.calls
+    lock_index = next(
+        index
+        for index, (sql, _params) in enumerate(calls)
+        if "pg_advisory_lock(" in sql
+    )
+    backup_index = next(
+        index
+        for index, (sql, _params) in enumerate(calls)
+        if "SELECT to_jsonb(cp)" in sql
+    )
+    restore_index = max(
+        index
+        for index, (sql, _params) in enumerate(calls)
+        if sql.startswith("DELETE FROM custom_prompt")
+    )
+    unlock_index = next(
+        index
+        for index, (sql, _params) in enumerate(calls)
+        if "pg_advisory_unlock(" in sql
+    )
+    assert lock_index < backup_index < restore_index < unlock_index
+    assert calls[lock_index][1] == (module.PUBLISH_LOCK_KEY,)
+    assert calls[unlock_index][1] == (module.PUBLISH_LOCK_KEY,)
