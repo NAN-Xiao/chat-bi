@@ -278,7 +278,9 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
     dashboards, repairs, skills, backup_path = _install_read_phases(monkeypatch, calls)
     skill_backup = {"skills": [{"id": 7}], "preferences": []}
     ids = list(range(100, 113))
+    update_times: list[int] = []
 
+    monkeypatch.setattr(publisher.time, "time", lambda: 1784175253.987)
     monkeypatch.setattr(
         publisher,
         "acquire_publish_lock",
@@ -289,8 +291,9 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
         "release_publish_lock",
         lambda connection: calls.append(f"unlock:{connection.name}"),
     )
+
     def apply_dashboards(connection, rows, rewritten, **kwargs):
-        assert type(kwargs["update_time"]) is int
+        update_times.append(kwargs["update_time"])
         calls.append("apply_dashboards")
         return 4
 
@@ -358,6 +361,8 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
     assert "lock:system-recovery" not in calls
     assert backup_path == Path("backup/20260716-120000")
     assert len(repairs) == 11
+    assert type(update_times[0]) is int
+    assert update_times == [1784175253]
     assert len(skills) == 13
 
 
