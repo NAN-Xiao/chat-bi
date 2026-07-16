@@ -19,6 +19,7 @@ import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { useUserStore } from '@/stores/user'
 import { useRoiDashboardStore } from '@/stores/roiDashboard'
+import { shouldInitializeOrdinaryDashboardCanvas } from '@/views/dashboard/roi/roiNavigationBehavior'
 import {
   applyMixedChartResult,
   canRefreshMixedChart,
@@ -902,7 +903,12 @@ const resourceNodeClick = (prams: any) => {
 
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
 onBeforeMount(() => {
-  if (showPosition.value === 'preview') {
+  if (
+    shouldInitializeOrdinaryDashboardCanvas(
+      showPosition.value,
+      routeDashboardMode.value
+    )
+  ) {
     dashboardStore.canvasDataInit()
   }
 })

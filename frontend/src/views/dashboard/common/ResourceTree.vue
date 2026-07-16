@@ -31,8 +31,12 @@ import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
 import { useRoiDashboardStore } from '@/stores/roiDashboard'
-import { canManageWorkspaceRole } from '@/utils/workspacePermission'
+import { canAccessRoiDashboard } from '@/utils/workspacePermission'
 import type { RoiDashboard } from '@/views/dashboard/roi/types'
+import {
+  createDashboardNodeClickPlan,
+  publishCurrentTreeBranch,
+} from '@/views/dashboard/roi/roiNavigationBehavior'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import {
@@ -137,7 +141,7 @@ const treeBusy = computed(() => treeLoading.value || copyLoading.value)
 
 const canEditDefaultOrder = computed<boolean>(() => userStore.isTenantAdminUser === true)
 const canManageCurrentWorkspace = computed<boolean>(() =>
-  canManageWorkspaceRole(userStore.getTenantRole)
+  canAccessRoiDashboard(userStore)
 )
 const isCombinedDashboardTree = computed<boolean>(() => !props.defaultMode)
 const treeEditButtonTip = computed(() =>
@@ -518,10 +522,13 @@ const emitDashboardNodeClick = (data?: SQTreeNode) => {
 }
 
 const nodeClick = (data: SQTreeNode, node: any) => {
-  dashboardStore.setCurComponent({ component: null, index: null })
   if (isVirtualNode(data)) {
     resourceListTree.value?.setCurrentKey?.(null)
     return
+  }
+  const clickPlan = createDashboardNodeClickPlan(getDashboardScope(data))
+  if (clickPlan.resetOrdinaryDashboardSelection) {
+    dashboardStore.setCurComponent({ component: null, index: null })
   }
   if (node.disabled) {
     nextTick(() => {
@@ -537,8 +544,8 @@ const nodeClick = (data: SQTreeNode, node: any) => {
       if (isDefaultDashboardNode(data)) {
         rememberDefaultDashboardId(getRawDashboardId(data), userStore)
       }
-      syncDashboardRoute(data)
-      emitDashboardNodeClick(data)
+      if (clickPlan.syncRoute) syncDashboardRoute(data)
+      if (clickPlan.emitNodeClick) emitDashboardNodeClick(data)
     } else {
       resourceListTree.value.setCurrentKey(null)
     }
@@ -678,24 +685,22 @@ const getTree = async () => {
     })
 
   if (canManageCurrentWorkspace.value) {
-    const roiListRequest = roiDashboardApi.list()
-    roiListRequest
-      .then((res) => {
-        roiNodes = res || []
-        roiDashboardStore.dashboards = res || []
-      })
-      .catch((error: any) => {
-        console.warn('加载 ROI 看板树失败', error)
-        roiNodes = []
-        roiDashboardStore.dashboards = []
-      })
-      .finally(() => {
+    void publishCurrentTreeBranch({
+      request: roiDashboardApi.list(),
+      isCurrent: () =>
+        isCurrentTreeRequest() && datasourceContext.datasourceId === requestDatasourceId,
+      publish: (nodes) => {
+        roiNodes = nodes
+      },
+      onError: (error) => console.warn('加载 ROI 看板树失败', error),
+      complete: () => {
         roiLoaded = true
         handleTreeBranchLoaded()
         if (defaultLoaded && myLoaded && isCurrentTreeRequest()) {
           treeLoading.value = false
         }
-      })
+      },
+    })
   }
 
   const myListRequest = requestDatasourceId

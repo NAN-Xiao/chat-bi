@@ -11,6 +11,15 @@ assert.match(previewSource, /if \(dashboardMode === ROI_SCOPE\)[\s\S]*return/)
 assert.match(previewSource, /useRoiDashboardStore/)
 assert.match(previewSource, /roiDashboardStore\.reset\(\)/)
 assert.match(previewSource, /<RoiDashboardPanel[\s\S]*dashboard-id="routeDashboardId"/)
+assert.match(previewSource, /shouldInitializeOrdinaryDashboardCanvas/)
+
+const beforeMount = previewSource.match(/onBeforeMount\(\(\) => \{([\s\S]*?)\n\}\)/)
+assert.ok(beforeMount, '挂载初始化入口必须存在')
+assert.ok(
+  beforeMount[1].indexOf('shouldInitializeOrdinaryDashboardCanvas(') <
+    beforeMount[1].indexOf('dashboardStore.canvasDataInit()'),
+  '普通画布初始化前必须先判断当前是否为 ROI 路由'
+)
 
 const loadCanvasData = previewSource.match(
   /const loadCanvasData = \(params: any\) => \{([\s\S]*?)\n\}/

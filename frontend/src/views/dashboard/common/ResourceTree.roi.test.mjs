@@ -8,7 +8,7 @@ const source = readFileSync(join(currentDir, 'ResourceTree.vue'), 'utf8')
 
 assert.match(source, /type DashboardScope = 'default' \| 'roi' \| 'my'/)
 assert.match(source, /canManageCurrentWorkspace/)
-assert.match(source, /canManageWorkspaceRole\(userStore\.getTenantRole\)/)
+assert.match(source, /canAccessRoiDashboard\(userStore\)/)
 assert.match(source, /buildCombinedTree\(defaultNodes, roiNodes, myNodes\)/)
 assert.ok(source.indexOf('DEFAULT_GROUP_ID') < source.indexOf('ROI_GROUP_ID'))
 assert.ok(source.indexOf('ROI_GROUP_ID') < source.indexOf('MY_GROUP_ID'))
@@ -18,6 +18,11 @@ assert.match(source, /`\$\{ROI_SCOPE\}:\$\{dashboardId\}`/)
 assert.match(source, /roiDashboardApi\.list\(\)/)
 assert.match(source, /dashboardMode/)
 assert.match(source, /ROI_SCOPE/)
+assert.doesNotMatch(source, /roiDashboardStore\.dashboards\s*=/)
+assert.match(
+  source,
+  /const clickPlan = createDashboardNodeClickPlan\(getDashboardScope\(data\)\)[\s\S]*if \(clickPlan\.resetOrdinaryDashboardSelection\)/
+)
 
 const roiMenu = source.match(
   /if \(isRoiGroupNode\(data\)\) \{([\s\S]*?)\r?\n  \}\r?\n  if \(isDefaultGroupNode/

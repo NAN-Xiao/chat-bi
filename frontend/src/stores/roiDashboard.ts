@@ -1,6 +1,16 @@
 import { defineStore } from 'pinia'
 import { roiDashboardApi } from '@/api/roiDashboard'
 import type { RoiChart, RoiConfig, RoiDashboard, RoiEditorState } from '@/views/dashboard/roi/types'
+import {
+  beginRoiRequest,
+  createRoiRequestState,
+  finishRoiRequest,
+  getRoiPermissionError,
+  isLatestRoiRequest,
+  isRoiRequestLoading,
+  resetRoiRequests,
+  setRoiPermissionError,
+} from '@/stores/roiRequestCoordinator'
 
 const createEditorState = (): RoiEditorState => ({
   datasourceDialogOpen: false,
@@ -20,52 +30,66 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
     loading: false,
     permissionError: '',
     editorState: createEditorState(),
+    requestState: createRoiRequestState(),
   }),
   actions: {
+    syncRequestState() {
+      this.loading = isRoiRequestLoading(this.requestState)
+      this.permissionError = getRoiPermissionError(this.requestState)
+    },
     async loadConfig() {
-      this.loading = true
-      this.permissionError = ''
+      const request = beginRoiRequest(this.requestState, 'config')
+      this.syncRequestState()
       try {
-        this.config = await roiDashboardApi.getConfig()
-        return this.config
+        const result = await roiDashboardApi.getConfig()
+        if (isLatestRoiRequest(this.requestState, request)) this.config = result
+        return result
       } catch (error) {
-        if (errorStatus(error) === 403) this.permissionError = '没有管理 ROI 看板的权限'
+        if (errorStatus(error) === 403) {
+          setRoiPermissionError(this.requestState, request, '没有管理 ROI 看板的权限')
+        }
         throw error
       } finally {
-        this.loading = false
+        if (finishRoiRequest(this.requestState, request)) this.syncRequestState()
       }
     },
     async loadDashboards() {
-      this.loading = true
-      this.permissionError = ''
+      const request = beginRoiRequest(this.requestState, 'dashboards')
+      this.syncRequestState()
       try {
-        this.dashboards = await roiDashboardApi.list()
-        return this.dashboards
+        const result = await roiDashboardApi.list()
+        if (isLatestRoiRequest(this.requestState, request)) this.dashboards = result
+        return result
       } catch (error) {
-        if (errorStatus(error) === 403) this.permissionError = '没有管理 ROI 看板的权限'
+        if (errorStatus(error) === 403) {
+          setRoiPermissionError(this.requestState, request, '没有管理 ROI 看板的权限')
+        }
         throw error
       } finally {
-        this.loading = false
+        if (finishRoiRequest(this.requestState, request)) this.syncRequestState()
       }
     },
     async loadCharts(dashboardId: string) {
-      this.loading = true
-      this.permissionError = ''
+      const request = beginRoiRequest(this.requestState, `charts:${dashboardId}`, 'charts')
+      this.syncRequestState()
       try {
         const result = await roiDashboardApi.listCharts(dashboardId)
-        this.charts[dashboardId] = result
+        if (isLatestRoiRequest(this.requestState, request)) this.charts[dashboardId] = result
         return result
       } catch (error) {
-        if (errorStatus(error) === 403) this.permissionError = '没有执行 ROI 图表的权限'
+        if (errorStatus(error) === 403) {
+          setRoiPermissionError(this.requestState, request, '没有执行 ROI 图表的权限')
+        }
         throw error
       } finally {
-        this.loading = false
+        if (finishRoiRequest(this.requestState, request)) this.syncRequestState()
       }
     },
     openDatasourceSettings() {
       this.editorState.datasourceDialogOpen = true
     },
     reset() {
+      resetRoiRequests(this.requestState)
       this.config = null
       this.dashboards = []
       this.charts = {}
