@@ -8,6 +8,7 @@ import { dashboardApi } from '@/api/dashboard.ts'
 import ResourceTree from '@/views/dashboard/common/ResourceTree.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
+import RoiDashboardPanel from '@/views/dashboard/roi/RoiDashboardPanel.vue'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
@@ -17,6 +18,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { useUserStore } from '@/stores/user'
+import { useRoiDashboardStore } from '@/stores/roiDashboard'
 import {
   applyMixedChartResult,
   canRefreshMixedChart,
@@ -40,6 +42,7 @@ const router = useRouter()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
+const roiDashboardStore = useRoiDashboardStore()
 const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
 const slideShow = ref(true)
@@ -86,6 +89,7 @@ const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
 const CHART_TRANSIENT_MAX_RETRIES = 6
 const DASHBOARD_MODE_DEFAULT = 'default'
 const DASHBOARD_MODE_MY = 'my'
+const ROI_SCOPE = 'roi'
 const permissionDeniedCharts = createPermissionDeniedChartRegistry()
 
 function clampChartLoadingProgress(progress: unknown) {
@@ -111,18 +115,25 @@ const hasTreeData = computed(() => {
 const mounted = computed(() => {
   return resourceTreeRef.value?.mounted
 })
-const canCreateDashboard = computed(() => {
-  return !props.defaultMode && resourceTreeRef.value?.canCreateDashboard === true
-})
 const routeDashboardId = computed(() => {
   const resourceId = route.query.resourceId || route.query.dashboardId
-  return Array.isArray(resourceId) ? resourceId[0] : resourceId
+  const value = Array.isArray(resourceId) ? resourceId[0] : resourceId
+  return value ? String(value) : ''
 })
 const routeDashboardMode = computed(() => {
   const mode = Array.isArray(route.query.dashboardMode)
     ? route.query.dashboardMode[0]
     : route.query.dashboardMode
+  if (mode === ROI_SCOPE) return ROI_SCOPE
   return mode === DASHBOARD_MODE_DEFAULT ? DASHBOARD_MODE_DEFAULT : DASHBOARD_MODE_MY
+})
+const isRoiDashboardMode = computed(() => routeDashboardMode.value === ROI_SCOPE)
+const canCreateDashboard = computed(() => {
+  return (
+    !props.defaultMode &&
+    !isRoiDashboardMode.value &&
+    resourceTreeRef.value?.canCreateDashboard === true
+  )
 })
 const previewLoading = computed(
   () =>
@@ -146,9 +157,13 @@ const resetPreviewState = () => {
   stateInit()
 }
 const resolveDashboardMode = (params?: any) =>
-  props.defaultMode || params?.dashboardScope === DASHBOARD_MODE_DEFAULT
+  props.defaultMode
     ? DASHBOARD_MODE_DEFAULT
-    : DASHBOARD_MODE_MY
+    : params?.dashboardScope === ROI_SCOPE
+      ? ROI_SCOPE
+      : params?.dashboardScope === DASHBOARD_MODE_DEFAULT
+        ? DASHBOARD_MODE_DEFAULT
+        : DASHBOARD_MODE_MY
 
 const currentDashboardMode = () =>
   (state.dashboardInfo as any)?.dashboardMode ||
@@ -768,6 +783,13 @@ function scheduleDashboardChartRefresh(loadVersion: number, delay = CHART_CACHE_
 const loadCanvasData = (params: any) => {
   const resourceId = params?.id ? String(params.id) : ''
   const dashboardMode = resolveDashboardMode(params)
+  if (dashboardMode === ROI_SCOPE) {
+    cancelDashboardWork()
+    loadingDashboardId.value = null
+    dataInitState.value = true
+    stateInit()
+    return
+  }
   const loadingKey = `${dashboardMode}:${resourceId}`
   const forceReload = params?.forceReload === true
   if (
@@ -886,10 +908,15 @@ onBeforeMount(() => {
 })
 onBeforeUnmount(() => {
   cancelDashboardWork()
+  roiDashboardStore.reset()
 })
 watch(
   () => [routeDashboardId.value, routeDashboardMode.value],
-  ([resourceId, dashboardMode]) => {
+  ([resourceId, dashboardMode], previous) => {
+    const previousMode = previous?.[1]
+    if (previousMode === ROI_SCOPE && dashboardMode !== ROI_SCOPE) {
+      roiDashboardStore.reset()
+    }
     if (!props.defaultMode && resourceId) {
       loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })
     } else if (!props.defaultMode && !resourceId) {
@@ -901,6 +928,7 @@ watch(
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,
   callback: () => {
+    roiDashboardStore.reset()
     resetPreviewState()
   },
 })
@@ -957,12 +985,18 @@ defineExpose({
     <section
       class="preview-area"
       :class="{
-        'is-empty': !previewShowFlag,
+        'is-empty': !isRoiDashboardMode && !previewShowFlag,
         'sidebar-collapsed': !sideTreeStatus,
         'sidebar-collapsed-with-create': !sideTreeStatus && canCreateDashboard,
       }"
     >
       <div class="preview-stage">
+        <!-- dashboardMode=roi 使用独立 RoiDashboardPanel。 -->
+        <RoiDashboardPanel
+          v-if="isRoiDashboardMode"
+          :dashboard-id="routeDashboardId"
+        />
+        <template v-else>
         <SQPreviewHead
           :dashboard-info="previewShowFlag ? state.dashboardInfo : {}"
           :component-data="state.canvasDataPreview"
@@ -1008,6 +1042,7 @@ defineExpose({
             img-type="none"
           />
         </div>
+        </template>
       </div>
     </section>
   </div>
