@@ -53,6 +53,20 @@ REPAIR_SOURCE_HASHES = {
     "fc272fe6a3a74cda90a0564a98890fab": "27ebb37991f8177f460650ac359a8aedbd4dc06033ca5a8cb7293c71b2a7a9fe",
 }
 
+REPAIR_REWRITTEN_HASHES = {
+    "95d8497afac14f0a90342031fb43bc04": "36f5714a35183d85dd31cdc616737bbf640b710aac719c45ebc55a6c40b047d8",
+    "f499305aa9b44a209cbe72cb68985a46": "47f545ada5c373071bd931fc2417e3776a126b0ce7023d6d4f99294617f0a4c2",
+    "f99d0fb5f3624192953bdbfa31549abd": "4768e6bb90ac78b228f5e922d2a2a77f8feb2c20b00e4791e291d0654e346a87",
+    "531bc723e3cb42f0a1fe2c412d7f05b0": "ad9403d682dfb90361e2948e38bd8dffc8cc9d57fda60c79215a1615d144a015",
+    "b0f27793e48349c1a6a7fbf40ff03ffd": "cb57cd6b1ebb97abfc7fa429a47351374c486ee32d0bdaadfeca572a8f3718cc",
+    "a6eb26710f7b4dc6ab69ded704c32fee": "a856371f195f7652c5c4859f09073c8bcc0393fc9f5a8374d4f571bd7df6db82",
+    "0369399df2eb4a3299d6d34f9663101b": "542e4f6c1d3ae539e56759060550552967fcb20dcca9763274e38b21b725603a",
+    "ad88b71e2b08435c8c7a0606c5579f30": "70f9183d9fc1b391e2d67337f3af61ed80a64ea9369f130291b9dc471dd17e76",
+    "d4675e033a9c4d4881264a66861b066e": "ddc6a95b2b447f5e59bef028b4493507db99877feef3bb1a28ab458cea482d54",
+    "e797a8af6785452e9fdcee7d80786b6e": "4768e6bb90ac78b228f5e922d2a2a77f8feb2c20b00e4791e291d0654e346a87",
+    "fc272fe6a3a74cda90a0564a98890fab": "e448105b7d97c0502bcd4a346caac552dcabe966940383f664139e43faf953e9",
+}
+
 
 class SourceSqlChangedError(ValueError):
     """原 SQL 不属于已审核白名单或内容已经漂移。"""
@@ -80,11 +94,22 @@ class RepairSpec:
 
     view_id: str
     source_sha256: str
+    rewritten_sha256: str
     scalar_ctes: frozenset[str] = ALLOWED_SCALAR_CTES
+    rewritten_scalar_lineage_hints: tuple[tuple[str, frozenset[str]], ...] = ()
 
 
 REPAIR_SPECS = {
-    view_id: RepairSpec(view_id=view_id, source_sha256=source_sha256)
+    view_id: RepairSpec(
+        view_id=view_id,
+        source_sha256=source_sha256,
+        rewritten_sha256=REPAIR_REWRITTEN_HASHES[view_id],
+        rewritten_scalar_lineage_hints=(
+            (("cohort", frozenset({"max_dt"})),)
+            if view_id == "fc272fe6a3a74cda90a0564a98890fab"
+            else ()
+        ),
+    )
     for view_id, source_sha256 in REPAIR_SOURCE_HASHES.items()
 }
 
@@ -107,16 +132,18 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _require_source_hash(view_id: str, sql: str) -> RepairSpec:
+def _require_source_hash(view_id: str, sql: str) -> tuple[RepairSpec, bool]:
     spec = REPAIR_SPECS.get(view_id)
     if spec is None:
         raise SourceSqlChangedError(f"抽屉 {view_id} 不在 SQL 改写白名单中")
     actual = _sha256_text(sql)
-    if actual != spec.source_sha256:
-        raise SourceSqlChangedError(
-            f"抽屉 {view_id} 的原 SQL SHA-256 已变化，拒绝自动改写"
-        )
-    return spec
+    if actual == spec.source_sha256:
+        return spec, False
+    if actual == spec.rewritten_sha256:
+        return spec, True
+    raise SourceSqlChangedError(
+        f"抽屉 {view_id} 的 SQL SHA-256 既不是原始版本也不是已审核改写版本，拒绝自动改写"
+    )
 
 
 def _parse_mysql(sql: str) -> exp.Expression:
@@ -1242,7 +1269,14 @@ def validate_rewritten_sql(
 def rewrite_bounds_sql(view_id: str, sql: str) -> str:
     """在 SHA 白名单约束下把 bounds 标量值内联到日期谓词。"""
 
-    spec = _require_source_hash(view_id, sql)
+    spec, already_rewritten = _require_source_hash(view_id, sql)
+    if already_rewritten:
+        validate_rewritten_sql(
+            sql,
+            _scalar_lineage_hints=dict(spec.rewritten_scalar_lineage_hints),
+        )
+        return sql
+
     scalar_lineage_hints = _scalar_lineage_hints_from_original(sql)
     tree = _parse_mysql(sql)
     original_surface = _surface_signature(tree)
@@ -1258,6 +1292,8 @@ def rewrite_bounds_sql(view_id: str, sql: str) -> str:
         rewritten,
         _scalar_lineage_hints=scalar_lineage_hints,
     )
+    if _sha256_text(rewritten) != spec.rewritten_sha256:
+        raise UnsafeRewriteError("改写结果 SHA-256 与已审核版本不一致")
     if _surface_signature(_parse_mysql(rewritten)) != original_surface:
         raise UnsafeRewriteError("SQL 序列化改变了业务表面签名")
     return rewritten

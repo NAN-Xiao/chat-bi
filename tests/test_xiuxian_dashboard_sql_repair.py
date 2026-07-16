@@ -231,6 +231,34 @@ def test_fixture_is_exactly_the_eleven_whitelisted_sql_statements():
     } == repair.REPAIR_SOURCE_HASHES
 
 
+def test_rewritten_hash_catalog_matches_deterministic_rewrite_output():
+    assert set(repair.REPAIR_REWRITTEN_HASHES) == set(repair.REPAIR_SOURCE_HASHES)
+    assert {
+        view_id: repair._sha256_text(repair.rewrite_bounds_sql(view_id, source_sql))
+        for view_id, source_sql in SQL_BY_VIEW.items()
+    } == repair.REPAIR_REWRITTEN_HASHES
+
+
+@pytest.mark.parametrize("fixture", FIXTURES, ids=lambda item: item["view_id"])
+def test_rewrite_is_idempotent_for_all_whitelisted_sql(fixture):
+    once = repair.rewrite_bounds_sql(fixture["view_id"], fixture["sql"])
+
+    assert repair.rewrite_bounds_sql(fixture["view_id"], once) == once
+
+
+def test_already_rewritten_sql_is_revalidated(monkeypatch):
+    view_id = "95d8497afac14f0a90342031fb43bc04"
+    once = repair.rewrite_bounds_sql(view_id, SQL_BY_VIEW[view_id])
+
+    def reject_rewritten_sql(*_args, **_kwargs):
+        raise repair.UnsafeRewriteError("rewritten safety validation marker")
+
+    monkeypatch.setattr(repair, "validate_rewritten_sql", reject_rewritten_sql)
+
+    with pytest.raises(repair.UnsafeRewriteError, match="safety validation marker"):
+        repair.rewrite_bounds_sql(view_id, once)
+
+
 def test_unknown_view_fails_closed():
     with pytest.raises(repair.SourceSqlChangedError, match="白名单"):
         repair.rewrite_bounds_sql("unknown-view", next(iter(SQL_BY_VIEW.values())))
@@ -240,6 +268,15 @@ def test_source_byte_drift_fails_closed():
     view_id = "95d8497afac14f0a90342031fb43bc04"
     with pytest.raises(repair.SourceSqlChangedError, match="SHA-256"):
         repair.rewrite_bounds_sql(view_id, SQL_BY_VIEW[view_id] + "\n")
+
+
+def test_third_sql_variant_still_fails_closed_after_idempotency_support():
+    view_id = "95d8497afac14f0a90342031fb43bc04"
+    once = repair.rewrite_bounds_sql(view_id, SQL_BY_VIEW[view_id])
+    unknown_variant = once.replace("110000047", "110000048", 1)
+
+    with pytest.raises(repair.SourceSqlChangedError, match="SHA-256"):
+        repair.rewrite_bounds_sql(view_id, unknown_variant)
 
 
 def test_rewrite_removes_direct_bounds_join():
