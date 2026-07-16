@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 先完整备份修仙推荐看板全部抽屉 SQL，在证明 11 条日期边界 SQL 结果等价后完成看板修复，再把 44 个非空组件拆成 12 个主题 Data Skill，发布到 datasource 6 并刷新 embedding。
+**Goal:** 先完整备份修仙推荐看板全部抽屉 SQL，在证明 11 条日期边界 SQL 结果等价后完成看板修复，再把当前 45 个非空组件拆成 12 个主题 Data Skill，发布到 datasource 6 并刷新 embedding。
 
 **Architecture:** 用显式 view id 目录和当前 SQL SHA-256 白名单锁定处理范围；备份、AST 改写、结果等价比较、执行计划检查、系统库 compare-and-set 更新和 Skill 发布彼此独立。统一发布器默认 dry-run，只有备份与全部验证通过后才允许 apply；embedding 不完整时恢复 Skill 记录。
 
@@ -12,13 +12,13 @@
 
 - 只处理 tenant `7482727237662281728` 和 datasource `6`，不得影响其他工作空间或数据源。
 - 任何 SQL 改写、结果验证、系统库更新或 Skill 发布前，必须备份 9 个推荐看板、45 个抽屉 SQL 和完整 `canvas_view_info`。
-- 备份必须验证为 9 个看板、45 个抽屉、44 个非空抽屉，且所有文件 SHA-256 正确；失败时立即终止。
+- 备份必须验证为 9 个看板、45 个抽屉、45 个非空抽屉，且所有文件、SQL 和 manifest SHA-256 正确；失败时立即终止。
 - 真实交易以 `ServerPayLog` 为准：金额 `personal.money`、订单 `personal.orderId`、商品 `personal.productid`、用户 `uid`。
 - `PayBuyRet` 只允许用于支付流程/结果事件分布，不得作为收入、真实订单数、付费人数、ARPU 或 ARPPU 主来源。
 - 修复 SQL 只能改变日期边界提供方式；字段、事件、JSON 路径、业务 JOIN、聚合、分组、排序、LIMIT 和图表绑定保持不变。
 - 原 SQL 与改写 SQL 必须在冻结的同一 `CURDATE()` 下字段、行数和所有值等价；任一失败则整批停止。
 - 每个读取 `event` 或 `user` 的大表别名直接限制 `dt`；禁止日期 `bounds` CTE 关联大表和 `MAX(dt)` 探测。
-- 44 个非空 view id 必须全部且仅归属一个主题；空 view `1e4e34743f2d47dfa1c2948742b93a50` 必须排除。
+- 45 个非空 view id 必须全部且仅归属一个主题；`1e4e34743f2d47dfa1c2948742b93a50` 归入订单、礼包、月卡与支付流程主题。
 - 12 个看板主题 Skill 每个最多 6 个 `dashboard-sql` 块，Prompt 不超过 15,000 字符；不得静默截断。
 - 最终必须有 13 条修仙 Skill：1 条共享日期基础 Skill和 12 条看板主题 Skill。
 - 实施时先用 `using-git-worktrees` 创建隔离 worktree；不要触碰当前工作区中用户已有的其他修改。
@@ -27,8 +27,8 @@
 
 ## File Structure
 
-- Create `tools/xiuxian_dashboard_skill_catalog.py`: 主题定义、44 个 view id 唯一映射、Skill 文本边界和旧 marker 迁移信息。
-- Create `tools/xiuxian_dashboard_snapshot.py`: 从系统库读取推荐看板、生成并校验 9/45/44 强制备份。
+- Create `tools/xiuxian_dashboard_skill_catalog.py`: 主题定义、45 个 view id 唯一映射、Skill 文本边界和旧 marker 迁移信息。
+- Create `tools/xiuxian_dashboard_snapshot.py`: 从系统库读取推荐看板、生成并校验 9/45/45 强制备份。
 - Create `tools/xiuxian_dashboard_sql_repair.py`: 11 条 SQL 白名单、受限 AST 改写、冻结日期、结果比较、EXPLAIN 门禁和 compare-and-set 更新。
 - Modify `tools/seed_xiuxian_data_skills.py`: 从目录和看板快照生成 13 条 Skill、迁移付费 marker、幂等 upsert、恢复和 embedding 校验。
 - Create `tools/publish_xiuxian_dashboard_data_skills.py`: dry-run/apply 编排入口，确保备份、验证、更新和发布顺序不可绕过。
@@ -41,7 +41,7 @@
 
 ---
 
-### Task 1: 建立 44 个组件的唯一主题目录
+### Task 1: 建立 45 个组件的唯一主题目录
 
 **Files:**
 - Create: `tools/xiuxian_dashboard_skill_catalog.py`
@@ -57,10 +57,10 @@
 def test_catalog_maps_all_nonempty_views_once():
     mapped = [view_id for topic in catalog.TOPICS for view_id in topic.view_ids]
     assert len(catalog.TOPICS) == 12
-    assert len(mapped) == 44
-    assert len(set(mapped)) == 44
+    assert len(mapped) == 45
+    assert len(set(mapped)) == 45
     assert set(mapped) == catalog.EXPECTED_VIEW_IDS
-    assert catalog.EMPTY_VIEW_ID not in mapped
+    assert "1e4e34743f2d47dfa1c2948742b93a50" in mapped
 
 
 def test_catalog_enforces_topic_size():
@@ -86,7 +86,6 @@ class TopicDefinition:
     guidance: str
 
 
-EMPTY_VIEW_ID = "1e4e34743f2d47dfa1c2948742b93a50"
 MAX_SQL_BLOCKS_PER_SKILL = 6
 MAX_PROMPT_CHARS = 15_000
 
@@ -118,9 +117,9 @@ TOPICS = (
     TopicDefinition("payer-penetration", "修仙付费用户、渗透与累计付费", "付费用户、渗透率与累计金额。", (
         "95d8497afac14f0a90342031fb43bc04", "f499305aa9b44a209cbe72cb68985a46", "304e66bb74254b9e88d8711ce33d94cc", "e4b33de129da47629caa61612cca8100", "eba39b8352a34136872404c16fbd17a9", "fc272fe6a3a74cda90a0564a98890fab"),
         "日付费用户按 ServerPayLog.uid 去重；累计 paytotal 只用于明确的累计快照指标，不能替代当日收入。"),
-    TopicDefinition("orders-products", "修仙订单、礼包与支付流程", "订单、商品、礼包和支付流程事件。", (
-        "bcd7dc9ca6c349909fa74c8d4b0502d7", "ab85f87857774883833dbca9b5ea41ba", "e65001c16c52433e8afac84c6b2c92a0"),
-        "真实订单和商品使用 ServerPayLog.orderId/productid；PayBuyRet 仅描述流程事件分布，不命名为真实交易。"),
+    TopicDefinition("orders-products", "修仙订单、礼包、月卡与支付流程", "订单、商品、礼包、月卡留存和支付流程事件。", (
+        "bcd7dc9ca6c349909fa74c8d4b0502d7", "ab85f87857774883833dbca9b5ea41ba", "e65001c16c52433e8afac84c6b2c92a0", "1e4e34743f2d47dfa1c2948742b93a50"),
+        "真实订单和商品使用 ServerPayLog.personal.orderId/personal.productid；月卡购买 cohort 使用 ServerPayLog，留存活跃使用 UserActive；PayBuyRet 仅描述流程事件分布，不命名为真实交易。"),
     TopicDefinition("player-snapshot", "修仙当前等级、付费分层与用户快照", "当前等级和付费分层。", (
         "7f71477b49404ad289485f4f22d34c2f", "3a449b3049314a668661ae65f70e38f1"),
         "当前分布读取目标日期 user 快照；等级段人均累计付费使用 paytotal，并明确其累计快照语义。"),
@@ -137,9 +136,9 @@ TOPICS = (
 ```python
 def validate_catalog() -> None:
     mapped = [view_id for topic in TOPICS for view_id in topic.view_ids]
-    if len(TOPICS) != 12 or len(mapped) != 44 or len(set(mapped)) != 44:
+    if len(TOPICS) != 12 or len(mapped) != 45 or len(set(mapped)) != 45:
         raise ValueError("修仙推荐看板 Skill 目录数量或唯一性错误")
-    if set(mapped) != EXPECTED_VIEW_IDS or EMPTY_VIEW_ID in mapped:
+    if set(mapped) != EXPECTED_VIEW_IDS:
         raise ValueError("修仙推荐看板 Skill 目录存在遗漏或错误组件")
     if any(len(topic.view_ids) > MAX_SQL_BLOCKS_PER_SKILL for topic in TOPICS):
         raise ValueError("单个修仙 Data Skill 超过 SQL 块上限")
@@ -158,7 +157,7 @@ git commit -m "功能：建立修仙看板技能主题目录"
 
 ---
 
-### Task 2: 实现不可绕过的 9/45/44 备份门禁
+### Task 2: 实现不可绕过的 9/45/45 备份门禁
 
 **Files:**
 - Create: `tools/xiuxian_dashboard_snapshot.py`
@@ -172,17 +171,17 @@ git commit -m "功能：建立修仙看板技能主题目录"
 
 ```python
 def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
-    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=44)
+    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=45)
     path = snapshot.write_verified_backup(dashboards, tmp_path, timestamp="20260716-120000")
     manifest = snapshot.verify_backup(path)
     assert manifest.dashboard_count == 9
     assert manifest.drawer_count == 45
-    assert manifest.nonempty_drawer_count == 44
+    assert manifest.nonempty_drawer_count == 45
     assert len(list((path / "dashboards").glob("*.json"))) == 9
 
 
 def test_backup_refuses_existing_directory(tmp_path):
-    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=44)
+    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=45)
     snapshot.write_verified_backup(dashboards, tmp_path, timestamp="20260716-120000")
     with pytest.raises(FileExistsError):
         snapshot.write_verified_backup(dashboards, tmp_path, timestamp="20260716-120000")
@@ -235,7 +234,7 @@ def write_verified_backup(dashboards, backup_root: Path, timestamp: str) -> Path
     return target
 ```
 
-写文件使用临时文件加 `Path.replace()`；`verify_backup` 重新读取全部 JSON，重新计算文件和 SQL 哈希，并严格检查 9/45/44。
+写入使用同级 staging 目录；`verify_backup` 重新读取全部 JSON，重新计算文件、SQL 和 manifest payload 哈希并严格检查 9/45/45，验签通过后再用 `Path.replace()` 原子发布最终目录，异常时清理 staging。
 
 - [ ] **Step 5: 运行测试并提交**
 
@@ -256,7 +255,7 @@ git commit -m "功能：备份修仙推荐看板抽屉SQL"
 backend\.venv\Scripts\python.exe tools\xiuxian_dashboard_snapshot.py backup
 ```
 
-Expected: 输出 `.codex-runtime/xiuxian-dashboard-sql-backups/<timestamp>` 绝对路径，并报告 `dashboards=9 drawers=45 nonempty=44 verified=true`。立即执行 `verify <path>`，两次校验结果必须一致。Task 3 的测试夹具只能从该已验证备份的 `drawer_sql.json` 提取，不能重新读取 live SQL 后绕过备份。
+Expected: 输出 `.codex-runtime/xiuxian-dashboard-sql-backups/<timestamp>` 绝对路径，并报告 `dashboards=9 drawers=45 nonempty=45 verified=true`。立即执行 `verify <path>`，两次校验结果必须一致。Task 3 的测试夹具只能从该已验证备份的 `drawer_sql.json` 提取，不能重新读取 live SQL 后绕过备份。
 
 ---
 
@@ -492,7 +491,7 @@ def test_serverpaylog_arppu_validation_rejects_paybuyret_revenue_sql():
 def test_build_data_skills_produces_one_base_and_twelve_topics(dashboard_snapshots):
     skills = seed.build_data_skills(dashboard_snapshots)
     assert len(skills) == 13
-    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in [s["prompt"] for s in skills]) == 44
+    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in [s["prompt"] for s in skills]) == 45
     assert all(len(s["prompt"]) <= 15_000 for s in skills)
 ```
 
@@ -717,7 +716,7 @@ backend\.venv\Scripts\python.exe tools\publish_xiuxian_dashboard_data_skills.py 
 
 Expected report:
 
-- backup verified: dashboards=9, drawers=45, nonempty=44
+- backup verified: dashboards=9, drawers=45, nonempty=45
 - repair candidates=11
 - equivalent results=11
 - safe explain plans=11
