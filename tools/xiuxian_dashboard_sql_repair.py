@@ -266,7 +266,7 @@ def _is_masked_date_value(expression: exp.Expression) -> bool:
     return (
         not any(True for _ in expression.find_all(exp.Column))
         and _has_date_origin(expression)
-        and _uses_only_date_lineage_operations(expression)
+        and _is_date_value_ast(expression)
     )
 
 
@@ -945,6 +945,13 @@ def _uses_only_date_lineage_operations(expression: exp.Expression) -> bool:
     )
 
 
+def _is_date_value_ast(expression: exp.Expression) -> bool:
+    return (
+        not any(True for _ in expression.find_all(exp.Predicate))
+        and _uses_only_date_lineage_operations(expression)
+    )
+
+
 def _has_proven_date_lineage(
     expression: exp.Expression,
     *,
@@ -954,31 +961,11 @@ def _has_proven_date_lineage(
 ) -> bool:
     if any(True for _ in expression.find_all(exp.Select)):
         return False
-    if any(
-        True
-        for _ in expression.find_all(
-            (
-                exp.Between,
-                exp.EQ,
-                exp.GT,
-                exp.GTE,
-                exp.LT,
-                exp.LTE,
-                exp.And,
-                exp.Or,
-                exp.Not,
-                exp.Case,
-                exp.If,
-            )
-        )
-    ):
+    if not _is_date_value_ast(expression):
         return False
     columns = list(expression.find_all(exp.Column))
     if not columns:
         return _has_date_origin(expression)
-    if not _uses_only_date_lineage_operations(expression):
-        return False
-
     for column in columns:
         alias = column.table.lower()
         name = column.name.lower()

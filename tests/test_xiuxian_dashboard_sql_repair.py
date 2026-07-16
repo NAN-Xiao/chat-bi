@@ -429,6 +429,22 @@ def test_business_equivalence_rejects_business_logic_inside_partition_term():
         repair.validate_business_equivalence(original, rewritten)
 
 
+def test_business_equivalence_rejects_boolean_partition_boundary():
+    original = (
+        "WITH bounds AS (SELECT 20260701 AS start_dt) "
+        "SELECT e.uid FROM event e "
+        "JOIN bounds b ON TRUE "
+        "WHERE e.dt >= b.start_dt"
+    )
+    rewritten = (
+        "SELECT e.uid FROM event e "
+        "WHERE e.dt >= (20260701 <> 20260702)"
+    )
+
+    with pytest.raises(repair.UnsafeRewriteError, match="业务 AST|日期"):
+        repair.validate_business_equivalence(original, rewritten)
+
+
 @pytest.mark.parametrize(
     "sql",
     [
@@ -487,6 +503,33 @@ def test_business_equivalence_rejects_business_logic_inside_partition_term():
             "SELECT u.uid FROM user u "
             "JOIN compared_dates c ON u.dt = c.boundary_dt"
         ),
+        (
+            "WITH compared_dates AS ("
+            "SELECT e.dt <> 20260701 AS boundary_dt "
+            "FROM event e "
+            "WHERE e.dt BETWEEN 20260701 AND 20260715"
+            ") "
+            "SELECT u.uid FROM user u "
+            "JOIN compared_dates c ON u.dt = c.boundary_dt"
+        ),
+        (
+            "WITH compared_dates AS ("
+            "SELECT e.dt IN (20260701) AS boundary_dt "
+            "FROM event e "
+            "WHERE e.dt BETWEEN 20260701 AND 20260715"
+            ") "
+            "SELECT u.uid FROM user u "
+            "JOIN compared_dates c ON u.dt = c.boundary_dt"
+        ),
+        (
+            "WITH compared_dates AS ("
+            "SELECT e.dt IS NULL AS boundary_dt "
+            "FROM event e "
+            "WHERE e.dt BETWEEN 20260701 AND 20260715"
+            ") "
+            "SELECT u.uid FROM user u "
+            "JOIN compared_dates c ON u.dt = c.boundary_dt"
+        ),
     ],
     ids=[
         "dimension-equality",
@@ -497,6 +540,9 @@ def test_business_equivalence_rejects_business_logic_inside_partition_term():
         "aggregated-dt-output",
         "bounded-cte-constant-output",
         "bounded-cte-boolean-output",
+        "bounded-cte-neq-output",
+        "bounded-cte-in-output",
+        "bounded-cte-is-output",
     ],
 )
 def test_validate_rewritten_sql_rejects_unproven_date_lineage(sql):
