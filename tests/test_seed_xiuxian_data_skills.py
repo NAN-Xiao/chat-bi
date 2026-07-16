@@ -581,3 +581,22 @@ def test_seed_cli_forwards_unknown_argument_to_publisher_parser(monkeypatch):
         runpy.run_path(str(SEED_SCRIPT), run_name="__main__")
 
     assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "mode_args",
+    (["--mod", "dry-run"], ["--m=dry-run"]),
+)
+def test_seed_cli_rejects_abbreviated_mode_arguments(monkeypatch, mode_args):
+    publisher = __import__("publish_xiuxian_dashboard_data_skills")
+    monkeypatch.setattr(
+        publisher,
+        "run_publish",
+        lambda **_kwargs: pytest.fail("缩写 mode 参数必须在运行发布前被拒绝"),
+    )
+    monkeypatch.setattr(sys, "argv", [str(SEED_SCRIPT), *mode_args])
+
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(str(SEED_SCRIPT), run_name="__main__")
+
+    assert exc_info.value.code == 2

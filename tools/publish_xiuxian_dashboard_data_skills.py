@@ -931,7 +931,7 @@ def _default_retrieval_checker(question: str) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument(
         "--mode",
         choices=("dry-run", "apply"),
