@@ -26,6 +26,7 @@ import {
 } from '@/views/dashboard/roi/roiNavigationBehavior'
 import {
   createRoiLandingRedirectCoordinator,
+  runRoiLandingRedirect,
   type RoiLandingRedirectSnapshot,
 } from '@/views/dashboard/roi/roiLandingRedirectCoordinator'
 import {
@@ -941,14 +942,18 @@ const redirectUnauthorizedRoi = async () => {
   dataInitState.value = true
   stateInit()
   const snapshot = currentRoiLandingSnapshot()
-  const pending = roiLandingRedirectCoordinator.redirect({
-    snapshot,
-    getCurrentSnapshot: currentRoiLandingSnapshot,
-    resolveLanding: () => resolveBusinessDashboardLandingTarget(userStore),
-    commit: async (target) => {
-      if (!isCurrentRouteTarget(target)) await router.replace(target)
-    },
-  })
+  const pending = runRoiLandingRedirect(
+    () =>
+      roiLandingRedirectCoordinator.redirect({
+        snapshot,
+        getCurrentSnapshot: currentRoiLandingSnapshot,
+        resolveLanding: () => resolveBusinessDashboardLandingTarget(userStore),
+        commit: async (target) => {
+          if (!isCurrentRouteTarget(target)) await router.replace(target)
+        },
+      }),
+    (error) => console.warn('ROI 看板无权限重定向失败', error)
+  )
   syncRoiLandingRedirecting()
   try {
     await pending

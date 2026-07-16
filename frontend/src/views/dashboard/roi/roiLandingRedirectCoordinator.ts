@@ -40,6 +40,8 @@ export const createRoiLandingRedirectCoordinator = () => {
         const target = await resolveLanding()
         if (activeToken !== token || !isSameSnapshot(snapshot, getCurrentSnapshot())) return
         await commit(target)
+      } catch (error) {
+        if (activeToken === token && isSameSnapshot(snapshot, getCurrentSnapshot())) throw error
       } finally {
         if (activeToken === token) activeToken = null
       }
@@ -51,5 +53,16 @@ export const createRoiLandingRedirectCoordinator = () => {
     isResolving() {
       return activeToken !== null
     },
+  }
+}
+
+export const runRoiLandingRedirect = async (
+  task: () => Promise<void>,
+  onError: (error: unknown) => void
+) => {
+  try {
+    await task()
+  } catch (error) {
+    onError(error)
   }
 }

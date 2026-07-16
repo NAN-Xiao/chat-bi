@@ -16,6 +16,7 @@ assert.match(previewSource, /resolveRoiPreviewAccessPlan/)
 assert.match(previewSource, /canAccessRoiDashboard/)
 assert.match(previewSource, /v-if="isAuthorizedRoiDashboardMode"/)
 assert.match(previewSource, /createRoiLandingRedirectCoordinator/)
+assert.match(previewSource, /runRoiLandingRedirect/)
 assert.match(previewSource, /userStore\.getTenantId/)
 assert.doesNotMatch(
   previewSource,
