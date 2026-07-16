@@ -25,6 +25,10 @@ import {
   shouldInitializeOrdinaryDashboardCanvas,
 } from '@/views/dashboard/roi/roiNavigationBehavior'
 import {
+  createRoiLandingRedirectCoordinator,
+  type RoiLandingRedirectSnapshot,
+} from '@/views/dashboard/roi/roiLandingRedirectCoordinator'
+import {
   applyMixedChartResult,
   canRefreshMixedChart,
   isExternalMcpSnapshotChart,
@@ -87,6 +91,8 @@ let chartRefreshTimer: number | undefined
 let chartRefreshController: AbortController | null = null
 let chartRefreshRetryCount = 0
 const resolvingDashboardTarget = ref(false)
+const roiLandingRedirectCoordinator = createRoiLandingRedirectCoordinator()
+const roiLandingRedirecting = ref(false)
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
 const CHART_DATABASE_REFRESH_CONCURRENCY = 4
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 180
@@ -133,6 +139,7 @@ const routeDashboardMode = computed(() => {
   return mode === DASHBOARD_MODE_DEFAULT ? DASHBOARD_MODE_DEFAULT : DASHBOARD_MODE_MY
 })
 const canAccessRoiDashboardMode = computed(() => canAccessRoiDashboard(userStore))
+const currentTenantId = computed(() => String(userStore.getTenantId || ''))
 const roiPreviewAccessPlan = computed(() =>
   resolveRoiPreviewAccessPlan(routeDashboardMode.value, canAccessRoiDashboardMode.value)
 )
@@ -151,7 +158,8 @@ const previewLoading = computed(
     !mounted.value ||
     !dataInitState.value ||
     !!loadingDashboardId.value ||
-    resolvingDashboardTarget.value
+    resolvingDashboardTarget.value ||
+    roiLandingRedirecting.value
 )
 
 const stateInit = () => {
@@ -911,25 +919,41 @@ const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
 
+const currentRoiLandingSnapshot = (): RoiLandingRedirectSnapshot => ({
+  tenantId: currentTenantId.value,
+  resourceId: routeDashboardId.value,
+  mode: routeDashboardMode.value,
+  canAccessRoi: canAccessRoiDashboardMode.value,
+})
+
+const syncRoiLandingRedirecting = () => {
+  roiLandingRedirecting.value = roiLandingRedirectCoordinator.isResolving()
+}
+
+const invalidateRoiLandingRedirect = () => {
+  roiLandingRedirectCoordinator.invalidate()
+  syncRoiLandingRedirecting()
+}
+
 const redirectUnauthorizedRoi = async () => {
-  if (resolvingDashboardTarget.value) return
   cancelDashboardWork()
   loadingDashboardId.value = null
   dataInitState.value = true
   stateInit()
-  const rejectedResourceId = routeDashboardId.value
-  resolvingDashboardTarget.value = true
+  const snapshot = currentRoiLandingSnapshot()
+  const pending = roiLandingRedirectCoordinator.redirect({
+    snapshot,
+    getCurrentSnapshot: currentRoiLandingSnapshot,
+    resolveLanding: () => resolveBusinessDashboardLandingTarget(userStore),
+    commit: async (target) => {
+      if (!isCurrentRouteTarget(target)) await router.replace(target)
+    },
+  })
+  syncRoiLandingRedirecting()
   try {
-    const target = await resolveBusinessDashboardLandingTarget(userStore)
-    const stillRejected =
-      routeDashboardMode.value === ROI_SCOPE &&
-      routeDashboardId.value === rejectedResourceId &&
-      !canAccessRoiDashboard(userStore)
-    if (stillRejected && !isCurrentRouteTarget(target)) {
-      await router.replace(target)
-    }
+    await pending
   } finally {
-    resolvingDashboardTarget.value = false
+    syncRoiLandingRedirecting()
   }
 }
 
@@ -945,12 +969,18 @@ onBeforeMount(() => {
   }
 })
 onBeforeUnmount(() => {
+  invalidateRoiLandingRedirect()
   cancelDashboardWork()
   roiDashboardStore.reset()
 })
 watch(
   () =>
-    [routeDashboardId.value, routeDashboardMode.value, canAccessRoiDashboardMode.value] as const,
+    [
+      routeDashboardId.value,
+      routeDashboardMode.value,
+      canAccessRoiDashboardMode.value,
+      currentTenantId.value,
+    ] as const,
   ([resourceId, dashboardMode, canAccessRoi], previous) => {
     const previousMode = previous?.[1]
     if (previousMode === ROI_SCOPE && dashboardMode !== ROI_SCOPE) {
@@ -961,6 +991,7 @@ watch(
       void redirectUnauthorizedRoi()
       return
     }
+    invalidateRoiLandingRedirect()
     if (!props.defaultMode && resourceId) {
       loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })
     } else if (!props.defaultMode && !resourceId) {
