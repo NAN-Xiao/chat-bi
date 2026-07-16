@@ -124,7 +124,7 @@
 - 主题适用问题、权威事件与字段、指标公式、禁止事项和推荐输出。
 - 每个组件的 `dashboard-sql:<view_id>` SQL 块。
 
-现有日期 Skill 使用原 source marker 幂等更新。现有付费 Skill 保留原 source marker 和数据库 id，改名并迁移为 `ServerPayLog` 收入与 ARPU/ARPPU 口径，以免留下互相冲突的旧 Skill。其余主题使用新 marker 幂等 upsert。
+现有日期 Skill 使用原 source marker 幂等更新。现有付费 Skill 先通过旧 marker `data-skill-source:xiuxian:paybuyret-monetization-arppu` 定位并复用原数据库 id，更新后将 Prompt 内 marker 替换为 `data-skill-source:xiuxian:serverpaylog-monetization-arppu`，同时改名并迁移为 `ServerPayLog` 收入与 ARPU/ARPPU 口径，以免模型继续看到旧事件语义。其余主题使用新 marker 幂等 upsert。
 
 ### 6. Embedding 刷新
 
@@ -147,6 +147,7 @@
 - 空组件 `1e4e34743f2d47dfa1c2948742b93a50` 不出现在任何 Skill。
 - 12 个看板 Skill 每个最多 6 个 SQL 块、Prompt 不超过 15,000 字符。
 - source marker 唯一且 upsert 受 tenant 和 datasource 双重约束。
+- 旧 `paybuyret-monetization-arppu` marker 只允许作为一次迁移查找键，发布后的 Prompt 中不得保留该 marker。
 - 修复后的 SQL 不包含日期边界 `bounds` CTE 关联大表，也不包含 `MAX(dt)`。
 - 收入、ARPU、ARPPU SQL 使用 `ServerPayLog` 和 `personal.money`；支付流程分布不得被校验器误判为真实收入。
 - 结果规范化和有序/无序比较逻辑覆盖 Decimal、日期、NULL 和重复行。
