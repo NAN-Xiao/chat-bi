@@ -23,10 +23,9 @@ def _sha256_text(value: str) -> str:
 
 
 def make_nine_dashboard_snapshots(
-    *, drawer_count: int = 45, nonempty_count: int = 44
+    *, drawer_count: int = 45, nonempty_count: int = 45
 ) -> list[snapshot.DashboardSnapshot]:
-    view_ids = sorted(snapshot.EXPECTED_VIEW_IDS) + [snapshot.EMPTY_VIEW_ID]
-    view_ids = view_ids[:drawer_count]
+    view_ids = sorted(snapshot.EXPECTED_VIEW_IDS)[:drawer_count]
     dashboards = []
     for dashboard_index in range(9):
         start = dashboard_index * 5
@@ -55,7 +54,7 @@ def make_nine_dashboard_snapshots(
 
 
 def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
-    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=44)
+    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=45)
 
     path = snapshot.write_verified_backup(
         dashboards, tmp_path, timestamp="20260716-120000"
@@ -64,7 +63,7 @@ def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
 
     assert manifest.dashboard_count == 9
     assert manifest.drawer_count == 45
-    assert manifest.nonempty_drawer_count == 44
+    assert manifest.nonempty_drawer_count == 45
     assert len(list((path / "dashboards").glob("*.json"))) == 9
 
     dashboard_payload = json.loads(
@@ -73,6 +72,7 @@ def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
     assert dashboard_payload["canvas_view_info"] == dashboards[0].canvas_view_info
 
     drawer_rows = json.loads((path / "drawer_sql.json").read_text(encoding="utf-8"))
+    assert {row["view_id"] for row in drawer_rows} == set(snapshot.EXPECTED_VIEW_IDS)
     first_drawer = drawer_rows[0]
     assert first_drawer["sql_sha256"] == _sha256_text(first_drawer["sql"])
     assert manifest.sql_sha256[
@@ -85,7 +85,7 @@ def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
 
 
 def test_backup_refuses_existing_directory(tmp_path):
-    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=44)
+    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=45)
     snapshot.write_verified_backup(dashboards, tmp_path, timestamp="20260716-120000")
 
     with pytest.raises(FileExistsError):
@@ -129,6 +129,35 @@ def test_backup_fails_closed_on_wrong_counts(tmp_path, dashboards, message):
 
     with pytest.raises(ValueError, match=message):
         snapshot.write_verified_backup(rows, tmp_path, timestamp="20260716-120000")
+
+
+def test_backup_rejects_empty_sql_and_unknown_view_id(tmp_path):
+    with pytest.raises(ValueError, match="非空 SQL"):
+        snapshot.write_verified_backup(
+            make_nine_dashboard_snapshots(nonempty_count=44),
+            tmp_path,
+            timestamp="20260716-120000",
+        )
+
+    dashboards = make_nine_dashboard_snapshots()
+    first = dashboards[0]
+    canvas = json.loads(first.canvas_view_info)
+    old_view_id = next(iter(canvas))
+    canvas["unknown-view-id"] = canvas.pop(old_view_id)
+    dashboards[0] = snapshot.DashboardSnapshot.from_row(
+        (
+            first.id,
+            first.name,
+            first.tenant_id,
+            first.datasource,
+            json.dumps(canvas, ensure_ascii=False, indent=2),
+        )
+    )
+
+    with pytest.raises(ValueError, match="view id"):
+        snapshot.write_verified_backup(
+            dashboards, tmp_path, timestamp="20260716-120000"
+        )
 
 
 def test_verify_backup_rejects_file_and_sql_hash_tampering(tmp_path):
