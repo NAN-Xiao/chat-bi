@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { roiDashboardApi } from '@/api/roiDashboard'
+import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
 import type { RoiChart, RoiConfig, RoiDashboard, RoiEditorState } from '@/views/dashboard/roi/types'
 import {
   beginRoiRequest,
@@ -17,6 +17,7 @@ const createEditorState = (): RoiEditorState => ({
   chartDialogOpen: false,
   dashboardId: null,
   chartId: null,
+  createDashboardRequestId: 0,
 })
 
 const errorStatus = (error: unknown) =>
@@ -41,7 +42,7 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
       const request = beginRoiRequest(this.requestState, 'config')
       this.syncRequestState()
       try {
-        const result = await roiDashboardApi.getConfig()
+        const result = await roiDashboardApi.getConfig(roiCustomErrorRequestConfig)
         if (isLatestRoiRequest(this.requestState, request)) this.config = result
         return result
       } catch (error) {
@@ -57,7 +58,7 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
       const request = beginRoiRequest(this.requestState, 'dashboards')
       this.syncRequestState()
       try {
-        const result = await roiDashboardApi.list()
+        const result = await roiDashboardApi.list(roiCustomErrorRequestConfig)
         if (isLatestRoiRequest(this.requestState, request)) this.dashboards = result
         return result
       } catch (error) {
@@ -73,7 +74,7 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
       const request = beginRoiRequest(this.requestState, `charts:${dashboardId}`, 'charts')
       this.syncRequestState()
       try {
-        const result = await roiDashboardApi.listCharts(dashboardId)
+        const result = await roiDashboardApi.listCharts(dashboardId, roiCustomErrorRequestConfig)
         if (isLatestRoiRequest(this.requestState, request)) this.charts[dashboardId] = result
         return result
       } catch (error) {
@@ -87,6 +88,17 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
     },
     openDatasourceSettings() {
       this.editorState.datasourceDialogOpen = true
+    },
+    requestDashboardCreation() {
+      this.editorState.createDashboardRequestId += 1
+    },
+    publishDashboard(dashboard: RoiDashboard) {
+      const index = this.dashboards.findIndex((item) => String(item.id) === String(dashboard.id))
+      if (index >= 0) this.dashboards[index] = dashboard
+      else this.dashboards.push(dashboard)
+    },
+    publishCharts(dashboardId: string, charts: RoiChart[]) {
+      this.charts[String(dashboardId)] = charts
     },
     reset() {
       resetRoiRequests(this.requestState)

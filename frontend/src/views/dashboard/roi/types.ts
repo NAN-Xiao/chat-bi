@@ -114,4 +114,14 @@ export interface RoiEditorState {
   chartDialogOpen: boolean
   dashboardId: string | null
   chartId: string | null
+  createDashboardRequestId: number
+}
+
+export interface RoiChartEditorState {
+  visible: boolean
+  mode: 'create' | 'edit'
+  dashboardId: string
+  chartId: string | null
+  initialValue: RoiChart | null
+  firstChart: boolean
 }

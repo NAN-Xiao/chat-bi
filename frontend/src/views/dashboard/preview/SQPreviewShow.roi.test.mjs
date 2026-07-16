@@ -14,7 +14,15 @@ assert.match(previewSource, /<RoiDashboardPanel[\s\S]*dashboard-id="routeDashboa
 assert.match(previewSource, /shouldInitializeOrdinaryDashboardCanvas/)
 assert.match(previewSource, /resolveRoiPreviewAccessPlan/)
 assert.match(previewSource, /canAccessRoiDashboard/)
-assert.match(previewSource, /v-if="isAuthorizedRoiDashboardMode"/)
+assert.equal(
+  previewSource.match(/<RoiDashboardPanel/g)?.length,
+  1,
+  '授权期间必须复用同一个 ROI 页面实例，避免路由后首图 editorState 写入已卸载实例'
+)
+assert.match(
+  previewSource,
+  /<RoiDashboardPanel[\s\S]*v-if="canAccessRoiDashboardMode"[\s\S]*v-show="isAuthorizedRoiDashboardMode"/
+)
 assert.match(previewSource, /createRoiLandingRedirectCoordinator/)
 assert.match(previewSource, /runRoiLandingRedirect/)
 assert.match(previewSource, /userStore\.getTenantId/)

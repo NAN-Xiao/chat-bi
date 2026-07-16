@@ -38,6 +38,7 @@ import {
   publishCurrentTreeBranch,
   shouldResetOrdinaryDashboardStore,
 } from '@/views/dashboard/roi/roiNavigationBehavior'
+import { ROI_DASHBOARD_TREE_REFRESH_EVENT } from '@/views/dashboard/roi/roiDashboardPanelBehavior'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import {
@@ -1105,6 +1106,11 @@ useEmitt({
   },
 })
 
+useEmitt({
+  name: ROI_DASHBOARD_TREE_REFRESH_EVENT,
+  callback: () => getTree(),
+})
+
 watch(
   () => datasourceContext.datasourceId,
   () => {
@@ -1180,23 +1186,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
   }
   if (opt === 'newRoiDashboard') {
     if (!canManageCurrentWorkspace.value) return
-    const result = await ElMessageBox.prompt(
-      t('dashboard.roi_dashboard_name_tips'),
-      t('dashboard.new_roi_dashboard'),
-      {
-        confirmButtonText: t('common.confirm'),
-        cancelButtonText: t('common.cancel'),
-        inputPattern: /\S+/,
-        inputErrorMessage: t('dashboard.roi_dashboard_name_required'),
-        autofocus: false,
-      }
-    )
-    const record = await roiDashboardApi.create({ name: result.value.trim() })
-    await getTree()
-    await router.push({
-      path: '/dashboard/index',
-      query: { resourceId: record.id, dashboardMode: ROI_SCOPE },
-    })
+    roiDashboardStore.requestDashboardCreation()
     return
   }
   if (opt === 'renameRoiDashboard') {

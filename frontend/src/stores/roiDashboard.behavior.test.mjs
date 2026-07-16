@@ -31,7 +31,10 @@ const build = await esbuild.build({
           namespace: 'test-double',
         }))
         buildApi.onLoad({ filter: /.*/, namespace: 'test-double' }, () => ({
-          contents: `export const roiDashboardApi = globalThis.__roiDashboardApi`,
+          contents: `
+            export const roiCustomErrorRequestConfig = { requestOptions: { customError: true } }
+            export const roiDashboardApi = globalThis.__roiDashboardApi
+          `,
           loader: 'js',
         }))
       },
@@ -56,8 +59,14 @@ const forbidden = () => ({ response: { status: 403 } })
 {
   const config = deferred()
   const dashboards = deferred()
-  globalThis.__roiDashboardApi.getConfig = () => config.promise
-  globalThis.__roiDashboardApi.list = () => dashboards.promise
+  globalThis.__roiDashboardApi.getConfig = (requestConfig) => {
+    assert.equal(requestConfig.requestOptions.customError, true)
+    return config.promise
+  }
+  globalThis.__roiDashboardApi.list = (requestConfig) => {
+    assert.equal(requestConfig.requestOptions.customError, true)
+    return dashboards.promise
+  }
   const store = createStore()
   const configPending = store.loadConfig()
   const dashboardsPending = store.loadDashboards()
@@ -130,6 +139,24 @@ const forbidden = () => ({ response: { status: 403 } })
   await firstPending
   assert.deepEqual(store.dashboards, [{ id: 'new' }])
   assert.equal(store.loading, false)
+}
+
+{
+  const store = createStore()
+  assert.equal(store.editorState.createDashboardRequestId, 0)
+  store.requestDashboardCreation()
+  store.requestDashboardCreation()
+  assert.equal(store.editorState.createDashboardRequestId, 2, '树菜单新建请求必须可重复触发')
+
+  store.publishDashboard({ id: '9223372036854775807', name: '经营总览' })
+  store.publishCharts('9223372036854775807', [{ id: '9223372036854775806' }])
+  assert.equal(store.dashboards[0].id, '9223372036854775807', '看板 Snowflake ID 不得转成 number')
+  assert.equal(store.charts['9223372036854775807'][0].id, '9223372036854775806')
+
+  store.reset()
+  assert.equal(store.editorState.createDashboardRequestId, 0)
+  assert.deepEqual(store.dashboards, [])
+  assert.deepEqual(store.charts, {})
 }
 
 console.log('ROI dashboard store behavior tests passed')

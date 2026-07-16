@@ -1073,10 +1073,11 @@ defineExpose({
       <div class="preview-stage">
         <!-- dashboardMode=roi 使用独立 RoiDashboardPanel。 -->
         <RoiDashboardPanel
-          v-if="isAuthorizedRoiDashboardMode"
+          v-if="canAccessRoiDashboardMode"
+          v-show="isAuthorizedRoiDashboardMode"
           :dashboard-id="routeDashboardId"
         />
-        <template v-else>
+        <template v-if="!isAuthorizedRoiDashboardMode">
         <SQPreviewHead
           :dashboard-info="previewShowFlag ? state.dashboardInfo : {}"
           :component-data="state.canvasDataPreview"
