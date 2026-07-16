@@ -7,12 +7,18 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+import sqlglot
 from fastapi import HTTPException
+from sqlglot import expressions as exp
 from sqlmodel import select
 
 from apps.datasource.crud.sql_engine_executor import _execute_after_validation
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import check_sql_read
+from apps.db.db import (
+    check_sql_read,
+    get_sqlglot_dialect,
+    supports_controlled_query_timeout,
+)
 from apps.roi_dashboard.models import CoreRoiWorkspaceConfig
 from apps.roi_dashboard.permissions import (
     has_roi_datasource_access,
@@ -53,6 +59,7 @@ def _run_validated_read(
     datasource: CoreDatasource,
     sql: str,
     query_timeout: int,
+    max_result_rows: int | None,
 ) -> dict[str, Any]:
     """集中封装底层已验证执行入口，禁止私有调用扩散到 ROI 其他模块。"""
     return _execute_after_validation(
@@ -60,7 +67,44 @@ def _run_validated_read(
         sql=sql,
         origin_column=True,
         query_timeout=query_timeout,
+        max_result_rows=max_result_rows,
+        require_controlled_timeout=True,
     )
+
+
+_ROI_FORBIDDEN_AST_TYPES = (
+    exp.Insert,
+    exp.Update,
+    exp.Delete,
+    exp.Merge,
+    exp.Create,
+    exp.Drop,
+    exp.Alter,
+    exp.TruncateTable,
+    exp.Command,
+    exp.Copy,
+    exp.Into,
+)
+
+
+def validate_roi_read_sql(sql: str, datasource: CoreDatasource) -> None:
+    """深度校验 ROI SQL，只允许 sqlglot 可识别的单条纯查询 AST。"""
+    dialect = get_sqlglot_dialect(datasource.type)
+    statements = [
+        statement
+        for statement in sqlglot.parse(sql, dialect=dialect)
+        if statement is not None
+    ]
+    if len(statements) != 1:
+        raise ValueError("SQL 必须且只能包含一条语句")
+    statement = statements[0]
+    if not isinstance(statement, exp.Query):
+        raise ValueError("SQL 根语句不是只读查询")
+    for node in statement.walk():
+        if isinstance(node, _ROI_FORBIDDEN_AST_TYPES):
+            raise ValueError(f"SQL 包含写操作或命令：{type(node).__name__}")
+        if isinstance(node, (exp.Anonymous, exp.UserDefinedFunction)):
+            raise ValueError("SQL 包含无法识别的自定义函数")
 
 
 def _normalize_rows(raw: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -111,32 +155,68 @@ def execute_roi_read_query(
     if datasource is None:
         raise HTTPException(status_code=409, detail="ROI 数据源不存在或已停用")
 
-    is_safe, reason = check_sql_read(sql, datasource)
-    if not is_safe:
+    started_at = time.perf_counter()
+    try:
+        validate_roi_read_sql(sql, datasource)
+        is_safe, reason = check_sql_read(sql, datasource)
+        if not is_safe:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ROI SQL 仅允许单条只读查询：{reason}",
+            )
+        if not supports_controlled_query_timeout(datasource.type):
+            raise HTTPException(
+                status_code=400,
+                detail="当前数据源类型不支持受控查询超时",
+            )
+        raw = _run_validated_read(
+            datasource=datasource,
+            sql=sql,
+            query_timeout=settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS,
+            max_result_rows=None,
+        )
+    except HTTPException:
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        AppLogUtil.warning(
+            "ROI query failed: "
+            f"tenant_id={tenant_id}, user_id={int(current_user.id)}, "
+            f"datasource_id={datasource_id}, elapsed_ms={elapsed_ms}, status=failed"
+        )
+        raise
+    except Exception as exc:
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        AppLogUtil.warning(
+            "ROI query failed: "
+            f"tenant_id={tenant_id}, user_id={int(current_user.id)}, "
+            f"datasource_id={datasource_id}, elapsed_ms={elapsed_ms}, status=failed, "
+            f"error_type={type(exc).__name__}"
+        )
         raise HTTPException(
             status_code=400,
-            detail=f"ROI SQL 仅允许单条只读查询：{reason}",
-        )
-
-    started_at = time.perf_counter()
-    raw = _run_validated_read(
-        datasource=datasource,
-        sql=sql,
-        query_timeout=settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS,
-    )
+            detail="ROI SQL 仅允许单条只读查询或查询执行失败",
+        ) from exc
     result = normalize_roi_query_result(raw)
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
     response_bytes = len(
         json.dumps(result.data, ensure_ascii=False, default=str).encode("utf-8")
     )
-    AppLogUtil.info(
+    log_message = (
         "ROI query completed: "
         f"tenant_id={tenant_id}, user_id={int(current_user.id)}, "
         f"datasource_id={datasource_id}, elapsed_ms={elapsed_ms}, "
         f"row_count={len(result.data)}, response_bytes={response_bytes}, "
         f"status={result.status}"
     )
+    if result.status == "success":
+        AppLogUtil.info(log_message)
+    else:
+        AppLogUtil.warning(log_message)
     return result
 
 
-__all__ = ["RoiQueryResult", "execute_roi_read_query", "normalize_roi_query_result"]
+__all__ = [
+    "RoiQueryResult",
+    "execute_roi_read_query",
+    "normalize_roi_query_result",
+    "validate_roi_read_sql",
+]

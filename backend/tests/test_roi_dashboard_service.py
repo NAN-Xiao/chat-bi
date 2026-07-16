@@ -725,12 +725,17 @@ def test_create_locks_config_before_authorization_execution_and_write(
     import apps.roi_dashboard.service as service
 
     events: list[str] = []
-    original_lock = service.lock_active_roi_config
+    original_dashboard_lock = service.lock_active_roi_dashboard
+    original_config_lock = service.lock_active_roi_config
     original_access = service.has_roi_datasource_access
 
-    def record_lock(*args):
-        events.append("lock")
-        return original_lock(*args)
+    def record_dashboard_lock(*args):
+        events.append("dashboard_lock")
+        return original_dashboard_lock(*args)
+
+    def record_config_lock(*args):
+        events.append("config_lock")
+        return original_config_lock(*args)
 
     def record_access(*args):
         events.append("access")
@@ -740,7 +745,8 @@ def test_create_locks_config_before_authorization_execution_and_write(
         events.append("execute")
         return successful_query()
 
-    monkeypatch.setattr(service, "lock_active_roi_config", record_lock)
+    monkeypatch.setattr(service, "lock_active_roi_dashboard", record_dashboard_lock)
+    monkeypatch.setattr(service, "lock_active_roi_config", record_config_lock)
     monkeypatch.setattr(service, "has_roi_datasource_access", record_access)
     monkeypatch.setattr(service, "execute_roi_read_query", record_execute)
 
@@ -751,7 +757,7 @@ def test_create_locks_config_before_authorization_execution_and_write(
         RoiChartCreate(title="收入", sql="SELECT 1", chart_type="table"),
     )
 
-    assert events[:3] == ["lock", "access", "execute"]
+    assert events[:4] == ["dashboard_lock", "config_lock", "access", "execute"]
     assert created.version == 1
     assert created.layout_span == "full"
 
@@ -1113,3 +1119,175 @@ def test_chart_mutations_and_config_change_invalidate_roi_cache(
 
     assert len(cache.deleted_patterns) == 5
     assert all("roi-chart" in pattern for pattern in cache.deleted_patterns)
+
+
+def test_chart_list_isolates_driver_exception_and_continues_other_charts(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    user = prepare_chart_context(session)
+    first = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    second = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=902)
+    first.sql = "SELECT failing"
+    second.sql = "SELECT working"
+    session.add(first)
+    session.add(second)
+    session.commit()
+
+    def execute(_session, _user, sql):
+        if sql == "SELECT failing":
+            raise RuntimeError("driver failed password=do-not-log")
+        return successful_query(2)
+
+    monkeypatch.setattr("apps.roi_dashboard.service.execute_roi_read_query", execute)
+
+    result = list_roi_charts(
+        session,
+        user,
+        301,
+        cache_adapter=FakeRoiChartCache(),
+    )
+
+    assert len(result) == 2
+    assert result[0]["query_result"]["status"] == "failed"
+    assert result[1]["query_result"]["data"] == [{"value": 2}]
+    assert "tenant_id=11" in caplog.text
+    assert "user_id=7" in caplog.text
+    assert "datasource_id=202" in caplog.text
+    assert "elapsed_ms=" in caplog.text
+    assert "status=failed" in caplog.text
+    assert "do-not-log" not in caplog.text
+
+
+def test_reorder_commit_is_not_reported_failed_when_chart_query_raises(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("driver unavailable")),
+    )
+
+    result = reorder_roi_charts(
+        session,
+        user,
+        301,
+        RoiChartReorderRequest(
+            items=[
+                RoiChartOrderItem(id="901", sort=3, layout_span="half", version=1)
+            ]
+        ),
+        cache_adapter=FakeRoiChartCache(),
+    )
+
+    session.refresh(chart)
+    assert (chart.sort, chart.layout_span, chart.version) == (3, "half", 2)
+    assert result[0]["version"] == 2
+    assert result[0]["query_result"]["status"] == "failed"
+
+
+def test_create_rechecks_active_dashboard_under_lock(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    import apps.roi_dashboard.service as service
+
+    monkeypatch.setattr(service, "lock_active_roi_dashboard", lambda *_args: None)
+    monkeypatch.setattr(
+        service,
+        "execute_roi_read_query",
+        lambda *_args: pytest.fail("看板锁定后已失效时不应执行 SQL"),
+    )
+
+    assert_http_error(
+        404,
+        lambda: create_roi_chart(
+            session,
+            user,
+            301,
+            RoiChartCreate(title="竞态", sql="SELECT 1", chart_type="table"),
+        ),
+    )
+    assert session.exec(select(CoreRoiDashboardChart)).all() == []
+
+
+def test_delete_dashboard_uses_same_lock_order_and_invalidates_cache(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    cache = FakeRoiChartCache()
+    import apps.roi_dashboard.service as service
+
+    events: list[str] = []
+    original_dashboard_lock = service.lock_active_roi_dashboard
+    original_config_lock = service.lock_active_roi_config
+
+    def record_dashboard_lock(*args):
+        events.append("dashboard_lock")
+        return original_dashboard_lock(*args)
+
+    def record_config_lock(*args):
+        events.append("config_lock")
+        return original_config_lock(*args)
+
+    monkeypatch.setattr(service, "lock_active_roi_dashboard", record_dashboard_lock)
+    monkeypatch.setattr(service, "lock_active_roi_config", record_config_lock)
+
+    assert delete_roi_dashboard(
+        session,
+        user,
+        301,
+        cache_adapter=cache,
+    ) is True
+
+    assert events[:2] == ["dashboard_lock", "config_lock"]
+    assert len(cache.deleted_patterns) == 1
+    assert "roi-chart" in cache.deleted_patterns[0]
+    assert ":301:" in cache.deleted_patterns[0]
+
+
+def test_reorder_locates_all_charts_before_version_validation(
+    session: Session,
+) -> None:
+    user = prepare_chart_context(session)
+    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    seed_roi_chart(session, tenant_id=22, dashboard_id=301, chart_id=902)
+
+    request = RoiChartReorderRequest(
+        items=[
+            RoiChartOrderItem(id="901", sort=1, layout_span="half", version=999),
+            RoiChartOrderItem(id="902", sort=2, layout_span="third", version=1),
+        ]
+    )
+
+    assert_http_error(404, lambda: reorder_roi_charts(session, user, 301, request))
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        RoiChartOrderItem.model_construct(
+            id="901", sort=1, layout_span="quarter", version=1
+        ),
+        RoiChartOrderItem.model_construct(
+            id="901", sort="first", layout_span="half", version=1
+        ),
+    ],
+)
+def test_reorder_service_rejects_invalid_layout_or_sort(
+    session: Session,
+    item,
+) -> None:
+    user = prepare_chart_context(session)
+    chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    request = RoiChartReorderRequest.model_construct(items=[item])
+
+    assert_http_error(400, lambda: reorder_roi_charts(session, user, 301, request))
+    session.refresh(chart)
+    assert (chart.sort, chart.layout_span, chart.version) == (0, "full", 1)

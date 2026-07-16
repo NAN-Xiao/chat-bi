@@ -2,6 +2,7 @@
 
 import ast
 import inspect
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -135,6 +136,7 @@ def test_roi_query_passes_timeout_and_original_sql_without_limit(
 
     assert captured["sql"] == sql
     assert captured["query_timeout"] == query_executor.settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS
+    assert captured["max_result_rows"] is None
     assert len(result.data) == 1005
     assert result.data[-1] == {"value": 1004}
 
@@ -172,3 +174,108 @@ def test_query_executor_contains_no_ordinary_permission_calls() -> None:
     }
 
     assert called_names.isdisjoint(forbidden)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH changed AS (DELETE FROM orders RETURNING id) SELECT * FROM changed",
+        "WITH changed AS (UPDATE orders SET amount = 0 RETURNING id) SELECT * FROM changed",
+        "SELECT * INTO orders_backup FROM orders",
+        "CALL refresh_orders()",
+        "SELECT 1; SELECT 2",
+        "SELECT custom_side_effect(amount) FROM orders",
+        "SELECT * FROM",
+    ],
+)
+def test_roi_query_fail_closed_for_unsafe_or_malformed_sql(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    sql: str,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("不安全 SQL 不应到达执行层"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(session, make_user(), sql)
+
+    assert exc.value.status_code == 400
+
+
+def test_roi_query_allows_cte_union_aggregate_and_known_builtin(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: {
+            "fields": ["category", "total"],
+            "data": [{"category": "all", "total": 3}],
+        },
+    )
+    sql = """
+        WITH source AS (
+            SELECT category, amount FROM orders
+            UNION ALL
+            SELECT category, amount FROM archived_orders
+        )
+        SELECT COALESCE(category, 'all') AS category, SUM(amount) AS total
+        FROM source
+        GROUP BY category
+    """
+
+    result = execute_roi_read_query(session, make_user(), sql)
+
+    assert result.status == "success"
+    assert result.data == [{"category": "all", "total": 3}]
+
+
+def test_roi_query_rejects_datasource_without_controlled_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session, datasource_type="oracle")
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("不支持受控超时的数据源不应执行"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(session, make_user(), "SELECT 1 FROM dual")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "当前数据源类型不支持受控查询超时"
+
+
+def test_roi_failed_result_logs_safe_context_at_warning_level(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: {
+            "status": "failed",
+            "message": "driver password=do-not-log",
+        },
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = execute_roi_read_query(session, make_user(), "SELECT 1")
+
+    assert result.status == "failed"
+    assert "tenant_id=11" in caplog.text
+    assert "user_id=7" in caplog.text
+    assert "datasource_id=202" in caplog.text
+    assert "elapsed_ms=" in caplog.text
+    assert "status=failed" in caplog.text
+    assert "do-not-log" not in caplog.text

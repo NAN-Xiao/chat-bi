@@ -3,10 +3,9 @@
 
 新业务代码应从 apps.datasource.crud.sql_engine 导入入口。
 """
-from dataclasses import asdict, dataclass, field
-import inspect
 import re
 import time
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from sqlglot import exp
@@ -33,7 +32,11 @@ from apps.datasource.crud.sql_permission import (
     validate_sql_table_scope,
 )
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import check_sql_read, _unsafe_exec_sql_after_validation, get_sqlglot_dialect
+from apps.db.db import (
+    _unsafe_exec_sql_after_validation,
+    check_sql_read,
+    get_sqlglot_dialect,
+)
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentUser, SessionDep
 from common.error import DataUnavailableError
@@ -42,11 +45,12 @@ from common.user_facing_errors import (
     classify_error,
     data_unavailable_data_result,
     failed_data_result,
+)
+from common.user_facing_errors import (
     looks_like_data_unavailable_error as common_looks_like_data_unavailable_error,
 )
 from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil
-
 
 USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
 
@@ -434,6 +438,8 @@ def _execute_after_validation(
         *,
         origin_column: bool,
         query_timeout: int | None = None,
+        max_result_rows: int | None | object = ...,
+        require_controlled_timeout: bool = False,
 ) -> dict[str, Any]:
     """
     是什么：_execute_after_validation 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -441,23 +447,18 @@ def _execute_after_validation(
     做了什么：调用底层 SQL 执行器，并在执行器支持时传递查询超时时间。
     """
     try:
+        kwargs: dict[str, Any] = {
+            "ds": ds,
+            "sql": sql,
+            "origin_column": origin_column,
+        }
         if query_timeout and query_timeout > 0:
-            try:
-                signature = inspect.signature(_unsafe_exec_sql_after_validation)
-                params = signature.parameters
-                accepts_timeout = "query_timeout" in params or any(
-                    param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
-                )
-            except (TypeError, ValueError):
-                accepts_timeout = True
-            if accepts_timeout:
-                return _unsafe_exec_sql_after_validation(
-                    ds=ds,
-                    sql=sql,
-                    origin_column=origin_column,
-                    query_timeout=query_timeout,
-                )
-        return _unsafe_exec_sql_after_validation(ds=ds, sql=sql, origin_column=origin_column)
+            kwargs["query_timeout"] = query_timeout
+        if max_result_rows is not ...:
+            kwargs["max_result_rows"] = max_result_rows
+        if require_controlled_timeout:
+            kwargs["require_controlled_timeout"] = True
+        return _unsafe_exec_sql_after_validation(**kwargs)
     except Exception as exc:
         if classify_error(exc).error_type == DATA_UNAVAILABLE_ERROR_TYPE:
             raise DataUnavailableError(user_data_unavailable_message(str(exc))) from exc

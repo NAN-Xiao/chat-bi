@@ -126,7 +126,7 @@ def get_es_fields(conf: DatasourceConf, table_name: str):
 #     return res, fields
 
 
-def get_es_data_by_http(conf: DatasourceConf, sql: str):
+def get_es_data_by_http(conf: DatasourceConf, sql: str, timeout: int = 30):
     """
     是什么：get_es_data_by_http 是一个可以复用的小步骤，负责数据库连接相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -148,7 +148,7 @@ def get_es_data_by_http(conf: DatasourceConf, sql: str):
         data=json.dumps({"query": sql}),
         headers=get_es_auth(conf),
         verify=conf.ssl,
-        timeout=30  # 添加超时时间，避免请求挂起。
+        timeout=timeout
     )
 
     # print(response.json())

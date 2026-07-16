@@ -7,8 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
-from apps.datasource.crud import sql_engine
-from apps.datasource.crud import sql_engine_executor
+from apps.datasource.crud import sql_engine, sql_engine_executor
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
 
 
@@ -40,7 +39,7 @@ def test_business_sql_context_collects_schema_dictionary_skills_and_dialect(monk
         calls.append(("skills", args[1], args[2], kwargs.get("question")))
         return "<Data-Skills>口径</Data-Skills>", ["口径"], 99
 
-    def _tracking(session, tenant_id, datasource_id, **kwargs):
+    def _tracking(_session, tenant_id, datasource_id, **kwargs):
         calls.append((
             "tracking",
             tenant_id,
@@ -116,12 +115,13 @@ def test_app_code_imports_sql_engine_instead_of_query_executor() -> None:
         Path("datasource/crud/sql_engine.py"),
         Path("datasource/crud/sql_engine_executor.py"),
     }
+    approved_roi_adapter = Path("roi_dashboard/query_executor.py")
     query_executor_offenders: list[str] = []
     query_executor_files: list[str] = []
     executor_offenders: list[str] = []
     for path in apps_root.rglob("*.py"):
         relative = path.relative_to(apps_root)
-        if path.name == "query_executor.py":
+        if path.name == "query_executor.py" and relative != approved_roi_adapter:
             query_executor_files.append(relative.as_posix())
         text = path.read_text(encoding="utf-8")
         if relative not in allowed and (
@@ -132,6 +132,7 @@ def test_app_code_imports_sql_engine_instead_of_query_executor() -> None:
         if relative not in {
             Path("datasource/crud/sql_engine.py"),
             Path("datasource/crud/sql_engine_executor.py"),
+            approved_roi_adapter,
         } and (
             "from apps.datasource.crud.sql_engine_executor" in text
             or "import sql_engine_executor" in text

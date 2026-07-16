@@ -221,6 +221,19 @@ def _load_dashboard_or_404(
     return record
 
 
+def lock_active_roi_dashboard(
+    session: SessionDep,
+    tenant_id: int,
+    dashboard_id: int,
+) -> CoreRoiDashboard | None:
+    """锁定活动看板；create/delete 统一先锁看板、再锁 ROI 配置。"""
+    return session.exec(
+        _active_dashboard_statement(tenant_id)
+        .where(CoreRoiDashboard.id == dashboard_id)
+        .with_for_update()
+    ).first()
+
+
 def _config_response(
     session: SessionDep,
     record: CoreRoiWorkspaceConfig,
@@ -427,10 +440,15 @@ def delete_roi_dashboard(
     session: SessionDep,
     current_user: CurrentUser,
     dashboard_id: int,
+    *,
+    cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> bool:
     """在同一事务中软删除看板及其活动图表。"""
     tenant_id = _tenant_id(current_user)
-    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    dashboard = lock_active_roi_dashboard(session, tenant_id, dashboard_id)
+    if dashboard is None:
+        raise HTTPException(status_code=404, detail="ROI 看板不存在")
+    config = lock_active_roi_config(session, tenant_id)
     now = _now()
     operator_id = _operator_id(current_user)
     session.exec(
@@ -454,6 +472,12 @@ def delete_roi_dashboard(
         .values(deleted=True, update_by=operator_id, update_time=now)
     )
     session.commit()
+    _invalidate_roi_chart_cache(
+        cache_adapter,
+        tenant_id,
+        datasource_id=(config.datasource_id if config is not None else "*"),
+        dashboard_id=dashboard_id,
+    )
     return True
 
 
@@ -631,6 +655,7 @@ def list_roi_charts(
             result.append(item)
             continue
 
+        query_started_at = time.perf_counter()
         try:
             query_result = execute_roi_read_query(session, current_user, chart.sql)
             query_payload = asdict(query_result)
@@ -639,10 +664,52 @@ def list_roi_charts(
                 _cache(cache_adapter).set(key, query_payload)
             else:
                 item["error"] = query_result.message or "ROI SQL 执行失败"
-        except HTTPException as exc:
-            item["error"] = str(exc.detail)
+                _log_roi_chart_query_failure(
+                    tenant_id=tenant_id,
+                    user_id=_operator_id(current_user),
+                    datasource_id=int(config.datasource_id),
+                    chart_id=int(chart.id),
+                    started_at=query_started_at,
+                    error_type="FailedResult",
+                )
+        except Exception as exc:
+            message = (
+                str(exc.detail)
+                if isinstance(exc, HTTPException)
+                else "ROI 查询执行失败"
+            )
+            item["error"] = message
+            item["query_result"] = asdict(
+                RoiQueryResult(status="failed", message=message)
+            )
+            _log_roi_chart_query_failure(
+                tenant_id=tenant_id,
+                user_id=_operator_id(current_user),
+                datasource_id=int(config.datasource_id),
+                chart_id=int(chart.id),
+                started_at=query_started_at,
+                error_type=type(exc).__name__,
+            )
         result.append(item)
     return result
+
+
+def _log_roi_chart_query_failure(
+    *,
+    tenant_id: int,
+    user_id: int,
+    datasource_id: int,
+    chart_id: int,
+    started_at: float,
+    error_type: str,
+) -> None:
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    AppLogUtil.warning(
+        "ROI chart query failed: "
+        f"tenant_id={tenant_id}, user_id={user_id}, datasource_id={datasource_id}, "
+        f"chart_id={chart_id}, elapsed_ms={elapsed_ms}, status=failed, "
+        f"error_type={error_type}"
+    )
 
 
 def create_roi_chart(
@@ -655,7 +722,9 @@ def create_roi_chart(
 ) -> CoreRoiDashboardChart:
     """锁定统一配置后重新执行 SQL，成功才创建图表。"""
     tenant_id = _tenant_id(current_user)
-    _load_dashboard_or_404(session, tenant_id, dashboard_id)
+    dashboard = lock_active_roi_dashboard(session, tenant_id, dashboard_id)
+    if dashboard is None:
+        raise HTTPException(status_code=404, detail="ROI 看板不存在")
     config = lock_active_roi_config(session, tenant_id)
     if config is None:
         raise HTTPException(status_code=409, detail="当前工作空间尚未配置 ROI 数据源")
@@ -801,19 +870,31 @@ def reorder_roi_charts(
     """全量预验证后在单事务中更新图表顺序、宽度和版本。"""
     tenant_id = _tenant_id(current_user)
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
-    records: list[tuple[CoreRoiDashboardChart, Any]] = []
+    parsed_items: list[tuple[int, Any]] = []
     seen_ids: set[int] = set()
     for item in request.items:
-        chart_id = int(item.id)
+        try:
+            chart_id = int(item.id)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="ROI 图表 ID 不合法") from exc
         if chart_id in seen_ids:
             raise HTTPException(status_code=400, detail="ROI 图表排序项不能重复")
         seen_ids.add(chart_id)
+        parsed_items.append((chart_id, item))
+
+    records: list[tuple[CoreRoiDashboardChart, Any]] = []
+    for chart_id, item in parsed_items:
         record = _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
-        if record.version != item.version:
-            raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
         records.append((record, item))
 
     config = _require_roi_chart_write_access(session, current_user, tenant_id)
+    for record, item in records:
+        if item.layout_span not in {"full", "half", "third"}:
+            raise HTTPException(status_code=400, detail="ROI 图表宽度不合法")
+        if type(item.sort) is not int:
+            raise HTTPException(status_code=400, detail="ROI 图表排序值不合法")
+        if record.version != item.version:
+            raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
 
     now = _now()
     operator_id = _operator_id(current_user)
