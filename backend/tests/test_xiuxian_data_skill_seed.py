@@ -1,7 +1,9 @@
 """验证修仙数据源 Data Skill 种子的付费与 ARPPU 口径。"""
 from __future__ import annotations
 
+import json
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 from apps.chat.task.llm import _data_skill_sql_validation_error
@@ -14,11 +16,40 @@ if str(TOOLS_DIR) not in sys.path:
 import seed_xiuxian_data_skills as seed
 
 
+@lru_cache(maxsize=1)
+def _skills() -> tuple[dict[str, str], ...]:
+    from xiuxian_dashboard_skill_catalog import EXPECTED_VIEW_IDS
+    from xiuxian_dashboard_snapshot import DashboardSnapshot
+
+    view_ids = sorted(EXPECTED_VIEW_IDS)
+    dashboards = []
+    for dashboard_index in range(9):
+        canvas = {
+            view_id: {"sql": f"SELECT {index} AS metric_{index}"}
+            for index, view_id in enumerate(
+                view_ids[dashboard_index * 5 : dashboard_index * 5 + 5],
+                start=dashboard_index * 5,
+            )
+        }
+        dashboards.append(
+            DashboardSnapshot.from_row(
+                (
+                    f"dashboard-{dashboard_index}",
+                    f"推荐看板 {dashboard_index}",
+                    seed.TENANT_ID,
+                    seed.DATASOURCE_ID,
+                    json.dumps(canvas, ensure_ascii=False),
+                )
+            )
+        )
+    return tuple(seed.build_data_skills(dashboards))
+
+
 def _payment_skill() -> dict[str, str]:
     return next(
         skill
-        for skill in seed.DATA_SKILLS
-        if "data-skill-source:xiuxian:paybuyret-monetization-arppu" in skill["prompt"]
+        for skill in _skills()
+        if "data-skill-source:xiuxian:serverpaylog-monetization-arppu" in skill["prompt"]
     )
 
 
@@ -33,52 +64,24 @@ def _date_skill() -> dict[str, str]:
 def test_xiuxian_payment_skill_is_scoped_and_keeps_date_skill() -> None:
     assert seed.TENANT_ID == 7482727237662281728
     assert seed.DATASOURCE_ID == 6
-    assert len(seed.DATA_SKILLS) == 2
+    assert len(_skills()) == 13
     assert any(
         "data-skill-source:xiuxian:date-partition-aggregation" in skill["prompt"]
         for skill in seed.DATA_SKILLS
     )
-    assert _payment_skill()["name"] == "修仙付费收入与 ARPPU 口径"
+    assert _payment_skill()["name"] == "修仙 ServerPayLog 收入与 ARPU/ARPPU"
 
 
-def test_xiuxian_payment_skill_documents_verified_paybuyret_formula() -> None:
+def test_xiuxian_payment_skill_uses_serverpaylog_authority() -> None:
     prompt = _payment_skill()["prompt"]
 
-    assert "event = 'PayBuyRet'" in prompt
-    assert "personal.ed_money" in prompt
-    assert "personal.ed_isSuccess" in prompt
+    assert "event = 'ServerPayLog'" in prompt
+    assert "personal.money" in prompt
+    assert "personal.orderId" in prompt
+    assert "personal.productid" in prompt
     assert "COUNT(DISTINCT uid)" in prompt
-    assert "SUM(ed_money) / NULLIF(COUNT(DISTINCT uid), 0)" in prompt
-    assert "pay.paytotal" in prompt
-    assert "不能用于当日付费金额、当日付费人数或 ARPPU" in prompt
-    assert "ed_orderId" in prompt
-    assert "ed_payId" in prompt
-    assert "不能代替订单号" in prompt
-
-
-def test_xiuxian_payment_skill_declares_recursive_ctes_with_column_aliases() -> None:
-    """修仙 AnalyticDB 要求 WITH RECURSIVE 块内所有 CTE 显式声明输出列名。"""
-    prompt = _payment_skill()["prompt"]
-
-    for declaration in (
-        "params (end_date, start_date) AS (",
-        "days (calendar_date, end_date) AS (",
-        "pay (pay_date, uid, ed_money) AS (",
-        "daily_pay (pay_date, revenue, payers, payment_event_count) AS (",
-    ):
-        assert declaration in prompt
-
-
-def test_xiuxian_payment_skill_uses_partition_bounds_for_recent_seven_days() -> None:
-    """近七天查询直接使用系统日期边界限制整数分区。"""
-    prompt = _payment_skill()["prompt"]
-
-    assert "SELECT MAX(" not in prompt.upper()
-    assert "bounds (start_dt, end_dt) AS (" not in prompt
-    assert "CROSS JOIN bounds" not in prompt
-    assert "DATE_SUB(CURDATE(), INTERVAL 7 DAY)" in prompt
-    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
-    assert "WHERE e.dt BETWEEN" in prompt
+    assert "data-skill-source:xiuxian:paybuyret-monetization-arppu" not in prompt
+    assert '"forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"]' in prompt
 
 
 def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
@@ -151,19 +154,20 @@ def test_xiuxian_date_skill_rejects_bounds_cte_join_for_partition_filter() -> No
     )
 
 
-def test_xiuxian_payment_skill_rejects_cumulative_snapshot_arppu_sql() -> None:
+def test_xiuxian_payment_skill_rejects_paybuyret_revenue_sql() -> None:
     prompt = _payment_skill()["prompt"]
     wrong_sql = """
-    SELECT dt,
-           SUM(JSON_EXTRACT(pay, '$.paytotal'))
-             / NULLIF(COUNT(DISTINCT uid), 0) AS ARPPU
-    FROM `user`
-    GROUP BY dt
+    SELECT e.dt,
+           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')) AS DECIMAL(18, 4)))
+             / NULLIF(COUNT(DISTINCT e.uid), 0) AS ARPPU
+    FROM event e
+    WHERE e.event = 'PayBuyRet'
+    GROUP BY e.dt
     """
 
     assert _data_skill_sql_validation_error("查看近七天的 ARPPU", wrong_sql, prompt) == (
-        "修仙付费趋势必须使用 PayBuyRet 的成功事件、personal.ed_money 和去重 uid；"
-        "paytotal 是累计快照，不能计算当日收入、当日付费人数或 ARPPU。"
+        "修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；"
+        "PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
     )
 
 
@@ -171,31 +175,42 @@ def test_xiuxian_payment_skill_rejects_non_distinct_arppu_denominator() -> None:
     prompt = _payment_skill()["prompt"]
     wrong_sql = """
     SELECT e.dt,
-           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')) AS DECIMAL(18, 4)))
+           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')) AS DECIMAL(18, 4)))
              / NULLIF(COUNT(*), 0) AS ARPPU
     FROM `event` e
-    WHERE e.event = 'PayBuyRet'
-      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
+    WHERE e.event = 'ServerPayLog'
     GROUP BY e.dt
     """
 
     assert _data_skill_sql_validation_error("查看近七天的 ARPPU", wrong_sql, prompt) == (
-        "修仙付费趋势必须使用 PayBuyRet 的成功事件、personal.ed_money 和去重 uid；"
-        "paytotal 是累计快照，不能计算当日收入、当日付费人数或 ARPPU。"
+        "修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；"
+        "PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
     )
 
 
-def test_xiuxian_payment_skill_allows_verified_paybuyret_arppu_sql() -> None:
+def test_xiuxian_payment_skill_allows_verified_serverpaylog_arppu_sql() -> None:
     prompt = _payment_skill()["prompt"]
     correct_sql = """
     SELECT e.dt,
-           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')) AS DECIMAL(18, 4)))
+           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')) AS DECIMAL(18, 4)))
              / NULLIF(COUNT(DISTINCT e.uid), 0) AS ARPPU
     FROM `event` e
-    WHERE e.event = 'PayBuyRet'
-      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
-      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')) AS DECIMAL(18, 4)) > 0
+    WHERE e.event = 'ServerPayLog'
+      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')) AS DECIMAL(18, 4)) > 0
     GROUP BY e.dt
     """
 
     assert _data_skill_sql_validation_error("查看近七天的 ARPPU", correct_sql, prompt) is None
+
+
+def test_xiuxian_payment_skill_allows_serverpaylog_revenue_without_payer_count() -> None:
+    prompt = _payment_skill()["prompt"]
+    correct_sql = """
+    SELECT e.dt,
+           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')) AS DECIMAL(18, 4))) AS revenue
+    FROM `event` e
+    WHERE e.event = 'ServerPayLog'
+    GROUP BY e.dt
+    """
+
+    assert _data_skill_sql_validation_error("查看近七天收入", correct_sql, prompt) is None
