@@ -168,6 +168,33 @@ def _has_order_by(sql: str) -> bool:
     return bool(sqlglot.parse_one(sql, read="mysql").args.get("order"))
 
 
+def _compare_repair_results(
+    original_result: Any,
+    rewritten_result: Any,
+    *,
+    ordered: bool,
+) -> None:
+    """先严格比较；仅容忍 ORDER BY 并列行的数据库返回顺序抖动。"""
+
+    try:
+        compare_query_results(
+            original_result,
+            rewritten_result,
+            ordered=ordered,
+        )
+    except ResultMismatchError as ordered_error:
+        if not ordered:
+            raise
+        try:
+            compare_query_results(
+                original_result,
+                rewritten_result,
+                ordered=False,
+            )
+        except ResultMismatchError:
+            raise ordered_error
+
+
 def validate_all_repairs(
     dashboards: Sequence[Any], datasource_connection: Any
 ) -> dict[str, str]:
@@ -196,7 +223,8 @@ def validate_all_repairs(
                 cursor, freeze_curdate(rewritten_sql, business_date)
             )
             try:
-                compare_query_results(
+                # rewrite_bounds_sql 返回前已验证 SELECT/GROUP/ORDER/LIMIT 等表面签名。
+                _compare_repair_results(
                     original_result,
                     rewritten_result,
                     ordered=_has_order_by(original_sql),

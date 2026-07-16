@@ -3,7 +3,9 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +16,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 publisher = importlib.import_module("publish_xiuxian_dashboard_data_skills")
+repair = importlib.import_module("xiuxian_dashboard_sql_repair")
 
 
 class Connection:
@@ -24,6 +27,101 @@ class Connection:
 
     def close(self) -> None:
         self.closed = True
+
+
+class EquivalenceCursor:
+    def execute(self, _sql: str) -> None:
+        pass
+
+    def fetchone(self):
+        return (date(2026, 7, 16),)
+
+    def close(self) -> None:
+        pass
+
+
+class EquivalenceConnection:
+    def cursor(self):
+        return EquivalenceCursor()
+
+
+def _validate_one_repair(monkeypatch, original_result, rewritten_result):
+    view_id = "view-with-order-ties"
+    dashboard = SimpleNamespace(
+        drawers=[
+            SimpleNamespace(
+                view_id=view_id,
+                sql=(
+                    "SELECT cohort_dt, amount, channel FROM metrics "
+                    "ORDER BY cohort_dt DESC, amount DESC"
+                ),
+            )
+        ]
+    )
+    results = iter((original_result, rewritten_result))
+    monkeypatch.setattr(publisher, "REPAIR_SPECS", {view_id: object()})
+    monkeypatch.setattr(publisher, "EXPECTED_REPAIR_COUNT", 1)
+    monkeypatch.setattr(
+        publisher,
+        "rewrite_bounds_sql",
+        lambda requested_view_id, sql: sql.replace("metrics", "rewritten_metrics"),
+    )
+    monkeypatch.setattr(publisher, "execute_query", lambda cursor, sql: next(results))
+
+    return publisher.validate_all_repairs([dashboard], EquivalenceConnection())
+
+
+def test_validate_all_repairs_accepts_only_order_tie_reordering(monkeypatch):
+    columns = ("cohort_dt", "amount", "channel")
+    original = repair.QueryResult(
+        columns,
+        (
+            (date(2026, 7, 15), 100, "Organic"),
+            (date(2026, 7, 15), 100, "Unknown"),
+            (date(2026, 7, 14), 80, "Paid"),
+        ),
+    )
+    rewritten = repair.QueryResult(
+        columns,
+        (
+            (date(2026, 7, 15), 100, "Unknown"),
+            (date(2026, 7, 15), 100, "Organic"),
+            (date(2026, 7, 14), 80, "Paid"),
+        ),
+    )
+
+    repairs = _validate_one_repair(monkeypatch, original, rewritten)
+
+    assert set(repairs) == {"view-with-order-ties"}
+
+
+@pytest.mark.parametrize(
+    ("original", "rewritten"),
+    [
+        (
+            repair.QueryResult(("x",), ((1,), (2,))),
+            repair.QueryResult(("x",), ((1,), (3,))),
+        ),
+        (
+            repair.QueryResult(("x",), ((1,), (1,), (2,))),
+            repair.QueryResult(("x",), ((1,), (2,), (2,))),
+        ),
+        (
+            repair.QueryResult(("x",), ((1,),)),
+            repair.QueryResult(("y",), ((1,),)),
+        ),
+        (
+            repair.QueryResult(("x",), ((1,),)),
+            repair.QueryResult(("x",), ((1,), (1,))),
+        ),
+    ],
+    ids=("value", "duplicate-count", "columns", "row-count"),
+)
+def test_validate_all_repairs_rejects_real_result_mismatches(
+    monkeypatch, original, rewritten
+):
+    with pytest.raises(publisher.ResultMismatchError):
+        _validate_one_repair(monkeypatch, original, rewritten)
 
 
 def _install_read_phases(monkeypatch, calls, *, repairs=None, skills=None):
