@@ -57,7 +57,7 @@ from xiuxian_dashboard_sql_repair import (
     validate_explain_plan,
 )
 
-__all__ = ("SkillRestoreConflictError",)
+__all__ = ("SkillPublishRecoveryError", "SkillRestoreConflictError")
 
 
 EXPECTED_REPAIR_COUNT = 11
@@ -84,6 +84,29 @@ class PublishPhase(Enum):
 
 class RetrievalSmokeError(RuntimeError):
     """发布后的 Data Skill 未通过 Smart Q&A 召回门禁。"""
+
+
+class SkillPublishRecoveryError(RuntimeError):
+    """发布与恢复同时失败，保留两条独立异常证据。"""
+
+    def __init__(
+        self,
+        publish_error: BaseException,
+        recovery_error: BaseException,
+    ) -> None:
+        self.publish_error = publish_error
+        self.recovery_error = recovery_error
+        self.unlock_error: BaseException | None = None
+        super().__init__(
+            "修仙 Skill 发布失败且恢复失败: "
+            f"publish={publish_error!r}; recovery={recovery_error!r}"
+        )
+
+    def attach_unlock_error(self, unlock_error: BaseException) -> None:
+        """解锁再失败时附加证据，不替换发布与恢复异常。"""
+
+        self.unlock_error = unlock_error
+        self.add_note(f"publish lock 解锁失败: {unlock_error!r}")
 
 
 @dataclass(frozen=True)
@@ -763,6 +786,7 @@ def run_publish(
     with _connection_scope(system_factory) as system_write_connection:
         acquire_publish_lock(system_write_connection)
         publish_error: BaseException | None = None
+        combined_error: SkillPublishRecoveryError | None = None
         ids: list[int] = []
         expected_states: dict[int, dict[str, Any]] = {}
         skill_backup: dict[str, list[dict[str, Any]]] | None = None
@@ -801,21 +825,29 @@ def run_publish(
         except BaseException as exc:
             publish_error = exc
             if skill_backup is not None and skill_publish_started and expected_states:
-                _restore_with_new_connection(
-                    system_factory,
-                    skill_backup,
-                    markers,
-                    expected_states,
-                    original_lock_held=_connection_is_usable(
-                        system_write_connection
-                    ),
-                )
+                try:
+                    _restore_with_new_connection(
+                        system_factory,
+                        skill_backup,
+                        markers,
+                        expected_states,
+                        original_lock_held=_connection_is_usable(
+                            system_write_connection
+                        ),
+                    )
+                except BaseException as recovery_error:
+                    combined_error = SkillPublishRecoveryError(
+                        exc, recovery_error
+                    )
+                    raise combined_error from recovery_error
             raise
         finally:
             if _connection_is_usable(system_write_connection):
                 try:
                     release_publish_lock(system_write_connection)
-                except BaseException:
+                except BaseException as unlock_error:
+                    if combined_error is not None:
+                        combined_error.attach_unlock_error(unlock_error)
                     if publish_error is None:
                         raise
 

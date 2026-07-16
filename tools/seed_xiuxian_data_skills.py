@@ -650,7 +650,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from publish_xiuxian_dashboard_data_skills import main as publisher_main
 
-    return publisher_main([*(argv or ()), "--mode", "apply"])
+    cli_args = list(sys.argv[1:] if argv is None else argv)
+    if any(arg == "--mode" or arg.startswith("--mode=") for arg in cli_args):
+        raise SystemExit("seed 入口固定使用 apply，禁止传入 --mode")
+    return publisher_main([*cli_args, "--mode", "apply"])
 
 
 if __name__ == "__main__":

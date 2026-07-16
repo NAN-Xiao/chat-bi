@@ -638,6 +638,147 @@ def test_precommit_validation_failure_does_not_start_state_restore(
     assert "unexpected_restore" not in calls
 
 
+@pytest.mark.parametrize("failure_stage", ["commit", "embedding", "retrieval"])
+def test_publish_and_cas_recovery_failures_are_both_preserved(
+    monkeypatch, tmp_path, failure_stage
+):
+    calls: list[str] = []
+    read_connection = Connection("system-read", calls)
+    apply_connection = Connection("system-apply", calls)
+    recovery_connection = Connection("system-recovery", calls)
+    datasource = Connection("datasource", calls)
+    factory_connections = iter(
+        (read_connection, apply_connection, recovery_connection)
+    )
+    _install_read_phases(monkeypatch, calls)
+    skill_backup = {"skills": [{"id": 7}], "preferences": []}
+    ids = list(range(100, 113))
+    publish_error = RuntimeError(f"{failure_stage} publish failed")
+    recovery_error = publisher.SkillRestoreConflictError("CAS conflict")
+    unlock_error = RuntimeError("unlock failed")
+
+    monkeypatch.setattr(publisher, "acquire_publish_lock", lambda _connection: None)
+
+    def fail_unlock(_connection):
+        raise unlock_error
+
+    monkeypatch.setattr(publisher, "release_publish_lock", fail_unlock)
+    monkeypatch.setattr(
+        publisher, "apply_dashboard_repairs", lambda *_args, **_kwargs: 4
+    )
+    monkeypatch.setattr(
+        publisher, "backup_and_write_skill_snapshot", lambda *_args: skill_backup
+    )
+    monkeypatch.setattr(publisher, "verify_skill_backup", lambda _path: skill_backup)
+
+    def upsert(*_args, expected_states):
+        expected_states.update(
+            {
+                skill_id: {"id": skill_id, "tenant_id": publisher.TENANT_ID}
+                for skill_id in ids
+            }
+        )
+        if failure_stage == "commit":
+            raise publish_error
+        return ids
+
+    def refresh(*_args, **_kwargs):
+        if failure_stage == "embedding":
+            raise publish_error
+
+    def retrieve(_checker):
+        if failure_stage == "retrieval":
+            raise publish_error
+        return {}
+
+    monkeypatch.setattr(publisher, "upsert_and_commit_skills", upsert)
+    monkeypatch.setattr(publisher, "refresh_and_verify_embeddings", refresh)
+    monkeypatch.setattr(publisher, "verify_retrieval", retrieve)
+    monkeypatch.setattr(
+        publisher,
+        "restore_published_skills",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(recovery_error),
+    )
+
+    with pytest.raises(publisher.SkillPublishRecoveryError) as exc_info:
+        publisher.run_publish(
+            mode="apply",
+            backup_root=tmp_path,
+            system_connection_factory=lambda: next(factory_connections),
+            datasource_connection_factory=lambda: datasource,
+        )
+
+    assert exc_info.value.publish_error is publish_error
+    assert exc_info.value.recovery_error is recovery_error
+    assert exc_info.value.unlock_error is unlock_error
+    assert str(publish_error) in str(exc_info.value)
+    assert str(recovery_error) in str(exc_info.value)
+
+
+def test_publish_and_recovery_connection_failures_are_both_preserved(
+    monkeypatch, tmp_path
+):
+    calls: list[str] = []
+    read_connection = Connection("system-read", calls)
+    apply_connection = Connection("system-apply", calls)
+    datasource = Connection("datasource", calls)
+    factory_calls = 0
+    _install_read_phases(monkeypatch, calls)
+    skill_backup = {"skills": [], "preferences": []}
+    ids = list(range(100, 113))
+    publish_error = publisher.RetrievalSmokeError("retrieval failed")
+    recovery_error = ConnectionError("recovery connection failed")
+
+    def system_factory():
+        nonlocal factory_calls
+        factory_calls += 1
+        if factory_calls == 1:
+            return read_connection
+        if factory_calls == 2:
+            return apply_connection
+        raise recovery_error
+
+    monkeypatch.setattr(publisher, "acquire_publish_lock", lambda _connection: None)
+    monkeypatch.setattr(publisher, "release_publish_lock", lambda _connection: None)
+    monkeypatch.setattr(
+        publisher, "apply_dashboard_repairs", lambda *_args, **_kwargs: 4
+    )
+    monkeypatch.setattr(
+        publisher, "backup_and_write_skill_snapshot", lambda *_args: skill_backup
+    )
+    monkeypatch.setattr(publisher, "verify_skill_backup", lambda _path: skill_backup)
+
+    def upsert(*_args, expected_states):
+        expected_states.update(
+            {
+                skill_id: {"id": skill_id, "tenant_id": publisher.TENANT_ID}
+                for skill_id in ids
+            }
+        )
+        return ids
+
+    monkeypatch.setattr(publisher, "upsert_and_commit_skills", upsert)
+    monkeypatch.setattr(
+        publisher, "refresh_and_verify_embeddings", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        publisher,
+        "verify_retrieval",
+        lambda _checker: (_ for _ in ()).throw(publish_error),
+    )
+
+    with pytest.raises(publisher.SkillPublishRecoveryError) as exc_info:
+        publisher.run_publish(
+            mode="apply",
+            backup_root=tmp_path,
+            system_connection_factory=system_factory,
+            datasource_connection_factory=lambda: datasource,
+        )
+
+    assert exc_info.value.publish_error is publish_error
+    assert exc_info.value.recovery_error is recovery_error
+
+
 def test_skill_recovery_artifact_is_independent_and_verified(
     monkeypatch, tmp_path
 ):

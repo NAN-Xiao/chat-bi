@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import runpy
 import sys
 import types
 from contextlib import nullcontext
@@ -526,3 +527,57 @@ def test_main_delegates_exclusively_to_formal_publisher_apply_cli(monkeypatch):
     monkeypatch.setitem(sys.modules, fake_publisher.__name__, fake_publisher)
     assert module.main(["--backup-root", "backup-dir"]) == 23
     assert observed == [["--backup-root", "backup-dir", "--mode", "apply"]]
+
+
+def test_seed_cli_forwards_real_sys_argv_to_publisher_apply(monkeypatch):
+    observed = []
+    fake_publisher = types.ModuleType("publish_xiuxian_dashboard_data_skills")
+    fake_publisher.main = lambda argv: observed.append(list(argv)) or 0
+    monkeypatch.setitem(sys.modules, fake_publisher.__name__, fake_publisher)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(SEED_SCRIPT), "--backup-root", "backup-dir"],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(str(SEED_SCRIPT), run_name="__main__")
+
+    assert exc_info.value.code == 0
+    assert observed == [["--backup-root", "backup-dir", "--mode", "apply"]]
+
+
+def test_seed_cli_rejects_user_supplied_mode_before_publisher(monkeypatch):
+    observed = []
+    fake_publisher = types.ModuleType("publish_xiuxian_dashboard_data_skills")
+    fake_publisher.main = lambda argv: observed.append(list(argv)) or 0
+    monkeypatch.setitem(sys.modules, fake_publisher.__name__, fake_publisher)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(SEED_SCRIPT), "--mode", "dry-run"],
+    )
+
+    with pytest.raises(SystemExit, match="mode|apply"):
+        runpy.run_path(str(SEED_SCRIPT), run_name="__main__")
+
+    assert observed == []
+
+
+def test_seed_cli_forwards_unknown_argument_to_publisher_parser(monkeypatch):
+    publisher = __import__("publish_xiuxian_dashboard_data_skills")
+    monkeypatch.setattr(
+        publisher,
+        "run_publish",
+        lambda **_kwargs: pytest.fail("未知参数必须在运行发布前被拒绝"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(SEED_SCRIPT), "--unknown-xiuxian-option"],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(str(SEED_SCRIPT), run_name="__main__")
+
+    assert exc_info.value.code == 2
