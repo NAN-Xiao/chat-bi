@@ -147,6 +147,50 @@ def test_verify_backup_rejects_file_and_sql_hash_tampering(tmp_path):
         snapshot.verify_backup(path)
 
 
+def test_verify_backup_rejects_manifest_byte_tampering(tmp_path):
+    dashboards = make_nine_dashboard_snapshots()
+    path = snapshot.write_verified_backup(
+        dashboards, tmp_path, timestamp="20260716-120000"
+    )
+    manifest_path = path / "manifest.json"
+    manifest_value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert len(manifest_value["manifest_payload_sha256"]) == 64
+
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8") + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="manifest"):
+        snapshot.verify_backup(path)
+
+
+def test_failed_write_cleans_staging_and_allows_same_timestamp_retry(
+    tmp_path, monkeypatch
+):
+    dashboards = make_nine_dashboard_snapshots()
+    timestamp = "20260716-120000"
+    original_write_json = snapshot._write_json
+    write_count = 0
+
+    def fail_on_third_write(path, value):
+        nonlocal write_count
+        write_count += 1
+        if write_count == 3:
+            raise RuntimeError("injected write failure")
+        original_write_json(path, value)
+
+    monkeypatch.setattr(snapshot, "_write_json", fail_on_third_write)
+    with pytest.raises(RuntimeError, match="injected write failure"):
+        snapshot.write_verified_backup(dashboards, tmp_path, timestamp=timestamp)
+
+    assert not (tmp_path / timestamp).exists()
+    assert list(tmp_path.glob(f".{timestamp}.*.staging")) == []
+
+    monkeypatch.setattr(snapshot, "_write_json", original_write_json)
+    path = snapshot.write_verified_backup(dashboards, tmp_path, timestamp=timestamp)
+    assert snapshot.verify_backup(path).dashboard_count == 9
+
+
 class _FakeCursor:
     def __init__(self, rows):
         self.rows = rows

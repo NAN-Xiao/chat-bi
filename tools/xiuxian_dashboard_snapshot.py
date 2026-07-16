@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -153,6 +154,7 @@ class BackupManifest:
     nonempty_drawer_count: int
     file_sha256: dict[str, str]
     sql_sha256: dict[str, str]
+    manifest_payload_sha256: str
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "BackupManifest":
@@ -170,6 +172,7 @@ class BackupManifest:
                 nonempty_drawer_count=int(value["nonempty_drawer_count"]),
                 file_sha256={str(key): str(item) for key, item in file_sha256.items()},
                 sql_sha256={str(key): str(item) for key, item in sql_sha256.items()},
+                manifest_payload_sha256=str(value["manifest_payload_sha256"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("manifest.json 结构无效") from exc
@@ -184,6 +187,7 @@ class BackupManifest:
             "nonempty_drawer_count": self.nonempty_drawer_count,
             "file_sha256": self.file_sha256,
             "sql_sha256": self.sql_sha256,
+            "manifest_payload_sha256": self.manifest_payload_sha256,
         }
 
 
@@ -252,11 +256,26 @@ def _validate_dashboards(dashboards: Sequence[DashboardSnapshot]) -> None:
             raise ValueError(f"抽屉 {_drawer_key(drawer)} 的 SQL 哈希不一致")
 
 
+def _json_bytes(value: Any) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+
+
+def _manifest_payload_sha256(manifest: BackupManifest) -> str:
+    payload = manifest.to_dict()
+    payload.pop("manifest_payload_sha256")
+    normalized = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return _sha256_bytes(normalized)
+
+
 def _write_json(path: Path, value: Any) -> None:
-    payload = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    payload = _json_bytes(value)
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
-        temporary.write_text(payload, encoding="utf-8", newline="\n")
+        temporary.write_bytes(payload)
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -278,7 +297,7 @@ def _build_manifest(target: Path, dashboards: Sequence[DashboardSnapshot]) -> Ba
         for path in data_files
     }
     drawers = [drawer for dashboard in dashboards for drawer in dashboard.drawers]
-    return BackupManifest(
+    manifest = BackupManifest(
         version=BACKUP_VERSION,
         tenant_id=TENANT_ID,
         datasource_id=DATASOURCE_ID,
@@ -287,6 +306,10 @@ def _build_manifest(target: Path, dashboards: Sequence[DashboardSnapshot]) -> Ba
         nonempty_drawer_count=sum(bool(drawer.sql.strip()) for drawer in drawers),
         file_sha256=file_sha256,
         sql_sha256={_drawer_key(drawer): drawer.sql_sha256 for drawer in drawers},
+        manifest_payload_sha256="",
+    )
+    return replace(
+        manifest, manifest_payload_sha256=_manifest_payload_sha256(manifest)
     )
 
 
@@ -297,17 +320,32 @@ def write_verified_backup(
 
     dashboards = tuple(dashboards)
     _validate_dashboards(dashboards)
-    target = Path(backup_root) / timestamp
-    target.mkdir(parents=True, exist_ok=False)
-    dashboards_dir = target / "dashboards"
-    dashboards_dir.mkdir()
-    for dashboard in dashboards:
+    backup_root = Path(backup_root)
+    target = backup_root / timestamp
+    if target.exists():
+        raise FileExistsError(target)
+    backup_root.mkdir(parents=True, exist_ok=True)
+    staging = backup_root / f".{timestamp}.{uuid4().hex}.staging"
+    staging.mkdir(exist_ok=False)
+    try:
+        dashboards_dir = staging / "dashboards"
+        dashboards_dir.mkdir()
+        for dashboard in dashboards:
+            _write_json(
+                dashboards_dir / f"{dashboard.id}.json", dashboard.to_backup_dict()
+            )
+        _write_json(staging / "drawer_sql.json", _drawer_rows(dashboards))
         _write_json(
-            dashboards_dir / f"{dashboard.id}.json", dashboard.to_backup_dict()
+            staging / "manifest.json", _build_manifest(staging, dashboards).to_dict()
         )
-    _write_json(target / "drawer_sql.json", _drawer_rows(dashboards))
-    _write_json(target / "manifest.json", _build_manifest(target, dashboards).to_dict())
-    verify_backup(target)
+        verify_backup(staging)
+        if target.exists():
+            raise FileExistsError(target)
+        staging.replace(target)
+    except BaseException:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
     return target
 
 
@@ -315,10 +353,15 @@ def verify_backup(path: Path) -> BackupManifest:
     """重新读取所有文件并严格校验数量、文件哈希与原 SQL 哈希。"""
 
     path = Path(path)
-    manifest_value = _read_json(path / "manifest.json")
+    manifest_path = path / "manifest.json"
+    manifest_value = _read_json(manifest_path)
     if not isinstance(manifest_value, dict):
         raise ValueError("manifest.json 结构无效")
     manifest = BackupManifest.from_dict(manifest_value)
+    if manifest_path.read_bytes() != _json_bytes(manifest.to_dict()):
+        raise ValueError("manifest.json 不是规范化的完整文件")
+    if manifest.manifest_payload_sha256 != _manifest_payload_sha256(manifest):
+        raise ValueError("manifest payload 哈希不一致")
     if (
         manifest.version != BACKUP_VERSION
         or manifest.tenant_id != TENANT_ID
