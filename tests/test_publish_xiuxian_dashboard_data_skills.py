@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -171,8 +172,11 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
     calls: list[str] = []
     read_connection = Connection("system-read", calls)
     apply_connection = Connection("system-apply", calls)
+    recovery_connection = Connection("system-recovery", calls)
     datasource = Connection("datasource", calls)
-    factory_connections = iter((read_connection, apply_connection))
+    factory_connections = iter(
+        (read_connection, apply_connection, recovery_connection)
+    )
     dashboards, repairs, skills, backup_path = _install_read_phases(monkeypatch, calls)
     skill_backup = {"skills": [{"id": 7}], "preferences": []}
     ids = list(range(100, 113))
@@ -180,12 +184,12 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
     monkeypatch.setattr(
         publisher,
         "acquire_publish_lock",
-        lambda connection: calls.append("lock"),
+        lambda connection: calls.append(f"lock:{connection.name}"),
     )
     monkeypatch.setattr(
         publisher,
         "release_publish_lock",
-        lambda connection: calls.append("unlock"),
+        lambda connection: calls.append(f"unlock:{connection.name}"),
     )
     monkeypatch.setattr(
         publisher,
@@ -200,6 +204,11 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
         lambda connection, generated, path: (
             calls.append("backup_skills") or skill_backup
         ),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "verify_skill_backup",
+        lambda path: calls.append("verify_skills") or skill_backup,
     )
     monkeypatch.setattr(
         publisher,
@@ -222,7 +231,9 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
     monkeypatch.setattr(
         publisher,
         "restore_published_skills",
-        lambda connection, backup, affected: calls.append("restore_skills"),
+        lambda connection, backup, markers: calls.append(
+            f"restore_skills:{connection.name}"
+        ),
     )
 
     with pytest.raises(publisher.RetrievalSmokeError, match="英雄养成"):
@@ -235,16 +246,277 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
             retrieval_checker=lambda question: question,
         )
 
-    assert calls.index("lock") < calls.index("apply_dashboards")
+    assert calls.index("lock:system-apply") < calls.index("apply_dashboards")
     assert calls.index("apply_dashboards") < calls.index("backup_skills")
-    assert calls.index("backup_skills") < calls.index("upsert_skills")
+    assert calls.index("backup_skills") < calls.index("verify_skills")
+    assert calls.index("verify_skills") < calls.index("upsert_skills")
     assert calls.index("upsert_skills") < calls.index("embeddings")
     assert calls.index("embeddings") < calls.index("retrieval")
-    assert calls.index("retrieval") < calls.index("restore_skills")
-    assert calls.index("restore_skills") < calls.index("unlock")
+    assert calls.index("retrieval") < calls.index(
+        "restore_skills:system-recovery"
+    )
+    assert calls.index("restore_skills:system-recovery") < calls.index(
+        "unlock:system-apply"
+    )
+    assert "lock:system-recovery" not in calls
     assert backup_path == Path("backup/20260716-120000")
     assert len(repairs) == 11
     assert len(skills) == 13
+
+
+def test_commit_uncertainty_restores_by_markers_on_a_new_connection(
+    monkeypatch, tmp_path
+):
+    calls: list[str] = []
+    read_connection = Connection("system-read", calls)
+    apply_connection = Connection("system-apply", calls)
+    recovery_connection = Connection("system-recovery", calls)
+    datasource = Connection("datasource", calls)
+    factory_connections = iter(
+        (read_connection, apply_connection, recovery_connection)
+    )
+    _dashboards, _repairs, skills, _backup_path = _install_read_phases(
+        monkeypatch, calls
+    )
+    skill_backup = {"skills": [{"id": 7}], "preferences": []}
+
+    monkeypatch.setattr(
+        publisher,
+        "acquire_publish_lock",
+        lambda connection: calls.append(f"lock:{connection.name}"),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "release_publish_lock",
+        lambda connection: calls.append(f"unlock:{connection.name}"),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "apply_dashboard_repairs",
+        lambda *_args, **_kwargs: calls.append("apply_dashboards") or 4,
+    )
+    monkeypatch.setattr(
+        publisher,
+        "backup_and_write_skill_snapshot",
+        lambda *_args: calls.append("backup_skills") or skill_backup,
+    )
+    monkeypatch.setattr(
+        publisher,
+        "verify_skill_backup",
+        lambda _path: calls.append("verify_skills") or skill_backup,
+    )
+
+    def uncertain_commit(*_args):
+        calls.append("server_persisted_skills")
+        raise OSError("commit acknowledgement lost")
+
+    monkeypatch.setattr(publisher, "upsert_and_commit_skills", uncertain_commit)
+    restored = []
+    monkeypatch.setattr(
+        publisher,
+        "restore_published_skills",
+        lambda connection, backup, markers: restored.append(
+            (connection.name, backup, tuple(markers))
+        ),
+    )
+
+    with pytest.raises(OSError, match="acknowledgement"):
+        publisher.run_publish(
+            mode="apply",
+            backup_root=tmp_path,
+            system_connection_factory=lambda: next(factory_connections),
+            datasource_connection_factory=lambda: datasource,
+            embedding_refresher=lambda affected: len(affected),
+            retrieval_checker=lambda question: question,
+        )
+
+    assert restored
+    connection_name, restored_backup, markers = restored[0]
+    assert connection_name == "system-recovery"
+    assert restored_backup == skill_backup
+    assert set(markers) == set(publisher._skill_markers(skills))
+    assert "lock:system-recovery" not in calls
+    assert calls.index("server_persisted_skills") < calls.index(
+        "unlock:system-apply"
+    )
+
+
+def test_broken_publish_session_reacquires_lock_on_recovery_connection(
+    monkeypatch, tmp_path
+):
+    calls: list[str] = []
+    read_connection = Connection("system-read", calls)
+    apply_connection = Connection("system-apply", calls)
+    recovery_connection = Connection("system-recovery", calls)
+    datasource = Connection("datasource", calls)
+    factory_connections = iter(
+        (read_connection, apply_connection, recovery_connection)
+    )
+    _install_read_phases(monkeypatch, calls)
+    skill_backup = {"skills": [], "preferences": []}
+
+    monkeypatch.setattr(
+        publisher,
+        "acquire_publish_lock",
+        lambda connection: calls.append(f"lock:{connection.name}"),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "release_publish_lock",
+        lambda connection: calls.append(f"unlock:{connection.name}"),
+    )
+    monkeypatch.setattr(
+        publisher,
+        "apply_dashboard_repairs",
+        lambda *_args, **_kwargs: 4,
+    )
+    monkeypatch.setattr(
+        publisher,
+        "backup_and_write_skill_snapshot",
+        lambda *_args: skill_backup,
+    )
+    monkeypatch.setattr(
+        publisher,
+        "verify_skill_backup",
+        lambda _path: skill_backup,
+    )
+
+    def fail_on_broken_connection(*_args):
+        apply_connection.closed = True
+        raise OSError("connection lost during commit")
+
+    monkeypatch.setattr(
+        publisher, "upsert_and_commit_skills", fail_on_broken_connection
+    )
+    monkeypatch.setattr(
+        publisher,
+        "restore_published_skills",
+        lambda connection, backup, markers: calls.append(
+            f"restore:{connection.name}"
+        ),
+    )
+
+    with pytest.raises(OSError, match="connection lost"):
+        publisher.run_publish(
+            mode="apply",
+            backup_root=tmp_path,
+            system_connection_factory=lambda: next(factory_connections),
+            datasource_connection_factory=lambda: datasource,
+        )
+
+    assert calls.index("lock:system-recovery") < calls.index(
+        "restore:system-recovery"
+    )
+    assert calls.index("restore:system-recovery") < calls.index(
+        "unlock:system-recovery"
+    )
+    assert "unlock:system-apply" not in calls
+
+
+def test_skill_recovery_artifact_is_independent_and_verified(
+    monkeypatch, tmp_path
+):
+    backup_path = tmp_path / "20260716-120000"
+    backup_path.mkdir()
+    original_file = backup_path / "manifest.json"
+    original_file.write_text('{"dashboard":"sealed"}\n', encoding="utf-8")
+    original_files = set(backup_path.rglob("*"))
+    backup = {
+        "skills": [
+            {
+                "id": 7,
+                "tenant_id": publisher.TENANT_ID,
+                "datasource_ids": [publisher.DATASOURCE_ID],
+                "prompt": "marker-a",
+            }
+        ],
+        "preferences": [],
+    }
+    monkeypatch.setattr(
+        publisher,
+        "backup_existing_skills",
+        lambda cursor, markers: backup,
+    )
+
+    class Cursor:
+        def close(self):
+            pass
+
+    class DbConnection:
+        def cursor(self):
+            return Cursor()
+
+    publisher.backup_and_write_skill_snapshot(
+        DbConnection(),
+        [{"prompt": "marker-a", "name": "Skill", "description": ""}],
+        backup_path,
+    )
+
+    assert set(backup_path.rglob("*")) == original_files
+    recovery_path = publisher.skill_recovery_path(backup_path)
+    assert recovery_path.parent == backup_path.parent
+    assert {path.name for path in recovery_path.iterdir()} == {
+        "skills.json",
+        "manifest.json",
+    }
+    assert publisher.verify_skill_backup(backup_path) == backup
+
+    payload = json.loads((recovery_path / "skills.json").read_text("utf-8"))
+    payload["backup"]["skills"][0]["prompt"] = "tampered"
+    (recovery_path / "skills.json").write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="哈希"):
+        publisher.verify_skill_backup(backup_path)
+
+
+def test_restore_published_skills_discovers_affected_ids_from_markers(
+    monkeypatch,
+):
+    markers = ["marker-a", "marker-b"]
+    backup = {"skills": [{"id": 7}], "preferences": []}
+    observed = {}
+
+    class Cursor:
+        def close(self):
+            pass
+
+    class DbConnection:
+        def __init__(self):
+            self.committed = False
+            self.rollback_count = 0
+
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            self.rollback_count += 1
+
+    def load_current(cursor, requested_markers):
+        observed["markers"] = list(requested_markers)
+        return {"skills": [{"id": 8}, {"id": 9}], "preferences": []}
+
+    monkeypatch.setattr(publisher, "backup_existing_skills", load_current)
+
+    def restore(cursor, original, *, affected_ids):
+        observed["backup"] = original
+        observed["affected_ids"] = list(affected_ids)
+
+    monkeypatch.setattr(publisher, "restore_skills", restore)
+    connection = DbConnection()
+
+    publisher.restore_published_skills(connection, backup, markers)
+
+    assert observed == {
+        "markers": markers,
+        "backup": backup,
+        "affected_ids": [8, 9],
+    }
+    assert connection.committed is True
+    assert connection.rollback_count == 1
 
 
 def test_verify_retrieval_checks_all_five_topics_and_serverpaylog_marker():

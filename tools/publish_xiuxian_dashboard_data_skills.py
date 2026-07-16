@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import sys
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
+from uuid import uuid4
 
 import psycopg
 import sqlglot
@@ -53,7 +55,9 @@ from xiuxian_dashboard_sql_repair import (
 
 
 EXPECTED_REPAIR_COUNT = 11
-SKILL_BACKUP_FILENAME = "data_skills.json"
+SKILL_BACKUP_VERSION = 1
+SKILL_BACKUP_SUFFIX = ".skill-recovery"
+SKILL_BACKUP_FILENAME = "skills.json"
 LEGACY_PAYMENT_MARKER_TEXT = "paybuyret-monetization-arppu"
 
 
@@ -275,35 +279,124 @@ def _json_default(value: Any) -> str:
     return str(value)
 
 
+def _json_bytes(value: Any) -> bytes:
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            default=_json_default,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def skill_recovery_path(backup_path: Path) -> Path:
+    """返回与看板备份目录相邻、互不污染 manifest 的恢复目录。"""
+
+    backup_path = Path(backup_path)
+    return backup_path.parent / f"{backup_path.name}{SKILL_BACKUP_SUFFIX}"
+
+
 def backup_and_write_skill_snapshot(
     connection: Any,
     skills: Sequence[Mapping[str, str]],
     backup_path: Path,
 ) -> dict[str, list[dict[str, Any]]]:
-    """读取现有 Skill 完整快照，并追加到本轮已验证备份目录。"""
+    """读取现有 Skill，并原子写入独立的恢复工件目录。"""
 
+    markers = _skill_markers(skills)
     with _cursor_scope(connection) as cursor:
-        backup = backup_existing_skills(cursor, _skill_markers(skills))
-    path = Path(backup_path) / SKILL_BACKUP_FILENAME
-    if path.exists():
-        raise FileExistsError(path)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        backup = backup_existing_skills(cursor, markers)
+    target = skill_recovery_path(backup_path)
+    if target.exists():
+        raise FileExistsError(target)
+    staging = target.with_name(
+        f".{target.name}.{os.getpid()}.{uuid4().hex}.staging"
+    )
+    staging.mkdir(parents=False, exist_ok=False)
     try:
-        temporary.write_text(
-            json.dumps(
-                backup,
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-                default=_json_default,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+        skills_payload = {"markers": markers, "backup": backup}
+        skills_bytes = _json_bytes(skills_payload)
+        (staging / SKILL_BACKUP_FILENAME).write_bytes(skills_bytes)
+        manifest = {
+            "version": SKILL_BACKUP_VERSION,
+            "tenant_id": TENANT_ID,
+            "datasource_id": DATASOURCE_ID,
+            "skill_count": len(backup.get("skills", ())),
+            "preference_count": len(backup.get("preferences", ())),
+            "markers": markers,
+            "file_sha256": {
+                SKILL_BACKUP_FILENAME: _sha256_bytes(skills_bytes)
+            },
+        }
+        (staging / "manifest.json").write_bytes(_json_bytes(manifest))
+        staging.replace(target)
+    except BaseException:
+        if staging.exists():
+            for child in staging.iterdir():
+                child.unlink()
+            staging.rmdir()
+        raise
     return backup
+
+
+def verify_skill_backup(
+    backup_path: Path,
+) -> dict[str, list[dict[str, Any]]]:
+    """重新读取并验签独立 Skill 恢复工件。"""
+
+    recovery_path = skill_recovery_path(backup_path)
+    manifest_path = recovery_path / "manifest.json"
+    skills_path = recovery_path / SKILL_BACKUP_FILENAME
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = json.loads(skills_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("无法读取有效的 Skill 恢复工件") from exc
+    if not isinstance(manifest, dict) or not isinstance(payload, dict):
+        raise ValueError("Skill 恢复工件结构无效")
+    actual_files = {path.name for path in recovery_path.iterdir() if path.is_file()}
+    if actual_files != {"manifest.json", SKILL_BACKUP_FILENAME}:
+        raise ValueError("Skill 恢复工件文件集合无效")
+    if (
+        manifest.get("version") != SKILL_BACKUP_VERSION
+        or manifest.get("tenant_id") != TENANT_ID
+        or manifest.get("datasource_id") != DATASOURCE_ID
+    ):
+        raise ValueError("Skill 恢复工件版本或作用域无效")
+    expected_hashes = manifest.get("file_sha256")
+    if not isinstance(expected_hashes, dict) or set(expected_hashes) != {
+        SKILL_BACKUP_FILENAME
+    }:
+        raise ValueError("Skill 恢复工件哈希清单无效")
+    if _sha256_bytes(skills_path.read_bytes()) != expected_hashes[
+        SKILL_BACKUP_FILENAME
+    ]:
+        raise ValueError("Skill 恢复工件文件哈希不一致")
+    markers = payload.get("markers")
+    backup = payload.get("backup")
+    if not isinstance(markers, list) or markers != manifest.get("markers"):
+        raise ValueError("Skill 恢复工件 marker 清单不一致")
+    if not isinstance(backup, dict):
+        raise ValueError("Skill 恢复快照结构无效")
+    skills = backup.get("skills")
+    preferences = backup.get("preferences")
+    if not isinstance(skills, list) or not isinstance(preferences, list):
+        raise ValueError("Skill 恢复快照记录结构无效")
+    if (
+        len(skills) != manifest.get("skill_count")
+        or len(preferences) != manifest.get("preference_count")
+    ):
+        raise ValueError("Skill 恢复工件记录数量不一致")
+    if manifest_path.read_bytes() != _json_bytes(manifest):
+        raise ValueError("Skill 恢复 manifest 不是规范化文件")
+    return {"skills": skills, "preferences": preferences}
 
 
 def acquire_publish_lock(connection: Any) -> None:
@@ -325,7 +418,10 @@ def upsert_and_commit_skills(
         connection.commit()
         return ids
     except BaseException:
-        connection.rollback()
+        try:
+            connection.rollback()
+        except BaseException:
+            pass
         raise
 
 
@@ -349,16 +445,50 @@ def refresh_and_verify_embeddings(
 def restore_published_skills(
     connection: Any,
     backup: Mapping[str, Sequence[Mapping[str, Any]]],
-    affected_ids: Sequence[int],
+    markers: Sequence[str],
 ) -> None:
-    connection.rollback()
+    """按本轮 marker 查询当前记录，再用原快照恢复。"""
+
+    try:
+        connection.rollback()
+    except BaseException:
+        pass
     try:
         with _cursor_scope(connection) as cursor:
+            current = backup_existing_skills(cursor, markers)
+            affected_ids = [int(row["id"]) for row in current.get("skills", ())]
             restore_skills(cursor, backup, affected_ids=affected_ids)
         connection.commit()
     except BaseException:
         connection.rollback()
         raise
+
+
+def _connection_is_usable(connection: Any) -> bool:
+    return not bool(getattr(connection, "closed", False)) and not bool(
+        getattr(connection, "broken", False)
+    )
+
+
+def _restore_with_new_connection(
+    system_connection_factory: Callable[[], Any],
+    backup: Mapping[str, Sequence[Mapping[str, Any]]],
+    markers: Sequence[str],
+    *,
+    original_lock_held: bool,
+) -> None:
+    """始终使用新连接恢复；原 session 失效时重新获取发布锁。"""
+
+    with _connection_scope(system_connection_factory) as recovery_connection:
+        recovery_lock_held = False
+        if not original_lock_held:
+            acquire_publish_lock(recovery_connection)
+            recovery_lock_held = True
+        try:
+            restore_published_skills(recovery_connection, backup, markers)
+        finally:
+            if recovery_lock_held and _connection_is_usable(recovery_connection):
+                release_publish_lock(recovery_connection)
 
 
 def _retrieval_text(result: Any) -> str:
@@ -434,8 +564,11 @@ def run_publish(
     checker = retrieval_checker or _default_retrieval_checker
     with _connection_scope(system_factory) as system_write_connection:
         acquire_publish_lock(system_write_connection)
+        publish_error: BaseException | None = None
         ids: list[int] = []
         skill_backup: dict[str, list[dict[str, Any]]] | None = None
+        skill_publish_started = False
+        markers = _skill_markers(skills)
         try:
             updated = apply_dashboard_repairs(
                 system_write_connection,
@@ -445,9 +578,11 @@ def run_publish(
                 update_time=dt.datetime.now(),
             )
             phase = PublishPhase.DASHBOARDS_APPLIED
-            skill_backup = backup_and_write_skill_snapshot(
+            backup_and_write_skill_snapshot(
                 system_write_connection, skills, backup_path
             )
+            skill_backup = verify_skill_backup(backup_path)
+            skill_publish_started = True
             ids = upsert_and_commit_skills(system_write_connection, skills)
             phase = PublishPhase.SKILLS_APPLIED
             refresh_and_verify_embeddings(
@@ -456,14 +591,25 @@ def run_publish(
             phase = PublishPhase.EMBEDDINGS_VERIFIED
             retrieval_results = verify_retrieval(checker)
             phase = PublishPhase.RETRIEVAL_VERIFIED
-        except BaseException:
-            if skill_backup is not None and ids:
-                restore_published_skills(
-                    system_write_connection, skill_backup, ids
+        except BaseException as exc:
+            publish_error = exc
+            if skill_backup is not None and skill_publish_started:
+                _restore_with_new_connection(
+                    system_factory,
+                    skill_backup,
+                    markers,
+                    original_lock_held=_connection_is_usable(
+                        system_write_connection
+                    ),
                 )
             raise
         finally:
-            release_publish_lock(system_write_connection)
+            if _connection_is_usable(system_write_connection):
+                try:
+                    release_publish_lock(system_write_connection)
+                except BaseException:
+                    if publish_error is None:
+                        raise
 
     return PublishReport(
         mode=mode,
