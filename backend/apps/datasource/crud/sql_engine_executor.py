@@ -433,13 +433,16 @@ def _copy_datasource_for_query(datasource: CoreDatasource) -> CoreDatasource:
     return datasource
 
 
+_UNSET_EXECUTION_CONTROL = object()
+
+
 def _execute_after_validation(
         ds: CoreDatasource | AssistantOutDsSchema,
         sql: str,
         *,
         origin_column: bool,
         query_timeout: int | None = None,
-        max_result_rows: int | None | object = ...,
+        max_result_rows: int | None | object = _UNSET_EXECUTION_CONTROL,
         require_controlled_timeout: bool = False,
 ) -> dict[str, Any]:
     """
@@ -448,6 +451,12 @@ def _execute_after_validation(
     做了什么：调用底层 SQL 执行器，并在执行器支持时传递查询超时时间。
     """
     try:
+        max_result_rows_requested = (
+            max_result_rows is not _UNSET_EXECUTION_CONTROL
+        )
+        roi_controls_requested = (
+            max_result_rows_requested or require_controlled_timeout
+        )
         try:
             parameters = inspect.signature(
                 _unsafe_exec_sql_after_validation
@@ -457,23 +466,43 @@ def _execute_after_validation(
                 for parameter in parameters.values()
             )
         except (TypeError, ValueError):
+            if roi_controls_requested:
+                raise RuntimeError(
+                    "SQL execution adapter cannot verify required ROI controls"
+                )
             parameters = {}
             accepts_extra_keywords = False
 
         def accepts(keyword: str) -> bool:
             return accepts_extra_keywords or keyword in parameters
 
+        requested_controls: dict[str, object] = {}
+        if query_timeout and query_timeout > 0:
+            requested_controls["query_timeout"] = query_timeout
+        if max_result_rows_requested:
+            requested_controls["max_result_rows"] = max_result_rows
+        if require_controlled_timeout:
+            requested_controls["require_controlled_timeout"] = True
+
+        missing_controls = [
+            keyword
+            for keyword in requested_controls
+            if not accepts(keyword)
+        ]
+        if roi_controls_requested and missing_controls:
+            raise RuntimeError(
+                "SQL execution adapter does not support required ROI controls: "
+                + ", ".join(missing_controls)
+            )
+
         kwargs: dict[str, Any] = {
             "ds": ds,
             "sql": sql,
             "origin_column": origin_column,
         }
-        if query_timeout and query_timeout > 0 and accepts("query_timeout"):
-            kwargs["query_timeout"] = query_timeout
-        if max_result_rows is not ... and accepts("max_result_rows"):
-            kwargs["max_result_rows"] = max_result_rows
-        if require_controlled_timeout and accepts("require_controlled_timeout"):
-            kwargs["require_controlled_timeout"] = True
+        for keyword, value in requested_controls.items():
+            if accepts(keyword):
+                kwargs[keyword] = value
         return _unsafe_exec_sql_after_validation(**kwargs)
     except Exception as exc:
         if classify_error(exc).error_type == DATA_UNAVAILABLE_ERROR_TYPE:

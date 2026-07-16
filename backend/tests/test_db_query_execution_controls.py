@@ -83,11 +83,13 @@ def test_low_level_default_still_limits_rows_but_explicit_none_fetches_all(
         "get_session",
         lambda *_args, **_kwargs: FakeSqlAlchemySession(roi_result),
     )
-    roi = db_module._unsafe_exec_sql_after_validation(
+    roi = sql_engine_executor._execute_after_validation(
         datasource,
         "SELECT value FROM metrics",
+        origin_column=False,
         query_timeout=5,
         max_result_rows=None,
+        require_controlled_timeout=True,
     )
 
     assert ordinary["data"] == [{"value": 1}, {"value": 2}]
@@ -375,7 +377,9 @@ def test_kingbase_branch_applies_statement_timeout_override(monkeypatch) -> None
     assert cursor.executed_sql == ["SELECT 1 AS value"]
 
 
-def test_execute_adapter_omits_new_keywords_for_legacy_callable(monkeypatch) -> None:
+def test_execute_adapter_keeps_ordinary_timeout_compatible_with_legacy_callable(
+    monkeypatch,
+) -> None:
     calls: list[tuple[object, str, bool]] = []
 
     def legacy_execute(ds, sql, origin_column=False):
@@ -394,12 +398,71 @@ def test_execute_adapter_omits_new_keywords_for_legacy_callable(monkeypatch) -> 
         "SELECT 1",
         origin_column=True,
         query_timeout=7,
-        max_result_rows=None,
-        require_controlled_timeout=True,
     )
 
     assert result == {"status": "success"}
     assert calls == [(datasource, "SELECT 1", True)]
+
+
+def test_execute_adapter_fails_closed_before_legacy_callable_for_roi_controls(
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+
+    def legacy_execute(ds, sql, origin_column=False):
+        calls.append((ds, sql, origin_column))
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_unsafe_exec_sql_after_validation",
+        legacy_execute,
+    )
+
+    with pytest.raises(RuntimeError, match="required ROI controls"):
+        sql_engine_executor._execute_after_validation(
+            SimpleNamespace(type="pg"),
+            "SELECT 1",
+            origin_column=True,
+            query_timeout=7,
+            max_result_rows=None,
+            require_controlled_timeout=True,
+        )
+
+    assert calls == []
+
+
+def test_execute_adapter_fails_closed_when_signature_cannot_be_inspected(
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+
+    def execute(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_unsafe_exec_sql_after_validation",
+        execute,
+    )
+    monkeypatch.setattr(
+        sql_engine_executor.inspect,
+        "signature",
+        lambda _callable: (_ for _ in ()).throw(ValueError("not inspectable")),
+    )
+
+    with pytest.raises(RuntimeError, match="cannot verify required ROI controls"):
+        sql_engine_executor._execute_after_validation(
+            SimpleNamespace(type="pg"),
+            "SELECT 1",
+            origin_column=True,
+            query_timeout=7,
+            max_result_rows=None,
+            require_controlled_timeout=True,
+        )
+
+    assert calls == []
 
 
 def test_execute_adapter_passes_roi_controls_to_modern_callable(monkeypatch) -> None:
@@ -428,6 +491,46 @@ def test_execute_adapter_passes_roi_controls_to_modern_callable(monkeypatch) -> 
         sql_engine_executor,
         "_unsafe_exec_sql_after_validation",
         modern_execute,
+    )
+
+    sql_engine_executor._execute_after_validation(
+        datasource,
+        "SELECT 1",
+        origin_column=True,
+        query_timeout=7,
+        max_result_rows=None,
+        require_controlled_timeout=True,
+    )
+
+    assert captured == {
+        "ds": datasource,
+        "sql": "SELECT 1",
+        "origin_column": True,
+        "query_timeout": 7,
+        "max_result_rows": None,
+        "require_controlled_timeout": True,
+    }
+
+
+def test_execute_adapter_passes_all_roi_controls_to_kwargs_callable(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def kwargs_execute(ds, sql, origin_column=False, **kwargs):
+        captured.update(
+            ds=ds,
+            sql=sql,
+            origin_column=origin_column,
+            **kwargs,
+        )
+        return {"status": "success"}
+
+    datasource = SimpleNamespace(type="pg")
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_unsafe_exec_sql_after_validation",
+        kwargs_execute,
     )
 
     sql_engine_executor._execute_after_validation(
