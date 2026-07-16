@@ -4,9 +4,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+from collections import Counter
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from datetime import date, datetime, time
+from decimal import Decimal
+from typing import Any, Iterable, Mapping, Sequence
 
 import sqlglot
 from sqlglot import exp
@@ -58,6 +62,18 @@ class UnsafeRewriteError(ValueError):
     """改写结果超出允许的日期边界变换范围。"""
 
 
+class ResultMismatchError(ValueError):
+    """原 SQL 与改写 SQL 的字段、行或值不一致。"""
+
+
+class UnsafePlanError(ValueError):
+    """改写 SQL 的执行计划仍包含被禁止的日期边界广播。"""
+
+
+class DashboardCasConflictError(RuntimeError):
+    """看板在备份后发生变化，compare-and-set 更新被拒绝。"""
+
+
 @dataclass(frozen=True)
 class RepairSpec:
     """单个抽屉 SQL 的不可变改写约束。"""
@@ -77,6 +93,14 @@ REPAIR_SPECS = {
 class _SelectBusinessMask:
     scalar_projection_indexes: tuple[tuple[int, str], ...]
     partition_shapes: tuple[tuple[str, tuple[str, ...]], ...]
+
+
+@dataclass(frozen=True)
+class QueryResult:
+    """一次只读查询的字段和完整结果行。"""
+
+    columns: tuple[str, ...]
+    rows: tuple[tuple[Any, ...], ...]
 
 
 def _sha256_text(value: str) -> str:
@@ -183,6 +207,97 @@ def _partition_shape(
     return type(expression).__name__, aliases
 
 
+def _direct_large_dt_alias(
+    expression: exp.Expression,
+    large_aliases: set[str],
+) -> str | None:
+    expression = _unwrap_parentheses(expression)
+    if not isinstance(expression, exp.Column):
+        return None
+    alias = expression.table.lower()
+    if alias in large_aliases and expression.name.lower() == "dt":
+        return alias
+    return None
+
+
+def _columns_are_scalar_only(
+    expression: exp.Expression,
+    scalar_aliases: set[str],
+) -> bool:
+    columns = list(expression.find_all(exp.Column))
+    return bool(columns) and all(
+        column.table.lower() in scalar_aliases for column in columns
+    )
+
+
+def _is_original_scalar_partition_term(
+    expression: exp.Expression,
+    large_aliases: set[str],
+    scalar_aliases: set[str],
+) -> bool:
+    expression = _unwrap_parentheses(expression)
+    if isinstance(expression, exp.Between):
+        return (
+            _direct_large_dt_alias(expression.this, large_aliases) is not None
+            and _columns_are_scalar_only(expression.args["low"], scalar_aliases)
+            and _columns_are_scalar_only(expression.args["high"], scalar_aliases)
+        )
+    if isinstance(expression, (exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE)):
+        left_alias = _direct_large_dt_alias(expression.this, large_aliases)
+        right_alias = _direct_large_dt_alias(expression.expression, large_aliases)
+        if left_alias is not None and right_alias is None:
+            return _columns_are_scalar_only(expression.expression, scalar_aliases)
+        if right_alias is not None and left_alias is None:
+            return _columns_are_scalar_only(expression.this, scalar_aliases)
+        return False
+    if isinstance(expression, exp.In):
+        return (
+            _direct_large_dt_alias(expression.this, large_aliases) is not None
+            and bool(expression.expressions)
+            and all(
+                _columns_are_scalar_only(item, scalar_aliases)
+                for item in expression.expressions
+            )
+        )
+    return False
+
+
+def _is_masked_date_value(expression: exp.Expression) -> bool:
+    return (
+        not any(True for _ in expression.find_all(exp.Column))
+        and _has_date_origin(expression)
+        and _uses_only_date_lineage_operations(expression)
+    )
+
+
+def _is_rewritten_partition_term(
+    expression: exp.Expression,
+    large_aliases: set[str],
+) -> bool:
+    expression = _unwrap_parentheses(expression)
+    if isinstance(expression, exp.Between):
+        return (
+            _direct_large_dt_alias(expression.this, large_aliases) is not None
+            and _is_masked_date_value(expression.args["low"])
+            and _is_masked_date_value(expression.args["high"])
+        )
+    if isinstance(expression, (exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE)):
+        left_alias = _direct_large_dt_alias(expression.this, large_aliases)
+        right_alias = _direct_large_dt_alias(expression.expression, large_aliases)
+        if left_alias is not None and right_alias is None:
+            return _is_masked_date_value(expression.expression)
+        if right_alias is not None and left_alias is None:
+            return _is_masked_date_value(expression.this)
+        return False
+    if isinstance(expression, exp.In):
+        return (
+            _direct_large_dt_alias(expression.this, large_aliases) is not None
+            and bool(expression.expressions)
+            and all(_is_masked_date_value(item) for item in expression.expressions)
+        )
+    return False
+
+
 def _derive_business_masks(
     tree: exp.Select,
 ) -> dict[str, _SelectBusinessMask]:
@@ -207,25 +322,51 @@ def _derive_business_masks(
             for table in _direct_tables(select)
             if table.name.lower() in LARGE_PARTITIONED_TABLES
         }
-        projections = tuple(
-            (index, projection.alias_or_name)
-            for index, projection in enumerate(select.expressions)
-            if any(
+        projections: list[tuple[int, str]] = []
+        for index, projection in enumerate(select.expressions):
+            has_scalar_reference = any(
                 column.table.lower() in scalar_aliases
                 for column in projection.find_all(exp.Column)
             )
-        )
+            if not has_scalar_reference:
+                continue
+            value = projection.this if isinstance(projection, exp.Alias) else projection
+            value = _unwrap_parentheses(value)
+            if not (
+                isinstance(value, exp.Column)
+                and value.table.lower() in scalar_aliases
+            ):
+                raise UnsafeRewriteError("scalar-derived 投影必须是纯 scalar 单列")
+            projections.append((index, projection.alias_or_name))
 
         partition_shapes: list[tuple[str, tuple[str, ...]]] = []
         where = select.args.get("where")
         if where is not None:
             for term in _mask_conjuncts(where.this):
                 shape = _partition_shape(term, large_aliases)
-                if shape is not None and any(
+                has_scalar_reference = any(
                     column.table.lower() in scalar_aliases
                     for column in term.find_all(exp.Column)
+                )
+                if has_scalar_reference and shape is None:
+                    raise UnsafeRewriteError("scalar 引用出现在非日期业务谓词")
+                if has_scalar_reference and not _is_original_scalar_partition_term(
+                    term,
+                    large_aliases,
+                    scalar_aliases,
                 ):
+                    raise UnsafeRewriteError("日期分区合取项混入业务字段或表达式")
+                if shape is not None and has_scalar_reference:
                     partition_shapes.append(shape)
+        for clause_name in ("group", "having", "qualify", "order"):
+            clause = select.args.get(clause_name)
+            if clause is not None and any(
+                column.table.lower() in scalar_aliases
+                for column in clause.find_all(exp.Column)
+            ):
+                raise UnsafeRewriteError(
+                    f"scalar 引用出现在非日期业务子句 {clause_name}"
+                )
         for join in scalar_joins:
             on = join.args.get("on")
             if on is None or _is_true(on):
@@ -238,13 +379,21 @@ def _derive_business_masks(
                     column.table.lower() in scalar_aliases
                     for column in term.find_all(exp.Column)
                 ):
+                    if not _is_original_scalar_partition_term(
+                        term,
+                        large_aliases,
+                        scalar_aliases,
+                    ):
+                        raise UnsafeRewriteError(
+                            "日期分区合取项混入业务字段或表达式"
+                        )
                     partition_shapes.append(shape)
                     matched += 1
             if matched != len(terms):
                 raise UnsafeRewriteError("scalar JOIN ON 包含非日期业务条件")
 
         masks[owner] = _SelectBusinessMask(
-            scalar_projection_indexes=projections,
+            scalar_projection_indexes=tuple(projections),
             partition_shapes=tuple(partition_shapes),
         )
     return masks
@@ -283,11 +432,20 @@ def _rebuild_masked_where(
 def _mask_scalar_projections(
     select: exp.Select,
     spec: _SelectBusinessMask,
+    *,
+    rewritten: bool,
 ) -> None:
     projections = list(select.expressions)
     for index, output_name in spec.scalar_projection_indexes:
         if index >= len(projections) or projections[index].alias_or_name != output_name:
             raise UnsafeRewriteError("改写改变了 scalar-derived 投影位置或输出名")
+        value = (
+            projections[index].this
+            if isinstance(projections[index], exp.Alias)
+            else projections[index]
+        )
+        if rewritten and not _is_masked_date_value(value):
+            raise UnsafeRewriteError("改写后的 scalar-derived 投影不是纯日期表达式")
         projections[index] = exp.alias_(
             exp.to_identifier("__allowed_scalar_value__"),
             output_name,
@@ -308,7 +466,7 @@ def _drop_masked_scalar_infrastructure(tree: exp.Select) -> None:
         )
         if not with_clause.expressions:
             tree.set("with_", None)
-    for select in tree.find_all(exp.Select):
+    for select in _business_selects(tree).values():
         select.set(
             "joins",
             [
@@ -320,6 +478,11 @@ def _drop_masked_scalar_infrastructure(tree: exp.Select) -> None:
                 )
             ],
         )
+    if any(
+        table.name.lower() in ALLOWED_SCALAR_CTES
+        for table in tree.find_all(exp.Table)
+    ):
+        raise UnsafeRewriteError("未登记的嵌套 SELECT 仍包含 scalar JOIN")
 
 
 def _mask_original_business_tree(
@@ -341,20 +504,34 @@ def _mask_original_business_tree(
                 join.this.alias_or_name.lower(),
             )
         }
-        _mask_scalar_projections(select, spec)
+        _mask_scalar_projections(select, spec, rewritten=False)
         where = select.args.get("where")
         terms = _mask_conjuncts(where.this) if where is not None else []
-        business_terms = [
-            term
-            for term in terms
-            if not any(
+        business_terms: list[exp.Expression] = []
+        removed_shapes: list[tuple[str, tuple[str, ...]]] = []
+        large_aliases = {
+            table.alias_or_name.lower()
+            for table in _direct_tables(select)
+            if table.name.lower() in LARGE_PARTITIONED_TABLES
+        }
+        for term in terms:
+            has_scalar_reference = any(
                 column.table.lower() in scalar_aliases
                 for column in term.find_all(exp.Column)
             )
-        ]
-        removed_count = len(terms) - len(business_terms)
-        on_count = len(spec.partition_shapes) - removed_count
-        if removed_count < 0 or on_count < 0:
+            if not has_scalar_reference:
+                business_terms.append(term)
+                continue
+            shape = _partition_shape(term, large_aliases)
+            if shape is None:
+                raise UnsafeRewriteError("scalar 引用出现在非日期业务谓词")
+            removed_shapes.append(shape)
+        unmatched_shapes = list(spec.partition_shapes)
+        for shape in removed_shapes:
+            if shape not in unmatched_shapes:
+                raise UnsafeRewriteError("原 SQL 日期分区 mask 形状无效")
+            unmatched_shapes.remove(shape)
+        if len(removed_shapes) > len(spec.partition_shapes):
             raise UnsafeRewriteError("原 SQL 日期分区 mask 数量无效")
         _rebuild_masked_where(select, business_terms, spec.partition_shapes)
     _drop_masked_scalar_infrastructure(tree)
@@ -370,7 +547,7 @@ def _mask_rewritten_business_tree(
         raise UnsafeRewriteError("改写改变了业务 SELECT/CTE 所有者集合")
     for owner, select in selects.items():
         spec = masks[owner]
-        _mask_scalar_projections(select, spec)
+        _mask_scalar_projections(select, spec, rewritten=True)
         large_aliases = {
             table.alias_or_name.lower()
             for table in _direct_tables(select)
@@ -384,6 +561,7 @@ def _mask_rewritten_business_tree(
                 index
                 for index, term in enumerate(remaining)
                 if _partition_shape(term, large_aliases) == shape
+                and _is_rewritten_partition_term(term, large_aliases)
             ]
             if len(matches) != 1:
                 raise UnsafeRewriteError("无法唯一定位改写后的日期分区合取项")
@@ -408,6 +586,20 @@ def validate_business_equivalence(original_sql: str, rewritten_sql: str) -> None
     masked_rewritten = _mask_rewritten_business_tree(rewritten, masks)
     if _normalized_ast_dump(masked_original) != _normalized_ast_dump(masked_rewritten):
         raise UnsafeRewriteError("改写改变了完整业务 AST")
+
+
+def _scalar_lineage_hints_from_original(
+    original_sql: str,
+) -> dict[str, frozenset[str]]:
+    masks = _derive_business_masks(_parse_mysql(original_sql))
+    return {
+        owner.removeprefix("cte:"): frozenset(
+            output_name
+            for _, output_name in spec.scalar_projection_indexes
+        )
+        for owner, spec in masks.items()
+        if owner.startswith("cte:") and spec.scalar_projection_indexes
+    }
 
 
 def _projection_signature(select: exp.Select) -> tuple[str, ...]:
@@ -762,6 +954,25 @@ def _has_proven_date_lineage(
 ) -> bool:
     if any(True for _ in expression.find_all(exp.Select)):
         return False
+    if any(
+        True
+        for _ in expression.find_all(
+            (
+                exp.Between,
+                exp.EQ,
+                exp.GT,
+                exp.GTE,
+                exp.LT,
+                exp.LTE,
+                exp.And,
+                exp.Or,
+                exp.Not,
+                exp.Case,
+                exp.If,
+            )
+        )
+    ):
+        return False
     columns = list(expression.find_all(exp.Column))
     if not columns:
         return _has_date_origin(expression)
@@ -949,7 +1160,11 @@ def _validate_select_partition_lineage(
     return bounded_aliases, proven_columns_by_alias
 
 
-def _validate_partition_lineage(tree: exp.Select) -> None:
+def _validate_partition_lineage(
+    tree: exp.Select,
+    scalar_lineage_hints: Mapping[str, frozenset[str]] | None = None,
+) -> None:
+    scalar_lineage_hints = scalar_lineage_hints or {}
     cte_lineage: dict[str, frozenset[str]] = {}
     processed_selects: set[int] = set()
     with_clause = tree.args.get("with_")
@@ -980,11 +1195,24 @@ def _validate_partition_lineage(tree: exp.Select) -> None:
                         if isinstance(projection, exp.Alias)
                         else projection
                     )
-                    if output_name and _has_proven_date_lineage(
-                        value,
-                        large_aliases=large_aliases,
-                        bounded_large_aliases=bounded_aliases,
-                        proven_columns_by_alias=proven_columns_by_alias,
+                    has_column_lineage = any(
+                        True for _ in value.find_all(exp.Column)
+                    )
+                    hinted_scalar_lineage = (
+                        output_name in scalar_lineage_hints.get(name, frozenset())
+                        and _is_masked_date_value(value)
+                    )
+                    if output_name and (
+                        (
+                            has_column_lineage
+                            and _has_proven_date_lineage(
+                                value,
+                                large_aliases=large_aliases,
+                                bounded_large_aliases=bounded_aliases,
+                                proven_columns_by_alias=proven_columns_by_alias,
+                            )
+                        )
+                        or hinted_scalar_lineage
                     ):
                         proven_outputs.add(output_name)
             cte_lineage[name] = frozenset(proven_outputs)
@@ -996,7 +1224,11 @@ def _validate_partition_lineage(tree: exp.Select) -> None:
             _validate_select_partition_lineage(select, cte_lineage)
 
 
-def validate_rewritten_sql(sql: str) -> None:
+def validate_rewritten_sql(
+    sql: str,
+    *,
+    _scalar_lineage_hints: Mapping[str, frozenset[str]] | None = None,
+) -> None:
     """验证改写结果没有日期边界引用、MAX(dt) 或无分区大表扫描。"""
 
     tree = _parse_mysql(sql)
@@ -1017,13 +1249,14 @@ def validate_rewritten_sql(sql: str) -> None:
     ):
         raise UnsafeRewriteError("改写后禁止出现 MAX(dt)")
 
-    _validate_partition_lineage(tree)
+    _validate_partition_lineage(tree, _scalar_lineage_hints)
 
 
 def rewrite_bounds_sql(view_id: str, sql: str) -> str:
     """在 SHA 白名单约束下把 bounds 标量值内联到日期谓词。"""
 
     spec = _require_source_hash(view_id, sql)
+    scalar_lineage_hints = _scalar_lineage_hints_from_original(sql)
     tree = _parse_mysql(sql)
     original_surface = _surface_signature(tree)
     scalar_values = _resolve_scalar_cte_values(tree, allowed=spec.scalar_ctes)
@@ -1034,7 +1267,184 @@ def rewrite_bounds_sql(view_id: str, sql: str) -> str:
 
     rewritten = tree.sql(dialect="mysql", pretty=True)
     validate_business_equivalence(sql, rewritten)
-    validate_rewritten_sql(rewritten)
+    validate_rewritten_sql(
+        rewritten,
+        _scalar_lineage_hints=scalar_lineage_hints,
+    )
     if _surface_signature(_parse_mysql(rewritten)) != original_surface:
         raise UnsafeRewriteError("SQL 序列化改变了业务表面签名")
     return rewritten
+
+
+def freeze_curdate(sql: str, business_date: date) -> str:
+    """把一条 SQL 中的 CURDATE 固定为同一个数据库业务日期。"""
+
+    tree = _parse_mysql(sql)
+
+    def replace_current_date(node: exp.Expression) -> exp.Expression:
+        if not isinstance(node, exp.CurrentDate):
+            return node
+        return exp.Cast(
+            this=exp.Literal.string(business_date.isoformat()),
+            to=exp.DataType.build("DATE"),
+        )
+
+    return tree.transform(replace_current_date).sql(dialect="mysql", pretty=True)
+
+
+def execute_query(cursor: Any, sql: str) -> QueryResult:
+    """通过既有只读游标执行 SQL，并保留字段顺序和重复行。"""
+
+    cursor.execute(sql)
+    description = cursor.description or ()
+    columns = tuple(str(getattr(item, "name", item[0])) for item in description)
+    return QueryResult(
+        columns=columns,
+        rows=tuple(tuple(row) for row in cursor.fetchall()),
+    )
+
+
+def normalize_cell(value: Any) -> tuple[str, Any]:
+    """规范化数据库驱动标量表示，不引入业务数值容差。"""
+
+    if value is None:
+        return "null", None
+    if isinstance(value, datetime):
+        if value.time() == time.min:
+            return "date", value.date().isoformat()
+        return "datetime", value.isoformat()
+    if isinstance(value, date):
+        return "date", value.isoformat()
+    if isinstance(value, Decimal):
+        return "decimal", value.normalize().to_eng_string()
+    if isinstance(value, float):
+        return "float", Decimal(str(value)).normalize().to_eng_string()
+    return type(value).__name__, value
+
+
+def _normalize_row(row: Sequence[Any]) -> tuple[tuple[str, Any], ...]:
+    return tuple(normalize_cell(value) for value in row)
+
+
+def compare_query_results(
+    original: QueryResult,
+    rewritten: QueryResult,
+    *,
+    ordered: bool,
+) -> None:
+    """严格比较原 SQL 与改写 SQL，不忽略重复行或数值差异。"""
+
+    if original.columns != rewritten.columns:
+        raise ResultMismatchError(
+            f"字段不一致：原 SQL={original.columns}，改写 SQL={rewritten.columns}"
+        )
+    if len(original.rows) != len(rewritten.rows):
+        raise ResultMismatchError(
+            f"行数不一致：原 SQL={len(original.rows)}，改写 SQL={len(rewritten.rows)}"
+        )
+
+    original_rows = tuple(_normalize_row(row) for row in original.rows)
+    rewritten_rows = tuple(_normalize_row(row) for row in rewritten.rows)
+    if not ordered:
+        if Counter(original_rows) != Counter(rewritten_rows):
+            raise ResultMismatchError("无序结果的完整行或重复行计数不一致")
+        return
+
+    for row_index, (original_row, rewritten_row) in enumerate(
+        zip(original_rows, rewritten_rows, strict=True)
+    ):
+        for column_index, (original_value, rewritten_value) in enumerate(
+            zip(original_row, rewritten_row, strict=True)
+        ):
+            if original_value != rewritten_value:
+                column = original.columns[column_index]
+                raise ResultMismatchError(
+                    f"第 {row_index + 1} 行字段 {column} 不一致："
+                    f"原 SQL={original_value}，改写 SQL={rewritten_value}"
+                )
+
+
+def validate_explain_plan(plan: str) -> None:
+    """拒绝由日期边界 Values 表触发的广播 Hash Join。"""
+
+    normalized = str(plan or "")
+    if all(
+        marker in normalized
+        for marker in ("Values", "Exchange[REPLICATE]", "InnerJoin[Hash Join]")
+    ):
+        raise UnsafePlanError("日期边界仍生成广播 Hash Join")
+
+
+def apply_dashboard_repairs(
+    connection: Any,
+    dashboards: Sequence[Any],
+    rewritten_sql_by_view: Mapping[str, str],
+    *,
+    tenant_id: int,
+    update_time: datetime,
+) -> int:
+    """在一个事务中按原始 canvas 做 CAS，仅替换目标抽屉 SQL。"""
+
+    requested = {str(view_id): sql for view_id, sql in rewritten_sql_by_view.items()}
+    applied: set[str] = set()
+    updated_dashboards = 0
+    try:
+        with connection.cursor() as cursor:
+            for dashboard in dashboards:
+                if int(dashboard.tenant_id) != int(tenant_id):
+                    raise ValueError(f"看板 {dashboard.id} 不属于目标工作空间")
+                canvas = json.loads(dashboard.canvas_view_info)
+                if not isinstance(canvas, dict):
+                    raise ValueError(f"看板 {dashboard.id} 的 canvas_view_info 不是对象")
+
+                changed = False
+                for view_id, view in canvas.items():
+                    view_id = str(view_id)
+                    if view_id not in requested:
+                        continue
+                    if view_id in applied:
+                        raise ValueError(f"抽屉 {view_id} 在多个看板中重复")
+                    if not isinstance(view, dict):
+                        raise ValueError(f"看板 {dashboard.id} 的抽屉 {view_id} 不是对象")
+                    view["sql"] = requested[view_id]
+                    applied.add(view_id)
+                    changed = True
+
+                if not changed:
+                    continue
+                new_canvas = json.dumps(
+                    canvas,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                cursor.execute(
+                    """
+                    UPDATE core_dashboard
+                    SET canvas_view_info = %s,
+                        update_time = %s
+                    WHERE id = %s
+                      AND tenant_id = %s
+                      AND canvas_view_info = %s
+                    """,
+                    (
+                        new_canvas,
+                        update_time,
+                        dashboard.id,
+                        tenant_id,
+                        dashboard.canvas_view_info,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise DashboardCasConflictError(
+                        f"看板 {dashboard.id} 已变化或不存在，CAS 更新行数={cursor.rowcount}"
+                    )
+                updated_dashboards += 1
+
+        missing = sorted(set(requested).difference(applied))
+        if missing:
+            raise ValueError(f"改写目录中的抽屉未在快照中找到：{missing}")
+        connection.commit()
+        return updated_dashboards
+    except BaseException:
+        connection.rollback()
+        raise

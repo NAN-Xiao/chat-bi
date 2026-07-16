@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -359,6 +361,74 @@ def test_business_equivalence_mask_is_independent_from_production_inline(monkeyp
     repair.validate_business_equivalence(original, rewritten)
 
 
+def test_business_equivalence_rejects_scalar_reference_in_business_predicate():
+    original = (
+        "WITH bounds AS (SELECT 20260701 AS start_dt) "
+        "SELECT e.uid FROM event e "
+        "JOIN bounds b ON e.dt >= b.start_dt "
+        "WHERE e.prod = b.start_dt"
+    )
+    rewritten = (
+        "SELECT e.uid FROM event e "
+        "WHERE e.dt >= 20260701"
+    )
+
+    with pytest.raises(repair.UnsafeRewriteError, match="业务 AST|非日期"):
+        repair.validate_business_equivalence(original, rewritten)
+
+
+def test_business_equivalence_rejects_unmasked_nested_scalar_join():
+    original = (
+        "WITH bounds AS (SELECT 20260701 AS start_dt) "
+        "SELECT nested.uid FROM ("
+        "SELECT e.uid FROM event e "
+        "JOIN bounds b ON e.dt >= b.start_dt"
+        ") nested"
+    )
+    rewritten = (
+        "SELECT nested.uid FROM ("
+        "SELECT e.uid FROM event e"
+        ") nested"
+    )
+
+    with pytest.raises(repair.UnsafeRewriteError, match="业务 AST|scalar"):
+        repair.validate_business_equivalence(original, rewritten)
+
+
+def test_business_equivalence_rejects_mutated_mixed_scalar_projection():
+    original = (
+        "WITH bounds AS (SELECT 20260701 AS start_dt) "
+        "SELECT SUM(e.uid) + b.start_dt AS metric "
+        "FROM event e "
+        "JOIN bounds b ON TRUE "
+        "WHERE e.dt >= b.start_dt"
+    )
+    rewritten = (
+        "SELECT COUNT(e.uid) + 20260701 AS metric "
+        "FROM event e "
+        "WHERE e.dt >= 20260701"
+    )
+
+    with pytest.raises(repair.UnsafeRewriteError, match="业务 AST|scalar"):
+        repair.validate_business_equivalence(original, rewritten)
+
+
+def test_business_equivalence_rejects_business_logic_inside_partition_term():
+    original = (
+        "WITH bounds AS (SELECT 20260701 AS start_dt) "
+        "SELECT e.uid FROM event e "
+        "JOIN bounds b ON TRUE "
+        "WHERE e.dt >= b.start_dt + IF(e.event = 'Login', 0, 0)"
+    )
+    rewritten = (
+        "SELECT e.uid FROM event e "
+        "WHERE e.dt >= 20260701 + IF(e.event = 'Pay', 0, 0)"
+    )
+
+    with pytest.raises(repair.UnsafeRewriteError, match="业务 AST|日期"):
+        repair.validate_business_equivalence(original, rewritten)
+
+
 @pytest.mark.parametrize(
     "sql",
     [
@@ -399,6 +469,24 @@ def test_business_equivalence_mask_is_independent_from_production_inline(monkeyp
             "SELECT u.uid FROM user u "
             "JOIN counted_dates c ON u.dt = c.dt_count"
         ),
+        (
+            "WITH constant_dates AS ("
+            "SELECT 20260701 AS boundary_dt "
+            "FROM event e "
+            "WHERE e.dt BETWEEN 20260701 AND 20260715"
+            ") "
+            "SELECT u.uid FROM user u "
+            "JOIN constant_dates c ON u.dt = c.boundary_dt"
+        ),
+        (
+            "WITH compared_dates AS ("
+            "SELECT e.dt >= 20260701 AS boundary_dt "
+            "FROM event e "
+            "WHERE e.dt BETWEEN 20260701 AND 20260715"
+            ") "
+            "SELECT u.uid FROM user u "
+            "JOIN compared_dates c ON u.dt = c.boundary_dt"
+        ),
     ],
     ids=[
         "dimension-equality",
@@ -407,6 +495,8 @@ def test_business_equivalence_mask_is_independent_from_production_inline(monkeyp
         "source-free-constant-cte",
         "unrelated-cte-output",
         "aggregated-dt-output",
+        "bounded-cte-constant-output",
+        "bounded-cte-boolean-output",
     ],
 )
 def test_validate_rewritten_sql_rejects_unproven_date_lineage(sql):
@@ -462,3 +552,175 @@ def test_validate_rewritten_sql_accepts_proven_cte_date_lineage():
 def test_validate_rewritten_sql_rejects_non_restrictive_dt_conditions(sql):
     with pytest.raises(repair.UnsafeRewriteError, match="dt"):
         repair.validate_rewritten_sql(sql)
+
+
+def test_freeze_curdate_uses_one_database_date_for_both_queries():
+    frozen = repair.freeze_curdate(
+        "SELECT DATE_SUB(CURDATE(), INTERVAL 1 DAY)",
+        date(2026, 7, 16),
+    )
+
+    assert "CURDATE" not in frozen.upper()
+    assert "2026-07-16" in frozen
+
+
+def test_compare_results_reports_first_cell_difference():
+    original = repair.QueryResult(
+        ("日期", "DAU"),
+        ((date(2026, 7, 15), Decimal("10")),),
+    )
+    rewritten = repair.QueryResult(
+        ("日期", "DAU"),
+        ((date(2026, 7, 15), Decimal("11")),),
+    )
+
+    with pytest.raises(repair.ResultMismatchError, match="DAU"):
+        repair.compare_query_results(original, rewritten, ordered=True)
+
+
+def test_unordered_compare_preserves_duplicate_rows():
+    original = repair.QueryResult(("x",), ((1,), (1,), (2,)))
+    rewritten = repair.QueryResult(("x",), ((1,), (2,), (2,)))
+
+    with pytest.raises(repair.ResultMismatchError, match="重复"):
+        repair.compare_query_results(original, rewritten, ordered=False)
+
+
+def test_compare_results_normalizes_driver_scalar_types_without_tolerance():
+    original = repair.QueryResult(
+        ("日期", "金额", "比率", "空值"),
+        ((date(2026, 7, 15), Decimal("10.00"), 0.5, None),),
+    )
+    rewritten = repair.QueryResult(
+        ("日期", "金额", "比率", "空值"),
+        ((datetime(2026, 7, 15), Decimal("10.0"), 0.5, None),),
+    )
+
+    repair.compare_query_results(original, rewritten, ordered=True)
+
+
+def test_execute_query_preserves_column_order_and_duplicate_rows():
+    class Cursor:
+        description = (("日期",), ("DAU",))
+
+        def __init__(self):
+            self.executed = []
+
+        def execute(self, sql):
+            self.executed.append(sql)
+
+        def fetchall(self):
+            return [("2026-07-15", 10), ("2026-07-15", 10)]
+
+    cursor = Cursor()
+
+    result = repair.execute_query(cursor, "SELECT stat_date, dau FROM metrics")
+
+    assert cursor.executed == ["SELECT stat_date, dau FROM metrics"]
+    assert result.columns == ("日期", "DAU")
+    assert result.rows == (("2026-07-15", 10), ("2026-07-15", 10))
+
+
+def test_validate_explain_plan_rejects_broadcast_hash_join_from_values():
+    plan = "-> Values\n-> Exchange[REPLICATE]\n-> InnerJoin[Hash Join]"
+
+    with pytest.raises(repair.UnsafePlanError, match="广播 Hash Join"):
+        repair.validate_explain_plan(plan)
+
+
+class _CasCursor:
+    def __init__(self, rowcounts):
+        self._rowcounts = iter(rowcounts)
+        self.rowcount = 0
+        self.calls = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def execute(self, sql, params):
+        self.calls.append((sql, params))
+        self.rowcount = next(self._rowcounts)
+
+
+class _CasConnection:
+    def __init__(self, rowcounts):
+        self.cursor_instance = _CasCursor(rowcounts)
+        self.committed = False
+        self.rolled_back = False
+
+    def cursor(self):
+        return self.cursor_instance
+
+    def commit(self):
+        self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
+
+
+def _dashboard_snapshot(dashboard_id, canvas):
+    from xiuxian_dashboard_snapshot import DashboardSnapshot
+
+    return DashboardSnapshot.from_row(
+        (
+            dashboard_id,
+            f"看板 {dashboard_id}",
+            7482727237662281728,
+            6,
+            json.dumps(canvas, ensure_ascii=False, separators=(",", ":")),
+        )
+    )
+
+
+def test_apply_dashboard_repairs_uses_exact_canvas_compare_and_preserves_metadata():
+    original_view = {
+        "sql": "SELECT old",
+        "data": [{"x": 1}],
+        "chart": {"type": "line"},
+        "fields": ["x"],
+        "pivot": {"rows": ["x"]},
+        "snapshotRefreshedAt": "2026-07-16T10:00:00",
+    }
+    dashboard = _dashboard_snapshot("dashboard-1", {"view-1": original_view})
+    connection = _CasConnection([1])
+
+    updated = repair.apply_dashboard_repairs(
+        connection,
+        [dashboard],
+        {"view-1": "SELECT new"},
+        tenant_id=7482727237662281728,
+        update_time=datetime(2026, 7, 16, 12, 0, 0),
+    )
+
+    assert updated == 1
+    assert connection.committed is True
+    assert connection.rolled_back is False
+    sql, params = connection.cursor_instance.calls[0]
+    assert "canvas_view_info = %s" in sql
+    assert "AND canvas_view_info = %s" in sql
+    saved_canvas = json.loads(params[0])
+    assert saved_canvas["view-1"] == {**original_view, "sql": "SELECT new"}
+    assert params[-1] == dashboard.canvas_view_info
+
+
+def test_apply_dashboard_repairs_rolls_back_all_updates_on_cas_conflict():
+    dashboards = [
+        _dashboard_snapshot("dashboard-1", {"view-1": {"sql": "old-1"}}),
+        _dashboard_snapshot("dashboard-2", {"view-2": {"sql": "old-2"}}),
+    ]
+    connection = _CasConnection([1, 0])
+
+    with pytest.raises(repair.DashboardCasConflictError, match="dashboard-2"):
+        repair.apply_dashboard_repairs(
+            connection,
+            dashboards,
+            {"view-1": "new-1", "view-2": "new-2"},
+            tenant_id=7482727237662281728,
+            update_time=datetime(2026, 7, 16, 12, 0, 0),
+        )
+
+    assert connection.committed is False
+    assert connection.rolled_back is True
