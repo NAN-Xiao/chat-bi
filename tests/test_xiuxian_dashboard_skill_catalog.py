@@ -20,10 +20,10 @@ def test_catalog_maps_all_nonempty_views_once():
     mapped = [view_id for topic in catalog.TOPICS for view_id in topic.view_ids]
 
     assert len(catalog.TOPICS) == 12
-    assert len(mapped) == 44
-    assert len(set(mapped)) == 44
+    assert len(mapped) == 45
+    assert len(set(mapped)) == 45
     assert set(mapped) == catalog.EXPECTED_VIEW_IDS
-    assert catalog.EMPTY_VIEW_ID not in mapped
+    assert "1e4e34743f2d47dfa1c2948742b93a50" in mapped
 
 
 def test_catalog_enforces_topic_size():
@@ -70,12 +70,17 @@ def test_revenue_and_order_prompts_preserve_business_boundaries():
     topics = {topic.slug: topic for topic in catalog.TOPICS}
 
     revenue_prompt = catalog.build_topic_prompt(topics["serverpaylog-revenue"])
-    orders_prompt = catalog.build_topic_prompt(topics["orders-products"])
+    orders_topic = topics["orders-products"]
+    orders_prompt = catalog.build_topic_prompt(orders_topic)
 
     assert "ServerPayLog" in revenue_prompt
     assert "personal.money" in revenue_prompt
-    assert "ServerPayLog.personal.orderId" in orders_prompt
-    assert "ServerPayLog.personal.productid" in orders_prompt
+    assert orders_topic.name == "修仙订单、礼包、月卡与支付流程"
+    assert "月卡" in orders_topic.description
+    assert "personal.orderId" in orders_prompt
+    assert "personal.productid" in orders_prompt
+    assert "月卡购买 cohort 使用 ServerPayLog" in orders_prompt
+    assert "留存活跃使用 UserActive" in orders_prompt
     assert "PayBuyRet" in orders_prompt
     assert "流程" in orders_prompt
     assert "真实交易" in orders_prompt

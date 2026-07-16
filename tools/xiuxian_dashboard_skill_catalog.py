@@ -16,7 +16,6 @@ class TopicDefinition:
     guidance: str
 
 
-EMPTY_VIEW_ID = "1e4e34743f2d47dfa1c2948742b93a50"
 MAX_SQL_BLOCKS_PER_SKILL = 6
 MAX_PROMPT_CHARS = 15_000
 
@@ -130,14 +129,15 @@ TOPICS = (
     ),
     TopicDefinition(
         "orders-products",
-        "修仙订单、礼包与支付流程",
-        "订单、商品、礼包和支付流程事件。",
+        "修仙订单、礼包、月卡与支付流程",
+        "订单、商品、礼包、月卡留存和支付流程事件。",
         (
             "bcd7dc9ca6c349909fa74c8d4b0502d7",
             "ab85f87857774883833dbca9b5ea41ba",
             "e65001c16c52433e8afac84c6b2c92a0",
+            "1e4e34743f2d47dfa1c2948742b93a50",
         ),
-        "真实订单和商品使用 ServerPayLog.personal.orderId、ServerPayLog.personal.productid；PayBuyRet 仅描述流程事件分布，不命名为真实交易。",
+        "真实订单和商品使用 ServerPayLog 的 personal.orderId/personal.productid；月卡购买 cohort 使用 ServerPayLog，留存活跃使用 UserActive；PayBuyRet 仅描述流程事件分布，不命名为真实交易。",
     ),
     TopicDefinition(
         "player-snapshot",
@@ -203,6 +203,7 @@ EXPECTED_VIEW_IDS = frozenset(
         "bcd7dc9ca6c349909fa74c8d4b0502d7",
         "ab85f87857774883833dbca9b5ea41ba",
         "e65001c16c52433e8afac84c6b2c92a0",
+        "1e4e34743f2d47dfa1c2948742b93a50",
         "7f71477b49404ad289485f4f22d34c2f",
         "3a449b3049314a668661ae65f70e38f1",
         "99e31069e8b54504a321b7b8066bf946",
@@ -251,9 +252,9 @@ def validate_catalog() -> None:
     """校验主题目录的数量、唯一性、完整性与单主题容量。"""
 
     mapped = [view_id for topic in TOPICS for view_id in topic.view_ids]
-    if len(TOPICS) != 12 or len(mapped) != 44 or len(set(mapped)) != 44:
+    if len(TOPICS) != 12 or len(mapped) != 45 or len(set(mapped)) != 45:
         raise ValueError("修仙推荐看板 Skill 目录数量或唯一性错误")
-    if set(mapped) != EXPECTED_VIEW_IDS or EMPTY_VIEW_ID in mapped:
+    if set(mapped) != EXPECTED_VIEW_IDS:
         raise ValueError("修仙推荐看板 Skill 目录存在遗漏或错误组件")
     if any(len(topic.view_ids) > MAX_SQL_BLOCKS_PER_SKILL for topic in TOPICS):
         raise ValueError("单个修仙 Data Skill 超过 SQL 块上限")
