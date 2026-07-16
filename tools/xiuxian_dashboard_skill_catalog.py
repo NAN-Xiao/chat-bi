@@ -137,7 +137,7 @@ TOPICS = (
             "ab85f87857774883833dbca9b5ea41ba",
             "e65001c16c52433e8afac84c6b2c92a0",
         ),
-        "真实订单和商品使用 ServerPayLog.orderId/productid；PayBuyRet 仅描述流程事件分布，不命名为真实交易。",
+        "真实订单和商品使用 ServerPayLog.personal.orderId、ServerPayLog.personal.productid；PayBuyRet 仅描述流程事件分布，不命名为真实交易。",
     ),
     TopicDefinition(
         "player-snapshot",
@@ -211,18 +211,25 @@ EXPECTED_VIEW_IDS = frozenset(
 )
 
 
+def validate_prompt_length(prompt: str) -> None:
+    """校验完整提示词长度，供 SQL 注入后再次调用。"""
+
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise ValueError("修仙推荐看板 Skill 提示词超过字符上限")
+
+
 def build_topic_prompt(topic: TopicDefinition) -> str:
     """为单个主题生成统一的 Data Skill 提示词骨架。"""
 
     view_ids = "、".join(topic.view_ids)
-    return f"""# {topic.name}
+    prompt = f"""# {topic.name}
 
 ## 适用范围
 {topic.description}
 对应推荐看板组件：{view_ids}
 
 ## 日期规则引用
-日期筛选遵循当前数据源的修仙日期分区 Data Skill；未指定时使用截至昨天的最近 28 个自然日。
+日期筛选遵循当前数据源的修仙日期分区 Data Skill。用户未指定日期时，生成 SQL 使用截至昨天的最近 28 个自然日；这是生成默认规则，不是现场诊断选窗逻辑，不得查询数据中的最大日期或最大分区来改写边界。
 
 ## 业务口径
 {topic.guidance}
@@ -236,6 +243,8 @@ def build_topic_prompt(topic: TopicDefinition) -> str:
 ## 看板 SQL
 按上述组件顺序保留经备份确认的 SQL；每个组件最多对应一个 SQL 块。
 """
+    validate_prompt_length(prompt)
+    return prompt
 
 
 def validate_catalog() -> None:

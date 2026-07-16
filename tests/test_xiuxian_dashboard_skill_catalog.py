@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib
 import sys
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +50,22 @@ def test_topic_prompt_includes_shared_structure_and_guidance():
     assert len(prompt) <= catalog.MAX_PROMPT_CHARS
 
 
+@pytest.mark.parametrize("topic", catalog.TOPICS, ids=lambda topic: topic.slug)
+def test_build_topic_prompt_rejects_every_oversized_topic(topic):
+    oversized_topic = replace(topic, guidance="字" * catalog.MAX_PROMPT_CHARS)
+
+    with pytest.raises(ValueError, match="超过字符上限"):
+        catalog.build_topic_prompt(oversized_topic)
+
+
+def test_prompt_length_can_be_checked_again_after_sql_injection():
+    prompt_at_limit = "字" * catalog.MAX_PROMPT_CHARS
+
+    catalog.validate_prompt_length(prompt_at_limit)
+    with pytest.raises(ValueError, match="超过字符上限"):
+        catalog.validate_prompt_length(prompt_at_limit + "字")
+
+
 def test_revenue_and_order_prompts_preserve_business_boundaries():
     topics = {topic.slug: topic for topic in catalog.TOPICS}
 
@@ -55,7 +74,19 @@ def test_revenue_and_order_prompts_preserve_business_boundaries():
 
     assert "ServerPayLog" in revenue_prompt
     assert "personal.money" in revenue_prompt
-    assert "ServerPayLog" in orders_prompt
+    assert "ServerPayLog.personal.orderId" in orders_prompt
+    assert "ServerPayLog.personal.productid" in orders_prompt
     assert "PayBuyRet" in orders_prompt
     assert "流程" in orders_prompt
     assert "真实交易" in orders_prompt
+
+
+def test_default_date_window_is_generation_only_and_does_not_probe_data():
+    prompt = catalog.build_topic_prompt(catalog.TOPICS[0])
+
+    assert "用户未指定日期时" in prompt
+    assert "截至昨天的最近 28 个自然日" in prompt
+    assert "生成默认规则" in prompt
+    assert "不是现场诊断选窗逻辑" in prompt
+    assert "不得查询数据中的最大日期或最大分区" in prompt
+    assert "MAX(dt)" not in prompt
