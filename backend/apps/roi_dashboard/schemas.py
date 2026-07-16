@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 LayoutSpan = Literal["full", "half", "third"]
 
@@ -118,6 +118,17 @@ class RoiConfigResponse(_RoiResponseBase):
     version: int
 
 
+class RoiDatasourceOption(BaseModel):
+    """ROI 统一数据源候选项，不包含连接配置等敏感字段。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: str
+    type_name: str | None = None
+
+
 class RoiDashboardResponse(_RoiResponseBase):
     id: str
     tenant_id: str
@@ -147,3 +158,26 @@ class RoiChartResponse(_RoiResponseBase):
     update_by: str | None
     create_time: int
     update_time: int
+
+
+class RoiChartPreviewResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str
+    fields: list[str] = Field(default_factory=list)
+    data: list[dict[str, Any]] = Field(default_factory=list)
+    message: str = ""
+
+
+class RoiChartListResponse(RoiChartResponse):
+    sql: str | None
+    can_execute: bool
+    can_edit: bool
+    error: str | None = None
+    query_result: RoiChartPreviewResponse | None = None
+
+    @model_validator(mode="after")
+    def hide_sql_without_datasource_access(self):
+        if not self.can_execute:
+            self.sql = None
+        return self

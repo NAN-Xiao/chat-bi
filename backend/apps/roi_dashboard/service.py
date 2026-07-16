@@ -116,6 +116,16 @@ def _operator_id(current_user: CurrentUser) -> int:
     return int(current_user.id)
 
 
+def _parse_path_id(value: str | int, label: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{label} ID 不合法") from exc
+    if parsed <= 0:
+        raise HTTPException(status_code=400, detail=f"{label} ID 不合法")
+    return parsed
+
+
 def _cache(cache_adapter: RoiChartCacheAdapter | None) -> RoiChartCacheAdapter:
     return cache_adapter or _ROI_CHART_CACHE
 
@@ -390,11 +400,12 @@ def create_roi_dashboard(
 def update_roi_dashboard(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
+    dashboard_id: str | int,
     request: RoiDashboardUpdate,
 ) -> CoreRoiDashboard:
     """按乐观锁版本更新当前工作空间的 ROI 看板。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     record = _load_dashboard_or_404(session, tenant_id, dashboard_id)
     if record.version != request.version:
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
@@ -439,12 +450,13 @@ def update_roi_dashboard(
 def delete_roi_dashboard(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
+    dashboard_id: str | int,
     *,
     cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> bool:
     """在同一事务中软删除看板及其活动图表。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     dashboard = lock_active_roi_dashboard(session, tenant_id, dashboard_id)
     if dashboard is None:
         raise HTTPException(status_code=404, detail="ROI 看板不存在")
@@ -578,11 +590,12 @@ def _require_successful_query(result: RoiQueryResult) -> None:
 def preview_roi_chart(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
+    dashboard_id: str | int,
     request: RoiChartPreviewRequest,
 ) -> RoiQueryResult:
     """执行图表草稿 SQL，但不创建或修改图表。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     return execute_roi_read_query(session, current_user, request.sql)
 
@@ -590,12 +603,13 @@ def preview_roi_chart(
 def list_roi_charts(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
+    dashboard_id: str | int,
     *,
     cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> list[dict[str, Any]]:
     """读取图表结构；只有当前账号仍有数据源权限时才读缓存或执行。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     charts = list(
         session.exec(
@@ -715,13 +729,14 @@ def _log_roi_chart_query_failure(
 def create_roi_chart(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
+    dashboard_id: str | int,
     request: RoiChartCreate,
     *,
     cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> CoreRoiDashboardChart:
     """锁定统一配置后重新执行 SQL，成功才创建图表。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     dashboard = lock_active_roi_dashboard(session, tenant_id, dashboard_id)
     if dashboard is None:
         raise HTTPException(status_code=404, detail="ROI 看板不存在")
@@ -768,14 +783,16 @@ def create_roi_chart(
 def update_roi_chart(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
-    chart_id: int,
+    dashboard_id: str | int,
+    chart_id: str | int,
     request: RoiChartUpdate,
     *,
     cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> CoreRoiDashboardChart:
     """重新执行提交 SQL 后按版本原子更新活动图表。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
+    chart_id = _parse_path_id(chart_id, "ROI 图表")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     record = _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
     config = _require_roi_chart_write_access(session, current_user, tenant_id)
@@ -823,13 +840,15 @@ def update_roi_chart(
 def delete_roi_chart(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
-    chart_id: int,
+    dashboard_id: str | int,
+    chart_id: str | int,
     *,
     cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> bool:
     """按租户和看板边界软删除活动图表。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
+    chart_id = _parse_path_id(chart_id, "ROI 图表")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
     config = _require_roi_chart_write_access(session, current_user, tenant_id)
@@ -862,13 +881,14 @@ def delete_roi_chart(
 def reorder_roi_charts(
     session: SessionDep,
     current_user: CurrentUser,
-    dashboard_id: int,
+    dashboard_id: str | int,
     request: RoiChartReorderRequest,
     *,
     cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> list[dict[str, Any]]:
     """全量预验证后在单事务中更新图表顺序、宽度和版本。"""
     tenant_id = _tenant_id(current_user)
+    dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     parsed_items: list[tuple[int, Any]] = []
     for item in request.items:
