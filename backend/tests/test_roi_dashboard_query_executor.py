@@ -279,3 +279,141 @@ def test_roi_failed_result_logs_safe_context_at_warning_level(
     assert "elapsed_ms=" in caplog.text
     assert "status=failed" in caplog.text
     assert "do-not-log" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("datasource_type", "sql"),
+    [
+        ("pg", "SELECT nextval('order_seq')"),
+        ("sqlServer", "SELECT NEXT VALUE FOR order_seq"),
+        ("dm", "SELECT order_seq.NEXTVAL FROM orders"),
+    ],
+)
+def test_roi_query_rejects_sequence_side_effects_structurally(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    datasource_type: str,
+    sql: str,
+) -> None:
+    _prepare_authorized_query(
+        monkeypatch,
+        session,
+        datasource_type=datasource_type,
+    )
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("序列副作用 SQL 不应到达执行层"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(session, make_user(), sql)
+
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("datasource_type", "sql"),
+    [
+        ("pg", "SELECT jsonb_build_object('amount', 1) AS payload"),
+        ("mysql", "SELECT FIND_IN_SET('a', 'a,b') AS position"),
+        ("mysql", "SELECT JSON_UNQUOTE('\"value\"') AS value"),
+    ],
+)
+def test_roi_query_allows_dialect_safe_anonymous_builtins(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    datasource_type: str,
+    sql: str,
+) -> None:
+    _prepare_authorized_query(
+        monkeypatch,
+        session,
+        datasource_type=datasource_type,
+    )
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: {"fields": ["value"], "data": [{"value": 1}]},
+    )
+
+    result = execute_roi_read_query(session, make_user(), sql)
+
+    assert result.status == "success"
+
+
+def test_roi_query_still_rejects_unknown_anonymous_udf(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session, datasource_type="pg")
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("未知 UDF 不应到达执行层"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(
+            session,
+            make_user(),
+            "SELECT my_side_effecting_function(amount) FROM orders",
+        )
+
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "datasource_type",
+    ["pg", "mysql", "sqlServer", "dm", "doris", "starrocks", "kingbase"],
+)
+def test_roi_query_supported_timeout_matrix_executes(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    datasource_type: str,
+) -> None:
+    _prepare_authorized_query(
+        monkeypatch,
+        session,
+        datasource_type=datasource_type,
+    )
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **kwargs: calls.append(kwargs) or {"status": "success"},
+    )
+
+    result = execute_roi_read_query(session, make_user(), "SELECT 1")
+
+    assert result.status == "success"
+    assert calls[0]["query_timeout"] > 0
+    assert calls[0]["max_result_rows"] is None
+
+
+@pytest.mark.parametrize(
+    "datasource_type",
+    ["oracle", "ck", "redshift", "hive", "es"],
+)
+def test_roi_query_unsupported_timeout_or_unbounded_matrix_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    datasource_type: str,
+) -> None:
+    _prepare_authorized_query(
+        monkeypatch,
+        session,
+        datasource_type=datasource_type,
+    )
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("不支持类型不应到达执行层"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(session, make_user(), "SELECT 1")
+
+    assert exc.value.status_code == 400
+    if datasource_type == "es":
+        assert exc.value.detail == "当前数据源类型不支持受控且无截断 ROI 查询"

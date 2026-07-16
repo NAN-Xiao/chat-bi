@@ -1166,9 +1166,10 @@ def test_reorder_commit_is_not_reported_failed_when_chart_query_raises(
 ) -> None:
     user = prepare_chart_context(session)
     chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    execute = Mock(side_effect=RuntimeError("driver unavailable"))
     monkeypatch.setattr(
         "apps.roi_dashboard.service.execute_roi_read_query",
-        lambda *_args: (_ for _ in ()).throw(RuntimeError("driver unavailable")),
+        execute,
     )
 
     result = reorder_roi_charts(
@@ -1186,7 +1187,8 @@ def test_reorder_commit_is_not_reported_failed_when_chart_query_raises(
     session.refresh(chart)
     assert (chart.sort, chart.layout_span, chart.version) == (3, "half", 2)
     assert result[0]["version"] == 2
-    assert result[0]["query_result"]["status"] == "failed"
+    assert result[0]["query_result"] is None
+    execute.assert_not_called()
 
 
 def test_create_rechecks_active_dashboard_under_lock(
@@ -1291,3 +1293,62 @@ def test_reorder_service_rejects_invalid_layout_or_sort(
     assert_http_error(400, lambda: reorder_roi_charts(session, user, 301, request))
     session.refresh(chart)
     assert (chart.sort, chart.layout_span, chart.version) == (0, "full", 1)
+
+
+def test_reorder_cross_tenant_wins_over_duplicate_error(session: Session) -> None:
+    user = prepare_chart_context(session)
+    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    seed_roi_chart(session, tenant_id=22, dashboard_id=301, chart_id=902)
+    request = RoiChartReorderRequest(
+        items=[
+            RoiChartOrderItem(id="901", sort=1, layout_span="half", version=1),
+            RoiChartOrderItem(id="901", sort=2, layout_span="third", version=1),
+            RoiChartOrderItem(id="902", sort=3, layout_span="full", version=1),
+        ]
+    )
+
+    assert_http_error(404, lambda: reorder_roi_charts(session, user, 301, request))
+
+
+def test_reorder_permission_wins_over_duplicate_error(session: Session) -> None:
+    user = prepare_chart_context(session, grant=False)
+    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    request = RoiChartReorderRequest(
+        items=[
+            RoiChartOrderItem(id="901", sort=1, layout_span="half", version=1),
+            RoiChartOrderItem(id="901", sort=2, layout_span="third", version=1),
+        ]
+    )
+
+    assert_http_error(403, lambda: reorder_roi_charts(session, user, 301, request))
+
+
+def test_reorder_returns_structure_without_calling_full_chart_list(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.list_roi_charts",
+        lambda *_args, **_kwargs: pytest.fail("提交后不应调用完整图表列表"),
+    )
+
+    result = reorder_roi_charts(
+        session,
+        user,
+        301,
+        RoiChartReorderRequest(
+            items=[
+                RoiChartOrderItem(id="901", sort=4, layout_span="third", version=1)
+            ]
+        ),
+        cache_adapter=FakeRoiChartCache(),
+    )
+
+    session.refresh(chart)
+    assert (chart.sort, chart.layout_span, chart.version) == (4, "third", 2)
+    assert result[0]["sort"] == 4
+    assert result[0]["layout_span"] == "third"
+    assert result[0]["version"] == 2
+    assert result[0]["query_result"] is None

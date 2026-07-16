@@ -871,23 +871,31 @@ def reorder_roi_charts(
     tenant_id = _tenant_id(current_user)
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     parsed_items: list[tuple[int, Any]] = []
-    seen_ids: set[int] = set()
     for item in request.items:
         try:
             chart_id = int(item.id)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="ROI 图表 ID 不合法") from exc
-        if chart_id in seen_ids:
-            raise HTTPException(status_code=400, detail="ROI 图表排序项不能重复")
-        seen_ids.add(chart_id)
         parsed_items.append((chart_id, item))
 
-    records: list[tuple[CoreRoiDashboardChart, Any]] = []
-    for chart_id, item in parsed_items:
-        record = _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
-        records.append((record, item))
+    records_by_id: dict[int, CoreRoiDashboardChart] = {}
+    for chart_id, _item in parsed_items:
+        if chart_id not in records_by_id:
+            records_by_id[chart_id] = _load_chart_or_404(
+                session,
+                tenant_id,
+                dashboard_id,
+                chart_id,
+            )
 
     config = _require_roi_chart_write_access(session, current_user, tenant_id)
+    if len(records_by_id) != len(parsed_items):
+        raise HTTPException(status_code=400, detail="ROI 图表排序项不能重复")
+
+    records = [
+        (records_by_id[chart_id], item)
+        for chart_id, item in parsed_items
+    ]
     for record, item in records:
         if item.layout_span not in {"full", "half", "third"}:
             raise HTTPException(status_code=400, detail="ROI 图表宽度不合法")
@@ -898,6 +906,7 @@ def reorder_roi_charts(
 
     now = _now()
     operator_id = _operator_id(current_user)
+    response_items: list[dict[str, Any]] = []
     for record, item in records:
         result = session.exec(
             update(CoreRoiDashboardChart)
@@ -920,6 +929,19 @@ def reorder_roi_charts(
         if result.rowcount != 1:
             session.rollback()
             raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
+        response_item = record.model_dump()
+        response_item.update(
+            sort=item.sort,
+            layout_span=item.layout_span,
+            version=item.version + 1,
+            update_by=operator_id,
+            update_time=now,
+            can_execute=True,
+            can_edit=True,
+            error=None,
+            query_result=None,
+        )
+        response_items.append(response_item)
     session.commit()
     _invalidate_roi_chart_cache(
         cache_adapter,
@@ -927,9 +949,7 @@ def reorder_roi_charts(
         datasource_id=config.datasource_id,
         dashboard_id=dashboard_id,
     )
-    return list_roi_charts(
-        session,
-        current_user,
-        dashboard_id,
-        cache_adapter=cache_adapter,
+    return sorted(
+        response_items,
+        key=lambda item: (item["sort"], item["create_time"], item["id"]),
     )

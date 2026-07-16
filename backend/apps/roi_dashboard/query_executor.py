@@ -17,6 +17,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import (
     check_sql_read,
     get_sqlglot_dialect,
+    normalize_sql_safety_ds_type,
     supports_controlled_query_timeout,
 )
 from apps.roi_dashboard.models import CoreRoiWorkspaceConfig
@@ -84,6 +85,16 @@ _ROI_FORBIDDEN_AST_TYPES = (
     exp.Command,
     exp.Copy,
     exp.Into,
+    exp.NextValueFor,
+)
+
+_ROI_SAFE_ANONYMOUS_FUNCTIONS = {
+    "pg": frozenset({"jsonb_build_object"}),
+    "mysql": frozenset({"find_in_set", "json_unquote"}),
+}
+
+ROI_TIMEOUT_SUPPORTED_TYPES = frozenset(
+    {"pg", "mysql", "sqlserver", "dm", "doris", "starrocks", "kingbase"}
 )
 
 
@@ -100,10 +111,26 @@ def validate_roi_read_sql(sql: str, datasource: CoreDatasource) -> None:
     statement = statements[0]
     if not isinstance(statement, exp.Query):
         raise ValueError("SQL 根语句不是只读查询")
+    datasource_type = normalize_sql_safety_ds_type(datasource.type)
+    safe_anonymous_functions = _ROI_SAFE_ANONYMOUS_FUNCTIONS.get(
+        datasource_type,
+        frozenset(),
+    )
     for node in statement.walk():
         if isinstance(node, _ROI_FORBIDDEN_AST_TYPES):
             raise ValueError(f"SQL 包含写操作或命令：{type(node).__name__}")
-        if isinstance(node, (exp.Anonymous, exp.UserDefinedFunction)):
+        if isinstance(node, exp.Column):
+            parts = [part.name.casefold() for part in node.parts]
+            if len(parts) >= 2 and parts[-1] == "nextval":
+                raise ValueError("SQL 包含序列取值副作用")
+        if isinstance(node, exp.Anonymous):
+            function_name = str(node.name or "").casefold()
+            if function_name == "nextval":
+                raise ValueError("SQL 包含序列取值副作用")
+            if function_name in safe_anonymous_functions:
+                continue
+            raise ValueError("SQL 包含无法识别的自定义函数")
+        if isinstance(node, exp.UserDefinedFunction):
             raise ValueError("SQL 包含无法识别的自定义函数")
 
 
@@ -164,10 +191,19 @@ def execute_roi_read_query(
                 status_code=400,
                 detail=f"ROI SQL 仅允许单条只读查询：{reason}",
             )
-        if not supports_controlled_query_timeout(datasource.type):
+        datasource_type = normalize_sql_safety_ds_type(datasource.type)
+        if (
+            datasource_type not in ROI_TIMEOUT_SUPPORTED_TYPES
+            or not supports_controlled_query_timeout(datasource.type)
+        ):
+            detail = (
+                "当前数据源类型不支持受控且无截断 ROI 查询"
+                if datasource_type == "es"
+                else "当前数据源类型不支持受控查询超时"
+            )
             raise HTTPException(
                 status_code=400,
-                detail="当前数据源类型不支持受控查询超时",
+                detail=detail,
             )
         raw = _run_validated_read(
             datasource=datasource,
