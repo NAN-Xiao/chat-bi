@@ -9,6 +9,7 @@ import { useRoiDashboardStore } from '@/stores/roiDashboard'
 import { useEmitt } from '@/utils/useEmitt'
 import RoiChartGrid from './RoiChartGrid.vue'
 import RoiDatasourceDialog from './RoiDatasourceDialog.vue'
+import RoiSqlEditor from './RoiSqlEditor.vue'
 import type { RoiChart, RoiChartEditorState, RoiConfig, RoiLayoutSpan } from './types'
 import {
   buildRoiChartOrderItems,
@@ -221,6 +222,11 @@ function cancelChartEditor() {
   editorState.value = closeRoiChartEditor(editorState.value)
 }
 
+async function handleChartSaved() {
+  editorState.value = closeRoiChartEditor(editorState.value)
+  await reloadChartsAfterConfigSave()
+}
+
 async function removeChart(chart: RoiChart) {
   if (!canManageRoiChart(chart, canEdit.value)) return
   try {
@@ -364,14 +370,15 @@ onBeforeUnmount(() => {
       @cancelled="handleDatasourceCancelled"
     />
 
-    <div v-if="editorState.visible" class="roi-editor-mount">
-      <slot
-        name="roi-editor"
-        :state="editorState"
-        :cancel="cancelChartEditor"
-        :saved="reloadCharts"
-      />
-    </div>
+    <RoiSqlEditor
+      :model-value="editorState.visible"
+      :dashboard-id="editorState.dashboardId"
+      :chart="editorState.initialValue"
+      :can-edit="canEdit"
+      @update:model-value="!$event && cancelChartEditor()"
+      @saved="handleChartSaved"
+      @cancelled="cancelChartEditor"
+    />
   </section>
 </template>
 
@@ -432,11 +439,6 @@ onBeforeUnmount(() => {
   place-items: center;
   color: var(--ed-text-color-secondary);
   font-size: 14px;
-}
-
-.roi-editor-mount {
-  position: relative;
-  z-index: 10;
 }
 
 @media (max-width: 720px) {
