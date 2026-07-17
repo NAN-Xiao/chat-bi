@@ -4,13 +4,23 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import sys
+from dataclasses import replace
 from pathlib import Path
+from typing import Any, Mapping, Sequence
 
-import psycopg
 from psycopg.types.json import Jsonb
 
 from core_system_db import core_system_db_config, export_postgres_compat_env
+from xiuxian_dashboard_skill_catalog import (
+    EXPECTED_VIEW_IDS,
+    MAX_PROMPT_CHARS,
+    TOPICS,
+    build_topic_prompt,
+    validate_catalog,
+    validate_prompt_length,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "backend"
@@ -19,8 +29,9 @@ BACKEND_DIR = ROOT / "backend"
 DB = core_system_db_config()
 TENANT_ID = 7482727237662281728
 DATASOURCE_ID = 6
+PUBLISH_LOCK_KEY = f"xiuxian-data-skills:{TENANT_ID}:{DATASOURCE_ID}"
 
-DATA_SKILLS: list[dict[str, str]] = [
+_LEGACY_DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "修仙业务日期与按日聚合口径",
         "description": "规范修仙数据源 event、user 表中 YYYYMMDD 数字分区字段 dt 的过滤、聚合和输出格式。",
@@ -88,132 +99,129 @@ WHERE e.dt BETWEEN
 - 不要把本口径传播到其他数据源。
 """,
     },
-    {
-        "name": "修仙付费收入与 ARPPU 口径",
-        "description": "规范修仙 PayBuyRet 成功付费事件的人民币收入、付费用户、付费事件次数和 ARPPU，禁止把累计 paytotal 当作当日指标。",
-        "prompt": """<!-- data-skill-source:xiuxian:paybuyret-monetization-arppu -->
-<!-- data-skill-sql-validation:[
-  {
-    "match":["ARPPU","arppu"],
-    "required_sql_contains":["PayBuyRet","ed_money","ed_isSuccess"],
-    "required_sql_patterns":[
-      "SUM\\\\s*\\\\([\\\\s\\\\S]{0,240}ed_money",
-      "COUNT\\\\s*\\\\(\\\\s*DISTINCT\\\\s+(?:`?\\\\w+`?\\\\s*\\\\.\\\\s*)?`?uid`?\\\\s*\\\\)"
-    ],
-    "forbidden_sql_contains":["paytotal"],
-    "message":"修仙付费趋势必须使用 PayBuyRet 的成功事件、personal.ed_money 和去重 uid；paytotal 是累计快照，不能计算当日收入、当日付费人数或 ARPPU。"
-  },
-  {
-    "match":["当日付费金额","每日付费金额","付费金额趋势","当日付费用户","每日付费用户","付费用户趋势","每日收入","收入趋势","每日流水","流水趋势","近七天收入","近7天收入"],
-    "required_sql_contains":["PayBuyRet","ed_money","ed_isSuccess"],
-    "forbidden_sql_contains":["paytotal"],
-    "message":"修仙当日付费指标必须使用 PayBuyRet 的成功事件和 personal.ed_money；paytotal 只表示累计付费快照。"
-  }
-] -->
-# 修仙付费收入与 ARPPU 口径
-
-## 适用范围
-
-- 仅适用于当前修仙工作空间的数据源，datasource_id=6。
-- 适用于付费金额、收入、流水、付费用户、付费事件次数和 ARPPU。
-- ARPU、付费率需要另行确认活跃用户事件和分母，不得根据字段名猜测。
-
-## 已确认事件与字段
-
-- 成功付费事件：`event = 'PayBuyRet'`。
-- 人民币当次金额：`personal.ed_money`，SQL 路径为 `$.ed_money`。
-- 成功标识：`personal.ed_isSuccess`，仅保留 `true` 或 `1`。
-- 付费用户标识：`uid`。
-- 支付平台订单号：`personal.ed_orderId`，但当前数据为空，不能用于订单去重。
-- `personal.ed_payId` 会被多个用户和多笔支付复用，不是唯一交易号，不能代替订单号。
-
-## 指标定义
-
-- 当日付费金额：成功且 `ed_money > 0` 的 `PayBuyRet` 事件金额求和。
-- 当日付费用户数：同一口径下 `COUNT(DISTINCT uid)`。
-- 当日付费事件次数：同一口径下 `COUNT(*)`；不能命名为去重订单数。
-- 当日 ARPPU：`SUM(ed_money) / NULLIF(COUNT(DISTINCT uid), 0)`。
-- `pay.paytotal` 和 `allianceinfo.paytotal` 是累计快照，不能用于当日付费金额、当日付费人数或 ARPPU。
-- 周/月 ARPPU 必须在周期内重新计算成功付费金额除以周期去重付费用户数，不能汇总或平均每日 ARPPU。
-
-## 日期与空值
-
-- 日期过滤、输出和动态边界规则遵守“修仙业务日期与按日聚合口径”。
-- “近七天”默认以昨天为结束日期，使用当前日期减 7 天作为开始日期，起止均包含。
-- 用户明确指定其他绝对或相对日期范围时，必须按用户要求替换示例边界。
-- 趋势必须补齐自然日；无付费日期的金额和人数为 0，ARPPU 为 `NULL`。
-
-## MySQL 8 近七天 ARPPU 参考 SQL
-
-```sql
-WITH RECURSIVE params (end_date, start_date) AS (
-    SELECT
-        DATE_SUB(CURDATE(), INTERVAL 1 DAY) AS end_date,
-        DATE_SUB(CURDATE(), INTERVAL 7 DAY) AS start_date
-),
-days (calendar_date, end_date) AS (
-    SELECT start_date AS calendar_date, end_date
-    FROM params
-    UNION ALL
-    SELECT DATE_ADD(calendar_date, INTERVAL 1 DAY), end_date
-    FROM days
-    WHERE calendar_date < end_date
-),
-pay (pay_date, uid, ed_money) AS (
-    SELECT
-        STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS pay_date,
-        e.uid,
-        CAST(
-            NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')), '')
-            AS DECIMAL(18, 4)
-        ) AS ed_money
-    FROM `event` e
-    WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
-      AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-      AND e.event = 'PayBuyRet'
-      AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_isSuccess')) IN ('true', '1')
-      AND CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_money')), '') AS DECIMAL(18, 4)) > 0
-),
-daily_pay (pay_date, revenue, payers, payment_event_count) AS (
-    SELECT
-        pay_date,
-        SUM(ed_money) AS revenue,
-        COUNT(DISTINCT uid) AS payers,
-        COUNT(*) AS payment_event_count
-    FROM pay
-    GROUP BY pay_date
-)
-SELECT
-    DATE_FORMAT(d.calendar_date, '%Y-%m-%d') AS dt,
-    ROUND(COALESCE(p.revenue, 0), 2) AS revenue,
-    COALESCE(p.payers, 0) AS payers,
-    COALESCE(p.payment_event_count, 0) AS payment_event_count,
-    ROUND(p.revenue / NULLIF(p.payers, 0), 2) AS arppu
-FROM days d
-LEFT JOIN daily_pay p ON p.pay_date = d.calendar_date
-ORDER BY d.calendar_date;
-```
-
-## 禁止事项
-
-- 不要使用 `user.pay.paytotal` 的日快照求和或累计付费人数计算 ARPPU。
-- 不要把 `ed_payId` 当订单号去重。
-- 不要在当前 Skill 中猜测 ARPU、付费率、退款或净收入口径。
-- 不要把本口径传播到其他数据源。
-""",
-    },
 ]
 
 
-def _upsert_skill(cur, *, skill: dict[str, str], now: dt.datetime) -> int:
-    prompt = skill["prompt"].strip()
-    marker = prompt.splitlines()[0].strip()
-    lock_key = f"{TENANT_ID}:{DATASOURCE_ID}:{marker}"
-    cur.execute(
-        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
-        (lock_key,),
-    )
+DATE_PARTITION_SKILL = _LEGACY_DATA_SKILLS[0]
+LEGACY_PAYMENT_MARKER = (
+    "<!-- data-skill-source:xiuxian:paybuyret-monetization-arppu -->"
+)
+SERVERPAYLOG_MARKER = (
+    "<!-- data-skill-source:xiuxian:serverpaylog-monetization-arppu -->"
+)
+EMPTY_DASHBOARD_VIEW_ID = "1e4e34743f2d47dfa1c2948742b93a50"
+DATA_SKILLS: list[dict[str, str]] = [DATE_PARTITION_SKILL]
+
+SERVERPAYLOG_VALIDATION = """<!-- data-skill-sql-validation:[
+  {
+    "match":["收入","流水","付费金额","付费用户","ARPU","arpu","ARPPU","arppu"],
+    "required_sql_contains":["ServerPayLog","$.money"],
+    "forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"],
+    "message":"修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
+  },
+  {
+    "match":["付费用户","ARPU","arpu","ARPPU","arppu"],
+    "required_sql_patterns":[
+      "COUNT\\\\s*\\\\(\\\\s*DISTINCT\\\\s+(?:`?\\\\w+`?\\\\s*\\\\.\\\\s*)?`?uid`?\\\\s*\\\\)"
+    ],
+    "message":"修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
+  }
+] -->"""
+
+
+def dashboard_sql_block(view_id: str, sql: str) -> str:
+    """把一个推荐看板抽屉保存为可追溯 SQL 块。"""
+
+    return f"<!-- dashboard-sql:{view_id} -->\n```sql\n{sql.strip()}\n```"
+
+
+def _index_dashboard_drawers(dashboards: Sequence[Any]) -> dict[str, Any]:
+    drawers: dict[str, Any] = {}
+    for dashboard in dashboards:
+        if int(dashboard.tenant_id) != TENANT_ID or int(dashboard.datasource) != DATASOURCE_ID:
+            raise ValueError(f"看板 {dashboard.id} 不属于修仙工作空间 datasource 6")
+        for drawer in dashboard.drawers:
+            view_id = str(drawer.view_id)
+            if view_id in drawers:
+                raise ValueError(f"推荐看板抽屉 view id 重复：{view_id}")
+            if not drawer.sql.strip() and view_id != EMPTY_DASHBOARD_VIEW_ID:
+                raise ValueError(f"推荐看板抽屉 SQL 为空：{view_id}")
+            drawers[view_id] = drawer
+    if set(drawers) != set(EXPECTED_VIEW_IDS):
+        missing = sorted(set(EXPECTED_VIEW_IDS).difference(drawers))
+        extra = sorted(set(drawers).difference(EXPECTED_VIEW_IDS))
+        raise ValueError(f"推荐看板抽屉与 Skill 目录不一致：missing={missing}, extra={extra}")
+    return drawers
+
+
+def _topic_marker(slug: str) -> str:
+    if slug == "serverpaylog-revenue":
+        return SERVERPAYLOG_MARKER
+    return f"<!-- data-skill-source:xiuxian:dashboard:{slug} -->"
+
+
+def _topic_authority(topic_slug: str) -> str:
+    if topic_slug != "serverpaylog-revenue":
+        return ""
+    return """
+## 权威交易字段
+- 真实交易事件固定为 `event = 'ServerPayLog'`。
+- 收入金额使用 `personal.money`，订单号使用 `personal.orderId`，商品使用 `personal.productid`。
+- 付费用户使用 `COUNT(DISTINCT uid)`；ARPPU 分母为付费用户，ARPU 分母为同期 UserActive 活跃用户。
+- PayBuyRet 只描述支付流程事件，不得作为真实收入、订单、付费用户或 ARPU/ARPPU 来源。
+""".strip()
+
+
+def build_data_skills(dashboards: Sequence[Any]) -> list[dict[str, str]]:
+    """从完整推荐看板快照生成 1 条基础 Skill 和 12 条主题 Skill。"""
+
+    validate_catalog()
+    drawers = _index_dashboard_drawers(dashboards)
+    skills = [dict(DATE_PARTITION_SKILL)]
+    for topic in TOPICS:
+        effective_topic = replace(
+            topic,
+            view_ids=tuple(
+                view_id
+                for view_id in topic.view_ids
+                if view_id != EMPTY_DASHBOARD_VIEW_ID
+            ),
+        )
+        blocks = [
+            dashboard_sql_block(view_id, drawers[view_id].sql)
+            for view_id in effective_topic.view_ids
+        ]
+        marker = _topic_marker(topic.slug)
+        sections = [marker]
+        if topic.slug == "serverpaylog-revenue":
+            sections.append(SERVERPAYLOG_VALIDATION)
+        sections.extend(
+            [
+                build_topic_prompt(effective_topic),
+                "## 工作空间边界\n仅适用于修仙工作空间 datasource_id=6；不得传播到其他工作空间或数据源。",
+            ]
+        )
+        authority = _topic_authority(topic.slug)
+        if authority:
+            sections.append(authority)
+        sections.extend(blocks)
+        prompt = "\n\n".join(sections).strip()
+        validate_prompt_length(prompt)
+        if len(blocks) > 6 or len(prompt) > MAX_PROMPT_CHARS:
+            raise ValueError(f"Skill 体积超限: {topic.slug}")
+        skills.append(
+            {
+                "name": topic.name,
+                "description": topic.description,
+                "prompt": prompt,
+            }
+        )
+    if len(skills) != 13:
+        raise ValueError(f"修仙工作空间 Skill 数量必须为 13，实际为 {len(skills)}")
+    return skills
+
+
+def _find_skill_by_marker(cur: Any, marker: str) -> tuple[Any, ...] | None:
     cur.execute(
         """
         SELECT id
@@ -224,11 +232,31 @@ def _upsert_skill(cur, *, skill: dict[str, str], now: dt.datetime) -> int:
           AND datasource_ids = %s::jsonb
           AND position(%s in COALESCE(prompt, '')) > 0
         ORDER BY id
-        LIMIT 1
         """,
         (TENANT_ID, Jsonb([DATASOURCE_ID]), marker),
     )
-    row = cur.fetchone()
+    rows = cur.fetchall()
+    if len(rows) > 1:
+        raise RuntimeError(f"Data Skill marker 重复，拒绝发布: {marker}")
+    return rows[0] if rows else None
+
+
+def _upsert_skill(cur, *, skill: dict[str, str], now: dt.datetime) -> int:
+    prompt = skill["prompt"].strip()
+    marker = prompt.splitlines()[0].strip()
+    lock_key = f"{TENANT_ID}:{DATASOURCE_ID}:{marker}"
+    cur.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+        (lock_key,),
+    )
+    row = _find_skill_by_marker(cur, marker)
+    if marker == SERVERPAYLOG_MARKER:
+        legacy_row = _find_skill_by_marker(cur, LEGACY_PAYMENT_MARKER)
+        if row is not None and legacy_row is not None:
+            raise RuntimeError(
+                "ServerPayLog current marker 与 legacy marker 同时存在，拒绝发布"
+            )
+        row = row or legacy_row
     values = (
         TENANT_ID,
         skill["name"][:255],
@@ -303,6 +331,277 @@ def _upsert_skill(cur, *, skill: dict[str, str], now: dt.datetime) -> int:
     return int(cur.fetchone()[0])
 
 
+def upsert_skills(
+    cur: Any,
+    skills: Sequence[dict[str, str]],
+    *,
+    now: dt.datetime | None = None,
+) -> list[int]:
+    """在同一事务游标中批量幂等写入主题 Skill。"""
+
+    write_time = now or dt.datetime.now()
+    return [_upsert_skill(cur, skill=skill, now=write_time) for skill in skills]
+
+
+def backup_existing_skills(
+    cur: Any,
+    markers: Sequence[str],
+) -> dict[str, list[dict[str, Any]]]:
+    """快照目标 Skill 完整记录及用户启用偏好。"""
+
+    normalized_markers = [str(marker).strip() for marker in markers if str(marker).strip()]
+    cur.execute(
+        """
+        SELECT to_jsonb(cp)
+        FROM custom_prompt cp
+        WHERE cp.tenant_id = %s
+          AND cp.type = 'DATA_SKILL'
+          AND cp.specific_ds = TRUE
+          AND cp.datasource_ids = %s::jsonb
+          AND EXISTS (
+              SELECT 1
+              FROM unnest(%s::text[]) AS marker(value)
+              WHERE position(marker.value in COALESCE(cp.prompt, '')) > 0
+          )
+        ORDER BY cp.id
+        """,
+        (TENANT_ID, Jsonb([DATASOURCE_ID]), normalized_markers),
+    )
+    skills = [dict(row[0]) for row in cur.fetchall()]
+    skill_ids = [int(skill["id"]) for skill in skills]
+    cur.execute(
+        """
+        SELECT to_jsonb(pref)
+        FROM custom_prompt_user_preference pref
+        WHERE pref.tenant_id = %s
+          AND pref.custom_prompt_id = ANY(%s)
+        ORDER BY pref.id
+        """,
+        (TENANT_ID, skill_ids),
+    )
+    preferences = [dict(row[0]) for row in cur.fetchall()]
+    return {"skills": skills, "preferences": preferences}
+
+
+_RESTORE_SKILL_COLUMNS = (
+    "tenant_id",
+    "type",
+    "create_time",
+    "name",
+    "description",
+    "target_scope",
+    "active",
+    "visible",
+    "ai_model_id",
+    "create_by",
+    "visibility_scope",
+    "prompt",
+    "embedding",
+    "embedding_signature",
+    "specific_ds",
+    "datasource_ids",
+)
+_RESTORE_JSONB_COLUMNS = frozenset({"datasource_ids"})
+_PUBLISHED_STABLE_COLUMNS = tuple(
+    column
+    for column in ("id", *_RESTORE_SKILL_COLUMNS)
+    if column not in {"embedding", "embedding_signature"}
+)
+
+
+class SkillRestoreConflictError(RuntimeError):
+    """当前 Skill 已偏离本轮发布状态，恢复不能覆盖并发修改。"""
+
+
+def _restore_skill_value(column: str, value: Any) -> Any:
+    if column in _RESTORE_JSONB_COLUMNS and value is not None:
+        return value if isinstance(value, Jsonb) else Jsonb(value)
+    return value
+
+
+def _stable_skill_state(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {column: row.get(column) for column in _PUBLISHED_STABLE_COLUMNS}
+
+
+def load_skill_states_by_ids(
+    cur: Any,
+    skill_ids: Sequence[int],
+    *,
+    for_update: bool = False,
+) -> dict[int, dict[str, Any]]:
+    """按 ID 读取 Skill 行；恢复时锁行以保证比较与写入原子。"""
+
+    normalized_ids = sorted({int(skill_id) for skill_id in skill_ids})
+    if not normalized_ids:
+        return {}
+    suffix = " FOR UPDATE" if for_update else ""
+    cur.execute(
+        f"""
+        SELECT to_jsonb(cp)
+        FROM custom_prompt cp
+        WHERE cp.id = ANY(%s)
+          AND cp.tenant_id = %s
+        ORDER BY cp.id{suffix}
+        """,
+        (normalized_ids, TENANT_ID),
+    )
+    return {
+        int(row[0]["id"]): dict(row[0])
+        for row in cur.fetchall()
+    }
+
+
+def restore_skills(
+    cur: Any,
+    backup: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    affected_ids: Sequence[int],
+    expected_states: Mapping[int, Mapping[str, Any]],
+) -> None:
+    """仅在仍匹配本轮发布状态时恢复，且不触碰既有 Skill 偏好。"""
+
+    affected = sorted({int(skill_id) for skill_id in affected_ids})
+    original_skills = [dict(row) for row in backup.get("skills", ())]
+    original_by_id = {int(row["id"]): row for row in original_skills}
+    original_ids = set(original_by_id)
+    normalized_expected = {
+        int(skill_id): dict(state)
+        for skill_id, state in expected_states.items()
+        if int(skill_id) in affected
+    }
+    if set(normalized_expected) != set(affected):
+        missing = sorted(set(affected).difference(normalized_expected))
+        raise SkillRestoreConflictError(
+            f"缺少本轮发布期望态，拒绝恢复 Skill: {missing}"
+        )
+    current_states = load_skill_states_by_ids(cur, affected, for_update=True)
+    restore_ids: list[int] = []
+    conflicts: list[int] = []
+    for skill_id in affected:
+        current = current_states.get(skill_id)
+        expected = normalized_expected[skill_id]
+        original = original_by_id.get(skill_id)
+        if current is not None and _stable_skill_state(
+            current
+        ) == _stable_skill_state(expected):
+            restore_ids.append(skill_id)
+        elif original is not None and current is not None and _stable_skill_state(
+            current
+        ) == _stable_skill_state(original):
+            continue
+        elif original is None and current is None:
+            continue
+        else:
+            conflicts.append(skill_id)
+    if conflicts:
+        raise SkillRestoreConflictError(
+            f"Skill 恢复冲突，已保留并发修改: {conflicts}"
+        )
+
+    new_ids = sorted(set(restore_ids).difference(original_ids))
+    if new_ids:
+        cur.execute(
+            """
+            DELETE FROM custom_prompt_user_preference
+            WHERE tenant_id = %s
+              AND custom_prompt_id = ANY(%s)
+            """,
+            (TENANT_ID, new_ids),
+        )
+        cur.execute(
+            """
+            DELETE FROM custom_prompt
+            WHERE tenant_id = %s
+              AND id = ANY(%s)
+            """,
+            (TENANT_ID, new_ids),
+        )
+        if cur.rowcount != len(new_ids):
+            raise SkillRestoreConflictError(
+                f"新增 Skill 删除数量变化，拒绝提交恢复: {new_ids}"
+            )
+
+    assignments = ", ".join(f"{column} = %s" for column in _RESTORE_SKILL_COLUMNS)
+    for row in original_skills:
+        if int(row["id"]) not in restore_ids:
+            continue
+        cur.execute(
+            f"UPDATE custom_prompt SET {assignments} WHERE id = %s AND tenant_id = %s",
+            (
+                *(
+                    _restore_skill_value(column, row.get(column))
+                    for column in _RESTORE_SKILL_COLUMNS
+                ),
+                int(row["id"]),
+                TENANT_ID,
+            ),
+        )
+        if cur.rowcount != 1:
+            raise SkillRestoreConflictError(
+                f"既有 Skill 恢复数量变化，拒绝提交恢复: {row['id']}"
+            )
+
+
+def verify_embeddings(
+    cur: Any,
+    ids: Sequence[int],
+    *,
+    model: Any,
+    signature_factory: Any | None = None,
+) -> None:
+    """验证每条 Skill 都有向量，且签名与当前完整定义一致。"""
+
+    normalized_ids = sorted({int(skill_id) for skill_id in ids})
+    cur.execute(
+        """
+        SELECT id, name, description, prompt, embedding, embedding_signature
+        FROM custom_prompt
+        WHERE tenant_id = %s
+          AND id = ANY(%s)
+          AND type = 'DATA_SKILL'
+          AND specific_ds = TRUE
+          AND datasource_ids = %s::jsonb
+          AND active = TRUE
+          AND visible = TRUE
+          AND visibility_scope = 'ADMIN_PUBLIC'
+        ORDER BY id
+        """,
+        (TENANT_ID, normalized_ids, Jsonb([DATASOURCE_ID])),
+    )
+    rows = cur.fetchall()
+    if len(rows) != len(normalized_ids):
+        raise RuntimeError(
+            f"Data Skill embedding 记录不完整: 期望 {len(normalized_ids)}，实际 {len(rows)}"
+        )
+    if signature_factory is None:
+        if str(BACKEND_DIR) not in sys.path:
+            sys.path.insert(0, str(BACKEND_DIR))
+        from apps.chat.curd.custom_prompt_embedding import skill_definition_signature
+
+        signature_factory = skill_definition_signature
+
+    for skill_id, name, description, prompt, embedding, signature in rows:
+        try:
+            vector = json.loads(embedding) if isinstance(embedding, str) else embedding
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Data Skill {skill_id} embedding 不是有效 JSON") from exc
+        if not isinstance(vector, list) or not vector:
+            raise RuntimeError(f"Data Skill {skill_id} embedding 缺失")
+        try:
+            [float(item) for item in vector]
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(f"Data Skill {skill_id} embedding 向量无效") from exc
+        expected = signature_factory(
+            name,
+            description,
+            prompt,
+            model,
+            len(vector),
+        )
+        if signature != expected:
+            raise RuntimeError(f"Data Skill {skill_id} embedding_signature 不一致")
+
+
 def _save_embeddings(ids: list[int]) -> int:
     export_postgres_compat_env(DB)
     if str(BACKEND_DIR) not in sys.path:
@@ -317,19 +616,45 @@ def _save_embeddings(ids: list[int]) -> int:
     return save_custom_prompt_skill_embedding(session_maker, ids, tenant_id=TENANT_ID)
 
 
-def main() -> None:
-    now = dt.datetime.now()
-    with psycopg.connect(**DB) as conn:
-        with conn.cursor() as cur:
-            ids = [_upsert_skill(cur, skill=skill, now=now) for skill in DATA_SKILLS]
-        conn.commit()
-    saved = _save_embeddings(ids)
-    if saved != len(ids):
-        raise RuntimeError(
-            f"Data Skill embedding 保存不完整: 期望 {len(ids)}，实际 {saved}"
-        )
-    print(f"修仙 Data Skills 已写入: {ids}; embeddings 已保存: {saved}")
+def _embedding_model() -> Any:
+    export_postgres_compat_env(DB)
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
+    from apps.ai_model.embedding import EmbeddingModelCache
+
+    return EmbeddingModelCache.get_model()
+
+
+def _load_recommended_dashboards(connection: Any) -> list[Any]:
+    from xiuxian_dashboard_snapshot import load_recommended_dashboards
+
+    return load_recommended_dashboards(connection)
+
+
+def _acquire_publish_lock(cur: Any) -> None:
+    cur.execute(
+        "SELECT pg_advisory_lock(hashtextextended(%s, 0))",
+        (PUBLISH_LOCK_KEY,),
+    )
+
+
+def _release_publish_lock(cur: Any) -> None:
+    cur.execute(
+        "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
+        (PUBLISH_LOCK_KEY,),
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """兼容旧脚本入口，但所有写入统一交给正式发布器。"""
+
+    from publish_xiuxian_dashboard_data_skills import main as publisher_main
+
+    cli_args = list(sys.argv[1:] if argv is None else argv)
+    if any(arg == "--mode" or arg.startswith("--mode=") for arg in cli_args):
+        raise SystemExit("seed 入口固定使用 apply，禁止传入 --mode")
+    return publisher_main([*cli_args, "--mode", "apply"])
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
