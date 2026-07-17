@@ -15,6 +15,7 @@ const build = await esbuild.build({
 })
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0].text).toString('base64')}`
 const {
+  canCancelRoiEditor,
   createRoiEditorRequestGuard,
   getRoiChartSaveErrorMessage,
   hydrateRoiChartForm,
@@ -22,6 +23,9 @@ const {
   roiChartFormSignature,
   serializeRoiChartForm,
 } = await import(moduleUrl)
+
+assert.equal(canCancelRoiEditor(false), true)
+assert.equal(canCancelRoiEditor(true), false, 'create/update 在途时用户不得关闭或 emit cancelled')
 
 const chart = {
   id: 'chart-1',
@@ -88,19 +92,45 @@ assert.equal(JSON.stringify(payload).includes('mcp'), false)
       tenant_id: 20,
       external_mcp: { token: 'secret' },
       mcpServerId: 'server-secret',
-      future_config: { ...chart.chart_config.future_config, mcpTool: 'tool-secret' },
+      future_config: {
+        ...chart.chart_config.future_config,
+        mcpTool: 'tool-secret',
+        nested_array: [{ 'MCP Server': 'server-space' }, { 'mcp-tool': 'tool-dash' }],
+      },
+      pivot: {
+        ...chart.chart_config.pivot,
+        datasource_id: 30,
+        nested: { Tenant_ID: 40 },
+      },
+      insight: {
+        ...chart.chart_config.insight,
+        nested: {
+          mcpTool: 'insight-tool',
+          'MCP-Server': 'insight-server',
+          safe_business_key: 'preserved',
+        },
+      },
     },
   })
-  const serialized = JSON.stringify(serializeRoiChartForm(unsafe))
+  const unsafePayload = serializeRoiChartForm(unsafe)
+  const serialized = JSON.stringify(unsafePayload)
+  const unsafeSignature = roiChartFormSignature(unsafe)
   for (const forbidden of [
     'datasource_id',
     'tenant_id',
     'external_mcp',
     'mcpServerId',
     'mcpTool',
+    'MCP Server',
+    'mcp-tool',
+    'MCP-Server',
+    'Tenant_ID',
   ]) {
     assert.equal(serialized.includes(forbidden), false, `${forbidden} 不得进入 payload`)
+    assert.equal(unsafeSignature.includes(forbidden), false, `${forbidden} 不得进入 signature`)
   }
+  assert.deepEqual(unsafePayload.chart_config.pivot.metric_fields, ['cost', 'revenue'])
+  assert.equal(unsafePayload.chart_config.insight.nested.safe_business_key, 'preserved')
 }
 
 {
@@ -180,9 +210,12 @@ for (const changed of [
   const save = guard.beginSave(signature)
   guard.invalidateRequests()
   assert.equal(guard.isActivePreview(preview), false)
+  assert.equal(guard.isCurrentOpenCycle(save), true, '撤权后仍需等待真实保存请求结束再恢复关闭')
   assert.equal(guard.markSaved(save), false, '动态撤权必须使在途保存失效')
   assert.equal(guard.markPreviewSucceeded(preview, signature), false, '动态撤权必须使旧预览失效')
   assert.equal(guard.canSave(signature), false)
+  guard.closeSession()
+  assert.equal(guard.isCurrentOpenCycle(save), false, '关闭或重开后旧保存不得影响新 UI 会话')
 }
 
 assert.equal(

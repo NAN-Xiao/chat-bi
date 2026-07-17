@@ -4,6 +4,7 @@ export const ROI_CHART_PREVIEW_ERROR_MESSAGE = '预览 ROI 图表失败，请稍
 
 interface RoiPreviewToken {
   session: number
+  cycle: number
   request: number
   signature: string
 }

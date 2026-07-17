@@ -41,6 +41,10 @@ export interface RoiChartForm {
   version?: number
 }
 
+export function canCancelRoiEditor(saving: boolean): boolean {
+  return !saving
+}
+
 const defaultPivot = (): RoiPivotConfig => ({
   enabled: false,
   time_field: '',
@@ -65,20 +69,32 @@ function cloneRecord<T>(value: T): T {
 }
 
 const blockedConfigKeys = new Set([
+  ['data', 'source'].join(''),
   ['data', 'source', 'id'].join(''),
+  ['data', 'source', 'name'].join(''),
+  ['tenant'].join(''),
   ['tenant', 'id'].join(''),
-  ['external', 'm', 'c', 'p'].join(''),
-  ['m', 'c', 'p'].join(''),
-  ['m', 'c', 'p', 'server', 'id'].join(''),
-  ['m', 'c', 'p', 'tool'].join(''),
+  ['tenant', 'name'].join(''),
 ])
+
+const protocolKeyPrefix = ['m', 'c', 'p'].join('')
+const externalProtocolKeyPrefix = ['external', 'm', 'c', 'p'].join('')
+
+function isBlockedConfigKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return (
+    blockedConfigKeys.has(normalized) ||
+    normalized.startsWith(protocolKeyPrefix) ||
+    normalized.startsWith(externalProtocolKeyPrefix)
+  )
+}
 
 function sanitizeConfigValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeConfigValue)
   if (!value || typeof value !== 'object') return value
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => !blockedConfigKeys.has(key.toLowerCase().replace(/[^a-z0-9]/g, '')))
+      .filter(([key]) => !isBlockedConfigKey(key))
       .map(([key, item]) => [key, sanitizeConfigValue(item)])
   )
 }
@@ -151,19 +167,20 @@ export function replaceRoiChartForm(target: RoiChartForm, chart?: RoiChart | nul
 }
 
 export function serializeRoiChartForm(form: RoiChartForm): RoiChartCreate | RoiChartUpdate {
+  const chartConfig = {
+    ...form.extraChartConfig,
+    x: form.x,
+    y: [...form.y],
+    series: form.series,
+    columns: [...form.columns],
+    pivot: { ...cloneRecord(form.pivot), enabled: form.pivotEnabled },
+    insight: { ...cloneRecord(form.insight), enabled: form.insightEnabled },
+  }
   const payload: RoiChartCreate = {
     title: form.title.trim(),
     sql: form.sql.trim(),
     chart_type: form.chartType,
-    chart_config: {
-      ...(sanitizeConfigValue(form.extraChartConfig) as Record<string, unknown>),
-      x: form.x,
-      y: [...form.y],
-      series: form.series,
-      columns: [...form.columns],
-      pivot: { ...cloneRecord(form.pivot), enabled: form.pivotEnabled },
-      insight: { ...cloneRecord(form.insight), enabled: form.insightEnabled },
-    },
+    chart_config: sanitizeConfigValue(chartConfig) as Record<string, unknown>,
     layout_span: form.layoutSpan,
   }
   return form.version === undefined ? payload : { ...payload, version: form.version }
@@ -189,12 +206,14 @@ export function roiChartFormSignature(form: RoiChartForm): string {
 
 interface RoiRequestToken {
   session: number
+  cycle: number
   request: number
   signature: string
 }
 
 export function createRoiEditorRequestGuard() {
   let session = 0
+  let cycle = 0
   let request = 0
   let opened = false
   let previewSignature = ''
@@ -207,6 +226,7 @@ export function createRoiEditorRequestGuard() {
   return {
     beginSession() {
       session += 1
+      cycle += 1
       opened = true
       previewSignature = ''
       activePreview = 0
@@ -215,6 +235,7 @@ export function createRoiEditorRequestGuard() {
     closeSession() {
       opened = false
       session += 1
+      cycle += 1
       previewSignature = ''
       activePreview = 0
       activeSave = 0
@@ -230,7 +251,10 @@ export function createRoiEditorRequestGuard() {
       activeSave = 0
     },
     isCurrentSession(token: RoiRequestToken | null) {
-      return Boolean(token && opened && token.session === session)
+      return Boolean(token && opened && token.session === session && token.cycle === cycle)
+    },
+    isCurrentOpenCycle(token: RoiRequestToken | null) {
+      return Boolean(token && opened && token.cycle === cycle)
     },
     isActivePreview(token: RoiRequestToken) {
       return isCurrent(token) && token.request === activePreview
@@ -239,7 +263,7 @@ export function createRoiEditorRequestGuard() {
       request += 1
       activePreview = request
       previewSignature = ''
-      return { session, request, signature }
+      return { session, cycle, request, signature }
     },
     markPreviewSucceeded(token: RoiRequestToken, currentSignature: string) {
       if (
@@ -259,7 +283,7 @@ export function createRoiEditorRequestGuard() {
       if (!this.canSave(signature) || activeSave) return null
       request += 1
       activeSave = request
-      return { session, request, signature }
+      return { session, cycle, request, signature }
     },
     markSaved(token: RoiRequestToken | null) {
       if (!token || !isCurrent(token) || token.request !== activeSave) return false

@@ -7,6 +7,7 @@ import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard
 import type { ChartTypes } from '@/views/chat/component/BaseChart'
 import type { RoiChart, RoiChartPreviewResponse, RoiChartUpdate } from './types'
 import {
+  canCancelRoiEditor,
   createEmptyRoiChartForm,
   createRoiEditorRequestGuard,
   getRoiChartSaveErrorMessage,
@@ -141,6 +142,7 @@ function closeSession(cancelled: boolean) {
 }
 
 function requestClose(done?: () => void) {
+  if (!canCancelRoiEditor(saving.value)) return
   closeSession(true)
   done?.()
 }
@@ -193,7 +195,7 @@ async function saveChart() {
       ElMessage.error(getRoiChartSaveErrorMessage(error))
     }
   } finally {
-    if (requestGuard.isCurrentSession(saveToken)) saving.value = false
+    if (requestGuard.isCurrentOpenCycle(saveToken)) saving.value = false
   }
 }
 
@@ -231,7 +233,6 @@ watch(
       previewRunner.invalidate()
       requestGuard.invalidateRequests()
       previewing.value = false
-      saving.value = false
     }
   }
 )
@@ -244,6 +245,8 @@ watch(
     size="min(760px, 96vw)"
     destroy-on-close
     :close-on-click-modal="false"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
     :before-close="requestClose"
   >
     <div class="roi-sql-editor">
@@ -480,7 +483,7 @@ watch(
 
     <template #footer>
       <div class="roi-sql-editor__footer">
-        <el-button @click="requestClose()">取消</el-button>
+        <el-button :disabled="saving" @click="requestClose()">取消</el-button>
         <el-button :disabled="!canEdit || saving" @click="runPreview">
           {{ previewing ? '重新预览' : '预览' }}
         </el-button>

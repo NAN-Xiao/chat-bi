@@ -36,11 +36,10 @@ assert.doesNotMatch(
 )
 assert.match(source, /createRoiChartPreviewRunner/)
 assert.doesNotMatch(source, /:loading="previewing"/, '预览中按钮仍必须允许发起最新 B 请求')
-assert.doesNotMatch(
-  source,
-  /if\s*\(saving\.value\)\s*return/,
-  '保存中取消必须能够使旧 save token 失效'
-)
+assert.match(source, /canCancelRoiEditor\(saving\.value\)/, '保存中关闭必须经过生产守卫')
+assert.match(source, /<el-button\s+:disabled="saving"\s+@click="requestClose\(\)"/)
+assert.match(source, /:close-on-press-escape="!saving"/)
+assert.match(source, /:show-close="!saving"/)
 assert.match(panel, /<RoiSqlEditor/)
 assert.match(panel, /@saved="handleChartSaved"/)
 assert.doesNotMatch(panel, /DashboardSqlEditor\.vue|useDashboardStore|canvasData|canvasViewInfo/)
