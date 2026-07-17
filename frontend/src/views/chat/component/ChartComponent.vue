@@ -233,7 +233,9 @@ defineExpose({
 })
 
 onMounted(() => {
-  resizeObserver = new ResizeObserver(() => scheduleRenderChart(80))
+  resizeObserver = new ResizeObserver(() => {
+    if (params.type !== 'table') scheduleRenderChart(80)
+  })
   if (chartContainerRef.value) {
     resizeObserver.observe(chartContainerRef.value)
     if (chartContainerRef.value.parentElement) {

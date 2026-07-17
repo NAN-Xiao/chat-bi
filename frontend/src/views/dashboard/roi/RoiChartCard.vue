@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Delete, Edit, Grid, Rank } from '@element-plus/icons-vue'
+import { Delete, Edit, Grid, Rank, RefreshRight } from '@element-plus/icons-vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type { ChartAxis } from '@/views/chat/component/BaseChart'
 import type { RoiChart, RoiLayoutSpan } from './types'
@@ -9,15 +9,20 @@ import { canManageRoiChart } from './roiChartGridBehavior'
 const props = defineProps<{
   chart: RoiChart
   canEdit: boolean
+  refreshing: boolean
 }>()
 
 const emit = defineEmits<{
   edit: [chart: RoiChart]
   remove: [chart: RoiChart]
+  refresh: [chart: RoiChart]
   'span-change': [chart: RoiChart, span: RoiLayoutSpan]
 }>()
 
 const actionEnabled = computed(() => canManageRoiChart(props.chart, props.canEdit))
+const refreshEnabled = computed(
+  () => props.chart.can_execute !== false && Boolean(props.chart.sql?.trim())
+)
 const config = computed(() => props.chart.chart_config || {})
 const data = computed(() => props.chart.query_result?.data || [])
 
@@ -55,6 +60,19 @@ const chartError = computed(() =>
     <header class="roi-chart-card__header">
       <div class="roi-chart-card__title" :title="chart.title">{{ chart.title }}</div>
       <div class="roi-chart-card__actions">
+        <el-tooltip content="重新执行 SQL" placement="top">
+          <el-button
+            class="icon-button"
+            text
+            circle
+            :loading="refreshing"
+            :disabled="!refreshEnabled || refreshing"
+            aria-label="重新执行 SQL"
+            @click="emit('refresh', chart)"
+          >
+            <el-icon v-if="!refreshing"><RefreshRight /></el-icon>
+          </el-button>
+        </el-tooltip>
         <el-tooltip content="拖动排序" placement="top">
           <el-button class="icon-button drag-handle" text circle :disabled="!actionEnabled">
             <el-icon><Rank /></el-icon>

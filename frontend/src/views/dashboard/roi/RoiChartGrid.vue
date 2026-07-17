@@ -7,11 +7,13 @@ import { canManageRoiChart, moveRoiChart } from './roiChartGridBehavior'
 const props = defineProps<{
   charts: RoiChart[]
   canEdit: boolean
+  refreshingChartIds: string[]
 }>()
 
 const emit = defineEmits<{
   edit: [chart: RoiChart]
   remove: [chart: RoiChart]
+  refresh: [chart: RoiChart]
   reorder: [charts: RoiChart[]]
   'span-change': [chart: RoiChart, span: RoiLayoutSpan]
 }>()
@@ -67,6 +69,8 @@ function dropAt(index: number) {
       <RoiChartCard
         :chart="chart"
         :can-edit="canEdit"
+        :refreshing="refreshingChartIds.includes(String(chart.id))"
+        @refresh="emit('refresh', $event)"
         @edit="emit('edit', $event)"
         @remove="emit('remove', $event)"
         @span-change="(item, span) => emit('span-change', item, span)"

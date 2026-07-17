@@ -13,8 +13,10 @@ import RoiSqlEditor from './RoiSqlEditor.vue'
 import type { RoiChart, RoiChartEditorState, RoiConfig, RoiLayoutSpan } from './types'
 import {
   buildRoiChartOrderItems,
+  buildRoiChartPreviewRequest,
   canManageRoiChart,
   mergeReorderedRoiCharts,
+  replaceRoiChartPreviewResult,
 } from './roiChartGridBehavior'
 import {
   canEditRoiConfig,
@@ -53,6 +55,7 @@ const editorState = ref<RoiChartEditorState>({
   firstChart: false,
 })
 const createFlowRunning = ref(false)
+const refreshingChartIds = ref<string[]>([])
 let datasourceResolution: ((saved: boolean) => void) | null = null
 
 const routeMode = computed(() => {
@@ -227,6 +230,35 @@ async function handleChartSaved() {
   await reloadChartsAfterConfigSave()
 }
 
+async function refreshChart(chart: RoiChart) {
+  const chartId = String(chart.id)
+  if (
+    chart.can_execute === false ||
+    !chart.sql?.trim() ||
+    refreshingChartIds.value.includes(chartId)
+  ) {
+    return
+  }
+  refreshingChartIds.value = [...refreshingChartIds.value, chartId]
+  try {
+    const result = await roiDashboardApi.previewChart(
+      String(props.dashboardId),
+      buildRoiChartPreviewRequest(chart),
+      roiCustomErrorRequestConfig
+    )
+    if (result.status !== 'success') throw new Error(result.message)
+    roiDashboardStore.publishCharts(
+      String(props.dashboardId),
+      replaceRoiChartPreviewResult(currentCharts.value, chartId, result)
+    )
+    ElMessage.success('ROI 图表刷新成功')
+  } catch {
+    ElMessage.error('刷新 ROI 图表失败，请稍后重试')
+  } finally {
+    refreshingChartIds.value = refreshingChartIds.value.filter((id) => id !== chartId)
+  }
+}
+
 async function removeChart(chart: RoiChart) {
   if (!canManageRoiChart(chart, canEdit.value)) return
   try {
@@ -356,6 +388,8 @@ onBeforeUnmount(() => {
       v-else
       :charts="currentCharts"
       :can-edit="canEdit"
+      :refreshing-chart-ids="refreshingChartIds"
+      @refresh="refreshChart"
       @edit="openEditChartEditor"
       @remove="removeChart"
       @reorder="persistChartOrder"

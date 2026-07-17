@@ -1926,7 +1926,7 @@ onMounted(() => {
     if (containerRef.value) {
       resizeObserver = new ResizeObserver(() => {
         measureFrame()
-        scheduleRenderChart()
+        if (chartType.value !== 'table') scheduleRenderChart()
       })
       resizeObserver.observe(containerRef.value)
     }

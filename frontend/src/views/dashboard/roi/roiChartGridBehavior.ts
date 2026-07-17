@@ -1,4 +1,10 @@
-import type { RoiChart, RoiChartOrderItem, RoiLayoutSpan } from './types'
+import type {
+  RoiChart,
+  RoiChartOrderItem,
+  RoiChartPreviewRequest,
+  RoiChartPreviewResponse,
+  RoiLayoutSpan,
+} from './types'
 
 export const roiLayoutSpanColumns: Record<RoiLayoutSpan, number> = {
   full: 6,
@@ -43,4 +49,26 @@ export function mergeReorderedRoiCharts(current: RoiChart[], reordered: RoiChart
       query_result: chart.query_result === null ? previous.query_result : chart.query_result,
     }
   })
+}
+
+export function buildRoiChartPreviewRequest(chart: RoiChart): RoiChartPreviewRequest {
+  return {
+    title: chart.title,
+    sql: String(chart.sql || '').trim(),
+    chart_type: chart.chart_type,
+    chart_config: { ...(chart.chart_config || {}) },
+    layout_span: chart.layout_span,
+  }
+}
+
+export function replaceRoiChartPreviewResult(
+  charts: RoiChart[],
+  chartId: string,
+  result: RoiChartPreviewResponse
+) {
+  return charts.map((chart) =>
+    String(chart.id) === String(chartId)
+      ? { ...chart, error: null, query_result: result }
+      : chart
+  )
 }

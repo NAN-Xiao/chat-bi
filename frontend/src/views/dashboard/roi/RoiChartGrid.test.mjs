@@ -17,6 +17,12 @@ assert.match(grid, /layout_span[\s\S]*full[\s\S]*half[\s\S]*third/)
 assert.doesNotMatch(grid, /canvasData|component_data|canvas_view_info/)
 assert.match(card, /当前账号无此数据源权限/)
 assert.match(card, /v-if="chart\.can_execute/)
+assert.match(card, /RefreshRight/, 'ROI 图表卡片必须提供刷新图标')
+assert.match(card, /重新执行 SQL/, '刷新按钮必须明确说明会重新执行 SQL')
+assert.match(card, /refresh:\s*\[chart:\s*RoiChart\]/, '卡片必须向上发出单图刷新事件')
+assert.match(card, /:loading="refreshing"/, '单图刷新期间按钮必须展示加载状态')
+assert.match(grid, /refresh:\s*\[chart:\s*RoiChart\]/, '网格必须转发单图刷新事件')
+assert.match(grid, /@refresh="emit\('refresh', \$event\)"/, '网格必须把卡片刷新事件交给面板')
 assert.match(
   card,
   /\.roi-chart-card__body\s*\{[\s\S]*?display:\s*flex/,
@@ -43,6 +49,8 @@ const {
   canManageRoiChart,
   mergeReorderedRoiCharts,
   moveRoiChart,
+  buildRoiChartPreviewRequest,
+  replaceRoiChartPreviewResult,
   roiLayoutSpanColumns,
 } = await import(moduleUrl)
 
@@ -72,6 +80,36 @@ assert.equal(canManageRoiChart(charts[0], true), true)
 assert.equal(canManageRoiChart({ ...charts[0], can_execute: false }, true), false)
 assert.equal(canManageRoiChart({ ...charts[0], can_edit: false }, true), false)
 assert.equal(canManageRoiChart(charts[0], false), false)
+
+{
+  const chart = {
+    ...charts[0],
+    title: 'ROI 明细',
+    sql: 'select 1',
+    chart_type: 'table',
+    chart_config: { columns: ['value'] },
+  }
+  assert.deepEqual(buildRoiChartPreviewRequest(chart), {
+    title: 'ROI 明细',
+    sql: 'select 1',
+    chart_type: 'table',
+    chart_config: { columns: ['value'] },
+    layout_span: 'full',
+  })
+}
+
+{
+  const result = { status: 'success', fields: ['value'], data: [{ value: 9 }], message: '' }
+  const current = [
+    { ...charts[0], query_result: { status: 'success', fields: ['value'], data: [{ value: 1 }], message: '' } },
+    { ...charts[1], query_result: null },
+  ]
+  const updated = replaceRoiChartPreviewResult(current, '901', result)
+  assert.deepEqual(updated[0].query_result, result)
+  assert.equal(updated[0].error, null)
+  assert.equal(updated[1], current[1], '单图刷新不得替换其他图表对象')
+  assert.notEqual(updated, current, '单图刷新不得原地修改输入数组')
+}
 
 {
   const current = [
