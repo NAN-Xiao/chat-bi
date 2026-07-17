@@ -1,6 +1,7 @@
 """验证 ROI 配置和工作空间共享看板服务。"""
 
 import hashlib
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -1358,3 +1359,97 @@ def test_reorder_returns_structure_without_calling_full_chart_list(
     assert result[0]["layout_span"] == "third"
     assert result[0]["version"] == 2
     assert result[0]["query_result"] is None
+
+def test_preview_passes_explicit_date_range_to_query_executor(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    captured: dict[str, object] = {}
+
+    def execute(_session, _user, sql, **kwargs):
+        captured["sql"] = sql
+        captured.update(kwargs)
+        return successful_query(9)
+
+    monkeypatch.setattr("apps.roi_dashboard.service.execute_roi_read_query", execute)
+
+    result = preview_roi_chart(
+        session,
+        user,
+        301,
+        RoiChartPreviewRequest(
+            title="预览",
+            sql=(
+                "SELECT * FROM t WHERE dt >= {{start_date_yyyymmdd}} "
+                "AND dt <= {{end_date_yyyymmdd}}"
+            ),
+            chart_type="table",
+            start_date=date(2026, 7, 10),
+            end_date=date(2026, 7, 16),
+        ),
+    )
+
+    assert result.data == [{"value": 9}]
+    assert captured["start_date"] == date(2026, 7, 10)
+    assert captured["end_date"] == date(2026, 7, 16)
+
+
+def test_chart_list_uses_rendered_sql_for_execution_and_cache_key(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=991)
+    chart.sql = (
+        "SELECT * FROM t WHERE dt >= {{start_date_yyyymmdd}} "
+        "AND dt <= {{end_date_yyyymmdd}}"
+    )
+    session.add(chart)
+    session.commit()
+    executed_sql: list[str] = []
+    cache = FakeRoiChartCache()
+
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.render_roi_sql_date_range",
+        lambda sql: "SELECT rendered",
+    )
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda _session, _user, sql: executed_sql.append(sql) or successful_query(4),
+    )
+
+    result = list_roi_charts(session, user, 301, cache_adapter=cache)
+
+    assert executed_sql == ["SELECT rendered"]
+    assert result[0]["query_result"]["data"] == [{"value": 4}]
+    assert hashlib.sha256(b"SELECT rendered").hexdigest() in cache.get_keys[0]
+
+def test_chart_list_isolates_invalid_date_placeholder_configuration(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    first = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=992)
+    second = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=993)
+    first.sql = "SELECT * FROM t WHERE dt >= {{start_date_yyyymmdd}}"
+    second.sql = "SELECT working"
+    session.add(first)
+    session.add(second)
+    session.commit()
+
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda _session, _user, sql: successful_query(6),
+    )
+
+    result = list_roi_charts(
+        session,
+        user,
+        301,
+        cache_adapter=FakeRoiChartCache(),
+    )
+
+    assert len(result) == 2
+    assert result[0]["query_result"]["status"] == "failed"
+    assert result[1]["query_result"]["data"] == [{"value": 6}]

@@ -23,7 +23,11 @@ from apps.roi_dashboard.permissions import (
     has_roi_datasource_access,
     require_roi_workspace_admin,
 )
-from apps.roi_dashboard.query_executor import RoiQueryResult, execute_roi_read_query
+from apps.roi_dashboard.query_executor import (
+    RoiQueryResult,
+    execute_roi_read_query,
+    render_roi_sql_date_range,
+)
 from apps.roi_dashboard.schemas import (
     RoiChartCreate,
     RoiChartPreviewRequest,
@@ -591,6 +595,22 @@ def _require_successful_query(result: RoiQueryResult) -> None:
         )
 
 
+def _execute_roi_request_query(
+    session: SessionDep,
+    current_user: CurrentUser,
+    request: RoiChartPreviewRequest,
+) -> RoiQueryResult:
+    if request.start_date is None:
+        return execute_roi_read_query(session, current_user, request.sql)
+    return execute_roi_read_query(
+        session,
+        current_user,
+        request.sql,
+        start_date=request.start_date,
+        end_date=request.end_date,
+    )
+
+
 def preview_roi_chart(
     session: SessionDep,
     current_user: CurrentUser,
@@ -601,7 +621,7 @@ def preview_roi_chart(
     tenant_id = _tenant_id(current_user)
     dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
-    return execute_roi_read_query(session, current_user, request.sql)
+    return _execute_roi_request_query(session, current_user, request)
 
 
 def list_roi_charts(
@@ -658,24 +678,25 @@ def list_roi_charts(
             result.append(item)
             continue
 
-        key = roi_chart_cache_key(
-            tenant_id,
-            _operator_id(current_user),
-            int(config.datasource_id),
-            dashboard_id,
-            int(chart.id),
-            chart.version,
-            _sql_hash(chart.sql),
-        )
-        cached = _cache(cache_adapter).get(key)
-        if cached is not None:
-            item["query_result"] = cached
-            result.append(item)
-            continue
-
         query_started_at = time.perf_counter()
         try:
-            query_result = execute_roi_read_query(session, current_user, chart.sql)
+            rendered_sql = render_roi_sql_date_range(chart.sql)
+            key = roi_chart_cache_key(
+                tenant_id,
+                _operator_id(current_user),
+                int(config.datasource_id),
+                dashboard_id,
+                int(chart.id),
+                chart.version,
+                _sql_hash(rendered_sql),
+            )
+            cached = _cache(cache_adapter).get(key)
+            if cached is not None:
+                item["query_result"] = cached
+                result.append(item)
+                continue
+
+            query_result = execute_roi_read_query(session, current_user, rendered_sql)
             query_payload = asdict(query_result)
             item["query_result"] = query_payload
             if query_result.status == "success":
@@ -749,7 +770,7 @@ def create_roi_chart(
         raise HTTPException(status_code=409, detail="当前工作空间尚未配置 ROI 数据源")
     if not has_roi_datasource_access(session, current_user, config.datasource_id):
         raise HTTPException(status_code=403, detail=ROI_DATASOURCE_PERMISSION_MESSAGE)
-    query_result = execute_roi_read_query(session, current_user, request.sql)
+    query_result = _execute_roi_request_query(session, current_user, request)
     _require_successful_query(query_result)
 
     now = _now()
@@ -802,7 +823,7 @@ def update_roi_chart(
     config = _require_roi_chart_write_access(session, current_user, tenant_id)
     if record.version != request.version:
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
-    query_result = execute_roi_read_query(session, current_user, request.sql)
+    query_result = _execute_roi_request_query(session, current_user, request)
     _require_successful_query(query_result)
 
     result = session.exec(

@@ -85,6 +85,10 @@ export class Table extends BaseChart {
 
   resizeObserver: ResizeObserver
 
+  lastResizeWidth = 0
+
+  lastResizeHeight = 0
+
   constructor(mountTarget: ChartMountTarget) {
     super(mountTarget, 'table')
     this.container =
@@ -98,8 +102,15 @@ export class Table extends BaseChart {
     }, 200)
 
     this.resizeObserver = new ResizeObserver(([entry] = []) => {
+      if (!entry) return
       const [size] = entry.borderBoxSize || []
-      this.debounceRender(size.inlineSize, size.blockSize)
+      const width = Math.round(size?.inlineSize || entry.contentRect.width)
+      const height = Math.round(size?.blockSize || entry.contentRect.height)
+      if (width <= 0 || height <= 0) return
+      if (width === this.lastResizeWidth && height === this.lastResizeHeight) return
+      this.lastResizeWidth = width
+      this.lastResizeHeight = height
+      this.debounceRender(width, height)
     })
 
     if (this.container?.parentElement) {

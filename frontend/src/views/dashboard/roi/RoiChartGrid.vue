@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import RoiChartCard from './RoiChartCard.vue'
-import type { RoiChart, RoiLayoutSpan } from './types'
-import { canManageRoiChart, moveRoiChart } from './roiChartGridBehavior'
+import type { RoiChart, RoiDateRange, RoiLayoutSpan } from './types'
+import { canManageRoiChart, defaultRoiDateRange, moveRoiChart } from './roiChartGridBehavior'
 
 const props = defineProps<{
   charts: RoiChart[]
   canEdit: boolean
   refreshingChartIds: string[]
+  chartDateRanges: Record<string, RoiDateRange>
 }>()
 
 const emit = defineEmits<{
   edit: [chart: RoiChart]
   remove: [chart: RoiChart]
   refresh: [chart: RoiChart]
+  'date-range-change': [chart: RoiChart, dateRange: RoiDateRange]
   reorder: [charts: RoiChart[]]
   'span-change': [chart: RoiChart, span: RoiLayoutSpan]
 }>()
@@ -33,6 +35,10 @@ watch(
   },
   { immediate: true, deep: true }
 )
+
+function chartDateRange(chart: RoiChart): RoiDateRange {
+  return props.chartDateRanges[String(chart.id)] || defaultRoiDateRange()
+}
 
 function startDrag(chart: RoiChart, index: number, event: DragEvent) {
   if (!canManageRoiChart(chart, props.canEdit)) {
@@ -70,7 +76,9 @@ function dropAt(index: number) {
         :chart="chart"
         :can-edit="canEdit"
         :refreshing="refreshingChartIds.includes(String(chart.id))"
+        :date-range="chartDateRange(chart)"
         @refresh="emit('refresh', $event)"
+        @date-range-change="(item, dateRange) => emit('date-range-change', item, dateRange)"
         @edit="emit('edit', $event)"
         @remove="emit('remove', $event)"
         @span-change="(item, span) => emit('span-change', item, span)"
@@ -84,7 +92,7 @@ function dropAt(index: number) {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-auto-flow: row;
-  grid-auto-rows: minmax(320px, auto);
+  grid-auto-rows: 320px;
   gap: 16px;
   width: 100%;
   min-width: 0;
@@ -92,7 +100,8 @@ function dropAt(index: number) {
 
 .roi-chart-grid__item {
   min-width: 0;
-  min-height: 320px;
+  height: 320px;
+  min-height: 0;
 }
 
 .span-full {

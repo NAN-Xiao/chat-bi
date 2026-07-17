@@ -1,5 +1,6 @@
 """ROI 专用看板接口数据结构。"""
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -49,6 +50,20 @@ class RoiChartPreviewRequest(BaseModel):
     chart_type: str
     chart_config: dict[str, Any] = Field(default_factory=dict)
     layout_span: LayoutSpan = "full"
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "RoiChartPreviewRequest":
+        if (self.start_date is None) != (self.end_date is None):
+            raise ValueError("开始日期和结束日期必须同时提供")
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.start_date > self.end_date
+        ):
+            raise ValueError("开始日期不能晚于结束日期")
+        return self
 
     @field_validator("title")
     @classmethod

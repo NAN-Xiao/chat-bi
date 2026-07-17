@@ -1,6 +1,7 @@
 """验证 ROI 专用看板迁移定义。"""
 
 import importlib.util
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 
@@ -179,3 +180,32 @@ def test_roi_response_dto_serializes_snowflake_ids_as_strings() -> None:
     assert dashboard.model_dump()["create_by"] == "9007199254740996"
     assert chart.model_dump()["roi_dashboard_id"] == "9007199254740995"
     assert chart.model_dump()["update_by"] == "9007199254740998"
+
+def test_roi_chart_request_validates_date_range() -> None:
+    from apps.roi_dashboard.schemas import RoiChartPreviewRequest
+
+    request = RoiChartPreviewRequest(
+        title="图",
+        sql="SELECT 1",
+        chart_type="table",
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 16),
+    )
+    assert request.start_date == date(2026, 7, 10)
+    assert request.end_date == date(2026, 7, 16)
+
+    with pytest.raises(ValueError, match="必须同时提供"):
+        RoiChartPreviewRequest(
+            title="图",
+            sql="SELECT 1",
+            chart_type="table",
+            start_date=date(2026, 7, 10),
+        )
+    with pytest.raises(ValueError, match="不能晚于"):
+        RoiChartPreviewRequest(
+            title="图",
+            sql="SELECT 1",
+            chart_type="table",
+            start_date=date(2026, 7, 17),
+            end_date=date(2026, 7, 16),
+        )

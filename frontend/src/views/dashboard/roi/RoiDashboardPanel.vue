@@ -10,10 +10,12 @@ import { useEmitt } from '@/utils/useEmitt'
 import RoiChartGrid from './RoiChartGrid.vue'
 import RoiDatasourceDialog from './RoiDatasourceDialog.vue'
 import RoiSqlEditor from './RoiSqlEditor.vue'
-import type { RoiChart, RoiChartEditorState, RoiConfig, RoiLayoutSpan } from './types'
+import type { RoiChart, RoiChartEditorState, RoiConfig, RoiDateRange, RoiLayoutSpan } from './types'
 import {
   buildRoiChartOrderItems,
   buildRoiChartPreviewRequest,
+  defaultRoiDateRange,
+  hasRoiDateRangePlaceholders,
   canManageRoiChart,
   mergeReorderedRoiCharts,
   replaceRoiChartPreviewResult,
@@ -56,6 +58,7 @@ const editorState = ref<RoiChartEditorState>({
 })
 const createFlowRunning = ref(false)
 const refreshingChartIds = ref<string[]>([])
+const chartDateRanges = ref<Record<string, RoiDateRange>>({})
 let datasourceResolution: ((saved: boolean) => void) | null = null
 
 const routeMode = computed(() => {
@@ -71,9 +74,7 @@ const dashboard = computed(() =>
 const canExecute = computed(() => config.value?.can_execute === true)
 const canEdit = computed(() => canEditRoiConfig(config.value))
 const datasourceDialogOpen = computed(() => storeEditorState.value.datasourceDialogOpen)
-const datasourceDialogVisible = computed(
-  () => datasourceDialogOpen.value && configLoaded.value
-)
+const datasourceDialogVisible = computed(() => datasourceDialogOpen.value && configLoaded.value)
 const roiConfigLoadCoordinator = createRoiConfigLoadCoordinator({
   load: () => roiDashboardStore.loadConfig(),
   isLoaded: () => configLoaded.value,
@@ -168,8 +169,7 @@ async function createDashboard() {
       getConfig: () => config.value,
       requestDatasource: ensureRoiDatasourceBeforeCreate,
       requestName: openCreateDashboardNameDialog,
-      createDashboard: (name) =>
-        roiDashboardApi.create({ name }, roiCustomErrorRequestConfig),
+      createDashboard: (name) => roiDashboardApi.create({ name }, roiCustomErrorRequestConfig),
       publishDashboard: (created) => {
         roiDashboardStore.publishDashboard(created)
         roiDashboardStore.publishCharts(String(created.id), [])
@@ -230,20 +230,28 @@ async function handleChartSaved() {
   await reloadChartsAfterConfigSave()
 }
 
-async function refreshChart(chart: RoiChart) {
+async function refreshChart(
+  chart: RoiChart,
+  selectedDateRange?: RoiDateRange,
+  notify = true
+): Promise<boolean> {
   const chartId = String(chart.id)
+  const dateRange = selectedDateRange || chartDateRanges.value[chartId] || defaultRoiDateRange()
   if (
     chart.can_execute === false ||
     !chart.sql?.trim() ||
     refreshingChartIds.value.includes(chartId)
   ) {
-    return
+    return false
   }
   refreshingChartIds.value = [...refreshingChartIds.value, chartId]
   try {
     const result = await roiDashboardApi.previewChart(
       String(props.dashboardId),
-      buildRoiChartPreviewRequest(chart),
+      buildRoiChartPreviewRequest(
+        chart,
+        hasRoiDateRangePlaceholders(chart.sql) ? dateRange : undefined
+      ),
       roiCustomErrorRequestConfig
     )
     if (result.status !== 'success') throw new Error(result.message)
@@ -251,12 +259,38 @@ async function refreshChart(chart: RoiChart) {
       String(props.dashboardId),
       replaceRoiChartPreviewResult(currentCharts.value, chartId, result)
     )
-    ElMessage.success('ROI 图表刷新成功')
+    if (notify) ElMessage.success('ROI 图表刷新成功')
+    return true
   } catch {
-    ElMessage.error('刷新 ROI 图表失败，请稍后重试')
+    if (notify) ElMessage.error('刷新 ROI 图表失败，请稍后重试')
+    return false
   } finally {
     refreshingChartIds.value = refreshingChartIds.value.filter((id) => id !== chartId)
   }
+}
+
+async function refreshCurrentCharts() {
+  const refreshableCharts = currentCharts.value.filter(
+    (chart) => chart.can_execute !== false && Boolean(chart.sql?.trim())
+  )
+  if (!refreshableCharts.length) return
+  try {
+    await roiConfigLoadCoordinator.refresh()
+    const results = await Promise.all(
+      refreshableCharts.map((chart) => refreshChart(chart, undefined, false))
+    )
+    if (results.every(Boolean)) ElMessage.success('ROI 图表刷新成功')
+    else ElMessage.error('部分 ROI 图表刷新失败，请稍后重试')
+  } catch {
+    ElMessage.error('刷新 ROI 图表失败，请稍后重试')
+  }
+}
+
+async function changeChartDateRange(chart: RoiChart, dateRange: RoiDateRange) {
+  if (!hasRoiDateRangePlaceholders(chart.sql)) return
+  const chartId = String(chart.id)
+  chartDateRanges.value = { ...chartDateRanges.value, [chartId]: dateRange }
+  await refreshChart(chart, dateRange)
 }
 
 async function removeChart(chart: RoiChart) {
@@ -315,6 +349,19 @@ function changeChartSpan(chart: RoiChart, layoutSpan: RoiLayoutSpan) {
 }
 
 watch(
+  () => currentCharts.value.map((chart) => String(chart.id)),
+  (chartIds) => {
+    const currentRanges = chartDateRanges.value
+    const nextRanges: Record<string, RoiDateRange> = {}
+    for (const chartId of chartIds) {
+      nextRanges[chartId] = currentRanges[chartId] || defaultRoiDateRange()
+    }
+    chartDateRanges.value = nextRanges
+  },
+  { immediate: true }
+)
+
+watch(
   () => storeEditorState.value.createDashboardRequestId,
   (current, previous) => {
     if (current > previous) void createDashboard()
@@ -336,6 +383,7 @@ watch(
   ([dashboardId, mode], previous) => {
     if (mode !== 'roi' || !dashboardId) return
     if (dashboardId === previous?.[0] && mode === previous?.[1]) return
+    chartDateRanges.value = {}
     if (previous?.[1] !== 'roi') void loadPage('route-enter')
     else void reloadCharts()
   }
@@ -364,14 +412,9 @@ onBeforeUnmount(() => {
           <el-button circle :icon="Setting" @click="roiDashboardStore.openDatasourceSettings()" />
         </el-tooltip>
         <el-tooltip content="刷新图表" placement="bottom">
-          <el-button circle :icon="RefreshRight" @click="reloadCharts()" />
+          <el-button circle :icon="RefreshRight" @click="refreshCurrentCharts()" />
         </el-tooltip>
-        <el-button
-          type="primary"
-          :icon="Plus"
-          :disabled="!canEdit"
-          @click="openNewChartEditor"
-        >
+        <el-button type="primary" :icon="Plus" :disabled="!canEdit" @click="openNewChartEditor">
           添加图表
         </el-button>
       </div>
@@ -389,7 +432,9 @@ onBeforeUnmount(() => {
       :charts="currentCharts"
       :can-edit="canEdit"
       :refreshing-chart-ids="refreshingChartIds"
+      :chart-date-ranges="chartDateRanges"
       @refresh="refreshChart"
+      @date-range-change="changeChartDateRange"
       @edit="openEditChartEditor"
       @remove="removeChart"
       @reorder="persistChartOrder"

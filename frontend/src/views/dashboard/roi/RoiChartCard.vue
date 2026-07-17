@@ -3,23 +3,31 @@ import { computed } from 'vue'
 import { Delete, Edit, Grid, Rank, RefreshRight } from '@element-plus/icons-vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type { ChartAxis } from '@/views/chat/component/BaseChart'
-import type { RoiChart, RoiLayoutSpan } from './types'
-import { canManageRoiChart } from './roiChartGridBehavior'
+import type { RoiChart, RoiDateRange, RoiLayoutSpan } from './types'
+import { canManageRoiChart, hasRoiDateRangePlaceholders } from './roiChartGridBehavior'
 
 const props = defineProps<{
   chart: RoiChart
   canEdit: boolean
   refreshing: boolean
+  dateRange: RoiDateRange
 }>()
 
 const emit = defineEmits<{
   edit: [chart: RoiChart]
   remove: [chart: RoiChart]
   refresh: [chart: RoiChart]
+  'date-range-change': [chart: RoiChart, dateRange: RoiDateRange]
   'span-change': [chart: RoiChart, span: RoiLayoutSpan]
 }>()
 
 const actionEnabled = computed(() => canManageRoiChart(props.chart, props.canEdit))
+const dateRangeEnabled = computed(
+  () => props.chart.can_execute !== false && hasRoiDateRangePlaceholders(props.chart.sql)
+)
+const dateRangeHint = computed(() =>
+  dateRangeEnabled.value ? '选择日期后重新执行 SQL' : 'SQL 需同时配置开始和结束日期占位符'
+)
 const refreshEnabled = computed(
   () => props.chart.can_execute !== false && Boolean(props.chart.sql?.trim())
 )
@@ -53,12 +61,43 @@ const chartError = computed(() =>
       ? 'ROI 图表加载失败'
       : ''
 )
+
+function handleDateRangeChange(value: unknown) {
+  if (
+    !dateRangeEnabled.value ||
+    props.refreshing ||
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    value.some((item) => typeof item !== 'string')
+  ) {
+    return
+  }
+  emit('date-range-change', props.chart, [value[0], value[1]])
+}
 </script>
 
 <template>
   <article class="roi-chart-card">
     <header class="roi-chart-card__header">
       <div class="roi-chart-card__title" :title="chart.title">{{ chart.title }}</div>
+      <div class="roi-chart-card__date-range">
+        <el-tooltip :content="dateRangeHint" placement="top">
+          <span>
+            <el-date-picker
+              :model-value="dateRange"
+              type="daterange"
+              value-format="YYYY-MM-DD"
+              format="YYYY-MM-DD"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              :clearable="false"
+              :disabled="!dateRangeEnabled || refreshing"
+              @update:model-value="handleDateRangeChange"
+            />
+          </span>
+        </el-tooltip>
+      </div>
       <div class="roi-chart-card__actions">
         <el-tooltip content="重新执行 SQL" placement="top">
           <el-button
@@ -78,7 +117,11 @@ const chartError = computed(() =>
             <el-icon><Rank /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-dropdown :disabled="!actionEnabled" trigger="click" @command="emit('span-change', chart, $event)">
+        <el-dropdown
+          :disabled="!actionEnabled"
+          trigger="click"
+          @command="emit('span-change', chart, $event)"
+        >
           <el-button
             class="icon-button"
             text
@@ -145,8 +188,10 @@ const chartError = computed(() =>
 <style scoped lang="less">
 .roi-chart-card {
   display: flex;
+  width: 100%;
+  height: 100%;
   min-width: 0;
-  min-height: 320px;
+  min-height: 0;
   overflow: hidden;
   flex-direction: column;
   border: 1px solid var(--ed-border-color-lighter);
@@ -171,6 +216,20 @@ const chartError = computed(() =>
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 0;
+}
+
+.roi-chart-card__date-range {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 250px;
+  justify-content: center;
+  padding: 0 8px;
+
+  span,
+  :deep(.ed-date-editor) {
+    width: 100%;
+  }
 }
 
 .roi-chart-card__actions {
@@ -192,13 +251,18 @@ const chartError = computed(() =>
 .roi-chart-card__body {
   display: flex;
   min-height: 0;
+  width: 100%;
   flex: 1 1 auto;
+  overflow: hidden;
   padding: 10px;
 }
 
 .roi-chart-card__body :deep(.chart-container) {
-  min-height: 240px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .roi-chart-card__state {

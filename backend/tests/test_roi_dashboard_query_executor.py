@@ -3,6 +3,7 @@
 import ast
 import inspect
 import logging
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +14,7 @@ from sqlmodel import Session, create_engine
 
 from apps.roi_dashboard import query_executor
 from apps.roi_dashboard.models import CoreRoiWorkspaceConfig
-from apps.roi_dashboard.query_executor import execute_roi_read_query
+from apps.roi_dashboard.query_executor import execute_roi_read_query, render_roi_sql_date_range
 
 
 def make_user(
@@ -528,3 +529,46 @@ def test_roi_query_unsupported_timeout_or_unbounded_matrix_fails_closed(
     assert exc.value.status_code == 400
     if datasource_type == "es":
         assert exc.value.detail == "当前数据源类型不支持受控且无截断 ROI 查询"
+
+
+def test_render_roi_sql_date_range_supports_numeric_and_iso_placeholders() -> None:
+    sql = (
+        "SELECT * FROM t WHERE dt >= {{start_date_yyyymmdd}} "
+        "AND dt <= {{end_date_yyyymmdd}} "
+        "AND created_at >= {{start_date}} AND created_at < {{end_date}}"
+    )
+
+    rendered = render_roi_sql_date_range(
+        sql,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 16),
+    )
+
+    assert "dt >= 20260710" in rendered
+    assert "dt <= 20260716" in rendered
+    assert "created_at >= '2026-07-10'" in rendered
+    assert "created_at < '2026-07-16'" in rendered
+
+
+def test_render_roi_sql_date_range_defaults_to_seven_complete_days() -> None:
+    rendered = render_roi_sql_date_range(
+        "SELECT * FROM t WHERE dt BETWEEN {{start_date_yyyymmdd}} AND {{end_date_yyyymmdd}}",
+        today=date(2026, 7, 17),
+    )
+
+    assert "BETWEEN 20260710 AND 20260716" in rendered
+
+
+def test_render_roi_sql_date_range_rejects_partial_or_missing_configuration() -> None:
+    with pytest.raises(HTTPException, match="必须同时配置开始和结束日期占位符"):
+        render_roi_sql_date_range(
+            "SELECT * FROM t WHERE dt >= {{start_date_yyyymmdd}}",
+            today=date(2026, 7, 17),
+        )
+
+    with pytest.raises(HTTPException, match="未配置时间范围占位符"):
+        render_roi_sql_date_range(
+            "SELECT * FROM t",
+            start_date=date(2026, 7, 10),
+            end_date=date(2026, 7, 16),
+        )

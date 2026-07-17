@@ -1,4 +1,5 @@
 export type RoiLayoutSpan = 'full' | 'half' | 'third'
+export type RoiDateRange = [string, string]
 
 export interface RoiConfig {
   id: string
@@ -80,6 +81,8 @@ export interface RoiChartPreviewRequest {
   chart_type: string
   chart_config?: Record<string, unknown>
   layout_span?: RoiLayoutSpan
+  start_date?: string
+  end_date?: string
 }
 
 export interface RoiChartCreate extends RoiChartPreviewRequest {

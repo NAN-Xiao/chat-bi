@@ -10,6 +10,13 @@ assert.match(
   /changeSheetSize\(width, height\)[\s\S]*?render\(false\)/,
   'AntV S2 表格必须继续使用原地尺寸调整'
 )
+assert.match(table, /lastResizeWidth/, 'S2 表格必须记录上一次容器宽度')
+assert.match(table, /lastResizeHeight/, 'S2 表格必须记录上一次容器高度')
+assert.match(
+  table,
+  /width === this\.lastResizeWidth && height === this\.lastResizeHeight[\s\S]*?return/,
+  '容器宽高没有变化时不得再次触发 S2 render'
+)
 assert.match(
   component,
   /new ResizeObserver\([\s\S]*?params\.type\s*!==\s*['"]table['"][\s\S]*?scheduleRenderChart/,

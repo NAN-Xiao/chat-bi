@@ -6,6 +6,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Any
 
 import sqlparse
@@ -74,6 +75,57 @@ def _run_validated_read(
         require_controlled_timeout=True,
         skip_read_validation=True,
     )
+
+
+ROI_DATE_PLACEHOLDER_PAIRS = (
+    ("{{start_date}}", "{{end_date}}"),
+    ("{{start_date_yyyymmdd}}", "{{end_date_yyyymmdd}}"),
+)
+
+
+def render_roi_sql_date_range(
+    sql: str,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    today: date | None = None,
+) -> str:
+    configured_pairs: list[tuple[str, str]] = []
+    for start_placeholder, end_placeholder in ROI_DATE_PLACEHOLDER_PAIRS:
+        has_start = start_placeholder in sql
+        has_end = end_placeholder in sql
+        if has_start != has_end:
+            raise HTTPException(
+                status_code=400,
+                detail="ROI SQL 必须同时配置开始和结束日期占位符",
+            )
+        if has_start:
+            configured_pairs.append((start_placeholder, end_placeholder))
+
+    if not configured_pairs:
+        if start_date is not None or end_date is not None:
+            raise HTTPException(status_code=400, detail="ROI SQL 未配置时间范围占位符")
+        return sql
+
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(status_code=400, detail="开始日期和结束日期必须同时提供")
+    if start_date is None or end_date is None:
+        effective_today = today or date.today()
+        end_date = effective_today - timedelta(days=1)
+        start_date = end_date - timedelta(days=6)
+    if start_date > end_date:
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
+
+    replacements = {
+        "{{start_date}}": f"'{start_date.isoformat()}'",
+        "{{end_date}}": f"'{end_date.isoformat()}'",
+        "{{start_date_yyyymmdd}}": start_date.strftime("%Y%m%d"),
+        "{{end_date_yyyymmdd}}": end_date.strftime("%Y%m%d"),
+    }
+    rendered = sql
+    for placeholder, value in replacements.items():
+        rendered = rendered.replace(placeholder, value)
+    return rendered
 
 
 ROI_TIMEOUT_SUPPORTED_TYPES = frozenset(
@@ -221,8 +273,16 @@ def execute_roi_read_query(
     session: SessionDep,
     current_user: CurrentUser,
     sql: str,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> RoiQueryResult:
     """按 ROI 专用授权执行原始只读 SQL，不套用普通查询权限与截断。"""
+    rendered_sql = render_roi_sql_date_range(
+        sql,
+        start_date=start_date,
+        end_date=end_date,
+    )
     context = require_roi_workspace_admin(current_user)
     tenant_id = int(context.management_tenant_id)
     config = _load_active_roi_config(session, tenant_id)
@@ -236,7 +296,7 @@ def execute_roi_read_query(
 
     started_at = time.perf_counter()
     try:
-        validate_roi_read_sql(sql, datasource)
+        validate_roi_read_sql(rendered_sql, datasource)
         datasource_type = normalize_sql_safety_ds_type(datasource.type)
         if (
             datasource_type not in ROI_TIMEOUT_SUPPORTED_TYPES
@@ -253,7 +313,7 @@ def execute_roi_read_query(
             )
         raw = _run_validated_read(
             datasource=datasource,
-            sql=sql,
+            sql=rendered_sql,
             query_timeout=settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS,
             max_result_rows=None,
         )
