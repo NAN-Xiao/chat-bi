@@ -39,8 +39,8 @@ assert.match(unauthorizedRedirect[1], /resolveBusinessDashboardLandingTarget\(us
 assert.match(unauthorizedRedirect[1], /currentRoiLandingSnapshot\(\)/)
 assert.match(unauthorizedRedirect[1], /roiLandingRedirectCoordinator\.redirect/)
 
-const routeWatchStart = previewSource.indexOf(
-  'routeDashboardId.value,\n      routeDashboardMode.value,\n      canAccessRoiDashboardMode.value,\n      currentTenantId.value'
+const routeWatchStart = previewSource.search(
+  /routeDashboardId\.value,\s*routeDashboardMode\.value,\s*canAccessRoiDashboardMode\.value,\s*currentTenantId\.value/
 )
 const routeWatchEnd = previewSource.indexOf('{ immediate: true }', routeWatchStart)
 const routeWatch = previewSource.slice(routeWatchStart, routeWatchEnd)
