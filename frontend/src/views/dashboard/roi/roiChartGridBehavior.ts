@@ -40,10 +40,7 @@ export function mergeReorderedRoiCharts(current: RoiChart[], reordered: RoiChart
     if (!previous) return chart
     return {
       ...chart,
-      can_execute: previous.can_execute,
-      can_edit: previous.can_edit,
-      error: previous.error,
-      query_result: previous.query_result,
+      query_result: chart.query_result === null ? previous.query_result : chart.query_result,
     }
   })
 }

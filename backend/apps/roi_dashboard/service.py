@@ -246,11 +246,13 @@ def lock_active_roi_dashboard(
 
 def _config_response(
     session: SessionDep,
+    current_user: CurrentUser,
     record: CoreRoiWorkspaceConfig,
 ) -> RoiConfigResponse:
     datasource_name = session.exec(
         select(CoreDatasource.name).where(CoreDatasource.id == record.datasource_id)
     ).first()
+    has_access = has_roi_datasource_access(session, current_user, record.datasource_id)
     return RoiConfigResponse.model_validate(
         {
             "id": record.id,
@@ -258,6 +260,8 @@ def _config_response(
             "datasource_id": record.datasource_id,
             "datasource_name": datasource_name,
             "version": record.version,
+            "can_execute": has_access,
+            "can_edit": has_access,
         }
     )
 
@@ -269,7 +273,7 @@ def get_roi_config(
     """读取当前工作空间共享的 ROI 数据源配置。"""
     tenant_id = _tenant_id(current_user)
     record = session.exec(_active_config_statement(tenant_id)).first()
-    return None if record is None else _config_response(session, record)
+    return None if record is None else _config_response(session, current_user, record)
 
 
 def set_roi_config(
@@ -308,7 +312,7 @@ def set_roi_config(
             raise HTTPException(status_code=409, detail=CONFIG_CONFLICT_MESSAGE) from exc
         session.refresh(record)
         _invalidate_roi_chart_cache(cache_adapter, tenant_id)
-        return _config_response(session, record)
+        return _config_response(session, current_user, record)
 
     if request.version is None or request.version != record.version:
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
@@ -350,7 +354,7 @@ def set_roi_config(
     updated = session.exec(_active_config_statement(tenant_id)).first()
     if updated is None:
         raise HTTPException(status_code=404, detail="ROI 配置不存在")
-    return _config_response(session, updated)
+    return _config_response(session, current_user, updated)
 
 
 def list_roi_dashboards(

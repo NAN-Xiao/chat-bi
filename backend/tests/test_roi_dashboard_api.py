@@ -17,6 +17,7 @@ from apps.roi_dashboard.schemas import (
     RoiChartPreviewRequest,
     RoiChartUpdate,
     RoiConfigUpdate,
+    RoiConfigResponse,
     RoiDashboardCreate,
     RoiDashboardUpdate,
     RoiDatasourceOption,
@@ -101,6 +102,23 @@ def test_roi_request_dtos_do_not_accept_tenant_or_chart_datasource_forgery() -> 
     assert "datasource_id" not in RoiChartPreviewRequest.model_fields
     assert "datasource_id" not in RoiChartCreate.model_fields
     assert "datasource_id" not in RoiChartUpdate.model_fields
+
+
+def test_roi_config_response_requires_explicit_capabilities() -> None:
+    assert RoiConfigResponse.model_fields["can_execute"].is_required()
+    assert RoiConfigResponse.model_fields["can_edit"].is_required()
+
+    response = RoiConfigResponse(
+        id=1,
+        tenant_id=11,
+        datasource_id=101,
+        datasource_name="ROI 数据源",
+        version=1,
+        can_execute=False,
+        can_edit=False,
+    )
+    assert response.model_dump()["can_execute"] is False
+    assert response.model_dump()["can_edit"] is False
 
 
 @pytest.mark.parametrize(

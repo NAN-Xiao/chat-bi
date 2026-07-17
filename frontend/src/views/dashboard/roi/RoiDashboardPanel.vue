@@ -17,6 +17,7 @@ import {
 } from './roiChartGridBehavior'
 import {
   closeRoiChartEditor,
+  buildRoiPanelLoadPlan,
   ROI_DASHBOARD_TREE_REFRESH_EVENT,
   runRoiDashboardCreateFlow,
 } from './roiDashboardPanelBehavior'
@@ -28,7 +29,13 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const roiDashboardStore = useRoiDashboardStore()
-const { config, dashboards, charts, editorState: storeEditorState } = storeToRefs(roiDashboardStore)
+const {
+  config,
+  configLoaded,
+  dashboards,
+  charts,
+  editorState: storeEditorState,
+} = storeToRefs(roiDashboardStore)
 const { emitter } = useEmitt()
 
 const editorState = ref<RoiChartEditorState>({
@@ -52,21 +59,41 @@ const currentCharts = computed(() => charts.value[String(props.dashboardId)] || 
 const dashboard = computed(() =>
   dashboards.value.find((item) => String(item.id) === String(props.dashboardId))
 )
-const hasDatasourcePermission = computed(
-  () => !currentCharts.value.some((chart) => chart.can_execute === false)
-)
-const canEdit = computed(() => Boolean(config.value) && hasDatasourcePermission.value)
+const canExecute = computed(() => config.value?.can_execute === true)
+const canEdit = computed(() => config.value?.can_edit === true)
 const datasourceDialogOpen = computed(() => storeEditorState.value.datasourceDialogOpen)
+const datasourceDialogVisible = computed(
+  () => datasourceDialogOpen.value && configLoaded.value
+)
 
-async function loadPage() {
+async function loadPage(reason: 'mounted' | 'route-enter') {
+  const plan = buildRoiPanelLoadPlan({
+    reason,
+    routeMode: routeMode.value,
+    dashboardId: String(props.dashboardId || ''),
+  })
+  if (!plan.length) return
   try {
-    await Promise.all([roiDashboardStore.loadConfig(), roiDashboardStore.loadDashboards()])
-    if (routeMode.value === 'roi' && props.dashboardId) {
+    const pageLoads: Promise<unknown>[] = []
+    if (plan.includes('config')) pageLoads.push(roiDashboardStore.loadConfig())
+    if (plan.includes('dashboards')) pageLoads.push(roiDashboardStore.loadDashboards())
+    await Promise.all(pageLoads)
+    if (plan.includes('charts')) {
       await roiDashboardStore.loadCharts(String(props.dashboardId))
     }
   } catch {
     ElMessage.error('加载 ROI 看板失败，请稍后重试')
   }
+}
+
+async function ensureConfigLoaded() {
+  if (configLoaded.value) return
+  const plan = buildRoiPanelLoadPlan({
+    reason: 'explicit-config',
+    routeMode: routeMode.value,
+    dashboardId: String(props.dashboardId || ''),
+  })
+  if (plan.includes('config')) await roiDashboardStore.loadConfig()
 }
 
 async function reloadCharts() {
@@ -78,7 +105,8 @@ async function reloadCharts() {
   }
 }
 
-function ensureRoiDatasourceBeforeCreate() {
+async function ensureRoiDatasourceBeforeCreate() {
+  await ensureConfigLoaded()
   if (config.value) return Promise.resolve(true)
   storeEditorState.value.datasourceDialogOpen = true
   return new Promise<boolean>((resolve) => {
@@ -118,7 +146,8 @@ async function createDashboard() {
   createFlowRunning.value = true
   try {
     const created = await runRoiDashboardCreateFlow({
-      config: config.value,
+      ensureConfigLoaded,
+      getConfig: () => config.value,
       requestDatasource: ensureRoiDatasourceBeforeCreate,
       requestName: openCreateDashboardNameDialog,
       createDashboard: (name) =>
@@ -139,7 +168,7 @@ async function createDashboard() {
 }
 
 function handleDatasourceSaved(saved: RoiConfig) {
-  config.value = saved
+  roiDashboardStore.publishConfig(saved)
   storeEditorState.value.datasourceDialogOpen = false
   datasourceResolution?.(true)
   datasourceResolution = null
@@ -242,17 +271,28 @@ watch(
   }
 )
 
+watch(datasourceDialogOpen, (visible) => {
+  if (!visible || configLoaded.value) return
+  void ensureConfigLoaded().catch(() => {
+    storeEditorState.value.datasourceDialogOpen = false
+    datasourceResolution?.(false)
+    datasourceResolution = null
+    ElMessage.error('加载 ROI 配置失败，请稍后重试')
+  })
+})
+
 watch(
   () => [props.dashboardId, routeMode.value],
   ([dashboardId, mode], previous) => {
     if (mode !== 'roi' || !dashboardId) return
     if (dashboardId === previous?.[0] && mode === previous?.[1]) return
-    void reloadCharts()
+    if (previous?.[1] !== 'roi') void loadPage('route-enter')
+    else void reloadCharts()
   }
 )
 
 onMounted(() => {
-  void loadPage()
+  void loadPage('mounted')
 })
 </script>
 
@@ -284,6 +324,9 @@ onMounted(() => {
     <div v-if="roiDashboardStore.permissionError" class="roi-dashboard-panel__state">
       {{ roiDashboardStore.permissionError }}
     </div>
+    <div v-else-if="config && !canExecute" class="roi-dashboard-panel__state is-permission">
+      当前账号无此数据源权限
+    </div>
     <div v-else-if="!currentCharts.length" class="roi-dashboard-panel__state">暂无图表</div>
     <RoiChartGrid
       v-else
@@ -296,7 +339,7 @@ onMounted(() => {
     />
 
     <RoiDatasourceDialog
-      :model-value="datasourceDialogOpen"
+      :model-value="datasourceDialogVisible"
       :config="config"
       @update:model-value="storeEditorState.datasourceDialogOpen = $event"
       @saved="handleDatasourceSaved"
@@ -348,9 +391,13 @@ onMounted(() => {
 
   span {
     display: block;
+    min-width: 0;
     margin-top: 2px;
+    overflow: hidden;
     color: var(--ed-text-color-secondary);
     font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

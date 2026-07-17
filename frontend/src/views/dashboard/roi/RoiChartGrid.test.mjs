@@ -71,11 +71,38 @@ assert.equal(canManageRoiChart(charts[0], false), false)
       error: null,
     },
   ]
-  const response = [{ ...charts[0], sort: 2, version: 3, query_result: null }]
+  const response = [
+    {
+      ...charts[0],
+      sort: 2,
+      version: 3,
+      layout_span: 'half',
+      status: 0,
+      can_execute: false,
+      can_edit: false,
+      error: '最新权限错误',
+      query_result: null,
+    },
+  ]
   const merged = mergeReorderedRoiCharts(current, response)
   assert.equal(merged[0].sort, 2)
   assert.equal(merged[0].version, 3)
+  assert.equal(merged[0].layout_span, 'half')
+  assert.equal(merged[0].status, 0)
+  assert.equal(merged[0].can_execute, false)
+  assert.equal(merged[0].can_edit, false)
+  assert.equal(merged[0].error, '最新权限错误')
   assert.deepEqual(merged[0].query_result, current[0].query_result, '排序响应不得清空已渲染结果')
+}
+
+{
+  const oldResult = { status: 'success', fields: ['value'], data: [{ value: 1 }], message: '' }
+  const newResult = { status: 'success', fields: ['value'], data: [{ value: 2 }], message: '' }
+  const merged = mergeReorderedRoiCharts(
+    [{ ...charts[0], query_result: oldResult }],
+    [{ ...charts[0], query_result: newResult }]
+  )
+  assert.deepEqual(merged[0].query_result, newResult, '服务端返回非空结果时必须以服务端为准')
 }
 
 console.log('ROI chart grid tests passed')

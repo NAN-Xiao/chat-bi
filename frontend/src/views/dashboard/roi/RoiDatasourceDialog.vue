@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus-secondary'
 import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
 import type { RoiConfig, RoiDatasourceOption } from './types'
+import { getRoiDatasourceSaveErrorMessage } from './roiDatasourceDialogBehavior'
 
 const props = defineProps<{
   modelValue: boolean
@@ -60,8 +61,8 @@ async function save() {
     )
     emit('saved', config)
     emit('update:modelValue', false)
-  } catch {
-    ElMessage.error('保存 ROI 数据源失败，请稍后重试')
+  } catch (error) {
+    ElMessage.error(getRoiDatasourceSaveErrorMessage(error))
   } finally {
     saving.value = false
   }

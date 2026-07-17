@@ -141,6 +141,8 @@ def test_roi_response_dto_serializes_snowflake_ids_as_strings() -> None:
         datasource_id=7,
         datasource_name=None,
         version=1,
+        can_execute=True,
+        can_edit=True,
     )
     dashboard = RoiDashboardResponse(
         id=9007199254740995,

@@ -6,6 +6,8 @@ export interface RoiConfig {
   datasource_id: number
   datasource_name: string | null
   version: number
+  can_execute: boolean
+  can_edit: boolean
 }
 
 export interface RoiDatasourceOption {

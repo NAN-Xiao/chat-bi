@@ -68,10 +68,12 @@ const forbidden = () => ({ response: { status: 403 } })
     return dashboards.promise
   }
   const store = createStore()
+  assert.equal(store.configLoaded, false)
   const configPending = store.loadConfig()
   const dashboardsPending = store.loadDashboards()
   config.resolve(null)
   await configPending
+  assert.equal(store.configLoaded, true, '成功加载 null 也必须标记配置已加载')
   assert.equal(store.loading, true, '并发看板请求未完成时 loading 必须保持')
   dashboards.resolve([])
   await dashboardsPending
@@ -106,6 +108,7 @@ const forbidden = () => ({ response: { status: 403 } })
   globalThis.__roiDashboardApi.list = () => dashboards.promise
   const pending = store.loadDashboards()
   store.reset()
+  assert.equal(store.configLoaded, false)
   dashboards.resolve([{ id: 'stale' }])
   await pending
   assert.deepEqual(store.dashboards, [])
@@ -121,6 +124,24 @@ const forbidden = () => ({ response: { status: 403 } })
   assert.deepEqual(store.charts, {})
   assert.equal(store.loading, false)
   assert.equal(store.permissionError, '')
+}
+
+
+{
+  const store = createStore()
+  const first = deferred()
+  const second = deferred()
+  const requests = [first, second]
+  globalThis.__roiDashboardApi.getConfig = () => requests.shift().promise
+  const firstPending = store.loadConfig()
+  const secondPending = store.loadConfig()
+  first.resolve(null)
+  await firstPending
+  assert.equal(store.configLoaded, false, '旧代次 config 响应不得发布 loaded 状态')
+  second.resolve({ id: 'new', can_execute: true, can_edit: true })
+  await secondPending
+  assert.equal(store.configLoaded, true)
+  assert.equal(store.config.id, 'new')
 }
 
 {

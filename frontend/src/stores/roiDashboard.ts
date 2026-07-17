@@ -26,6 +26,7 @@ const errorStatus = (error: unknown) =>
 export const useRoiDashboardStore = defineStore('roiDashboard', {
   state: () => ({
     config: null as RoiConfig | null,
+    configLoaded: false,
     dashboards: [] as RoiDashboard[],
     charts: {} as Record<string, RoiChart[]>,
     loading: false,
@@ -43,7 +44,10 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
       this.syncRequestState()
       try {
         const result = await roiDashboardApi.getConfig(roiCustomErrorRequestConfig)
-        if (isLatestRoiRequest(this.requestState, request)) this.config = result
+        if (isLatestRoiRequest(this.requestState, request)) {
+          this.config = result
+          this.configLoaded = true
+        }
         return result
       } catch (error) {
         if (errorStatus(error) === 403) {
@@ -97,12 +101,17 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
       if (index >= 0) this.dashboards[index] = dashboard
       else this.dashboards.push(dashboard)
     },
+    publishConfig(config: RoiConfig) {
+      this.config = config
+      this.configLoaded = true
+    },
     publishCharts(dashboardId: string, charts: RoiChart[]) {
       this.charts[String(dashboardId)] = charts
     },
     reset() {
       resetRoiRequests(this.requestState)
       this.config = null
+      this.configLoaded = false
       this.dashboards = []
       this.charts = {}
       this.loading = false

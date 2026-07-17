@@ -282,7 +282,13 @@ def test_first_config_requires_no_version_and_is_shared(session: Session) -> Non
     assert created.datasource_id == 101
     assert created.datasource_name == "付费数据"
     assert created.version == 1
-    assert get_roi_config(session, admin).id == created.id
+    assert created.can_execute is True
+    assert created.can_edit is True
+    shared = get_roi_config(session, admin)
+    assert shared.id == created.id
+    assert shared.datasource_name == "付费数据"
+    assert shared.can_execute is False
+    assert shared.can_edit is False
 
 
 def test_first_config_rejects_version_and_unauthorized_datasource(session: Session) -> None:

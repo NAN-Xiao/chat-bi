@@ -118,6 +118,8 @@ class RoiConfigResponse(_RoiResponseBase):
     datasource_id: int
     datasource_name: str | None
     version: int
+    can_execute: bool
+    can_edit: bool
 
 
 class RoiDatasourceOption(BaseModel):
