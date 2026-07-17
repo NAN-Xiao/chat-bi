@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_api_key from '@/assets/svg/icon-api_key.svg'
@@ -19,7 +19,7 @@ import { useUserStore } from '@/stores/user'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { userApi } from '@/api/auth'
-import { type TenantInfo } from '@/api/tenant'
+import { tenantApi, type TenantInfo } from '@/api/tenant'
 import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
 import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
@@ -27,6 +27,11 @@ import { ElMessage } from 'element-plus-secondary'
 import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
 import { canManageWorkspaceRole } from '@/utils/workspacePermission'
+import {
+  createLatestWorkspaceReviewLoader,
+  shouldShowWorkspaceReviewBadge,
+  type WorkspaceReviewBadgeContext,
+} from '@/utils/workspaceReviewBadge'
 
 const { wsCache } = useCache()
 const router = useRouter()
@@ -61,6 +66,19 @@ const showAdminWorkspaceEntry = computed(
 )
 const showWorkspaceApplicationEntry = computed(
   () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && !userStore.hasActiveWorkspace
+)
+const pendingWorkspaceReviewCount = ref(0)
+const workspaceReviewContext = computed<WorkspaceReviewBadgeContext>(() => ({
+  tenantId: userStore.getTenantId,
+  role: userStore.getTenantRole,
+  isSystemAdminUser: isPlatformAdmin.value,
+  isPlatformWorkspaceDelegate: isPlatformWorkspaceDelegate.value,
+}))
+const loadPendingWorkspaceReviewCount = createLatestWorkspaceReviewLoader(() =>
+  tenantApi.tenantApplications('pending')
+)
+const showWorkspaceReviewBadge = computed(() =>
+  shouldShowWorkspaceReviewBadge(workspaceReviewContext.value, pendingWorkspaceReviewCount.value)
 )
 
 const isClient = computed(() => {
@@ -198,6 +216,15 @@ const logout = async () => {
   }
 }
 
+watch(
+  workspaceReviewContext,
+  async (context) => {
+    const count = await loadPendingWorkspaceReviewCount(context)
+    if (count !== null) pendingWorkspaceReviewCount.value = count
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   loadTenants()
 })
@@ -212,7 +239,15 @@ onMounted(() => {
   >
     <template #reference>
       <button class="person" :title="name" :class="collapse && 'collapse'">
-        <UserAvatar :name="name" :account="account" :uid="userStore.getUid" :size="32" />
+        <span class="avatar-badge-wrapper">
+          <UserAvatar :name="name" :account="account" :uid="userStore.getUid" :size="32" />
+          <span
+            v-if="showWorkspaceReviewBadge"
+            class="workspace-review-badge"
+            role="status"
+            :aria-label="t('tenant_overview.todo_pending_member_application_count')"
+          ></span>
+        </span>
         <span v-if="!collapse" class="name ellipsis">{{ name }}</span>
       </button></template
     >
@@ -422,6 +457,26 @@ onMounted(() => {
     margin-top: 0;
     margin-bottom: 0;
     border-radius: 50%;
+  }
+
+  .avatar-badge-wrapper {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .workspace-review-badge {
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--theme-panel-bg);
+    border-radius: 50%;
+    background: var(--ed-color-danger, #f56c6c);
+    pointer-events: none;
+    box-sizing: content-box;
+    z-index: 1;
   }
 
   .user-avatar {
