@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
-import { Plus, RefreshRight, Setting } from '@element-plus/icons-vue'
+import { Plus } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
 import { useRoiDashboardStore } from '@/stores/roiDashboard'
@@ -269,23 +269,6 @@ async function refreshChart(
   }
 }
 
-async function refreshCurrentCharts() {
-  const refreshableCharts = currentCharts.value.filter(
-    (chart) => chart.can_execute !== false && Boolean(chart.sql?.trim())
-  )
-  if (!refreshableCharts.length) return
-  try {
-    await roiConfigLoadCoordinator.refresh()
-    const results = await Promise.all(
-      refreshableCharts.map((chart) => refreshChart(chart, undefined, false))
-    )
-    if (results.every(Boolean)) ElMessage.success('ROI 图表刷新成功')
-    else ElMessage.error('部分 ROI 图表刷新失败，请稍后重试')
-  } catch {
-    ElMessage.error('刷新 ROI 图表失败，请稍后重试')
-  }
-}
-
 async function changeChartDateRange(chart: RoiChart, dateRange: RoiDateRange) {
   if (!hasRoiDateRangePlaceholders(chart.sql)) return
   const chartId = String(chart.id)
@@ -408,12 +391,6 @@ onBeforeUnmount(() => {
         <span v-if="config?.datasource_name">{{ config.datasource_name }}</span>
       </div>
       <div class="roi-dashboard-panel__actions">
-        <el-tooltip content="设置数据源" placement="bottom">
-          <el-button circle :icon="Setting" @click="roiDashboardStore.openDatasourceSettings()" />
-        </el-tooltip>
-        <el-tooltip content="刷新图表" placement="bottom">
-          <el-button circle :icon="RefreshRight" @click="refreshCurrentCharts()" />
-        </el-tooltip>
         <el-button type="primary" :icon="Plus" :disabled="!canEdit" @click="openNewChartEditor">
           添加图表
         </el-button>

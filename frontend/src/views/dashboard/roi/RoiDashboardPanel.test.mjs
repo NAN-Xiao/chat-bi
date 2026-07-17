@@ -14,6 +14,11 @@ assert.match(panel, /openCreateDashboardNameDialog/)
 assert.match(panel, /openFirstChartEditor/)
 assert.match(panel, /createRoiNewChartEditorState/)
 assert.doesNotMatch(panel, /DashboardSqlEditor\.vue|useDatasourceContextStore/)
+assert.doesNotMatch(panel, /content="设置数据源"/)
+assert.doesNotMatch(panel, /content="刷新图表"/)
+assert.doesNotMatch(panel, /:icon="Setting"/)
+assert.doesNotMatch(panel, /:icon="RefreshRight"/)
+assert.match(panel, /添加图表/)
 
 const build = await esbuild.build({
   entryPoints: [behaviorPath],
@@ -290,7 +295,18 @@ assert.match(
   panel,
   /const datasourceDialogVisible = computed\([\s\S]*datasourceDialogOpen\.value[\s\S]*configLoaded\.value/
 )
-assert.match(panel, /:model-value="datasourceDialogVisible"/)
+assert.match(
+  panel,
+  /<RoiDatasourceDialog[^>]*:model-value="datasourceDialogVisible"[^>]*@saved="handleDatasourceSaved"[^>]*@cancelled="handleDatasourceCancelled"[^>]*\/>/
+)
+assert.match(
+  panel,
+  /function handleDatasourceSaved\(saved: RoiConfig\)\s*\{[^}]*if \(routeMode\.value === 'roi'\) void reloadChartsAfterConfigSave\(\)[^}]*\}/
+)
+assert.match(
+  panel,
+  /watch\(\s*\(\) => \[props\.dashboardId, routeMode\.value\],[\s\S]*?if \(previous\?\.\[1\] !== 'roi'\) void loadPage\('route-enter'\)\s*else void reloadCharts\(\)\s*\}\s*\)/
+)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*min-width:\s*0/)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*overflow:\s*hidden/)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*text-overflow:\s*ellipsis/)

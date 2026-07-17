@@ -55,8 +55,6 @@ assert.match(
   /async function changeChartDateRange\(chart: RoiChart, dateRange: RoiDateRange\)/
 )
 assert.match(panel, /@date-range-change="changeChartDateRange"/)
-assert.match(panel, /async function refreshCurrentCharts\(\)/)
-assert.match(panel, /@click="refreshCurrentCharts\(\)"/)
 assert.match(
   card,
   /\.roi-chart-card__body\s*\{[\s\S]*?display:\s*flex/,
