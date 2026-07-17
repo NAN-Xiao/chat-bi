@@ -82,7 +82,7 @@ TOPICS = (
     TopicDefinition(
         "new-user-retention",
         "修仙新增 cohort 留存",
-        "渠道新增用户次日留存与 D1/D3/D7 cohort 留存。",
+        "渠道新增用户近 15 个自然日 D1/D3/D7 cohort 留存，补齐日期与渠道组合。",
         (
             "f99d0fb5f3624192953bdbfa31549abd",
             "531bc723e3cb42f0a1fe2c412d7f05b0",
@@ -91,7 +91,7 @@ TOPICS = (
             "b0f27793e48349c1a6a7fbf40ff03ffd",
             "e797a8af6785452e9fdcee7d80786b6e",
         ),
-        "分母固定 UserRegister cohort，Dn 分子为精确第 n 日 UserActive 去重 uid；排除未成熟 cohort。",
+        "分母固定 UserRegister cohort，渠道依次取 mediaSource、campaignName、未知；Dn 分子为精确第 n 日 UserActive 去重 uid；近 15 个截至昨天的 cohort 日期补齐，未成熟或无注册分母时按 0 展示。",
     ),
     TopicDefinition(
         "active-retention",
