@@ -789,6 +789,7 @@ def _unsafe_exec_sql_after_validation(
         query_timeout: int | None = None,
         max_result_rows: int | None | object = _USE_CONFIGURED_RESULT_LIMIT,
         require_controlled_timeout: bool = False,
+        skip_read_validation: bool = False,
 ):
     """底层数据源执行适配器。
 
@@ -798,9 +799,10 @@ def _unsafe_exec_sql_after_validation(
     while sql.endswith(';'):
         sql = sql[:-1]
     # 检查待执行 SQL 是否只包含读取操作
-    is_safe, error_reason = check_sql_read(sql, ds)
-    if not is_safe:
-        raise ValueError(f"SQL can only contain read operations: {error_reason}")
+    if not skip_read_validation:
+        is_safe, error_reason = check_sql_read(sql, ds)
+        if not is_safe:
+            raise ValueError(f"SQL can only contain read operations: {error_reason}")
 
     if require_controlled_timeout and not supports_controlled_query_timeout(ds.type):
         raise ValueError("当前数据源类型不支持受控查询超时")

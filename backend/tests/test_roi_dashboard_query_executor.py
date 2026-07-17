@@ -6,6 +6,7 @@ import logging
 from types import SimpleNamespace
 
 import pytest
+import sqlglot
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
@@ -184,8 +185,12 @@ def test_query_executor_contains_no_ordinary_permission_calls() -> None:
         "SELECT * INTO orders_backup FROM orders",
         "CALL refresh_orders()",
         "SELECT 1; SELECT 2",
-        "SELECT custom_side_effect(amount) FROM orders",
         "SELECT * FROM",
+        (
+            "WITH source AS ("
+            "SELECT DATE_ADD(dt, period) AS cohort_day FROM orders"
+            ") DELETE FROM archived_orders"
+        ),
     ],
 )
 def test_roi_query_fail_closed_for_unsafe_or_malformed_sql(
@@ -234,6 +239,83 @@ def test_roi_query_allows_cte_union_aggregate_and_known_builtin(
 
     assert result.status == "success"
     assert result.data == [{"category": "all", "total": 3}]
+
+
+def test_roi_query_executes_mysql_native_date_add_without_interval(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session, datasource_type="mysql")
+    captured: dict[str, object] = {}
+
+    def run_validated_read(**kwargs):
+        captured.update(kwargs)
+        return {
+            "fields": ["cohort_day"],
+            "data": [{"cohort_day": "2026-07-18"}],
+        }
+
+    monkeypatch.setattr(query_executor, "_run_validated_read", run_validated_read)
+    sql = "SELECT DATE_ADD(dt, period) AS cohort_day FROM payments"
+
+    result = execute_roi_read_query(session, make_user(), sql)
+
+    assert captured["sql"] == sql
+    assert result.status == "success"
+    assert result.data == [{"cohort_day": "2026-07-18"}]
+
+
+def test_roi_query_does_not_call_sqlglot_parser(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session, datasource_type="mysql")
+    monkeypatch.setattr(
+        sqlglot,
+        "parse",
+        lambda *_args, **_kwargs: pytest.fail("ROI 预览不应调用 SQLGlot"),
+    )
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: {"fields": ["value"], "data": [{"value": 1}]},
+    )
+
+    result = execute_roi_read_query(
+        session,
+        make_user(),
+        "SELECT DATE_ADD(dt, period) AS value FROM payments",
+    )
+
+    assert result.data == [{"value": 1}]
+
+
+def test_roi_validated_read_marks_sql_as_prevalidated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def execute_after_validation(**kwargs):
+        captured.update(kwargs)
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        query_executor,
+        "_execute_after_validation",
+        execute_after_validation,
+    )
+    datasource = SimpleNamespace(type="mysql")
+
+    query_executor._run_validated_read(
+        datasource=datasource,
+        sql="SELECT DATE_ADD(dt, period) FROM payments",
+        query_timeout=10,
+        max_result_rows=None,
+    )
+
+    assert captured["skip_read_validation"] is True
+    assert captured["require_controlled_timeout"] is True
+    assert captured["max_result_rows"] is None
 
 
 def test_roi_query_rejects_datasource_without_controlled_timeout(
@@ -350,7 +432,7 @@ def test_roi_query_allows_dialect_safe_anonymous_builtins(
         ("mysql", "SELECT evil.JSON_UNQUOTE('\"value\"')"),
     ],
 )
-def test_roi_query_rejects_qualified_allowlisted_anonymous_functions(
+def test_roi_query_allows_qualified_database_native_functions(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
     datasource_type: str,
@@ -364,16 +446,15 @@ def test_roi_query_rejects_qualified_allowlisted_anonymous_functions(
     monkeypatch.setattr(
         query_executor,
         "_run_validated_read",
-        lambda **_kwargs: pytest.fail("限定调用不应到达执行层"),
+        lambda **_kwargs: {"fields": ["value"], "data": [{"value": 1}]},
     )
 
-    with pytest.raises(HTTPException) as exc:
-        execute_roi_read_query(session, make_user(), sql)
+    result = execute_roi_read_query(session, make_user(), sql)
 
-    assert exc.value.status_code == 400
+    assert result.data == [{"value": 1}]
 
 
-def test_roi_query_still_rejects_unknown_anonymous_udf(
+def test_roi_query_allows_database_native_function_without_sqlglot_allowlist(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
 ) -> None:
@@ -381,17 +462,16 @@ def test_roi_query_still_rejects_unknown_anonymous_udf(
     monkeypatch.setattr(
         query_executor,
         "_run_validated_read",
-        lambda **_kwargs: pytest.fail("未知 UDF 不应到达执行层"),
+        lambda **_kwargs: {"fields": ["value"], "data": [{"value": 1}]},
     )
 
-    with pytest.raises(HTTPException) as exc:
-        execute_roi_read_query(
-            session,
-            make_user(),
-            "SELECT my_side_effecting_function(amount) FROM orders",
-        )
+    result = execute_roi_read_query(
+        session,
+        make_user(),
+        "SELECT customer_defined_metric(amount) AS value FROM orders",
+    )
 
-    assert exc.value.status_code == 400
+    assert result.data == [{"value": 1}]
 
 
 @pytest.mark.parametrize(

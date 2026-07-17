@@ -3,21 +3,23 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
-import sqlglot
+import sqlparse
 from fastapi import HTTPException
-from sqlglot import expressions as exp
+from sqlparse import tokens as sqlparse_tokens
 from sqlmodel import select
 
 from apps.datasource.crud.sql_engine_executor import _execute_after_validation
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import (
-    check_sql_read,
-    get_sqlglot_dialect,
+    DANGEROUS_PATTERNS,
+    get_dangerous_functions,
     normalize_sql_safety_ds_type,
+    normalize_sql_function_name,
     supports_controlled_query_timeout,
 )
 from apps.roi_dashboard.models import CoreRoiWorkspaceConfig
@@ -70,70 +72,118 @@ def _run_validated_read(
         query_timeout=query_timeout,
         max_result_rows=max_result_rows,
         require_controlled_timeout=True,
+        skip_read_validation=True,
     )
 
-
-_ROI_FORBIDDEN_AST_TYPES = (
-    exp.Insert,
-    exp.Update,
-    exp.Delete,
-    exp.Merge,
-    exp.Create,
-    exp.Drop,
-    exp.Alter,
-    exp.TruncateTable,
-    exp.Command,
-    exp.Copy,
-    exp.Into,
-    exp.NextValueFor,
-)
-
-_ROI_SAFE_ANONYMOUS_FUNCTIONS = {
-    "pg": frozenset({"jsonb_build_object"}),
-    "mysql": frozenset({"find_in_set", "json_unquote"}),
-}
 
 ROI_TIMEOUT_SUPPORTED_TYPES = frozenset(
     {"pg", "mysql", "sqlserver", "dm", "doris", "starrocks", "kingbase"}
 )
 
+_ROI_FORBIDDEN_KEYWORDS = frozenset(
+    {
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE",
+        "MERGE",
+        "COPY",
+        "REPLACE",
+        "GRANT",
+        "REVOKE",
+        "USE",
+        "SET",
+        "CALL",
+        "INTO",
+    }
+)
 
-def validate_roi_read_sql(sql: str, datasource: CoreDatasource) -> None:
-    """深度校验 ROI SQL，只允许 sqlglot 可识别的单条纯查询 AST。"""
-    dialect = get_sqlglot_dialect(datasource.type)
-    statements = [
-        statement
-        for statement in sqlglot.parse(sql, dialect=dialect)
-        if statement is not None
-    ]
+_ROI_INCOMPLETE_TRAILING_KEYWORDS = frozenset(
+    {
+        "SELECT",
+        "WITH",
+        "FROM",
+        "JOIN",
+        "ON",
+        "WHERE",
+        "GROUP",
+        "ORDER",
+        "BY",
+        "HAVING",
+        "LIMIT",
+        "OFFSET",
+        "UNION",
+        "AS",
+        "WHEN",
+        "THEN",
+        "ELSE",
+    }
+)
+
+_ROI_DANGEROUS_READ_PATTERNS = (
+    r"\bNEXT\s+VALUE\s+FOR\b",
+    r"\.\s*NEXTVAL\b",
+)
+
+
+def _validate_roi_read_sql_tokens(sql: str, datasource: CoreDatasource) -> None:
+    """不解析数据库方言，以词法边界和数据库只读事务双重保护。"""
+    statements = [statement for statement in sqlparse.parse(sql) if str(statement).strip()]
     if len(statements) != 1:
         raise ValueError("SQL 必须且只能包含一条语句")
-    statement = statements[0]
-    if not isinstance(statement, exp.Query):
+
+    significant_tokens = []
+    for token in statements[0].flatten():
+        if token.is_whitespace or token.ttype in sqlparse_tokens.Comment:
+            continue
+        significant_tokens.append(token)
+    if not significant_tokens:
+        raise ValueError("SQL 不能为空")
+
+    first_keyword = significant_tokens[0].normalized.upper()
+    if first_keyword not in {"SELECT", "WITH"}:
         raise ValueError("SQL 根语句不是只读查询")
-    datasource_type = normalize_sql_safety_ds_type(datasource.type)
-    safe_anonymous_functions = _ROI_SAFE_ANONYMOUS_FUNCTIONS.get(
-        datasource_type,
-        frozenset(),
-    )
-    for node in statement.walk():
-        if isinstance(node, _ROI_FORBIDDEN_AST_TYPES):
-            raise ValueError(f"SQL 包含写操作或命令：{type(node).__name__}")
-        if isinstance(node, exp.Column):
-            parts = [part.name.casefold() for part in node.parts]
-            if len(parts) >= 2 and parts[-1] == "nextval":
-                raise ValueError("SQL 包含序列取值副作用")
-        if isinstance(node, exp.Anonymous):
-            function_name = str(node.name or "").casefold()
-            if function_name == "nextval":
-                raise ValueError("SQL 包含序列取值副作用")
-            if isinstance(node.parent, exp.Dot):
-                raise ValueError("SQL 不允许限定命名空间的匿名函数")
-            if function_name in safe_anonymous_functions:
-                continue
-            raise ValueError("SQL 包含无法识别的自定义函数")
-        if isinstance(node, exp.UserDefinedFunction):
-            raise ValueError("SQL 包含无法识别的自定义函数")
+    if significant_tokens[-1].normalized.upper() in _ROI_INCOMPLETE_TRAILING_KEYWORDS:
+        raise ValueError("SQL 查询结构不完整")
+
+    searchable_parts: list[str] = []
+    for token in significant_tokens:
+        if token.ttype in sqlparse_tokens.Literal.String:
+            searchable_parts.append("''")
+            continue
+        normalized = token.normalized.upper()
+        if normalized in _ROI_FORBIDDEN_KEYWORDS:
+            raise ValueError(f"SQL 包含写操作或命令：{normalized}")
+        searchable_parts.append(token.value)
+
+    searchable_sql = " ".join(searchable_parts)
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, searchable_sql, re.IGNORECASE):
+            raise ValueError("SQL 包含危险读取模式")
+    for pattern in _ROI_DANGEROUS_READ_PATTERNS:
+        if re.search(pattern, searchable_sql, re.IGNORECASE):
+            raise ValueError("SQL 包含序列取值副作用")
+
+    dangerous_functions = {
+        normalize_sql_function_name(name)
+        for name in get_dangerous_functions(datasource.type)
+    }
+    dangerous_functions.add("nextval")
+    for function_name in dangerous_functions:
+        if re.search(
+            rf"(?<![\w$]){re.escape(function_name)}\s*\(",
+            searchable_sql,
+            re.IGNORECASE,
+        ):
+            raise ValueError("SQL 包含危险函数")
+
+
+def validate_roi_read_sql(sql: str, datasource: CoreDatasource) -> None:
+    """不解析数据库方言，只校验 ROI 原始 SQL 的单条只读边界。"""
+    _validate_roi_read_sql_tokens(sql, datasource)
 
 
 def _normalize_rows(raw: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -187,12 +237,6 @@ def execute_roi_read_query(
     started_at = time.perf_counter()
     try:
         validate_roi_read_sql(sql, datasource)
-        is_safe, reason = check_sql_read(sql, datasource)
-        if not is_safe:
-            raise HTTPException(
-                status_code=400,
-                detail=f"ROI SQL 仅允许单条只读查询：{reason}",
-            )
         datasource_type = normalize_sql_safety_ds_type(datasource.type)
         if (
             datasource_type not in ROI_TIMEOUT_SUPPORTED_TYPES

@@ -444,6 +444,7 @@ def _execute_after_validation(
         query_timeout: int | None = None,
         max_result_rows: int | None | object = _UNSET_EXECUTION_CONTROL,
         require_controlled_timeout: bool = False,
+        skip_read_validation: bool = False,
 ) -> dict[str, Any]:
     """
     是什么：_execute_after_validation 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -483,6 +484,9 @@ def _execute_after_validation(
             requested_controls["max_result_rows"] = max_result_rows
         if require_controlled_timeout:
             requested_controls["require_controlled_timeout"] = True
+        # 仅供已完成独立只读校验的内部执行边界使用。
+        if skip_read_validation:
+            requested_controls["skip_read_validation"] = True
 
         missing_controls = [
             keyword
