@@ -61,11 +61,16 @@ const chartError = computed(() =>
           </el-button>
         </el-tooltip>
         <el-dropdown :disabled="!actionEnabled" trigger="click" @command="emit('span-change', chart, $event)">
-          <el-tooltip content="设置宽度" placement="top">
-            <el-button class="icon-button" text circle :disabled="!actionEnabled">
-              <el-icon><Grid /></el-icon>
-            </el-button>
-          </el-tooltip>
+          <el-button
+            class="icon-button"
+            text
+            circle
+            aria-label="设置宽度"
+            title="设置宽度"
+            :disabled="!actionEnabled"
+          >
+            <el-icon><Grid /></el-icon>
+          </el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="full">整行</el-dropdown-item>
@@ -167,9 +172,15 @@ const chartError = computed(() =>
 }
 
 .roi-chart-card__body {
+  display: flex;
   min-height: 0;
   flex: 1 1 auto;
   padding: 10px;
+}
+
+.roi-chart-card__body :deep(.chart-container) {
+  min-height: 240px;
+  flex: 1 1 auto;
 }
 
 .roi-chart-card__state {

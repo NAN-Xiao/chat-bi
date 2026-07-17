@@ -10,6 +10,7 @@ import {
   canCancelRoiEditor,
   createEmptyRoiChartForm,
   createRoiEditorRequestGuard,
+  getRoiChartMappingError,
   getRoiChartSaveErrorMessage,
   replaceRoiChartForm,
   roiChartFormSignature,
@@ -96,11 +97,13 @@ const insightAggregateOptions = [
 
 const isEdit = computed(() => Boolean(props.chart))
 const currentSignature = computed(() => roiChartFormSignature(form))
+const mappingError = computed(() => getRoiChartMappingError(form))
 const canSave = computed(
   () =>
     props.canEdit &&
     !previewing.value &&
     !saving.value &&
+    !mappingError.value &&
     requestGuard.canSave(currentSignature.value)
 )
 
@@ -483,6 +486,9 @@ watch(
 
     <template #footer>
       <div class="roi-sql-editor__footer">
+        <span v-if="preview.fields.length && mappingError" class="roi-sql-editor__validation">
+          {{ mappingError }}
+        </span>
         <el-button :disabled="saving" @click="requestClose()">取消</el-button>
         <el-button :disabled="!canEdit || saving" @click="runPreview">
           {{ previewing ? '重新预览' : '预览' }}
@@ -555,8 +561,16 @@ watch(
 
 .roi-sql-editor__footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.roi-sql-editor__validation {
+  min-width: 0;
+  margin-right: auto;
+  color: var(--ed-color-danger);
+  font-size: 13px;
 }
 
 @media (max-width: 640px) {

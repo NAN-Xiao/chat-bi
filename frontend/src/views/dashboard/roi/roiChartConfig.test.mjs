@@ -17,6 +17,7 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0
 const {
   canCancelRoiEditor,
   createRoiEditorRequestGuard,
+  getRoiChartMappingError,
   getRoiChartSaveErrorMessage,
   hydrateRoiChartForm,
   replaceRoiChartForm,
@@ -26,6 +27,21 @@ const {
 
 assert.equal(canCancelRoiEditor(false), true)
 assert.equal(canCancelRoiEditor(true), false, 'create/update 在途时用户不得关闭或 emit cancelled')
+
+assert.equal(
+  getRoiChartMappingError({ ...hydrateRoiChartForm(null), chartType: 'table', columns: [] }),
+  '请选择至少一个表格列',
+  '表格没有显式列映射时不得保存空白图表'
+)
+assert.equal(
+  getRoiChartMappingError({
+    ...hydrateRoiChartForm(null),
+    chartType: 'table',
+    columns: ['value'],
+  }),
+  '',
+  '表格存在显式列映射时允许保存'
+)
 
 const chart = {
   id: 'chart-1',

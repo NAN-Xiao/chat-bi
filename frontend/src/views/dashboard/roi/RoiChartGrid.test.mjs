@@ -17,6 +17,16 @@ assert.match(grid, /layout_span[\s\S]*full[\s\S]*half[\s\S]*third/)
 assert.doesNotMatch(grid, /canvasData|component_data|canvas_view_info/)
 assert.match(card, /当前账号无此数据源权限/)
 assert.match(card, /v-if="chart\.can_execute/)
+assert.match(
+  card,
+  /\.roi-chart-card__body\s*\{[\s\S]*?display:\s*flex/,
+  '图表内容区必须为图表挂载容器提供可用高度'
+)
+assert.match(
+  card,
+  /<el-dropdown[\s\S]*?<el-button[^>]*aria-label="设置宽度"[^>]*title="设置宽度"/,
+  '宽度下拉必须直接使用带原生提示的按钮，避免 Tooltip role 警告或嵌套按钮'
+)
 assert.doesNotMatch(card, /useDashboardStore|dashboardStoreWithOut|document\.getElementById/)
 
 const build = await esbuild.build({

@@ -45,6 +45,13 @@ export function canCancelRoiEditor(saving: boolean): boolean {
   return !saving
 }
 
+export function getRoiChartMappingError(form: RoiChartForm): string {
+  if (form.chartType === 'table' && form.columns.length === 0) {
+    return '请选择至少一个表格列'
+  }
+  return ''
+}
+
 const defaultPivot = (): RoiPivotConfig => ({
   enabled: false,
   time_field: '',
