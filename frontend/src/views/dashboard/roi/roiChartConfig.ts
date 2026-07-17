@@ -46,8 +46,25 @@ export function canCancelRoiEditor(saving: boolean): boolean {
 }
 
 export function getRoiChartMappingError(form: RoiChartForm): string {
-  if (form.chartType === 'table' && form.columns.length === 0) {
-    return '请选择至少一个表格列'
+  const hasColumns = form.columns.some((field) => field.trim())
+  const hasY = form.y.some((field) => field.trim())
+  const hasX = Boolean(form.x.trim())
+  const hasSeries = Boolean(form.series.trim())
+
+  if (form.chartType === 'table') {
+    return hasColumns ? '' : '请选择至少一个表格列'
+  }
+  if (form.chartType === 'metric') {
+    return hasY || hasColumns ? '' : '请选择至少一个指标字段'
+  }
+  if (form.chartType === 'pie') {
+    if (!hasY) return '请选择至少一个 Y 轴字段'
+    return hasSeries ? '' : '请选择系列字段'
+  }
+  if (!hasX) return '请选择 X 轴字段'
+  if (!hasY) return '请选择至少一个 Y 轴字段'
+  if ((form.chartType === 'heatmap' || form.chartType === 'sankey') && !hasSeries) {
+    return '请选择系列字段'
   }
   return ''
 }

@@ -28,19 +28,49 @@ const {
 assert.equal(canCancelRoiEditor(false), true)
 assert.equal(canCancelRoiEditor(true), false, 'create/update 在途时用户不得关闭或 emit cancelled')
 
+const emptyForm = hydrateRoiChartForm(null)
 assert.equal(
-  getRoiChartMappingError({ ...hydrateRoiChartForm(null), chartType: 'table', columns: [] }),
+  getRoiChartMappingError({ ...emptyForm, chartType: 'table', columns: [] }),
   '请选择至少一个表格列',
   '表格没有显式列映射时不得保存空白图表'
 )
 assert.equal(
   getRoiChartMappingError({
-    ...hydrateRoiChartForm(null),
+    ...emptyForm,
     chartType: 'table',
     columns: ['value'],
   }),
   '',
   '表格存在显式列映射时允许保存'
+)
+assert.equal(
+  getRoiChartMappingError({ ...emptyForm, chartType: 'line' }),
+  '请选择 X 轴字段'
+)
+assert.equal(
+  getRoiChartMappingError({ ...emptyForm, chartType: 'line', x: 'day' }),
+  '请选择至少一个 Y 轴字段'
+)
+assert.equal(
+  getRoiChartMappingError({ ...emptyForm, chartType: 'pie', y: ['value'] }),
+  '请选择系列字段'
+)
+assert.equal(
+  getRoiChartMappingError({
+    ...emptyForm,
+    chartType: 'heatmap',
+    x: 'day',
+    y: ['value'],
+  }),
+  '请选择系列字段'
+)
+assert.equal(
+  getRoiChartMappingError({ ...emptyForm, chartType: 'metric' }),
+  '请选择至少一个指标字段'
+)
+assert.equal(
+  getRoiChartMappingError({ ...emptyForm, chartType: 'metric', columns: ['value'] }),
+  ''
 )
 
 const chart = {
