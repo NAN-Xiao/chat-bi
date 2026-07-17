@@ -10,11 +10,15 @@ import {
   createEmptyRoiChartForm,
   createRoiEditorRequestGuard,
   getRoiChartSaveErrorMessage,
-  hydrateRoiChartForm,
+  replaceRoiChartForm,
   roiChartFormSignature,
   serializeRoiChartForm,
   type RoiChartForm,
 } from './roiChartConfig'
+import {
+  createRoiChartPreviewRunner,
+  ROI_CHART_PREVIEW_ERROR_MESSAGE,
+} from './roiChartPreviewRunner'
 
 const props = defineProps<{
   modelValue: boolean
@@ -42,6 +46,27 @@ const preview = reactive<RoiChartPreviewResponse>({
   message: '',
 })
 const requestGuard = createRoiEditorRequestGuard()
+const previewRunner = createRoiChartPreviewRunner({
+  guard: requestGuard,
+  request: (payload: ReturnType<typeof previewPayload>) =>
+    roiDashboardApi.previewChart(props.dashboardId, payload, roiCustomErrorRequestConfig),
+  getCurrentSignature: () => currentSignature.value,
+  onSuccess: (result) => {
+    preview.status = result.status
+    preview.fields = [...result.fields]
+    preview.data = [...result.data]
+    preview.message = ''
+  },
+  onError: () => {
+    resetPreview()
+    preview.status = 'failed'
+    preview.message = ROI_CHART_PREVIEW_ERROR_MESSAGE
+    ElMessage.error(ROI_CHART_PREVIEW_ERROR_MESSAGE)
+  },
+  onLoading: (value) => {
+    previewing.value = value
+  },
+})
 
 const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: '表格', value: 'table' },
@@ -95,7 +120,8 @@ function ensureConfigSections() {
 }
 
 function openSession() {
-  Object.assign(form, hydrateRoiChartForm(props.chart))
+  previewRunner.invalidate()
+  replaceRoiChartForm(form, props.chart)
   ensureConfigSections()
   activeTab.value = 'config'
   previewing.value = false
@@ -105,6 +131,7 @@ function openSession() {
 }
 
 function closeSession(cancelled: boolean) {
+  previewRunner.invalidate()
   requestGuard.closeSession()
   previewing.value = false
   saving.value = false
@@ -114,7 +141,6 @@ function closeSession(cancelled: boolean) {
 }
 
 function requestClose(done?: () => void) {
-  if (saving.value) return
   closeSession(true)
   done?.()
 }
@@ -127,40 +153,14 @@ function previewPayload() {
 }
 
 async function runPreview() {
-  if (!props.canEdit || previewing.value || saving.value) return
+  if (!props.canEdit || saving.value) return
   if (!form.title.trim() || !form.sql.trim()) {
     ElMessage.warning('请填写图表标题和 SQL')
     return
   }
   const signature = currentSignature.value
-  const token = requestGuard.beginPreview(signature)
-  previewing.value = true
-  try {
-    const result = await roiDashboardApi.previewChart(
-      props.dashboardId,
-      previewPayload(),
-      roiCustomErrorRequestConfig
-    )
-    if (!requestGuard.markPreviewSucceeded(token, currentSignature.value)) return
-    if (result.status !== 'success') {
-      requestGuard.invalidatePreview()
-      preview.status = result.status
-      preview.message = result.message || '预览 ROI 图表失败，请稍后重试'
-      ElMessage.error(preview.message)
-      return
-    }
-    preview.status = result.status
-    preview.fields = [...(result.fields || [])]
-    preview.data = [...(result.data || [])]
-    preview.message = result.message || ''
-  } catch {
-    if (requestGuard.isActivePreview(token)) {
-      requestGuard.invalidatePreview()
-      ElMessage.error('预览 ROI 图表失败，请稍后重试')
-    }
-  } finally {
-    if (requestGuard.isCurrentSession(token)) previewing.value = false
-  }
+  resetPreview()
+  await previewRunner.run(previewPayload(), signature)
 }
 
 async function saveChart() {
@@ -201,7 +201,10 @@ watch(
   () => props.modelValue,
   (visible) => {
     if (visible) openSession()
-    else requestGuard.closeSession()
+    else {
+      previewRunner.invalidate()
+      requestGuard.closeSession()
+    }
   },
   { immediate: true }
 )
@@ -216,7 +219,7 @@ watch(
 watch(
   form,
   () => {
-    requestGuard.invalidatePreview()
+    previewRunner.invalidate()
   },
   { deep: true }
 )
@@ -225,6 +228,7 @@ watch(
   () => props.canEdit,
   (allowed) => {
     if (!allowed) {
+      previewRunner.invalidate()
       requestGuard.invalidateRequests()
       previewing.value = false
       saving.value = false
@@ -367,6 +371,28 @@ watch(
                     />
                   </el-select>
                 </el-form-item>
+                <el-form-item label="指标字段" class="is-wide">
+                  <el-select
+                    v-model="form.pivot.metric_fields"
+                    multiple
+                    filterable
+                    collapse-tags
+                    :disabled="!canEdit || saving"
+                  >
+                    <el-option
+                      v-for="field in preview.fields"
+                      :key="field"
+                      :label="field"
+                      :value="field"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="启用分组">
+                  <el-switch
+                    v-model="form.pivot.group_enabled"
+                    :disabled="!canEdit || saving || !form.pivot.group_field"
+                  />
+                </el-form-item>
                 <el-form-item label="时间粒度">
                   <el-select v-model="form.pivot.granularity" :disabled="!canEdit || saving">
                     <el-option label="按天" value="day" />
@@ -454,10 +480,10 @@ watch(
 
     <template #footer>
       <div class="roi-sql-editor__footer">
-        <el-button :disabled="saving" @click="requestClose()">取消</el-button>
-        <el-button :loading="previewing" :disabled="!canEdit || saving" @click="runPreview"
-          >预览</el-button
-        >
+        <el-button @click="requestClose()">取消</el-button>
+        <el-button :disabled="!canEdit || saving" @click="runPreview">
+          {{ previewing ? '重新预览' : '预览' }}
+        </el-button>
         <el-button type="primary" :loading="saving" :disabled="!canSave" @click="saveChart"
           >保存</el-button
         >
@@ -486,6 +512,12 @@ watch(
 .roi-sql-editor__form,
 .roi-sql-editor__grid > *,
 .roi-sql-editor__topline > * {
+  min-width: 0;
+}
+
+.roi-sql-editor__grid :deep(.el-form-item__content),
+.roi-sql-editor__grid :deep(.el-select) {
+  width: 100%;
   min-width: 0;
 }
 

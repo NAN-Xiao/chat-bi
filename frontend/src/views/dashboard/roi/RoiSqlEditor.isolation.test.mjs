@@ -22,9 +22,25 @@ assert.match(source, /reactive<RoiChartForm>/)
 assert.match(source, /pivotEnabled/)
 assert.match(source, /insightEnabled/)
 assert.match(source, /layoutSpan/)
+assert.match(source, /form\.pivot\.metric_fields/)
+assert.match(source, /form\.pivot\.group_enabled/)
 assert.match(source, /图表配置/)
 assert.match(source, /SQL 明细/)
 assert.match(source, /:disabled="!canEdit/)
+const runPreview = source.match(/async function runPreview\(\) \{([\s\S]*?)\n\}/)
+assert.ok(runPreview, '必须提供预览入口')
+assert.doesNotMatch(
+  runPreview[1],
+  /if\s*\(\s*!props\.canEdit\s*\|\|\s*previewing\.value/,
+  '新预览必须能够替代仍在途的旧预览'
+)
+assert.match(source, /createRoiChartPreviewRunner/)
+assert.doesNotMatch(source, /:loading="previewing"/, '预览中按钮仍必须允许发起最新 B 请求')
+assert.doesNotMatch(
+  source,
+  /if\s*\(saving\.value\)\s*return/,
+  '保存中取消必须能够使旧 save token 失效'
+)
 assert.match(panel, /<RoiSqlEditor/)
 assert.match(panel, /@saved="handleChartSaved"/)
 assert.doesNotMatch(panel, /DashboardSqlEditor\.vue|useDashboardStore|canvasData|canvasViewInfo/)

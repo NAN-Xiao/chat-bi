@@ -37,6 +37,7 @@ export interface RoiChartForm {
   insightEnabled: boolean
   insight: RoiInsightConfig
   layoutSpan: RoiLayoutSpan
+  extraChartConfig: Record<string, unknown>
   version?: number
 }
 
@@ -63,6 +64,25 @@ function cloneRecord<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+const blockedConfigKeys = new Set([
+  ['data', 'source', 'id'].join(''),
+  ['tenant', 'id'].join(''),
+  ['external', 'm', 'c', 'p'].join(''),
+  ['m', 'c', 'p'].join(''),
+  ['m', 'c', 'p', 'server', 'id'].join(''),
+  ['m', 'c', 'p', 'tool'].join(''),
+])
+
+function sanitizeConfigValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeConfigValue)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !blockedConfigKeys.has(key.toLowerCase().replace(/[^a-z0-9]/g, '')))
+      .map(([key, item]) => [key, sanitizeConfigValue(item)])
+  )
+}
+
 export function createEmptyRoiChartForm(): RoiChartForm {
   return {
     sql: '',
@@ -77,14 +97,27 @@ export function createEmptyRoiChartForm(): RoiChartForm {
     insightEnabled: true,
     insight: defaultInsight(),
     layoutSpan: 'full',
+    extraChartConfig: {},
+    version: undefined,
   }
 }
 
 export function hydrateRoiChartForm(chart?: RoiChart | null): RoiChartForm {
   if (!chart) return createEmptyRoiChartForm()
   const config = chart.chart_config || {}
-  const pivotValue = config.pivot
-  const insightValue = config.insight
+  const {
+    x: _x,
+    y: _y,
+    series: _series,
+    columns: _columns,
+    pivot: pivotValue,
+    insight: insightValue,
+    ...extraChartConfig
+  } = config
+  void _x
+  void _y
+  void _series
+  void _columns
   const pivot =
     pivotValue && typeof pivotValue === 'object'
       ? (cloneRecord(pivotValue) as RoiPivotConfig)
@@ -106,8 +139,15 @@ export function hydrateRoiChartForm(chart?: RoiChart | null): RoiChartForm {
     insightEnabled: insight.enabled !== false,
     insight,
     layoutSpan: chart.layout_span || 'full',
+    extraChartConfig: sanitizeConfigValue(extraChartConfig) as Record<string, unknown>,
     version: chart.version,
   }
+}
+
+export function replaceRoiChartForm(target: RoiChartForm, chart?: RoiChart | null): RoiChartForm {
+  delete target.version
+  Object.assign(target, hydrateRoiChartForm(chart))
+  return target
 }
 
 export function serializeRoiChartForm(form: RoiChartForm): RoiChartCreate | RoiChartUpdate {
@@ -116,6 +156,7 @@ export function serializeRoiChartForm(form: RoiChartForm): RoiChartCreate | RoiC
     sql: form.sql.trim(),
     chart_type: form.chartType,
     chart_config: {
+      ...(sanitizeConfigValue(form.extraChartConfig) as Record<string, unknown>),
       x: form.x,
       y: [...form.y],
       series: form.series,
