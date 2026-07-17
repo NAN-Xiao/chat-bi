@@ -7,45 +7,50 @@ import os
 import platform
 import re
 import urllib.parse
-from datetime import datetime, date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Optional, List
+from typing import List, Optional
 
 import oracledb
 import psycopg2
 import pymssql
 
-from apps.db.db_sql import get_table_sql, get_field_sql, get_version_sql
+from apps.db.db_sql import get_field_sql, get_table_sql, get_version_sql
 from common.error import ParseSQLResultError
 
 if platform.system() != "Darwin":
     import dmPython
 import pymysql
 import redshift_connector
-from sqlalchemy import create_engine, text, Engine
+import sqlglot
+from fastapi import HTTPException
+from pyhive import hive
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
+from sqlglot import expressions as exp
 
 from apps.datasource.models.datasource import (
-    CoreDatasource,
     DEFAULT_DATASOURCE_TIMEOUT_SECONDS,
+    ColumnSchema,
+    CoreDatasource,
     DatasourceConf,
     TableSchema,
-    ColumnSchema,
 )
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB, ConnectType
 from apps.db.engine import get_engine_config
+from apps.db.es_engine import (
+    get_es_connect,
+    get_es_data_by_http,
+    get_es_fields,
+    get_es_index,
+)
 from apps.system.crud.assistant import get_out_ds_conf
 from apps.system.schemas.system_schema import AssistantOutDsSchema
+from common.core.config import settings
 from common.core.deps import Trans
 from common.utils.utils import AppLogUtil, equals_ignore_case
-from fastapi import HTTPException
-from apps.db.es_engine import get_es_connect, get_es_index, get_es_fields, get_es_data_by_http
-from common.core.config import settings
-import sqlglot
-from sqlglot import expressions as exp
-from sqlalchemy.pool import NullPool
-from pyhive import hive
 
 _ORACLE_CLIENT_INIT_ATTEMPTED = False
 _ORACLE_CLIENT_READY = False
@@ -679,11 +684,32 @@ def _query_result_max_rows() -> int:
         return 10000
 
 
-def _limited_fetchmany(cursor_or_result):
+_USE_CONFIGURED_RESULT_LIMIT = object()
+
+
+def _limited_fetchmany(
+        cursor_or_result,
+        max_result_rows: int | None | object = _USE_CONFIGURED_RESULT_LIMIT,
+):
+    if max_result_rows is None:
+        return cursor_or_result.fetchall()
+    if max_result_rows is _USE_CONFIGURED_RESULT_LIMIT:
+        max_result_rows = _query_result_max_rows()
     fetchmany = getattr(cursor_or_result, "fetchmany", None)
     if callable(fetchmany):
-        return fetchmany(_query_result_max_rows())
+        return fetchmany(max(1, int(max_result_rows)))
     return cursor_or_result.fetchall()
+
+
+def _limit_materialized_rows(
+        rows: list,
+        max_result_rows: int | None | object = _USE_CONFIGURED_RESULT_LIMIT,
+) -> list:
+    if max_result_rows is None:
+        return rows
+    if max_result_rows is _USE_CONFIGURED_RESULT_LIMIT:
+        max_result_rows = _query_result_max_rows()
+    return rows[:max(1, int(max_result_rows))]
 
 
 def _build_query_result(columns: list, rows: list, sql: str) -> dict:
@@ -698,7 +724,13 @@ def _build_query_result(columns: list, rows: list, sql: str) -> dict:
     }
 
 
-def _apply_sqlalchemy_statement_timeout(session, ds_type: str, timeout_seconds: int) -> None:
+def _apply_sqlalchemy_statement_timeout(
+        session,
+        ds_type: str,
+        timeout_seconds: int,
+        *,
+        strict: bool = False,
+) -> None:
     if timeout_seconds <= 0:
         return
     timeout_ms = max(1, timeout_seconds) * 1000
@@ -709,6 +741,8 @@ def _apply_sqlalchemy_statement_timeout(session, ds_type: str, timeout_seconds: 
             session.execute(text("SET SESSION MAX_EXECUTION_TIME = :timeout_ms"), {"timeout_ms": timeout_ms})
     except Exception as exc:
         AppLogUtil.warning(f"Failed to apply datasource query timeout: type={ds_type}, timeout={timeout_seconds}s, error={exc}")
+        if strict:
+            raise
 
 
 def _apply_sqlalchemy_read_only_guard(session, ds_type: str) -> None:
@@ -739,11 +773,23 @@ def _apply_dbapi_read_only_guard(conn, cursor, ds_type: str) -> None:
         cursor.execute(guard_sql)
 
 
+CONTROLLED_QUERY_TIMEOUT_DS_TYPES = frozenset(
+    {"pg", "excel", "mysql", "sqlserver", "dm", "doris", "starrocks", "kingbase", "es"}
+)
+
+
+def supports_controlled_query_timeout(ds_type: str | None) -> bool:
+    return normalize_sql_safety_ds_type(ds_type) in CONTROLLED_QUERY_TIMEOUT_DS_TYPES
+
+
 def _unsafe_exec_sql_after_validation(
         ds: CoreDatasource | AssistantOutDsSchema,
         sql: str,
         origin_column=False,
         query_timeout: int | None = None,
+        max_result_rows: int | None | object = _USE_CONFIGURED_RESULT_LIMIT,
+        require_controlled_timeout: bool = False,
+        skip_read_validation: bool = False,
 ):
     """底层数据源执行适配器。
 
@@ -753,25 +799,39 @@ def _unsafe_exec_sql_after_validation(
     while sql.endswith(';'):
         sql = sql[:-1]
     # 检查待执行 SQL 是否只包含读取操作
-    is_safe, error_reason = check_sql_read(sql, ds)
-    if not is_safe:
-        raise ValueError(f"SQL can only contain read operations: {error_reason}")
+    if not skip_read_validation:
+        is_safe, error_reason = check_sql_read(sql, ds)
+        if not is_safe:
+            raise ValueError(f"SQL can only contain read operations: {error_reason}")
 
+    if require_controlled_timeout and not supports_controlled_query_timeout(ds.type):
+        raise ValueError("当前数据源类型不支持受控查询超时")
+
+    timeout_seconds = _effective_query_timeout(ds, query_timeout)
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
-        timeout_seconds = _effective_query_timeout(ds, query_timeout)
         session = get_session(ds, timeout=timeout_seconds)
         try:
             if normalize_sql_safety_ds_type(ds.type) == "mysql":
-                _apply_sqlalchemy_statement_timeout(session, ds.type, timeout_seconds)
+                _apply_sqlalchemy_statement_timeout(
+                    session,
+                    ds.type,
+                    timeout_seconds,
+                    strict=require_controlled_timeout,
+                )
                 _apply_sqlalchemy_read_only_guard(session, ds.type)
             else:
                 _apply_sqlalchemy_read_only_guard(session, ds.type)
-                _apply_sqlalchemy_statement_timeout(session, ds.type, timeout_seconds)
+                _apply_sqlalchemy_statement_timeout(
+                    session,
+                    ds.type,
+                    timeout_seconds,
+                    strict=require_controlled_timeout,
+                )
             with session.execute(text(sql)) as result:
                 try:
                     columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
-                    res = _limited_fetchmany(result)
+                    res = _limited_fetchmany(result, max_result_rows)
                     return _build_query_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex)) from ex
@@ -788,8 +848,8 @@ def _unsafe_exec_sql_after_validation(
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
-                    cursor.execute(sql, timeout=conf.timeout)
-                    res = _limited_fetchmany(cursor)
+                    cursor.execute(sql, timeout=timeout_seconds)
+                    res = _limited_fetchmany(cursor, max_result_rows)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
@@ -799,13 +859,13 @@ def _unsafe_exec_sql_after_validation(
         elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
             ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
             with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
-                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
-                                 read_timeout=conf.timeout, **extra_config_dict,
+                                 port=conf.port, db=conf.database, connect_timeout=timeout_seconds,
+                                 read_timeout=timeout_seconds, **extra_config_dict,
                                   **ssl_args) as conn, conn.cursor() as cursor:
                 try:
                     _apply_dbapi_read_only_guard(conn, cursor, ds.type)
                     cursor.execute(sql)
-                    res = _limited_fetchmany(cursor)
+                    res = _limited_fetchmany(cursor, max_result_rows)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
@@ -815,11 +875,11 @@ def _unsafe_exec_sql_after_validation(
         elif equals_ignore_case(ds.type, 'redshift'):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                              password=conf.password,
-                                             timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+                                             timeout=timeout_seconds, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     _apply_dbapi_read_only_guard(conn, cursor, ds.type)
                     cursor.execute(sql)
-                    res = _limited_fetchmany(cursor)
+                    res = _limited_fetchmany(cursor, max_result_rows)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
@@ -829,12 +889,12 @@ def _unsafe_exec_sql_after_validation(
         elif equals_ignore_case(ds.type, 'kingbase'):
             with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                   password=conf.password,
-                                  options=f"-c statement_timeout={conf.timeout * 1000}",
+                                  options=f"-c statement_timeout={timeout_seconds * 1000}",
                                   **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     _apply_dbapi_read_only_guard(conn, cursor, ds.type)
                     cursor.execute(sql)
-                    res = _limited_fetchmany(cursor)
+                    res = _limited_fetchmany(cursor, max_result_rows)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
@@ -843,11 +903,20 @@ def _unsafe_exec_sql_after_validation(
                     raise ParseSQLResultError(str(ex)) from ex
         elif equals_ignore_case(ds.type, 'es'):
             try:
-                res, columns = get_es_data_by_http(conf, sql)
+                es_timeout = (
+                    int(query_timeout)
+                    if query_timeout and query_timeout > 0
+                    else 30
+                )
+                res, columns = get_es_data_by_http(
+                    conf,
+                    sql,
+                    timeout=es_timeout,
+                )
                 columns = [field.get('name') for field in columns] if origin_column else [field.get('name').lower() for
                                                                                           field in
                                                                                           columns]
-                return _build_query_result(columns, res[:_query_result_max_rows()], sql)
+                return _build_query_result(columns, _limit_materialized_rows(res, max_result_rows), sql)
             except Exception as ex:
                 raise Exception(str(ex))
         elif equals_ignore_case(ds.type, 'hive'):
@@ -857,7 +926,7 @@ def _unsafe_exec_sql_after_validation(
                     # Hive 使用反引号标识符；这里规范化带引号标识符作为兼容兜底。
                     hive_sql = re.sub(r'"([A-Za-z_][A-Za-z0-9_]*)"', r'`\1`', sql)
                     cursor.execute(hive_sql)
-                    res = _limited_fetchmany(cursor)
+                    res = _limited_fetchmany(cursor, max_result_rows)
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
                                                                                                 cursor.description]
@@ -959,7 +1028,6 @@ DS_SPECIFIC_DANGEROUS_FUNCTIONS = {
 }
 
 # 危险模式正则表达式（用于检查特殊语法）
-import re
 DANGEROUS_PATTERNS = [
     r'\bINTO\s+OUTFILE\b',
     r'\bINTO\s+DUMPFILE\b',

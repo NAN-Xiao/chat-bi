@@ -3,10 +3,10 @@
 
 新业务代码应从 apps.datasource.crud.sql_engine 导入入口。
 """
-from dataclasses import asdict, dataclass, field
 import inspect
 import re
 import time
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from sqlglot import exp
@@ -33,7 +33,11 @@ from apps.datasource.crud.sql_permission import (
     validate_sql_table_scope,
 )
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import check_sql_read, _unsafe_exec_sql_after_validation, get_sqlglot_dialect
+from apps.db.db import (
+    _unsafe_exec_sql_after_validation,
+    check_sql_read,
+    get_sqlglot_dialect,
+)
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentUser, SessionDep
 from common.error import DataUnavailableError
@@ -42,11 +46,12 @@ from common.user_facing_errors import (
     classify_error,
     data_unavailable_data_result,
     failed_data_result,
+)
+from common.user_facing_errors import (
     looks_like_data_unavailable_error as common_looks_like_data_unavailable_error,
 )
 from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil
-
 
 USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
 
@@ -428,12 +433,18 @@ def _copy_datasource_for_query(datasource: CoreDatasource) -> CoreDatasource:
     return datasource
 
 
+_UNSET_EXECUTION_CONTROL = object()
+
+
 def _execute_after_validation(
         ds: CoreDatasource | AssistantOutDsSchema,
         sql: str,
         *,
         origin_column: bool,
         query_timeout: int | None = None,
+        max_result_rows: int | None | object = _UNSET_EXECUTION_CONTROL,
+        require_controlled_timeout: bool = False,
+        skip_read_validation: bool = False,
 ) -> dict[str, Any]:
     """
     是什么：_execute_after_validation 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -441,23 +452,62 @@ def _execute_after_validation(
     做了什么：调用底层 SQL 执行器，并在执行器支持时传递查询超时时间。
     """
     try:
+        max_result_rows_requested = (
+            max_result_rows is not _UNSET_EXECUTION_CONTROL
+        )
+        roi_controls_requested = (
+            max_result_rows_requested or require_controlled_timeout
+        )
+        try:
+            parameters = inspect.signature(
+                _unsafe_exec_sql_after_validation
+            ).parameters
+            accepts_extra_keywords = any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+        except (TypeError, ValueError):
+            if roi_controls_requested:
+                raise RuntimeError(
+                    "SQL execution adapter cannot verify required ROI controls"
+                )
+            parameters = {}
+            accepts_extra_keywords = False
+
+        def accepts(keyword: str) -> bool:
+            return accepts_extra_keywords or keyword in parameters
+
+        requested_controls: dict[str, object] = {}
         if query_timeout and query_timeout > 0:
-            try:
-                signature = inspect.signature(_unsafe_exec_sql_after_validation)
-                params = signature.parameters
-                accepts_timeout = "query_timeout" in params or any(
-                    param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values()
-                )
-            except (TypeError, ValueError):
-                accepts_timeout = True
-            if accepts_timeout:
-                return _unsafe_exec_sql_after_validation(
-                    ds=ds,
-                    sql=sql,
-                    origin_column=origin_column,
-                    query_timeout=query_timeout,
-                )
-        return _unsafe_exec_sql_after_validation(ds=ds, sql=sql, origin_column=origin_column)
+            requested_controls["query_timeout"] = query_timeout
+        if max_result_rows_requested:
+            requested_controls["max_result_rows"] = max_result_rows
+        if require_controlled_timeout:
+            requested_controls["require_controlled_timeout"] = True
+        # 仅供已完成独立只读校验的内部执行边界使用。
+        if skip_read_validation:
+            requested_controls["skip_read_validation"] = True
+
+        missing_controls = [
+            keyword
+            for keyword in requested_controls
+            if not accepts(keyword)
+        ]
+        if roi_controls_requested and missing_controls:
+            raise RuntimeError(
+                "SQL execution adapter does not support required ROI controls: "
+                + ", ".join(missing_controls)
+            )
+
+        kwargs: dict[str, Any] = {
+            "ds": ds,
+            "sql": sql,
+            "origin_column": origin_column,
+        }
+        for keyword, value in requested_controls.items():
+            if accepts(keyword):
+                kwargs[keyword] = value
+        return _unsafe_exec_sql_after_validation(**kwargs)
     except Exception as exc:
         if classify_error(exc).error_type == DATA_UNAVAILABLE_ERROR_TYPE:
             raise DataUnavailableError(user_data_unavailable_message(str(exc))) from exc

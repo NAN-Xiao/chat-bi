@@ -25,10 +25,20 @@ import router from '@/router'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
+import { roiDashboardApi } from '@/api/roiDashboard'
 import HandleMore from '@/views/dashboard/common/HandleMore.vue'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
+import { useRoiDashboardStore } from '@/stores/roiDashboard'
+import { canAccessRoiDashboard } from '@/utils/workspacePermission'
+import type { RoiDashboard } from '@/views/dashboard/roi/types'
+import {
+  createDashboardNodeClickPlan,
+  publishCurrentTreeBranch,
+  shouldResetOrdinaryDashboardStore,
+} from '@/views/dashboard/roi/roiNavigationBehavior'
+import { ROI_DASHBOARD_TREE_REFRESH_EVENT } from '@/views/dashboard/roi/roiDashboardPanelBehavior'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import {
@@ -42,6 +52,7 @@ const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
+const roiDashboardStore = useRoiDashboardStore()
 const resourceGroupOptRef = ref(null)
 let treeRequestSeq = 0
 const workspaceContextSwitching = ref(false)
@@ -71,7 +82,7 @@ const defaultProps = {
   children: 'children',
   label: 'name',
 }
-type DashboardScope = 'default' | 'my'
+type DashboardScope = 'default' | 'roi' | 'my'
 type TreeOrderItem = {
   id: string | number
   pid: string | number
@@ -85,8 +96,10 @@ type TreeMenuItem = {
   divided?: boolean
 }
 const DEFAULT_GROUP_ID = '__dashboard_group_default__'
+const ROI_GROUP_ID = '__dashboard_group_roi__'
 const MY_GROUP_ID = '__dashboard_group_my__'
 const DEFAULT_SCOPE: DashboardScope = 'default'
+const ROI_SCOPE: DashboardScope = 'roi'
 const MY_SCOPE: DashboardScope = 'my'
 const TREE_NODE_INDENT = 28
 const mounted = ref(false)
@@ -129,6 +142,9 @@ const state = reactive({
 const treeBusy = computed(() => treeLoading.value || copyLoading.value)
 
 const canEditDefaultOrder = computed<boolean>(() => userStore.isTenantAdminUser === true)
+const canManageCurrentWorkspace = computed<boolean>(() =>
+  canAccessRoiDashboard(userStore)
+)
 const isCombinedDashboardTree = computed<boolean>(() => !props.defaultMode)
 const treeEditButtonTip = computed(() =>
   isTreeEditing.value ? t('dashboard.finish_order_edit') : t('dashboard.edit_order')
@@ -136,6 +152,7 @@ const treeEditButtonTip = computed(() =>
 
 const normalizeDashboardScope = (value: unknown): DashboardScope => {
   const scope = Array.isArray(value) ? value[0] : value
+  if (scope === ROI_SCOPE) return ROI_SCOPE
   return scope === DEFAULT_SCOPE ? DEFAULT_SCOPE : MY_SCOPE
 }
 
@@ -207,6 +224,7 @@ const getDashboardScope = (node?: SQTreeNode | null): DashboardScope =>
 
 const getDashboardNodeKey = (scope: DashboardScope, dashboardId?: string | number | null) => {
   if (!dashboardId) return dashboardId
+  if (scope === ROI_SCOPE) return `${ROI_SCOPE}:${dashboardId}`
   return scope === DEFAULT_SCOPE && isCombinedDashboardTree.value
     ? `${DEFAULT_SCOPE}:${dashboardId}`
     : dashboardId
@@ -215,14 +233,19 @@ const getDashboardNodeKey = (scope: DashboardScope, dashboardId?: string | numbe
 const isDefaultDashboardNode = (node?: SQTreeNode | null) =>
   getDashboardScope(node) === DEFAULT_SCOPE || (node as any)?.is_default_tree === true
 const isMyDashboardNode = (node?: SQTreeNode | null) => getDashboardScope(node) === MY_SCOPE
+const isRoiDashboardNode = (node?: SQTreeNode | null) => getDashboardScope(node) === ROI_SCOPE
 const isDefaultGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === DEFAULT_GROUP_ID
 const isMyGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === MY_GROUP_ID
+const isRoiGroupNode = (node?: SQTreeNode | null) =>
+  isVirtualNode(node as SQTreeNode) && String(node?.id || '') === ROI_GROUP_ID
 const findDefaultGroupNode = (nodes: SQTreeNode[] = []) =>
   nodes.find((item) => String(item.id) === DEFAULT_GROUP_ID)
 const findMyGroupNode = (nodes: SQTreeNode[] = []) =>
   nodes.find((item) => String(item.id) === MY_GROUP_ID)
+const findRoiGroupNode = (nodes: SQTreeNode[] = []) =>
+  nodes.find((item) => String(item.id) === ROI_GROUP_ID)
 const findFirstMyDashboardNode = () =>
   findFirstLeafDashboardNode(findMyGroupNode(state.resourceTree)?.children || [])
 
@@ -284,13 +307,46 @@ const normalizeMyDashboardNodes = (
     } as SQTreeNode
   })
 
-const buildCombinedTree = (defaultNodes: SQTreeNode[] = [], myNodes: SQTreeNode[] = []) => [
+const normalizeRoiDashboardNodes = (nodes: RoiDashboard[] = []): SQTreeNode[] =>
+  nodes.map((item) => {
+    const rawId = String(item.id)
+    return {
+      id: getDashboardNodeKey(ROI_SCOPE, rawId) || '',
+      raw_id: rawId,
+      pid: ROI_GROUP_ID,
+      name: item.name,
+      leaf: true,
+      weight: item.sort || 0,
+      type: 'dashboard',
+      node_type: 'leaf',
+      dashboard_scope: ROI_SCOPE,
+      version: item.version,
+      can_edit: true,
+      children: [],
+    } as SQTreeNode
+  })
+
+const buildCombinedTree = (
+  defaultNodes: SQTreeNode[] = [],
+  roiNodes: RoiDashboard[] = [],
+  myNodes: SQTreeNode[] = []
+) => [
   createDashboardGroup(
     DEFAULT_GROUP_ID,
     t('dashboard.default_dashboard'),
     DEFAULT_SCOPE,
     normalizeDefaultDashboardNodes(defaultNodes)
   ),
+  ...(canManageCurrentWorkspace.value
+    ? [
+        createDashboardGroup(
+          ROI_GROUP_ID,
+          t('dashboard.roi_dashboard'),
+          ROI_SCOPE,
+          normalizeRoiDashboardNodes(roiNodes)
+        ),
+      ]
+    : []),
   createDashboardGroup(
     MY_GROUP_ID,
     t('dashboard.dashboard'),
@@ -352,7 +408,11 @@ const resetTreeState = () => {
   expandedArray.value = []
   state.originResourceTree = []
   state.resourceTree = []
-  dashboardStore.canvasDataInit()
+  if (shouldResetOrdinaryDashboardStore(currentRouteDashboardScope())) {
+    dashboardStore.canvasDataInit()
+  } else {
+    roiDashboardStore.reset()
+  }
   nextTick(() => {
     resourceListTree.value?.setCurrentKey?.(null)
     resourceListTree.value?.filter?.(filterText.value)
@@ -468,7 +528,10 @@ const emitDashboardNodeClick = (data?: SQTreeNode) => {
 }
 
 const nodeClick = (data: SQTreeNode, node: any) => {
-  dashboardStore.setCurComponent({ component: null, index: null })
+  const clickPlan = createDashboardNodeClickPlan(getDashboardScope(data))
+  if (clickPlan.resetOrdinaryDashboardSelection) {
+    dashboardStore.setCurComponent({ component: null, index: null })
+  }
   if (isVirtualNode(data)) {
     resourceListTree.value?.setCurrentKey?.(null)
     return
@@ -487,8 +550,8 @@ const nodeClick = (data: SQTreeNode, node: any) => {
       if (isDefaultDashboardNode(data)) {
         rememberDefaultDashboardId(getRawDashboardId(data), userStore)
       }
-      syncDashboardRoute(data)
-      emitDashboardNodeClick(data)
+      if (clickPlan.syncRoute) syncDashboardRoute(data)
+      if (clickPlan.emitNodeClick) emitDashboardNodeClick(data)
     } else {
       resourceListTree.value.setCurrentKey(null)
     }
@@ -534,7 +597,7 @@ const getTree = async () => {
   } catch (error: any) {
     console.warn('Failed to load datasource context before dashboard tree', error)
     if (isCurrentTreeRequest()) {
-      state.originResourceTree = buildCombinedTree([], [])
+      state.originResourceTree = buildCombinedTree([], [], [])
       state.resourceTree = _.cloneDeep(state.originResourceTree)
       afterTreeInit()
       treeLoading.value = false
@@ -545,16 +608,18 @@ const getTree = async () => {
     return
   }
   const requestDatasourceId = datasourceContext.datasourceId
-  state.originResourceTree = buildCombinedTree([], [])
+  state.originResourceTree = buildCombinedTree([], [], [])
   state.resourceTree = _.cloneDeep(state.originResourceTree)
   let defaultNodes: SQTreeNode[] = []
+  let roiNodes: RoiDashboard[] = []
   let myNodes: SQTreeNode[] = []
   let defaultLoaded = false
+  let roiLoaded = !canManageCurrentWorkspace.value
   let myLoaded = false
   let treeInitialized = false
 
   const publishCombinedTree = () => {
-    state.originResourceTree = buildCombinedTree(defaultNodes, myNodes)
+    state.originResourceTree = buildCombinedTree(defaultNodes, roiNodes, myNodes)
     state.resourceTree = _.cloneDeep(state.originResourceTree)
   }
 
@@ -573,14 +638,19 @@ const getTree = async () => {
     const routeResourceId = currentRouteDashboardId()
     if (routeResourceId) {
       const routeScope = currentRouteDashboardScope()
-      const routeBranchLoaded = routeScope === DEFAULT_SCOPE ? defaultLoaded : myLoaded
+      const routeBranchLoaded =
+        routeScope === DEFAULT_SCOPE
+          ? defaultLoaded
+          : routeScope === ROI_SCOPE
+            ? roiLoaded
+            : myLoaded
       if (!routeBranchLoaded) return false
       const routeNode = findDashboardNode(state.resourceTree, routeResourceId, routeScope)
-      return isLeafDashboardNode(routeNode) || (defaultLoaded && myLoaded)
+      return isLeafDashboardNode(routeNode) || (defaultLoaded && roiLoaded && myLoaded)
     }
     const myDashboardNode = findFirstLeafDashboardNode(myNodes)
     if (myLoaded && myDashboardNode) return true
-    return defaultLoaded && myLoaded
+    return defaultLoaded && roiLoaded && myLoaded
   }
 
   const handleTreeBranchLoaded = () => {
@@ -615,10 +685,29 @@ const getTree = async () => {
     .finally(() => {
       defaultLoaded = true
       handleTreeBranchLoaded()
-      if (myLoaded && isCurrentTreeRequest()) {
+      if (roiLoaded && myLoaded && isCurrentTreeRequest()) {
         treeLoading.value = false
       }
     })
+
+  if (canManageCurrentWorkspace.value) {
+    void publishCurrentTreeBranch({
+      request: roiDashboardApi.list(),
+      isCurrent: () =>
+        isCurrentTreeRequest() && datasourceContext.datasourceId === requestDatasourceId,
+      publish: (nodes) => {
+        roiNodes = nodes
+      },
+      onError: (error) => console.warn('加载 ROI 看板树失败', error),
+      complete: () => {
+        roiLoaded = true
+        handleTreeBranchLoaded()
+        if (defaultLoaded && myLoaded && isCurrentTreeRequest()) {
+          treeLoading.value = false
+        }
+      },
+    })
+  }
 
   const myListRequest = requestDatasourceId
     ? dashboardApi.list_resource({ datasource: requestDatasourceId })
@@ -634,7 +723,7 @@ const getTree = async () => {
     .finally(() => {
       myLoaded = true
       handleTreeBranchLoaded()
-      if (defaultLoaded && isCurrentTreeRequest()) {
+      if (defaultLoaded && roiLoaded && isCurrentTreeRequest()) {
         treeLoading.value = false
       }
     })
@@ -662,6 +751,8 @@ const canCopyPlatformTemplateNode = (data: SQTreeNode) =>
   data.node_type === 'leaf' &&
   (data as any).can_copy_to_platform_template === true
 const hasNodeMenu = (data: SQTreeNode) => {
+  if (isRoiGroupNode(data)) return canManageCurrentWorkspace.value
+  if (isRoiDashboardNode(data)) return canManageCurrentWorkspace.value
   if (isDefaultGroupNode(data)) return canEditDefaultOrder.value
   if (isDefaultDashboardNode(data) && data.node_type !== 'leaf') return canEditDefaultOrder.value
   if (canCopyDefaultNode(data)) return true
@@ -675,6 +766,27 @@ const hasNodeMenu = (data: SQTreeNode) => {
   )
 }
 const nodeMenuList = (data: SQTreeNode) => {
+  if (isRoiGroupNode(data)) {
+    return canManageCurrentWorkspace.value
+      ? [
+          {
+            label: t('dashboard.set_roi_datasource'),
+            command: 'setRoiDatasource',
+            svgName: icon_edit_outlined,
+          },
+          {
+            label: t('dashboard.new_roi_dashboard'),
+            command: 'newRoiDashboard',
+            svgName: icon_dashboard,
+          },
+          {
+            label: treeEditButtonTip.value,
+            command: 'toggleTreeEditing',
+            svgName: icon_tree_list,
+          },
+        ]
+      : []
+  }
   if (isDefaultGroupNode(data)) {
     return canEditDefaultOrder.value
       ? [
@@ -703,6 +815,23 @@ const nodeMenuList = (data: SQTreeNode) => {
       })
     }
     return list
+  }
+  if (isRoiDashboardNode(data)) {
+    return canManageCurrentWorkspace.value
+      ? [
+          {
+            label: t('dashboard.rename'),
+            command: 'renameRoiDashboard',
+            svgName: icon_rename,
+          },
+          {
+            label: t('dashboard.delete'),
+            command: 'deleteRoiDashboard',
+            svgName: icon_delete,
+            divided: true,
+          },
+        ]
+      : []
   }
   if (isDefaultDashboardNode(data)) {
     if (data.node_type !== 'leaf' && canEditDefaultOrder.value) {
@@ -875,7 +1004,9 @@ const canCreateFromPlatformTemplate = computed<boolean>(
 const canOpenCreateDashboard = computed<boolean>(
   () => canCreateDashboard.value || canCreateFromPlatformTemplate.value
 )
-const canEditDashboardTree = computed<boolean>(() => canOpenCreateDashboard.value || canEditDefaultOrder.value)
+const canEditDashboardTree = computed<boolean>(
+  () => canOpenCreateDashboard.value || canEditDefaultOrder.value || canManageCurrentWorkspace.value
+)
 
 function createNewObject() {
   if (!canOpenCreateDashboard.value) return
@@ -975,6 +1106,11 @@ useEmitt({
   },
 })
 
+useEmitt({
+  name: ROI_DASHBOARD_TREE_REFRESH_EVENT,
+  callback: () => getTree(),
+})
+
 watch(
   () => datasourceContext.datasourceId,
   () => {
@@ -1041,6 +1177,53 @@ const operation = async (opt: string, data: SQTreeNode) => {
   const resourceId = getRawDashboardId(data)
   if (opt === 'toggleTreeEditing') {
     await toggleTreeEditing()
+    return
+  }
+  if (opt === 'setRoiDatasource') {
+    if (!canManageCurrentWorkspace.value) return
+    roiDashboardStore.openDatasourceSettings()
+    return
+  }
+  if (opt === 'newRoiDashboard') {
+    if (!canManageCurrentWorkspace.value) return
+    roiDashboardStore.requestDashboardCreation()
+    return
+  }
+  if (opt === 'renameRoiDashboard') {
+    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data)) return
+    const result = await ElMessageBox.prompt(
+      t('dashboard.roi_dashboard_name_tips'),
+      t('dashboard.rename'),
+      {
+        inputValue: data.name,
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputPattern: /\S+/,
+        inputErrorMessage: t('dashboard.roi_dashboard_name_required'),
+        autofocus: false,
+      }
+    )
+    await roiDashboardApi.update(String(resourceId), {
+      name: result.value.trim(),
+      version: Number(data.version),
+    })
+    await getTree()
+    return
+  }
+  if (opt === 'deleteRoiDashboard') {
+    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data)) return
+    await ElMessageBox.confirm(t('dashboard.delete_dashboard_warn', [data.name]), {
+      confirmButtonType: 'danger',
+      type: 'warning',
+      autofocus: false,
+      showClose: false,
+    })
+    await roiDashboardApi.remove(String(resourceId))
+    roiDashboardStore.reset()
+    await getTree()
+    if (currentRouteDashboardScope() === ROI_SCOPE) {
+      await router.replace({ path: '/dashboard/index', query: {} })
+    }
     return
   }
   if (opt === 'newLeaf') {
@@ -1177,6 +1360,15 @@ const saveTreeOrder = async () => {
     requests.push(dashboardApi.reorder({ scope: DEFAULT_SCOPE, items: defaultItems }))
   }
   if (!props.defaultMode) {
+    const roiNodes = findRoiGroupNode(state.resourceTree)?.children || []
+    const roiItems = roiNodes.map((node, index) => ({
+      id: String(getRawDashboardId(node)),
+      sort: index + 1,
+      version: Number(node.version),
+    }))
+    if (roiItems.length && canManageCurrentWorkspace.value) {
+      requests.push(roiDashboardApi.reorder({ items: roiItems }))
+    }
     const myNodes = findMyGroupNode(state.resourceTree)?.children || []
     const myItems = collectTreeOrderItems(myNodes, MY_GROUP_ID, MY_SCOPE)
     if (myItems.length) {
@@ -1212,6 +1404,9 @@ const allowNodeDrop = (draggingNode: any, dropNode: any, type: string) => {
   if (!isTreeEditing.value || !isRealNode(draggingNode?.data) || !dropNode?.data) return false
   if (isDefaultDashboardNode(draggingNode.data) && !canEditDefaultOrder.value) return false
   if (!sameDashboardScope(draggingNode.data, dropNode.data)) return false
+  if (isRoiDashboardNode(draggingNode.data)) {
+    return type !== 'inner' && isRealNode(dropNode.data)
+  }
   if (type === 'inner') {
     return dropNode.data.node_type !== 'leaf'
   }
@@ -1473,7 +1668,7 @@ defineExpose({
                 :menu-list="nodeMenuList(data)"
                 :icon-name="icon_more_outlined"
                 vertical-dots
-                :create-menu="isMyGroupNode(data)"
+                :create-menu="isMyGroupNode(data) || isRoiGroupNode(data)"
                 placement="bottom"
                 :offset="6"
                 @handle-command="(opt: string) => operation(opt, data)"

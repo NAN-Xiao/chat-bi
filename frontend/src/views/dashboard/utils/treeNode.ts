@@ -17,7 +17,8 @@ export interface SQTreeNode {
   can_copy_to_platform_template?: boolean
   virtual?: boolean
   raw_id?: string | number
-  dashboard_scope?: 'default' | 'my'
+  dashboard_scope?: 'default' | 'roi' | 'my'
+  version?: number
   share_id?: string
   children?: SQTreeNode[]
 }
