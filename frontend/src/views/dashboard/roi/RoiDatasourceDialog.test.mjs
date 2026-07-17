@@ -49,19 +49,97 @@ assert.equal(
 )
 assert.equal(getRoiDatasourceSaveErrorMessage(new Error('internal stack')), fallback)
 
+const deferred = () => {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+const runSave = async (guard, request, events) => {
+  const token = guard.beginSave()
+  assert.notEqual(token, null, '打开会话必须允许保存')
+  await request.promise
+  if (guard.markSaved(token)) events.push('saved')
+}
+
+{
+  const guard = createRoiDatasourceDialogCloseGuard()
+  const request = deferred()
+  const events = []
+  guard.beginOpen()
+  const pending = runSave(guard, request, events)
+  if (guard.beginCancel()) events.push('cancelled')
+  request.resolve()
+  await pending
+  assert.deepEqual(events, ['cancelled'], 'pending save 被取消后旧响应不得 emit saved')
+}
+
+{
+  const guard = createRoiDatasourceDialogCloseGuard()
+  const oldRequest = deferred()
+  const events = []
+  guard.beginOpen()
+  const oldSave = runSave(guard, oldRequest, events)
+  assert.equal(guard.beginCancel(), true)
+  guard.beginOpen()
+  oldRequest.resolve()
+  await oldSave
+  assert.deepEqual(events, [], '重开后旧会话响应不得保存或关闭新会话')
+  const newToken = guard.beginSave()
+  assert.notEqual(newToken, null, '旧响应完成后新会话必须仍保持可保存')
+}
+
+{
+  const guard = createRoiDatasourceDialogCloseGuard()
+  const request = deferred()
+  const events = []
+  guard.beginOpen()
+  const pending = runSave(guard, request, events)
+  request.resolve()
+  await pending
+  assert.deepEqual(events, ['saved'], '正常保存只能 emit saved')
+  assert.equal(guard.beginCancel(), false, '保存完成后的 close 不得 emit cancelled')
+}
+
+{
+  const guard = createRoiDatasourceDialogCloseGuard()
+  const failedRequest = deferred()
+  guard.beginOpen()
+  const failed = runSave(guard, failedRequest, [])
+  failedRequest.reject(new Error('save failed'))
+  await assert.rejects(failed, /save failed/)
+
+  const retryRequest = deferred()
+  const events = []
+  const retry = runSave(guard, retryRequest, events)
+  retryRequest.resolve()
+  await retry
+  assert.deepEqual(events, ['saved'], '保存失败后当前会话必须允许重试')
+}
+
 {
   const guard = createRoiDatasourceDialogCloseGuard()
   guard.beginOpen()
-  guard.markSaved()
-  assert.equal(guard.beginCancel(), false, '保存成功后的关闭事件不得再触发 cancelled')
+  assert.equal(guard.beginCancel(), true)
+  assert.equal(guard.beginCancel(), false, '同一次会话重复取消必须安全')
+}
 
+{
+  const guard = createRoiDatasourceDialogCloseGuard()
   guard.beginOpen()
-  assert.equal(guard.beginCancel(), true, '重新打开后用户取消必须正常触发 cancelled')
-  assert.equal(guard.beginCancel(), false, '同一次关闭只能触发一次 cancelled')
+  const first = guard.beginSave()
+  const duplicate = guard.beginSave()
+  assert.equal(guard.markSaved(first), true)
+  assert.equal(guard.markSaved(duplicate), false, '同一次会话重复保存最多完成一次')
 }
 
 assert.match(dialog, /createRoiDatasourceDialogCloseGuard/)
-assert.match(dialog, /closeGuard\.markSaved\(\)/)
+assert.match(dialog, /closeGuard\.beginSave\(\)/)
+assert.match(dialog, /closeGuard\.markSaved\(saveToken\)/)
 assert.match(dialog, /closeGuard\.beginCancel\(\)/)
 
 console.log('ROI datasource dialog tests passed')

@@ -27,6 +27,7 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0
 const {
   buildRoiPanelLoadPlan,
   canEditRoiConfig,
+  cancelPendingRoiDatasourceResolution,
   createRoiConfigLoadCoordinator,
   createFirstChartEditorState,
   createRoiNewChartEditorState,
@@ -165,8 +166,16 @@ assert.match(panel, /canEditRoiConfig\(config\.value\)/)
 assert.match(panel, /createRoiNewChartEditorState\([\s\S]*config\.value/)
 assert.match(
   panel,
-  /onBeforeUnmount\([\s\S]*roiConfigLoadCoordinator\.invalidate\(\)[\s\S]*roiDashboardStore\.reset\(\)/
+  /onBeforeUnmount\([\s\S]*datasourceResolution\s*=\s*cancelPendingRoiDatasourceResolution\(datasourceResolution\)[\s\S]*roiConfigLoadCoordinator\.invalidate\(\)[\s\S]*roiDashboardStore\.reset\(\)/
 )
+
+{
+  const resolved = []
+  const released = cancelPendingRoiDatasourceResolution((saved) => resolved.push(saved))
+  assert.deepEqual(resolved, [false], '卸载必须先结束等待中的新建流程')
+  assert.equal(released, null, '卸载后不得保留 datasource resolution 闭包')
+  assert.equal(cancelPendingRoiDatasourceResolution(null), null)
+}
 
 {
   const calls = []

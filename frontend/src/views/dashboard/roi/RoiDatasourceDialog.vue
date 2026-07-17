@@ -24,6 +24,7 @@ const datasourceId = ref<number | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const closeGuard = createRoiDatasourceDialogCloseGuard()
+let activeSaveToken: ReturnType<typeof closeGuard.beginSave> = null
 
 async function loadOptions() {
   loading.value = true
@@ -42,6 +43,8 @@ watch(
   (visible) => {
     if (!visible) return
     closeGuard.beginOpen()
+    activeSaveToken = null
+    saving.value = false
     datasourceId.value = props.config?.datasource_id ?? null
     void loadOptions()
   },
@@ -53,6 +56,9 @@ async function save() {
     ElMessage.warning('请选择数据源')
     return
   }
+  const saveToken = closeGuard.beginSave()
+  if (!saveToken) return
+  activeSaveToken = saveToken
   saving.value = true
   try {
     const config = await roiDashboardApi.updateConfig(
@@ -62,18 +68,25 @@ async function save() {
       },
       roiCustomErrorRequestConfig
     )
-    closeGuard.markSaved()
+    if (!closeGuard.markSaved(saveToken)) return
     emit('saved', config)
     emit('update:modelValue', false)
   } catch (error) {
-    ElMessage.error(getRoiDatasourceSaveErrorMessage(error))
+    if (closeGuard.isCurrent(saveToken)) {
+      ElMessage.error(getRoiDatasourceSaveErrorMessage(error))
+    }
   } finally {
-    saving.value = false
+    if (activeSaveToken === saveToken) {
+      activeSaveToken = null
+      saving.value = false
+    }
   }
 }
 
 function cancel() {
   if (!closeGuard.beginCancel()) return
+  activeSaveToken = null
+  saving.value = false
   emit('cancelled')
   emit('update:modelValue', false)
 }

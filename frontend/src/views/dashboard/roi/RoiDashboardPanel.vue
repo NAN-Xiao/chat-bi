@@ -17,6 +17,7 @@ import {
 } from './roiChartGridBehavior'
 import {
   canEditRoiConfig,
+  cancelPendingRoiDatasourceResolution,
   closeRoiChartEditor,
   buildRoiPanelLoadPlan,
   createRoiConfigLoadCoordinator,
@@ -307,6 +308,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  datasourceResolution = cancelPendingRoiDatasourceResolution(datasourceResolution)
   roiConfigLoadCoordinator.invalidate()
   roiDashboardStore.reset()
 })

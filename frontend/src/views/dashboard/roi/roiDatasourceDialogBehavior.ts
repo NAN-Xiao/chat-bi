@@ -7,17 +7,33 @@ const ROI_CONFIG_CONFLICT_MESSAGES = new Set([
 const ROI_CONFIG_SAVE_FALLBACK = '保存 ROI 数据源失败，请稍后重试'
 
 export function createRoiDatasourceDialogCloseGuard() {
-  let completed = false
+  let generation = 0
+  let saveSequence = 0
+  let phase: 'closed' | 'open' | 'cancelled' | 'saved' = 'closed'
+
+  const isCurrent = (token: { generation: number; saveSequence: number } | null) =>
+    token !== null && token.generation === generation && phase === 'open'
+
   return {
     beginOpen() {
-      completed = false
+      generation += 1
+      phase = 'open'
     },
-    markSaved() {
-      completed = true
+    beginSave() {
+      if (phase !== 'open') return null
+      saveSequence += 1
+      return { generation, saveSequence }
+    },
+    isCurrent,
+    markSaved(token: { generation: number; saveSequence: number } | null) {
+      if (!isCurrent(token)) return false
+      phase = 'saved'
+      return true
     },
     beginCancel() {
-      if (completed) return false
-      completed = true
+      if (phase !== 'open') return false
+      phase = 'cancelled'
+      generation += 1
       return true
     },
   }

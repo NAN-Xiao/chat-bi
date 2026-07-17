@@ -68,6 +68,13 @@ export async function refreshRoiChartsWithConfig(dependencies: {
 export const canEditRoiConfig = (config: Pick<RoiConfig, 'can_edit'> | null) =>
   config?.can_edit === true
 
+export function cancelPendingRoiDatasourceResolution(
+  resolution: ((saved: boolean) => void) | null
+): null {
+  resolution?.(false)
+  return null
+}
+
 export function buildRoiPanelLoadPlan(input: {
   reason: RoiPanelLoadReason
   routeMode: 'roi' | 'ordinary'
