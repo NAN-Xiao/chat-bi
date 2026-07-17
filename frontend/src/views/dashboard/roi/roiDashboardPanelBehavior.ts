@@ -20,6 +20,54 @@ type CreateFlowDependencies = {
 
 export type RoiPanelLoadReason = 'mounted' | 'route-enter' | 'explicit-config'
 
+type RoiConfigLoadDependencies = {
+  load: () => Promise<unknown>
+  isLoaded: () => boolean
+}
+
+export function createRoiConfigLoadCoordinator(dependencies: RoiConfigLoadDependencies) {
+  let generation = 0
+  let inFlight: Promise<void> | null = null
+
+  const run = (force: boolean) => {
+    if (!force && dependencies.isLoaded()) return Promise.resolve()
+    if (inFlight) return inFlight
+
+    const requestGeneration = generation
+    const request = (async () => {
+      await dependencies.load()
+      if (requestGeneration !== generation || !dependencies.isLoaded()) {
+        throw new Error('ROI config load invalidated')
+      }
+    })()
+    const tracked = request.finally(() => {
+      if (inFlight === tracked) inFlight = null
+    })
+    inFlight = tracked
+    return tracked
+  }
+
+  return {
+    ensure: () => run(false),
+    refresh: () => run(true),
+    invalidate: () => {
+      generation += 1
+      inFlight = null
+    },
+  }
+}
+
+export async function refreshRoiChartsWithConfig(dependencies: {
+  loadCharts: () => Promise<unknown>
+  refreshConfig: () => Promise<unknown>
+}) {
+  await dependencies.loadCharts()
+  await dependencies.refreshConfig()
+}
+
+export const canEditRoiConfig = (config: Pick<RoiConfig, 'can_edit'> | null) =>
+  config?.can_edit === true
+
 export function buildRoiPanelLoadPlan(input: {
   reason: RoiPanelLoadReason
   routeMode: 'roi' | 'ordinary'
@@ -39,6 +87,18 @@ export const createFirstChartEditorState = (dashboardId: string): RoiChartEditor
   firstChart: true,
 })
 
+export function createRoiNewChartEditorState(
+  config: Pick<RoiConfig, 'can_edit'> | null,
+  dashboardId: string,
+  firstChart: boolean
+): RoiChartEditorState | null {
+  if (!canEditRoiConfig(config)) return null
+  return {
+    ...createFirstChartEditorState(dashboardId),
+    firstChart,
+  }
+}
+
 export const closeRoiChartEditor = (state: RoiChartEditorState): RoiChartEditorState => ({
   ...state,
   visible: false,
@@ -56,8 +116,11 @@ export async function runRoiDashboardCreateFlow(dependencies: CreateFlowDependen
     path: '/dashboard/index',
     query: { resourceId: String(created.id), dashboardMode: 'roi' },
   })
-  if (dependencies.getConfig()?.can_edit) {
-    dependencies.openEditor(createFirstChartEditorState(String(created.id)))
-  }
+  const editorState = createRoiNewChartEditorState(
+    dependencies.getConfig(),
+    String(created.id),
+    true
+  )
+  if (editorState) dependencies.openEditor(editorState)
   return created
 }

@@ -12,7 +12,7 @@ const panel = readFileSync(panelPath, 'utf8')
 assert.match(panel, /ensureRoiDatasourceBeforeCreate/)
 assert.match(panel, /openCreateDashboardNameDialog/)
 assert.match(panel, /openFirstChartEditor/)
-assert.match(panel, /editorState\.value\s*=\s*\{[\s\S]*mode:\s*'create'/)
+assert.match(panel, /createRoiNewChartEditorState/)
 assert.doesNotMatch(panel, /DashboardSqlEditor\.vue|useDatasourceContextStore/)
 
 const build = await esbuild.build({
@@ -26,11 +26,25 @@ const build = await esbuild.build({
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0].text).toString('base64')}`
 const {
   buildRoiPanelLoadPlan,
+  canEditRoiConfig,
+  createRoiConfigLoadCoordinator,
   createFirstChartEditorState,
+  createRoiNewChartEditorState,
+  refreshRoiChartsWithConfig,
   runRoiDashboardCreateFlow,
   closeRoiChartEditor,
 } =
   await import(moduleUrl)
+
+const deferred = () => {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
 
 assert.deepEqual(
   buildRoiPanelLoadPlan({ reason: 'mounted', routeMode: 'ordinary', dashboardId: '301' }),
@@ -55,6 +69,104 @@ assert.deepEqual(
 assert.match(panel, /buildRoiPanelLoadPlan/)
 assert.match(panel, /reason:\s*'mounted'/)
 assert.match(panel, /loadPage\('route-enter'\)/)
+
+{
+  let loaded = false
+  let apiCalls = 0
+  const request = deferred()
+  const coordinator = createRoiConfigLoadCoordinator({
+    load: async () => {
+      apiCalls += 1
+      await request.promise
+      loaded = true
+    },
+    isLoaded: () => loaded,
+  })
+  const settingsLoad = coordinator.ensure()
+  const createLoad = coordinator.ensure()
+  assert.equal(apiCalls, 1, '设置数据源与新建流程必须共享同一个配置请求')
+  request.resolve()
+  await Promise.all([settingsLoad, createLoad])
+  assert.equal(loaded, true)
+}
+
+{
+  let loaded = false
+  let apiCalls = 0
+  const requests = [deferred(), deferred()]
+  const coordinator = createRoiConfigLoadCoordinator({
+    load: async () => {
+      const request = requests[apiCalls]
+      apiCalls += 1
+      await request.promise
+      loaded = true
+    },
+    isLoaded: () => loaded,
+  })
+  const first = coordinator.ensure()
+  const shared = coordinator.ensure()
+  requests[0].reject(new Error('load failed'))
+  const failed = await Promise.allSettled([first, shared])
+  assert.deepEqual(failed.map((item) => item.status), ['rejected', 'rejected'])
+  assert.equal(apiCalls, 1, '共享失败不得产生第二个交错请求')
+
+  const retry = coordinator.ensure()
+  assert.equal(apiCalls, 2, '失败清理后必须允许下一次动作重试')
+  requests[1].resolve()
+  await retry
+  assert.equal(loaded, true)
+}
+
+{
+  let loaded = false
+  const requests = [deferred(), deferred()]
+  let apiCalls = 0
+  const coordinator = createRoiConfigLoadCoordinator({
+    load: async () => {
+      const request = requests[apiCalls]
+      apiCalls += 1
+      await request.promise
+    },
+    isLoaded: () => loaded,
+  })
+  const stale = coordinator.ensure()
+  coordinator.invalidate()
+  const current = coordinator.ensure()
+  requests[0].resolve()
+  await assert.rejects(stale, /invalidated/)
+  assert.equal(loaded, false, '旧代次完成不得恢复已重置的配置状态')
+  loaded = true
+  requests[1].resolve()
+  await current
+  assert.equal(apiCalls, 2)
+}
+
+for (const chartCount of [0, 1]) {
+  let config = { can_execute: true, can_edit: true }
+  const calls = []
+  await refreshRoiChartsWithConfig({
+    loadCharts: async () => calls.push(`charts:${chartCount}`),
+    refreshConfig: async () => {
+      calls.push('config')
+      config = { can_execute: false, can_edit: false }
+    },
+  })
+  assert.deepEqual(calls, [`charts:${chartCount}`, 'config'])
+  assert.equal(canEditRoiConfig(config), false, '动态撤权后空看板和已有图表都必须禁用编辑')
+  assert.equal(
+    createRoiNewChartEditorState(config, '901', chartCount === 0),
+    null,
+    '动态撤权后不得生成新增或首图编辑器状态'
+  )
+}
+assert.match(panel, /refreshRoiChartsWithConfig/)
+assert.match(panel, /roiConfigLoadCoordinator\.refresh/)
+assert.match(panel, /canEditRoiConfig\(config\.value\)/)
+assert.match(panel, /createRoiNewChartEditorState\([\s\S]*config\.value/)
+assert.match(
+  panel,
+  /onBeforeUnmount\([\s\S]*roiConfigLoadCoordinator\.invalidate\(\)[\s\S]*roiDashboardStore\.reset\(\)/
+)
 
 {
   const calls = []
@@ -162,7 +274,7 @@ assert.match(panel, /loadPage\('route-enter'\)/)
   assert.equal(editorOpened, false, 'config.can_edit=false 时不得打开首图编辑器')
 }
 
-assert.match(panel, /config\.value\?\.can_edit/)
+assert.match(panel, /canEditRoiConfig\(config\.value\)/)
 assert.match(panel, /当前账号无此数据源权限/)
 assert.doesNotMatch(panel, /currentCharts\.value\.some\(\(chart\)\s*=>\s*chart\.can_execute/)
 assert.match(

@@ -6,6 +6,23 @@ const ROI_CONFIG_CONFLICT_MESSAGES = new Set([
 
 const ROI_CONFIG_SAVE_FALLBACK = '保存 ROI 数据源失败，请稍后重试'
 
+export function createRoiDatasourceDialogCloseGuard() {
+  let completed = false
+  return {
+    beginOpen() {
+      completed = false
+    },
+    markSaved() {
+      completed = true
+    },
+    beginCancel() {
+      if (completed) return false
+      completed = true
+      return true
+    },
+  }
+}
+
 export function getRoiDatasourceSaveErrorMessage(error: unknown): string {
   const response = (error as { response?: { status?: number; data?: unknown } })?.response
   if (Number(response?.status) !== 409) return ROI_CONFIG_SAVE_FALLBACK

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { Plus, RefreshRight, Setting } from '@element-plus/icons-vue'
@@ -16,8 +16,12 @@ import {
   mergeReorderedRoiCharts,
 } from './roiChartGridBehavior'
 import {
+  canEditRoiConfig,
   closeRoiChartEditor,
   buildRoiPanelLoadPlan,
+  createRoiConfigLoadCoordinator,
+  createRoiNewChartEditorState,
+  refreshRoiChartsWithConfig,
   ROI_DASHBOARD_TREE_REFRESH_EVENT,
   runRoiDashboardCreateFlow,
 } from './roiDashboardPanelBehavior'
@@ -60,11 +64,15 @@ const dashboard = computed(() =>
   dashboards.value.find((item) => String(item.id) === String(props.dashboardId))
 )
 const canExecute = computed(() => config.value?.can_execute === true)
-const canEdit = computed(() => config.value?.can_edit === true)
+const canEdit = computed(() => canEditRoiConfig(config.value))
 const datasourceDialogOpen = computed(() => storeEditorState.value.datasourceDialogOpen)
 const datasourceDialogVisible = computed(
   () => datasourceDialogOpen.value && configLoaded.value
 )
+const roiConfigLoadCoordinator = createRoiConfigLoadCoordinator({
+  load: () => roiDashboardStore.loadConfig(),
+  isLoaded: () => configLoaded.value,
+})
 
 async function loadPage(reason: 'mounted' | 'route-enter') {
   const plan = buildRoiPanelLoadPlan({
@@ -75,7 +83,7 @@ async function loadPage(reason: 'mounted' | 'route-enter') {
   if (!plan.length) return
   try {
     const pageLoads: Promise<unknown>[] = []
-    if (plan.includes('config')) pageLoads.push(roiDashboardStore.loadConfig())
+    if (plan.includes('config')) pageLoads.push(roiConfigLoadCoordinator.refresh())
     if (plan.includes('dashboards')) pageLoads.push(roiDashboardStore.loadDashboards())
     await Promise.all(pageLoads)
     if (plan.includes('charts')) {
@@ -93,10 +101,22 @@ async function ensureConfigLoaded() {
     routeMode: routeMode.value,
     dashboardId: String(props.dashboardId || ''),
   })
-  if (plan.includes('config')) await roiDashboardStore.loadConfig()
+  if (plan.includes('config')) await roiConfigLoadCoordinator.ensure()
 }
 
 async function reloadCharts() {
+  if (!props.dashboardId || routeMode.value !== 'roi') return
+  try {
+    await refreshRoiChartsWithConfig({
+      loadCharts: () => roiDashboardStore.loadCharts(String(props.dashboardId)),
+      refreshConfig: roiConfigLoadCoordinator.refresh,
+    })
+  } catch {
+    ElMessage.error('刷新 ROI 图表失败，请稍后重试')
+  }
+}
+
+async function reloadChartsAfterConfigSave() {
   if (!props.dashboardId || routeMode.value !== 'roi') return
   try {
     await roiDashboardStore.loadCharts(String(props.dashboardId))
@@ -130,15 +150,8 @@ async function openCreateDashboardNameDialog() {
   }
 }
 
-function openFirstChartEditor(dashboardId: string) {
-  editorState.value = {
-    visible: true,
-    mode: 'create',
-    dashboardId,
-    chartId: null,
-    initialValue: null,
-    firstChart: true,
-  }
+function openFirstChartEditor(state: RoiChartEditorState) {
+  editorState.value = state
 }
 
 async function createDashboard() {
@@ -157,7 +170,7 @@ async function createDashboard() {
         roiDashboardStore.publishCharts(String(created.id), [])
       },
       navigate: (target) => router.push(target),
-      openEditor: (state) => openFirstChartEditor(state.dashboardId),
+      openEditor: openFirstChartEditor,
     })
     if (created) emitter.emit(ROI_DASHBOARD_TREE_REFRESH_EVENT)
   } catch {
@@ -172,7 +185,7 @@ function handleDatasourceSaved(saved: RoiConfig) {
   storeEditorState.value.datasourceDialogOpen = false
   datasourceResolution?.(true)
   datasourceResolution = null
-  if (routeMode.value === 'roi') void reloadCharts()
+  if (routeMode.value === 'roi') void reloadChartsAfterConfigSave()
 }
 
 function handleDatasourceCancelled() {
@@ -182,15 +195,13 @@ function handleDatasourceCancelled() {
 }
 
 function openNewChartEditor() {
-  if (!canEdit.value || !props.dashboardId) return
-  editorState.value = {
-    visible: true,
-    mode: 'create',
-    dashboardId: String(props.dashboardId),
-    chartId: null,
-    initialValue: null,
-    firstChart: currentCharts.value.length === 0,
-  }
+  if (!props.dashboardId) return
+  const nextState = createRoiNewChartEditorState(
+    config.value,
+    String(props.dashboardId),
+    currentCharts.value.length === 0
+  )
+  if (nextState) editorState.value = nextState
 }
 
 function openEditChartEditor(chart: RoiChart) {
@@ -294,6 +305,11 @@ watch(
 onMounted(() => {
   void loadPage('mounted')
 })
+
+onBeforeUnmount(() => {
+  roiConfigLoadCoordinator.invalidate()
+  roiDashboardStore.reset()
+})
 </script>
 
 <template>
@@ -308,7 +324,7 @@ onMounted(() => {
           <el-button circle :icon="Setting" @click="roiDashboardStore.openDatasourceSettings()" />
         </el-tooltip>
         <el-tooltip content="刷新图表" placement="bottom">
-          <el-button circle :icon="RefreshRight" @click="reloadCharts" />
+          <el-button circle :icon="RefreshRight" @click="reloadCharts()" />
         </el-tooltip>
         <el-button
           type="primary"

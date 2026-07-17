@@ -20,7 +20,8 @@ const build = await esbuild.build({
   absWorkingDir: process.cwd(),
 })
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0].text).toString('base64')}`
-const { getRoiDatasourceSaveErrorMessage } = await import(moduleUrl)
+const { createRoiDatasourceDialogCloseGuard, getRoiDatasourceSaveErrorMessage } =
+  await import(moduleUrl)
 
 const safeDetails = [
   '已有 ROI 图表时不能更换数据源',
@@ -47,5 +48,20 @@ assert.equal(
   '非 409 即使 detail 命中也不得透传'
 )
 assert.equal(getRoiDatasourceSaveErrorMessage(new Error('internal stack')), fallback)
+
+{
+  const guard = createRoiDatasourceDialogCloseGuard()
+  guard.beginOpen()
+  guard.markSaved()
+  assert.equal(guard.beginCancel(), false, '保存成功后的关闭事件不得再触发 cancelled')
+
+  guard.beginOpen()
+  assert.equal(guard.beginCancel(), true, '重新打开后用户取消必须正常触发 cancelled')
+  assert.equal(guard.beginCancel(), false, '同一次关闭只能触发一次 cancelled')
+}
+
+assert.match(dialog, /createRoiDatasourceDialogCloseGuard/)
+assert.match(dialog, /closeGuard\.markSaved\(\)/)
+assert.match(dialog, /closeGuard\.beginCancel\(\)/)
 
 console.log('ROI datasource dialog tests passed')

@@ -3,7 +3,10 @@ import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus-secondary'
 import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
 import type { RoiConfig, RoiDatasourceOption } from './types'
-import { getRoiDatasourceSaveErrorMessage } from './roiDatasourceDialogBehavior'
+import {
+  createRoiDatasourceDialogCloseGuard,
+  getRoiDatasourceSaveErrorMessage,
+} from './roiDatasourceDialogBehavior'
 
 const props = defineProps<{
   modelValue: boolean
@@ -20,7 +23,7 @@ const options = ref<RoiDatasourceOption[]>([])
 const datasourceId = ref<number | null>(null)
 const loading = ref(false)
 const saving = ref(false)
-const cancelling = ref(false)
+const closeGuard = createRoiDatasourceDialogCloseGuard()
 
 async function loadOptions() {
   loading.value = true
@@ -38,7 +41,7 @@ watch(
   () => props.modelValue,
   (visible) => {
     if (!visible) return
-    cancelling.value = false
+    closeGuard.beginOpen()
     datasourceId.value = props.config?.datasource_id ?? null
     void loadOptions()
   },
@@ -59,6 +62,7 @@ async function save() {
       },
       roiCustomErrorRequestConfig
     )
+    closeGuard.markSaved()
     emit('saved', config)
     emit('update:modelValue', false)
   } catch (error) {
@@ -69,8 +73,7 @@ async function save() {
 }
 
 function cancel() {
-  if (cancelling.value) return
-  cancelling.value = true
+  if (!closeGuard.beginCancel()) return
   emit('cancelled')
   emit('update:modelValue', false)
 }
