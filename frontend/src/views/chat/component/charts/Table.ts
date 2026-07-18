@@ -76,6 +76,16 @@ const createSmartSortFunc = (sortMethod: string) => {
   }
 }
 
+const TABLE_MIN_COLUMN_WIDTH = 92
+const TABLE_HORIZONTAL_INSET = 8
+
+function resolveTableColumnWidth(containerWidth: number, visibleColumnCount: number) {
+  return Math.max(
+    TABLE_MIN_COLUMN_WIDTH,
+    Math.floor(containerWidth / Math.max(visibleColumnCount, 1))
+  )
+}
+
 export class Table extends BaseChart {
   table?: TableSheet = undefined
 
@@ -95,8 +105,27 @@ export class Table extends BaseChart {
       typeof mountTarget === 'string' ? document.getElementById(mountTarget) : mountTarget
 
     this.debounceRender = debounce(async (width?: number, height?: number) => {
-      if (this.table) {
-        this.table.changeSheetSize(width, height)
+      if (this.table && width && height) {
+        const visibleColumnCount = this.axis?.filter((axis) => !axis.hidden).length ?? 0
+        const contentWidth = Math.max(width - TABLE_HORIZONTAL_INSET, 320)
+        const columnWidth = resolveTableColumnWidth(contentWidth, visibleColumnCount)
+
+        this.table.setOptions({
+          width: contentWidth,
+          height,
+          style: {
+            layoutWidthType: 'adaptive',
+            colCell: {
+              height: 32,
+              width: columnWidth,
+            },
+            dataCell: {
+              height: 30,
+              width: columnWidth,
+            },
+          },
+        })
+        this.table.changeSheetSize(contentWidth, height)
         await this.table.render(false)
       }
     }, 200)
@@ -177,9 +206,12 @@ export class Table extends BaseChart {
     const containerElement =
       typeof this.container === 'string' ? document.getElementById(this.container) : this.container
     const visibleAxis = this.axis?.filter((a) => !a.hidden) ?? []
-    const containerWidth = Math.max((containerElement?.clientWidth || 600) - 8, 320)
+    const containerWidth = Math.max(
+      (containerElement?.clientWidth || 600) - TABLE_HORIZONTAL_INSET,
+      320
+    )
     const containerHeight = containerElement?.clientHeight || 360
-    const columnWidth = Math.max(92, Math.floor(containerWidth / Math.max(visibleAxis.length, 1)))
+    const columnWidth = resolveTableColumnWidth(containerWidth, visibleAxis.length)
 
     const s2Options: S2Options = {
       width: containerWidth,
