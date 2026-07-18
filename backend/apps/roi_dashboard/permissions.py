@@ -1,6 +1,7 @@
 """ROI 专用看板的工作空间角色与数据源授权规则。"""
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlmodel import select
 
 from apps.datasource.crud.binding import list_bound_datasource_ids_for_tenant
@@ -51,7 +52,10 @@ def list_roi_accessible_datasource_ids(
         return set()
 
     active_ids = session.exec(
-        select(CoreDatasource.id).where(CoreDatasource.id.in_(candidate_ids))
+        select(CoreDatasource.id).where(
+            CoreDatasource.id.in_(candidate_ids),
+            func.lower(CoreDatasource.status) == "success",
+        )
     ).all()
     return {int(value) for value in active_ids if value is not None}
 

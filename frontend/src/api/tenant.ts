@@ -23,6 +23,8 @@ export interface TenantInfo {
   owner_email?: string
   bound_datasource_id?: number | string | null
   bound_datasource_name?: string | null
+  roi_datasource_id?: number | string | null
+  roi_datasource_name?: string | null
   bound_project_id?: number | string | null
   bound_project_name?: string | null
   bound_external_mcp_server_id?: number | string | null
@@ -464,6 +466,7 @@ export const tenantApi = {
     billing_email?: string
     subscription_note?: string
     datasource_id?: number | string | null
+    roi_datasource_id?: number | string | null
     external_mcp_server_id?: number | string | null
   }) => request.post<TenantInfo>('/system/tenant', data),
   edit: (
@@ -480,6 +483,7 @@ export const tenantApi = {
       billing_email?: string
       subscription_note?: string
       datasource_id?: number | string | null
+      roi_datasource_id?: number | string | null
       external_mcp_server_id?: number | string | null
     }
   ) => request.put<TenantInfo>(`/system/tenant/${id}`, data),

@@ -1,10 +1,7 @@
 """独立 ROI 看板 API。"""
 
 from fastapi import APIRouter, Depends
-from sqlmodel import select
 
-from apps.datasource.models.datasource import CoreDatasource
-from apps.roi_dashboard.permissions import list_roi_accessible_datasource_ids
 from apps.roi_dashboard.schemas import (
     RoiChartCreate,
     RoiChartListResponse,
@@ -14,12 +11,10 @@ from apps.roi_dashboard.schemas import (
     RoiChartResponse,
     RoiChartUpdate,
     RoiConfigResponse,
-    RoiConfigUpdate,
     RoiDashboardCreate,
     RoiDashboardReorderRequest,
     RoiDashboardResponse,
     RoiDashboardUpdate,
-    RoiDatasourceOption,
 )
 from apps.roi_dashboard.service import (
     create_roi_chart,
@@ -32,7 +27,6 @@ from apps.roi_dashboard.service import (
     preview_roi_chart,
     reorder_roi_charts,
     reorder_roi_dashboards,
-    set_roi_config,
     update_roi_chart,
     update_roi_dashboard,
 )
@@ -46,39 +40,9 @@ router = APIRouter(
 )
 
 
-@router.get("/datasources", response_model=list[RoiDatasourceOption])
-def list_roi_datasources_api(
-    session: SessionDep,
-    current_user: CurrentUser,
-) -> list[RoiDatasourceOption]:
-    datasource_ids = list_roi_accessible_datasource_ids(session, current_user)
-    if not datasource_ids:
-        return []
-    rows = session.exec(
-        select(
-            CoreDatasource.id,
-            CoreDatasource.name,
-            CoreDatasource.type,
-            CoreDatasource.type_name,
-        )
-        .where(CoreDatasource.id.in_(datasource_ids))
-        .order_by(CoreDatasource.name.asc(), CoreDatasource.id.asc())
-    ).all()
-    return [RoiDatasourceOption.model_validate(row) for row in rows]
-
-
 @router.get("/config", response_model=RoiConfigResponse | None)
 def get_roi_config_api(session: SessionDep, current_user: CurrentUser):
     return get_roi_config(session, current_user)
-
-
-@router.put("/config", response_model=RoiConfigResponse)
-def set_roi_config_api(
-    request: RoiConfigUpdate,
-    session: SessionDep,
-    current_user: CurrentUser,
-):
-    return set_roi_config(session, current_user, request)
 
 
 @router.get("/list", response_model=list[RoiDashboardResponse])

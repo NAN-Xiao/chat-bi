@@ -7,12 +7,10 @@ import type {
   RoiChartReorderRequest,
   RoiChartUpdate,
   RoiConfig,
-  RoiConfigUpdate,
   RoiDashboard,
   RoiDashboardCreate,
   RoiDashboardReorderRequest,
   RoiDashboardUpdate,
-  RoiDatasourceOption,
 } from '@/views/dashboard/roi/types'
 
 export const roiCustomErrorRequestConfig: FullRequestConfig = {
@@ -20,12 +18,8 @@ export const roiCustomErrorRequestConfig: FullRequestConfig = {
 }
 
 export const roiDashboardApi = {
-  listDatasources: (config?: FullRequestConfig) =>
-    request.get<RoiDatasourceOption[]>('/dashboard/roi/datasources', config),
   getConfig: (config?: FullRequestConfig) =>
     request.get<RoiConfig | null>('/dashboard/roi/config', config),
-  updateConfig: (payload: RoiConfigUpdate, config?: FullRequestConfig) =>
-    request.put<RoiConfig>('/dashboard/roi/config', payload, config),
   list: (config?: FullRequestConfig) => request.get<RoiDashboard[]>('/dashboard/roi/list', config),
   create: (payload: RoiDashboardCreate, config?: FullRequestConfig) =>
     request.post<RoiDashboard>('/dashboard/roi', payload, config),

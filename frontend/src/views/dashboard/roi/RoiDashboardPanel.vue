@@ -2,15 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
-import { Plus, RefreshRight, Setting } from '@element-plus/icons-vue'
+import { Plus, RefreshRight } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
 import { useRoiDashboardStore } from '@/stores/roiDashboard'
 import { useEmitt } from '@/utils/useEmitt'
 import RoiChartGrid from './RoiChartGrid.vue'
-import RoiDatasourceDialog from './RoiDatasourceDialog.vue'
 import RoiSqlEditor from './RoiSqlEditor.vue'
-import type { RoiChart, RoiChartEditorState, RoiConfig, RoiLayoutSpan } from './types'
+import type { RoiChart, RoiChartEditorState, RoiLayoutSpan } from './types'
 import {
   buildRoiChartOrderItems,
   canManageRoiChart,
@@ -18,7 +17,6 @@ import {
 } from './roiChartGridBehavior'
 import {
   canEditRoiConfig,
-  cancelPendingRoiDatasourceResolution,
   closeRoiChartEditor,
   buildRoiPanelLoadPlan,
   createRoiConfigLoadCoordinator,
@@ -53,7 +51,6 @@ const editorState = ref<RoiChartEditorState>({
   firstChart: false,
 })
 const createFlowRunning = ref(false)
-let datasourceResolution: ((saved: boolean) => void) | null = null
 
 const routeMode = computed(() => {
   const value = Array.isArray(route.query.dashboardMode)
@@ -67,10 +64,6 @@ const dashboard = computed(() =>
 )
 const canExecute = computed(() => config.value?.can_execute === true)
 const canEdit = computed(() => canEditRoiConfig(config.value))
-const datasourceDialogOpen = computed(() => storeEditorState.value.datasourceDialogOpen)
-const datasourceDialogVisible = computed(
-  () => datasourceDialogOpen.value && configLoaded.value
-)
 const roiConfigLoadCoordinator = createRoiConfigLoadCoordinator({
   load: () => roiDashboardStore.loadConfig(),
   isLoaded: () => configLoaded.value,
@@ -127,16 +120,6 @@ async function reloadChartsAfterConfigSave() {
   }
 }
 
-async function ensureRoiDatasourceBeforeCreate() {
-  await ensureConfigLoaded()
-  if (config.value) return Promise.resolve(true)
-  storeEditorState.value.datasourceDialogOpen = true
-  return new Promise<boolean>((resolve) => {
-    datasourceResolution?.(false)
-    datasourceResolution = resolve
-  })
-}
-
 async function openCreateDashboardNameDialog() {
   try {
     const result = await ElMessageBox.prompt('请输入 ROI 看板名称', '新建下属看板', {
@@ -163,7 +146,8 @@ async function createDashboard() {
     const created = await runRoiDashboardCreateFlow({
       ensureConfigLoaded,
       getConfig: () => config.value,
-      requestDatasource: ensureRoiDatasourceBeforeCreate,
+      onMissingConfig: () => ElMessage.warning('请联系 SaaS 管理员配置 ROI 数据源'),
+      onForbiddenConfig: () => ElMessage.warning('当前账号无此数据源权限'),
       requestName: openCreateDashboardNameDialog,
       createDashboard: (name) =>
         roiDashboardApi.create({ name }, roiCustomErrorRequestConfig),
@@ -180,20 +164,6 @@ async function createDashboard() {
   } finally {
     createFlowRunning.value = false
   }
-}
-
-function handleDatasourceSaved(saved: RoiConfig) {
-  roiDashboardStore.publishConfig(saved)
-  storeEditorState.value.datasourceDialogOpen = false
-  datasourceResolution?.(true)
-  datasourceResolution = null
-  if (routeMode.value === 'roi') void reloadChartsAfterConfigSave()
-}
-
-function handleDatasourceCancelled() {
-  storeEditorState.value.datasourceDialogOpen = false
-  datasourceResolution?.(false)
-  datasourceResolution = null
 }
 
 function openNewChartEditor() {
@@ -289,16 +259,6 @@ watch(
   }
 )
 
-watch(datasourceDialogOpen, (visible) => {
-  if (!visible || configLoaded.value) return
-  void ensureConfigLoaded().catch(() => {
-    storeEditorState.value.datasourceDialogOpen = false
-    datasourceResolution?.(false)
-    datasourceResolution = null
-    ElMessage.error('加载 ROI 配置失败，请稍后重试')
-  })
-})
-
 watch(
   () => [props.dashboardId, routeMode.value],
   ([dashboardId, mode], previous) => {
@@ -314,7 +274,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  datasourceResolution = cancelPendingRoiDatasourceResolution(datasourceResolution)
   roiConfigLoadCoordinator.invalidate()
   roiDashboardStore.reset()
 })
@@ -328,9 +287,6 @@ onBeforeUnmount(() => {
         <span v-if="config?.datasource_name">{{ config.datasource_name }}</span>
       </div>
       <div class="roi-dashboard-panel__actions">
-        <el-tooltip content="设置数据源" placement="bottom">
-          <el-button circle :icon="Setting" @click="roiDashboardStore.openDatasourceSettings()" />
-        </el-tooltip>
         <el-tooltip content="刷新图表" placement="bottom">
           <el-button circle :icon="RefreshRight" @click="reloadCharts()" />
         </el-tooltip>
@@ -348,6 +304,9 @@ onBeforeUnmount(() => {
     <div v-if="roiDashboardStore.permissionError" class="roi-dashboard-panel__state">
       {{ roiDashboardStore.permissionError }}
     </div>
+    <div v-else-if="!config" class="roi-dashboard-panel__state is-permission">
+      请联系 SaaS 管理员配置 ROI 数据源
+    </div>
     <div v-else-if="config && !canExecute" class="roi-dashboard-panel__state is-permission">
       当前账号无此数据源权限
     </div>
@@ -360,14 +319,6 @@ onBeforeUnmount(() => {
       @remove="removeChart"
       @reorder="persistChartOrder"
       @span-change="changeChartSpan"
-    />
-
-    <RoiDatasourceDialog
-      :model-value="datasourceDialogVisible"
-      :config="config"
-      @update:model-value="storeEditorState.datasourceDialogOpen = $event"
-      @saved="handleDatasourceSaved"
-      @cancelled="handleDatasourceCancelled"
     />
 
     <RoiSqlEditor

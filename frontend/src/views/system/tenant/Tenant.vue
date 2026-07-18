@@ -327,6 +327,31 @@
               </el-option>
             </el-select>
           </el-form-item>
+          <el-form-item :label="t('tenant.roi_datasource')">
+            <el-select
+              v-model="form.roi_datasource_id"
+              clearable
+              filterable
+              :disabled="isDefaultTenantForm"
+              :loading="datasourceLoading"
+              style="width: 100%"
+              :placeholder="t('tenant.select_roi_datasource')"
+            >
+              <el-option
+                v-for="datasource in datasourceOptions"
+                :key="datasource.id"
+                :label="datasource.name"
+                :value="datasource.id"
+              >
+                <div class="datasource-option">
+                  <span class="datasource-name ellipsis">{{ datasource.name }}</span>
+                  <span class="datasource-type ellipsis">{{
+                    datasource.type_name || datasource.type
+                  }}</span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
           <el-form-item :label="t('tenant.bound_external_mcp')">
             <el-select
               v-model="form.external_mcp_server_id"
@@ -554,6 +579,7 @@ const defaultForm = {
   billing_email: '',
   subscription_note: '',
   datasource_id: '' as number | string,
+  roi_datasource_id: '' as number | string,
   external_mcp_server_id: '' as number | string,
 }
 const form = reactive({ ...defaultForm })
@@ -676,6 +702,8 @@ const normalizeBoundDatasourceId = (tenant?: TenantInfo | null) =>
 
 const normalizeBoundDatasourceName = (tenant?: TenantInfo | null) =>
   tenant?.bound_datasource_name || tenant?.bound_project_name || ''
+
+const normalizeRoiDatasourceId = (tenant?: TenantInfo | null) => tenant?.roi_datasource_id || ''
 
 const normalizeBoundExternalMcpId = (tenant?: TenantInfo | null) =>
   tenant?.bound_external_mcp_server_id || ''
@@ -891,6 +919,7 @@ const openDrawer = async (tenant: TenantInfo | null) => {
     billing_email: tenant?.billing_email || '',
     subscription_note: tenant?.subscription_note || '',
     datasource_id: normalizeBoundDatasourceId(tenant),
+    roi_datasource_id: normalizeRoiDatasourceId(tenant),
     external_mcp_server_id: normalizeBoundExternalMcpId(tenant),
   })
   drawerVisible.value = true
@@ -1015,6 +1044,7 @@ const saveTenant = () => {
         ...(!isDefaultTenantForm.value
           ? {
               datasource_id: form.datasource_id || null,
+              roi_datasource_id: form.roi_datasource_id || null,
               external_mcp_server_id: form.external_mcp_server_id || null,
             }
           : {}),

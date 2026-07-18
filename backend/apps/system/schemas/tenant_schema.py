@@ -3,7 +3,23 @@
 """
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _validate_roi_datasource_id(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("ROI 数据源 ID 必须为正整数")
+    if isinstance(value, int):
+        datasource_id = value
+    elif isinstance(value, str) and value.isascii() and value.isdecimal():
+        datasource_id = int(value)
+    else:
+        raise ValueError("ROI 数据源 ID 必须为正整数")
+    if datasource_id <= 0:
+        raise ValueError("ROI 数据源 ID 必须为正整数")
+    return datasource_id
 
 
 class TenantDTO(BaseModel):
@@ -36,6 +52,8 @@ class TenantDTO(BaseModel):
     bound_project_name: Optional[str] = None
     bound_external_mcp_server_id: Optional[int] = None
     bound_external_mcp_server_name: Optional[str] = None
+    roi_datasource_id: Optional[int] = None
+    roi_datasource_name: Optional[str] = None
     admin_count: int = 0
     member_count: int = 0
     join_time: int = 0
@@ -75,6 +93,12 @@ class TenantCreator(BaseModel):
     owner_email: Optional[str] = Field(default=None, max_length=100)
     datasource_id: Optional[int] = None
     external_mcp_server_id: Optional[int] = None
+    roi_datasource_id: Optional[int] = None
+
+    @field_validator("roi_datasource_id", mode="before")
+    @classmethod
+    def validate_roi_datasource_id(cls, value: object) -> int | None:
+        return _validate_roi_datasource_id(value)
 
 
 class TenantEditor(BaseModel):
@@ -93,6 +117,12 @@ class TenantEditor(BaseModel):
     subscription_note: Optional[str] = Field(default=None, max_length=2000)
     datasource_id: Optional[int] = None
     external_mcp_server_id: Optional[int] = None
+    roi_datasource_id: Optional[int] = None
+
+    @field_validator("roi_datasource_id", mode="before")
+    @classmethod
+    def validate_roi_datasource_id(cls, value: object) -> int | None:
+        return _validate_roi_datasource_id(value)
 
 
 class TenantStatus(BaseModel):

@@ -770,11 +770,6 @@ const nodeMenuList = (data: SQTreeNode) => {
     return canManageCurrentWorkspace.value
       ? [
           {
-            label: t('dashboard.set_roi_datasource'),
-            command: 'setRoiDatasource',
-            svgName: icon_edit_outlined,
-          },
-          {
             label: t('dashboard.new_roi_dashboard'),
             command: 'newRoiDashboard',
             svgName: icon_dashboard,
@@ -1177,11 +1172,6 @@ const operation = async (opt: string, data: SQTreeNode) => {
   const resourceId = getRawDashboardId(data)
   if (opt === 'toggleTreeEditing') {
     await toggleTreeEditing()
-    return
-  }
-  if (opt === 'setRoiDatasource') {
-    if (!canManageCurrentWorkspace.value) return
-    roiDashboardStore.openDatasourceSettings()
     return
   }
   if (opt === 'newRoiDashboard') {

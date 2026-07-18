@@ -40,7 +40,7 @@ const roiMenu = source.match(
   /if \(isRoiGroupNode\(data\)\) \{([\s\S]*?)\r?\n  \}\r?\n  if \(isDefaultGroupNode/
 )
 assert.ok(roiMenu, 'ROI 根组需要独立菜单')
-assert.match(roiMenu[1], /setRoiDatasource/)
+assert.doesNotMatch(roiMenu[1], /setRoiDatasource|openDatasourceSettings/)
 assert.match(roiMenu[1], /newRoiDashboard/)
 assert.match(roiMenu[1], /toggleTreeEditing/)
 assert.doesNotMatch(roiMenu[1], /newFolder|setDefault|copyDefault/)

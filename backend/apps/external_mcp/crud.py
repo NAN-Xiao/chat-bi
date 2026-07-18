@@ -21,6 +21,15 @@ from common.utils.crypto import decrypt_sensitive_text, encrypt_sensitive_text
 from common.utils.time import get_timestamp
 
 
+def _finish_binding(session: SessionDep, record, *, commit: bool) -> None:
+    if commit:
+        session.commit()
+        if record is not None:
+            session.refresh(record)
+        return
+    session.flush()
+
+
 def supports_external_mcp_binding(session: SessionDep) -> bool:
     """
     是什么：supports_external_mcp_binding 检查第三方 MCP 绑定表是否可用。
@@ -656,6 +665,7 @@ def bind_tenant_to_external_mcp(
     user: CurrentUser,
     tenant_id: int,
     external_mcp_server_id: int | None,
+    commit: bool = True,
 ) -> CoreExternalMcpServer | None:
     """
     是什么：bind_tenant_to_external_mcp 绑定工作空间到一个第三方 MCP 数据源。
@@ -673,7 +683,7 @@ def bind_tenant_to_external_mcp(
         session.query(CoreExternalMcpTenantBinding).filter(
             CoreExternalMcpTenantBinding.tenant_id == target_tenant_id
         ).delete(synchronize_session=False)
-        session.commit()
+        _finish_binding(session, None, commit=commit)
         return None
 
     server = session.get(CoreExternalMcpServer, int(external_mcp_server_id))
@@ -700,6 +710,5 @@ def bind_tenant_to_external_mcp(
                 create_time=now,
             )
         )
-    session.commit()
-    session.refresh(server)
+    _finish_binding(session, server, commit=commit)
     return server

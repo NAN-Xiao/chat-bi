@@ -29,7 +29,9 @@ def make_user(
 def session() -> Session:
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE core_datasource (id BIGINT PRIMARY KEY)"))
+        connection.execute(
+            text("CREATE TABLE core_datasource (id BIGINT PRIMARY KEY, status TEXT)")
+        )
         connection.execute(
             text(
                 "CREATE TABLE core_datasource_user ("
@@ -47,10 +49,15 @@ def session() -> Session:
         yield db_session
 
 
-def add_datasource(session: Session, datasource_id: int) -> None:
+def add_datasource(
+    session: Session,
+    datasource_id: int,
+    *,
+    status: str = "Success",
+) -> None:
     session.exec(
-        text("INSERT INTO core_datasource (id) VALUES (:id)"),
-        params={"id": datasource_id},
+        text("INSERT INTO core_datasource (id, status) VALUES (:id, :status)"),
+        params={"id": datasource_id, "status": status},
     )
 
 
@@ -136,8 +143,9 @@ def test_roi_datasources_union_workspace_and_direct_account_grants(
     )
 
     user = make_user(id=7, tenant_id=11, tenant_role="admin")
-    for datasource_id in (101, 202, 303):
-        add_datasource(session, datasource_id)
+    add_datasource(session, 101, status="Success")
+    add_datasource(session, 202, status="success")
+    add_datasource(session, 303, status="Success")
     bind_datasource(session, tenant_id=11, datasource_id=101)
     bind_datasource(session, tenant_id=22, datasource_id=202)
     grant_datasource_user(session, user_id=7, datasource_id=202)
@@ -151,3 +159,26 @@ def test_roi_datasources_union_workspace_and_direct_account_grants(
     assert has_roi_datasource_access(session, user, 202) is True
     assert has_roi_datasource_access(session, user, 303) is False
     assert has_roi_datasource_access(session, user, 404) is False
+
+
+def test_inactive_datasources_are_excluded_from_all_roi_permission_candidates(
+    session: Session,
+) -> None:
+    from apps.roi_dashboard.permissions import (
+        has_roi_datasource_access,
+        list_roi_accessible_datasource_ids,
+    )
+
+    user = make_user(id=7, tenant_id=11, tenant_role="admin")
+    add_datasource(session, 101, status="failed")
+    add_datasource(session, 202, status="disabled")
+    add_datasource(session, 303, status="successful")
+    bind_datasource(session, tenant_id=11, datasource_id=101)
+    grant_datasource_user(session, user_id=7, datasource_id=202)
+    grant_datasource_user(session, user_id=7, datasource_id=303)
+    session.commit()
+
+    assert list_roi_accessible_datasource_ids(session, user) == set()
+    assert has_roi_datasource_access(session, user, 101) is False
+    assert has_roi_datasource_access(session, user, 202) is False
+    assert has_roi_datasource_access(session, user, 303) is False

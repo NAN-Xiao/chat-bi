@@ -30,19 +30,21 @@ from apps.roi_dashboard.schemas import (
     RoiChartReorderRequest,
     RoiChartUpdate,
     RoiConfigResponse,
-    RoiConfigUpdate,
     RoiDashboardCreate,
     RoiDashboardReorderRequest,
     RoiDashboardUpdate,
 )
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 from common.core.redis_client import build_redis_url, user_redis_key
 from common.utils.utils import AppLogUtil
 
 VERSION_CONFLICT_MESSAGE = "数据已被其他人修改，请刷新后重试"
-CONFIG_CONFLICT_MESSAGE = "ROI 配置已被其他人创建或修改，请刷新后重试"
 ROI_DATASOURCE_PERMISSION_MESSAGE = "当前账号无此数据源权限"
+ROI_CONFIG_WRITE_CONFLICT_MESSAGE = "ROI 配置已被其他请求修改，请刷新后重试"
+ROI_DATASOURCE_BINDING_CHART_MESSAGE = "已有 ROI 图表时不能更换或清除数据源"
+DEFAULT_TENANT_ROI_CONFIG_MESSAGE = "默认工作空间不能配置 ROI 数据源"
 
 
 class RoiChartCacheAdapter(Protocol):
@@ -193,6 +195,14 @@ def _invalidate_roi_chart_cache(
     )
 
 
+def invalidate_roi_chart_cache_for_tenant(
+    tenant_id: int,
+    cache_adapter: RoiChartCacheAdapter | None = None,
+) -> None:
+    """在外层事务提交成功后失效工作空间的 ROI 图表缓存。"""
+    _invalidate_roi_chart_cache(cache_adapter, int(tenant_id))
+
+
 def _active_config_statement(tenant_id: int):
     return select(CoreRoiWorkspaceConfig).where(
         CoreRoiWorkspaceConfig.tenant_id == tenant_id,
@@ -206,6 +216,178 @@ def lock_active_roi_config(
 ) -> CoreRoiWorkspaceConfig | None:
     """锁定当前租户活动配置，供换源与图表写入共享同一事务协议。"""
     return session.exec(_active_config_statement(tenant_id).with_for_update()).first()
+
+
+def _parse_roi_datasource_id(datasource_id: object) -> int | None:
+    if datasource_id is None:
+        return None
+    if isinstance(datasource_id, bool):
+        raise HTTPException(status_code=400, detail="ROI 数据源 ID 不合法")
+    if isinstance(datasource_id, int):
+        target_datasource_id = datasource_id
+    elif (
+        isinstance(datasource_id, str)
+        and datasource_id.isascii()
+        and datasource_id.isdecimal()
+    ):
+        target_datasource_id = int(datasource_id)
+    else:
+        raise HTTPException(status_code=400, detail="ROI 数据源 ID 不合法")
+    if target_datasource_id <= 0:
+        raise HTTPException(status_code=400, detail="ROI 数据源 ID 不合法")
+    return target_datasource_id
+
+
+def _require_no_active_roi_charts(
+    session: SessionDep,
+    tenant_id: int,
+    detail: str,
+) -> None:
+    active_chart_count = session.exec(
+        select(func.count(CoreRoiDashboardChart.id)).where(
+            CoreRoiDashboardChart.tenant_id == tenant_id,
+            CoreRoiDashboardChart.deleted.is_(False),
+            CoreRoiDashboardChart.status == 1,
+        )
+    ).one()
+    if active_chart_count:
+        raise HTTPException(status_code=409, detail=detail)
+
+
+def list_roi_workspace_config_rows(
+    session: SessionDep,
+    tenant_ids: list[int],
+) -> list[tuple[int, int, str | None]]:
+    """批量读取工作空间的活动 ROI 数据源配置。"""
+    ids = sorted({int(tenant_id) for tenant_id in tenant_ids if tenant_id is not None})
+    if not ids:
+        return []
+    rows = session.exec(
+        select(
+            CoreRoiWorkspaceConfig.tenant_id,
+            CoreRoiWorkspaceConfig.datasource_id,
+            CoreDatasource.name,
+        )
+        .outerjoin(CoreDatasource, CoreDatasource.id == CoreRoiWorkspaceConfig.datasource_id)
+        .where(
+            CoreRoiWorkspaceConfig.tenant_id.in_(ids),
+            CoreRoiWorkspaceConfig.deleted.is_(False),
+        )
+        .order_by(CoreRoiWorkspaceConfig.tenant_id)
+    ).all()
+    return [
+        (int(tenant_id), int(datasource_id), datasource_name)
+        for tenant_id, datasource_id, datasource_name in rows
+    ]
+
+
+def set_roi_datasource_for_tenant(
+    session: SessionDep,
+    *,
+    tenant_id: int,
+    datasource_id: int | None,
+    operator_id: int | None,
+    commit: bool,
+    cache_adapter: RoiChartCacheAdapter | None = None,
+) -> CoreRoiWorkspaceConfig | None:
+    """由平台管理入口维护工作空间 ROI 数据源绑定。"""
+    target_tenant_id = int(tenant_id)
+    if target_tenant_id == DEFAULT_TENANT_ID:
+        raise HTTPException(status_code=400, detail=DEFAULT_TENANT_ROI_CONFIG_MESSAGE)
+    target_datasource_id = _parse_roi_datasource_id(datasource_id)
+    record = lock_active_roi_config(session, target_tenant_id)
+    if record is not None and target_datasource_id == int(record.datasource_id):
+        return record
+
+    if record is not None:
+        _require_no_active_roi_charts(
+            session,
+            target_tenant_id,
+            ROI_DATASOURCE_BINDING_CHART_MESSAGE,
+        )
+
+    datasource_row = (
+        session.exec(
+            select(CoreDatasource.id, CoreDatasource.status).where(
+                CoreDatasource.id == target_datasource_id
+            )
+        ).first()
+        if target_datasource_id is not None
+        else None
+    )
+    if target_datasource_id is not None and datasource_row is None:
+        raise HTTPException(status_code=404, detail="ROI 数据源不存在")
+    if (
+        datasource_row is not None
+        and (
+            not isinstance(datasource_row[1], str)
+            or datasource_row[1].lower() != "success"
+        )
+    ):
+        raise HTTPException(status_code=400, detail="ROI 数据源不可用")
+
+    now = _now()
+    if target_datasource_id is None:
+        if record is None:
+            return None
+        record.deleted = True
+        record.version += 1
+        record.update_by = operator_id
+        record.update_time = now
+        session.add(record)
+        result = None
+    elif record is None:
+        try:
+            with session.begin_nested():
+                result = session.exec(
+                    select(CoreRoiWorkspaceConfig)
+                    .where(
+                        CoreRoiWorkspaceConfig.tenant_id == target_tenant_id,
+                        CoreRoiWorkspaceConfig.deleted.is_(True),
+                    )
+                    .order_by(CoreRoiWorkspaceConfig.update_time.desc())
+                    .with_for_update()
+                ).first()
+                if result is None:
+                    result = CoreRoiWorkspaceConfig(
+                        tenant_id=target_tenant_id,
+                        datasource_id=target_datasource_id,
+                        version=1,
+                        create_by=operator_id,
+                        update_by=operator_id,
+                        create_time=now,
+                        update_time=now,
+                        deleted=False,
+                    )
+                else:
+                    result.datasource_id = target_datasource_id
+                    result.version += 1
+                    result.update_by = operator_id
+                    result.update_time = now
+                    result.deleted = False
+                session.add(result)
+                session.flush()
+        except IntegrityError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=ROI_CONFIG_WRITE_CONFLICT_MESSAGE,
+            ) from exc
+    else:
+        record.datasource_id = target_datasource_id
+        record.version += 1
+        record.update_by = operator_id
+        record.update_time = now
+        session.add(record)
+        result = record
+
+    if record is not None:
+        session.flush()
+    if commit:
+        session.commit()
+        if result is not None:
+            session.refresh(result)
+        _invalidate_roi_chart_cache(cache_adapter, target_tenant_id)
+    return result
 
 
 def _active_dashboard_statement(tenant_id: int):
@@ -276,87 +458,6 @@ def get_roi_config(
     return None if record is None else _config_response(session, current_user, record)
 
 
-def set_roi_config(
-    session: SessionDep,
-    current_user: CurrentUser,
-    request: RoiConfigUpdate,
-    *,
-    cache_adapter: RoiChartCacheAdapter | None = None,
-) -> RoiConfigResponse:
-    """创建或按版本更新当前工作空间的 ROI 数据源配置。"""
-    tenant_id = _tenant_id(current_user)
-    if not has_roi_datasource_access(session, current_user, request.datasource_id):
-        raise HTTPException(status_code=403, detail="当前账号无此 ROI 数据源权限")
-
-    record = lock_active_roi_config(session, tenant_id)
-    now = _now()
-    operator_id = _operator_id(current_user)
-    if record is None:
-        if request.version is not None:
-            raise HTTPException(status_code=409, detail=CONFIG_CONFLICT_MESSAGE)
-        record = CoreRoiWorkspaceConfig(
-            tenant_id=tenant_id,
-            datasource_id=request.datasource_id,
-            version=1,
-            create_by=operator_id,
-            update_by=operator_id,
-            create_time=now,
-            update_time=now,
-            deleted=False,
-        )
-        session.add(record)
-        try:
-            session.commit()
-        except IntegrityError as exc:
-            session.rollback()
-            raise HTTPException(status_code=409, detail=CONFIG_CONFLICT_MESSAGE) from exc
-        session.refresh(record)
-        _invalidate_roi_chart_cache(cache_adapter, tenant_id)
-        return _config_response(session, current_user, record)
-
-    if request.version is None or request.version != record.version:
-        raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
-
-    if record.datasource_id != request.datasource_id:
-        active_chart_count = session.exec(
-            select(func.count(CoreRoiDashboardChart.id)).where(
-                CoreRoiDashboardChart.tenant_id == tenant_id,
-                CoreRoiDashboardChart.deleted.is_(False),
-                CoreRoiDashboardChart.status == 1,
-            )
-        ).one()
-        if active_chart_count:
-            raise HTTPException(
-                status_code=409,
-                detail="已有 ROI 图表时不能更换数据源",
-            )
-
-    result = session.exec(
-        update(CoreRoiWorkspaceConfig)
-        .where(
-            CoreRoiWorkspaceConfig.id == record.id,
-            CoreRoiWorkspaceConfig.tenant_id == tenant_id,
-            CoreRoiWorkspaceConfig.deleted.is_(False),
-            CoreRoiWorkspaceConfig.version == request.version,
-        )
-        .values(
-            datasource_id=request.datasource_id,
-            version=request.version + 1,
-            update_by=operator_id,
-            update_time=now,
-        )
-    )
-    if result.rowcount != 1:
-        session.rollback()
-        raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
-    session.commit()
-    _invalidate_roi_chart_cache(cache_adapter, tenant_id)
-    updated = session.exec(_active_config_statement(tenant_id)).first()
-    if updated is None:
-        raise HTTPException(status_code=404, detail="ROI 配置不存在")
-    return _config_response(session, current_user, updated)
-
-
 def list_roi_dashboards(
     session: SessionDep,
     current_user: CurrentUser,
@@ -381,6 +482,7 @@ def create_roi_dashboard(
 ) -> CoreRoiDashboard:
     """在当前工作空间创建共享 ROI 看板。"""
     tenant_id = _tenant_id(current_user)
+    _require_roi_mutation_access(session, current_user, tenant_id)
     now = _now()
     operator_id = _operator_id(current_user)
     record = CoreRoiDashboard(
@@ -572,7 +674,7 @@ def _load_config_or_409(
     return config
 
 
-def _require_roi_chart_write_access(
+def _require_roi_mutation_access(
     session: SessionDep,
     current_user: CurrentUser,
     tenant_id: int,
@@ -799,7 +901,7 @@ def update_roi_chart(
     chart_id = _parse_path_id(chart_id, "ROI 图表")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     record = _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
-    config = _require_roi_chart_write_access(session, current_user, tenant_id)
+    config = _require_roi_mutation_access(session, current_user, tenant_id)
     if record.version != request.version:
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT_MESSAGE)
     query_result = execute_roi_read_query(session, current_user, request.sql)
@@ -855,7 +957,7 @@ def delete_roi_chart(
     chart_id = _parse_path_id(chart_id, "ROI 图表")
     _load_dashboard_or_404(session, tenant_id, dashboard_id)
     _load_chart_or_404(session, tenant_id, dashboard_id, chart_id)
-    config = _require_roi_chart_write_access(session, current_user, tenant_id)
+    config = _require_roi_mutation_access(session, current_user, tenant_id)
     session.exec(
         update(CoreRoiDashboardChart)
         .where(
@@ -912,7 +1014,7 @@ def reorder_roi_charts(
                 chart_id,
             )
 
-    config = _require_roi_chart_write_access(session, current_user, tenant_id)
+    config = _require_roi_mutation_access(session, current_user, tenant_id)
     if len(records_by_id) != len(parsed_items):
         raise HTTPException(status_code=400, detail="ROI 图表排序项不能重复")
 
