@@ -202,10 +202,11 @@ function handleDateRangeChange(value: unknown) {
 .roi-chart-card__header {
   display: flex;
   min-height: 48px;
-  padding: 0 8px 0 16px;
+  padding: 0 12px 0 16px;
   align-items: center;
-  justify-content: space-between;
   border-bottom: 1px solid var(--ed-border-color-extra-light);
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
 .roi-chart-card__title {
@@ -216,15 +217,15 @@ function handleDateRangeChange(value: unknown) {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1 1 0;
+  flex: 1 1 auto;
 }
 
 .roi-chart-card__date-range {
   display: flex;
   min-width: 0;
+  max-width: 250px;
   flex: 0 1 250px;
-  justify-content: center;
-  padding: 0 8px;
+  padding: 0;
 
   span,
   :deep(.ed-date-editor) {
@@ -236,6 +237,11 @@ function handleDateRangeChange(value: unknown) {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  gap: 2px;
+
+  :deep(.ed-button + .ed-button) {
+    margin-left: 0;
+  }
 }
 
 .icon-button {

@@ -57,6 +57,26 @@ assert.match(
 assert.match(panel, /@date-range-change="changeChartDateRange"/)
 assert.match(
   card,
+  /\.roi-chart-card__header\s*\{[\s\S]*?gap:\s*8px[\s\S]*?flex-wrap:\s*nowrap/,
+  '卡片标题栏必须保持单行并统一分区间距'
+)
+assert.match(
+  card,
+  /\.roi-chart-card__date-range\s*\{[\s\S]*?max-width:\s*250px[\s\S]*?padding:\s*0/,
+  '日期选择器必须限制最大宽度并取消额外横向 padding'
+)
+assert.match(
+  card,
+  /\.roi-chart-card__actions\s*\{[\s\S]*?gap:\s*2px/,
+  '卡片操作按钮必须使用统一间距'
+)
+assert.match(
+  card,
+  /\.roi-chart-card__actions[\s\S]*?:deep\(\.ed-button \+ \.ed-button\)[\s\S]*?margin-left:\s*0/,
+  'Element Plus 默认相邻按钮外边距不得破坏操作区间距'
+)
+assert.match(
+  card,
   /\.roi-chart-card__body\s*\{[\s\S]*?display:\s*flex/,
   '图表内容区必须为图表挂载容器提供可用高度'
 )
