@@ -9,15 +9,12 @@ assert.equal(existsSync(panelPath), true, '必须提供 ROI 看板主页面')
 assert.equal(existsSync(behaviorPath), true, '必须提供可独立验证的新建流程')
 
 const panel = readFileSync(panelPath, 'utf8')
-assert.match(panel, /ensureRoiDatasourceBeforeCreate/)
 assert.match(panel, /openCreateDashboardNameDialog/)
 assert.match(panel, /openFirstChartEditor/)
 assert.match(panel, /createRoiNewChartEditorState/)
 assert.doesNotMatch(panel, /DashboardSqlEditor\.vue|useDatasourceContextStore/)
-assert.doesNotMatch(panel, /content="设置数据源"/)
-assert.doesNotMatch(panel, /content="刷新图表"/)
-assert.doesNotMatch(panel, /:icon="Setting"/)
-assert.doesNotMatch(panel, /:icon="RefreshRight"/)
+assert.doesNotMatch(panel, /RoiDatasourceDialog|openDatasourceSettings|设置数据源/)
+assert.match(panel, /请联系 SaaS 管理员配置 ROI 数据源/)
 assert.match(panel, /添加图表/)
 
 const build = await esbuild.build({
@@ -32,7 +29,6 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0
 const {
   buildRoiPanelLoadPlan,
   canEditRoiConfig,
-  cancelPendingRoiDatasourceResolution,
   createRoiConfigLoadCoordinator,
   createFirstChartEditorState,
   createRoiNewChartEditorState,
@@ -88,11 +84,11 @@ assert.match(panel, /loadPage\('route-enter'\)/)
     },
     isLoaded: () => loaded,
   })
-  const settingsLoad = coordinator.ensure()
+  const configLoad = coordinator.ensure()
   const createLoad = coordinator.ensure()
-  assert.equal(apiCalls, 1, '设置数据源与新建流程必须共享同一个配置请求')
+  assert.equal(apiCalls, 1, '配置读取与新建流程必须共享同一个配置请求')
   request.resolve()
-  await Promise.all([settingsLoad, createLoad])
+  await Promise.all([configLoad, createLoad])
   assert.equal(loaded, true)
 }
 
@@ -171,39 +167,28 @@ assert.match(panel, /canEditRoiConfig\(config\.value\)/)
 assert.match(panel, /createRoiNewChartEditorState\([\s\S]*config\.value/)
 assert.match(
   panel,
-  /onBeforeUnmount\([\s\S]*datasourceResolution\s*=\s*cancelPendingRoiDatasourceResolution\(datasourceResolution\)[\s\S]*roiConfigLoadCoordinator\.invalidate\(\)[\s\S]*roiDashboardStore\.reset\(\)/
+  /onBeforeUnmount\([\s\S]*roiConfigLoadCoordinator\.invalidate\(\)[\s\S]*roiDashboardStore\.reset\(\)/
 )
-
-{
-  const resolved = []
-  const released = cancelPendingRoiDatasourceResolution((saved) => resolved.push(saved))
-  assert.deepEqual(resolved, [false], '卸载必须先结束等待中的新建流程')
-  assert.equal(released, null, '卸载后不得保留 datasource resolution 闭包')
-  assert.equal(cancelPendingRoiDatasourceResolution(null), null)
-}
 
 {
   const calls = []
   let published = null
   let route = null
   let editor = null
-  let config = null
+  const config = {
+    id: '1',
+    tenant_id: '11',
+    datasource_id: 101,
+    datasource_name: 'ROI 数据源',
+    version: 1,
+    can_execute: true,
+    can_edit: true,
+  }
   const created = await runRoiDashboardCreateFlow({
     ensureConfigLoaded: async () => calls.push('config'),
     getConfig: () => config,
-    requestDatasource: async () => {
-      calls.push('datasource')
-      config = {
-        id: '1',
-        tenant_id: '11',
-        datasource_id: 101,
-        datasource_name: 'ROI 数据源',
-        version: 1,
-        can_execute: true,
-        can_edit: true,
-      }
-      return true
-    },
+    onMissingConfig: () => calls.push('missing'),
+    onForbiddenConfig: () => calls.push('forbidden'),
     requestName: async () => {
       calls.push('name')
       return '经营总览'
@@ -229,7 +214,6 @@ assert.match(
   assert.equal(created.id, '9223372036854775807')
   assert.deepEqual(calls, [
     'config',
-    'datasource',
     'name',
     'create:经营总览',
     'publish',
@@ -245,27 +229,26 @@ assert.match(
 }
 
 {
-  let created = false
+  const calls = []
   const result = await runRoiDashboardCreateFlow({
-    ensureConfigLoaded: async () => {},
+    ensureConfigLoaded: async () => calls.push('config'),
     getConfig: () => null,
-    requestDatasource: async () => false,
-    requestName: async () => '不应请求',
-    createDashboard: async () => {
-      created = true
-    },
-    publishDashboard: () => {},
-    navigate: async () => {},
-    openEditor: () => {},
+    onMissingConfig: () => calls.push('missing'),
+    onForbiddenConfig: () => calls.push('forbidden'),
+    requestName: async () => calls.push('name'),
+    createDashboard: async () => calls.push('create'),
+    publishDashboard: () => calls.push('publish'),
+    navigate: async () => calls.push('navigate'),
+    openEditor: () => calls.push('editor'),
   })
   assert.equal(result, null)
-  assert.equal(created, false, '取消数据源设置不得创建空看板')
+  assert.deepEqual(calls, ['config', 'missing'])
 }
 
 {
-  let editorOpened = false
+  const calls = []
   const result = await runRoiDashboardCreateFlow({
-    ensureConfigLoaded: async () => {},
+    ensureConfigLoaded: async () => calls.push('config'),
     getConfig: () => ({
       id: '1',
       tenant_id: '11',
@@ -275,34 +258,21 @@ assert.match(
       can_execute: false,
       can_edit: false,
     }),
-    requestDatasource: async () => true,
-    requestName: async () => '空看板',
-    createDashboard: async (name) => ({ id: '901', name }),
-    publishDashboard: () => {},
-    navigate: async () => {},
-    openEditor: () => {
-      editorOpened = true
-    },
+    onMissingConfig: () => calls.push('missing'),
+    onForbiddenConfig: () => calls.push('forbidden'),
+    requestName: async () => calls.push('name'),
+    createDashboard: async () => calls.push('create'),
+    publishDashboard: () => calls.push('publish'),
+    navigate: async () => calls.push('navigate'),
+    openEditor: () => calls.push('editor'),
   })
-  assert.equal(result.id, '901', '无数据源权限仍可创建并导航到空看板')
-  assert.equal(editorOpened, false, 'config.can_edit=false 时不得打开首图编辑器')
+  assert.equal(result, null, '无数据源权限不得创建空看板')
+  assert.deepEqual(calls, ['config', 'forbidden'])
 }
 
 assert.match(panel, /canEditRoiConfig\(config\.value\)/)
 assert.match(panel, /当前账号无此数据源权限/)
 assert.doesNotMatch(panel, /currentCharts\.value\.some\(\(chart\)\s*=>\s*chart\.can_execute/)
-assert.match(
-  panel,
-  /const datasourceDialogVisible = computed\([\s\S]*datasourceDialogOpen\.value[\s\S]*configLoaded\.value/
-)
-assert.match(
-  panel,
-  /<RoiDatasourceDialog[^>]*:model-value="datasourceDialogVisible"[^>]*@saved="handleDatasourceSaved"[^>]*@cancelled="handleDatasourceCancelled"[^>]*\/>/
-)
-assert.match(
-  panel,
-  /function handleDatasourceSaved\(saved: RoiConfig\)\s*\{[^}]*if \(routeMode\.value === 'roi'\) void reloadChartsAfterConfigSave\(\)[^}]*\}/
-)
 assert.match(
   panel,
   /watch\(\s*\(\) => \[props\.dashboardId, routeMode\.value\],[\s\S]*?if \(previous\?\.\[1\] !== 'roi'\) void loadPage\('route-enter'\)\s*else void reloadCharts\(\)\s*\}\s*\)/

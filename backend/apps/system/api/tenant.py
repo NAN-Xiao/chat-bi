@@ -21,6 +21,11 @@ from apps.datasource.crud.binding import (
     list_datasource_binding_rows,
 )
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
+from apps.roi_dashboard.service import (
+    invalidate_roi_chart_cache_for_tenant,
+    list_roi_workspace_config_rows,
+    set_roi_datasource_for_tenant,
+)
 from apps.datasource.crud.permission import (
     list_user_datasource_roles,
     update_user_datasources,
@@ -451,6 +456,20 @@ def _tenant_bound_external_mcp_map(session: SessionDep, tenant_ids: list[int]) -
     return result
 
 
+def _tenant_roi_datasource_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
+    """批量组装工作空间的 ROI 数据源配置。"""
+    result: dict[int, dict] = {}
+    for tenant_id, datasource_id, datasource_name in list_roi_workspace_config_rows(
+        session,
+        tenant_ids,
+    ):
+        result[int(tenant_id)] = {
+            "roi_datasource_id": int(datasource_id),
+            "roi_datasource_name": datasource_name,
+        }
+    return result
+
+
 def _tenant_bound_datasource_id(session: SessionDep, tenant_id: int) -> int | None:
     """
     是什么：_tenant_bound_datasource_id 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -585,6 +604,7 @@ def _tenant_dto(
     owner: dict | None = None,
     datasource: dict | None = None,
     external_mcp: dict | None = None,
+    roi_datasource: dict | None = None,
     member_stats: dict | None = None,
     include_operations: bool | None = None,
     join_time: int | None = None,
@@ -597,6 +617,7 @@ def _tenant_dto(
     owner = owner or {}
     datasource = datasource or {}
     external_mcp = external_mcp or {}
+    roi_datasource = roi_datasource or {}
     member_stats = member_stats or {}
     normalized_role = normalize_tenant_role(role)
     show_operations = normalized_role in TENANT_ADMIN_ROLES if include_operations is None else include_operations
@@ -627,6 +648,8 @@ def _tenant_dto(
         bound_project_name=datasource.get("bound_project_name") if show_operations else None,
         bound_external_mcp_server_id=external_mcp.get("bound_external_mcp_server_id") if show_operations else None,
         bound_external_mcp_server_name=external_mcp.get("bound_external_mcp_server_name") if show_operations else None,
+        roi_datasource_id=roi_datasource.get("roi_datasource_id") if show_operations else None,
+        roi_datasource_name=roi_datasource.get("roi_datasource_name") if show_operations else None,
         admin_count=int(member_stats.get("admin_count") or 0) if show_operations else 0,
         member_count=int(member_stats.get("member_count") or 0) if show_operations else 0,
         join_time=int(join_time or 0),
@@ -646,6 +669,7 @@ def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int
     owner_map = _tenant_owner_map(session, tenant_ids)
     datasource_map = _tenant_bound_datasource_map(session, tenant_ids)
     external_mcp_map = _tenant_bound_external_mcp_map(session, tenant_ids)
+    roi_datasource_map = _tenant_roi_datasource_map(session, tenant_ids)
     member_stats_map = _tenant_member_stats_map(session, tenant_ids)
     return [
         _tenant_dto(
@@ -654,6 +678,7 @@ def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int
             owner=owner_map.get(int(tenant.id)),
             datasource=datasource_map.get(int(tenant.id)),
             external_mcp=external_mcp_map.get(int(tenant.id)),
+            roi_datasource=roi_datasource_map.get(int(tenant.id)),
             member_stats=member_stats_map.get(int(tenant.id)),
             join_time=join_time,
         )
@@ -672,12 +697,14 @@ def _tenant_admin_dto(session: SessionDep, tenant: TenantModel) -> TenantDTO:
     owner = _tenant_owner_map(session, [tenant_id]).get(tenant_id)
     datasource = _tenant_bound_datasource_map(session, [tenant_id]).get(tenant_id)
     external_mcp = _tenant_bound_external_mcp_map(session, [tenant_id]).get(tenant_id)
+    roi_datasource = _tenant_roi_datasource_map(session, [tenant_id]).get(tenant_id)
     member_stats = _tenant_member_stats_map(session, [tenant_id]).get(tenant_id)
     return _tenant_dto(
         tenant,
         owner=owner,
         datasource=datasource,
         external_mcp=external_mcp,
+        roi_datasource=roi_datasource,
         member_stats=member_stats,
         include_operations=True,
     )
@@ -1156,6 +1183,7 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
     """
     datasource = _tenant_bound_datasource_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
     external_mcp = _tenant_bound_external_mcp_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
+    roi_datasource = _tenant_roi_datasource_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
     tenant = session.get(TenantModel, int(current_tenant.id))
     ensure_tenant_public_id(session, tenant)
     return TenantDTO(
@@ -1169,6 +1197,8 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
         bound_project_name=datasource.get("bound_project_name") if datasource else None,
         bound_external_mcp_server_id=external_mcp.get("bound_external_mcp_server_id") if external_mcp else None,
         bound_external_mcp_server_name=external_mcp.get("bound_external_mcp_server_name") if external_mcp else None,
+        roi_datasource_id=roi_datasource.get("roi_datasource_id") if roi_datasource else None,
+        roi_datasource_name=roi_datasource.get("roi_datasource_name") if roi_datasource else None,
     )
 
 
@@ -3472,6 +3502,8 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
     做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     _require_platform_admin(current_user)
+    creator_fields = _model_fields_set(creator)
+    roi_field_requested = "roi_datasource_id" in creator_fields
     try:
         owner_user = _resolve_owner_user(session, creator)
         tenant = create_tenant(
@@ -3496,34 +3528,71 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
                 is_primary=True,
             )
         if creator.datasource_id:
-            bind_tenant_to_datasource(session, current_user, int(tenant.id), creator.datasource_id)
+            bind_tenant_to_datasource(
+                session,
+                current_user,
+                int(tenant.id),
+                creator.datasource_id,
+                commit=False,
+            )
         if creator.external_mcp_server_id:
-            bind_tenant_to_external_mcp(session, current_user, int(tenant.id), creator.external_mcp_server_id)
+            bind_tenant_to_external_mcp(
+                session,
+                current_user,
+                int(tenant.id),
+                creator.external_mcp_server_id,
+                commit=False,
+            )
+        if creator.roi_datasource_id is not None:
+            set_roi_datasource_for_tenant(
+                session,
+                tenant_id=int(tenant.id),
+                datasource_id=creator.roi_datasource_id,
+                operator_id=getattr(current_user, "id", None),
+                commit=False,
+            )
+        tenant = session.get(TenantModel, int(tenant.id))
+        owner = None
+        if owner_user:
+            owner = {
+                "owner_user_id": int(owner_user.id),
+                "owner_account": owner_user.account,
+                "owner_name": owner_user.name,
+                "owner_email": owner_user.email,
+            }
+        _write_tenant_audit(
+            session,
+            current_user,
+            operation_type=OperationType.CREATE,
+            detail="创建工作空间",
+            module=OperationModules.TENANT,
+            tenant_id=int(tenant.id),
+            resource_id=tenant.id,
+            resource_name=tenant.name,
+            remark=(
+                f"tenant_id={tenant.id}; plan={tenant.plan}; "
+                f"roi_datasource_id={creator.roi_datasource_id or 'none'}"
+            ),
+        )
+        session.commit()
     except ValueError as exc:
+        session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    tenant = session.get(TenantModel, int(tenant.id))
-    owner = None
-    if owner_user:
-        owner = {
-            "owner_user_id": int(owner_user.id),
-            "owner_account": owner_user.account,
-            "owner_name": owner_user.name,
-            "owner_email": owner_user.email,
-        }
-    _write_tenant_audit(
-        session,
-        current_user,
-        operation_type=OperationType.CREATE,
-        detail="创建工作空间",
-        module=OperationModules.TENANT,
-        tenant_id=int(tenant.id),
-        resource_id=tenant.id,
-        resource_name=tenant.name,
-        remark=f"tenant_id={tenant.id}; plan={tenant.plan}",
-    )
+    except Exception:
+        session.rollback()
+        raise
+    if roi_field_requested:
+        invalidate_roi_chart_cache_for_tenant(int(tenant.id))
     datasource = _tenant_bound_datasource_map(session, [int(tenant.id)]).get(int(tenant.id))
     external_mcp = _tenant_bound_external_mcp_map(session, [int(tenant.id)]).get(int(tenant.id))
-    return _tenant_dto(tenant, owner=owner, datasource=datasource, external_mcp=external_mcp)
+    roi_datasource = _tenant_roi_datasource_map(session, [int(tenant.id)]).get(int(tenant.id))
+    return _tenant_dto(
+        tenant,
+        owner=owner,
+        datasource=datasource,
+        external_mcp=external_mcp,
+        roi_datasource=roi_datasource,
+    )
 
 
 @router.put("/{tenant_id}", response_model=TenantDTO)
@@ -3535,6 +3604,13 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
     """
     _require_platform_admin(current_user)
     editor_fields = _model_fields_set(editor)
+    roi_audit_value = "unchanged"
+    if "roi_datasource_id" in editor_fields:
+        roi_audit_value = (
+            str(editor.roi_datasource_id)
+            if editor.roi_datasource_id is not None
+            else "none"
+        )
     try:
         tenant = update_tenant(
             session,
@@ -3551,29 +3627,58 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
             subscription_note=editor.subscription_note,
         )
         if "datasource_id" in editor_fields:
-            bind_tenant_to_datasource(session, current_user, int(tenant.id), editor.datasource_id)
+            bind_tenant_to_datasource(
+                session,
+                current_user,
+                int(tenant.id),
+                editor.datasource_id,
+                commit=False,
+            )
             tenant = session.get(TenantModel, int(tenant.id))
         if "external_mcp_server_id" in editor_fields:
-            bind_tenant_to_external_mcp(session, current_user, int(tenant.id), editor.external_mcp_server_id)
+            bind_tenant_to_external_mcp(
+                session,
+                current_user,
+                int(tenant.id),
+                editor.external_mcp_server_id,
+                commit=False,
+            )
             tenant = session.get(TenantModel, int(tenant.id))
+        if "roi_datasource_id" in editor_fields:
+            set_roi_datasource_for_tenant(
+                session,
+                tenant_id=int(tenant.id),
+                datasource_id=editor.roi_datasource_id,
+                operator_id=getattr(current_user, "id", None),
+                commit=False,
+            )
+        _write_tenant_audit(
+            session,
+            current_user,
+            operation_type=OperationType.UPDATE,
+            detail="更新工作空间",
+            module=OperationModules.TENANT,
+            tenant_id=int(tenant.id),
+            resource_id=tenant.id,
+            resource_name=tenant.name,
+            remark=(
+                f"tenant_id={tenant.id}; plan={tenant.plan}; "
+                f"datasource_id="
+                f"{editor.datasource_id if 'datasource_id' in editor_fields else 'unchanged'}; "
+                f"external_mcp_server_id="
+                f"{editor.external_mcp_server_id if 'external_mcp_server_id' in editor_fields else 'unchanged'}; "
+                f"roi_datasource_id={roi_audit_value}"
+            ),
+        )
+        session.commit()
     except ValueError as exc:
+        session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _write_tenant_audit(
-        session,
-        current_user,
-        operation_type=OperationType.UPDATE,
-        detail="更新工作空间",
-        module=OperationModules.TENANT,
-        tenant_id=int(tenant.id),
-        resource_id=tenant.id,
-        resource_name=tenant.name,
-        remark=(
-            f"tenant_id={tenant.id}; plan={tenant.plan}; "
-            f"datasource_id={editor.datasource_id if 'datasource_id' in editor_fields else 'unchanged'}; "
-            f"external_mcp_server_id="
-            f"{editor.external_mcp_server_id if 'external_mcp_server_id' in editor_fields else 'unchanged'}"
-        ),
-    )
+    except Exception:
+        session.rollback()
+        raise
+    if "roi_datasource_id" in editor_fields:
+        invalidate_roi_chart_cache_for_tenant(int(tenant.id))
     return _tenant_admin_dto(session, tenant)
 
 

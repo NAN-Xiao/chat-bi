@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.dml import Update
 from sqlmodel import Session, create_engine, select
 
+from apps.roi_dashboard import service
 from apps.roi_dashboard.models import (
     CoreRoiDashboard,
     CoreRoiDashboardChart,
@@ -24,7 +25,6 @@ from apps.roi_dashboard.schemas import (
     RoiChartPreviewRequest,
     RoiChartReorderRequest,
     RoiChartUpdate,
-    RoiConfigUpdate,
     RoiDashboardCreate,
     RoiDashboardOrderItem,
     RoiDashboardReorderRequest,
@@ -42,7 +42,7 @@ from apps.roi_dashboard.service import (
     reorder_roi_charts,
     reorder_roi_dashboards,
     roi_chart_cache_key,
-    set_roi_config,
+    set_roi_datasource_for_tenant,
     update_roi_chart,
     update_roi_dashboard,
 )
@@ -71,7 +71,7 @@ def session() -> Session:
     statements = [
         (
             "CREATE TABLE core_datasource ("
-            "id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, name TEXT NOT NULL)"
+            "id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, name TEXT NOT NULL, status TEXT)"
         ),
         (
             "CREATE TABLE core_datasource_user ("
@@ -86,6 +86,10 @@ def session() -> Session:
             "id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, datasource_id BIGINT NOT NULL, "
             "version INTEGER NOT NULL, create_by BIGINT, update_by BIGINT, "
             "create_time BIGINT NOT NULL, update_time BIGINT NOT NULL, deleted BOOLEAN NOT NULL)"
+        ),
+        (
+            "CREATE UNIQUE INDEX uq_core_roi_workspace_config_active_tenant "
+            "ON core_roi_workspace_config (tenant_id) WHERE deleted = 0"
         ),
         (
             "CREATE TABLE core_roi_dashboard ("
@@ -120,8 +124,8 @@ def isolate_default_roi_cache(monkeypatch: pytest.MonkeyPatch):
 def add_datasource(session: Session, datasource_id: int, name: str | None = None) -> None:
     session.exec(
         text(
-            "INSERT INTO core_datasource (id, tenant_id, name) "
-            "VALUES (:id, 1, :name)"
+            "INSERT INTO core_datasource (id, tenant_id, name, status) "
+            "VALUES (:id, 1, :name, 'success')"
         ),
         params={"id": datasource_id, "name": name or f"数据源 {datasource_id}"},
     )
@@ -229,10 +233,44 @@ def assert_http_error(status_code: int, call) -> None:
 def test_roi_dashboards_are_shared_within_workspace(session: Session) -> None:
     owner = make_user(id=1, tenant_id=11, tenant_role="owner")
     admin = make_user(id=2, tenant_id=11, tenant_role="admin")
+    add_datasource(session, 101)
+    grant_datasource(session, user_id=1, datasource_id=101)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
 
     created = create_roi_dashboard(session, owner, RoiDashboardCreate(name="渠道 ROI"))
 
     assert [item.id for item in list_roi_dashboards(session, admin)] == [created.id]
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_status", "expected_detail"),
+    [
+        ("missing", 409, "当前工作空间尚未配置 ROI 数据源"),
+        ("unauthorized", 403, "当前账号无此数据源权限"),
+        ("inactive", 403, "当前账号无此数据源权限"),
+    ],
+)
+def test_create_dashboard_requires_executable_roi_datasource(
+    session: Session,
+    state: str,
+    expected_status: int,
+    expected_detail: str,
+) -> None:
+    user = make_user(id=7, tenant_id=11, tenant_role="admin")
+    if state != "missing":
+        add_datasource(session, 101)
+        seed_roi_config(session, tenant_id=11, datasource_id=101)
+    if state == "inactive":
+        grant_datasource(session, user_id=7, datasource_id=101)
+        session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 101"))
+        session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
+
+    assert exc_info.value.status_code == expected_status
+    assert exc_info.value.detail == expected_detail
+    assert session.exec(select(CoreRoiDashboard)).all() == []
 
 
 @pytest.mark.parametrize(
@@ -267,192 +305,331 @@ def test_cross_tenant_dashboard_is_not_disclosed(session: Session) -> None:
     assert_http_error(404, lambda: delete_roi_dashboard(session, user, 301))
 
 
-def test_first_config_requires_no_version_and_is_shared(session: Session) -> None:
-    owner = make_user(id=1, tenant_id=11, tenant_role="owner")
-    admin = make_user(id=2, tenant_id=11, tenant_role="admin")
-    add_datasource(session, 101, "付费数据")
-    grant_datasource(session, user_id=1, datasource_id=101)
-    session.commit()
+def test_platform_admin_can_create_and_read_roi_datasource_binding(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    add_datasource(session, 101, "ROI 数据源")
+    cache = FakeRoiChartCache()
+    events: list[str] = []
+    original_commit = session.commit
+    original_delete_pattern = cache.delete_pattern
 
-    created = set_roi_config(
+    def record_commit(*args, **kwargs):
+        events.append("commit")
+        return original_commit(*args, **kwargs)
+
+    def record_delete_pattern(pattern: str) -> None:
+        events.append("cache_delete")
+        original_delete_pattern(pattern)
+
+    monkeypatch.setattr(session, "commit", record_commit)
+    monkeypatch.setattr(cache, "delete_pattern", record_delete_pattern)
+
+    created = service.set_roi_datasource_for_tenant(
         session,
-        owner,
-        RoiConfigUpdate(datasource_id=101, version=None),
+        tenant_id=11,
+        datasource_id=101,
+        operator_id=1,
+        commit=True,
+        cache_adapter=cache,
     )
 
+    assert created is not None
+    assert (created.tenant_id, created.datasource_id, created.version) == (11, 101, 1)
+    assert len(cache.deleted_patterns) == 1
+    assert events == ["commit", "cache_delete"]
+    assert service.list_roi_workspace_config_rows(session, [11]) == [
+        (11, 101, "ROI 数据源")
+    ]
+
+
+def test_platform_admin_roi_datasource_binding_is_idempotent(
+    session: Session,
+) -> None:
+    add_datasource(session, 101)
+    original = seed_roi_config(session, tenant_id=11, datasource_id=101, version=3)
+    cache = FakeRoiChartCache()
+
+    updated = service.set_roi_datasource_for_tenant(
+        session,
+        tenant_id=11,
+        datasource_id=101,
+        operator_id=9,
+        commit=True,
+        cache_adapter=cache,
+    )
+
+    assert updated is not None
+    assert updated.id == original.id
+    assert updated.version == 3
+    assert cache.deleted_patterns == []
+
+
+@pytest.mark.parametrize("datasource_state", ["deleted", "inactive"])
+def test_platform_admin_idempotent_save_keeps_invalid_bound_datasource(
+    session: Session,
+    datasource_state: str,
+) -> None:
+    if datasource_state == "inactive":
+        add_datasource(session, 101)
+        session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 101"))
+    original = seed_roi_config(session, tenant_id=11, datasource_id=101, version=3)
+
+    updated = service.set_roi_datasource_for_tenant(
+        session,
+        tenant_id=11,
+        datasource_id=101,
+        operator_id=9,
+        commit=True,
+    )
+
+    assert updated is not None
+    assert updated.id == original.id
+    assert updated.datasource_id == 101
+    assert updated.version == 3
+
+
+def test_workspace_config_rows_keep_deleted_datasource_id(session: Session) -> None:
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+
+    assert service.list_roi_workspace_config_rows(session, [11]) == [(11, 101, None)]
+
+
+def test_platform_admin_rejects_switch_to_inactive_datasource(
+    session: Session,
+) -> None:
+    add_datasource(session, 101)
+    add_datasource(session, 202)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+    session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 202"))
+    session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.set_roi_datasource_for_tenant(
+            session,
+            tenant_id=11,
+            datasource_id=202,
+            operator_id=9,
+            commit=True,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "ROI 数据源不可用"
+
+
+def test_platform_admin_restores_soft_deleted_roi_datasource_binding(
+    session: Session,
+) -> None:
+    add_datasource(session, 101)
+    original = seed_roi_config(session, tenant_id=11, datasource_id=101, version=3)
+    original.deleted = True
+    session.add(original)
+    session.commit()
+
+    restored = service.set_roi_datasource_for_tenant(
+        session,
+        tenant_id=11,
+        datasource_id=101,
+        operator_id=9,
+        commit=True,
+    )
+
+    assert restored is not None
+    assert (restored.id, restored.version, restored.deleted) == (original.id, 4, False)
+
+
+@pytest.mark.parametrize("status", [None, "", "failed"])
+def test_platform_admin_rejects_non_success_roi_datasource(
+    session: Session,
+    status: str | None,
+) -> None:
+    add_datasource(session, 101)
+    session.exec(
+        text("UPDATE core_datasource SET status = :status WHERE id = 101"),
+        params={"status": status},
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.set_roi_datasource_for_tenant(
+            session,
+            tenant_id=11,
+            datasource_id=101,
+            operator_id=1,
+            commit=True,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "ROI 数据源不可用"
+
+
+def test_platform_admin_accepts_case_insensitive_success_roi_datasource(
+    session: Session,
+) -> None:
+    add_datasource(session, 101)
+    session.exec(text("UPDATE core_datasource SET status = 'SUCCESS' WHERE id = 101"))
+
+    created = service.set_roi_datasource_for_tenant(
+        session,
+        tenant_id=11,
+        datasource_id=101,
+        operator_id=1,
+        commit=True,
+    )
+
+    assert created is not None
     assert created.datasource_id == 101
-    assert created.datasource_name == "付费数据"
-    assert created.version == 1
-    assert created.can_execute is True
-    assert created.can_edit is True
-    shared = get_roi_config(session, admin)
-    assert shared.id == created.id
-    assert shared.datasource_name == "付费数据"
-    assert shared.can_execute is False
-    assert shared.can_edit is False
 
 
-def test_first_config_rejects_version_and_unauthorized_datasource(session: Session) -> None:
-    user = make_user(id=1, tenant_id=11, tenant_role="owner")
+@pytest.mark.parametrize("datasource_id", [0, "", False, "not-a-number"])
+def test_platform_admin_rejects_invalid_roi_datasource_id(
+    session: Session,
+    datasource_id: int | str | bool,
+) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        service.set_roi_datasource_for_tenant(
+            session,
+            tenant_id=11,
+            datasource_id=datasource_id,
+            operator_id=1,
+            commit=True,
+        )
+
+    assert exc_info.value.status_code == 400
+
+
+def test_platform_admin_roi_datasource_binding_can_skip_commit(
+    session: Session,
+) -> None:
     add_datasource(session, 101)
-    session.commit()
+    cache = FakeRoiChartCache()
 
-    assert_http_error(
-        403,
-        lambda: set_roi_config(
-            session,
-            user,
-            RoiConfigUpdate(datasource_id=101, version=None),
-        ),
-    )
-    grant_datasource(session, user_id=1, datasource_id=101)
-    session.commit()
-    assert_http_error(
-        409,
-        lambda: set_roi_config(
-            session,
-            user,
-            RoiConfigUpdate(datasource_id=101, version=1),
-        ),
-    )
-
-
-def test_existing_config_requires_matching_version(session: Session) -> None:
-    user = make_user(id=1, tenant_id=11, tenant_role="owner")
-    add_datasource(session, 101)
-    add_datasource(session, 202)
-    grant_datasource(session, user_id=1, datasource_id=101)
-    grant_datasource(session, user_id=1, datasource_id=202)
-    seed_roi_config(session, tenant_id=11, datasource_id=101, version=3)
-    session.commit()
-
-    assert_http_error(
-        409,
-        lambda: set_roi_config(
-            session,
-            user,
-            RoiConfigUpdate(datasource_id=202, version=None),
-        ),
-    )
-    assert_http_error(
-        409,
-        lambda: set_roi_config(
-            session,
-            user,
-            RoiConfigUpdate(datasource_id=202, version=2),
-        ),
-    )
-
-    updated = set_roi_config(
+    created = service.set_roi_datasource_for_tenant(
         session,
-        user,
-        RoiConfigUpdate(datasource_id=202, version=3),
+        tenant_id=11,
+        datasource_id=101,
+        operator_id=1,
+        commit=False,
+        cache_adapter=cache,
     )
-    assert updated.datasource_id == 202
-    assert updated.version == 4
+
+    assert created is not None
+    assert service.list_roi_workspace_config_rows(session, [11]) == [(11, 101, "数据源 101")]
+    assert cache.deleted_patterns == []
+    session.rollback()
+    session.expire_all()
+    assert service.list_roi_workspace_config_rows(session, [11]) == []
 
 
-def test_existing_config_update_locks_active_config_row(
+def test_platform_admin_create_conflict_from_unique_index_keeps_session_usable(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from apps.roi_dashboard.service import lock_active_roi_config
-
-    user = make_user(id=1, tenant_id=11, tenant_role="owner")
     add_datasource(session, 101)
-    grant_datasource(session, user_id=1, datasource_id=101)
-    seed_roi_config(session, tenant_id=11, datasource_id=101)
-    session.commit()
-    original_exec = session.exec
-    locked_selects = []
+    existing = seed_roi_config(session, tenant_id=11, datasource_id=101)
+    monkeypatch.setattr(service, "lock_active_roi_config", lambda *_args: None)
 
-    def recording_exec(statement, *args, **kwargs):
-        if getattr(statement, "_for_update_arg", None) is not None:
-            locked_selects.append(statement)
-        return original_exec(statement, *args, **kwargs)
-
-    monkeypatch.setattr(session, "exec", recording_exec)
-
-    updated = set_roi_config(
-        session,
-        user,
-        RoiConfigUpdate(datasource_id=101, version=1),
-    )
-
-    assert lock_active_roi_config is not None
-    assert len(locked_selects) == 1
-    assert updated.version == 2
-
-
-def test_first_config_integrity_conflict_rolls_back_and_returns_409(
-    session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    user = make_user(id=1, tenant_id=11, tenant_role="owner")
-    add_datasource(session, 101)
-    grant_datasource(session, user_id=1, datasource_id=101)
-    session.commit()
-    rollback = Mock(wraps=session.rollback)
-    monkeypatch.setattr(session, "rollback", rollback)
-    monkeypatch.setattr(
-        session,
-        "commit",
-        Mock(side_effect=IntegrityError("unique conflict", {}, Exception("duplicate"))),
-    )
-
-    assert_http_error(
-        409,
-        lambda: set_roi_config(
+    with pytest.raises(HTTPException) as exc_info:
+        service.set_roi_datasource_for_tenant(
             session,
-            user,
-            RoiConfigUpdate(datasource_id=101, version=None),
-        ),
-    )
+            tenant_id=11,
+            datasource_id=101,
+            operator_id=1,
+            commit=False,
+        )
 
-    rollback.assert_called_once_with()
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "ROI 配置已被其他请求修改，请刷新后重试"
     assert session.exec(text("SELECT 1")).one()[0] == 1
+    assert service.list_roi_workspace_config_rows(session, [11]) == [
+        (11, existing.datasource_id, "数据源 101")
+    ]
 
 
-def test_cannot_change_datasource_when_any_active_chart_exists(session: Session) -> None:
-    user = make_user(id=1, tenant_id=11, tenant_role="owner")
-    add_datasource(session, 202)
-    grant_datasource(session, user_id=1, datasource_id=202)
-    seed_roi_config(session, tenant_id=11, datasource_id=101)
-    seed_roi_chart(session, tenant_id=11, dashboard_id=301)
+def test_platform_admin_restore_conflict_from_unique_index_keeps_session_usable(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    add_datasource(session, 101)
+    historical = seed_roi_config(session, tenant_id=11, datasource_id=101)
+    historical.deleted = True
+    session.add(historical)
     session.commit()
-
-    assert_http_error(
-        409,
-        lambda: set_roi_config(
-            session,
-            user,
-            RoiConfigUpdate(datasource_id=202, version=1),
-        ),
+    session.exec(
+        text(
+            "INSERT INTO core_roi_workspace_config ("
+            "id, tenant_id, datasource_id, version, create_by, update_by, "
+            "create_time, update_time, deleted) VALUES "
+            "(2011, 11, 101, 1, 1, 1, 100, 100, 0)"
+        )
     )
-    persisted = session.exec(
-        select(CoreRoiWorkspaceConfig).where(CoreRoiWorkspaceConfig.tenant_id == 11)
-    ).one()
-    assert (persisted.datasource_id, persisted.version) == (101, 1)
+    session.commit()
+    monkeypatch.setattr(service, "lock_active_roi_config", lambda *_args: None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.set_roi_datasource_for_tenant(
+            session,
+            tenant_id=11,
+            datasource_id=101,
+            operator_id=1,
+            commit=False,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "ROI 配置已被其他请求修改，请刷新后重试"
+    assert session.exec(text("SELECT 1")).one()[0] == 1
+    session.expire_all()
+    records = session.exec(
+        select(CoreRoiWorkspaceConfig)
+        .where(CoreRoiWorkspaceConfig.tenant_id == 11)
+        .order_by(CoreRoiWorkspaceConfig.id)
+    ).all()
+    assert [(record.id, record.deleted) for record in records] == [
+        (historical.id, True),
+        (2011, False),
+    ]
 
 
-def test_empty_dashboard_and_inactive_chart_do_not_block_datasource_change(
+def test_platform_admin_can_clear_roi_datasource_without_active_charts(
     session: Session,
 ) -> None:
-    user = make_user(id=1, tenant_id=11, tenant_role="owner")
-    add_datasource(session, 202)
-    grant_datasource(session, user_id=1, datasource_id=202)
+    add_datasource(session, 101)
     seed_roi_config(session, tenant_id=11, datasource_id=101)
-    seed_roi_dashboard(session, dashboard_id=301, tenant_id=11, name="空看板")
-    seed_roi_chart(session, tenant_id=11, dashboard_id=301, status=0)
-    session.commit()
 
-    updated = set_roi_config(
+    cleared = service.set_roi_datasource_for_tenant(
         session,
-        user,
-        RoiConfigUpdate(datasource_id=202, version=1),
+        tenant_id=11,
+        datasource_id=None,
+        operator_id=1,
+        commit=True,
     )
 
-    assert updated.datasource_id == 202
+    assert cleared is None
+    assert service.list_roi_workspace_config_rows(session, [11]) == []
+
+
+@pytest.mark.parametrize("target_datasource_id", [None, 202])
+def test_platform_admin_cannot_change_or_clear_roi_datasource_with_active_charts(
+    session: Session,
+    target_datasource_id: int | None,
+) -> None:
+    add_datasource(session, 101)
+    add_datasource(session, 202)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+    seed_roi_dashboard(session, tenant_id=11, dashboard_id=301, name="ROI 看板")
+    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=401)
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.set_roi_datasource_for_tenant(
+            session,
+            tenant_id=11,
+            datasource_id=target_datasource_id,
+            operator_id=1,
+            commit=True,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "已有 ROI 图表时不能更换或清除数据源"
 
 
 def test_dashboard_list_is_stably_sorted(session: Session) -> None:
@@ -1072,6 +1249,8 @@ def test_chart_mutations_and_config_change_invalidate_roi_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user = prepare_chart_context(session)
+    add_datasource(session, 303)
+    session.commit()
     cache = FakeRoiChartCache()
     monkeypatch.setattr(
         "apps.roi_dashboard.service.execute_roi_read_query",
@@ -1117,10 +1296,12 @@ def test_chart_mutations_and_config_change_invalidate_roi_cache(
         created.id,
         cache_adapter=cache,
     ) is True
-    set_roi_config(
+    set_roi_datasource_for_tenant(
         session,
-        user,
-        RoiConfigUpdate(datasource_id=202, version=1),
+        tenant_id=11,
+        datasource_id=303,
+        operator_id=user.id,
+        commit=True,
         cache_adapter=cache,
     )
 

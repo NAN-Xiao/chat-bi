@@ -10,7 +10,8 @@ export type RoiDashboardRouteTarget = {
 type CreateFlowDependencies = {
   ensureConfigLoaded: () => Promise<unknown>
   getConfig: () => RoiConfig | null
-  requestDatasource: () => Promise<boolean>
+  onMissingConfig: () => void
+  onForbiddenConfig: () => void
   requestName: () => Promise<string | null>
   createDashboard: (name: string) => Promise<RoiDashboard>
   publishDashboard: (dashboard: RoiDashboard) => void
@@ -68,13 +69,6 @@ export async function refreshRoiChartsWithConfig(dependencies: {
 export const canEditRoiConfig = (config: Pick<RoiConfig, 'can_edit'> | null) =>
   config?.can_edit === true
 
-export function cancelPendingRoiDatasourceResolution(
-  resolution: ((saved: boolean) => void) | null
-): null {
-  resolution?.(false)
-  return null
-}
-
 export function buildRoiPanelLoadPlan(input: {
   reason: RoiPanelLoadReason
   routeMode: 'roi' | 'ordinary'
@@ -113,7 +107,15 @@ export const closeRoiChartEditor = (state: RoiChartEditorState): RoiChartEditorS
 
 export async function runRoiDashboardCreateFlow(dependencies: CreateFlowDependencies) {
   await dependencies.ensureConfigLoaded()
-  if (!dependencies.getConfig() && !(await dependencies.requestDatasource())) return null
+  const config = dependencies.getConfig()
+  if (!config) {
+    dependencies.onMissingConfig()
+    return null
+  }
+  if (!canEditRoiConfig(config)) {
+    dependencies.onForbiddenConfig()
+    return null
+  }
   const name = (await dependencies.requestName())?.trim()
   if (!name) return null
 
@@ -124,7 +126,7 @@ export async function runRoiDashboardCreateFlow(dependencies: CreateFlowDependen
     query: { resourceId: String(created.id), dashboardMode: 'roi' },
   })
   const editorState = createRoiNewChartEditorState(
-    dependencies.getConfig(),
+    config,
     String(created.id),
     true
   )

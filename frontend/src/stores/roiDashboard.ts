@@ -13,7 +13,6 @@ import {
 } from '@/stores/roiRequestCoordinator'
 
 const createEditorState = (): RoiEditorState => ({
-  datasourceDialogOpen: false,
   chartDialogOpen: false,
   dashboardId: null,
   chartId: null,
@@ -90,9 +89,6 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
         if (finishRoiRequest(this.requestState, request)) this.syncRequestState()
       }
     },
-    openDatasourceSettings() {
-      this.editorState.datasourceDialogOpen = true
-    },
     requestDashboardCreation() {
       this.editorState.createDashboardRequestId += 1
     },
@@ -100,10 +96,6 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
       const index = this.dashboards.findIndex((item) => String(item.id) === String(dashboard.id))
       if (index >= 0) this.dashboards[index] = dashboard
       else this.dashboards.push(dashboard)
-    },
-    publishConfig(config: RoiConfig) {
-      this.config = config
-      this.configLoaded = true
     },
     publishCharts(dashboardId: string, charts: RoiChart[]) {
       this.charts[String(dashboardId)] = charts

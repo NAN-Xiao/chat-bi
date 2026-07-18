@@ -11,13 +11,6 @@ export interface RoiConfig {
   can_edit: boolean
 }
 
-export interface RoiDatasourceOption {
-  id: number
-  name: string
-  type: string
-  type_name: string | null
-}
-
 export interface RoiDashboard {
   id: string
   tenant_id: string
@@ -58,11 +51,6 @@ export interface RoiChart {
   can_edit?: boolean
   error?: string | null
   query_result?: RoiChartPreviewResponse | null
-}
-
-export interface RoiConfigUpdate {
-  datasource_id: number
-  version?: number | null
 }
 
 export interface RoiDashboardCreate {
@@ -115,7 +103,6 @@ export interface RoiChartReorderRequest {
 }
 
 export interface RoiEditorState {
-  datasourceDialogOpen: boolean
   chartDialogOpen: boolean
   dashboardId: string | null
   chartId: string | null

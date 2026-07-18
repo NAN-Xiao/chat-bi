@@ -24,6 +24,8 @@
     "member_count": "구성원 {msg}명",
     "bound_datasource": "연결된 데이터 소스",
     "select_datasource": "데이터 소스 선택",
+    "roi_datasource": "ROI 데이터 소스",
+    "select_roi_datasource": "ROI 대시보드 데이터 소스 선택",
     "datasource_binding_status": "연결 상태",
     "datasource_bound": "연결됨",
     "status": "상태",

@@ -17,11 +17,6 @@ def _strip_required(value: str, label: str, max_length: int | None = None) -> st
     return stripped
 
 
-class RoiConfigUpdate(BaseModel):
-    datasource_id: int
-    version: int | None = None
-
-
 class RoiDashboardCreate(BaseModel):
     name: str
 
@@ -135,17 +130,6 @@ class RoiConfigResponse(_RoiResponseBase):
     version: int
     can_execute: bool
     can_edit: bool
-
-
-class RoiDatasourceOption(BaseModel):
-    """ROI 统一数据源候选项，不包含连接配置等敏感字段。"""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    type: str
-    type_name: str | None = None
 
 
 class RoiDashboardResponse(_RoiResponseBase):

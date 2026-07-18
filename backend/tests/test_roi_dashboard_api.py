@@ -16,11 +16,9 @@ from apps.roi_dashboard.schemas import (
     RoiChartListResponse,
     RoiChartPreviewRequest,
     RoiChartUpdate,
-    RoiConfigUpdate,
     RoiConfigResponse,
     RoiDashboardCreate,
     RoiDashboardUpdate,
-    RoiDatasourceOption,
 )
 from apps.roi_dashboard.service import list_roi_charts
 from apps.system.schemas.business_access import require_chatbi_business_user
@@ -63,11 +61,11 @@ def route_dependencies(router, path: str, method: str = "GET") -> list[object]:
     raise AssertionError(f"未找到路由：{method} {path}")
 
 
-def test_roi_routes_are_registered_with_expected_methods() -> None:
+def test_roi_config_is_read_only() -> None:
     methods = route_method_map(roi_api.router)
 
-    assert methods["/dashboard/roi/datasources"] == {"GET"}
-    assert methods["/dashboard/roi/config"] == {"GET", "PUT"}
+    assert methods["/dashboard/roi/config"] == {"GET"}
+    assert "/dashboard/roi/datasources" not in methods
     assert methods["/dashboard/roi/list"] == {"GET"}
     assert methods["/dashboard/roi"] == {"POST"}
     assert methods["/dashboard/roi/{dashboard_id}"] == {"PATCH", "DELETE"}
@@ -90,7 +88,6 @@ def test_roi_router_requires_chatbi_business_user() -> None:
 
 def test_roi_request_dtos_do_not_accept_tenant_or_chart_datasource_forgery() -> None:
     request_models = (
-        RoiConfigUpdate,
         RoiDashboardCreate,
         RoiDashboardUpdate,
         RoiChartPreviewRequest,
@@ -98,7 +95,6 @@ def test_roi_request_dtos_do_not_accept_tenant_or_chart_datasource_forgery() -> 
         RoiChartUpdate,
     )
     assert all("tenant_id" not in model.model_fields for model in request_models)
-    assert "datasource_id" in RoiConfigUpdate.model_fields
     assert "datasource_id" not in RoiChartPreviewRequest.model_fields
     assert "datasource_id" not in RoiChartCreate.model_fields
     assert "datasource_id" not in RoiChartUpdate.model_fields
@@ -188,62 +184,6 @@ def test_roi_chart_endpoints_reject_client_datasource_id(
     response = asyncio.run(send_request())
 
     assert response.status_code == 422
-
-
-def test_roi_datasource_response_contains_only_non_sensitive_fields() -> None:
-    response = RoiDatasourceOption.model_validate(
-        {
-            "id": 101,
-            "name": "ROI 数据源",
-            "type": "pg",
-            "type_name": "PostgreSQL",
-            "configuration": '{"password":"secret"}',
-        }
-    )
-
-    assert response.model_dump() == {
-        "id": 101,
-        "name": "ROI 数据源",
-        "type": "pg",
-        "type_name": "PostgreSQL",
-    }
-
-
-def test_roi_datasource_endpoint_maps_attribute_rows_without_credentials(
-    monkeypatch,
-) -> None:
-    class FakeResult:
-        def all(self):
-            return [
-                SimpleNamespace(
-                    id=101,
-                    name="ROI 数据源",
-                    type="pg",
-                    type_name="PostgreSQL",
-                    configuration='{"password":"secret"}',
-                )
-            ]
-
-    class FakeSession:
-        def exec(self, _statement):
-            return FakeResult()
-
-    monkeypatch.setattr(
-        roi_api,
-        "list_roi_accessible_datasource_ids",
-        lambda _session, _user: {101},
-    )
-
-    response = roi_api.list_roi_datasources_api(FakeSession(), make_user())
-
-    assert [item.model_dump() for item in response] == [
-        {
-            "id": 101,
-            "name": "ROI 数据源",
-            "type": "pg",
-            "type_name": "PostgreSQL",
-        }
-    ]
 
 
 def test_roi_chart_list_response_hides_sql_without_datasource_access() -> None:

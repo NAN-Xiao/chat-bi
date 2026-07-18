@@ -71,12 +71,10 @@ def test_roi_request_dto_validation_and_defaults() -> None:
         RoiChartCreate,
         RoiChartPreviewRequest,
         RoiChartUpdate,
-        RoiConfigUpdate,
         RoiDashboardCreate,
         RoiDashboardUpdate,
     )
 
-    assert RoiConfigUpdate(datasource_id=7).version is None
     assert RoiDashboardCreate(name="  ROI 看板  ").name == "ROI 看板"
     assert RoiDashboardUpdate(name="  新名称  ", version=2).name == "新名称"
     preview = RoiChartPreviewRequest(

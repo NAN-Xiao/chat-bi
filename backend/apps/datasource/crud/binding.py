@@ -14,6 +14,15 @@ from apps.system.models.tenant import TenantModel, TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
 
 
+def _finish_binding(session: SessionDep, record, *, commit: bool) -> None:
+    if commit:
+        session.commit()
+        if record is not None:
+            session.refresh(record)
+        return
+    session.flush()
+
+
 def supports_datasource_tenant_binding(session: SessionDep) -> bool:
     """
     是什么：supports_datasource_tenant_binding 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -216,6 +225,7 @@ def bind_datasource_to_tenant(
         user: CurrentUser,
         datasource: CoreDatasource,
         tenant_id: int | None,
+        commit: bool = True,
 ) -> CoreDatasource:
     """
     是什么：bind_datasource_to_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -234,8 +244,7 @@ def bind_datasource_to_tenant(
             datasource.tenant_id = DEFAULT_TENANT_ID
             clear_datasource_workspace_permissions(session, [int(datasource.id)])
             session.add(datasource)
-            session.commit()
-            session.refresh(datasource)
+            _finish_binding(session, datasource, commit=commit)
             return datasource
 
         existing = session.exec(
@@ -254,8 +263,7 @@ def bind_datasource_to_tenant(
             clear_datasource_workspace_permissions(session, [int(datasource.id)], tenant_id=target_tenant_id)
         datasource.tenant_id = target_tenant_id
         session.add(datasource)
-        session.commit()
-        session.refresh(datasource)
+        _finish_binding(session, datasource, commit=commit)
         return datasource
 
     if target_tenant_id == DEFAULT_TENANT_ID:
@@ -267,8 +275,7 @@ def bind_datasource_to_tenant(
         if int(datasource.tenant_id or DEFAULT_TENANT_ID) in bound_tenant_ids:
             datasource.tenant_id = DEFAULT_TENANT_ID
             session.add(datasource)
-        session.commit()
-        session.refresh(datasource)
+        _finish_binding(session, datasource, commit=commit)
         return datasource
 
     existing_for_tenant = session.exec(
@@ -298,8 +305,7 @@ def bind_datasource_to_tenant(
         datasource.tenant_id = target_tenant_id
         session.add(datasource)
 
-    session.commit()
-    session.refresh(datasource)
+    _finish_binding(session, datasource, commit=commit)
     return datasource
 
 
@@ -308,6 +314,7 @@ def bind_tenant_to_datasource(
         user: CurrentUser,
         tenant_id: int,
         datasource_id: int | None,
+        commit: bool = True,
 ) -> CoreDatasource | None:
     """
     是什么：bind_tenant_to_datasource 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -340,14 +347,14 @@ def bind_tenant_to_datasource(
                 if still_bound is None:
                     datasource.tenant_id = DEFAULT_TENANT_ID
                     session.add(datasource)
-            session.commit()
+            _finish_binding(session, None, commit=commit)
         else:
             current = session.get(CoreDatasource, current_datasource_id)
             if current is not None:
-                bind_datasource_to_tenant(session, user, current, None)
+                bind_datasource_to_tenant(session, user, current, None, commit=commit)
         return None
 
     datasource = session.get(CoreDatasource, int(datasource_id))
     if datasource is None:
         raise HTTPException(status_code=404, detail="数据源不存在")
-    return bind_datasource_to_tenant(session, user, datasource, target_tenant_id)
+    return bind_datasource_to_tenant(session, user, datasource, target_tenant_id, commit=commit)
