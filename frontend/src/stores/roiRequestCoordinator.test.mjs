@@ -57,6 +57,11 @@ assert.equal(finishRoiRequest(state, oldRequest), false)
 assert.equal(isRoiRequestLoading(state), false)
 assert.equal(getRoiPermissionError(state), '')
 
+const nextWorkspaceRequest = beginRoiRequest(state, 'dashboards')
+assert.equal(isLatestRoiRequest(state, oldRequest), false)
+assert.equal(isLatestRoiRequest(state, nextWorkspaceRequest), true)
+finishRoiRequest(state, nextWorkspaceRequest)
+
 const firstCharts = beginRoiRequest(state, 'charts:dashboard-1', 'charts')
 const secondCharts = beginRoiRequest(state, 'charts:dashboard-1', 'charts')
 assert.equal(isLatestRoiRequest(state, firstCharts), false)

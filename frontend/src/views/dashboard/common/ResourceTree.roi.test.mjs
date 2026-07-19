@@ -36,6 +36,19 @@ assert.ok(resetTreeState, '树重置入口必须存在')
 assert.match(resetTreeState[1], /shouldResetOrdinaryDashboardStore\(currentRouteDashboardScope\(\)\)/)
 assert.match(resetTreeState[1], /roiDashboardStore\.reset\(\)/)
 
+const workspaceSwitchHandler = source.match(
+  /name: WORKSPACE_CONTEXT_CHANGE_EVENT,[\s\S]*?callback: \(event\?: any\) => \{([\s\S]*?)\r?\n  \},\r?\n\}\)/
+)
+assert.ok(workspaceSwitchHandler, '必须监听工作空间切换事件')
+assert.match(workspaceSwitchHandler[1], /resetTreeState\(\)/)
+assert.ok(
+  workspaceSwitchHandler[1].indexOf('resetTreeState()') <
+    workspaceSwitchHandler[1].indexOf("if (event?.phase === 'changing')"),
+  '切换开始时必须先清空旧 ROI 树状态'
+)
+assert.match(source, /const requestTenantId = userStore\.getTenantId \|\| 'default'/)
+assert.match(source, /\(userStore\.getTenantId \|\| 'default'\) === requestTenantId/)
+
 const roiMenu = source.match(
   /if \(isRoiGroupNode\(data\)\) \{([\s\S]*?)\r?\n  \}\r?\n  if \(isDefaultGroupNode/
 )
