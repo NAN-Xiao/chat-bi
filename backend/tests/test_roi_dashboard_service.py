@@ -242,6 +242,28 @@ def test_roi_dashboards_are_shared_within_workspace(session: Session) -> None:
     assert [item.id for item in list_roi_dashboards(session, admin)] == [created.id]
 
 
+def test_shared_roi_datasource_does_not_share_dashboards_between_workspaces(
+    session: Session,
+) -> None:
+    workspace_a = make_user(id=1, tenant_id=11, tenant_role="owner")
+    workspace_b = make_user(id=2, tenant_id=22, tenant_role="owner")
+    add_datasource(session, 101)
+    grant_datasource(session, user_id=1, datasource_id=101)
+    grant_datasource(session, user_id=2, datasource_id=101)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+    seed_roi_config(session, tenant_id=22, datasource_id=101)
+
+    dashboard_a = create_roi_dashboard(
+        session, workspace_a, RoiDashboardCreate(name="空间 A ROI")
+    )
+    dashboard_b = create_roi_dashboard(
+        session, workspace_b, RoiDashboardCreate(name="空间 B ROI")
+    )
+
+    assert [item.id for item in list_roi_dashboards(session, workspace_a)] == [dashboard_a.id]
+    assert [item.id for item in list_roi_dashboards(session, workspace_b)] == [dashboard_b.id]
+
+
 @pytest.mark.parametrize(
     ("state", "expected_status", "expected_detail"),
     [
