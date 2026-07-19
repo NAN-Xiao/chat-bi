@@ -57,7 +57,7 @@ def seed_roi_config(
 ) -> None:
     session.add(
         CoreRoiWorkspaceConfig(
-            id=1001,
+            id=1000 + tenant_id,
             tenant_id=tenant_id,
             datasource_id=datasource_id,
             version=1,
@@ -82,6 +82,38 @@ def _prepare_authorized_query(
     monkeypatch.setattr(query_executor, "has_roi_datasource_access", lambda *_args: True)
     monkeypatch.setattr(session, "get", lambda _model, datasource_id: datasource if datasource_id == 202 else None)
     return datasource
+
+
+def test_query_executor_uses_current_workspace_roi_datasource(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    seed_roi_config(session, tenant_id=11, datasource_id=202)
+    seed_roi_config(session, tenant_id=22, datasource_id=303)
+    datasources = {
+        202: SimpleNamespace(id=202, type="pg", configuration="{}"),
+        303: SimpleNamespace(id=303, type="pg", configuration="{}"),
+    }
+    selected: list[int] = []
+    monkeypatch.setattr(query_executor, "has_roi_datasource_access", lambda *_args: True)
+    monkeypatch.setattr(
+        session,
+        "get",
+        lambda _model, datasource_id: datasources[datasource_id],
+    )
+
+    def run_validated_read(*, datasource, **_kwargs):
+        selected.append(int(datasource.id))
+        return {"columns": ["value"], "data": [[datasource.id]]}
+
+    monkeypatch.setattr(query_executor, "_run_validated_read", run_validated_read)
+
+    result_a = execute_roi_read_query(session, make_user(tenant_id=11), "SELECT 1")
+    result_b = execute_roi_read_query(session, make_user(tenant_id=22), "SELECT 1")
+
+    assert selected == [202, 303]
+    assert result_a.data == [{"value": 202}]
+    assert result_b.data == [{"value": 303}]
 
 
 def test_roi_query_skips_platform_table_field_and_row_permissions(
