@@ -23,12 +23,11 @@ TOPICS = (
     TopicDefinition(
         "realtime-payment",
         "修仙实时付费趋势",
-        "实时与累计付费事件趋势。",
+        "实时每小时支付记录数与收入金额。",
         (
-            "eafa54818ed54020a16369a42c99783f",
-            "d093ae51d20942ffa69bfcea7a14f740",
+            "2193936101973073920",
         ),
-        "ServerPayLog 按业务小时统计真实交易事件次数和累计次数；金额问题转交收入 Skill。",
+        "event_realtime 的 ServerPayLog 按小时统计支付记录数，并汇总 personal.money 为收入金额。",
     ),
     TopicDefinition(
         "new-users-platform",
@@ -163,8 +162,7 @@ TOPICS = (
 
 EXPECTED_VIEW_IDS = frozenset(
     {
-        "eafa54818ed54020a16369a42c99783f",
-        "d093ae51d20942ffa69bfcea7a14f740",
+        "2193936101973073920",
         "1c5288d1fe144ddea2b9e82c5ac72b24",
         "bdc788729cbc4157bfe3046170c1f92a",
         "10d4c025e0bf4d9a9f3bd60194cdabb0",
@@ -252,7 +250,7 @@ def validate_catalog() -> None:
     """校验主题目录的数量、唯一性、完整性与单主题容量。"""
 
     mapped = [view_id for topic in TOPICS for view_id in topic.view_ids]
-    if len(TOPICS) != 12 or len(mapped) != 45 or len(set(mapped)) != 45:
+    if len(TOPICS) != 12 or len(mapped) != 44 or len(set(mapped)) != 44:
         raise ValueError("修仙推荐看板 Skill 目录数量或唯一性错误")
     if set(mapped) != EXPECTED_VIEW_IDS:
         raise ValueError("修仙推荐看板 Skill 目录存在遗漏或错误组件")

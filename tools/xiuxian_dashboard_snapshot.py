@@ -17,8 +17,8 @@ from xiuxian_dashboard_skill_catalog import EXPECTED_VIEW_IDS
 
 
 EXPECTED_DASHBOARD_COUNT = 9
-EXPECTED_DRAWER_COUNT = 45
-EXPECTED_NONEMPTY_DRAWER_COUNT = 45
+EXPECTED_DRAWER_COUNT = 44
+EXPECTED_NONEMPTY_DRAWER_COUNT = 44
 BACKUP_VERSION = 1
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKUP_ROOT = ROOT / ".codex-runtime" / "xiuxian-dashboard-sql-backups"
@@ -234,7 +234,9 @@ def _validate_dashboards(dashboards: Sequence[DashboardSnapshot]) -> None:
         )
     all_view_ids = {drawer.view_id for drawer in drawers}
     if all_view_ids != set(EXPECTED_VIEW_IDS):
-        raise ValueError("45 个抽屉的 view id 与 Task 1 目录不一致")
+        raise ValueError(
+            f"{EXPECTED_DRAWER_COUNT} 个抽屉的 view id 与 Skill 目录不一致"
+        )
 
     for dashboard in dashboards:
         parsed = DashboardSnapshot.from_row(
@@ -429,7 +431,10 @@ def verify_backup(path: Path) -> BackupManifest:
         manifest.nonempty_drawer_count,
     )
     if manifest_counts != expected_counts:
-        raise ValueError("manifest 的 9/45/45 数量门禁不匹配")
+        raise ValueError(
+            "manifest 数量门禁不匹配: "
+            f"expected={expected_counts}, actual={manifest_counts}"
+        )
     return manifest
 
 

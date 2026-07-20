@@ -103,7 +103,7 @@ def test_build_data_skills_produces_one_base_and_twelve_topics():
     prompts = [skill["prompt"] for skill in skills]
 
     assert len(skills) == 13
-    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in prompts) == 44
+    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in prompts) == 43
     assert all("1e4e34743f2d47dfa1c2948742b93a50" not in prompt for prompt in prompts)
     assert all(len(prompt) <= 15_000 for prompt in prompts)
     assert len({prompt.splitlines()[0] for prompt in prompts}) == 13
@@ -114,6 +114,26 @@ def test_build_data_skills_produces_one_base_and_twelve_topics():
         for prompt in prompts
     )
     assert all("datasource_id=6" in prompt for prompt in prompts)
+
+
+def test_realtime_payment_topic_uses_current_single_dashboard_view():
+    module = _load_seed_module()
+    topic = next(item for item in module.TOPICS if item.slug == "realtime-payment")
+
+    assert topic.view_ids == ("2193936101973073920",)
+    assert "支付记录数" in topic.guidance
+    assert "收入金额" in topic.guidance
+
+
+def test_build_data_skills_embeds_current_realtime_dashboard_sql_once():
+    module = _load_seed_module()
+    skills = module.build_data_skills(_dashboard_snapshots(module))
+    skill = next(item for item in skills if item["name"] == "修仙实时付费趋势")
+
+    assert skill["prompt"].count("<!-- dashboard-sql:") == 1
+    assert "<!-- dashboard-sql:2193936101973073920 -->" in skill["prompt"]
+    assert "eafa54818ed54020a16369a42c99783f" not in skill["prompt"]
+    assert "d093ae51d20942ffa69bfcea7a14f740" not in skill["prompt"]
 
 
 def test_new_user_retention_is_a_strong_keyword_candidate_for_channel_d1_question(
@@ -247,7 +267,7 @@ def test_build_data_skills_ignores_the_known_empty_dashboard_view():
 
     skills = module.build_data_skills(dashboards)
 
-    assert sum(skill["prompt"].count("<!-- dashboard-sql:") for skill in skills) == 44
+    assert sum(skill["prompt"].count("<!-- dashboard-sql:") for skill in skills) == 43
 
 
 class _FakeCursor:

@@ -23,7 +23,7 @@ def _sha256_text(value: str) -> str:
 
 
 def make_nine_dashboard_snapshots(
-    *, drawer_count: int = 45, nonempty_count: int = 45
+    *, drawer_count: int = 44, nonempty_count: int = 44
 ) -> list[snapshot.DashboardSnapshot]:
     view_ids = sorted(snapshot.EXPECTED_VIEW_IDS)[:drawer_count]
     dashboards = []
@@ -54,7 +54,7 @@ def make_nine_dashboard_snapshots(
 
 
 def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
-    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=45)
+    dashboards = make_nine_dashboard_snapshots(drawer_count=44, nonempty_count=44)
 
     path = snapshot.write_verified_backup(
         dashboards, tmp_path, timestamp="20260716-120000"
@@ -62,8 +62,8 @@ def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
     manifest = snapshot.verify_backup(path)
 
     assert manifest.dashboard_count == 9
-    assert manifest.drawer_count == 45
-    assert manifest.nonempty_drawer_count == 45
+    assert manifest.drawer_count == 44
+    assert manifest.nonempty_drawer_count == 44
     assert len(list((path / "dashboards").glob("*.json"))) == 9
 
     dashboard_payload = json.loads(
@@ -85,7 +85,7 @@ def test_write_verified_backup_contains_full_canvas_and_drawer_sql(tmp_path):
 
 
 def test_backup_refuses_existing_directory(tmp_path):
-    dashboards = make_nine_dashboard_snapshots(drawer_count=45, nonempty_count=45)
+    dashboards = make_nine_dashboard_snapshots(drawer_count=44, nonempty_count=44)
     snapshot.write_verified_backup(dashboards, tmp_path, timestamp="20260716-120000")
 
     with pytest.raises(FileExistsError):
@@ -134,7 +134,7 @@ def test_backup_fails_closed_on_wrong_counts(tmp_path, dashboards, message):
 def test_backup_rejects_empty_sql_and_unknown_view_id(tmp_path):
     with pytest.raises(ValueError, match="非空 SQL"):
         snapshot.write_verified_backup(
-            make_nine_dashboard_snapshots(nonempty_count=44),
+            make_nine_dashboard_snapshots(nonempty_count=43),
             tmp_path,
             timestamp="20260716-120000",
         )
