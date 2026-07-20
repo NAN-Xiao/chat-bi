@@ -223,12 +223,17 @@ def _apply_business_mutation(tree: exp.Select, mutation: str) -> None:
     raise AssertionError(f"未知测试变异：{mutation}")
 
 
-def test_fixture_is_exactly_the_eleven_whitelisted_sql_statements():
-    assert len(FIXTURES) == 11
+def test_fixture_is_exactly_the_ten_whitelisted_sql_statements():
+    assert len(FIXTURES) == 10
     assert {item["view_id"] for item in FIXTURES} == set(repair.REPAIR_SPECS)
     assert {
         item["view_id"]: item["sql_sha256"] for item in FIXTURES
     } == repair.REPAIR_SOURCE_HASHES
+
+
+def test_active_payer_rate_is_not_in_legacy_bounds_repair_catalog():
+    assert "95d8497afac14f0a90342031fb43bc04" not in repair.REPAIR_SPECS
+    assert len(repair.REPAIR_SPECS) == 10
 
 
 def test_rewritten_hash_catalog_matches_deterministic_rewrite_output():
@@ -247,7 +252,7 @@ def test_rewrite_is_idempotent_for_all_whitelisted_sql(fixture):
 
 
 def test_already_rewritten_sql_is_revalidated(monkeypatch):
-    view_id = "95d8497afac14f0a90342031fb43bc04"
+    view_id = "f499305aa9b44a209cbe72cb68985a46"
     once = repair.rewrite_bounds_sql(view_id, SQL_BY_VIEW[view_id])
 
     def reject_rewritten_sql(*_args, **_kwargs):
@@ -265,13 +270,13 @@ def test_unknown_view_fails_closed():
 
 
 def test_source_byte_drift_fails_closed():
-    view_id = "95d8497afac14f0a90342031fb43bc04"
+    view_id = "f499305aa9b44a209cbe72cb68985a46"
     with pytest.raises(repair.SourceSqlChangedError, match="SHA-256"):
         repair.rewrite_bounds_sql(view_id, SQL_BY_VIEW[view_id] + "\n")
 
 
 def test_third_sql_variant_still_fails_closed_after_idempotency_support():
-    view_id = "95d8497afac14f0a90342031fb43bc04"
+    view_id = "f499305aa9b44a209cbe72cb68985a46"
     once = repair.rewrite_bounds_sql(view_id, SQL_BY_VIEW[view_id])
     unknown_variant = once.replace("110000047", "110000048", 1)
 
@@ -280,7 +285,7 @@ def test_third_sql_variant_still_fails_closed_after_idempotency_support():
 
 
 def test_rewrite_removes_direct_bounds_join():
-    view_id = "95d8497afac14f0a90342031fb43bc04"
+    view_id = "f499305aa9b44a209cbe72cb68985a46"
     rewritten = repair.rewrite_bounds_sql(view_id, SQL_BY_VIEW[view_id])
     tree = _parse(rewritten)
 
@@ -340,7 +345,7 @@ def test_all_whitelisted_sql_rewrites_preserve_surface_and_partition_guards(fixt
 
 
 def test_validate_rewritten_sql_rejects_remaining_bounds_reference():
-    view_id = "95d8497afac14f0a90342031fb43bc04"
+    view_id = "f499305aa9b44a209cbe72cb68985a46"
     with pytest.raises(repair.UnsafeRewriteError, match="bounds"):
         repair.validate_rewritten_sql(SQL_BY_VIEW[view_id])
 

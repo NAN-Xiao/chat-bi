@@ -1,10 +1,5 @@
 [
   {
-    "view_id": "95d8497afac14f0a90342031fb43bc04",
-    "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS max_dt\n)\nSELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,\n       ROUND(COUNT(DISTINCT CASE WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) > 0 THEN u.uid END) / NULLIF(COUNT(DISTINCT u.uid), 0) * 100, 2) AS `累计付费率`\nFROM `user` u\nJOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt\nWHERE u.prod = 110000047\nGROUP BY u.dt\nORDER BY u.dt",
-    "sql_sha256": "815c35585e7769575fa01ca6eb13069eaf47821da3943080b0968255b999b503"
-  },
-  {
     "view_id": "f499305aa9b44a209cbe72cb68985a46",
     "sql": "WITH bounds AS (\n    SELECT CAST(DATE_FORMAT(DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,\n           CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS max_dt\n)\nSELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,\n       COUNT(DISTINCT CASE WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.paytotal')), '') AS DECIMAL(18,4)), 0) > 0 THEN u.uid END) AS `累计付费用户数`\nFROM `user` u\nJOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt\nWHERE u.prod = 110000047\nGROUP BY u.dt\nORDER BY u.dt",
     "sql_sha256": "364956182ef6e2dd84b5a30e66e99801741da627cec1797f7383ea9f8fa0e6b5"

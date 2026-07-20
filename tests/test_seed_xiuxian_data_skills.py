@@ -30,6 +30,21 @@ def _load_seed_module():
     return module
 
 
+def test_payer_penetration_topic_defines_active_payer_rate_contract():
+    _load_seed_module()
+    from xiuxian_dashboard_skill_catalog import TOPICS
+
+    topic = next(item for item in TOPICS if item.slug == "payer-penetration")
+
+    assert "活跃用户付费率" in topic.guidance
+    assert "UserActive" in topic.guidance
+    assert "ServerPayLog" in topic.guidance
+    assert "同时" in topic.guidance
+    assert "每日" in topic.guidance
+    assert "不是累计付费率" in topic.guidance
+    assert "paytotal" in topic.guidance
+
+
 def test_xiuxian_date_partition_skill_is_scoped_and_actionable():
     module = _load_seed_module()
 

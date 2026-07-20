@@ -19,6 +19,10 @@ publisher = importlib.import_module("publish_xiuxian_dashboard_data_skills")
 repair = importlib.import_module("xiuxian_dashboard_sql_repair")
 
 
+def test_expected_repair_count_tracks_audited_catalog():
+    assert publisher.EXPECTED_REPAIR_COUNT == len(repair.REPAIR_SPECS) == 10
+
+
 class Connection:
     def __init__(self, name: str, calls: list[str]):
         self.name = name
@@ -138,7 +142,10 @@ def test_validate_all_repairs_rejects_real_result_mismatches(
 
 
 def _install_read_phases(monkeypatch, calls, *, repairs=None, skills=None):
-    repairs = repairs or {f"view-{index}": f"SELECT {index}" for index in range(11)}
+    repair_count = publisher.EXPECTED_REPAIR_COUNT
+    repairs = repairs or {
+        f"view-{index}": f"SELECT {index}" for index in range(repair_count)
+    }
     skills = skills or [
         {"name": f"Skill {index}", "description": "", "prompt": f"marker-{index}"}
         for index in range(13)
@@ -162,12 +169,12 @@ def _install_read_phases(monkeypatch, calls, *, repairs=None, skills=None):
 
     def compare(rows, connection):
         assert rows is dashboards
-        calls.append("11_equivalence")
+        calls.append(f"{repair_count}_equivalence")
         return repairs
 
     def explain(rewritten, connection):
         assert rewritten is repairs
-        calls.append("11_explain")
+        calls.append(f"{repair_count}_explain")
 
     def in_memory(rows, rewritten):
         assert rows is dashboards
@@ -224,8 +231,8 @@ def test_dry_run_is_default_and_reaches_in_memory_skills_without_system_writes(
         "load",
         "backup",
         "verify_backup",
-        "11_equivalence",
-        "11_explain",
+        f"{publisher.EXPECTED_REPAIR_COUNT}_equivalence",
+        f"{publisher.EXPECTED_REPAIR_COUNT}_explain",
         "in_memory",
         "build_skills",
     ]
@@ -242,7 +249,7 @@ def test_dry_run_is_default_and_reaches_in_memory_skills_without_system_writes(
     assert report.mode == "dry-run"
     assert report.phase is publisher.PublishPhase.SKILLS_BUILT
     assert report.backup_path == backup_path
-    assert report.repaired_view_count == 11
+    assert report.repaired_view_count == publisher.EXPECTED_REPAIR_COUNT
     assert report.skill_count == len(skills)
 
 
@@ -253,7 +260,7 @@ def test_apply_stops_before_writes_when_one_result_differs(monkeypatch, tmp_path
     _install_read_phases(monkeypatch, calls)
 
     def mismatch(*_args):
-        calls.append("11_equivalence")
+        calls.append(f"{publisher.EXPECTED_REPAIR_COUNT}_equivalence")
         raise publisher.ResultMismatchError(
             "view=95d8497afac14f0a90342031fb43bc04 field=累计付费率"
         )
@@ -275,7 +282,12 @@ def test_apply_stops_before_writes_when_one_result_differs(monkeypatch, tmp_path
             retrieval_checker=lambda _question: "",
         )
 
-    assert calls[:4] == ["load", "backup", "verify_backup", "11_equivalence"]
+    assert calls[:4] == [
+        "load",
+        "backup",
+        "verify_backup",
+        f"{publisher.EXPECTED_REPAIR_COUNT}_equivalence",
+    ]
     assert "apply_dashboards" not in calls
 
 
@@ -381,7 +393,7 @@ def test_apply_restores_skills_and_releases_lock_when_retrieval_fails(
     )
     assert "lock:system-recovery" not in calls
     assert backup_path == Path("backup/20260716-120000")
-    assert len(repairs) == 11
+    assert len(repairs) == publisher.EXPECTED_REPAIR_COUNT
     assert type(update_times[0]) is int
     assert update_times == [1784175253]
     assert len(skills) == 13

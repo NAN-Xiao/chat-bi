@@ -60,7 +60,7 @@ from xiuxian_dashboard_sql_repair import (
 __all__ = ("SkillPublishRecoveryError", "SkillRestoreConflictError")
 
 
-EXPECTED_REPAIR_COUNT = 11
+EXPECTED_REPAIR_COUNT = len(REPAIR_SPECS)
 SKILL_BACKUP_VERSION = 1
 SKILL_BACKUP_SUFFIX = ".skill-recovery"
 SKILL_BACKUP_FILENAME = "skills.json"
@@ -227,7 +227,7 @@ def _compare_repair_results(
 def validate_all_repairs(
     dashboards: Sequence[Any], datasource_connection: Any
 ) -> dict[str, str]:
-    """同一数据源会话中逐条验证 11 对原 SQL 与改写 SQL。"""
+    """同一数据源会话中逐条验证完整目录中的原 SQL 与改写 SQL。"""
 
     drawers = _repair_drawers(dashboards)
     rewritten_by_view: dict[str, str] = {}
@@ -270,7 +270,9 @@ def validate_all_plans(
     """逐条执行只读 EXPLAIN，并拒绝日期边界广播 Hash Join。"""
 
     if set(rewritten_sql_by_view) != set(REPAIR_SPECS):
-        raise ValueError("EXPLAIN 输入必须完整覆盖 11 条修复目录")
+        raise ValueError(
+            f"EXPLAIN 输入必须完整覆盖 {EXPECTED_REPAIR_COUNT} 条修复目录"
+        )
     with _cursor_scope(datasource_connection) as cursor:
         for view_id in REPAIR_SPECS:
             cursor.execute(f"EXPLAIN {rewritten_sql_by_view[view_id]}")
@@ -291,7 +293,9 @@ def apply_repairs_in_memory(
     """只在内存快照中替换已验证 SQL，供 Skill 生成器消费。"""
 
     if set(rewritten_sql_by_view) != set(REPAIR_SPECS):
-        raise ValueError("内存改写必须完整覆盖 11 条修复目录")
+        raise ValueError(
+            f"内存改写必须完整覆盖 {EXPECTED_REPAIR_COUNT} 条修复目录"
+        )
     applied: set[str] = set()
     repaired: list[DashboardSnapshot] = []
     for dashboard in dashboards:
