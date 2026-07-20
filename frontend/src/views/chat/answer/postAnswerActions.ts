@@ -3,6 +3,15 @@ import type { ChatRecord } from '@/api/chat'
 export const POST_ANSWER_ACTION_START_RETRY_LIMIT = 8
 export const POST_ANSWER_ACTION_RETRY_DELAY_MS = 50
 
+interface StopReplyButtonState {
+  hasUnfinishedGeneration: boolean
+  hasRecommendQuestionsLoading: boolean
+}
+
+export function shouldShowStopReplyButton(state: StopReplyButtonState): boolean {
+  return state.hasUnfinishedGeneration
+}
+
 export function hasRecommendedQuestions(value?: string | null): boolean {
   if (!value?.trim()) {
     return false

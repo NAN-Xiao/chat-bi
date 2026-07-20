@@ -526,6 +526,7 @@ import { isRestorableAnswerRecord, shouldMarkChatTypingOnRestore } from './answe
 import {
   POST_ANSWER_ACTION_RETRY_DELAY_MS,
   isPostAnswerActionPending,
+  shouldShowStopReplyButton,
   shouldRetryPostAnswerActionStart,
   shouldRunPostAnswerActions,
 } from './answer/postAnswerActions'
@@ -657,8 +658,11 @@ function restoreChatTypingState(records = currentChat.value.records) {
   return shouldType
 }
 const hasUnfinishedGeneration = computed(() => hasUnfinishedRecord())
-const hasActiveGeneration = computed(
-  () => getRecommendQuestionsLoading.value || hasUnfinishedGeneration.value
+const hasActiveGeneration = computed(() =>
+  shouldShowStopReplyButton({
+    hasUnfinishedGeneration: hasUnfinishedGeneration.value,
+    hasRecommendQuestionsLoading: getRecommendQuestionsLoading.value,
+  })
 )
 const hasChatMessages = computed(() => computedMessages.value.length > 0)
 const isLoadingSelectedChat = computed(() => loading.value && currentChatId.value !== undefined)
