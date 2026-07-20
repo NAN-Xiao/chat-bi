@@ -197,7 +197,7 @@
               pad8: isPhone,
             }"
           >
-            <template v-for="(message, _index) in computedMessages" :key="_index">
+            <template v-for="(message, _index) in computedMessages" :key="message.renderKey">
               <ChatRow
                 :logo-assistant="logoAssistant"
                 :current-chat="currentChat"
@@ -530,6 +530,7 @@ import {
   shouldRetryPostAnswerActionStart,
   shouldRunPostAnswerActions,
 } from './answer/postAnswerActions'
+import { buildChatMessageRenderKey } from './answer/chatTaskContext'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -619,12 +620,14 @@ function isRecordTyping(record?: ChatRecord, index = -1) {
     isUnfinishedAnswerRecord(record)
   )
 }
-const computedMessages = computed<Array<ChatMessage>>(() => {
-  const messages: Array<ChatMessage> = []
+type RenderedChatMessage = ChatMessage & { renderKey: string }
+const computedMessages = computed<Array<RenderedChatMessage>>(() => {
+  const messages: Array<RenderedChatMessage> = []
   for (let i = 0; i < currentChat.value.records.length; i++) {
     const record = currentChat.value.records[i]
     if (record.question !== undefined && !record.first_chat) {
       messages.push({
+        renderKey: buildChatMessageRenderKey(currentChatId.value, 'user', record, i),
         role: 'user',
         create_time: record.create_time,
         record: record,
@@ -633,6 +636,7 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
       })
     }
     messages.push({
+      renderKey: buildChatMessageRenderKey(currentChatId.value, 'assistant', record, i),
       role: 'assistant',
       create_time: record.create_time,
       record: record,
@@ -1316,6 +1320,12 @@ const sendMessage = async (
     return
   }
 
+  const requestChatId = currentChatId.value
+  const requestChat = currentChat.value
+  if (!requestChatId) {
+    return
+  }
+
   loading.value = true
   isTyping.value = true
   if (isCompletePage.value && innerRef.value) {
@@ -1326,9 +1336,9 @@ const sendMessage = async (
   }
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
-  currentRecord.chat_id = currentChatId.value
+  currentRecord.chat_id = requestChatId
   currentRecord.question = inputMessage.value
-  currentRecord.datasource = currentChat.value.datasource || datasourceContext.datasourceId
+  currentRecord.datasource = requestChat.datasource || datasourceContext.datasourceId
   currentRecord.regenerate_record_id = regenerate_record_id
   currentRecord.custom_prompt_id = selectedCustomPromptId.value || undefined
   currentRecord.data_skill_id = selectedDataSkillId.value || undefined
@@ -1337,44 +1347,58 @@ const sendMessage = async (
   currentRecord.chart_answer = ''
   currentRecord.chart = ''
 
-  currentChat.value.records.push(currentRecord)
-  rememberCurrentChat(currentChatId.value)
+  requestChat.records.push(currentRecord)
+  rememberCurrentChat(requestChatId)
   inputMessage.value = ''
 
   try {
     const task = await questionApi.startTask({
       question: currentRecord.question,
-      chat_id: currentChatId.value,
+      chat_id: requestChatId,
       custom_prompt_id: currentRecord.custom_prompt_id,
       data_skill_id: currentRecord.data_skill_id,
     })
-    const currentRecordIndex = currentChat.value.records.indexOf(currentRecord)
+    const currentRecordIndex = requestChat.records.indexOf(currentRecord)
     if (task.record_id) {
       currentRecord.id = task.record_id
       if (currentRecordIndex >= 0) {
-        currentChat.value.records[currentRecordIndex].id = task.record_id
+        requestChat.records[currentRecordIndex].id = task.record_id
       }
     }
     currentRecord.task_id = task.task_id
     if (currentRecordIndex >= 0) {
-      currentChat.value.records[currentRecordIndex].task_id = task.task_id
+      requestChat.records[currentRecordIndex].task_id = task.task_id
     }
   } catch (error) {
     currentRecord.error = `${currentRecord.error ? `${currentRecord.error}\n` : ''}Error:${error}`
-    loading.value = false
-    isTyping.value = false
+    if (currentChatId.value === requestChatId) {
+      loading.value = false
+      isTyping.value = false
+    }
     console.error('Start chat task failed:', error)
     return
   }
 
+  if (currentChatId.value !== requestChatId) {
+    return
+  }
+
   nextTick(async () => {
+    if (currentChatId.value !== requestChatId) {
+      return
+    }
     if (!isCompletePage.value && innerRef.value) {
       scrollTopVal = innerRef.value!.clientHeight
       scrollTime = setInterval(() => {
         scrollBottom()
       }, 300)
     }
-    const index = currentChat.value.records.length - 1
+    const index = currentChat.value.records.findIndex(
+      (record) => record === currentRecord || (!!currentRecord.id && record.id === currentRecord.id)
+    )
+    if (index < 0) {
+      return
+    }
     if (chartAnswerRef.value) {
       if (chartAnswerRef.value instanceof Array) {
         for (let i = 0; i < chartAnswerRef.value.length; i++) {

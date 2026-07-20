@@ -485,6 +485,44 @@ async function testSmartQaTaskStoreReplaysBufferedEventsWhenCallbacksReattach() 
   await entry.promise
 }
 
+function testChatTaskContextKeepsOldTaskOutOfCurrentChat() {
+  const { applyBriefToTaskOwner, buildChatMessageRenderKey, resolveTaskOwnerChatId } = loadTsModule(
+    'src/views/chat/answer/chatTaskContext.ts'
+  )
+
+  assert.equal(resolveTaskOwnerChatId(101, 202), 101)
+  assert.equal(resolveTaskOwnerChatId(undefined, 202), 202)
+
+  const chatList = [
+    { id: 101, brief: '会话 A' },
+    { id: 202, brief: '会话 B' },
+  ]
+  const currentChat = { id: 202, brief: '会话 B' }
+  const currentChatUpdated = applyBriefToTaskOwner({
+    chatList,
+    currentChat,
+    currentChatId: 202,
+    ownerChatId: 101,
+    brief: '会话 A 自动标题',
+  })
+
+  assert.equal(currentChatUpdated, false)
+  assert.equal(chatList[0].brief, '会话 A 自动标题')
+  assert.equal(chatList[1].brief, '会话 B')
+  assert.equal(currentChat.brief, '会话 B')
+
+  const record = { id: 301, create_time: '2026-07-20T10:00:00Z' }
+  assert.notEqual(
+    buildChatMessageRenderKey(101, 'assistant', record, 0),
+    buildChatMessageRenderKey(202, 'assistant', record, 0)
+  )
+  const createTime = new Date('2026-07-20T10:00:00Z')
+  assert.equal(
+    buildChatMessageRenderKey(101, 'assistant', { create_time: createTime }, 0),
+    buildChatMessageRenderKey(101, 'assistant', { create_time: createTime.toISOString() }, 0)
+  )
+}
+
 function testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh() {
   const chartAnswerSource = fs.readFileSync(
     path.join(root, 'src/views/chat/answer/ChartAnswer.vue'),
@@ -503,13 +541,41 @@ function testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh() {
   )
   assert.match(
     chartAnswerSource,
-    /chatApi\.get\(_currentChatId\.value,\s*\{\s*includeRecordData:\s*false\s*}\)/,
-    '任务终态刷新应排除图表数据，避免旧的整会话大响应延迟覆盖推荐问题'
+    /chatApi\.get\(ownerChatId,\s*\{\s*includeRecordData:\s*false\s*}\)/,
+    '任务终态刷新应固定请求任务所属会话，并排除图表数据'
+  )
+  assert.doesNotMatch(
+    handlePayloadSource,
+    /_currentChat\.value\.records\[index\.value\]/,
+    '旧任务事件不得通过消息下标写入当前页面会话'
   )
   assert.match(
     chartAnswerSource,
     /onFinish:\s*async\s*\(\{ record }\)\s*=>\s*\{[\s\S]*?emitFinishOnce\(Number\(record\.id \|\| currentRecord\.id\)\)/,
     '任务终态刷新完成后仍应统一通知父组件启动完成后动作'
+  )
+}
+
+function testSendMessageKeepsOriginalChatContextAcrossAsyncTaskStart() {
+  const chatIndexSource = fs.readFileSync(path.join(root, 'src/views/chat/index.vue'), 'utf8')
+  const sendMessageStart = chatIndexSource.indexOf('const sendMessage = async')
+  const sendMessageEnd = chatIndexSource.indexOf('const analysisAnswerRef', sendMessageStart)
+  const sendMessageSource = chatIndexSource.slice(sendMessageStart, sendMessageEnd)
+
+  assert.match(
+    sendMessageSource,
+    /const requestChatId = currentChatId\.value/,
+    '发送前应固定记录所属会话 ID'
+  )
+  assert.match(
+    sendMessageSource,
+    /chat_id:\s*requestChatId/,
+    '异步任务创建必须使用发送开始时捕获的会话 ID'
+  )
+  assert.match(
+    sendMessageSource,
+    /if \(currentChatId\.value !== requestChatId\) \{\s*return\s*}/,
+    '任务创建返回后若用户已切换会话，不得继续操作当前页面组件'
   )
 }
 
@@ -522,4 +588,6 @@ await testSmartQaTaskStoreSkipsTerminalRecords()
 await testSmartQaTaskStoreRefreshesCallbacksWithoutDuplicatePolling()
 await testSmartQaTaskStoreDetachesCallbacksButKeepsPolling()
 await testSmartQaTaskStoreReplaysBufferedEventsWhenCallbacksReattach()
+testChatTaskContextKeepsOldTaskOutOfCurrentChat()
 testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh()
+testSendMessageKeepsOriginalChatContextAcrossAsyncTaskStart()

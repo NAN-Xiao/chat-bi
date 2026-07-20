@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
-import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
+import { chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
@@ -16,6 +16,11 @@ import {
 } from './taskRestore'
 import { buildSmartQaTaskKey, smartQaTaskStore } from './smartQaTaskStore'
 import { applyChartDataResponseToRecord } from './chartDataResponse'
+import {
+  applyBriefToTaskOwner,
+  isTaskOwnerChatVisible,
+  resolveTaskOwnerChatId,
+} from './chatTaskContext'
 
 const props = withDefaults(
   defineProps<{
@@ -102,6 +107,48 @@ const finalAnswerReady = ref(!!(props.message?.record?.finish || props.message?.
 const POLL_INTERVAL_MS = 1000
 const activeTaskStoragePrefix = 'chat.smartQa.activeTask.'
 const notifiedFinishRecordIds = new Set<number>()
+const recordOwnerChatIds = new WeakMap<ChatRecord, number>()
+
+function taskOwnerChatId(record = props.message?.record) {
+  if (!record) {
+    return resolveTaskOwnerChatId(undefined, props.currentChatId)
+  }
+  const rememberedChatId = recordOwnerChatIds.get(record)
+  if (rememberedChatId) {
+    return rememberedChatId
+  }
+  const ownerChatId = resolveTaskOwnerChatId(record.chat_id, props.currentChatId)
+  if (ownerChatId) {
+    recordOwnerChatIds.set(record, ownerChatId)
+  }
+  return ownerChatId
+}
+
+function taskOwnerChatVisible(record = props.message?.record) {
+  return isTaskOwnerChatVisible(
+    taskOwnerChatId(record),
+    _currentChatId.value,
+    _currentChat.value.id
+  )
+}
+
+function findVisibleRecord(record: ChatRecord) {
+  if (!taskOwnerChatVisible(record)) {
+    return undefined
+  }
+  return _currentChat.value.records.find(
+    (candidate) => candidate === record || (!!record.id && candidate.id === record.id)
+  )
+}
+
+function updateOwnedRecord(record: ChatRecord, values: Partial<ChatRecord>) {
+  Object.assign(record, values)
+  const visibleRecord = findVisibleRecord(record)
+  if (visibleRecord && visibleRecord !== record) {
+    Object.assign(visibleRecord, values)
+  }
+  return visibleRecord || record
+}
 
 const showFinalAnswer = computed(() => {
   const record = props.message?.record
@@ -125,7 +172,7 @@ interface ActiveTaskState {
 function tenantTaskScope(record?: ChatRecord) {
   return (
     (record as any)?.tenant_id ||
-    (_currentChat.value as any)?.tenant_id ||
+    (taskOwnerChatVisible(record) ? (_currentChat.value as any)?.tenant_id : undefined) ||
     'default'
   )
 }
@@ -133,7 +180,7 @@ function tenantTaskScope(record?: ChatRecord) {
 function taskKey(record: ChatRecord) {
   return buildSmartQaTaskKey({
     tenantId: tenantTaskScope(record),
-    chatId: _currentChatId.value || record.chat_id,
+    chatId: taskOwnerChatId(record),
     recordId: record.id,
   })
 }
@@ -172,17 +219,14 @@ function normalizeTaskError(error?: unknown) {
 
 function failCurrentRecord(currentRecord: ChatRecord, error?: unknown) {
   const message = normalizeTaskError(error)
-  currentRecord.error = message
-  if (index.value >= 0 && _currentChat.value.records[index.value]) {
-    _currentChat.value.records[index.value].error = message
-  }
+  updateOwnedRecord(currentRecord, { error: message })
   clearCurrentTask(currentRecord)
   _loading.value = false
   emits('error', currentRecord.id)
 }
 
 function activeTaskStorageKey(record: ChatRecord) {
-  const chatId = record.chat_id || _currentChatId.value || 'unknown'
+  const chatId = taskOwnerChatId(record) || 'unknown'
   const recordId = record.id || record.create_time || record.question || index.value
   return `${activeTaskStoragePrefix}${chatId}.${recordId}`
 }
@@ -198,10 +242,7 @@ function rememberActiveTask(record: ChatRecord, taskId: string, offset = 0) {
 }
 
 function clearCurrentTask(record: ChatRecord) {
-  record.task_id = undefined
-  if (index.value >= 0 && _currentChat.value.records[index.value]) {
-    _currentChat.value.records[index.value].task_id = undefined
-  }
+  updateOwnedRecord(record, { task_id: undefined })
 }
 
 function pausePolling() {
@@ -282,29 +323,27 @@ async function handlePayload(
 
   switch (data.type) {
     case 'id':
-      currentRecord.id = data.id
-      _currentChat.value.records[index.value].id = data.id
+      updateOwnedRecord(currentRecord, { id: data.id })
       if (currentRecord.task_id) {
         rememberActiveTask(currentRecord, currentRecord.task_id)
       }
       break
     case 'regenerate_record_id':
-      currentRecord.regenerate_record_id = data.regenerate_record_id
-      _currentChat.value.records[index.value].regenerate_record_id = data.regenerate_record_id
+      updateOwnedRecord(currentRecord, { regenerate_record_id: data.regenerate_record_id })
       break
     case 'question':
-      currentRecord.question = data.question
-      _currentChat.value.records[index.value].question = data.question
+      updateOwnedRecord(currentRecord, { question: data.question })
       break
     case 'info':
       console.info(data.msg)
       break
     case 'brief':
-      _currentChat.value.brief = data.brief
-      _chatList.value.forEach((c: Chat) => {
-        if (c.id === _currentChat.value.id) {
-          c.brief = _currentChat.value.brief
-        }
+      applyBriefToTaskOwner({
+        chatList: _chatList.value,
+        currentChat: _currentChat.value,
+        currentChatId: _currentChatId.value,
+        ownerChatId: taskOwnerChatId(currentRecord),
+        brief: data.brief,
       })
       break
     case 'error':
@@ -312,38 +351,39 @@ async function handlePayload(
       break
     case 'sql-result':
       state.sql_answer += data.reasoning_content || ''
-      _currentChat.value.records[index.value].sql_answer = state.sql_answer
+      updateOwnedRecord(currentRecord, { sql_answer: state.sql_answer })
       break
     case 'sql':
-      _currentChat.value.records[index.value].sql = data.content
+      updateOwnedRecord(currentRecord, { sql: data.content })
       break
     case 'sql-data':
-      getChatData(_currentChat.value.records[index.value].id)
+      getChatData(currentRecord.id, currentRecord)
       break
     case 'chart-result':
       state.chart_answer += data.reasoning_content || ''
-      _currentChat.value.records[index.value].chart_answer = state.chart_answer
+      updateOwnedRecord(currentRecord, { chart_answer: state.chart_answer })
       break
     case 'analysis-result':
       state.analysis += data.content || ''
       state.analysis_thinking += data.reasoning_content || ''
-      _currentChat.value.records[index.value].analysis = state.analysis
-      _currentChat.value.records[index.value].analysis_thinking = state.analysis_thinking
+      updateOwnedRecord(currentRecord, {
+        analysis: state.analysis,
+        analysis_thinking: state.analysis_thinking,
+      })
       if (data.notice) {
-        _currentChat.value.records[index.value].analysis_notice = data.notice
+        updateOwnedRecord(currentRecord, { analysis_notice: data.notice })
       }
       break
     case 'chart':
-      _currentChat.value.records[index.value].chart = data.content
+      updateOwnedRecord(currentRecord, { chart: data.content })
       break
     case 'datasource':
-      if (!_currentChat.value.datasource) {
+      if (taskOwnerChatVisible(currentRecord) && !_currentChat.value.datasource) {
         _currentChat.value.datasource = data.id
       }
       break
     case 'finish':
-      currentRecord.finish = true
-      _currentChat.value.records[index.value].finish = true
+      updateOwnedRecord(currentRecord, { finish: true })
       await markFinalAnswerReady()
       clearCurrentTask(currentRecord)
       break
@@ -351,27 +391,26 @@ async function handlePayload(
   await nextTick()
 }
 
-async function refreshCurrentRecord(recordId?: number) {
-  if (!_currentChatId.value) {
+async function refreshCurrentRecord(
+  recordId?: number,
+  targetRecord: ChatRecord | undefined = props.message?.record
+) {
+  const ownerChatId = taskOwnerChatId(targetRecord)
+  if (!ownerChatId || !targetRecord || !recordId) {
     return false
   }
 
   try {
-    const chat = await chatApi.get(_currentChatId.value, { includeRecordData: false })
-    const latestRecord = recordId
-      ? chat?.records?.find((record) => record.id === recordId)
-      : chat?.records?.[index.value]
-    if (!latestRecord || index.value < 0) {
+    const chat = await chatApi.get(ownerChatId, { includeRecordData: false })
+    const latestRecord = chat?.records?.find((record) => record.id === recordId)
+    if (!latestRecord) {
       return false
     }
-    const currentTaskId = _currentChat.value.records[index.value].task_id
-    _currentChat.value.records[index.value] = Object.assign(
-      _currentChat.value.records[index.value],
-      latestRecord,
-      {
-        task_id: latestRecord.task_id || currentTaskId,
-      }
-    )
+    const currentTaskId = targetRecord.task_id
+    updateOwnedRecord(targetRecord, {
+      ...latestRecord,
+      task_id: latestRecord.task_id || currentTaskId,
+    })
     return true
   } catch (error) {
     console.error('Refresh chat record failed:', error)
@@ -384,22 +423,19 @@ const sendMessage = async () => {
   finalAnswerReady.value = false
   _loading.value = true
 
-  if (index.value < 0) {
+  const currentRecord = props.message?.record
+  if (!currentRecord) {
     _loading.value = false
     return
   }
 
-  const currentRecord: ChatRecord = _currentChat.value.records[index.value]
   if (currentRecord.local_answer) {
     _loading.value = false
     return
   }
 
-  let error: boolean = false
-  if (_currentChatId.value === undefined) {
-    error = true
-  }
-  if (error) return
+  const ownerChatId = taskOwnerChatId(currentRecord)
+  if (!ownerChatId) return
 
   try {
     if (currentRecord.task_id) {
@@ -411,28 +447,21 @@ const sendMessage = async () => {
 
     const param = {
       question: currentRecord.question,
-      chat_id: _currentChatId.value,
+      chat_id: ownerChatId,
       custom_prompt_id: currentRecord.custom_prompt_id,
       data_skill_id: currentRecord.data_skill_id,
     }
     const task = await questionApi.startTask(param)
     if (task.record_id) {
-      currentRecord.id = task.record_id
-      _currentChat.value.records[index.value].id = task.record_id
+      updateOwnedRecord(currentRecord, { id: task.record_id })
     }
-    currentRecord.task_id = task.task_id
-    _currentChat.value.records[index.value].task_id = task.task_id
+    updateOwnedRecord(currentRecord, { task_id: task.task_id })
     finalAnswerReady.value = false
     rememberActiveTask(currentRecord, task.task_id)
     attachGlobalTask(currentRecord, task.task_id)
   } catch (error) {
-    if (!currentRecord.error) {
-      currentRecord.error = ''
-    }
-    if (currentRecord.error.trim().length !== 0) {
-      currentRecord.error = currentRecord.error + '\n'
-    }
-    currentRecord.error = currentRecord.error + 'Error:' + error
+    const previousError = currentRecord.error?.trim() ? `${currentRecord.error}\n` : ''
+    updateOwnedRecord(currentRecord, { error: `${previousError}Error:${error}` })
     console.error('Error:', error)
     emits('error')
   } finally {
@@ -471,14 +500,23 @@ function hasRecordData(record?: ChatRecord) {
   return Array.isArray(record.data?.data) && record.data.data.length > 0
 }
 
-function loadChartData(recordId?: number, isStale?: () => boolean) {
+function loadChartData(
+  recordId?: number,
+  isStale?: () => boolean,
+  targetRecord: ChatRecord | undefined = props.message?.record
+) {
   if (!recordId) {
     return Promise.resolve()
   }
   if (isStale?.()) {
     return Promise.resolve()
   }
-  const currentRecord = _currentChat.value.records.find((record) => record.id === recordId)
+  const currentRecord =
+    targetRecord?.id === recordId
+      ? targetRecord
+      : taskOwnerChatVisible(targetRecord)
+        ? _currentChat.value.records.find((record) => record.id === recordId)
+        : undefined
   if (hasRecordData(currentRecord)) {
     return Promise.resolve()
   }
@@ -490,11 +528,14 @@ function loadChartData(recordId?: number, isStale?: () => boolean) {
       if (isStale?.()) {
         return
       }
-      _currentChat.value.records.forEach((record) => {
-        if (record.id === recordId) {
-          applyChartDataResponseToRecord(record, response)
-        }
-      })
+      if (!currentRecord) {
+        return
+      }
+      applyChartDataResponseToRecord(currentRecord, response)
+      const visibleRecord = findVisibleRecord(currentRecord)
+      if (visibleRecord && visibleRecord !== currentRecord) {
+        applyChartDataResponseToRecord(visibleRecord, response)
+      }
     })
     .finally(() => {
       loadingData.value = false
@@ -502,8 +543,8 @@ function loadChartData(recordId?: number, isStale?: () => boolean) {
     })
 }
 
-function getChatData(recordId?: number) {
-  void loadChartData(recordId)
+function getChatData(recordId?: number, targetRecord?: ChatRecord) {
+  void loadChartData(recordId, undefined, targetRecord)
 }
 
 function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffset = 0) {
@@ -519,7 +560,7 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
   }
   const entry = smartQaTaskStore.ensureTask({
     tenantId: tenantTaskScope(currentRecord),
-    chatId: _currentChatId.value || currentRecord.chat_id,
+    chatId: taskOwnerChatId(currentRecord),
     record: currentRecord,
     taskId,
     offset: initialOffset,
@@ -533,8 +574,8 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
         }
       },
       refreshRecord: async ({ record }) => {
-        await refreshCurrentRecord(Number(record.id || currentRecord.id))
-        const latestRecord = _currentChat.value.records[index.value]
+        await refreshCurrentRecord(Number(record.id || currentRecord.id), currentRecord)
+        const latestRecord = currentRecord
         if (latestRecord?.finish || latestRecord?.finish_time) {
           await markFinalAnswerReady()
         }
@@ -545,7 +586,7 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
       loadRecordData: async ({ record }) => {
         const recordId = Number(record.id || currentRecord.id)
         if (recordId) {
-          await loadChartData(recordId)
+          await loadChartData(recordId, undefined, currentRecord)
         }
       },
       onFinish: async ({ record }) => {
@@ -562,8 +603,8 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
   if (entry) {
     _loading.value = true
     if (currentRecord.id) {
-      void refreshCurrentRecord(currentRecord.id).then(async (refreshed) => {
-        const latestRecord = _currentChat.value.records[index.value]
+      void refreshCurrentRecord(currentRecord.id, currentRecord).then(async (refreshed) => {
+        const latestRecord = currentRecord
         if (refreshed && latestRecord && hasStoredFinalAnswer(latestRecord)) {
           if (latestRecord.finish || latestRecord.finish_time) {
             await markFinalAnswerReady()
@@ -571,7 +612,7 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
           clearCurrentTask(latestRecord)
           _loading.value = false
           if (latestRecord.id && latestRecord.chart && !hasRecordData(latestRecord)) {
-            getChatData(latestRecord.id)
+            getChatData(latestRecord.id, latestRecord)
           }
         }
       })
@@ -606,7 +647,7 @@ async function restoreRecordTask() {
   }
   if (hasStoredFinalAnswer(record)) {
     if (!props.deferDataLoading && record.id && record.chart && !hasRecordData(record)) {
-      getChatData(record.id)
+      getChatData(record.id, record)
     }
     return
   }
@@ -617,7 +658,7 @@ async function restoreRecordTask() {
       stopFlag.value = false
       finalAnswerReady.value = false
       _loading.value = true
-      record.task_id = activeTask.task_id
+      updateOwnedRecord(record, { task_id: activeTask.task_id })
       attachGlobalTask(record, activeTask.task_id, activeTask.offset)
       return
     }
@@ -626,14 +667,14 @@ async function restoreRecordTask() {
       return
     }
 
-    const refreshed = await refreshCurrentRecord(record.id)
+    const refreshed = await refreshCurrentRecord(record.id, record)
     if (refreshed) {
-      const latestRecord = _currentChat.value.records[index.value]
+      const latestRecord = record
       if (latestRecord?.finish) {
         await markFinalAnswerReady()
         clearCurrentTask(latestRecord)
         _loading.value = false
-        getChatData(latestRecord.id)
+        getChatData(latestRecord.id, latestRecord)
         emits('finish', latestRecord.id)
         return
       }
@@ -643,7 +684,9 @@ async function restoreRecordTask() {
       }
     }
   } catch (error) {
-    record.error = `${record.error ? `${record.error}\n` : ''}Error:${error}`
+    updateOwnedRecord(record, {
+      error: `${record.error ? `${record.error}\n` : ''}Error:${error}`,
+    })
     clearCurrentTask(record)
     emits('error', record.id)
     _loading.value = false
@@ -660,6 +703,9 @@ onMounted(() => {
 watch(
   () => props.message?.record,
   (record, previousRecord) => {
+    if (previousRecord && previousRecord !== record) {
+      smartQaTaskStore.detachTaskCallbacks(taskKey(previousRecord))
+    }
     if (shouldRestoreWhenAnswerRecordChanges(previousRecord, record)) {
       void restoreRecordTask()
     }
