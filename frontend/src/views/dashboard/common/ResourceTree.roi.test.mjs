@@ -161,6 +161,14 @@ assert.match(
   /v-else-if="data\.node_type !== 'leaf'"[\s\S]*?group-color-icon[\s\S]*?icon_dashboard_group_color/,
   '其它虚拟分组必须继续使用彩色分组图标'
 )
+const roiEntryIconBranchIndex = source.indexOf('v-else-if="isRoiGroupNode(data)"')
+const virtualGroupIconBranchIndex = source.indexOf('v-else-if="data.node_type !== \'leaf\'"')
+assert.ok(
+  roiEntryIconBranchIndex >= 0 &&
+    virtualGroupIconBranchIndex >= 0 &&
+    roiEntryIconBranchIndex < virtualGroupIconBranchIndex,
+  'ROI 图标分支必须位于通用虚拟分组分支之前，否则会被彩色分组图标抢先匹配'
+)
 assert.match(
   source,
   /&\.is-roi-entry-node\s*\{\s*padding-left:\s*calc\(var\(--dashboard-tree-indent, 0px\) \+ 18px\);\s*\}/,
