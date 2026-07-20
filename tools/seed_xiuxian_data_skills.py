@@ -114,7 +114,14 @@ DATA_SKILLS: list[dict[str, str]] = [DATE_PARTITION_SKILL]
 
 SERVERPAYLOG_VALIDATION = """<!-- data-skill-sql-validation:[
   {
+    "match":["新增首日付费金额","首日付费金额","D0付费金额","注册日付费金额"],
+    "required_sql_contains":["UserRegister","$.pay1","$.regdate","AS SIGNED"],
+    "forbidden_sql_contains":["AS UNSIGNED","PayBuyRet","ed_money","paytotal"],
+    "message":"修仙新增首日付费金额必须按 UserRegister 去重用户，读取注册日 user 快照的 pay.pay1；dt/regdate 为 YYYYMMDD，当前方言必须 CAST AS SIGNED，不能使用 UNSIGNED。"
+  },
+  {
     "match":["收入","流水","付费金额","付费用户","ARPU","arpu","ARPPU","arppu"],
+    "allow_when":["新增首日付费金额","首日付费金额","D0付费金额","注册日付费金额"],
     "required_sql_contains":["ServerPayLog","$.money"],
     "forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"],
     "message":"修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
@@ -169,6 +176,13 @@ def _topic_authority(topic_slug: str) -> str:
 - 收入金额使用 `personal.money`，订单号使用 `personal.orderId`，商品使用 `personal.productid`。
 - 付费用户使用 `COUNT(DISTINCT uid)`；ARPPU 分母为付费用户，ARPU 分母为同期 UserActive 活跃用户。
 - PayBuyRet 只描述支付流程事件，不得作为真实收入、订单、付费用户或 ARPU/ARPPU 来源。
+
+## 新增首日付费口径
+- “新增首日付费金额”是注册 cohort 快照指标，不使用 ServerPayLog 交易流水替代。
+- 新增用户按 `UserRegister` 的 `dt + uid` 去重，并按 `prod + dt + uid` 连接注册日 `user` 快照。
+- `event.dt` 与 `user.dt` 是数值型 `YYYYMMDD`；`userinfo.regdate` 是 JSON 字符串 `YYYYMMDD`，比较时使用 `CAST(... AS SIGNED)`，当前方言不支持 `UNSIGNED`。
+- 只有 `CAST(JSON_UNQUOTE(JSON_EXTRACT(userinfo, '$.regdate')) AS SIGNED) = dt` 才属于注册日 cohort；金额读取注册日快照的 `pay.pay1`。
+- 最近 30 个完整自然日为 `CURDATE() - 30 DAY` 至 `CURDATE() - 1 DAY`，按天展示时补齐无数据日期并返回 0。
 """.strip()
 
 

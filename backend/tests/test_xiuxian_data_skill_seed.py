@@ -84,6 +84,61 @@ def test_xiuxian_payment_skill_uses_serverpaylog_authority() -> None:
     assert '"forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"]' in prompt
 
 
+def test_xiuxian_payment_skill_documents_first_day_payment_snapshot_semantics() -> None:
+    prompt = _payment_skill()["prompt"]
+
+    assert "新增首日付费金额" in prompt
+    assert "UserRegister" in prompt
+    assert "注册日 `user` 快照" in prompt
+    assert "pay.pay1" in prompt
+    assert "YYYYMMDD" in prompt
+    assert "SIGNED" in prompt
+    assert "UNSIGNED" in prompt
+
+
+def test_xiuxian_payment_skill_allows_verified_first_day_payment_sql() -> None:
+    prompt = _payment_skill()["prompt"]
+    correct_sql = """
+    SELECT e.dt,
+           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.pay1')) AS DECIMAL(18, 4)))
+             AS `新增首日付费金额`
+    FROM `event` e
+    JOIN `user` u ON u.prod = e.prod AND u.dt = e.dt AND u.uid = e.uid
+    WHERE e.event = 'UserRegister'
+      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) AS SIGNED) = e.dt
+    GROUP BY e.dt
+    """
+
+    assert _data_skill_sql_validation_error(
+        "查看最近30天新增首日付费金额",
+        correct_sql,
+        prompt,
+    ) is None
+
+
+def test_xiuxian_payment_skill_rejects_unsigned_first_day_payment_sql() -> None:
+    prompt = _payment_skill()["prompt"]
+    wrong_sql = """
+    SELECT e.dt,
+           SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(u.pay, '$.pay1')) AS DECIMAL(18, 4)))
+             AS `新增首日付费金额`
+    FROM `event` e
+    JOIN `user` u ON u.prod = e.prod AND u.dt = e.dt AND u.uid = e.uid
+    WHERE e.event = 'UserRegister'
+      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) AS UNSIGNED) = e.dt
+    GROUP BY e.dt
+    """
+
+    assert _data_skill_sql_validation_error(
+        "查看最近30天新增首日付费金额",
+        wrong_sql,
+        prompt,
+    ) == (
+        "修仙新增首日付费金额必须按 UserRegister 去重用户，读取注册日 user 快照的 "
+        "pay.pay1；dt/regdate 为 YYYYMMDD，当前方言必须 CAST AS SIGNED，不能使用 UNSIGNED。"
+    )
+
+
 def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
     """通用日期口径根据问题动态生成边界，不扫描最大分区。"""
     prompt = _date_skill()["prompt"]

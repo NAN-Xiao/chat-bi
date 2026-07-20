@@ -102,7 +102,7 @@ TOPICS = (
     TopicDefinition(
         "serverpaylog-revenue",
         "修仙 ServerPayLog 收入与 ARPU/ARPPU",
-        "真实收入与付费人均指标。",
+        "真实收入、付费人均指标与新增首日付费 cohort。",
         (
             "22d89d4a69224e53994d21fb44b376aa",
             "2192510609759838208",
@@ -110,7 +110,7 @@ TOPICS = (
             "a6eb26710f7b4dc6ab69ded704c32fee",
             "9eff78876b1b405385f96d8559a286a8",
         ),
-        "收入只汇总 ServerPayLog.personal.money；ARPPU 分母为 ServerPayLog 去重 uid，ARPU 分母为 UserActive 去重 uid。",
+        "普通收入只汇总 ServerPayLog.personal.money；ARPPU 分母为 ServerPayLog 去重 uid，ARPU 分母为 UserActive 去重 uid。新增首日付费金额是独立的注册 cohort 快照口径：UserRegister 按 dt+uid 去重，连接注册日 user 快照并汇总 pay.pay1；dt/regdate 使用 YYYYMMDD 和 SIGNED，按天展示补齐无数据日期。",
     ),
     TopicDefinition(
         "payer-penetration",
@@ -124,7 +124,12 @@ TOPICS = (
             "eba39b8352a34136872404c16fbd17a9",
             "fc272fe6a3a74cda90a0564a98890fab",
         ),
-        "日付费用户按 ServerPayLog.uid 去重；累计 paytotal 只用于明确的累计快照指标，不能替代当日收入。",
+        (
+            "日付费用户按 ServerPayLog.uid 去重；近15日活跃用户付费率按天计算，"
+            "分母为 UserActive 去重 uid，分子为当天同时存在 UserActive 和 "
+            "ServerPayLog 的去重 uid；这是每日比率，不是累计付费率。"
+            "累计 paytotal 只用于明确的累计快照指标，不能作为活跃用户付费率来源。"
+        ),
     ),
     TopicDefinition(
         "orders-products",
