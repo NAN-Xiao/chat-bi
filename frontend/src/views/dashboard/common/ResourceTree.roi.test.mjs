@@ -49,6 +49,26 @@ assert.match(source, /ROI_SCOPE/)
 assert.doesNotMatch(source, /roiDashboardStore\.dashboards\s*=/)
 assert.match(
   source,
+  /resolveInitialDashboardRoutePlan\(\s*routeScope,\s*routeResourceId,\s*!!findFirstRoiDashboardNode\(\)\s*\)/,
+  'ROI 空路由必须通过纯函数决定初始选择'
+)
+assert.match(
+  source,
+  /if \(routePlan\.selectFirstRoiDashboard\) return findFirstRoiDashboardNode\(\)/,
+  'ROI 空路由有子看板时必须选择第一个 ROI 叶子'
+)
+assert.match(
+  source,
+  /if \(routePlan\.clearSelection\) return undefined/,
+  'ROI 空路由无子看板时必须清空选择而非回退普通看板'
+)
+assert.match(
+  source,
+  /if \(routePlan\.waitForRoiBranch\) return roiLoaded/,
+  'ROI 空路由必须等待 ROI 分支后再初始化'
+)
+assert.match(
+  source,
   /const clickPlan = createDashboardNodeClickPlan\(getDashboardScope\(data\)\)[\s\S]*if \(clickPlan\.resetOrdinaryDashboardSelection\)/
 )
 assert.match(
@@ -115,4 +135,9 @@ assert.match(
   source,
   /if \(opt === 'deleteRoiDashboard'\) \{\s*if \(!canManageCurrentWorkspace\.value \|\| !isRoiDashboardNode\(data\) \|\| !isLeafDashboardNode\(data\)\) return/,
   'ROI 删除命令必须拒绝固定入口'
+)
+assert.match(
+  source,
+  /const operation = async \(opt: string, data: SQTreeNode\) => \{\s*if \(isRoiGroupNode\(data\) && !isAllowedRoiGroupOperation\(opt\)\) return/,
+  '固定 ROI 入口必须在通用操作分发前按白名单拦截命令'
 )

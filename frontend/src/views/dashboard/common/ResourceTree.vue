@@ -35,7 +35,9 @@ import { canAccessRoiDashboard } from '@/utils/workspacePermission'
 import type { RoiDashboard } from '@/views/dashboard/roi/types'
 import {
   createDashboardNodeClickPlan,
+  isAllowedRoiGroupOperation,
   publishCurrentTreeBranch,
+  resolveInitialDashboardRoutePlan,
   shouldResetOrdinaryDashboardStore,
 } from '@/views/dashboard/roi/roiNavigationBehavior'
 import { ROI_DASHBOARD_TREE_REFRESH_EVENT } from '@/views/dashboard/roi/roiDashboardPanelBehavior'
@@ -259,6 +261,8 @@ const findRoiGroupNode = (nodes: SQTreeNode[] = []) =>
   findDashboardGroupNode(nodes, ROI_GROUP_ID)
 const findFirstMyDashboardNode = () =>
   findFirstLeafDashboardNode(findMyGroupNode(state.resourceTree)?.children || [])
+const findFirstRoiDashboardNode = () =>
+  findFirstLeafDashboardNode(findRoiGroupNode(state.resourceTree)?.children || [])
 
 const createDashboardGroup = (
   id: string,
@@ -522,14 +526,22 @@ const getTreeNodeStyle = (node: any, data: SQTreeNode) => {
 const resolveInitialDashboardNode = () => {
   if (!shouldAutoSelectDashboard()) return undefined
   const routeResourceId = currentRouteDashboardId()
+  const routeScope = currentRouteDashboardScope()
   if (routeResourceId) {
     const routeNode = findDashboardNode(
       state.resourceTree,
       routeResourceId,
-      currentRouteDashboardScope()
+      routeScope
     )
     if (isLeafDashboardNode(routeNode)) return routeNode
   }
+  const routePlan = resolveInitialDashboardRoutePlan(
+    routeScope,
+    routeResourceId,
+    !!findFirstRoiDashboardNode()
+  )
+  if (routePlan.selectFirstRoiDashboard) return findFirstRoiDashboardNode()
+  if (routePlan.clearSelection) return undefined
   if (props.defaultMode) {
     const rememberedNode = findDashboardNode(
       state.resourceTree,
@@ -692,8 +704,10 @@ const getTree = async () => {
 
   const canInitializeCombinedTree = () => {
     const routeResourceId = currentRouteDashboardId()
+    const routeScope = currentRouteDashboardScope()
+    const routePlan = resolveInitialDashboardRoutePlan(routeScope, routeResourceId, false)
+    if (routePlan.waitForRoiBranch) return roiLoaded
     if (routeResourceId) {
-      const routeScope = currentRouteDashboardScope()
       const routeBranchLoaded =
         routeScope === DEFAULT_SCOPE
           ? defaultLoaded
@@ -1225,6 +1239,7 @@ const addOperation = (params: any) => {
 }
 
 const operation = async (opt: string, data: SQTreeNode) => {
+  if (isRoiGroupNode(data) && !isAllowedRoiGroupOperation(opt)) return
   const resourceId = getRawDashboardId(data)
   if (opt === 'toggleTreeEditing') {
     await toggleTreeEditing()
