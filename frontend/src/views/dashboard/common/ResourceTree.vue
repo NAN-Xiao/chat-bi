@@ -35,7 +35,9 @@ import { canAccessRoiDashboard } from '@/utils/workspacePermission'
 import type { RoiDashboard } from '@/views/dashboard/roi/types'
 import {
   createDashboardNodeClickPlan,
+  isAllowedRoiGroupOperation,
   publishCurrentTreeBranch,
+  resolveInitialDashboardRoutePlan,
   shouldResetOrdinaryDashboardStore,
 } from '@/views/dashboard/roi/roiNavigationBehavior'
 import { ROI_DASHBOARD_TREE_REFRESH_EVENT } from '@/views/dashboard/roi/roiDashboardPanelBehavior'
@@ -240,14 +242,27 @@ const isMyGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === MY_GROUP_ID
 const isRoiGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === ROI_GROUP_ID
+const findDashboardGroupNode = (
+  nodes: SQTreeNode[] = [],
+  groupId: string
+): SQTreeNode | undefined => {
+  for (const node of nodes) {
+    if (isVirtualNode(node) && String(node.id || '') === groupId) return node
+    const matched = findDashboardGroupNode(node.children || [], groupId)
+    if (matched) return matched
+  }
+  return undefined
+}
 const findDefaultGroupNode = (nodes: SQTreeNode[] = []) =>
-  nodes.find((item) => String(item.id) === DEFAULT_GROUP_ID)
+  findDashboardGroupNode(nodes, DEFAULT_GROUP_ID)
 const findMyGroupNode = (nodes: SQTreeNode[] = []) =>
-  nodes.find((item) => String(item.id) === MY_GROUP_ID)
+  findDashboardGroupNode(nodes, MY_GROUP_ID)
 const findRoiGroupNode = (nodes: SQTreeNode[] = []) =>
-  nodes.find((item) => String(item.id) === ROI_GROUP_ID)
+  findDashboardGroupNode(nodes, ROI_GROUP_ID)
 const findFirstMyDashboardNode = () =>
   findFirstLeafDashboardNode(findMyGroupNode(state.resourceTree)?.children || [])
+const findFirstRoiDashboardNode = () =>
+  findFirstLeafDashboardNode(findRoiGroupNode(state.resourceTree)?.children || [])
 
 const createDashboardGroup = (
   id: string,
@@ -330,30 +345,33 @@ const buildCombinedTree = (
   defaultNodes: SQTreeNode[] = [],
   roiNodes: RoiDashboard[] = [],
   myNodes: SQTreeNode[] = []
-) => [
-  createDashboardGroup(
-    DEFAULT_GROUP_ID,
-    t('dashboard.default_dashboard'),
-    DEFAULT_SCOPE,
-    normalizeDefaultDashboardNodes(defaultNodes)
-  ),
-  ...(canManageCurrentWorkspace.value
-    ? [
-        createDashboardGroup(
-          ROI_GROUP_ID,
-          t('dashboard.roi_dashboard'),
-          ROI_SCOPE,
-          normalizeRoiDashboardNodes(roiNodes)
-        ),
-      ]
-    : []),
-  createDashboardGroup(
-    MY_GROUP_ID,
-    t('dashboard.dashboard'),
-    MY_SCOPE,
-    normalizeMyDashboardNodes(myNodes)
-  ),
-]
+) => {
+  const defaultChildren = normalizeDefaultDashboardNodes(defaultNodes)
+  if (canManageCurrentWorkspace.value) {
+    defaultChildren.push(
+      createDashboardGroup(
+        ROI_GROUP_ID,
+        t('dashboard.roi_dashboard'),
+        ROI_SCOPE,
+        normalizeRoiDashboardNodes(roiNodes)
+      )
+    )
+  }
+  return [
+    createDashboardGroup(
+      DEFAULT_GROUP_ID,
+      t('dashboard.default_dashboard'),
+      DEFAULT_SCOPE,
+      defaultChildren
+    ),
+    createDashboardGroup(
+      MY_GROUP_ID,
+      t('dashboard.dashboard'),
+      MY_SCOPE,
+      normalizeMyDashboardNodes(myNodes)
+    ),
+  ]
+}
 
 const findDashboardNode = (
   nodes: SQTreeNode[] = [],
@@ -380,6 +398,16 @@ const currentRouteDashboardId = () => {
   const resourceId =
     router.currentRoute.value.query.resourceId || router.currentRoute.value.query.dashboardId
   return Array.isArray(resourceId) ? resourceId[0] : resourceId
+}
+const resolveRoiGroupTarget = (data: SQTreeNode) => {
+  const currentId =
+    currentRouteDashboardScope() === ROI_SCOPE ? currentRouteDashboardId() : undefined
+  const currentNode = currentId
+    ? findDashboardNode(data.children || [], currentId, ROI_SCOPE)
+    : undefined
+  return isLeafDashboardNode(currentNode)
+    ? currentNode
+    : findFirstLeafDashboardNode(data.children || [])
 }
 const routeDashboardId = currentRouteDashboardId()
 if (routeDashboardId) {
@@ -454,6 +482,22 @@ const syncDashboardRoute = (node: SQTreeNode) => {
   })
 }
 
+const syncEmptyRoiRoute = () => {
+  if (props.showPosition !== 'preview' || props.defaultMode) return
+  const currentRoute = router.currentRoute.value
+  if (currentRoute.path !== '/dashboard/index') return
+  const query = { ...currentRoute.query }
+  delete query.resourceId
+  delete query.dashboardId
+  router.replace({
+    path: currentRoute.path,
+    query: {
+      ...query,
+      dashboardMode: ROI_SCOPE,
+    },
+  })
+}
+
 const shouldAutoSelectDashboard = () => props.showPosition === 'preview'
 const isVirtualNode = (node?: SQTreeNode) => (node as any)?.virtual === true
 const isRealNode = (node?: SQTreeNode | null) => !!node && !isVirtualNode(node as SQTreeNode)
@@ -482,14 +526,22 @@ const getTreeNodeStyle = (node: any, data: SQTreeNode) => {
 const resolveInitialDashboardNode = () => {
   if (!shouldAutoSelectDashboard()) return undefined
   const routeResourceId = currentRouteDashboardId()
+  const routeScope = currentRouteDashboardScope()
   if (routeResourceId) {
     const routeNode = findDashboardNode(
       state.resourceTree,
       routeResourceId,
-      currentRouteDashboardScope()
+      routeScope
     )
     if (isLeafDashboardNode(routeNode)) return routeNode
   }
+  const routePlan = resolveInitialDashboardRoutePlan(
+    routeScope,
+    routeResourceId,
+    !!findFirstRoiDashboardNode()
+  )
+  if (routePlan.selectFirstRoiDashboard) return findFirstRoiDashboardNode()
+  if (routePlan.clearSelection) return undefined
   if (props.defaultMode) {
     const rememberedNode = findDashboardNode(
       state.resourceTree,
@@ -527,10 +579,26 @@ const emitDashboardNodeClick = (data?: SQTreeNode) => {
   })
 }
 
+const activateRoiGroupNode = (data: SQTreeNode) => {
+  const target = resolveRoiGroupTarget(data)
+  if (target) {
+    selectDashboardNode(target)
+    emitDashboardNodeClick(target)
+    return
+  }
+  selectedNodeKey.value = null
+  resourceListTree.value?.setCurrentKey?.(null)
+  syncEmptyRoiRoute()
+}
+
 const nodeClick = (data: SQTreeNode, node: any) => {
   const clickPlan = createDashboardNodeClickPlan(getDashboardScope(data))
   if (clickPlan.resetOrdinaryDashboardSelection) {
     dashboardStore.setCurComponent({ component: null, index: null })
+  }
+  if (isRoiGroupNode(data)) {
+    activateRoiGroupNode(data)
+    return
   }
   if (isVirtualNode(data)) {
     resourceListTree.value?.setCurrentKey?.(null)
@@ -636,8 +704,10 @@ const getTree = async () => {
 
   const canInitializeCombinedTree = () => {
     const routeResourceId = currentRouteDashboardId()
+    const routeScope = currentRouteDashboardScope()
+    const routePlan = resolveInitialDashboardRoutePlan(routeScope, routeResourceId, false)
+    if (routePlan.waitForRoiBranch) return roiLoaded
     if (routeResourceId) {
-      const routeScope = currentRouteDashboardScope()
       const routeBranchLoaded =
         routeScope === DEFAULT_SCOPE
           ? defaultLoaded
@@ -1169,6 +1239,7 @@ const addOperation = (params: any) => {
 }
 
 const operation = async (opt: string, data: SQTreeNode) => {
+  if (isRoiGroupNode(data) && !isAllowedRoiGroupOperation(opt)) return
   const resourceId = getRawDashboardId(data)
   if (opt === 'toggleTreeEditing') {
     await toggleTreeEditing()
@@ -1180,7 +1251,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
     return
   }
   if (opt === 'renameRoiDashboard') {
-    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data)) return
+    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data) || !isLeafDashboardNode(data)) return
     const result = await ElMessageBox.prompt(
       t('dashboard.roi_dashboard_name_tips'),
       t('dashboard.rename'),
@@ -1201,7 +1272,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
     return
   }
   if (opt === 'deleteRoiDashboard') {
-    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data)) return
+    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data) || !isLeafDashboardNode(data)) return
     await ElMessageBox.confirm(t('dashboard.delete_dashboard_warn', [data.name]), {
       confirmButtonType: 'danger',
       type: 'warning',
@@ -1345,7 +1416,13 @@ const saveTreeOrder = async () => {
   const defaultNodes = isCombinedDashboardTree.value
     ? findDefaultGroupNode(state.resourceTree)?.children || []
     : state.resourceTree
-  const defaultItems = collectTreeOrderItems(defaultNodes, props.defaultMode ? 'root' : DEFAULT_GROUP_ID, DEFAULT_SCOPE)
+  const defaultItems = collectTreeOrderItems(
+    defaultNodes,
+    props.defaultMode ? 'root' : DEFAULT_GROUP_ID,
+    DEFAULT_SCOPE,
+    [],
+    (node) => getDashboardScope(node) === DEFAULT_SCOPE
+  )
   if (defaultItems.length && canEditDefaultOrder.value) {
     requests.push(dashboardApi.reorder({ scope: DEFAULT_SCOPE, items: defaultItems }))
   }

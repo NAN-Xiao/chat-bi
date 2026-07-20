@@ -29,6 +29,24 @@ export const shouldInitializeOrdinaryDashboardCanvas = (
   scope: RoiDashboardScope
 ) => showPosition === 'preview' && scope !== 'roi'
 
+export const resolveInitialDashboardRoutePlan = (
+  scope: RoiDashboardScope,
+  resourceId: unknown,
+  hasFirstRoiDashboard: boolean
+) => {
+  const isEmptyRoiRoute = scope === 'roi' && !resourceId
+  return {
+    isEmptyRoiRoute,
+    waitForRoiBranch: isEmptyRoiRoute,
+    selectFirstRoiDashboard: isEmptyRoiRoute && hasFirstRoiDashboard,
+    clearSelection: isEmptyRoiRoute && !hasFirstRoiDashboard,
+    allowOrdinaryDashboardFallback: !isEmptyRoiRoute,
+  }
+}
+
+export const isAllowedRoiGroupOperation = (operation: string) =>
+  operation === 'newRoiDashboard' || operation === 'toggleTreeEditing'
+
 type TreeBranchPublication<T> = {
   request: Promise<T[]>
   isCurrent: () => boolean
