@@ -2233,6 +2233,14 @@ defineExpose({
   }
 
   :deep(
+    .ed-tree-node__content:has(> .custom-tree-node.is-roi-entry-node) > .ed-tree-node__expand-icon
+  ) {
+    flex: 0 0 2px;
+    width: 2px;
+    overflow: visible;
+  }
+
+  :deep(
     .ed-tree-node__content:has(
         > .custom-tree-node.is-real-folder-node[data-shift-folder='true']
       )

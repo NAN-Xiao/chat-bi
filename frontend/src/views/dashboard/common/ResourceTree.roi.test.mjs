@@ -174,6 +174,17 @@ assert.match(
   /&\.is-roi-entry-node\s*\{\s*padding-left:\s*calc\(var\(--dashboard-tree-indent, 0px\) \+ 18px\);\s*\}/,
   'ROI 固定入口必须复用普通叶子的 18px 左内边距'
 )
+
+const roiEntryExpandIconRule = source.match(
+  /:deep\(\s*\.ed-tree-node__content:has\(\s*> \.custom-tree-node\.is-roi-entry-node\s*\)\s*> \.ed-tree-node__expand-icon\s*\)\s*\{([\s\S]*?)\n\s*\}/
+)
+assert.ok(roiEntryExpandIconRule, 'ROI 固定入口必须有专用的展开图标占位规则')
+assert.doesNotMatch(roiEntryExpandIconRule[0], /\.is-leaf|\.expanded/, '该规则只能命中 ROI 固定入口')
+assert.match(roiEntryExpandIconRule[1], /flex:\s*0 0 2px;/, 'ROI 展开箭头不能增加流式占位')
+assert.match(roiEntryExpandIconRule[1], /width:\s*2px;/, 'ROI 展开箭头宽度必须保持 2px')
+assert.match(roiEntryExpandIconRule[1], /overflow:\s*visible;/, 'ROI 展开箭头必须保持可见')
+assert.doesNotMatch(roiEntryExpandIconRule[1], /visibility:\s*hidden|transform:/, 'ROI 规则不能隐藏或旋转展开箭头')
+
 assert.match(
   combinedTree[0],
   /createDashboardGroup\([\s\S]*?ROI_GROUP_ID[\s\S]*?ROI_SCOPE/,
