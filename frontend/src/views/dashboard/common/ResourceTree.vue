@@ -395,6 +395,16 @@ const currentRouteDashboardId = () => {
     router.currentRoute.value.query.resourceId || router.currentRoute.value.query.dashboardId
   return Array.isArray(resourceId) ? resourceId[0] : resourceId
 }
+const resolveRoiGroupTarget = (data: SQTreeNode) => {
+  const currentId =
+    currentRouteDashboardScope() === ROI_SCOPE ? currentRouteDashboardId() : undefined
+  const currentNode = currentId
+    ? findDashboardNode(data.children || [], currentId, ROI_SCOPE)
+    : undefined
+  return isLeafDashboardNode(currentNode)
+    ? currentNode
+    : findFirstLeafDashboardNode(data.children || [])
+}
 const routeDashboardId = currentRouteDashboardId()
 if (routeDashboardId) {
   selectedNodeKey.value = getDashboardNodeKey(currentRouteDashboardScope(), routeDashboardId)
@@ -464,6 +474,22 @@ const syncDashboardRoute = (node: SQTreeNode) => {
         : {
             dashboardMode,
           }),
+    },
+  })
+}
+
+const syncEmptyRoiRoute = () => {
+  if (props.showPosition !== 'preview' || props.defaultMode) return
+  const currentRoute = router.currentRoute.value
+  if (currentRoute.path !== '/dashboard/index') return
+  const query = { ...currentRoute.query }
+  delete query.resourceId
+  delete query.dashboardId
+  router.replace({
+    path: currentRoute.path,
+    query: {
+      ...query,
+      dashboardMode: ROI_SCOPE,
     },
   })
 }
@@ -541,10 +567,26 @@ const emitDashboardNodeClick = (data?: SQTreeNode) => {
   })
 }
 
+const activateRoiGroupNode = (data: SQTreeNode) => {
+  const target = resolveRoiGroupTarget(data)
+  if (target) {
+    selectDashboardNode(target)
+    emitDashboardNodeClick(target)
+    return
+  }
+  selectedNodeKey.value = null
+  resourceListTree.value?.setCurrentKey?.(null)
+  syncEmptyRoiRoute()
+}
+
 const nodeClick = (data: SQTreeNode, node: any) => {
   const clickPlan = createDashboardNodeClickPlan(getDashboardScope(data))
   if (clickPlan.resetOrdinaryDashboardSelection) {
     dashboardStore.setCurComponent({ component: null, index: null })
+  }
+  if (isRoiGroupNode(data)) {
+    activateRoiGroupNode(data)
+    return
   }
   if (isVirtualNode(data)) {
     resourceListTree.value?.setCurrentKey?.(null)

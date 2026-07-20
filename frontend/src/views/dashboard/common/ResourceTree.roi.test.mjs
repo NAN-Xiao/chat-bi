@@ -51,6 +51,16 @@ assert.match(
   source,
   /const clickPlan = createDashboardNodeClickPlan\(getDashboardScope\(data\)\)[\s\S]*if \(clickPlan\.resetOrdinaryDashboardSelection\)/
 )
+assert.match(
+  source,
+  /const resolveRoiGroupTarget = \(data: SQTreeNode\)[\s\S]*?findFirstLeafDashboardNode\(data\.children \|\| \[\]\)/,
+  '固定 ROI 入口必须解析当前或首个下属看板'
+)
+assert.match(
+  source,
+  /const syncEmptyRoiRoute = \(\)[\s\S]*?dashboardMode: ROI_SCOPE/,
+  '无下属看板时必须进入明确的 ROI 空路由'
+)
 
 const nodeClick = source.match(/const nodeClick = \(data: SQTreeNode, node: any\) => \{([\s\S]*?)\n\}/)
 assert.ok(nodeClick, '节点点击入口必须存在')
@@ -58,6 +68,11 @@ assert.ok(
   nodeClick[1].indexOf('createDashboardNodeClickPlan') < nodeClick[1].indexOf('isVirtualNode(data)'),
   'default/my 虚拟根必须先应用普通 store 清理计划，再处理 virtual return'
 )
+assert.ok(
+  nodeClick[1].indexOf('isRoiGroupNode(data)') < nodeClick[1].indexOf('isVirtualNode(data)'),
+  '固定 ROI 入口必须在通用虚拟节点返回前处理'
+)
+assert.match(nodeClick[1], /activateRoiGroupNode\(data\)/)
 
 const resetTreeState = source.match(/const resetTreeState = \(\) => \{([\s\S]*?)\n\}/)
 assert.ok(resetTreeState, '树重置入口必须存在')
@@ -84,4 +99,9 @@ assert.ok(roiMenu, 'ROI 根组需要独立菜单')
 assert.doesNotMatch(roiMenu[1], /setRoiDatasource|openDatasourceSettings/)
 assert.match(roiMenu[1], /newRoiDashboard/)
 assert.match(roiMenu[1], /toggleTreeEditing/)
+assert.doesNotMatch(
+  roiMenu[1],
+  /deleteRoiDashboard|renameRoiDashboard|copyDefault|removeDefault/,
+  '固定 ROI 入口不得出现删除、重命名或普通推荐看板命令'
+)
 assert.doesNotMatch(roiMenu[1], /newFolder|setDefault|copyDefault/)
