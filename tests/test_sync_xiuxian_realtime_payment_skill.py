@@ -63,10 +63,14 @@ class FakeBackend:
         sources=None,
         embedding_error: BaseException | None = None,
         duplicate_marker: bool = False,
+        commit_ack_error: BaseException | None = None,
+        release_error: BaseException | None = None,
     ):
         self.sources = list(sources or [_source(), _source()])
         self.embedding_error = embedding_error
         self.duplicate_marker = duplicate_marker
+        self.commit_ack_error = commit_ack_error
+        self.release_error = release_error
         self.events: list[str] = []
         self.updated_skill_ids: list[int] = []
         self.embedding_ids: list[int] = []
@@ -99,11 +103,17 @@ class FakeBackend:
 
     def release_lock(self):
         self.events.append("release_lock")
+        if self.release_error is not None:
+            raise self.release_error
 
-    def upsert_target(self, skill):
+    def upsert_target(self, skill, expected_states):
         self.events.append("upsert_target")
         self.updated_skill_ids.append(module.EXPECTED_SKILL_ID)
-        return {module.EXPECTED_SKILL_ID: {"id": module.EXPECTED_SKILL_ID}}
+        expected_states[module.EXPECTED_SKILL_ID] = {
+            "id": module.EXPECTED_SKILL_ID
+        }
+        if self.commit_ack_error is not None:
+            raise self.commit_ack_error
 
     def refresh_embedding(self, skill_id):
         self.events.append("refresh_embedding")
@@ -186,6 +196,30 @@ def test_embedding_failure_restores_skill_269_only():
     assert backend.events[-1] == "release_lock"
 
 
+def test_commit_acknowledgement_loss_restores_skill_269():
+    backend = FakeBackend(commit_ack_error=RuntimeError("commit ack lost"))
+
+    with pytest.raises(RuntimeError, match="commit ack lost"):
+        module.sync_realtime_skill(backend, apply=True)
+
+    assert backend.updated_skill_ids == [269]
+    assert backend.embedding_ids == []
+    assert backend.restored_skill_ids == [269]
+    assert backend.events[-1] == "release_lock"
+
+
+def test_unlock_error_does_not_replace_source_change_error():
+    backend = FakeBackend(
+        sources=[_source(), _source(update_time=1784515308)],
+        release_error=RuntimeError("unlock failed"),
+    )
+
+    with pytest.raises(module.SourceDashboardChangedError) as exc_info:
+        module.sync_realtime_skill(backend, apply=True)
+
+    assert any("unlock failed" in note for note in exc_info.value.__notes__)
+
+
 def test_duplicate_realtime_marker_is_rejected_before_lock():
     backend = FakeBackend(sources=[_source()], duplicate_marker=True)
 
@@ -213,3 +247,55 @@ def test_source_metadata_does_not_pollute_signed_recovery_directory(tmp_path):
     assert metadata_path.parent == backup_path.parent
     assert metadata_path.name == "20260720-120000.realtime-source.json"
     assert metadata_path.parent != module.skill_recovery_path(backup_path)
+
+
+def test_validate_marker_rows_rejects_duplicate_non_target_marker():
+    expected = {"<!-- marker:a -->", "<!-- marker:b -->"}
+    rows = [(269, "<!-- marker:a -->\nA"), (270, "<!-- marker:a -->\nB")]
+
+    with pytest.raises(RuntimeError, match="marker 目录"):
+        module.validate_marker_rows(rows, expected)
+
+
+def test_broken_write_connection_recovery_reacquires_publish_lock(monkeypatch):
+    backend = module.PsycopgSyncBackend()
+    backend._write_connection = type(
+        "BrokenConnection", (), {"closed": True, "broken": True}
+    )()
+    captured = {}
+
+    def restore(factory, backup, markers, expected_states, *, original_lock_held):
+        captured["original_lock_held"] = original_lock_held
+
+    monkeypatch.setattr(module, "_restore_with_new_connection", restore)
+
+    backend.restore(
+        {"skills": [{"id": 269}], "preferences": []},
+        {269: {"id": 269}},
+    )
+
+    assert captured == {"original_lock_held": False}
+
+
+def test_release_lock_skips_unlock_for_broken_connection(monkeypatch):
+    events = []
+
+    class BrokenConnection:
+        closed = False
+        broken = True
+
+        def close(self):
+            events.append("close")
+
+    backend = module.PsycopgSyncBackend()
+    backend._write_connection = BrokenConnection()
+    monkeypatch.setattr(
+        module,
+        "release_publish_lock",
+        lambda connection: events.append("unlock"),
+    )
+
+    backend.release_lock()
+
+    assert events == ["close"]
+    assert backend._write_connection is None

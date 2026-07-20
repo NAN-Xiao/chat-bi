@@ -16,6 +16,7 @@ import psycopg
 
 from core_system_db import core_system_db_config
 from publish_xiuxian_dashboard_data_skills import (
+    _connection_is_usable,
     _default_retrieval_checker,
     _restore_with_new_connection,
     acquire_publish_lock,
@@ -214,6 +215,28 @@ def _assert_source_unchanged(before: DashboardSource, after: DashboardSource) ->
         )
 
 
+def validate_marker_rows(
+    rows: list[tuple[Any, Any]], expected_markers: set[str]
+) -> dict[int, str]:
+    ids = [int(row[0]) for row in rows]
+    prompts = [str(row[1] or "") for row in rows]
+    markers = [prompt.splitlines()[0].strip() if prompt else "" for prompt in prompts]
+    if (
+        len(rows) != len(expected_markers)
+        or len(set(ids)) != len(expected_markers)
+        or len(set(markers)) != len(expected_markers)
+        or set(markers) != expected_markers
+    ):
+        raise RuntimeError(
+            "修仙 source marker 目录不一致: "
+            f"expected={sorted(expected_markers)}, actual={sorted(markers)}"
+        )
+    return {
+        skill_id: _sha256_text(prompt)
+        for skill_id, prompt in zip(ids, prompts, strict=True)
+    }
+
+
 def sync_realtime_skill(backend: Any, *, apply: bool) -> SyncReport:
     """执行只读 dry-run 或只更新 Skill 269 的安全同步。"""
 
@@ -236,26 +259,33 @@ def sync_realtime_skill(backend: Any, *, apply: bool) -> SyncReport:
         )
 
     expected_states: dict[int, dict[str, Any]] = {}
-    write_committed = False
+    failure: BaseException | None = None
     backend.acquire_lock()
     try:
         _assert_source_unchanged(source, backend.load_source())
-        expected_states = backend.upsert_target(skill)
-        write_committed = True
+        backend.upsert_target(skill, expected_states)
         backend.refresh_embedding(EXPECTED_SKILL_ID)
         backend.verify_target(skill)
         backend.verify_other_hashes(baseline_hashes)
         retrieval_text = backend.retrieve(RETRIEVAL_QUESTION)
         verify_retrieval_text(retrieval_text)
     except BaseException as sync_error:
-        if write_committed and expected_states:
+        failure = sync_error
+        if expected_states:
             try:
                 backend.restore(backup, expected_states)
             except BaseException as recovery_error:
-                raise SkillSyncRecoveryError(sync_error, recovery_error) from recovery_error
+                combined_error = SkillSyncRecoveryError(sync_error, recovery_error)
+                failure = combined_error
+                raise combined_error from recovery_error
         raise
     finally:
-        backend.release_lock()
+        try:
+            backend.release_lock()
+        except BaseException as unlock_error:
+            if failure is None:
+                raise
+            failure.add_note(f"发布锁释放失败: {unlock_error!r}")
 
     return SyncReport(
         mode="apply",
@@ -278,6 +308,7 @@ class PsycopgSyncBackend:
         self._dashboards: list[Any] | None = None
         self._skill: dict[str, str] | None = None
         self._target_backup: dict[str, list[dict[str, Any]]] | None = None
+        self._expected_markers: set[str] | None = None
 
     @staticmethod
     def _connection() -> Any:
@@ -323,8 +354,15 @@ class PsycopgSyncBackend:
         ]
         if len(matches) != 1:
             raise RuntimeError("实时付费 Skill marker 必须唯一")
+        markers = {
+            str(skill.get("prompt") or "").splitlines()[0].strip()
+            for skill in skills
+        }
+        if len(markers) != 13 or "" in markers:
+            raise RuntimeError("生成的修仙 Skill marker 目录必须包含 13 个唯一 marker")
         self._dashboards = dashboards
         self._skill = matches[0]
+        self._expected_markers = markers
         return matches[0]
 
     def load_skill_hashes(self) -> dict[int, str]:
@@ -343,9 +381,9 @@ class PsycopgSyncBackend:
                 (TENANT_ID, json.dumps([DATASOURCE_ID])),
             )
             rows = cur.fetchall()
-        if len(rows) != 13 or len({int(row[0]) for row in rows}) != 13:
-            raise RuntimeError(f"修仙 source marker Skill 必须为 13 条，实际 {len(rows)}")
-        return {int(skill_id): _sha256_text(str(prompt or "")) for skill_id, prompt in rows}
+        if self._expected_markers is None:
+            raise RuntimeError("校验 marker 前必须先构建修仙 Skill 目录")
+        return validate_marker_rows(rows, self._expected_markers)
 
     def load_target_backup(self) -> dict[str, list[dict[str, Any]]]:
         with self._connection() as connection, connection.cursor() as cur:
@@ -399,7 +437,8 @@ class PsycopgSyncBackend:
         connection = self._write_connection
         self._write_connection = None
         try:
-            release_publish_lock(connection)
+            if _connection_is_usable(connection):
+                release_publish_lock(connection)
         finally:
             connection.close()
 
@@ -408,45 +447,57 @@ class PsycopgSyncBackend:
             raise RuntimeError("定向写入必须持有修仙发布锁")
         return self._write_connection
 
-    def upsert_target(self, skill: dict[str, str]) -> dict[int, dict[str, Any]]:
+    def upsert_target(
+        self,
+        skill: dict[str, str],
+        expected_states: dict[int, dict[str, Any]],
+    ) -> None:
         connection = self._require_write_connection()
-        with connection.cursor() as cur:
-            current = backup_existing_skills(cur, [REALTIME_SKILL_MARKER])
-            if current != self._target_backup:
-                raise RuntimeError("Skill 269 在备份后发生变化，拒绝覆盖")
-            ids = upsert_skills(cur, [skill])
-            if ids != [EXPECTED_SKILL_ID]:
-                raise RuntimeError(f"定向更新返回了意外 Skill ID: {ids}")
-            cur.execute(
-                """
-                SELECT id, name, description, prompt, visibility_scope,
-                       specific_ds, datasource_ids, tenant_id, embedding,
-                       embedding_signature
-                FROM custom_prompt
-                WHERE id = %s
-                """,
-                (EXPECTED_SKILL_ID,),
-            )
-            rows = cur.fetchall()
-            if len(rows) != 1:
-                raise RuntimeError("定向更新后无法唯一读取 Skill 269")
-            row = rows[0]
-            if (
-                int(row[0]) != EXPECTED_SKILL_ID
-                or row[1] != skill["name"]
-                or row[2] != skill["description"]
-                or row[3] != skill["prompt"].strip()
-                or row[4] != "ADMIN_PUBLIC"
-                or row[5] is not True
-                or list(row[6] or []) != [DATASOURCE_ID]
-                or int(row[7]) != TENANT_ID
-                or row[8] is not None
-                or row[9] is not None
-            ):
-                raise RuntimeError("Skill 269 写入结果或作用域不符合预期")
-            expected_states = load_skill_states_by_ids(cur, ids)
-        connection.commit()
-        return expected_states
+        try:
+            with connection.cursor() as cur:
+                current = backup_existing_skills(cur, [REALTIME_SKILL_MARKER])
+                if current != self._target_backup:
+                    raise RuntimeError("Skill 269 在备份后发生变化，拒绝覆盖")
+                ids = upsert_skills(cur, [skill])
+                if ids != [EXPECTED_SKILL_ID]:
+                    raise RuntimeError(f"定向更新返回了意外 Skill ID: {ids}")
+                cur.execute(
+                    """
+                    SELECT id, name, description, prompt, visibility_scope,
+                           specific_ds, datasource_ids, tenant_id, embedding,
+                           embedding_signature
+                    FROM custom_prompt
+                    WHERE id = %s
+                    """,
+                    (EXPECTED_SKILL_ID,),
+                )
+                rows = cur.fetchall()
+                if len(rows) != 1:
+                    raise RuntimeError("定向更新后无法唯一读取 Skill 269")
+                row = rows[0]
+                if (
+                    int(row[0]) != EXPECTED_SKILL_ID
+                    or row[1] != skill["name"]
+                    or row[2] != skill["description"]
+                    or row[3] != skill["prompt"].strip()
+                    or row[4] != "ADMIN_PUBLIC"
+                    or row[5] is not True
+                    or list(row[6] or []) != [DATASOURCE_ID]
+                    or int(row[7]) != TENANT_ID
+                    or row[8] is not None
+                    or row[9] is not None
+                ):
+                    raise RuntimeError("Skill 269 写入结果或作用域不符合预期")
+                captured_states = load_skill_states_by_ids(cur, ids)
+                expected_states.clear()
+                expected_states.update(captured_states)
+            connection.commit()
+        except BaseException:
+            try:
+                connection.rollback()
+            except BaseException:
+                pass
+            raise
 
     def refresh_embedding(self, skill_id: int) -> None:
         connection = self._require_write_connection()
@@ -496,12 +547,16 @@ class PsycopgSyncBackend:
         backup: Mapping[str, list[dict[str, Any]]],
         expected_states: Mapping[int, Mapping[str, Any]],
     ) -> None:
+        original_lock_held = bool(
+            self._write_connection is not None
+            and _connection_is_usable(self._write_connection)
+        )
         _restore_with_new_connection(
             self._connection,
             backup,
             [REALTIME_SKILL_MARKER],
             expected_states,
-            original_lock_held=True,
+            original_lock_held=original_lock_held,
         )
 
 
