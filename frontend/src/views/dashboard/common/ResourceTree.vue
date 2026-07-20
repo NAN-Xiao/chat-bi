@@ -1236,7 +1236,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
     return
   }
   if (opt === 'renameRoiDashboard') {
-    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data)) return
+    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data) || !isLeafDashboardNode(data)) return
     const result = await ElMessageBox.prompt(
       t('dashboard.roi_dashboard_name_tips'),
       t('dashboard.rename'),
@@ -1257,7 +1257,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
     return
   }
   if (opt === 'deleteRoiDashboard') {
-    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data)) return
+    if (!canManageCurrentWorkspace.value || !isRoiDashboardNode(data) || !isLeafDashboardNode(data)) return
     await ElMessageBox.confirm(t('dashboard.delete_dashboard_warn', [data.name]), {
       confirmButtonType: 'danger',
       type: 'warning',

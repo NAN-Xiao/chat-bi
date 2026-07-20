@@ -105,3 +105,14 @@ assert.doesNotMatch(
   '固定 ROI 入口不得出现删除、重命名或普通推荐看板命令'
 )
 assert.doesNotMatch(roiMenu[1], /newFolder|setDefault|copyDefault/)
+
+assert.match(
+  source,
+  /if \(opt === 'renameRoiDashboard'\) \{\s*if \(!canManageCurrentWorkspace\.value \|\| !isRoiDashboardNode\(data\) \|\| !isLeafDashboardNode\(data\)\) return/,
+  'ROI 重命名命令必须拒绝固定入口'
+)
+assert.match(
+  source,
+  /if \(opt === 'deleteRoiDashboard'\) \{\s*if \(!canManageCurrentWorkspace\.value \|\| !isRoiDashboardNode\(data\) \|\| !isLeafDashboardNode\(data\)\) return/,
+  'ROI 删除命令必须拒绝固定入口'
+)
