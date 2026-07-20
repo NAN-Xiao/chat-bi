@@ -1668,6 +1668,7 @@ defineExpose({
             :class="{
               'is-group-node': data.node_type !== 'leaf',
               'is-leaf-node': data.node_type === 'leaf',
+              'is-roi-entry-node': isRoiGroupNode(data),
               'is-real-folder-node': data.node_type !== 'leaf' && !isVirtualNode(data),
               'is-empty-folder-node':
                 data.node_type !== 'leaf' && !isVirtualNode(data) && !(data.children || []).length,
@@ -1691,6 +1692,11 @@ defineExpose({
             >
               <Icon name="folder-open-svgrepo-com">
                 <icon_folder_open class="svg-icon" />
+              </Icon>
+            </el-icon>
+            <el-icon v-else-if="isRoiGroupNode(data)" class="tree-node-icon icon-primary">
+              <Icon name="icon_dashboard_grid_add">
+                <icon_dashboard_grid_add class="svg-icon" />
               </Icon>
             </el-icon>
             <el-icon
@@ -2375,6 +2381,10 @@ defineExpose({
 
   &.is-leaf-node,
   &.is-empty-folder-node {
+    padding-left: calc(var(--dashboard-tree-indent, 0px) + 18px);
+  }
+
+  &.is-roi-entry-node {
     padding-left: calc(var(--dashboard-tree-indent, 0px) + 18px);
   }
 

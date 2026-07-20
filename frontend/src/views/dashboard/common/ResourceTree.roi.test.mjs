@@ -141,3 +141,33 @@ assert.match(
   /const operation = async \(opt: string, data: SQTreeNode\) => \{\s*if \(isRoiGroupNode\(data\) && !isAllowedRoiGroupOperation\(opt\)\) return/,
   '固定 ROI 入口必须在通用操作分发前按白名单拦截命令'
 )
+
+assert.match(
+  source,
+  /'is-roi-entry-node': isRoiGroupNode\(data\)/,
+  'ROI 固定入口必须具有独立视觉角色 class'
+)
+
+const roiEntryIcon = source.match(
+  /<el-icon\s+v-else-if="isRoiGroupNode\(data\)"\s+class="tree-node-icon icon-primary">([\s\S]*?)<\/el-icon>/
+)
+assert.ok(roiEntryIcon, 'ROI 固定入口必须使用普通看板图标分支')
+assert.match(roiEntryIcon[1], /name="icon_dashboard_grid_add"/)
+assert.match(roiEntryIcon[1], /<icon_dashboard_grid_add class="svg-icon"/)
+assert.doesNotMatch(roiEntryIcon[1], /icon_dashboard_group_color/)
+
+assert.match(
+  source,
+  /v-else-if="data\.node_type !== 'leaf'"[\s\S]*?group-color-icon[\s\S]*?icon_dashboard_group_color/,
+  '其它虚拟分组必须继续使用彩色分组图标'
+)
+assert.match(
+  source,
+  /&\.is-roi-entry-node\s*\{\s*padding-left:\s*calc\(var\(--dashboard-tree-indent, 0px\) \+ 18px\);\s*\}/,
+  'ROI 固定入口必须复用普通叶子的 18px 左内边距'
+)
+assert.match(
+  combinedTree[0],
+  /createDashboardGroup\([\s\S]*?ROI_GROUP_ID[\s\S]*?ROI_SCOPE/,
+  '样式统一不得把 ROI 固定入口改成真实叶子记录'
+)
