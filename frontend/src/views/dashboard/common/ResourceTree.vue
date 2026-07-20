@@ -240,12 +240,23 @@ const isMyGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === MY_GROUP_ID
 const isRoiGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === ROI_GROUP_ID
+const findDashboardGroupNode = (
+  nodes: SQTreeNode[] = [],
+  groupId: string
+): SQTreeNode | undefined => {
+  for (const node of nodes) {
+    if (isVirtualNode(node) && String(node.id || '') === groupId) return node
+    const matched = findDashboardGroupNode(node.children || [], groupId)
+    if (matched) return matched
+  }
+  return undefined
+}
 const findDefaultGroupNode = (nodes: SQTreeNode[] = []) =>
-  nodes.find((item) => String(item.id) === DEFAULT_GROUP_ID)
+  findDashboardGroupNode(nodes, DEFAULT_GROUP_ID)
 const findMyGroupNode = (nodes: SQTreeNode[] = []) =>
-  nodes.find((item) => String(item.id) === MY_GROUP_ID)
+  findDashboardGroupNode(nodes, MY_GROUP_ID)
 const findRoiGroupNode = (nodes: SQTreeNode[] = []) =>
-  nodes.find((item) => String(item.id) === ROI_GROUP_ID)
+  findDashboardGroupNode(nodes, ROI_GROUP_ID)
 const findFirstMyDashboardNode = () =>
   findFirstLeafDashboardNode(findMyGroupNode(state.resourceTree)?.children || [])
 
@@ -330,30 +341,33 @@ const buildCombinedTree = (
   defaultNodes: SQTreeNode[] = [],
   roiNodes: RoiDashboard[] = [],
   myNodes: SQTreeNode[] = []
-) => [
-  createDashboardGroup(
-    DEFAULT_GROUP_ID,
-    t('dashboard.default_dashboard'),
-    DEFAULT_SCOPE,
-    normalizeDefaultDashboardNodes(defaultNodes)
-  ),
-  ...(canManageCurrentWorkspace.value
-    ? [
-        createDashboardGroup(
-          ROI_GROUP_ID,
-          t('dashboard.roi_dashboard'),
-          ROI_SCOPE,
-          normalizeRoiDashboardNodes(roiNodes)
-        ),
-      ]
-    : []),
-  createDashboardGroup(
-    MY_GROUP_ID,
-    t('dashboard.dashboard'),
-    MY_SCOPE,
-    normalizeMyDashboardNodes(myNodes)
-  ),
-]
+) => {
+  const defaultChildren = normalizeDefaultDashboardNodes(defaultNodes)
+  if (canManageCurrentWorkspace.value) {
+    defaultChildren.push(
+      createDashboardGroup(
+        ROI_GROUP_ID,
+        t('dashboard.roi_dashboard'),
+        ROI_SCOPE,
+        normalizeRoiDashboardNodes(roiNodes)
+      )
+    )
+  }
+  return [
+    createDashboardGroup(
+      DEFAULT_GROUP_ID,
+      t('dashboard.default_dashboard'),
+      DEFAULT_SCOPE,
+      defaultChildren
+    ),
+    createDashboardGroup(
+      MY_GROUP_ID,
+      t('dashboard.dashboard'),
+      MY_SCOPE,
+      normalizeMyDashboardNodes(myNodes)
+    ),
+  ]
+}
 
 const findDashboardNode = (
   nodes: SQTreeNode[] = [],
@@ -1345,7 +1359,13 @@ const saveTreeOrder = async () => {
   const defaultNodes = isCombinedDashboardTree.value
     ? findDefaultGroupNode(state.resourceTree)?.children || []
     : state.resourceTree
-  const defaultItems = collectTreeOrderItems(defaultNodes, props.defaultMode ? 'root' : DEFAULT_GROUP_ID, DEFAULT_SCOPE)
+  const defaultItems = collectTreeOrderItems(
+    defaultNodes,
+    props.defaultMode ? 'root' : DEFAULT_GROUP_ID,
+    DEFAULT_SCOPE,
+    [],
+    (node) => getDashboardScope(node) === DEFAULT_SCOPE
+  )
   if (defaultItems.length && canEditDefaultOrder.value) {
     requests.push(dashboardApi.reorder({ scope: DEFAULT_SCOPE, items: defaultItems }))
   }

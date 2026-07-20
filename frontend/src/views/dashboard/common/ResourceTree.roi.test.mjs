@@ -10,8 +10,36 @@ assert.match(source, /type DashboardScope = 'default' \| 'roi' \| 'my'/)
 assert.match(source, /canManageCurrentWorkspace/)
 assert.match(source, /canAccessRoiDashboard\(userStore\)/)
 assert.match(source, /buildCombinedTree\(defaultNodes, roiNodes, myNodes\)/)
-assert.ok(source.indexOf('DEFAULT_GROUP_ID') < source.indexOf('ROI_GROUP_ID'))
-assert.ok(source.indexOf('ROI_GROUP_ID') < source.indexOf('MY_GROUP_ID'))
+const combinedTree = source.match(
+  /const buildCombinedTree = \([\s\S]*?\r?\n\}\r?\n\r?\nconst findDashboardNode/
+)
+assert.ok(combinedTree, '必须保留组合看板树构造函数')
+assert.match(
+  combinedTree[0],
+  /const defaultChildren = normalizeDefaultDashboardNodes\(defaultNodes\)/,
+  '普通推荐看板应先形成独立子节点列表'
+)
+assert.match(
+  combinedTree[0],
+  /defaultChildren\.push\([\s\S]*?ROI_GROUP_ID[\s\S]*?normalizeRoiDashboardNodes\(roiNodes\)/,
+  'ROI 虚拟入口必须追加到推荐看板内部'
+)
+assert.doesNotMatch(
+  combinedTree[0],
+  /\.\.\.\(canManageCurrentWorkspace\.value/,
+  'ROI 入口不能继续作为顶层分组'
+)
+
+assert.match(
+  source,
+  /const findDashboardGroupNode = \([\s\S]*?findDashboardGroupNode\(node\.children \|\| \[\], groupId\)/,
+  '嵌套后的 ROI 虚拟入口必须支持递归定位'
+)
+assert.match(
+  source,
+  /collectTreeOrderItems\([\s\S]*?DEFAULT_SCOPE,[\s\S]*?\(node\) => getDashboardScope\(node\) === DEFAULT_SCOPE/,
+  '普通推荐排序必须排除 ROI 子树'
+)
 assert.match(source, /dashboard_scope: ROI_SCOPE/)
 assert.match(source, /raw_id: rawId/)
 assert.match(source, /`\$\{ROI_SCOPE\}:\$\{dashboardId\}`/)
