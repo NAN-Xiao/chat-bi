@@ -1,0 +1,124 @@
+.table-column-filter {
+  position: fixed;
+  z-index: 4000;
+  box-sizing: border-box;
+  width: 292px;
+  max-height: min(420px, calc(100vh - 16px));
+  padding: 12px;
+  overflow: hidden;
+  color: #303133;
+  font-size: 13px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+}
+
+.table-column-filter__header,
+.table-column-filter__actions,
+.table-column-filter__option {
+  display: flex;
+  align-items: center;
+}
+
+.table-column-filter__header {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.table-column-filter__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-column-filter__summary,
+.table-column-filter__option-count,
+.table-column-filter__footer {
+  color: #909399;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.table-column-filter__search {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  color: #303133;
+  font: inherit;
+  outline: none;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+}
+
+.table-column-filter__search:focus {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgb(64 158 255 / 12%);
+}
+
+.table-column-filter__actions {
+  gap: 12px;
+  margin: 10px 0 8px;
+}
+
+.table-column-filter__actions button {
+  padding: 0;
+  color: #409eff;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.table-column-filter__actions .table-column-filter__clear {
+  margin-left: auto;
+  color: #606266;
+}
+
+.table-column-filter__options {
+  max-height: 250px;
+  padding: 4px 0;
+  overflow-y: auto;
+  border-top: 1px solid #ebeef5;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.table-column-filter__option {
+  gap: 8px;
+  min-height: 30px;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.table-column-filter__option:hover {
+  background: #f5f7fa;
+}
+
+.table-column-filter__option input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.table-column-filter__option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-column-filter__empty {
+  padding: 24px 8px;
+  color: #909399;
+  text-align: center;
+}
+
+.table-column-filter__footer {
+  padding-top: 8px;
+  text-align: right;
+}

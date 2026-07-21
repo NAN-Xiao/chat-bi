@@ -18,7 +18,18 @@ import {
 import { debounce, filter } from 'lodash-es'
 import { i18n } from '@/i18n'
 import { formatValueByAxis } from '@/views/chat/component/charts/utils.ts'
+import {
+  applyTableFilters,
+  collectTableFilterOptions,
+  searchTableFilterOptions,
+  type TableFilters,
+} from '@/views/chat/component/charts/tableFilter.ts'
+import {
+  TABLE_HEADER_ACTION_ICON_THEME,
+  resolveTableHeaderActionIconFill,
+} from '@/views/chat/component/charts/tableHeaderActions.ts'
 import '@antv/s2/dist/s2.min.css'
+import '@/views/chat/component/charts/tableFilter.css'
 
 const { t } = i18n.global
 
@@ -53,7 +64,7 @@ const createSmartSortFunc = (sortMethod: string) => {
 
   return (params: SortFuncParam) => {
     const { data, sortFieldId } = params
-    if (!data || data.length === 0) return data
+    if (!data || data.length === 0) return data ?? []
     const isAsc = sortMethod.toLowerCase() === 'asc'
     return [...data].sort((a: any, b: any) => {
       const valA = a[sortFieldId],
@@ -78,6 +89,31 @@ const createSmartSortFunc = (sortMethod: string) => {
 
 const TABLE_MIN_COLUMN_WIDTH = 92
 const TABLE_HORIZONTAL_INSET = 8
+const TABLE_FILTER_ICON = 'TableFilter'
+const TABLE_FILTER_ACTIVE_ICON = 'TableFilterActive'
+const TABLE_SORT_NONE_ICON = 'TableSortNone'
+const TABLE_SORT_ASC_ICON = 'TableSortAsc'
+const TABLE_SORT_DESC_ICON = 'TableSortDesc'
+const TABLE_FILTER_ICON_SVG = `
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M5 6h14l-5.5 6.4V18l-3 1.5v-7.1L5 6z" />
+  </svg>
+`
+const TABLE_SORT_NONE_ICON_SVG = `
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 9l4-4 4 4H8zm0 6h8l-4 4-4-4z" />
+  </svg>
+`
+const TABLE_SORT_ASC_ICON_SVG = `
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 5l5 5h-3v9h-4v-9H7l5-5z" />
+  </svg>
+`
+const TABLE_SORT_DESC_ICON_SVG = `
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 5h4v9h3l-5 5-5-5h3V5z" />
+  </svg>
+`
 
 function resolveTableColumnWidth(containerWidth: number, visibleColumnCount: number) {
   return Math.max(
@@ -98,6 +134,28 @@ export class Table extends BaseChart {
   lastResizeWidth = 0
 
   lastResizeHeight = 0
+
+  private tableFilters: TableFilters = new Map()
+
+  private filterSourceData: S2DataConfig['data'] = []
+
+  private filterPopup: HTMLDivElement | null = null
+
+  private filterListenerTimer: number | null = null
+
+  private filterDataUpdater: (() => Promise<void>) | null = null
+
+  private handleFilterOutsidePointerDown = (event: PointerEvent) => {
+    if (this.filterPopup && !this.filterPopup.contains(event.target as Node)) {
+      this.closeFilterPopup()
+    }
+  }
+
+  private handleFilterKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      this.closeFilterPopup()
+    }
+  }
 
   constructor(mountTarget: ChartMountTarget) {
     super(mountTarget, 'table')
@@ -147,11 +205,200 @@ export class Table extends BaseChart {
     }
   }
 
+  private closeFilterPopup() {
+    if (this.filterListenerTimer !== null) {
+      window.clearTimeout(this.filterListenerTimer)
+      this.filterListenerTimer = null
+    }
+    document.removeEventListener('pointerdown', this.handleFilterOutsidePointerDown)
+    document.removeEventListener('keydown', this.handleFilterKeydown)
+    this.filterPopup?.remove()
+    this.filterPopup = null
+  }
+
+  private openFilterPopup(params: any) {
+    const { meta } = params
+    const field = meta?.field
+    if (!meta?.isLeaf || !field) {
+      return
+    }
+
+    this.closeFilterPopup()
+
+    const options = collectTableFilterOptions(this.filterSourceData, field)
+    const allOptionKeys = new Set(options.map((option) => option.key))
+    let selectedValues = this.tableFilters.has(field)
+      ? new Set(this.tableFilters.get(field))
+      : new Set(allOptionKeys)
+
+    const popup = document.createElement('div')
+    popup.className = 'table-column-filter'
+    popup.setAttribute('role', 'dialog')
+    popup.setAttribute('aria-label', `${field} 列筛选`)
+
+    const header = document.createElement('div')
+    header.className = 'table-column-filter__header'
+
+    const fieldAxis = this.axis?.find((axisItem) => axisItem.value === field)
+    const title = document.createElement('strong')
+    title.className = 'table-column-filter__title'
+    title.textContent = fieldAxis ? axisLabel(fieldAxis) : field
+
+    const selectionSummary = document.createElement('span')
+    selectionSummary.className = 'table-column-filter__summary'
+    header.append(title, selectionSummary)
+
+    const searchInput = document.createElement('input')
+    searchInput.className = 'table-column-filter__search'
+    searchInput.type = 'search'
+    searchInput.placeholder = '搜索值'
+    searchInput.autocomplete = 'off'
+
+    const actions = document.createElement('div')
+    actions.className = 'table-column-filter__actions'
+
+    const selectAllButton = document.createElement('button')
+    selectAllButton.type = 'button'
+    selectAllButton.textContent = '全选'
+
+    const selectNoneButton = document.createElement('button')
+    selectNoneButton.type = 'button'
+    selectNoneButton.textContent = '全不选'
+
+    const clearButton = document.createElement('button')
+    clearButton.type = 'button'
+    clearButton.textContent = '清除筛选'
+    clearButton.className = 'table-column-filter__clear'
+
+    actions.append(selectAllButton, selectNoneButton, clearButton)
+
+    const optionList = document.createElement('div')
+    optionList.className = 'table-column-filter__options'
+
+    const footer = document.createElement('div')
+    footer.className = 'table-column-filter__footer'
+    footer.textContent = '候选值最多显示前 200 项'
+
+    const updateSelectionSummary = () => {
+      selectionSummary.textContent = `已选 ${selectedValues.size} / ${options.length}`
+    }
+
+    const commitSelection = () => {
+      if (selectedValues.size === allOptionKeys.size) {
+        this.tableFilters.delete(field)
+      } else {
+        this.tableFilters.set(field, new Set(selectedValues))
+      }
+      updateSelectionSummary()
+      void this.filterDataUpdater?.()
+    }
+
+    const renderOptions = () => {
+      optionList.replaceChildren()
+      const visibleOptions = searchTableFilterOptions(options, searchInput.value)
+
+      if (visibleOptions.length === 0) {
+        const empty = document.createElement('div')
+        empty.className = 'table-column-filter__empty'
+        empty.textContent = '无匹配值'
+        optionList.appendChild(empty)
+        return
+      }
+
+      visibleOptions.forEach((option) => {
+        const item = document.createElement('label')
+        item.className = 'table-column-filter__option'
+
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.checked = selectedValues.has(option.key)
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) {
+            selectedValues.add(option.key)
+          } else {
+            selectedValues.delete(option.key)
+          }
+          commitSelection()
+        })
+
+        const label = document.createElement('span')
+        label.className = 'table-column-filter__option-label'
+        label.textContent = option.label
+
+        const count = document.createElement('span')
+        count.className = 'table-column-filter__option-count'
+        count.textContent = String(option.count)
+
+        item.append(checkbox, label, count)
+        optionList.appendChild(item)
+      })
+    }
+
+    searchInput.addEventListener('input', renderOptions)
+    selectAllButton.addEventListener('click', () => {
+      selectedValues = new Set(allOptionKeys)
+      renderOptions()
+      commitSelection()
+    })
+    selectNoneButton.addEventListener('click', () => {
+      selectedValues = new Set()
+      renderOptions()
+      commitSelection()
+    })
+    clearButton.addEventListener('click', () => {
+      selectedValues = new Set(allOptionKeys)
+      renderOptions()
+      commitSelection()
+    })
+
+    updateSelectionSummary()
+    renderOptions()
+    popup.append(header, searchInput, actions, optionList, footer)
+    document.body.appendChild(popup)
+    this.filterPopup = popup
+
+    const canvasRect = this.table?.getCanvasElement().getBoundingClientRect()
+    const sourceEvent = params.event as any
+    const originalEvent = sourceEvent?.originalEvent
+    const anchorX =
+      originalEvent?.clientX ??
+      sourceEvent?.clientX ??
+      sourceEvent?.client?.x ??
+      (canvasRect?.left ?? 0) + (meta.x ?? 0) + (meta.width ?? 0)
+    const anchorY =
+      originalEvent?.clientY ??
+      sourceEvent?.clientY ??
+      sourceEvent?.client?.y ??
+      (canvasRect?.top ?? 0) + (meta.y ?? 0) + (meta.height ?? 0)
+    const popupRect = popup.getBoundingClientRect()
+    const viewportPadding = 8
+    const left = Math.min(
+      Math.max(anchorX - popupRect.width, viewportPadding),
+      window.innerWidth - popupRect.width - viewportPadding
+    )
+    const top = Math.min(
+      Math.max(anchorY + 6, viewportPadding),
+      window.innerHeight - popupRect.height - viewportPadding
+    )
+    popup.style.left = `${left}px`
+    popup.style.top = `${top}px`
+
+    this.filterListenerTimer = window.setTimeout(() => {
+      document.addEventListener('pointerdown', this.handleFilterOutsidePointerDown)
+      document.addEventListener('keydown', this.handleFilterKeydown)
+      this.filterListenerTimer = null
+      searchInput.focus()
+    })
+  }
+
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {
+    this.closeFilterPopup()
+    this.tableFilters.clear()
     super.init(
       filter(axis, (a) => !a.hidden), //隐藏多指标的other-info列
       data
     )
+    this.filterSourceData = [...(this.data as S2DataConfig['data'])]
 
     const s2DataConfig: S2DataConfig = {
       sortParams:
@@ -178,6 +425,20 @@ export class Table extends BaseChart {
     }
 
     const sortState: Record<string, string> = {}
+    let currentSortParams = s2DataConfig.sortParams ?? []
+
+    this.filterDataUpdater = async () => {
+      if (!this.table) {
+        return
+      }
+      const filteredData = applyTableFilters(this.filterSourceData, this.tableFilters)
+      this.table.setDataCfg({
+        ...s2DataConfig,
+        sortParams: currentSortParams,
+        data: filteredData,
+      })
+      await this.table.render(false)
+    }
 
     const handleSortClick = (params: any) => {
       const { meta } = params
@@ -189,16 +450,17 @@ export class Table extends BaseChart {
         const nextMethod = sortOrder[(sortOrder.indexOf(currentMethod) + 1) % sortOrder.length]
         sortState[fieldId] = nextMethod
         if (nextMethod === 'none') {
-          s2.emit(S2Event.RANGE_SORT, [{ sortFieldId: fieldId, sortMethod: 'none' as SortMethod }])
+          currentSortParams = [{ sortFieldId: fieldId, sortMethod: 'none' as SortMethod }]
         } else {
-          s2.emit(S2Event.RANGE_SORT, [
+          currentSortParams = [
             {
               sortFieldId: fieldId,
               sortMethod: nextMethod as SortMethod,
               sortFunc: createSmartSortFunc(nextMethod),
             },
-          ])
+          ]
         }
+        s2.emit(S2Event.RANGE_SORT, currentSortParams)
         s2.render()
       }
     }
@@ -228,25 +490,68 @@ export class Table extends BaseChart {
         },
       },
       showDefaultHeaderActionIcon: false,
+      customSVGIcons: [
+        { name: TABLE_FILTER_ICON, src: TABLE_FILTER_ICON_SVG },
+        { name: TABLE_FILTER_ACTIVE_ICON, src: TABLE_FILTER_ICON_SVG },
+        { name: TABLE_SORT_NONE_ICON, src: TABLE_SORT_NONE_ICON_SVG },
+        { name: TABLE_SORT_ASC_ICON, src: TABLE_SORT_ASC_ICON_SVG },
+        { name: TABLE_SORT_DESC_ICON, src: TABLE_SORT_DESC_ICON_SVG },
+      ],
       headerActionIcons: [
         {
-          icons: ['GlobalDesc'],
+          icons: [
+            { name: TABLE_FILTER_ACTIVE_ICON, fill: '#409eff', position: 'right' },
+            { name: TABLE_FILTER_ICON, fill: '#909399', position: 'right' },
+            { name: TABLE_SORT_DESC_ICON, fill: '#409eff', position: 'right' },
+            { name: TABLE_SORT_ASC_ICON, fill: '#409eff', position: 'right' },
+            { name: TABLE_SORT_NONE_ICON, fill: '#909399', position: 'right' },
+          ],
           belongsCell: 'colCell',
-          displayCondition: (node: any) => node.isLeaf && sortState[node.field] === 'desc',
-          onClick: handleSortClick,
-        },
-        {
-          icons: ['GlobalAsc'],
-          belongsCell: 'colCell',
-          displayCondition: (node: any) => node.isLeaf && sortState[node.field] === 'asc',
-          onClick: handleSortClick,
-        },
-        {
-          icons: ['SortDown'],
-          belongsCell: 'colCell',
-          displayCondition: (node: any) =>
-            node.isLeaf && (!sortState[node.field] || sortState[node.field] === 'none'),
-          onClick: handleSortClick,
+          displayCondition: (node: any, iconName: string) => {
+            if (!node.isLeaf) {
+              return false
+            }
+            if (iconName === TABLE_FILTER_ACTIVE_ICON) {
+              return this.tableFilters.has(node.field)
+            }
+            if (iconName === TABLE_FILTER_ICON) {
+              return !this.tableFilters.has(node.field)
+            }
+            if (iconName === TABLE_SORT_DESC_ICON) {
+              return sortState[node.field] === 'desc'
+            }
+            if (iconName === TABLE_SORT_ASC_ICON) {
+              return sortState[node.field] === 'asc'
+            }
+            return (
+              iconName === TABLE_SORT_NONE_ICON &&
+              (!sortState[node.field] || sortState[node.field] === 'none')
+            )
+          },
+          onHover: (params) => {
+            const isFilter =
+              params.name === TABLE_FILTER_ICON || params.name === TABLE_FILTER_ACTIVE_ICON
+            const isActive = isFilter
+              ? params.name === TABLE_FILTER_ACTIVE_ICON
+              : params.name !== TABLE_SORT_NONE_ICON
+            const icon = params.event?.currentTarget as
+              | { setImageAttrs?: (attrs: { fill: string }) => void }
+              | undefined
+            icon?.setImageAttrs?.({
+              fill: resolveTableHeaderActionIconFill(
+                isFilter ? 'filter' : 'sort',
+                isActive,
+                params.hovering
+              ),
+            })
+          },
+          onClick: (params) => {
+            if (params.name === TABLE_FILTER_ICON || params.name === TABLE_FILTER_ACTIVE_ICON) {
+              this.openFilterPopup(params)
+              return
+            }
+            handleSortClick(params)
+          },
         },
       ],
       tooltip: {
@@ -302,6 +607,13 @@ export class Table extends BaseChart {
 
     if (this.container) {
       this.table = new TableSheet(this.container, s2DataConfig, s2Options)
+      this.table.setThemeCfg({
+        theme: {
+          colCell: {
+            icon: TABLE_HEADER_ACTION_ICON_THEME,
+          },
+        },
+      })
       // right click
       this.table.on(S2Event.GLOBAL_COPIED, (data) => {
         ElMessage.success(t('qa.copied'))
@@ -322,6 +634,11 @@ export class Table extends BaseChart {
   }
 
   destroy() {
+    this.closeFilterPopup()
+    this.tableFilters.clear()
+    this.filterSourceData = []
+    this.filterDataUpdater = null
+    this.debounceRender?.cancel?.()
     this.table?.destroy()
     this.resizeObserver?.disconnect()
   }
