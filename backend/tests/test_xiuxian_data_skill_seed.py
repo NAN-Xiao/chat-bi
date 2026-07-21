@@ -65,6 +65,14 @@ def _date_skill() -> dict[str, str]:
     )
 
 
+def _player_snapshot_skill() -> dict[str, str]:
+    return next(
+        skill
+        for skill in _skills()
+        if "data-skill-source:xiuxian:dashboard:player-snapshot" in skill["prompt"]
+    )
+
+
 def _repair_example_sql(title: str) -> str:
     match = re.search(
         rf"-- 修复示例：{re.escape(title)}\n(?P<sql>.*?)(?=\n```)",
@@ -300,6 +308,128 @@ def test_xiuxian_date_skill_rejects_bounds_cte_join_for_partition_filter() -> No
         "修仙数据源禁止使用 bounds CTE 关联事件或快照大表；"
         "请把动态日期表达式直接写入每个表别名自己的 dt 分区条件。"
     )
+
+
+def test_xiuxian_date_skill_rejects_current_day_in_28_complete_day_spine() -> None:
+    """最近 28 个完整自然日不得把今天放进日期骨架。"""
+    prompt = _date_skill()["prompt"]
+    wrong_sql = """
+    WITH day_offsets AS (
+        SELECT 0 AS day_offset UNION ALL SELECT 1 UNION ALL SELECT 27
+    ), date_spine AS (
+        SELECT CAST(
+            DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL day_offset DAY), '%Y%m%d')
+            AS SIGNED
+        ) AS dt
+        FROM day_offsets
+    ), daily_active AS (
+        SELECT e.dt, COUNT(DISTINCT e.uid) AS dau
+        FROM event e
+        WHERE e.dt BETWEEN
+              CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
+              AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+        GROUP BY e.dt
+    )
+    SELECT * FROM date_spine
+    LEFT JOIN daily_active USING (dt)
+    """
+
+    assert _data_skill_sql_validation_error(
+        "检查最近28个自然日新增、活跃、付费用户和付费金额是否存在缺失或全零日期",
+        wrong_sql,
+        prompt,
+    ) == (
+        "修仙最近 28 个完整自然日必须使用 CURDATE()-28 至 CURDATE()-1；"
+        "日期骨架不得从今天开始，offset=0 必须锚定昨天。"
+    )
+
+
+def test_xiuxian_date_skill_allows_yesterday_anchored_28_complete_day_spine() -> None:
+    """日期骨架锚定昨天且事实表覆盖完整 28 天时允许执行。"""
+    prompt = _date_skill()["prompt"]
+    correct_sql = """
+    WITH day_offsets AS (
+        SELECT 0 AS day_offset UNION ALL SELECT 1 UNION ALL SELECT 27
+    ), date_spine AS (
+        SELECT CAST(
+            DATE_FORMAT(
+                DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL day_offset DAY),
+                '%Y%m%d'
+            ) AS SIGNED
+        ) AS dt
+        FROM day_offsets
+    ), daily_active AS (
+        SELECT e.dt, COUNT(DISTINCT e.uid) AS dau
+        FROM event e
+        WHERE e.dt BETWEEN
+              CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 28 DAY), '%Y%m%d') AS SIGNED)
+              AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+        GROUP BY e.dt
+    )
+    SELECT * FROM date_spine
+    LEFT JOIN daily_active USING (dt)
+    """
+
+    assert _data_skill_sql_validation_error(
+        "检查最近28个自然日新增、活跃、付费用户和付费金额是否存在缺失或全零日期",
+        correct_sql,
+        prompt,
+    ) is None
+
+
+def test_xiuxian_player_snapshot_skill_rejects_snapshot_users_as_active_users() -> None:
+    """user 快照只提供等级标签，不能直接充当活跃人群。"""
+    prompt = _player_snapshot_skill()["prompt"]
+    wrong_sql = """
+    WITH user_level AS (
+        SELECT u.uid,
+               JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')) AS level_value
+        FROM user u
+        WHERE u.dt = 20260720
+    )
+    SELECT level_value AS 等级段,
+           COUNT(DISTINCT uid) AS 活跃用户数
+    FROM user_level
+    GROUP BY level_value
+    """
+
+    assert _data_skill_sql_validation_error(
+        "统计最新完整数据日各玩家等级段的活跃用户数",
+        wrong_sql,
+        prompt,
+    ) == (
+        "修仙按等级分析活跃用户时，活跃人群必须来自 UserActive 去重 uid；"
+        "user 快照只提供目标日期的等级标签，不能直接统计为活跃用户。"
+    )
+
+
+def test_xiuxian_player_snapshot_skill_allows_useractive_joined_to_level_snapshot() -> None:
+    """先固定 UserActive 人群，再关联同日等级快照时允许执行。"""
+    prompt = _player_snapshot_skill()["prompt"]
+    correct_sql = """
+    WITH active_users AS (
+        SELECT DISTINCT e.uid
+        FROM event e
+        WHERE e.dt = 20260720
+          AND e.event = 'UserActive'
+    ), user_level AS (
+        SELECT u.uid,
+               JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')) AS level_value
+        FROM user u
+        WHERE u.dt = 20260720
+    )
+    SELECT ul.level_value AS 等级段,
+           COUNT(DISTINCT au.uid) AS 活跃用户数
+    FROM active_users au
+    JOIN user_level ul ON ul.uid = au.uid
+    GROUP BY ul.level_value
+    """
+
+    assert _data_skill_sql_validation_error(
+        "统计最新完整数据日各玩家等级段的活跃用户数",
+        correct_sql,
+        prompt,
+    ) is None
 
 
 def test_xiuxian_payment_skill_rejects_paybuyret_revenue_sql() -> None:

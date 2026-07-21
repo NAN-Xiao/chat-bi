@@ -151,7 +151,15 @@ TOPICS = (
             "7f71477b49404ad289485f4f22d34c2f",
             "3a449b3049314a668661ae65f70e38f1",
         ),
-        "当前分布读取目标日期 user 快照；等级段人均累计付费使用 paytotal，并明确其累计快照语义。",
+        """<!-- data-skill-sql-validation:[
+  {
+    "match":["活跃用户","DAU","dau"],
+    "required_sql_contains":["UserActive"],
+    "message":"修仙按等级分析活跃用户时，活跃人群必须来自 UserActive 去重 uid；user 快照只提供目标日期的等级标签，不能直接统计为活跃用户。"
+  }
+] -->
+当前分布读取目标日期 user 快照；等级段人均累计付费使用 paytotal，并明确其累计快照语义。
+当问题要求按等级统计活跃用户、DAU 或相关付费指标时，先用目标日期 UserActive 去重 uid 固定活跃人群，再按 uid 关联同日 user 快照取得 lastinfo.level；不得直接把 user 快照行数命名为活跃用户数。""",
     ),
     TopicDefinition(
         "hero-growth",

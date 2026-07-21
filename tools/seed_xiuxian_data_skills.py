@@ -52,6 +52,14 @@ _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
       "\\\\b(?:CROSS\\\\s+JOIN|JOIN|FROM)\\\\s+`?bounds`?\\\\b"
     ],
     "message":"修仙数据源禁止使用 bounds CTE 关联事件或快照大表；请把动态日期表达式直接写入每个表别名自己的 dt 分区条件。"
+  },
+  {
+    "match":["最近28个自然日","最近 28 个自然日"],
+    "forbidden_sql_patterns":[
+      "\\\\bDATE_SUB\\\\s*\\\\(\\\\s*CURDATE\\\\s*\\\\(\\\\s*\\\\)\\\\s*,\\\\s*INTERVAL\\\\s+27\\\\s+DAY\\\\s*\\\\)",
+      "\\\\bDATE_SUB\\\\s*\\\\(\\\\s*CURDATE\\\\s*\\\\(\\\\s*\\\\)\\\\s*,\\\\s*INTERVAL\\\\s+`?(?:day_offset|offset)`?\\\\s+DAY\\\\s*\\\\)"
+    ],
+    "message":"修仙最近 28 个完整自然日必须使用 CURDATE()-28 至 CURDATE()-1；日期骨架不得从今天开始，offset=0 必须锚定昨天。"
   }
 ] -->
 # 修仙业务日期与按日聚合口径
@@ -81,6 +89,7 @@ _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
 - 用户指定相对日期窗口时，根据用户要求的窗口长度动态计算边界，结束日期默认为昨天。
 - 用户未指定日期窗口时，默认查询截至昨天的最近 28 个自然日。
 - 起止日期均包含。最近 `N` 个完整自然日使用当前日期减 `N` 天作为开始日期、当前日期减 1 天作为结束日期。
+- 日期骨架使用从 0 开始的偏移量时，必须先锚定昨天，再减 `day_offset`；禁止直接用 `CURDATE() - day_offset`，否则 offset 0 会错误包含今天。
 - 下面 SQL 只展示一种相对日期边界写法；其中 29 天是示例参数，不表示固定查询范围，必须按用户问题替换。
 - 动态边界必须直接写入每个大表别名自己的 `WHERE` 或 `JOIN ON` 分区条件，禁止先生成单行 `bounds` CTE 后再通过 `JOIN` / `CROSS JOIN` 引用。
 
