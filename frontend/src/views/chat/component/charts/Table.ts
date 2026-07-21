@@ -9,7 +9,6 @@ import {
   copyToClipboard,
   type S2DataConfig,
   S2Event,
-  type S2MountContainer,
   type S2Options,
   type SortMethod,
   TableSheet,
@@ -122,10 +121,19 @@ function resolveTableColumnWidth(containerWidth: number, visibleColumnCount: num
   )
 }
 
+function resolveTableContainerSize(container: Element | null) {
+  if (!container) {
+    return null
+  }
+  const width = Math.round(container.clientWidth)
+  const height = Math.round(container.clientHeight)
+  return width > 0 && height > 0 ? { width, height } : null
+}
+
 export class Table extends BaseChart {
   table?: TableSheet = undefined
 
-  container: S2MountContainer | null = null
+  container: Element | null = null
 
   debounceRender: any
 
@@ -188,20 +196,18 @@ export class Table extends BaseChart {
       }
     }, 200)
 
-    this.resizeObserver = new ResizeObserver(([entry] = []) => {
-      if (!entry) return
-      const [size] = entry.borderBoxSize || []
-      const width = Math.round(size?.inlineSize || entry.contentRect.width)
-      const height = Math.round(size?.blockSize || entry.contentRect.height)
-      if (width <= 0 || height <= 0) return
+    this.resizeObserver = new ResizeObserver(() => {
+      const size = resolveTableContainerSize(this.container)
+      if (!size) return
+      const { width, height } = size
       if (width === this.lastResizeWidth && height === this.lastResizeHeight) return
       this.lastResizeWidth = width
       this.lastResizeHeight = height
       this.debounceRender(width, height)
     })
 
-    if (this.container?.parentElement) {
-      this.resizeObserver.observe(this.container.parentElement)
+    if (this.container) {
+      this.resizeObserver.observe(this.container)
     }
   }
 
@@ -464,14 +470,14 @@ export class Table extends BaseChart {
       }
     }
 
-    const containerElement =
-      typeof this.container === 'string' ? document.getElementById(this.container) : this.container
+    const containerElement = this.container
     const visibleAxis = this.axis?.filter((a) => !a.hidden) ?? []
+    const containerSize = resolveTableContainerSize(containerElement)
     const containerWidth = Math.max(
-      (containerElement?.clientWidth || 600) - TABLE_HORIZONTAL_INSET,
+      (containerSize?.width || 600) - TABLE_HORIZONTAL_INSET,
       320
     )
-    const containerHeight = containerElement?.clientHeight || 360
+    const containerHeight = containerSize?.height || 360
     const columnWidth = resolveTableColumnWidth(containerWidth, visibleAxis.length)
 
     const s2Options: S2Options = {

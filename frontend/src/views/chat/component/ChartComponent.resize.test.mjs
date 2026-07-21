@@ -19,6 +19,21 @@ assert.match(
 )
 assert.match(
   table,
+  /function resolveTableContainerSize\([\s\S]*?clientWidth[\s\S]*?clientHeight/,
+  'S2 表格尺寸必须来自自身挂载容器的实际可用宽高'
+)
+assert.match(
+  table,
+  /this\.resizeObserver\.observe\(this\.container\)/,
+  'S2 表格必须监听自身挂载容器，而不是带内边距的父容器'
+)
+assert.doesNotMatch(
+  table,
+  /this\.resizeObserver\.observe\(this\.container\.parentElement\)/,
+  'S2 表格不得继续使用父容器尺寸'
+)
+assert.match(
+  table,
   /width === this\.lastResizeWidth && height === this\.lastResizeHeight[\s\S]*?return/,
   '容器宽高没有变化时不得再次触发 S2 render'
 )
