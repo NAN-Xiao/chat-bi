@@ -14,6 +14,7 @@ from core_system_db import core_system_db_config, export_postgres_compat_env
 from flam_first_zombie_active_dashboard_sql import sql_blocks_markdown as active_sql_blocks_markdown
 from flam_first_zombie_core_dashboard_sql import sql_blocks_markdown as core_sql_blocks_markdown
 from flam_first_zombie_dashboard_sql import sql_blocks_markdown
+from flam_first_zombie_dashboard_skill_overrides import apply_dashboard_skill_overrides
 from flam_first_zombie_remaining_dashboard_sql import sql_blocks_markdown as remaining_sql_blocks_markdown
 
 
@@ -917,6 +918,8 @@ ORDER BY cohort_dt;
 """,
     },
 ]
+
+DATA_SKILLS = apply_dashboard_skill_overrides(DATA_SKILLS)
 
 
 def _prompt(skill: dict[str, str]) -> str:
