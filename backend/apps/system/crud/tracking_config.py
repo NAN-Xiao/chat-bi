@@ -140,6 +140,18 @@ def _event_names_from_mapping(item: Any) -> list[str]:
     return merged
 
 
+def _configured_event_names(config: TenantTrackingConfigDTO) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for mapping in config.event_name_mappings or []:
+        for event_name in _event_names_from_mapping(mapping):
+            if event_name in seen:
+                continue
+            seen.add(event_name)
+            names.append(event_name)
+    return names
+
+
 def _tracking_event_properties(
     mapping: dict[str, Any],
     *,
@@ -1173,6 +1185,14 @@ def build_tracking_prompt_context(
         lines.append(value)
         summary_parts.append(f"字段角色映射: {value}")
     if config.event_name_mappings:
+        configured_event_names = _configured_event_names(config)
+        if configured_event_names:
+            lines.append("\n## 已登记事件名")
+            lines.append(
+                "<Configured-Event-Names>"
+                f"{_format_json_for_prompt(configured_event_names)}"
+                "</Configured-Event-Names>"
+            )
         value = _format_json_for_prompt(
             _project_event_name_mappings(
                 config.event_name_mappings,

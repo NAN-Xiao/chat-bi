@@ -124,6 +124,23 @@ def test_tracking_prompt_keeps_lightweight_match_when_full_properties_exceed_bud
     assert "oversized_property" not in context
 
 
+def test_tracking_prompt_keeps_complete_event_inventory_when_details_fill_budget() -> None:
+    """
+    是什么：事件详情占满投影预算时，完整事件目录仍应作为独立紧凑清单保留。
+    """
+    config = _tracking_config()
+    config.event_name_mappings[1]["properties"] = [
+        {"property_name": "large_property", "description": "x" * 15_500},
+    ]
+
+    context, _summary = build_tracking_prompt_context(
+        config,
+        question="分析支付成功事件",
+    )
+
+    assert '<Configured-Event-Names>["login","pay_success"]</Configured-Event-Names>' in context
+
+
 def test_tracking_prompt_projects_only_default_and_question_matched_fields_without_mutating_config() -> None:
     """
     是什么：字段投影保留默认字段和支付问题命中的金额字段，不携带无关战斗字段。
