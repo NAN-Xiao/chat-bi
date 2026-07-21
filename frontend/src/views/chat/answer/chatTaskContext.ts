@@ -8,6 +8,8 @@ interface RecordIdentity {
   create_time?: Date | string
 }
 
+const recordRenderKeys = new WeakMap<RecordIdentity, string | number>()
+
 interface ApplyBriefInput<T extends ChatWithBrief> {
   chatList: T[]
   currentChat: T
@@ -69,12 +71,22 @@ export function buildChatMessageRenderKey(
   index: number
 ) {
   const ownerId = normalizeChatId(chatId) || 'new'
-  let recordKey: string | number = record?.id || index
-  if (record?.create_time) {
-    const createTime = new Date(record.create_time)
-    recordKey = Number.isNaN(createTime.getTime())
-      ? String(record.create_time)
-      : createTime.toISOString()
+  let recordKey: string | number = index
+  if (record) {
+    const rememberedKey = recordRenderKeys.get(record)
+    if (rememberedKey !== undefined) {
+      recordKey = rememberedKey
+    } else {
+      recordKey = record.id || index
+      if (record.create_time) {
+        const createTime = new Date(record.create_time)
+        const createTimeKey = Number.isNaN(createTime.getTime())
+          ? String(record.create_time)
+          : createTime.toISOString()
+        recordKey = `${createTimeKey}:${index}`
+      }
+      recordRenderKeys.set(record, recordKey)
+    }
   }
   return `${ownerId}:${role}:${recordKey}`
 }

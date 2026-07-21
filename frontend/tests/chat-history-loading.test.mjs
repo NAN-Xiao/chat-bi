@@ -567,6 +567,28 @@ function testChatTaskContextKeepsOldTaskOutOfCurrentChat() {
     buildChatMessageRenderKey(101, 'assistant', { create_time: createTime }, 0),
     buildChatMessageRenderKey(101, 'assistant', { create_time: createTime.toISOString() }, 0)
   )
+  assert.notEqual(
+    buildChatMessageRenderKey(101, 'assistant', { create_time: createTime }, 0),
+    buildChatMessageRenderKey(101, 'assistant', { create_time: createTime }, 1),
+    '同一会话内创建时间相同的不同记录必须保持唯一渲染键'
+  )
+}
+
+function testChatMessageRenderKeySurvivesActiveRecordRefresh() {
+  const { buildChatMessageRenderKey } = loadTsModule(
+    'src/views/chat/answer/chatTaskContext.ts'
+  )
+  const record = { create_time: new Date('2026-07-21T00:42:52.497Z') }
+  const initialKey = buildChatMessageRenderKey(257, 'assistant', record, 1)
+
+  record.id = 905
+  record.create_time = new Date('2026-07-21T00:42:52.627Z')
+
+  assert.equal(
+    buildChatMessageRenderKey(257, 'assistant', record, 1),
+    initialKey,
+    '活动记录刷新服务端 ID 和创建时间时不得替换正在消费任务事件的组件'
+  )
 }
 
 function testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh() {
@@ -636,5 +658,6 @@ await testSmartQaTaskStoreDrainsUnreadEventsBeforeTerminalCallbacks()
 await testSmartQaTaskStoreDetachesCallbacksButKeepsPolling()
 await testSmartQaTaskStoreReplaysBufferedEventsWhenCallbacksReattach()
 testChatTaskContextKeepsOldTaskOutOfCurrentChat()
+testChatMessageRenderKeySurvivesActiveRecordRefresh()
 testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh()
 testSendMessageKeepsOriginalChatContextAcrossAsyncTaskStart()
