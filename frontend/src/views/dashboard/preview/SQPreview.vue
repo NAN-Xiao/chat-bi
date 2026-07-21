@@ -10,6 +10,7 @@ import { storeToRefs } from 'pinia'
 import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
 import { useEmittLazy } from '@/utils/useEmitt.ts'
+import { normalizeDashboardGridCoordinate } from '@/views/dashboard/utils/dashboardGridPosition.ts'
 
 const props = defineProps({
   canvasStyleData: {
@@ -108,11 +109,13 @@ function getReportContextSnapshots() {
 }
 
 function nowItemStyle(item: CanvasItem) {
+  const gridX = normalizeDashboardGridCoordinate(item.x)
+  const gridY = normalizeDashboardGridCoordinate(item.y)
   return {
     width: cellWidth.value * item.sizeX - baseMarginLeft.value + 'px',
     height: cellHeight.value * item.sizeY - baseMarginTop.value + 'px',
-    left: cellWidth.value * (item.x - 1) + baseMarginLeft.value + 'px',
-    top: cellHeight.value * (item.y - 1) + basePaddingTop.value + 'px',
+    left: cellWidth.value * (gridX - 1) + baseMarginLeft.value + 'px',
+    top: cellHeight.value * (gridY - 1) + basePaddingTop.value + 'px',
   }
 }
 

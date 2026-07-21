@@ -6,6 +6,7 @@ import {
   clearDashboardCanvasDraft,
   getDashboardCanvasSourceKey,
 } from '@/views/dashboard/utils/canvasDraft.ts'
+import { getNextDashboardComponentY } from '@/views/dashboard/utils/dashboardGridPosition.ts'
 
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
@@ -103,13 +104,7 @@ export const findNextComponentIndex = async (params: any, callBack: DashboardRes
         onError?.(result)
         return
       }
-      let bottomPosition = 0
-      canvasDataResult.forEach((component: any) => {
-        const componentBottom = component.y + component.sizeY
-        if (componentBottom > bottomPosition) {
-          bottomPosition = componentBottom
-        }
-      })
+      const bottomPosition = getNextDashboardComponentY(canvasDataResult)
       callBack({
         bottomPosition,
         dashboardInfo,
