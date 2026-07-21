@@ -6,6 +6,7 @@ import {
   applyTableFilters,
   collectTableFilterOptions,
   normalizeTableFilterValue,
+  refreshFilteredTableData,
   searchTableFilterOptions,
 } from '../src/views/chat/component/charts/tableFilter.ts'
 import {
@@ -66,6 +67,29 @@ test('清空全部筛选后恢复原始数据且不修改原数组', () => {
   assert.deepEqual(result, rows)
   assert.notEqual(result, rows)
   assert.deepEqual(rows, snapshot)
+})
+
+test('筛选后重新加载过滤结果', async () => {
+  const filters = new Map([
+    ['channel', new Set([normalizeTableFilterValue('应用商店')])],
+  ])
+  const calls: Array<{ type: string; value: unknown }> = []
+  const table = {
+    setDataCfg: (dataConfig: unknown) => calls.push({ type: 'setDataCfg', value: dataConfig }),
+    render: async (reloadData?: boolean) => calls.push({ type: 'render', value: reloadData }),
+  }
+  const dataConfig = { fields: { columns: ['channel'] }, data: rows }
+
+  const filteredData = await refreshFilteredTableData(table, dataConfig, rows, filters)
+
+  assert.deepEqual(filteredData.map((row) => row.amount), [10, 30])
+  assert.deepEqual(calls, [
+    {
+      type: 'setDataCfg',
+      value: { fields: { columns: ['channel'] }, data: [rows[0], rows[2]] },
+    },
+    { type: 'render', value: true },
+  ])
 })
 
 test('候选值按精确类型去重并统计数量', () => {

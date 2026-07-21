@@ -19,8 +19,8 @@ import { debounce, filter } from 'lodash-es'
 import { i18n } from '@/i18n'
 import { formatValueByAxis } from '@/views/chat/component/charts/utils.ts'
 import {
-  applyTableFilters,
   collectTableFilterOptions,
+  refreshFilteredTableData,
   searchTableFilterOptions,
   type TableFilters,
 } from '@/views/chat/component/charts/tableFilter.ts'
@@ -431,13 +431,12 @@ export class Table extends BaseChart {
       if (!this.table) {
         return
       }
-      const filteredData = applyTableFilters(this.filterSourceData, this.tableFilters)
-      this.table.setDataCfg({
-        ...s2DataConfig,
-        sortParams: currentSortParams,
-        data: filteredData,
-      })
-      await this.table.render(false)
+      await refreshFilteredTableData(
+        this.table,
+        { ...s2DataConfig, sortParams: currentSortParams },
+        this.filterSourceData,
+        this.tableFilters
+      )
     }
 
     const handleSortClick = (params: any) => {

@@ -1,3 +1,5 @@
+import type { RawData, S2DataConfig, TableSheet } from '@antv/s2'
+
 export const EMPTY_FILTER_VALUE = 'empty:'
 
 export type TableFilterKey = string
@@ -11,7 +13,7 @@ export type TableFilterOption = {
 
 export type TableFilters = Map<string, Set<TableFilterKey>>
 
-type TableRow = Record<string, unknown>
+type TableRow = RawData
 
 export function normalizeTableFilterValue(value: unknown): TableFilterKey {
   if (value === null || value === undefined || value === '') {
@@ -77,4 +79,16 @@ export function applyTableFilters<T extends TableRow>(rows: T[], filters: TableF
       selectedValues.has(normalizeTableFilterValue(row[field]))
     )
   )
+}
+
+export async function refreshFilteredTableData<T extends TableRow>(
+  table: Pick<TableSheet, 'setDataCfg' | 'render'>,
+  dataConfig: S2DataConfig,
+  sourceData: T[],
+  filters: TableFilters
+): Promise<T[]> {
+  const filteredData = applyTableFilters(sourceData, filters)
+  table.setDataCfg({ ...dataConfig, data: filteredData })
+  await table.render(true)
+  return filteredData
 }
