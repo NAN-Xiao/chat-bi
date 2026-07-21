@@ -53,6 +53,11 @@ assert.match(
   'ChartComponent 的尺寸监听不得销毁并重建 table 图表'
 )
 assert.match(
+  component,
+  /function handlePageRestore\(\)[\s\S]*?params\.type\s*===\s*['"]table['"][\s\S]*?hasRenderedOutput\(\)[\s\S]*?return[\s\S]*?scheduleRenderChart\(120\)/,
+  '页面恢复时，已渲染的 table 图表不得销毁并重建'
+)
+assert.match(
   dashboardView,
   /new ResizeObserver\([\s\S]*?chartType\.value\s*!==\s*['"]table['"][\s\S]*?scheduleRenderChart/,
   '看板外层尺寸监听不得再次销毁并重建 table 图表'

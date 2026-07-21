@@ -262,6 +262,9 @@ onUnmounted(() => {
 })
 
 function handlePageRestore() {
+  if (params.type === 'table' && hasRenderedOutput()) {
+    return
+  }
   scheduleRenderChart(120)
 }
 
