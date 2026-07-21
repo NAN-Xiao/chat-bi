@@ -584,6 +584,8 @@ export class Table extends BaseChart {
       },
       // 如果有省略号, 复制到的是完整文本
       interaction: {
+        // 将滚动条放在内容边缘，避免横向滚动条覆盖最后一行数据。
+        scrollbarPosition: 'content',
         copy: {
           enable: true,
           withFormat: false,

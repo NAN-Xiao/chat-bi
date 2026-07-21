@@ -14,6 +14,11 @@ assert.match(table, /lastResizeWidth/, 'S2 表格必须记录上一次容器宽�
 assert.match(table, /lastResizeHeight/, 'S2 表格必须记录上一次容器高度')
 assert.match(
   table,
+  /interaction:\s*\{[\s\S]*?scrollbarPosition:\s*['"]content['"]/,
+  'S2 表格滚动条必须位于内容边缘，避免底部滚动条遮挡最后一行'
+)
+assert.match(
+  table,
   /width === this\.lastResizeWidth && height === this\.lastResizeHeight[\s\S]*?return/,
   '容器宽高没有变化时不得再次触发 S2 render'
 )
