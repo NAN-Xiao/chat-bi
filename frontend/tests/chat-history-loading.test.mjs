@@ -386,6 +386,52 @@ async function testSmartQaTaskStoreRefreshesCallbacksWithoutDuplicatePolling() {
   assert.deepEqual(finished, ['second'])
 }
 
+async function testSmartQaTaskStoreDrainsUnreadEventsBeforeTerminalCallbacks() {
+  const { createSmartQaTaskStore } = loadTsModule('src/views/chat/answer/smartQaTaskStore.ts')
+  const offsets = []
+  const received = []
+  const finished = []
+  const store = createSmartQaTaskStore({
+    sleep: async () => {},
+    getTaskEvents: async (taskId, offset) => {
+      offsets.push(offset)
+      if (offset === 0) {
+        return {
+          task_id: taskId,
+          status: 'succeeded',
+          events: ['data:{"type":"chart","content":"partial"}'],
+          next_offset: 100,
+          total: 150,
+        }
+      }
+      return {
+        task_id: taskId,
+        status: 'succeeded',
+        events: ['data:{"type":"finish"}'],
+        next_offset: 150,
+        total: 150,
+      }
+    },
+    onEvents: ({ events }) => received.push(...events),
+    onFinish: () => finished.push('finish'),
+  })
+
+  const entry = store.ensureTask({
+    tenantId: 'tenant-a',
+    chatId: 91,
+    record: { id: 81, chat_id: 91, task_id: 'task-paged-terminal' },
+    taskId: 'task-paged-terminal',
+  })
+  await entry.promise
+
+  assert.deepEqual(offsets, [0, 100])
+  assert.deepEqual(received, [
+    'data:{"type":"chart","content":"partial"}',
+    'data:{"type":"finish"}',
+  ])
+  assert.deepEqual(finished, ['finish'])
+}
+
 async function testSmartQaTaskStoreDetachesCallbacksButKeepsPolling() {
   const { buildSmartQaTaskKey, createSmartQaTaskStore } = loadTsModule(
     'src/views/chat/answer/smartQaTaskStore.ts'
@@ -586,6 +632,7 @@ await testCachedRequestReusesSamePendingQuery()
 await testSmartQaTaskStorePollsIndependentlyAndDedupes()
 await testSmartQaTaskStoreSkipsTerminalRecords()
 await testSmartQaTaskStoreRefreshesCallbacksWithoutDuplicatePolling()
+await testSmartQaTaskStoreDrainsUnreadEventsBeforeTerminalCallbacks()
 await testSmartQaTaskStoreDetachesCallbacksButKeepsPolling()
 await testSmartQaTaskStoreReplaysBufferedEventsWhenCallbacksReattach()
 testChatTaskContextKeepsOldTaskOutOfCurrentChat()

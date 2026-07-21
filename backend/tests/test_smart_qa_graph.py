@@ -14,7 +14,7 @@ from apps.chat.models.chat_model import ChatFinishStep, OperationEnum
 from apps.chat.task import llm
 from apps.chat.task import smart_qa_graph as graph
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
-from common.error import DataUnavailableError, SingleMessageError
+from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 
 
 @contextmanager
@@ -218,6 +218,8 @@ class FakeSmartQAService:
         self.saved_errors: list[str] = []
         self.saved_analysis: list[str] = []
         self.executed: list[dict[str, Any]] = []
+        self.repair_answers: list[str] = []
+        self.repair_contexts: list[Any] = []
         self.chart_generated = False
         self.finished = False
         self.chart_chunks = [
@@ -302,21 +304,26 @@ class FakeSmartQAService:
             })
         return self.sql_answer
 
-    def regenerate_sql_after_validation_error_streaming_reasoning(self, *args, **kwargs):
+    def regenerate_sql_after_error_streaming_reasoning(self, session, context, in_chat):
         """
-        是什么：FakeSmartQAService.regenerate_sql_after_validation_error_streaming_reasoning 是一段测试代码，用来模拟 Data Skill 校验后的 SQL 重试。
+        是什么：FakeSmartQAService.regenerate_sql_after_error_streaming_reasoning 是一段测试代码，用来模拟统一 SQL 修复。
         """
-        if False:
-            yield None
-        return self.sql_answer
+        self.repair_contexts.append(context)
+        if in_chat:
+            yield graph._sse({
+                "content": "",
+                "reasoning_content": "repairing",
+                "type": "sql-result",
+            })
+        return self.repair_answers.pop(0)
 
-    def check_sql(self, *args, **kwargs):
+    def check_sql(self, *, session, res, operate):
         """
         是什么：FakeSmartQAService.check_sql 是 FakeSmartQAService 里的一个步骤，帮它完成测试相关的一件事。
         谁调用：测试代码会调用它，用来准备数据或检查结果。
         做了什么：检查测试里的数据、权限或配置是否合法，不对就及时拦住。
         """
-        payload = json.loads(self.sql_answer)
+        payload = json.loads(res)
         return payload["sql"], payload.get("tables")
 
     def get_chart_type_from_sql_answer(self, *args, **kwargs):
@@ -427,6 +434,328 @@ class FakeSmartQAService:
         做了什么：把测试这次处理做收尾，记录结果并关掉不再需要的资源。
         """
         self.finished = True
+
+
+def test_prepare_sql_parse_error_repairs_then_revalidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    invalid_sql = "SELECT CAST(value, AS DECIMAL(18, 4)) FROM orders"
+    repaired_sql = "SELECT CAST(value AS DECIMAL(18, 4)) FROM orders"
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql))
+    service.repair_answers = [_sql_answer(repaired_sql)]
+    calls: list[str] = []
+
+    def validate(**kwargs):
+        calls.append(kwargs["sql"])
+        if kwargs["sql"] == invalid_sql:
+            raise ValueError("Parse SQL Error: Expected TYPE after CAST")
+        return kwargs["sql"], {"orders"}
+
+    monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+
+    assert calls == [invalid_sql, repaired_sql]
+    assert service.saved_sql == [repaired_sql]
+    assert service.executed[0]["sql"] == repaired_sql
+    assert len(service.repair_contexts) == 1
+    assert not any(event["type"] == "error" for event in events)
+    assert not any(invalid_sql in str(event.get("content") or "") for event in events)
+    sql_events = [event["content"] for event in events if event["type"] == "sql"]
+    assert len(sql_events) == 1
+    assert "CAST(value AS DECIMAL(18, 4))" in sql_events[0]
+
+
+def test_data_skill_violation_repairs_with_structured_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    invalid_sql = "SELECT legacy_amount FROM event WHERE event = 'LegacyEvent'"
+    repaired_sql = "SELECT SUM(amount) FROM event WHERE event = 'AuthoritativeEvent'"
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql, ["event"]))
+    service.repair_answers = [_sql_answer(repaired_sql, ["event"])]
+    violation = llm.DataSkillSqlViolation(
+        "口径错误",
+        0,
+        ("AuthoritativeEvent", "amount"),
+        (),
+        ("LegacyEvent", "legacy_amount"),
+        (),
+        (),
+    )
+
+    def check_sql(*, session, res, operate):
+        assert session is not None
+        assert operate == OperationEnum.GENERATE_SQL
+        payload = json.loads(res)
+        if payload["sql"] == invalid_sql:
+            raise llm.DataSkillSqlValidationError(violation)
+        return payload["sql"], payload.get("tables")
+
+    service.check_sql = check_sql
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"event"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table event(event text, amount numeric)", ["event"]),
+    )
+
+    list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert service.repair_contexts[0].violation == violation
+    assert service.saved_sql == [repaired_sql]
+
+
+def test_prepare_sql_response_format_error_repairs_then_revalidates(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_answer = "not-json"
+    repaired_sql = "SELECT value FROM orders"
+    service = FakeSmartQAService(sql_answer=invalid_answer)
+    service.repair_answers = [_sql_answer(repaired_sql)]
+
+    def check_sql(*, session, res, operate):
+        assert session is not None
+        assert operate == OperationEnum.GENERATE_SQL
+        if res == invalid_answer:
+            raise SingleMessageError("SQL answer is not a valid json object")
+        payload = json.loads(res)
+        return payload["sql"], payload.get("tables")
+
+    service.check_sql = check_sql
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"orders"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert service.repair_contexts[0].reason.value == "sql_response_format"
+    assert service.saved_sql == [repaired_sql]
+    assert not any(event["type"] == "error" for event in _events(chunks))
+
+
+def test_execute_sql_dialect_error_repairs_then_executes_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    invalid_sql = "WITH RECURSIVE days AS (SELECT 1 UNION ALL SELECT 2) SELECT * FROM days"
+    repaired_sql = "WITH RECURSIVE days(day_value) AS (SELECT 1 UNION ALL SELECT 2) SELECT * FROM days"
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql))
+    service.repair_answers = [_sql_answer(repaired_sql)]
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"orders"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
+    )
+    attempts: list[str] = []
+
+    def execute(**kwargs):
+        attempts.append(kwargs["sql"])
+        if kwargs["sql"] == invalid_sql:
+            error = llm.AppDBError("query failed")
+            raise error from RuntimeError("missing column aliases in recursive WITH query")
+        return {"fields": ["day_value"], "data": [{"day_value": 1}]}
+
+    service.execute_sql = execute
+    service.check_save_chart = lambda **kwargs: json.loads(kwargs["res"])
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert attempts == [invalid_sql, repaired_sql]
+    assert service.repair_contexts[0].reason.value == "database_syntax_or_dialect"
+    assert not any(event["type"] == "error" for event in _events(chunks))
+
+
+def test_same_failure_fingerprint_is_not_repaired_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    invalid_sql = "SELECT CAST(value, AS DECIMAL(18, 4)) FROM orders"
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql))
+    service.repair_answers = [_sql_answer(invalid_sql)]
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (_ for _ in ()).throw(ValueError("Parse SQL Error: Expected TYPE")),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert len(service.repair_contexts) == 1
+    assert any(event["type"] == "error" for event in _events(chunks))
+
+
+def test_prepare_and_execute_share_two_attempt_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    first = "SELECT CAST(value, AS DECIMAL(18, 4)) FROM orders"
+    second = "SELECT BAD_FUNCTION(value) FROM orders"
+    third = "SELECT STILL_BAD(value) FROM orders"
+    service = FakeSmartQAService(sql_answer=_sql_answer(first))
+    service.repair_answers = [_sql_answer(second), _sql_answer(third)]
+
+    def validate(**kwargs):
+        if kwargs["sql"] == first:
+            raise ValueError("Parse SQL Error: Expected TYPE")
+        return kwargs["sql"], {"orders"}
+
+    monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
+    )
+    service.execute_sql = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("syntax error near function"))
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert len(service.repair_contexts) == 2
+    assert any(event["type"] == "error" for event in _events(chunks))
+
+
+def test_execute_sql_repair_uses_user_visible_sql_and_logs_expanded_sql() -> None:
+    user_visible_sql = "SELECT * FROM orders"
+    real_execute_sql = "SELECT id, amount FROM public.orders"
+    service = FakeSmartQAService(sql_answer=_sql_answer(user_visible_sql))
+
+    def execute_sql(**_kwargs):
+        raise RuntimeError("syntax error near expanded query")
+
+    service.execute_sql = execute_sql
+    state = {
+        "service": service,
+        "in_chat": True,
+        "stream": True,
+        "finish_step": ChatFinishStep.GENERATE_CHART,
+        "json_result": {},
+        "sql": user_visible_sql,
+        "real_execute_sql": real_execute_sql,
+        "execute_scope_sql": user_visible_sql,
+        "execute_allowed_tables": ["orders"],
+        "sql_repair_count": 0,
+        "sql_repair_fingerprints": [],
+    }
+
+    update = graph._execute_sql(state)
+
+    assert update["sql_repair_pending"] is True
+    assert update["sql_repair_context"].failed_sql == user_visible_sql
+    assert service.current_logs[OperationEnum.EXECUTE_SQL].messages["sql"] == real_execute_sql
+
+
+@pytest.mark.parametrize(
+    "execute_error",
+    [
+        AppDBConnectionError("database connection refused"),
+        TimeoutError("query timeout"),
+        RuntimeError("unexpected driver failure"),
+    ],
+)
+def test_execute_sql_nonrepairable_errors_are_raised_without_repair(execute_error: Exception) -> None:
+    service = FakeSmartQAService()
+    service.execute_sql = lambda **kwargs: (_ for _ in ()).throw(execute_error)
+    state = {
+        "service": service,
+        "in_chat": True,
+        "stream": True,
+        "finish_step": ChatFinishStep.GENERATE_CHART,
+        "json_result": {},
+        "sql": "SELECT value FROM orders",
+        "real_execute_sql": "SELECT value FROM orders",
+        "execute_scope_sql": "SELECT value FROM orders",
+        "execute_allowed_tables": ["orders"],
+        "sql_repair_count": 0,
+        "sql_repair_fingerprints": [],
+    }
+
+    with pytest.raises(type(execute_error), match=str(execute_error)):
+        graph._execute_sql(state)
+
+    assert service.repair_contexts == []
+
+
+def test_execute_sql_permission_denied_keeps_audit_and_failed_output(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = FakeSmartQAService(sql_answer=_sql_answer("SELECT secret FROM orders"))
+    audit_calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"orders"}),
+    )
+    monkeypatch.setattr(graph, "audit_permission_denied", lambda **kwargs: audit_calls.append(kwargs))
+    service.execute_sql = lambda **kwargs: (_ for _ in ()).throw(
+        RuntimeError("permission denied: restricted field"),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    failed_event = next(event for event in events if event["type"] == "sql-data")
+
+    assert audit_calls[0]["operation"] == "smart_qa.execute_sql_permission"
+    assert service.saved_data[-1]["error_type"] == PERMISSION_DENIED_ERROR_TYPE
+    assert failed_event["status"] == "failed"
+    assert failed_event["error_type"] == PERMISSION_DENIED_ERROR_TYPE
+    assert service.repair_contexts == []
 
 
 def test_generate_sql_finish_step_stops_before_execute(monkeypatch: pytest.MonkeyPatch):
@@ -608,6 +937,7 @@ def test_data_unavailable_execution_is_logged_but_not_streamed_as_error(monkeypa
     assert execute_log.messages["message"] == message
     assert not any(event["type"] == "error" for event in events)
     assert not any(event["type"] == "chart" for event in events)
+    assert service.repair_contexts == []
     assert service.saved_errors == []
     assert service.finished is True
     assert events[-1]["type"] == "finish"
@@ -1028,6 +1358,31 @@ def test_event_availability_trusts_configured_tracking_events(monkeypatch: pytes
     availability = graph._event_availability_for_sql(service, sql)
 
     assert availability[0].existing_values == {"UserRegister"}
+    assert availability[0].missing_values == set()
+    assert availability[0].unknown_values == set()
+
+
+def test_event_availability_trusts_event_name_tracking_mapping(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：当前事件字典使用 event_name 单事件映射时，也应直接视为已确认事件。
+    """
+    sql = "SELECT count(*) AS cnt FROM event WHERE event = 'UserActive'"
+    service = FakeSmartQAService()
+    service.ds = SimpleNamespace(id=6, type="mysql", type_name="MySQL")
+    service.chat_question.tracking_config = '''
+    - 默认事件名字段: `event`
+    ## 事件名映射
+    [{"event_name":"UserActive","event_display_name":"当日活跃"}]
+    '''
+
+    def _should_not_probe(**kwargs):
+        raise AssertionError("configured events should not query datasource")
+
+    monkeypatch.setattr(graph, "get_session", _should_not_probe)
+
+    availability = graph._event_availability_for_sql(service, sql)
+
+    assert availability[0].existing_values == {"UserActive"}
     assert availability[0].missing_values == set()
     assert availability[0].unknown_values == set()
 

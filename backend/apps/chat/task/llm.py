@@ -39,6 +39,12 @@ from apps.chat.curd.custom_prompt import (
 )
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog, OperationEnum, \
     ChatFinishStep, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
+from apps.chat.task.sql_repair import (
+    DataSkillSqlValidationError,
+    DataSkillSqlViolation,
+    SqlRepairContext,
+    build_sql_repair_message,
+)
 from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
@@ -124,13 +130,6 @@ def _disable_reasoning_for_recommendation(config: LLMConfig) -> None:
 
     extra_body["enable_thinking"] = False
     additional_params["extra_body"] = extra_body
-
-
-class DataSkillSqlValidationError(SingleMessageError):
-    """
-    类说明：DataSkillSqlValidationError 表示聊天问数据和 Agent过程里的特定错误，让上层能更准确地提示或处理。
-    """
-    pass
 
 
 def looks_like_data_skill_schema_unavailable_error(message: str) -> bool:
@@ -271,33 +270,35 @@ def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bo
         return pattern_text.lower() in sql_lower
 
 
-def _required_sql_missing(rule: dict[str, Any], sql_text: str, sql_lower: str) -> bool:
+def _required_sql_violations(
+    rule: dict[str, Any],
+    sql_text: str,
+    sql_lower: str,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """
-    是什么：检查 Data Skill 声明的必需 SQL 片段是否缺失。
-    谁调用：Data Skill SQL 校验。
-    做了什么：把“指标必须来自哪些明细表”做成通用配置，而不是写死在平台代码里。
+    收集 Data Skill 声明但 SQL 尚未满足的必需片段和正则。
     """
+    missing_contains: list[str] = []
     for text in _normalize_rule_terms(rule.get("required_sql_contains")):
-        if text.lower() not in sql_lower:
-            return True
+        if text.lower() not in sql_lower and text not in missing_contains:
+            missing_contains.append(text)
 
     for group in rule.get("required_sql_all_contains") or []:
-        terms = _normalize_rule_terms(group)
-        if terms and not all(term.lower() in sql_lower for term in terms):
-            return True
+        for text in _normalize_rule_terms(group):
+            if text.lower() not in sql_lower and text not in missing_contains:
+                missing_contains.append(text)
 
-    for pattern_text in _normalize_rule_terms(rule.get("required_sql_patterns")):
-        if not _sql_pattern_matches(pattern_text, sql_text, sql_lower):
-            return True
-
-    return False
+    missing_patterns = tuple(
+        pattern_text
+        for pattern_text in _normalize_rule_terms(rule.get("required_sql_patterns"))
+        if not _sql_pattern_matches(pattern_text, sql_text, sql_lower)
+    )
+    return tuple(missing_contains), missing_patterns
 
 
 def _sql_select_segments(sql_text: str) -> list[str]:
     """
-    是什么：把 SQL 粗略拆成若干 SELECT 片段。
-    谁调用：Data Skill SQL 校验。
-    做了什么：支持“同一个 SELECT 片段内同时出现某些内容才算违规”的语义规则。
+    把 SQL 粗略拆成若干 SELECT 片段。
     """
     starts = [match.start() for match in re.finditer(r"\bselect\b", sql_text, flags=re.IGNORECASE)]
     if not starts:
@@ -306,75 +307,97 @@ def _sql_select_segments(sql_text: str) -> list[str]:
     return [sql_text[starts[index]:starts[index + 1]] for index in range(len(starts) - 1)]
 
 
-def _forbidden_select_group_matches(rule: dict[str, Any], sql_text: str) -> bool:
+def _forbidden_sql_violations(
+    rule: dict[str, Any],
+    sql_text: str,
+    sql_lower: str,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[tuple[str, ...], ...]]:
     """
-    是什么：检查是否有单个 SELECT 片段命中一组禁止片段。
-    谁调用：Data Skill SQL 校验。
-    做了什么：避免跨 CTE 把合法事件统计和其它指标别名误连在一起。
+    收集 Data Skill 声明但 SQL 已命中的禁止片段、正则和分组。
     """
-    groups = rule.get("forbidden_sql_select_all_contains") or []
-    if not groups:
-        return False
+    matched_contains = tuple(
+        text
+        for text in _normalize_rule_terms(rule.get("forbidden_sql_contains"))
+        if text.lower() in sql_lower
+    )
+    matched_patterns = tuple(
+        pattern_text
+        for pattern_text in _normalize_rule_terms(rule.get("forbidden_sql_patterns"))
+        if _sql_pattern_matches(pattern_text, sql_text, sql_lower)
+    )
+
+    matched_groups: list[tuple[str, ...]] = []
     segments = [segment.lower() for segment in _sql_select_segments(sql_text)]
-    for group in groups:
-        terms = [term.lower() for term in _normalize_rule_terms(group)]
-        if terms and any(all(term in segment for term in terms) for segment in segments):
-            return True
-    return False
+    for group in rule.get("forbidden_sql_select_all_contains") or []:
+        terms = tuple(_normalize_rule_terms(group))
+        if terms and any(all(term.lower() in segment for term in terms) for segment in segments):
+            matched_groups.append(terms)
+    for group in rule.get("forbidden_sql_all_contains") or []:
+        terms = tuple(_normalize_rule_terms(group))
+        if terms and all(term.lower() in sql_lower for term in terms):
+            matched_groups.append(terms)
+    return matched_contains, matched_patterns, tuple(matched_groups)
 
 
-def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = "") -> str | None:
+def _data_skill_sql_validation_violation(
+    question: str,
+    sql: str,
+    data_skill: str = "",
+) -> DataSkillSqlViolation | None:
     """
-    是什么：_data_skill_sql_validation_error 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
+    按匹配到的 Data Skill 规则生成结构化 SQL 违规对象。
     """
     if not sql:
         return None
 
     sql_text = str(sql)
     sql_lower = sql_text.lower()
-    for rule in _extract_data_skill_sql_validation_rules(data_skill):
+    for rule_index, rule in enumerate(_extract_data_skill_sql_validation_rules(data_skill)):
         if not _rule_matches_question(rule, question):
             continue
         if _rule_allowed_by_question(rule, question):
             continue
 
-        if _required_sql_missing(rule, sql_text, sql_lower):
-            return str(
-                rule.get("message")
-                or "SQL 缺少本次匹配的 Data Skill 要求使用的表、字段或条件，请按 Data Skill 重写 SQL。"
-            )
+        missing_required_contains, missing_required_patterns = _required_sql_violations(
+            rule,
+            sql_text,
+            sql_lower,
+        )
+        (
+            matched_forbidden_contains,
+            matched_forbidden_patterns,
+            matched_forbidden_groups,
+        ) = _forbidden_sql_violations(rule, sql_text, sql_lower)
+        has_required_violation = bool(missing_required_contains or missing_required_patterns)
+        has_forbidden_violation = bool(
+            matched_forbidden_contains or matched_forbidden_patterns or matched_forbidden_groups
+        )
+        if not has_required_violation and not has_forbidden_violation:
+            continue
 
-        if _forbidden_select_group_matches(rule, sql_text):
-            return str(
-                rule.get("message")
-                or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
-            )
-
-        for pattern_text in _normalize_rule_terms(rule.get("forbidden_sql_patterns")):
-            if _sql_pattern_matches(pattern_text, sql_text, sql_lower):
-                return str(
-                    rule.get("message")
-                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
-                )
-
-        for text in _normalize_rule_terms(rule.get("forbidden_sql_contains")):
-            if text.lower() in sql_lower:
-                return str(
-                    rule.get("message")
-                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
-                )
-
-        for group in rule.get("forbidden_sql_all_contains") or []:
-            terms = _normalize_rule_terms(group)
-            if terms and all(term.lower() in sql_lower for term in terms):
-                return str(
-                    rule.get("message")
-                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
-                )
-
+        default_message = (
+            "SQL 缺少本次匹配的 Data Skill 要求使用的表、字段或条件，请按 Data Skill 重写 SQL。"
+            if has_required_violation
+            else "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+        )
+        return DataSkillSqlViolation(
+            message=str(rule.get("message") or default_message),
+            rule_index=rule_index,
+            missing_required_contains=missing_required_contains,
+            missing_required_patterns=missing_required_patterns,
+            matched_forbidden_contains=matched_forbidden_contains,
+            matched_forbidden_patterns=matched_forbidden_patterns,
+            matched_forbidden_groups=matched_forbidden_groups,
+        )
     return None
+
+
+def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = "") -> str | None:
+    """
+    将结构化 Data Skill SQL 违规对象格式化为旧调用方使用的文本。
+    """
+    violation = _data_skill_sql_validation_violation(question, sql, data_skill)
+    return violation.message if violation is not None else None
 
 
 def _decode_relaxed_json_string(value: str) -> str:
@@ -1987,43 +2010,16 @@ class LLMService:
                 }).decode() + '\n\n'
         return full_sql_text
 
-    def regenerate_sql_after_validation_error(self, _session: Session, message: str) -> str:
-        """
-        是什么：LLMService.regenerate_sql_after_validation_error 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
-        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
-        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
-        """
-        repair_message = (
-            "<error-msg>\n"
-            f"{message}\n"
-            "</error-msg>\n"
-            "上一版 SQL 与本次 Data Skill 的业务口径冲突。请严格按 Data Skill 和错误信息重写完整 JSON 结果，"
-            "不要保留冲突的 SQL 片段、CTE、步骤标签或分母。"
-        )
-        self.sql_message.append(HumanMessage(content=repair_message))
-        return self.generate_sql_text(_session, append_question=False)
-
-    def regenerate_sql_after_validation_error_streaming_reasoning(
+    def regenerate_sql_after_error_streaming_reasoning(
             self,
-            _session: Session,
-            message: str,
+            session: Session,
+            context: SqlRepairContext,
             in_chat: bool,
     ):
-        """
-        是什么：LLMService.regenerate_sql_after_validation_error_streaming_reasoning 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
-        谁调用：拿到 LLMService 对象的代码，需要完成这个动作时会调用它。
-        做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
-        """
-        repair_message = (
-            "<error-msg>\n"
-            f"{message}\n"
-            "</error-msg>\n"
-            "上一版 SQL 与本次 Data Skill 的业务口径冲突。请严格按 Data Skill 和错误信息重写完整 JSON 结果，"
-            "不要保留冲突的 SQL 片段、CTE、步骤标签或分母。"
-        )
-        self.sql_message.append(HumanMessage(content=repair_message))
+        """使用结构化错误上下文重新生成完整 SQL。"""
+        self.sql_message.append(HumanMessage(build_sql_repair_message(context)))
         return (yield from self.generate_sql_text_streaming_reasoning(
-            _session,
+            session,
             in_chat=in_chat,
             append_question=False,
         ))
@@ -2227,14 +2223,14 @@ class LLMService:
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
 
-        semantic_error = _data_skill_sql_validation_error(
+        violation = _data_skill_sql_validation_violation(
             self.chat_question.question or "",
             sql,
             self.chat_question.data_skill,
         )
-        if semantic_error:
+        if violation is not None:
             trigger_log_error(session, log)
-            raise DataSkillSqlValidationError(semantic_error)
+            raise DataSkillSqlValidationError(violation)
         return sql, data.get('tables')
 
     @staticmethod
@@ -2449,12 +2445,11 @@ class LLMService:
                 scope_sql=scope_sql or self.chat_question.sql,
                 origin_column=True,
             ).result
-        except Exception as e:
-            if isinstance(e, ParseSQLResultError):
-                raise e
-            else:
-                err = traceback.format_exc(limit=1, chain=True)
-                raise AppDBError(err)
+        except Exception as error:
+            if isinstance(error, ParseSQLResultError):
+                raise
+            traceback_text = traceback.format_exc(limit=1, chain=True)
+            raise AppDBError(traceback_text) from error
 
     def pop_chunk(self):
         """

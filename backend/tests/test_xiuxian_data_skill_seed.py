@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from functools import lru_cache
 from pathlib import Path
 
-from apps.chat.task.llm import _data_skill_sql_validation_error
+from apps.chat.task.llm import (
+    _data_skill_sql_validation_error,
+    _data_skill_sql_validation_violation,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS_DIR = ROOT / "tools"
@@ -59,6 +63,27 @@ def _date_skill() -> dict[str, str]:
         for skill in seed.DATA_SKILLS
         if "data-skill-source:xiuxian:date-partition-aggregation" in skill["prompt"]
     )
+
+
+def _repair_example_sql(title: str) -> str:
+    match = re.search(
+        rf"-- 修复示例：{re.escape(title)}\n(?P<sql>.*?)(?=\n```)",
+        seed.SERVERPAYLOG_REPAIR_EXAMPLES,
+        flags=re.DOTALL,
+    )
+    assert match is not None
+    return match.group("sql").strip()
+
+
+def test_xiuxian_date_skill_uses_canonical_retrieval_description() -> None:
+    expected = (
+        "修仙 datasource_id=6 日期趋势口径："
+        "最近15天补齐新增趋势、按日补零、固定非递归日期骨架。"
+    )
+
+    assert seed.DATE_PARTITION_SKILL_DESCRIPTION == expected
+    assert seed.DATE_PARTITION_SKILL["description"] == expected
+    assert _date_skill()["description"] == expected
 
 
 def test_xiuxian_payment_skill_is_scoped_and_keeps_date_skill() -> None:
@@ -153,6 +178,74 @@ def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
     assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" in prompt
     assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
     assert "禁止使用 `MAX(dt)`" in prompt
+
+
+def test_date_skill_contains_non_recursive_spine() -> None:
+    prompt = seed.DATE_PARTITION_SKILL["prompt"]
+
+    assert "day_offsets" in prompt
+    assert "SELECT 0 AS day_offset" in prompt
+    assert "UNION ALL SELECT 14" in prompt
+    assert "WITH RECURSIVE" not in prompt
+    assert "读取 `event`、`user` 时仍必须在各自表别名上直接写 `dt` 分区条件" in prompt
+    assert "日期骨架只负责补齐输出日期" in prompt
+
+
+def test_payment_skill_contains_three_repair_examples() -> None:
+    prompt = _payment_skill()["prompt"]
+
+    assert "修复示例：按渠道付费用户" in prompt
+    assert "$.mediaSource" in prompt
+    assert "修复示例：等级段人均付费" in prompt
+    assert "JSON_EXTRACT(u.lastinfo, '$.level')" in prompt
+    assert "LEFT JOIN user_payment" in prompt
+    assert "修复示例：最新完整数据日核心指标" in prompt
+    assert "event = 'ServerPayLog'" in prompt
+    assert "$.money" in prompt
+
+
+def test_repair_examples_use_only_authoritative_payment_fields() -> None:
+    examples = seed.SERVERPAYLOG_REPAIR_EXAMPLES
+
+    assert examples.count("修复示例：") == 3
+    assert "PayBuyRet" not in examples
+    assert "ed_money" not in examples
+    assert "paytotal" not in examples
+    assert "personal, '$.money'" in examples
+    assert "COUNT(DISTINCT e.uid)" in examples
+    assert "COUNT(DISTINCT ul.uid)" in examples
+
+
+def test_repair_examples_pass_real_data_skill_sql_validator() -> None:
+    prompt = _payment_skill()["prompt"]
+    cases = (
+        ("按渠道付费用户", "查看最近15天按渠道付费用户和付费金额"),
+        ("等级段人均付费", "查看最新完整数据日各等级段人均付费金额"),
+        (
+            "最新完整数据日核心指标",
+            "查看最新完整数据日 DAU、新增用户数、付费用户和付费金额",
+        ),
+    )
+
+    for title, question in cases:
+        sql = _repair_example_sql(title)
+        assert _data_skill_sql_validation_violation(question, sql, prompt) is None
+        assert _data_skill_sql_validation_error(question, sql, prompt) is None
+
+
+def test_seed_prompts_use_single_managed_section_at_prompt_end() -> None:
+    date_prompt = seed.DATE_PARTITION_SKILL["prompt"]
+    payment_prompt = _payment_skill()["prompt"]
+
+    assert date_prompt.endswith(seed.DATE_SECTION_END_MARKER)
+    assert date_prompt.count(seed.DATE_SECTION_MARKER) == 1
+    assert date_prompt.count(seed.DATE_SECTION_END_MARKER) == 1
+    assert payment_prompt.endswith(seed.SERVERPAYLOG_SECTION_END_MARKER)
+    assert payment_prompt.count(seed.SERVERPAYLOG_SECTION_MARKER) == 1
+    assert payment_prompt.count(seed.SERVERPAYLOG_SECTION_END_MARKER) == 1
+    assert payment_prompt.rfind("<!-- dashboard-sql:") < payment_prompt.index(
+        seed.SERVERPAYLOG_SECTION_MARKER
+    )
 
 
 def test_xiuxian_date_skill_rejects_max_dt_partition_probe() -> None:

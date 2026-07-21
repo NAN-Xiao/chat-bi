@@ -170,6 +170,11 @@ export function createSmartQaTaskStore(initialOptions: SmartQaTaskRuntimeOptions
       }
 
       const status = eventPage.status || entry.status
+      const total = Number(eventPage.total ?? entry.offset)
+      if (TERMINAL_STATUSES.has(status) && entry.offset < total) {
+        entry.status = 'running'
+        continue
+      }
       if (TERMINAL_STATUSES.has(status)) {
         entry.status = status as TaskStatus
         entry.error = eventPage.error

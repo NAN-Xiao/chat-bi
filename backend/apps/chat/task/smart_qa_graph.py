@@ -3,19 +3,19 @@
 """
 from __future__ import annotations
 
+import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-import re
 from threading import Lock
-import time
 from typing import Any, TypedDict
 
 import orjson
 import sqlglot
 import sqlparse
-from sqlglot import exp
-from sqlalchemy import text
 from langgraph.graph import END, StateGraph
+from sqlalchemy import text
+from sqlglot import exp
 
 from apps.chat.curd.chat import (
     end_log,
@@ -59,6 +59,15 @@ from apps.chat.task.assistant_workflow import (
 )
 from apps.chat.task.assistant_workflow import (
     session_scope as _session_scope,
+)
+from apps.chat.task.sql_repair import (
+    SQL_REPAIR_MAX_ATTEMPTS,
+    SqlRepairContext,
+    SqlRepairReason,
+    classify_execute_sql_error,
+    classify_prepare_sql_error,
+    sanitize_sql_repair_error,
+    sql_repair_fingerprint,
 )
 from apps.datasource.crud.permission_errors import (
     audit_permission_denied,
@@ -478,11 +487,36 @@ def _configured_event_values_for_service(service: Any) -> set[str]:
     if not tracking_config:
         return set()
     configured: set[str] = set()
-    for match in re.finditer(r'"events"\s*:\s*\[(.*?)\]', tracking_config, flags=re.IGNORECASE | re.DOTALL):
+
+    for match in re.finditer(
+            r"<Configured-Event-Names>(.*?)</Configured-Event-Names>",
+            tracking_config,
+            flags=re.IGNORECASE | re.DOTALL,
+    ):
+        try:
+            values = orjson.loads(match.group(1))
+        except orjson.JSONDecodeError:
+            continue
+        if isinstance(values, list):
+            configured.update(str(value).strip() for value in values if str(value).strip())
+
+    for match in re.finditer(
+            r'"(?:events|event_names)"\s*:\s*\[(.*?)\]',
+            tracking_config,
+            flags=re.IGNORECASE | re.DOTALL,
+    ):
         for value in re.findall(r'"([^"]+)"', match.group(1)):
             value = value.strip()
             if value:
                 configured.add(value)
+    for match in re.finditer(
+            r'"(?:event_name|eventName)"\s*:\s*"([^"]+)"',
+            tracking_config,
+            flags=re.IGNORECASE,
+    ):
+        value = match.group(1).strip()
+        if value:
+            configured.add(value)
     return configured
 
 
@@ -1285,6 +1319,10 @@ class SmartQAGraphState(TypedDict, total=False):
     execute_allowed_tables: list[str] | set[str] | None
     event_availability: list[_EventAvailability] | None
     business_notice: dict[str, Any] | None
+    sql_repair_count: int
+    sql_repair_pending: bool
+    sql_repair_context: SqlRepairContext | None
+    sql_repair_fingerprints: list[str]
     result: dict[str, Any]
     chart: dict[str, Any]
     saas_skill_handled: bool
@@ -1298,6 +1336,59 @@ def _observe_node(node: str, handler):
     做了什么：调用 assistant_workflow.observe_node，传入工作流配置、节点名和实际处理器，使节点执行具备统一的日志、追踪与异常格式化能力。
     """
     return observe_node(WORKFLOW_CONFIG, node, handler)
+
+
+def _queue_sql_repair(
+    state: SmartQAGraphState,
+    *,
+    error: BaseException,
+    reason: SqlRepairReason,
+    failed_sql: str,
+) -> dict[str, Any]:
+    """构造有限重试、可去重的 SQL 修复上下文。"""
+    service = state["service"]
+    context = SqlRepairContext(
+        reason=reason,
+        dialect=get_sqlglot_dialect(getattr(getattr(service, "ds", None), "type", None)),
+        failed_sql=failed_sql,
+        error_message=sanitize_sql_repair_error(error),
+        violation=getattr(error, "violation", None),
+        attempt=state.get("sql_repair_count", 0),
+        max_attempts=SQL_REPAIR_MAX_ATTEMPTS,
+    )
+    fingerprint = sql_repair_fingerprint(context)
+    fingerprints = list(state.get("sql_repair_fingerprints") or [])
+    if context.attempt >= context.max_attempts or fingerprint in fingerprints:
+        raise error
+    return {
+        "sql_repair_pending": True,
+        "sql_repair_context": context,
+        "sql_repair_fingerprints": [*fingerprints, fingerprint],
+        "stop": False,
+    }
+
+
+def _repair_sql(state: SmartQAGraphState) -> dict[str, Any]:
+    """调用统一修复接口生成完整 SQL，并交回准备节点重新校验。"""
+    context = state.get("sql_repair_context")
+    if context is None:
+        raise RuntimeError("SQL repair context is missing")
+    with _session_scope() as session:
+        full_sql_text = _consume_generator_return(
+            state["service"].regenerate_sql_after_error_streaming_reasoning(
+                session,
+                context,
+                in_chat=state["in_chat"],
+            ),
+            _emit,
+        )
+    return {
+        "full_sql_text": full_sql_text,
+        "sql_repair_count": state.get("sql_repair_count", 0) + 1,
+        "sql_repair_pending": False,
+        "sql_repair_context": None,
+        "stop": False,
+    }
 
 
 def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
@@ -1635,21 +1726,8 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         try:
             sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
         except DataSkillSqlValidationError as semantic_error:
-            full_sql_text = _consume_generator_return(
-                service.regenerate_sql_after_validation_error_streaming_reasoning(
-                    session,
-                    str(semantic_error),
-                    in_chat=in_chat,
-                ),
-                _emit,
-            )
-            AppLogUtil.info(full_sql_text)
-            try:
-                sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
-            except (DataSkillSqlValidationError, SingleMessageError) as regenerated_error:
-                if not looks_like_data_skill_schema_unavailable_error(str(regenerated_error)):
-                    raise
-                message = user_data_unavailable_message(str(regenerated_error))
+            if looks_like_data_skill_schema_unavailable_error(str(semantic_error)):
+                message = user_data_unavailable_message(str(semantic_error))
                 _save_and_emit_plain_answer(
                     service=service,
                     session=session,
@@ -1664,6 +1742,35 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     json_result["message"] = message
                     _emit(json_result)
                 return {"json_result": json_result, "stop": True}
+            reason = classify_prepare_sql_error(semantic_error)
+            if reason is not SqlRepairReason.DATA_SKILL_VALIDATION:
+                raise
+            return _queue_sql_repair(
+                state,
+                error=semantic_error,
+                reason=reason,
+                failed_sql=full_sql_text,
+            )
+        except SingleMessageError as response_error:
+            reason = classify_prepare_sql_error(response_error)
+            if reason is not SqlRepairReason.SQL_RESPONSE_FORMAT:
+                raise
+            return _queue_sql_repair(
+                state,
+                error=response_error,
+                reason=reason,
+                failed_sql=full_sql_text,
+            )
+        except Exception as parse_error:
+            reason = classify_prepare_sql_error(parse_error)
+            if reason is not SqlRepairReason.SQL_PARSE:
+                raise
+            return _queue_sql_repair(
+                state,
+                error=parse_error,
+                reason=reason,
+                failed_sql=full_sql_text,
+            )
 
         chart_type = service.get_chart_type_from_sql_answer(full_sql_text)
         sql_answer_user_message = _sql_answer_message(full_sql_text)
@@ -1685,30 +1792,6 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     _emit(_sse({"type": "brief", "brief": brief}))
                 if not stream:
                     json_result["title"] = brief
-
-        if in_chat:
-            json_str = extract_nested_json(full_sql_text)
-            if json_str:
-                try:
-                    answer_data = orjson.loads(json_str)
-                    _emit(_sse({
-                        "content": orjson.dumps(answer_data).decode(),
-                        "reasoning_content": "",
-                        "type": "sql-result",
-                    }))
-                except Exception:
-                    _emit(_sse({
-                        "content": full_sql_text,
-                        "reasoning_content": "",
-                        "type": "sql-result",
-                    }))
-            else:
-                _emit(_sse({
-                    "content": full_sql_text,
-                    "reasoning_content": "",
-                    "type": "sql-result",
-                }))
-            _emit(_sse({"type": "info", "msg": "sql generated"}))
 
         try:
             if use_dynamic_ds:
@@ -1785,19 +1868,61 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     unknown_event_message = _unknown_event_feedback(rewrite.unknown_events)
                     unknown_event_notice = _unknown_event_notice(rewrite.unknown_events)
                 sql = service.save_checked_sql(session=session, sql=checked_sql)
-        except Exception as permission_error:
-            if not looks_like_permission_scope_error(str(permission_error)):
+        except Exception as prepare_error:
+            if isinstance(prepare_error, DataSkillSqlValidationError):
+                if looks_like_data_skill_schema_unavailable_error(str(prepare_error)):
+                    message = user_data_unavailable_message(str(prepare_error))
+                    _save_and_emit_plain_answer(
+                        service=service,
+                        session=session,
+                        message=message,
+                        in_chat=in_chat,
+                        stream=stream,
+                        json_result=json_result,
+                        finish=True,
+                    )
+                    if not in_chat and not stream:
+                        json_result["success"] = False
+                        json_result["message"] = message
+                        _emit(json_result)
+                    return {"json_result": json_result, "stop": True}
+                reason = classify_prepare_sql_error(prepare_error)
+                if reason is SqlRepairReason.DATA_SKILL_VALIDATION:
+                    return _queue_sql_repair(
+                        state,
+                        error=prepare_error,
+                        reason=reason,
+                        failed_sql=sql,
+                    )
+                raise
+            if not looks_like_permission_scope_error(str(prepare_error)):
+                reason = classify_prepare_sql_error(prepare_error)
+                if isinstance(prepare_error, SingleMessageError):
+                    if reason is SqlRepairReason.SQL_RESPONSE_FORMAT:
+                        return _queue_sql_repair(
+                            state,
+                            error=prepare_error,
+                            reason=reason,
+                            failed_sql=sql,
+                        )
+                elif reason is SqlRepairReason.SQL_PARSE:
+                    return _queue_sql_repair(
+                        state,
+                        error=prepare_error,
+                        reason=reason,
+                        failed_sql=sql,
+                    )
                 raise
             audit_permission_denied(
                 current_user=service.current_user,
                 datasource_id=getattr(getattr(service, "ds", None), "id", None),
                 record_id=getattr(getattr(service, "record", None), "id", None),
                 operation="smart_qa.prepare_sql_permission",
-                reason=str(permission_error),
+                reason=str(prepare_error),
                 tables=service.table_name_list,
-                fields=getattr(permission_error, "fields", None),
-                json_paths=getattr(permission_error, "json_paths", None),
-                rule_type=getattr(permission_error, "rule_type", None),
+                fields=getattr(prepare_error, "fields", None),
+                json_paths=getattr(prepare_error, "json_paths", None),
+                rule_type=getattr(prepare_error, "rule_type", None),
             )
             sql = service.save_checked_sql(session=session, sql=sql)
             failed_result = service.save_permission_denied_data(session=session)
@@ -1812,6 +1937,30 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 emit_sql=True,
             )
             return {"json_result": json_result, "stop": True}
+
+    if in_chat:
+        json_str = extract_nested_json(full_sql_text)
+        if json_str:
+            try:
+                answer_data = orjson.loads(json_str)
+                _emit(_sse({
+                    "content": orjson.dumps(answer_data).decode(),
+                    "reasoning_content": "",
+                    "type": "sql-result",
+                }))
+            except Exception:
+                _emit(_sse({
+                    "content": full_sql_text,
+                    "reasoning_content": "",
+                    "type": "sql-result",
+                }))
+        else:
+            _emit(_sse({
+                "content": full_sql_text,
+                "reasoning_content": "",
+                "type": "sql-result",
+            }))
+        _emit(_sse({"type": "info", "msg": "sql generated"}))
 
     AppLogUtil.info("sql: " + sql)
 
@@ -1968,30 +2117,49 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 _emit(json_result)
             return {"json_result": json_result, "stop": True}
         except Exception as execute_error:
-            if not looks_like_permission_scope_error(str(execute_error)):
+            if looks_like_permission_scope_error(str(execute_error)):
+                audit_permission_denied(
+                    current_user=service.current_user,
+                    datasource_id=getattr(getattr(service, "ds", None), "id", None),
+                    record_id=getattr(getattr(service, "record", None), "id", None),
+                    operation="smart_qa.execute_sql_permission",
+                    reason=str(execute_error),
+                    tables=execute_allowed_tables,
+                    fields=getattr(execute_error, "fields", None),
+                    json_paths=getattr(execute_error, "json_paths", None),
+                    rule_type=getattr(execute_error, "rule_type", None),
+                )
+                trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
+                failed_result = service.save_permission_denied_data(session=session)
+                emit_permission_denied_response(
+                    in_chat=in_chat,
+                    stream=stream,
+                    json_result=json_result,
+                    sql=sql,
+                    failed_result=failed_result,
+                    include_reason=True,
+                )
+                return {"json_result": json_result, "stop": True}
+
+            reason = classify_execute_sql_error(execute_error)
+            if reason is None:
                 raise
-            audit_permission_denied(
-                current_user=service.current_user,
-                datasource_id=getattr(getattr(service, "ds", None), "id", None),
-                record_id=getattr(getattr(service, "record", None), "id", None),
-                operation="smart_qa.execute_sql_permission",
-                reason=str(execute_error),
-                tables=execute_allowed_tables,
-                fields=getattr(execute_error, "fields", None),
-                json_paths=getattr(execute_error, "json_paths", None),
-                rule_type=getattr(execute_error, "rule_type", None),
+            trigger_log_error(
+                session,
+                service.current_logs[OperationEnum.EXECUTE_SQL],
+                full_message={
+                    "sql": real_execute_sql,
+                    "error_type": reason.value,
+                    "message": sanitize_sql_repair_error(execute_error),
+                    "repair_attempt": state.get("sql_repair_count", 0),
+                },
             )
-            trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
-            failed_result = service.save_permission_denied_data(session=session)
-            emit_permission_denied_response(
-                in_chat=in_chat,
-                stream=stream,
-                json_result=json_result,
-                sql=sql,
-                failed_result=failed_result,
-                include_reason=True,
+            return _queue_sql_repair(
+                state,
+                error=execute_error,
+                reason=reason,
+                failed_sql=sql,
             )
-            return {"json_result": json_result, "stop": True}
 
         data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
         data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
@@ -2202,9 +2370,13 @@ def _should_continue_after_sql(state: SmartQAGraphState) -> str:
     """
     是什么：决定 SQL 准备完成后是否继续执行 SQL。
     谁调用：LangGraph 条件边，在 prepare_sql 节点后调用。
-    做了什么：若状态中存在 stop 标志则返回 END，否则进入 execute_sql 节点。
+    做了什么：若状态中存在 stop 标志则返回 END，待修复时进入 repair_sql，否则进入 execute_sql。
     """
-    return END if state.get("stop") else "execute_sql"
+    if state.get("stop"):
+        return END
+    if state.get("sql_repair_pending"):
+        return "repair_sql"
+    return "execute_sql"
 
 
 def _should_continue_after_saas_skill(state: SmartQAGraphState) -> str:
@@ -2220,9 +2392,13 @@ def _should_continue_after_execute(state: SmartQAGraphState) -> str:
     """
     是什么：决定 SQL 执行完成后是否继续生成图表。
     谁调用：LangGraph 条件边，在 execute_sql 节点后调用。
-    做了什么：若状态中存在 stop 标志则返回 END，否则进入 generate_chart 节点。
+    做了什么：若状态中存在 stop 标志则返回 END，待修复时进入 repair_sql，否则进入 generate_chart 节点。
     """
-    return END if state.get("stop") else "generate_chart"
+    if state.get("stop"):
+        return END
+    if state.get("sql_repair_pending"):
+        return "repair_sql"
+    return "generate_chart"
 
 
 def _build_graph():
@@ -2251,10 +2427,13 @@ def _build_graph():
     # 节点 6：校验并保存生成的 SQL，处理权限、缺失事件、动态数据源等分支逻辑。
     graph.add_node("prepare_sql", _observe_node("prepare_sql", _prepare_sql))
 
-    # 节点 7：执行 SQL 并获取结果；处理数据不可用、权限拒绝、空结果等情况。
+    # 节点 7：根据结构化错误上下文修复 SQL，并返回准备节点重新校验。
+    graph.add_node("repair_sql", _observe_node("repair_sql", _repair_sql))
+
+    # 节点 8：执行 SQL 并获取结果；处理数据不可用、权限拒绝、空结果等情况。
     graph.add_node("execute_sql", _observe_node("execute_sql", _execute_sql))
 
-    # 节点 8：根据 SQL 结果生成图表配置，并向前端发送图表或图片。
+    # 节点 9：根据 SQL 结果生成图表配置，并向前端发送图表或图片。
     graph.add_node("generate_chart", _observe_node("generate_chart", _generate_chart))
 
     # 流程起点：从准备上下文开始。
@@ -2273,6 +2452,9 @@ def _build_graph():
 
     # 条件边：prepare_sql 根据 finish_step 或业务异常决定停止还是继续执行 SQL。
     graph.add_conditional_edges("prepare_sql", _should_continue_after_sql)
+
+    # 修复后的 SQL 必须回到 prepare_sql，重新经过格式、语义、权限和范围校验。
+    graph.add_edge("repair_sql", "prepare_sql")
 
     # 条件边：execute_sql 根据 finish_step 或业务异常决定停止还是继续生成图表。
     graph.add_conditional_edges("execute_sql", _should_continue_after_execute)
@@ -2306,6 +2488,10 @@ def run_smart_qa_graph(
         "finish_step": finish_step,
         "return_img": return_img,
         "json_result": json_result,
+        "sql_repair_count": 0,
+        "sql_repair_pending": False,
+        "sql_repair_context": None,
+        "sql_repair_fingerprints": [],
         "stop": False,
     }
     yield from run_assistant_workflow(

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """幂等写入修仙数据源的工作空间级 Data Skill。"""
 
 from __future__ import annotations
@@ -6,13 +5,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-
-from psycopg.types.json import Jsonb
+from typing import Any
 
 from core_system_db import core_system_db_config, export_postgres_compat_env
+from psycopg.types.json import Jsonb
 from xiuxian_dashboard_skill_catalog import (
     EXPECTED_VIEW_IDS,
     MAX_PROMPT_CHARS,
@@ -30,6 +29,10 @@ DB = core_system_db_config()
 TENANT_ID = 7482727237662281728
 DATASOURCE_ID = 6
 PUBLISH_LOCK_KEY = f"xiuxian-data-skills:{TENANT_ID}:{DATASOURCE_ID}"
+DATE_PARTITION_SKILL_DESCRIPTION = (
+    "修仙 datasource_id=6 日期趋势口径："
+    "最近15天补齐新增趋势、按日补零、固定非递归日期骨架。"
+)
 
 _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
     {
@@ -102,7 +105,163 @@ WHERE e.dt BETWEEN
 ]
 
 
-DATE_PARTITION_SKILL = _LEGACY_DATA_SKILLS[0]
+DATE_SECTION_MARKER = "<!-- managed:xiuxian-sql-repair:date:start -->"
+DATE_SECTION_END_MARKER = "<!-- managed:xiuxian-sql-repair:date:end -->"
+SERVERPAYLOG_SECTION_MARKER = "<!-- managed:xiuxian-sql-repair:serverpaylog:start -->"
+SERVERPAYLOG_SECTION_END_MARKER = "<!-- managed:xiuxian-sql-repair:serverpaylog:end -->"
+
+DATE_SPINE_GUIDANCE = """## SQL 修复示例：固定 0-14 日日期骨架
+
+需要补齐最近 15 个完整自然日时，使用固定偏移的非递归日期骨架：
+
+```sql
+WITH day_offsets AS (
+    SELECT 0 AS day_offset
+    UNION ALL SELECT 1
+    UNION ALL SELECT 2
+    UNION ALL SELECT 3
+    UNION ALL SELECT 4
+    UNION ALL SELECT 5
+    UNION ALL SELECT 6
+    UNION ALL SELECT 7
+    UNION ALL SELECT 8
+    UNION ALL SELECT 9
+    UNION ALL SELECT 10
+    UNION ALL SELECT 11
+    UNION ALL SELECT 12
+    UNION ALL SELECT 13
+    UNION ALL SELECT 14
+), date_spine AS (
+    SELECT CAST(
+        DATE_FORMAT(DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL day_offset DAY), '%Y%m%d')
+        AS SIGNED
+    ) AS dt
+    FROM day_offsets
+)
+SELECT dt FROM date_spine ORDER BY dt
+```
+
+读取 `event`、`user` 时仍必须在各自表别名上直接写 `dt` 分区条件；日期骨架只负责补齐输出日期，不得代替业务表自身的分区过滤。
+""".strip()
+
+SERVERPAYLOG_REPAIR_EXAMPLES = """## SQL 修复示例
+
+```sql
+-- 修复示例：按渠道付费用户
+SELECT
+    DATE_FORMAT(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS dt,
+    COALESCE(
+        NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.adinfo, '$.mediaSource')), ''),
+        NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.adinfo, '$.campaignName')), ''),
+        '未知'
+    ) AS `渠道`,
+    COUNT(DISTINCT e.uid) AS `付费用户数`,
+    ROUND(
+        SUM(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')), '') AS DECIMAL(18, 4))),
+        2
+    ) AS `付费金额`
+FROM `event` e
+WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
+                   AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+  AND e.prod = 110000047
+  AND e.event = 'ServerPayLog'
+GROUP BY e.dt, `渠道`
+ORDER BY e.dt, `渠道`;
+```
+
+```sql
+-- 修复示例：等级段人均付费
+WITH user_level AS (
+    SELECT
+        u.uid,
+        CASE
+            WHEN CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18, 4)) < 10 THEN '0-9'
+            WHEN CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18, 4)) < 20 THEN '10-19'
+            WHEN CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18, 4)) < 30 THEN '20-29'
+            ELSE '30+'
+        END AS level_band
+    FROM `user` u
+    WHERE u.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+      AND u.prod = 110000047
+), user_payment AS (
+    SELECT e.uid,
+           SUM(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')), '') AS DECIMAL(18, 4))) AS pay_amount
+    FROM `event` e
+    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+      AND e.prod = 110000047
+      AND e.event = 'ServerPayLog'
+    GROUP BY e.uid
+)
+SELECT ul.level_band AS `等级段`,
+       ROUND(SUM(COALESCE(up.pay_amount, 0)) / NULLIF(COUNT(DISTINCT ul.uid), 0), 2) AS `人均付费金额`
+FROM user_level ul
+LEFT JOIN user_payment up ON up.uid = ul.uid
+GROUP BY ul.level_band;
+```
+
+```sql
+-- 修复示例：最新完整数据日核心指标
+WITH active_metrics AS (
+    SELECT COUNT(DISTINCT e.uid) AS dau
+    FROM `event` e
+    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+      AND e.prod = 110000047
+      AND e.event = 'UserActive'
+), register_metrics AS (
+    SELECT COUNT(DISTINCT e.uid) AS new_users
+    FROM `event` e
+    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+      AND e.prod = 110000047
+      AND e.event = 'UserRegister'
+), payment_metrics AS (
+    SELECT
+        COUNT(DISTINCT e.uid) AS payers,
+        ROUND(
+            SUM(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')), '') AS DECIMAL(18, 4))),
+            2
+        ) AS pay_amount
+    FROM `event` e
+    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+      AND e.prod = 110000047
+      AND e.event = 'ServerPayLog'
+)
+SELECT
+    DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y-%m-%d') AS dt,
+    a.dau AS `DAU`,
+    r.new_users AS `新增用户数`,
+    p.payers AS `付费用户数`,
+    p.pay_amount AS `付费金额`
+FROM active_metrics a
+CROSS JOIN register_metrics r
+CROSS JOIN payment_metrics p;
+```
+""".strip()
+
+def _managed_section(start_marker: str, end_marker: str, content: str) -> str:
+    return f"{start_marker}\n{content.strip()}\n{end_marker}"
+
+
+DATE_SPINE_MANAGED_SECTION = _managed_section(
+    DATE_SECTION_MARKER,
+    DATE_SECTION_END_MARKER,
+    DATE_SPINE_GUIDANCE,
+)
+SERVERPAYLOG_MANAGED_SECTION = _managed_section(
+    SERVERPAYLOG_SECTION_MARKER,
+    SERVERPAYLOG_SECTION_END_MARKER,
+    SERVERPAYLOG_REPAIR_EXAMPLES,
+)
+
+
+DATE_PARTITION_SKILL = {
+    **_LEGACY_DATA_SKILLS[0],
+    "description": DATE_PARTITION_SKILL_DESCRIPTION,
+    "prompt": (
+        _LEGACY_DATA_SKILLS[0]["prompt"].rstrip()
+        + "\n\n"
+        + DATE_SPINE_MANAGED_SECTION
+    ),
+}
 LEGACY_PAYMENT_MARKER = (
     "<!-- data-skill-source:xiuxian:paybuyret-monetization-arppu -->"
 )
@@ -219,6 +378,8 @@ def build_data_skills(dashboards: Sequence[Any]) -> list[dict[str, str]]:
         if authority:
             sections.append(authority)
         sections.extend(blocks)
+        if topic.slug == "serverpaylog-revenue":
+            sections.append(SERVERPAYLOG_MANAGED_SECTION)
         prompt = "\n\n".join(sections).strip()
         validate_prompt_length(prompt)
         if len(blocks) > 6 or len(prompt) > MAX_PROMPT_CHARS:
@@ -623,7 +784,9 @@ def _save_embeddings(ids: list[int]) -> int:
 
     from sqlalchemy.orm import scoped_session, sessionmaker
 
-    from apps.chat.curd.custom_prompt_embedding import save_custom_prompt_skill_embedding
+    from apps.chat.curd.custom_prompt_embedding import (
+        save_custom_prompt_skill_embedding,
+    )
     from common.core.db import engine
 
     session_maker = scoped_session(sessionmaker(bind=engine))
