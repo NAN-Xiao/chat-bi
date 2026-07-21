@@ -12,7 +12,7 @@ pipeline {
     gitParameter(
       name: 'BRANCH_NAME',
       type: 'PT_BRANCH',
-      defaultValue: 'release_ha',
+      defaultValue: 'release/release_1.0.0',
       selectedValue: 'DEFAULT',
       branchFilter: 'origin/(.*)',
       sortMode: 'DESCENDING_SMART',
