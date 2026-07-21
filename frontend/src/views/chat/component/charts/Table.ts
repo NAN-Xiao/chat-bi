@@ -130,6 +130,30 @@ function resolveTableContainerSize(container: Element | null) {
   return width > 0 && height > 0 ? { width, height } : null
 }
 
+function resolveTableDisplayValue(
+  value: any,
+  axis?: Pick<ChartAxis, 'name' | 'value'> | null
+): string {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === 'string' && value.trim().toLowerCase() === 'null')
+  ) {
+    return '-'
+  }
+
+  const formatted = formatValueByAxis(value, axis)
+  if (
+    formatted === null ||
+    formatted === undefined ||
+    (typeof formatted === 'string' && formatted.trim().toLowerCase() === 'null')
+  ) {
+    return '-'
+  }
+
+  return String(formatted)
+}
+
 export class Table extends BaseChart {
   table?: TableSheet = undefined
 
@@ -422,8 +446,7 @@ export class Table extends BaseChart {
             field: a.value,
             name: axisLabel(a),
             formatter: (value: any) => {
-              const formatted = formatValueByAxis(value, a)
-              return String(formatted)
+              return resolveTableDisplayValue(value, a)
             },
           }
         }) ?? [],
@@ -580,7 +603,7 @@ export class Table extends BaseChart {
             container.style.whiteSpace = 'pre-wrap'
 
             const axis = this.axis?.find((axisItem) => axisItem.value === meta.field)
-            const formattedValue = formatValueByAxis(meta.fieldValue, axis)
+            const formattedValue = resolveTableDisplayValue(meta.fieldValue, axis)
             const text = document.createTextNode(String(formattedValue))
             container.appendChild(text)
 
