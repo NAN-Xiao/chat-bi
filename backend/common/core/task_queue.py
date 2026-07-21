@@ -34,7 +34,14 @@ class TaskStatus(str, Enum):
 TaskHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 _task_handlers: dict[str, TaskHandler] = {}
 _current_task_context: ContextVar[dict[str, Any] | None] = ContextVar("current_task_context", default=None)
+_task_queue_event_loop: asyncio.AbstractEventLoop | None = None
 DEFAULT_TASK_TENANT_ID = 1
+
+
+def configure_task_queue_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
+    """注册进程主事件循环，供同步线程安全提交异步队列任务。"""
+    global _task_queue_event_loop
+    _task_queue_event_loop = loop
 
 
 def utc_now() -> str:
@@ -426,6 +433,9 @@ def enqueue_task_detached(
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
+        if _task_queue_event_loop is not None and _task_queue_event_loop.is_running():
+            asyncio.run_coroutine_threadsafe(coroutine, _task_queue_event_loop)
+            return None
         return asyncio.run(coroutine)
 
     loop.create_task(coroutine)

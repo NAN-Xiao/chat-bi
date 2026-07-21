@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -317,3 +318,52 @@ def test_task_read_permission_requires_current_tenant():
     assert _can_read_task({"created_by": 2, "tenant_id": 2}, tenant_one_admin) is False
     assert _can_read_task({"created_by": 2, "tenant_id": 1}, tenant_one_user) is True
     assert _can_read_task({"created_by": 3, "tenant_id": 1}, tenant_one_user) is False
+
+
+def test_detached_enqueue_from_sync_thread_uses_registered_event_loop(monkeypatch):
+    _install_fake_redis(monkeypatch)
+    owner_loop = asyncio.new_event_loop()
+    owner_thread = threading.Thread(target=owner_loop.run_forever)
+    owner_thread.start()
+    executed_loop = {"value": None}
+    owner_blocked = threading.Event()
+    release_owner = threading.Event()
+    enqueue_finished = threading.Event()
+    caller_finished = threading.Event()
+    result = {"value": "not-called"}
+
+    def block_owner_loop():
+        owner_blocked.set()
+        release_owner.wait(timeout=2)
+
+    async def fake_enqueue(*_args, **_kwargs):
+        executed_loop["value"] = asyncio.get_running_loop()
+        enqueue_finished.set()
+        return {"id": "task-1"}
+
+    def call_from_sync_thread():
+        result["value"] = task_queue.enqueue_task_detached("test.threaded")
+        caller_finished.set()
+
+    monkeypatch.setattr(task_queue, "_enqueue_task_and_log", fake_enqueue)
+    try:
+        task_queue.configure_task_queue_event_loop(owner_loop)
+        owner_loop.call_soon_threadsafe(block_owner_loop)
+        assert owner_blocked.wait(timeout=1)
+        caller_thread = threading.Thread(target=call_from_sync_thread)
+        caller_thread.start()
+        returned_without_waiting = caller_finished.wait(timeout=0.2)
+        release_owner.set()
+        caller_thread.join(timeout=2)
+        assert enqueue_finished.wait(timeout=1)
+    finally:
+        release_owner.set()
+        if hasattr(task_queue, "configure_task_queue_event_loop"):
+            task_queue.configure_task_queue_event_loop(None)
+        owner_loop.call_soon_threadsafe(owner_loop.stop)
+        owner_thread.join(timeout=2)
+        owner_loop.close()
+
+    assert returned_without_waiting is True
+    assert result["value"] is None
+    assert executed_loop["value"] is owner_loop

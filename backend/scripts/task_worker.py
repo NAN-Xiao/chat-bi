@@ -6,7 +6,7 @@ import signal
 
 from common.core.app_cache import close_app_cache, init_app_cache
 from common.core.config import settings
-from common.core.task_queue import worker_loop
+from common.core.task_queue import configure_task_queue_event_loop, worker_loop
 from common.core.task_registry import register_builtin_tasks
 from common.utils.utils import AppLogUtil
 
@@ -18,6 +18,7 @@ async def main() -> None:
     做了什么：把后端脚本的主要流程跑起来，一步步调用需要的处理。
     """
     register_builtin_tasks()
+    configure_task_queue_event_loop(asyncio.get_running_loop())
     await init_app_cache()
     stop_event = asyncio.Event()
 
@@ -39,6 +40,7 @@ async def main() -> None:
     try:
         await worker_loop(queue_name=settings.TASK_QUEUE_NAME, stop_event=stop_event)
     finally:
+        configure_task_queue_event_loop(None)
         await close_app_cache()
         AppLogUtil.info("Task worker shutdown complete")
 
