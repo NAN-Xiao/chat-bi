@@ -492,7 +492,8 @@ def _json_subfield_sql_issues(
         expected = (str(item.get("source_field") or "").strip(), _normalized_json_path(item.get("json_path")))
         if expected not in actual_pairs:
             issues.append(
-                f"{item.get('label') or 'JSON 字段'} 未使用配置的 JSON 列或路径：{expected[0]} + {expected[1]}。"
+                f"{item.get('label') or 'JSON 字段'}：JSON 字段 "
+                f"{expected[0]} + {expected[1]} 未出现在生成 SQL 中。"
             )
     for source_field, json_path in sorted(actual_pairs - expected_pairs):
         issues.append(f"生成 SQL 使用了未配置的 JSON 列或路径：{source_field} + {json_path}。")

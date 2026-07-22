@@ -499,6 +499,26 @@ def test_json_subfield_sql_validation_rejects_wrong_host_column() -> None:
     assert any("JSON 列或路径" in issue for issue in issues)
 
 
+def test_json_subfield_sql_validation_reports_exact_missing_config_location() -> None:
+    requirements = [
+        {
+            "label": "全局筛选[0]",
+            "source_field": "currentinfo",
+            "json_path": "$._eventTime",
+        }
+    ]
+
+    issues = ai_sql_generator._json_subfield_sql_issues(
+        "SELECT e.event FROM event e",
+        requirements,
+        dialect="mysql",
+    )
+
+    assert issues[0] == (
+        "全局筛选[0]：JSON 字段 currentinfo + $._eventTime 未出现在生成 SQL 中。"
+    )
+
+
 def test_json_subfield_sql_validation_accepts_matching_mysql_host_column() -> None:
     """
     是什么：MySQL SQL 使用当前字段配置的宿主列和路径时必须通过校验。
