@@ -17,7 +17,9 @@ const {
   buildTrackingEventCatalogFromConfig,
   clearDashboardBuilderMetadataCache,
   createFieldOptionIndex,
+  getEventScopedFields,
   getCachedDashboardBuilderMetadata,
+  resolveDashboardBuilderEventScope,
 } = await import(moduleUrl)
 
 const cacheKey = buildDashboardBuilderMetadataCacheKey({
@@ -79,6 +81,74 @@ assert.equal(catalog.groups[0].events[0].value, 'tracking-event:event.event:Serv
 assert.equal('collect_side' in catalog.groups[0].events[0], false)
 assert.equal('collectSide' in catalog.groups[0].events[0], false)
 assert.equal(catalog.groups[0].events[0].properties[0].value, 'tracking-property:event.event:ServerPayLog:money')
+
+assert.equal(
+  buildTrackingEventCatalogFromConfig({
+    id: 1,
+    enabled: true,
+    event_name_mappings: [{ event_name: 'login' }],
+  }),
+  null,
+  '缺少默认事件表或事件名字段时不能猜测 event/event_name'
+)
+
+const activeEventScope = resolveDashboardBuilderEventScope({
+  config: {
+    id: 1,
+    enabled: true,
+    datasource_id: 6,
+    default_event_table: 'event',
+  },
+  datasourceId: 6,
+  tableNames: ['event', 'user'],
+})
+assert.equal(activeEventScope.mode, 'event')
+assert.equal(activeEventScope.status, 'active')
+assert.equal(activeEventScope.defaultEventTable, 'event')
+
+const allFields = [
+  { table: 'event', value: 'event.uid' },
+  { table: 'user', value: 'user.uid' },
+]
+assert.deepEqual(
+  getEventScopedFields(allFields, activeEventScope).map((item) => item.value),
+  ['event.uid'],
+  '事件模式只保留 default_event_table 字段'
+)
+assert.equal(allFields.length, 2, '事件范围过滤不能修改原数组')
+
+const generalScope = resolveDashboardBuilderEventScope({
+  config: { id: 1, enabled: false, default_event_table: 'event' },
+  datasourceId: 6,
+  tableNames: ['event', 'user'],
+})
+assert.equal(generalScope.mode, 'general')
+assert.deepEqual(getEventScopedFields(allFields, generalScope), allFields)
+assert.notEqual(getEventScopedFields(allFields, generalScope), allFields, '普通模式返回数组副本')
+
+const missingTableScope = resolveDashboardBuilderEventScope({
+  config: { id: 1, enabled: true, datasource_id: 6 },
+  datasourceId: 6,
+  tableNames: ['event'],
+})
+assert.equal(missingTableScope.mode, 'event')
+assert.equal(missingTableScope.status, 'missing-default-table')
+assert.deepEqual(getEventScopedFields(allFields, missingTableScope), [])
+
+const mismatchedDatasourceScope = resolveDashboardBuilderEventScope({
+  config: { id: 1, enabled: true, datasource_id: 7, default_event_table: 'event' },
+  datasourceId: 6,
+  tableNames: ['event'],
+})
+assert.equal(mismatchedDatasourceScope.status, 'datasource-mismatch')
+
+const unavailableTableScope = resolveDashboardBuilderEventScope({
+  config: { id: 1, enabled: true, datasource_id: 6, default_event_table: 'event_log' },
+  datasourceId: 6,
+  tableNames: ['event'],
+})
+assert.equal(unavailableTableScope.status, 'table-unavailable')
+assert.deepEqual(getEventScopedFields(allFields, unavailableTableScope), [])
 
 const fieldIndex = createFieldOptionIndex({
   trackingEventOptions: [

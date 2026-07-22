@@ -48,6 +48,13 @@ type TrackingEventCatalog = {
   groups: TrackingEventCatalogGroup[]
 }
 
+export type DashboardBuilderEventScope = {
+  mode: 'general' | 'event'
+  status: 'general' | 'active' | 'missing-default-table' | 'datasource-mismatch' | 'table-unavailable'
+  defaultEventTable: string
+  message: string
+}
+
 const metadataCache = new Map<string, MetadataCacheEntry<any>>()
 
 function stableText(value: any) {
@@ -150,12 +157,77 @@ export function clearDashboardBuilderMetadataCache(key?: string) {
   metadataCache.clear()
 }
 
+export function resolveDashboardBuilderEventScope(input: {
+  config?: any
+  datasourceId?: number | string | null
+  tableNames?: string[]
+}): DashboardBuilderEventScope {
+  const config = input.config
+  const defaultEventTable = firstPlainText(config?.default_event_table, config?.defaultEventTable)
+  const hasPersistedConfig = Boolean(
+    config && (
+      config.id
+      || defaultEventTable
+      || firstPlainText(config.default_event_name_field, config.defaultEventNameField)
+      || (Array.isArray(config.event_name_mappings) && config.event_name_mappings.length)
+      || (Array.isArray(config.eventNameMappings) && config.eventNameMappings.length)
+    )
+  )
+  if (!hasPersistedConfig || config?.enabled === false) {
+    return { mode: 'general', status: 'general', defaultEventTable: '', message: '' }
+  }
+  if (!defaultEventTable) {
+    return {
+      mode: 'event',
+      status: 'missing-default-table',
+      defaultEventTable: '',
+      message: '当前工作空间未配置默认事件表，事件配置不可用。',
+    }
+  }
+  const configuredDatasourceId = stableText(config.datasource_id ?? config.datasourceId)
+  const currentDatasourceId = stableText(input.datasourceId)
+  if (configuredDatasourceId && currentDatasourceId && configuredDatasourceId !== currentDatasourceId) {
+    return {
+      mode: 'event',
+      status: 'datasource-mismatch',
+      defaultEventTable,
+      message: '当前埋点配置与图表数据源不一致，事件配置不可用。',
+    }
+  }
+  const tableNames = new Set((input.tableNames || []).map(plainText).filter(Boolean))
+  if (!tableNames.has(defaultEventTable)) {
+    return {
+      mode: 'event',
+      status: 'table-unavailable',
+      defaultEventTable,
+      message: `默认事件表 ${defaultEventTable} 不存在或不可访问，事件配置不可用。`,
+    }
+  }
+  return { mode: 'event', status: 'active', defaultEventTable, message: '' }
+}
+
+export function getEventScopedFields<T extends Pick<FieldOption, 'table'>>(
+  fields: T[],
+  scope: DashboardBuilderEventScope
+): T[] {
+  if (scope.mode === 'general') {
+    return [...fields]
+  }
+  if (scope.status !== 'active') {
+    return []
+  }
+  return fields.filter((field) => field.table === scope.defaultEventTable)
+}
+
 export function buildTrackingEventCatalogFromConfig(config: any): TrackingEventCatalog | null {
-  if (!config) {
+  if (!config || config.enabled === false) {
     return null
   }
-  const eventTable = firstPlainText(config.default_event_table, config.defaultEventTable) || 'event'
-  const eventNameField = firstPlainText(config.default_event_name_field, config.defaultEventNameField) || 'event_name'
+  const eventTable = firstPlainText(config.default_event_table, config.defaultEventTable)
+  const eventNameField = firstPlainText(config.default_event_name_field, config.defaultEventNameField)
+  if (!eventTable || !eventNameField) {
+    return null
+  }
   const groups = new Map<string, TrackingEventCatalogGroup>()
   const mappings = Array.isArray(config.event_name_mappings)
     ? config.event_name_mappings
