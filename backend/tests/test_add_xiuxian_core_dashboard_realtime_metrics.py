@@ -12,25 +12,94 @@ if str(TOOLS_DIR) not in sys.path:
 import add_xiuxian_core_dashboard_realtime_metrics as repair  # noqa: E402
 
 
-def test_metric_specs_use_realtime_table_and_authoritative_events() -> None:
+def test_metric_specs_use_authoritative_event_tables() -> None:
     specs = {spec.title: spec for spec in repair.METRIC_SPECS}
 
     assert list(specs) == ["活跃用户", "新增用户", "充值人数", "充值总额"]
     for spec in specs.values():
-        assert "event_realtime" in spec.sql
         assert "prod = 110000047" in spec.sql
         assert "DATE_FORMAT(CURDATE(), '%Y%m%d')" in spec.sql
         assert "`日期`" in spec.sql
 
+    assert "FROM event\n" in specs["活跃用户"].sql
+    assert "event_realtime" not in specs["活跃用户"].sql
     assert "event = 'UserActive'" in specs["活跃用户"].sql
     assert "COUNT(DISTINCT uid)" in specs["活跃用户"].sql
+    assert "FROM event\n" in specs["新增用户"].sql
+    assert "event_realtime" not in specs["新增用户"].sql
     assert "event = 'UserRegister'" in specs["新增用户"].sql
     assert "COUNT(DISTINCT uid)" in specs["新增用户"].sql
+    assert "FROM event_realtime\n" in specs["充值人数"].sql
     assert "event = 'ServerPayLog'" in specs["充值人数"].sql
     assert "COUNT(DISTINCT uid)" in specs["充值人数"].sql
+    assert "FROM event_realtime\n" in specs["充值总额"].sql
     assert "event = 'ServerPayLog'" in specs["充值总额"].sql
     assert "$.money" in specs["充值总额"].sql
     assert "/ 10000" in specs["充值总额"].sql
+
+
+def test_rewrite_skill_prompt_replaces_only_the_target_dashboard_sql() -> None:
+    sync_spec = next(item for item in repair.SKILL_SYNC_SPECS if item.skill_id == 270)
+    prompt = """<!-- data-skill-source:xiuxian:dashboard:new-users-platform -->
+# 修仙新增用户总量与系统归因
+
+<!-- dashboard-sql:existing-view -->
+```sql
+SELECT * FROM event
+```
+
+<!-- dashboard-sql:2ca07023c33d514eaa07977425ee7f53 -->
+```sql
+SELECT COUNT(DISTINCT uid) FROM event_realtime
+```
+"""
+
+    rewritten = repair.rewrite_skill_prompt(prompt, sync_spec)
+
+    assert "SELECT * FROM event" in rewritten
+    assert sync_spec.metric.sql in rewritten
+    assert "event_realtime" not in rewritten
+    assert rewritten.count(f"<!-- dashboard-sql:{sync_spec.metric.view_id} -->") == 1
+
+
+def test_rewrite_skill_prompt_rejects_duplicate_target_blocks() -> None:
+    sync_spec = next(item for item in repair.SKILL_SYNC_SPECS if item.skill_id == 272)
+    block = (
+        f"<!-- dashboard-sql:{sync_spec.metric.view_id} -->\n"
+        "```sql\nSELECT 1 FROM event_realtime\n```"
+    )
+
+    try:
+        repair.rewrite_skill_prompt(f"{sync_spec.marker}\n{block}\n{block}", sync_spec)
+    except ValueError as exc:
+        assert "恰好一个" in str(exc)
+    else:
+        raise AssertionError("重复目标 SQL 块必须被拒绝")
+
+
+def test_apply_entrypoint_syncs_skill_prompts_after_dashboard(monkeypatch, tmp_path) -> None:
+    events = []
+    rows = {
+        spec.view_id: {"日期": "2026-07-22", spec.field: 0}
+        for spec in repair.METRIC_SPECS
+    }
+    backup_dir = tmp_path / "backup"
+
+    monkeypatch.setattr(repair, "query_metric_rows", lambda: rows)
+    monkeypatch.setattr(
+        repair,
+        "apply_dashboard",
+        lambda metric_rows: events.append(("dashboard", metric_rows)) or backup_dir,
+    )
+    monkeypatch.setattr(
+        repair,
+        "apply_skill_prompts",
+        lambda path: events.append(("skills", path)) or (270, 272),
+        raising=False,
+    )
+
+    assert repair.main(["--apply"]) == 0
+    assert events == [("dashboard", rows), ("skills", backup_dir)]
 
 
 def test_rewrite_dashboard_adds_four_top_metrics_and_shifts_existing_components() -> None:

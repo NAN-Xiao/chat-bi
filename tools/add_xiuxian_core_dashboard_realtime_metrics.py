@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -38,6 +39,16 @@ class MetricSpec:
     x: int
 
 
+@dataclass(frozen=True)
+class SkillSyncSpec:
+    """需要与核心指标卡 SQL 保持一致的工作区 Skill。"""
+
+    skill_id: int
+    name: str
+    marker: str
+    metric: MetricSpec
+
+
 METRIC_SPECS = (
     MetricSpec(
         view_id="c3d6ca851f8150ba94d73a83ca18b438",
@@ -47,7 +58,7 @@ METRIC_SPECS = (
         sql="""SELECT
     DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `活跃用户`
-FROM event_realtime
+FROM event
 WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
   AND prod = 110000047
   AND event = 'UserActive'""",
@@ -60,7 +71,7 @@ WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
         sql="""SELECT
     DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `新增用户`
-FROM event_realtime
+FROM event
 WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
   AND prod = 110000047
   AND event = 'UserRegister'""",
@@ -109,6 +120,41 @@ WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
     ),
 )
 METRIC_VIEW_IDS = frozenset(spec.view_id for spec in METRIC_SPECS)
+_METRIC_BY_TITLE = {spec.title: spec for spec in METRIC_SPECS}
+SKILL_SYNC_SPECS = (
+    SkillSyncSpec(
+        skill_id=270,
+        name="修仙新增用户总量与系统归因",
+        marker="<!-- data-skill-source:xiuxian:dashboard:new-users-platform -->",
+        metric=_METRIC_BY_TITLE["新增用户"],
+    ),
+    SkillSyncSpec(
+        skill_id=272,
+        name="修仙 DAU、WAU 与 MAU",
+        marker="<!-- data-skill-source:xiuxian:dashboard:active-dau-wau-mau -->",
+        metric=_METRIC_BY_TITLE["活跃用户"],
+    ),
+)
+
+
+def rewrite_skill_prompt(prompt: str, spec: SkillSyncSpec) -> str:
+    """只替换指定核心看板组件对应的 SQL 块。"""
+
+    if prompt.count(spec.marker) != 1:
+        raise ValueError(f"Skill {spec.skill_id} 来源 marker 必须恰好一个")
+    block_marker = f"<!-- dashboard-sql:{spec.metric.view_id} -->"
+    pattern = re.compile(
+        rf"({re.escape(block_marker)}\s*```sql\s*\n)(.*?)(\n```)",
+        flags=re.DOTALL,
+    )
+    matches = list(pattern.finditer(prompt))
+    if len(matches) != 1:
+        raise ValueError(f"Skill {spec.skill_id} 目标 SQL 块必须恰好一个")
+    return pattern.sub(
+        lambda match: f"{match.group(1)}{spec.metric.sql}{match.group(3)}",
+        prompt,
+        count=1,
+    )
 
 
 def _json_default(value: Any) -> Any:
@@ -470,6 +516,176 @@ def verify_dashboard(metric_rows: Mapping[str, Mapping[str, Any]]) -> None:
     validate_dashboard(components, canvas, metric_rows)
 
 
+def apply_skill_prompts(backup_path: Path) -> tuple[int, ...]:
+    """备份并定向同步 Skill 270/272 的核心指标 SQL 块。"""
+
+    from publish_xiuxian_dashboard_data_skills import (
+        _connection_is_usable,
+        _restore_with_new_connection,
+        acquire_publish_lock,
+        backup_and_write_skill_snapshot,
+        refresh_and_verify_embeddings,
+        release_publish_lock,
+        verify_skill_backup,
+    )
+    from seed_xiuxian_data_skills import (
+        _save_embeddings,
+        load_skill_states_by_ids,
+    )
+
+    target_ids = tuple(spec.skill_id for spec in SKILL_SYNC_SPECS)
+    markers = [spec.marker for spec in SKILL_SYNC_SPECS]
+    marker_skills = [{"prompt": marker} for marker in markers]
+    connection = _system_db_connection()
+    backup: dict[str, list[dict[str, Any]]] | None = None
+    expected_states: dict[int, dict[str, Any]] = {}
+    lock_acquired = False
+    try:
+        acquire_publish_lock(connection)
+        lock_acquired = True
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, prompt, tenant_id, type, active, visible,
+                       visibility_scope, specific_ds, datasource_ids
+                FROM custom_prompt
+                WHERE id = ANY(%s)
+                ORDER BY id
+                FOR UPDATE
+                """,
+                (list(target_ids),),
+            )
+            columns = [column.name for column in cursor.description]
+            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            if [int(row["id"]) for row in rows] != list(target_ids):
+                raise ValueError("未找到完整的 Skill 270/272 目标记录")
+
+            desired_prompts: dict[int, str] = {}
+            for spec, row in zip(SKILL_SYNC_SPECS, rows, strict=True):
+                if (
+                    row["name"] != spec.name
+                    or int(row["tenant_id"]) != TENANT_ID
+                    or row["type"] != "DATA_SKILL"
+                    or row["active"] is not True
+                    or row["visible"] is not True
+                    or row["visibility_scope"] != "ADMIN_PUBLIC"
+                    or row["specific_ds"] is not True
+                    or row["datasource_ids"] != [DATASOURCE_ID]
+                ):
+                    raise ValueError(f"Skill {spec.skill_id} 身份或作用域不符合预期")
+                desired_prompts[spec.skill_id] = rewrite_skill_prompt(
+                    str(row["prompt"] or ""), spec
+                )
+
+            cursor.execute(
+                """
+                SELECT id, prompt
+                FROM custom_prompt
+                WHERE tenant_id = %s
+                  AND type = 'DATA_SKILL'
+                  AND specific_ds = TRUE
+                  AND datasource_ids = %s::jsonb
+                ORDER BY id
+                """,
+                (TENANT_ID, json.dumps([DATASOURCE_ID])),
+            )
+            baseline_hashes = {
+                int(skill_id): hashlib.sha256(str(prompt or "").encode("utf-8")).hexdigest()
+                for skill_id, prompt in cursor.fetchall()
+                if int(skill_id) not in target_ids
+            }
+
+        changed_ids = tuple(
+            int(row["id"])
+            for row in rows
+            if desired_prompts[int(row["id"])] != str(row["prompt"] or "")
+        )
+        if not changed_ids:
+            return ()
+
+        backup_and_write_skill_snapshot(connection, marker_skills, Path(backup_path))
+        backup = verify_skill_backup(Path(backup_path))
+
+        with connection.cursor() as cursor:
+            for row in rows:
+                skill_id = int(row["id"])
+                if skill_id not in changed_ids:
+                    continue
+                cursor.execute(
+                    """
+                    UPDATE custom_prompt
+                    SET prompt = %s,
+                        embedding = NULL,
+                        embedding_signature = NULL
+                    WHERE id = %s
+                      AND tenant_id = %s
+                      AND type = 'DATA_SKILL'
+                      AND prompt = %s
+                    """,
+                    (
+                        desired_prompts[skill_id],
+                        skill_id,
+                        TENANT_ID,
+                        row["prompt"],
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError(f"Skill {skill_id} CAS 更新失败")
+            expected_states.update(load_skill_states_by_ids(cursor, changed_ids))
+        connection.commit()
+
+        refresh_and_verify_embeddings(connection, changed_ids, _save_embeddings)
+        with connection.cursor() as cursor:
+            expected_states.clear()
+            expected_states.update(load_skill_states_by_ids(cursor, changed_ids))
+            cursor.execute(
+                "SELECT id, prompt FROM custom_prompt WHERE id = ANY(%s) ORDER BY id",
+                (list(target_ids),),
+            )
+            actual_prompts = {int(skill_id): prompt for skill_id, prompt in cursor.fetchall()}
+            for skill_id in target_ids:
+                if actual_prompts.get(skill_id) != desired_prompts[skill_id]:
+                    raise RuntimeError(f"Skill {skill_id} 回读 prompt 不一致")
+            cursor.execute(
+                """
+                SELECT id, prompt
+                FROM custom_prompt
+                WHERE tenant_id = %s
+                  AND type = 'DATA_SKILL'
+                  AND specific_ds = TRUE
+                  AND datasource_ids = %s::jsonb
+                ORDER BY id
+                """,
+                (TENANT_ID, json.dumps([DATASOURCE_ID])),
+            )
+            current_hashes = {
+                int(skill_id): hashlib.sha256(str(prompt or "").encode("utf-8")).hexdigest()
+                for skill_id, prompt in cursor.fetchall()
+                if int(skill_id) not in target_ids
+            }
+            if current_hashes != baseline_hashes:
+                raise RuntimeError("非目标修仙 Data Skill prompt 哈希发生变化")
+        return changed_ids
+    except BaseException:
+        try:
+            connection.rollback()
+        except BaseException:
+            pass
+        if backup is not None and expected_states:
+            _restore_with_new_connection(
+                _system_db_connection,
+                backup,
+                markers,
+                expected_states,
+                original_lock_held=lock_acquired and _connection_is_usable(connection),
+            )
+        raise
+    finally:
+        if lock_acquired and _connection_is_usable(connection):
+            release_publish_lock(connection)
+        connection.close()
+
+
 def _summary(metric_rows: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     return {
         spec.title: metric_rows[spec.view_id]
@@ -489,7 +705,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     backup_dir = apply_dashboard(metric_rows)
-    print(f"核心看板已更新，备份目录：{backup_dir}")
+    skill_ids = apply_skill_prompts(backup_dir)
+    print(
+        f"核心看板已更新，Skill 已同步：{list(skill_ids)}，"
+        f"备份目录：{backup_dir}"
+    )
     return 0
 
 
