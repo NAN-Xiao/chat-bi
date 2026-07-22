@@ -13,6 +13,7 @@ import pytest
 from apps.chat.models.chat_model import ChatFinishStep, OperationEnum
 from apps.chat.task import llm
 from apps.chat.task import smart_qa_graph as graph
+from apps.chat.task.sql_repair import SqlStructureValidationError
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 
@@ -564,6 +565,87 @@ def test_prepare_sql_response_format_error_repairs_then_revalidates(
 
     assert service.repair_contexts[0].reason.value == "sql_response_format"
     assert service.saved_sql == [repaired_sql]
+    assert not any(event["type"] == "error" for event in _events(chunks))
+
+
+def test_check_sql_structure_error_repairs_then_revalidates(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_sql = "SELECT DATE_FORMAT(created_at, '%Y-%m-%d') FROM orders GROUP BY DATE_FORMAT(created_at, '%Y%m%d')"
+    repaired_sql = "SELECT DATE_FORMAT(created_at, '%Y-%m-%d') FROM orders GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')"
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql))
+    service.repair_answers = [_sql_answer(repaired_sql)]
+
+    def check_sql(*, session, res, operate):
+        assert session is not None
+        assert operate == OperationEnum.GENERATE_SQL
+        payload = json.loads(res)
+        if payload["sql"] == invalid_sql:
+            raise SqlStructureValidationError("DATE_FORMAT 投影与 GROUP BY 表达式不一致")
+        return payload["sql"], payload.get("tables")
+
+    service.check_sql = check_sql
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"orders"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table orders(created_at datetime)", ["orders"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert service.repair_contexts[0].reason.value == "database_syntax_or_dialect"
+    assert service.saved_sql == [repaired_sql]
+    assert service.executed[0]["sql"] == repaired_sql
+    assert not any(event["type"] == "error" for event in _events(chunks))
+
+
+def test_validate_sql_structure_error_repairs_then_revalidates(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_sql = "SELECT DATE_FORMAT(created_at, '%Y-%m-%d') FROM orders GROUP BY DATE_FORMAT(created_at, '%Y%m%d')"
+    repaired_sql = "SELECT DATE_FORMAT(created_at, '%Y-%m-%d') FROM orders GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')"
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql))
+    service.repair_answers = [_sql_answer(repaired_sql)]
+    validated_sql: list[str] = []
+
+    def validate(**kwargs):
+        validated_sql.append(kwargs["sql"])
+        if kwargs["sql"] == invalid_sql:
+            raise SqlStructureValidationError("DATE_FORMAT 投影与 GROUP BY 表达式不一致")
+        return kwargs["sql"], {"orders"}
+
+    monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table orders(created_at datetime)", ["orders"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert validated_sql == [invalid_sql, repaired_sql]
+    assert service.repair_contexts[0].reason.value == "database_syntax_or_dialect"
+    assert service.saved_sql == [repaired_sql]
+    assert service.executed[0]["sql"] == repaired_sql
     assert not any(event["type"] == "error" for event in _events(chunks))
 
 

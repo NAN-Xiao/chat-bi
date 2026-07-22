@@ -1753,7 +1753,10 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
             )
         except SingleMessageError as response_error:
             reason = classify_prepare_sql_error(response_error)
-            if reason is not SqlRepairReason.SQL_RESPONSE_FORMAT:
+            if reason not in {
+                SqlRepairReason.SQL_RESPONSE_FORMAT,
+                SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+            }:
                 raise
             return _queue_sql_repair(
                 state,
@@ -1898,7 +1901,10 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
             if not looks_like_permission_scope_error(str(prepare_error)):
                 reason = classify_prepare_sql_error(prepare_error)
                 if isinstance(prepare_error, SingleMessageError):
-                    if reason is SqlRepairReason.SQL_RESPONSE_FORMAT:
+                    if reason in {
+                        SqlRepairReason.SQL_RESPONSE_FORMAT,
+                        SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+                    }:
                         return _queue_sql_repair(
                             state,
                             error=prepare_error,

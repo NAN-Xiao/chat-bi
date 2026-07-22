@@ -5,12 +5,12 @@ import importlib.util
 from pathlib import Path
 
 
-def _load_migration():
+def _load_migration(filename: str = "146_platform_sql_grouping_data_skill.py"):
     module_path = (
         Path(__file__).resolve().parents[1]
         / "alembic"
         / "versions"
-        / "146_platform_sql_grouping_data_skill.py"
+        / filename
     )
     spec = importlib.util.spec_from_file_location(module_path.stem, module_path)
     assert spec is not None and spec.loader is not None
@@ -33,3 +33,38 @@ def test_platform_sql_grouping_skill_is_global_and_contains_required_rules() -> 
     assert "SELECT" in migration.SKILL_PROMPT
     assert "GROUP BY" in migration.SKILL_PROMPT
     assert "完全一致" in migration.SKILL_PROMPT
+
+
+def test_followup_migration_refreshes_existing_platform_skill() -> None:
+    original = _load_migration()
+    followup = _load_migration("147_refresh_platform_sql_grouping_data_skill.py")
+
+    assert followup.down_revision == original.revision
+    assert followup.SKILL_MARKER == original.SKILL_MARKER
+    assert followup.SKILL_PROMPT == original.SKILL_PROMPT
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        dialect = type("Dialect", (), {"name": "postgresql"})()
+
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    followup._bind = lambda: bind
+
+    followup.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert "embedding = NULL" in statement
+    assert "embedding_signature = NULL" in statement
+    assert params["marker"] == original.SKILL_MARKER
+    assert params["prompt"] == original.SKILL_PROMPT.strip()
