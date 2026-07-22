@@ -42,9 +42,14 @@ class DataFormat:
         out = dict(row)
         for k, v in row.items():
             ks = str(k)
-            if "." not in ks:
+            parts = ks.split(".")
+            is_qualified_column = len(parts) >= 2 and all(
+                part and not any(char.isspace() for char in part)
+                for part in parts
+            )
+            if not is_qualified_column:
                 continue
-            short = ks.rsplit(".", 1)[-1]
+            short = parts[-1]
             if short not in out:
                 out[short] = v
         return out
