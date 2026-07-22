@@ -847,6 +847,25 @@ def test_deterministic_validation_blocks_field_missing_from_schema() -> None:
     assert any("字段不存在或无权限" in issue and "not_exists" in issue for issue in validation.issues)
 
 
+def test_schema_field_allowlist_uses_table_name_without_mschema_comment() -> None:
+    """
+    是什么：M-Schema 表头带表注释时，字段仍应归入真实表名，不能把注释拼进权限键。
+    """
+    schema = """# Table: event, 事件明细表。每行是一条用户行为记录。
+[
+(event:text, 事件名称),
+(time:date, 事件时间),
+(currentinfo._eventTime:text, JSON 事件时间)
+]
+"""
+
+    allowed_fields = ai_sql_generator._allowed_fields_by_table_from_schema(schema)
+
+    assert allowed_fields == {
+        "event": {"event", "time", "currentinfo._eventtime"},
+    }
+
+
 def test_deterministic_validation_blocks_cross_table_formula_without_join_rule() -> None:
     """
     是什么：第一版没有显式关联规则时，跨物理表公式要阻断；同一事件表内的跨事件公式仍允许。

@@ -958,7 +958,7 @@ def _allowed_fields_by_table_from_schema(schema: str) -> dict[str, set[str]]:
     for line in str(schema or "").splitlines():
         table_match = re.match(r"\s*#\s*Table:\s*(.+?)\s*$", line)
         if table_match:
-            current_table = table_match.group(1).strip()
+            current_table = table_match.group(1).split(",", 1)[0].strip()
             for table_key in _schema_table_lookup_keys(current_table):
                 result.setdefault(table_key, set())
             continue
