@@ -114,6 +114,7 @@ def test_execute_error_accepts_supported_mysql_errnos(errno: int) -> None:
         "You have an error in your SQL syntax near 'FROM'",
         "function date_trunc does not exist for this dialect",
         "syntax error at or near SELECT",
+        "Column 'e.time' cannot be resolved",
     ],
 )
 def test_execute_error_accepts_explicit_syntax_or_dialect_text(message: str) -> None:
@@ -121,6 +122,12 @@ def test_execute_error_accepts_explicit_syntax_or_dialect_text(message: str) -> 
     wrapped.__cause__ = RuntimeError(message)
 
     assert classify_execute_sql_error(wrapped) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+
+def test_execute_error_rejects_unrelated_cannot_be_resolved_text() -> None:
+    error = _MysqlError("storage backend cannot be resolved", 1815)
+
+    assert classify_execute_sql_error(error) is None
 
 
 @pytest.mark.parametrize(

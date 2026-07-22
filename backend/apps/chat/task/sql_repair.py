@@ -69,6 +69,10 @@ _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
     re.compile(r"\bno function matches\b", re.IGNORECASE),
     re.compile(r"\bincorrect (?:parameter count|parameters)\b.{0,80}\bfunction\b", re.IGNORECASE),
     re.compile(r"\bwrong number of arguments\b.{0,80}\bfunction\b", re.IGNORECASE),
+    re.compile(
+        r"\bcolumn\s+['\"`]?[^'\"`\s]+['\"`]?\s+cannot be resolved\b",
+        re.IGNORECASE,
+    ),
 )
 _URI_PASSWORD_PATTERN = re.compile(
     r"(?P<prefix>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)(?P<secret>[^\s/@]+)(?=@)",
