@@ -197,8 +197,16 @@ def _tracking_event_properties(
 
 
 def build_tracking_event_catalog(config: TenantTrackingConfigDTO) -> TenantTrackingEventCatalogDTO:
-    event_table = _plain_text(config.default_event_table) or "event"
-    event_name_field = _plain_text(config.default_event_name_field) or "event_name"
+    event_table = _plain_text(config.default_event_table)
+    event_name_field = _plain_text(config.default_event_name_field)
+    if not event_table or not event_name_field:
+        return TenantTrackingEventCatalogDTO(
+            tenant_id=config.tenant_id,
+            datasource_id=config.datasource_id,
+            event_table=event_table,
+            event_name_field=event_name_field,
+            groups=[],
+        )
     groups: dict[str, TenantTrackingEventCatalogGroup] = {}
     for mapping in config.event_name_mappings or []:
         if not isinstance(mapping, dict):

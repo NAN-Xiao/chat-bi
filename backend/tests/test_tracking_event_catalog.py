@@ -84,3 +84,16 @@ def test_build_tracking_event_catalog_uses_default_group_for_uncategorized_event
     assert [group.label for group in catalog.groups] == ["默认分组"]
     assert catalog.groups[0].events[0].event_name == "online"
     assert catalog.groups[0].events[0].value == "tracking-event:event_log.event:online"
+
+
+def test_build_tracking_event_catalog_does_not_guess_missing_defaults():
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        event_name_mappings=[{"event_name": "online"}],
+    )
+
+    catalog = build_tracking_event_catalog(config)
+
+    assert catalog.event_table == ""
+    assert catalog.event_name_field == ""
+    assert catalog.groups == []

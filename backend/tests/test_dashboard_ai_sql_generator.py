@@ -826,6 +826,60 @@ def test_deterministic_validation_blocks_unauthorized_table_field() -> None:
     assert any("无权限" in issue and "secret_payments" in issue for issue in validation.issues)
 
 
+def test_dashboard_event_scope_uses_workspace_default_event_table() -> None:
+    config = SimpleNamespace(
+        id=1,
+        enabled=True,
+        datasource_id=6,
+        default_event_table="event_log",
+    )
+
+    scope = ai_sql_generator._dashboard_event_scope(config, datasource_id=6)
+
+    assert scope == {
+        "mode": "event",
+        "status": "active",
+        "default_event_table": "event_log",
+        "table_list": ["event_log"],
+        "issues": [],
+    }
+
+
+def test_dashboard_event_scope_blocks_invalid_workspace_configuration() -> None:
+    missing_table = ai_sql_generator._dashboard_event_scope(
+        SimpleNamespace(id=1, enabled=True, datasource_id=6, default_event_table=None),
+        datasource_id=6,
+    )
+    mismatched_datasource = ai_sql_generator._dashboard_event_scope(
+        SimpleNamespace(id=1, enabled=True, datasource_id=7, default_event_table="event"),
+        datasource_id=6,
+    )
+    unavailable_table = ai_sql_generator._dashboard_event_scope(
+        SimpleNamespace(id=1, enabled=True, datasource_id=6, default_event_table="event_log"),
+        datasource_id=6,
+        allowed_tables=["event"],
+    )
+
+    assert missing_table["status"] == "missing-default-table"
+    assert missing_table["table_list"] == []
+    assert missing_table["issues"] == ["当前工作空间未配置默认事件表，事件配置不可用。"]
+    assert mismatched_datasource["status"] == "datasource-mismatch"
+    assert unavailable_table["status"] == "table-unavailable"
+    assert unavailable_table["issues"] == ["默认事件表 event_log 不存在或不可访问，事件配置不可用。"]
+
+
+def test_dashboard_event_scope_keeps_unconfigured_workspace_in_general_mode() -> None:
+    scope = ai_sql_generator._dashboard_event_scope(
+        SimpleNamespace(id=None, enabled=True, datasource_id=6, default_event_table=None),
+        datasource_id=6,
+    )
+
+    assert scope["mode"] == "general"
+    assert scope["status"] == "general"
+    assert scope["table_list"] is None
+    assert scope["issues"] == []
+
+
 def test_deterministic_validation_blocks_field_missing_from_schema() -> None:
     """
     是什么：字段不在当前 schema 白名单时要阻断，避免把不存在字段交给 SQL 节点猜。
@@ -925,6 +979,35 @@ def test_route_after_deterministic_validation_ignores_legacy_diagnosis_failure()
     })
 
     assert route == "build_sql_plan"
+
+
+def test_deterministic_validation_blocks_invalid_server_event_scope() -> None:
+    request = _cross_event_arpu_formula_request()
+    normalized = ai_sql_generator._normalize_manual_config(request)
+    formula_ir = ai_sql_generator._build_formula_ir(normalized)
+
+    result = ai_sql_generator._node_deterministic_validate({
+        "request": request,
+        "normalized_config": normalized,
+        "formula_ir": formula_ir,
+        "allowed_tables": ["event"],
+        "allowed_fields_by_table": {
+            "event": {"event", "uid", "dt", "personal.money"},
+        },
+        "event_scope": {
+            "mode": "event",
+            "status": "table-unavailable",
+            "default_event_table": "event_log",
+            "table_list": [],
+            "issues": ["默认事件表 event_log 不存在或不可访问，事件配置不可用。"],
+        },
+        "graph_trace": [],
+    })
+
+    validation = result["validation_result"]
+    assert validation.success is False
+    assert validation.issues[0] == "默认事件表 event_log 不存在或不可访问，事件配置不可用。"
+    assert ai_sql_generator._route_after_deterministic_validate(result) == "finalize_response"
 
 
 def test_validate_sql_rejects_multiple_statements_even_when_first_is_select() -> None:
@@ -1077,6 +1160,16 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
         return business_context
 
     monkeypatch.setattr(ai_sql_generator, "require_current_tenant_id", lambda _user: 2001)
+    monkeypatch.setattr(
+        ai_sql_generator,
+        "get_tracking_config",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            id=None,
+            enabled=True,
+            datasource_id=1,
+            default_event_table=None,
+        ),
+    )
     monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
 
     result = ai_sql_generator._node_collect_context({
@@ -1096,6 +1189,67 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     assert calls[0]["tenant_id"] == 2001
     assert calls[0]["datasource_id"] == 1
     assert calls[0]["target_scope"] == ai_sql_generator.CustomPromptTargetScopeEnum.SMART_QA
+    assert calls[0]["table_list"] is None
+    assert result["event_scope"]["mode"] == "general"
+
+
+def test_collect_context_limits_business_schema_to_workspace_default_event_table(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = DashboardAiSqlGenerateRequest(
+        datasource=6,
+        intent="看登录人数",
+        chart_type="line",
+        context={"selectedFields": []},
+    )
+    datasource = SimpleNamespace(id=6, name="业务库", type="mysql", type_name="MySQL")
+    business_context = SimpleNamespace(
+        datasource=datasource,
+        schema="【Schema】\n# Table: event\n[(event:text), (uid:text)]\n",
+        sql_dialect="mysql",
+        allowed_tables=["event"],
+        data_skill="",
+        tracking_config="",
+        skill_model_id=None,
+        warnings=[],
+        business_context_hash="ctx-event",
+    )
+    calls: list[dict[str, Any]] = []
+
+    class _Session:
+        def get(self, model, obj_id):
+            if getattr(model, "__name__", "") == "CoreDatasource":
+                return datasource
+            return None
+
+    def _build(**kwargs):
+        calls.append(kwargs)
+        return business_context
+
+    monkeypatch.setattr(ai_sql_generator, "require_current_tenant_id", lambda _user: 2001)
+    monkeypatch.setattr(
+        ai_sql_generator,
+        "get_tracking_config",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            id=1,
+            enabled=True,
+            datasource_id=6,
+            default_event_table="event",
+        ),
+    )
+    monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
+
+    result = ai_sql_generator._node_collect_context({
+        "session": _Session(),
+        "current_user": SimpleNamespace(id=1001, tenant_id=2001),
+        "request": request,
+        "graph_trace": [],
+    })
+
+    assert calls[0]["table_list"] == ["event"]
+    assert result["allowed_tables"] == ["event"]
+    assert result["event_scope"]["status"] == "active"
+    assert result["event_scope"]["default_event_table"] == "event"
 
 
 def test_timed_graph_node_logs_sync_node_elapsed(monkeypatch: pytest.MonkeyPatch) -> None:

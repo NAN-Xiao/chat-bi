@@ -30,6 +30,7 @@ from apps.datasource.crud.sql_engine import (
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import check_sql_read
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tracking_config import get_tracking_config
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.crud.user import (
     is_platform_admin,
@@ -62,6 +63,7 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     allowed_fields_by_table: dict[str, set[str]]
     data_skill: str
     tracking_config: str
+    event_scope: dict[str, Any]
     skill_model_id: int | None
     normalized_config: dict[str, Any]
     formula_ir: dict[str, Any]
@@ -996,6 +998,62 @@ def _table_is_allowed(table_name: str, allowed_tables: list[str] | None) -> bool
     return bool(_normalized_table_candidates(table_name) & allowed)
 
 
+def _dashboard_event_scope(
+        config: Any,
+        *,
+        datasource_id: int | str | None,
+        allowed_tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """根据服务端工作空间配置确定手动图表事件模式的唯一表范围。"""
+    default_event_table = str(getattr(config, "default_event_table", None) or "").strip()
+    has_persisted_config = bool(getattr(config, "id", None) or default_event_table)
+    if config is None or not has_persisted_config or getattr(config, "enabled", True) is False:
+        return {
+            "mode": "general",
+            "status": "general",
+            "default_event_table": "",
+            "table_list": None,
+            "issues": [],
+        }
+
+    configured_datasource_id = getattr(config, "datasource_id", None)
+    if (
+        configured_datasource_id is not None
+        and datasource_id is not None
+        and str(configured_datasource_id) != str(datasource_id)
+    ):
+        return {
+            "mode": "event",
+            "status": "datasource-mismatch",
+            "default_event_table": default_event_table,
+            "table_list": [],
+            "issues": ["当前埋点配置与图表数据源不一致，事件配置不可用。"],
+        }
+    if not default_event_table:
+        return {
+            "mode": "event",
+            "status": "missing-default-table",
+            "default_event_table": "",
+            "table_list": [],
+            "issues": ["当前工作空间未配置默认事件表，事件配置不可用。"],
+        }
+    if allowed_tables is not None and not _table_is_allowed(default_event_table, allowed_tables):
+        return {
+            "mode": "event",
+            "status": "table-unavailable",
+            "default_event_table": default_event_table,
+            "table_list": [],
+            "issues": [f"默认事件表 {default_event_table} 不存在或不可访问，事件配置不可用。"],
+        }
+    return {
+        "mode": "event",
+        "status": "active",
+        "default_event_table": default_event_table,
+        "table_list": [default_event_table],
+        "issues": [],
+    }
+
+
 def _field_table_permission_issues(field: Any, label: str, allowed_tables: list[str] | None) -> list[str]:
     table_name = _field_table_name(field)
     if not table_name or _table_is_allowed(table_name, allowed_tables):
@@ -1118,11 +1176,12 @@ def _deterministic_validate_manual_config(
         *,
         allowed_tables: list[str] | None = None,
         allowed_fields_by_table: dict[str, set[str]] | None = None,
+        event_scope_issues: list[str] | None = None,
 ) -> DashboardAiSqlGenerateResponse:
     """
     是什么：由代码层判断当前配置能否进入 SQL 生成，LLM 不能覆盖这个结果。
     """
-    issues: list[str] = []
+    issues: list[str] = list(event_scope_issues or [])
     warnings: list[str] = list(formula_ir.get("warnings") or [])
     suggestions: list[str] = []
 
@@ -1593,6 +1652,15 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
     if seed_datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     question_text = _dashboard_config_prompt(request, seed_datasource, "", "")
+    workspace_tracking_config = get_tracking_config(
+        session,
+        tenant_id,
+        int(request.datasource),
+    )
+    event_scope = _dashboard_event_scope(
+        workspace_tracking_config,
+        datasource_id=int(request.datasource),
+    )
     business_context = BusinessSqlContextService.build(
         session=session,
         current_user=current_user,
@@ -1602,10 +1670,17 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         target_scope=CustomPromptTargetScopeEnum.SMART_QA,
         data_skill_id=request.data_skill_id,
         embedding=False,
+        table_list=event_scope["table_list"],
         can_manage_all=is_system_admin(current_user),
         can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
         can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
     )
+    if event_scope["status"] == "active":
+        event_scope = _dashboard_event_scope(
+            workspace_tracking_config,
+            datasource_id=int(request.datasource),
+            allowed_tables=business_context.allowed_tables,
+        )
     return {
         "datasource": business_context.datasource,
         "tenant_id": tenant_id,
@@ -1616,6 +1691,7 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         "allowed_fields_by_table": _allowed_fields_by_table_from_schema(business_context.schema),
         "data_skill": business_context.data_skill,
         "tracking_config": business_context.tracking_config,
+        "event_scope": event_scope,
         "skill_model_id": business_context.skill_model_id,
         "graph_trace": _append_trace(state, "collect_context"),
         "last_node": "collect_context",
@@ -1647,12 +1723,14 @@ def _node_build_formula_ir(state: DashboardManualChartGraphState) -> dict[str, A
 
 
 def _node_deterministic_validate(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    event_scope = state.get("event_scope") or {}
     validation = _deterministic_validate_manual_config(
         state["request"],
         state.get("normalized_config") or {},
         state.get("formula_ir") or {},
         allowed_tables=state.get("allowed_tables") or [],
         allowed_fields_by_table=state.get("allowed_fields_by_table") or {},
+        event_scope_issues=list(event_scope.get("issues") or []),
     )
     return {
         "validation_result": validation,
