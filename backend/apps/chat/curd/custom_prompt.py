@@ -653,10 +653,22 @@ def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | Non
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     skill_rows = _dedupe_overridden_data_skills(skill_rows)
-    embedding_ranked = _rank_auto_data_skills_by_embedding(skill_rows, question)
+    foundation_skills = [
+        skill
+        for skill in skill_rows
+        if skill.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
+        and "<!-- platform-foundation-skill:" in (skill.get("prompt") or "")
+    ]
+    ranked_candidates = [skill for skill in skill_rows if skill not in foundation_skills]
+    embedding_ranked = _rank_auto_data_skills_by_embedding(ranked_candidates, question)
     if embedding_ranked is not None:
-        return embedding_ranked
-    return _rank_auto_data_skills_by_keyword(skill_rows, question)
+        ranked = embedding_ranked
+    else:
+        ranked = _rank_auto_data_skills_by_keyword(ranked_candidates, question)
+    if not foundation_skills:
+        return ranked
+    remaining_limit = max(0, 12 - len(foundation_skills))
+    return [*foundation_skills, *ranked[:remaining_limit]]
 
 
 def find_custom_prompts(

@@ -44,6 +44,7 @@ from apps.chat.task.sql_repair import (
     DataSkillSqlViolation,
     SqlRepairContext,
     build_sql_repair_message,
+    validate_mysql_date_format_grouping,
 )
 from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
 from apps.datasource.crud.permission_errors import (
@@ -2222,6 +2223,13 @@ class LLMService:
         if sql.strip() == '':
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
+
+        if str(getattr(self.ds, "type", "") or "").strip().lower() in {
+            "mysql",
+            "doris",
+            "starrocks",
+        }:
+            validate_mysql_date_format_grouping(sql)
 
         violation = _data_skill_sql_validation_violation(
             self.chat_question.question or "",

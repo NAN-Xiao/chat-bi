@@ -73,6 +73,28 @@ def _skill_row(
     }
 
 
+def test_platform_foundation_skill_is_not_dropped_by_auto_ranking_limit() -> None:
+    foundation = _skill_row(skill_id=1, name="平台通用 SQL 日期与分组规范")
+    foundation["prompt"] = (
+        "<!-- platform-foundation-skill:sql-date-grouping:v1 -->\n"
+        "SELECT 与 GROUP BY 日期表达式必须完全一致。"
+    )
+    ranked_rows = [
+        _skill_row(skill_id=100 + index, name=f"收入趋势分析 {index}")
+        for index in range(13)
+    ]
+
+    skill_text, _logs, _model = find_data_skills(
+        _FakeSession([foundation, *ranked_rows]),
+        datasource=501,
+        question="收入趋势分析",
+        tenant_id=10,
+        current_user_id=3,
+    )
+
+    assert "platform-foundation-skill:sql-date-grouping:v1" in skill_text
+
+
 def test_find_data_skills_filters_platform_skill_by_datasource_scope() -> None:
     """
     是什么：test_find_data_skills_filters_platform_skill_by_datasource_scope 是一段测试代码，用来确认测试的某个场景没有问题。

@@ -17,11 +17,13 @@ from apps.chat.task.sql_repair import (
     DataSkillSqlViolation,
     SqlRepairContext,
     SqlRepairReason,
+    SqlStructureValidationError,
     build_sql_repair_message,
     classify_execute_sql_error,
     classify_prepare_sql_error,
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
+    validate_mysql_date_format_grouping,
 )
 from common.error import (
     AppDBConnectionError,
@@ -122,6 +124,41 @@ def test_execute_error_accepts_explicit_syntax_or_dialect_text(message: str) -> 
     wrapped.__cause__ = RuntimeError(message)
 
     assert classify_execute_sql_error(wrapped) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+
+def test_execute_error_accepts_analyticdb_group_by_expression_text() -> None:
+    wrapped = AppDBError("query failed")
+    wrapped.__cause__ = _MysqlError(
+        "DATE_FORMAT(...) must be an aggregate expression or appear in GROUP BY clause",
+        1815,
+    )
+
+    assert classify_execute_sql_error(wrapped) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+
+def test_mysql_date_format_grouping_rejects_mismatched_projection_expression() -> None:
+    sql = """
+    SELECT DATE_FORMAT(FROM_UNIXTIME(u.first_pay_time / 1000), '%Y-%m-%d') AS pay_date,
+           COUNT(DISTINCT u.uid) AS payer_count
+    FROM user u
+    WHERE DATE_FORMAT(FROM_UNIXTIME(u.first_pay_time / 1000), '%Y%m%d') BETWEEN '20260701' AND '20260721'
+    GROUP BY DATE_FORMAT(FROM_UNIXTIME(u.first_pay_time / 1000), '%Y%m%d')
+    """
+
+    with pytest.raises(SqlStructureValidationError, match="DATE_FORMAT"):
+        validate_mysql_date_format_grouping(sql)
+
+
+def test_mysql_date_format_grouping_accepts_matching_projection_expression() -> None:
+    sql = """
+    SELECT DATE_FORMAT(FROM_UNIXTIME(u.first_pay_time / 1000), '%Y-%m-%d') AS pay_date,
+           COUNT(DISTINCT u.uid) AS payer_count
+    FROM user u
+    WHERE DATE_FORMAT(FROM_UNIXTIME(u.first_pay_time / 1000), '%Y%m%d') BETWEEN '20260701' AND '20260721'
+    GROUP BY DATE_FORMAT(FROM_UNIXTIME(u.first_pay_time / 1000), '%Y-%m-%d')
+    """
+
+    validate_mysql_date_format_grouping(sql)
 
 
 def test_execute_error_rejects_unrelated_cannot_be_resolved_text() -> None:

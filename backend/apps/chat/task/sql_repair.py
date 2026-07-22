@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any
 
+import sqlglot
+from sqlglot import exp
 from sqlglot.errors import ParseError
 
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
@@ -73,6 +75,10 @@ _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
         r"\bcolumn\s+['\"`]?[^'\"`\s]+['\"`]?\s+cannot be resolved\b",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"\bmust be an aggregate expression or appear in (?:the )?group by clause\b",
+        re.IGNORECASE,
+    ),
 )
 _URI_PASSWORD_PATTERN = re.compile(
     r"(?P<prefix>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)(?P<secret>[^\s/@]+)(?=@)",
@@ -126,6 +132,10 @@ class DataSkillSqlValidationError(SingleMessageError):
     def __init__(self, violation: DataSkillSqlViolation | str):
         self.violation = violation if isinstance(violation, DataSkillSqlViolation) else None
         super().__init__(violation.message if self.violation is not None else str(violation))
+
+
+class SqlStructureValidationError(SingleMessageError):
+    """SQL 结构不符合当前数据库方言要求。"""
 
 
 @dataclass(frozen=True)
@@ -183,6 +193,8 @@ def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
         return SqlRepairReason.DATA_SKILL_VALIDATION
     if any(isinstance(item, ParseError) for item in _walk_error_chain(error)):
         return SqlRepairReason.SQL_PARSE
+    if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
 
     message = _error_chain_message(error)
     lowered = message.lower()
@@ -193,6 +205,37 @@ def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
     if "parse sql error" in lowered:
         return SqlRepairReason.SQL_PARSE
     return None
+
+
+def _normalized_mysql_expression(expression: exp.Expression) -> str:
+    return " ".join(
+        expression.sql(dialect="mysql", normalize=True, pretty=False).lower().split()
+    )
+
+
+def validate_mysql_date_format_grouping(sql: str) -> None:
+    """校验 MySQL/AnalyticDB 的 DATE_FORMAT 投影与 GROUP BY 完全一致。"""
+    for statement in sqlglot.parse(sql, read="mysql"):
+        for select in statement.find_all(exp.Select):
+            group = select.args.get("group")
+            if group is None:
+                continue
+            grouped_expressions = {
+                _normalized_mysql_expression(expression)
+                for expression in group.expressions
+            }
+            for projection in select.expressions:
+                expression = projection.unalias()
+                if any(isinstance(node, exp.AggFunc) for node in expression.walk()):
+                    continue
+                if not any(isinstance(node, exp.TimeToStr) for node in expression.walk()):
+                    continue
+                if _normalized_mysql_expression(expression) in grouped_expressions:
+                    continue
+                raise SqlStructureValidationError(
+                    "MySQL/AnalyticDB 的非聚合 DATE_FORMAT 投影必须以完全相同的表达式出现在 GROUP BY 中；"
+                    "日期格式、函数参数和类型转换均不得不同。"
+                )
 
 
 def _candidate_sqlstates(error: Any) -> set[str]:
