@@ -96,7 +96,13 @@
       </el-drawer>
 
       <el-tooltip effect="dark" :offset="8" :content="t('qa.new_chat')" placement="bottom">
-        <el-button link type="primary" class="icon-btn" @click="createNewChatSimple">
+        <el-button
+          link
+          type="primary"
+          class="icon-btn"
+          :disabled="workspaceContextSwitching"
+          @click="createNewChatSimple"
+        >
           <el-icon>
             <icon_new_chat_outlined />
           </el-icon>
@@ -264,7 +270,7 @@
                             <el-button
                               class="tool-btn"
                               text
-                              :disabled="isTyping"
+                              :disabled="chatInteractionDisabled"
                               @click="askAgain(message)"
                             >
                               <el-icon size="18">
@@ -278,7 +284,7 @@
                               <el-button
                                 class="tool-btn"
                                 text
-                                :disabled="isTyping"
+                                :disabled="chatInteractionDisabled"
                                 @click="clickAnalysis(message.record?.id)"
                               >
                                 <span class="tool-btn-inner">
@@ -295,7 +301,7 @@
                               <el-button
                                 class="tool-btn"
                                 text
-                                :disabled="isTyping"
+                                :disabled="chatInteractionDisabled"
                                 @click="clickPredict(message.record?.id)"
                               >
                                 <span class="tool-btn-inner">
@@ -319,7 +325,7 @@
                         :record-id="message.record?.id"
                         :questions="message.recommended_question"
                         :first-chat="message.first_chat"
-                        :disabled="isTyping"
+                        :disabled="chatInteractionDisabled"
                         :pending="isRecommendQuestionPending(message.record?.id)"
                         @click-question="quickAsk"
                         @loading-over="loadingOver"
@@ -393,7 +399,7 @@
               :datasource-id="currentChat.datasource"
               :current-chat="currentChat"
               :record-id="computedMessages[0].record?.id"
-              :disabled="isTyping"
+              :disabled="chatInteractionDisabled"
               :first-chat="true"
               @quick-ask="quickAsk"
               @stop="onChatStop"
@@ -403,7 +409,7 @@
           <el-input
             ref="inputRef"
             v-model="inputMessage"
-            :disabled="isTyping"
+            :disabled="chatInteractionDisabled"
             clearable
             class="input-area"
             :class="!isCompletePage && !selectAssistantDs && 'is-assistant'"
@@ -418,7 +424,7 @@
             v-if="isCompletePage"
             v-model="selectedCustomPromptId"
             class="agent-select"
-            :disabled="isTyping"
+            :disabled="chatInteractionDisabled"
             :datasource-id="currentAgentDatasourceId"
             :datasource-name="currentAgentDatasourceName"
             target-scope="SMART_QA"
@@ -430,7 +436,7 @@
             v-if="isCompletePage"
             v-model="selectedDataSkillId"
             class="skill-select"
-            :disabled="isTyping"
+            :disabled="chatInteractionDisabled"
             :datasource-id="currentAgentDatasourceId"
             :datasource-name="currentAgentDatasourceName"
             target-scope="SMART_QA"
@@ -457,7 +463,7 @@
             circle
             type="primary"
             class="input-icon"
-            :disabled="!inputMessage.trim()"
+            :disabled="workspaceContextSwitching || !inputMessage.trim()"
             @click.stop="($event: any) => sendMessage(undefined, $event)"
           >
             <el-icon size="16">
@@ -606,6 +612,7 @@ const currentChatStoragePrefix = 'chat.currentChat.'
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const isTyping = ref<boolean>(false)
+const chatInteractionDisabled = computed(() => isTyping.value || workspaceContextSwitching.value)
 const loginBg = computed(() => {
   return appearanceStore.getLogin
 })
@@ -817,6 +824,7 @@ const handleScroll = (val: any) => {
 }
 
 const createNewChatSimple = async () => {
+  if (workspaceContextSwitching.value) return
   forgetCurrentChat()
   nextChatLoadVersion()
   currentChat.value = new ChatInfo()
@@ -825,6 +833,7 @@ const createNewChatSimple = async () => {
 }
 
 const createNewChat = async () => {
+  if (workspaceContextSwitching.value) return
   try {
     await chatApi.checkLLMModel()
   } catch (error: any) {
@@ -964,7 +973,9 @@ watch(
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,
   callback: (event?: any) => {
-    workspaceContextSwitching.value = event?.phase === 'changing'
+    if (event?.phase === 'changing') {
+      workspaceContextSwitching.value = true
+    }
     stop()
     resetChatContext()
     if (event?.phase === 'changing') {
@@ -972,11 +983,12 @@ useEmitt({
       return
     }
     if (!userStore.getTenantId) {
+      workspaceContextSwitching.value = false
       loading.value = false
       return
     }
-    workspaceContextSwitching.value = false
     datasourceContext.loadDatasources().finally(() => {
+      workspaceContextSwitching.value = false
       getChatList()
     })
   },
@@ -1116,6 +1128,7 @@ async function ensurePostAnswerActions(record?: ChatRecord) {
 }
 
 function quickAsk(question: string) {
+  if (workspaceContextSwitching.value) return
   inputMessage.value = question
   nextTick(() => {
     sendMessage()
@@ -1284,6 +1297,7 @@ const assistantPrepareSend = async () => {
 }
 
 const ensureChatReadyForSend = async () => {
+  if (workspaceContextSwitching.value) return false
   if (currentChatId.value !== undefined) {
     return true
   }

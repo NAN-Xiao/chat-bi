@@ -12,6 +12,7 @@ from sqlmodel import Session
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.chat.curd.custom_prompt_embedding import embedding_vector_from_json, skill_definition_signature
 from apps.datasource.embedding.utils import cosine_similarity
+from apps.external_mcp.crud import get_bound_external_mcp_id_for_tenant
 from apps.system.schemas.access_context import require_tenant_id
 from common.core.config import settings
 from common.utils.embedding_threads import run_save_custom_prompt_skill_embeddings
@@ -318,6 +319,22 @@ def _is_split_legacy_data_skill(row) -> bool:
         or "<!-- legacy-data-training:" in prompt
         or "<!-- legacy-terminology:" in prompt
         or "<!-- legacy-sql-prompt:" in prompt
+    )
+
+
+def _requires_external_mcp(prompt: str | None) -> bool:
+    """
+    判断可执行 SaaS Skill 是否依赖当前工作空间绑定的外部 MCP。
+    """
+    if "saas-skill" not in (prompt or "").lower():
+        return False
+    from apps.chat.task.saas_skill import parse_executable_saas_skills
+
+    return any(
+        str(source.get("type") or "").strip().lower() in {"mcp", "external_mcp"}
+        for definition in parse_executable_saas_skills(prompt)
+        for source in (definition.get("sources") or [])
+        if isinstance(source, dict)
     )
 
 
@@ -872,6 +889,7 @@ def find_data_skills(
 
     skill_rows: list[dict[str, Any]] = []
     ai_model_id: Optional[int] = None
+    bound_external_mcp_id: int | None | object = object()
     for row in rows:
         if _is_split_legacy_data_skill(row):
             continue
@@ -884,6 +902,14 @@ def find_data_skills(
         prompt = row.get("prompt")
         if not prompt:
             continue
+        if (
+            visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
+            and _requires_external_mcp(prompt)
+        ):
+            if not isinstance(bound_external_mcp_id, (int, type(None))):
+                bound_external_mcp_id = get_bound_external_mcp_id_for_tenant(session, params["tenant_id"])
+            if bound_external_mcp_id is None:
+                continue
         if not _row_matches_datasource(row, datasource):
             continue
         skill_rows.append({

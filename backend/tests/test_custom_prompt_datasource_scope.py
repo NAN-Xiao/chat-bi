@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.chat.curd import custom_prompt as custom_prompt_crud
 from apps.chat.curd.custom_prompt import find_data_skills
 
 
@@ -51,6 +52,7 @@ def _skill_row(
         visibility_scope: str = "PLATFORM_PUBLIC",
         specific_ds: bool = False,
         datasource_ids: list[int] | None = None,
+        prompt: str | None = None,
 ) -> dict[str, Any]:
     """
     是什么：_skill_row 是一段测试代码，用来构造 custom_prompt 查询结果。
@@ -62,7 +64,7 @@ def _skill_row(
         "tenant_id": 1,
         "name": name,
         "description": "",
-        "prompt": f"{name} prompt",
+        "prompt": prompt or f"{name} prompt",
         "embedding": None,
         "embedding_signature": None,
         "specific_ds": specific_ds,
@@ -71,6 +73,69 @@ def _skill_row(
         "create_by": 1,
         "visibility_scope": visibility_scope,
     }
+
+
+def _external_mcp_skill_prompt(name: str) -> str:
+    return f'''<!-- saas-skill:{{
+  "id": "external_mcp_skill",
+  "name": "{name}",
+  "intent": ["告警数量"],
+  "sources": [{{"name": "alerts", "type": "external_mcp", "tool": "alerts.count"}}]
+}} -->
+{name} prompt'''
+
+
+def test_find_data_skills_excludes_external_mcp_skill_without_workspace_binding(monkeypatch) -> None:
+    external_skill = _skill_row(
+        skill_id=1,
+        name="平台外部 MCP 告警 Skill",
+        prompt=_external_mcp_skill_prompt("平台外部 MCP 告警 Skill"),
+    )
+    foundation = _skill_row(skill_id=2, name="平台通用 SQL 规范")
+    foundation["prompt"] = "<!-- platform-foundation-skill:sql:v1 -->\n平台 SQL 规范"
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "get_bound_external_mcp_id_for_tenant",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+
+    skill_text, skill_list, _ = find_data_skills(
+        _FakeSession([external_skill, foundation]),
+        datasource=7,
+        tenant_id=10,
+        current_user_id=1,
+        question="查看收入和告警数量",
+    )
+
+    assert "平台外部 MCP 告警 Skill prompt" not in skill_text
+    assert "平台 SQL 规范" in skill_text
+    assert [item.split("\n", 1)[0] for item in skill_list] == ["名称：平台通用 SQL 规范"]
+
+
+def test_find_data_skills_keeps_external_mcp_skill_with_workspace_binding(monkeypatch) -> None:
+    external_skill = _skill_row(
+        skill_id=1,
+        name="平台外部 MCP 告警 Skill",
+        prompt=_external_mcp_skill_prompt("平台外部 MCP 告警 Skill"),
+    )
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "get_bound_external_mcp_id_for_tenant",
+        lambda *_args, **_kwargs: 201,
+        raising=False,
+    )
+
+    skill_text, skill_list, _ = find_data_skills(
+        _FakeSession([external_skill]),
+        datasource=7,
+        tenant_id=10,
+        current_user_id=1,
+        question="查看告警数量",
+    )
+
+    assert "平台外部 MCP 告警 Skill prompt" in skill_text
+    assert [item.split("\n", 1)[0] for item in skill_list] == ["名称：平台外部 MCP 告警 Skill"]
 
 
 def test_platform_foundation_skill_is_not_dropped_by_auto_ranking_limit() -> None:
