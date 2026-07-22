@@ -841,7 +841,15 @@ async def worker_loop(
     concurrency = max(1, int(settings.TASK_WORKER_CONCURRENCY or 1))
     in_flight: set[asyncio.Task] = set()
     AppLogUtil.info(f"Task worker started: worker={worker} queue={queue} concurrency={concurrency}")
-    await recover_stale_tasks(queue_name=queue)
+
+    async def _recover_stale_tasks_safely() -> None:
+        """恢复滞留任务；Redis 抖动只告警重试，不允许击穿 worker 主循环。"""
+        try:
+            await recover_stale_tasks(queue_name=queue)
+        except RedisError as exc:
+            AppLogUtil.warning(f"Task worker stale-task recovery failed: {exc}")
+
+    await _recover_stale_tasks_safely()
     last_recovery = time.monotonic()
 
     async def _run_claimed_task(claimed_task_id: str) -> None:
@@ -853,7 +861,7 @@ async def worker_loop(
 
     while stop_event is None or not stop_event.is_set():
         if time.monotonic() - last_recovery >= settings.TASK_QUEUE_REQUEUE_INTERVAL_SECONDS:
-            await recover_stale_tasks(queue_name=queue)
+            await _recover_stale_tasks_safely()
             last_recovery = time.monotonic()
         if len(in_flight) >= concurrency:
             # 并发已满：等任一在途任务结束再继续领取；带超时以便定期检查 stop_event 和恢复逻辑。

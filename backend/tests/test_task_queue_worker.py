@@ -1,9 +1,11 @@
 """
-脚本说明：验证任务队列 worker 的有界并发和优雅停机行为。
+脚本说明：验证任务队列 worker 的有界并发、优雅停机和 Redis 容错行为。
 """
 from __future__ import annotations
 
 import asyncio
+
+from redis.exceptions import RedisError
 
 from common.core import task_queue
 from common.core.config import settings
@@ -78,6 +80,31 @@ def test_worker_loop_respects_concurrency_limit(monkeypatch) -> None:
     asyncio.run(scenario())
     assert state["peak"] == 2
     assert sorted(state["completed"]) == ["t1", "t2", "t3", "t4"]
+
+
+def test_worker_loop_survives_recover_redis_error(monkeypatch) -> None:
+    """
+    是什么：recover_stale_tasks 抛 RedisError 时 worker 必须继续运行，不能整个退出。
+    """
+    monkeypatch.setattr(settings, "TASK_WORKER_CONCURRENCY", 2)
+    state = _patch_worker_dependencies(monkeypatch, task_ids=["t1"], task_seconds=0.05)
+
+    async def failing_recover(**kwargs):
+        raise RedisError("Timeout connecting to server")
+
+    monkeypatch.setattr(task_queue, "recover_stale_tasks", failing_recover)
+    # 让周期性恢复在循环里也被触发一次
+    monkeypatch.setattr(settings, "TASK_QUEUE_REQUEUE_INTERVAL_SECONDS", 0)
+
+    async def scenario():
+        stop_event = asyncio.Event()
+        loop_task = asyncio.create_task(task_queue.worker_loop(queue_name="test-queue", stop_event=stop_event))
+        await asyncio.sleep(0.4)
+        stop_event.set()
+        await asyncio.wait_for(loop_task, timeout=5)
+
+    asyncio.run(scenario())
+    assert state["completed"] == ["t1"]
 
 
 def test_worker_loop_drains_in_flight_tasks_on_stop(monkeypatch) -> None:

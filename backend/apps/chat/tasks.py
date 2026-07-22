@@ -22,6 +22,23 @@ from common.utils.command_utils import parse_quick_command
 def _error_chunk(message: str) -> str:
     return "data:" + orjson.dumps({"content": message, "type": "error"}).decode() + "\n\n"
 
+
+_GENERATOR_EXHAUSTED = object()
+
+
+async def _iter_sync_generator(generator):
+    """
+    是什么：_iter_sync_generator 把同步生成器逐块搬到线程池里驱动。
+    谁调用：async 任务处理器消费 LLMService.run_task 这类同步生成器时调用。
+    做了什么：每次 next() 都在线程里执行，避免 LLM/SQL/图表等阻塞段卡住
+    worker 事件循环，导致同循环上其他任务的 Redis 等待超时。
+    """
+    while True:
+        chunk = await asyncio.to_thread(next, generator, _GENERATOR_EXHAUSTED)
+        if chunk is _GENERATOR_EXHAUSTED:
+            return
+        yield chunk
+
 def _assistant_from_payload(payload: dict[str, Any]) -> AssistantHeader | None:
     assistant_payload = payload.get("assistant")
     if not assistant_payload:
@@ -209,14 +226,14 @@ async def smart_qa_task(payload: dict[str, Any]) -> dict[str, Any]:
                 llm_service.set_record(record)
             await bind_chat_record_task(tenant_id, record.id, task_id)
 
-            for chunk in llm_service.run_task(
+            chunk_generator = llm_service.run_task(
                 in_chat=True,
                 stream=True,
                 finish_step=finish_step,
                 return_img=bool(payload.get("return_img", True)),
-            ):
+            )
+            async for chunk in _iter_sync_generator(chunk_generator):
                 await append_chat_task_event(tenant_id, task_id, chunk)
-                await asyncio.sleep(0)
 
             return {"record_id": getattr(record, "id", None), "tenant_id": tenant_id}
     except Exception as exc:
