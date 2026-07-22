@@ -1657,6 +1657,7 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         session,
         tenant_id,
         int(request.datasource),
+        include_legacy=False,
     )
     event_scope = _dashboard_event_scope(
         workspace_tracking_config,

@@ -1235,6 +1235,7 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
         business_context_hash="ctx-event",
     )
     calls: list[dict[str, Any]] = []
+    tracking_calls: list[dict[str, Any]] = []
 
     class _Session:
         def get(self, model, obj_id):
@@ -1247,16 +1248,16 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
         return business_context
 
     monkeypatch.setattr(ai_sql_generator, "require_current_tenant_id", lambda _user: 2001)
-    monkeypatch.setattr(
-        ai_sql_generator,
-        "get_tracking_config",
-        lambda *_args, **_kwargs: SimpleNamespace(
+    def _tracking_config(*_args, **kwargs):
+        tracking_calls.append(kwargs)
+        return SimpleNamespace(
             id=1,
             enabled=True,
             datasource_id=6,
             default_event_table="event",
-        ),
-    )
+        )
+
+    monkeypatch.setattr(ai_sql_generator, "get_tracking_config", _tracking_config)
     monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
 
     result = ai_sql_generator._node_collect_context({
@@ -1270,6 +1271,7 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
     assert result["allowed_tables"] == ["event"]
     assert result["event_scope"]["status"] == "active"
     assert result["event_scope"]["default_event_table"] == "event"
+    assert tracking_calls == [{"include_legacy": False}]
 
 
 def test_timed_graph_node_logs_sync_node_elapsed(monkeypatch: pytest.MonkeyPatch) -> None:
