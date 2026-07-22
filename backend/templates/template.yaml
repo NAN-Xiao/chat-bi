@@ -52,10 +52,13 @@ template:
           <requirement>当SQL涉及多个表/索引（通过FROM/JOIN/子查询等）时，所有字段引用必须明确限定表名/索引名或表别名/索引别名</requirement>
           <requirement>适用于SELECT、WHERE、GROUP BY、HAVING、ORDER BY、ON等子句中的所有字段引用</requirement>
           <requirement>即使字段名在所有表/索引中是唯一的，也必须明确限定以确保清晰性</requirement>
+          <requirement>每个SELECT查询块只能引用当前查询块FROM/JOIN中可见的表或别名</requirement>
+          <requirement>外层查询只能使用子查询别名及该子查询明确输出的列，不得引用子查询内部的表别名</requirement>
         </requirements>
         <enforcement>
           <action>生成SQL后必须检查是否涉及多表查询</action>
           <action>如果是多表查询，验证所有字段引用是否有表名/表别名限定</action>
+          <action>逐个SELECT查询块检查限定字段所使用的表别名是否在当前查询块可见</action>
           <action>如果发现未限定的字段，必须重新生成SQL</action>
         </enforcement>
       </rule>
