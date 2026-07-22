@@ -17,6 +17,7 @@ from sqlalchemy import event
 from sqlmodel import Session
 
 from common.core.config import settings
+from common.core.event_loop import submit_to_main_loop
 from common.core.redis_client import (
     build_redis_url,
     close_redis_client,
@@ -356,7 +357,8 @@ def _run_async_clear(cache_keys: list[str], loop: asyncio.AbstractEventLoop | No
     """
     是什么：_run_async_clear 在同步 after_commit 事件里触发异步缓存清理。
     谁调用：SQLAlchemy Session after_commit 回调。
-    做了什么：优先把任务挂到当前事件循环；没有运行中的事件循环时用 asyncio.run。
+    做了什么：优先把任务挂到当前事件循环；同步线程里没有循环时投递到进程主循环，
+    避免在临时事件循环里使用绑定在主循环上的缓存后端连接；最后才兜底 asyncio.run。
     """
     if loop and loop.is_running():
         loop.call_soon_threadsafe(lambda: _track_background_task(loop.create_task(_clear_backend_keys(cache_keys))))
@@ -365,6 +367,8 @@ def _run_async_clear(cache_keys: list[str], loop: asyncio.AbstractEventLoop | No
     try:
         running_loop = asyncio.get_running_loop()
     except RuntimeError:
+        if submit_to_main_loop(_clear_backend_keys(cache_keys)):
+            return
         asyncio.run(_clear_backend_keys(cache_keys))
         return
     _track_background_task(running_loop.create_task(_clear_backend_keys(cache_keys)))

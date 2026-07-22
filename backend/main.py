@@ -32,7 +32,7 @@ from common.core.config import settings
 from common.core.migrations import run_migrations
 from common.core.production import init_observability, validate_production_settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
-from common.core.task_queue import configure_task_queue_event_loop
+from common.core.event_loop import register_main_event_loop
 from common.utils.utils import AppLogUtil
 
 try:
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     init_observability()
     if settings.AUTO_RUN_MIGRATIONS:
         run_migrations()
-    configure_task_queue_event_loop(asyncio.get_running_loop())
+    register_main_event_loop(asyncio.get_running_loop())
     await init_app_cache()
     init_dynamic_cors(app)
     AppLogUtil.info("✅ 星通数智 初始化完成")
@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        configure_task_queue_event_loop(None)
+        register_main_event_loop(None)
         await close_app_cache()
         AppLogUtil.info("星通数智 应用关闭")
 

@@ -1,7 +1,9 @@
 """
 脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
+import asyncio
 import urllib.parse
+import weakref
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,8 +14,11 @@ from redis.exceptions import LockError, RedisError
 from common.core.config import settings
 from common.utils.utils import AppLogUtil
 
-_redis_client: redis.Redis | None = None
-_redis_pool: ConnectionPool | None = None
+# redis.asyncio 的连接绑定在创建它的事件循环上，跨循环复用会导致
+# "Future attached to a different loop" / "Event loop is closed"。
+# 因此 client 和 pool 按事件循环隔离：同一个循环内复用同一份，循环销毁后自动释放。
+_redis_clients: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, redis.Redis]" = weakref.WeakKeyDictionary()
+_redis_pools: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, ConnectionPool]" = weakref.WeakKeyDictionary()
 _redis_url: str | None = None
 
 
@@ -78,26 +83,31 @@ def mask_redis_url(url: str) -> str:
 
 def get_redis_client() -> redis.Redis:
     """
-    是什么：get_redis_client 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力需要的数据找出来，整理成后面好用的样子。
+    是什么：get_redis_client 返回绑定在当前事件循环上的 Redis client。
+    谁调用：后端其他代码在协程上下文里需要 Redis 时会调用它。
+    做了什么：同一个事件循环内复用同一个 client + 连接池；不同循环各自独立，
+    避免连接跨事件循环复用。必须在有运行中事件循环的上下文里调用。
     """
-    global _redis_client, _redis_pool, _redis_url
+    global _redis_url
 
-    if _redis_client is not None:
-        return _redis_client
+    loop = asyncio.get_running_loop()
+    client = _redis_clients.get(loop)
+    if client is not None:
+        return client
 
     redis_url = build_redis_url()
     _redis_url = redis_url
-    _redis_pool = ConnectionPool.from_url(
+    pool = ConnectionPool.from_url(
         redis_url,
         max_connections=settings.REDIS_MAX_CONNECTIONS,
         socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
         socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT,
         health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
     )
-    _redis_client = redis.Redis(connection_pool=_redis_pool)
-    return _redis_client
+    client = redis.Redis(connection_pool=pool)
+    _redis_pools[loop] = pool
+    _redis_clients[loop] = client
+    return client
 
 
 async def ping_redis() -> bool:
@@ -112,20 +122,18 @@ async def ping_redis() -> bool:
 
 async def close_redis_client() -> None:
     """
-    是什么：close_redis_client 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力这次处理做收尾，记录结果并关掉不再需要的资源。
+    是什么：close_redis_client 关闭当前事件循环持有的 Redis client 和连接池。
+    谁调用：应用或 worker 关闭流程在自己的主循环里调用它。
+    做了什么：只收尾当前循环那份资源；其他循环的实例随各自循环销毁自动释放。
     """
-    global _redis_client, _redis_pool, _redis_url
+    loop = asyncio.get_running_loop()
+    client = _redis_clients.pop(loop, None)
+    pool = _redis_pools.pop(loop, None)
 
-    if _redis_client is not None:
-        await _redis_client.aclose()
-    if _redis_pool is not None:
-        await _redis_pool.aclose()
-
-    _redis_client = None
-    _redis_pool = None
-    _redis_url = None
+    if client is not None:
+        await client.aclose()
+    if pool is not None:
+        await pool.aclose()
 
 
 def redis_key(*parts: object) -> str:

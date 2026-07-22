@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 
 from apps.system.crud.tenant_usage import check_tenant_usage_quota_detached, record_tenant_usage_detached
 from common.core.config import settings
+from common.core.event_loop import submit_to_main_loop
 from common.core.redis_client import get_redis_client, redis_key, tenant_redis_key
 from common.utils.utils import AppLogUtil
 
@@ -34,14 +35,7 @@ class TaskStatus(str, Enum):
 TaskHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 _task_handlers: dict[str, TaskHandler] = {}
 _current_task_context: ContextVar[dict[str, Any] | None] = ContextVar("current_task_context", default=None)
-_task_queue_event_loop: asyncio.AbstractEventLoop | None = None
 DEFAULT_TASK_TENANT_ID = 1
-
-
-def configure_task_queue_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
-    """注册进程主事件循环，供同步线程安全提交异步队列任务。"""
-    global _task_queue_event_loop
-    _task_queue_event_loop = loop
 
 
 def utc_now() -> str:
@@ -433,8 +427,7 @@ def enqueue_task_detached(
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        if _task_queue_event_loop is not None and _task_queue_event_loop.is_running():
-            asyncio.run_coroutine_threadsafe(coroutine, _task_queue_event_loop)
+        if submit_to_main_loop(coroutine):
             return None
         return asyncio.run(coroutine)
 
@@ -845,14 +838,27 @@ async def worker_loop(
     """
     queue = queue_name or settings.TASK_QUEUE_NAME
     worker = worker_name or f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
-    AppLogUtil.info(f"Task worker started: worker={worker} queue={queue}")
+    concurrency = max(1, int(settings.TASK_WORKER_CONCURRENCY or 1))
+    in_flight: set[asyncio.Task] = set()
+    AppLogUtil.info(f"Task worker started: worker={worker} queue={queue} concurrency={concurrency}")
     await recover_stale_tasks(queue_name=queue)
     last_recovery = time.monotonic()
+
+    async def _run_claimed_task(claimed_task_id: str) -> None:
+        """执行单个已领取任务；run_task 内部已处理业务异常，这里兜底记录基础设施异常。"""
+        try:
+            await run_task(claimed_task_id, worker_name=worker, queue_name=queue)
+        except Exception:
+            AppLogUtil.exception(f"Task execution crashed: {claimed_task_id}")
 
     while stop_event is None or not stop_event.is_set():
         if time.monotonic() - last_recovery >= settings.TASK_QUEUE_REQUEUE_INTERVAL_SECONDS:
             await recover_stale_tasks(queue_name=queue)
             last_recovery = time.monotonic()
+        if len(in_flight) >= concurrency:
+            # 并发已满：等任一在途任务结束再继续领取；带超时以便定期检查 stop_event 和恢复逻辑。
+            await asyncio.wait(tuple(in_flight), return_when=asyncio.FIRST_COMPLETED, timeout=1)
+            continue
         try:
             task_id = await _claim_task(queue)
         except RedisError as exc:
@@ -861,6 +867,12 @@ async def worker_loop(
             continue
         if not task_id:
             continue
-        await run_task(task_id, worker_name=worker, queue_name=queue)
+        execution = asyncio.create_task(_run_claimed_task(task_id))
+        in_flight.add(execution)
+        execution.add_done_callback(in_flight.discard)
+
+    if in_flight:
+        AppLogUtil.info(f"Task worker draining {len(in_flight)} in-flight task(s): worker={worker} queue={queue}")
+        await asyncio.wait(tuple(in_flight))
 
     AppLogUtil.info(f"Task worker stopped: worker={worker} queue={queue}")

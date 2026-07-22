@@ -715,34 +715,29 @@ def system_log(config: Union[LogConfig, Dict]):
 
                 execution_time = int((time.time() - start_time) * 1000)
 
-                # 在同步版本中仍然异步创建日志。
+                # 在同步版本中仍然异步创建日志：优先当前循环，其次投递主循环，最后 asyncio.run 兜底。
                 import asyncio
+
+                from common.core.event_loop import submit_to_main_loop
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.create_task(
-                            SystemLogger.create_log_record(
-                                config=config,
-                                status=status,
-                                execution_time=execution_time,
-                                error_message=error_message,
-                                resource_id=resource_id,
-                                resource_name=resource_name,
-                                request=request,
-                                resource_info_list=resource_info_list
-                            )
-                        )
-                    else:
-                        asyncio.run(
-                            SystemLogger.create_log_record(
-                                config=config,
-                                status=status,
-                                execution_time=execution_time,
-                                error_message=error_message,
-                                resource_id=resource_id,
-                                request=request
-                            )
-                        )
+                    log_coroutine = SystemLogger.create_log_record(
+                        config=config,
+                        status=status,
+                        execution_time=execution_time,
+                        error_message=error_message,
+                        resource_id=resource_id,
+                        resource_name=resource_name,
+                        request=request,
+                        resource_info_list=resource_info_list
+                    )
+                    try:
+                        loop = asyncio.get_running_loop()
+                    except RuntimeError:
+                        loop = None
+                    if loop is not None:
+                        loop.create_task(log_coroutine)
+                    elif not submit_to_main_loop(log_coroutine):
+                        asyncio.run(log_coroutine)
                 except Exception as log_error:
                     print(f"[SystemLogger] Log creation failed: {log_error}")
 
