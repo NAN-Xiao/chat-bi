@@ -101,7 +101,22 @@ def test_skill_is_platform_public_and_keeps_business_semantics_out() -> None:
 
 def test_skill_forbids_silent_fallback_and_requires_current_schema() -> None:
     prompt = module.SKILL["prompt"]
+    assert "<!-- platform-foundation-skill:realtime-event-table-selection:v1 -->" in prompt
     assert '<!-- data-skill-requires-tables:["event","event_realtime"] -->' in prompt
+    assert "data-skill-sql-validation" in prompt
+    marker_line = next(
+        line for line in prompt.splitlines() if "data-skill-sql-validation" in line
+    )
+    rule = json.loads(
+        marker_line.split("data-skill-sql-validation:", 1)[1]
+        .rsplit("-->", 1)[0]
+        .strip()
+    )
+    assert rule["when_sql_patterns"] == [module.EVENT_TABLE_SCOPE_PATTERN]
+    assert rule["required_sql_patterns"] == [module.REALTIME_TABLE_PATTERN]
+    assert rule["forbidden_sql_patterns"] == [module.HISTORY_TABLE_PATTERN]
+    assert "required_sql_contains" not in prompt
+    assert "forbidden_sql_contains" not in prompt
     assert "同时存在" in prompt
     assert "不得静默" in prompt
     assert "权限" in prompt

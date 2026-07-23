@@ -267,7 +267,8 @@ LIMIT 24
 - 适用于新增用户数、渠道/系统新增、新增用户 D1/D3/D7 留存、渠道留存和 `新增看板`/`渠道分析`/`投放看板`中新增留存类组件。
 
 ## 表与字段
-- 新增用户优先使用 `event` 表的注册事件 `UserRegister`；已与 `user.userinfo.regdate = user.dt` 的注册日 cohort 按日核对一致，但事件表扫描更轻。
+- 今天、当天、今日、截至目前、当前或实时按小时统计新增用户时，必须使用 `event_realtime` 表的注册事件 `UserRegister`；不得静默改查 `event`。
+- 完整历史日和留存 cohort 使用 `event` 表的注册事件 `UserRegister`；已与 `user.userinfo.regdate = user.dt` 的注册日 cohort 按日核对一致，但事件表扫描更轻。
 - 需要读取 `pay.pay1/pay7`、当前等级等快照字段时，再按 `uid + 注册日 dt` 回连 `user` 用户日表。
 - `dt` 是业务日期分区，格式为 `YYYYMMDD` 数字。
 - 注册日期取 `JSON_UNQUOTE(JSON_EXTRACT(userinfo, '$.regdate'))`，格式为 `YYYYMMDD` 字符串。
@@ -275,7 +276,7 @@ LIMIT 24
 - 按渠道、系统拆分时，渠道/系统取注册事件行的 `adinfo` / `deviceinfo`，不要用后续活跃日覆盖新增归因。
 
 ## SQL 口径
-- 新增用户分母：`event='UserRegister'` 的注册日 cohort，按 `uid` 去重；新增趋势、渠道新增、系统新增不要为了取注册日去扫描 `user` 快照 JSON。
+- 新增用户分母：目标表中 `event='UserRegister'` 的注册日 cohort，按 `uid` 去重；未完成当天使用 `event_realtime`，完整历史日使用 `event`。新增趋势、渠道新增、系统新增不要为了取注册日去扫描 `user` 快照 JSON。
 - D1 留存分子：先固定注册事件 cohort，再在该 cohort 的精确次日 `UserActive` 中查同一 `uid`；不能只读取注册当天，也不要跨多日 `MAX(remain1)`。
 - 默认只展示已成熟 cohort：近月看板以当前日前一完整分区为成熟截止，D1 默认窗口排除最近 1 天，D7 默认窗口排除最近 7 天，避免把未成熟 cohort 当 0%。
 - 用户问“最近 N 天新增用户留存/滞留情况”且未指定 D3/D7 时，默认按 D1 精确日留存理解；cohort 窗口应取最近 N 个已成熟注册日。例如系统日期为 2026-06-30 时，“最近三天新增用户留存”应统计注册日 2026-06-26、2026-06-27、2026-06-28，对应活跃观察日 2026-06-27、2026-06-28、2026-06-29；不要把 2026-06-29 注册 cohort 纳入 D1 留存分母。

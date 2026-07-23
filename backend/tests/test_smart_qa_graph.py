@@ -43,6 +43,32 @@ def _sql_answer(sql: str = "select 1 as value", tables: list[str] | None = None)
     return json.dumps(payload)
 
 
+def test_event_predicate_parser_ignores_partition_date_format_literals() -> None:
+    tracking_config = '''
+## 默认字段
+- 默认事件名字段: `event`
+
+## 字段角色映射
+[{"role":"subject_id","field":"uid","table":"event","description":"事件主体用户 ID"},{"role":"event_name","field":"event","table":"event","description":"业务事件名"},{"role":"event_time","field":"time","table":"event","description":"毫秒时间戳，实时口径需转 UTC+8"},{"role":"partition_date","field":"dt","table":"event","description":"业务日期分区 yyyyMMdd"},{"role":"subject_id","field":"uid","table":"event_realtime","description":"实时事件主体用户 ID"},{"role":"event_name","field":"event","table":"event_realtime","description":"实时业务事件名"},{"role":"event_time","field":"time","table":"event_realtime","description":"实时事件毫秒时间戳，按 UTC+8 转业务时间"},{"role":"partition_date","field":"dt","table":"event_realtime","description":"实时业务日期分区 yyyyMMdd"}]
+'''
+    service = SimpleNamespace(
+        ds=SimpleNamespace(type="mysql"),
+        chat_question=SimpleNamespace(tracking_config=tracking_config),
+    )
+    sql = """
+SELECT COUNT(DISTINCT `e`.`uid`) AS `新增用户数`
+FROM `event_realtime` `e`
+WHERE `e`.`dt` = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+  AND `e`.`event` = 'UserRegister'
+"""
+
+    predicates = graph._extract_requested_event_predicates(sql, service)
+
+    assert [(item.event_field, item.event_values) for item in predicates] == [
+        ("event", {"UserRegister"})
+    ]
+
+
 def _sql_answer_with_message(sql: str, message: str, tables: list[str] | None = None) -> str:
     payload = {
         "success": True,

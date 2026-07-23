@@ -257,6 +257,29 @@ def _event_name_fields_for_service(service: Any) -> set[str]:
             field_name = normalize_identifier(match.group(1))
             if field_name:
                 fields.add(field_name)
+
+    role_mapping_match = re.search(
+        r"##\s*字段角色映射\s*\n(?P<mappings>\[[^\n]*\])",
+        tracking_config,
+        flags=re.IGNORECASE,
+    )
+    if role_mapping_match is not None:
+        try:
+            mappings = orjson.loads(role_mapping_match.group("mappings"))
+        except orjson.JSONDecodeError:
+            mappings = None
+        if isinstance(mappings, list):
+            for item in mappings:
+                if not isinstance(item, dict):
+                    continue
+                role = normalize_identifier(item.get("role") or item.get("field_role"))
+                if role != "event_name":
+                    continue
+                field_name = normalize_identifier(item.get("field") or item.get("field_name"))
+                if field_name:
+                    fields.add(field_name)
+            return fields
+
     for match in re.finditer(r"(?:field_role|role)[\"'\s:：]+event_name", tracking_config, flags=re.IGNORECASE):
         window = tracking_config[max(0, match.start() - 240): match.end() + 240]
         field_match = re.search(r"(?:field_name|field|字段)[\"'\s:：]+([A-Za-z_][A-Za-z0-9_]*)", window, flags=re.IGNORECASE)

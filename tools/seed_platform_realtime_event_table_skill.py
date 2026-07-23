@@ -27,6 +27,24 @@ BACKEND_DIR = ROOT / "backend"
 BACKUP_ROOT = ROOT / ".codex-runtime" / "platform-data-skill-backups"
 DB = core_system_db_config()
 
+EVENT_TABLE_SCOPE_PATTERN = r"\b(?:from|join)\s+`?event(?:_realtime)?`?(?=\s|,|$)"
+REALTIME_TABLE_PATTERN = r"\b(?:from|join)\s+`?event_realtime`?(?=\s|,|$)"
+HISTORY_TABLE_PATTERN = r"\b(?:from|join)\s+`?event`?(?=\s|,|$)"
+SQL_VALIDATION_RULE = json.dumps(
+    {
+        "match": ["今天", "当天", "今日", "截至目前", "当前", "实时"],
+        "when_sql_patterns": [EVENT_TABLE_SCOPE_PATTERN],
+        "required_sql_patterns": [REALTIME_TABLE_PATTERN],
+        "forbidden_sql_patterns": [HISTORY_TABLE_PATTERN],
+        "message": (
+            "未完成当天的事件类查询必须使用 event_realtime，不能读取完整历史表 event；"
+            "请按当前业务日分区重写 SQL。"
+        ),
+    },
+    ensure_ascii=False,
+    separators=(",", ":"),
+)
+
 SKILL = {
     "name": "平台通用 Data Skill：当天实时事件与完整历史事件选表",
     "description": (
@@ -34,12 +52,15 @@ SKILL = {
         "区分今天、当天、截至目前、实时、按分钟或按小时查询与完整历史查询。"
     ),
     "prompt": f"""{SKILL_MARKER}
+<!-- platform-foundation-skill:realtime-event-table-selection:v1 -->
 <!-- data-skill-requires-tables:["event","event_realtime"] -->
+<!-- data-skill-sql-validation:{SQL_VALIDATION_RULE} -->
 # 平台通用 Data Skill：当天实时事件与完整历史事件选表
 
 ## 适用前提
 
 - 仅当当前会话已明确选择一个已授权数据源，且当前实时 Schema 或工作空间元数据确认同时存在 `event_realtime` 和 `event` 时生效。
+- 结构化 SQL 校验仅在生成 SQL 已引用 `event` 或 `event_realtime` 时生效；`user` 等非事件快照表不因“当前”等时间词被强制改表。
 - 工作空间 Data Skill、事件字典或字段元数据必须已经提供问题所需的事件语义、主体键和指标字段。本 Skill 只决定选表，不定义业务口径。
 - 当前数据源权限、实时 Schema 和工作空间配置优先级高于本 Skill；本 Skill 不得扩大任何数据访问范围。
 

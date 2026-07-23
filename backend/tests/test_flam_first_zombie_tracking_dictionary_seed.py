@@ -65,6 +65,31 @@ def test_tracking_dictionary_keeps_events_without_properties() -> None:
     assert events["UserRegister"]["properties"] == []
 
 
+def test_tracking_dictionary_exposes_realtime_event_table() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    table_names = {item["table_name"] for item in tracking.TABLES}
+    realtime_fields = {
+        item["field_name"]
+        for item in tracking.FIELDS
+        if item["table_name"] == "event_realtime"
+    }
+    realtime_roles = {
+        (item["role"], item["field"])
+        for item in tracking.TRACKING_CONFIG["field_role_mappings"]
+        if item["table"] == "event_realtime"
+    }
+
+    assert "event_realtime" in table_names
+    assert {"uid", "event", "time", "dt", "prod", "personal"} <= realtime_fields
+    assert {
+        ("subject_id", "uid"),
+        ("event_name", "event"),
+        ("event_time", "time"),
+        ("partition_date", "dt"),
+    } <= realtime_roles
+
+
 def test_tracking_dictionary_merges_only_missing_events() -> None:
     import seed_flam_first_zombie_tracking_dictionary as tracking
 

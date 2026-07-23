@@ -217,6 +217,10 @@ TRACKING_CONFIG = {
         {"role": "event_name", "table": "event", "field": "event", "description": "业务事件名"},
         {"role": "event_time", "table": "event", "field": "time", "description": "毫秒时间戳，实时口径需转 UTC+8"},
         {"role": "partition_date", "table": "event", "field": "dt", "description": "业务日期分区 yyyyMMdd"},
+        {"role": "subject_id", "table": "event_realtime", "field": "uid", "description": "实时事件主体用户 ID"},
+        {"role": "event_name", "table": "event_realtime", "field": "event", "description": "实时业务事件名"},
+        {"role": "event_time", "table": "event_realtime", "field": "time", "description": "实时事件毫秒时间戳，按 UTC+8 转业务时间"},
+        {"role": "partition_date", "table": "event_realtime", "field": "dt", "description": "实时业务日期分区 yyyyMMdd"},
         {"role": "snapshot_date", "table": "user", "field": "dt", "description": "用户快照日期 yyyyMMdd"},
     ],
     "event_name_mappings": DEFAULT_EVENT_MAPPINGS,
@@ -243,7 +247,7 @@ TRACKING_CONFIG = {
             "英雄当前等级分布需要先按 uid 与英雄 ID 取最近一条养成事件，再统计人数；不要把升级事件次数当等级分布。",
         ]
     ),
-    "notes": f"flam / first_zombie 工作空间字典，datasource_id={DATASOURCE_ID}。业务库核心表为 event 事件明细表和 user 用户日快照表。",
+    "notes": f"flam / first_zombie 工作空间字典，datasource_id={DATASOURCE_ID}。业务库核心表为 event 历史事件表、event_realtime 当天实时事件表和 user 用户日快照表。",
 }
 
 TABLES = [
@@ -253,6 +257,13 @@ TABLES = [
         "table_role": "event_fact",
         "aliases": ["事件表", "埋点表", "行为明细"],
         "ai_notes": "查询特定行为必须先过滤 event；已验证交易、CCU、建筑和出征字段从 personal 解析，userinfo/deviceinfo/adinfo/lastinfo 按各自 JSON 字段解析。未经采样验证的 ext 子字段不得作为指标口径。",
+    },
+    {
+        "table_name": "event_realtime",
+        "table_comment": "当天实时事件明细表。每行是一条尚未归档到完整历史分区的用户行为或系统事件。",
+        "table_role": "realtime_event_fact",
+        "aliases": ["实时事件表", "当天埋点表", "实时行为明细"],
+        "ai_notes": "仅用于今天、当天、截至目前和实时分钟/小时查询；完整历史日继续使用 event。",
     },
     {
         "table_name": "user",
@@ -1013,6 +1024,28 @@ FIELDS.extend(
             "ai_notes": "首付用户使用 firstpaytime > 0；不能用分析窗口内最小支付事件日期替代。",
         },
     ]
+)
+
+_REALTIME_EVENT_BASE_FIELD_NAMES = {"uid", "event", "time", "dt", "personal"}
+FIELDS.extend(
+    {
+        **item,
+        "table_name": "event_realtime",
+        "field_comment": f"实时表字段。{item['field_comment']}",
+    }
+    for item in list(FIELDS)
+    if item["table_name"] == "event" and item["field_name"] in _REALTIME_EVENT_BASE_FIELD_NAMES
+)
+FIELDS.append(
+    {
+        "table_name": "event_realtime",
+        "field_name": "prod",
+        "field_comment": "产品 ID；flam 查询固定过滤 prod=110000038。",
+        "field_role": "product_id",
+        "semantic_type": "identifier",
+        "aliases": ["产品ID", "项目ID"],
+        "required": True,
+    }
 )
 
 

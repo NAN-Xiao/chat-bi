@@ -109,6 +109,17 @@ def test_data_skill_seed_documents_verified_transaction_and_cohort_rules() -> No
     assert "CCU.personal.ed_ccu" in content
 
 
+def test_new_user_skill_routes_current_day_to_realtime_table() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    skill = next(item for item in seed.DATA_SKILLS if item["name"] == "flam 新增与留存 cohort 口径")
+    prompt = skill["prompt"]
+
+    assert "今天、当天、今日、截至目前、当前或实时按小时" in prompt
+    assert "必须使用 `event_realtime`" in prompt
+    assert "完整历史日和留存 cohort 使用 `event`" in prompt
+
+
 def test_data_skill_seed_limits_custom_prompt_lifecycle_to_exact_datasource_scope() -> None:
     content = SEED_SCRIPT.read_text(encoding="utf-8")
     upsert_section = content[content.index("def _upsert_skill") : content.index("def _delete_stale_skills")]

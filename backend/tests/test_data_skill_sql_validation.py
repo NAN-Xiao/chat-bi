@@ -94,6 +94,53 @@ def test_match_and_allow_when_semantics_are_preserved() -> None:
     )
 
 
+def test_sql_scope_patterns_limit_validation_to_matching_tables() -> None:
+    event_table_pattern = r"\b(?:from|join)\s+`?event(?:_realtime)?`?(?=\s|,|$)"
+    realtime_table_pattern = r"\b(?:from|join)\s+`?event_realtime`?(?=\s|,|$)"
+    history_table_pattern = r"\b(?:from|join)\s+`?event`?(?=\s|,|$)"
+    data_skill = _data_skill(
+        {
+            "match": ["今天", "当前", "实时"],
+            "when_sql_patterns": [event_table_pattern],
+            "required_sql_patterns": [realtime_table_pattern],
+            "forbidden_sql_patterns": [history_table_pattern],
+        }
+    )
+
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "当前玩家等级分布",
+            "SELECT level, COUNT(*) FROM user GROUP BY level",
+            data_skill,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天每小时新增用户",
+            "SELECT COUNT(*) FROM event_realtime WHERE event='UserRegister'",
+            data_skill,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天每小时新增用户",
+            "SELECT COUNT(*) FROM `event_realtime` WHERE event='UserRegister'",
+            data_skill,
+        )
+        is None
+    )
+    violation = llm._data_skill_sql_validation_violation(
+        "今天每小时新增用户",
+        "SELECT COUNT(*) FROM event WHERE event='UserRegister'",
+        data_skill,
+    )
+    assert violation is not None
+    assert violation.missing_required_patterns == (realtime_table_pattern,)
+    assert violation.matched_forbidden_patterns == (history_table_pattern,)
+
+
 def test_invalid_regular_expression_falls_back_to_case_insensitive_contains() -> None:
     data_skill = _data_skill(
         {

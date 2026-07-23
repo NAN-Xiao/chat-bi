@@ -259,6 +259,22 @@ def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
     return any(term in text for term in terms)
 
 
+def _rule_matches_sql_scope(
+    rule: dict[str, Any],
+    sql_text: str,
+    sql_lower: str,
+) -> bool:
+    """仅在 SQL 命中规则声明的适用片段或正则时启用该规则。"""
+    contains = _normalize_rule_terms(rule.get("when_sql_contains"))
+    patterns = _normalize_rule_terms(rule.get("when_sql_patterns"))
+    if not contains and not patterns:
+        return True
+    return any(text.lower() in sql_lower for text in contains) or any(
+        _sql_pattern_matches(pattern_text, sql_text, sql_lower)
+        for pattern_text in patterns
+    )
+
+
 def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bool:
     """
     是什么：判断 SQL 是否命中 Data Skill 里的正则或普通文本模式。
@@ -357,6 +373,8 @@ def _data_skill_sql_validation_violation(
         if not _rule_matches_question(rule, question):
             continue
         if _rule_allowed_by_question(rule, question):
+            continue
+        if not _rule_matches_sql_scope(rule, sql_text, sql_lower):
             continue
 
         missing_required_contains, missing_required_patterns = _required_sql_violations(
@@ -2225,7 +2243,7 @@ class LLMService:
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
 
-        if str(getattr(self.ds, "type", "") or "").strip().lower() in {
+        if str(getattr(getattr(self, "ds", None), "type", "") or "").strip().lower() in {
             "mysql",
             "doris",
             "starrocks",
