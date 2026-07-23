@@ -340,7 +340,6 @@ onBeforeUnmount(() => {
       :dashboard-id="editorState.dashboardId"
       :chart="editorState.initialValue"
       :can-edit="canEdit"
-      @update:model-value="!$event && cancelChartEditor()"
       @saved="handleChartSaved"
       @cancelled="cancelChartEditor"
     />
