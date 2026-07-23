@@ -266,6 +266,11 @@ assert.match(panel, /当前账号无此数据源权限/)
 assert.doesNotMatch(panel, /currentCharts\.value\.some\(\(chart\)\s*=>\s*chart\.can_execute/)
 assert.doesNotMatch(panel, /defineProps|props\.dashboardId|createDashboardRequestId/)
 assert.match(panel, /watch\(\s*routeMode,[\s\S]*?loadPage\('route-enter'\)/)
+assert.match(panel, /WORKSPACE_CONTEXT_CHANGE_EVENT/)
+assert.match(
+  panel,
+  /name:\s*WORKSPACE_CONTEXT_CHANGE_EVENT,[\s\S]*?event\?\.phase === 'changing'[\s\S]*?roiConfigLoadCoordinator\.invalidate\(\)[\s\S]*?event\?\.phase === 'changed'[\s\S]*?loadPage\('route-enter'\)/
+)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*min-width:\s*0/)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*overflow:\s*hidden/)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*text-overflow:\s*ellipsis/)

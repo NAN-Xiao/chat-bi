@@ -6,6 +6,7 @@ import { Plus } from '@element-plus/icons-vue'
 import { useRoute } from 'vue-router'
 import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
 import { useRoiDashboardStore } from '@/stores/roiDashboard'
+import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import RoiChartGrid from './RoiChartGrid.vue'
 import RoiSqlEditor from './RoiSqlEditor.vue'
 import type { RoiChart, RoiChartEditorState, RoiDateRange, RoiLayoutSpan } from './types'
@@ -269,6 +270,21 @@ watch(routeMode, (mode, previousMode) => {
   if (mode !== 'roi' || mode === previousMode) return
   chartDateRanges.value = {}
   void loadPage('route-enter')
+})
+
+useEmitt({
+  name: WORKSPACE_CONTEXT_CHANGE_EVENT,
+  callback: (event?: any) => {
+    if (event?.phase === 'changing') {
+      roiConfigLoadCoordinator.invalidate()
+      roiDashboardStore.reset()
+      chartDateRanges.value = {}
+      return
+    }
+    if (event?.phase === 'changed' && routeMode.value === 'roi') {
+      void loadPage('route-enter')
+    }
+  },
 })
 
 onMounted(() => {
