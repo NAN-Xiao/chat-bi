@@ -367,6 +367,38 @@ def test_report_interpretation_preflight_maps_target_validation_failure_to_permi
     assert "没有查看权限" in body
 
 
+def test_report_interpretation_uses_chart_execution_datasource_for_report_target(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """报表解读应按图表执行数据源加载 ROI 项目，而非要求用户直接授权。"""
+    datasource = SimpleNamespace(id=22, name="ROI 项目", type="mysql")
+    resolved_ids: list[int | None] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: resolved_ids.append(datasource_id) or 22,
+    )
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=22,
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")],
+        report_target=analysis_api.ReportInterpretationTarget(
+            dashboard_id="dashboard-1",
+            component_ids=["chart-1"],
+            has_visible_data=True,
+            has_permission_denied=False,
+        ),
+    )
+
+    result = analysis_api._get_report_interpretation_datasource(
+        _FakeSession(),
+        _user(),
+        request,
+    )
+
+    assert result.id == datasource.id
+    assert resolved_ids == [22]
+
+
 def test_report_interpretation_returns_no_data_for_valid_empty_target(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:

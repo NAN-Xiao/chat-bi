@@ -38,7 +38,10 @@ from apps.datasource.crud.sql_engine import (
     validate_user_query_sql_or_raise,
 )
 from apps.datasource.models.datasource import CoreDatasource
-from apps.dashboard.crud.dashboard_service import validate_dashboard_report_target
+from apps.dashboard.crud.dashboard_service import (
+    resolve_chart_execution_datasource,
+    validate_dashboard_report_target,
+)
 from apps.db.constant import DB
 from apps.analysis_assistant.models import (
     AnalysisAssistantConversation,
@@ -981,6 +984,26 @@ def _get_datasource(
     if len(datasource_list) > 1:
         raise RuntimeError("当前有多个项目，请先选择本次综合分析要使用的项目")
     datasource = datasource_list[0]
+    return datasource
+
+
+def _get_report_interpretation_datasource(
+    session: SessionDep,
+    current_user: CurrentUser,
+    request: AnalysisAssistantRequest,
+) -> CoreDatasource:
+    """按报表目标的受控图表执行数据源加载项目。"""
+    if request.report_target is None:
+        return _get_datasource(session, current_user, request.datasource_id)
+
+    datasource_id = resolve_chart_execution_datasource(
+        session,
+        current_user,
+        request.datasource_id,
+    )
+    datasource = session.get(CoreDatasource, datasource_id)
+    if datasource is None:
+        raise RuntimeError("当前图表执行数据源不存在")
     return datasource
 
 
@@ -3674,9 +3697,12 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
     if limited_response is not None:
         return limited_response
 
-    datasource = CoreDatasource.model_construct(
-        **_get_datasource(session, current_user, request.datasource_id).model_dump()
-    )
+    try:
+        datasource = CoreDatasource.model_construct(
+            **_get_report_interpretation_datasource(session, current_user, request).model_dump()
+        )
+    except (HTTPException, RuntimeError):
+        return _permission_denied_stream_response()
     data_skill = _collect_data_skill_context(
         session,
         datasource.id,
@@ -3686,7 +3712,7 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
         include_all_target_scopes=True,
     )
-    tracking_context = _collect_tracking_context(session, current_user, request.datasource_id)
+    tracking_context = _collect_tracking_context(session, current_user, datasource.id)
     semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, _llm_config = await _create_llm(None)
     return StreamingResponse(
