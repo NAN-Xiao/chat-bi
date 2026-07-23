@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import {
@@ -137,4 +138,13 @@ test('加载器忽略快速切换空间产生的旧请求结果', async () => {
   assert.equal(await currentResult, 0)
   resolveFirst([{ status: 'pending' }])
   assert.equal(await oldResult, null)
+})
+
+test('头像组件接入空间审核申请和个人邀请', async () => {
+  const source = await readFile(new URL('../src/components/layout/Person.vue', import.meta.url), 'utf8')
+
+  assert.match(source, /createLatestWorkspaceNotificationLoader/)
+  assert.match(source, /tenantApi\.tenantApplications\('pending'\)/)
+  assert.match(source, /tenantApi\.myInvitations\('pending'\)/)
+  assert.match(source, /shouldShowWorkspaceNotificationBadge/)
 })

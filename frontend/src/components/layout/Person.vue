@@ -28,9 +28,9 @@ import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
 import { canManageWorkspaceRole } from '@/utils/workspacePermission'
 import {
-  createLatestWorkspaceReviewLoader,
-  shouldShowWorkspaceReviewBadge,
-  type WorkspaceReviewBadgeContext,
+  createLatestWorkspaceNotificationLoader,
+  shouldShowWorkspaceNotificationBadge,
+  type WorkspaceNotificationBadgeContext,
 } from '@/utils/workspaceReviewBadge'
 
 const { wsCache } = useCache()
@@ -67,18 +67,22 @@ const showAdminWorkspaceEntry = computed(
 const showWorkspaceApplicationEntry = computed(
   () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && !userStore.hasActiveWorkspace
 )
-const pendingWorkspaceReviewCount = ref(0)
-const workspaceReviewContext = computed<WorkspaceReviewBadgeContext>(() => ({
+const pendingWorkspaceNotificationCount = ref(0)
+const workspaceNotificationContext = computed<WorkspaceNotificationBadgeContext>(() => ({
   tenantId: userStore.getTenantId,
   role: userStore.getTenantRole,
   isSystemAdminUser: isPlatformAdmin.value,
   isPlatformWorkspaceDelegate: isPlatformWorkspaceDelegate.value,
 }))
-const loadPendingWorkspaceReviewCount = createLatestWorkspaceReviewLoader(() =>
-  tenantApi.tenantApplications('pending')
-)
-const showWorkspaceReviewBadge = computed(() =>
-  shouldShowWorkspaceReviewBadge(workspaceReviewContext.value, pendingWorkspaceReviewCount.value)
+const loadPendingWorkspaceNotificationCount = createLatestWorkspaceNotificationLoader({
+  fetchPendingReviews: () => tenantApi.tenantApplications('pending'),
+  fetchPendingInvitations: () => tenantApi.myInvitations('pending'),
+})
+const showWorkspaceNotificationBadge = computed(() =>
+  shouldShowWorkspaceNotificationBadge(
+    workspaceNotificationContext.value,
+    pendingWorkspaceNotificationCount.value
+  )
 )
 
 const isClient = computed(() => {
@@ -217,10 +221,10 @@ const logout = async () => {
 }
 
 watch(
-  workspaceReviewContext,
+  workspaceNotificationContext,
   async (context) => {
-    const count = await loadPendingWorkspaceReviewCount(context)
-    if (count !== null) pendingWorkspaceReviewCount.value = count
+    const count = await loadPendingWorkspaceNotificationCount(context)
+    if (count !== null) pendingWorkspaceNotificationCount.value = count
   },
   { immediate: true }
 )
@@ -242,7 +246,7 @@ onMounted(() => {
         <span class="avatar-badge-wrapper">
           <UserAvatar :name="name" :account="account" :uid="userStore.getUid" :size="32" />
           <span
-            v-if="showWorkspaceReviewBadge"
+            v-if="showWorkspaceNotificationBadge"
             class="workspace-review-badge"
             role="status"
             :aria-label="t('tenant_overview.todo_pending_member_application_count')"
