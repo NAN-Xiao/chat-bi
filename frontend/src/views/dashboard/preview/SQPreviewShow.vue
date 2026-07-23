@@ -8,7 +8,6 @@ import { dashboardApi } from '@/api/dashboard.ts'
 import ResourceTree from '@/views/dashboard/common/ResourceTree.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
-import RoiDashboardPanel from '@/views/dashboard/roi/RoiDashboardPanel.vue'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
@@ -18,17 +17,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { useUserStore } from '@/stores/user'
-import { useRoiDashboardStore } from '@/stores/roiDashboard'
-import { canAccessRoiDashboard } from '@/utils/workspacePermission'
 import {
-  resolveRoiPreviewAccessPlan,
-  shouldInitializeOrdinaryDashboardCanvas,
-} from '@/views/dashboard/roi/roiNavigationBehavior'
-import {
-  createRoiLandingRedirectCoordinator,
-  runRoiLandingRedirect,
-  type RoiLandingRedirectSnapshot,
-} from '@/views/dashboard/roi/roiLandingRedirectCoordinator'
+  isUnsupportedDashboardMode,
+  resolveOrdinaryDashboardMode,
+} from '@/views/dashboard/utils/dashboardRouteMode'
 import {
   applyMixedChartResult,
   canRefreshMixedChart,
@@ -52,7 +44,6 @@ const router = useRouter()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
-const roiDashboardStore = useRoiDashboardStore()
 const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
 const slideShow = ref(true)
@@ -92,16 +83,12 @@ let chartRefreshTimer: number | undefined
 let chartRefreshController: AbortController | null = null
 let chartRefreshRetryCount = 0
 const resolvingDashboardTarget = ref(false)
-const roiLandingRedirectCoordinator = createRoiLandingRedirectCoordinator()
-const roiLandingRedirecting = ref(false)
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
 const CHART_DATABASE_REFRESH_CONCURRENCY = 4
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 180
 const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
 const CHART_TRANSIENT_MAX_RETRIES = 6
 const DASHBOARD_MODE_DEFAULT = 'default'
-const DASHBOARD_MODE_MY = 'my'
-const ROI_SCOPE = 'roi'
 const permissionDeniedCharts = createPermissionDeniedChartRegistry()
 
 function clampChartLoadingProgress(progress: unknown) {
@@ -132,25 +119,15 @@ const routeDashboardId = computed(() => {
   const value = Array.isArray(resourceId) ? resourceId[0] : resourceId
   return value ? String(value) : ''
 })
-const routeDashboardMode = computed(() => {
-  const mode = Array.isArray(route.query.dashboardMode)
-    ? route.query.dashboardMode[0]
-    : route.query.dashboardMode
-  if (mode === ROI_SCOPE) return ROI_SCOPE
-  return mode === DASHBOARD_MODE_DEFAULT ? DASHBOARD_MODE_DEFAULT : DASHBOARD_MODE_MY
-})
-const canAccessRoiDashboardMode = computed(() => canAccessRoiDashboard(userStore))
-const currentTenantId = computed(() => String(userStore.getTenantId || ''))
-const roiPreviewAccessPlan = computed(() =>
-  resolveRoiPreviewAccessPlan(routeDashboardMode.value, canAccessRoiDashboardMode.value)
+const routeDashboardMode = computed(() =>
+  resolveOrdinaryDashboardMode(route.query.dashboardMode, props.defaultMode)
 )
-const isAuthorizedRoiDashboardMode = computed(
-  () => roiPreviewAccessPlan.value.renderRoiDashboard
+const hasUnsupportedDashboardMode = computed(
+  () => !props.defaultMode && isUnsupportedDashboardMode(route.query.dashboardMode)
 )
 const canCreateDashboard = computed(() => {
   return (
     !props.defaultMode &&
-    !roiPreviewAccessPlan.value.shortCircuitOrdinaryDashboard &&
     resourceTreeRef.value?.canCreateDashboard === true
   )
 })
@@ -159,8 +136,7 @@ const previewLoading = computed(
     !mounted.value ||
     !dataInitState.value ||
     !!loadingDashboardId.value ||
-    resolvingDashboardTarget.value ||
-    roiLandingRedirecting.value
+    resolvingDashboardTarget.value
 )
 
 const stateInit = () => {
@@ -177,13 +153,7 @@ const resetPreviewState = () => {
   stateInit()
 }
 const resolveDashboardMode = (params?: any) =>
-  props.defaultMode
-    ? DASHBOARD_MODE_DEFAULT
-    : params?.dashboardScope === ROI_SCOPE
-      ? ROI_SCOPE
-      : params?.dashboardScope === DASHBOARD_MODE_DEFAULT
-        ? DASHBOARD_MODE_DEFAULT
-        : DASHBOARD_MODE_MY
+  resolveOrdinaryDashboardMode(params?.dashboardScope, props.defaultMode)
 
 const currentDashboardMode = () =>
   (state.dashboardInfo as any)?.dashboardMode ||
@@ -803,13 +773,6 @@ function scheduleDashboardChartRefresh(loadVersion: number, delay = CHART_CACHE_
 const loadCanvasData = (params: any) => {
   const resourceId = params?.id ? String(params.id) : ''
   const dashboardMode = resolveDashboardMode(params)
-  if (dashboardMode === ROI_SCOPE) {
-    cancelDashboardWork()
-    loadingDashboardId.value = null
-    dataInitState.value = true
-    stateInit()
-    return
-  }
   const loadingKey = `${dashboardMode}:${resourceId}`
   const forceReload = params?.forceReload === true
   if (
@@ -920,83 +883,44 @@ const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
 
-const currentRoiLandingSnapshot = (): RoiLandingRedirectSnapshot => ({
-  tenantId: currentTenantId.value,
-  resourceId: routeDashboardId.value,
-  mode: routeDashboardMode.value,
-  canAccessRoi: canAccessRoiDashboardMode.value,
-})
-
-const syncRoiLandingRedirecting = () => {
-  roiLandingRedirecting.value = roiLandingRedirectCoordinator.isResolving()
-}
-
-const invalidateRoiLandingRedirect = () => {
-  roiLandingRedirectCoordinator.invalidate()
-  syncRoiLandingRedirecting()
-}
-
-const redirectUnauthorizedRoi = async () => {
-  cancelDashboardWork()
-  loadingDashboardId.value = null
-  dataInitState.value = true
-  stateInit()
-  const snapshot = currentRoiLandingSnapshot()
-  const pending = runRoiLandingRedirect(
-    () =>
-      roiLandingRedirectCoordinator.redirect({
-        snapshot,
-        getCurrentSnapshot: currentRoiLandingSnapshot,
-        resolveLanding: () => resolveBusinessDashboardLandingTarget(userStore),
-        commit: async (target) => {
-          if (!isCurrentRouteTarget(target)) await router.replace(target)
-        },
-      }),
-    (error) => console.warn('ROI 看板无权限重定向失败', error)
-  )
-  syncRoiLandingRedirecting()
+const redirectUnsupportedDashboardMode = async () => {
+  if (resolvingDashboardTarget.value) return
+  const sourceFullPath = route.fullPath
+  resetPreviewState()
+  resolvingDashboardTarget.value = true
   try {
-    await pending
+    const target = await resolveBusinessDashboardLandingTarget(userStore)
+    if (route.fullPath === sourceFullPath && !isCurrentRouteTarget(target)) {
+      await router.replace(target)
+    }
+  } catch (error) {
+    console.warn('无效看板模式重定向失败', error)
   } finally {
-    syncRoiLandingRedirecting()
+    resolvingDashboardTarget.value = false
   }
 }
 
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
 onBeforeMount(() => {
-  if (
-    shouldInitializeOrdinaryDashboardCanvas(
-      showPosition.value,
-      routeDashboardMode.value
-    )
-  ) {
+  if (showPosition.value === 'preview') {
     dashboardStore.canvasDataInit()
   }
 })
 onBeforeUnmount(() => {
-  invalidateRoiLandingRedirect()
   cancelDashboardWork()
-  roiDashboardStore.reset()
 })
 watch(
   () =>
     [
       routeDashboardId.value,
       routeDashboardMode.value,
-      canAccessRoiDashboardMode.value,
-      currentTenantId.value,
+      hasUnsupportedDashboardMode.value,
     ] as const,
-  ([resourceId, dashboardMode, canAccessRoi], previous) => {
-    const previousMode = previous?.[1]
-    if (previousMode === ROI_SCOPE && dashboardMode !== ROI_SCOPE) {
-      roiDashboardStore.reset()
-    }
-    const accessPlan = resolveRoiPreviewAccessPlan(dashboardMode, canAccessRoi)
-    if (!props.defaultMode && accessPlan.redirectToLanding) {
-      void redirectUnauthorizedRoi()
+  ([resourceId, dashboardMode, unsupportedMode]) => {
+    if (unsupportedMode) {
+      void redirectUnsupportedDashboardMode()
       return
     }
-    invalidateRoiLandingRedirect()
     if (!props.defaultMode && resourceId) {
       loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })
     } else if (!props.defaultMode && !resourceId) {
@@ -1008,7 +932,6 @@ watch(
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,
   callback: () => {
-    roiDashboardStore.reset()
     resetPreviewState()
   },
 })
@@ -1065,18 +988,12 @@ defineExpose({
     <section
       class="preview-area"
       :class="{
-        'is-empty': !isAuthorizedRoiDashboardMode && !previewShowFlag,
+        'is-empty': !previewShowFlag,
         'sidebar-collapsed': !sideTreeStatus,
         'sidebar-collapsed-with-create': !sideTreeStatus && canCreateDashboard,
       }"
     >
       <div class="preview-stage">
-        <!-- dashboardMode=roi 使用独立 RoiDashboardPanel。 -->
-        <RoiDashboardPanel
-          v-if="canAccessRoiDashboardMode"
-          v-show="isAuthorizedRoiDashboardMode"
-        />
-        <template v-if="!isAuthorizedRoiDashboardMode">
         <SQPreviewHead
           :dashboard-info="previewShowFlag ? state.dashboardInfo : {}"
           :component-data="state.canvasDataPreview"
@@ -1122,7 +1039,6 @@ defineExpose({
             img-type="none"
           />
         </div>
-        </template>
       </div>
     </section>
   </div>
