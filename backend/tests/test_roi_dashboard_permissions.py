@@ -30,7 +30,12 @@ def session() -> Session:
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(
-            text("CREATE TABLE core_datasource (id BIGINT PRIMARY KEY, status TEXT)")
+            text(
+                "CREATE TABLE core_datasource ("
+                "id BIGINT PRIMARY KEY, "
+                "tenant_id BIGINT NOT NULL DEFAULT 1, "
+                "status TEXT)"
+            )
         )
         connection.execute(
             text(
@@ -43,6 +48,13 @@ def session() -> Session:
                 "CREATE TABLE core_datasource_tenant_binding ("
                 "id INTEGER PRIMARY KEY, tenant_id BIGINT NOT NULL, "
                 "datasource_id BIGINT NOT NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE core_roi_workspace_config ("
+                "id INTEGER PRIMARY KEY, tenant_id BIGINT NOT NULL, "
+                "datasource_id BIGINT NOT NULL, deleted BOOLEAN NOT NULL DEFAULT 0)"
             )
         )
     with Session(engine) as db_session:
@@ -78,6 +90,26 @@ def grant_datasource_user(session: Session, *, user_id: int, datasource_id: int)
             "VALUES (:datasource_id, :user_id)"
         ),
         params={"datasource_id": datasource_id, "user_id": user_id},
+    )
+
+
+def configure_roi_datasource(
+    session: Session,
+    *,
+    tenant_id: int,
+    datasource_id: int,
+    deleted: bool = False,
+) -> None:
+    session.exec(
+        text(
+            "INSERT INTO core_roi_workspace_config (tenant_id, datasource_id, deleted) "
+            "VALUES (:tenant_id, :datasource_id, :deleted)"
+        ),
+        params={
+            "tenant_id": tenant_id,
+            "datasource_id": datasource_id,
+            "deleted": deleted,
+        },
     )
 
 
@@ -161,6 +193,26 @@ def test_roi_datasources_union_workspace_and_direct_account_grants(
     assert has_roi_datasource_access(session, user, 404) is False
 
 
+def test_workspace_admin_can_access_configured_roi_datasource_without_direct_grant(
+    session: Session,
+) -> None:
+    from apps.roi_dashboard.permissions import (
+        has_roi_datasource_access,
+        list_roi_accessible_datasource_ids,
+    )
+
+    user = make_user(id=7, tenant_id=11, tenant_role="admin")
+    add_datasource(session, 202)
+    add_datasource(session, 303)
+    configure_roi_datasource(session, tenant_id=11, datasource_id=202)
+    configure_roi_datasource(session, tenant_id=22, datasource_id=303)
+    session.commit()
+
+    assert list_roi_accessible_datasource_ids(session, user) == {202}
+    assert has_roi_datasource_access(session, user, 202) is True
+    assert has_roi_datasource_access(session, user, 303) is False
+
+
 def test_inactive_datasources_are_excluded_from_all_roi_permission_candidates(
     session: Session,
 ) -> None:
@@ -176,9 +228,32 @@ def test_inactive_datasources_are_excluded_from_all_roi_permission_candidates(
     bind_datasource(session, tenant_id=11, datasource_id=101)
     grant_datasource_user(session, user_id=7, datasource_id=202)
     grant_datasource_user(session, user_id=7, datasource_id=303)
+    configure_roi_datasource(session, tenant_id=11, datasource_id=303)
     session.commit()
 
     assert list_roi_accessible_datasource_ids(session, user) == set()
     assert has_roi_datasource_access(session, user, 101) is False
     assert has_roi_datasource_access(session, user, 202) is False
     assert has_roi_datasource_access(session, user, 303) is False
+
+
+def test_deleted_roi_config_does_not_grant_datasource_access(
+    session: Session,
+) -> None:
+    from apps.roi_dashboard.permissions import (
+        has_roi_datasource_access,
+        list_roi_accessible_datasource_ids,
+    )
+
+    user = make_user(id=7, tenant_id=11, tenant_role="admin")
+    add_datasource(session, 202)
+    configure_roi_datasource(
+        session,
+        tenant_id=11,
+        datasource_id=202,
+        deleted=True,
+    )
+    session.commit()
+
+    assert list_roi_accessible_datasource_ids(session, user) == set()
+    assert has_roi_datasource_access(session, user, 202) is False

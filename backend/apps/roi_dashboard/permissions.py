@@ -9,6 +9,7 @@ from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES
 from apps.system.schemas.access_context import AccessContext, resolve_access_context
 from common.core.deps import CurrentUser, SessionDep
+from apps.roi_dashboard.models import CoreRoiWorkspaceConfig
 
 
 def require_roi_workspace_admin(current_user: CurrentUser) -> AccessContext:
@@ -47,7 +48,15 @@ def list_roi_accessible_datasource_ids(
         session,
         int(current_user.id),
     )
-    candidate_ids = workspace_ids | direct_ids
+    # 包含当前管理空间在 ROI 配置中显式指定的数据源（未删除的配置）
+    configured_rows = session.exec(
+        select(CoreRoiWorkspaceConfig.datasource_id).where(
+            CoreRoiWorkspaceConfig.tenant_id == context.management_tenant_id,
+            CoreRoiWorkspaceConfig.deleted.is_(False),
+        )
+    ).all()
+    configured_ids = {int(value) for value in configured_rows if value is not None}
+    candidate_ids = workspace_ids | direct_ids | configured_ids
     if not candidate_ids:
         return set()
 
