@@ -1,6 +1,39 @@
 <script lang="ts">
 import type { RoiDashboardViewInfo } from './roiDashboardViewAdapter'
-import type { RoiChart, RoiChartCreate, RoiChartUpdate, RoiLayoutSpan } from './types'
+import type {
+  RoiChart,
+  RoiChartCreate,
+  RoiChartPreviewRequest,
+  RoiChartPreviewResponse,
+  RoiChartUpdate,
+  RoiLayoutSpan,
+} from './types'
+import type {
+  DashboardSqlPreviewExecutor,
+  DashboardSqlPreviewRequest,
+} from '@/views/dashboard/common/dashboardSqlPreviewExecutor'
+
+export type RoiChartPreviewExecutorDependencies = {
+  getDashboardId: () => string
+  getLayoutSpan: () => RoiLayoutSpan
+  previewChart: (
+    dashboardId: string,
+    payload: RoiChartPreviewRequest
+  ) => Promise<RoiChartPreviewResponse>
+}
+
+export function createRoiChartPreviewExecutor(
+  dependencies: RoiChartPreviewExecutorDependencies
+): DashboardSqlPreviewExecutor {
+  return (request: DashboardSqlPreviewRequest) =>
+    dependencies.previewChart(dependencies.getDashboardId(), {
+      title: request.title,
+      sql: request.sql,
+      chart_type: request.chartType,
+      chart_config: request.chartConfig,
+      layout_span: dependencies.getLayoutSpan(),
+    })
+}
 
 export type PersistRoiChartDependencies = {
   getDashboardId: () => string
@@ -100,6 +133,13 @@ const dashboardInfo = computed(() => ({
   tenant_id: config.value?.tenant_id,
 }))
 
+const previewRoiChart = createRoiChartPreviewExecutor({
+  getDashboardId: () => props.dashboardId,
+  getLayoutSpan: () => props.chart?.layout_span || 'full',
+  previewChart: (dashboardId, payload) =>
+    roiDashboardApi.previewChart(dashboardId, payload, roiCustomErrorRequestConfig),
+})
+
 const persistRoiChart = createPersistRoiChart({
   getDashboardId: () => props.dashboardId,
   getChart: () => props.chart,
@@ -160,6 +200,8 @@ watch(
     :fixed-datasource-id="config?.datasource_id"
     :allow-external-sources="false"
     :apply-executor="persistRoiChart"
+    :preview-executor="previewRoiChart"
+    :strict-field-mapping="true"
     @applied="handleApplied"
   />
 </template>

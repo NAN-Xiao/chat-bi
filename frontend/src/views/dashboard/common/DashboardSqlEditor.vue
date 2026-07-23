@@ -13,6 +13,20 @@ import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import { runDashboardSqlApply } from '@/views/dashboard/common/dashboardSqlApplyCoordinator.ts'
 import {
+  resolveDashboardSqlPreviewExecutor,
+  type DashboardSqlPreviewExecutor,
+  type DashboardSqlPreviewRequest,
+} from '@/views/dashboard/common/dashboardSqlPreviewExecutor.ts'
+import {
+  getStrictFieldMappingIssue,
+  reconcileDashboardSqlFieldMapping,
+  resolveDashboardSqlTableColumns,
+} from '@/views/dashboard/common/dashboardSqlFieldMapping.ts'
+import {
+  createDashboardSqlPreviewSession,
+  type DashboardSqlPreviewToken,
+} from '@/views/dashboard/common/dashboardSqlPreviewSession.ts'
+import {
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
@@ -72,6 +86,8 @@ const props = withDefaults(
     fixedDatasourceId?: number | string | null
     allowExternalSources?: boolean
     applyExecutor?: (viewInfo: any) => Promise<boolean>
+    previewExecutor?: DashboardSqlPreviewExecutor
+    strictFieldMapping?: boolean
   }>(),
   {
     modelValue: false,
@@ -82,11 +98,18 @@ const props = withDefaults(
     fixedDatasourceId: null,
     allowExternalSources: true,
     applyExecutor: undefined,
+    previewExecutor: undefined,
+    strictFieldMapping: false,
   }
 )
 
 const effectiveDatasourceId = computed(
   () => props.fixedDatasourceId ?? props.viewInfo?.datasource ?? null
+)
+const sqlPreviewExecutor = computed(() =>
+  resolveDashboardSqlPreviewExecutor(props.previewExecutor, (request) =>
+    dashboardApi.preview_sql(request)
+  )
 )
 const emits = defineEmits(['update:modelValue', 'applied'])
 const { t } = useI18n()
@@ -194,11 +217,13 @@ function mt(key: string) {
   return value === i18nKey ? mcpTextFallbacks[key] || value : value
 }
 
+const previewSession = createDashboardSqlPreviewSession()
 const visible = computed({
   get() {
     return props.modelValue
   },
   set(value: boolean) {
+    if (!value) previewSession.close()
     emits('update:modelValue', value)
   },
 })
@@ -737,6 +762,20 @@ const canRunEditorPreview = computed(() => {
   return true
 })
 const sourceChangedAfterPreview = computed(() => currentPreviewSignature() !== lastPreviewSignature.value)
+const strictFieldMappingError = computed(() => {
+  if (!props.strictFieldMapping || sourcePreview.fields.length === 0) return ''
+  const issue = getStrictFieldMappingIssue(form.chartType, {
+    columns: form.columns,
+    x: form.x,
+    y: form.y,
+    series: effectiveSeriesField.value,
+  })
+  if (issue === 'columns') return '请选择至少一个表格字段'
+  if (issue === 'x') return t('dashboard.sql_editor_select_x')
+  if (issue === 'y') return t('dashboard.sql_editor_select_y')
+  if (issue === 'series') return t('dashboard.sql_editor_select_series')
+  return ''
+})
 const sqlChangedAfterPreview = computed(
   () => hasSqlSource.value && !hasMcpSource.value && sourceChangedAfterPreview.value
 )
@@ -3766,26 +3805,22 @@ function handlePivotGroupValuesChange(values: string[]) {
 }
 
 function resetFieldSelections() {
-  const fields = sourcePreview.fields
-  if (!fields.length) {
-    form.columns = []
-    form.x = ''
-    form.y = []
-    form.series = ''
-    return
-  }
-  form.columns = form.columns.filter((field) => fields.includes(field))
-  form.y = form.y.filter((field) => fields.includes(field))
-  if (form.columns.length === 0) form.columns = fields.slice(0, 8)
-  if (!fields.includes(form.x)) form.x = fields[0] || ''
-  if (!fields.includes(form.series)) form.series = ''
+  const mapping = reconcileDashboardSqlFieldMapping(
+    {
+      columns: form.columns,
+      x: form.x,
+      y: form.y,
+      series: form.series,
+    },
+    sourcePreview.fields,
+    sourcePreview.data,
+    props.strictFieldMapping
+  )
+  form.columns = mapping.columns
+  form.x = mapping.x
+  form.y = mapping.y
+  form.series = mapping.series
   sanitizeSeriesSelection()
-  if (form.y.length === 0) {
-    const numericField = fields.find((field) =>
-      sourcePreview.data.some((row) => typeof row?.[field] === 'number')
-    )
-    form.y = [numericField || fields[Math.min(1, fields.length - 1)] || fields[0]]
-  }
 }
 
 function initEditor() {
@@ -3813,8 +3848,8 @@ function initEditor() {
   }
   resetSqlBuilderState()
   restoreSqlBuilderState(sourceConfig.sql?.builder || sourceConfig.builder)
-  const fields = collectFields(viewInfo)
   const currentFields = collectCurrentPreviewFields(viewInfo)
+  const fields = props.strictFieldMapping ? currentFields : collectFields(viewInfo)
   form.sourceTypes = sourceTypes
   form.primarySource = sourceTypes.includes('external_mcp') && !sourceTypes.includes('sql') ? 'external_mcp' : 'sql'
   form.sql = viewInfo.sql || ''
@@ -3900,12 +3935,26 @@ watch(
 )
 
 watch(
-  () => props.modelValue,
-  (value) => {
-    if (value) {
-      initEditor()
+  () => [props.modelValue, props.viewInfo] as const,
+  ([isOpen, viewInfo], previous) => {
+    const wasOpen = previous?.[0] ?? false
+    const previousViewInfo = previous?.[1]
+    if (!isOpen) {
+      previewSession.close()
+      loading.value = false
+      loadingText.value = ''
+      return
     }
-  }
+    if (!wasOpen) {
+      previewSession.open()
+    } else if (viewInfo !== previousViewInfo) {
+      previewSession.switchView()
+    } else {
+      return
+    }
+    initEditor()
+  },
+  { immediate: true }
 )
 
 watch(
@@ -3961,7 +4010,19 @@ watch(
   }
 )
 
-async function previewSqlSource() {
+function buildSqlPreviewRequest(pivot?: unknown): DashboardSqlPreviewRequest {
+  const chart = buildChart()
+  return {
+    datasource: effectiveDatasourceId.value as number | string,
+    sql: form.sql.trim(),
+    pivot,
+    title: chart.title,
+    chartType: chart.type,
+    chartConfig: chart,
+  }
+}
+
+async function previewSqlSource(previewToken: DashboardSqlPreviewToken) {
   if (!effectiveDatasourceId.value) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return null
@@ -3972,10 +4033,8 @@ async function previewSqlSource() {
   }
   const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
   if (shouldPreviewPivot) {
-    const sourceResult = await dashboardApi.preview_sql({
-      datasource: effectiveDatasourceId.value,
-      sql: form.sql.trim(),
-    })
+    const sourceResult = await sqlPreviewExecutor.value(buildSqlPreviewRequest())
+    if (!previewSession.canCommit(previewToken, currentPreviewSignature())) return null
     const sourceSnapshot = previewResultSnapshot(sourceResult)
     setSourceResult('sql', sourceSnapshot)
     updateSourcePreviewResult(sourceSnapshot)
@@ -3986,21 +4045,19 @@ async function previewSqlSource() {
     } else {
       syncPivotGroupValues()
     }
+    if (!previewSession.refreshSignature(previewToken, currentPreviewSignature())) return null
     if (sourceSnapshot.status === 'failed') {
       return sourceSnapshot
     }
   }
-  const result = await dashboardApi.preview_sql({
-    datasource: effectiveDatasourceId.value,
-    sql: form.sql.trim(),
-    pivot: previewPivotPayload(),
-  })
+  const result = await sqlPreviewExecutor.value(buildSqlPreviewRequest(previewPivotPayload()))
+  if (!previewSession.canCommit(previewToken, currentPreviewSignature())) return null
   const snapshot = previewResultSnapshot(result)
   setSourceResult('sql', snapshot)
   return snapshot
 }
 
-async function previewMcpSource() {
+async function previewMcpSource(previewToken: DashboardSqlPreviewToken) {
   if (!currentExternalMcpServerId.value) {
     ElMessage.warning(mt('mcp_editor_no_server'))
     return null
@@ -4026,6 +4083,7 @@ async function previewMcpSource() {
     key_field: form.mcpKeyField || null,
     value_field: form.mcpValueField || null,
   })
+  if (!previewSession.canCommit(previewToken, currentPreviewSignature())) return null
   if (result?.mcp) {
     props.viewInfo.mcp = {
       ...(props.viewInfo.mcp || {}),
@@ -4048,6 +4106,7 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
     ElMessage.warning(sqlEditorPermissionMessage)
     return false
   }
+  const previewToken = previewSession.begin(currentPreviewSignature())
   const useGlobalLoading = options.useGlobalLoading !== false
   if (useGlobalLoading) {
     loadingText.value = loadingText.value || '正在执行'
@@ -4057,11 +4116,11 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
     clearMergeState()
     let nextPreview: PreviewResultSnapshot | null = null
     if (isMixedSource.value) {
-      const sqlResult = await previewSqlSource()
+      const sqlResult = await previewSqlSource(previewToken)
       if (!sqlResult) {
         return false
       }
-      const mcpResult = await previewMcpSource()
+      const mcpResult = await previewMcpSource(previewToken)
       if (!mcpResult) {
         return false
       }
@@ -4069,20 +4128,21 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
       setMergeState(merged.joinFields, merged.fieldMap)
       nextPreview = merged
     } else if (hasSqlSource.value) {
-      nextPreview = await previewSqlSource()
+      nextPreview = await previewSqlSource(previewToken)
     } else if (hasMcpSource.value) {
-      nextPreview = await previewMcpSource()
+      nextPreview = await previewMcpSource(previewToken)
     }
     if (!nextPreview) {
       return false
     }
+    if (!previewSession.canCommit(previewToken, currentPreviewSignature())) return false
     if (hasSqlSource.value && !hasMcpSource.value && supportsPivotConfig.value && form.pivotEnabled) {
       updatePreviewResult(nextPreview)
     } else {
       applyPreviewSnapshot(nextPreview)
     }
     lastPreviewSql.value = form.sql.trim()
-    lastPreviewSignature.value = currentPreviewSignature()
+    lastPreviewSignature.value = previewToken.signature
     previewVersion.value += 1
     if (preview.status === 'failed') {
       setBuilderAgentAdvice({
@@ -4103,10 +4163,17 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
       await nextTick()
     }
     return true
+  } catch (error) {
+    if (!previewSession.canCommit(previewToken, currentPreviewSignature())) return false
+    throw error
   } finally {
-    if (useGlobalLoading) {
-      loading.value = false
-      loadingText.value = ''
+    if (previewSession.isLatest(previewToken)) {
+      if (useGlobalLoading) {
+        loading.value = false
+        loadingText.value = ''
+      } else {
+        clearBuilderLoading()
+      }
     }
   }
 }
@@ -4136,7 +4203,13 @@ function buildChart() {
   }
 
   if (form.chartType === 'table') {
-    chart.columns = toAxes(form.columns.length ? form.columns : sourcePreview.fields)
+    chart.columns = toAxes(
+      resolveDashboardSqlTableColumns(
+        form.columns,
+        sourcePreview.fields,
+        props.strictFieldMapping
+      )
+    )
     return chart
   }
 
@@ -4206,6 +4279,10 @@ function validateBeforeApply() {
   }
   if (!hasCurrentPreviewData()) {
     ElMessage.warning(t('dashboard.sql_editor_run_preview'))
+    return false
+  }
+  if (strictFieldMappingError.value) {
+    ElMessage.warning(strictFieldMappingError.value)
     return false
   }
   if (form.chartType === 'table') {
@@ -4437,7 +4514,6 @@ async function previewAndPersistBuilderDraft() {
     ElMessage.error(message)
     previewCompleted = true
   } finally {
-    clearBuilderLoading()
     if (previewCompleted) {
       persistEditorDraftToViewInfo()
     }
@@ -4483,6 +4559,7 @@ function closeDrawer() {
 
 function handleBeforeClose(done: () => void) {
   if (applying.value) return
+  previewSession.close()
   done()
 }
 </script>
@@ -5507,6 +5584,9 @@ function handleBeforeClose(done: () => void) {
       <div v-else class="empty-preview">{{ t('dashboard.sql_editor_no_preview_data') }}</div>
     </div>
     <template #footer>
+      <span v-if="strictFieldMappingError" class="strict-field-mapping-error">
+        {{ strictFieldMappingError }}
+      </span>
       <el-button secondary :disabled="applying" @click="closeDrawer">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" :loading="applying" @click="applyChange">{{ t('dashboard.sql_editor_apply') }}</el-button>
     </template>
@@ -5562,6 +5642,13 @@ function handleBeforeClose(done: () => void) {
 .muted {
   color: #8f959e;
   font-size: 13px;
+}
+
+.strict-field-mapping-error {
+  float: left;
+  color: var(--el-color-danger);
+  font-size: 13px;
+  line-height: 32px;
 }
 
 .editor-alert {

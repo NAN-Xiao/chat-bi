@@ -75,18 +75,28 @@ assert.doesNotMatch(
   '配置 Agent 不能重新读取普通看板数据源'
 )
 
+const buildSqlPreviewRequest = functionSource('buildSqlPreviewRequest', 'previewSqlSource')
+assert.match(
+  buildSqlPreviewRequest,
+  /datasource:\s*effectiveDatasourceId\.value/,
+  'SQL 预览请求必须使用有效数据源'
+)
 const previewSqlSource = functionSource('previewSqlSource', 'previewMcpSource')
 assert.match(
   previewSqlSource,
-  /dashboardApi\.preview_sql\(\{[\s\S]*datasource:\s*effectiveDatasourceId\.value/g,
-  'SQL 预览必须继续调用普通看板 preview_sql，并使用有效数据源'
+  /sqlPreviewExecutor\.value\(buildSqlPreviewRequest\(/g,
+  '所有 SQL 预览必须统一通过可注入执行器'
 )
 assert.doesNotMatch(
   previewSqlSource,
   /props\.viewInfo\??\.datasource/,
   'SQL 预览不能重新读取普通看板数据源'
 )
-assert.match(source, /dashboardApi\.preview_sql/, '普通模式必须保留现有 SQL 预览接口')
+assert.match(
+  source,
+  /resolveDashboardSqlPreviewExecutor\(props\.previewExecutor,[\s\S]*dashboardApi\.preview_sql/,
+  '普通模式必须保留现有 SQL 预览接口作为默认执行器'
+)
 
 assert.match(
   source,

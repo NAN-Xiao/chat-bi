@@ -20,13 +20,15 @@ assert.match(
 assert.match(source, /:fixed-datasource-id="config\?\.datasource_id"/)
 assert.match(source, /:allow-external-sources="false"/)
 assert.match(source, /:apply-executor="persistRoiChart"/)
+assert.match(source, /:preview-executor="previewRoiChart"/)
+assert.match(source, /:strict-field-mapping="true"/)
 assert.match(source, /@applied="handleApplied"/)
 assert.match(source, /createRoiDashboardViewInfo/)
 assert.match(source, /roiChartToDashboardViewInfo/)
 assert.match(source, /dashboardViewInfoToRoiPayload/)
 assert.match(source, /roiDashboardApi\.createChart/)
 assert.match(source, /roiDashboardApi\.updateChart/)
-assert.doesNotMatch(source, /roiDashboardApi\.previewChart/)
+assert.match(source, /roiDashboardApi\.previewChart/)
 assert.doesNotMatch(source, /<el-drawer|<el-tabs|<el-form|<el-date-picker/)
 assert.doesNotMatch(source, /chartTypes|insightComparisonOptions|roi-sql-editor__/)
 assert.doesNotMatch(source, /useDashboardStore|canvasData|canvasViewInfo/)
@@ -39,7 +41,50 @@ const transformed = await esbuild.transform(persistModuleMatch[1], {
   target: 'es2022',
 })
 const persistModuleUrl = `data:text/javascript;base64,${Buffer.from(transformed.code).toString('base64')}`
-const { createPersistRoiChart } = await import(persistModuleUrl)
+const { createPersistRoiChart, createRoiChartPreviewExecutor } = await import(persistModuleUrl)
+
+{
+  const previewCalls = []
+  const previewRoiChart = createRoiChartPreviewExecutor({
+    getDashboardId: () => 'dashboard-1',
+    getLayoutSpan: () => 'half',
+    previewChart: async (dashboardId, payload) => {
+      previewCalls.push({ dashboardId, payload })
+      return {
+        status: 'success',
+        fields: ['period'],
+        data: [{ period: '2026-07-01' }],
+        message: '',
+      }
+    },
+  })
+  const result = await previewRoiChart({
+    datasource: 8,
+    sql: 'SELECT DATE_ADD(dt, period) AS period FROM roi_events',
+    title: 'ROI 趋势',
+    chartType: 'line',
+    chartConfig: { xAxis: [{ value: 'period' }] },
+  })
+
+  assert.deepEqual(previewCalls, [
+    {
+      dashboardId: 'dashboard-1',
+      payload: {
+        title: 'ROI 趋势',
+        sql: 'SELECT DATE_ADD(dt, period) AS period FROM roi_events',
+        chart_type: 'line',
+        chart_config: { xAxis: [{ value: 'period' }] },
+        layout_span: 'half',
+      },
+    },
+  ])
+  assert.deepEqual(result, {
+    status: 'success',
+    fields: ['period'],
+    data: [{ period: '2026-07-01' }],
+    message: '',
+  })
+}
 
 let currentChart = null
 const calls = []
