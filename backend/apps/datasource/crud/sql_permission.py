@@ -66,6 +66,8 @@ def build_permission_scope(
         session: SessionDep,
         current_user: CurrentUser,
         datasource: CoreDatasource,
+        *,
+        apply_user_permission_scope: bool = True,
 ) -> dict[str, dict[str, Any]]:
     """
     是什么：build_permission_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -84,15 +86,20 @@ def build_permission_scope(
         for field in fields:
             fields_by_table.setdefault(int(field.table_id), []).append(field)
 
-    contain_rules = get_user_permission_rules(session, current_user, datasource.id) if is_normal_user(current_user) else []
-    scoped_table_ids = get_user_scoped_table_ids(session, current_user, datasource.id, contain_rules)
+    user_permissions_apply = apply_user_permission_scope and is_normal_user(current_user)
+    contain_rules = get_user_permission_rules(session, current_user, datasource.id) if user_permissions_apply else []
+    scoped_table_ids = (
+        get_user_scoped_table_ids(session, current_user, datasource.id, contain_rules)
+        if user_permissions_apply
+        else None
+    )
     scope: dict[str, dict[str, Any]] = {}
     for table in tables:
         if scoped_table_ids is not None and int(table.id) not in scoped_table_ids:
             continue
         table_fields = fields_by_table.get(int(table.id), [])
         all_field_names = {normalize_identifier(field.field_name) for field in table_fields}
-        if is_normal_user(current_user):
+        if user_permissions_apply:
             column_scope = get_column_permission_scope(
                 session=session,
                 current_user=current_user,
@@ -457,6 +464,8 @@ def validate_sql_scope(
         current_user: CurrentUser,
         datasource: CoreDatasource,
         sql: str,
+        *,
+        apply_user_permission_scope: bool = True,
 ) -> tuple[list[exp.Expression], set[str], dict[str, dict[str, Any]]]:
     """
     是什么：validate_sql_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -468,7 +477,12 @@ def validate_sql_scope(
     if not actual_tables:
         raise ValueError("SQL 解析失败，无法确认查询表范围")
 
-    permission_scope = build_permission_scope(session, current_user, datasource)
+    permission_scope = build_permission_scope(
+        session,
+        current_user,
+        datasource,
+        apply_user_permission_scope=apply_user_permission_scope,
+    )
     unauthorized_tables = actual_tables - set(permission_scope.keys())
     if unauthorized_tables:
         raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
@@ -487,6 +501,8 @@ def validate_sql_table_scope(
         current_user: CurrentUser,
         datasource: CoreDatasource,
         sql: str,
+        *,
+        apply_user_permission_scope: bool = True,
 ) -> set[str]:
     """
     是什么：validate_sql_table_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -498,7 +514,12 @@ def validate_sql_table_scope(
     if not actual_tables:
         raise ValueError("SQL 解析失败，无法确认查询表范围")
 
-    permission_scope = build_permission_scope(session, current_user, datasource)
+    permission_scope = build_permission_scope(
+        session,
+        current_user,
+        datasource,
+        apply_user_permission_scope=apply_user_permission_scope,
+    )
     unauthorized_tables = actual_tables - set(permission_scope.keys())
     if unauthorized_tables:
         raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")

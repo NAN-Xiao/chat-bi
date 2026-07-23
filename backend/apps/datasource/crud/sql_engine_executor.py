@@ -523,6 +523,7 @@ def prepare_query_sql(
         allowed_tables: list[str] | set[str] | None = None,
         apply_row_permissions: bool = True,
         validate_columns: bool = True,
+        apply_user_permission_scope: bool = True,
 ) -> tuple[str, set[str]]:
     """
     是什么：prepare_query_sql 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -539,14 +540,21 @@ def prepare_query_sql(
             current_user,
             datasource,
             sql,
+            apply_user_permission_scope=apply_user_permission_scope,
         )
     else:
-        actual_tables = validate_sql_table_scope(session, current_user, datasource, sql)
+        actual_tables = validate_sql_table_scope(
+            session,
+            current_user,
+            datasource,
+            sql,
+            apply_user_permission_scope=apply_user_permission_scope,
+        )
 
     _validate_allowed_tables(actual_tables, allowed_tables)
 
     executed_sql = sql
-    if apply_row_permissions and is_normal_user(current_user):
+    if apply_row_permissions and apply_user_permission_scope and is_normal_user(current_user):
         row_filters = get_row_permission_filters(
             session=session,
             current_user=current_user,
@@ -558,7 +566,13 @@ def prepare_query_sql(
             is_safe, error_reason = check_sql_read(executed_sql, datasource)
             if not is_safe:
                 raise ValueError(f"SQL can only contain read operations: {error_reason}")
-            rewritten_tables = validate_sql_table_scope(session, current_user, datasource, executed_sql)
+            rewritten_tables = validate_sql_table_scope(
+                session,
+                current_user,
+                datasource,
+                executed_sql,
+                apply_user_permission_scope=apply_user_permission_scope,
+            )
             _validate_allowed_tables(rewritten_tables, allowed_tables)
 
     return executed_sql, actual_tables
@@ -571,6 +585,7 @@ def validate_user_query_sql_or_raise(
         sql: str,
         *,
         allowed_tables: list[str] | set[str] | None = None,
+        datasource_access_checked: bool = False,
 ) -> tuple[str, set[str]]:
     """
     是什么：validate_user_query_sql_or_raise 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -579,7 +594,11 @@ def validate_user_query_sql_or_raise(
     """
     if datasource is None:
         raise ValueError("项目不存在")
-    if getattr(datasource, "id", None) is not None and not has_datasource_access(session, current_user, datasource.id):
+    if (
+        not datasource_access_checked
+        and getattr(datasource, "id", None) is not None
+        and not has_datasource_access(session, current_user, datasource.id)
+    ):
         raise ValueError("You do not have permission to access this datasource")
     return prepare_query_sql(
         session=session,
@@ -589,6 +608,7 @@ def validate_user_query_sql_or_raise(
         allowed_tables=allowed_tables,
         apply_row_permissions=False,
         validate_columns=True,
+        apply_user_permission_scope=not datasource_access_checked,
     )
 
 
@@ -626,8 +646,9 @@ def execute_user_query_or_raise(
         datasource=datasource,
         sql=sql,
         allowed_tables=allowed_tables,
-        apply_row_permissions=apply_row_permissions,
+        apply_row_permissions=apply_row_permissions and not datasource_access_checked,
         validate_columns=validate_columns,
+        apply_user_permission_scope=not datasource_access_checked,
     )
     datasource_for_query = _copy_datasource_for_query(datasource)
     if close_system_transaction_before_query:

@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from apps.dashboard.crud import dashboard_service
 from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardSqlPreview
+from apps.datasource.crud import sql_engine_executor
 
 
 class _Session:
@@ -198,6 +199,61 @@ def test_dashboard_chart_execution_marks_resolved_datasource_as_prevalidated(
     assert execution_options == [True]
 
 
+def test_dashboard_roi_permission_audit_marks_validation_as_prevalidated(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ROI 图表的 SQL 校验不得重复要求用户级数据源授权。"""
+    validation_options: list[bool] = []
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: 11)
+    monkeypatch.setattr(dashboard_service, "get_roi_datasource_id_for_tenant", lambda *_args: 22)
+    monkeypatch.setattr(
+        dashboard_service,
+        "validate_user_query_sql_or_raise",
+        lambda *_args, **kwargs: validation_options.append(
+            kwargs.get("datasource_access_checked", False)
+        ) or ("select 1", {"roi_metric"}),
+    )
+    monkeypatch.setattr(dashboard_service, "has_applicable_permissions", lambda *_args, **_kwargs: False)
+
+    failure, permissions_apply = dashboard_service._dashboard_chart_permission_audit(
+        _Session(),
+        SimpleNamespace(id=1001, tenant_id=2001, system_role="viewer", tenant_role="member"),
+        22,
+        "select 1",
+    )
+
+    assert failure is None
+    assert permissions_apply is False
+    assert validation_options == [True]
+
+
+def test_prevalidated_roi_sql_validation_skips_user_permission_scope(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ROI 图表仍校验表字段，但不应用用户级表字段权限范围。"""
+    scope_options: list[bool] = []
+    datasource = SimpleNamespace(id=22, type="mysql")
+    monkeypatch.setattr(sql_engine_executor, "has_datasource_access", lambda *_args: False)
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "prepare_query_sql",
+        lambda *_args, **kwargs: scope_options.append(
+            kwargs.get("apply_user_permission_scope", True)
+        ) or ("select 1", {"roi_metric"}),
+    )
+
+    result = sql_engine_executor.validate_user_query_sql_or_raise(
+        _Session(),
+        _user(),
+        datasource,
+        "select 1",
+        datasource_access_checked=True,
+    )
+
+    assert result == ("select 1", {"roi_metric"})
+    assert scope_options == [False]
+
+
 def test_dashboard_execution_datasource_metadata_uses_roi_space_scope(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -224,10 +280,11 @@ def test_dashboard_execution_datasource_metadata_uses_roi_space_scope(
 
 
 def test_dashboard_api_exposes_execution_datasource_candidates() -> None:
-    """编辑器只能通过专用只读接口取得当前空间候选集。"""
+    """看板 SQL 接口使用空间级执行数据源校验，而非通用数据源装饰器。"""
     from apps.dashboard.api import dashboard_api
 
     assert hasattr(dashboard_api, "execution_datasources_api")
+    assert not hasattr(dashboard_api.sql_preview_api, "__wrapped__")
 
 
 def test_dashboard_refresh_uses_saved_roi_chart_datasource(

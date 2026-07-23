@@ -2097,6 +2097,8 @@ def _dashboard_chart_permission_audit(
     datasource = session.get(CoreDatasource, datasource_id)
     if datasource is None:
         return _failed_chart_result("项目不存在"), False
+    configured_roles = dict(_configured_chart_execution_datasources(session, current_user))
+    datasource_access_checked = configured_roles.get(datasource_id) == "roi"
     tables: set[str] = set()
     try:
         validation_sql = (
@@ -2109,6 +2111,7 @@ def _dashboard_chart_permission_audit(
             current_user=current_user,
             datasource=datasource,
             sql=validation_sql,
+            datasource_access_checked=datasource_access_checked,
         )
     except Exception as exc:
         message = f"{exc}"

@@ -406,7 +406,6 @@ async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: Quer
 
 
 @router.post("/sql_preview", summary=f"{PLACEHOLDER_PREFIX}dashboard_sql_preview")
-@require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
 async def sql_preview_api(session: SessionDep, current_user: CurrentUser, request: DashboardSqlPreview):
     """
     是什么：sql_preview_api 是一个接口入口，负责接住仪表盘相关请求。
