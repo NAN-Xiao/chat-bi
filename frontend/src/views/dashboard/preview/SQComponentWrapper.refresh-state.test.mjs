@@ -7,10 +7,10 @@ const currentDir = dirname(fileURLToPath(import.meta.url))
 const source = readFileSync(join(currentDir, 'SQComponentWrapper.vue'), 'utf8')
 
 const refreshChartDataMatch = source.match(
-  /async function refreshChartData\(\) \{([\s\S]*?)\r?\n\}/
+  /async function refreshDashboardChartData\(\) \{([\s\S]*?)\r?\n\}/
 )
 
-assert.ok(refreshChartDataMatch, '需要保留看板批量刷新入口')
+assert.ok(refreshChartDataMatch, '需要保留普通看板批量刷新入口')
 
 const body = refreshChartDataMatch[1]
 const beforePreviewSql = body.slice(0, body.indexOf('const result = await previewChartSql'))

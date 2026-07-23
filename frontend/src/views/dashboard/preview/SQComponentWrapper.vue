@@ -41,6 +41,10 @@ import {
   isMixedChart,
   refreshMixedChartData,
 } from '@/views/dashboard/utils/mixedChartData'
+import {
+  resolveSQComponentWrapperMoreActionsSlotProps,
+  runSQComponentWrapperRefresh,
+} from '@/views/dashboard/preview/SQComponentWrapper.externalActions'
 
 interface SQComponentWrapperExternalProps {
   refreshExecutor?: () => Promise<void>
@@ -163,6 +167,9 @@ const emptyCurrentViewInfo = computed(() => ({
 }))
 const currentViewInfo = computed(
   () => props.canvasViewInfo?.[props.configItem.id] || emptyCurrentViewInfo.value
+)
+const moreActionsSlotProps = computed(() =>
+  resolveSQComponentWrapperMoreActionsSlotProps(currentViewInfo.value)
 )
 const currentChartType = computed(() => {
   const chart = currentViewInfo.value?.chart || {}
@@ -1106,12 +1113,7 @@ function buildWorksheetXml(
   return `<Worksheet ss:Name="${xmlText(sheetName)}"><Table><Row><Cell ss:MergeAcross="${Math.max(fields.length - 1, 0)}"><Data ss:Type="String">${xmlText(title)}</Data></Cell></Row>${headerRow}${dataRows}</Table></Worksheet>`
 }
 
-async function refreshChartData() {
-  if (props.refreshExecutor) {
-    if (props.refreshing) return
-    await props.refreshExecutor()
-    return
-  }
+async function refreshDashboardChartData() {
   if (isPreviewSingleChart.value) {
     if (isExternalSnapshotChart(currentViewInfo.value)) {
       ElMessage.success(t('dashboard.chart_refresh_success'))
@@ -1216,6 +1218,14 @@ async function refreshChartData() {
   } else {
     ElMessage.error(t('dashboard.chart_refresh_failed'))
   }
+}
+
+async function refreshChartData() {
+  await runSQComponentWrapperRefresh({
+    refreshExecutor: props.refreshExecutor,
+    refreshing: props.refreshing,
+    fallback: refreshDashboardChartData,
+  })
 }
 
 function openChartFullscreen() {
@@ -1388,7 +1398,7 @@ defineExpose({
               <el-icon size="15"><Position /></el-icon>
               <span>{{ t('dashboard.chart_move_to') }}</span>
             </el-dropdown-item>
-            <slot name="more-actions" :view-info="currentViewInfo" />
+            <slot name="more-actions" v-bind="moreActionsSlotProps" />
           </el-dropdown-menu>
         </template>
       </el-dropdown>
