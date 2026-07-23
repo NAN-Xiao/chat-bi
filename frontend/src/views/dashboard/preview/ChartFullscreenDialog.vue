@@ -373,6 +373,13 @@ function closeDialog() {
   }
 }
 
+.is-metric-layout,
+.is-table-layout {
+  .fullscreen-chart-stage {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
 .is-metric-layout {
   .fullscreen-content {
     grid-template-columns: minmax(0, 1fr);

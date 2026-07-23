@@ -1652,7 +1652,7 @@ defineExpose({
   align-items: center;
   gap: var(--preview-action-gap);
   opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
   transform: translateY(-2px);
   transition:
     opacity 0.14s ease,
