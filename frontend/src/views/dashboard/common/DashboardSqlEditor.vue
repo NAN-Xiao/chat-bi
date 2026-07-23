@@ -4206,13 +4206,6 @@ function validateBeforeApply() {
     ElMessage.warning(executionDatasourceError.value || '请选择图表执行数据源。')
     return false
   }
-  if (hasSqlSource.value && sqlBuilder.activeTab === 'builder') {
-    const eventScopeIssues = builderEventScopeIssues()
-    if (eventScopeIssues.length) {
-      ElMessage.warning(eventScopeIssues[0])
-      return false
-    }
-  }
   if (hasSqlSource.value && !form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return false

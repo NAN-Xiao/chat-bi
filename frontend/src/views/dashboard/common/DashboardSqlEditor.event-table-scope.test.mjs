@@ -57,4 +57,14 @@ assert.match(
   '事件配置失效时需要在配置器中显示明确状态'
 )
 
+const applyValidation = source.match(
+  /function validateBeforeApply\(\) \{([\s\S]*?)\n\}/
+)
+assert.ok(applyValidation, '编辑器需要保留应用前校验')
+assert.doesNotMatch(
+  applyValidation[1],
+  /builderEventScopeIssues\(\)/,
+  '已预览的 SQL 图表应用到画布时不应被事件配置状态拦截'
+)
+
 console.log('dashboard SQL editor event table scope tests passed')
