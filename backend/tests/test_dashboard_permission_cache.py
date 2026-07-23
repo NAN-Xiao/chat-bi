@@ -24,11 +24,20 @@ def _user():
     return SimpleNamespace(id=1001, tenant_id=2001)
 
 
+def _allow_chart_execution_datasource(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: int(datasource_id),
+    )
+
+
 def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：权限校验失败时，看板预览不能先命中历史缓存。
     """
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    _allow_chart_execution_datasource(monkeypatch)
     monkeypatch.setattr(
         dashboard_service,
         "_dashboard_chart_permission_audit",
@@ -59,6 +68,7 @@ def test_preview_sql_cache_only_misses_when_permissions_apply(monkeypatch: pytes
     是什么：命中任意数据权限时，cache_only 请求不能返回旧缓存。
     """
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    _allow_chart_execution_datasource(monkeypatch)
     monkeypatch.setattr(dashboard_service, "_dashboard_chart_permission_audit", lambda *_args, **_kwargs: (None, True))
 
     def _unexpected_cache_get(*_args, **_kwargs):
@@ -78,6 +88,7 @@ def test_preview_sql_does_not_write_cache_when_permissions_apply(monkeypatch: py
     是什么：命中任意数据权限时，即使实时执行成功也不能把结果写入共享预览缓存。
     """
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    _allow_chart_execution_datasource(monkeypatch)
     monkeypatch.setattr(dashboard_service, "_dashboard_chart_permission_audit", lambda *_args, **_kwargs: (None, True))
     monkeypatch.setattr(
         dashboard_service,
@@ -106,6 +117,7 @@ def test_dashboard_payload_without_data_strips_saved_chart_snapshot(monkeypatch:
     是什么：看板初始加载不能先把保存的图表快照发给前端，再等待异步权限检查覆盖。
     """
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    _allow_chart_execution_datasource(monkeypatch)
     monkeypatch.setattr(dashboard_service, "_dashboard_chart_permission_audit", lambda *_args, **_kwargs: (None, False))
     monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args, **_kwargs: "")
@@ -168,6 +180,7 @@ def test_dashboard_payload_with_data_executes_sql_engine_instead_of_saved_snapsh
     calls: list[tuple[int, str]] = []
 
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    _allow_chart_execution_datasource(monkeypatch)
     monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args, **_kwargs: "")
     monkeypatch.setattr(dashboard_service, "_can_edit_dashboard", lambda *_args, **_kwargs: True)

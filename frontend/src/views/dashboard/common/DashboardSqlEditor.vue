@@ -82,6 +82,11 @@ const emits = defineEmits(['update:modelValue', 'applied'])
 const { t } = useI18n()
 const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
 type ChartDataSourceType = 'sql' | 'external_mcp'
+type ExecutionDatasourceOption = {
+  id: number
+  name: string
+  role: 'bound' | 'roi'
+}
 type PreviewResultSnapshot = {
   fields: string[]
   data: Array<Record<string, any>>
@@ -294,6 +299,9 @@ const schemaTables = ref<any[]>([])
 const trackingConfig = ref<any>(null)
 const trackingEventCatalog = ref<any>(null)
 const datasourceInfo = ref<any>(null)
+const executionDatasourceOptions = ref<ExecutionDatasourceOption[]>([])
+const selectedExecutionDatasourceId = ref<number | null>(null)
+const executionDatasourceError = ref('')
 const activeFormulaMetricId = ref('')
 const activeFormulaAtomicMetricKey = ref('')
 const previewVersion = ref(0)
@@ -543,7 +551,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
 })
 const eventFieldScope = computed(() => resolveDashboardBuilderEventScope({
   config: trackingConfig.value,
-  datasourceId: props.viewInfo?.datasource,
+  datasourceId: selectedExecutionDatasourceId.value,
   tableNames: (schemaTables.value || []).map(schemaTableName).filter(Boolean),
 }))
 const eventScopedSchemaFieldOptions = computed(() =>
@@ -709,7 +717,7 @@ const pivotGroupFieldOptions = computed(() => {
   return Array.from(options.entries()).map(([value, label]) => ({ value, label }))
 })
 const canUseSqlEditor = computed(() => props.canEditSql === true)
-const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && hasSqlSource.value && canUseSqlEditor.value)
+const canRunPreview = computed(() => Boolean(selectedExecutionDatasourceId.value) && hasSqlSource.value && canUseSqlEditor.value)
 const canRunEditorPreview = computed(() => {
   if (!hasSqlSource.value && !hasMcpSource.value) {
     return false
@@ -717,7 +725,7 @@ const canRunEditorPreview = computed(() => {
   if (hasSqlSource.value && !canUseSqlEditor.value) {
     return false
   }
-  if (hasSqlSource.value && !props.viewInfo?.datasource) {
+  if (hasSqlSource.value && !selectedExecutionDatasourceId.value) {
     return false
   }
   if (hasMcpSource.value && !currentExternalMcpServerId.value) {
@@ -2263,7 +2271,7 @@ function collectBuilderAiContext() {
           type: datasourceInfo.value.type,
           typeName: datasourceInfo.value.type_name || datasourceInfo.value.typeName,
         }
-      : { id: props.viewInfo?.datasource },
+      : { id: selectedExecutionDatasourceId.value },
     time: {
       field: fieldOptionPayload(sqlBuilder.timeField),
       grain: sqlBuilder.timeGrain,
@@ -2495,7 +2503,7 @@ async function generateBuilderAiSql() {
     ElMessage.warning(sqlEditorPermissionMessage)
     return false
   }
-  if (!props.viewInfo?.datasource) {
+  if (!selectedExecutionDatasourceId.value) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
@@ -2535,7 +2543,7 @@ async function generateBuilderAiSql() {
     showLocalBuilderAgentAdvice()
     await setLoadingPhase('正在生成建议')
     result = await dashboardApi.generate_ai_sql({
-      datasource: props.viewInfo.datasource,
+      datasource: selectedExecutionDatasourceId.value,
       intent: '',
       chart_type: form.chartType,
       title: form.title,
@@ -2637,7 +2645,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       sqlBuilder.activeTab === 'builder'
     )
   }
-  const datasourceId = startViewInfo?.datasource
+  const datasourceId = selectedExecutionDatasourceId.value
   const tenantId = currentExternalMcpTenantId.value
   if (!datasourceId) {
     if (!isCurrentSchemaLoad()) {
@@ -3018,7 +3026,7 @@ function currentPreviewSignature() {
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
-          datasource: props.viewInfo?.datasource || null,
+          datasource: selectedExecutionDatasourceId.value,
           sql: form.sql.trim(),
           pivot: previewPivotPayload() || { enabled: false },
         }
@@ -3814,6 +3822,9 @@ function initEditor() {
   form.mcpResultPath = mcpConfig.resultPath || mcpConfig.result_path || ''
   form.mcpKeyField = mcpConfig.keyField || mcpConfig.key_field || ''
   form.mcpValueField = mcpConfig.valueField || mcpConfig.value_field || ''
+  executionDatasourceOptions.value = []
+  selectedExecutionDatasourceId.value = null
+  executionDatasourceError.value = ''
   lastPreviewSql.value = form.sql.trim()
   resetFieldSelections()
   initInsightConfig(chart.insight)
@@ -3828,6 +3839,74 @@ function initEditor() {
     mcpTools.value = []
     mcpFilterOptions.value = {}
   }
+  if (hasSqlSource.value) {
+    void loadExecutionDatasources(viewInfo)
+  } else {
+    ensureBuilderSchemaLoaded()
+  }
+}
+
+function normalizeExecutionDatasourceId(value: unknown) {
+  const datasourceId = Number(value)
+  return Number.isInteger(datasourceId) && datasourceId > 0 ? datasourceId : null
+}
+
+async function loadExecutionDatasources(viewInfo: any) {
+  try {
+    const options = await dashboardApi.execution_datasources()
+    executionDatasourceOptions.value = Array.isArray(options) ? options : []
+    const savedDatasourceId = normalizeExecutionDatasourceId(viewInfo?.datasource)
+    if (savedDatasourceId && !executionDatasourceOptions.value.some((item) => item.id === savedDatasourceId)) {
+      selectedExecutionDatasourceId.value = null
+      executionDatasourceError.value = '当前图表选择的数据源已不在此空间可用范围内。'
+      return
+    }
+    selectedExecutionDatasourceId.value = savedDatasourceId ||
+      executionDatasourceOptions.value.find((item) => item.role === 'bound')?.id || null
+    if (!selectedExecutionDatasourceId.value) {
+      executionDatasourceError.value = '当前空间未配置可用于图表 SQL 的数据源。'
+      return
+    }
+    ensureBuilderSchemaLoaded()
+  } catch {
+    executionDatasourceOptions.value = []
+    selectedExecutionDatasourceId.value = null
+    executionDatasourceError.value = '图表执行数据源加载失败。'
+  }
+}
+
+function resetExecutionDatasourceDependentState() {
+  form.sql = ''
+  form.columns = []
+  form.x = ''
+  form.y = []
+  form.series = ''
+  form.pivotEnabled = false
+  form.pivotTimeField = ''
+  form.pivotGroupField = ''
+  form.pivotGroupValues = []
+  sourcePreview.fields = []
+  sourcePreview.data = []
+  preview.fields = []
+  preview.data = []
+  preview.status = 'success'
+  preview.message = ''
+  preview.raw = undefined
+  setSourceResult('sql', createEmptyPreviewResultSnapshot())
+  clearMergeState()
+  resetSqlBuilderState()
+  datasourceInfo.value = null
+  schemaTables.value = []
+  trackingConfig.value = null
+  trackingEventCatalog.value = null
+  lastPreviewSql.value = ''
+  lastPreviewSignature.value = ''
+  previewVersion.value += 1
+}
+
+function handleExecutionDatasourceChange() {
+  executionDatasourceError.value = ''
+  resetExecutionDatasourceDependentState()
   ensureBuilderSchemaLoaded()
 }
 
@@ -3928,7 +4007,7 @@ watch(
 )
 
 async function previewSqlSource() {
-  if (!props.viewInfo?.datasource) {
+  if (!selectedExecutionDatasourceId.value) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return null
   }
@@ -3939,7 +4018,7 @@ async function previewSqlSource() {
   const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
   if (shouldPreviewPivot) {
     const sourceResult = await dashboardApi.preview_sql({
-      datasource: props.viewInfo.datasource,
+      datasource: selectedExecutionDatasourceId.value,
       sql: form.sql.trim(),
     })
     const sourceSnapshot = previewResultSnapshot(sourceResult)
@@ -3957,7 +4036,7 @@ async function previewSqlSource() {
     }
   }
   const result = await dashboardApi.preview_sql({
-    datasource: props.viewInfo.datasource,
+    datasource: selectedExecutionDatasourceId.value,
     sql: form.sql.trim(),
     pivot: previewPivotPayload(),
   })
@@ -4132,6 +4211,10 @@ function validateBeforeApply() {
     ElMessage.warning(sqlEditorPermissionMessage)
     return false
   }
+  if (hasSqlSource.value && !selectedExecutionDatasourceId.value) {
+    ElMessage.warning(executionDatasourceError.value || '请选择图表执行数据源。')
+    return false
+  }
   if (hasSqlSource.value && sqlBuilder.activeTab === 'builder') {
     const eventScopeIssues = builderEventScopeIssues()
     if (eventScopeIssues.length) {
@@ -4293,7 +4376,11 @@ function writeEditorStateToViewInfo(options: {
   delete props.viewInfo.message
   props.viewInfo.chart = buildChart()
   props.viewInfo.pivot = buildPivotConfig()
-  props.viewInfo.datasource = hasSqlSource.value ? props.viewInfo.datasource || null : null
+  if (hasSqlSource.value) {
+    props.viewInfo.datasource = selectedExecutionDatasourceId.value
+  } else {
+    props.viewInfo.datasource = null
+  }
   props.viewInfo.sourceConfig = {
     ...sourceConfigBase,
     sources: [...form.sourceTypes],
@@ -4312,7 +4399,7 @@ function writeEditorStateToViewInfo(options: {
     sql: hasSqlSource.value
       ? {
           ...(existingSourceConfig.sql || {}),
-          datasource: props.viewInfo.datasource || null,
+          datasource: selectedExecutionDatasourceId.value,
           sql: form.sql.trim(),
           builder: builderConfigForSave(),
           lastResult: sourceResultForSave('sql'),
@@ -5142,6 +5229,27 @@ function closeDrawer() {
           <span v-if="hasSqlSource && !isExternalSnapshot && sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
           <span v-if="mcpChangedAfterPreview" class="muted">{{ mt('mcp_editor_changed') }}</span>
         </div>
+        <el-form-item v-if="hasSqlSource" label="执行数据源">
+          <el-select
+            v-model="selectedExecutionDatasourceId"
+            :disabled="executionDatasourceOptions.length <= 1"
+            @change="handleExecutionDatasourceChange"
+          >
+            <el-option
+              v-for="item in executionDatasourceOptions"
+              :key="item.id"
+              :label="`${item.role === 'roi' ? 'ROI 数据源' : '绑定数据源'}：${item.name}`"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-alert
+          v-if="executionDatasourceError"
+          class="editor-alert"
+          type="warning"
+          :title="executionDatasourceError"
+          :closable="false"
+        />
         <el-alert
           v-if="preview.status === 'failed' && preview.message"
           class="editor-alert"

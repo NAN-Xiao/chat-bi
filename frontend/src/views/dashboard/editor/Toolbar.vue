@@ -6,7 +6,7 @@ import dvTab from '@/assets/svg/dv-tab.svg'
 import dvText from '@/assets/svg/dv-text.svg'
 import dvView from '@/assets/svg/dv-view.svg'
 import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { snapshotStoreWithOut } from '@/stores/dashboard/snapshot.ts'
 import icon_undo_outlined from '@/assets/svg/icon_undo_outlined.svg'
@@ -20,11 +20,19 @@ import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import router from '@/router'
+import { dashboardApi } from '@/api/dashboard'
 const fullScreeRef = ref(null)
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const { dashboardInfo, fullscreenFlag } = storeToRefs(dashboardStore)
+const executionDatasourceOptions = ref<any[]>([])
+const selectedExecutionDatasourceId = computed({
+  get: () => dashboardInfo.value.execution_datasource_id || dashboardInfo.value.datasource,
+  set: (value) => {
+    dashboardInfo.value.execution_datasource_id = Number(value)
+  },
+})
 
 const snapshotStore = snapshotStoreWithOut()
 const { snapshotIndex } = storeToRefs(snapshotStore)
@@ -91,6 +99,7 @@ const saveCanvasWithCheck = () => {
       name: dashboardInfo.value.name,
       datasource:
         dashboardInfo.value.datasource || props.baseParams?.datasource || datasourceContext.datasourceId,
+      execution_datasource_id: dashboardInfo.value.execution_datasource_id,
       pid: 'root',
     }
     saveDashboardResource(updateParams, function () {
@@ -111,6 +120,14 @@ const props = defineProps({
 })
 
 const canEditDashboard = computed(() => dashboardInfo.value.canEdit !== false)
+const showExecutionDatasourceSelector = computed(
+  () => canEditDashboard.value && dashboardInfo.value.dataState !== 'prepare' && !props.baseParams?.platformTemplate
+)
+
+onMounted(async () => {
+  if (!showExecutionDatasourceSelector.value) return
+  executionDatasourceOptions.value = await dashboardApi.execution_datasources()
+})
 
 const groupOptFinish = (result: any) => {
   router.replace({
@@ -238,6 +255,19 @@ const previewInner = () => {
       </div>
     </div>
     <div class="core-toolbar">
+      <el-select
+        v-if="showExecutionDatasourceSelector"
+        v-model="selectedExecutionDatasourceId"
+        class="execution-datasource-select"
+        size="small"
+      >
+        <el-option
+          v-for="item in executionDatasourceOptions"
+          :key="item.id"
+          :label="`${item.role === 'roi' ? 'ROI 数据源' : '绑定数据源'}：${item.name}`"
+          :value="item.id"
+        />
+      </el-select>
       <el-dropdown
         v-if="canEditDashboard"
         trigger="click"
