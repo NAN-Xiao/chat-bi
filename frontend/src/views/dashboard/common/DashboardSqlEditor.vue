@@ -68,6 +68,9 @@ const props = withDefaults(
     dashboardInfo?: any
     allowStaticApply?: boolean
     canEditSql?: boolean
+    fixedDatasourceId?: number | string | null
+    allowExternalSources?: boolean
+    applyExecutor?: (viewInfo: any) => Promise<boolean>
   }>(),
   {
     modelValue: false,
@@ -75,9 +78,15 @@ const props = withDefaults(
     dashboardInfo: null,
     allowStaticApply: false,
     canEditSql: false,
+    fixedDatasourceId: null,
+    allowExternalSources: true,
+    applyExecutor: undefined,
   }
 )
 
+const effectiveDatasourceId = computed(
+  () => props.fixedDatasourceId ?? props.viewInfo?.datasource ?? null
+)
 const emits = defineEmits(['update:modelValue', 'applied'])
 const { t } = useI18n()
 const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
@@ -279,6 +288,7 @@ const mergeState = reactive({
 })
 
 const loading = ref(false)
+const applying = ref(false)
 const builderLoading = ref(false)
 const loadingText = ref('')
 const mcpServersLoading = ref(false)
@@ -543,7 +553,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
 })
 const eventFieldScope = computed(() => resolveDashboardBuilderEventScope({
   config: trackingConfig.value,
-  datasourceId: props.viewInfo?.datasource,
+  datasourceId: effectiveDatasourceId.value,
   tableNames: (schemaTables.value || []).map(schemaTableName).filter(Boolean),
 }))
 const eventScopedSchemaFieldOptions = computed(() =>
@@ -709,7 +719,7 @@ const pivotGroupFieldOptions = computed(() => {
   return Array.from(options.entries()).map(([value, label]) => ({ value, label }))
 })
 const canUseSqlEditor = computed(() => props.canEditSql === true)
-const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource) && hasSqlSource.value && canUseSqlEditor.value)
+const canRunPreview = computed(() => Boolean(effectiveDatasourceId.value) && hasSqlSource.value && canUseSqlEditor.value)
 const canRunEditorPreview = computed(() => {
   if (!hasSqlSource.value && !hasMcpSource.value) {
     return false
@@ -717,7 +727,7 @@ const canRunEditorPreview = computed(() => {
   if (hasSqlSource.value && !canUseSqlEditor.value) {
     return false
   }
-  if (hasSqlSource.value && !props.viewInfo?.datasource) {
+  if (hasSqlSource.value && !effectiveDatasourceId.value) {
     return false
   }
   if (hasMcpSource.value && !currentExternalMcpServerId.value) {
@@ -2263,7 +2273,7 @@ function collectBuilderAiContext() {
           type: datasourceInfo.value.type,
           typeName: datasourceInfo.value.type_name || datasourceInfo.value.typeName,
         }
-      : { id: props.viewInfo?.datasource },
+      : { id: effectiveDatasourceId.value },
     time: {
       field: fieldOptionPayload(sqlBuilder.timeField),
       grain: sqlBuilder.timeGrain,
@@ -2495,7 +2505,7 @@ async function generateBuilderAiSql() {
     ElMessage.warning(sqlEditorPermissionMessage)
     return false
   }
-  if (!props.viewInfo?.datasource) {
+  if (!effectiveDatasourceId.value) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
@@ -2535,7 +2545,7 @@ async function generateBuilderAiSql() {
     showLocalBuilderAgentAdvice()
     await setLoadingPhase('正在生成建议')
     result = await dashboardApi.generate_ai_sql({
-      datasource: props.viewInfo.datasource,
+      datasource: effectiveDatasourceId.value,
       intent: '',
       chart_type: form.chartType,
       title: form.title,
@@ -2637,7 +2647,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       sqlBuilder.activeTab === 'builder'
     )
   }
-  const datasourceId = startViewInfo?.datasource
+  const datasourceId = effectiveDatasourceId.value
   const tenantId = currentExternalMcpTenantId.value
   if (!datasourceId) {
     if (!isCurrentSchemaLoad()) {
@@ -3018,7 +3028,7 @@ function currentPreviewSignature() {
     sources: [...form.sourceTypes],
     sql: hasSqlSource.value
       ? {
-          datasource: props.viewInfo?.datasource || null,
+          datasource: effectiveDatasourceId.value,
           sql: form.sql.trim(),
           pivot: previewPivotPayload() || { enabled: false },
         }
@@ -3562,6 +3572,15 @@ function handleMcpServerChange() {
 }
 
 function handleSourceTypesChange(values: ChartDataSourceType[]) {
+  if (!props.allowExternalSources) {
+    form.sourceTypes = ['sql']
+    form.primarySource = 'sql'
+    form.mcpServerId = ''
+    mcpTools.value = []
+    mcpFilterOptions.value = {}
+    previewVersion.value += 1
+    return
+  }
   const nextSources = normalizeSourceTypes(values)
   form.sourceTypes = nextSources.length ? nextSources : ['sql']
   form.primarySource = hasMcpSource.value && !hasSqlSource.value ? 'external_mcp' : 'sql'
@@ -3770,8 +3789,22 @@ function resetFieldSelections() {
 
 function initEditor() {
   const viewInfo = props.viewInfo || {}
+  if (props.fixedDatasourceId !== null && props.fixedDatasourceId !== undefined) {
+    const fixedSourceConfig = chartSourceConfig(viewInfo)
+    viewInfo.datasource = effectiveDatasourceId.value
+    viewInfo.sourceConfig = {
+      ...fixedSourceConfig,
+      sql: {
+        ...(fixedSourceConfig.sql || {}),
+        datasource: effectiveDatasourceId.value,
+      },
+    }
+  }
   const chart = viewInfo.chart || {}
-  const sourceTypes = resolveChartSourceTypes(viewInfo)
+  let sourceTypes = resolveChartSourceTypes(viewInfo)
+  if (!props.allowExternalSources) {
+    sourceTypes = ['sql']
+  }
   const sourceConfig = chartSourceConfig(viewInfo)
   const mcpConfig = {
     ...(sourceConfig.mcp || {}),
@@ -3928,7 +3961,7 @@ watch(
 )
 
 async function previewSqlSource() {
-  if (!props.viewInfo?.datasource) {
+  if (!effectiveDatasourceId.value) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return null
   }
@@ -3939,7 +3972,7 @@ async function previewSqlSource() {
   const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
   if (shouldPreviewPivot) {
     const sourceResult = await dashboardApi.preview_sql({
-      datasource: props.viewInfo.datasource,
+      datasource: effectiveDatasourceId.value,
       sql: form.sql.trim(),
     })
     const sourceSnapshot = previewResultSnapshot(sourceResult)
@@ -3957,7 +3990,7 @@ async function previewSqlSource() {
     }
   }
   const result = await dashboardApi.preview_sql({
-    datasource: props.viewInfo.datasource,
+    datasource: effectiveDatasourceId.value,
     sql: form.sql.trim(),
     pivot: previewPivotPayload(),
   })
@@ -4293,7 +4326,7 @@ function writeEditorStateToViewInfo(options: {
   delete props.viewInfo.message
   props.viewInfo.chart = buildChart()
   props.viewInfo.pivot = buildPivotConfig()
-  props.viewInfo.datasource = hasSqlSource.value ? props.viewInfo.datasource || null : null
+  props.viewInfo.datasource = hasSqlSource.value ? effectiveDatasourceId.value : null
   props.viewInfo.sourceConfig = {
     ...sourceConfigBase,
     sources: [...form.sourceTypes],
@@ -4312,7 +4345,7 @@ function writeEditorStateToViewInfo(options: {
     sql: hasSqlSource.value
       ? {
           ...(existingSourceConfig.sql || {}),
-          datasource: props.viewInfo.datasource || null,
+          datasource: effectiveDatasourceId.value,
           sql: form.sql.trim(),
           builder: builderConfigForSave(),
           lastResult: sourceResultForSave('sql'),
@@ -4410,14 +4443,27 @@ async function previewAndPersistBuilderDraft() {
   }
 }
 
-function applyChange() {
-  if (!props.viewInfo || !validateBeforeApply()) return
-  writeEditorStateToViewInfo({
+async function applyChange() {
+  if (!props.viewInfo || applying.value || !validateBeforeApply()) return
+  const written = writeEditorStateToViewInfo({
     strictMcpArguments: true,
-    emit: true,
-    close: true,
-    notify: true,
+    emit: false,
+    close: false,
+    notify: false,
   })
+  if (!written) return
+  applying.value = true
+  try {
+    if (props.applyExecutor) {
+      const applied = await props.applyExecutor(props.viewInfo)
+      if (!applied) return
+    }
+    emits('applied', props.viewInfo)
+    visible.value = false
+    ElMessage.success(t('dashboard.sql_editor_applied'))
+  } finally {
+    applying.value = false
+  }
 }
 
 function closeDrawer() {
@@ -4437,7 +4483,7 @@ function closeDrawer() {
   >
     <div v-loading="loading" class="sql-editor-body">
       <el-form label-position="top">
-        <div v-if="!hasSqlSource && canUseSqlEditor" class="source-section-toggle">
+        <div v-if="props.allowExternalSources && !hasSqlSource && canUseSqlEditor" class="source-section-toggle">
           <div class="source-section-title">SQL 数据源</div>
           <el-checkbox v-model="sqlSourceEnabled" class="source-inline-checkbox">SQL</el-checkbox>
         </div>
@@ -4474,7 +4520,7 @@ function closeDrawer() {
                   <el-icon><WarningFilled /></el-icon>
                 </button>
               </el-tooltip>
-              <el-checkbox v-model="sqlSourceEnabled" class="source-inline-checkbox">SQL</el-checkbox>
+              <el-checkbox v-if="props.allowExternalSources" v-model="sqlSourceEnabled" class="source-inline-checkbox">SQL</el-checkbox>
             </div>
           </div>
 
@@ -4960,11 +5006,11 @@ function closeDrawer() {
           :title="sqlEditorPermissionMessage"
           :closable="false"
         />
-        <div class="source-section-toggle">
+        <div v-if="props.allowExternalSources" class="source-section-toggle">
           <div class="source-section-title">MCP 数据源</div>
           <el-checkbox v-model="mcpSourceEnabled" class="source-inline-checkbox">MCP</el-checkbox>
         </div>
-        <div v-if="hasMcpSource" class="mcp-editor-panel">
+        <div v-if="props.allowExternalSources && hasMcpSource" class="mcp-editor-panel">
           <el-alert
             class="editor-alert"
             type="info"
@@ -5442,7 +5488,7 @@ function closeDrawer() {
     </div>
     <template #footer>
       <el-button secondary @click="closeDrawer">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="applyChange">{{ t('dashboard.sql_editor_apply') }}</el-button>
+      <el-button type="primary" :loading="applying" @click="applyChange">{{ t('dashboard.sql_editor_apply') }}</el-button>
     </template>
   </el-drawer>
   <el-dialog
