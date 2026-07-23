@@ -3072,8 +3072,7 @@ def _user_name(session: SessionDep, user_id) -> str | None:
         return None
 
 
-def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser, dashboard: CreateDashboard,
-                                 bound_datasource: int | None):
+def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser, dashboard: CreateDashboard):
     """
     是什么：_validate_canvas_datasources 是一个可以复用的小步骤，负责仪表盘相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -3084,17 +3083,15 @@ def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser,
         if not isinstance(item, dict):
             continue
         item_sql = item.get('sql')
-        item_datasource = _normalize_datasource_id(item.get('datasource'))
-        if item_sql and not item_datasource:
-            raise HTTPException(status_code=400, detail="Dashboard chart datasource is required")
-        if item_datasource is None:
+        if not item_sql:
             continue
-        if bound_datasource is not None and item_datasource != bound_datasource:
-            raise HTTPException(
-                status_code=400,
-                detail="Dashboard charts must use the same datasource as the dashboard"
-            )
-        _ensure_datasource_access(session, current_user, item_datasource)
+        item_datasource = _normalize_datasource_id(item.get('datasource'))
+        item["datasource"] = resolve_chart_execution_datasource(
+            session,
+            current_user,
+            item_datasource,
+        )
+    dashboard.canvas_view_info = orjson.dumps(canvas_view_obj).decode()
 
 
 def _active_share_filter():
@@ -3777,6 +3774,19 @@ def _dashboard_payload(
         else:
             item_datasource = _chart_datasource(record, item, effective_datasource)
         if item.get('sql') is not None:
+            try:
+                item_datasource = resolve_chart_execution_datasource(
+                    session,
+                    current_user,
+                    item_datasource,
+                )
+                item["datasource"] = item_datasource
+            except HTTPException as exc:
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result(str(exc.detail), "dashboard_execution_datasource_denied"),
+                )
+                continue
             if not include_data:
                 if item_datasource is not None:
                     permission_failure, permissions_apply = _dashboard_chart_permission_audit(
@@ -3794,24 +3804,16 @@ def _dashboard_payload(
             if item_datasource is None:
                 _apply_dashboard_chart_result(item, _failed_chart_result("Dashboard datasource is required"))
                 continue
-            if record.datasource is not None and item_datasource != record.datasource:
-                data_result = {
-                    'status': 'failed',
-                    'data': [],
-                    'fields': [],
-                    'message': 'Dashboard chart datasource does not match the dashboard datasource',
-                }
+            if _dashboard_pivot_enabled(item.get("pivot")):
+                data_result = _execute_dashboard_chart_sql(
+                    session,
+                    current_user,
+                    item_datasource,
+                    item['sql'],
+                    item.get("pivot"),
+                )
             else:
-                if _dashboard_pivot_enabled(item.get("pivot")):
-                    data_result = _execute_dashboard_chart_sql(
-                        session,
-                        current_user,
-                        item_datasource,
-                        item['sql'],
-                        item.get("pivot"),
-                    )
-                else:
-                    data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
+                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
             _apply_dashboard_chart_result(item, data_result)
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
     return result_dict
@@ -4156,7 +4158,7 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     else:
         dashboard.datasource = _ensure_datasource_access(session, user, dashboard.datasource, required=True)
         _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
-        _validate_canvas_datasources(session, user, dashboard, dashboard.datasource)
+        _validate_canvas_datasources(session, user, dashboard)
     record = get_create_base_info(user, dashboard)
     if is_platform_workspace_delegate(user):
         record.create_by = _asset_operator_id(session, user)
@@ -4213,7 +4215,7 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
         raise HTTPException(status_code=400, detail="Dashboard datasource cannot be changed")
     if bound_datasource is not None:
         _ensure_datasource_access(session, user, bound_datasource)
-    _validate_canvas_datasources(session, user, dashboard, bound_datasource)
+    _validate_canvas_datasources(session, user, dashboard)
     record.name = dashboard.name
     record.datasource = bound_datasource
     record.update_by = _asset_operator_id(session, user)

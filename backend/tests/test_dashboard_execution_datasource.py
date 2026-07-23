@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
 from apps.dashboard.crud import dashboard_service
-from apps.dashboard.models.dashboard_model import DashboardSqlPreview
+from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardSqlPreview
 
 
 class _Session:
@@ -104,3 +105,77 @@ def test_dashboard_api_exposes_execution_datasource_candidates() -> None:
     from apps.dashboard.api import dashboard_api
 
     assert hasattr(dashboard_api, "execution_datasources_api")
+
+
+def test_dashboard_refresh_uses_saved_roi_chart_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """已保存的 ROI 图表刷新时必须执行 ROI 数据源，而非被看板默认数据源拒绝。"""
+    execute_calls: list[int] = []
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: 11 if datasource_id is None else datasource_id,
+    )
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(dashboard_service, "_can_edit_dashboard", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_can_share_dashboard", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_can_set_default_dashboard", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda _session, _user, datasource_id, *_args, **_kwargs: execute_calls.append(datasource_id) or {
+            "status": "success",
+            "fields": ["value"],
+            "data": [{"value": 1}],
+            "message": "",
+        },
+    )
+    record = CoreDashboard(
+        id="dashboard-1",
+        tenant_id=2001,
+        name="任意名称看板",
+        pid="root",
+        datasource=11,
+        node_type="leaf",
+        type="dashboard",
+        canvas_style_data="{}",
+        component_data="[]",
+        canvas_view_info=json.dumps({"chart-1": {"id": "chart-1", "datasource": 22, "sql": "select 1"}}),
+        status=1,
+        delete_flag=0,
+    )
+
+    result = dashboard_service._dashboard_payload(
+        _Session(),
+        _user(),
+        record,
+        default_context=True,
+        include_data=True,
+    )
+
+    chart = json.loads(result["canvas_view_info"])["chart-1"]
+    assert execute_calls == [22]
+    assert chart["data"]["data"] == [{"value": 1}]
+
+
+def test_canvas_validation_accepts_saved_roi_chart_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """保存看板时，ROI 图表应通过当前空间候选集校验而非强制等于看板默认数据源。"""
+    calls: list[int | None] = []
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: calls.append(datasource_id) or 22,
+    )
+    dashboard = SimpleNamespace(
+        canvas_view_info=json.dumps({"chart-1": {"datasource": 22, "sql": "select 1"}})
+    )
+
+    dashboard_service._validate_canvas_datasources(_Session(), _user(), dashboard)
+
+    assert calls == [22]
+    assert json.loads(dashboard.canvas_view_info)["chart-1"]["datasource"] == 22
