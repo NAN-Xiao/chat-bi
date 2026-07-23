@@ -29,13 +29,6 @@ import HandleMore from '@/views/dashboard/common/HandleMore.vue'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
-import { useRoiDashboardStore } from '@/stores/roiDashboard'
-import { canAccessRoiDashboard } from '@/utils/workspacePermission'
-import {
-  createRoiEntryRouteQuery,
-  createDashboardNodeClickPlan,
-  shouldResetOrdinaryDashboardStore,
-} from '@/views/dashboard/roi/roiNavigationBehavior'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import {
@@ -49,7 +42,6 @@ const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
-const roiDashboardStore = useRoiDashboardStore()
 const resourceGroupOptRef = ref(null)
 let treeRequestSeq = 0
 const workspaceContextSwitching = ref(false)
@@ -79,7 +71,7 @@ const defaultProps = {
   children: 'children',
   label: 'name',
 }
-type DashboardScope = 'default' | 'roi' | 'my'
+type DashboardScope = 'default' | 'my'
 type TreeOrderItem = {
   id: string | number
   pid: string | number
@@ -93,10 +85,8 @@ type TreeMenuItem = {
   divided?: boolean
 }
 const DEFAULT_GROUP_ID = '__dashboard_group_default__'
-const ROI_GROUP_ID = '__dashboard_group_roi__'
 const MY_GROUP_ID = '__dashboard_group_my__'
 const DEFAULT_SCOPE: DashboardScope = 'default'
-const ROI_SCOPE: DashboardScope = 'roi'
 const MY_SCOPE: DashboardScope = 'my'
 const TREE_NODE_INDENT = 28
 const mounted = ref(false)
@@ -139,9 +129,6 @@ const state = reactive({
 const treeBusy = computed(() => treeLoading.value || copyLoading.value)
 
 const canEditDefaultOrder = computed<boolean>(() => userStore.isTenantAdminUser === true)
-const canManageCurrentWorkspace = computed<boolean>(() =>
-  canAccessRoiDashboard(userStore)
-)
 const isCombinedDashboardTree = computed<boolean>(() => !props.defaultMode)
 const treeEditButtonTip = computed(() =>
   isTreeEditing.value ? t('dashboard.finish_order_edit') : t('dashboard.edit_order')
@@ -149,7 +136,6 @@ const treeEditButtonTip = computed(() =>
 
 const normalizeDashboardScope = (value: unknown): DashboardScope => {
   const scope = Array.isArray(value) ? value[0] : value
-  if (scope === ROI_SCOPE) return ROI_SCOPE
   return scope === DEFAULT_SCOPE ? DEFAULT_SCOPE : MY_SCOPE
 }
 
@@ -221,7 +207,6 @@ const getDashboardScope = (node?: SQTreeNode | null): DashboardScope =>
 
 const getDashboardNodeKey = (scope: DashboardScope, dashboardId?: string | number | null) => {
   if (!dashboardId) return dashboardId
-  if (scope === ROI_SCOPE) return `${ROI_SCOPE}:${dashboardId}`
   return scope === DEFAULT_SCOPE && isCombinedDashboardTree.value
     ? `${DEFAULT_SCOPE}:${dashboardId}`
     : dashboardId
@@ -234,8 +219,6 @@ const isDefaultGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === DEFAULT_GROUP_ID
 const isMyGroupNode = (node?: SQTreeNode | null) =>
   isVirtualNode(node as SQTreeNode) && String(node?.id || '') === MY_GROUP_ID
-const isRoiGroupNode = (node?: SQTreeNode | null) =>
-  isVirtualNode(node as SQTreeNode) && String(node?.id || '') === ROI_GROUP_ID
 const findDashboardGroupNode = (
   nodes: SQTreeNode[] = [],
   groupId: string
@@ -312,28 +295,11 @@ const normalizeMyDashboardNodes = (
     } as SQTreeNode
   })
 
-const createRoiDashboardEntry = (): SQTreeNode =>
-  ({
-    id: ROI_GROUP_ID,
-    pid: DEFAULT_GROUP_ID,
-    name: t('dashboard.roi_dashboard'),
-    leaf: true,
-    weight: 0,
-    type: 'dashboard',
-    node_type: 'leaf',
-    virtual: true,
-    dashboard_scope: ROI_SCOPE,
-    children: [],
-  }) as SQTreeNode
-
 const buildCombinedTree = (
   defaultNodes: SQTreeNode[] = [],
   myNodes: SQTreeNode[] = []
 ) => {
   const defaultChildren = normalizeDefaultDashboardNodes(defaultNodes)
-  if (canManageCurrentWorkspace.value) {
-    defaultChildren.push(createRoiDashboardEntry())
-  }
   return [
     createDashboardGroup(
       DEFAULT_GROUP_ID,
@@ -403,11 +369,7 @@ const resetTreeState = () => {
   expandedArray.value = []
   state.originResourceTree = []
   state.resourceTree = []
-  if (shouldResetOrdinaryDashboardStore(currentRouteDashboardScope())) {
-    dashboardStore.canvasDataInit()
-  } else {
-    roiDashboardStore.reset()
-  }
+  dashboardStore.canvasDataInit()
   nextTick(() => {
     resourceListTree.value?.setCurrentKey?.(null)
     resourceListTree.value?.filter?.(filterText.value)
@@ -449,16 +411,6 @@ const syncDashboardRoute = (node: SQTreeNode) => {
   })
 }
 
-const syncRoiEntryRoute = () => {
-  if (props.showPosition !== 'preview' || props.defaultMode) return
-  const currentRoute = router.currentRoute.value
-  if (currentRoute.path !== '/dashboard/index') return
-  router.replace({
-    path: currentRoute.path,
-    query: createRoiEntryRouteQuery(currentRoute.query),
-  })
-}
-
 const shouldAutoSelectDashboard = () => props.showPosition === 'preview'
 const isVirtualNode = (node?: SQTreeNode) => (node as any)?.virtual === true
 const isRealNode = (node?: SQTreeNode | null) => !!node && !isVirtualNode(node as SQTreeNode)
@@ -496,7 +448,6 @@ const resolveInitialDashboardNode = () => {
     )
     if (isLeafDashboardNode(routeNode)) return routeNode
   }
-  if (routeScope === ROI_SCOPE) return undefined
   if (props.defaultMode) {
     const rememberedNode = findDashboardNode(
       state.resourceTree,
@@ -534,22 +485,8 @@ const emitDashboardNodeClick = (data?: SQTreeNode) => {
   })
 }
 
-const activateRoiEntry = (data: SQTreeNode) => {
-  selectedNodeKey.value = data.id
-  returnMounted.value = true
-  resourceListTree.value?.setCurrentKey?.(data.id, false)
-  syncRoiEntryRoute()
-}
-
 const nodeClick = (data: SQTreeNode, node: any) => {
-  const clickPlan = createDashboardNodeClickPlan(getDashboardScope(data))
-  if (clickPlan.resetOrdinaryDashboardSelection) {
-    dashboardStore.setCurComponent({ component: null, index: null })
-  }
-  if (isRoiGroupNode(data)) {
-    activateRoiEntry(data)
-    return
-  }
+  dashboardStore.setCurComponent({ component: null, index: null })
   if (isVirtualNode(data)) {
     resourceListTree.value?.setCurrentKey?.(null)
     return
@@ -653,7 +590,6 @@ const getTree = async () => {
   const canInitializeCombinedTree = () => {
     const routeResourceId = currentRouteDashboardId()
     const routeScope = currentRouteDashboardScope()
-    if (routeScope === ROI_SCOPE && !routeResourceId) return defaultLoaded && myLoaded
     if (routeResourceId) {
       const routeBranchLoaded =
         routeScope === DEFAULT_SCOPE
@@ -747,7 +683,6 @@ const canCopyPlatformTemplateNode = (data: SQTreeNode) =>
   data.node_type === 'leaf' &&
   (data as any).can_copy_to_platform_template === true
 const hasNodeMenu = (data: SQTreeNode) => {
-  if (isRoiGroupNode(data)) return false
   if (isDefaultGroupNode(data)) return canEditDefaultOrder.value
   if (isDefaultDashboardNode(data) && data.node_type !== 'leaf') return canEditDefaultOrder.value
   if (canCopyDefaultNode(data)) return true
@@ -761,7 +696,6 @@ const hasNodeMenu = (data: SQTreeNode) => {
   )
 }
 const nodeMenuList = (data: SQTreeNode) => {
-  if (isRoiGroupNode(data)) return []
   if (isDefaultGroupNode(data)) {
     return canEditDefaultOrder.value
       ? [
@@ -924,19 +858,6 @@ const collectTreeOrderItems = (
 
 const afterTreeInit = () => {
   mounted.value = true
-  if (!props.defaultMode && currentRouteDashboardScope() === ROI_SCOPE) {
-    const roiEntry = findDashboardGroupNode(state.resourceTree, ROI_GROUP_ID)
-    if (roiEntry) {
-      selectedNodeKey.value = roiEntry.id
-      returnMounted.value = false
-      restoreExpandedKeys()
-      nextTick(() => {
-        resourceListTree.value?.setCurrentKey?.(roiEntry.id, false)
-        resourceListTree.value?.filter?.(filterText.value)
-      })
-      return
-    }
-  }
   const routeResourceId = currentRouteDashboardId()
   const routeNode = routeResourceId
     ? findDashboardNode(state.resourceTree, routeResourceId, currentRouteDashboardScope())
@@ -976,7 +897,7 @@ const canOpenCreateDashboard = computed<boolean>(
   () => canCreateDashboard.value || canCreateFromPlatformTemplate.value
 )
 const canEditDashboardTree = computed<boolean>(
-  () => canOpenCreateDashboard.value || canEditDefaultOrder.value || canManageCurrentWorkspace.value
+  () => canOpenCreateDashboard.value || canEditDefaultOrder.value
 )
 
 function createNewObject() {
@@ -1099,11 +1020,6 @@ watch(
   () => [currentRouteDashboardId(), currentRouteDashboardScope()],
   ([resourceId, dashboardScope]) => {
     if (!shouldAutoSelectDashboard()) return
-    if (!resourceId && dashboardScope === ROI_SCOPE) {
-      const roiEntry = findDashboardGroupNode(state.resourceTree, ROI_GROUP_ID)
-      if (roiEntry) activateRoiEntry(roiEntry)
-      return
-    }
     const routeNodeKey = getDashboardNodeKey(dashboardScope as DashboardScope, resourceId)
     if (!resourceId || String(routeNodeKey) === String(selectedNodeKey.value || '')) return
     const node = findDashboardNode(state.resourceTree, resourceId, dashboardScope as DashboardScope)
@@ -1145,7 +1061,6 @@ const addOperation = (params: any) => {
 }
 
 const operation = async (opt: string, data: SQTreeNode) => {
-  if (isRoiGroupNode(data)) return
   const resourceId = getRawDashboardId(data)
   if (opt === 'toggleTreeEditing') {
     await toggleTreeEditing()
@@ -1520,7 +1435,6 @@ defineExpose({
             :class="{
               'is-group-node': data.node_type !== 'leaf',
               'is-leaf-node': data.node_type === 'leaf',
-              'is-roi-entry-node': isRoiGroupNode(data),
               'is-real-folder-node': data.node_type !== 'leaf' && !isVirtualNode(data),
               'is-empty-folder-node':
                 data.node_type !== 'leaf' && !isVirtualNode(data) && !(data.children || []).length,
@@ -1544,11 +1458,6 @@ defineExpose({
             >
               <Icon name="folder-open-svgrepo-com">
                 <icon_folder_open class="svg-icon" />
-              </Icon>
-            </el-icon>
-            <el-icon v-else-if="isRoiGroupNode(data)" class="tree-node-icon icon-primary">
-              <Icon name="icon_dashboard_grid_add">
-                <icon_dashboard_grid_add class="svg-icon" />
               </Icon>
             </el-icon>
             <el-icon
@@ -1593,7 +1502,7 @@ defineExpose({
                 :menu-list="nodeMenuList(data)"
                 :icon-name="icon_more_outlined"
                 vertical-dots
-                :create-menu="isMyGroupNode(data) || isRoiGroupNode(data)"
+                :create-menu="isMyGroupNode(data)"
                 placement="bottom"
                 :offset="6"
                 @handle-command="(opt: string) => operation(opt, data)"
@@ -2085,14 +1994,6 @@ defineExpose({
   }
 
   :deep(
-    .ed-tree-node__content:has(> .custom-tree-node.is-roi-entry-node) > .ed-tree-node__expand-icon
-  ) {
-    visibility: hidden;
-    flex: 0 0 2px;
-    width: 2px;
-  }
-
-  :deep(
     .ed-tree-node__content:has(
         > .custom-tree-node.is-real-folder-node[data-shift-folder='true']
       )
@@ -2241,10 +2142,6 @@ defineExpose({
 
   &.is-leaf-node,
   &.is-empty-folder-node {
-    padding-left: calc(var(--dashboard-tree-indent, 0px) + 18px);
-  }
-
-  &.is-roi-entry-node {
     padding-left: calc(var(--dashboard-tree-indent, 0px) + 18px);
   }
 
