@@ -1072,18 +1072,6 @@ def test_chart_writes_are_rejected_without_datasource_access(
             301,
             RoiChartCreate(title="新增", sql="SELECT 1", chart_type="table"),
         ),
-        lambda: update_roi_chart(
-            session,
-            user,
-            301,
-            901,
-            RoiChartUpdate(
-                title="修改",
-                sql="SELECT 1",
-                chart_type="table",
-                version=1,
-            ),
-        ),
         lambda: reorder_roi_charts(
             session,
             user,
@@ -1094,6 +1082,18 @@ def test_chart_writes_are_rejected_without_datasource_access(
                         id="901", sort=1, layout_span="half", version=1
                     )
                 ]
+            ),
+        ),
+        lambda: update_roi_chart(
+            session,
+            user,
+            301,
+            901,
+            RoiChartUpdate(
+                title="修改",
+                sql="SELECT 1",
+                chart_type="table",
+                version=1,
             ),
         ),
         lambda: delete_roi_chart(session, user, 301, 901),
