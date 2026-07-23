@@ -1084,7 +1084,6 @@ def test_chart_writes_are_rejected_without_datasource_access(
                 version=1,
             ),
         ),
-        lambda: delete_roi_chart(session, user, 301, 901),
         lambda: reorder_roi_charts(
             session,
             user,
@@ -1097,6 +1096,7 @@ def test_chart_writes_are_rejected_without_datasource_access(
                 ]
             ),
         ),
+        lambda: delete_roi_chart(session, user, 301, 901),
     ]
     # With workspace ROI config, admin without direct grant should be allowed; execute SQL for validation.
     monkeypatch.setattr(
