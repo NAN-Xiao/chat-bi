@@ -50,13 +50,6 @@ const pivotGroupFieldWatcherMatch = source.match(
 const pivotEnabledWatcherMatch = source.match(
   /watch\(\s*\(\) => form\.pivotEnabled,([\s\S]*?)\r?\n\)\r?\n\r?\nwatch\(/
 )
-const builderTimeFieldPriorityMatch = source.match(
-  /function builderTimeFieldPriority\(option: SchemaFieldOption\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction preferredBuilderTimeField/
-)
-const preferredBuilderTimeFieldMatch = source.match(
-  /function preferredBuilderTimeField\(\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction fieldOptionByValue/
-)
-
 assert.ok(chartPreviewMatch, '图表预览组件需要声明 columns 绑定')
 assert.match(
   chartPreviewMatch[1],
@@ -122,22 +115,10 @@ assert.doesNotMatch(
   /pivotToggleDisabled/,
   '交互透视开关不应因 SQL 结果缺少日期字段而禁用'
 )
-assert.ok(builderTimeFieldPriorityMatch, '默认时间范围字段需要有明确的字段优先级规则')
-assert.match(
-  builderTimeFieldPriorityMatch?.[1] || '',
-  /事件日期|event_date/,
-  '默认时间范围字段应优先识别事件日期'
-)
-assert.ok(preferredBuilderTimeFieldMatch, '默认时间范围字段需要通过专门函数选择，不能依赖字段列表顺序')
-assert.match(
-  preferredBuilderTimeFieldMatch?.[1] || '',
-  /builderTimeFieldPriority/,
-  '默认时间范围字段应按优先级选择，而不是直接取第一个字段'
-)
 assert.match(
   source,
-  /sqlBuilder\.timeField = preferredBuilderTimeField\(\)/,
-  '加载字段后默认时间范围字段应使用事件日期优先级函数'
+  /if \(!sqlBuilder\.timeField\) \{\s*sqlBuilder\.timeField = preferredBuilderTimeField\(builderTimeFieldOptions\.value\)/,
+  '加载字段后只应为空配置写入通用优先级函数选择的默认时间字段'
 )
 
 assert.match(
@@ -204,8 +185,8 @@ assert.match(
 )
 assert.match(
   source,
-  /const builderFieldOptions = computed\([\s\S]*schemaFieldOptions\.value\.filter\(isSelectableFieldOption\)/,
-  '分组项、全局筛选等通用字段候选应统一过滤对象组类型字段'
+  /const builderFieldOptions = computed\(\(\) => eventScopedSchemaFieldOptions\.value\.filter\(isSelectableFieldOption\)/,
+  '分组项、全局筛选等候选应先限定事件表，再统一过滤对象组类型字段'
 )
 assert.match(
   source,
@@ -657,8 +638,8 @@ assert.match(
 )
 assert.match(
   source,
-  /schemaFieldOptions\.value\.find\(isNumericFieldOption\)/,
-  '新增指标时需要优先选择统一判断后的数值字段'
+  /eventScopedSchemaFieldOptions\.value\.find\(isNumericFieldOption\)/,
+  '新增指标时需要从事件范围内优先选择统一判断后的数值字段'
 )
 assert.match(
   source,
@@ -667,6 +648,6 @@ assert.match(
 )
 assert.match(
   source,
-  /schemaFieldOptions\.value\.filter\(isTimeFieldOption\)/,
-  '时间范围字段需要复用统一的时间字段判断'
+  /eventScopedSchemaFieldOptions\.value\.filter\(isTimeFieldOption\)/,
+  '时间范围字段需要在事件范围内复用统一的时间字段判断'
 )

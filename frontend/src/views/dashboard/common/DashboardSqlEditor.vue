@@ -15,12 +15,15 @@ import {
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
+  preferredBuilderTimeField,
 } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
 import {
   buildDashboardBuilderMetadataCacheKey,
   buildTrackingEventCatalogFromConfig,
   createFieldOptionIndex,
+  getEventScopedFields,
   getCachedDashboardBuilderMetadata,
+  resolveDashboardBuilderEventScope,
 } from '@/views/dashboard/common/dashboardBuilderMetadata.ts'
 import {
   formulaTokensToText,
@@ -125,6 +128,7 @@ type SchemaFieldOption = {
   tableLabel?: string
   tableReferenceLabel?: string
   tableRole?: string
+  fieldRole?: string
   field: string
   displayName?: string
   type?: string
@@ -287,6 +291,7 @@ const mcpFilterOptionsLoading = ref(false)
 const mcpFilterOptions = ref<Record<string, string[]>>({})
 const schemaLoading = ref(false)
 const schemaTables = ref<any[]>([])
+const trackingConfig = ref<any>(null)
 const trackingEventCatalog = ref<any>(null)
 const datasourceInfo = ref<any>(null)
 const activeFormulaMetricId = ref('')
@@ -519,6 +524,7 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
         tableId: table?.id,
         tableLabel,
         tableRole,
+        fieldRole: field?.field_role || field?.fieldRole || '',
         field: fieldName,
         displayName,
         type,
@@ -535,7 +541,15 @@ const schemaFieldOptions = computed<SchemaFieldOption[]>(() => {
   })
   return options
 })
-const builderFieldOptions = computed(() => schemaFieldOptions.value.filter(isSelectableFieldOption))
+const eventFieldScope = computed(() => resolveDashboardBuilderEventScope({
+  config: trackingConfig.value,
+  datasourceId: props.viewInfo?.datasource,
+  tableNames: (schemaTables.value || []).map(schemaTableName).filter(Boolean),
+}))
+const eventScopedSchemaFieldOptions = computed(() =>
+  getEventScopedFields(schemaFieldOptions.value, eventFieldScope.value)
+)
+const builderFieldOptions = computed(() => eventScopedSchemaFieldOptions.value.filter(isSelectableFieldOption))
 const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
   const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
   return groups.flatMap((group: any) => {
@@ -567,7 +581,10 @@ const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
         eventNameField,
       }
     })
-  })
+  }).filter((option: SchemaFieldOption) => (
+    eventFieldScope.value.status === 'active'
+    && option.table === eventFieldScope.value.defaultEventTable
+  ))
 })
 const trackingEventPropertyOptions = computed<SchemaFieldOption[]>(() => {
   const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
@@ -612,7 +629,10 @@ const trackingEventPropertyOptions = computed<SchemaFieldOption[]>(() => {
         }
       })
     })
-  })
+  }).filter((option: SchemaFieldOption) => (
+    eventFieldScope.value.status === 'active'
+    && option.table === eventFieldScope.value.defaultEventTable
+  ))
 })
 const trackingEventPropertyOptionsByEvent = computed(() => {
   const groups = new Map<string, SchemaFieldOption[]>()
@@ -633,16 +653,23 @@ const fieldOptionIndex = computed(() =>
   })
 )
 const hasTrackingEventCatalog = computed(() =>
-  Boolean(trackingEventCatalog.value && Array.isArray(trackingEventCatalog.value?.groups))
+  Boolean(
+    eventFieldScope.value.status === 'active'
+    && trackingEventCatalog.value
+    && Array.isArray(trackingEventCatalog.value?.groups)
+  )
 )
 const hasTrackingEventOptions = computed(() => trackingEventCatalogOptions.value.length > 0)
 const usesTrackingEventPicker = computed(() => hasTrackingEventCatalog.value || hasTrackingEventOptions.value)
 const fallbackAnalysisFieldOptions = computed(() =>
   schemaFieldOptions.value.length ? schemaFieldOptions.value : toFieldOptions(sourcePreview.fields)
 )
-const analysisFieldOptions = computed(() =>
-  usesTrackingEventPicker.value ? trackingEventCatalogOptions.value : fallbackAnalysisFieldOptions.value
-)
+const analysisFieldOptions = computed(() => {
+  if (eventFieldScope.value.mode === 'event') {
+    return eventFieldScope.value.status === 'active' ? trackingEventCatalogOptions.value : []
+  }
+  return fallbackAnalysisFieldOptions.value
+})
 const analysisFieldPickerMode = computed(() => usesTrackingEventPicker.value ? 'tracking-event' : 'property')
 const formulaFieldPickerPlaceholder = computed(() => usesTrackingEventPicker.value ? '选择事件' : '选择字段')
 const builderMetricOptions = computed(() =>
@@ -652,8 +679,8 @@ const builderMetricOptions = computed(() =>
   }))
 )
 const builderTimeFieldOptions = computed(() => {
-  const timeFields = schemaFieldOptions.value.filter(isTimeFieldOption)
-  return timeFields.length ? timeFields : schemaFieldOptions.value
+  const timeFields = eventScopedSchemaFieldOptions.value.filter(isTimeFieldOption)
+  return timeFields.length ? timeFields : eventScopedSchemaFieldOptions.value
 })
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
 const seriesFieldOptions = computed(() => {
@@ -1002,7 +1029,7 @@ function emptyCalculatedMetricItem(): SqlBuilderCalculatedMetricItem {
 
 function addMetricItem() {
   const item = emptyMetricItem()
-  const numericField = schemaFieldOptions.value.find(isNumericFieldOption)
+  const numericField = eventScopedSchemaFieldOptions.value.find(isNumericFieldOption)
   item.field = analysisFieldOptions.value[0]?.value || ''
   item.metric = numericField?.value || item.field
   item.alias = `指标${sqlBuilder.metricItems.length + 1}`
@@ -1765,30 +1792,6 @@ function pruneAutoSeededMetricItemsForFormulaOnlyBuilder() {
   }
 }
 
-function builderTimeFieldPriority(option: SchemaFieldOption) {
-  const text = [
-    option.label,
-    option.displayName,
-    option.comment,
-    option.field,
-    option.value,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-  if (/事件日期|event[_\s-]*date/.test(text)) return 0
-  if (/事件时间|event[_\s-]*time/.test(text)) return 1
-  if (/日期|date|day|dt/.test(text)) return 2
-  if (/时间|time|timestamp/.test(text)) return 3
-  return 4
-}
-
-function preferredBuilderTimeField() {
-  return builderTimeFieldOptions.value
-    .map((option, index) => ({ option, index, priority: builderTimeFieldPriority(option) }))
-    .sort((left, right) => left.priority - right.priority || left.index - right.index)[0]?.option.value || ''
-}
-
 function fieldOptionByValue(value: string) {
   return fieldOptionIndex.value.find(value)
 }
@@ -1840,7 +1843,11 @@ function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
   if (eventOption?.kind !== 'tracking-event' || !eventOption.eventName) {
     return []
   }
-  return trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []
+  const options = [
+    ...(trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []),
+    ...eventDetailFieldOptions(eventOption.eventTable || eventOption.table),
+  ]
+  return Array.from(new Map(options.map((option) => [option.value, option])).values())
 }
 
 function metricMeasureFieldOptions(item: Pick<SqlBuilderMetricItem, 'field'> & { aggregation?: string }) {
@@ -2041,165 +2048,8 @@ function recoverMissingMetricFiltersFromSql() {
   return recovered
 }
 
-function hasBuilderSelectionValidationSource() {
-  return Boolean(
-    schemaFieldOptions.value.length ||
-    trackingEventCatalogOptions.value.length ||
-    trackingEventPropertyOptions.value.length
-  )
-}
-
-function builderFieldExists(value: string) {
-  return !value || Boolean(fieldOptionByValue(value))
-}
-
 function optionExists(value: string, options: Array<{ value: string }>) {
   return !value || options.some((option) => option.value === value)
-}
-
-function pruneInvalidBuilderFilters(filters: SqlBuilderFilter[]): { filters: SqlBuilderFilter[]; changed: boolean } {
-  let changed = false
-  const nextFilters = (filters || [])
-    .map((filter): SqlBuilderFilter | null => {
-      if (filter.type === 'group' || Array.isArray(filter.children)) {
-        const result = pruneInvalidBuilderFilters(filter.children || [])
-        changed = changed || result.changed
-        if (!result.filters.length) {
-          changed = true
-          return null
-        }
-        return {
-          id: filter.id,
-          type: 'group',
-          field: '',
-          operator: '',
-          value: '',
-          logic: builderLogic(filter.logic),
-          children: result.filters,
-        }
-      }
-      if (!builderFieldExists(filter.field)) {
-        changed = true
-        return null
-      }
-      return {
-        id: filter.id,
-        type: 'rule',
-        field: filter.field || '',
-        operator: filter.operator || 'eq',
-        value: filter.value ?? '',
-        logic: builderLogic(filter.logic),
-      }
-    })
-    .filter(Boolean) as SqlBuilderFilter[]
-  if (nextFilters.length !== (filters || []).length) {
-    changed = true
-  }
-  return { filters: nextFilters, changed }
-}
-
-function normalizeRestoredAtomicMetric(metric: FormulaAtomicMetric) {
-  let changed = false
-  const nextMetric: FormulaAtomicMetric = {
-    ...metric,
-    filters: metric.filters || [],
-  }
-  if (!builderFieldExists(nextMetric.field)) {
-    nextMetric.field = ''
-    nextMetric.metric = ''
-    nextMetric.filters = []
-    changed = true
-  } else if (
-    nextMetric.aggregation !== 'count' &&
-    !optionExists(nextMetric.metric, metricMeasureFieldOptions(nextMetric as any))
-  ) {
-    nextMetric.metric = ''
-    changed = true
-  }
-  const filterResult = pruneInvalidBuilderFilters(nextMetric.filters as any)
-  nextMetric.filters = filterResult.filters as any
-  changed = changed || filterResult.changed
-  const display = normalizeFormulaAtomicMetricDisplay(nextMetric, {
-    label: formulaAtomicMetricLabel(nextMetric),
-    alias: sqlAlias(formulaAtomicMetricLabel(nextMetric), `事件指标${Date.now()}`),
-  })
-  changed = changed || display.label !== nextMetric.label || display.alias !== nextMetric.alias
-  return { metric: display, changed }
-}
-
-function pruneInvalidFormulaTokens(tokens: FormulaToken[]): { tokens: FormulaToken[]; changed: boolean } {
-  let changed = false
-  const nextTokens = tokens.map((token) => {
-    if (token.type !== 'atomicMetric') {
-      return token
-    }
-    const result = normalizeRestoredAtomicMetric(token.metric)
-    changed = changed || result.changed
-    return {
-      ...token,
-      metric: result.metric,
-    }
-  })
-  return { tokens: nextTokens, changed }
-}
-
-function pruneInvalidBuilderSelections() {
-  if (!hasBuilderSelectionValidationSource()) {
-    return false
-  }
-  let changed = false
-  if (!builderFieldExists(sqlBuilder.timeField)) {
-    sqlBuilder.timeField = ''
-    changed = true
-  }
-  sqlBuilder.metricItems.forEach((item) => {
-    if (!builderFieldExists(item.field)) {
-      item.field = ''
-      item.metric = ''
-      item.filters = []
-      changed = true
-      return
-    }
-    if (item.aggregation !== 'count' && !optionExists(item.metric, metricMeasureFieldOptions(item))) {
-      item.metric = ''
-      changed = true
-    }
-    const filterResult = pruneInvalidBuilderFilters(item.filters || [])
-    item.filters = filterResult.filters
-    changed = changed || filterResult.changed
-  })
-  sqlBuilder.calculatedMetrics.forEach((item) => {
-    if (!optionExists(item.pendingMetricId, builderMetricOptions.value)) {
-      item.pendingMetricId = ''
-      changed = true
-    }
-    if (!builderFieldExists(item.pendingEventField)) {
-      item.pendingEventField = ''
-      item.pendingMetricField = ''
-      changed = true
-    } else if (
-      item.pendingAggregation !== 'count' &&
-      !optionExists(item.pendingMetricField, metricMeasureFieldOptions({
-        field: item.pendingEventField,
-        aggregation: item.pendingAggregation,
-      }))
-    ) {
-      item.pendingMetricField = ''
-      changed = true
-    }
-    const tokenResult = pruneInvalidFormulaTokens(item.tokens || [])
-    item.tokens = tokenResult.tokens
-    changed = changed || tokenResult.changed
-  })
-  const nextGroups = sqlBuilder.groups.filter(builderFieldExists)
-  if (nextGroups.length !== sqlBuilder.groups.length) {
-    sqlBuilder.groups = nextGroups
-    changed = true
-  }
-  const globalFilterResult = pruneInvalidBuilderFilters(sqlBuilder.globalFilters || [])
-  sqlBuilder.globalFilters = globalFilterResult.filters
-  changed = changed || globalFilterResult.changed
-  return changed
 }
 
 function filterFieldValues(filters: SqlBuilderFilter[]): string[] {
@@ -2216,6 +2066,76 @@ function filterFieldValues(filters: SqlBuilderFilter[]): string[] {
   }
   visit(filters || [])
   return fields
+}
+
+function appendEventScopeFilterIssues(
+  filters: SqlBuilderFilter[],
+  prefix: string,
+  issues: string[]
+) {
+  ;(filters || []).forEach((filter, index) => {
+    const location = `${prefix}[${index}]`
+    if (filter.type === 'group' || Array.isArray(filter.children)) {
+      appendEventScopeFilterIssues(filter.children || [], `${location}.children`, issues)
+      return
+    }
+    appendEventScopeFieldIssue(filter.field, `${location}.field`, issues)
+  })
+}
+
+function appendEventScopeFieldIssue(value: string, location: string, issues: string[]) {
+  if (!value || eventFieldScope.value.mode !== 'event') {
+    return
+  }
+  if (eventFieldScope.value.status !== 'active') {
+    return
+  }
+  const option = fieldOptionByValue(value)
+  if (!option) {
+    issues.push(`${location}：字段 ${value} 不在当前可用 Schema 中。`)
+    return
+  }
+  const tableName = option.eventTable || option.table
+  if (tableName && tableName !== eventFieldScope.value.defaultEventTable) {
+    issues.push(
+      `${location}：当前事件模式不允许使用表 ${tableName}，仅允许 ${eventFieldScope.value.defaultEventTable}。`
+    )
+  }
+}
+
+function builderEventScopeIssues() {
+  if (eventFieldScope.value.mode !== 'event') {
+    return []
+  }
+  if (eventFieldScope.value.status !== 'active') {
+    return [eventFieldScope.value.message || '当前事件配置不可用。']
+  }
+  const issues: string[] = []
+  appendEventScopeFieldIssue(sqlBuilder.timeField, 'time.field', issues)
+  sqlBuilder.metricItems.forEach((item, index) => {
+    appendEventScopeFieldIssue(item.field, `metric[${index}].field`, issues)
+    if (item.aggregation !== 'count') {
+      appendEventScopeFieldIssue(item.metric, `metric[${index}].metricField`, issues)
+    }
+    appendEventScopeFilterIssues(item.filters || [], `metric[${index}].filter`, issues)
+  })
+  sqlBuilder.calculatedMetrics.forEach((item, formulaIndex) => {
+    item.tokens.forEach((token, tokenIndex) => {
+      if (token.type !== 'atomicMetric') return
+      appendEventScopeFieldIssue(token.metric.field, `formula[${formulaIndex}].token[${tokenIndex}].field`, issues)
+      if (token.metric.aggregation !== 'count') {
+        appendEventScopeFieldIssue(token.metric.metric, `formula[${formulaIndex}].token[${tokenIndex}].metricField`, issues)
+      }
+      appendEventScopeFilterIssues(
+        (token.metric.filters || []) as SqlBuilderFilter[],
+        `formula[${formulaIndex}].token[${tokenIndex}].filter`,
+        issues
+      )
+    })
+  })
+  sqlBuilder.groups.forEach((field, index) => appendEventScopeFieldIssue(field, `group[${index}]`, issues))
+  appendEventScopeFilterIssues(sqlBuilder.globalFilters, 'global_filter', issues)
+  return unique(issues)
 }
 
 function metricMeasureField(item: SqlBuilderMetricItem) {
@@ -2412,18 +2332,27 @@ function generatedSqlMatchesBuilderMetrics(sql: string) {
 }
 
 function collectLocalBuilderConfigIssues() {
-  const issues: string[] = []
+  const eventScopeIssues = builderEventScopeIssues()
+  const issues: string[] = [...eventScopeIssues]
   const suggestions: string[] = []
+  if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
+    suggestions.push(`请重新选择 ${eventFieldScope.value.defaultEventTable} 表中的字段后再生成 SQL。`)
+  }
   const selectedOptions = selectedBuilderFieldValues()
     .map(fieldOptionByValue)
     .filter(Boolean) as SchemaFieldOption[]
   const selectedTables = unique(selectedOptions.map((item) => item.table).filter(Boolean))
-  if (selectedTables.length > 1) {
+  if (eventFieldScope.value.mode === 'general' && selectedTables.length > 1) {
     issues.push(`跨表了：当前同时用了 ${selectedTables.join('、')}。`)
     suggestions.push(`先选一个主表：时间范围和分析指标都改到 ${selectedTables[0]} 表；需要跨表时先在数据模型或语义配置里补充明确关联关系。`)
   }
   const timeOption = fieldOptionByValue(sqlBuilder.timeField)
-  if (timeOption && selectedTables.length > 1 && !selectedTables.every((table) => table === timeOption.table)) {
+  if (
+    eventFieldScope.value.mode === 'general'
+    && timeOption
+    && selectedTables.length > 1
+    && !selectedTables.every((table) => table === timeOption.table)
+  ) {
     issues.push(`时间字段在 ${timeOption.table}，指标/筛选字段在其他表。`)
     suggestions.push(`时间范围：字段选 ${quotedBuilderFieldLabel(sqlBuilder.timeField)}，并把分析指标都改成 ${timeOption.table} 表字段。`)
   }
@@ -2570,6 +2499,21 @@ async function generateBuilderAiSql() {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
+  const eventScopeIssues = builderEventScopeIssues()
+  if (eventScopeIssues.length) {
+    const localAdvice = collectLocalBuilderConfigIssues()
+    setBuilderAgentAdvice({
+      severity: 'warning',
+      intent: inferBuilderIntentText(),
+      message: eventScopeIssues[0],
+      advice: '请先处理事件表范围问题，再生成 SQL。',
+      issues: localAdvice.issues,
+      suggestions: localAdvice.suggestions,
+      raw: '',
+    })
+    ElMessage.warning(eventScopeIssues[0])
+    return false
+  }
   const invalidFormulaItems = invalidFormulaMetricItems()
   if (invalidFormulaItems.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
@@ -2701,6 +2645,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     }
     datasourceInfo.value = null
     schemaTables.value = previewSchemaTables()
+    trackingConfig.value = null
     trackingEventCatalog.value = null
     return
   }
@@ -2751,6 +2696,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       return {
         datasource,
         schemaTables: tablesWithFields,
+        trackingConfig: trackingConfigResult,
         trackingEventCatalog: buildTrackingEventCatalogFromConfig(trackingConfigResult),
       }
     })
@@ -2758,10 +2704,11 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       return
     }
     datasourceInfo.value = metadata.datasource
+    trackingConfig.value = metadata.trackingConfig
     trackingEventCatalog.value = metadata.trackingEventCatalog
     schemaTables.value = metadata.schemaTables.length ? metadata.schemaTables : previewSchemaTables()
     if (!sqlBuilder.timeField) {
-      sqlBuilder.timeField = preferredBuilderTimeField()
+      sqlBuilder.timeField = preferredBuilderTimeField(builderTimeFieldOptions.value)
     }
     if (!sqlBuilder.metricItems.length && !sqlBuilder.calculatedMetrics.length) {
       addMetricItem()
@@ -2772,6 +2719,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
     }
     datasourceInfo.value = null
     schemaTables.value = previewSchemaTables()
+    trackingConfig.value = null
     trackingEventCatalog.value = null
   } finally {
     if (requestSeq === builderSchemaLoadSeq) {
@@ -2790,9 +2738,8 @@ function ensureBuilderSchemaLoaded() {
     if (!isCurrentBuilderSchemaLoad(startViewInfo, requestSeq)) {
       return
     }
-    const prunedInvalidSelections = pruneInvalidBuilderSelections()
     const recoveredFilters = recoverMissingMetricFiltersFromSql()
-    if (prunedInvalidSelections || recoveredFilters) {
+    if (recoveredFilters) {
       persistEditorDraftToViewInfo()
     }
   })
@@ -4185,6 +4132,13 @@ function validateBeforeApply() {
     ElMessage.warning(sqlEditorPermissionMessage)
     return false
   }
+  if (hasSqlSource.value && sqlBuilder.activeTab === 'builder') {
+    const eventScopeIssues = builderEventScopeIssues()
+    if (eventScopeIssues.length) {
+      ElMessage.warning(eventScopeIssues[0])
+      return false
+    }
+  }
   if (hasSqlSource.value && !form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return false
@@ -4525,6 +4479,14 @@ function closeDrawer() {
           </div>
 
           <div v-if="sqlBuilder.activeTab === 'builder'" class="sql-builder-builder-pane">
+            <el-alert
+              v-if="eventFieldScope.mode === 'event' && eventFieldScope.status !== 'active'"
+              class="event-scope-alert"
+              :title="eventFieldScope.message"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
             <div
               v-loading="schemaLoading || builderLoading"
               :element-loading-text="builderLoading ? loadingText : ''"

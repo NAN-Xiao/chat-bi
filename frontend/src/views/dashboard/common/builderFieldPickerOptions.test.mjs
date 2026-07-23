@@ -120,3 +120,51 @@ assert.equal(
   true,
   '中文日期属性类型应作为时间范围字段'
 )
+
+assert.equal(
+  options.preferredBuilderTimeField(
+    [
+      {
+        label: '事件写入时间戳',
+        value: 'event.time',
+        table: 'event',
+        field: 'time',
+        type: 'bigint',
+        semanticType: 'timestamp_ms',
+        comment: '事件精确发生时间；业务日期或按自然日统计优先使用 dt。',
+      },
+      {
+        label: '业务日期（分区字段）',
+        value: 'event.dt',
+        table: 'event',
+        field: 'dt',
+        type: 'bigint',
+        category: 'time',
+        semanticType: 'date',
+      },
+    ].filter(options.isTimeFieldOption)
+  ),
+  'event.dt',
+  '新图表的时间范围应优先选择业务日期或分区日期字段'
+)
+
+assert.equal(
+  options.preferredBuilderTimeField([
+    {
+      label: '创建时间',
+      value: 'event.created_at',
+      table: 'event',
+      field: 'created_at',
+      type: 'timestamp',
+    },
+    {
+      label: '事件日期',
+      value: 'event.event_date',
+      table: 'event',
+      field: 'event_date',
+      type: 'date',
+    },
+  ]),
+  'event.event_date',
+  '没有业务日期或分区日期字段时应继续优先选择事件日期'
+)

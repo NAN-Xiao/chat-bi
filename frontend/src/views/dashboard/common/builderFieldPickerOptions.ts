@@ -5,6 +5,7 @@ export type FieldOption = {
   tableLabel?: string
   tableReferenceLabel?: string
   tableRole?: string
+  fieldRole?: string
   field: string
   displayName?: string
   type?: string
@@ -103,6 +104,34 @@ export function isNumericFieldOption(option: Pick<FieldOption, 'category' | 'sem
 
 export function isTimeFieldOption(option: Pick<FieldOption, 'category' | 'semanticType' | 'propertyType' | 'type'>) {
   return fieldTypeValues(option).some((value) => TIME_FIELD_TYPES.has(value))
+}
+
+function builderTimeFieldPriority(option: FieldOption) {
+  const role = normalizeFieldType(option.fieldRole)
+  const text = [
+    option.label,
+    option.displayName,
+    option.field,
+    option.value,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  if (
+    role === 'partitiondate' ||
+    /业务日期|分区日期|分区字段|partition[_\s-]*date|partition[_\s-]*field/.test(text)
+  ) return 0
+  if (/事件日期|event[_\s-]*date/.test(text)) return 1
+  if (/事件时间|event[_\s-]*time/.test(text)) return 2
+  if (/日期|date|day|dt/.test(text)) return 3
+  if (/时间|time|timestamp/.test(text)) return 4
+  return 5
+}
+
+export function preferredBuilderTimeField(options: FieldOption[]) {
+  return options
+    .map((option, index) => ({ option, index, priority: builderTimeFieldPriority(option) }))
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)[0]?.option.value || ''
 }
 
 function normalizeRole(value = '') {
