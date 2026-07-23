@@ -1057,6 +1057,62 @@ def test_chart_list_checks_permission_before_cache_and_keeps_structure_visible(
     assert third[0]["query_result"]["data"] == [{"value": 9}]
 
 
+def test_chart_list_rejects_execution_when_configured_datasource_inactive(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """当工作区配置的数据源为 inactive 且未给用户直接授权时，图表列表不应执行查询，且不命中缓存。"""
+    user = prepare_chart_context(session, grant=False)
+    chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    cache = FakeRoiChartCache()
+
+    # 将配置的数据源置为不可用
+    session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 202"))
+    session.commit()
+
+    # 执行器不应被调用
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda *_args: pytest.fail("无权限时不应执行 SQL"),
+    )
+
+    result = list_roi_charts(session, user, 301, cache_adapter=cache)
+
+    assert cache.get_keys == []
+    assert result[0]["id"] == 901
+    assert result[0]["can_execute"] is False
+    assert result[0]["can_edit"] is False
+    assert result[0]["error"] == "当前账号无此数据源权限"
+
+
+def test_chart_list_denies_when_configured_datasource_inactive(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """当工作区配置的数据源处于 inactive（非 success）且账号无直接授权时，列表应不执行查询并返回结构但不可执行。"""
+    user = prepare_chart_context(session, grant=False)
+    chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    cache = FakeRoiChartCache()
+
+    # 将数据源标记为不可用
+    session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 202"))
+    session.commit()
+
+    # 如果尝试执行 SQL，应触发失败 —— 我们保证不会被调用
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda *_args: pytest.fail("无权限时不应执行 SQL"),
+    )
+
+    result = list_roi_charts(session, user, 301, cache_adapter=cache)
+
+    assert cache.get_keys == []
+    assert result[0]["id"] == 901
+    assert result[0]["can_execute"] is False
+    assert result[0]["can_edit"] is False
+    assert result[0]["error"] == "当前账号无此数据源权限"
+
+
 def test_chart_writes_allowed_for_workspace_admin_with_configured_datasource(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -1104,6 +1160,57 @@ def test_chart_writes_allowed_for_workspace_admin_with_configured_datasource(
     for call in calls:
         # should not raise HTTPException
         call()
+
+
+def test_chart_writes_rejected_when_configured_datasource_inactive(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """当工作区配置的数据源为 inactive 且未给用户直接授权时，所有写操作应被拒绝且不执行 SQL。"""
+    user = prepare_chart_context(session, grant=False)
+    # 确保存在用于 update/delete/reorder 的图表
+    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+
+    # 将配置的数据源置为不可用
+    session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 202"))
+    session.commit()
+
+    # 保证任何 SQL 执行都会触发失败（若被错误地执行）
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda *_args: pytest.fail("无权限时不应执行 SQL"),
+    )
+
+    calls = [
+        lambda: create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建")),
+        lambda: create_roi_chart(
+            session,
+            user,
+            301,
+            RoiChartCreate(title="新增", sql="SELECT 1", chart_type="table"),
+        ),
+        lambda: update_roi_chart(
+            session,
+            user,
+            301,
+            901,
+            RoiChartUpdate(title="修改", sql="SELECT 1", chart_type="table", version=1),
+        ),
+        lambda: reorder_roi_charts(
+            session,
+            user,
+            301,
+            RoiChartReorderRequest(
+                items=[
+                    RoiChartOrderItem(id="901", sort=1, layout_span="half", version=1)
+                ]
+            ),
+        ),
+        lambda: delete_roi_chart(session, user, 301, 901),
+    ]
+
+    for call in calls:
+        assert_http_error(403, call)
 
 
 def test_update_chart_uses_version_and_hides_cross_tenant_chart(
@@ -1547,6 +1654,26 @@ def test_reorder_permission_wins_over_duplicate_error(session: Session) -> None:
 
     # With workspace ROI config, admin without direct grant will hit duplicate-item validation (400)
     assert_http_error(400, lambda: reorder_roi_charts(session, user, 301, request))
+
+
+def test_reorder_rejected_when_configured_datasource_inactive_duplicate_items(
+    session: Session,
+) -> None:
+    """重复排序项请求应优先进行权限校验：若配置数据源 inactive 则返回 403（权限拒绝）而非 400 重复项错误。"""
+    user = prepare_chart_context(session, grant=False)
+    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    # 将配置的数据源置为不可用
+    session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 202"))
+    session.commit()
+
+    request = RoiChartReorderRequest(
+        items=[
+            RoiChartOrderItem(id="901", sort=1, layout_span="half", version=1),
+            RoiChartOrderItem(id="901", sort=2, layout_span="third", version=1),
+        ]
+    )
+
+    assert_http_error(403, lambda: reorder_roi_charts(session, user, 301, request))
 
 
 def test_reorder_returns_structure_without_calling_full_chart_list(
