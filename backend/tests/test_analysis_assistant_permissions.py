@@ -339,6 +339,34 @@ def test_report_interpretation_rejects_permission_denied_chart(
     assert "没有查看权限" in body.decode()
 
 
+def test_report_interpretation_preflight_maps_target_validation_failure_to_permission_denied(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """服务端目标校验失败时，解读入口只能返回统一权限错误。"""
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_dashboard_report_target",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(HTTPException(status_code=403)),
+    )
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=11,
+        context="旧图表数据：收入 12.5",
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")],
+        report_target=analysis_api.ReportInterpretationTarget(
+            dashboard_id="dashboard-1",
+            component_ids=["chart-1"],
+            has_visible_data=True,
+            has_permission_denied=False,
+        ),
+    )
+
+    response = analysis_api._report_interpretation_preflight(request, _user(), _FakeSession())
+    body = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "permission_denied" in body
+    assert "没有查看权限" in body
+
+
 def test_report_interpretation_returns_no_data_for_valid_empty_target(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
