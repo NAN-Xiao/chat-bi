@@ -1042,8 +1042,6 @@ def test_chart_list_checks_permission_before_cache_and_keeps_structure_visible(
     assert second[0]["query_result"]["data"] == [{"value": 9}]
 
     # 保留前两次查询与缓存行为断言（first/second）
-    authorized = second
-    assert authorized[0]["query_result"]["data"] == [{"value": 9}]
 
     # 删除账号直接授权，模拟管理员仅依赖工作区配置权限继续执行
     session.exec(text("DELETE FROM core_datasource_user WHERE user_id = 7 AND ds_id = 202"))
