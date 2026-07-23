@@ -23,16 +23,14 @@ const {
   canAccessRoiDashboard,
   publishCurrentTreeBranch,
   resolveRoiPreviewAccessPlan,
-  resolveInitialDashboardRoutePlan,
-  isAllowedRoiGroupOperation,
+  createRoiEntryRouteQuery,
   shouldResetOrdinaryDashboardStore,
   shouldInitializeOrdinaryDashboardCanvas,
 } = await import(moduleUrl)
 
 assert.equal(typeof resolveRoiPreviewAccessPlan, 'function', '必须提供 ROI 直达权限计划')
 assert.equal(typeof shouldResetOrdinaryDashboardStore, 'function', '必须提供普通 store 重置判断')
-assert.equal(typeof resolveInitialDashboardRoutePlan, 'function', '必须提供 ROI 空路由初始选择决策')
-assert.equal(typeof isAllowedRoiGroupOperation, 'function', '必须提供 ROI 固定入口命令白名单')
+assert.equal(typeof createRoiEntryRouteQuery, 'function', '必须提供固定 ROI 入口路由构造函数')
 
 for (const role of ['owner', 'admin']) {
   assert.deepEqual(resolveRoiPreviewAccessPlan('roi', canAccessRoiDashboard({ getTenantRole: role })), {
@@ -74,34 +72,11 @@ assert.equal(shouldResetOrdinaryDashboardStore('roi'), false)
 assert.equal(shouldInitializeOrdinaryDashboardCanvas('preview', 'roi'), false)
 assert.equal(shouldInitializeOrdinaryDashboardCanvas('preview', 'my'), true)
 
-assert.deepEqual(resolveInitialDashboardRoutePlan('roi', undefined, true), {
-  isEmptyRoiRoute: true,
-  waitForRoiBranch: true,
-  selectFirstRoiDashboard: true,
-  clearSelection: false,
-  allowOrdinaryDashboardFallback: false,
-})
-assert.deepEqual(resolveInitialDashboardRoutePlan('roi', undefined, false), {
-  isEmptyRoiRoute: true,
-  waitForRoiBranch: true,
-  selectFirstRoiDashboard: false,
-  clearSelection: true,
-  allowOrdinaryDashboardFallback: false,
-})
-assert.deepEqual(resolveInitialDashboardRoutePlan('my', undefined, false), {
-  isEmptyRoiRoute: false,
-  waitForRoiBranch: false,
-  selectFirstRoiDashboard: false,
-  clearSelection: false,
-  allowOrdinaryDashboardFallback: true,
-})
-
-for (const operation of ['newRoiDashboard', 'toggleTreeEditing']) {
-  assert.equal(isAllowedRoiGroupOperation(operation), true, `固定 ROI 入口必须允许 ${operation}`)
-}
-for (const operation of ['delete', 'rename', 'edit', 'deleteRoiDashboard', 'copyDefault']) {
-  assert.equal(isAllowedRoiGroupOperation(operation), false, `固定 ROI 入口必须拒绝 ${operation}`)
-}
+assert.deepEqual(
+  createRoiEntryRouteQuery({ resourceId: 'old', dashboardId: 'old', dashboardMode: 'my', tab: 'x' }),
+  { dashboardMode: 'roi', tab: 'x' },
+  '固定 ROI 入口必须移除资源 ID，并保留无关查询参数'
+)
 
 const deferred = () => {
   let resolve

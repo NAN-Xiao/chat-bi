@@ -102,13 +102,6 @@ export interface RoiChartReorderRequest {
   items: RoiChartOrderItem[]
 }
 
-export interface RoiEditorState {
-  chartDialogOpen: boolean
-  dashboardId: string | null
-  chartId: string | null
-  createDashboardRequestId: number
-}
-
 export interface RoiChartEditorState {
   visible: boolean
   mode: 'create' | 'edit'

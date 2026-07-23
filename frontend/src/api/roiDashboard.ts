@@ -8,9 +8,6 @@ import type {
   RoiChartUpdate,
   RoiConfig,
   RoiDashboard,
-  RoiDashboardCreate,
-  RoiDashboardReorderRequest,
-  RoiDashboardUpdate,
 } from '@/views/dashboard/roi/types'
 
 export const roiCustomErrorRequestConfig: FullRequestConfig = {
@@ -20,15 +17,10 @@ export const roiCustomErrorRequestConfig: FullRequestConfig = {
 export const roiDashboardApi = {
   getConfig: (config?: FullRequestConfig) =>
     request.get<RoiConfig | null>('/dashboard/roi/config', config),
-  list: (config?: FullRequestConfig) => request.get<RoiDashboard[]>('/dashboard/roi/list', config),
-  create: (payload: RoiDashboardCreate, config?: FullRequestConfig) =>
-    request.post<RoiDashboard>('/dashboard/roi', payload, config),
-  update: (id: string, payload: RoiDashboardUpdate, config?: FullRequestConfig) =>
-    request.patch<RoiDashboard>(`/dashboard/roi/${id}`, payload, config),
-  remove: (id: string, config?: FullRequestConfig) =>
-    request.delete<boolean>(`/dashboard/roi/${id}`, config),
-  reorder: (payload: RoiDashboardReorderRequest, config?: FullRequestConfig) =>
-    request.post<RoiDashboard[]>('/dashboard/roi/reorder', payload, config),
+  getCurrent: (config?: FullRequestConfig) =>
+    request.get<RoiDashboard | null>('/dashboard/roi/current', config),
+  ensure: (config?: FullRequestConfig) =>
+    request.post<RoiDashboard>('/dashboard/roi/ensure', undefined, config),
   listCharts: (id: string, config?: FullRequestConfig) =>
     request.get<RoiChart[]>(`/dashboard/roi/${id}/charts`, config),
   previewChart: (id: string, payload: RoiChartPreviewRequest, config?: FullRequestConfig) =>

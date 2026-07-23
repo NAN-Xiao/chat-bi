@@ -1075,7 +1075,6 @@ defineExpose({
         <RoiDashboardPanel
           v-if="canAccessRoiDashboardMode"
           v-show="isAuthorizedRoiDashboardMode"
-          :dashboard-id="routeDashboardId"
         />
         <template v-if="!isAuthorizedRoiDashboardMode">
         <SQPreviewHead

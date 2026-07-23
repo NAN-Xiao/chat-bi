@@ -66,6 +66,8 @@ def test_roi_config_is_read_only() -> None:
 
     assert methods["/dashboard/roi/config"] == {"GET"}
     assert "/dashboard/roi/datasources" not in methods
+    assert methods["/dashboard/roi/current"] == {"GET"}
+    assert methods["/dashboard/roi/ensure"] == {"POST"}
     assert methods["/dashboard/roi/list"] == {"GET"}
     assert methods["/dashboard/roi"] == {"POST"}
     assert methods["/dashboard/roi/{dashboard_id}"] == {"PATCH", "DELETE"}

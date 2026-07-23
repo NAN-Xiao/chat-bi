@@ -1,21 +1,13 @@
 import type { RoiChartEditorState, RoiConfig, RoiDashboard } from './types'
 
-export const ROI_DASHBOARD_TREE_REFRESH_EVENT = 'roi-dashboard-tree-refresh'
-
-export type RoiDashboardRouteTarget = {
-  path: '/dashboard/index'
-  query: { resourceId: string; dashboardMode: 'roi' }
-}
-
-type CreateFlowDependencies = {
+type EnsureChartFlowDependencies = {
   ensureConfigLoaded: () => Promise<unknown>
   getConfig: () => RoiConfig | null
+  getDashboard: () => RoiDashboard | null
   onMissingConfig: () => void
   onForbiddenConfig: () => void
-  requestName: () => Promise<string | null>
-  createDashboard: (name: string) => Promise<RoiDashboard>
-  publishDashboard: (dashboard: RoiDashboard) => void
-  navigate: (target: RoiDashboardRouteTarget) => Promise<unknown>
+  ensureDashboard: () => Promise<RoiDashboard>
+  firstChart: boolean
   openEditor: (state: RoiChartEditorState) => void
 }
 
@@ -72,11 +64,10 @@ export const canEditRoiConfig = (config: Pick<RoiConfig, 'can_edit'> | null) =>
 export function buildRoiPanelLoadPlan(input: {
   reason: RoiPanelLoadReason
   routeMode: 'roi' | 'ordinary'
-  dashboardId: string
-}): Array<'config' | 'dashboards' | 'charts'> {
+}): Array<'config' | 'dashboard'> {
   if (input.reason === 'explicit-config') return ['config']
   if (input.routeMode !== 'roi') return []
-  return input.dashboardId ? ['config', 'dashboards', 'charts'] : ['config', 'dashboards']
+  return ['config', 'dashboard']
 }
 
 export const createFirstChartEditorState = (dashboardId: string): RoiChartEditorState => ({
@@ -105,7 +96,7 @@ export const closeRoiChartEditor = (state: RoiChartEditorState): RoiChartEditorS
   visible: false,
 })
 
-export async function runRoiDashboardCreateFlow(dependencies: CreateFlowDependencies) {
+export async function runRoiEnsureChartFlow(dependencies: EnsureChartFlowDependencies) {
   await dependencies.ensureConfigLoaded()
   const config = dependencies.getConfig()
   if (!config) {
@@ -116,20 +107,12 @@ export async function runRoiDashboardCreateFlow(dependencies: CreateFlowDependen
     dependencies.onForbiddenConfig()
     return null
   }
-  const name = (await dependencies.requestName())?.trim()
-  if (!name) return null
-
-  const created = await dependencies.createDashboard(name)
-  dependencies.publishDashboard(created)
-  await dependencies.navigate({
-    path: '/dashboard/index',
-    query: { resourceId: String(created.id), dashboardMode: 'roi' },
-  })
+  const dashboard = dependencies.getDashboard() || (await dependencies.ensureDashboard())
   const editorState = createRoiNewChartEditorState(
     config,
-    String(created.id),
-    true
+    String(dashboard.id),
+    dependencies.firstChart
   )
   if (editorState) dependencies.openEditor(editorState)
-  return created
+  return dashboard
 }

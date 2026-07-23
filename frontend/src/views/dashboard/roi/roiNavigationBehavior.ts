@@ -29,6 +29,13 @@ export const shouldInitializeOrdinaryDashboardCanvas = (
   scope: RoiDashboardScope
 ) => showPosition === 'preview' && scope !== 'roi'
 
+export const createRoiEntryRouteQuery = (query: Record<string, unknown>) => {
+  const nextQuery = { ...query }
+  delete nextQuery.resourceId
+  delete nextQuery.dashboardId
+  return { ...nextQuery, dashboardMode: 'roi' as const }
+}
+
 export const resolveInitialDashboardRoutePlan = (
   scope: RoiDashboardScope,
   resourceId: unknown,
