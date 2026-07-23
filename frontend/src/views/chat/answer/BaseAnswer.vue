@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { type ChatMessage } from '@/api/chat.ts'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import icon_up_outlined from '@/assets/svg/icon_up_outlined.svg'
 import icon_down_outlined from '@/assets/svg/icon_down_outlined.svg'
 import { useI18n } from 'vue-i18n'
-import { useChatConfigStore } from '@/stores/chatConfig.ts'
+import {
+  initialThinkingVisibility,
+  transitionThinkingVisibility,
+} from './thinkingVisibility.ts'
 
 const props = withDefaults(
   defineProps<{
@@ -24,8 +27,6 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
-
-const chatConfig = useChatConfigStore()
 
 const show = ref<boolean>(false)
 
@@ -68,11 +69,15 @@ function clickShow() {
   show.value = !show.value
 }
 
-onMounted(() => {
-  if (props.message.isTyping) {
-    // 根据配置项是否默认展开
-    show.value = chatConfig.getExpandThinkingBlock
+watch(
+  () => !!props.message.isTyping,
+  (currentTyping, previousTyping) => {
+    show.value = transitionThinkingVisibility(show.value, previousTyping, currentTyping)
   }
+)
+
+onMounted(() => {
+  show.value = initialThinkingVisibility(!!props.message.isTyping)
 })
 </script>
 
