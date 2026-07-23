@@ -22,8 +22,3 @@ export const canManageCurrentWorkspace = (state: WorkspaceRoleState) => {
   if (state.isSystemAdminUser) return false
   return canManageWorkspaceRole(resolveWorkspaceRole(state))
 }
-
-export const canAccessRoiDashboard = (state: WorkspaceRoleState) =>
-  state.isPlatformWorkspaceDelegate !== true &&
-  state.isSystemAdminUser !== true &&
-  canManageWorkspaceRole(resolveWorkspaceRole(state))

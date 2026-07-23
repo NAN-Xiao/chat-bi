@@ -505,8 +505,8 @@ const nodeClick = (data: SQTreeNode, node: any) => {
       if (isDefaultDashboardNode(data)) {
         rememberDefaultDashboardId(getRawDashboardId(data), userStore)
       }
-      if (clickPlan.syncRoute) syncDashboardRoute(data)
-      if (clickPlan.emitNodeClick) emitDashboardNodeClick(data)
+      syncDashboardRoute(data)
+      emitDashboardNodeClick(data)
     } else {
       resourceListTree.value.setCurrentKey(null)
     }
