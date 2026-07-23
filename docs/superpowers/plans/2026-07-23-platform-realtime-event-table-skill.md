@@ -4,7 +4,7 @@
 
 **Goal:** 新增并发布一条平台公开 Data Skill，使未完成当日问题条件式选择 `event_realtime`，完整历史问题选择 `event`。
 
-**Architecture:** 使用独立、幂等的发布脚本维护唯一 `PLATFORM_PUBLIC` 记录，不修改全局 Agent prompt、通用 SQL 生成代码或 datasource-scoped Skill。脚本通过 backend protocol 分离纯规则、发布状态机和 PostgreSQL/embedding 适配器，以便用内存 fake 完成失败恢复测试，再执行真实 dry-run/apply 与检索验收。
+**Architecture:** 使用独立、幂等的发布脚本维护唯一 `PLATFORM_PUBLIC` 记录，不修改全局 Agent prompt、通用 SQL 生成规则或 datasource-scoped Skill。Skill 通过结构化 `data-skill-requires-tables` 声明 Schema 前置条件，检索层在排序前复用 `build_permission_scope` 按当前用户有效授权表集合确定性过滤。脚本通过 backend protocol 分离纯规则、发布状态机和 PostgreSQL/embedding 适配器，以便用内存 fake 完成失败恢复测试，再执行真实 dry-run/apply 与检索验收。
 
 **Tech Stack:** Python 3.11、pytest、psycopg 3、SQLAlchemy、自有 `custom_prompt` Data Skill 与 embedding 服务。
 
@@ -14,6 +14,7 @@
 - 平台 Skill 只决定选表，不定义业务事件名、产品 ID、主体键或金额字段。
 - 实时表不存在、无权限或字段不满足时不得静默回退到 `event`。
 - 目标记录固定为 `tenant_id=1`、`visibility_scope=PLATFORM_PUBLIC`、`specific_ds=false`、`datasource_ids=[]`。
+- 目标 Skill 固定声明 `data-skill-requires-tables=["event","event_realtime"]`，缺少任一表时不得注入模型上下文。
 - 默认 dry-run；只有显式 `--apply` 才允许写库。
 - 只提交本任务文件，保留工作区其他未提交内容。
 
@@ -200,6 +201,8 @@ Expected: 两条命令均退出码 `0`。
 **Interfaces:**
 - Consumes: Task 2 CLI、当前系统数据库、远程 `text-embedding-v4`。
 - Produces: 一条可回读且可召回的平台公开 Data Skill。
+
+在发布前先扩展 `backend/apps/chat/curd/custom_prompt.py` 的通用 Data Skill 前置表过滤，并在 `backend/tests/test_custom_prompt_datasource_scope.py` 覆盖双表存在/缺失两条路径；该过滤必须在自动排序和 prompt 拼装之前完成。
 
 - [ ] **Step 1: 执行只读预检**
 

@@ -141,6 +141,7 @@ class BusinessSqlContextService:
             include_all_target_scopes=include_all_target_scopes,
             can_manage_public=can_manage_public,
             can_manage_platform_public=can_manage_platform_public,
+            current_user=current_user,
         )
         schema, allowed_tables = get_ai_table_schema(
             session=session,

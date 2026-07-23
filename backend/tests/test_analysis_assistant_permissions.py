@@ -365,6 +365,28 @@ def test_report_interpretation_returns_no_data_for_valid_empty_target(
     assert "没有查看权限" not in body
 
 
+def test_collect_data_skill_context_passes_full_current_user(monkeypatch) -> None:
+    current_user = _user()
+    captured = {}
+
+    def find_data_skills(*args, **kwargs):
+        captured.update(kwargs)
+        return "skill context", [], None
+
+    monkeypatch.setattr(analysis_api, "find_data_skills", find_data_skills)
+
+    result = analysis_api._collect_data_skill_context(
+        _FakeSession(),
+        datasource_id=1,
+        data_skill_id=None,
+        current_user=current_user,
+        question="今天按小时收入",
+    )
+
+    assert result == "skill context"
+    assert captured["current_user"] is current_user
+
+
 async def _collect_stream_body(response) -> list[bytes]:
     chunks: list[bytes] = []
     async for chunk in response.body_iterator:

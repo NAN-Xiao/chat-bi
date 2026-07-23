@@ -38,10 +38,20 @@ class _FakeSession:
     类说明：_FakeSession 让 find_data_skills 能在不连接数据库的情况下测试过滤逻辑。
     """
 
-    def __init__(self, rows: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        table_names: list[str] | None = None,
+    ) -> None:
         self._rows = rows
+        self._table_names = table_names or []
 
-    def execute(self, *args, **kwargs) -> _FakeResult:
+    def execute(self, statement, *args, **kwargs) -> _FakeResult:
+        if "FROM core_table" in str(statement):
+            return _FakeResult(
+                [{"table_name": table_name} for table_name in self._table_names]
+            )
         return _FakeResult(self._rows)
 
 
@@ -83,6 +93,91 @@ def _external_mcp_skill_prompt(name: str) -> str:
   "sources": [{{"name": "alerts", "type": "external_mcp", "tool": "alerts.count"}}]
 }} -->
 {name} prompt'''
+
+
+def _required_tables_skill_prompt() -> str:
+    return '''<!-- data-skill-requires-tables:["event","event_realtime"] -->
+当天实时事件选表规则'''
+
+
+def test_find_data_skills_excludes_platform_skill_when_required_table_is_missing(
+    monkeypatch,
+) -> None:
+    realtime_skill = _skill_row(
+        skill_id=1,
+        name="平台实时事件选表",
+        prompt=_required_tables_skill_prompt(),
+    )
+
+    current_user = object()
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event"},
+    )
+
+    skill_text, skill_list, _ = find_data_skills(
+        _FakeSession([realtime_skill]),
+        datasource=7,
+        tenant_id=10,
+        current_user_id=1,
+        current_user=current_user,
+        question="今天按小时收入",
+    )
+
+    assert "当天实时事件选表规则" not in skill_text
+    assert skill_list == []
+
+
+def test_find_data_skills_keeps_platform_skill_when_all_required_tables_exist(
+    monkeypatch,
+) -> None:
+    realtime_skill = _skill_row(
+        skill_id=1,
+        name="平台实时事件选表",
+        prompt=_required_tables_skill_prompt(),
+    )
+
+    current_user = object()
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime"},
+    )
+
+    skill_text, skill_list, _ = find_data_skills(
+        _FakeSession([realtime_skill]),
+        datasource=7,
+        tenant_id=10,
+        current_user_id=1,
+        current_user=current_user,
+        question="今天按小时收入",
+    )
+
+    assert "当天实时事件选表规则" in skill_text
+    assert [item.split("\n", 1)[0] for item in skill_list] == [
+        "名称：平台实时事件选表"
+    ]
+
+
+def test_find_data_skills_fails_closed_without_user_for_required_tables() -> None:
+    realtime_skill = _skill_row(
+        skill_id=1,
+        name="平台实时事件选表",
+        prompt=_required_tables_skill_prompt(),
+    )
+
+    skill_text, skill_list, _ = find_data_skills(
+        _FakeSession([realtime_skill]),
+        datasource=7,
+        tenant_id=10,
+        current_user_id=1,
+        current_user=None,
+        question="今天按小时收入",
+    )
+
+    assert "当天实时事件选表规则" not in skill_text
+    assert skill_list == []
 
 
 def test_find_data_skills_excludes_external_mcp_skill_without_workspace_binding(monkeypatch) -> None:

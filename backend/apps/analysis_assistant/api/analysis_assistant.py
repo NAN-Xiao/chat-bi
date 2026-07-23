@@ -1710,6 +1710,7 @@ def _collect_data_skill_context(
             include_all_target_scopes=include_all_target_scopes,
             can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
             can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
+            current_user=current_user,
         )
         return skill_text.strip()
     except Exception:
