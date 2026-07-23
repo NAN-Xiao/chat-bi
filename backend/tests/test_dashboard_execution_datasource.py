@@ -14,7 +14,57 @@ from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardSqlPre
 
 class _Session:
     def get(self, _model, datasource_id: int):
-        return SimpleNamespace(id=datasource_id, name=f"数据源{datasource_id}", status="success")
+        return SimpleNamespace(
+            id=datasource_id,
+            name=f"数据源{datasource_id}",
+            type="mysql",
+            type_name="MySQL",
+            status="success",
+        )
+
+
+class _Query:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def filter(self, *_args):
+        return self
+
+    def order_by(self, *_args):
+        return self
+
+    def all(self):
+        return self.rows
+
+
+class _MetadataSession(_Session):
+    def __init__(self):
+        self.tables = [
+            SimpleNamespace(
+                id=301,
+                ds_id=22,
+                checked=True,
+                table_name="roi_metric",
+                table_comment="ROI 指标",
+                custom_comment="",
+            )
+        ]
+        self.fields = [
+            SimpleNamespace(
+                id=401,
+                ds_id=22,
+                table_id=301,
+                checked=True,
+                field_name="amount",
+                field_type="decimal",
+                field_comment="金额",
+                custom_comment="",
+                field_index=1,
+            )
+        ]
+
+    def query(self, model):
+        return _Query(self.tables if model.__name__ == "CoreTable" else self.fields)
 
 
 def _user() -> SimpleNamespace:
@@ -146,6 +196,31 @@ def test_dashboard_chart_execution_marks_resolved_datasource_as_prevalidated(
 
     assert result["status"] == "success"
     assert execution_options == [True]
+
+
+def test_dashboard_execution_datasource_metadata_uses_roi_space_scope(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ROI 图表编辑器的表字段元数据必须由空间级执行数据源校验保护。"""
+    resolved_datasources: list[int] = []
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: resolved_datasources.append(datasource_id) or 22,
+    )
+
+    metadata = dashboard_service.get_chart_execution_datasource_metadata(
+        _MetadataSession(), _user(), 22
+    )
+
+    assert resolved_datasources == [22]
+    assert metadata["id"] == 22
+    assert len(metadata["tables"]) == 1
+    assert metadata["tables"][0]["id"] == 301
+    assert metadata["tables"][0]["table_name"] == "roi_metric"
+    assert metadata["tables"][0]["fields"][0]["id"] == 401
+    assert metadata["tables"][0]["fields"][0]["field_name"] == "amount"
+    assert metadata["tables"][0]["fields"][0]["field_type"] == "decimal"
 
 
 def test_dashboard_api_exposes_execution_datasource_candidates() -> None:

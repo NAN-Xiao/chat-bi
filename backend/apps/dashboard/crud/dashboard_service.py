@@ -53,7 +53,7 @@ from apps.datasource.crud.sql_engine import (
     validate_user_query_sql_or_raise,
 )
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_DISPLAY_MESSAGE, PERMISSION_DENIED_ERROR_TYPE
-from apps.datasource.models.datasource import CoreDatasource
+from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from apps.db.db import get_sqlglot_dialect
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.user import UserModel
@@ -803,6 +803,54 @@ def resolve_chart_execution_datasource(
     else:
         _ensure_datasource_access(session, current_user, resolved_id, required=True)
     return resolved_id
+
+
+def get_chart_execution_datasource_metadata(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int,
+) -> dict[str, Any]:
+    """返回看板 SQL 编辑器所需的受控数据源表字段元数据。"""
+    resolved_id = resolve_chart_execution_datasource(session, current_user, datasource_id)
+    datasource = session.get(CoreDatasource, resolved_id)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="Datasource does not exist")
+
+    tables = session.query(CoreTable).filter(CoreTable.ds_id == resolved_id).order_by(
+        CoreTable.table_name.asc()
+    ).all()
+    fields = session.query(CoreField).filter(CoreField.ds_id == resolved_id).order_by(
+        CoreField.table_id.asc(), CoreField.field_index.asc()
+    ).all()
+    fields_by_table_id: dict[int, list[dict[str, Any]]] = {}
+    for field in fields:
+        fields_by_table_id.setdefault(int(field.table_id), []).append({
+            "id": int(field.id),
+            "field_name": field.field_name,
+            "field_type": field.field_type,
+            "field_comment": field.field_comment,
+            "custom_comment": field.custom_comment,
+            "field_index": field.field_index,
+            "checked": bool(field.checked),
+        })
+
+    return {
+        "id": int(datasource.id),
+        "name": datasource.name,
+        "type": datasource.type,
+        "type_name": datasource.type_name,
+        "tables": [
+            {
+                "id": int(table.id),
+                "table_name": table.table_name,
+                "table_comment": table.table_comment,
+                "custom_comment": table.custom_comment,
+                "checked": bool(table.checked),
+                "fields": fields_by_table_id.get(int(table.id), []),
+            }
+            for table in tables
+        ],
+    }
 
 
 def _check_dashboard_view_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):

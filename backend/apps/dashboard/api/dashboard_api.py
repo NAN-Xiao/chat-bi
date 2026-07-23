@@ -13,7 +13,7 @@ from apps.dashboard.crud.dashboard_service import list_resource, load_resource, 
     move_resource, reorder_resources, \
     copy_dashboard_to_platform_template, list_platform_dashboard_templates, load_platform_dashboard_template, \
     update_platform_dashboard_template, delete_platform_dashboard_template, copy_platform_template_to_workspace_dashboard, \
-    refresh_platform_dashboard_template, list_chart_execution_datasources
+    refresh_platform_dashboard_template, list_chart_execution_datasources, get_chart_execution_datasource_metadata
 from apps.dashboard.crud.ai_sql_generator import generate_dashboard_ai_sql
 from apps.dashboard.models.dashboard_model import (
     CreateDashboard,
@@ -450,6 +450,16 @@ async def sql_preview_api(session: SessionDep, current_user: CurrentUser, reques
 async def execution_datasources_api(session: SessionDep, current_user: CurrentUser):
     """返回当前工作空间中允许当前用户执行图表 SQL 的数据源。"""
     return list_chart_execution_datasources(session, current_user)
+
+
+@router.get("/execution-datasource-metadata/{datasource_id}")
+async def execution_datasource_metadata_api(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int,
+):
+    """返回当前工作空间可执行图表 SQL 的数据源表字段元数据。"""
+    return get_chart_execution_datasource_metadata(session, current_user, datasource_id)
 
 
 @router.post("/ai_sql_generate", response_model=DashboardAiSqlGenerateResponse, summary=f"{PLACEHOLDER_PREFIX}dashboard_ai_sql_generate")

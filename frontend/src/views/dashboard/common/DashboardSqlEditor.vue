@@ -3,7 +3,6 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CopyDocument, Delete, Filter, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
 import { dashboardApi } from '@/api/dashboard.ts'
-import { datasourceApi } from '@/api/datasource.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
 import { trackingConfigApi } from '@/api/system.ts'
 import { request } from '@/utils/request.ts'
@@ -2667,9 +2666,8 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       tenantId,
     })
     const metadata = await getCachedDashboardBuilderMetadata(cacheKey, async () => {
-      const [datasource, tablesResult, trackingConfigResult] = await Promise.all([
-        datasourceApi.getDs(datasourceId).catch(() => null),
-        datasourceApi.tableList(datasourceId),
+      const [metadata, trackingConfigResult] = await Promise.all([
+        dashboardApi.execution_datasource_metadata(datasourceId),
         trackingConfigApi.get().catch(() => null),
       ])
       const trackingTableRoleByName = new Map<string, string>()
@@ -2680,7 +2678,8 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
           trackingTableRoleByName.set(tableName, tableRole)
         }
       })
-      const tables: any[] = tablesResult
+      const datasource = metadata || null
+      const tables: any[] = metadata?.tables
       const normalizedTables = Array.isArray(tables) ? tables : []
       const tablesWithFields = await Promise.all(
         normalizedTables.map(async (table) => {
@@ -2690,15 +2689,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
           if (Array.isArray(table?.fields)) {
             return tableWithRole
           }
-          if (!table?.id) {
-            return { ...tableWithRole, fields: [] }
-          }
-          try {
-            const fields = await datasourceApi.fieldList(table.id, { fieldName: '', excludeContainerFields: true })
-            return { ...tableWithRole, fields: Array.isArray(fields) ? fields : [] }
-          } catch {
-            return { ...tableWithRole, fields: [] }
-          }
+          return { ...tableWithRole, fields: [] }
         })
       )
       return {
