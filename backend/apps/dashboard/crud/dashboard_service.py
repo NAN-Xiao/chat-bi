@@ -1090,13 +1090,8 @@ def validate_dashboard_report_target(
     if not _can_view_dashboard_resource(session, current_user, record):
         raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
 
-    requested_datasource = _normalize_datasource_id(datasource_id)
-    dashboard_datasource = _normalize_datasource_id(record.datasource)
-    if requested_datasource is None or (
-        dashboard_datasource is not None and requested_datasource != dashboard_datasource
-    ):
-        raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
-    _ensure_datasource_access(session, current_user, requested_datasource, required=True)
+    # 保留前端入参兼容性，实际权限仅以服务端保存的图表执行数据源为准。
+    _ = datasource_id
 
     requested_component_ids = {
         str(component_id).strip()
@@ -1110,13 +1105,21 @@ def validate_dashboard_report_target(
         raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
 
     canvas_view_info = _parse_canvas_view_info(record.canvas_view_info)
+    fallback_datasource = _effective_dashboard_datasource(record)
     for component_id in requested_component_ids:
         view_info = canvas_view_info.get(component_id)
         if not isinstance(view_info, dict):
-            continue
-        view_datasource = _normalize_datasource_id(view_info.get("datasource"))
-        if view_datasource is not None and view_datasource != requested_datasource:
             raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+        try:
+            chart_datasource = _chart_datasource(record, view_info, fallback_datasource)
+            resolve_chart_execution_datasource(session, current_user, chart_datasource)
+        except HTTPException as exc:
+            if exc.status_code in {403, 404}:
+                raise HTTPException(
+                    status_code=403,
+                    detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE,
+                ) from exc
+            raise
 
 
 def _canvas_view_candidate_ids(view_id: Any, view_info: Any, id_map: dict[str, str] | None = None) -> list[str]:

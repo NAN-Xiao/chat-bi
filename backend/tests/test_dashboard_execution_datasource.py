@@ -72,6 +72,60 @@ def _user() -> SimpleNamespace:
     return SimpleNamespace(id=1001, tenant_id=2001)
 
 
+def _report_target_dashboard(*, view_datasource: int | None) -> SimpleNamespace:
+    return SimpleNamespace(
+        id="dashboard-1",
+        tenant_id=2001,
+        datasource=11,
+        component_data=json.dumps([{"id": "chart-1", "component": "SQView"}]),
+        canvas_view_info=json.dumps({"chart-1": {"datasource": view_datasource}}),
+    )
+
+
+def test_report_target_uses_saved_roi_drawer_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """报表解读应使用保存的 ROI 图表抽屉数据源。"""
+    resolved_ids: list[int | None] = []
+    record = _report_target_dashboard(view_datasource=22)
+    monkeypatch.setattr(dashboard_service, "_load_dashboard_or_404", lambda *_args: record)
+    monkeypatch.setattr(dashboard_service, "_can_view_dashboard_resource", lambda *_args: True)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 11)
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: resolved_ids.append(datasource_id) or 22,
+    )
+
+    dashboard_service.validate_dashboard_report_target(
+        _Session(), _user(), "dashboard-1", 11, ["chart-1"]
+    )
+
+    assert resolved_ids == [22]
+
+
+def test_report_target_falls_back_to_dashboard_datasource_without_drawer_value(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """没有抽屉数据源时，报表解读应回退到看板数据源。"""
+    resolved_ids: list[int | None] = []
+    record = _report_target_dashboard(view_datasource=None)
+    monkeypatch.setattr(dashboard_service, "_load_dashboard_or_404", lambda *_args: record)
+    monkeypatch.setattr(dashboard_service, "_can_view_dashboard_resource", lambda *_args: True)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 11)
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: resolved_ids.append(datasource_id) or 11,
+    )
+
+    dashboard_service.validate_dashboard_report_target(
+        _Session(), _user(), "dashboard-1", 22, ["chart-1"]
+    )
+
+    assert resolved_ids == [11]
+
+
 def test_chart_execution_datasources_include_only_bound_and_roi(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
