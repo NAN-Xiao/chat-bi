@@ -366,23 +366,22 @@ def _required_data_skill_tables(prompt: str | None) -> frozenset[str] | None:
     return frozenset(normalized)
 
 
-def _checked_datasource_tables(session: Session, datasource: int) -> set[str]:
-    rows = session.execute(
-        sql_text(
-            """
-            SELECT table_name
-            FROM core_table
-            WHERE ds_id = :datasource
-              AND COALESCE(checked, false) = true
-            """
-        ),
-        {"datasource": int(datasource)},
-    ).mappings().all()
-    return {
-        str(row.get("table_name") or "").strip(' "`[]').lower()
-        for row in rows
-        if str(row.get("table_name") or "").strip(' "`[]')
-    }
+def _authorized_datasource_tables(
+    session: Session,
+    datasource: int,
+    current_user: Any | None,
+) -> set[str]:
+    """复用 SQL 权限服务取得当前用户真正可访问的数据表。"""
+
+    if current_user is None:
+        return set()
+    from apps.datasource.crud.sql_permission import build_permission_scope
+    from apps.datasource.models.datasource import CoreDatasource
+
+    datasource_row = session.get(CoreDatasource, int(datasource))
+    if datasource_row is None:
+        return set()
+    return set(build_permission_scope(session, current_user, datasource_row))
 
 
 def _skill_match_terms(question: str) -> set[str]:
@@ -863,6 +862,7 @@ def find_data_skills(
         include_all_target_scopes: bool = False,
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
+        current_user: Any | None = None,
 ) -> tuple[str, list[str], Optional[int]]:
     """
     是什么：find_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -937,7 +937,7 @@ def find_data_skills(
     skill_rows: list[dict[str, Any]] = []
     ai_model_id: Optional[int] = None
     bound_external_mcp_id: int | None | object = object()
-    checked_datasource_tables: set[str] | None = None
+    authorized_datasource_tables: set[str] | None = None
     for row in rows:
         if _is_split_legacy_data_skill(row):
             continue
@@ -960,12 +960,13 @@ def find_data_skills(
         if required_tables is not None:
             if datasource is None:
                 continue
-            if checked_datasource_tables is None:
-                checked_datasource_tables = _checked_datasource_tables(
+            if authorized_datasource_tables is None:
+                authorized_datasource_tables = _authorized_datasource_tables(
                     session,
                     int(datasource),
+                    current_user,
                 )
-            if not required_tables.issubset(checked_datasource_tables):
+            if not required_tables.issubset(authorized_datasource_tables):
                 continue
         if (
             visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value

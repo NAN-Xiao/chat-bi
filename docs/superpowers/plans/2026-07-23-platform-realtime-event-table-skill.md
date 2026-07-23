@@ -4,7 +4,7 @@
 
 **Goal:** 新增并发布一条平台公开 Data Skill，使未完成当日问题条件式选择 `event_realtime`，完整历史问题选择 `event`。
 
-**Architecture:** 使用独立、幂等的发布脚本维护唯一 `PLATFORM_PUBLIC` 记录，不修改全局 Agent prompt、通用 SQL 生成规则或 datasource-scoped Skill。Skill 通过结构化 `data-skill-requires-tables` 声明 Schema 前置条件，检索层在排序前按当前数据源 `core_table.checked` 表集合确定性过滤。脚本通过 backend protocol 分离纯规则、发布状态机和 PostgreSQL/embedding 适配器，以便用内存 fake 完成失败恢复测试，再执行真实 dry-run/apply 与检索验收。
+**Architecture:** 使用独立、幂等的发布脚本维护唯一 `PLATFORM_PUBLIC` 记录，不修改全局 Agent prompt、通用 SQL 生成规则或 datasource-scoped Skill。Skill 通过结构化 `data-skill-requires-tables` 声明 Schema 前置条件，检索层在排序前复用 `build_permission_scope` 按当前用户有效授权表集合确定性过滤。脚本通过 backend protocol 分离纯规则、发布状态机和 PostgreSQL/embedding 适配器，以便用内存 fake 完成失败恢复测试，再执行真实 dry-run/apply 与检索验收。
 
 **Tech Stack:** Python 3.11、pytest、psycopg 3、SQLAlchemy、自有 `custom_prompt` Data Skill 与 embedding 服务。
 

@@ -363,8 +363,21 @@ class PsycopgPublishBackend:
                         embedding = NULL,
                         embedding_signature = NULL
                     WHERE id = %s
-                      AND type = 'DATA_SKILL'
+                      AND type IS NOT DISTINCT FROM %s
+                      AND name IS NOT DISTINCT FROM %s
+                      AND description IS NOT DISTINCT FROM %s
                       AND prompt IS NOT DISTINCT FROM %s
+                      AND tenant_id IS NOT DISTINCT FROM %s
+                      AND target_scope IS NOT DISTINCT FROM %s
+                      AND active IS NOT DISTINCT FROM %s
+                      AND visible IS NOT DISTINCT FROM %s
+                      AND ai_model_id IS NOT DISTINCT FROM %s
+                      AND create_by IS NOT DISTINCT FROM %s
+                      AND visibility_scope IS NOT DISTINCT FROM %s
+                      AND specific_ds IS NOT DISTINCT FROM %s
+                      AND datasource_ids IS NOT DISTINCT FROM %s
+                      AND embedding IS NOT DISTINCT FROM %s
+                      AND embedding_signature IS NOT DISTINCT FROM %s
                     """,
                     (
                         PLATFORM_TENANT_ID,
@@ -374,7 +387,25 @@ class PsycopgPublishBackend:
                         prompt,
                         Jsonb([]),
                         snapshot.skill_id,
+                        (snapshot.row or {}).get("type"),
+                        (snapshot.row or {}).get("name"),
+                        (snapshot.row or {}).get("description"),
                         original_prompt,
+                        (snapshot.row or {}).get("tenant_id"),
+                        (snapshot.row or {}).get("target_scope"),
+                        (snapshot.row or {}).get("active"),
+                        (snapshot.row or {}).get("visible"),
+                        (snapshot.row or {}).get("ai_model_id"),
+                        (snapshot.row or {}).get("create_by"),
+                        (snapshot.row or {}).get("visibility_scope"),
+                        (snapshot.row or {}).get("specific_ds"),
+                        (
+                            Jsonb((snapshot.row or {}).get("datasource_ids"))
+                            if (snapshot.row or {}).get("datasource_ids") is not None
+                            else None
+                        ),
+                        (snapshot.row or {}).get("embedding"),
+                        (snapshot.row or {}).get("embedding_signature"),
                     ),
                 )
                 if cursor.rowcount != 1:
@@ -450,6 +481,14 @@ class PsycopgPublishBackend:
             or original_connection.broken
         )
         connection = self._connect() if owns_connection else self._require_connection()
+        if not owns_connection:
+            try:
+                connection.rollback()
+            except BaseException:
+                connection.close()
+                self._connection = None
+                connection = self._connect()
+                owns_connection = True
         snapshot = backup.snapshot
         try:
             if owns_connection:
@@ -480,6 +519,11 @@ class PsycopgPublishBackend:
                           AND visibility_scope = %s
                           AND specific_ds = FALSE
                           AND datasource_ids = %s
+                          AND target_scope = 'ALL'
+                          AND active = TRUE
+                          AND visible = TRUE
+                          AND ai_model_id IS NULL
+                          AND create_by IS NULL
                         """,
                         (state.skill_id, *expected_definition),
                     )
@@ -513,6 +557,11 @@ class PsycopgPublishBackend:
                           AND visibility_scope = %s
                           AND specific_ds = FALSE
                           AND datasource_ids = %s
+                          AND target_scope = 'ALL'
+                          AND active = TRUE
+                          AND visible = TRUE
+                          AND ai_model_id IS NULL
+                          AND create_by IS NULL
                         """,
                         (
                             row["type"],
@@ -520,7 +569,11 @@ class PsycopgPublishBackend:
                             row["name"],
                             row["prompt"],
                             row["specific_ds"],
-                            Jsonb(row["datasource_ids"] or []),
+                            (
+                                Jsonb(row["datasource_ids"])
+                                if row["datasource_ids"] is not None
+                                else None
+                            ),
                             row["description"],
                             row["ai_model_id"],
                             row["create_by"],
