@@ -26,6 +26,7 @@ from apps.dashboard.models.dashboard_model import (
     DashboardDefaultCopyRequest,
     DashboardDefaultRequest,
     DashboardDefaultSortRequest,
+    DashboardExecutionDatasource,
     DashboardReorderRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
@@ -33,6 +34,7 @@ from apps.dashboard.models.dashboard_model import (
     SharedDashboardQuery,
     SharedDashboardUseRequest,
 )
+from apps.roi_dashboard.service import list_roi_workspace_config_rows
 from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_external_mcp_id_for_tenant
 from apps.datasource.crud.permission import (
     PROJECT_ROLE_EDITOR,
@@ -727,6 +729,71 @@ def _ensure_datasource_access(session: SessionDep, current_user: CurrentUser, da
     if not has_datasource_access(session, current_user, datasource_id):
         raise HTTPException(status_code=403, detail="You do not have permission to access this datasource")
     return datasource_id
+
+
+def get_roi_datasource_id_for_tenant(session: SessionDep, tenant_id: int | None) -> int | None:
+    """读取当前工作空间已启用的 ROI 数据源配置。"""
+    if tenant_id is None:
+        return None
+    rows = list_roi_workspace_config_rows(session, [int(tenant_id)])
+    return int(rows[0][1]) if rows else None
+
+
+def _configured_chart_execution_datasources(
+        session: SessionDep,
+        current_user: CurrentUser,
+) -> list[tuple[int, str]]:
+    tenant_id = _current_tenant_id(current_user)
+    bound_datasource_id = get_bound_datasource_id_for_tenant(session, tenant_id)
+    roi_datasource_id = get_roi_datasource_id_for_tenant(session, tenant_id)
+    configured: list[tuple[int, str]] = []
+    if bound_datasource_id is not None:
+        configured.append((int(bound_datasource_id), "bound"))
+    if roi_datasource_id is not None and int(roi_datasource_id) != bound_datasource_id:
+        configured.append((int(roi_datasource_id), "roi"))
+    return configured
+
+
+def list_chart_execution_datasources(
+        session: SessionDep,
+        current_user: CurrentUser,
+) -> list[DashboardExecutionDatasource]:
+    """返回当前用户在当前工作空间可实际执行图表 SQL 的受控候选集。"""
+    options: list[DashboardExecutionDatasource] = []
+    for datasource_id, role in _configured_chart_execution_datasources(session, current_user):
+        try:
+            _ensure_datasource_access(session, current_user, datasource_id, required=True)
+        except HTTPException:
+            continue
+        datasource = session.get(CoreDatasource, datasource_id)
+        if datasource is None:
+            continue
+        options.append(
+            DashboardExecutionDatasource(
+                id=datasource_id,
+                name=str(datasource.name),
+                role=role,
+            )
+        )
+    return options
+
+
+def resolve_chart_execution_datasource(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int | None,
+) -> int:
+    """验证图表数据源属于当前空间的绑定或 ROI 配置，并验证用户 SQL 权限。"""
+    configured = _configured_chart_execution_datasources(session, current_user)
+    bound_datasource_id = next(
+        (candidate_id for candidate_id, role in configured if role == "bound"),
+        None,
+    )
+    resolved_id = bound_datasource_id if datasource_id is None else _normalize_datasource_id(datasource_id)
+    if resolved_id is None or resolved_id not in {candidate_id for candidate_id, _role in configured}:
+        raise HTTPException(status_code=403, detail="当前空间未配置该图表执行数据源")
+    _ensure_datasource_access(session, current_user, resolved_id, required=True)
+    return resolved_id
 
 
 def _check_dashboard_view_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
@@ -4954,9 +5021,8 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             "data": [],
             "message": "SQL不能为空",
         }
-    datasource_id = _ensure_datasource_access(session, current_user, request.datasource, required=True)
-    if datasource_id is None:
-        return _failed_chart_result("Dashboard datasource is required")
+    datasource_id = resolve_chart_execution_datasource(session, current_user, request.datasource)
+    request.datasource = datasource_id
     normalized_sql = request.sql.strip()
     permission_failure, permissions_apply = _dashboard_chart_permission_audit(
         session,

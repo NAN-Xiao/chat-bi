@@ -431,6 +431,13 @@ class DashboardSqlPreview(BaseModel):
     force_refresh: bool = False
 
 
+class DashboardExecutionDatasource(BaseModel):
+    """看板图表可选择的、当前工作空间允许执行 SQL 的数据源。"""
+    id: int
+    name: str
+    role: Literal["bound", "roi"]
+
+
 class DashboardAiSqlGenerateRequest(BaseModel):
     """
     类说明：DashboardAiSqlGenerateRequest 表示手动看板 AI 生成 SQL 的输入。
