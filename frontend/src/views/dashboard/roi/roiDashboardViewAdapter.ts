@@ -90,9 +90,22 @@ function roiSourceConfig(config: RoiConfig, sourceConfig?: UnknownRecord): Unkno
 }
 
 function payloadSourceConfig(sourceConfig: UnknownRecord): UnknownRecord {
-  const { mcp: _mcp, ...rest } = sanitizeRoiConfig(sourceConfig) as UnknownRecord
+  const {
+    mcp: _mcp,
+    sources: _sources,
+    primarySource: _primarySource,
+    mode: _mode,
+    sourceTypes: _sourceTypes,
+    dataSourceType: _dataSourceType,
+    ...rest
+  } = sanitizeRoiConfig(sourceConfig) as UnknownRecord
   void _mcp
-  return rest
+  void _sources
+  void _primarySource
+  void _mode
+  void _sourceTypes
+  void _dataSourceType
+  return { ...rest, sources: ['sql'], primarySource: 'sql' }
 }
 
 export function roiChartToDashboardViewInfo(chart: RoiChart, config: RoiConfig): RoiDashboardViewInfo {

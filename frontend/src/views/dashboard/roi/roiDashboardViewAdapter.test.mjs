@@ -69,6 +69,31 @@ assert.equal(payload.version, 3)
 assert.equal(JSON.stringify(payload.chart_config).includes('"datasource":8'), false)
 assert.equal(chart.chart_config.sourceConfig.sql.datasource, 99, '转换不得修改原图表')
 
+const contaminatedPayload = dashboardViewInfoToRoiPayload(
+  {
+    ...viewInfo,
+    sourceConfig: {
+      ...viewInfo.sourceConfig,
+      sources: ['sql', 'external_mcp'],
+      primarySource: 'external_mcp',
+      mode: 'mixed',
+      sourceTypes: ['sql', 'external_mcp'],
+      dataSourceType: 'external_mcp',
+      mcp: { token: 'secret' },
+    },
+  },
+  { layoutSpan: 'full' }
+)
+assert.deepEqual(contaminatedPayload.chart_config.sourceConfig.sources, ['sql'])
+assert.equal(contaminatedPayload.chart_config.sourceConfig.primarySource, 'sql')
+for (const forbidden of ['external_mcp', 'mixed', 'sourceTypes', 'dataSourceType', 'mcp']) {
+  assert.equal(
+    JSON.stringify(contaminatedPayload.chart_config).includes(forbidden),
+    false,
+    `写回 payload 不得保留 ${forbidden} 来源标记`
+  )
+}
+
 const legacyViewInfo = roiChartToDashboardViewInfo(
   {
     ...chart,
