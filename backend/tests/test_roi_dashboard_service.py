@@ -1041,9 +1041,22 @@ def test_chart_list_checks_permission_before_cache_and_keeps_structure_visible(
     assert first[0]["can_execute"] is True
     assert second[0]["query_result"]["data"] == [{"value": 9}]
 
-    # 保留对已授权情形的结果断言
+    # 保留前两次查询与缓存行为断言（first/second）
     authorized = second
     assert authorized[0]["query_result"]["data"] == [{"value": 9}]
+
+    # 删除账号直接授权，模拟管理员仅依赖工作区配置权限继续执行
+    session.exec(text("DELETE FROM core_datasource_user WHERE user_id = 7 AND ds_id = 202"))
+    session.commit()
+    cache.get_keys.clear()
+    third = list_roi_charts(session, user, 301, cache_adapter=cache)
+
+    # 管理员（由工作区配置授权）仍应能执行，且缓存键会被再次访问/写入
+    assert cache.get_keys == [expected_key]
+    assert third[0]["id"] == 901
+    assert third[0]["can_execute"] is True
+    assert third[0]["can_edit"] is True
+    assert third[0]["query_result"]["data"] == [{"value": 9}]
 
 
 def test_chart_writes_allowed_for_workspace_admin_with_configured_datasource(
