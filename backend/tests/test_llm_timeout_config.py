@@ -50,3 +50,38 @@ def test_await_result_uses_independent_task_max_wait(monkeypatch):
 
     assert payload["type"] == "error"
     assert "请求超时" in payload["content"]
+
+
+def test_filter_data_skills_passes_full_current_user(monkeypatch):
+    service = object.__new__(LLMService)
+    current_user = SimpleNamespace(
+        id=1001,
+        tenant_id=2001,
+        system_role="viewer",
+        global_role="normal_user",
+        workspace_role="member",
+    )
+    service.current_user = current_user
+    service.current_assistant = None
+    service.business_sql_context = None
+    service.record = SimpleNamespace(id=3001)
+    service.chat_question = SimpleNamespace(
+        data_skill_id=None,
+        data_skill="",
+        question="今天按小时收入",
+    )
+    service.current_logs = {}
+    captured = {}
+
+    def find_data_skills(*args, **kwargs):
+        captured.update(kwargs)
+        return "skill", [], None
+
+    monkeypatch.setattr(llm_module, "find_data_skills", find_data_skills)
+    monkeypatch.setattr(llm_module, "start_log", lambda **_kwargs: object())
+    monkeypatch.setattr(llm_module, "end_log", lambda **_kwargs: object())
+
+    service.filter_data_skills(None, ds_id=6)
+
+    assert captured["current_user"] is current_user
+    assert service.chat_question.data_skill == "skill"

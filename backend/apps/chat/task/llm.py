@@ -1457,7 +1457,6 @@ class LLMService:
             require_current_tenant_id(self.current_user),
             can_manage_public=_can_manage_tenant_prompt_runtime(self.current_user),
             can_manage_platform_public=_can_manage_platform_prompt_runtime(self.current_user),
-            current_user=self.current_user,
         )
         self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
                                                                         log=self.current_logs[
@@ -1505,6 +1504,7 @@ class LLMService:
             question=self.chat_question.question,
             can_manage_public=_can_manage_tenant_prompt_runtime(self.current_user),
             can_manage_platform_public=_can_manage_platform_prompt_runtime(self.current_user),
+            current_user=self.current_user,
         )
         self.current_logs[OperationEnum.FILTER_DATA_SKILL] = end_log(session=_session,
                                                                      log=self.current_logs[
