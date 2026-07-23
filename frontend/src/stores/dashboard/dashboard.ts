@@ -6,7 +6,6 @@ const getDefaultDashboardInfo = () => ({
   name: null,
   pid: null,
   datasource: null,
-  execution_datasource_id: null as number | null,
   status: null,
   source: null,
   dataState: null,

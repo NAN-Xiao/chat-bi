@@ -1572,10 +1572,6 @@ def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: in
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    execution_datasource_id = _normalize_datasource_id(record.execution_datasource_id)
-    if execution_datasource_id is not None:
-        item['datasource'] = execution_datasource_id
-        return execution_datasource_id
     item_datasource = _normalize_datasource_id(item.get('datasource'))
     if item_datasource is None:
         item_datasource = fallback_datasource if fallback_datasource is not None else record.datasource
@@ -3082,12 +3078,6 @@ def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser,
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：检查仪表盘里的数据、权限或配置是否合法，不对就及时拦住。
     """
-    execution_datasource_id = resolve_chart_execution_datasource(
-        session,
-        current_user,
-        dashboard.execution_datasource_id or dashboard.datasource,
-    )
-    dashboard.execution_datasource_id = execution_datasource_id
     canvas_view_obj = _parse_canvas_view_info(dashboard.canvas_view_info)
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
@@ -3095,7 +3085,12 @@ def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser,
         item_sql = item.get('sql')
         if not item_sql:
             continue
-        item["datasource"] = execution_datasource_id
+        item_datasource = _normalize_datasource_id(item.get('datasource'))
+        item["datasource"] = resolve_chart_execution_datasource(
+            session,
+            current_user,
+            item_datasource,
+        )
     dashboard.canvas_view_info = orjson.dumps(canvas_view_obj).decode()
 
 
@@ -4223,7 +4218,6 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     _validate_canvas_datasources(session, user, dashboard)
     record.name = dashboard.name
     record.datasource = bound_datasource
-    record.execution_datasource_id = dashboard.execution_datasource_id
     record.update_by = _asset_operator_id(session, user)
     record.update_time = int(time.time())
     record.component_data = dashboard.component_data
