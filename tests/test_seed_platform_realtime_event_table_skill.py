@@ -22,9 +22,13 @@ class FakeBackend:
         *,
         marker_count: int = 0,
         embedding_error: BaseException | None = None,
+        release_error: BaseException | None = None,
+        commit_state_unknown: bool = False,
     ) -> None:
         self.marker_count = marker_count
         self.embedding_error = embedding_error
+        self.release_error = release_error
+        self.commit_state_unknown = commit_state_unknown
         self.events: list[str] = []
         self.updated_markers: list[str] = []
         self.restored_markers: list[str] = []
@@ -34,6 +38,8 @@ class FakeBackend:
 
     def release_lock(self) -> None:
         self.events.append("release_lock")
+        if self.release_error is not None:
+            raise self.release_error
 
     def inspect(self, marker: str):
         self.events.append("inspect")
@@ -51,7 +57,16 @@ class FakeBackend:
     def upsert(self, skill, snapshot):
         self.events.append("upsert")
         self.updated_markers.append(module.SKILL_MARKER)
-        return module.AppliedState(skill_id=321, created=snapshot.skill_id is None)
+        state = module.AppliedState(
+            skill_id=321,
+            created=snapshot.skill_id is None,
+            expected_name=skill["name"],
+            expected_description=skill["description"],
+            expected_prompt=skill["prompt"].strip(),
+        )
+        if self.commit_state_unknown:
+            raise module.CommitStateUnknownError(state, "commit ack lost")
+        return state
 
     def refresh_embedding(self, skill_id: int) -> None:
         self.events.append("refresh_embedding")
@@ -86,6 +101,7 @@ def test_skill_is_platform_public_and_keeps_business_semantics_out() -> None:
 
 def test_skill_forbids_silent_fallback_and_requires_current_schema() -> None:
     prompt = module.SKILL["prompt"]
+    assert '<!-- data-skill-requires-tables:["event","event_realtime"] -->' in prompt
     assert "同时存在" in prompt
     assert "不得静默" in prompt
     assert "权限" in prompt
@@ -143,6 +159,68 @@ def test_duplicate_marker_is_rejected_before_write() -> None:
 
     assert "upsert" not in backend.events
     assert backend.events == ["acquire_lock", "inspect", "release_lock"]
+
+
+@pytest.mark.parametrize(
+    ("row", "expected_error"),
+    [
+        (
+            {"id": 1, "type": "DATA_SKILL", "visibility_scope": "ADMIN_PUBLIC"},
+            "visibility_scope",
+        ),
+        (
+            {"id": 1, "type": "SYSTEM", "visibility_scope": "PLATFORM_PUBLIC"},
+            "type",
+        ),
+    ],
+)
+def test_marker_identity_rejects_wrong_scope_or_type(row, expected_error) -> None:
+    with pytest.raises(RuntimeError, match=expected_error):
+        module.validate_marker_rows([row])
+
+
+def test_release_error_does_not_replace_embedding_failure() -> None:
+    backend = FakeBackend(
+        embedding_error=RuntimeError("embedding failed"),
+        release_error=RuntimeError("unlock failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="embedding failed") as exc_info:
+        module.publish_skill(backend, apply=True)
+
+    assert any("unlock failed" in note for note in exc_info.value.__notes__)
+
+
+def test_unknown_commit_state_is_restored() -> None:
+    backend = FakeBackend(commit_state_unknown=True)
+
+    with pytest.raises(module.CommitStateUnknownError, match="commit ack lost"):
+        module.publish_skill(backend, apply=True)
+
+    assert backend.restored_markers == [module.SKILL_MARKER]
+    assert backend.events[-2:] == ["restore", "release_lock"]
+
+
+def test_embedding_validation_rejects_empty_vector_and_stale_signature() -> None:
+    row = {
+        "id": 321,
+        "name": module.SKILL["name"],
+        "description": module.SKILL["description"],
+        "prompt": module.SKILL["prompt"].strip(),
+        "embedding": "[]",
+        "embedding_signature": "signature",
+    }
+
+    with pytest.raises(RuntimeError, match="embedding"):
+        module.validate_embedding_row(row, model=object())
+
+    row["embedding"] = "[0.1, 0.2]"
+    with pytest.raises(RuntimeError, match="signature"):
+        module.validate_embedding_row(
+            row,
+            model=object(),
+            signature_factory=lambda *_args: "expected",
+        )
 
 
 def test_cli_defaults_to_dry_run(monkeypatch, capsys) -> None:

@@ -17,13 +17,13 @@ AI 看板在处理“按小时统计今天的新增用户数量”“生成当�
 ## 非目标
 
 - 不在平台 Skill 中定义 `UserRegister`、`ServerPayLog`、产品 ID、收入字段或任何业务指标公式。
-- 不修改通用 SQL 生成代码、全局 Agent prompt 或前端选表逻辑。
+- 不修改通用 SQL 生成规则、全局 Agent prompt 或前端选表逻辑；仅扩展 Data Skill 的通用适用条件过滤能力。
 - 不为缺少实时表或无实时表权限的数据源自动选择其他表。
 - 不修改现有 datasource-scoped Data Skill。
 
 ## 方案
 
-新增独立的 `PLATFORM_PUBLIC` Data Skill，使用唯一 source marker 和幂等发布脚本。保留现有 Skill 171“不绑定任何表名”的契约，不把物理表规则混入基础日期 Skill。
+新增独立的 `PLATFORM_PUBLIC` Data Skill，使用唯一 source marker、结构化 `data-skill-requires-tables` 条件和幂等发布脚本。Data Skill 检索在排序前根据当前数据源已勾选的 Schema 表确定性过滤，不满足前置表条件的 Skill 不进入模型上下文。保留现有 Skill 171“不绑定任何表名”的契约，不把物理表规则混入基础日期 Skill。
 
 目标记录属性：
 
@@ -34,13 +34,14 @@ AI 看板在处理“按小时统计今天的新增用户数量”“生成当�
 - `datasource_ids=[]`
 - `active=true`
 - `visible=true`
+- `data-skill-requires-tables=["event","event_realtime"]`
 
 ## 生效条件与优先级
 
 该 Skill 仅在以下条件全部满足时生效：
 
 1. 当前会话已明确选择一个已授权数据源。
-2. 当前实时 Schema 或工作空间元数据确认同时存在 `event` 和 `event_realtime`。
+2. 当前数据源 `core_table.checked` Schema 确认同时存在 `event` 和 `event_realtime`；缺少任一表时，检索层直接排除本 Skill。
 3. 工作空间 Data Skill 或事件字典已经提供问题所需的事件名、主体键和指标字段口径。
 
 优先级从高到低为：当前数据源权限与实时 Schema、工作空间元数据及 datasource-scoped Skill、本平台选表 Skill、用户私有偏好。平台 Skill 不能扩大权限，也不能覆盖工作空间的明确配置。
@@ -87,7 +88,9 @@ Skill 的名称、描述和 prompt 应覆盖“今天、当天、实时、截至
 - 当前日触发词映射到 `event_realtime`，完整历史触发词映射到 `event`。
 - 包含今天的跨日窗口只允许按明确规则合并。
 - 实时表不可用时禁止静默回退。
+- `required_tables` 满足时保留 Skill，缺少任一表时确定性排除 Skill。
 - dry-run 不写库，apply 只写目标记录，失败只恢复目标记录。
+- 错误类型/作用域 marker、提交确认丢失、恢复 CAS、解锁异常和 embedding 完整签名校验。
 
 发布后验收：
 
