@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount } from 'vue'
+import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount, type PropType } from 'vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import {
   ChatLineSquare,
@@ -41,6 +41,11 @@ import {
   isMixedChart,
   refreshMixedChartData,
 } from '@/views/dashboard/utils/mixedChartData'
+
+interface SQComponentWrapperExternalProps {
+  refreshExecutor?: () => Promise<void>
+  refreshing?: boolean
+}
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
@@ -97,9 +102,18 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  refreshExecutor: {
+    type: Function as PropType<SQComponentWrapperExternalProps['refreshExecutor']>,
+    required: false,
+    default: undefined,
+  },
+  refreshing: {
+    type: Boolean,
+    default: false,
+  },
 })
 const emit = defineEmits(['chartMoved'])
-const { configItem, showPosition } = toRefs(props)
+const { configItem, showPosition, refreshing } = toRefs(props)
 const component = ref(null)
 const wrapperRef = ref<HTMLElement | null>(null)
 const reportPromptRef = ref<HTMLElement | null>(null)
@@ -1093,6 +1107,11 @@ function buildWorksheetXml(
 }
 
 async function refreshChartData() {
+  if (props.refreshExecutor) {
+    if (props.refreshing) return
+    await props.refreshExecutor()
+    return
+  }
   if (isPreviewSingleChart.value) {
     if (isExternalSnapshotChart(currentViewInfo.value)) {
       ElMessage.success(t('dashboard.chart_refresh_success'))
@@ -1329,7 +1348,13 @@ defineExpose({
         </el-button>
       </el-tooltip>
       <el-tooltip effect="dark" :content="t('dashboard.chart_refresh_data')" placement="top">
-        <el-button class="preview-action-btn" text @click="refreshChartData">
+        <el-button
+          class="preview-action-btn"
+          text
+          :loading="refreshing"
+          :disabled="refreshing"
+          @click="refreshChartData"
+        >
           <el-icon size="16"><RefreshRight /></el-icon>
         </el-button>
       </el-tooltip>
@@ -1363,6 +1388,7 @@ defineExpose({
               <el-icon size="15"><Position /></el-icon>
               <span>{{ t('dashboard.chart_move_to') }}</span>
             </el-dropdown-item>
+            <slot name="more-actions" :view-info="currentViewInfo" />
           </el-dropdown-menu>
         </template>
       </el-dropdown>
