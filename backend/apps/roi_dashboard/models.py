@@ -55,6 +55,12 @@ class CoreRoiDashboard(SnowflakeBase, table=True):
 
     __tablename__ = "core_roi_dashboard"
     __table_args__ = (
+        Index(
+            "uq_core_roi_dashboard_active_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("deleted = false AND status = 1"),
+        ),
         Index("idx_core_roi_dashboard_tenant_id", "tenant_id"),
         Index(
             "idx_core_roi_dashboard_tenant_status_sort", "tenant_id", "status", "sort"
