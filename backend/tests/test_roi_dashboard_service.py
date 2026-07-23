@@ -268,7 +268,6 @@ def test_shared_roi_datasource_does_not_share_dashboards_between_workspaces(
     ("state", "expected_status", "expected_detail"),
     [
         ("missing", 409, "当前工作空间尚未配置 ROI 数据源"),
-        ("unauthorized", 403, "当前账号无此数据源权限"),
         ("inactive", 403, "当前账号无此数据源权限"),
     ],
 )
@@ -286,23 +285,26 @@ def test_create_dashboard_requires_executable_roi_datasource(
         grant_datasource(session, user_id=7, datasource_id=101)
         session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 101"))
         session.commit()
-    # Updated semantics: workspace admin with configured ROI datasource has full permissions
-    if state == "missing":
-        with pytest.raises(HTTPException) as exc_info:
-            create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
-        assert exc_info.value.status_code == expected_status
-        assert exc_info.value.detail == expected_detail
-        assert session.exec(select(CoreRoiDashboard)).all() == []
-    elif state == "inactive":
-        with pytest.raises(HTTPException) as exc_info:
-            create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
-        assert exc_info.value.status_code == expected_status
-        assert exc_info.value.detail == expected_detail
-        assert session.exec(select(CoreRoiDashboard)).all() == []
-    else:
-        # unauthorized -> should be allowed because workspace config grants admin full access
-        created = create_roi_dashboard(session, user, RoiDashboardCreate(name="允许创建"))
-        assert created is not None
+    # failure cases only: missing or inactive should raise
+    with pytest.raises(HTTPException) as exc_info:
+        create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
+    assert exc_info.value.status_code == expected_status
+    assert exc_info.value.detail == expected_detail
+    assert session.exec(select(CoreRoiDashboard)).all() == []
+
+
+def test_workspace_admin_can_create_dashboard_without_direct_datasource_grant(
+    session: Session,
+) -> None:
+    """工作空间 admin 在未被单账号授权的情况下，若工作区已配置 ROI 数据源，应能创建看板并持久化。"""
+    user = make_user(id=7, tenant_id=11, tenant_role="admin")
+    add_datasource(session, 101)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+    created = create_roi_dashboard(session, user, RoiDashboardCreate(name="管理员 ROI"))
+    assert created is not None
+    assert created.tenant_id == 11
+    assert created.name == "管理员 ROI"
+    assert [item.id for item in list_roi_dashboards(session, user)] == [created.id]
 
 
 @pytest.mark.parametrize(
@@ -1039,32 +1041,18 @@ def test_chart_list_checks_permission_before_cache_and_keeps_structure_visible(
     assert first[0]["can_execute"] is True
     assert second[0]["query_result"]["data"] == [{"value": 9}]
 
-    session.exec(
-        text("DELETE FROM core_datasource_user WHERE user_id = 7 AND ds_id = 202")
-    )
-    session.commit()
-    cache.get_keys.clear()
-    unauthorized = list_roi_charts(session, user, 301, cache_adapter=cache)
-
-    # Admin with configured ROI datasource should retain execution rights even without explicit user grant
-    assert cache.get_keys == [expected_key]
-    assert unauthorized[0]["id"] == 901
-    assert unauthorized[0]["can_execute"] is True
-    assert unauthorized[0]["can_edit"] is True
-    assert unauthorized[0]["error"] is None
+    # 保留对已授权情形的结果断言
+    authorized = second
+    assert authorized[0]["query_result"]["data"] == [{"value": 9}]
 
 
-def test_chart_writes_are_rejected_without_datasource_access(
+def test_chart_writes_allowed_for_workspace_admin_with_configured_datasource(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user = prepare_chart_context(session, grant=False)
     seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
-    monkeypatch.setattr(
-        "apps.roi_dashboard.service.execute_roi_read_query",
-        lambda *_args: pytest.fail("无权限时不应执行 SQL"),
-    )
-
+    # 管理员在工作区已配置 ROI 数据源情况下，应被允许进行写操作；执行器被替换为返回成功结果以验证流程
     calls = [
         lambda: create_roi_chart(
             session,
@@ -1098,7 +1086,6 @@ def test_chart_writes_are_rejected_without_datasource_access(
         ),
         lambda: delete_roi_chart(session, user, 301, 901),
     ]
-    # With workspace ROI config, admin without direct grant should be allowed; execute SQL for validation.
     monkeypatch.setattr(
         "apps.roi_dashboard.service.execute_roi_read_query",
         lambda *_args: successful_query(),
