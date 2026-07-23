@@ -2,8 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+import argparse
+import datetime as dt
+import json
+import sys
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Mapping, Protocol, Sequence
+
+import psycopg
+from core_system_db import core_system_db_config, export_postgres_compat_env
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 
 SKILL_MARKER = (
@@ -12,6 +22,10 @@ SKILL_MARKER = (
 PLATFORM_TENANT_ID = 1
 VISIBILITY_SCOPE = "PLATFORM_PUBLIC"
 SPECIFIC_DS = False
+ROOT = Path(__file__).resolve().parents[1]
+BACKEND_DIR = ROOT / "backend"
+BACKUP_ROOT = ROOT / ".codex-runtime" / "platform-data-skill-backups"
+DB = core_system_db_config()
 
 SKILL = {
     "name": "平台通用 Data Skill：当天实时事件与完整历史事件选表",
@@ -66,6 +80,12 @@ class PublishReport:
     backup_path: str | None = None
 
 
+@dataclass(frozen=True)
+class BackupArtifact:
+    path: Path
+    snapshot: TargetSnapshot
+
+
 class PublishBackend(Protocol):
     def acquire_lock(self) -> None: ...
 
@@ -118,7 +138,11 @@ def publish_skill(backend: PublishBackend, *, apply: bool) -> PublishReport:
             skill_id=state.skill_id,
             updated=True,
             embedding_verified=True,
-            backup_path=str(backup) if backup is not None else None,
+            backup_path=(
+                str(getattr(backup, "path", backup))
+                if backup is not None
+                else None
+            ),
         )
     except BaseException:
         if state is not None:
@@ -126,3 +150,347 @@ def publish_skill(backend: PublishBackend, *, apply: bool) -> PublishReport:
         raise
     finally:
         backend.release_lock()
+
+
+class PsycopgPublishBackend:
+    """使用系统 PostgreSQL 和平台 embedding 服务发布单条 Skill。"""
+
+    def __init__(self, *, backup_root: Path = BACKUP_ROOT) -> None:
+        self._backup_root = backup_root
+        self._connection: psycopg.Connection | None = None
+
+    @staticmethod
+    def _connect() -> psycopg.Connection:
+        return psycopg.connect(**DB, row_factory=dict_row)
+
+    def _require_connection(self) -> psycopg.Connection:
+        if self._connection is None or self._connection.closed:
+            raise RuntimeError("平台实时选表 Skill 发布锁尚未获取")
+        return self._connection
+
+    def acquire_lock(self) -> None:
+        if self._connection is not None:
+            raise RuntimeError("平台实时选表 Skill 发布锁已获取")
+        connection = self._connect()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_advisory_lock(hashtext(%s))",
+                    (SKILL_MARKER,),
+                )
+            self._connection = connection
+        except BaseException:
+            connection.close()
+            raise
+
+    def release_lock(self) -> None:
+        connection = self._connection
+        self._connection = None
+        if connection is None:
+            return
+        try:
+            if not connection.closed:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT pg_advisory_unlock(hashtext(%s))",
+                        (SKILL_MARKER,),
+                    )
+        finally:
+            connection.close()
+
+    @staticmethod
+    def _select_marker_rows(connection: psycopg.Connection) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, type, create_time, name, prompt, specific_ds,
+                       datasource_ids, description, ai_model_id, create_by,
+                       target_scope, active, visibility_scope, tenant_id,
+                       visible, embedding, embedding_signature
+                FROM custom_prompt
+                WHERE type = 'DATA_SKILL'
+                  AND visibility_scope = 'PLATFORM_PUBLIC'
+                  AND position(%s in COALESCE(prompt, '')) > 0
+                ORDER BY id
+                """,
+                (SKILL_MARKER,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def inspect(self, marker: str) -> TargetSnapshot:
+        if marker != SKILL_MARKER:
+            raise ValueError("拒绝检查未知的平台 Data Skill marker")
+        if self._connection is not None:
+            rows = self._select_marker_rows(self._require_connection())
+        else:
+            with self._connect() as connection:
+                rows = self._select_marker_rows(connection)
+        if len(rows) > 1:
+            raise RuntimeError("平台实时选表 Skill marker 必须唯一")
+        if not rows:
+            return TargetSnapshot(skill_id=None, row=None)
+        return TargetSnapshot(skill_id=int(rows[0]["id"]), row=rows[0])
+
+    @staticmethod
+    def _json_default(value: Any) -> Any:
+        if isinstance(value, (dt.date, dt.datetime)):
+            return value.isoformat()
+        return str(value)
+
+    def backup(self, snapshot: TargetSnapshot) -> BackupArtifact:
+        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup_dir = self._backup_root / timestamp
+        backup_dir.mkdir(parents=True, exist_ok=False)
+        path = backup_dir / "skill.json"
+        payload = {
+            "marker": SKILL_MARKER,
+            "skill_id": snapshot.skill_id,
+            "row": dict(snapshot.row) if snapshot.row is not None else None,
+            "created_at": timestamp,
+        }
+        path.write_text(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                indent=2,
+                default=self._json_default,
+            ),
+            encoding="utf-8",
+        )
+        return BackupArtifact(path=path, snapshot=snapshot)
+
+    def upsert(
+        self,
+        skill: Mapping[str, str],
+        snapshot: TargetSnapshot,
+    ) -> AppliedState:
+        connection = self._require_connection()
+        prompt = str(skill["prompt"]).strip()
+        now = dt.datetime.now()
+        with connection.cursor() as cursor:
+            if snapshot.skill_id is None:
+                cursor.execute(
+                    """
+                    INSERT INTO custom_prompt (
+                        tenant_id, type, create_time, name, description,
+                        target_scope, active, visible, ai_model_id, create_by,
+                        visibility_scope, prompt, specific_ds, datasource_ids,
+                        embedding, embedding_signature
+                    )
+                    VALUES (
+                        %s, 'DATA_SKILL', %s, %s, %s,
+                        'ALL', TRUE, TRUE, NULL, NULL,
+                        %s, %s, FALSE, %s, NULL, NULL
+                    )
+                    RETURNING id
+                    """,
+                    (
+                        PLATFORM_TENANT_ID,
+                        now,
+                        skill["name"][:255],
+                        skill["description"],
+                        VISIBILITY_SCOPE,
+                        prompt,
+                        Jsonb([]),
+                    ),
+                )
+                skill_id = int(cursor.fetchone()["id"])
+                created = True
+            else:
+                original_prompt = str((snapshot.row or {}).get("prompt") or "")
+                cursor.execute(
+                    """
+                    UPDATE custom_prompt
+                    SET tenant_id = %s,
+                        name = %s,
+                        description = %s,
+                        target_scope = 'ALL',
+                        active = TRUE,
+                        visible = TRUE,
+                        ai_model_id = NULL,
+                        create_by = NULL,
+                        visibility_scope = %s,
+                        prompt = %s,
+                        specific_ds = FALSE,
+                        datasource_ids = %s,
+                        embedding = NULL,
+                        embedding_signature = NULL
+                    WHERE id = %s
+                      AND type = 'DATA_SKILL'
+                      AND prompt IS NOT DISTINCT FROM %s
+                    """,
+                    (
+                        PLATFORM_TENANT_ID,
+                        skill["name"][:255],
+                        skill["description"],
+                        VISIBILITY_SCOPE,
+                        prompt,
+                        Jsonb([]),
+                        snapshot.skill_id,
+                        original_prompt,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("平台实时选表 Skill CAS 更新失败")
+                skill_id = snapshot.skill_id
+                created = False
+        connection.commit()
+        return AppliedState(skill_id=skill_id, created=created)
+
+    def refresh_embedding(self, skill_id: int) -> None:
+        saved = _save_embeddings([skill_id])
+        if saved != 1:
+            raise RuntimeError(
+                f"平台实时选表 Skill embedding 刷新失败：saved={saved}"
+            )
+
+    def verify(
+        self,
+        skill: Mapping[str, str],
+        state: AppliedState,
+    ) -> None:
+        connection = self._require_connection()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, type, name, description, prompt, tenant_id,
+                       target_scope, active, visible, visibility_scope,
+                       specific_ds, datasource_ids, embedding,
+                       embedding_signature
+                FROM custom_prompt
+                WHERE id = %s
+                """,
+                (state.skill_id,),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            raise RuntimeError("平台实时选表 Skill 写入后不存在")
+        expected = {
+            "type": "DATA_SKILL",
+            "name": skill["name"][:255],
+            "description": skill["description"],
+            "prompt": str(skill["prompt"]).strip(),
+            "tenant_id": PLATFORM_TENANT_ID,
+            "target_scope": "ALL",
+            "active": True,
+            "visible": True,
+            "visibility_scope": VISIBILITY_SCOPE,
+            "specific_ds": SPECIFIC_DS,
+            "datasource_ids": [],
+        }
+        mismatches = [key for key, value in expected.items() if row[key] != value]
+        if mismatches:
+            raise RuntimeError(
+                f"平台实时选表 Skill 回读字段不一致：{mismatches}"
+            )
+        if not row["embedding"] or not row["embedding_signature"]:
+            raise RuntimeError("平台实时选表 Skill embedding 回读为空")
+
+    def restore(self, backup: BackupArtifact, state: AppliedState) -> None:
+        connection = self._require_connection()
+        snapshot = backup.snapshot
+        with connection.cursor() as cursor:
+            if state.created:
+                cursor.execute(
+                    """
+                    DELETE FROM custom_prompt
+                    WHERE id = %s
+                      AND position(%s in COALESCE(prompt, '')) > 0
+                    """,
+                    (state.skill_id, SKILL_MARKER),
+                )
+            else:
+                row = dict(snapshot.row or {})
+                cursor.execute(
+                    """
+                    UPDATE custom_prompt
+                    SET type = %s,
+                        create_time = %s,
+                        name = %s,
+                        prompt = %s,
+                        specific_ds = %s,
+                        datasource_ids = %s,
+                        description = %s,
+                        ai_model_id = %s,
+                        create_by = %s,
+                        target_scope = %s,
+                        active = %s,
+                        visibility_scope = %s,
+                        tenant_id = %s,
+                        visible = %s,
+                        embedding = %s,
+                        embedding_signature = %s
+                    WHERE id = %s
+                      AND position(%s in COALESCE(prompt, '')) > 0
+                    """,
+                    (
+                        row["type"],
+                        row["create_time"],
+                        row["name"],
+                        row["prompt"],
+                        row["specific_ds"],
+                        Jsonb(row["datasource_ids"] or []),
+                        row["description"],
+                        row["ai_model_id"],
+                        row["create_by"],
+                        row["target_scope"],
+                        row["active"],
+                        row["visibility_scope"],
+                        row["tenant_id"],
+                        row["visible"],
+                        row["embedding"],
+                        row["embedding_signature"],
+                        state.skill_id,
+                        SKILL_MARKER,
+                    ),
+                )
+            if cursor.rowcount != 1:
+                raise RuntimeError("平台实时选表 Skill 恢复目标数量异常")
+        connection.commit()
+
+
+def _save_embeddings(ids: list[int]) -> int:
+    if not ids:
+        return 0
+    export_postgres_compat_env(DB)
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
+
+    from sqlalchemy.orm import scoped_session, sessionmaker
+
+    from apps.chat.curd.custom_prompt_embedding import (
+        save_custom_prompt_skill_embedding,
+    )
+    from common.core.db import engine
+
+    session_maker = scoped_session(sessionmaker(bind=engine))
+    return save_custom_prompt_skill_embedding(
+        session_maker,
+        ids,
+        tenant_id=PLATFORM_TENANT_ID,
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument(
+        "--mode",
+        choices=("dry-run", "apply"),
+        default="dry-run",
+        help="默认只读预检；显式 apply 才发布平台 Skill",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    report = publish_skill(
+        PsycopgPublishBackend(),
+        apply=args.mode == "apply",
+    )
+    print(json.dumps(asdict(report), ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

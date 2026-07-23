@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -142,3 +143,15 @@ def test_duplicate_marker_is_rejected_before_write() -> None:
 
     assert "upsert" not in backend.events
     assert backend.events == ["acquire_lock", "inspect", "release_lock"]
+
+
+def test_cli_defaults_to_dry_run(monkeypatch, capsys) -> None:
+    backend = FakeBackend()
+    monkeypatch.setattr(module, "PsycopgPublishBackend", lambda: backend)
+
+    assert module.main([]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "dry-run"
+    assert payload["updated"] is False
+    assert "upsert" not in backend.events
