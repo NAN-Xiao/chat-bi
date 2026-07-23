@@ -110,3 +110,16 @@ export interface RoiChartEditorState {
   initialValue: RoiChart | null
   firstChart: boolean
 }
+
+export interface RoiDashboardComponentItem {
+  id: string
+  component: 'SQView'
+  label: string
+  propValue: string
+  x: number
+  y: number
+  sizeX: number
+  sizeY: number
+}
+
+export type RoiCanvasViewInfo = Record<string, Record<string, unknown>>
