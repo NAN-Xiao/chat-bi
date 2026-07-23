@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const componentPath = join(currentDir, 'DashboardSqlEditor.vue')
 const source = readFileSync(componentPath, 'utf8')
+const coordinatorPath = join(currentDir, 'dashboardSqlApplyCoordinator.ts')
+const coordinatorSource = readFileSync(coordinatorPath, 'utf8')
 
 function functionSource(name, nextName) {
   const match = source.match(
@@ -127,10 +129,11 @@ assert.match(
 )
 assert.match(
   applyChangeSource,
-  /emits\('applied', props\.viewInfo\)[\s\S]*visible\.value = false[\s\S]*ElMessage\.success/,
+  /onApplied:\s*\(viewInfo\) => emits\('applied', viewInfo\)[\s\S]*visible\.value = false[\s\S]*ElMessage\.success/,
   '仅保存成功后才能发 applied、关闭抽屉并提示成功'
 )
-assert.match(applyChangeSource, /finally \{[\s\S]*applying\.value = false/)
+assert.match(applyChangeSource, /return runDashboardSqlApply\(\{/)
+assert.match(coordinatorSource, /finally \{[\s\S]*options\.setApplying\(false\)/)
 assert.match(source, /<el-button type="primary" :loading="applying" @click="applyChange">/)
 
 console.log('DashboardSqlEditor fixed datasource contracts passed')

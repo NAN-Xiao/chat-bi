@@ -11,6 +11,7 @@ import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
+import { runDashboardSqlApply } from '@/views/dashboard/common/dashboardSqlApplyCoordinator.ts'
 import {
   isNumericFieldOption,
   isSelectableFieldOption,
@@ -4444,30 +4445,45 @@ async function previewAndPersistBuilderDraft() {
 }
 
 async function applyChange() {
-  if (!props.viewInfo || applying.value || !validateBeforeApply()) return
-  const written = writeEditorStateToViewInfo({
-    strictMcpArguments: true,
-    emit: false,
-    close: false,
-    notify: false,
-  })
-  if (!written) return
-  applying.value = true
-  try {
-    if (props.applyExecutor) {
+  let execute
+  if (props.applyExecutor) {
+    execute = async () => {
+      if (!props.applyExecutor) return false
       const applied = await props.applyExecutor(props.viewInfo)
-      if (!applied) return
+      if (!applied) return false
+      return true
     }
-    emits('applied', props.viewInfo)
-    visible.value = false
-    ElMessage.success(t('dashboard.sql_editor_applied'))
-  } finally {
-    applying.value = false
   }
+  return runDashboardSqlApply({
+    viewInfo: props.viewInfo,
+    isApplying: () => applying.value,
+    setApplying: (value) => {
+      applying.value = value
+    },
+    validate: validateBeforeApply,
+    write: () => writeEditorStateToViewInfo({
+      strictMcpArguments: true,
+      emit: false,
+      close: false,
+      notify: false,
+    }),
+    execute,
+    onApplied: (viewInfo) => emits('applied', viewInfo),
+    close: () => {
+      visible.value = false
+    },
+    notify: () => ElMessage.success(t('dashboard.sql_editor_applied')),
+  })
 }
 
 function closeDrawer() {
+  if (applying.value) return
   visible.value = false
+}
+
+function handleBeforeClose(done: () => void) {
+  if (applying.value) return
+  done()
 }
 </script>
 
@@ -4480,6 +4496,10 @@ function closeDrawer() {
     :title="editorTitle"
     append-to-body
     :destroy-on-close="true"
+    :before-close="handleBeforeClose"
+    :close-on-click-modal="!applying"
+    :close-on-press-escape="!applying"
+    :show-close="!applying"
   >
     <div v-loading="loading" class="sql-editor-body">
       <el-form label-position="top">
@@ -5487,7 +5507,7 @@ function closeDrawer() {
       <div v-else class="empty-preview">{{ t('dashboard.sql_editor_no_preview_data') }}</div>
     </div>
     <template #footer>
-      <el-button secondary @click="closeDrawer">{{ t('common.cancel') }}</el-button>
+      <el-button secondary :disabled="applying" @click="closeDrawer">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" :loading="applying" @click="applyChange">{{ t('dashboard.sql_editor_apply') }}</el-button>
     </template>
   </el-drawer>
