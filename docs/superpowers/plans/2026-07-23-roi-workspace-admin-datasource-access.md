@@ -25,6 +25,8 @@
   - ROI 工作空间角色校验和数据源候选集合的唯一实现位置。
 - Modify/Test: `backend/tests/test_roi_dashboard_permissions.py`
   - SQLite 权限夹具及工作空间管理员隐式 ROI 数据源授权回归测试。
+- Modify/Test: `backend/tests/test_roi_dashboard_service.py`
+  - 将“无账号级授权必须 403”的旧断言更新为工作空间管理员完整 ROI 权限。
 - No change: `frontend/src/views/dashboard/roi/*`
   - 现有组件会根据后端 `can_execute/can_edit` 自动启用图表与抽屉。
 
@@ -32,6 +34,7 @@
 
 **Files:**
 - Modify: `backend/tests/test_roi_dashboard_permissions.py:28-232`
+- Modify: `backend/tests/test_roi_dashboard_service.py:267-295,1000-1091,1523-1533`
 - Modify: `backend/apps/roi_dashboard/permissions.py:3-69`
 
 **Interfaces:**
@@ -139,7 +142,52 @@ candidate_ids = workspace_ids | direct_ids | roi_config_ids
 
 保留现有 `CoreDatasource.status` 过滤和 `has_roi_datasource_access()` 实现，不在 service/API 增加第二套角色例外。
 
-- [ ] **Step 5: 运行 ROI 权限测试**
+- [ ] **Step 5: 更新服务层旧权限断言，使其符合管理员完整 ROI 权限**
+
+在 `backend/tests/test_roi_dashboard_service.py` 中完成以下行为调整：
+
+1. `test_create_dashboard_requires_executable_roi_datasource` 的参数只保留
+   `missing` 和 `inactive`；新增独立用例，验证有效 ROI 配置存在时，管理员无需
+   `core_datasource_user` 也能创建 ROI 看板。
+2. `test_chart_list_checks_permission_before_cache_and_keeps_structure_visible` 在删除账号级授权后，
+   仍应命中 ROI 缓存，图表 `can_execute/can_edit` 继续为 `True`，并保留查询结果。
+3. 将 `test_chart_writes_are_rejected_without_datasource_access` 改为验证管理员无账号级授权时，
+   仍可按顺序执行创建、更新、排序和删除；查询执行器使用 `successful_query()`。
+4. 将 `test_reorder_permission_wins_over_duplicate_error` 改为验证管理员无账号级授权时，
+   重复排序项返回 `400`，而不是权限 `403`。
+
+示例核心断言：
+
+```python
+def test_workspace_admin_can_create_dashboard_without_direct_datasource_grant(
+    session: Session,
+) -> None:
+    user = make_user(id=7, tenant_id=11, tenant_role="admin")
+    add_datasource(session, 101)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+
+    created = create_roi_dashboard(
+        session,
+        user,
+        RoiDashboardCreate(name="管理员 ROI"),
+    )
+
+    assert created.tenant_id == 11
+    assert created.name == "管理员 ROI"
+```
+
+```python
+assert cache.get_keys == [expected_key]
+assert authorized[0]["can_execute"] is True
+assert authorized[0]["can_edit"] is True
+assert authorized[0]["query_result"]["data"] == [{"value": 9}]
+```
+
+```python
+assert_http_error(400, lambda: reorder_roi_charts(session, user, 301, request))
+```
+
+- [ ] **Step 6: 运行 ROI 权限测试**
 
 Run:
 
@@ -155,7 +203,7 @@ Expected: 全部 `PASS`。重点确认：
 - 非 `success` 数据源不授权；
 - `member` 和平台管理员仍返回 403。
 
-- [ ] **Step 6: 运行 ROI 服务/API/执行器回归测试**
+- [ ] **Step 7: 运行 ROI 服务/API/执行器回归测试**
 
 Run:
 
@@ -170,7 +218,7 @@ Run:
 
 Expected: 全部 `PASS`，无新增失败。
 
-- [ ] **Step 7: 重启本地完整栈并验证 pengtong 的真实接口结果**
+- [ ] **Step 8: 重启本地完整栈并验证 pengtong 的真实接口结果**
 
 按仓库本地运行规范重启前端 `5173`、API `8000`、MCP `8001` 和一个使用同一 `local-*` 队列的 Worker。随后在 `backend` 目录执行以下只读验证脚本：
 
@@ -219,12 +267,12 @@ Expected:
 - `/api/v1/dashboard/roi/list` 返回包含 `ROI` 看板；
 - 数据库中不新增 `pengtong@elex-tech.com` 对数据源 `7` 的 `core_datasource_user` 记录。
 
-- [ ] **Step 8: 提交实现**
+- [ ] **Step 9: 提交实现**
 
 只暂存本任务文件，保留工作区其他未提交改动：
 
 ```powershell
-git add -- backend/apps/roi_dashboard/permissions.py backend/tests/test_roi_dashboard_permissions.py
+git add -- backend/apps/roi_dashboard/permissions.py backend/tests/test_roi_dashboard_permissions.py backend/tests/test_roi_dashboard_service.py
 git diff --cached --stat
 git commit -m "允许工作空间管理员访问已配置的 ROI 数据源"
 ```
