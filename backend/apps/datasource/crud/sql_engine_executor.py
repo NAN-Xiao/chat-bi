@@ -604,6 +604,7 @@ def execute_user_query_or_raise(
         validate_columns: bool = True,
         query_timeout: int | None = None,
         close_system_transaction_before_query: bool = False,
+        datasource_access_checked: bool = False,
 ) -> QueryExecutionResult:
     """
     是什么：execute_user_query_or_raise 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -612,7 +613,11 @@ def execute_user_query_or_raise(
     """
     if datasource is None:
         raise ValueError("项目不存在")
-    if getattr(datasource, "id", None) is not None and not has_datasource_access(session, current_user, datasource.id):
+    if (
+        not datasource_access_checked
+        and getattr(datasource, "id", None) is not None
+        and not has_datasource_access(session, current_user, datasource.id)
+    ):
         raise ValueError("You do not have permission to access this datasource")
 
     executed_sql, tables = prepare_query_sql(
@@ -738,6 +743,7 @@ def execute_user_query(
         query_timeout: int | None = None,
         close_system_transaction_before_query: bool = False,
         include_execution_meta: bool = False,
+        datasource_access_checked: bool = False,
 ) -> dict[str, Any]:
     """
     是什么：execute_user_query 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -748,7 +754,7 @@ def execute_user_query(
         datasource = session.get(CoreDatasource, datasource_id)
         if datasource is None:
             return _failed_query_result("项目不存在")
-        if not has_datasource_access(session, current_user, datasource_id):
+        if not datasource_access_checked and not has_datasource_access(session, current_user, datasource_id):
             message = "You do not have permission to access this datasource"
             audit_permission_denied(
                 current_user=current_user,
@@ -771,6 +777,7 @@ def execute_user_query(
             validate_columns=validate_columns,
             query_timeout=query_timeout,
             close_system_transaction_before_query=close_system_transaction_before_query,
+            datasource_access_checked=datasource_access_checked,
         )
         return SqlEngineResult.from_query_execution(query_result).to_legacy_dict(
             include_execution_meta=include_execution_meta

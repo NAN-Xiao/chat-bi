@@ -34,6 +34,26 @@ def test_chart_execution_datasources_include_only_bound_and_roi(
     assert [(item.id, item.role) for item in options] == [(11, "bound"), (22, "roi")]
 
 
+def test_roi_chart_execution_datasource_does_not_require_user_grant(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """空间已配置的 ROI 数据源不依赖用户级数据源授权。"""
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: 11)
+    monkeypatch.setattr(dashboard_service, "get_roi_datasource_id_for_tenant", lambda *_args: 22)
+
+    def ensure_bound_access(_session, _user, datasource_id, **_kwargs):
+        if datasource_id == 22:
+            raise HTTPException(status_code=403, detail="用户未被单独授权")
+        return datasource_id
+
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", ensure_bound_access)
+
+    options = dashboard_service.list_chart_execution_datasources(_Session(), _user())
+
+    assert [(item.id, item.role) for item in options] == [(11, "bound"), (22, "roi")]
+    assert dashboard_service.resolve_chart_execution_datasource(_Session(), _user(), 22) == 22
+
+
 def test_chart_execution_datasources_deduplicate_roi_matching_bound(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -98,6 +118,34 @@ def test_dashboard_sql_preview_uses_resolved_chart_execution_datasource(
     assert result["status"] == "success"
     assert resolved_calls == [22]
     assert execute_calls == [22]
+
+
+def test_dashboard_chart_execution_marks_resolved_datasource_as_prevalidated(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """图表执行器不得对已完成空间级 ROI 校验的数据源重复做用户级校验。"""
+    execution_options: list[bool] = []
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: 11)
+    monkeypatch.setattr(dashboard_service, "get_roi_datasource_id_for_tenant", lambda *_args: 22)
+    monkeypatch.setattr(
+        dashboard_service,
+        "execute_user_query",
+        lambda *_args, **kwargs: execution_options.append(
+            kwargs.get("datasource_access_checked", False)
+        ) or {
+            "status": "success",
+            "fields": ["value"],
+            "data": [{"value": 1}],
+            "message": "",
+        },
+    )
+
+    result = dashboard_service._execute_dashboard_chart_sql(
+        _Session(), _user(), 22, "select 1"
+    )
+
+    assert result["status"] == "success"
+    assert execution_options == [True]
 
 
 def test_dashboard_api_exposes_execution_datasource_candidates() -> None:

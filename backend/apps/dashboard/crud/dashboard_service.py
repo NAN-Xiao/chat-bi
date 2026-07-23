@@ -762,7 +762,11 @@ def list_chart_execution_datasources(
     options: list[DashboardExecutionDatasource] = []
     for datasource_id, role in _configured_chart_execution_datasources(session, current_user):
         try:
-            _ensure_datasource_access(session, current_user, datasource_id, required=True)
+            if role == "roi":
+                if session.get(CoreDatasource, datasource_id) is None:
+                    continue
+            else:
+                _ensure_datasource_access(session, current_user, datasource_id, required=True)
         except HTTPException:
             continue
         datasource = session.get(CoreDatasource, datasource_id)
@@ -790,9 +794,14 @@ def resolve_chart_execution_datasource(
         None,
     )
     resolved_id = bound_datasource_id if datasource_id is None else _normalize_datasource_id(datasource_id)
-    if resolved_id is None or resolved_id not in {candidate_id for candidate_id, _role in configured}:
+    configured_roles = {candidate_id: role for candidate_id, role in configured}
+    if resolved_id is None or resolved_id not in configured_roles:
         raise HTTPException(status_code=403, detail="当前空间未配置该图表执行数据源")
-    _ensure_datasource_access(session, current_user, resolved_id, required=True)
+    if configured_roles[resolved_id] == "roi":
+        if session.get(CoreDatasource, resolved_id) is None:
+            raise HTTPException(status_code=404, detail="Datasource does not exist")
+    else:
+        _ensure_datasource_access(session, current_user, resolved_id, required=True)
     return resolved_id
 
 
@@ -2602,6 +2611,9 @@ def _execute_dashboard_chart_sql(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘的主要流程跑起来，一步步调用需要的处理。
     """
+    datasource_id = resolve_chart_execution_datasource(session, current_user, datasource_id)
+    configured_roles = dict(_configured_chart_execution_datasources(session, current_user))
+    datasource_access_checked = configured_roles.get(datasource_id) == "roi"
     if _dashboard_pivot_enabled(pivot):
         datasource = session.get(CoreDatasource, datasource_id)
         if datasource is None:
@@ -2620,6 +2632,7 @@ def _execute_dashboard_chart_sql(
         query_timeout=settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS,
         close_system_transaction_before_query=True,
         include_execution_meta=True,
+        datasource_access_checked=datasource_access_checked,
     )
     result = _normalize_dashboard_chart_result(result)
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
