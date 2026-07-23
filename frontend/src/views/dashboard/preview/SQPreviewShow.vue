@@ -18,9 +18,11 @@ import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { useUserStore } from '@/stores/user'
 import {
+  firstDashboardMode,
   isUnsupportedDashboardMode,
   resolveOrdinaryDashboardMode,
 } from '@/views/dashboard/utils/dashboardRouteMode'
+import { createDashboardLandingRedirectCoordinator } from '@/views/dashboard/preview/dashboardLandingRedirectCoordinator'
 import {
   applyMixedChartResult,
   canRefreshMixedChart,
@@ -83,6 +85,7 @@ let chartRefreshTimer: number | undefined
 let chartRefreshController: AbortController | null = null
 let chartRefreshRetryCount = 0
 const resolvingDashboardTarget = ref(false)
+const dashboardLandingRedirect = createDashboardLandingRedirectCoordinator()
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
 const CHART_DATABASE_REFRESH_CONCURRENCY = 4
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 180
@@ -800,15 +803,7 @@ const loadCanvasData = (params: any) => {
         stateInit()
         loadingDashboardId.value = null
         if (showPosition.value === 'preview') {
-          resolvingDashboardTarget.value = true
-          try {
-            const target = await resolveBusinessDashboardLandingTarget(userStore)
-            if (!isCurrentRouteTarget(target)) {
-              await router.replace(target)
-            }
-          } finally {
-            resolvingDashboardTarget.value = false
-          }
+          await redirectToBusinessDashboardLanding('看板不存在时重定向失败')
         }
         dataInitState.value = true
         return
@@ -857,6 +852,28 @@ const isCurrentRouteTarget = (target: any) => {
   if (!targetDashboardMode) return true
   return String(targetDashboardMode) === String(firstQueryValue(route.query.dashboardMode) || '')
 }
+const syncDashboardTargetResolving = () => {
+  resolvingDashboardTarget.value = dashboardLandingRedirect.isResolving()
+}
+const redirectToBusinessDashboardLanding = async (failureMessage: string) => {
+  const sourceFullPath = route.fullPath
+  const pending = dashboardLandingRedirect.redirect({
+    sourceFullPath,
+    getCurrentFullPath: () => route.fullPath,
+    resolveLanding: () => resolveBusinessDashboardLandingTarget(userStore),
+    commit: async (target) => {
+      if (!isCurrentRouteTarget(target)) await router.replace(target)
+    },
+  })
+  syncDashboardTargetResolving()
+  try {
+    await pending
+  } catch (error) {
+    console.warn(failureMessage, error)
+  } finally {
+    syncDashboardTargetResolving()
+  }
+}
 const getPreviewStateInfo = () => {
   return state
 }
@@ -884,20 +901,8 @@ const resourceNodeClick = (prams: any) => {
 }
 
 const redirectUnsupportedDashboardMode = async () => {
-  if (resolvingDashboardTarget.value) return
-  const sourceFullPath = route.fullPath
   resetPreviewState()
-  resolvingDashboardTarget.value = true
-  try {
-    const target = await resolveBusinessDashboardLandingTarget(userStore)
-    if (route.fullPath === sourceFullPath && !isCurrentRouteTarget(target)) {
-      await router.replace(target)
-    }
-  } catch (error) {
-    console.warn('无效看板模式重定向失败', error)
-  } finally {
-    resolvingDashboardTarget.value = false
-  }
+  await redirectToBusinessDashboardLanding('无效看板模式重定向失败')
 }
 
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
@@ -907,6 +912,7 @@ onBeforeMount(() => {
   }
 })
 onBeforeUnmount(() => {
+  dashboardLandingRedirect.invalidate()
   cancelDashboardWork()
 })
 watch(
@@ -915,12 +921,15 @@ watch(
       routeDashboardId.value,
       routeDashboardMode.value,
       hasUnsupportedDashboardMode.value,
+      firstDashboardMode(route.query.dashboardMode),
     ] as const,
   ([resourceId, dashboardMode, unsupportedMode]) => {
     if (unsupportedMode) {
       void redirectUnsupportedDashboardMode()
       return
     }
+    dashboardLandingRedirect.invalidate()
+    syncDashboardTargetResolving()
     if (!props.defaultMode && resourceId) {
       loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })
     } else if (!props.defaultMode && !resourceId) {
@@ -932,6 +941,8 @@ watch(
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,
   callback: () => {
+    dashboardLandingRedirect.invalidate()
+    syncDashboardTargetResolving()
     resetPreviewState()
   },
 })
