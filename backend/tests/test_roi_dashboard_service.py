@@ -1093,7 +1093,7 @@ def test_chart_writes_are_rejected_without_datasource_access(
                 title="修改",
                 sql="SELECT 1",
                 chart_type="table",
-                version=1,
+                version=2,
             ),
         ),
         lambda: delete_roi_chart(session, user, 301, 901),
