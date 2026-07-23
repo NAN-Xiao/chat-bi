@@ -58,25 +58,25 @@ const forbidden = () => ({ response: { status: 403 } })
 
 {
   const config = deferred()
-  const dashboards = deferred()
+  const dashboard = deferred()
   globalThis.__roiDashboardApi.getConfig = (requestConfig) => {
     assert.equal(requestConfig.requestOptions.customError, true)
     return config.promise
   }
-  globalThis.__roiDashboardApi.list = (requestConfig) => {
+  globalThis.__roiDashboardApi.getCurrent = (requestConfig) => {
     assert.equal(requestConfig.requestOptions.customError, true)
-    return dashboards.promise
+    return dashboard.promise
   }
   const store = createStore()
   assert.equal(store.configLoaded, false)
   const configPending = store.loadConfig()
-  const dashboardsPending = store.loadDashboards()
+  const dashboardPending = store.loadDashboard()
   config.resolve(null)
   await configPending
   assert.equal(store.configLoaded, true, '成功加载 null 也必须标记配置已加载')
   assert.equal(store.loading, true, '并发看板请求未完成时 loading 必须保持')
-  dashboards.resolve([])
-  await dashboardsPending
+  dashboard.resolve(null)
+  await dashboardPending
   assert.equal(store.loading, false)
 }
 
@@ -104,14 +104,14 @@ const forbidden = () => ({ response: { status: 403 } })
 
 {
   const store = createStore()
-  const dashboards = deferred()
-  globalThis.__roiDashboardApi.list = () => dashboards.promise
-  const pending = store.loadDashboards()
+  const dashboard = deferred()
+  globalThis.__roiDashboardApi.getCurrent = () => dashboard.promise
+  const pending = store.loadDashboard()
   store.reset()
   assert.equal(store.configLoaded, false)
-  dashboards.resolve([{ id: 'stale' }])
+  dashboard.resolve({ id: 'stale' })
   await pending
-  assert.deepEqual(store.dashboards, [])
+  assert.equal(store.dashboard, null)
   assert.equal(store.loading, false)
   assert.equal(store.permissionError, '')
 
@@ -149,34 +149,33 @@ const forbidden = () => ({ response: { status: 403 } })
   const first = deferred()
   const second = deferred()
   const requests = [first, second]
-  globalThis.__roiDashboardApi.list = () => requests.shift().promise
-  const firstPending = store.loadDashboards()
-  const secondPending = store.loadDashboards()
-  second.resolve([{ id: 'new' }])
+  globalThis.__roiDashboardApi.getCurrent = () => requests.shift().promise
+  const firstPending = store.loadDashboard()
+  const secondPending = store.loadDashboard()
+  second.resolve({ id: 'new' })
   await secondPending
-  assert.deepEqual(store.dashboards, [{ id: 'new' }])
+  assert.deepEqual(store.dashboard, { id: 'new' })
   assert.equal(store.loading, true)
-  first.resolve([{ id: 'old' }])
+  first.resolve({ id: 'old' })
   await firstPending
-  assert.deepEqual(store.dashboards, [{ id: 'new' }])
+  assert.deepEqual(store.dashboard, { id: 'new' })
   assert.equal(store.loading, false)
 }
 
 {
   const store = createStore()
-  assert.equal(store.editorState.createDashboardRequestId, 0)
-  store.requestDashboardCreation()
-  store.requestDashboardCreation()
-  assert.equal(store.editorState.createDashboardRequestId, 2, '树菜单新建请求必须可重复触发')
-
+  globalThis.__roiDashboardApi.ensure = () =>
+    Promise.resolve({ id: '9223372036854775807', name: 'ROI 看板' })
+  const ensured = await store.ensureDashboard()
+  assert.equal(ensured.id, '9223372036854775807')
+  assert.equal(store.dashboard.id, '9223372036854775807')
   store.publishDashboard({ id: '9223372036854775807', name: '经营总览' })
   store.publishCharts('9223372036854775807', [{ id: '9223372036854775806' }])
-  assert.equal(store.dashboards[0].id, '9223372036854775807', '看板 Snowflake ID 不得转成 number')
+  assert.equal(store.dashboard.id, '9223372036854775807', '看板 Snowflake ID 不得转成 number')
   assert.equal(store.charts['9223372036854775807'][0].id, '9223372036854775806')
 
   store.reset()
-  assert.equal(store.editorState.createDashboardRequestId, 0)
-  assert.deepEqual(store.dashboards, [])
+  assert.equal(store.dashboard, null)
   assert.deepEqual(store.charts, {})
 }
 

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
-import type { RoiChart, RoiConfig, RoiDashboard, RoiEditorState } from '@/views/dashboard/roi/types'
+import type { RoiChart, RoiConfig, RoiDashboard } from '@/views/dashboard/roi/types'
 import {
   beginRoiRequest,
   createRoiRequestState,
@@ -12,13 +12,6 @@ import {
   setRoiPermissionError,
 } from '@/stores/roiRequestCoordinator'
 
-const createEditorState = (): RoiEditorState => ({
-  chartDialogOpen: false,
-  dashboardId: null,
-  chartId: null,
-  createDashboardRequestId: 0,
-})
-
 const errorStatus = (error: unknown) =>
   Number((error as { response?: { status?: number } })?.response?.status || 0)
 
@@ -26,11 +19,10 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
   state: () => ({
     config: null as RoiConfig | null,
     configLoaded: false,
-    dashboards: [] as RoiDashboard[],
+    dashboard: null as RoiDashboard | null,
     charts: {} as Record<string, RoiChart[]>,
     loading: false,
     permissionError: '',
-    editorState: createEditorState(),
     requestState: createRoiRequestState(),
   }),
   actions: {
@@ -57,12 +49,28 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
         if (finishRoiRequest(this.requestState, request)) this.syncRequestState()
       }
     },
-    async loadDashboards() {
-      const request = beginRoiRequest(this.requestState, 'dashboards')
+    async loadDashboard() {
+      const request = beginRoiRequest(this.requestState, 'dashboard')
       this.syncRequestState()
       try {
-        const result = await roiDashboardApi.list(roiCustomErrorRequestConfig)
-        if (isLatestRoiRequest(this.requestState, request)) this.dashboards = result
+        const result = await roiDashboardApi.getCurrent(roiCustomErrorRequestConfig)
+        if (isLatestRoiRequest(this.requestState, request)) this.dashboard = result
+        return result
+      } catch (error) {
+        if (errorStatus(error) === 403) {
+          setRoiPermissionError(this.requestState, request, '没有管理 ROI 看板的权限')
+        }
+        throw error
+      } finally {
+        if (finishRoiRequest(this.requestState, request)) this.syncRequestState()
+      }
+    },
+    async ensureDashboard() {
+      const request = beginRoiRequest(this.requestState, 'dashboard')
+      this.syncRequestState()
+      try {
+        const result = await roiDashboardApi.ensure(roiCustomErrorRequestConfig)
+        if (isLatestRoiRequest(this.requestState, request)) this.dashboard = result
         return result
       } catch (error) {
         if (errorStatus(error) === 403) {
@@ -89,13 +97,8 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
         if (finishRoiRequest(this.requestState, request)) this.syncRequestState()
       }
     },
-    requestDashboardCreation() {
-      this.editorState.createDashboardRequestId += 1
-    },
     publishDashboard(dashboard: RoiDashboard) {
-      const index = this.dashboards.findIndex((item) => String(item.id) === String(dashboard.id))
-      if (index >= 0) this.dashboards[index] = dashboard
-      else this.dashboards.push(dashboard)
+      this.dashboard = dashboard
     },
     publishCharts(dashboardId: string, charts: RoiChart[]) {
       this.charts[String(dashboardId)] = charts
@@ -104,11 +107,10 @@ export const useRoiDashboardStore = defineStore('roiDashboard', {
       resetRoiRequests(this.requestState)
       this.config = null
       this.configLoaded = false
-      this.dashboards = []
+      this.dashboard = null
       this.charts = {}
       this.loading = false
       this.permissionError = ''
-      this.editorState = createEditorState()
     },
   },
 })

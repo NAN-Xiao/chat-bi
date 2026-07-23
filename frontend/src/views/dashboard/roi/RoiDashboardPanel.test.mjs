@@ -9,9 +9,9 @@ assert.equal(existsSync(panelPath), true, '必须提供 ROI 看板主页面')
 assert.equal(existsSync(behaviorPath), true, '必须提供可独立验证的新建流程')
 
 const panel = readFileSync(panelPath, 'utf8')
-assert.match(panel, /openCreateDashboardNameDialog/)
-assert.match(panel, /openFirstChartEditor/)
-assert.match(panel, /createRoiNewChartEditorState/)
+assert.doesNotMatch(panel, /openCreateDashboardNameDialog|requestName|新建下属看板/)
+assert.match(panel, /openNewChartEditor/)
+assert.match(panel, /runRoiEnsureChartFlow/)
 assert.doesNotMatch(panel, /DashboardSqlEditor\.vue|useDatasourceContextStore/)
 assert.doesNotMatch(panel, /RoiDatasourceDialog|openDatasourceSettings|设置数据源/)
 assert.match(panel, /请联系 SaaS 管理员配置 ROI 数据源/)
@@ -33,7 +33,7 @@ const {
   createFirstChartEditorState,
   createRoiNewChartEditorState,
   refreshRoiChartsWithConfig,
-  runRoiDashboardCreateFlow,
+  runRoiEnsureChartFlow,
   closeRoiChartEditor,
 } =
   await import(moduleUrl)
@@ -49,22 +49,22 @@ const deferred = () => {
 }
 
 assert.deepEqual(
-  buildRoiPanelLoadPlan({ reason: 'mounted', routeMode: 'ordinary', dashboardId: '301' }),
+  buildRoiPanelLoadPlan({ reason: 'mounted', routeMode: 'ordinary' }),
   [],
   '普通路由隐藏 Panel 挂载时不得请求任何 ROI API'
 )
 assert.deepEqual(
-  buildRoiPanelLoadPlan({ reason: 'mounted', routeMode: 'roi', dashboardId: '301' }),
-  ['config', 'dashboards', 'charts'],
-  'ROI 路由挂载必须加载完整页面合同'
+  buildRoiPanelLoadPlan({ reason: 'mounted', routeMode: 'roi' }),
+  ['config', 'dashboard'],
+  'ROI 路由挂载必须加载配置和唯一看板'
 )
 assert.deepEqual(
-  buildRoiPanelLoadPlan({ reason: 'route-enter', routeMode: 'roi', dashboardId: '301' }),
-  ['config', 'dashboards', 'charts'],
-  'ordinary→roi 必须补齐 config/list/charts，不能只刷新图表'
+  buildRoiPanelLoadPlan({ reason: 'route-enter', routeMode: 'roi' }),
+  ['config', 'dashboard'],
+  'ordinary→roi 必须补齐配置和唯一看板'
 )
 assert.deepEqual(
-  buildRoiPanelLoadPlan({ reason: 'explicit-config', routeMode: 'ordinary', dashboardId: '' }),
+  buildRoiPanelLoadPlan({ reason: 'explicit-config', routeMode: 'ordinary' }),
   ['config'],
   '普通路由只有显式 ROI 动作才允许懒加载配置'
 )
@@ -164,7 +164,7 @@ for (const chartCount of [0, 1]) {
 assert.match(panel, /refreshRoiChartsWithConfig/)
 assert.match(panel, /roiConfigLoadCoordinator\.refresh/)
 assert.match(panel, /canEditRoiConfig\(config\.value\)/)
-assert.match(panel, /createRoiNewChartEditorState\([\s\S]*config\.value/)
+assert.match(panel, /runRoiEnsureChartFlow\([\s\S]*getDashboard:\s*\(\) => dashboard\.value/)
 assert.match(
   panel,
   /onBeforeUnmount\([\s\S]*roiConfigLoadCoordinator\.invalidate\(\)[\s\S]*roiDashboardStore\.reset\(\)/
@@ -172,8 +172,6 @@ assert.match(
 
 {
   const calls = []
-  let published = null
-  let route = null
   let editor = null
   const config = {
     id: '1',
@@ -184,27 +182,17 @@ assert.match(
     can_execute: true,
     can_edit: true,
   }
-  const created = await runRoiDashboardCreateFlow({
+  const created = await runRoiEnsureChartFlow({
     ensureConfigLoaded: async () => calls.push('config'),
     getConfig: () => config,
+    getDashboard: () => null,
     onMissingConfig: () => calls.push('missing'),
     onForbiddenConfig: () => calls.push('forbidden'),
-    requestName: async () => {
-      calls.push('name')
-      return '经营总览'
+    ensureDashboard: async () => {
+      calls.push('ensure')
+      return { id: '9223372036854775807', name: 'ROI 看板' }
     },
-    createDashboard: async (name) => {
-      calls.push(`create:${name}`)
-      return { id: '9223372036854775807', name }
-    },
-    publishDashboard: (dashboard) => {
-      calls.push('publish')
-      published = dashboard
-    },
-    navigate: async (target) => {
-      calls.push('navigate')
-      route = target
-    },
+    firstChart: true,
     openEditor: (state) => {
       calls.push('editor')
       editor = state
@@ -212,33 +200,20 @@ assert.match(
   })
 
   assert.equal(created.id, '9223372036854775807')
-  assert.deepEqual(calls, [
-    'config',
-    'name',
-    'create:经营总览',
-    'publish',
-    'navigate',
-    'editor',
-  ])
-  assert.equal(published.id, '9223372036854775807')
-  assert.deepEqual(route, {
-    path: '/dashboard/index',
-    query: { resourceId: '9223372036854775807', dashboardMode: 'roi' },
-  })
+  assert.deepEqual(calls, ['config', 'ensure', 'editor'])
   assert.deepEqual(editor, createFirstChartEditorState('9223372036854775807'))
 }
 
 {
   const calls = []
-  const result = await runRoiDashboardCreateFlow({
+  const result = await runRoiEnsureChartFlow({
     ensureConfigLoaded: async () => calls.push('config'),
     getConfig: () => null,
+    getDashboard: () => null,
     onMissingConfig: () => calls.push('missing'),
     onForbiddenConfig: () => calls.push('forbidden'),
-    requestName: async () => calls.push('name'),
-    createDashboard: async () => calls.push('create'),
-    publishDashboard: () => calls.push('publish'),
-    navigate: async () => calls.push('navigate'),
+    ensureDashboard: async () => calls.push('ensure'),
+    firstChart: true,
     openEditor: () => calls.push('editor'),
   })
   assert.equal(result, null)
@@ -247,7 +222,7 @@ assert.match(
 
 {
   const calls = []
-  const result = await runRoiDashboardCreateFlow({
+  const result = await runRoiEnsureChartFlow({
     ensureConfigLoaded: async () => calls.push('config'),
     getConfig: () => ({
       id: '1',
@@ -258,25 +233,39 @@ assert.match(
       can_execute: false,
       can_edit: false,
     }),
+    getDashboard: () => null,
     onMissingConfig: () => calls.push('missing'),
     onForbiddenConfig: () => calls.push('forbidden'),
-    requestName: async () => calls.push('name'),
-    createDashboard: async () => calls.push('create'),
-    publishDashboard: () => calls.push('publish'),
-    navigate: async () => calls.push('navigate'),
+    ensureDashboard: async () => calls.push('ensure'),
+    firstChart: true,
     openEditor: () => calls.push('editor'),
   })
   assert.equal(result, null, '无数据源权限不得创建空看板')
   assert.deepEqual(calls, ['config', 'forbidden'])
 }
 
+{
+  const calls = []
+  const existing = { id: '901', name: 'ROI 看板' }
+  const result = await runRoiEnsureChartFlow({
+    ensureConfigLoaded: async () => calls.push('config'),
+    getConfig: () => ({ can_execute: true, can_edit: true }),
+    getDashboard: () => existing,
+    onMissingConfig: () => calls.push('missing'),
+    onForbiddenConfig: () => calls.push('forbidden'),
+    ensureDashboard: async () => calls.push('ensure'),
+    firstChart: false,
+    openEditor: (state) => calls.push(`editor:${state.dashboardId}:${state.firstChart}`),
+  })
+  assert.equal(result, existing)
+  assert.deepEqual(calls, ['config', 'editor:901:false'])
+}
+
 assert.match(panel, /canEditRoiConfig\(config\.value\)/)
 assert.match(panel, /当前账号无此数据源权限/)
 assert.doesNotMatch(panel, /currentCharts\.value\.some\(\(chart\)\s*=>\s*chart\.can_execute/)
-assert.match(
-  panel,
-  /watch\(\s*\(\) => \[props\.dashboardId, routeMode\.value\],[\s\S]*?if \(previous\?\.\[1\] !== 'roi'\) void loadPage\('route-enter'\)\s*else void reloadCharts\(\)\s*\}\s*\)/
-)
+assert.doesNotMatch(panel, /defineProps|props\.dashboardId|createDashboardRequestId/)
+assert.match(panel, /watch\(\s*routeMode,[\s\S]*?loadPage\('route-enter'\)/)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*min-width:\s*0/)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*overflow:\s*hidden/)
 assert.match(panel, /\.roi-dashboard-panel__identity[\s\S]*span[\s\S]*text-overflow:\s*ellipsis/)

@@ -3,10 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { Plus } from '@element-plus/icons-vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { roiCustomErrorRequestConfig, roiDashboardApi } from '@/api/roiDashboard'
 import { useRoiDashboardStore } from '@/stores/roiDashboard'
-import { useEmitt } from '@/utils/useEmitt'
 import RoiChartGrid from './RoiChartGrid.vue'
 import RoiSqlEditor from './RoiSqlEditor.vue'
 import type { RoiChart, RoiChartEditorState, RoiDateRange, RoiLayoutSpan } from './types'
@@ -24,27 +23,13 @@ import {
   closeRoiChartEditor,
   buildRoiPanelLoadPlan,
   createRoiConfigLoadCoordinator,
-  createRoiNewChartEditorState,
   refreshRoiChartsWithConfig,
-  ROI_DASHBOARD_TREE_REFRESH_EVENT,
-  runRoiDashboardCreateFlow,
+  runRoiEnsureChartFlow,
 } from './roiDashboardPanelBehavior'
 
-const props = defineProps<{
-  dashboardId: string
-}>()
-
 const route = useRoute()
-const router = useRouter()
 const roiDashboardStore = useRoiDashboardStore()
-const {
-  config,
-  configLoaded,
-  dashboards,
-  charts,
-  editorState: storeEditorState,
-} = storeToRefs(roiDashboardStore)
-const { emitter } = useEmitt()
+const { config, configLoaded, dashboard, charts } = storeToRefs(roiDashboardStore)
 
 const editorState = ref<RoiChartEditorState>({
   visible: false,
@@ -64,10 +49,8 @@ const routeMode = computed(() => {
     : route.query.dashboardMode
   return value === 'roi' ? 'roi' : 'ordinary'
 })
-const currentCharts = computed(() => charts.value[String(props.dashboardId)] || [])
-const dashboard = computed(() =>
-  dashboards.value.find((item) => String(item.id) === String(props.dashboardId))
-)
+const dashboardId = computed(() => (dashboard.value ? String(dashboard.value.id) : ''))
+const currentCharts = computed(() => charts.value[dashboardId.value] || [])
 const canExecute = computed(() => config.value?.can_execute === true)
 const canEdit = computed(() => canEditRoiConfig(config.value))
 const roiConfigLoadCoordinator = createRoiConfigLoadCoordinator({
@@ -79,17 +62,16 @@ async function loadPage(reason: 'mounted' | 'route-enter') {
   const plan = buildRoiPanelLoadPlan({
     reason,
     routeMode: routeMode.value,
-    dashboardId: String(props.dashboardId || ''),
   })
   if (!plan.length) return
   try {
-    const pageLoads: Promise<unknown>[] = []
-    if (plan.includes('config')) pageLoads.push(roiConfigLoadCoordinator.refresh())
-    if (plan.includes('dashboards')) pageLoads.push(roiDashboardStore.loadDashboards())
-    await Promise.all(pageLoads)
-    if (plan.includes('charts')) {
-      await roiDashboardStore.loadCharts(String(props.dashboardId))
-    }
+    const [, loadedDashboard] = await Promise.all([
+      plan.includes('config') ? roiConfigLoadCoordinator.refresh() : Promise.resolve(),
+      plan.includes('dashboard')
+        ? roiDashboardStore.loadDashboard()
+        : Promise.resolve(dashboard.value),
+    ])
+    if (loadedDashboard) await roiDashboardStore.loadCharts(String(loadedDashboard.id))
   } catch {
     ElMessage.error('加载 ROI 看板失败，请稍后重试')
   }
@@ -100,16 +82,15 @@ async function ensureConfigLoaded() {
   const plan = buildRoiPanelLoadPlan({
     reason: 'explicit-config',
     routeMode: routeMode.value,
-    dashboardId: String(props.dashboardId || ''),
   })
   if (plan.includes('config')) await roiConfigLoadCoordinator.ensure()
 }
 
 async function reloadCharts() {
-  if (!props.dashboardId || routeMode.value !== 'roi') return
+  if (!dashboardId.value || routeMode.value !== 'roi') return
   try {
     await refreshRoiChartsWithConfig({
-      loadCharts: () => roiDashboardStore.loadCharts(String(props.dashboardId)),
+      loadCharts: () => roiDashboardStore.loadCharts(dashboardId.value),
       refreshConfig: roiConfigLoadCoordinator.refresh,
     })
   } catch {
@@ -118,67 +99,35 @@ async function reloadCharts() {
 }
 
 async function reloadChartsAfterConfigSave() {
-  if (!props.dashboardId || routeMode.value !== 'roi') return
+  if (!dashboardId.value || routeMode.value !== 'roi') return
   try {
-    await roiDashboardStore.loadCharts(String(props.dashboardId))
+    await roiDashboardStore.loadCharts(dashboardId.value)
   } catch {
     ElMessage.error('刷新 ROI 图表失败，请稍后重试')
   }
 }
 
-async function openCreateDashboardNameDialog() {
-  try {
-    const result = await ElMessageBox.prompt('请输入 ROI 看板名称', '新建下属看板', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputPattern: /\S+/,
-      inputErrorMessage: 'ROI 看板名称不能为空',
-      autofocus: false,
-    })
-    return result.value.trim()
-  } catch {
-    return null
-  }
-}
-
-function openFirstChartEditor(state: RoiChartEditorState) {
-  editorState.value = state
-}
-
-async function createDashboard() {
+async function openNewChartEditor() {
   if (createFlowRunning.value) return
   createFlowRunning.value = true
   try {
-    const created = await runRoiDashboardCreateFlow({
+    await runRoiEnsureChartFlow({
       ensureConfigLoaded,
       getConfig: () => config.value,
+      getDashboard: () => dashboard.value,
       onMissingConfig: () => ElMessage.warning('请联系 SaaS 管理员配置 ROI 数据源'),
       onForbiddenConfig: () => ElMessage.warning('当前账号无此数据源权限'),
-      requestName: openCreateDashboardNameDialog,
-      createDashboard: (name) => roiDashboardApi.create({ name }, roiCustomErrorRequestConfig),
-      publishDashboard: (created) => {
-        roiDashboardStore.publishDashboard(created)
-        roiDashboardStore.publishCharts(String(created.id), [])
+      ensureDashboard: () => roiDashboardStore.ensureDashboard(),
+      firstChart: currentCharts.value.length === 0,
+      openEditor: (state) => {
+        editorState.value = state
       },
-      navigate: (target) => router.push(target),
-      openEditor: openFirstChartEditor,
     })
-    if (created) emitter.emit(ROI_DASHBOARD_TREE_REFRESH_EVENT)
   } catch {
-    ElMessage.error('新建 ROI 看板失败，请稍后重试')
+    ElMessage.error('新增 ROI 图表失败，请稍后重试')
   } finally {
     createFlowRunning.value = false
   }
-}
-
-function openNewChartEditor() {
-  if (!props.dashboardId) return
-  const nextState = createRoiNewChartEditorState(
-    config.value,
-    String(props.dashboardId),
-    currentCharts.value.length === 0
-  )
-  if (nextState) editorState.value = nextState
 }
 
 function openEditChartEditor(chart: RoiChart) {
@@ -186,7 +135,7 @@ function openEditChartEditor(chart: RoiChart) {
   editorState.value = {
     visible: true,
     mode: 'edit',
-    dashboardId: String(props.dashboardId),
+    dashboardId: dashboardId.value,
     chartId: String(chart.id),
     initialValue: chart,
     firstChart: false,
@@ -219,7 +168,7 @@ async function refreshChart(
   refreshingChartIds.value = [...refreshingChartIds.value, chartId]
   try {
     const result = await roiDashboardApi.previewChart(
-      String(props.dashboardId),
+      dashboardId.value,
       buildRoiChartPreviewRequest(
         chart,
         hasRoiDateRangePlaceholders(chart.sql) ? dateRange : undefined
@@ -228,7 +177,7 @@ async function refreshChart(
     )
     if (result.status !== 'success') throw new Error(result.message)
     roiDashboardStore.publishCharts(
-      String(props.dashboardId),
+      dashboardId.value,
       replaceRoiChartPreviewResult(currentCharts.value, chartId, result)
     )
     if (notify) ElMessage.success('ROI 图表刷新成功')
@@ -264,12 +213,12 @@ async function removeChart(chart: RoiChart) {
   }
   try {
     await roiDashboardApi.removeChart(
-      String(props.dashboardId),
+      dashboardId.value,
       String(chart.id),
       roiCustomErrorRequestConfig
     )
     roiDashboardStore.publishCharts(
-      String(props.dashboardId),
+      dashboardId.value,
       currentCharts.value.filter((item) => String(item.id) !== String(chart.id))
     )
   } catch {
@@ -281,12 +230,12 @@ async function persistChartOrder(nextCharts: RoiChart[]) {
   if (!canEdit.value || nextCharts.some((chart) => !canManageRoiChart(chart, true))) return
   try {
     const updated = await roiDashboardApi.reorderCharts(
-      String(props.dashboardId),
+      dashboardId.value,
       { items: buildRoiChartOrderItems(nextCharts) },
       roiCustomErrorRequestConfig
     )
     roiDashboardStore.publishCharts(
-      String(props.dashboardId),
+      dashboardId.value,
       mergeReorderedRoiCharts(currentCharts.value, updated)
     )
   } catch {
@@ -316,23 +265,11 @@ watch(
   { immediate: true }
 )
 
-watch(
-  () => storeEditorState.value.createDashboardRequestId,
-  (current, previous) => {
-    if (current > previous) void createDashboard()
-  }
-)
-
-watch(
-  () => [props.dashboardId, routeMode.value],
-  ([dashboardId, mode], previous) => {
-    if (mode !== 'roi' || !dashboardId) return
-    if (dashboardId === previous?.[0] && mode === previous?.[1]) return
-    chartDateRanges.value = {}
-    if (previous?.[1] !== 'roi') void loadPage('route-enter')
-    else void reloadCharts()
-  }
-)
+watch(routeMode, (mode, previousMode) => {
+  if (mode !== 'roi' || mode === previousMode) return
+  chartDateRanges.value = {}
+  void loadPage('route-enter')
+})
 
 onMounted(() => {
   void loadPage('mounted')
