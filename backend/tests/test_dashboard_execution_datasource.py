@@ -107,6 +107,34 @@ def test_dashboard_api_exposes_execution_datasource_candidates() -> None:
     assert hasattr(dashboard_api, "execution_datasources_api")
 
 
+def test_dashboard_persists_execution_datasource_separately_from_resource_datasource() -> None:
+    """普通看板的资源归属不能因 SQL 选用 ROI 数据源而改变。"""
+    assert "execution_datasource_id" in CoreDashboard.__table__.c
+    dashboard = CoreDashboard(
+        id="dashboard-1",
+        tenant_id=11,
+        datasource=101,
+        execution_datasource_id=202,
+    )
+
+    assert dashboard.datasource == 101
+    assert dashboard.execution_datasource_id == 202
+
+
+def test_dashboard_execution_datasource_overrides_legacy_chart_datasource() -> None:
+    """已保存的普通看板不能由图表旧字段改写 SQL 执行数据源。"""
+    dashboard = CoreDashboard(
+        id="dashboard-1",
+        tenant_id=11,
+        datasource=101,
+        execution_datasource_id=202,
+    )
+    chart = {"sql": "select 1", "datasource": 101}
+
+    assert dashboard_service._chart_datasource(dashboard, chart) == 202
+    assert chart["datasource"] == 202
+
+
 def test_dashboard_refresh_uses_saved_roi_chart_datasource(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -172,7 +200,9 @@ def test_canvas_validation_accepts_saved_roi_chart_datasource(
         lambda _session, _user, datasource_id: calls.append(datasource_id) or 22,
     )
     dashboard = SimpleNamespace(
-        canvas_view_info=json.dumps({"chart-1": {"datasource": 22, "sql": "select 1"}})
+        execution_datasource_id=22,
+        datasource=11,
+        canvas_view_info=json.dumps({"chart-1": {"datasource": 22, "sql": "select 1"}}),
     )
 
     dashboard_service._validate_canvas_datasources(_Session(), _user(), dashboard)

@@ -35,6 +35,10 @@ class CoreDashboard(SQLModel, table=True):
         default=None,
         sa_column=Column(BigInteger, nullable=True)
     )
+    execution_datasource_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BigInteger, nullable=True)
+    )
     external_mcp_server_id: Optional[int] = Field(
         default=None,
         sa_column=Column(BigInteger, nullable=True)
@@ -300,6 +304,7 @@ class DashboardBaseResponse(BaseModel):
     name: Optional[str] = None
     pid: Optional[str] = None
     datasource: Optional[int] = None
+    execution_datasource_id: Optional[int] = None
     external_mcp_server_id: Optional[int | str] = None
     node_type: Optional[str] = None
     leaf: Optional[bool] = False
