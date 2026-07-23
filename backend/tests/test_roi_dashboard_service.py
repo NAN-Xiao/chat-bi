@@ -230,6 +230,64 @@ def assert_http_error(status_code: int, call) -> None:
     assert exc.value.status_code == status_code
 
 
+def test_current_roi_dashboard_is_empty_before_first_chart(session: Session) -> None:
+    owner = make_user(id=1, tenant_id=11, tenant_role="owner")
+
+    assert service.get_current_roi_dashboard(session, owner) is None
+
+
+def test_ensure_current_roi_dashboard_is_idempotent(session: Session) -> None:
+    owner = make_user(id=1, tenant_id=11, tenant_role="owner")
+    add_datasource(session, 101)
+    seed_roi_config(session, tenant_id=11, datasource_id=101)
+
+    first = service.ensure_current_roi_dashboard(session, owner)
+    second = service.ensure_current_roi_dashboard(session, owner)
+
+    assert first.id == second.id
+    assert first.name == "ROI 看板"
+    assert [item.id for item in list_roi_dashboards(session, owner)] == [first.id]
+
+
+def test_ensure_current_roi_dashboard_requires_roi_config(session: Session) -> None:
+    owner = make_user(id=1, tenant_id=11, tenant_role="owner")
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.ensure_current_roi_dashboard(session, owner)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "当前工作空间尚未配置 ROI 数据源"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda session, user: create_roi_dashboard(
+            session, user, RoiDashboardCreate(name="第二个看板")
+        ),
+        lambda session, user: update_roi_dashboard(
+            session, user, 301, RoiDashboardUpdate(name="改名", version=1)
+        ),
+        lambda session, user: delete_roi_dashboard(session, user, 301),
+        lambda session, user: reorder_roi_dashboards(
+            session,
+            user,
+            RoiDashboardReorderRequest(
+                items=[RoiDashboardOrderItem(id="301", sort=0, version=1)]
+            ),
+        ),
+    ],
+)
+def test_legacy_roi_dashboard_mutations_are_disabled(session: Session, call) -> None:
+    owner = make_user(id=1, tenant_id=11, tenant_role="owner")
+
+    with pytest.raises(HTTPException) as exc_info:
+        call(session, owner)
+
+    assert exc_info.value.status_code == 405
+    assert exc_info.value.detail == "ROI 看板为固定单例，不支持该操作"
+
+
 def test_roi_dashboards_are_shared_within_workspace(session: Session) -> None:
     owner = make_user(id=1, tenant_id=11, tenant_role="owner")
     admin = make_user(id=2, tenant_id=11, tenant_role="admin")
@@ -237,7 +295,7 @@ def test_roi_dashboards_are_shared_within_workspace(session: Session) -> None:
     grant_datasource(session, user_id=1, datasource_id=101)
     seed_roi_config(session, tenant_id=11, datasource_id=101)
 
-    created = create_roi_dashboard(session, owner, RoiDashboardCreate(name="渠道 ROI"))
+    created = service.ensure_current_roi_dashboard(session, owner)
 
     assert [item.id for item in list_roi_dashboards(session, admin)] == [created.id]
 
@@ -253,12 +311,8 @@ def test_shared_roi_datasource_does_not_share_dashboards_between_workspaces(
     seed_roi_config(session, tenant_id=11, datasource_id=101)
     seed_roi_config(session, tenant_id=22, datasource_id=101)
 
-    dashboard_a = create_roi_dashboard(
-        session, workspace_a, RoiDashboardCreate(name="空间 A ROI")
-    )
-    dashboard_b = create_roi_dashboard(
-        session, workspace_b, RoiDashboardCreate(name="空间 B ROI")
-    )
+    dashboard_a = service.ensure_current_roi_dashboard(session, workspace_a)
+    dashboard_b = service.ensure_current_roi_dashboard(session, workspace_b)
 
     assert [item.id for item in list_roi_dashboards(session, workspace_a)] == [dashboard_a.id]
     assert [item.id for item in list_roi_dashboards(session, workspace_b)] == [dashboard_b.id]
@@ -271,7 +325,7 @@ def test_shared_roi_datasource_does_not_share_dashboards_between_workspaces(
         ("inactive", 403, "当前账号无此数据源权限"),
     ],
 )
-def test_create_dashboard_requires_executable_roi_datasource(
+def test_ensure_dashboard_requires_executable_roi_datasource(
     session: Session,
     state: str,
     expected_status: int,
@@ -287,23 +341,23 @@ def test_create_dashboard_requires_executable_roi_datasource(
         session.commit()
     # failure cases only: missing or inactive should raise
     with pytest.raises(HTTPException) as exc_info:
-        create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
+        service.ensure_current_roi_dashboard(session, user)
     assert exc_info.value.status_code == expected_status
     assert exc_info.value.detail == expected_detail
     assert session.exec(select(CoreRoiDashboard)).all() == []
 
 
-def test_workspace_admin_can_create_dashboard_without_direct_datasource_grant(
+def test_workspace_admin_can_ensure_dashboard_without_direct_datasource_grant(
     session: Session,
 ) -> None:
     """工作空间 admin 在未被单账号授权的情况下，若工作区已配置 ROI 数据源，应能创建看板并持久化。"""
     user = make_user(id=7, tenant_id=11, tenant_role="admin")
     add_datasource(session, 101)
     seed_roi_config(session, tenant_id=11, datasource_id=101)
-    created = create_roi_dashboard(session, user, RoiDashboardCreate(name="管理员 ROI"))
+    created = service.ensure_current_roi_dashboard(session, user)
     assert created is not None
     assert created.tenant_id == 11
-    assert created.name == "管理员 ROI"
+    assert created.name == "ROI 看板"
     assert [item.id for item in list_roi_dashboards(session, user)] == [created.id]
 
 
@@ -316,27 +370,6 @@ def test_workspace_admin_can_create_dashboard_without_direct_datasource_grant(
 )
 def test_member_and_platform_identity_are_rejected(session: Session, user) -> None:
     assert_http_error(403, lambda: list_roi_dashboards(session, user))
-
-
-def test_cross_tenant_dashboard_is_not_disclosed(session: Session) -> None:
-    seed_roi_dashboard(
-        session,
-        dashboard_id=301,
-        tenant_id=22,
-        name="其他空间看板",
-    )
-    user = make_user(tenant_id=11, tenant_role="owner")
-
-    assert_http_error(
-        404,
-        lambda: update_roi_dashboard(
-            session,
-            user,
-            301,
-            RoiDashboardUpdate(name="越权修改", version=1),
-        ),
-    )
-    assert_http_error(404, lambda: delete_roi_dashboard(session, user, 301))
 
 
 def test_platform_admin_can_create_and_read_roi_datasource_binding(
@@ -666,7 +699,7 @@ def test_platform_admin_cannot_change_or_clear_roi_datasource_with_active_charts
     assert exc_info.value.detail == "已有 ROI 图表时不能更换或清除数据源"
 
 
-def test_dashboard_list_is_stably_sorted(session: Session) -> None:
+def test_dashboard_list_returns_only_current_singleton(session: Session) -> None:
     user = make_user(tenant_id=11, tenant_role="admin")
     seed_roi_dashboard(
         session, dashboard_id=303, tenant_id=11, name="后创建", sort=1, create_time=200
@@ -681,186 +714,19 @@ def test_dashboard_list_is_stably_sorted(session: Session) -> None:
         session, dashboard_id=304, tenant_id=22, name="其他租户", sort=-1
     )
 
-    assert [item.id for item in list_roi_dashboards(session, user)] == [301, 302, 303]
+    assert [item.id for item in list_roi_dashboards(session, user)] == [301]
 
 
-def test_update_uses_optimistic_lock(session: Session) -> None:
-    user = make_user(id=2, tenant_id=11, tenant_role="admin")
+def test_chart_api_rejects_non_current_roi_dashboard_id(session: Session) -> None:
+    user = make_user(tenant_id=11, tenant_role="admin")
     seed_roi_dashboard(
-        session,
-        dashboard_id=301,
-        tenant_id=11,
-        name="旧名称",
-        version=2,
-    )
-
-    assert_http_error(
-        409,
-        lambda: update_roi_dashboard(
-            session,
-            user,
-            301,
-            RoiDashboardUpdate(name="冲突名称", version=1),
-        ),
-    )
-
-    updated = update_roi_dashboard(
-        session,
-        user,
-        301,
-        RoiDashboardUpdate(name="新名称", version=2),
-    )
-    assert updated.name == "新名称"
-    assert updated.version == 3
-    assert updated.update_by == 2
-
-
-def test_delete_soft_deletes_dashboard_and_its_active_charts(session: Session) -> None:
-    user = make_user(id=2, tenant_id=11, tenant_role="admin")
-    seed_roi_dashboard(session, dashboard_id=301, tenant_id=11, name="待删除")
-    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
-    seed_roi_chart(
-        session,
-        tenant_id=22,
-        dashboard_id=301,
-        chart_id=902,
-    )
-
-    assert delete_roi_dashboard(session, user, 301) is True
-    assert list_roi_dashboards(session, user) == []
-    own_chart = session.exec(
-        select(CoreRoiDashboardChart).where(CoreRoiDashboardChart.id == 901)
-    ).first()
-    other_chart = session.exec(
-        select(CoreRoiDashboardChart).where(CoreRoiDashboardChart.id == 902)
-    ).first()
-    assert own_chart.deleted is True
-    assert other_chart.deleted is False
-
-
-def test_reorder_updates_all_versions_atomically(session: Session) -> None:
-    user = make_user(id=2, tenant_id=11, tenant_role="admin")
-    first = seed_roi_dashboard(
-        session, dashboard_id=301, tenant_id=11, name="第一", sort=0, version=1
-    )
-    second = seed_roi_dashboard(
-        session, dashboard_id=302, tenant_id=11, name="第二", sort=1, version=4
-    )
-
-    result = reorder_roi_dashboards(
-        session,
-        user,
-        RoiDashboardReorderRequest(
-            items=[
-                RoiDashboardOrderItem(id="301", sort=2, version=1),
-                RoiDashboardOrderItem(id="302", sort=1, version=4),
-            ]
-        ),
-    )
-
-    assert [(item.id, item.sort, item.version) for item in result] == [
-        (302, 1, 5),
-        (301, 2, 2),
-    ]
-    session.refresh(first)
-    session.refresh(second)
-    assert (first.sort, first.version) == (2, 2)
-    assert (second.sort, second.version) == (1, 5)
-
-
-def test_reorder_conflict_does_not_partially_update(session: Session) -> None:
-    user = make_user(id=2, tenant_id=11, tenant_role="admin")
-    first = seed_roi_dashboard(
-        session, dashboard_id=301, tenant_id=11, name="第一", sort=0, version=1
+        session, dashboard_id=302, tenant_id=11, name="当前", sort=0, create_time=200
     )
     seed_roi_dashboard(
-        session, dashboard_id=302, tenant_id=11, name="第二", sort=1, version=4
+        session, dashboard_id=301, tenant_id=11, name="旧记录", sort=1, create_time=100
     )
 
-    assert_http_error(
-        409,
-        lambda: reorder_roi_dashboards(
-            session,
-            user,
-            RoiDashboardReorderRequest(
-                items=[
-                    RoiDashboardOrderItem(id="301", sort=8, version=1),
-                    RoiDashboardOrderItem(id="302", sort=9, version=3),
-                ]
-            ),
-        ),
-    )
-    session.refresh(first)
-    assert (first.sort, first.version) == (0, 1)
-
-
-def test_reorder_execution_conflict_rolls_back_prior_update(
-    session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    user = make_user(id=2, tenant_id=11, tenant_role="admin")
-    seed_roi_dashboard(
-        session, dashboard_id=301, tenant_id=11, name="第一", sort=0, version=1
-    )
-    seed_roi_dashboard(
-        session, dashboard_id=302, tenant_id=11, name="第二", sort=1, version=4
-    )
-    original_exec = session.exec
-    dashboard_update_count = 0
-
-    def conflict_on_second_update(statement, *args, **kwargs):
-        nonlocal dashboard_update_count
-        if isinstance(statement, Update) and statement.table.name == "core_roi_dashboard":
-            dashboard_update_count += 1
-            if dashboard_update_count == 2:
-                return SimpleNamespace(rowcount=0)
-        return original_exec(statement, *args, **kwargs)
-
-    monkeypatch.setattr(session, "exec", conflict_on_second_update)
-
-    assert_http_error(
-        409,
-        lambda: reorder_roi_dashboards(
-            session,
-            user,
-            RoiDashboardReorderRequest(
-                items=[
-                    RoiDashboardOrderItem(id="301", sort=8, version=1),
-                    RoiDashboardOrderItem(id="302", sort=9, version=4),
-                ]
-            ),
-        ),
-    )
-
-    monkeypatch.setattr(session, "exec", original_exec)
-    session.expire_all()
-    persisted = session.exec(
-        select(CoreRoiDashboard).where(CoreRoiDashboard.tenant_id == 11)
-        .order_by(CoreRoiDashboard.id)
-    ).all()
-    assert dashboard_update_count == 2
-    assert [(item.id, item.sort, item.version) for item in persisted] == [
-        (301, 0, 1),
-        (302, 1, 4),
-    ]
-
-
-def test_reorder_cross_tenant_id_returns_404(session: Session) -> None:
-    user = make_user(id=2, tenant_id=11, tenant_role="admin")
-    seed_roi_dashboard(
-        session, dashboard_id=301, tenant_id=22, name="其他空间", sort=0, version=1
-    )
-
-    assert_http_error(
-        404,
-        lambda: reorder_roi_dashboards(
-            session,
-            user,
-            RoiDashboardReorderRequest(
-                items=[RoiDashboardOrderItem(id="301", sort=1, version=1)]
-            ),
-        ),
-    )
+    assert_http_error(404, lambda: list_roi_charts(session, user, 301))
 
 
 class FakeRoiChartCache:
@@ -1182,7 +1048,6 @@ def test_chart_writes_rejected_when_configured_datasource_inactive(
     )
 
     calls = [
-        lambda: create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建")),
         lambda: create_roi_chart(
             session,
             user,
@@ -1547,43 +1412,6 @@ def test_create_rechecks_active_dashboard_under_lock(
         ),
     )
     assert session.exec(select(CoreRoiDashboardChart)).all() == []
-
-
-def test_delete_dashboard_uses_same_lock_order_and_invalidates_cache(
-    session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    user = prepare_chart_context(session)
-    seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
-    cache = FakeRoiChartCache()
-    import apps.roi_dashboard.service as service
-
-    events: list[str] = []
-    original_dashboard_lock = service.lock_active_roi_dashboard
-    original_config_lock = service.lock_active_roi_config
-
-    def record_dashboard_lock(*args):
-        events.append("dashboard_lock")
-        return original_dashboard_lock(*args)
-
-    def record_config_lock(*args):
-        events.append("config_lock")
-        return original_config_lock(*args)
-
-    monkeypatch.setattr(service, "lock_active_roi_dashboard", record_dashboard_lock)
-    monkeypatch.setattr(service, "lock_active_roi_config", record_config_lock)
-
-    assert delete_roi_dashboard(
-        session,
-        user,
-        301,
-        cache_adapter=cache,
-    ) is True
-
-    assert events[:2] == ["dashboard_lock", "config_lock"]
-    assert len(cache.deleted_patterns) == 1
-    assert "roi-chart" in cache.deleted_patterns[0]
-    assert ":301:" in cache.deleted_patterns[0]
 
 
 def test_reorder_locates_all_charts_before_version_validation(

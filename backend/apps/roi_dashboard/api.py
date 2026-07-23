@@ -21,6 +21,8 @@ from apps.roi_dashboard.service import (
     create_roi_dashboard,
     delete_roi_chart,
     delete_roi_dashboard,
+    ensure_current_roi_dashboard,
+    get_current_roi_dashboard,
     get_roi_config,
     list_roi_charts,
     list_roi_dashboards,
@@ -43,6 +45,16 @@ router = APIRouter(
 @router.get("/config", response_model=RoiConfigResponse | None)
 def get_roi_config_api(session: SessionDep, current_user: CurrentUser):
     return get_roi_config(session, current_user)
+
+
+@router.get("/current", response_model=RoiDashboardResponse | None)
+def get_current_roi_dashboard_api(session: SessionDep, current_user: CurrentUser):
+    return get_current_roi_dashboard(session, current_user)
+
+
+@router.post("/ensure", response_model=RoiDashboardResponse)
+def ensure_current_roi_dashboard_api(session: SessionDep, current_user: CurrentUser):
+    return ensure_current_roi_dashboard(session, current_user)
 
 
 @router.get("/list", response_model=list[RoiDashboardResponse])

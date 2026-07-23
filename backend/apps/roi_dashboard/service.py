@@ -49,6 +49,8 @@ ROI_DATASOURCE_PERMISSION_MESSAGE = "当前账号无此数据源权限"
 ROI_CONFIG_WRITE_CONFLICT_MESSAGE = "ROI 配置已被其他请求修改，请刷新后重试"
 ROI_DATASOURCE_BINDING_CHART_MESSAGE = "已有 ROI 图表时不能更换或清除数据源"
 DEFAULT_TENANT_ROI_CONFIG_MESSAGE = "默认工作空间不能配置 ROI 数据源"
+ROI_DASHBOARD_NAME = "ROI 看板"
+ROI_SINGLETON_OPERATION_MESSAGE = "ROI 看板为固定单例，不支持该操作"
 
 
 class RoiChartCacheAdapter(Protocol):
@@ -402,17 +404,26 @@ def _active_dashboard_statement(tenant_id: int):
     )
 
 
+def _load_current_dashboard(
+    session: SessionDep,
+    tenant_id: int,
+) -> CoreRoiDashboard | None:
+    return session.exec(
+        _active_dashboard_statement(tenant_id).order_by(
+            CoreRoiDashboard.sort.asc(),
+            CoreRoiDashboard.create_time.asc(),
+            CoreRoiDashboard.id.asc(),
+        )
+    ).first()
+
+
 def _load_dashboard_or_404(
     session: SessionDep,
     tenant_id: int,
     dashboard_id: int,
 ) -> CoreRoiDashboard:
-    record = session.exec(
-        _active_dashboard_statement(tenant_id).where(
-            CoreRoiDashboard.id == dashboard_id
-        )
-    ).first()
-    if record is None:
+    record = _load_current_dashboard(session, tenant_id)
+    if record is None or int(record.id) != dashboard_id:
         raise HTTPException(status_code=404, detail="ROI 看板不存在")
     return record
 
@@ -423,6 +434,9 @@ def lock_active_roi_dashboard(
     dashboard_id: int,
 ) -> CoreRoiDashboard | None:
     """锁定活动看板；create/delete 统一先锁看板、再锁 ROI 配置。"""
+    current = _load_current_dashboard(session, tenant_id)
+    if current is None or int(current.id) != dashboard_id:
+        return None
     return session.exec(
         _active_dashboard_statement(tenant_id)
         .where(CoreRoiDashboard.id == dashboard_id)
@@ -466,17 +480,60 @@ def list_roi_dashboards(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> list[CoreRoiDashboard]:
-    """按稳定顺序读取当前工作空间的全部活动 ROI 看板。"""
+    """兼容读取接口；单例模式下最多返回一个活动 ROI 看板。"""
+    current = get_current_roi_dashboard(session, current_user)
+    return [] if current is None else [current]
+
+
+def get_current_roi_dashboard(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> CoreRoiDashboard | None:
+    """读取当前工作空间唯一的活动 ROI 看板。"""
     tenant_id = _tenant_id(current_user)
-    return list(
-        session.exec(
-            _active_dashboard_statement(tenant_id).order_by(
-                CoreRoiDashboard.sort.asc(),
-                CoreRoiDashboard.create_time.asc(),
-                CoreRoiDashboard.id.asc(),
-            )
-        ).all()
+    return _load_current_dashboard(session, tenant_id)
+
+
+def ensure_current_roi_dashboard(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> CoreRoiDashboard:
+    """在首次新增图表前幂等创建当前工作空间的 ROI 看板。"""
+    tenant_id = _tenant_id(current_user)
+    _require_roi_mutation_access(session, current_user, tenant_id)
+    existing = get_current_roi_dashboard(session, current_user)
+    if existing is not None:
+        return existing
+
+    now = _now()
+    operator_id = _operator_id(current_user)
+    record = CoreRoiDashboard(
+        tenant_id=tenant_id,
+        name=ROI_DASHBOARD_NAME,
+        sort=0,
+        status=1,
+        version=1,
+        create_by=operator_id,
+        update_by=operator_id,
+        create_time=now,
+        update_time=now,
+        deleted=False,
     )
+    session.add(record)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        concurrent = get_current_roi_dashboard(session, current_user)
+        if concurrent is None:
+            raise
+        return concurrent
+    session.refresh(record)
+    return record
+
+
+def _reject_roi_dashboard_collection_mutation() -> None:
+    raise HTTPException(status_code=405, detail=ROI_SINGLETON_OPERATION_MESSAGE)
 
 
 def create_roi_dashboard(
@@ -485,6 +542,7 @@ def create_roi_dashboard(
     request: RoiDashboardCreate,
 ) -> CoreRoiDashboard:
     """在当前工作空间创建共享 ROI 看板。"""
+    _reject_roi_dashboard_collection_mutation()
     tenant_id = _tenant_id(current_user)
     _require_roi_mutation_access(session, current_user, tenant_id)
     now = _now()
@@ -514,6 +572,7 @@ def update_roi_dashboard(
     request: RoiDashboardUpdate,
 ) -> CoreRoiDashboard:
     """按乐观锁版本更新当前工作空间的 ROI 看板。"""
+    _reject_roi_dashboard_collection_mutation()
     tenant_id = _tenant_id(current_user)
     dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     record = _load_dashboard_or_404(session, tenant_id, dashboard_id)
@@ -565,6 +624,7 @@ def delete_roi_dashboard(
     cache_adapter: RoiChartCacheAdapter | None = None,
 ) -> bool:
     """在同一事务中软删除看板及其活动图表。"""
+    _reject_roi_dashboard_collection_mutation()
     tenant_id = _tenant_id(current_user)
     dashboard_id = _parse_path_id(dashboard_id, "ROI 看板")
     dashboard = lock_active_roi_dashboard(session, tenant_id, dashboard_id)
@@ -609,6 +669,7 @@ def reorder_roi_dashboards(
     request: RoiDashboardReorderRequest,
 ) -> list[CoreRoiDashboard]:
     """在一个事务内按版本重排当前工作空间的 ROI 看板。"""
+    _reject_roi_dashboard_collection_mutation()
     tenant_id = _tenant_id(current_user)
     records: list[tuple[CoreRoiDashboard, object]] = []
     seen_ids: set[int] = set()
