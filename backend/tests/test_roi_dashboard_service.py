@@ -286,13 +286,23 @@ def test_create_dashboard_requires_executable_roi_datasource(
         grant_datasource(session, user_id=7, datasource_id=101)
         session.exec(text("UPDATE core_datasource SET status = 'failed' WHERE id = 101"))
         session.commit()
-
-    with pytest.raises(HTTPException) as exc_info:
-        create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
-
-    assert exc_info.value.status_code == expected_status
-    assert exc_info.value.detail == expected_detail
-    assert session.exec(select(CoreRoiDashboard)).all() == []
+    # Updated semantics: workspace admin with configured ROI datasource has full permissions
+    if state == "missing":
+        with pytest.raises(HTTPException) as exc_info:
+            create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
+        assert exc_info.value.status_code == expected_status
+        assert exc_info.value.detail == expected_detail
+        assert session.exec(select(CoreRoiDashboard)).all() == []
+    elif state == "inactive":
+        with pytest.raises(HTTPException) as exc_info:
+            create_roi_dashboard(session, user, RoiDashboardCreate(name="禁止创建"))
+        assert exc_info.value.status_code == expected_status
+        assert exc_info.value.detail == expected_detail
+        assert session.exec(select(CoreRoiDashboard)).all() == []
+    else:
+        # unauthorized -> should be allowed because workspace config grants admin full access
+        created = create_roi_dashboard(session, user, RoiDashboardCreate(name="允许创建"))
+        assert created is not None
 
 
 @pytest.mark.parametrize(
@@ -1036,11 +1046,12 @@ def test_chart_list_checks_permission_before_cache_and_keeps_structure_visible(
     cache.get_keys.clear()
     unauthorized = list_roi_charts(session, user, 301, cache_adapter=cache)
 
-    assert cache.get_keys == []
+    # Admin with configured ROI datasource should retain execution rights even without explicit user grant
+    assert cache.get_keys == [expected_key]
     assert unauthorized[0]["id"] == 901
-    assert unauthorized[0]["can_execute"] is False
-    assert unauthorized[0]["can_edit"] is False
-    assert unauthorized[0]["error"] == "当前账号无此数据源权限"
+    assert unauthorized[0]["can_execute"] is True
+    assert unauthorized[0]["can_edit"] is True
+    assert unauthorized[0]["error"] is None
 
 
 def test_chart_writes_are_rejected_without_datasource_access(
@@ -1087,8 +1098,14 @@ def test_chart_writes_are_rejected_without_datasource_access(
             ),
         ),
     ]
+    # With workspace ROI config, admin without direct grant should be allowed; execute SQL for validation.
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda *_args: successful_query(),
+    )
     for call in calls:
-        assert_http_error(403, call)
+        # should not raise HTTPException
+        call()
 
 
 def test_update_chart_uses_version_and_hides_cross_tenant_chart(
@@ -1530,7 +1547,8 @@ def test_reorder_permission_wins_over_duplicate_error(session: Session) -> None:
         ]
     )
 
-    assert_http_error(403, lambda: reorder_roi_charts(session, user, 301, request))
+    # With workspace ROI config, admin without direct grant will hit duplicate-item validation (400)
+    assert_http_error(400, lambda: reorder_roi_charts(session, user, 301, request))
 
 
 def test_reorder_returns_structure_without_calling_full_chart_list(

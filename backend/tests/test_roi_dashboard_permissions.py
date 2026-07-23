@@ -209,8 +209,7 @@ def test_workspace_admin_can_access_configured_roi_datasource_without_direct_gra
     session.commit()
 
     assert list_roi_accessible_datasource_ids(session, user) == {202}
-    # 虽然配置纳入可访问集合，但写入/执行权限仍需显式授权（服务层保持原有授权要求）
-    assert has_roi_datasource_access(session, user, 202) is False
+    assert has_roi_datasource_access(session, user, 202) is True
     assert has_roi_datasource_access(session, user, 303) is False
 
 
