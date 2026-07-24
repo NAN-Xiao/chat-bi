@@ -20,6 +20,7 @@ import {
   type ReportPromptHistoryScope,
 } from '@/views/dashboard/preview/reportPromptHistory'
 import { buildReportInterpretationTarget } from '@/views/dashboard/preview/reportInterpretationTarget'
+import { shouldSubmitReportPromptOnEnter } from '@/views/dashboard/preview/reportPromptKeyboard'
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
@@ -471,6 +472,14 @@ function stopReportGeneration() {
   abortReportGeneration(true)
 }
 
+function handleReportPromptEnter(event: KeyboardEvent) {
+  if (!shouldSubmitReportPromptOnEnter(event)) {
+    return
+  }
+  event.preventDefault()
+  void submitReportPrompt()
+}
+
 async function submitReportPrompt() {
   if (reportGenerating.value) {
     return
@@ -598,6 +607,7 @@ onBeforeUnmount(() => {
           :placeholder="t('dashboard.chart_report_interpret_placeholder')"
           type="textarea"
           :autosize="{ minRows: 2, maxRows: 4 }"
+          @keydown.enter="handleReportPromptEnter"
           @keydown.stop
           @keyup.stop
         />
@@ -675,7 +685,7 @@ onBeforeUnmount(() => {
               type="textarea"
               :autosize="{ minRows: 1, maxRows: 3 }"
               :disabled="reportGenerating"
-              @keydown.enter.exact.prevent="submitReportPrompt"
+              @keydown.enter="handleReportPromptEnter"
               @keydown.stop
               @keyup.stop
             />
