@@ -196,7 +196,25 @@ def load_recommended_dashboards(connection: Any) -> list[DashboardSnapshot]:
 
     with connection.cursor() as cur:
         cur.execute(RECOMMENDED_DASHBOARD_SQL, (TENANT_ID, DATASOURCE_ID))
-        return [DashboardSnapshot.from_row(row) for row in cur.fetchall()]
+        dashboards = [
+            _select_catalog_drawers(DashboardSnapshot.from_row(row))
+            for row in cur.fetchall()
+        ]
+
+    return [dashboard for dashboard in dashboards if dashboard.drawers]
+
+
+def _select_catalog_drawers(dashboard: DashboardSnapshot) -> DashboardSnapshot:
+    """保留原始 canvas，只将目录登记的抽屉用于修仙 Skill 发布。"""
+
+    return replace(
+        dashboard,
+        drawers=tuple(
+            drawer
+            for drawer in dashboard.drawers
+            if drawer.view_id in EXPECTED_VIEW_IDS
+        ),
+    )
 
 
 def _drawer_rows(dashboards: Sequence[DashboardSnapshot]) -> list[dict[str, str]]:
@@ -248,8 +266,8 @@ def _validate_dashboards(dashboards: Sequence[DashboardSnapshot]) -> None:
                 dashboard.canvas_view_info,
             )
         )
-        if parsed.drawers != dashboard.drawers:
-            raise ValueError(f"看板 {dashboard.id} 的完整 canvas 与抽屉清单不一致")
+        if _select_catalog_drawers(parsed).drawers != dashboard.drawers:
+            raise ValueError(f"看板 {dashboard.id} 的目录抽屉与完整 canvas 不一致")
     for drawer in drawers:
         if drawer.sql_sha256 != _sha256_text(drawer.sql):
             raise ValueError(f"抽屉 {_drawer_key(drawer)} 的 SQL 哈希不一致")
@@ -400,7 +418,7 @@ def verify_backup(path: Path) -> BackupManifest:
             raise ValueError(f"看板备份缺少字段：{dashboard_path.name}") from exc
         if dashboard_path.stem != dashboard.id:
             raise ValueError(f"看板文件名与 ID 不一致：{dashboard_path.name}")
-        dashboards.append(dashboard)
+        dashboards.append(_select_catalog_drawers(dashboard))
     _validate_dashboards(dashboards)
 
     drawer_values = _read_json(path / "drawer_sql.json")

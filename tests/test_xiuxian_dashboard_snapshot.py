@@ -274,3 +274,35 @@ def test_load_recommended_dashboards_is_read_only_and_preserves_raw_canvas():
     assert " UPDATE " not in f" {normalized_sql} "
     assert " DELETE " not in f" {normalized_sql} "
     assert " INSERT " not in f" {normalized_sql} "
+
+
+def test_load_recommended_dashboards_excludes_unmapped_workspace_dashboard():
+    expected_view_id = sorted(snapshot.EXPECTED_VIEW_IDS)[0]
+    connection = _FakeConnection(
+        [
+            (
+                "recommended-dashboard",
+                "推荐看板",
+                snapshot.TENANT_ID,
+                snapshot.DATASOURCE_ID,
+                json.dumps(
+                    {
+                        expected_view_id: {"sql": "SELECT 1"},
+                        "unmapped-view": {"sql": "SELECT 2"},
+                    }
+                ),
+            ),
+            (
+                "roi-dashboard",
+                "ROI看板",
+                snapshot.TENANT_ID,
+                snapshot.DATASOURCE_ID,
+                json.dumps({"roi-view": {"sql": "SELECT 2"}}),
+            ),
+        ]
+    )
+
+    dashboards = snapshot.load_recommended_dashboards(connection)
+
+    assert [dashboard.id for dashboard in dashboards] == ["recommended-dashboard"]
+    assert [drawer.view_id for drawer in dashboards[0].drawers] == [expected_view_id]
