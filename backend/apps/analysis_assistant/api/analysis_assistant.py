@@ -2052,6 +2052,18 @@ def _normalize_analysis_table_name(raw_table: str) -> str:
     return ".".join(parts)
 
 
+def _schema_field_type_text(raw_type_and_comment: str) -> str:
+    depth = 0
+    for index, character in enumerate(raw_type_and_comment):
+        if character == "(":
+            depth += 1
+        elif character == ")" and depth > 0:
+            depth -= 1
+        elif character == "," and depth == 0:
+            return raw_type_and_comment[:index].strip()
+    return raw_type_and_comment.strip()
+
+
 def _schema_field_definitions(body: str) -> list[tuple[str, str]]:
     definitions: list[tuple[str, str]] = []
     depth = 0
@@ -2065,7 +2077,8 @@ def _schema_field_definitions(body: str) -> list[tuple[str, str]]:
             depth -= 1
             if depth == 0 and start is not None:
                 definition = body[start:index].strip()
-                field, separator, field_type = definition.partition(":")
+                field, separator, raw_type_and_comment = definition.partition(":")
+                field_type = _schema_field_type_text(raw_type_and_comment)
                 if separator and field.strip() and field_type.strip():
                     definitions.append((field.strip(), field_type.strip()))
                 start = None

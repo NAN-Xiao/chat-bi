@@ -311,6 +311,19 @@ def test_schema_time_candidates_parse_nested_temporal_types() -> None:
     }
 
 
+def test_schema_time_candidates_do_not_match_temporal_words_in_comments() -> None:
+    schema = """
+# Table: analytics.orders
+[
+(amount:Decimal(18, 2), settlement date amount),
+(settled_at:Nullable(DateTime64(3)), settlement timestamp)
+]
+"""
+    assert analysis_api._schema_time_field_candidates(schema, ["orders"]) == {
+        "analytics.orders": ("settled_at",)
+    }
+
+
 def test_schema_time_candidates_reject_ambiguous_bare_allowed_table() -> None:
     schema = """
 # Table: public.orders
