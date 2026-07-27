@@ -20,10 +20,16 @@ _FULL_OPEN_RE = re.compile(
     r"(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})[日号]\s*"
     r"(之后|以后|起|开始|及以后)"
 )
-_DAY_ONLY_RE = re.compile(r"(?:从\s*)?(\d{1,2})[日号]\s*(之后|以后|起|开始|及以后)")
+_DAY_ONLY_RE = re.compile(
+    r"(?:从\s*)?(\d{1,2})\s*[日号]\s*(之后|以后|起|开始|及以后)"
+)
 _YEAR_MONTH_RE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月")
 _RELATIVE_DAYS_RE = re.compile(r"(?:最近|近)\s*(\d+)\s*(?:个)?天")
 _RELATIVE_WEEKS_RE = re.compile(r"(?:最近|近)\s*(两|\d+)\s*(?:个)?周")
+_INVALID_DATE_WARNING = "用户指定的日期无效，无法确定时间策略。"
+_DESCENDING_RANGE_WARNING = "用户指定的时间范围倒序，无法确定时间策略。"
+_MISSING_ANCHOR_WARNING = "无法确认当前数据源的时间锚点，本次仅执行能够确认时间边界的分析块。"
+_MISSING_ANCHOR_DATE_WARNING = "无法确认当前数据源的最大业务日期，本次仅执行能够确认时间边界的分析块。"
 
 
 class AnalysisTimeSource(StrEnum):
@@ -40,7 +46,9 @@ class AnalysisTimeAnchor:
 
 @dataclass(frozen=True)
 class AnalysisTimeIntent:
-    kind: Literal["none", "absolute", "relative_days", "day_open", "month", "yesterday"]
+    kind: Literal[
+        "none", "absolute", "relative_days", "day_open", "month", "yesterday", "invalid"
+    ]
     source: AnalysisTimeSource | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -126,16 +134,31 @@ def _last_year_month(history: list[str]) -> tuple[int | None, int | None]:
     return None, None
 
 
+def _safe_date(year: int, month: int, day: int) -> date | None:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
 def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTimeIntent:
     text = (question or "").strip()
     absolute = _ISO_RANGE_RE.search(text)
     if absolute:
         values = [int(value) for value in absolute.groups()]
+        start_date = _safe_date(values[0], values[1], values[2])
+        end_date = _safe_date(values[3], values[4], values[5])
+        if start_date is None or end_date is None:
+            return AnalysisTimeIntent(
+                kind="invalid",
+                source=AnalysisTimeSource.USER,
+                requires_anchor=False,
+            )
         return AnalysisTimeIntent(
             kind="absolute",
             source=AnalysisTimeSource.USER,
-            start_date=date(values[0], values[1], values[2]),
-            end_date=date(values[3], values[4], values[5]),
+            start_date=start_date,
+            end_date=end_date,
             requires_anchor=False,
         )
     relative = _RELATIVE_DAYS_RE.search(text)
@@ -171,13 +194,14 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
         )
     day_only = _DAY_ONLY_RE.search(text)
     if day_only:
+        question_year, question_month = _last_year_month([text])
         history_year, history_month = _last_year_month(history)
         marker = day_only.group(2)
         return AnalysisTimeIntent(
             kind="day_open",
             source=AnalysisTimeSource.USER,
-            year=history_year,
-            month=history_month,
+            year=question_year if question_year is not None else history_year,
+            month=question_month if question_month is not None else history_month,
             day_of_month=int(day_only.group(1)),
             start_inclusive=marker not in {"之后", "以后"},
         )
@@ -189,17 +213,31 @@ def _latest_occurrence(
     year: int | None,
     month: int | None,
     day_of_month: int,
-) -> date:
+) -> date | None:
     if year is not None and month is not None:
-        return date(year, month, day_of_month)
+        return _safe_date(year, month, day_of_month)
     if month is not None:
-        candidate = date(anchor_date.year, month, day_of_month)
-        return candidate if candidate <= anchor_date else date(anchor_date.year - 1, month, day_of_month)
-    candidate = date(anchor_date.year, anchor_date.month, day_of_month)
+        candidate = _safe_date(anchor_date.year, month, day_of_month)
+        if candidate is None:
+            return None
+        return (
+            candidate
+            if candidate <= anchor_date
+            else _safe_date(anchor_date.year - 1, month, day_of_month)
+        )
+    candidate = _safe_date(anchor_date.year, anchor_date.month, day_of_month)
+    if candidate is None:
+        return None
     if candidate <= anchor_date:
         return candidate
     previous_month_end = anchor_date.replace(day=1) - timedelta(days=1)
-    return date(previous_month_end.year, previous_month_end.month, day_of_month)
+    return _safe_date(previous_month_end.year, previous_month_end.month, day_of_month)
+
+
+def _unresolved(
+    warnings: tuple[str, ...], warning: str
+) -> AnalysisTimeResolution:
+    return AnalysisTimeResolution(None, "unresolved", warnings + (warning,), (warning,))
 
 
 def resolve_analysis_time_policy(
@@ -210,7 +248,11 @@ def resolve_analysis_time_policy(
     anchor_date: date | None,
     warnings: tuple[str, ...] = (),
 ) -> AnalysisTimeResolution:
+    if intent.kind == "invalid":
+        return _unresolved(warnings, _INVALID_DATE_WARNING)
     if intent.kind == "absolute" and intent.start_date and intent.end_date:
+        if intent.start_date > intent.end_date:
+            return _unresolved(warnings, _DESCENDING_RANGE_WARNING)
         policy = AnalysisTimePolicy(
             source=AnalysisTimeSource.USER,
             window_days=None,
@@ -228,13 +270,16 @@ def resolve_analysis_time_policy(
             warnings,
             (f"已采用用户指定时间范围：{policy.start_date} 至 {policy.end_date}。",),
         )
+    if intent.requires_anchor and anchor is None:
+        return _unresolved(warnings, _MISSING_ANCHOR_WARNING)
     if anchor_date is None:
-        warning = "无法确认当前数据源的最大业务日期，本次仅执行能够确认时间边界的分析块。"
-        return AnalysisTimeResolution(None, "unresolved", warnings + (warning,), (warning,))
+        return _unresolved(warnings, _MISSING_ANCHOR_DATE_WARNING)
     if intent.kind == "day_open" and intent.day_of_month:
         base = _latest_occurrence(
             anchor_date, intent.year, intent.month, intent.day_of_month
         )
+        if base is None:
+            return _unresolved(warnings, _INVALID_DATE_WARNING)
         effective_start = base if intent.start_inclusive else base + timedelta(days=1)
         policy = AnalysisTimePolicy(
             AnalysisTimeSource.USER,

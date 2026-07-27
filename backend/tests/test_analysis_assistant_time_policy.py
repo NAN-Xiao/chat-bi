@@ -107,6 +107,15 @@ def test_recent_history_supplies_missing_month_and_year() -> None:
     assert resolution.policy.start_date == date(2026, 6, 14)
 
 
+def test_day_only_uses_year_month_from_current_question_before_history() -> None:
+    resolution = _resolve(
+        "分析 2026 年 8 月收入，14 日之后",
+        history=["看一下 2026 年 6 月收入"],
+    )
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2026, 8, 14)
+
+
 def test_explicit_absolute_range_does_not_need_anchor() -> None:
     intent = parse_analysis_time_intent("分析 2026-07-01 到 2026-07-10", [])
     resolution = resolve_analysis_time_policy(
@@ -119,6 +128,82 @@ def test_explicit_absolute_range_does_not_need_anchor() -> None:
     assert resolution.policy is not None
     assert resolution.policy.start_date == date(2026, 7, 1)
     assert resolution.policy.end_date == date(2026, 7, 10)
+
+
+def test_anchor_required_intent_is_unresolved_without_anchor() -> None:
+    intent = parse_analysis_time_intent("最近7天收入", [])
+    resolution = resolve_analysis_time_policy(
+        intent,
+        skill_window_days=None,
+        anchor=None,
+        anchor_date=date(2026, 7, 26),
+    )
+    assert resolution.status == "unresolved"
+    assert resolution.policy is None
+    assert resolution.warnings == (
+        "无法确认当前数据源的时间锚点，本次仅执行能够确认时间边界的分析块。",
+    )
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "分析2026年4月31日之后的数据",
+        "分析 2026-02-30 到 2026-03-01",
+    ],
+)
+def test_invalid_calendar_date_is_unresolved_without_substitution(question: str) -> None:
+    intent = parse_analysis_time_intent(question, [])
+    resolution = resolve_analysis_time_policy(
+        intent,
+        skill_window_days=None,
+        anchor=ANCHOR,
+        anchor_date=date(2026, 7, 26),
+    )
+    assert resolution.status == "unresolved"
+    assert resolution.policy is None
+    assert resolution.warnings == ("用户指定的日期无效，无法确定时间策略。",)
+
+
+def test_leap_day_absolute_range_is_resolved() -> None:
+    intent = parse_analysis_time_intent("分析 2024-02-29 到 2024-02-29", [])
+    resolution = resolve_analysis_time_policy(
+        intent,
+        skill_window_days=None,
+        anchor=None,
+        anchor_date=None,
+    )
+    assert resolution.status == "resolved"
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2024, 2, 29)
+    assert resolution.policy.end_date == date(2024, 2, 29)
+
+
+def test_month_end_absolute_range_is_resolved() -> None:
+    intent = parse_analysis_time_intent("分析 2026-04-30 到 2026-04-30", [])
+    resolution = resolve_analysis_time_policy(
+        intent,
+        skill_window_days=None,
+        anchor=None,
+        anchor_date=None,
+    )
+    assert resolution.status == "resolved"
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2026, 4, 30)
+    assert resolution.policy.end_date == date(2026, 4, 30)
+
+
+def test_descending_absolute_range_is_unresolved() -> None:
+    intent = parse_analysis_time_intent("分析 2026-07-10 到 2026-07-01", [])
+    resolution = resolve_analysis_time_policy(
+        intent,
+        skill_window_days=None,
+        anchor=None,
+        anchor_date=None,
+    )
+    assert resolution.status == "unresolved"
+    assert resolution.policy is None
+    assert resolution.warnings == ("用户指定的时间范围倒序，无法确定时间策略。",)
 
 
 @pytest.mark.parametrize("question", ["最近7天收入", "近两周收入", "昨天收入", "本月收入"])
