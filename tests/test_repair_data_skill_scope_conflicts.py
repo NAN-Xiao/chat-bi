@@ -70,9 +70,16 @@ def _valid_rows() -> dict[int, dict[str, object]]:
 
 
 class FakeBackend:
-    def __init__(self, rows: dict[int, dict[str, object]], *, fail_embedding=False):
+    def __init__(
+        self,
+        rows: dict[int, dict[str, object]],
+        *,
+        fail_embedding=False,
+        apply_error_after_write: BaseException | None = None,
+    ):
         self.rows = copy.deepcopy(rows)
         self.fail_embedding = fail_embedding
+        self.apply_error_after_write = apply_error_after_write
         self.events: list[str] = []
         self.updated_ids: tuple[int, ...] = ()
         self.restored = False
@@ -99,6 +106,8 @@ class FakeBackend:
         )
         self.rows = copy.deepcopy(desired)
         self.updated_ids = changed
+        if self.apply_error_after_write is not None:
+            raise self.apply_error_after_write
         return changed
 
     def refresh_embeddings(self, skill_ids):
@@ -209,6 +218,26 @@ def test_embedding_failure_restores_all_three_rows(configured_module) -> None:
     backend = FakeBackend(original, fail_embedding=True)
 
     with pytest.raises(RuntimeError, match="embedding failed"):
+        configured_module.repair_skills(backend, apply=True)
+
+    assert backend.restored is True
+    assert backend.rows == original
+    assert backend.events[-2:] == ["restore", "unlock"]
+
+
+def test_unknown_commit_state_restores_when_write_was_applied(configured_module) -> None:
+    original = _valid_rows()
+    backend = FakeBackend(
+        original,
+        apply_error_after_write=configured_module.CommitStateUnknownError(
+            "commit acknowledgement lost"
+        ),
+    )
+
+    with pytest.raises(
+        configured_module.CommitStateUnknownError,
+        match="commit acknowledgement lost",
+    ):
         configured_module.repair_skills(backend, apply=True)
 
     assert backend.restored is True

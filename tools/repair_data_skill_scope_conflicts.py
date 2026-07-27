@@ -128,6 +128,10 @@ class RepairBackend(Protocol):
     ) -> None: ...
 
 
+class CommitStateUnknownError(RuntimeError):
+    """数据库可能已经提交，但客户端没有收到明确确认。"""
+
+
 def _prompt_sha256(prompt: Any) -> str:
     return hashlib.sha256(str(prompt or "").strip().encode("utf-8")).hexdigest()
 
@@ -284,6 +288,8 @@ def repair_skills(backend: RepairBackend, *, apply: bool) -> RepairReport:
             backup_path=str(getattr(backup, "path", backup)),
         )
     except BaseException as exc:
+        if isinstance(exc, CommitStateUnknownError):
+            applied = True
         if applied and desired is not None:
             try:
                 backend.restore(backup, desired)
@@ -451,11 +457,20 @@ class PsycopgRepairBackend:
                     )
                     if cursor.rowcount != 1:
                         raise RuntimeError(f"Skill {skill_id} CAS 更新失败，前置状态已变化")
-            connection.commit()
-            return changed_ids
         except BaseException:
             connection.rollback()
             raise
+        try:
+            connection.commit()
+        except BaseException as exc:
+            try:
+                connection.rollback()
+            except BaseException:
+                pass
+            raise CommitStateUnknownError(
+                "Data Skill 提交确认丢失，必须按发布期望态执行恢复检查"
+            ) from exc
+        return changed_ids
 
     @staticmethod
     def _save_embeddings(skill_ids: Sequence[int]) -> int:
@@ -504,10 +519,29 @@ class PsycopgRepairBackend:
     ) -> None:
         if backup is None or set(backup.rows) != set(TARGET_IDS):
             raise RuntimeError("三条 Data Skill 恢复备份不完整")
-        connection = self._require_connection()
+        connection = self.connection
+        if connection is None or connection.closed or connection.broken:
+            if connection is not None:
+                try:
+                    connection.close()
+                except BaseException:
+                    pass
+            connection = self._connect()
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT pg_advisory_lock(hashtext(%s))", (LOCK_NAME,)
+                    )
+            except BaseException:
+                connection.close()
+                raise
+            self.connection = connection
         try:
             connection.rollback()
             current = self._select_rows(connection, for_update=True)
+            if current == backup.rows:
+                connection.rollback()
+                return
             for skill_id in TARGET_IDS:
                 if _semantic_state(current[skill_id]) != _semantic_state(expected[skill_id]):
                     raise RuntimeError(
