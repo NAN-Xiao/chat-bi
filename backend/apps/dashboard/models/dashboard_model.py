@@ -423,6 +423,7 @@ class DashboardPivotRequest(BaseModel):
     custom_start: str = ''
     custom_end: str = ''
     aggregation: Literal["sum", "avg", "min", "max", "count"] = "sum"
+    date_parameter_type: Literal["date", "yyyymmdd_number", "yyyymmdd_text", "timestamp"] | None = None
 
 
 class DashboardSqlPreview(BaseModel):

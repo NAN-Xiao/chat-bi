@@ -99,6 +99,26 @@ import {
   refreshExternalMcpSnapshotData,
   refreshMixedChartData,
 } from '@/views/dashboard/utils/mixedChartData'
+import {
+  applyDashboardDateFilterCapability,
+  beginDashboardChartRequest,
+  beginDashboardDateApply,
+  buildAppliedDashboardDatePivot,
+  buildDashboardDatePivot,
+  canShowDashboardDateFilter,
+  commitDashboardDateRange,
+  createDashboardDateFilterState,
+  dashboardDateFilterContext,
+  failDashboardDateRange,
+  finishDashboardChartRequest,
+  getOrCreateDashboardDateFilterState,
+  isDashboardDateApplyDisabled,
+  isDashboardChartRequestCurrent,
+  registerDashboardDateFilterState,
+  shouldInitializeDashboardDateFilterState,
+  shouldResetDashboardDateFilterState,
+  type DashboardDateFilterCapability,
+} from '@/views/dashboard/utils/dashboardDateFilter.ts'
 const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
@@ -333,7 +353,74 @@ type RefreshDataOptions = {
   silent?: boolean
   forceRefresh?: boolean
   blocking?: boolean
+  pivotOverride?: Record<string, unknown>
 }
+
+const dateFilterCapability = computed<DashboardDateFilterCapability | null>(() => {
+  const capability = props.viewInfo?.dateFilterCapability
+  return capability && typeof capability === 'object' ? capability : null
+})
+const showDashboardDateFilter = computed(() =>
+  dateFilterCapability.value?.status === 'available'
+  && canShowDashboardDateFilter(dateFilterCapability.value)
+)
+const dateFilterState = ref(
+  getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
+)
+registerDashboardDateFilterState(props.viewInfo, dateFilterState.value)
+let currentDateFilterContext = dashboardDateFilterContext(props.viewInfo, dateFilterCapability.value)
+let currentDateFilterViewInfo = props.viewInfo
+const dateFilterApplyDisabled = computed(() =>
+  isDashboardDateApplyDisabled(dateFilterState.value, dateFilterCapability.value)
+)
+
+function initializeDashboardDateFilterState() {
+  const nextContext = dashboardDateFilterContext(props.viewInfo, dateFilterCapability.value)
+  const viewInfoChanged = currentDateFilterViewInfo !== props.viewInfo
+  if (!viewInfoChanged && !shouldInitializeDashboardDateFilterState(currentDateFilterContext, nextContext)) {
+    currentDateFilterContext = nextContext
+    currentDateFilterViewInfo = props.viewInfo
+    return
+  }
+  const resetState = shouldResetDashboardDateFilterState(
+    currentDateFilterContext,
+    nextContext,
+    currentDateFilterViewInfo === props.viewInfo
+  )
+  const nextState = resetState
+    ? createDashboardDateFilterState(dateFilterCapability.value)
+    : getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
+  dateFilterState.value = nextState
+  registerDashboardDateFilterState(props.viewInfo, dateFilterState.value)
+  currentDateFilterContext = nextContext
+  currentDateFilterViewInfo = props.viewInfo
+}
+
+function formatLocalDate(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function isDashboardDateDisabled(value: Date) {
+  const maxEnd = String(dateFilterCapability.value?.maxEnd || '')
+  return Boolean(maxEnd && formatLocalDate(value) > maxEnd)
+}
+
+function onDashboardDateRangeChange() {
+  dateFilterState.value.applyError = ''
+}
+
+function normalizeDateFilterCapability(result: any) {
+  applyDashboardDateFilterCapability(props.viewInfo, result)
+}
+
+watch(
+  () => dashboardDateFilterContext(props.viewInfo, dateFilterCapability.value),
+  () => initializeDashboardDateFilterState(),
+  { deep: true }
+)
 
 function clampChartLoadingProgress(progress: unknown) {
   const numericProgress = Number(progress)
@@ -1059,6 +1146,7 @@ function getPivotPayload() {
     range: pivotRangeEnabled.value ? pivotState.range : 'source',
     custom_start: pivotRangeEnabled.value ? pivotState.customStart : '',
     custom_end: pivotRangeEnabled.value ? pivotState.customEnd : '',
+    date_parameter_type: props.viewInfo?.pivot?.date_parameter_type,
     aggregation: defaultPivotAggregation(),
   }
 }
@@ -1228,6 +1316,11 @@ async function previewMixedChartWithCacheFallback(viewInfo: any, forceRefresh = 
   return refreshMixedChartData(viewInfo)
 }
 
+function isCurrentRefreshRequest(requestSeq: number, requestVersion: number | null) {
+  return requestSeq === refreshRequestSeq
+    && isDashboardChartRequestCurrent(props.viewInfo, requestVersion)
+}
+
 async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
   const forceRefresh = options.forceRefresh === true
@@ -1235,14 +1328,14 @@ async function refreshData(options: RefreshDataOptions = {}) {
   if (props.platformTemplate) {
     normalizePlatformTemplateSnapshotState()
     scheduleRenderChart()
-    return
+    return true
   }
   if (isMixedChart(props.viewInfo)) {
     if (!canRefreshMixedChart(props.viewInfo)) {
       if (!silent) {
         ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
       }
-      return
+      return false
     }
     refreshing.value = true
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
@@ -1257,14 +1350,16 @@ async function refreshData(options: RefreshDataOptions = {}) {
     setChartLoadingProgress(0, !silent)
     startRefreshProgress()
     const requestSeq = ++refreshRequestSeq
+    const requestVersion = beginDashboardChartRequest(props.viewInfo)
     if (blocking) {
       blockingRefreshLoading.value = true
       blockingRefreshRequestSeq = requestSeq
     }
+    let refreshSucceeded = false
     try {
       const result = await previewMixedChartWithCacheFallback(props.viewInfo, forceRefresh)
-      if (requestSeq !== refreshRequestSeq) {
-        return
+      if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
+        return false
       }
       const hasPreviousShape =
         hasPreviousRows || previousDataFields.length > 0 || previousFields.length > 0 || hasChartShape(props.viewInfo)
@@ -1289,6 +1384,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
       } else {
         applyMixedChartResult(props.viewInfo, result)
         markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
+        refreshSucceeded = true
         if (!silent) {
           ElMessage.success(t('dashboard.chart_refresh_success'))
         }
@@ -1297,8 +1393,8 @@ async function refreshData(options: RefreshDataOptions = {}) {
       chartRenderVersion.value += 1
       await nextTick()
     } catch (error: any) {
-      if (requestSeq !== refreshRequestSeq) {
-        return
+      if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
+        return false
       }
       props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
       if (hasPreviousRows) {
@@ -1316,7 +1412,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
         ElMessage.error(props.viewInfo.message)
       }
     } finally {
-      if (requestSeq === refreshRequestSeq) {
+      if (isCurrentRefreshRequest(requestSeq, requestVersion)) {
         stopRefreshProgress()
         refreshing.value = false
         props.viewInfo.loadingProgress = props.viewInfo.dataState === 'loading' ? props.viewInfo.loadingProgress : 100
@@ -1324,8 +1420,9 @@ async function refreshData(options: RefreshDataOptions = {}) {
       if (blockingRefreshRequestSeq === requestSeq) {
         blockingRefreshLoading.value = false
       }
+      finishDashboardChartRequest(props.viewInfo, requestVersion)
     }
-    return
+    return refreshSucceeded
   }
   if (isExternalSnapshotChart(props.viewInfo)) {
     if (!canRefreshExternalMcpSnapshotChart(props.viewInfo)) {
@@ -1344,7 +1441,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
         ElMessage.warning(t('dashboard.mcp_editor_no_server'))
       }
       scheduleRenderChart()
-      return
+      return true
     }
     refreshing.value = true
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
@@ -1359,14 +1456,16 @@ async function refreshData(options: RefreshDataOptions = {}) {
     setChartLoadingProgress(0, !silent)
     startRefreshProgress()
     const requestSeq = ++refreshRequestSeq
+    const requestVersion = beginDashboardChartRequest(props.viewInfo)
     if (blocking) {
       blockingRefreshLoading.value = true
       blockingRefreshRequestSeq = requestSeq
     }
+    let refreshSucceeded = false
     try {
       const result = await refreshExternalMcpSnapshotData(props.viewInfo, { forceRefresh })
-      if (requestSeq !== refreshRequestSeq) {
-        return
+      if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
+        return false
       }
       const hasPreviousShape =
         hasPreviousRows || previousDataFields.length > 0 || previousFields.length > 0 || hasChartShape(props.viewInfo)
@@ -1391,6 +1490,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
       } else {
         applyExternalMcpSnapshotResult(props.viewInfo, result)
         markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
+        refreshSucceeded = true
         if (!silent) {
           ElMessage.success(t('dashboard.chart_refresh_success'))
         }
@@ -1399,8 +1499,8 @@ async function refreshData(options: RefreshDataOptions = {}) {
       chartRenderVersion.value += 1
       await nextTick()
     } catch (error: any) {
-      if (requestSeq !== refreshRequestSeq) {
-        return
+      if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
+        return false
       }
       props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
       if (hasPreviousRows) {
@@ -1418,7 +1518,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
         ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
       }
     } finally {
-      if (requestSeq === refreshRequestSeq) {
+      if (isCurrentRefreshRequest(requestSeq, requestVersion)) {
         stopRefreshProgress()
         refreshing.value = false
         props.viewInfo.loadingProgress = props.viewInfo.dataState === 'loading' ? props.viewInfo.loadingProgress : 100
@@ -1426,20 +1526,21 @@ async function refreshData(options: RefreshDataOptions = {}) {
       if (blockingRefreshRequestSeq === requestSeq) {
         blockingRefreshLoading.value = false
       }
+      finishDashboardChartRequest(props.viewInfo, requestVersion)
     }
-    return
+    return refreshSucceeded
   }
   if (!props.viewInfo?.datasource) {
     if (!silent) {
       ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     }
-    return
+    return false
   }
   if (!props.viewInfo?.sql?.trim()) {
     if (!silent) {
       ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     }
-    return
+    return false
   }
   refreshing.value = true
   if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
@@ -1456,20 +1557,24 @@ async function refreshData(options: RefreshDataOptions = {}) {
   setChartLoadingProgress(0, !silent)
   startRefreshProgress()
   const requestSeq = ++refreshRequestSeq
+  const requestVersion = beginDashboardChartRequest(props.viewInfo)
   if (blocking) {
     blockingRefreshLoading.value = true
     blockingRefreshRequestSeq = requestSeq
   }
-  const pivotPayload = getPivotPayload()
+  const pivotPayload = options.pivotOverride
+    ?? buildAppliedDashboardDatePivot(props.viewInfo, getPivotPayload())
+  let refreshSucceeded = false
   try {
     const result = await previewChartSqlWithCacheFallback({
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
       pivot: pivotPayload,
     }, forceRefresh)
-    if (requestSeq !== refreshRequestSeq) {
-      return
+    if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
+      return false
     }
+    normalizeDateFilterCapability(result)
     const fields = getResultFields(result)
     const data = Array.isArray(result?.data) ? result.data : []
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
@@ -1511,6 +1616,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
       props.viewInfo.dataState = 'ready'
       props.viewInfo.refreshState = ''
       markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
+      refreshSucceeded = true
       if (!silent) {
         ElMessage.success(t('dashboard.chart_refresh_success'))
       }
@@ -1519,8 +1625,8 @@ async function refreshData(options: RefreshDataOptions = {}) {
     chartRenderVersion.value += 1
     await nextTick()
   } catch (error: any) {
-    if (requestSeq !== refreshRequestSeq) {
-      return
+    if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
+      return false
     }
     props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
     if (hasPreviousRows) {
@@ -1540,7 +1646,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
       ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
     }
   } finally {
-    if (requestSeq === refreshRequestSeq) {
+    if (isCurrentRefreshRequest(requestSeq, requestVersion)) {
       stopRefreshProgress()
       refreshing.value = false
     }
@@ -1548,6 +1654,28 @@ async function refreshData(options: RefreshDataOptions = {}) {
       blockingRefreshLoading.value = false
       blockingRefreshRequestSeq = 0
     }
+    finishDashboardChartRequest(props.viewInfo, requestVersion)
+  }
+  return refreshSucceeded
+}
+
+async function applyDashboardDateRange() {
+  if (dateFilterApplyDisabled.value) return
+  beginDashboardDateApply(dateFilterState.value)
+  const pendingRange = dateFilterState.value.pendingRange
+  if (!pendingRange) {
+    failDashboardDateRange(dateFilterState.value, t('dashboard.chart_refresh_failed'))
+    return
+  }
+  const succeeded = await refreshData({
+    forceRefresh: true,
+    blocking: true,
+    pivotOverride: buildDashboardDatePivot(props.viewInfo, pendingRange),
+  })
+  if (succeeded) {
+    commitDashboardDateRange(dateFilterState.value)
+  } else {
+    failDashboardDateRange(dateFilterState.value, t('dashboard.chart_refresh_failed'))
   }
 }
 
@@ -1991,6 +2119,27 @@ defineExpose({
         <div class="divider" />
       </div>
     </div>
+    <div v-if="showDashboardDateFilter" class="date-filter-toolbar">
+      <el-date-picker
+        v-model="dateFilterState.draftRange"
+        class="date-filter-picker"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        :start-placeholder="t('dashboard.date_filter_start')"
+        :end-placeholder="t('dashboard.date_filter_end')"
+        :disabled-date="isDashboardDateDisabled"
+        unlink-panels
+        @change="onDashboardDateRangeChange"
+      />
+      <el-button
+        type="primary"
+        :loading="dateFilterState.applying"
+        :disabled="dateFilterApplyDisabled"
+        @click="applyDashboardDateRange"
+      >
+        {{ t('dashboard.date_filter_apply') }}
+      </el-button>
+    </div>
     <div v-if="pivotEnabled" class="pivot-toolbar">
       <el-popover
         trigger="click"
@@ -2015,7 +2164,7 @@ defineExpose({
             </button>
           </div>
           <el-popover
-            v-if="pivotRangeEnabled"
+            v-if="pivotRangeEnabled && !showDashboardDateFilter"
             trigger="click"
             placement="right-start"
             width="326"
@@ -2274,6 +2423,7 @@ defineExpose({
   border-radius: 0;
   box-shadow: none;
   overflow: hidden;
+  container-type: inline-size;
   div::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
@@ -2410,6 +2560,33 @@ defineExpose({
     .header-bar {
       min-height: 24px;
       margin-bottom: 4px;
+    }
+  }
+
+  .date-filter-toolbar {
+    min-height: 32px;
+    margin: -2px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .date-filter-picker {
+      width: min(280px, 100%);
+    }
+  }
+
+  @container (max-width: 560px) {
+    .date-filter-toolbar {
+      align-items: stretch;
+
+      .date-filter-picker {
+        flex: 1 1 100%;
+      }
+
+      :deep(.ed-button) {
+        margin-left: 0;
+      }
     }
   }
 

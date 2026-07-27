@@ -40,6 +40,14 @@ import {
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
   shouldRetryDashboardChartFailure,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
+import {
+  applyDashboardDateFilterCapability,
+  beginDashboardChartRequest,
+  buildAppliedDashboardDatePivot,
+  canShowDashboardDateFilter,
+  getOrCreateDashboardDateFilterState,
+  isDashboardChartRequestCurrent,
+} from '@/views/dashboard/utils/dashboardDateFilter.ts'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -87,7 +95,7 @@ let chartRefreshRetryCount = 0
 const resolvingDashboardTarget = ref(false)
 const dashboardLandingRedirect = createDashboardLandingRedirectCoordinator()
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
-const CHART_DATABASE_REFRESH_CONCURRENCY = 4
+const CHART_DATABASE_REFRESH_CONCURRENCY = 2
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 180
 const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
 const CHART_TRANSIENT_MAX_RETRIES = 6
@@ -342,8 +350,23 @@ function inheritDashboardDatasource(viewInfo: any) {
 function collectNormalizedDashboardCharts(canvasData: any = state.canvasDataPreview) {
   return collectDashboardCharts(canvasData).map((entry) => {
     inheritDashboardDatasource(entry.viewInfo)
+    ensureChartDateFilterState(entry.viewInfo)
     return entry
   })
+}
+
+function ensureChartDateFilterState(viewInfo: any) {
+  if (!viewInfo || typeof viewInfo !== 'object') return null
+  if (!canShowDashboardDateFilter(viewInfo.dateFilterCapability)) {
+    return null
+  }
+  return getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
+}
+
+function normalizeChartDateFilterCapability(viewInfo: any, result: any) {
+  const capability = applyDashboardDateFilterCapability(viewInfo, result)
+  if (!capability) return
+  ensureChartDateFilterState(viewInfo)
 }
 
 function prepareDashboardCharts(canvasData: any) {
@@ -377,6 +400,7 @@ function scheduleNextDashboardAutoRefresh(loadVersion: number) {
 }
 
 function applyChartResult(viewInfo: any, result: any) {
+  normalizeChartDateFilterCapability(viewInfo, result)
   const fields = getResultFields(result)
   const data = Array.isArray(result?.data) ? result.data : []
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
@@ -528,10 +552,15 @@ function prepareChartPreviewState(viewInfo: any) {
 }
 
 function chartSqlPayload(viewInfo: any) {
+  ensureChartDateFilterState(viewInfo)
+  const pivot = buildAppliedDashboardDatePivot(
+    viewInfo,
+    viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined
+  )
   return {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
-    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    pivot,
   }
 }
 
@@ -574,10 +603,10 @@ async function previewChartSqlFromDatabase(
   )
 }
 
-async function runChartQueue(
-  entries: Array<{ component: any; viewInfo: any }>,
+async function runChartQueue<T extends { component: any; viewInfo: any }>(
+  entries: T[],
   concurrency: number,
-  worker: (entry: { component: any; viewInfo: any }) => Promise<void>
+  worker: (entry: T) => Promise<void>
 ) {
   let nextIndex = 0
   const runNext = async (): Promise<void> => {
@@ -611,9 +640,12 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
       failChartWithoutSnapshot(viewInfo, { message: t('dashboard.sql_editor_empty_sql') })
     }
   })
-  const chartEntries = allChartEntries.filter(
-    (entry) => canLookupChartCache(entry.viewInfo) && !permissionDeniedCharts.has(entry)
-  )
+  const chartEntries = allChartEntries
+    .filter((entry) => canLookupChartCache(entry.viewInfo) && !permissionDeniedCharts.has(entry))
+    .flatMap((entry) => {
+      const requestVersion = beginDashboardChartRequest(entry.viewInfo, 'background')
+      return requestVersion === null ? [] : [{ ...entry, requestVersion }]
+    })
   const total = chartEntries.length
   if (!total) {
     if (chartRefreshController === controller) {
@@ -626,7 +658,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
   let cacheFinished = 0
   let databaseFinished = 0
   let transientPendingCount = 0
-  const databaseRefreshEntries: Array<{ component: any; viewInfo: any }> = []
+  const databaseRefreshEntries: Array<{ component: any; viewInfo: any; requestVersion: number }> = []
   const requestConfig = {
     signal: controller.signal,
     requestOptions: { silent: true },
@@ -642,25 +674,39 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     const progressRatio = Math.max(0, Math.min(1, finished / boundedCount))
     const progress = Math.min(95, Math.round(startProgress + (endProgress - startProgress) * progressRatio))
     entries.forEach((entry) => {
-      if (entry.viewInfo?.dataState === 'loading') {
+      if (
+        entry.viewInfo?.dataState === 'loading'
+        && isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
+      ) {
         setChartLoadingProgress(entry.viewInfo, progress)
       }
     })
   }
   try {
     chartEntries.forEach((entry) => {
-      if (!hasChartSnapshot(entry.viewInfo)) {
+      if (
+        isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
+        && !hasChartSnapshot(entry.viewInfo)
+      ) {
         keepChartLoadingState(entry.viewInfo, 'waiting')
       }
     })
     await runChartQueue(chartEntries, CHART_CACHE_LOOKUP_CONCURRENCY, async (entry) => {
-      const { viewInfo } = entry
+      const { viewInfo, requestVersion } = entry
       try {
-        if (loadVersion !== dashboardLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== dashboardLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         const cachedResult = await previewChartSqlCacheOnly(viewInfo, requestConfig)
-        if (loadVersion !== dashboardLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== dashboardLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         const cacheDisposition = dashboardCacheRefreshDisposition(
@@ -684,7 +730,10 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
         if (isAbortError(error) || controller.signal.aborted) {
           return
         }
-        if (loadVersion === dashboardLoadVersion) {
+        if (
+          loadVersion === dashboardLoadVersion
+          && isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           databaseRefreshEntries.push(entry)
         }
       } finally {
@@ -697,15 +746,27 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     if (!databaseTotal || loadVersion !== dashboardLoadVersion || controller.signal.aborted) {
       return
     }
-    databaseRefreshEntries.forEach((entry) => prepareChartDatabaseRefreshState(entry.viewInfo))
+    databaseRefreshEntries.forEach((entry) => {
+      if (isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)) {
+        prepareChartDatabaseRefreshState(entry.viewInfo)
+      }
+    })
     await runChartQueue(databaseRefreshEntries, CHART_DATABASE_REFRESH_CONCURRENCY, async (entry) => {
-      const { viewInfo } = entry
+      const { viewInfo, requestVersion } = entry
       try {
-        if (loadVersion !== dashboardLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== dashboardLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         const result = await previewChartSqlFromDatabase(viewInfo, requestConfig)
-        if (loadVersion !== dashboardLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== dashboardLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         if (result?.status === 'failed') {
@@ -730,7 +791,10 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
         if (isAbortError(error) || controller.signal.aborted) {
           return
         }
-        if (loadVersion === dashboardLoadVersion) {
+        if (
+          loadVersion === dashboardLoadVersion
+          && isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           keepChartSnapshotOrLoading(viewInfo)
           if (!hasUsableChartSnapshot(viewInfo)) {
             transientPendingCount += 1

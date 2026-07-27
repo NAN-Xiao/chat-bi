@@ -5,6 +5,7 @@ from typing import Any
 
 from collections import OrderedDict
 import copy
+from dataclasses import dataclass
 import hashlib
 import json
 from threading import BoundedSemaphore, Lock
@@ -33,6 +34,10 @@ from apps.dashboard.models.dashboard_model import (
     DashboardShareListQuery,
     SharedDashboardQuery,
     SharedDashboardUseRequest,
+)
+from apps.dashboard.crud.dashboard_date_filter import (
+    has_dashboard_date_filter_parameters,
+    prepare_dashboard_date_filter,
 )
 from apps.roi_dashboard.service import list_roi_workspace_config_rows
 from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_external_mcp_id_for_tenant
@@ -126,6 +131,17 @@ def _normalize_persisted_dashboard_chart_state(canvas_view_obj: dict) -> dict:
     return canvas_view_obj
 
 
+def _strip_transient_dashboard_chart_state(value: Any) -> Any:
+    if isinstance(value, dict):
+        value.pop("dateFilterCapability", None)
+        for child in value.values():
+            _strip_transient_dashboard_chart_state(child)
+    elif isinstance(value, list):
+        for child in value:
+            _strip_transient_dashboard_chart_state(child)
+    return value
+
+
 def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | bytes | None:
     """
     是什么：_sanitize_canvas_view_info 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -139,6 +155,7 @@ def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | by
     except Exception:
         return canvas_view_info
     canvas_view_obj = sanitize_chart_display_names(canvas_view_obj)
+    canvas_view_obj = _strip_transient_dashboard_chart_state(canvas_view_obj)
     if isinstance(canvas_view_obj, dict):
         canvas_view_obj = _normalize_persisted_dashboard_chart_state(canvas_view_obj)
     return orjson.dumps(canvas_view_obj).decode()
@@ -1895,6 +1912,69 @@ def _dashboard_pivot_enabled(pivot: Any | None) -> bool:
         pivot is not None
         and _dashboard_pivot_value(pivot, "enabled", False)
         and not _dashboard_pivot_value(pivot, "client_filter_only", False)
+    )
+
+
+@dataclass(frozen=True)
+class PreparedDashboardChartQuery:
+    source_sql: str
+    pivot: Any | None
+    date_filter_capability: dict[str, Any]
+
+
+def _prepare_dashboard_chart_query(
+        datasource: CoreDatasource,
+        sql: str,
+        pivot: Any | None,
+) -> PreparedDashboardChartQuery:
+    prepared = prepare_dashboard_date_filter(
+        sql,
+        ds_type=getattr(datasource, "type", None),
+        pivot=pivot,
+    )
+    return PreparedDashboardChartQuery(
+        source_sql=prepared.sql,
+        pivot=pivot,
+        date_filter_capability=prepared.capability,
+    )
+
+
+def _dashboard_date_filter_result(
+        result: dict[str, Any],
+        capability: dict[str, Any],
+) -> dict[str, Any]:
+    result["date_filter_capability"] = copy.deepcopy(capability)
+    return result
+
+
+def _dashboard_has_explicit_custom_date(pivot: Any | None) -> bool:
+    return bool(
+        str(_dashboard_pivot_value(pivot, "date_parameter_type", "") or "").strip()
+        and str(_dashboard_pivot_value(pivot, "range", "") or "").strip().lower() == "custom"
+        and str(_dashboard_pivot_value(pivot, "custom_start", "") or "").strip()
+        and str(_dashboard_pivot_value(pivot, "custom_end", "") or "").strip()
+    )
+
+
+def _prepare_dashboard_chart_item_query(
+        datasource: CoreDatasource,
+        item: dict[str, Any],
+) -> PreparedDashboardChartQuery:
+    source_config = item.get("sourceConfig") if isinstance(item.get("sourceConfig"), dict) else {}
+    if (
+        item.get("dataSourceType") in {"mixed", DASHBOARD_SOURCE_EXTERNAL_MCP}
+        or source_config.get("mode") == "mixed"
+        or item.get("externalSnapshot") is True
+    ):
+        return PreparedDashboardChartQuery(
+            source_sql=str(item.get("sql") or ""),
+            pivot=item.get("pivot"),
+            date_filter_capability={"status": "unsupported", "reason": "non_sql_chart"},
+        )
+    return _prepare_dashboard_chart_query(
+        datasource,
+        str(item.get("sql") or ""),
+        item.get("pivot"),
     )
 
 
@@ -3830,6 +3910,7 @@ def _dashboard_payload(
             )
             item["dataSourceType"] = DASHBOARD_SOURCE_EXTERNAL_MCP
             item["externalSnapshot"] = True
+            item["dateFilterCapability"] = {"status": "unsupported", "reason": "external_mcp"}
             if isinstance(item.get("mcp"), dict):
                 item["mcp"]["externalMcpServerId"] = (
                     str(record.external_mcp_server_id) if record.external_mcp_server_id is not None else None
@@ -3849,9 +3930,47 @@ def _dashboard_payload(
                 )
                 item["datasource"] = item_datasource
             except HTTPException as exc:
+                item["dateFilterCapability"] = {
+                    "status": "forbidden",
+                    "reason": "execution_datasource_denied",
+                }
                 _apply_dashboard_chart_result(
                     item,
                     _failed_chart_result(str(exc.detail), "dashboard_execution_datasource_denied"),
+                )
+                continue
+            datasource = session.get(CoreDatasource, item_datasource) if item_datasource is not None else None
+            if datasource is None:
+                item["dateFilterCapability"] = {
+                    "status": "unconfigured",
+                    "reason": "datasource_missing",
+                }
+                _apply_dashboard_chart_result(item, _failed_chart_result("项目不存在"))
+                continue
+            prepared_query = _prepare_dashboard_chart_item_query(
+                datasource,
+                item,
+            )
+            item["dateFilterCapability"] = copy.deepcopy(prepared_query.date_filter_capability)
+            if (
+                prepared_query.date_filter_capability.get("status") == "realtime"
+                and _dashboard_has_explicit_custom_date(item.get("pivot"))
+            ):
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result(
+                        "实时图表不支持自定义日期范围",
+                        "dashboard_date_filter_realtime",
+                    ),
+                )
+                continue
+            if (
+                prepared_query.date_filter_capability.get("status") == "unconfigured"
+                and has_dashboard_date_filter_parameters(item['sql'])
+            ):
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result("图表日期参数配置不完整", "dashboard_date_filter_unconfigured"),
                 )
                 continue
             if not include_data:
@@ -3860,10 +3979,14 @@ def _dashboard_payload(
                         session,
                         current_user,
                         item_datasource,
-                        item['sql'],
-                        item.get("pivot"),
+                        prepared_query.source_sql,
+                        prepared_query.pivot,
                     )
                     if permission_failure is not None:
+                        item["dateFilterCapability"] = {
+                            "status": "forbidden",
+                            "reason": "permission_denied",
+                        }
                         _apply_dashboard_chart_result(item, permission_failure)
                         continue
                 _clear_dashboard_chart_data(item)
@@ -3876,11 +3999,21 @@ def _dashboard_payload(
                     session,
                     current_user,
                     item_datasource,
-                    item['sql'],
-                    item.get("pivot"),
+                    prepared_query.source_sql,
+                    prepared_query.pivot,
                 )
             else:
-                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
+                data_result = _execute_dashboard_chart_sql(
+                    session,
+                    current_user,
+                    item_datasource,
+                    prepared_query.source_sql,
+                )
+            if data_result.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
+                item["dateFilterCapability"] = {
+                    "status": "forbidden",
+                    "reason": "permission_denied",
+                }
             _apply_dashboard_chart_result(item, data_result)
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
     return result_dict
@@ -5084,36 +5217,70 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not request.sql or not request.sql.strip():
-        return {
-            "status": "failed",
-            "fields": [],
-            "data": [],
-            "message": "SQL不能为空",
-        }
+        return _dashboard_date_filter_result(
+            {
+                "status": "failed",
+                "fields": [],
+                "data": [],
+                "message": "SQL不能为空",
+            },
+            {"status": "unconfigured", "reason": "missing_sql"},
+        )
     datasource_id = resolve_chart_execution_datasource(session, current_user, request.datasource)
     request.datasource = datasource_id
     normalized_sql = request.sql.strip()
+    datasource = session.get(CoreDatasource, datasource_id)
+    if datasource is None:
+        return _dashboard_date_filter_result(
+            _failed_chart_result("项目不存在"),
+            {"status": "unconfigured", "reason": "datasource_missing"},
+        )
+    prepared_query = _prepare_dashboard_chart_query(datasource, normalized_sql, request.pivot)
+    date_filter_capability = prepared_query.date_filter_capability
+    if (
+        date_filter_capability.get("status") == "realtime"
+        and _dashboard_has_explicit_custom_date(request.pivot)
+    ):
+        return _dashboard_date_filter_result(
+            _failed_chart_result("实时图表不支持自定义日期范围", "dashboard_date_filter_realtime"),
+            date_filter_capability,
+        )
+    if (
+        date_filter_capability.get("status") == "unconfigured"
+        and has_dashboard_date_filter_parameters(normalized_sql)
+    ):
+        return _dashboard_date_filter_result(
+            _failed_chart_result("图表日期参数配置不完整", "dashboard_date_filter_unconfigured"),
+            date_filter_capability,
+        )
+    source_sql = prepared_query.source_sql
     permission_failure, permissions_apply = _dashboard_chart_permission_audit(
         session,
         current_user,
         datasource_id,
-        normalized_sql,
-        request.pivot,
+        source_sql,
+        prepared_query.pivot,
     )
     if permission_failure is not None:
-        return permission_failure
+        return _dashboard_date_filter_result(
+            permission_failure,
+            {"status": "forbidden", "reason": "permission_denied"},
+        )
     cache_key = _dashboard_sql_preview_cache_key(
         current_user=current_user,
         datasource_id=datasource_id,
-        sql=normalized_sql,
-        pivot=request.pivot,
+        sql=source_sql,
+        pivot=prepared_query.pivot,
     )
     if not request.force_refresh and not permissions_apply:
         cached = _dashboard_sql_preview_cache_get(cache_key)
         if cached is not None:
-            return cached
+            return _dashboard_date_filter_result(cached, date_filter_capability)
     if request.cache_only:
-        return _failed_chart_result("看板缓存未命中", "dashboard_cache_miss")
+        return _dashboard_date_filter_result(
+            _failed_chart_result("看板缓存未命中", "dashboard_cache_miss"),
+            date_filter_capability,
+        )
 
     inflight_lock = _dashboard_sql_preview_inflight_lock(cache_key)
     if not inflight_lock.acquire(timeout=_dashboard_sql_preview_dedupe_wait_timeout()):
@@ -5121,8 +5288,11 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
             if cached is not None:
                 cached["refresh_deferred"] = True
-                return cached
-        return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
+                return _dashboard_date_filter_result(cached, date_filter_capability)
+        return _dashboard_date_filter_result(
+            _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy"),
+            date_filter_capability,
+        )
 
     datasource_semaphore = _dashboard_sql_preview_datasource_semaphore(datasource_id)
     datasource_acquired = False
@@ -5130,24 +5300,28 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         if not request.force_refresh and not permissions_apply:
             cached = _dashboard_sql_preview_cache_get(cache_key)
             if cached is not None:
-                return cached
+                return _dashboard_date_filter_result(cached, date_filter_capability)
         datasource_acquired = datasource_semaphore.acquire(timeout=_dashboard_sql_preview_wait_timeout())
         if not datasource_acquired:
             if not permissions_apply:
                 cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
                 if cached is not None:
                     cached["refresh_deferred"] = True
-                    return cached
+                    return _dashboard_date_filter_result(cached, date_filter_capability)
             AppLogUtil.warning(f"Dashboard SQL preview busy: datasource={datasource_id}")
-            return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
+            return _dashboard_date_filter_result(
+                _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy"),
+                date_filter_capability,
+            )
 
         result = _execute_dashboard_chart_sql(
             session,
             current_user,
             datasource_id,
-            normalized_sql,
-            request.pivot,
+            source_sql,
+            prepared_query.pivot,
         )
+        result = _dashboard_date_filter_result(result, date_filter_capability)
         if not permissions_apply:
             _dashboard_sql_preview_cache_set(cache_key, result)
         return result

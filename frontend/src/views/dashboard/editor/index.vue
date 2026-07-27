@@ -34,6 +34,12 @@ import {
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
   shouldRetryDashboardChartFailure,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
+import {
+  applyDashboardDateFilterCapability,
+  beginDashboardChartRequest,
+  buildAppliedDashboardDatePivot,
+  isDashboardChartRequestCurrent,
+} from '@/views/dashboard/utils/dashboardDateFilter.ts'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -231,7 +237,10 @@ function chartSqlPayload(viewInfo: any) {
   return {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
-    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    pivot: buildAppliedDashboardDatePivot(
+      viewInfo,
+      viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined
+    ),
   }
 }
 
@@ -355,6 +364,7 @@ function keepChartSnapshotOrLoading(viewInfo: any) {
 }
 
 function applyChartResult(viewInfo: any, result: any) {
+  applyDashboardDateFilterCapability(viewInfo, result)
   if (!viewInfo) {
     return false
   }
@@ -390,10 +400,10 @@ function applyChartResult(viewInfo: any, result: any) {
   return viewInfo.status !== 'failed' && data.length > 0
 }
 
-async function runChartQueue(
-  entries: Array<{ component: any; viewInfo: any }>,
+async function runChartQueue<T extends { component: any; viewInfo: any }>(
+  entries: T[],
   concurrency: number,
-  worker: (entry: { component: any; viewInfo: any }) => Promise<void>
+  worker: (entry: T) => Promise<void>
 ) {
   let nextIndex = 0
   const runNext = async (): Promise<void> => {
@@ -442,17 +452,22 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
 }
 
 async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
-  const chartEntries = collectDashboardCharts(componentData.value).filter(
-    (entry) =>
-      !permissionDeniedCharts.has(entry) &&
-      Boolean(
-        isMixedChart(entry.viewInfo)
-          ? canRefreshMixedChart(entry.viewInfo)
-          : !isExternalSnapshotChart(entry.viewInfo) &&
-            entry.viewInfo?.datasource &&
-            entry.viewInfo?.sql?.trim()
-      )
-  )
+  const chartEntries = collectDashboardCharts(componentData.value)
+    .filter(
+      (entry) =>
+        !permissionDeniedCharts.has(entry) &&
+        Boolean(
+          isMixedChart(entry.viewInfo)
+            ? canRefreshMixedChart(entry.viewInfo)
+            : !isExternalSnapshotChart(entry.viewInfo) &&
+              entry.viewInfo?.datasource &&
+              entry.viewInfo?.sql?.trim()
+        )
+    )
+    .flatMap((entry) => {
+      const requestVersion = beginDashboardChartRequest(entry.viewInfo, 'background')
+      return requestVersion === null ? [] : [{ ...entry, requestVersion }]
+    })
   if (!chartEntries.length) {
     return
   }
@@ -461,7 +476,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
   let cacheFinished = 0
   let databaseFinished = 0
   let transientPendingCount = 0
-  const databaseRefreshEntries: Array<{ component: any; viewInfo: any }> = []
+  const databaseRefreshEntries: Array<{ component: any; viewInfo: any; requestVersion: number }> = []
   const requestConfig = {
     signal: controller.signal,
     requestOptions: { silent: true },
@@ -478,7 +493,10 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     const progress = Math.min(95, Math.round(startProgress + (endProgress - startProgress) * progressRatio))
     withAutoChartUpdate(() => {
       entries.forEach((entry) => {
-        if (entry.viewInfo?.dataState === 'loading') {
+        if (
+          entry.viewInfo?.dataState === 'loading'
+          && isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
+        ) {
           setChartLoadingProgress(entry.viewInfo, progress)
         }
       })
@@ -487,19 +505,30 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
   try {
     withAutoChartUpdate(() => {
       chartEntries.forEach((entry) => {
-        if (!hasChartSnapshot(entry.viewInfo)) {
+        if (
+          isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
+          && !hasChartSnapshot(entry.viewInfo)
+        ) {
           keepChartLoadingState(entry.viewInfo, 'waiting')
         }
       })
     })
     await runChartQueue(chartEntries, CHART_CACHE_LOOKUP_CONCURRENCY, async (entry) => {
-      const { viewInfo } = entry
+      const { viewInfo, requestVersion } = entry
       try {
-        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== routeLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         const cachedResult = await previewChartSqlCacheOnly(viewInfo, requestConfig)
-        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== routeLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         const cacheDisposition = dashboardCacheRefreshDisposition(
@@ -527,7 +556,11 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         if (isAbortError(error) || controller.signal.aborted) {
           return
         }
-        if (loadVersion === routeLoadVersion && (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo))) {
+        if (
+          loadVersion === routeLoadVersion
+          && isDashboardChartRequestCurrent(viewInfo, requestVersion)
+          && (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo))
+        ) {
           databaseRefreshEntries.push(entry)
         }
       } finally {
@@ -541,16 +574,28 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       return
     }
     withAutoChartUpdate(() => {
-      databaseRefreshEntries.forEach((entry) => keepChartLoadingState(entry.viewInfo, 'loading'))
+      databaseRefreshEntries.forEach((entry) => {
+        if (isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)) {
+          keepChartLoadingState(entry.viewInfo, 'loading')
+        }
+      })
     })
     await runChartQueue(databaseRefreshEntries, CHART_DATABASE_REFRESH_CONCURRENCY, async (entry) => {
-      const { viewInfo } = entry
+      const { viewInfo, requestVersion } = entry
       try {
-        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== routeLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         const result = await previewChartSqlFromDatabase(viewInfo, requestConfig)
-        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+        if (
+          loadVersion !== routeLoadVersion
+          || controller.signal.aborted
+          || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           return
         }
         withAutoChartUpdate(() => {
@@ -577,7 +622,10 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         if (isAbortError(error) || controller.signal.aborted) {
           return
         }
-        if (loadVersion === routeLoadVersion) {
+        if (
+          loadVersion === routeLoadVersion
+          && isDashboardChartRequestCurrent(viewInfo, requestVersion)
+        ) {
           withAutoChartUpdate(() => {
             keepChartSnapshotOrLoading(viewInfo)
             if (!hasChartSnapshot(viewInfo)) {

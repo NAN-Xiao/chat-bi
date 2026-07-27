@@ -57,7 +57,12 @@ def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
         }
         for table in stmt.find_all(exp.Table):
             table_name = normalize_identifier(table.name)
-            if table_name and table_name not in cte_names:
+            is_unqualified_cte_reference = (
+                table_name in cte_names
+                and not normalize_identifier(table.db)
+                and not normalize_identifier(table.catalog)
+            )
+            if table_name and not is_unqualified_cte_reference:
                 tables.add(table_name)
     return tables
 

@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from apps.dashboard.crud import dashboard_service
+from apps.dashboard.crud.dashboard_date_filter import DashboardDateFilterPreparation
 from apps.datasource.crud import sql_engine_executor as query_executor
 import pytest
 from fastapi import HTTPException
@@ -77,6 +78,18 @@ def _engine_with_dashboard_table():
                 ),
                 {"tenant_id": tenant_id, "user_id": user_id, "role": role},
             )
+        conn.execute(text(
+            """
+            CREATE TABLE core_roi_workspace_config (
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER NOT NULL,
+                deleted BOOLEAN NOT NULL DEFAULT 0
+            )
+            """
+        ))
+    with Session(engine) as session:
+        _create_simple_datasource_table(session)
+        session.commit()
     return engine
 
 
@@ -85,7 +98,7 @@ def _engine_with_dashboard_permission_tables():
     with engine.begin() as conn:
         conn.execute(text(
             """
-            CREATE TABLE core_datasource (
+            CREATE TABLE IF NOT EXISTS core_datasource (
                 id INTEGER PRIMARY KEY,
                 tenant_id INTEGER NOT NULL DEFAULT 1,
                 name VARCHAR(128) NOT NULL,
@@ -185,6 +198,7 @@ def test_validate_dashboard_report_target_accepts_visible_dashboard_component(mo
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    _allow_requested_chart_execution_datasource(monkeypatch)
 
     with Session(engine) as session:
         session.add(
@@ -201,6 +215,9 @@ def test_validate_dashboard_report_target_accepts_visible_dashboard_component(mo
                 component_data=json.dumps(
                     [{"id": "chart-1", "component": "SQView"}],
                     ensure_ascii=False,
+                ),
+                canvas_view_info=json.dumps(
+                    {"chart-1": {"id": "chart-1", "datasource": 2, "sql": "select 1"}}
                 ),
             )
         )
@@ -265,7 +282,7 @@ def test_validate_dashboard_report_target_rejects_mismatched_target(
 def _create_simple_datasource_table(session: Session):
     session.execute(text(
         """
-        CREATE TABLE core_datasource (
+        CREATE TABLE IF NOT EXISTS core_datasource (
             id INTEGER PRIMARY KEY,
             tenant_id INTEGER NOT NULL DEFAULT 1,
             name VARCHAR(128) NOT NULL,
@@ -317,6 +334,12 @@ def _insert_dashboard_permission_fixture(session: Session):
     ))
     session.execute(text(
         """
+        INSERT INTO core_roi_workspace_config (tenant_id, datasource_id, deleted)
+        VALUES (1, 1, 0)
+        """
+    ))
+    session.execute(text(
+        """
         INSERT INTO core_datasource_user (ds_id, user_id, role, create_by)
         VALUES (1, 2, 'viewer', 9)
         """
@@ -340,6 +363,22 @@ def _insert_dashboard_permission_fixture(session: Session):
             (110, 1, 11, 1, 'payment_id', 'int', 'payment_id', 'payment_id', 1)
         """
     ))
+
+
+def _force_bound_chart_execution_datasource(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_service,
+        "_configured_chart_execution_datasources",
+        lambda *_args, **_kwargs: [(1, "bound")],
+    )
+
+
+def _allow_requested_chart_execution_datasource(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: int(datasource_id),
+    )
 
 
 def _insert_orders_column_rule(session: Session):
@@ -862,6 +901,7 @@ def test_platform_delegate_create_canvas_is_workspace_asset(monkeypatch):
 
 
 def test_platform_delegate_updates_workspace_asset_directly(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     delegate_user = SimpleNamespace(
         id=9,
@@ -929,6 +969,7 @@ def test_platform_delegate_updates_workspace_asset_directly(monkeypatch):
 
 
 def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     delegate_user = SimpleNamespace(
         id=9,
@@ -2257,6 +2298,7 @@ def test_list_resource_includes_legacy_dashboard_when_canvas_uses_selected_datas
 
 
 def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
     chart_calls = []
@@ -2305,6 +2347,7 @@ def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
 
 
 def test_load_resource_marks_refreshed_loading_chart_ready(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
@@ -2370,6 +2413,7 @@ def test_load_resource_marks_refreshed_loading_chart_ready(monkeypatch):
 
 
 def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=True, tenant_id=1)
     chart_calls = []
@@ -2466,6 +2510,7 @@ def test_dashboard_create_base_info_normalizes_default_flag():
 
 
 def test_create_canvas_normalizes_materialized_loading_chart_state(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
@@ -2823,6 +2868,7 @@ def test_project_viewer_cannot_create_under_folder_they_cannot_edit(monkeypatch)
 
 
 def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
+    _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
@@ -2872,6 +2918,7 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
 
 
 def test_dashboard_structure_load_clears_unauthorized_chart_snapshot(monkeypatch):
+    _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
@@ -2937,6 +2984,7 @@ def test_dashboard_structure_load_clears_unauthorized_chart_snapshot(monkeypatch
 
 
 def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch):
+    _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
@@ -2964,7 +3012,46 @@ def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch)
     assert "amount" not in result["message"]
 
 
+def test_dashboard_preview_hides_date_filter_when_permission_is_denied(monkeypatch):
+    _force_bound_chart_execution_datasource(monkeypatch)
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda *_args, **_kwargs: pytest.fail("无权限 SQL 不应执行"),
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_column_rule(session)
+        session.commit()
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql=(
+                    "select amount from orders where order_id between "
+                    "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                ),
+                pivot=DashboardPivotRequest(
+                    enabled=False,
+                    time_field="order_id",
+                    date_parameter_type="yyyymmdd_number",
+                ),
+            ),
+        )
+
+    assert result["status"] == "failed"
+    assert result["date_filter_capability"] == {
+        "status": "forbidden",
+        "reason": "permission_denied",
+    }
+
+
 def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
+    _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
@@ -2995,6 +3082,7 @@ def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
 
 
 def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch):
+    _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
@@ -3025,6 +3113,7 @@ def test_dashboard_preview_builds_pivot_sql(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
+    _force_bound_chart_execution_datasource(monkeypatch)
     monkeypatch.setattr(
         query_executor,
         "_unsafe_exec_sql_after_validation",
@@ -3382,6 +3471,278 @@ def test_dashboard_preview_ignores_disabled_pivot(monkeypatch):
 
     assert result["status"] == "success"
     assert exec_calls == ["select order_id from orders"]
+
+
+def test_dashboard_preview_renders_date_template_before_permission_and_execution(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": "2026-05-01", "amount": 99}], "fields": ["order_day", "amount"]},
+    )
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+        result = dashboard_service.preview_sql(
+            session,
+            current_user,
+            DashboardSqlPreview(
+                datasource=1,
+                sql=(
+                    "select order_id as order_day, amount from orders "
+                    "where order_id between {{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                ),
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="order_day",
+                    metric_field="amount",
+                    date_parameter_type="yyyymmdd_number",
+                    range="custom",
+                    custom_start="2026-05-01",
+                    custom_end="2026-05-31",
+                ),
+            ),
+        )
+    assert result["date_filter_capability"]["status"] == "available"
+    assert len(exec_calls) == 1
+    assert "20260501" in exec_calls[0] and "20260531" in exec_calls[0]
+    assert "{{dashboard_" not in exec_calls[0]
+
+
+def test_dashboard_source_preview_renders_date_template_without_outer_pivot(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": 20260713, "amount": 99}], "fields": ["order_day", "amount"]},
+    )
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+        result = dashboard_service.preview_sql(
+            session,
+            current_user,
+            DashboardSqlPreview(
+                datasource=1,
+                sql=(
+                    "select order_id as order_day, amount from orders "
+                    "where order_id between {{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                ),
+                pivot=DashboardPivotRequest(
+                    enabled=False,
+                    time_field="order_day",
+                    metric_field="amount",
+                    date_parameter_type="yyyymmdd_number",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert result["date_filter_capability"]["status"] == "available"
+    assert len(exec_calls) == 1
+    assert "20260713" in exec_calls[0] and "20260726" in exec_calls[0]
+    assert "pivot_src" not in exec_calls[0]
+    assert "{{dashboard_" not in exec_calls[0]
+
+
+def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
+    prepared = DashboardDateFilterPreparation(
+        sql="select dt from event_realtime",
+        start=None,
+        end=None,
+        physical_tables={"event_realtime"},
+        capability={"status": "realtime", "reason": "realtime_table"},
+    )
+    monkeypatch.setattr(dashboard_service, "resolve_chart_execution_datasource", lambda *_args: 1)
+    monkeypatch.setattr(dashboard_service, "prepare_dashboard_date_filter", lambda *args, **kwargs: prepared)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *args, **kwargs: pytest.fail("实时图表不得应用自定义日期"),
+    )
+    result = dashboard_service.preview_sql(
+        session=SimpleNamespace(get=lambda *_: SimpleNamespace(id=1, type="mysql")),
+        current_user=SimpleNamespace(id=2, isAdmin=False, tenant_id=1),
+        request=DashboardSqlPreview(
+            datasource=1,
+            sql="select dt from event_realtime",
+            pivot=DashboardPivotRequest(
+                time_field="dt",
+                date_parameter_type="yyyymmdd_number",
+                range="custom",
+                custom_start="2026-05-01",
+                custom_end="2026-05-31",
+            ),
+        ),
+    )
+    assert result["status"] == "failed"
+    assert result["error_type"] == "dashboard_date_filter_realtime"
+    assert result["date_filter_capability"]["status"] == "realtime"
+
+
+def test_dashboard_preview_empty_sql_returns_date_capability():
+    result = dashboard_service.preview_sql(
+        object(),
+        SimpleNamespace(id=2, isAdmin=False, tenant_id=1),
+        DashboardSqlPreview(sql="   ", datasource=1),
+    )
+
+    assert result["status"] == "failed"
+    assert result["date_filter_capability"] == {
+        "status": "unconfigured",
+        "reason": "missing_sql",
+    }
+
+
+def test_dashboard_payload_rejects_custom_range_for_event_realtime(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    executed = []
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: None)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *_args, **_kwargs: executed.append(True)
+        or {"status": "success", "fields": [], "data": [], "message": ""},
+    )
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        record = CoreDashboard(
+            id="dashboard-realtime-custom-date",
+            tenant_id=1,
+            name="实时日期拒绝测试",
+            pid="root",
+            node_type="leaf",
+            datasource=1,
+            component_data="[]",
+            canvas_style_data="{}",
+            canvas_view_info=json.dumps({
+                "chart": {
+                    "id": "chart",
+                    "datasource": 1,
+                    "sql": (
+                        "select dt from event_realtime where dt between "
+                        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                    ),
+                    "pivot": {
+                        "time_field": "dt",
+                        "date_parameter_type": "yyyymmdd_number",
+                        "range": "custom",
+                        "custom_start": "2026-07-13",
+                        "custom_end": "2026-07-26",
+                    },
+                }
+            }),
+        )
+        session.add(record)
+        session.commit()
+
+        payload = dashboard_service._dashboard_payload(
+            session,
+            current_user,
+            record,
+            default_context=True,
+            include_data=True,
+        )
+
+    chart = json.loads(payload["canvas_view_info"])["chart"]
+    assert executed == []
+    assert chart["dateFilterCapability"]["status"] == "realtime"
+    assert chart["error_type"] == "dashboard_date_filter_realtime"
+
+
+def test_dashboard_payload_adds_transient_date_capability_without_persisting(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    original = {
+        "available": {
+            "id": "available",
+            "sql": (
+                "select order_id as dt from orders where order_id between "
+                "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+            ),
+            "pivot": {"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
+        },
+        "realtime": {
+            "id": "realtime",
+            "sql": "select dt from event_realtime",
+            "pivot": {"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
+        },
+        "plain": {"id": "plain", "sql": "select amount from orders", "pivot": {}},
+    }
+    prepare_calls = []
+    original_prepare = dashboard_service._prepare_dashboard_chart_query
+
+    def count_prepare(datasource, sql, pivot):
+        prepare_calls.append(sql)
+        return original_prepare(datasource, sql, pivot)
+
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: None)
+    monkeypatch.setattr(dashboard_service, "_prepare_dashboard_chart_query", count_prepare)
+    monkeypatch.setattr(dashboard_service, "_dashboard_chart_permission_audit", lambda *_args: (None, False))
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        record = CoreDashboard(
+            id="dashboard-date-capability",
+            tenant_id=1,
+            name="日期能力测试",
+            pid="root",
+            node_type="leaf",
+            datasource=1,
+            component_data="[]",
+            canvas_style_data="{}",
+            canvas_view_info=json.dumps(original),
+        )
+        session.add(record)
+        session.commit()
+        payload = dashboard_service._dashboard_payload(
+            session,
+            current_user,
+            record,
+            default_context=True,
+            include_data=False,
+        )
+        response_views = json.loads(payload["canvas_view_info"])
+        assert response_views["available"]["dateFilterCapability"]["status"] == "available"
+        assert response_views["realtime"]["dateFilterCapability"]["status"] == "realtime"
+        assert response_views["plain"]["dateFilterCapability"]["status"] == "unconfigured"
+        assert len(prepare_calls) == len(original)
+        session.expire_all()
+        persisted = session.get(CoreDashboard, record.id)
+        assert "dateFilterCapability" not in persisted.canvas_view_info
+
+
+def test_canvas_save_strips_transient_date_filter_capability_recursively():
+    canvas = {
+        "chart-1": {
+            "id": "chart-1",
+            "dateFilterCapability": {
+                "status": "available",
+                "defaultStart": "2026-07-13",
+                "defaultEnd": "2026-07-26",
+            },
+            "children": [
+                {
+                    "id": "nested-chart",
+                    "dateFilterCapability": {"status": "realtime"},
+                }
+            ],
+        }
+    }
+
+    sanitized = json.loads(dashboard_service._sanitize_canvas_view_info(json.dumps(canvas)))
+
+    assert "dateFilterCapability" not in sanitized["chart-1"]
+    assert "dateFilterCapability" not in sanitized["chart-1"]["children"][0]
+    assert sanitized["chart-1"]["id"] == "chart-1"
 
 
 def test_user_name_unwraps_row_result():

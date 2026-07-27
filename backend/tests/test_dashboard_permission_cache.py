@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
 
 from apps.dashboard.crud import dashboard_service
-from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardSqlPreview
+from apps.dashboard.crud.dashboard_date_filter import prepare_dashboard_date_filter
+from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardPivotRequest, DashboardSqlPreview
 
 
 def _request(cache_only: bool = False) -> DashboardSqlPreview:
@@ -24,12 +26,50 @@ def _user():
     return SimpleNamespace(id=1001, tenant_id=2001)
 
 
+def _session():
+    return SimpleNamespace(get=lambda *_args: SimpleNamespace(id=1, type="pg"))
+
+
 def _allow_chart_execution_datasource(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         dashboard_service,
         "resolve_chart_execution_datasource",
         lambda _session, _user, datasource_id: int(datasource_id),
     )
+
+
+def test_date_filter_cache_key_uses_rendered_dates_and_parameter_type() -> None:
+    sql = (
+        "select dt from orders where dt between "
+        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+    )
+    number_pivot = DashboardPivotRequest(
+        time_field="dt",
+        date_parameter_type="yyyymmdd_number",
+    )
+    text_pivot = number_pivot.model_copy(update={"date_parameter_type": "yyyymmdd_text"})
+    day_one = prepare_dashboard_date_filter(
+        sql, ds_type="mysql", pivot=number_pivot, today=date(2026, 7, 27)
+    )
+    day_two = prepare_dashboard_date_filter(
+        sql, ds_type="mysql", pivot=number_pivot, today=date(2026, 7, 28)
+    )
+    text_range = prepare_dashboard_date_filter(
+        sql, ds_type="mysql", pivot=text_pivot, today=date(2026, 7, 27)
+    )
+    keys = [
+        dashboard_service._dashboard_sql_preview_cache_key(_user(), 1, prepared.sql, pivot)
+        for prepared, pivot in (
+            (day_one, number_pivot),
+            (day_two, number_pivot),
+            (text_range, text_pivot),
+        )
+    ]
+    assert len({key.fingerprint for key in keys}) == 3
+    same_key = dashboard_service._dashboard_sql_preview_cache_key(
+        _user(), 1, day_one.sql, number_pivot
+    )
+    assert same_key.fingerprint == keys[0].fingerprint
 
 
 def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,7 +95,7 @@ def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(dashboard_service, "_dashboard_sql_preview_cache_get", _unexpected_cache_get)
 
-    result = dashboard_service.preview_sql(object(), _user(), _request())
+    result = dashboard_service.preview_sql(_session(), _user(), _request())
 
     assert result["status"] == "failed"
     assert result["error_type"] == "permission_denied"
@@ -76,7 +116,7 @@ def test_preview_sql_cache_only_misses_when_permissions_apply(monkeypatch: pytes
 
     monkeypatch.setattr(dashboard_service, "_dashboard_sql_preview_cache_get", _unexpected_cache_get)
 
-    result = dashboard_service.preview_sql(object(), _user(), _request(cache_only=True))
+    result = dashboard_service.preview_sql(_session(), _user(), _request(cache_only=True))
 
     assert result["status"] == "failed"
     assert result["error_type"] == "dashboard_cache_miss"
@@ -106,7 +146,7 @@ def test_preview_sql_does_not_write_cache_when_permissions_apply(monkeypatch: py
 
     monkeypatch.setattr(dashboard_service, "_dashboard_sql_preview_cache_set", _unexpected_cache_set)
 
-    result = dashboard_service.preview_sql(object(), _user(), _request())
+    result = dashboard_service.preview_sql(_session(), _user(), _request())
 
     assert result["status"] == "success"
     assert result["data"] == [{"day": "2026-06-30", "revenue": 12.5}]
@@ -156,7 +196,7 @@ def test_dashboard_payload_without_data_strips_saved_chart_snapshot(monkeypatch:
     )
 
     result = dashboard_service._dashboard_payload(
-        object(),
+        _session(),
         _user(),
         record,
         default_context=True,
@@ -229,7 +269,7 @@ def test_dashboard_payload_with_data_executes_sql_engine_instead_of_saved_snapsh
     )
 
     result = dashboard_service._dashboard_payload(
-        object(),
+        _session(),
         _user(),
         record,
         default_context=True,
