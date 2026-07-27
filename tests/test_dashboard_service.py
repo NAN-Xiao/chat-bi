@@ -117,6 +117,15 @@ def _engine_with_dashboard_permission_tables():
         ))
         conn.execute(text(
             """
+            CREATE TABLE core_roi_workspace_config (
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER NOT NULL,
+                deleted BOOLEAN NOT NULL DEFAULT 0
+            )
+            """
+        ))
+        conn.execute(text(
+            """
             CREATE TABLE core_table (
                 id INTEGER PRIMARY KEY,
                 ds_id INTEGER NOT NULL,
@@ -313,6 +322,12 @@ def _insert_dashboard_permission_fixture(session: Session):
             (id, name, type, type_name, configuration, create_by, recommended_config)
         VALUES
             (1, 'Project 1', 'pg', 'PostgreSQL', '{}', 9, 1)
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO core_roi_workspace_config (tenant_id, datasource_id, deleted)
+        VALUES (1, 1, 0)
         """
     ))
     session.execute(text(
