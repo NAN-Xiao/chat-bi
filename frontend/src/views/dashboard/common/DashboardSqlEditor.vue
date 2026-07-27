@@ -81,6 +81,7 @@ const emits = defineEmits(['update:modelValue', 'applied'])
 const { t } = useI18n()
 const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
 type ChartDataSourceType = 'sql' | 'external_mcp'
+type DashboardDateParameterType = '' | 'date' | 'yyyymmdd_number' | 'yyyymmdd_text' | 'timestamp'
 type ExecutionDatasourceOption = {
   id: number
   name: string
@@ -226,6 +227,7 @@ const form = reactive({
   pivotRange: 'source' as 'source' | '7d' | '14d' | '30d' | '90d' | 'all' | 'custom',
   pivotCustomStart: '',
   pivotCustomEnd: '',
+  pivotDateParameterType: '' as DashboardDateParameterType,
   pivotGroupValues: [] as string[],
   mcpServerId: '',
   mcpTool: '',
@@ -885,6 +887,12 @@ const pivotRangeOptions = computed(() => [
   { label: t('dashboard.pivot_all_time'), value: 'all' },
   { label: t('dashboard.pivot_custom_range'), value: 'custom' },
 ])
+const pivotDateParameterTypeOptions = computed<Array<{ label: string; value: Exclude<DashboardDateParameterType, ''> }>>(() => [
+  { label: t('dashboard.pivot_date_parameter_type_date'), value: 'date' },
+  { label: t('dashboard.pivot_date_parameter_type_yyyymmdd_number'), value: 'yyyymmdd_number' },
+  { label: t('dashboard.pivot_date_parameter_type_yyyymmdd_text'), value: 'yyyymmdd_text' },
+  { label: t('dashboard.pivot_date_parameter_type_timestamp'), value: 'timestamp' },
+])
 const forecastMethodOptions = computed<Array<{ label: string; value: ChartForecastMethod }>>(() => [
   { label: t('dashboard.forecast_method_auto'), value: 'auto' },
   { label: t('dashboard.forecast_method_linear'), value: 'linear' },
@@ -898,6 +906,12 @@ const forecastMethodOptions = computed<Array<{ label: string; value: ChartForeca
   { label: t('dashboard.forecast_method_holt_winters'), value: 'holt_winters' },
 ])
 type PivotGranularity = 'day' | 'week' | 'month'
+const dashboardDateParameterTokens: Record<Exclude<DashboardDateParameterType, ''>, readonly [string, string]> = {
+  date: ['{{dashboard_start_date}}', '{{dashboard_end_date}}'],
+  yyyymmdd_number: ['{{dashboard_start_yyyymmdd}}', '{{dashboard_end_yyyymmdd}}'],
+  yyyymmdd_text: ['{{dashboard_start_yyyymmdd}}', '{{dashboard_end_yyyymmdd}}'],
+  timestamp: ['{{dashboard_start_timestamp}}', '{{dashboard_end_exclusive_timestamp}}'],
+}
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
@@ -2958,6 +2972,9 @@ function initPivotConfig(pivot?: any) {
   form.pivotRange = pivot?.range || 'source'
   form.pivotCustomStart = pivot?.custom_start || ''
   form.pivotCustomEnd = pivot?.custom_end || ''
+  form.pivotDateParameterType = Object.prototype.hasOwnProperty.call(dashboardDateParameterTokens, pivot?.date_parameter_type)
+    ? pivot.date_parameter_type
+    : ''
   form.pivotGroupValues = []
   initializedPivotGroupValueField.value = ''
   normalizePivotSelections()
@@ -2997,6 +3014,7 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
     range: form.pivotRange,
     custom_start: form.pivotCustomStart,
     custom_end: form.pivotCustomEnd,
+    date_parameter_type: form.pivotDateParameterType,
     aggregation: defaultPivotAggregation(),
   }
   if (options.includeGroupValues !== false) {
@@ -3010,6 +3028,25 @@ function previewPivotPayload() {
     return undefined
   }
   return buildPivotConfig({ includeGroupValues: false })
+}
+
+function dashboardDateParameterValidationErrorKey() {
+  if (!hasSqlSource.value) {
+    return ''
+  }
+  const activeTokens = Object.values(dashboardDateParameterTokens)
+    .flat()
+    .filter((token) => form.sql.includes(token))
+  if (activeTokens.length === 0) {
+    return ''
+  }
+  if (!form.pivotDateParameterType) {
+    return 'dashboard.pivot_date_parameter_type_required'
+  }
+  const expectedTokens = dashboardDateParameterTokens[form.pivotDateParameterType]
+  return activeTokens.length === expectedTokens.length && expectedTokens.every((token) => activeTokens.includes(token))
+    ? ''
+    : 'dashboard.pivot_date_parameter_type_invalid'
 }
 
 function currentPreviewSignature() {
@@ -3970,6 +4007,7 @@ watch(
     form.pivotRange,
     form.pivotCustomStart,
     form.pivotCustomEnd,
+    form.pivotDateParameterType,
     form.pivotGroupValues.join('|'),
   ],
   () => {
@@ -4004,6 +4042,11 @@ async function previewSqlSource() {
   }
   if (!form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
+    return null
+  }
+  const dateParameterValidationError = dashboardDateParameterValidationErrorKey()
+  if (dateParameterValidationError) {
+    ElMessage.warning(t(dateParameterValidationError))
     return null
   }
   const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
@@ -4208,6 +4251,11 @@ function validateBeforeApply() {
   }
   if (hasSqlSource.value && !form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
+    return false
+  }
+  const dateParameterValidationError = dashboardDateParameterValidationErrorKey()
+  if (dateParameterValidationError) {
+    ElMessage.warning(t(dateParameterValidationError))
     return false
   }
   if (hasMcpSource.value && !currentExternalMcpServerId.value) {
@@ -5433,6 +5481,16 @@ function closeDrawer() {
                   :key="field.value"
                   :label="field.label"
                   :value="field.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('dashboard.pivot_date_parameter_type')">
+              <el-select v-model="form.pivotDateParameterType" clearable>
+                <el-option
+                  v-for="item in pivotDateParameterTypeOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
                 />
               </el-select>
             </el-form-item>
