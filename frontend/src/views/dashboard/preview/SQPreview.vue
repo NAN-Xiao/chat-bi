@@ -11,6 +11,7 @@ import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue
 import type { CanvasItem } from '@/utils/canvas.ts'
 import { useEmittLazy } from '@/utils/useEmitt.ts'
 import {
+  getDashboardGridCellWidth,
   getDashboardGridContentRows,
   normalizeDashboardGridCoordinate,
 } from '@/views/dashboard/utils/dashboardGridPosition.ts'
@@ -81,12 +82,13 @@ const state = reactive({
 const cellWidth = ref(0)
 const cellHeight = ref(0)
 const viewportHeight = ref(0)
-const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
+const basePaddingLeft = ref(0)
 const basePaddingTop = ref(0)
 const PREVIEW_GRID_GAP = 10
+const PREVIEW_EDGE_GAP = 16
 const PREVIEW_TOP_GAP = 4
 const TAB_PREVIEW_GRID_GAP = 6
 let resizeObserver: ResizeObserver | undefined
@@ -121,9 +123,9 @@ function nowItemStyle(item: CanvasItem) {
   const gridX = normalizeDashboardGridCoordinate(item.x)
   const gridY = normalizeDashboardGridCoordinate(item.y)
   return {
-    width: cellWidth.value * item.sizeX - baseMarginLeft.value + 'px',
+    width: Math.max(0, cellWidth.value * item.sizeX - baseMarginLeft.value) + 'px',
     height: cellHeight.value * item.sizeY - baseMarginTop.value + 'px',
-    left: cellWidth.value * (gridX - 1) + baseMarginLeft.value + 'px',
+    left: cellWidth.value * (gridX - 1) + basePaddingLeft.value + 'px',
     top: cellHeight.value * (gridY - 1) + basePaddingTop.value + 'px',
   }
 }
@@ -136,14 +138,19 @@ const sizeInit = () => {
     const screenHeight = previewCanvas.value.offsetHeight
     viewportHeight.value = screenHeight
     const gridGap = props.inTab ? TAB_PREVIEW_GRID_GAP : PREVIEW_GRID_GAP
+    const edgeGap = props.inTab ? gridGap : PREVIEW_EDGE_GAP
     baseMarginLeft.value = gridGap
     baseMarginTop.value = gridGap
+    basePaddingLeft.value = edgeGap
     basePaddingTop.value = props.inTab ? gridGap : PREVIEW_TOP_GAP
-    baseWidth.value =
-      (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
+    cellWidth.value = getDashboardGridCellWidth(
+      screenWidth,
+      props.baseMatrixCount.x,
+      gridGap,
+      edgeGap
+    )
     baseHeight.value =
       (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
-    cellWidth.value = baseWidth.value + baseMarginLeft.value
     cellHeight.value = baseHeight.value + baseMarginTop.value
   }
   useEmittLazy('view-render-all')
