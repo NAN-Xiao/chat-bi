@@ -882,6 +882,51 @@ def test_chat_all_time_policy_failures_finish_without_executing_sql(
     assert '"type":"error"' not in payload
 
 
+def test_chat_invalid_recent_window_still_emits_final_and_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [{"id": "q1", "title": "非法时间窗口", "sql": "SELECT unsafe"}],
+    )
+    request.messages[-1].content = "最近0天收入"
+
+    async def resolve_invalid_window(**kwargs):
+        question = kwargs["request"].messages[-1].content
+        intent = parse_analysis_time_intent(question, [])
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=None,
+            anchor=AnalysisTimeAnchor("fact_orders", "business_date"),
+            anchor_date=date(2026, 7, 26),
+        )
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        resolve_invalid_window,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        lambda **_kwargs: (_ for _ in ()).throw(analysis_api.AnalysisTimeSqlError()),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("非法时间窗口不得执行 SQL")
+        ),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "用户指定的时间窗口无效" in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+
+
 @pytest.mark.parametrize("repair_trigger", ["database", "semantic"])
 def test_chat_repaired_sql_is_time_enforced_before_retry_execution(
     monkeypatch: pytest.MonkeyPatch,

@@ -8,7 +8,8 @@ from enum import StrEnum
 from typing import Literal
 
 DEFAULT_WINDOW_DAYS = 14
-MAX_SKILL_WINDOW_DAYS = 366
+MAX_ANALYSIS_WINDOW_DAYS = 366
+MAX_SKILL_WINDOW_DAYS = MAX_ANALYSIS_WINDOW_DAYS
 _SKILL_DIRECTIVE_RE = re.compile(
     r"<!--\s*data-skill-analysis-time:(\{.*?\})\s*-->", re.DOTALL
 )
@@ -25,9 +26,11 @@ _DAY_ONLY_RE = re.compile(
 )
 _YEAR_MONTH_RE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月")
 _MONTH_RE = re.compile(r"(\d{1,2})\s*月")
-_RELATIVE_DAYS_RE = re.compile(r"(?:最近|近)\s*(\d+)\s*(?:个)?天")
-_RELATIVE_WEEKS_RE = re.compile(r"(?:最近|近)\s*(两|\d+)\s*(?:个)?周")
+_RELATIVE_DAYS_RE = re.compile(r"(?:最近|近)\s*(-?\d+)\s*(?:个)?[天日]")
+_RELATIVE_WEEKS_RE = re.compile(r"(?:最近|近)\s*(两|-?\d+)\s*(?:个)?周")
+_RECENT_MONTH_RE = re.compile(r"(?:最近|近)\s*(?:一|1)\s*个?月")
 _INVALID_DATE_WARNING = "用户指定的日期无效，无法确定时间策略。"
+_INVALID_WINDOW_WARNING = "用户指定的时间窗口无效，无法确定时间策略。"
 _DESCENDING_RANGE_WARNING = "用户指定的时间范围倒序，无法确定时间策略。"
 _MISSING_ANCHOR_WARNING = "无法确认当前数据源的时间锚点，本次仅执行能够确认时间边界的分析块。"
 _MISSING_ANCHOR_DATE_WARNING = "无法确认当前数据源的最大业务日期，本次仅执行能够确认时间边界的分析块。"
@@ -43,6 +46,9 @@ class AnalysisTimeSource(StrEnum):
 class AnalysisTimeAnchor:
     table: str
     field: str
+    data_type: str | None = None
+    encoding: str | None = None
+    quoted: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,6 +66,7 @@ class AnalysisTimeIntent:
     start_inclusive: bool = True
     end_inclusive: bool = True
     requires_anchor: bool = True
+    warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -169,18 +176,38 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
         )
     relative = _RELATIVE_DAYS_RE.search(text)
     if relative:
+        window_days = int(relative.group(1))
+        if not 1 <= window_days <= MAX_ANALYSIS_WINDOW_DAYS:
+            return AnalysisTimeIntent(
+                kind="invalid",
+                source=AnalysisTimeSource.USER,
+                warning=_INVALID_WINDOW_WARNING,
+            )
         return AnalysisTimeIntent(
             kind="relative_days",
             source=AnalysisTimeSource.USER,
-            window_days=int(relative.group(1)),
+            window_days=window_days,
         )
     relative_weeks = _RELATIVE_WEEKS_RE.search(text)
     if relative_weeks:
         weeks = 2 if relative_weeks.group(1) == "两" else int(relative_weeks.group(1))
+        window_days = weeks * 7
+        if not 1 <= window_days <= MAX_ANALYSIS_WINDOW_DAYS:
+            return AnalysisTimeIntent(
+                kind="invalid",
+                source=AnalysisTimeSource.USER,
+                warning=_INVALID_WINDOW_WARNING,
+            )
         return AnalysisTimeIntent(
             kind="relative_days",
             source=AnalysisTimeSource.USER,
-            window_days=weeks * 7,
+            window_days=window_days,
+        )
+    if _RECENT_MONTH_RE.search(text):
+        return AnalysisTimeIntent(
+            kind="relative_days",
+            source=AnalysisTimeSource.USER,
+            window_days=30,
         )
     if "昨天" in text:
         return AnalysisTimeIntent(kind="yesterday", source=AnalysisTimeSource.USER)
@@ -212,6 +239,10 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
             day_of_month=int(day_only.group(1)),
             start_inclusive=marker not in {"之后", "以后"},
         )
+    for previous in reversed(history):
+        inherited = parse_analysis_time_intent(previous, [])
+        if inherited.kind not in {"none", "invalid"}:
+            return inherited
     return AnalysisTimeIntent(kind="none")
 
 
@@ -262,7 +293,7 @@ def resolve_analysis_time_policy(
     warnings: tuple[str, ...] = (),
 ) -> AnalysisTimeResolution:
     if intent.kind == "invalid":
-        return _unresolved(warnings, _INVALID_DATE_WARNING)
+        return _unresolved(warnings, intent.warning or _INVALID_DATE_WARNING)
     if intent.kind == "absolute" and intent.start_date and intent.end_date:
         if intent.start_date > intent.end_date:
             return _unresolved(warnings, _DESCENDING_RANGE_WARNING)
@@ -306,6 +337,8 @@ def resolve_analysis_time_policy(
             f"用户开放时间范围 {effective_start.isoformat()} 至 {anchor_date.isoformat()}",
         )
     elif intent.kind == "relative_days" and intent.window_days:
+        if not 1 <= intent.window_days <= MAX_ANALYSIS_WINDOW_DAYS:
+            return _unresolved(warnings, _INVALID_WINDOW_WARNING)
         policy = AnalysisTimePolicy(
             AnalysisTimeSource.USER,
             intent.window_days,

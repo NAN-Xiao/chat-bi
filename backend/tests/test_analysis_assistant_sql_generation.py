@@ -1,6 +1,7 @@
 """验证分析助手生成 SQL 时会显式接收语义字段表达式。"""
 
 import ast
+import sqlite3
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from apps.analysis_assistant.service.analysis_time_sql import (
     AnalysisTimeSqlError,
     enforce_analysis_time_sql,
 )
+from apps.db.db import get_sqlglot_dialect
 
 SCHEMA_TIME_FIELDS = {
     "fact_orders": ("business_date",),
@@ -324,25 +326,23 @@ def test_time_sql_rejects_ambiguous_qualified_schemas_for_unqualified_scan() -> 
         )
 
 
-def test_time_sql_binds_unique_three_part_schema_by_terminal_table_name() -> None:
-    rewritten = enforce_analysis_time_sql(
-        "SELECT * FROM analytics.fact_orders o",
-        policy=_resolved_time().policy,
-        declared_time_fields=[
-            {
-                "table": "warehouse.analytics.fact_orders",
-                "field": "business_date",
-            }
-        ],
-        schema_time_fields={
-            "warehouse.analytics.fact_orders": ("business_date",)
-        },
-        dialect="postgres",
-        allow_rewrite=True,
-    )
-
-    assert "2026-07-13" in rewritten
-    assert "2026-07-26" in rewritten
+def test_time_sql_rejects_qualified_scan_with_different_full_schema_identity() -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM analytics.fact_orders o",
+            policy=_resolved_time().policy,
+            declared_time_fields=[
+                {
+                    "table": "warehouse.analytics.fact_orders",
+                    "field": "business_date",
+                }
+            ],
+            schema_time_fields={
+                "warehouse.analytics.fact_orders": ("business_date",)
+            },
+            dialect="postgres",
+            allow_rewrite=True,
+        )
 
 
 def test_time_sql_does_not_mix_same_table_name_from_different_schemas() -> None:
@@ -496,6 +496,245 @@ def test_time_sql_rejects_dynamic_bound_cte_even_when_rewrite_is_allowed() -> No
             [{"table": "fact_orders", "field": "business_date"}],
             rewrite=True,
         )
+
+
+def test_time_sql_requires_explicit_field_even_for_one_temporal_candidate() -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM fact_orders",
+            policy=_resolved_time().policy,
+            declared_time_fields=[],
+            schema_time_fields={"fact_orders": ("business_date",)},
+            dialect="postgres",
+            allow_rewrite=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * FROM dim_region d LEFT JOIN fact_orders o ON o.region_id = d.id",
+        "SELECT * FROM fact_orders o RIGHT JOIN dim_region d ON d.id = o.region_id",
+        "SELECT * FROM fact_orders o FULL JOIN dim_region d ON d.id = o.region_id",
+    ],
+)
+def test_time_sql_does_not_rewrite_nullable_outer_join_side(sql: str) -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        _enforce(
+            sql,
+            [{"table": "fact_orders", "field": "business_date"}],
+            rewrite=True,
+        )
+
+
+def test_time_sql_rewrites_inner_join_added_after_right_join() -> None:
+    sql = (
+        "SELECT * FROM dim_old a RIGHT JOIN dim_current b ON b.id = a.id "
+        "INNER JOIN fact_orders o ON o.region_id = b.id"
+    )
+
+    rewritten = _enforce(
+        sql,
+        [{"table": "fact_orders", "field": "business_date"}],
+        rewrite=True,
+    )
+
+    assert "2026-07-13" in rewritten
+    assert "2026-07-26" in rewritten
+
+
+def test_time_sql_accepts_mandatory_inner_join_on_bounds() -> None:
+    sql = (
+        "SELECT * FROM dim_region d INNER JOIN fact_orders o "
+        "ON o.region_id = d.id "
+        "AND o.business_date >= DATE '2026-07-13' "
+        "AND o.business_date <= DATE '2026-07-26'"
+    )
+
+    assert "INNER JOIN" in _enforce(
+        sql,
+        [{"table": "fact_orders", "field": "business_date"}],
+    )
+
+
+def test_time_sql_fails_closed_when_declared_field_has_no_verified_metadata() -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM event_log",
+            policy=_resolved_time().policy,
+            declared_time_fields=[{"table": "public.event_log", "field": "dt"}],
+            schema_time_fields={},
+            dialect="postgres",
+            allow_rewrite=True,
+        )
+
+
+def test_timestamp_bounds_use_next_day_half_open_interval() -> None:
+    schema = """
+# Table: fact_orders
+[
+(created_at:timestamp, role=event_time)
+]
+"""
+    candidates = analysis_api._schema_time_field_candidates(schema, ["fact_orders"])
+    rewritten = enforce_analysis_time_sql(
+        "SELECT * FROM fact_orders o",
+        policy=_resolved_time().policy,
+        declared_time_fields=[{"table": "fact_orders", "field": "created_at"}],
+        schema_time_fields=candidates,
+        dialect="postgres",
+        allow_rewrite=True,
+    )
+
+    assert ">= CAST('2026-07-13 00:00:00' AS TIMESTAMP)" in rewritten
+    assert "< CAST('2026-07-27 00:00:00' AS TIMESTAMP)" in rewritten
+
+
+def test_time_sql_accepts_existing_timestamp_half_open_bounds() -> None:
+    schema = "# Table: fact_orders\n[\n(created_at:timestamp, role=event_time)\n]"
+    sql = (
+        "SELECT * FROM fact_orders o "
+        "WHERE o.created_at >= CAST('2026-07-13 00:00:00' AS TIMESTAMP) "
+        "AND o.created_at < CAST('2026-07-27 00:00:00' AS TIMESTAMP)"
+    )
+
+    assert "2026-07-27" in enforce_analysis_time_sql(
+        sql,
+        policy=_resolved_time().policy,
+        declared_time_fields=[{"table": "fact_orders", "field": "created_at"}],
+        schema_time_fields=analysis_api._schema_time_field_candidates(
+            schema, ["fact_orders"]
+        ),
+        dialect="postgres",
+        allow_rewrite=False,
+    )
+
+
+def test_timestamp_open_start_moves_to_next_day_and_uses_gte() -> None:
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 7, 26),
+        start_date=date(2026, 7, 14),
+        end_date=date(2026, 7, 26),
+        start_inclusive=False,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("fact_orders", "created_at"),
+        description="14 日之后",
+    )
+    schema = "# Table: fact_orders\n[\n(created_at:timestamp, role=event_time)\n]"
+    rewritten = enforce_analysis_time_sql(
+        "SELECT * FROM fact_orders",
+        policy=policy,
+        declared_time_fields=[{"table": "fact_orders", "field": "created_at"}],
+        schema_time_fields=analysis_api._schema_time_field_candidates(
+            schema, ["fact_orders"]
+        ),
+        dialect="postgres",
+        allow_rewrite=True,
+    )
+
+    assert ">= CAST('2026-07-15 00:00:00' AS TIMESTAMP)" in rewritten
+
+
+@pytest.mark.parametrize(
+    ("field_type", "metadata", "expected_lower", "expected_upper"),
+    [
+        ("varchar", "role=partition_date; encoding=yyyyMMdd", "'20260713'", "'20260726'"),
+        ("integer", "role=partition_date; encoding=yyyyMMdd", "20260713", "20260726"),
+        ("bigint", "role=event_time; encoding=epoch_milliseconds", "1783900800000", "1785110400000"),
+    ],
+)
+def test_structured_non_native_time_encoding_generates_matching_constants(
+    field_type: str,
+    metadata: str,
+    expected_lower: str,
+    expected_upper: str,
+) -> None:
+    schema = f"# Table: event_log\n[\n(event_time:{field_type}, {metadata})\n]"
+    candidates = analysis_api._schema_time_field_candidates(schema, ["event_log"])
+    rewritten = enforce_analysis_time_sql(
+        "SELECT * FROM event_log e",
+        policy=_resolved_time().policy,
+        declared_time_fields=[{"table": "event_log", "field": "event_time"}],
+        schema_time_fields=candidates,
+        dialect="postgres",
+        allow_rewrite=True,
+    )
+
+    assert expected_lower in rewritten
+    assert expected_upper in rewritten
+
+
+def test_unstructured_non_native_time_declaration_fails_closed() -> None:
+    schema = "# Table: event_log\n[\n(event_time:bigint, role=event_time)\n]"
+    candidates = analysis_api._schema_time_field_candidates(schema, ["event_log"])
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM event_log",
+            policy=_resolved_time().policy,
+            declared_time_fields=[{"table": "event_log", "field": "event_time"}],
+            schema_time_fields=candidates,
+            dialect="postgres",
+            allow_rewrite=True,
+        )
+
+
+def test_sqlite_iso_text_date_rewrite_executes_against_real_database() -> None:
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE orders (business_date TEXT, amount INTEGER)")
+        connection.executemany(
+            "INSERT INTO orders VALUES (?, ?)",
+            [
+                ("2026-07-12", 1),
+                ("2026-07-13", 2),
+                ("2026-07-26", 3),
+                ("2026-07-27", 4),
+            ],
+        )
+        schema = (
+            "# Table: orders\n[\n"
+            "(business_date:text, role=partition_date; encoding=iso_date)\n]"
+        )
+        rewritten = enforce_analysis_time_sql(
+            "SELECT business_date FROM orders ORDER BY business_date",
+            policy=_resolved_time().policy,
+            declared_time_fields=[{"table": "orders", "field": "business_date"}],
+            schema_time_fields=analysis_api._schema_time_field_candidates(
+                schema, ["orders"]
+            ),
+            dialect="sqlite",
+            allow_rewrite=True,
+        )
+
+        rows = connection.execute(rewritten).fetchall()
+    finally:
+        connection.close()
+
+    assert "CAST(" not in rewritten.upper()
+    assert rows == [("2026-07-13",), ("2026-07-26",)]
+
+
+def test_sqlite_datasource_type_preserves_sqlglot_dialect() -> None:
+    assert get_sqlglot_dialect("sqlite") == "sqlite"
+
+
+def test_time_sql_rewrite_preserves_quoted_case_sensitive_field() -> None:
+    schema = '# Table: orders\n[\n("BusinessDate":date, role=partition_date)\n]'
+    rewritten = enforce_analysis_time_sql(
+        "SELECT * FROM orders",
+        policy=_resolved_time().policy,
+        declared_time_fields=[{"table": "orders", "field": "BusinessDate"}],
+        schema_time_fields=analysis_api._schema_time_field_candidates(
+            schema, ["orders"]
+        ),
+        dialect="postgres",
+        allow_rewrite=True,
+    )
+
+    assert 'orders."BusinessDate"' in rewritten
 
 
 def test_sql_generation_semantic_mappings_preserve_json_expression() -> None:

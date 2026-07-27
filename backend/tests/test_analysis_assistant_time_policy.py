@@ -66,6 +66,55 @@ def test_sql_example_does_not_override_default_window() -> None:
 
 
 @pytest.mark.parametrize(
+    ("question", "expected_days"),
+    [
+        ("近7日收入", 7),
+        ("最近 7 天收入", 7),
+        ("最近一个月收入", 30),
+    ],
+)
+def test_recent_window_phrases_are_resolved(question: str, expected_days: int) -> None:
+    resolution = _resolve(question)
+
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.USER
+    assert resolution.policy.window_days == expected_days
+
+
+@pytest.mark.parametrize("question", ["最近0天收入", "近-1日收入", "最近999999999999999999999天收入"])
+def test_invalid_recent_window_is_unresolved_without_default_or_overflow(
+    question: str,
+) -> None:
+    resolution = _resolve(question)
+
+    assert resolution.status == "unresolved"
+    assert resolution.policy is None
+    assert resolution.warnings == ("用户指定的时间窗口无效，无法确定时间策略。",)
+
+
+def test_current_question_without_time_inherits_latest_complete_user_intent() -> None:
+    resolution = _resolve(
+        "按渠道拆分",
+        history=["分析 2026-06-01 到 2026-06-10", "最近7天收入"],
+    )
+
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.USER
+    assert resolution.policy.window_days == 7
+    assert resolution.policy.start_date == date(2026, 7, 20)
+
+
+def test_current_explicit_time_overrides_history_complete_intent() -> None:
+    resolution = _resolve(
+        "改成最近3日",
+        history=["分析 2026-06-01 到 2026-06-10"],
+    )
+
+    assert resolution.policy is not None
+    assert resolution.policy.window_days == 3
+
+
+@pytest.mark.parametrize(
     ("question", "expected_boundary", "inclusive", "expected_trace_start"),
     [
         ("分析14日之后的数据", date(2026, 7, 14), False, "2026-07-15"),
@@ -324,6 +373,22 @@ def test_schema_time_candidates_do_not_match_temporal_words_in_comments() -> Non
     }
 
 
+def test_schema_time_candidates_exclude_plain_time_types() -> None:
+    schema = """
+# Table: analytics.orders
+[
+(opened_at:time),
+(closed_at:timetz),
+(settled_on:date)
+]
+"""
+    candidates = analysis_api._schema_time_field_candidates(schema, ["orders"])
+
+    assert tuple(item.field for item in candidates["analytics.orders"]) == (
+        "settled_on",
+    )
+
+
 def test_schema_time_candidates_reject_ambiguous_bare_allowed_table() -> None:
     schema = """
 # Table: public.orders
@@ -527,6 +592,51 @@ async def test_time_policy_cache_hit_skips_latest_date_probe(
     assert resolution.policy.anchor_date == date(2026, 7, 26)
     assert client.get_calls == 1
     assert client.set_calls == 0
+
+
+@pytest.mark.anyio
+async def test_chat_time_policy_uses_only_user_messages_for_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        analysis_api,
+        "_select_analysis_time_anchor",
+        lambda *_args, **_kwargs: ANCHOR,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_analysis_time_permission_fingerprint",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("跳过缓存")),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_probe_latest_business_date",
+        lambda **_kwargs: date(2026, 7, 26),
+    )
+
+    resolution = await analysis_api._resolve_chat_time_policy(
+        session=object(),
+        current_user=SimpleNamespace(id=7, tenant_id=9),
+        datasource=SimpleNamespace(id=10, type="postgresql"),
+        business_context=SimpleNamespace(
+            data_skill="",
+            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
+            allowed_tables=["fact_orders"],
+            business_context_hash="context",
+        ),
+        llm=object(),
+        request=SimpleNamespace(
+            messages=[
+                SimpleNamespace(content="最近7天收入", role="user"),
+                SimpleNamespace(content="已改为最近30天", role="assistant"),
+                SimpleNamespace(content="按渠道拆分", role="user"),
+            ]
+        ),
+        semantic_context="",
+    )
+
+    assert resolution.policy is not None
+    assert resolution.policy.window_days == 7
 
 
 @pytest.mark.anyio

@@ -9,7 +9,7 @@ import re
 import traceback
 import zipfile
 from base64 import b64decode
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
@@ -41,6 +41,7 @@ from apps.analysis_assistant.service.analysis_time_policy import (
 )
 from apps.analysis_assistant.service.analysis_time_sql import (
     AnalysisTimeSqlError,
+    TimeFieldBinding,
     enforce_analysis_time_sql,
     sql_references_time_bearing_table,
 )
@@ -1716,7 +1717,7 @@ def _prepare_sql_for_execution(
     allowed_tables: list[str],
     *,
     time_resolution: AnalysisTimeResolution,
-    schema_time_fields: dict[str, tuple[str, ...]],
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     declared_time_fields: object,
     dialect: str | None,
     allow_time_rewrite: bool = False,
@@ -2100,11 +2101,18 @@ def _profile_table_expression(datasource: CoreDatasource, raw_table: str) -> tup
 
 ANALYSIS_TIME_ANCHOR_CACHE_TTL_SECONDS = 300
 ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS = 5
-ANALYSIS_TEMPORAL_TYPE_PATTERN = re.compile(
-    r"\b(?:date|datetime(?:2|64)?|smalldatetime|datetimeoffset|"
-    r"timestamp(?:tz)?|time(?:tz)?)\b",
+ANALYSIS_TIMESTAMP_TYPE_PATTERN = re.compile(
+    r"\b(?:datetime(?:2|64)?|smalldatetime|datetimeoffset|timestamp(?:tz)?)\b",
     flags=re.IGNORECASE,
 )
+ANALYSIS_DATE_TYPE_PATTERN = re.compile(r"\bdate\b", flags=re.IGNORECASE)
+ANALYSIS_TEXT_TYPE_PATTERN = re.compile(
+    r"\b(?:char|varchar|text|string)\b", flags=re.IGNORECASE
+)
+ANALYSIS_INTEGER_TYPE_PATTERN = re.compile(
+    r"\b(?:tinyint|smallint|integer|int|bigint|int\d+)\b", flags=re.IGNORECASE
+)
+ANALYSIS_TIME_FIELD_ROLES = {"event_time", "partition_date", "snapshot_date"}
 
 
 def _normalize_analysis_table_name(raw_table: str) -> str:
@@ -2128,8 +2136,19 @@ def _schema_field_type_text(raw_type_and_comment: str) -> str:
     return raw_type_and_comment.strip()
 
 
-def _schema_field_definitions(body: str) -> list[tuple[str, str]]:
-    definitions: list[tuple[str, str]] = []
+def _structured_field_metadata(raw_type_and_comment: str) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for match in re.finditer(
+        r"(?:^|[;,]\s*)(role|encoding|format|unit)\s*=\s*([^;,\s)]+)",
+        raw_type_and_comment,
+        flags=re.IGNORECASE,
+    ):
+        metadata[match.group(1).lower()] = match.group(2).strip().lower()
+    return metadata
+
+
+def _schema_field_definitions(body: str) -> list[tuple[str, str, dict[str, str]]]:
+    definitions: list[tuple[str, str, dict[str, str]]] = []
     depth = 0
     start: int | None = None
     for index, character in enumerate(body):
@@ -2144,15 +2163,69 @@ def _schema_field_definitions(body: str) -> list[tuple[str, str]]:
                 field, separator, raw_type_and_comment = definition.partition(":")
                 field_type = _schema_field_type_text(raw_type_and_comment)
                 if separator and field.strip() and field_type.strip():
-                    definitions.append((field.strip(), field_type.strip()))
+                    definitions.append(
+                        (
+                            field.strip(),
+                            field_type.strip(),
+                            _structured_field_metadata(raw_type_and_comment),
+                        )
+                    )
                 start = None
     return definitions
+
+
+def _time_field_binding(
+    raw_field: str,
+    field_type: str,
+    metadata: dict[str, str],
+) -> TimeFieldBinding | None:
+    field = raw_field.strip()
+    quoted = len(field) >= 2 and field[0] == field[-1] and field[0] in {'"', '`'}
+    if quoted:
+        field = field[1:-1]
+    normalized_type = field_type.strip().lower()
+    if ANALYSIS_TIMESTAMP_TYPE_PATTERN.search(normalized_type):
+        return TimeFieldBinding(field, normalized_type, "native_timestamp", quoted)
+    if ANALYSIS_DATE_TYPE_PATTERN.search(normalized_type):
+        return TimeFieldBinding(field, normalized_type, "native_date", quoted)
+
+    role = metadata.get("role")
+    encoding = metadata.get("encoding") or metadata.get("format")
+    if role not in ANALYSIS_TIME_FIELD_ROLES or not encoding:
+        return None
+    normalized_encoding = encoding.replace("-", "_").lower()
+    if normalized_encoding == "yyyymmdd":
+        if ANALYSIS_TEXT_TYPE_PATTERN.search(normalized_type):
+            resolved_encoding = "yyyymmdd_text"
+        elif ANALYSIS_INTEGER_TYPE_PATTERN.search(normalized_type):
+            resolved_encoding = "yyyymmdd_integer"
+        else:
+            return None
+    elif normalized_encoding in {"iso_date", "iso8601_date"}:
+        if not ANALYSIS_TEXT_TYPE_PATTERN.search(normalized_type):
+            return None
+        resolved_encoding = "iso_date"
+    elif normalized_encoding in {"epoch_seconds", "unix_seconds"}:
+        if not ANALYSIS_INTEGER_TYPE_PATTERN.search(normalized_type):
+            return None
+        resolved_encoding = "epoch_seconds"
+    elif normalized_encoding in {
+        "epoch_milliseconds",
+        "unix_milliseconds",
+        "epoch_ms",
+    }:
+        if not ANALYSIS_INTEGER_TYPE_PATTERN.search(normalized_type):
+            return None
+        resolved_encoding = "epoch_milliseconds"
+    else:
+        return None
+    return TimeFieldBinding(field, normalized_type, resolved_encoding, quoted)
 
 
 def _schema_time_field_candidates(
     schema: str,
     allowed_tables: list[str],
-) -> dict[str, tuple[str, ...]]:
+) -> dict[str, tuple[TimeFieldBinding, ...]]:
     table_blocks = [
         (_normalize_analysis_table_name(raw_table), body)
         for raw_table, body in re.findall(
@@ -2175,7 +2248,7 @@ def _schema_time_field_candidates(
         table for table in normalized_allowed if "." in table
     }
     bare_allowed = {table for table in normalized_allowed if "." not in table}
-    candidates: dict[str, tuple[str, ...]] = {}
+    candidates: dict[str, tuple[TimeFieldBinding, ...]] = {}
     for table, body in table_blocks:
         table_identity = table.lower()
         basename = table.rsplit(".", 1)[-1].lower()
@@ -2184,9 +2257,9 @@ def _schema_time_field_candidates(
         ):
             continue
         fields = tuple(
-            field
-            for field, field_type in _schema_field_definitions(body)
-            if ANALYSIS_TEMPORAL_TYPE_PATTERN.search(field_type)
+            binding
+            for field, field_type, metadata in _schema_field_definitions(body)
+            if (binding := _time_field_binding(field, field_type, metadata)) is not None
         )
         if fields:
             candidates[table] = fields
@@ -2197,9 +2270,16 @@ def _select_analysis_time_anchor(
     llm,
     question: str,
     semantic_context: str,
-    candidates: dict[str, tuple[str, ...]],
+    candidates: dict[str, tuple[TimeFieldBinding | str, ...]],
 ) -> AnalysisTimeAnchor:
-    payload = orjson.dumps(candidates).decode()
+    payload_candidates = {
+        table: [
+            binding.field if isinstance(binding, TimeFieldBinding) else str(binding)
+            for binding in bindings
+        ]
+        for table, bindings in candidates.items()
+    }
+    payload = orjson.dumps(payload_candidates).decode()
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(
@@ -2214,9 +2294,28 @@ def _select_analysis_time_anchor(
     selected = _extract_json_object(_llm_text(llm, messages))
     table = str(selected.get("table") or "").strip()
     field = str(selected.get("field") or "").strip()
-    if table not in candidates or field not in candidates[table]:
+    binding = next(
+        (
+            candidate
+            for candidate in candidates.get(table, ())
+            if (
+                candidate.field
+                if isinstance(candidate, TimeFieldBinding)
+                else str(candidate)
+            )
+            == field
+        ),
+        None,
+    )
+    if binding is None:
         raise ValueError("未选择有效的业务时间字段")
-    return AnalysisTimeAnchor(table=table, field=field)
+    return AnalysisTimeAnchor(
+        table=table,
+        field=field,
+        data_type=(binding.data_type if isinstance(binding, TimeFieldBinding) else None),
+        encoding=(binding.encoding if isinstance(binding, TimeFieldBinding) else None),
+        quoted=(binding.quoted if isinstance(binding, TimeFieldBinding) else False),
+    )
 
 
 def _analysis_time_permission_fingerprint(
@@ -2258,12 +2357,17 @@ def _analysis_time_anchor_cache_key(
     )
 
 
-def _coerce_business_date(value: Any) -> date:
+def _coerce_business_date(value: Any, encoding: str | None = None) -> date:
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
         return value
     text = str(value or "").strip()
+    if encoding in {"epoch_seconds", "epoch_milliseconds"}:
+        epoch_value = int(text)
+        if encoding == "epoch_milliseconds":
+            epoch_value /= 1000
+        return datetime.fromtimestamp(epoch_value, tz=timezone.utc).date()
     if re.fullmatch(r"\d{8}", text):
         return datetime.strptime(text, "%Y%m%d").date()
     return date.fromisoformat(text[:10])
@@ -2309,7 +2413,10 @@ def _probe_latest_business_date(
     rows = result.get("data") or []
     if not rows:
         raise ValueError("业务时间字段没有可用数据")
-    return _coerce_business_date(rows[0].get("anchor_value"))
+    return _coerce_business_date(
+        rows[0].get("anchor_value"),
+        anchor.encoding,
+    )
 
 
 async def _resolve_chat_time_policy(
@@ -2322,10 +2429,13 @@ async def _resolve_chat_time_policy(
     request,
     semantic_context: str,
 ) -> AnalysisTimeResolution:
-    question = request.messages[-1].content.strip()
-    history = [
-        item.content for item in request.messages[-6:-1] if item.content.strip()
+    user_messages = [
+        item.content.strip()
+        for item in request.messages
+        if getattr(item, "role", None) == "user" and item.content.strip()
     ]
+    question = user_messages[-1]
+    history = user_messages[-6:-1]
     intent = parse_analysis_time_intent(question, history)
     skill_days, warnings = parse_data_skill_time_directive(business_context.data_skill)
     if not intent.requires_anchor:
@@ -2381,7 +2491,8 @@ async def _resolve_chat_time_policy(
         raw_cached = await client.get(key)
         if raw_cached:
             cached_date = _coerce_business_date(
-                raw_cached.decode() if isinstance(raw_cached, bytes) else raw_cached
+                raw_cached.decode() if isinstance(raw_cached, bytes) else raw_cached,
+                anchor.encoding,
             )
     except (RedisError, RuntimeError, TypeError, ValueError):
         key = None
@@ -3537,7 +3648,7 @@ def _prepare_time_safe_query_sql(
     data_skill: str,
     allowed_tables: list[str],
     time_resolution: AnalysisTimeResolution,
-    schema_time_fields: dict[str, tuple[str, ...]],
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     dialect: str | None,
 ) -> str:
     """严格校验失败后只允许一次定向修复，再做唯一目标 AST 补齐。"""

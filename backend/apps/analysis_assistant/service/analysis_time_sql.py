@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, timezone
+from typing import Literal
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
@@ -14,10 +16,48 @@ class AnalysisTimeSqlError(ValueError):
         super().__init__("时间边界校验未通过，当前分析角度未执行。")
 
 
+@dataclass(frozen=True, eq=False)
+class TimeFieldBinding:
+    """工作空间已验证的时间字段及其物理编码。"""
+
+    field: str
+    data_type: str = "date"
+    encoding: Literal[
+        "native_date",
+        "native_timestamp",
+        "iso_date",
+        "yyyymmdd_text",
+        "yyyymmdd_integer",
+        "epoch_seconds",
+        "epoch_milliseconds",
+    ] = "native_date"
+    quoted: bool = False
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return self.field == other
+        if not isinstance(other, TimeFieldBinding):
+            return NotImplemented
+        return (
+            self.field,
+            self.data_type,
+            self.encoding,
+            self.quoted,
+        ) == (
+            other.field,
+            other.data_type,
+            other.encoding,
+            other.quoted,
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.field, self.data_type, self.encoding, self.quoted))
+
+
 @dataclass(frozen=True)
 class _SchemaEntry:
     key: tuple[str, ...]
-    fields: tuple[str, ...]
+    fields: tuple[TimeFieldBinding, ...]
 
 
 @dataclass(frozen=True)
@@ -32,10 +72,14 @@ class _Scan:
 @dataclass(frozen=True)
 class _Binding:
     table_key: tuple[str, ...]
-    field: str
+    time_field: TimeFieldBinding
     alias: str
     qualifier: exp.Identifier
     select: exp.Select
+
+    @property
+    def field(self) -> str:
+        return self.time_field.field
 
 
 @dataclass(frozen=True)
@@ -79,17 +123,38 @@ def _parse_table_key(value: object, dialect: str | None) -> tuple[str, ...]:
     return _table_key(table)
 
 
-def _normalize_fields(fields: tuple[str, ...]) -> tuple[str, ...]:
-    normalized: list[str] = []
+def _normalized_time_field(value: object) -> TimeFieldBinding | None:
+    if isinstance(value, TimeFieldBinding):
+        field = value.field.strip()
+        if not field:
+            return None
+        return TimeFieldBinding(
+            field=field,
+            data_type=value.data_type.strip().lower(),
+            encoding=value.encoding,
+            quoted=value.quoted,
+        )
+    field = str(value or "").strip()
+    if not field:
+        return None
+    quoted = len(field) >= 2 and field[0] == field[-1] and field[0] in {'"', '`'}
+    if quoted:
+        field = field[1:-1]
+    return TimeFieldBinding(field=field.lower(), quoted=quoted)
+
+
+def _normalize_fields(fields: tuple[object, ...]) -> tuple[TimeFieldBinding, ...]:
+    normalized: list[TimeFieldBinding] = []
     for field in fields:
-        value = str(field or "").strip().lower()
-        if value and value not in normalized:
+        value = _normalized_time_field(field)
+        if value is not None and value not in normalized:
             normalized.append(value)
     return tuple(normalized)
 
 
 def _schema_entries(
-    schema_time_fields: dict[str, tuple[str, ...]], dialect: str | None
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
+    dialect: str | None,
 ) -> dict[tuple[str, ...], _SchemaEntry]:
     entries: dict[tuple[str, ...], _SchemaEntry] = {}
     for table, raw_fields in schema_time_fields.items():
@@ -108,6 +173,10 @@ def _matching_schema_entry(
     exact = entries.get(table_key)
     if exact is not None:
         return exact
+    if len(table_key) > 1:
+        if any(key[-1] == table_key[-1] for key in entries):
+            raise AnalysisTimeSqlError()
+        return None
     basename_matches = [
         entry for key, entry in entries.items() if key[-1] == table_key[-1]
     ]
@@ -132,7 +201,7 @@ def _declared_fields(
         if not isinstance(raw_table, str) or not isinstance(raw_field, str):
             raise AnalysisTimeSqlError()
         key = _parse_table_key(raw_table, dialect)
-        field = raw_field.strip().lower()
+        field = raw_field.strip()
         if not field:
             raise AnalysisTimeSqlError()
         pair = (key, field)
@@ -145,25 +214,41 @@ def _select_field(
     table_key: tuple[str, ...],
     schema_entry: _SchemaEntry,
     declared: list[tuple[tuple[str, ...], str]],
-) -> str:
-    matching_declared = {
+) -> TimeFieldBinding:
+    matching_declared = [
         field
         for declared_key, field in declared
-        if declared_key == table_key
-        or declared_key == schema_entry.key
-        or declared_key == (table_key[-1],)
-    }
-    exact = [field for field in schema_entry.fields if field in matching_declared]
+        if (
+            declared_key == table_key
+            or (
+                len(table_key) == 1
+                and (
+                    declared_key == schema_entry.key
+                    or declared_key == (table_key[-1],)
+                )
+            )
+        )
+    ]
+    exact = [
+        field
+        for field in schema_entry.fields
+        if (
+            field.field in matching_declared
+            if field.quoted
+            else any(
+                field.field.casefold() == declared_field.casefold()
+                for declared_field in matching_declared
+            )
+        )
+    ]
     if len(exact) == 1:
         return exact[0]
-    if len(exact) > 1 or len(schema_entry.fields) != 1:
-        raise AnalysisTimeSqlError()
-    return schema_entry.fields[0]
+    raise AnalysisTimeSqlError()
 
 
 def _time_bearing_scans(
     tree: exp.Expression,
-    schema_time_fields: dict[str, tuple[str, ...]],
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     dialect: str | None,
 ) -> list[_Scan]:
     entries = _schema_entries(schema_time_fields, dialect)
@@ -200,17 +285,35 @@ def _time_bearing_scans(
 def _resolve_bindings(
     tree: exp.Expression,
     declared_time_fields: object,
-    schema_time_fields: dict[str, tuple[str, ...]],
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     dialect: str | None,
 ) -> list[_Binding]:
     scans = _time_bearing_scans(tree, schema_time_fields, dialect)
     if not scans:
+        query_keys = [_table_key(table) for table in tree.find_all(exp.Table)]
+        if isinstance(declared_time_fields, list):
+            for item in declared_time_fields:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    declared_key = _parse_table_key(item.get("table"), dialect)
+                except AnalysisTimeSqlError:
+                    continue
+                if any(
+                    declared_key == query_key
+                    or (
+                        len(query_key) == 1
+                        and declared_key[-1] == query_key[-1]
+                    )
+                    for query_key in query_keys
+                ):
+                    raise AnalysisTimeSqlError()
         return []
     declared = _declared_fields(declared_time_fields, dialect)
     return [
         _Binding(
             table_key=scan.table_key,
-            field=_select_field(scan.table_key, scan.schema_entry, declared),
+            time_field=_select_field(scan.table_key, scan.schema_entry, declared),
             alias=scan.alias,
             qualifier=scan.qualifier,
             select=scan.select,
@@ -221,7 +324,7 @@ def _resolve_bindings(
 
 def sql_references_time_bearing_table(
     sql: str,
-    schema_time_fields: dict[str, tuple[str, ...]],
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     dialect: str | None,
 ) -> bool:
     """使用与时间边界校验相同的 AST scope 规则识别物理时间表。"""
@@ -233,13 +336,11 @@ def sql_references_time_bearing_table(
 
 
 def _literal_date(node: exp.Expression) -> str | None:
-    if isinstance(node, exp.Literal) and node.is_string:
-        value = str(node.this)
-        return value if len(value) == 10 else None
+    if isinstance(node, exp.Literal):
+        return str(node.this)
     if (
         isinstance(node, exp.Cast)
         and isinstance(node.to, exp.DataType)
-        and node.to.this == exp.DataType.Type.DATE
     ):
         return _literal_date(node.this)
     if isinstance(node, exp.Date):
@@ -254,7 +355,14 @@ def _scope_bindings(binding: _Binding, bindings: list[_Binding]) -> list[_Bindin
 def _column_matches(
     column: exp.Column, binding: _Binding, bindings: list[_Binding]
 ) -> bool:
-    if column.name.lower() != binding.field:
+    identifier = column.this
+    if not isinstance(identifier, exp.Identifier):
+        return False
+    if binding.time_field.quoted:
+        field_matches = bool(identifier.args.get("quoted")) and column.name == binding.field
+    else:
+        field_matches = column.name.lower() == binding.field.lower()
+    if not field_matches:
         return False
     if column.table:
         return column.table.lower() == binding.alias
@@ -297,10 +405,40 @@ def _is_mandatory_where_predicate(node: exp.Expression, binding: _Binding) -> bo
     while ancestor is not None and ancestor is not binding.select:
         if isinstance(ancestor, exp.Where):
             found_where = True
+        elif isinstance(ancestor, exp.Join):
+            if ancestor.args.get("on") is None:
+                return False
+            side = str(ancestor.args.get("side") or "").upper()
+            kind = str(ancestor.args.get("kind") or "").upper()
+            return side == "" and kind in {"", "INNER"}
         elif not isinstance(ancestor, (exp.And, exp.Paren)):
             return False
         ancestor = ancestor.parent
     return ancestor is binding.select and found_where
+
+
+def _binding_is_nullable_outer_join_side(binding: _Binding) -> bool:
+    from_expression = binding.select.args.get("from_")
+    left_aliases: set[str] = set()
+    if isinstance(from_expression, exp.From):
+        left_aliases = {
+            table.alias_or_name.lower()
+            for table in from_expression.find_all(exp.Table)
+        }
+    for join in binding.select.args.get("joins") or []:
+        side = str(join.args.get("side") or "").upper()
+        joined_aliases = {
+            table.alias_or_name.lower()
+            for table in join.this.find_all(exp.Table)
+        }
+        if isinstance(join.this, exp.Table):
+            joined_aliases.add(join.this.alias_or_name.lower())
+        if side in {"LEFT", "FULL"} and binding.alias in joined_aliases:
+            return True
+        if side in {"RIGHT", "FULL"} and binding.alias in left_aliases:
+            return True
+        left_aliases.update(joined_aliases)
+    return False
 
 
 def _reverse_comparison_type(
@@ -315,16 +453,46 @@ def _reverse_comparison_type(
     return reverse.get(type(node))
 
 
+def _effective_bounds(
+    binding: _Binding,
+    policy: AnalysisTimePolicy,
+) -> tuple[type[exp.Expression], date, type[exp.Expression], date]:
+    if binding.time_field.encoding in {
+        "native_timestamp",
+        "epoch_seconds",
+        "epoch_milliseconds",
+    }:
+        start = policy.start_date + timedelta(days=not policy.start_inclusive)
+        return exp.GTE, start, exp.LT, policy.end_date + timedelta(days=1)
+    lower_type = exp.GTE if policy.start_inclusive else exp.GT
+    upper_type = exp.LTE if policy.end_inclusive else exp.LT
+    return lower_type, policy.start_date, upper_type, policy.end_date
+
+
+def _boundary_value(binding: _Binding, value: date) -> str:
+    encoding = binding.time_field.encoding
+    if encoding == "native_timestamp":
+        return datetime.combine(value, time.min).isoformat(sep=" ")
+    if encoding in {"yyyymmdd_text", "yyyymmdd_integer"}:
+        return value.strftime("%Y%m%d")
+    if encoding in {"epoch_seconds", "epoch_milliseconds"}:
+        seconds = int(
+            datetime.combine(value, time.min, tzinfo=timezone.utc).timestamp()
+        )
+        return str(seconds * (1000 if encoding == "epoch_milliseconds" else 1))
+    return value.isoformat()
+
+
 def _expected_comparison(
     comparison_type: type[exp.Expression],
     value: str | None,
     policy: AnalysisTimePolicy,
+    binding: _Binding,
 ) -> tuple[bool, bool] | None:
-    lower_type = exp.GTE if policy.start_inclusive else exp.GT
-    upper_type = exp.LTE if policy.end_inclusive else exp.LT
-    if comparison_type is lower_type and value == policy.start_date.isoformat():
+    lower_type, lower_date, upper_type, upper_date = _effective_bounds(binding, policy)
+    if comparison_type is lower_type and value == _boundary_value(binding, lower_date):
         return True, False
-    if comparison_type is upper_type and value == policy.end_date.isoformat():
+    if comparison_type is upper_type and value == _boundary_value(binding, upper_date):
         return False, True
     return None
 
@@ -358,7 +526,7 @@ def _comparison_coverage(
     if comparison_type is None:
         return _Coverage(invalid=True)
     expected = _expected_comparison(
-        comparison_type, _literal_date(boundary), policy
+        comparison_type, _literal_date(boundary), policy, binding
     )
     if expected is None:
         return _Coverage(invalid=True)
@@ -378,10 +546,12 @@ def _between_coverage(
         _is_direct_binding_column(node.this, binding, bindings)
         and _is_mandatory_where_predicate(node, binding)
         and not node.args.get("symmetric")
-        and policy.start_inclusive
-        and policy.end_inclusive
-        and _literal_date(node.args["low"]) == policy.start_date.isoformat()
-        and _literal_date(node.args["high"]) == policy.end_date.isoformat()
+        and _effective_bounds(binding, policy)[0] is exp.GTE
+        and _effective_bounds(binding, policy)[2] is exp.LTE
+        and _literal_date(node.args["low"])
+        == _boundary_value(binding, _effective_bounds(binding, policy)[1])
+        and _literal_date(node.args["high"])
+        == _boundary_value(binding, _effective_bounds(binding, policy)[3])
     )
     return _Coverage(has_lower=valid, has_upper=valid, invalid=not valid)
 
@@ -409,10 +579,21 @@ def _binding_coverage(
     return _Coverage(has_lower=has_lower, has_upper=has_upper, invalid=invalid)
 
 
-def _date_literal(value: str) -> exp.Cast:
+def _boundary_literal(
+    binding: _Binding,
+    value: date,
+    dialect: str | None,
+) -> exp.Expression:
+    encoded = _boundary_value(binding, value)
+    encoding = binding.time_field.encoding
+    if encoding in {"yyyymmdd_integer", "epoch_seconds", "epoch_milliseconds"}:
+        return exp.Literal.number(encoded)
+    if encoding in {"iso_date", "yyyymmdd_text"} or dialect == "sqlite":
+        return exp.Literal.string(encoded)
+    target_type = "timestamp" if encoding == "native_timestamp" else "date"
     return exp.Cast(
-        this=exp.Literal.string(value),
-        to=exp.DataType.build("date"),
+        this=exp.Literal.string(encoded),
+        to=exp.DataType.build(target_type),
     )
 
 
@@ -422,26 +603,29 @@ def _append_bounds(
     *,
     add_lower: bool,
     add_upper: bool,
+    dialect: str | None,
 ) -> None:
     predicates: list[exp.Expression] = []
     column = exp.Column(
-        this=exp.Identifier(this=binding.field, quoted=False),
+        this=exp.Identifier(
+            this=binding.field,
+            quoted=binding.time_field.quoted,
+        ),
         table=binding.qualifier.copy(),
     )
+    lower_type, lower_date, upper_type, upper_date = _effective_bounds(binding, policy)
     if add_lower:
-        lower_type = exp.GTE if policy.start_inclusive else exp.GT
         predicates.append(
             lower_type(
                 this=column.copy(),
-                expression=_date_literal(policy.start_date.isoformat()),
+                expression=_boundary_literal(binding, lower_date, dialect),
             )
         )
     if add_upper:
-        upper_type = exp.LTE if policy.end_inclusive else exp.LT
         predicates.append(
             upper_type(
                 this=column.copy(),
-                expression=_date_literal(policy.end_date.isoformat()),
+                expression=_boundary_literal(binding, upper_date, dialect),
             )
         )
     if not predicates:
@@ -457,7 +641,7 @@ def enforce_analysis_time_sql(
     *,
     policy: AnalysisTimePolicy,
     declared_time_fields: list[dict[str, str]],
-    schema_time_fields: dict[str, tuple[str, ...]],
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     dialect: str | None,
     allow_rewrite: bool,
 ) -> str:
@@ -488,10 +672,13 @@ def enforce_analysis_time_sql(
     if not allow_rewrite or len(missing) != 1:
         raise AnalysisTimeSqlError()
     binding, coverage = missing[0]
+    if _binding_is_nullable_outer_join_side(binding):
+        raise AnalysisTimeSqlError()
     _append_bounds(
         binding,
         policy,
         add_lower=not coverage.has_lower,
         add_upper=not coverage.has_upper,
+        dialect=dialect,
     )
     return tree.sql(dialect=dialect or None)

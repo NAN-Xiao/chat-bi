@@ -970,6 +970,8 @@ def get_sqlglot_dialect(ds_type: str) -> str:
         return 'oracle'
     elif ds_key == 'hive':
         return 'hive'
+    elif ds_key == 'sqlite':
+        return 'sqlite'
     return None
 
 
