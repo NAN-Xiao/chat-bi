@@ -82,6 +82,12 @@ def test_realtime_payment_components_use_realtime_event_table(view_id: str) -> N
     assert "ServerPayLog" in sql
 
 
+def test_realtime_skill_description_has_payment_retrieval_anchor() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    assert "今天实时付费趋势" in seed.DATA_SKILLS[0]["description"]
+
+
 class _StaleSkillCursor:
     def __init__(self) -> None:
         self.executed: list[str] = []

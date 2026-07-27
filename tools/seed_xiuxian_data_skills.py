@@ -31,7 +31,8 @@ DATASOURCE_ID = 6
 PUBLISH_LOCK_KEY = f"xiuxian-data-skills:{TENANT_ID}:{DATASOURCE_ID}"
 DATE_PARTITION_SKILL_DESCRIPTION = (
     "修仙 datasource_id=6 日期趋势口径："
-    "最近15天补齐新增趋势、按日补零、固定非递归日期骨架。"
+    "最近15天补齐新增趋势、按日补零、固定非递归日期骨架；"
+    "当前等级与活跃用户分布使用截至昨天的最新完整历史日。"
 )
 
 _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
@@ -87,6 +88,7 @@ _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
 
 - 用户指定绝对起止日期时，直接将用户日期转换为 `YYYYMMDD` 整数边界。
 - 用户指定相对日期窗口时，根据用户要求的窗口长度动态计算边界，结束日期默认为昨天。
+- “当前等级”“活跃用户分布”等当前快照分布问题必须使用截至昨天的最新完整历史日，不能因“当前”一词改查未完成当天的 `event_realtime`。
 - 用户未指定日期窗口时，默认查询截至昨天的最近 28 个自然日。
 - 起止日期均包含。最近 `N` 个完整自然日使用当前日期减 `N` 天作为开始日期、当前日期减 1 天作为结束日期。
 - 日期骨架使用从 0 开始的偏移量时，必须先锚定昨天，再减 `day_offset`；禁止直接用 `CURDATE() - day_offset`，否则 offset 0 会错误包含今天。
@@ -278,6 +280,13 @@ SERVERPAYLOG_MARKER = (
     "<!-- data-skill-source:xiuxian:serverpaylog-monetization-arppu -->"
 )
 EMPTY_DASHBOARD_VIEW_ID = "1e4e34743f2d47dfa1c2948742b93a50"
+PAYER_PROMPT_EXCLUDED_VIEW_IDS = frozenset(
+    {
+        "f499305aa9b44a209cbe72cb68985a46",
+        "304e66bb74254b9e88d8711ce33d94cc",
+        "fc272fe6a3a74cda90a0564a98890fab",
+    }
+)
 DATA_SKILLS: list[dict[str, str]] = [DATE_PARTITION_SKILL]
 
 DISTINCT_UID_PATTERN = (
@@ -361,6 +370,20 @@ def _topic_authority(topic_slug: str) -> str:
 """.strip()
 
 
+def _topic_prompt_view_ids(topic: Any) -> tuple[str, ...]:
+    """返回应进入 Skill prompt 的抽屉；保留目录登记但排除冲突或重复 SQL。"""
+
+    return tuple(
+        view_id
+        for view_id in topic.view_ids
+        if view_id != EMPTY_DASHBOARD_VIEW_ID
+        and not (
+            topic.slug == "payer-penetration"
+            and view_id in PAYER_PROMPT_EXCLUDED_VIEW_IDS
+        )
+    )
+
+
 def build_data_skills(dashboards: Sequence[Any]) -> list[dict[str, str]]:
     """从完整推荐看板快照生成 1 条基础 Skill 和 12 条主题 Skill。"""
 
@@ -370,11 +393,7 @@ def build_data_skills(dashboards: Sequence[Any]) -> list[dict[str, str]]:
     for topic in TOPICS:
         effective_topic = replace(
             topic,
-            view_ids=tuple(
-                view_id
-                for view_id in topic.view_ids
-                if view_id != EMPTY_DASHBOARD_VIEW_ID
-            ),
+            view_ids=_topic_prompt_view_ids(topic),
         )
         blocks = [
             dashboard_sql_block(view_id, drawers[view_id].sql)

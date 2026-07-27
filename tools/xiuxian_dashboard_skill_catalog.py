@@ -102,7 +102,7 @@ TOPICS = (
     TopicDefinition(
         "serverpaylog-revenue",
         "修仙 ServerPayLog 收入与 ARPU/ARPPU",
-        "真实收入、付费人均指标与新增首日付费 cohort。",
+        "真实收入、按渠道统计累计付费用户数、付费人均指标与新增首日付费 cohort。",
         (
             "22d89d4a69224e53994d21fb44b376aa",
             "2192510609759838208",
@@ -115,7 +115,7 @@ TOPICS = (
     TopicDefinition(
         "payer-penetration",
         "修仙付费用户、渗透与累计付费",
-        "付费用户、渗透率与累计金额。",
+        "按渠道统计累计付费用户数、付费渗透率与累计金额。",
         (
             "95d8497afac14f0a90342031fb43bc04",
             "f499305aa9b44a209cbe72cb68985a46",

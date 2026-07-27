@@ -145,7 +145,9 @@ def test_build_data_skills_produces_one_base_and_twelve_topics():
     prompts = [skill["prompt"] for skill in skills]
 
     assert len(skills) == 13
-    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in prompts) == 43
+    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in prompts) == (
+        43 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
+    )
     assert all("1e4e34743f2d47dfa1c2948742b93a50" not in prompt for prompt in prompts)
     assert all(len(prompt) <= 15_000 for prompt in prompts)
     assert len({prompt.splitlines()[0] for prompt in prompts}) == 13
@@ -309,7 +311,9 @@ def test_build_data_skills_ignores_the_known_empty_dashboard_view():
 
     skills = module.build_data_skills(dashboards)
 
-    assert sum(skill["prompt"].count("<!-- dashboard-sql:") for skill in skills) == 43
+    assert sum(skill["prompt"].count("<!-- dashboard-sql:") for skill in skills) == (
+        43 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
+    )
 
 
 class _FakeCursor:

@@ -132,7 +132,10 @@ STALE_SKILL_MARKERS = (
 DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "flam 实时数据时区与日期口径",
-        "description": "flam / first_zombie 数据源的业务时区、dt 分区与实时看板 SQL 生成规则。",
+        "description": (
+            "flam / first_zombie 今天实时付费趋势、按小时付费、业务时区、"
+            "dt 分区与实时看板 SQL 生成规则。"
+        ),
         "prompt": """<!-- dashboard-refresh-policy:{"auto_refresh":true,"snapshot_max_age_hours":3} -->
 <!-- data-skill-source:flam:first-zombie:timezone-realtime -->
 # flam 实时数据时区与日期口径
