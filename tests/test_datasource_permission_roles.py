@@ -2300,6 +2300,13 @@ def test_analysis_assistant_permission_failure_is_structured_and_sanitized(monke
                 ds,
                 "select amount from orders",
                 ["orders", "payments"],
+                time_resolution=analysis_assistant_api.AnalysisTimeResolution(
+                    policy=None,
+                    status="unresolved",
+                ),
+                schema_time_fields={},
+                declared_time_fields=[],
+                dialect="sqlite",
             )
         except ValueError as exc:
             block = {"summary": "old summary"}
@@ -2350,6 +2357,10 @@ def test_analysis_assistant_final_prompt_carries_permission_gap(monkeypatch):
                 "data": [],
             },
         ],
+        time_resolution=analysis_assistant_api.AnalysisTimeResolution(
+            policy=None,
+            status="unresolved",
+        ),
     )
 
     user_prompt = captured["messages"][1].content
@@ -2403,6 +2414,10 @@ def test_analysis_assistant_final_prompt_keeps_complete_lifecycle_rows_and_guard
                 "data": rows,
             },
         ],
+        time_resolution=analysis_assistant_api.AnalysisTimeResolution(
+            policy=None,
+            status="unresolved",
+        ),
     )
 
     system_prompt = captured["messages"][0].content

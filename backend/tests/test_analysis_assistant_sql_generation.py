@@ -697,3 +697,174 @@ def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
     assert tracking_context[12000:] not in prompt
     assert "2026-07-13" in prompt
     assert "2026-07-26" in prompt
+
+
+def test_prepare_time_safe_sql_repairs_before_ast_rewrite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+
+    def fake_prepare(*_args, allow_time_rewrite=False, **_kwargs):
+        calls.append(allow_time_rewrite)
+        if len(calls) == 1:
+            raise AnalysisTimeSqlError()
+        return (
+            "SELECT * FROM fact_orders "
+            "WHERE business_date >= DATE '2026-07-13' "
+            "AND business_date <= DATE '2026-07-26'"
+        )
+
+    monkeypatch.setattr(analysis_api, "_prepare_sql_for_execution", fake_prepare)
+    monkeypatch.setattr(
+        analysis_api,
+        "_repair_sql",
+        lambda *_args, **_kwargs: "SELECT * FROM fact_orders",
+    )
+
+    result = analysis_api._prepare_time_safe_query_sql(
+        llm=object(),
+        session=object(),
+        current_user=object(),
+        datasource=SimpleNamespace(type="postgresql"),
+        raw_query={
+            "sql": "SELECT * FROM fact_orders",
+            "time_fields": [
+                {"table": "fact_orders", "field": "business_date"}
+            ],
+        },
+        question="分析收入",
+        schema="",
+        sample_data="",
+        data_profile="",
+        custom_agent="",
+        tracking_context="",
+        data_skill="",
+        allowed_tables=["fact_orders"],
+        time_resolution=_resolved_time(),
+        schema_time_fields=SCHEMA_TIME_FIELDS,
+        dialect="postgres",
+    )
+
+    assert "2026-07-13" in result
+    assert calls == [False, True]
+
+
+def test_prepare_time_safe_sql_never_executes_unbounded_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repair_calls: list[str] = []
+
+    def fake_repair(*_args, **_kwargs):
+        repair_calls.append("repair")
+        return "SELECT * FROM fact_orders"
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_repair_sql",
+        fake_repair,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"fact_orders"}),
+    )
+
+    with pytest.raises(AnalysisTimeSqlError):
+        analysis_api._prepare_time_safe_query_sql(
+            llm=object(),
+            session=object(),
+            current_user=object(),
+            datasource=SimpleNamespace(type="postgresql"),
+            raw_query={"sql": "SELECT * FROM fact_orders", "time_fields": []},
+            question="分析收入",
+            schema="",
+            sample_data="",
+            data_profile="",
+            custom_agent="",
+            tracking_context="",
+            data_skill="",
+            allowed_tables=["fact_orders"],
+            time_resolution=_resolved_time(),
+            schema_time_fields={
+                "fact_orders": ("business_date", "created_at")
+            },
+            dialect="postgres",
+        )
+
+    assert repair_calls == ["repair"]
+
+
+def test_prepare_sql_unresolved_policy_uses_ast_table_references(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    validated: list[str] = []
+
+    def fake_validate(**kwargs):
+        validated.append(kwargs["sql"])
+        return kwargs["sql"], {"dim_region"}
+
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_user_query_sql_or_raise",
+        fake_validate,
+    )
+    unresolved = AnalysisTimeResolution(policy=None, status="unresolved")
+
+    prepared = analysis_api._prepare_sql_for_execution(
+        object(),
+        object(),
+        object(),
+        SimpleNamespace(type="postgresql"),
+        "SELECT 'fact_orders' AS source_name FROM dim_region",
+        ["dim_region"],
+        time_resolution=unresolved,
+        schema_time_fields={"fact_orders": ("business_date",)},
+        declared_time_fields=[],
+        dialect="postgres",
+    )
+
+    assert "dim_region" in prepared
+    assert len(validated) == 1
+
+    with pytest.raises(AnalysisTimeSqlError):
+        analysis_api._prepare_sql_for_execution(
+            object(),
+            object(),
+            object(),
+            SimpleNamespace(type="postgresql"),
+            "SELECT * FROM fact_orders",
+            ["fact_orders"],
+            time_resolution=unresolved,
+            schema_time_fields={"fact_orders": ("business_date",)},
+            declared_time_fields=[],
+            dialect="postgres",
+        )
+
+    assert len(validated) == 1
+
+
+def test_prepare_sql_rejects_malformed_declared_time_fields_before_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    validate_calls: list[bool] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: validate_calls.append(True) or (kwargs["sql"], set()),
+    )
+
+    with pytest.raises(AnalysisTimeSqlError):
+        analysis_api._prepare_sql_for_execution(
+            object(),
+            object(),
+            object(),
+            SimpleNamespace(type="postgresql"),
+            "SELECT * FROM fact_orders",
+            ["fact_orders"],
+            time_resolution=_resolved_time(),
+            schema_time_fields={"fact_orders": ("business_date",)},
+            declared_time_fields=[None],
+            dialect="postgres",
+        )
+
+    assert validate_calls == []

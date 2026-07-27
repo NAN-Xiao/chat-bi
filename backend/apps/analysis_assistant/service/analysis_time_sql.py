@@ -119,12 +119,20 @@ def _matching_schema_entry(
 
 
 def _declared_fields(
-    declared_time_fields: list[dict[str, str]], dialect: str | None
+    declared_time_fields: object, dialect: str | None
 ) -> list[tuple[tuple[str, ...], str]]:
+    if not isinstance(declared_time_fields, list):
+        raise AnalysisTimeSqlError()
     declared: list[tuple[tuple[str, ...], str]] = []
     for item in declared_time_fields:
-        key = _parse_table_key(item.get("table"), dialect)
-        field = str(item.get("field") or "").strip().lower()
+        if not isinstance(item, dict):
+            raise AnalysisTimeSqlError()
+        raw_table = item.get("table")
+        raw_field = item.get("field")
+        if not isinstance(raw_table, str) or not isinstance(raw_field, str):
+            raise AnalysisTimeSqlError()
+        key = _parse_table_key(raw_table, dialect)
+        field = raw_field.strip().lower()
         if not field:
             raise AnalysisTimeSqlError()
         pair = (key, field)
@@ -153,12 +161,11 @@ def _select_field(
     return schema_entry.fields[0]
 
 
-def _resolve_bindings(
+def _time_bearing_scans(
     tree: exp.Expression,
-    declared_time_fields: list[dict[str, str]],
     schema_time_fields: dict[str, tuple[str, ...]],
     dialect: str | None,
-) -> list[_Binding]:
+) -> list[_Scan]:
     entries = _schema_entries(schema_time_fields, dialect)
     scans: list[_Scan] = []
     for scope in traverse_scope(tree):
@@ -187,6 +194,16 @@ def _resolve_bindings(
         if len(aliases) != len(set(aliases)):
             raise AnalysisTimeSqlError()
         scans.extend(scope_scans)
+    return scans
+
+
+def _resolve_bindings(
+    tree: exp.Expression,
+    declared_time_fields: object,
+    schema_time_fields: dict[str, tuple[str, ...]],
+    dialect: str | None,
+) -> list[_Binding]:
+    scans = _time_bearing_scans(tree, schema_time_fields, dialect)
     if not scans:
         return []
     declared = _declared_fields(declared_time_fields, dialect)
@@ -200,6 +217,19 @@ def _resolve_bindings(
         )
         for scan in scans
     ]
+
+
+def sql_references_time_bearing_table(
+    sql: str,
+    schema_time_fields: dict[str, tuple[str, ...]],
+    dialect: str | None,
+) -> bool:
+    """使用与时间边界校验相同的 AST scope 规则识别物理时间表。"""
+    try:
+        tree = parse_one(sql, read=dialect or None)
+    except (ParseError, TypeError, ValueError) as exc:
+        raise AnalysisTimeSqlError() from exc
+    return bool(_time_bearing_scans(tree, schema_time_fields, dialect))
 
 
 def _literal_date(node: exp.Expression) -> str | None:
@@ -433,7 +463,7 @@ def enforce_analysis_time_sql(
 ) -> str:
     try:
         tree = parse_one(sql, read=dialect or None)
-    except ParseError as exc:
+    except (ParseError, TypeError, ValueError) as exc:
         raise AnalysisTimeSqlError() from exc
 
     bindings = _resolve_bindings(

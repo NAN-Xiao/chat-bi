@@ -599,6 +599,271 @@ def test_collect_data_skill_context_passes_full_current_user(monkeypatch) -> Non
     assert captured["current_user"] is current_user
 
 
+def _mock_time_safe_chat_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    queries: list[dict],
+) -> analysis_api.AnalysisAssistantRequest:
+    datasource = analysis_api.CoreDatasource(
+        id=1,
+        name="测试项目",
+        type="postgresql",
+        type_name="PostgreSQL",
+        configuration="{}",
+    )
+
+    class _BusinessContext(SimpleNamespace):
+        def snapshot_metadata(self):
+            return {
+                "context_hash": "ctx",
+                "datasource_id": "1",
+                "sql_dialect": "postgres",
+                "allowed_tables": ["fact_orders"],
+            }
+
+    business_context = _BusinessContext(
+        datasource=datasource,
+        schema=(
+            "【Schema】\n# Table: fact_orders\n[\n"
+            "(business_date:date, 业务日期),\n"
+            "(amount:numeric, 金额)\n]"
+        ),
+        allowed_tables=["fact_orders"],
+        data_skill="",
+        tracking_config="",
+        business_context_hash="ctx",
+        sql_dialect="postgres",
+    )
+
+    class _Llm:
+        def stream(self, _messages):
+            yield SimpleNamespace(content="已完成")
+
+    async def _no_rate_limit(*_args, **_kwargs):
+        return None
+
+    async def _fake_create_llm(*_args, **_kwargs):
+        return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
+
+    async def _fake_resolve_time_policy(**_kwargs):
+        return _resolved_time()
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_sanitize_analysis_request_context_for_current_permissions",
+        lambda _session, _user, request: request,
+    )
+    monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", _no_rate_limit)
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_datasource",
+        lambda *_args, **_kwargs: datasource,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_custom_agent_context",
+        lambda *_args, **_kwargs: ("", None),
+    )
+    monkeypatch.setattr(
+        analysis_api.BusinessSqlContextService,
+        "build",
+        staticmethod(lambda **_kwargs: business_context),
+    )
+    monkeypatch.setattr(analysis_api, "_create_llm", _fake_create_llm)
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        _fake_resolve_time_policy,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "build_agent_context_snapshot",
+        lambda **_kwargs: {"snapshot": "ok"},
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_build_plan",
+        lambda *_args, **_kwargs: {"intro": "测试分析", "queries": queries},
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_semantic_validation_error",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_build_chart_config",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_summarise_block",
+        lambda *_args, **_kwargs: "数据块摘要",
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **_kwargs: None,
+    )
+    return analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        messages=[
+            analysis_api.AnalysisAssistantMessage(role="user", content="分析收入")
+        ],
+    )
+
+
+def test_chat_time_policy_failure_is_non_blocking_for_other_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            {"id": "q1", "title": "无界角度", "sql": "SELECT unsafe"},
+            {"id": "q2", "title": "安全角度", "sql": "SELECT safe"},
+        ],
+    )
+    execute_calls: list[str] = []
+
+    def fake_prepare_time_safe_query_sql(**kwargs):
+        if kwargs["raw_query"]["id"] == "q1":
+            raise analysis_api.AnalysisTimeSqlError()
+        return "SELECT bounded"
+
+    def fake_execute(**kwargs):
+        execute_calls.append(kwargs["sql"])
+        return SimpleNamespace(
+            result={"fields": ["amount"], "data": [{"amount": 10}]}
+        )
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        fake_prepare_time_safe_query_sql,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        fake_execute,
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert '"type":"block"' in payload
+    assert '"status":"failed"' in payload
+    assert '"error_type":"time_policy_unresolved"' in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert execute_calls == ["SELECT bounded"]
+
+
+def test_chat_all_time_policy_failures_finish_without_executing_sql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            {"id": "q1", "title": "角度一", "sql": "SELECT unsafe_one"},
+            {"id": "q2", "title": "角度二", "sql": "SELECT unsafe_two"},
+        ],
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            analysis_api.AnalysisTimeSqlError()
+        ),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("时间策略失败时不得调用 SQL 执行器")
+        ),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert payload.count('"error_type":"time_policy_unresolved"') == 2
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
+
+
+@pytest.mark.parametrize("repair_trigger", ["database", "semantic"])
+def test_chat_repaired_sql_is_time_enforced_before_retry_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    repair_trigger: str,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            {
+                "id": "q1",
+                "title": "收入趋势",
+                "sql": (
+                    "SELECT amount FROM fact_orders "
+                    "WHERE business_date >= DATE '2026-07-13' "
+                    "AND business_date <= DATE '2026-07-26'"
+                ),
+                "time_fields": [
+                    {"table": "fact_orders", "field": "business_date"}
+                ],
+            }
+        ],
+    )
+    execute_calls: list[str] = []
+    repair_calls: list[str] = []
+    semantic_calls = 0
+
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"fact_orders"}),
+    )
+
+    def fake_repair(*_args, **_kwargs):
+        repair_calls.append("repair")
+        return "SELECT amount FROM fact_orders"
+
+    def fake_execute(**kwargs):
+        execute_calls.append(kwargs["sql"])
+        if repair_trigger == "database" and len(execute_calls) == 1:
+            raise RuntimeError("database error")
+        return SimpleNamespace(
+            result={"fields": ["amount"], "data": [{"amount": 10}]}
+        )
+
+    def fake_semantic_validation(*_args, **_kwargs):
+        nonlocal semantic_calls
+        semantic_calls += 1
+        if repair_trigger == "semantic" and semantic_calls == 1:
+            return "semantic mismatch"
+        return None
+
+    monkeypatch.setattr(analysis_api, "_repair_sql", fake_repair)
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_semantic_validation_error",
+        fake_semantic_validation,
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert repair_calls == ["repair"]
+    assert len(execute_calls) == 2
+    assert all("2026-07-13" in sql and "2026-07-26" in sql for sql in execute_calls)
+    assert '"status":"failed"' not in payload
+    assert '"type":"finish"' in payload
+
+
 async def _collect_stream_body(response) -> list[bytes]:
     chunks: list[bytes] = []
     async for chunk in response.body_iterator:

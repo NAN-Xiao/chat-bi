@@ -39,6 +39,11 @@ from apps.analysis_assistant.service.analysis_time_policy import (
     parse_data_skill_time_directive,
     resolve_analysis_time_policy,
 )
+from apps.analysis_assistant.service.analysis_time_sql import (
+    AnalysisTimeSqlError,
+    enforce_analysis_time_sql,
+    sql_references_time_bearing_table,
+)
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
@@ -963,6 +968,19 @@ def _mark_query_error_block(block: dict[str, Any], query_error: Exception, curre
     block["summary"] = "这个角度的数据暂时无法稳定计算，已先跳过；其它维度的分析会继续完成。"
 
 
+def _mark_time_policy_unresolved_block(block: dict[str, Any]) -> None:
+    """时间边界无法安全确定时只跳过当前数据块，不泄露内部校验细节。"""
+    block.update(
+        {
+            "status": "failed",
+            "error": "当前分析角度无法确认安全的时间边界，已跳过。",
+            "error_type": "time_policy_unresolved",
+            "warning": "当前分析角度未执行，不影响其它分析结果。",
+            "summary": "",
+        }
+    )
+
+
 def _llm_text(llm, messages: list[BaseMessage]) -> str:
     """
     是什么：_llm_text 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -1696,13 +1714,31 @@ def _prepare_sql_for_execution(
     datasource: CoreDatasource,
     raw_sql: str,
     allowed_tables: list[str],
+    *,
+    time_resolution: AnalysisTimeResolution,
+    schema_time_fields: dict[str, tuple[str, ...]],
+    declared_time_fields: object,
+    dialect: str | None,
+    allow_time_rewrite: bool = False,
 ) -> str:
     """
     是什么：_prepare_sql_for_execution 是一个可以复用的小步骤，负责分析助手相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    declared = _validated_declared_time_fields(declared_time_fields)
     sql = _normalise_sql(raw_sql)
+    if time_resolution.policy is not None:
+        sql = enforce_analysis_time_sql(
+            sql,
+            policy=time_resolution.policy,
+            declared_time_fields=declared,
+            schema_time_fields=schema_time_fields,
+            dialect=dialect,
+            allow_rewrite=allow_time_rewrite,
+        )
+    elif sql_references_time_bearing_table(sql, schema_time_fields, dialect):
+        raise AnalysisTimeSqlError()
     prepared_sql, _tables = validate_user_query_sql_or_raise(
         session=session,
         current_user=current_user,
@@ -1711,6 +1747,24 @@ def _prepare_sql_for_execution(
         allowed_tables=allowed_tables,
     )
     return _normalise_sql(prepared_sql)
+
+
+def _validated_declared_time_fields(value: object) -> list[dict[str, str]]:
+    """校验模型声明结构，避免畸形元数据绕过或破坏时间校验。"""
+    if not isinstance(value, list):
+        raise AnalysisTimeSqlError()
+    declared: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise AnalysisTimeSqlError()
+        table = item.get("table")
+        field = item.get("field")
+        if not isinstance(table, str):
+            raise AnalysisTimeSqlError()
+        if not isinstance(field, str):
+            raise AnalysisTimeSqlError()
+        declared.append({"table": table.strip(), "field": field.strip()})
+    return declared
 
 
 def _collect_custom_agent_context(
@@ -3467,6 +3521,75 @@ def _repair_sql(
     return _normalise_sql(repaired_sql)
 
 
+def _prepare_time_safe_query_sql(
+    *,
+    llm,
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    raw_query: dict[str, Any],
+    question: str,
+    schema: str,
+    sample_data: str,
+    data_profile: str,
+    custom_agent: str,
+    tracking_context: str,
+    data_skill: str,
+    allowed_tables: list[str],
+    time_resolution: AnalysisTimeResolution,
+    schema_time_fields: dict[str, tuple[str, ...]],
+    dialect: str | None,
+) -> str:
+    """严格校验失败后只允许一次定向修复，再做唯一目标 AST 补齐。"""
+    raw_declared = raw_query.get("time_fields")
+    declared = _validated_declared_time_fields(
+        [] if raw_declared is None else raw_declared
+    )
+    raw_sql = str(raw_query.get("sql") or "")
+    try:
+        return _prepare_sql_for_execution(
+            llm,
+            session,
+            current_user,
+            datasource,
+            raw_sql,
+            allowed_tables,
+            time_resolution=time_resolution,
+            schema_time_fields=schema_time_fields,
+            declared_time_fields=declared,
+            dialect=dialect,
+            allow_time_rewrite=False,
+        )
+    except AnalysisTimeSqlError as error:
+        repaired = _repair_sql(
+            llm,
+            question,
+            raw_query,
+            raw_sql,
+            error,
+            schema,
+            sample_data,
+            data_profile,
+            custom_agent,
+            tracking_context,
+            data_skill,
+            time_resolution=time_resolution,
+        )
+        return _prepare_sql_for_execution(
+            llm,
+            session,
+            current_user,
+            datasource,
+            repaired,
+            allowed_tables,
+            time_resolution=time_resolution,
+            schema_time_fields=schema_time_fields,
+            declared_time_fields=declared,
+            dialect=dialect,
+            allow_time_rewrite=True,
+        )
+
+
 def _summarise_block(
     llm,
     question: str,
@@ -3906,6 +4029,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             allowed_tables = business_context.allowed_tables
             if not allowed_tables:
                 raise RuntimeError("当前用户在该项目下没有可分析的数据表权限")
+            schema_time_fields = _schema_time_field_candidates(schema, allowed_tables)
+            dialect = business_context.sql_dialect
             sample_data = ""
             data_profile = ""
             if tracking_context.strip():
@@ -3973,8 +4098,23 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 }
                 try:
                     raw_query["_user_question"] = question
-                    sql = _prepare_sql_for_execution(
-                        llm, session, current_user, datasource, str(raw_query.get("sql") or ""), allowed_tables
+                    sql = _prepare_time_safe_query_sql(
+                        llm=llm,
+                        session=session,
+                        current_user=current_user,
+                        datasource=datasource,
+                        raw_query=raw_query,
+                        question=question,
+                        schema=schema,
+                        sample_data=sample_data,
+                        data_profile=data_profile,
+                        custom_agent=custom_agent,
+                        tracking_context=tracking_context,
+                        data_skill=data_skill,
+                        allowed_tables=allowed_tables,
+                        time_resolution=time_resolution,
+                        schema_time_fields=schema_time_fields,
+                        dialect=dialect,
                     )
                     block["sql"] = sql
                     raw_query["sql"] = sql
@@ -4006,7 +4146,17 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             time_resolution=time_resolution,
                         )
                         sql = _prepare_sql_for_execution(
-                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                            llm,
+                            session,
+                            current_user,
+                            datasource,
+                            repaired_sql,
+                            allowed_tables,
+                            time_resolution=time_resolution,
+                            schema_time_fields=schema_time_fields,
+                            declared_time_fields=raw_query.get("time_fields") or [],
+                            dialect=dialect,
+                            allow_time_rewrite=True,
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
@@ -4036,7 +4186,17 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             time_resolution=time_resolution,
                         )
                         sql = _prepare_sql_for_execution(
-                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                            llm,
+                            session,
+                            current_user,
+                            datasource,
+                            repaired_sql,
+                            allowed_tables,
+                            time_resolution=time_resolution,
+                            schema_time_fields=schema_time_fields,
+                            declared_time_fields=raw_query.get("time_fields") or [],
+                            dialect=dialect,
+                            allow_time_rewrite=True,
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
@@ -4063,6 +4223,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         semantic_context,
                         time_resolution=time_resolution,
                     )
+                except AnalysisTimeSqlError:
+                    _mark_time_policy_unresolved_block(block)
                 except Exception as query_error:
                     _mark_query_error_block(block, query_error, current_user)
 
