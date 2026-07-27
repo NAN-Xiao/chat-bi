@@ -88,6 +88,8 @@ const createSmartSortFunc = (sortMethod: string) => {
 
 const TABLE_MIN_COLUMN_WIDTH = 92
 const TABLE_HORIZONTAL_INSET = 8
+const TABLE_HEADER_CELL_HEIGHT = 32
+const TABLE_DATA_CELL_HEIGHT = 30
 const TABLE_FILTER_ICON = 'TableFilter'
 const TABLE_FILTER_ACTIVE_ICON = 'TableFilterActive'
 const TABLE_SORT_NONE_ICON = 'TableSortNone'
@@ -128,6 +130,19 @@ function resolveTableContainerSize(container: Element | null) {
   const width = Math.round(container.clientWidth)
   const height = Math.round(container.clientHeight)
   return width > 0 && height > 0 ? { width, height } : null
+}
+
+function resolveTableViewportHeight(containerHeight: number) {
+  const minimumTableHeight = TABLE_HEADER_CELL_HEIGHT + TABLE_DATA_CELL_HEIGHT
+  if (containerHeight <= minimumTableHeight) {
+    return containerHeight
+  }
+  const availableDataHeight = containerHeight - TABLE_HEADER_CELL_HEIGHT
+  const completeDataRows = Math.max(
+    1,
+    Math.floor(availableDataHeight / TABLE_DATA_CELL_HEIGHT)
+  )
+  return TABLE_HEADER_CELL_HEIGHT + completeDataRows * TABLE_DATA_CELL_HEIGHT
 }
 
 function resolveTableDisplayValue(
@@ -199,23 +214,24 @@ export class Table extends BaseChart {
         const visibleColumnCount = this.axis?.filter((axis) => !axis.hidden).length ?? 0
         const contentWidth = Math.max(width - TABLE_HORIZONTAL_INSET, 320)
         const columnWidth = resolveTableColumnWidth(contentWidth, visibleColumnCount)
+        const viewportHeight = resolveTableViewportHeight(height)
 
         this.table.setOptions({
           width: contentWidth,
-          height,
+          height: viewportHeight,
           style: {
             layoutWidthType: 'adaptive',
             colCell: {
-              height: 32,
+              height: TABLE_HEADER_CELL_HEIGHT,
               width: columnWidth,
             },
             dataCell: {
-              height: 30,
+              height: TABLE_DATA_CELL_HEIGHT,
               width: columnWidth,
             },
           },
         })
-        this.table.changeSheetSize(contentWidth, height)
+        this.table.changeSheetSize(contentWidth, viewportHeight)
         await this.table.render(false)
       }
     }, 200)
@@ -501,19 +517,20 @@ export class Table extends BaseChart {
       320
     )
     const containerHeight = containerSize?.height || 360
+    const viewportHeight = resolveTableViewportHeight(containerHeight)
     const columnWidth = resolveTableColumnWidth(containerWidth, visibleAxis.length)
 
     const s2Options: S2Options = {
       width: containerWidth,
-      height: containerHeight,
+      height: viewportHeight,
       style: {
         layoutWidthType: 'adaptive',
         colCell: {
-          height: 32,
+          height: TABLE_HEADER_CELL_HEIGHT,
           width: columnWidth,
         },
         dataCell: {
-          height: 30,
+          height: TABLE_DATA_CELL_HEIGHT,
           width: columnWidth,
         },
       },

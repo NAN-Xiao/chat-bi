@@ -7,7 +7,7 @@ const table = readFileSync('src/views/chat/component/charts/Table.ts', 'utf8')
 
 assert.match(
   table,
-  /changeSheetSize\(contentWidth, height\)[\s\S]*?render\(false\)/,
+  /changeSheetSize\(contentWidth, viewportHeight\)[\s\S]*?render\(false\)/,
   'AntV S2 表格必须继续使用原地尺寸调整'
 )
 assert.match(table, /lastResizeWidth/, 'S2 表格必须记录上一次容器宽度')
@@ -16,6 +16,21 @@ assert.match(
   table,
   /interaction:\s*\{[\s\S]*?scrollbarPosition:\s*['"]content['"]/,
   'S2 表格滚动条必须位于内容边缘，避免底部滚动条遮挡最后一行'
+)
+assert.match(
+  table,
+  /function resolveTableViewportHeight\([\s\S]*?Math\.floor\([\s\S]*?TABLE_DATA_CELL_HEIGHT/,
+  'S2 表格高度必须对齐完整数据行，避免卡片底部显示半行'
+)
+assert.match(
+  table,
+  /const viewportHeight = resolveTableViewportHeight\(height\)[\s\S]*?height: viewportHeight[\s\S]*?changeSheetSize\(contentWidth, viewportHeight\)/,
+  '容器缩放时必须使用完整行高度更新 S2 画布'
+)
+assert.match(
+  table,
+  /const viewportHeight = resolveTableViewportHeight\(containerHeight\)[\s\S]*?height: viewportHeight/,
+  'S2 首次渲染必须使用完整行高度'
 )
 assert.match(
   table,
@@ -44,7 +59,7 @@ assert.match(
 )
 assert.match(
   table,
-  /debounce\(\s*async\s*\(width\?: number, height\?: number\)[\s\S]*this\.table\.setOptions\([\s\S]*colCell:[\s\S]*width: columnWidth[\s\S]*dataCell:[\s\S]*width: columnWidth[\s\S]*changeSheetSize\(contentWidth, height\)[\s\S]*render\(false\)/,
+  /debounce\(\s*async\s*\(width\?: number, height\?: number\)[\s\S]*this\.table\.setOptions\([\s\S]*colCell:[\s\S]*width: columnWidth[\s\S]*dataCell:[\s\S]*width: columnWidth[\s\S]*changeSheetSize\(contentWidth, viewportHeight\)[\s\S]*render\(false\)/,
   '容器变宽后必须原地更新列宽和画布尺寸'
 )
 assert.match(

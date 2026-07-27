@@ -13,6 +13,14 @@ function normalizeDashboardGridSize(value: unknown): number {
   return Number.isFinite(size) ? Math.max(1, Math.round(size)) : 1
 }
 
+export function getDashboardGridContentRows(components: DashboardGridComponent[]): number {
+  return components.reduce((contentRows, component) => {
+    const componentBottom =
+      normalizeDashboardGridCoordinate(component.y) - 1 + normalizeDashboardGridSize(component.sizeY)
+    return Math.max(contentRows, componentBottom)
+  }, 0)
+}
+
 export function getNextDashboardComponentY(components: DashboardGridComponent[]): number {
   return components.reduce((bottomPosition, component) => {
     const componentBottom =

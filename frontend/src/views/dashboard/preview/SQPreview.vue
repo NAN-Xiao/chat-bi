@@ -10,7 +10,10 @@ import { storeToRefs } from 'pinia'
 import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
 import { useEmittLazy } from '@/utils/useEmitt.ts'
-import { normalizeDashboardGridCoordinate } from '@/views/dashboard/utils/dashboardGridPosition.ts'
+import {
+  getDashboardGridContentRows,
+  normalizeDashboardGridCoordinate,
+} from '@/views/dashboard/utils/dashboardGridPosition.ts'
 
 const props = defineProps({
   canvasStyleData: {
@@ -77,6 +80,7 @@ const state = reactive({
 
 const cellWidth = ref(0)
 const cellHeight = ref(0)
+const viewportHeight = ref(0)
 const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
@@ -95,6 +99,11 @@ const canvasStyle = computed(() => {
 const displayComponentData = computed(() =>
   Array.isArray(props.componentData) ? props.componentData : []
 )
+const canvasScrollSpacerStyle = computed(() => {
+  const contentRows = getDashboardGridContentRows(displayComponentData.value)
+  const contentHeight = cellHeight.value * contentRows + basePaddingTop.value
+  return { height: Math.max(viewportHeight.value, contentHeight) + 'px' }
+})
 
 const restore = () => {}
 
@@ -125,6 +134,7 @@ const sizeInit = () => {
     const screenWidth = previewCanvas.value.offsetWidth
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenHeight = previewCanvas.value.offsetHeight
+    viewportHeight.value = screenHeight
     const gridGap = props.inTab ? TAB_PREVIEW_GRID_GAP : PREVIEW_GRID_GAP
     baseMarginLeft.value = gridGap
     baseMarginTop.value = gridGap
@@ -168,6 +178,7 @@ defineExpose({
     :class="{ 'is-tab-preview': inTab }"
     :style="canvasStyle"
   >
+    <div aria-hidden="true" class="canvas-scroll-spacer" :style="canvasScrollSpacerStyle"></div>
     <template v-if="renderReady">
       <SQComponentWrapper
         v-for="(item, index) in displayComponentData"
@@ -201,6 +212,12 @@ defineExpose({
   overflow-x: hidden;
   overflow-y: auto;
   position: relative;
+
+  .canvas-scroll-spacer {
+    width: 1px;
+    pointer-events: none;
+  }
+
   &::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
