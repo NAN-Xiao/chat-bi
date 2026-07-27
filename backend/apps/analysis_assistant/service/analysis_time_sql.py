@@ -108,15 +108,14 @@ def _matching_schema_entry(
     exact = entries.get(table_key)
     if exact is not None:
         return exact
-    unqualified = entries.get((table_key[-1],))
-    if unqualified is None:
+    basename_matches = [
+        entry for key, entry in entries.items() if key[-1] == table_key[-1]
+    ]
+    if not basename_matches:
         return None
-    qualified_same_name = any(
-        len(key) > 1 and key[-1] == table_key[-1] for key in entries
-    )
-    if len(table_key) > 1 and qualified_same_name:
+    if len(basename_matches) != 1:
         raise AnalysisTimeSqlError()
-    return unqualified
+    return basename_matches[0]
 
 
 def _declared_fields(
@@ -143,7 +142,8 @@ def _select_field(
         field
         for declared_key, field in declared
         if declared_key == table_key
-        or (schema_entry.key == (table_key[-1],) and declared_key == schema_entry.key)
+        or declared_key == schema_entry.key
+        or declared_key == (table_key[-1],)
     }
     exact = [field for field in schema_entry.fields if field in matching_declared]
     if len(exact) == 1:
@@ -265,10 +265,10 @@ def _is_mandatory_where_predicate(node: exp.Expression, binding: _Binding) -> bo
     ancestor = node.parent
     found_where = False
     while ancestor is not None and ancestor is not binding.select:
-        if isinstance(ancestor, (exp.Or, exp.Not)):
-            return False
         if isinstance(ancestor, exp.Where):
             found_where = True
+        elif not isinstance(ancestor, (exp.And, exp.Paren)):
+            return False
         ancestor = ancestor.parent
     return ancestor is binding.select and found_where
 
@@ -379,20 +379,6 @@ def _binding_coverage(
     return _Coverage(has_lower=has_lower, has_upper=has_upper, invalid=invalid)
 
 
-def _has_dynamic_boundary(tree: exp.Expression, bindings: list[_Binding]) -> bool:
-    if any(
-        isinstance(node, exp.Join)
-        and str(node.args.get("kind") or "").upper() == "CROSS"
-        for node in tree.walk()
-    ):
-        return True
-    bound_fields = {binding.field for binding in bindings}
-    return any(
-        any(column.name.lower() in bound_fields for column in maximum.find_all(exp.Column))
-        for maximum in tree.find_all(exp.Max)
-    )
-
-
 def _date_literal(value: str) -> exp.Cast:
     return exp.Cast(
         this=exp.Literal.string(value),
@@ -458,8 +444,6 @@ def enforce_analysis_time_sql(
     )
     if not bindings:
         return tree.sql(dialect=dialect or None)
-    if _has_dynamic_boundary(tree, bindings):
-        raise AnalysisTimeSqlError()
 
     missing: list[tuple[_Binding, _Coverage]] = []
     for binding in bindings:

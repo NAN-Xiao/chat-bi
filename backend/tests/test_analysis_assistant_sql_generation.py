@@ -188,6 +188,26 @@ def test_time_sql_accepts_exact_between_bounds() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * FROM fact_orders o WHERE CASE WHEN FALSE THEN o.business_date >= DATE '2026-07-13' AND o.business_date <= DATE '2026-07-26' ELSE TRUE END",
+        "SELECT * FROM fact_orders o WHERE COALESCE(o.business_date >= DATE '2026-07-13' AND o.business_date <= DATE '2026-07-26', TRUE)",
+    ],
+)
+def test_time_sql_rejects_non_conjunctive_where_wrappers(sql: str) -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        _enforce(sql, [{"table": "fact_orders", "field": "business_date"}])
+
+
+def test_time_sql_accepts_parenthesized_conjunctive_bounds() -> None:
+    sql = "SELECT * FROM fact_orders o WHERE ((o.business_date >= DATE '2026-07-13') AND (o.business_date <= DATE '2026-07-26'))"
+
+    assert "2026-07-13" in _enforce(
+        sql, [{"table": "fact_orders", "field": "business_date"}]
+    )
+
+
 def test_time_sql_normalizes_qualified_table_without_losing_schema() -> None:
     rewritten = enforce_analysis_time_sql(
         "SELECT * FROM Analytics.Fact_Orders AS Orders",
@@ -196,6 +216,72 @@ def test_time_sql_normalizes_qualified_table_without_losing_schema() -> None:
             {"table": "analytics.fact_orders", "field": "business_date"}
         ],
         schema_time_fields={"ANALYTICS.FACT_ORDERS": ("BUSINESS_DATE",)},
+        dialect="postgres",
+        allow_rewrite=True,
+    )
+
+    assert "2026-07-13" in rewritten
+    assert "2026-07-26" in rewritten
+
+
+def test_time_sql_binds_unique_qualified_schema_to_unqualified_scan() -> None:
+    rewritten = enforce_analysis_time_sql(
+        "SELECT * FROM fact_orders o",
+        policy=_resolved_time().policy,
+        declared_time_fields=[
+            {"table": "analytics.fact_orders", "field": "business_date"}
+        ],
+        schema_time_fields={"analytics.fact_orders": ("business_date",)},
+        dialect="postgres",
+        allow_rewrite=True,
+    )
+
+    assert "2026-07-13" in rewritten
+    assert "2026-07-26" in rewritten
+
+
+def test_time_sql_rejects_missing_bounds_for_unqualified_unique_schema_scan() -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM fact_orders o",
+            policy=_resolved_time().policy,
+            declared_time_fields=[
+                {"table": "analytics.fact_orders", "field": "business_date"}
+            ],
+            schema_time_fields={"analytics.fact_orders": ("business_date",)},
+            dialect="postgres",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_rejects_ambiguous_qualified_schemas_for_unqualified_scan() -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM fact_orders o",
+            policy=_resolved_time().policy,
+            declared_time_fields=[],
+            schema_time_fields={
+                "analytics.fact_orders": ("business_date",),
+                "archive.fact_orders": ("archived_date",),
+            },
+            dialect="postgres",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_binds_unique_three_part_schema_by_terminal_table_name() -> None:
+    rewritten = enforce_analysis_time_sql(
+        "SELECT * FROM analytics.fact_orders o",
+        policy=_resolved_time().policy,
+        declared_time_fields=[
+            {
+                "table": "warehouse.analytics.fact_orders",
+                "field": "business_date",
+            }
+        ],
+        schema_time_fields={
+            "warehouse.analytics.fact_orders": ("business_date",)
+        },
         dialect="postgres",
         allow_rewrite=True,
     )
@@ -319,6 +405,41 @@ def test_time_sql_rejects_duplicate_aliases_in_one_select_scope() -> None:
             sql,
             [{"table": "fact_orders", "field": "business_date"}],
             rewrite=False,
+        )
+
+
+def test_time_sql_allows_selected_max_when_where_has_exact_bounds() -> None:
+    sql = "SELECT MAX(o.business_date) AS latest_date FROM fact_orders o WHERE o.business_date >= DATE '2026-07-13' AND o.business_date <= DATE '2026-07-26'"
+
+    assert "MAX" in _enforce(
+        sql, [{"table": "fact_orders", "field": "business_date"}]
+    )
+
+
+def test_time_sql_allows_unrelated_dimension_cross_join_with_exact_bounds() -> None:
+    sql = "SELECT o.id, d.region_name FROM fact_orders o CROSS JOIN dim_region d WHERE o.business_date >= DATE '2026-07-13' AND o.business_date <= DATE '2026-07-26'"
+
+    assert "CROSS JOIN" in _enforce(
+        sql, [{"table": "fact_orders", "field": "business_date"}]
+    )
+
+
+def test_time_sql_ignores_same_named_max_column_from_other_alias() -> None:
+    sql = "SELECT MAX(d.business_date) AS dimension_date FROM fact_orders o JOIN dim_events d ON d.order_id = o.id WHERE o.business_date >= DATE '2026-07-13' AND o.business_date <= DATE '2026-07-26'"
+
+    assert "MAX" in _enforce(
+        sql, [{"table": "fact_orders", "field": "business_date"}]
+    )
+
+
+def test_time_sql_rejects_dynamic_bound_cte_even_when_rewrite_is_allowed() -> None:
+    sql = "WITH bounds AS (SELECT MAX(snapshot_date) AS end_date FROM dim_calendar) SELECT * FROM fact_orders o CROSS JOIN bounds b WHERE o.business_date >= DATE '2026-07-13' AND o.business_date <= b.end_date"
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        _enforce(
+            sql,
+            [{"table": "fact_orders", "field": "business_date"}],
+            rewrite=True,
         )
 
 
