@@ -10,6 +10,16 @@ const previewSource = readFileSync(
 
 assert.match(source, /v-model="dateFilterState\.draftRange"/)
 assert.match(source, /@click="applyDashboardDateRange"/)
+assert.match(source, /import\s*{\s*ElConfigProvider,\s*ElDatePickerPanel\s*}\s*from\s*'element-plus'/)
+assert.match(source, /const datePickerLocale = computed\(/)
+assert.match(source, /<ElConfigProvider :locale="datePickerLocale">[\s\S]*<ElDatePickerPanel/)
+assert.match(source, /v-model:visible="dateFilterPanelVisible"/)
+assert.match(source, /<ElDatePickerPanel[\s\S]*v-model="dateFilterState\.draftRange"/)
+assert.match(
+  source,
+  /class="date-filter-panel-footer"[\s\S]*@click="applyDashboardDateRange"/
+)
+assert.doesNotMatch(source, /<el-date-picker[\s\S]*class="date-filter-picker"/)
 assert.match(source, /dateFilterCapability[\s\S]*status\s*===\s*'available'/)
 assert.match(source, /pivotOverride\?:/)
 assert.match(source, /buildAppliedDashboardDatePivot/)
@@ -27,6 +37,7 @@ assert.match(source, /beginDashboardChartRequest\(props\.viewInfo\)/)
 assert.match(source, /isDashboardChartRequestCurrent\(props\.viewInfo, requestVersion\)/)
 
 const applyHandler = source.match(/async function applyDashboardDateRange\(\)[\s\S]*?\n}/)?.[0] || ''
+assert.match(applyHandler, /dateFilterPanelVisible\.value\s*=\s*false[\s\S]*await refreshData/)
 assert.match(applyHandler, /refreshData\([\s\S]*forceRefresh:\s*true/)
 assert.match(applyHandler, /blocking:\s*true/)
 assert.match(applyHandler, /commitDashboardDateRange/)

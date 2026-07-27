@@ -5,6 +5,12 @@ import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.sv
 import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { ElMessage } from 'element-plus-secondary'
+import { ElConfigProvider, ElDatePickerPanel } from 'element-plus'
+import 'element-plus/es/components/date-picker-panel/style/css'
+import elementEnLocale from 'element-plus/es/locale/lang/en'
+import elementKoLocale from 'element-plus/es/locale/lang/ko'
+import elementZhCnLocale from 'element-plus/es/locale/lang/zh-cn'
+import elementZhTwLocale from 'element-plus/es/locale/lang/zh-tw'
 const CHART_STATUS = Object.freeze({
   LOADING: 'loading',
   SUCCESS: 'success',
@@ -88,7 +94,7 @@ import {
   withResolvedMetricSemantics,
 } from '@/views/dashboard/utils/metricSemantics.ts'
 import { inferPivotDimensions, type PivotDimension } from '@/views/dashboard/utils/pivotDimensions.ts'
-import { ArrowLeft, ArrowRight, Search } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowRight, Calendar, Search } from '@element-plus/icons-vue'
 import {
   applyExternalMcpSnapshotResult,
   applyMixedChartResult,
@@ -367,12 +373,27 @@ const showDashboardDateFilter = computed(() =>
 const dateFilterState = ref(
   getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
 )
+const dateFilterPanelVisible = ref(false)
 registerDashboardDateFilterState(props.viewInfo, dateFilterState.value)
 let currentDateFilterContext = dashboardDateFilterContext(props.viewInfo, dateFilterCapability.value)
 let currentDateFilterViewInfo = props.viewInfo
 const dateFilterApplyDisabled = computed(() =>
   isDashboardDateApplyDisabled(dateFilterState.value, dateFilterCapability.value)
 )
+const dateFilterRangeLabel = computed(() => {
+  const [start = t('dashboard.date_filter_start'), end = t('dashboard.date_filter_end')] =
+    dateFilterState.value.draftRange || []
+  return `${start} - ${end}`
+})
+const datePickerLocale = computed(() => {
+  const locales = {
+    en: elementEnLocale,
+    'ko-KR': elementKoLocale,
+    'zh-CN': elementZhCnLocale,
+    'zh-TW': elementZhTwLocale,
+  }
+  return locales[String(locale.value) as keyof typeof locales] || elementZhCnLocale
+})
 
 function initializeDashboardDateFilterState() {
   const nextContext = dashboardDateFilterContext(props.viewInfo, dateFilterCapability.value)
@@ -1661,6 +1682,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
 
 async function applyDashboardDateRange() {
   if (dateFilterApplyDisabled.value) return
+  dateFilterPanelVisible.value = false
   beginDashboardDateApply(dateFilterState.value)
   const pendingRange = dateFilterState.value.pendingRange
   if (!pendingRange) {
@@ -2120,25 +2142,52 @@ defineExpose({
       </div>
     </div>
     <div v-if="showDashboardDateFilter" class="date-filter-toolbar">
-      <el-date-picker
-        v-model="dateFilterState.draftRange"
-        class="date-filter-picker"
-        type="daterange"
-        value-format="YYYY-MM-DD"
-        :start-placeholder="t('dashboard.date_filter_start')"
-        :end-placeholder="t('dashboard.date_filter_end')"
-        :disabled-date="isDashboardDateDisabled"
-        unlink-panels
-        @change="onDashboardDateRangeChange"
-      />
-      <el-button
-        type="primary"
-        :loading="dateFilterState.applying"
-        :disabled="dateFilterApplyDisabled"
-        @click="applyDashboardDateRange"
+      <el-popover
+        v-model:visible="dateFilterPanelVisible"
+        trigger="click"
+        placement="bottom-start"
+        width="auto"
+        popper-class="dashboard-date-filter-popper"
+        :disabled="dateFilterState.applying"
       >
-        {{ t('dashboard.date_filter_apply') }}
-      </el-button>
+        <template #reference>
+          <button
+            type="button"
+            class="date-filter-trigger"
+            :disabled="dateFilterState.applying"
+            :aria-expanded="dateFilterPanelVisible"
+          >
+            <el-icon class="date-filter-trigger-icon"><Calendar /></el-icon>
+            <span class="date-filter-trigger-label">{{ dateFilterRangeLabel }}</span>
+            <el-icon class="date-filter-trigger-arrow"><ArrowDown /></el-icon>
+          </button>
+        </template>
+        <div class="date-filter-panel">
+          <ElConfigProvider :locale="datePickerLocale">
+            <ElDatePickerPanel
+              v-model="dateFilterState.draftRange"
+              type="daterange"
+              value-format="YYYY-MM-DD"
+              :disabled-date="isDashboardDateDisabled"
+              :border="false"
+              :clearable="false"
+              :show-footer="false"
+              unlink-panels
+              @update:model-value="onDashboardDateRangeChange"
+            />
+          </ElConfigProvider>
+          <div class="date-filter-panel-footer">
+            <el-button
+              type="primary"
+              :loading="dateFilterState.applying"
+              :disabled="dateFilterApplyDisabled"
+              @click="applyDashboardDateRange"
+            >
+              {{ t('dashboard.date_filter_apply') }}
+            </el-button>
+          </div>
+        </div>
+      </el-popover>
     </div>
     <div v-if="pivotEnabled" class="pivot-toolbar">
       <el-popover
@@ -2564,28 +2613,65 @@ defineExpose({
   }
 
   .date-filter-toolbar {
-    min-height: 32px;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 30px;
     margin: -2px 0 8px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
 
-    .date-filter-picker {
-      width: min(280px, 100%);
+    .date-filter-trigger {
+      width: 242px;
+      max-width: 100%;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
+      border-radius: 6px;
+      background: var(--workspace-surface, #fff);
+      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 20px;
+      text-align: left;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease;
+
+      &:hover,
+      &:focus-visible {
+        border-color: var(--ed-color-primary, #3370ff);
+        box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.08);
+        outline: none;
+      }
+
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+    }
+
+    .date-filter-trigger-icon,
+    .date-filter-trigger-arrow {
+      flex: 0 0 auto;
+      color: var(--workspace-text-secondary, rgba(100, 106, 115, 1));
+    }
+
+    .date-filter-trigger-label {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 
   @container (max-width: 560px) {
     .date-filter-toolbar {
-      align-items: stretch;
+      width: min(242px, 100%);
 
-      .date-filter-picker {
-        flex: 1 1 100%;
-      }
-
-      :deep(.ed-button) {
-        margin-left: 0;
+      .date-filter-trigger {
+        width: 100%;
       }
     }
   }
@@ -2675,6 +2761,35 @@ defineExpose({
   border: 1px solid rgba(31, 35, 41, 0.08) !important;
   border-radius: 8px !important;
   box-shadow: 0 12px 32px rgba(31, 35, 41, 0.12) !important;
+}
+
+:global(.dashboard-date-filter-popper) {
+  --el-color-primary: var(--ed-color-primary, #3370ff);
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid rgba(31, 35, 41, 0.08) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 32px rgba(31, 35, 41, 0.14) !important;
+}
+
+:global(.dashboard-date-filter-popper .date-filter-panel) {
+  background: #fff;
+}
+
+:global(.dashboard-date-filter-popper .el-picker-panel) {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+:global(.dashboard-date-filter-popper .date-filter-panel-footer) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(31, 35, 41, 0.08);
+  background: #fff;
 }
 
 :global(.dashboard-pivot-popper .pivot-menu),

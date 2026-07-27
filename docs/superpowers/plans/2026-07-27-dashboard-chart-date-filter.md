@@ -576,7 +576,8 @@ Expected: FAIL，日期操作区尚不存在。
 
 实现要求：
 
-- 在标题下方独立日期工具栏使用 `el-date-picker type="daterange"` 和“应用”按钮。
+- 在标题下方使用紧凑日期入口和受控 `el-popover`；弹层内使用 `el-date-picker-panel type="daterange"`。
+- “应用”按钮放在日期面板底部右侧操作区，点击后先关闭弹层，再执行当前图表查询。
 - `disabled-date` 禁止 `maxEnd` 之后的日期。
 - 只有 capability `available` 时渲染；实时和其他状态不渲染占位文字。
 - `refreshData` 增加可选 `pivotOverride`，请求时使用临时 pivot，不写 `props.viewInfo.pivot`。
@@ -585,7 +586,7 @@ Expected: FAIL，日期操作区尚不存在。
 - 成功响应中的 `date_filter_capability` 必须规范化写入当前内存对象的 `viewInfo.dateFilterCapability`，不得持久化。
 - 请求序列号继续防止旧响应覆盖新响应。
 - 删除现有日期选择后自动调用 `schedulePivotRefresh()` 的路径；粒度和分组行为保持现状。
-- 容器窄于约 560px 时工具栏换行，标题和右侧操作不重叠。
+- 日期入口固定为紧凑宽度，窄容器时限制为可用宽度；不得拉伸占满整张图表。
 
 - [ ] **Step 4: 运行组件回归与构建**
 
