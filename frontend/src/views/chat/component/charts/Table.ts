@@ -535,6 +535,7 @@ export class Table extends BaseChart {
         },
       },
       showDefaultHeaderActionIcon: false,
+      csp: { iconStrategy: 'path' },
       customSVGIcons: [
         { name: TABLE_FILTER_ICON, src: TABLE_FILTER_ICON_SVG },
         { name: TABLE_FILTER_ACTIVE_ICON, src: TABLE_FILTER_ICON_SVG },
