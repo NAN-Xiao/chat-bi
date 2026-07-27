@@ -569,6 +569,52 @@ def test_time_sql_fails_closed_when_declared_field_has_no_verified_metadata() ->
         )
 
 
+def test_time_sql_fails_closed_for_unverified_declared_scan_in_mixed_join() -> None:
+    sql = (
+        "SELECT * FROM fact_orders o "
+        "JOIN legacy_events l ON l.order_id = o.id "
+        "WHERE o.business_date >= DATE '2026-07-13' "
+        "AND o.business_date <= DATE '2026-07-26'"
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=_resolved_time().policy,
+            declared_time_fields=[
+                {"table": "fact_orders", "field": "business_date"},
+                {"table": "legacy_events", "field": "dt"},
+            ],
+            schema_time_fields={"fact_orders": ("business_date",)},
+            dialect="postgres",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_fails_closed_for_unique_bare_declaration_on_qualified_scan() -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM analytics.legacy_events",
+            policy=_resolved_time().policy,
+            declared_time_fields=[{"table": "legacy_events", "field": "dt"}],
+            schema_time_fields={},
+            dialect="postgres",
+            allow_rewrite=True,
+        )
+
+
+def test_time_sql_fails_closed_for_empty_field_on_current_unverified_scan() -> None:
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            "SELECT * FROM legacy_events",
+            policy=_resolved_time().policy,
+            declared_time_fields=[{"table": "legacy_events", "field": ""}],
+            schema_time_fields={},
+            dialect="postgres",
+            allow_rewrite=True,
+        )
+
+
 def test_timestamp_bounds_use_next_day_half_open_interval() -> None:
     schema = """
 # Table: fact_orders

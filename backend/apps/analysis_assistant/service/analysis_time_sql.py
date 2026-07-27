@@ -282,35 +282,116 @@ def _time_bearing_scans(
     return scans
 
 
+def _physical_table_keys(tree: exp.Expression) -> list[tuple[str, ...]]:
+    keys: list[tuple[str, ...]] = []
+    for scope in traverse_scope(tree):
+        for table in scope.tables:
+            alias = _table_qualifier(table).name
+            if isinstance(scope.sources.get(alias), Scope):
+                continue
+            keys.append(_table_key(table))
+    return keys
+
+
+def _matching_query_keys(
+    declared_key: tuple[str, ...],
+    query_keys: list[tuple[str, ...]],
+) -> list[tuple[str, ...]]:
+    if len(declared_key) > 1:
+        exact = [key for key in query_keys if key == declared_key]
+        if exact:
+            return exact
+        unqualified = [
+            key
+            for key in query_keys
+            if len(key) == 1 and key[-1] == declared_key[-1]
+        ]
+        return unqualified if len(set(unqualified)) == 1 else []
+
+    basename_matches = [
+        key for key in query_keys if key[-1] == declared_key[-1]
+    ]
+    if len(set(basename_matches)) > 1:
+        raise AnalysisTimeSqlError()
+    return basename_matches
+
+
+def _relevant_declared_fields_without_time_scans(
+    declared_time_fields: object,
+    query_keys: list[tuple[str, ...]],
+    dialect: str | None,
+) -> list[tuple[tuple[str, ...], str]]:
+    if not isinstance(declared_time_fields, list):
+        return []
+    declared: list[tuple[tuple[str, ...], str]] = []
+    for item in declared_time_fields:
+        if not isinstance(item, dict):
+            continue
+        raw_table = item.get("table")
+        raw_field = item.get("field")
+        if not isinstance(raw_table, str):
+            continue
+        try:
+            key = _parse_table_key(raw_table, dialect)
+        except AnalysisTimeSqlError:
+            continue
+        if not _matching_query_keys(key, query_keys):
+            continue
+        if not isinstance(raw_field, str) or not raw_field.strip():
+            raise AnalysisTimeSqlError()
+        field = raw_field.strip()
+        pair = (key, field)
+        if pair not in declared:
+            declared.append(pair)
+    return declared
+
+
+def _declared_field_matches_binding(field: str, binding: _Binding) -> bool:
+    if binding.time_field.quoted:
+        return field == binding.field
+    return field.casefold() == binding.field.casefold()
+
+
+def _validate_declared_scan_bindings(
+    declared: list[tuple[tuple[str, ...], str]],
+    query_keys: list[tuple[str, ...]],
+    bindings: list[_Binding],
+) -> None:
+    for declared_key, field in declared:
+        matching_keys = _matching_query_keys(declared_key, query_keys)
+        if not matching_keys:
+            continue
+        for query_key in set(matching_keys):
+            matching_bindings = [
+                binding
+                for binding in bindings
+                if binding.table_key == query_key
+            ]
+            if not matching_bindings or any(
+                not _declared_field_matches_binding(field, binding)
+                for binding in matching_bindings
+            ):
+                raise AnalysisTimeSqlError()
+
+
 def _resolve_bindings(
     tree: exp.Expression,
     declared_time_fields: object,
     schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     dialect: str | None,
 ) -> list[_Binding]:
+    query_keys = _physical_table_keys(tree)
     scans = _time_bearing_scans(tree, schema_time_fields, dialect)
-    if not scans:
-        query_keys = [_table_key(table) for table in tree.find_all(exp.Table)]
-        if isinstance(declared_time_fields, list):
-            for item in declared_time_fields:
-                if not isinstance(item, dict):
-                    continue
-                try:
-                    declared_key = _parse_table_key(item.get("table"), dialect)
-                except AnalysisTimeSqlError:
-                    continue
-                if any(
-                    declared_key == query_key
-                    or (
-                        len(query_key) == 1
-                        and declared_key[-1] == query_key[-1]
-                    )
-                    for query_key in query_keys
-                ):
-                    raise AnalysisTimeSqlError()
-        return []
-    declared = _declared_fields(declared_time_fields, dialect)
-    return [
+    declared = (
+        _declared_fields(declared_time_fields, dialect)
+        if scans
+        else _relevant_declared_fields_without_time_scans(
+            declared_time_fields,
+            query_keys,
+            dialect,
+        )
+    )
+    bindings = [
         _Binding(
             table_key=scan.table_key,
             time_field=_select_field(scan.table_key, scan.schema_entry, declared),
@@ -320,6 +401,8 @@ def _resolve_bindings(
         )
         for scan in scans
     ]
+    _validate_declared_scan_bindings(declared, query_keys, bindings)
+    return bindings
 
 
 def sql_references_time_bearing_table(
