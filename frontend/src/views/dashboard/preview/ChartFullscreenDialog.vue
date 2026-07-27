@@ -373,6 +373,7 @@ function closeDialog() {
   }
 }
 
+.has-side-summary,
 .is-metric-layout,
 .is-table-layout {
   .fullscreen-chart-stage {
