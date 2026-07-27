@@ -62,6 +62,7 @@ def _scan_sql_tokens(sql: str, replacements: dict[str, str] | None = None) -> tu
     output: list[str] = []
     active: set[str] = set()
     state = "normal"
+    dollar_quote = ""
     index = 0
     length = len(sql)
 
@@ -90,13 +91,35 @@ def _scan_sql_tokens(sql: str, replacements: dict[str, str] | None = None) -> tu
                 state = "line_comment"
             elif char == "/" and following == "*":
                 state = "block_comment"
+            elif char == "$":
+                closing = sql.find("$", index + 1)
+                candidate = sql[index:closing + 1] if closing >= 0 else ""
+                tag = candidate[1:-1]
+                if candidate and (not tag or (tag[0].isalpha() or tag[0] == "_") and all(
+                    part.isalnum() or part == "_" for part in tag
+                )):
+                    state = "dollar_quote"
+                    dollar_quote = candidate
+                    output.append(candidate)
+                    index += len(candidate)
+                    continue
             output.append(char)
             index += 1
             continue
 
+        if state == "dollar_quote" and sql.startswith(dollar_quote, index):
+            output.append(dollar_quote)
+            index += len(dollar_quote)
+            state = "normal"
+            dollar_quote = ""
+            continue
+
         output.append(char)
         index += 1
-        if state == "single" and char == "'":
+        if state in {"single", "double", "backtick"} and char == "\\" and following:
+            output.append(following)
+            index += 1
+        elif state == "single" and char == "'":
             if following == "'":
                 output.append(following)
                 index += 1

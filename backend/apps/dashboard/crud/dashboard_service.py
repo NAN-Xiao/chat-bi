@@ -1944,29 +1944,26 @@ def _dashboard_has_explicit_custom_date(pivot: Any | None) -> bool:
     )
 
 
-def _dashboard_chart_date_capability(
-        session: SessionDep,
-        current_user: CurrentUser,
-        datasource_id: int | None,
+def _prepare_dashboard_chart_item_query(
+        datasource: CoreDatasource,
         item: dict[str, Any],
-) -> dict[str, Any]:
+) -> PreparedDashboardChartQuery:
     source_config = item.get("sourceConfig") if isinstance(item.get("sourceConfig"), dict) else {}
     if (
         item.get("dataSourceType") in {"mixed", DASHBOARD_SOURCE_EXTERNAL_MCP}
         or source_config.get("mode") == "mixed"
         or item.get("externalSnapshot") is True
     ):
-        return {"status": "unsupported", "reason": "non_sql_chart"}
-    if datasource_id is None or item.get("sql") is None:
-        return {"status": "unconfigured", "reason": "missing_sql_or_datasource"}
-    datasource = session.get(CoreDatasource, datasource_id)
-    if datasource is None:
-        return {"status": "unconfigured", "reason": "datasource_missing"}
+        return PreparedDashboardChartQuery(
+            source_sql=str(item.get("sql") or ""),
+            pivot=item.get("pivot"),
+            date_filter_capability={"status": "unsupported", "reason": "non_sql_chart"},
+        )
     return _prepare_dashboard_chart_query(
         datasource,
         str(item.get("sql") or ""),
         item.get("pivot"),
-    ).date_filter_capability
+    )
 
 
 def _dashboard_pivot_date_cast_error(message: str, pivot: Any | None) -> str | None:
@@ -3930,21 +3927,31 @@ def _dashboard_payload(
                     _failed_chart_result(str(exc.detail), "dashboard_execution_datasource_denied"),
                 )
                 continue
-            item["dateFilterCapability"] = _dashboard_chart_date_capability(
-                session,
-                current_user,
-                item_datasource,
-                item,
-            )
             datasource = session.get(CoreDatasource, item_datasource) if item_datasource is not None else None
             if datasource is None:
+                item["dateFilterCapability"] = {
+                    "status": "unconfigured",
+                    "reason": "datasource_missing",
+                }
                 _apply_dashboard_chart_result(item, _failed_chart_result("项目不存在"))
                 continue
-            prepared_query = _prepare_dashboard_chart_query(
+            prepared_query = _prepare_dashboard_chart_item_query(
                 datasource,
-                item['sql'],
-                item.get("pivot"),
+                item,
             )
+            item["dateFilterCapability"] = copy.deepcopy(prepared_query.date_filter_capability)
+            if (
+                prepared_query.date_filter_capability.get("status") == "realtime"
+                and _dashboard_has_explicit_custom_date(item.get("pivot"))
+            ):
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result(
+                        "实时图表不支持自定义日期范围",
+                        "dashboard_date_filter_realtime",
+                    ),
+                )
+                continue
             if (
                 prepared_query.date_filter_capability.get("status") == "unconfigured"
                 and has_dashboard_date_filter_parameters(item['sql'])
@@ -5198,12 +5205,15 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if not request.sql or not request.sql.strip():
-        return {
-            "status": "failed",
-            "fields": [],
-            "data": [],
-            "message": "SQL不能为空",
-        }
+        return _dashboard_date_filter_result(
+            {
+                "status": "failed",
+                "fields": [],
+                "data": [],
+                "message": "SQL不能为空",
+            },
+            {"status": "unconfigured", "reason": "missing_sql"},
+        )
     datasource_id = resolve_chart_execution_datasource(session, current_user, request.datasource)
     request.datasource = datasource_id
     normalized_sql = request.sql.strip()

@@ -3509,25 +3509,108 @@ def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
     assert result["date_filter_capability"]["status"] == "realtime"
 
 
-def test_dashboard_payload_adds_transient_date_capability_without_persisting(monkeypatch):
+def test_dashboard_preview_empty_sql_returns_date_capability():
+    result = dashboard_service.preview_sql(
+        object(),
+        SimpleNamespace(id=2, isAdmin=False, tenant_id=1),
+        DashboardSqlPreview(sql="   ", datasource=1),
+    )
+
+    assert result["status"] == "failed"
+    assert result["date_filter_capability"] == {
+        "status": "unconfigured",
+        "reason": "missing_sql",
+    }
+
+
+def test_dashboard_payload_rejects_custom_range_for_event_realtime(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
-    original = {
-        "available": {"id": "available", "sql": "select order_id as dt from orders", "pivot": {"time_field": "dt"}},
-        "realtime": {"id": "realtime", "sql": "select order_id as dt from orders", "pivot": {"time_field": "dt"}},
-        "plain": {"id": "plain", "sql": "select amount from orders", "pivot": {}},
-    }
+    executed = []
     monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: None)
     monkeypatch.setattr(
         dashboard_service,
-        "_dashboard_chart_date_capability",
-        lambda _session, _user, _ds, item: {
-            "status": "realtime" if item["id"] == "realtime" else (
-                "available" if item["id"] == "available" else "unconfigured"
-            )
-        },
+        "_execute_dashboard_chart_sql",
+        lambda *_args, **_kwargs: executed.append(True)
+        or {"status": "success", "fields": [], "data": [], "message": ""},
     )
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        record = CoreDashboard(
+            id="dashboard-realtime-custom-date",
+            tenant_id=1,
+            name="实时日期拒绝测试",
+            pid="root",
+            node_type="leaf",
+            datasource=1,
+            component_data="[]",
+            canvas_style_data="{}",
+            canvas_view_info=json.dumps({
+                "chart": {
+                    "id": "chart",
+                    "datasource": 1,
+                    "sql": (
+                        "select dt from event_realtime where dt between "
+                        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                    ),
+                    "pivot": {
+                        "time_field": "dt",
+                        "date_parameter_type": "yyyymmdd_number",
+                        "range": "custom",
+                        "custom_start": "2026-07-13",
+                        "custom_end": "2026-07-26",
+                    },
+                }
+            }),
+        )
+        session.add(record)
+        session.commit()
+
+        payload = dashboard_service._dashboard_payload(
+            session,
+            current_user,
+            record,
+            default_context=True,
+            include_data=True,
+        )
+
+    chart = json.loads(payload["canvas_view_info"])["chart"]
+    assert executed == []
+    assert chart["dateFilterCapability"]["status"] == "realtime"
+    assert chart["error_type"] == "dashboard_date_filter_realtime"
+
+
+def test_dashboard_payload_adds_transient_date_capability_without_persisting(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    original = {
+        "available": {
+            "id": "available",
+            "sql": (
+                "select order_id as dt from orders where order_id between "
+                "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+            ),
+            "pivot": {"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
+        },
+        "realtime": {
+            "id": "realtime",
+            "sql": "select dt from event_realtime",
+            "pivot": {"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
+        },
+        "plain": {"id": "plain", "sql": "select amount from orders", "pivot": {}},
+    }
+    prepare_calls = []
+    original_prepare = dashboard_service._prepare_dashboard_chart_query
+
+    def count_prepare(datasource, sql, pivot):
+        prepare_calls.append(sql)
+        return original_prepare(datasource, sql, pivot)
+
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: None)
+    monkeypatch.setattr(dashboard_service, "_prepare_dashboard_chart_query", count_prepare)
+    monkeypatch.setattr(dashboard_service, "_dashboard_chart_permission_audit", lambda *_args: (None, False))
     with Session(engine) as session:
         _insert_dashboard_permission_fixture(session)
         record = CoreDashboard(
@@ -3554,6 +3637,7 @@ def test_dashboard_payload_adds_transient_date_capability_without_persisting(mon
         assert response_views["available"]["dateFilterCapability"]["status"] == "available"
         assert response_views["realtime"]["dateFilterCapability"]["status"] == "realtime"
         assert response_views["plain"]["dateFilterCapability"]["status"] == "unconfigured"
+        assert len(prepare_calls) == len(original)
         session.expire_all()
         persisted = session.get(CoreDashboard, record.id)
         assert "dateFilterCapability" not in persisted.canvas_view_info

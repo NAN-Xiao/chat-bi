@@ -160,6 +160,53 @@ def test_realtime_physical_table_hides_filter_but_cte_and_comments_do_not():
     assert historical.physical_tables == {"event"}
 
 
+def test_realtime_physical_table_is_not_hidden_by_same_named_cte():
+    sql = (
+        "with event_realtime as (select dt from analytics.event_realtime) "
+        "select dt from event_realtime where dt between "
+        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+    )
+
+    result = prepare_dashboard_date_filter(
+        sql,
+        ds_type="mysql",
+        pivot={"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
+        today=date(2026, 7, 27),
+    )
+
+    assert result.capability == {"status": "realtime", "reason": "realtime_table"}
+    assert result.sql == sql
+    assert result.physical_tables == {"event_realtime"}
+
+
+def test_tokens_inside_dollar_quoted_and_backslash_escaped_strings_are_ignored():
+    postgres_sql = (
+        "select $$ {{dashboard_start_date}} $$ as note, dt from orders "
+        "where dt between {{dashboard_start_date}} and {{dashboard_end_date}}"
+    )
+    postgres = prepare_dashboard_date_filter(
+        postgres_sql,
+        ds_type="postgresql",
+        pivot={"time_field": "dt", "date_parameter_type": "date"},
+        today=date(2026, 7, 27),
+    )
+    assert "$$ {{dashboard_start_date}} $$" in postgres.sql
+    assert "dt between '2026-07-13' and '2026-07-26'" in postgres.sql
+
+    mysql_sql = (
+        r"select 'ignored \' {{dashboard_start_yyyymmdd}}' as note, dt from orders "
+        "where dt between {{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+    )
+    mysql = prepare_dashboard_date_filter(
+        mysql_sql,
+        ds_type="mysql",
+        pivot={"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
+        today=date(2026, 7, 27),
+    )
+    assert "'ignored \\' {{dashboard_start_yyyymmdd}}'" in mysql.sql
+    assert "dt between 20260713 and 20260726" in mysql.sql
+
+
 def test_sql_parse_failure_is_unconfigured():
     result = prepare_dashboard_date_filter(
         "select ( from orders where dt between {{dashboard_start_date}} and {{dashboard_end_date}}",
