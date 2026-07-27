@@ -116,6 +116,39 @@ def test_day_only_uses_year_month_from_current_question_before_history() -> None
     assert resolution.policy.start_date == date(2026, 8, 14)
 
 
+def test_day_only_uses_month_from_current_question_without_history_year() -> None:
+    intent = parse_analysis_time_intent(
+        "分析 8月收入，14日之后",
+        ["2026年6月收入"],
+    )
+    resolution = resolve_analysis_time_policy(
+        intent,
+        skill_window_days=None,
+        anchor=ANCHOR,
+        anchor_date=date(2026, 7, 26),
+    )
+    assert intent.year is None
+    assert intent.month == 8
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2025, 8, 14)
+
+
+def test_day_only_searches_previous_month_for_latest_valid_month_end() -> None:
+    resolution = _resolve("31日之后", anchor_date=date(2026, 4, 10))
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2026, 3, 31)
+    assert resolution.policy.start_inclusive is False
+    assert "2026-04-01" in resolution.traces[0]
+
+
+def test_day_only_searches_previous_leap_day_when_available() -> None:
+    resolution = _resolve("29日之后", anchor_date=date(2024, 3, 1))
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2024, 2, 29)
+    assert resolution.policy.start_inclusive is False
+    assert "2024-03-01" in resolution.traces[0]
+
+
 def test_explicit_absolute_range_does_not_need_anchor() -> None:
     intent = parse_analysis_time_intent("分析 2026-07-01 到 2026-07-10", [])
     resolution = resolve_analysis_time_policy(

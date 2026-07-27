@@ -24,6 +24,7 @@ _DAY_ONLY_RE = re.compile(
     r"(?:从\s*)?(\d{1,2})\s*[日号]\s*(之后|以后|起|开始|及以后)"
 )
 _YEAR_MONTH_RE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月")
+_MONTH_RE = re.compile(r"(\d{1,2})\s*月")
 _RELATIVE_DAYS_RE = re.compile(r"(?:最近|近)\s*(\d+)\s*(?:个)?天")
 _RELATIVE_WEEKS_RE = re.compile(r"(?:最近|近)\s*(两|\d+)\s*(?:个)?周")
 _INVALID_DATE_WARNING = "用户指定的日期无效，无法确定时间策略。"
@@ -134,6 +135,11 @@ def _last_year_month(history: list[str]) -> tuple[int | None, int | None]:
     return None, None
 
 
+def _last_month(text: str) -> int | None:
+    matches = list(_MONTH_RE.finditer(text or ""))
+    return int(matches[-1].group(1)) if matches else None
+
+
 def _safe_date(year: int, month: int, day: int) -> date | None:
     try:
         return date(year, month, day)
@@ -194,13 +200,14 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
         )
     day_only = _DAY_ONLY_RE.search(text)
     if day_only:
-        question_year, question_month = _last_year_month([text])
+        question_year, _ = _last_year_month([text])
+        question_month = _last_month(text)
         history_year, history_month = _last_year_month(history)
         marker = day_only.group(2)
         return AnalysisTimeIntent(
             kind="day_open",
             source=AnalysisTimeSource.USER,
-            year=question_year if question_year is not None else history_year,
+            year=question_year if question_month is not None else history_year,
             month=question_month if question_month is not None else history_month,
             day_of_month=int(day_only.group(1)),
             start_inclusive=marker not in {"之后", "以后"},
@@ -225,13 +232,20 @@ def _latest_occurrence(
             if candidate <= anchor_date
             else _safe_date(anchor_date.year - 1, month, day_of_month)
         )
-    candidate = _safe_date(anchor_date.year, anchor_date.month, day_of_month)
-    if candidate is None:
+    if not 1 <= day_of_month <= 31:
         return None
-    if candidate <= anchor_date:
-        return candidate
-    previous_month_end = anchor_date.replace(day=1) - timedelta(days=1)
-    return _safe_date(previous_month_end.year, previous_month_end.month, day_of_month)
+    candidate_year = anchor_date.year
+    candidate_month = anchor_date.month
+    while candidate_year >= 1:
+        candidate = _safe_date(candidate_year, candidate_month, day_of_month)
+        if candidate is not None and candidate <= anchor_date:
+            return candidate
+        if candidate_month == 1:
+            candidate_year -= 1
+            candidate_month = 12
+        else:
+            candidate_month -= 1
+    return None
 
 
 def _unresolved(
