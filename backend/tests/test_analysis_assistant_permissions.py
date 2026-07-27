@@ -592,8 +592,23 @@ def test_report_interpretation_does_not_resolve_chat_time_policy(
     async def _no_rate_limit(*_args, **_kwargs):
         return None
 
+    class _Llm:
+        def __init__(self) -> None:
+            self.stream_calls = 0
+
+        def stream(self, _messages):
+            self.stream_calls += 1
+            yield SimpleNamespace(
+                content=(
+                    "### 数据概览\n当前收入为 12.5。\n\n"
+                    "### 分析建议\n继续核对当前可见数据。"
+                )
+            )
+
+    llm = _Llm()
+
     async def _fake_create_llm(*_args, **_kwargs):
-        return object(), SimpleNamespace(model_id=7, model_name="test-model")
+        return llm, SimpleNamespace(model_id=7, model_name="test-model")
 
     async def _unexpected_time_policy(**_kwargs):
         raise AssertionError("报表解读不得解析综合分析聊天时间策略")
@@ -622,13 +637,14 @@ def test_report_interpretation_does_not_resolve_chat_time_policy(
     monkeypatch.setattr(analysis_api, "_create_llm", _fake_create_llm)
     monkeypatch.setattr(
         analysis_api,
-        "_stream_report_interpretation",
-        lambda *_args, **_kwargs: iter(()),
-    )
-    monkeypatch.setattr(
-        analysis_api,
         "_resolve_chat_time_policy",
         _unexpected_time_policy,
+    )
+    usage_calls: list[dict] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **kwargs: usage_calls.append(kwargs),
     )
     request = analysis_api.AnalysisAssistantRequest(
         datasource_id=1,
@@ -641,8 +657,15 @@ def test_report_interpretation_does_not_resolve_chat_time_policy(
     response = asyncio.run(
         analysis_api.report_interpretation(request, _user(), _FakeSession())
     )
+    body = b"".join(asyncio.run(_collect_stream_body(response))).decode()
 
     assert response.media_type == "text/event-stream"
+    assert llm.stream_calls == 1
+    assert '"type":"final_delta"' in body
+    assert '"type":"final"' in body
+    assert '"type":"finish"' in body
+    assert '"type":"error"' not in body
+    assert usage_calls[-1]["success_count"] == 1
 
 
 def test_collect_data_skill_context_passes_full_current_user(monkeypatch) -> None:

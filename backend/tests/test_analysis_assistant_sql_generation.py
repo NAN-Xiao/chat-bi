@@ -1,5 +1,6 @@
 """验证分析助手生成 SQL 时会显式接收语义字段表达式。"""
 
+import ast
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,59 @@ SCHEMA_TIME_FIELDS = {
     "fact_orders": ("business_date",),
     "fact_refunds": ("refund_date",),
 }
+
+FORBIDDEN_ANALYSIS_TIME_MODULE = (
+    "apps.analysis_assistant.service.analysis_time_policy"
+)
+FORBIDDEN_ANALYSIS_TIME_SYMBOLS = {
+    "AnalysisTimePolicy",
+    "AnalysisTimeResolution",
+    "DEFAULT_14_DAYS",
+    "_resolve_chat_time_policy",
+}
+
+
+def _forbidden_analysis_time_references(source: str) -> set[str]:
+    """返回源码 AST 中越过分析助手边界的时间策略引用。"""
+    tree = ast.parse(source)
+    references: set[str] = set()
+    module_aliases: set[str] = set()
+    symbol_aliases: dict[str, str] = {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == FORBIDDEN_ANALYSIS_TIME_MODULE:
+                    references.add(FORBIDDEN_ANALYSIS_TIME_MODULE)
+                    module_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for alias in node.names:
+                imported_name = f"{module}.{alias.name}" if module else alias.name
+                if (
+                    module == FORBIDDEN_ANALYSIS_TIME_MODULE
+                    or imported_name == FORBIDDEN_ANALYSIS_TIME_MODULE
+                ):
+                    references.add(FORBIDDEN_ANALYSIS_TIME_MODULE)
+                if imported_name == FORBIDDEN_ANALYSIS_TIME_MODULE:
+                    module_aliases.add(alias.asname or alias.name)
+                if alias.name in FORBIDDEN_ANALYSIS_TIME_SYMBOLS:
+                    references.add(alias.name)
+                    symbol_aliases[alias.asname or alias.name] = alias.name
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            if node.id in FORBIDDEN_ANALYSIS_TIME_SYMBOLS:
+                references.add(node.id)
+            if node.id in symbol_aliases:
+                references.add(symbol_aliases[node.id])
+        elif isinstance(node, ast.Attribute):
+            if node.attr in FORBIDDEN_ANALYSIS_TIME_SYMBOLS:
+                references.add(node.attr)
+            if isinstance(node.value, ast.Name) and node.value.id in module_aliases:
+                references.add(FORBIDDEN_ANALYSIS_TIME_MODULE)
+
+    return references
 
 
 def _resolved_time() -> AnalysisTimeResolution:
@@ -490,17 +544,39 @@ def test_sql_repair_prompt_only_requires_preserving_backend_time_bounds() -> Non
 
 
 def test_default_analysis_time_policy_stays_inside_analysis_assistant() -> None:
-    """默认分析时间策略不得进入共享 Smart Q&A 或看板 SQL 路径。"""
-    repo_backend = Path(__file__).resolve().parents[1]
-    forbidden = [
-        repo_backend / "apps/chat/task/llm.py",
-        repo_backend / "apps/dashboard/crud/ai_sql_generator.py",
-    ]
+    """默认分析时间策略不得进入分析助手之外的后端应用源码。"""
+    repo_apps = Path(__file__).resolve().parents[1] / "apps"
+    violations: dict[str, list[str]] = {}
 
-    for path in forbidden:
-        source = path.read_text(encoding="utf-8")
-        assert "AnalysisTimePolicy" not in source
-        assert "DEFAULT_14_DAYS" not in source
+    for path in sorted(repo_apps.rglob("*.py")):
+        relative_path = path.relative_to(repo_apps)
+        if relative_path.parts[0] == "analysis_assistant":
+            continue
+        references = _forbidden_analysis_time_references(
+            path.read_text(encoding="utf-8-sig")
+        )
+        if references:
+            violations[relative_path.as_posix()] = sorted(references)
+
+    assert violations == {}
+
+
+def test_analysis_time_scope_ast_detects_aliased_imports() -> None:
+    """AST 范围检查必须识别模块别名和符号别名导入。"""
+    source = """
+import apps.analysis_assistant.service.analysis_time_policy as time_policy
+from apps.analysis_assistant.service.analysis_time_policy import (
+    AnalysisTimeResolution as TimeResolution,
+)
+
+policy = time_policy.AnalysisTimePolicy
+"""
+
+    references = _forbidden_analysis_time_references(source)
+
+    assert FORBIDDEN_ANALYSIS_TIME_MODULE in references
+    assert "AnalysisTimePolicy" in references
+    assert "AnalysisTimeResolution" in references
 
 
 def test_analysis_prompts_forbid_dynamic_time_bounds() -> None:
