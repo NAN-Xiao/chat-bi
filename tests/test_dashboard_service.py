@@ -3041,6 +3041,11 @@ def test_dashboard_preview_builds_pivot_sql(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
     monkeypatch.setattr(
+        dashboard_service,
+        "_configured_chart_execution_datasources",
+        lambda *_args, **_kwargs: [(1, "bound")],
+    )
+    monkeypatch.setattr(
         query_executor,
         "_unsafe_exec_sql_after_validation",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
