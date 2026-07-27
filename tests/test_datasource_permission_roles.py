@@ -1,6 +1,7 @@
 ﻿import os
 import json
 import asyncio
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -31,6 +32,12 @@ from apps.datasource.models.datasource import FieldObj
 from apps.system.schemas import permission as permission_schema
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.analysis_assistant.api import analysis_assistant as analysis_assistant_api
+from apps.analysis_assistant.service.analysis_time_policy import (
+    AnalysisTimeAnchor,
+    AnalysisTimePolicy,
+    AnalysisTimeResolution,
+    AnalysisTimeSource,
+)
 
 
 def _engine_with_permission_tables():
@@ -2321,6 +2328,164 @@ def test_analysis_assistant_permission_failure_is_structured_and_sanitized(monke
     assert block["summary"] == ""
     assert block["status"] == "failed"
     assert "amount" not in block["warning"]
+
+
+def test_analysis_time_bounds_survive_row_permission_rewrite_at_execution_adapter(
+    monkeypatch,
+):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    executed_sql: list[str] = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=True: executed_sql.append(sql)
+        or {"fields": ["amount"], "data": [{"amount": 10}], "sql": sql},
+    )
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.execute(
+            text(
+                """
+                INSERT INTO core_field
+                    (id, ds_id, table_id, checked, field_name, field_type, field_comment, custom_comment, field_index)
+                VALUES
+                    (102, 1, 10, 1, 'business_date', 'date', 'business_date', 'business_date', 3)
+                """
+            )
+        )
+        _insert_user_row_rule_for_orders(session)
+        session.commit()
+        datasource = session.get(CoreDatasource, 1)
+        policy = AnalysisTimePolicy(
+            source=AnalysisTimeSource.DEFAULT_14_DAYS,
+            window_days=14,
+            anchor_date=date(2026, 7, 26),
+            start_date=date(2026, 7, 13),
+            end_date=date(2026, 7, 26),
+            start_inclusive=True,
+            end_inclusive=True,
+            anchor=AnalysisTimeAnchor("orders", "business_date"),
+            description="最近 14 个自然日",
+        )
+        resolution = AnalysisTimeResolution(
+            policy=policy,
+            status="resolved",
+        )
+        prepared_sql = analysis_assistant_api._prepare_sql_for_execution(
+            object(),
+            session,
+            current_user,
+            datasource,
+            (
+                "SELECT amount FROM orders "
+                "WHERE business_date >= DATE '2026-07-13' "
+                "AND business_date <= DATE '2026-07-26'"
+            ),
+            ["orders"],
+            time_resolution=resolution,
+            schema_time_fields={"orders": ("business_date",)},
+            declared_time_fields=[
+                {"table": "orders", "field": "business_date"}
+            ],
+            dialect="postgres",
+        )
+        query_executor.execute_user_analysis_query_or_raise(
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            sql=prepared_sql,
+            allowed_tables=["orders"],
+            origin_column=True,
+        )
+
+    assert len(executed_sql) == 1
+    assert "2026-07-13" in executed_sql[0]
+    assert "2026-07-26" in executed_sql[0]
+    assert "order_id" in executed_sql[0]
+    assert "US" in executed_sql[0]
+
+
+@pytest.mark.parametrize(
+    "unsafe_sql",
+    [
+        (
+            "SELECT first_orders.amount FROM orders AS first_orders "
+            "JOIN orders AS second_orders "
+            "ON second_orders.order_id = first_orders.order_id"
+        ),
+        (
+            "SELECT amount FROM orders "
+            "WHERE business_date <= (SELECT MAX(business_date) FROM orders)"
+        ),
+    ],
+)
+def test_unbounded_analysis_sql_never_reaches_execution_adapter(
+    monkeypatch,
+    unsafe_sql,
+):
+    execution_calls: list[str] = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda **kwargs: execution_calls.append(kwargs["sql"]),
+    )
+    monkeypatch.setattr(
+        analysis_assistant_api,
+        "_repair_sql",
+        lambda *_args, **_kwargs: unsafe_sql,
+    )
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.DEFAULT_14_DAYS,
+        window_days=14,
+        anchor_date=date(2026, 7, 26),
+        start_date=date(2026, 7, 13),
+        end_date=date(2026, 7, 26),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("orders", "business_date"),
+        description="最近 14 个自然日",
+    )
+
+    with pytest.raises(analysis_assistant_api.AnalysisTimeSqlError):
+        prepared_sql = analysis_assistant_api._prepare_time_safe_query_sql(
+            llm=object(),
+            session=object(),
+            current_user=object(),
+            datasource=SimpleNamespace(type="postgresql"),
+            raw_query={
+                "sql": unsafe_sql,
+                "time_fields": [
+                    {"table": "orders", "field": "business_date"}
+                ],
+            },
+            question="分析收入",
+            schema="",
+            sample_data="",
+            data_profile="",
+            custom_agent="",
+            tracking_context="",
+            data_skill="",
+            allowed_tables=["orders"],
+            time_resolution=AnalysisTimeResolution(
+                policy=policy,
+                status="resolved",
+            ),
+            schema_time_fields={"orders": ("business_date",)},
+            dialect="postgres",
+        )
+        query_executor.execute_user_analysis_query_or_raise(
+            session=object(),
+            current_user=object(),
+            datasource=SimpleNamespace(type="postgresql"),
+            sql=prepared_sql,
+            allowed_tables=["orders"],
+        )
+
+    assert execution_calls == []
 
 
 def test_analysis_assistant_final_prompt_carries_permission_gap(monkeypatch):

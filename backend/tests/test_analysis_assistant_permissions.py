@@ -601,7 +601,7 @@ def test_collect_data_skill_context_passes_full_current_user(monkeypatch) -> Non
 
 def _mock_time_safe_chat_runtime(
     monkeypatch: pytest.MonkeyPatch,
-    queries: list[dict],
+    queries: list[object],
 ) -> analysis_api.AnalysisAssistantRequest:
     datasource = analysis_api.CoreDatasource(
         id=1,
@@ -862,6 +862,104 @@ def test_chat_repaired_sql_is_time_enforced_before_retry_execution(
     assert all("2026-07-13" in sql and "2026-07-26" in sql for sql in execute_calls)
     assert '"status":"failed"' not in payload
     assert '"type":"finish"' in payload
+
+
+def test_chat_second_plan_parse_failure_returns_safe_final_and_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_build_plan = analysis_api._build_plan
+    request = _mock_time_safe_chat_runtime(monkeypatch, [])
+    invalid_outputs = iter(
+        ["sensitive first malformed output", "sensitive second malformed output"]
+    )
+    usage_calls: list[dict] = []
+    monkeypatch.setattr(analysis_api, "_build_plan", real_build_plan)
+    monkeypatch.setattr(
+        analysis_api,
+        "_llm_text",
+        lambda *_args, **_kwargs: next(invalid_outputs),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **kwargs: usage_calls.append(kwargs),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "无法生成可执行分析计划" in payload
+    assert "未形成有数据支撑的结论" in payload
+    assert "sensitive" not in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
+    assert usage_calls[-1]["success_count"] == 1
+    assert usage_calls[-1]["failure_count"] == 0
+
+
+def test_chat_all_invalid_queries_returns_safe_final_without_calling_final_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        ["invalid", 7, None],
+    )
+    usage_calls: list[dict] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **kwargs: usage_calls.append(kwargs),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "无法生成可执行分析计划" in payload
+    assert "未形成有数据支撑的结论" in payload
+    assert '"type":"final","content":"已完成"' not in payload
+    assert '"type":"block"' not in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
+    assert usage_calls[-1]["success_count"] == 1
+    assert usage_calls[-1]["failure_count"] == 0
+
+
+def test_chat_mixed_queries_skips_invalid_items_and_executes_valid_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            "invalid",
+            {"id": "q2", "title": "安全角度", "sql": "SELECT safe"},
+            None,
+        ],
+    )
+    execute_calls: list[str] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        lambda **_kwargs: "SELECT bounded",
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        lambda **kwargs: execute_calls.append(kwargs["sql"])
+        or SimpleNamespace(
+            result={"fields": ["amount"], "data": [{"amount": 10}]}
+        ),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert execute_calls == ["SELECT bounded"]
+    assert payload.count('"type":"block"') == 1
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
 
 
 async def _collect_stream_body(response) -> list[bytes]:

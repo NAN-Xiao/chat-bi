@@ -3846,8 +3846,8 @@ def _build_plan(
         )
         plan = _extract_json_object(retry)
 
-    queries = plan.get("queries") or []
-    if not isinstance(queries, list) or not queries:
+    queries = _executable_plan_queries(plan)
+    if not queries:
         raise ValueError("模型没有生成可执行的数据召回计划")
     plan["queries"] = queries[:MAX_ANALYSIS_QUERIES]
     return plan
@@ -3907,11 +3907,21 @@ def _build_forecast_plan(
         )
         plan = _extract_json_object(retry)
 
-    queries = plan.get("queries") or []
-    if not isinstance(queries, list) or not queries:
+    queries = _executable_plan_queries(plan)
+    if not queries:
         raise ValueError("模型没有生成可执行的预测数据召回计划")
     plan["queries"] = queries[:MAX_FORECAST_QUERIES]
     return plan
+
+
+def _executable_plan_queries(plan: object) -> list[dict[str, Any]]:
+    """只保留结构有效的数据召回块，避免模型杂项进入执行路径。"""
+    if not isinstance(plan, dict):
+        return []
+    queries = plan.get("queries")
+    if not isinstance(queries, list):
+        return []
+    return [query for query in queries if isinstance(query, dict)]
 
 
 @router.post("/chat", include_in_schema=False)
@@ -4040,40 +4050,52 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             if custom_agent.strip():
                 yield _trace("已应用本次选择的自定义 Agent 补充设定，但 Data Skill、权限和安全规则保持不变。")
             forecast_requested = _is_forecast_question(question)
-            if forecast_requested:
-                yield _trace("正在识别预测指标、目标对象和可用的历史观察窗口。")
-                plan = _build_forecast_plan(
-                    llm,
-                    request,
-                    schema,
-                    sample_data,
-                    datasource,
-                    data_profile,
-                    custom_agent,
-                    semantic_context,
-                    time_resolution=time_resolution,
+            try:
+                if forecast_requested:
+                    yield _trace("正在识别预测指标、目标对象和可用的历史观察窗口。")
+                    plan = _build_forecast_plan(
+                        llm,
+                        request,
+                        schema,
+                        sample_data,
+                        datasource,
+                        data_profile,
+                        custom_agent,
+                        semantic_context,
+                        time_resolution=time_resolution,
+                    )
+                    yield _trace("预测方法和数据检查项已确定，下面按预测口径召回数据。")
+                else:
+                    yield _trace("正在把分析框架拆成可执行的数据检查项。")
+                    plan = _build_plan(
+                        llm,
+                        request,
+                        schema,
+                        sample_data,
+                        datasource,
+                        data_profile,
+                        custom_agent,
+                        semantic_context,
+                        time_resolution=time_resolution,
+                    )
+            except (TypeError, ValueError):
+                plan = None
+
+            queries = _executable_plan_queries(plan)
+            if not queries:
+                final = (
+                    "无法生成可执行分析计划，本次未形成有数据支撑的结论。"
+                    "请调整分析问题后重试。"
                 )
-                yield _trace("预测方法和数据检查项已确定，下面按预测口径召回数据。")
-            else:
-                yield _trace("正在把分析框架拆成可执行的数据检查项。")
-                plan = _build_plan(
-                    llm,
-                    request,
-                    schema,
-                    sample_data,
-                    datasource,
-                    data_profile,
-                    custom_agent,
-                    semantic_context,
-                    time_resolution=time_resolution,
-                )
+                yield _sse({"type": "final", "content": final})
+                success = True
+                yield _sse({"type": "finish"})
+                return
 
             intro = str(plan.get("intro") or "我会先识别问题指标，再从多个角度查看数据并给出分析建议。")
             yield _trace("具体执行步骤已确定，下面按关键维度逐一分析。")
 
-            for index, raw_query in enumerate(plan.get("queries") or [], start=1):
-                if not isinstance(raw_query, dict):
-                    continue
+            for index, raw_query in enumerate(queries, start=1):
                 block_id = str(raw_query.get("id") or f"q{index}")
                 title = str(raw_query.get("title") or f"分析 {index}")
                 purpose = str(raw_query.get("purpose") or "")
