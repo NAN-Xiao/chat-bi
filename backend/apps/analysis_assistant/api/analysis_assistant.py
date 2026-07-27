@@ -3483,7 +3483,17 @@ def _summarise_block(
     """
     rows = block.get("data") or []
     if not rows:
-        return "这组查询没有返回数据，暂时不能从该角度形成确定判断。"
+        if time_resolution.policy:
+            policy = time_resolution.policy
+            start_relation = "含" if policy.start_inclusive else "不含"
+            end_relation = "含" if policy.end_inclusive else "不含"
+            return (
+                "后端为本次分析确定的时间范围是 "
+                f"{policy.start_date.isoformat()}（{start_relation}）至 "
+                f"{policy.end_date.isoformat()}（{end_relation}）。"
+                "这组查询没有返回数据，暂时不能从该角度形成确定判断。"
+            )
+        return "这组查询没有返回数据，且当前无法确认时间边界，暂时不能从该角度形成确定判断。"
     prompt = (
         f"用户问题：{question}\n"
         f"数据块标题：{block.get('title')}\n"

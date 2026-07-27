@@ -211,6 +211,42 @@ def test_summary_and_final_answer_receive_backend_resolved_time_policy() -> None
         assert "无适用时间字段时不得虚构时间过滤" in prompt
 
 
+def test_empty_summary_reports_resolved_time_policy_without_calling_llm() -> None:
+    class UnexpectedLLM:
+        def invoke(self, _messages):
+            raise AssertionError("空结果摘要不应调用 LLM")
+
+    summary = analysis_api._summarise_block(
+        UnexpectedLLM(),
+        "分析收入",
+        {"title": "收入趋势", "data": [], "time_fields": []},
+        time_resolution=_resolved_time(),
+    )
+
+    assert summary.startswith("后端为本次分析确定的时间范围是")
+    assert "2026-07-13（含）" in summary
+    assert "2026-07-26（含）" in summary
+    assert "没有返回数据" in summary
+    assert "已添加时间过滤" not in summary
+
+
+def test_empty_summary_reports_unresolved_time_policy_without_calling_llm() -> None:
+    class UnexpectedLLM:
+        def invoke(self, _messages):
+            raise AssertionError("空结果摘要不应调用 LLM")
+
+    summary = analysis_api._summarise_block(
+        UnexpectedLLM(),
+        "分析收入",
+        {"title": "收入趋势", "data": []},
+        time_resolution=AnalysisTimeResolution(policy=None, status="unresolved"),
+    )
+
+    assert "没有返回数据" in summary
+    assert "无法确认时间边界" in summary
+    assert "已添加时间过滤" not in summary
+
+
 def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
     """失败重试不能让长埋点上下文截断数据源专属 SQL 示例。"""
     class CaptureLLM:
