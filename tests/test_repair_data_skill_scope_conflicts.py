@@ -224,4 +224,3 @@ def test_repeated_apply_keeps_one_managed_section(configured_module) -> None:
 
     assert backend.rows[171]["prompt"].count(configured_module.BOUNDED_SCAN_MARKER) == 1
     assert report.updated_ids == ()
-
