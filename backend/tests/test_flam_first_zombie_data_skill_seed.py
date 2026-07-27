@@ -8,6 +8,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SEED_SCRIPT = ROOT / "tools" / "seed_flam_first_zombie_data_skills.py"
 TOOLS_DIR = ROOT / "tools"
@@ -21,12 +23,12 @@ OLD_DASHBOARD_VIEW_IDS = {
     "f113ac14e8994d12814452040b702424",
 }
 EXPECTED_CHANGED_SQL_SHA256 = {
-    "2149b7abbc6c4cd7ad6f52379e69b15a": "f9db15590f5510ea34062f363e165d6c18d12f19dc4dcbb89edaaf195600e9e9",
+    "2149b7abbc6c4cd7ad6f52379e69b15a": "7d6852514d2270bebb7c2eb7d9d2292ab08dfd29b63217d36df317b02da4dc19",
     "2187432754973679616": "49aa5883b49242188e43d642c11cd1a67a933694cf9fb00029cea4d3ef5aba29",
     "22f0761ab59449189707aca09323810e": "74c8c45d23d2fd30476cff5841ed436b9457fee6ae9bfad874cafbfa2a1866a3",
     "3bb23e771d584610a2c88a38760163b6": "3d63ae7018684ec69c493c5d77756165223decfe11895af58194d6bbdb9daa5f",
     "4d250a8575cc4bcd84f7b9514abbf455": "e02956d0746e910d1a4bd569588ef83d5a853aa95a956d7a3db78365a3f49db6",
-    "4fc570b4be7d406c9f648d9088f760bb": "7a63d560519a7c79054b0e2286bc87e0a5bdde5d4d9a86dda2ecd7ae47f63351",
+    "4fc570b4be7d406c9f648d9088f760bb": "c720ae5e0d8393f24aca399892d6d45ab793bcbcecd1ff91aa1aa5e93682fa92",
     "531012d01f104a509da2d1926692ee1d": "039eb5012bf3f4a58c2956029483e08f0d0e9e947a28cd2537a06f7d8a92875f",
     "63e03c7e2ad34ad58321892998497a85": "112a33b31fc3ff51a90a798d132254a0e45c1684f7575c438003e11c8d227352",
     "97337c8b63544de89f26d2719cc45e75": "5e738ef4d573ffb70e1fc7139fd0cc787baacbf718fa4fba71470e1d17067b99",
@@ -67,6 +69,17 @@ def test_dashboard_sql_directory_matches_current_recommended_dashboards() -> Non
         view_id: hashlib.sha256(blocks[view_id].encode("utf-8")).hexdigest()
         for view_id in EXPECTED_CHANGED_SQL_SHA256
     } == EXPECTED_CHANGED_SQL_SHA256
+
+
+@pytest.mark.parametrize("view_id", [
+    "4fc570b4be7d406c9f648d9088f760bb",
+    "2149b7abbc6c4cd7ad6f52379e69b15a",
+])
+def test_realtime_payment_components_use_realtime_event_table(view_id: str) -> None:
+    sql = _seed_dashboard_sql()[view_id]
+    assert "event_realtime" in sql
+    assert re.search(r"\b(?:FROM|JOIN)\s+`?event`?\b", sql, re.I) is None
+    assert "ServerPayLog" in sql
 
 
 class _StaleSkillCursor:
@@ -115,7 +128,8 @@ def test_new_user_skill_routes_current_day_to_realtime_table() -> None:
     skill = next(item for item in seed.DATA_SKILLS if item["name"] == "flam 新增与留存 cohort 口径")
     prompt = skill["prompt"]
 
-    assert "今天、当天、今日、截至目前、当前或实时按小时" in prompt
+    assert "今天、当天、今日、实时、当前小时、当前分钟、当前整点" in prompt
+    assert "截至目前、当前或实时按小时" not in prompt
     assert "必须使用 `event_realtime`" in prompt
     assert "完整历史日和留存 cohort 使用 `event`" in prompt
 
