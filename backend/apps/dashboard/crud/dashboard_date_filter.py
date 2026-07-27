@@ -152,6 +152,12 @@ def _unconfigured(sql: str, physical_tables: set[str], reason: str) -> Dashboard
     )
 
 
+def has_dashboard_date_filter_parameters(sql: str) -> bool:
+    """判断 SQL 正文是否包含受控日期 token。"""
+    _, active_tokens = _scan_sql_tokens(str(sql or ""))
+    return bool(active_tokens)
+
+
 def prepare_dashboard_date_filter(
     sql: str,
     *,
