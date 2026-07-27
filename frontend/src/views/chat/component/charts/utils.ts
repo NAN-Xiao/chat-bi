@@ -56,6 +56,35 @@ const EN_IDENTIFIER_TOKEN_PATTERN =
 
 const EN_IDENTIFIER_SUFFIX_PATTERN = /(Id|ID|Uid|UID|UUID|Guid|GUID|Code|Key|No)$/
 
+const ISO_DATE_AXIS_VALUE_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})(?:$|[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)$/
+
+export function formatCategoryAxisLabel(value: unknown): string {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  const text = String(value)
+  const match = text.match(ISO_DATE_AXIS_VALUE_PATTERN)
+  if (!match) {
+    return text
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return text
+  }
+
+  return `${match[2]}/${match[3]}`
+}
+
 /**
  * 为数值添加千分符，保持原有小数位数不变
  * 纯字符串处理，避免精度丢失
