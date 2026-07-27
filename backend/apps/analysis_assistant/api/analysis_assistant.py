@@ -1,14 +1,17 @@
 """
 脚本说明：这个脚本放分析助手的接口，把前端请求接进来并交给后面的业务逻辑处理。
 """
+import asyncio
 import copy
+import hashlib
+import json
 import re
 import traceback
 import zipfile
 from base64 import b64decode
+from datetime import date, datetime, timezone
 from html import escape as html_escape
 from io import BytesIO
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
@@ -18,13 +21,47 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
+from redis.exceptions import RedisError
 from sqlalchemy import and_, or_, select
+from starlette.concurrency import run_in_threadpool
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
+from apps.analysis_assistant.models import (
+    AnalysisAssistantConversation,
+    AnalysisAssistantConversationDetail,
+    AnalysisAssistantConversationSave,
+    AnalysisAssistantConversationSummary,
+)
+from apps.analysis_assistant.service.analysis_time_policy import (
+    AnalysisTimeAnchor,
+    AnalysisTimeResolution,
+    parse_analysis_time_intent,
+    parse_data_skill_time_directive,
+    resolve_analysis_time_policy,
+)
+from apps.analysis_assistant.service.analysis_time_sql import (
+    AnalysisTimeSqlError,
+    TimeFieldBinding,
+    enforce_analysis_time_sql,
+    sql_references_time_bearing_table,
+)
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
-from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
+from apps.chat.curd.custom_prompt import (
+    CustomPromptTargetScopeEnum,
+    find_custom_prompts,
+    find_data_skills,
+)
+from apps.dashboard.crud.dashboard_service import (
+    resolve_chart_execution_datasource,
+    validate_dashboard_report_target,
+)
 from apps.datasource.crud.datasource import get_datasource_list
-from apps.datasource.crud.permission import has_applicable_permissions, has_datasource_access, is_normal_user
+from apps.datasource.crud.permission import (
+    get_row_permission_filters,
+    has_applicable_permissions,
+    has_datasource_access,
+    is_normal_user,
+)
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_ERROR_TYPE,
@@ -38,25 +75,26 @@ from apps.datasource.crud.sql_engine import (
     validate_user_query_sql_or_raise,
 )
 from apps.datasource.models.datasource import CoreDatasource
-from apps.dashboard.crud.dashboard_service import (
-    resolve_chart_execution_datasource,
-    validate_dashboard_report_target,
-)
 from apps.db.constant import DB
-from apps.analysis_assistant.models import (
-    AnalysisAssistantConversation,
-    AnalysisAssistantConversationDetail,
-    AnalysisAssistantConversationSave,
-    AnalysisAssistantConversationSummary,
-)
-from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tenant_usage import (
+    check_tenant_usage_quota,
+    record_tenant_usage_detached,
+)
 from apps.system.crud.tracking_config import find_tracking_prompt_context
-from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
+from apps.system.crud.user import (
+    is_platform_admin,
+    is_platform_workspace_delegate,
+    is_system_admin,
+)
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
 from common.core.deps import CurrentUser, SessionDep
-from common.core.tenant_rate_limiter import consume_tenant_rate_limit, resolve_tenant_rate_limit
+from common.core.redis_client import datasource_redis_key, get_redis_client
+from common.core.tenant_rate_limiter import (
+    consume_tenant_rate_limit,
+    resolve_tenant_rate_limit,
+)
 from common.utils.chart_config import sanitize_chart_display_names
 from common.utils.utils import extract_nested_json
 
@@ -248,7 +286,8 @@ JSON 格式：
       "chart_type": "line|area|column|bar|pie|metric|funnel|heatmap|scatter|sankey|treemap|table",
       "x": "结果集中作为维度或时间轴的字段别名",
       "y": "结果集中作为指标的字段别名",
-      "series": "可选，结果集中作为分组系列的字段别名"
+      "series": "可选，结果集中作为分组系列的字段别名",
+      "time_fields": [{"table": "物理表名", "field": "物理时间字段"}]
     }
   ]
 }
@@ -261,7 +300,10 @@ JSON 格式：
 - SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
-- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
+- 后端提供的时间策略是最终约束，不得重新解释或扩大。
+- 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
+- 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - ORDER BY、GROUP BY、HAVING 中引用的字段必须来自当前查询可见字段；ORDER BY 使用的别名必须在最终 SELECT 列表中真实输出。
 - 具体指标定义、字段选择、计算算法、时间窗口和异常判断必须严格遵循用户本次选择的 Data Skill，或用户本次明确给出的规则。
@@ -293,7 +335,8 @@ JSON 格式：
       "chart_type": "line|area|column|bar|pie|metric|funnel|heatmap|scatter|sankey|treemap|table",
       "x": "结果集中作为时间、序列点或维度的字段别名",
       "y": "结果集中作为预测值或核心指标的字段别名",
-      "series": "可选，结果集中作为分组系列的字段别名"
+      "series": "可选，结果集中作为分组系列的字段别名",
+      "time_fields": [{"table": "物理表名", "field": "物理时间字段"}]
     }
   ]
 }
@@ -309,7 +352,10 @@ JSON 格式：
 - SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
-- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
+- 后端提供的时间策略是最终约束，不得重新解释或扩大。
+- 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
+- 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - 预测必须尽量基于明细事实表在查询时计算，不要假设存在 agg/kpi/snapshot 表。
 - 预测结果要区分已观测值、历史基准、预测值和置信度；数据不足时要明确说明不确定性，不要把无数据当成确定结论。
@@ -335,7 +381,9 @@ JSON 格式：
 - 不要查询不存在于 schema 的表或字段。
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
-- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
+- 后端提供的时间策略是最终约束，不得重新解释或扩大。
+- 修正后的 SQL 必须保留后端给出的具体日期常量形式的具体起止日期和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 没有适用时间字段的维表不得虚构时间过滤。
 - 保持原分析目的和时间范围，不要扩大或缩小口径。
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
 - 输出字段别名应保持或恢复为面向用户的业务展示名；如果使用中文、空格或特殊字符别名，必须按 PostgreSQL 语法加双引号，并确保图表字段配置能用同名别名取数。
@@ -919,6 +967,19 @@ def _mark_query_error_block(block: dict[str, Any], query_error: Exception, curre
     block["error"] = "数据计算失败"
     block["error_detail"] = str(query_error)
     block["summary"] = "这个角度的数据暂时无法稳定计算，已先跳过；其它维度的分析会继续完成。"
+
+
+def _mark_time_policy_unresolved_block(block: dict[str, Any]) -> None:
+    """时间边界无法安全确定时只跳过当前数据块，不泄露内部校验细节。"""
+    block.update(
+        {
+            "status": "failed",
+            "error": "当前分析角度无法确认安全的时间边界，已跳过。",
+            "error_type": "time_policy_unresolved",
+            "warning": "当前分析角度未执行，不影响其它分析结果。",
+            "summary": "",
+        }
+    )
 
 
 def _llm_text(llm, messages: list[BaseMessage]) -> str:
@@ -1654,13 +1715,31 @@ def _prepare_sql_for_execution(
     datasource: CoreDatasource,
     raw_sql: str,
     allowed_tables: list[str],
+    *,
+    time_resolution: AnalysisTimeResolution,
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
+    declared_time_fields: object,
+    dialect: str | None,
+    allow_time_rewrite: bool = False,
 ) -> str:
     """
     是什么：_prepare_sql_for_execution 是一个可以复用的小步骤，负责分析助手相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
+    declared = _validated_declared_time_fields(declared_time_fields)
     sql = _normalise_sql(raw_sql)
+    if time_resolution.policy is not None:
+        sql = enforce_analysis_time_sql(
+            sql,
+            policy=time_resolution.policy,
+            declared_time_fields=declared,
+            schema_time_fields=schema_time_fields,
+            dialect=dialect,
+            allow_rewrite=allow_time_rewrite,
+        )
+    elif sql_references_time_bearing_table(sql, schema_time_fields, dialect):
+        raise AnalysisTimeSqlError()
     prepared_sql, _tables = validate_user_query_sql_or_raise(
         session=session,
         current_user=current_user,
@@ -1669,6 +1748,24 @@ def _prepare_sql_for_execution(
         allowed_tables=allowed_tables,
     )
     return _normalise_sql(prepared_sql)
+
+
+def _validated_declared_time_fields(value: object) -> list[dict[str, str]]:
+    """校验模型声明结构，避免畸形元数据绕过或破坏时间校验。"""
+    if not isinstance(value, list):
+        raise AnalysisTimeSqlError()
+    declared: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise AnalysisTimeSqlError()
+        table = item.get("table")
+        field = item.get("field")
+        if not isinstance(table, str):
+            raise AnalysisTimeSqlError()
+        if not isinstance(field, str):
+            raise AnalysisTimeSqlError()
+        declared.append({"table": table.strip(), "field": field.strip()})
+    return declared
 
 
 def _collect_custom_agent_context(
@@ -2002,86 +2099,449 @@ def _profile_table_expression(datasource: CoreDatasource, raw_table: str) -> tup
     return table_name, table_expr
 
 
-def _collect_date_bounds(
-    session: SessionDep,
-    current_user: CurrentUser,
-    datasource: CoreDatasource,
+ANALYSIS_TIME_ANCHOR_CACHE_TTL_SECONDS = 300
+ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS = 5
+ANALYSIS_TIMESTAMP_TYPE_PATTERN = re.compile(
+    r"\b(?:datetime(?:2|64)?|smalldatetime|datetimeoffset|timestamp(?:tz)?)\b",
+    flags=re.IGNORECASE,
+)
+ANALYSIS_DATE_TYPE_PATTERN = re.compile(r"\bdate\b", flags=re.IGNORECASE)
+ANALYSIS_TEXT_TYPE_PATTERN = re.compile(
+    r"\b(?:char|varchar|text|string)\b", flags=re.IGNORECASE
+)
+ANALYSIS_INTEGER_TYPE_PATTERN = re.compile(
+    r"\b(?:tinyint|smallint|integer|int|bigint|int\d+)\b", flags=re.IGNORECASE
+)
+ANALYSIS_TIME_FIELD_ROLES = {"event_time", "partition_date", "snapshot_date"}
+
+
+def _normalize_analysis_table_name(raw_table: str) -> str:
+    parts = [
+        part.strip().strip('"`[]')
+        for part in str(raw_table or "").strip().split(".")
+        if part.strip().strip('"`[]')
+    ]
+    return ".".join(parts)
+
+
+def _schema_field_type_text(raw_type_and_comment: str) -> str:
+    depth = 0
+    for index, character in enumerate(raw_type_and_comment):
+        if character == "(":
+            depth += 1
+        elif character == ")" and depth > 0:
+            depth -= 1
+        elif character == "," and depth == 0:
+            return raw_type_and_comment[:index].strip()
+    return raw_type_and_comment.strip()
+
+
+def _structured_field_metadata(raw_type_and_comment: str) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for match in re.finditer(
+        r"(?:^|[;,]\s*)(role|encoding|format|unit)\s*=\s*([^;,\s)]+)",
+        raw_type_and_comment,
+        flags=re.IGNORECASE,
+    ):
+        metadata[match.group(1).lower()] = match.group(2).strip().lower()
+    return metadata
+
+
+def _schema_field_definitions(body: str) -> list[tuple[str, str, dict[str, str]]]:
+    definitions: list[tuple[str, str, dict[str, str]]] = []
+    depth = 0
+    start: int | None = None
+    for index, character in enumerate(body):
+        if character == "(":
+            if depth == 0:
+                start = index + 1
+            depth += 1
+        elif character == ")" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                definition = body[start:index].strip()
+                field, separator, raw_type_and_comment = definition.partition(":")
+                field_type = _schema_field_type_text(raw_type_and_comment)
+                if separator and field.strip() and field_type.strip():
+                    definitions.append(
+                        (
+                            field.strip(),
+                            field_type.strip(),
+                            _structured_field_metadata(raw_type_and_comment),
+                        )
+                    )
+                start = None
+    return definitions
+
+
+def _time_field_binding(
+    raw_field: str,
+    field_type: str,
+    metadata: dict[str, str],
+) -> TimeFieldBinding | None:
+    field = raw_field.strip()
+    quoted = len(field) >= 2 and field[0] == field[-1] and field[0] in {'"', '`'}
+    if quoted:
+        field = field[1:-1]
+    normalized_type = field_type.strip().lower()
+    if ANALYSIS_TIMESTAMP_TYPE_PATTERN.search(normalized_type):
+        return TimeFieldBinding(field, normalized_type, "native_timestamp", quoted)
+    if ANALYSIS_DATE_TYPE_PATTERN.search(normalized_type):
+        return TimeFieldBinding(field, normalized_type, "native_date", quoted)
+
+    role = metadata.get("role")
+    encoding = metadata.get("encoding") or metadata.get("format")
+    if role not in ANALYSIS_TIME_FIELD_ROLES or not encoding:
+        return None
+    normalized_encoding = encoding.replace("-", "_").lower()
+    if normalized_encoding == "yyyymmdd":
+        if ANALYSIS_TEXT_TYPE_PATTERN.search(normalized_type):
+            resolved_encoding = "yyyymmdd_text"
+        elif ANALYSIS_INTEGER_TYPE_PATTERN.search(normalized_type):
+            resolved_encoding = "yyyymmdd_integer"
+        else:
+            return None
+    elif normalized_encoding in {"iso_date", "iso8601_date"}:
+        if not ANALYSIS_TEXT_TYPE_PATTERN.search(normalized_type):
+            return None
+        resolved_encoding = "iso_date"
+    elif normalized_encoding in {"epoch_seconds", "unix_seconds"}:
+        if not ANALYSIS_INTEGER_TYPE_PATTERN.search(normalized_type):
+            return None
+        resolved_encoding = "epoch_seconds"
+    elif normalized_encoding in {
+        "epoch_milliseconds",
+        "unix_milliseconds",
+        "epoch_ms",
+    }:
+        if not ANALYSIS_INTEGER_TYPE_PATTERN.search(normalized_type):
+            return None
+        resolved_encoding = "epoch_milliseconds"
+    else:
+        return None
+    return TimeFieldBinding(field, normalized_type, resolved_encoding, quoted)
+
+
+def _schema_time_field_candidates(
     schema: str,
     allowed_tables: list[str],
-) -> str:
-    """
-    是什么：_collect_date_bounds 是一个可以复用的小步骤，负责分析助手相关的一件事。
-    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
-    做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    allowed_table_set = {str(table).lower() for table in allowed_tables}
-    table_blocks = re.findall(r"# Table:\s*([^\n,]+)[^\n]*\n\[\n(.*?)\n\]", schema, flags=re.DOTALL)
-    lines: list[str] = []
-    table_count = 0
-    for raw_table, body in table_blocks:
-        if table_count >= 8:
-            break
-        table_name, table_expr = _profile_table_expression(datasource, raw_table)
-        if not table_name or table_name.lower() not in allowed_table_set:
+) -> dict[str, tuple[TimeFieldBinding, ...]]:
+    table_blocks = [
+        (_normalize_analysis_table_name(raw_table), body)
+        for raw_table, body in re.findall(
+            r"# Table:\s*([^\n,]+)[^\n]*\n\[\n(.*?)\n\]",
+            schema,
+            flags=re.DOTALL,
+        )
+    ]
+    basename_counts: dict[str, int] = {}
+    for table, _body in table_blocks:
+        basename = table.rsplit(".", 1)[-1].lower()
+        basename_counts[basename] = basename_counts.get(basename, 0) + 1
+
+    normalized_allowed = {
+        normalized.lower()
+        for table in allowed_tables
+        if (normalized := _normalize_analysis_table_name(str(table)))
+    }
+    explicitly_allowed = {
+        table for table in normalized_allowed if "." in table
+    }
+    bare_allowed = {table for table in normalized_allowed if "." not in table}
+    candidates: dict[str, tuple[TimeFieldBinding, ...]] = {}
+    for table, body in table_blocks:
+        table_identity = table.lower()
+        basename = table.rsplit(".", 1)[-1].lower()
+        if table_identity not in explicitly_allowed and not (
+            basename in bare_allowed and basename_counts[basename] == 1
+        ):
             continue
-        date_fields: list[str] = []
-        for fname, ftype in re.findall(r"\(([^:()]+):([^,()]+)", body):
-            if any(keyword in ftype.strip().lower() for keyword in ("date", "time", "timestamp")):
-                date_fields.append(fname.strip())
-        date_fields = date_fields[:4]
-        if not date_fields:
-            continue
-        select_parts: list[str] = []
-        for index, field in enumerate(date_fields):
-            field_expr = _quote_identifier(datasource, field)
-            select_parts.append(f"MAX({field_expr}) AS f{index}_max")
-            select_parts.append(f"MIN({field_expr}) AS f{index}_min")
-        sql = f"SELECT {', '.join(select_parts)} FROM {table_expr}"
-        try:
-            query_result = execute_user_query_or_raise(
-                session=session,
-                current_user=current_user,
-                datasource=datasource,
-                sql=sql,
-                allowed_tables=[table_name],
-                origin_column=False,
-                apply_row_permissions=True,
+        fields = tuple(
+            binding
+            for field, field_type, metadata in _schema_field_definitions(body)
+            if (binding := _time_field_binding(field, field_type, metadata)) is not None
+        )
+        if fields:
+            candidates[table] = fields
+    return candidates
+
+
+def _select_analysis_time_anchor(
+    llm,
+    question: str,
+    semantic_context: str,
+    candidates: dict[str, tuple[TimeFieldBinding | str, ...]],
+) -> AnalysisTimeAnchor:
+    payload_candidates = {
+        table: [
+            binding.field if isinstance(binding, TimeFieldBinding) else str(binding)
+            for binding in bindings
+        ]
+        for table, bindings in candidates.items()
+    }
+    payload = orjson.dumps(payload_candidates).decode()
+    messages = [
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(
+            content=(
+                "只选择本次问题最相关的主业务时间锚点，不生成 SQL。"
+                "只能从候选表字段中逐字选择；无法判断时返回空字符串。"
+                '严格返回 {"table":"...","field":"..."}。\n'
+                f"用户问题：{question}\n业务语义：{semantic_context[:12000]}\n候选：{payload}"
             )
-            data = query_result.result.get("data") or []
-            if not data:
-                continue
-            row = data[0]
-            for index, field in enumerate(date_fields):
-                max_value = row.get(f"f{index}_max")
-                min_value = row.get(f"f{index}_min")
-                if max_value is None and min_value is None:
-                    continue
-                lines.append(f"- {table_name}.{field}: 最早 {min_value}, 最新 {max_value}")
-            table_count += 1
-        except Exception:
-            traceback.print_exc()
-    if not lines:
-        return ""
-    header = (
-        "数据时间边界（以下是各表真实存在的日期范围。判断“最近 N 天 / 最近一个月 / 观察截止日”时，"
-        "必须以相关事实表的“最新”日期为基准来推算，不要使用系统当前日期）："
+        ),
+    ]
+    selected = _extract_json_object(_llm_text(llm, messages))
+    table = str(selected.get("table") or "").strip()
+    field = str(selected.get("field") or "").strip()
+    binding = next(
+        (
+            candidate
+            for candidate in candidates.get(table, ())
+            if (
+                candidate.field
+                if isinstance(candidate, TimeFieldBinding)
+                else str(candidate)
+            )
+            == field
+        ),
+        None,
     )
-    return header + "\n" + "\n".join(lines)
+    if binding is None:
+        raise ValueError("未选择有效的业务时间字段")
+    return AnalysisTimeAnchor(
+        table=table,
+        field=field,
+        data_type=(binding.data_type if isinstance(binding, TimeFieldBinding) else None),
+        encoding=(binding.encoding if isinstance(binding, TimeFieldBinding) else None),
+        quoted=(binding.quoted if isinstance(binding, TimeFieldBinding) else False),
+    )
 
 
-def _get_data_profile(
-    session: SessionDep,
-    current_user: CurrentUser,
-    datasource: CoreDatasource,
-    schema: str,
-    allowed_tables: list[str],
+def _analysis_time_permission_fingerprint(
+    *,
+    session,
+    current_user,
+    datasource,
+    anchor: AnalysisTimeAnchor,
 ) -> str:
-    """
-    是什么：_get_data_profile 是一个可以复用的小步骤，负责分析助手相关的一件事。
-    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
-    做了什么：把分析助手需要的数据找出来，整理成后面好用的样子。
-    """
-    return _collect_date_bounds(session, current_user, datasource, schema, allowed_tables)[:12000]
+    table_name = _normalize_analysis_table_name(anchor.table).rsplit(".", 1)[-1]
+    filters = get_row_permission_filters(
+        session=session,
+        current_user=current_user,
+        ds=datasource,
+        tables=[table_name],
+    )
+    payload = json.dumps(filters or [], ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _analysis_time_anchor_cache_key(
+    *,
+    tenant_id: int,
+    datasource_id: int,
+    user_id: int,
+    context_hash: str,
+    permission_hash: str,
+    anchor: AnalysisTimeAnchor,
+) -> str:
+    return datasource_redis_key(
+        tenant_id,
+        datasource_id,
+        "analysis-time-anchor",
+        user_id,
+        context_hash,
+        permission_hash,
+        anchor.table,
+        anchor.field,
+    )
+
+
+def _coerce_business_date(value: Any, encoding: str | None = None) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if encoding in {"epoch_seconds", "epoch_milliseconds"}:
+        epoch_value = int(text)
+        if encoding == "epoch_milliseconds":
+            epoch_value /= 1000
+        return datetime.fromtimestamp(epoch_value, tz=timezone.utc).date()
+    if re.fullmatch(r"\d{8}", text):
+        return datetime.strptime(text, "%Y%m%d").date()
+    return date.fromisoformat(text[:10])
+
+
+def _probe_latest_business_date(
+    *,
+    session,
+    current_user,
+    datasource,
+    allowed_tables: list[str],
+    anchor: AnalysisTimeAnchor,
+) -> date:
+    anchor_table = _normalize_analysis_table_name(anchor.table)
+    table_name, table_expr = _profile_table_expression(datasource, anchor_table)
+    normalized_allowed = {
+        normalized.lower()
+        for table in allowed_tables
+        if (normalized := _normalize_analysis_table_name(str(table)))
+    }
+    anchor_identity = anchor_table.lower()
+    bare_name = table_name.lower()
+    is_allowed = anchor_identity in normalized_allowed or (
+        "." in anchor_identity and bare_name in normalized_allowed
+    )
+    if not table_name or not is_allowed:
+        raise ValueError("业务时间锚点不在授权表范围内")
+    field_expr = _quote_identifier(datasource, anchor.field)
+    sql = (
+        f"SELECT {field_expr} AS anchor_value FROM {table_expr} "
+        f"WHERE {field_expr} IS NOT NULL ORDER BY {field_expr} DESC LIMIT 1"
+    )
+    result = execute_user_query_or_raise(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        sql=sql,
+        allowed_tables=[table_name],
+        origin_column=False,
+        apply_row_permissions=True,
+        query_timeout=ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS,
+    ).result
+    rows = result.get("data") or []
+    if not rows:
+        raise ValueError("业务时间字段没有可用数据")
+    return _coerce_business_date(
+        rows[0].get("anchor_value"),
+        anchor.encoding,
+    )
+
+
+async def _resolve_chat_time_policy(
+    *,
+    session,
+    current_user,
+    datasource,
+    business_context,
+    llm,
+    request,
+    semantic_context: str,
+) -> AnalysisTimeResolution:
+    user_messages = [
+        item.content.strip()
+        for item in request.messages
+        if getattr(item, "role", None) == "user" and item.content.strip()
+    ]
+    question = user_messages[-1]
+    history = user_messages[-6:-1]
+    intent = parse_analysis_time_intent(question, history)
+    skill_days, warnings = parse_data_skill_time_directive(business_context.data_skill)
+    if not intent.requires_anchor:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=None,
+            anchor_date=None,
+            warnings=warnings,
+        )
+
+    candidates = _schema_time_field_candidates(
+        business_context.schema,
+        business_context.allowed_tables,
+    )
+    try:
+        anchor = await asyncio.to_thread(
+            _select_analysis_time_anchor,
+            llm,
+            question,
+            semantic_context,
+            candidates,
+        )
+    except Exception:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=None,
+            anchor_date=None,
+            warnings=warnings,
+        )
+
+    key: str | None = None
+    client = None
+    cached_date: date | None = None
+    try:
+        permission_hash = await run_in_threadpool(
+            _analysis_time_permission_fingerprint,
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            anchor=anchor,
+        )
+        key = _analysis_time_anchor_cache_key(
+            tenant_id=require_current_tenant_id(current_user),
+            datasource_id=int(datasource.id),
+            user_id=int(current_user.id),
+            context_hash=str(business_context.business_context_hash or "none"),
+            permission_hash=permission_hash,
+            anchor=anchor,
+        )
+        client = get_redis_client()
+        raw_cached = await client.get(key)
+        if raw_cached:
+            cached_date = _coerce_business_date(
+                raw_cached.decode() if isinstance(raw_cached, bytes) else raw_cached,
+                anchor.encoding,
+            )
+    except (RedisError, RuntimeError, TypeError, ValueError):
+        key = None
+        client = None
+        cached_date = None
+
+    if cached_date is not None:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=anchor,
+            anchor_date=cached_date,
+            warnings=warnings,
+        )
+
+    try:
+        anchor_date = await run_in_threadpool(
+            _probe_latest_business_date,
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            allowed_tables=business_context.allowed_tables,
+            anchor=anchor,
+        )
+    except Exception:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=anchor,
+            anchor_date=None,
+            warnings=warnings,
+        )
+
+    if client is not None and key is not None:
+        try:
+            await client.set(
+                key,
+                anchor_date.isoformat(),
+                ex=ANALYSIS_TIME_ANCHOR_CACHE_TTL_SECONDS,
+            )
+        except RedisError:
+            pass
+    return resolve_analysis_time_policy(
+        intent,
+        skill_window_days=skill_days,
+        anchor=anchor,
+        anchor_date=anchor_date,
+        warnings=warnings,
+    )
 
 
 def _is_forecast_question(question: str) -> bool:
@@ -3134,6 +3594,8 @@ def _repair_sql(
     custom_agent: str = "",
     tracking_context: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> str:
     """
     是什么：_repair_sql 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3152,6 +3614,7 @@ def _repair_sql(
         f"分析目的：{raw_query.get('purpose')}\n"
         f"原始 SQL：\n{failed_sql}\n\n"
         f"执行错误：\n{str(error)[:3000]}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_data_skill_block(data_skill)}"
         f"{tracking_block}"
         f"{_custom_agent_block(custom_agent)}"
@@ -3169,12 +3632,83 @@ def _repair_sql(
     return _normalise_sql(repaired_sql)
 
 
+def _prepare_time_safe_query_sql(
+    *,
+    llm,
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    raw_query: dict[str, Any],
+    question: str,
+    schema: str,
+    sample_data: str,
+    data_profile: str,
+    custom_agent: str,
+    tracking_context: str,
+    data_skill: str,
+    allowed_tables: list[str],
+    time_resolution: AnalysisTimeResolution,
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
+    dialect: str | None,
+) -> str:
+    """严格校验失败后只允许一次定向修复，再做唯一目标 AST 补齐。"""
+    raw_declared = raw_query.get("time_fields")
+    declared = _validated_declared_time_fields(
+        [] if raw_declared is None else raw_declared
+    )
+    raw_sql = str(raw_query.get("sql") or "")
+    try:
+        return _prepare_sql_for_execution(
+            llm,
+            session,
+            current_user,
+            datasource,
+            raw_sql,
+            allowed_tables,
+            time_resolution=time_resolution,
+            schema_time_fields=schema_time_fields,
+            declared_time_fields=declared,
+            dialect=dialect,
+            allow_time_rewrite=False,
+        )
+    except AnalysisTimeSqlError as error:
+        repaired = _repair_sql(
+            llm,
+            question,
+            raw_query,
+            raw_sql,
+            error,
+            schema,
+            sample_data,
+            data_profile,
+            custom_agent,
+            tracking_context,
+            data_skill,
+            time_resolution=time_resolution,
+        )
+        return _prepare_sql_for_execution(
+            llm,
+            session,
+            current_user,
+            datasource,
+            repaired,
+            allowed_tables,
+            time_resolution=time_resolution,
+            schema_time_fields=schema_time_fields,
+            declared_time_fields=declared,
+            dialect=dialect,
+            allow_time_rewrite=True,
+        )
+
+
 def _summarise_block(
     llm,
     question: str,
     block: dict[str, Any],
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> str:
     """
     是什么：_summarise_block 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3183,11 +3717,23 @@ def _summarise_block(
     """
     rows = block.get("data") or []
     if not rows:
-        return "这组查询没有返回数据，暂时不能从该角度形成确定判断。"
+        if time_resolution.policy:
+            policy = time_resolution.policy
+            start_relation = "含" if policy.start_inclusive else "不含"
+            end_relation = "含" if policy.end_inclusive else "不含"
+            return (
+                "后端为本次分析确定的时间范围是 "
+                f"{policy.start_date.isoformat()}（{start_relation}）至 "
+                f"{policy.end_date.isoformat()}（{end_relation}）。"
+                "这组查询没有返回数据，暂时不能从该角度形成确定判断。"
+            )
+        return "这组查询没有返回数据，且当前无法确认时间边界，暂时不能从该角度形成确定判断。"
     prompt = (
         f"用户问题：{question}\n"
         f"数据块标题：{block.get('title')}\n"
         f"分析目的：{block.get('purpose')}\n"
+        f"{_time_policy_context(time_resolution)}"
+        "摘要必须说明实际使用的时间范围；维表无适用时间字段时不得虚构时间过滤。\n"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"SQL：{block.get('sql')}\n"
         f"字段：{block.get('fields')}\n"
@@ -3206,6 +3752,8 @@ def _final_answer_messages(
     blocks: list[dict[str, Any]],
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> list[BaseMessage]:
     """
     是什么：_final_answer_messages 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3269,6 +3817,8 @@ def _final_answer_messages(
     prompt = (
         f"用户问题：{question}\n"
         f"问题理解：{intro}\n"
+        f"{_time_policy_context(time_resolution)}"
+        "最终回答必须说明实际使用的时间范围；维表无适用时间字段时不得虚构时间过滤。\n"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"{permission_notice}"
         f"{failure_notice}"
@@ -3290,6 +3840,8 @@ def _final_answer(
     blocks: list[dict[str, Any]],
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> str:
     """
     是什么：_final_answer 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3298,7 +3850,27 @@ def _final_answer(
     """
     return _llm_text(
         llm,
-        _final_answer_messages(question, intro, blocks, custom_agent, data_skill),
+        _final_answer_messages(
+            question,
+            intro,
+            blocks,
+            custom_agent,
+            data_skill,
+            time_resolution=time_resolution,
+        ),
+    )
+
+
+def _time_policy_context(resolution: AnalysisTimeResolution) -> str:
+    if resolution.policy:
+        return (
+            "分析时间策略（后端已确定，必须严格使用，不得重新解释或扩大）：\n"
+            + resolution.policy.prompt_text()
+            + "\n\n"
+        )
+    return (
+        "分析时间策略：当前无法确认最大业务日期；只生成能够明确证明时间边界的数据块，"
+        "不得重新解释或扩大范围。\n\n"
     )
 
 
@@ -3306,6 +3878,8 @@ def _initial_outline_messages(
     request: AnalysisAssistantRequest,
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> list[BaseMessage]:
     """
     是什么：_initial_outline_messages 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3322,6 +3896,7 @@ def _initial_outline_messages(
         f"页面上下文：{request.context or ''}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_data_skill_block(data_skill)}"
         f"{_custom_agent_block(custom_agent)}"
     )
@@ -3337,6 +3912,8 @@ def _build_plan(
     data_profile: str = "",
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> dict[str, Any]:
     """
     是什么：_build_plan 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3358,6 +3935,7 @@ def _build_plan(
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"{semantic_mappings}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
@@ -3379,8 +3957,8 @@ def _build_plan(
         )
         plan = _extract_json_object(retry)
 
-    queries = plan.get("queries") or []
-    if not isinstance(queries, list) or not queries:
+    queries = _executable_plan_queries(plan)
+    if not queries:
         raise ValueError("模型没有生成可执行的数据召回计划")
     plan["queries"] = queries[:MAX_ANALYSIS_QUERIES]
     return plan
@@ -3395,6 +3973,8 @@ def _build_forecast_plan(
     data_profile: str = "",
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> dict[str, Any]:
     """
     是什么：_build_forecast_plan 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3416,6 +3996,7 @@ def _build_forecast_plan(
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"{semantic_mappings}"
         f"数据库 schema：\n{schema[:22000]}\n\n"
@@ -3437,11 +4018,21 @@ def _build_forecast_plan(
         )
         plan = _extract_json_object(retry)
 
-    queries = plan.get("queries") or []
-    if not isinstance(queries, list) or not queries:
+    queries = _executable_plan_queries(plan)
+    if not queries:
         raise ValueError("模型没有生成可执行的预测数据召回计划")
     plan["queries"] = queries[:MAX_FORECAST_QUERIES]
     return plan
+
+
+def _executable_plan_queries(plan: object) -> list[dict[str, Any]]:
+    """只保留结构有效的数据召回块，避免模型杂项进入执行路径。"""
+    if not isinstance(plan, dict):
+        return []
+    queries = plan.get("queries")
+    if not isinstance(queries, list):
+        return []
+    return [query for query in queries if isinstance(query, dict)]
 
 
 @router.post("/chat", include_in_schema=False)
@@ -3496,6 +4087,17 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
     tracking_context = business_context.tracking_config
     semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, llm_config = await _create_llm(custom_agent_model_id)
+    time_resolution = await _resolve_chat_time_policy(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        business_context=business_context,
+        llm=llm,
+        request=request,
+        semantic_context=semantic_context,
+    )
+    snapshot_business_context = business_context.snapshot_metadata()
+    snapshot_business_context["analysis_time_policy"] = time_resolution.to_snapshot()
     context_snapshot = build_agent_context_snapshot(
         surface="analysis_assistant",
         datasource_id=datasource.id,
@@ -3508,7 +4110,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         ai_model_id=llm_config.model_id,
         ai_model_name=llm_config.model_name,
         target_scope=target_scope.value if target_scope else None,
-        business_context=business_context.snapshot_metadata(),
+        business_context=snapshot_business_context,
     )
 
     def generate():
@@ -3521,8 +4123,21 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         success = False
         try:
             yield _sse({"type": "context_snapshot", "snapshot": context_snapshot})
+            emitted_time_traces: set[str] = set()
+            for trace_message in (*time_resolution.warnings, *time_resolution.traces):
+                if trace_message in emitted_time_traces:
+                    continue
+                emitted_time_traces.add(trace_message)
+                yield _trace(trace_message)
             outline_text = ""
-            for chunk in llm.stream(_initial_outline_messages(request, custom_agent, semantic_context)):
+            for chunk in llm.stream(
+                _initial_outline_messages(
+                    request,
+                    custom_agent,
+                    semantic_context,
+                    time_resolution=time_resolution,
+                )
+            ):
                 content = _chunk_text(chunk.content)
                 if content:
                     outline_text += content
@@ -3535,6 +4150,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             allowed_tables = business_context.allowed_tables
             if not allowed_tables:
                 raise RuntimeError("当前用户在该项目下没有可分析的数据表权限")
+            schema_time_fields = _schema_time_field_candidates(schema, allowed_tables)
+            dialect = business_context.sql_dialect
             sample_data = ""
             data_profile = ""
             if tracking_context.strip():
@@ -3544,24 +4161,52 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             if custom_agent.strip():
                 yield _trace("已应用本次选择的自定义 Agent 补充设定，但 Data Skill、权限和安全规则保持不变。")
             forecast_requested = _is_forecast_question(question)
-            if forecast_requested:
-                yield _trace("正在识别预测指标、目标对象和可用的历史观察窗口。")
-                plan = _build_forecast_plan(
-                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, semantic_context
+            try:
+                if forecast_requested:
+                    yield _trace("正在识别预测指标、目标对象和可用的历史观察窗口。")
+                    plan = _build_forecast_plan(
+                        llm,
+                        request,
+                        schema,
+                        sample_data,
+                        datasource,
+                        data_profile,
+                        custom_agent,
+                        semantic_context,
+                        time_resolution=time_resolution,
+                    )
+                    yield _trace("预测方法和数据检查项已确定，下面按预测口径召回数据。")
+                else:
+                    yield _trace("正在把分析框架拆成可执行的数据检查项。")
+                    plan = _build_plan(
+                        llm,
+                        request,
+                        schema,
+                        sample_data,
+                        datasource,
+                        data_profile,
+                        custom_agent,
+                        semantic_context,
+                        time_resolution=time_resolution,
+                    )
+            except (TypeError, ValueError):
+                plan = None
+
+            queries = _executable_plan_queries(plan)
+            if not queries:
+                final = (
+                    "无法生成可执行分析计划，本次未形成有数据支撑的结论。"
+                    "请调整分析问题后重试。"
                 )
-                yield _trace("预测方法和数据检查项已确定，下面按预测口径召回数据。")
-            else:
-                yield _trace("正在把分析框架拆成可执行的数据检查项。")
-                plan = _build_plan(
-                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, semantic_context
-                )
+                yield _sse({"type": "final", "content": final})
+                success = True
+                yield _sse({"type": "finish"})
+                return
 
             intro = str(plan.get("intro") or "我会先识别问题指标，再从多个角度查看数据并给出分析建议。")
             yield _trace("具体执行步骤已确定，下面按关键维度逐一分析。")
 
-            for index, raw_query in enumerate(plan.get("queries") or [], start=1):
-                if not isinstance(raw_query, dict):
-                    continue
+            for index, raw_query in enumerate(queries, start=1):
                 block_id = str(raw_query.get("id") or f"q{index}")
                 title = str(raw_query.get("title") or f"分析 {index}")
                 purpose = str(raw_query.get("purpose") or "")
@@ -3586,8 +4231,23 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 }
                 try:
                     raw_query["_user_question"] = question
-                    sql = _prepare_sql_for_execution(
-                        llm, session, current_user, datasource, str(raw_query.get("sql") or ""), allowed_tables
+                    sql = _prepare_time_safe_query_sql(
+                        llm=llm,
+                        session=session,
+                        current_user=current_user,
+                        datasource=datasource,
+                        raw_query=raw_query,
+                        question=question,
+                        schema=schema,
+                        sample_data=sample_data,
+                        data_profile=data_profile,
+                        custom_agent=custom_agent,
+                        tracking_context=tracking_context,
+                        data_skill=data_skill,
+                        allowed_tables=allowed_tables,
+                        time_resolution=time_resolution,
+                        schema_time_fields=schema_time_fields,
+                        dialect=dialect,
                     )
                     block["sql"] = sql
                     raw_query["sql"] = sql
@@ -3605,11 +4265,31 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             raise first_error
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
                         repaired_sql = _repair_sql(
-                            llm, question, raw_query, sql, first_error, schema, sample_data, data_profile,
-                            custom_agent, tracking_context, data_skill
+                            llm,
+                            question,
+                            raw_query,
+                            sql,
+                            first_error,
+                            schema,
+                            sample_data,
+                            data_profile,
+                            custom_agent,
+                            tracking_context,
+                            data_skill,
+                            time_resolution=time_resolution,
                         )
                         sql = _prepare_sql_for_execution(
-                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                            llm,
+                            session,
+                            current_user,
+                            datasource,
+                            repaired_sql,
+                            allowed_tables,
+                            time_resolution=time_resolution,
+                            schema_time_fields=schema_time_fields,
+                            declared_time_fields=raw_query.get("time_fields") or [],
+                            dialect=dialect,
+                            allow_time_rewrite=True,
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
@@ -3625,11 +4305,31 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
                         repaired_sql = _repair_sql(
-                            llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data,
-                            data_profile, custom_agent, tracking_context, data_skill
+                            llm,
+                            question,
+                            raw_query,
+                            sql,
+                            ValueError(semantic_error),
+                            schema,
+                            sample_data,
+                            data_profile,
+                            custom_agent,
+                            tracking_context,
+                            data_skill,
+                            time_resolution=time_resolution,
                         )
                         sql = _prepare_sql_for_execution(
-                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                            llm,
+                            session,
+                            current_user,
+                            datasource,
+                            repaired_sql,
+                            allowed_tables,
+                            time_resolution=time_resolution,
+                            schema_time_fields=schema_time_fields,
+                            declared_time_fields=raw_query.get("time_fields") or [],
+                            dialect=dialect,
+                            allow_time_rewrite=True,
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
@@ -3648,7 +4348,16 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     block["data"] = result.get("data") or []
                     yield _trace("这个角度的数据已经整理好，正在提炼关键发现。", block_id=block_id)
                     block["chart"] = _build_chart_config(raw_query, result)
-                    block["summary"] = _summarise_block(llm, question, block, custom_agent, semantic_context)
+                    block["summary"] = _summarise_block(
+                        llm,
+                        question,
+                        block,
+                        custom_agent,
+                        semantic_context,
+                        time_resolution=time_resolution,
+                    )
+                except AnalysisTimeSqlError:
+                    _mark_time_policy_unresolved_block(block)
                 except Exception as query_error:
                     _mark_query_error_block(block, query_error, current_user)
 
@@ -3657,7 +4366,16 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
 
             yield _trace("正在汇总各个角度的发现，形成最终判断和建议。")
             final = ""
-            for chunk in llm.stream(_final_answer_messages(question, intro, blocks, custom_agent, semantic_context)):
+            for chunk in llm.stream(
+                _final_answer_messages(
+                    question,
+                    intro,
+                    blocks,
+                    custom_agent,
+                    semantic_context,
+                    time_resolution=time_resolution,
+                )
+            ):
                 content = _chunk_text(chunk.content)
                 if content:
                     final += content

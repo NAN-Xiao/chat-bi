@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +12,14 @@ from fastapi import HTTPException
 
 from apps.analysis_assistant.api import analysis_assistant as analysis_api
 from apps.analysis_assistant.models import AnalysisAssistantConversation
+from apps.analysis_assistant.service.analysis_time_policy import (
+    AnalysisTimeAnchor,
+    AnalysisTimePolicy,
+    AnalysisTimeResolution,
+    AnalysisTimeSource,
+    parse_analysis_time_intent,
+    resolve_analysis_time_policy,
+)
 from apps.system.schemas.system_schema import UserInfoDTO
 
 
@@ -70,6 +78,30 @@ def _conversation() -> AnalysisAssistantConversation:
         ],
         create_time=datetime(2026, 6, 30, 20, 0, 0),
         update_time=datetime(2026, 6, 30, 20, 5, 0),
+    )
+
+
+def _resolved_time(
+    *,
+    warnings: tuple[str, ...] = (),
+    traces: tuple[str, ...] = (),
+) -> AnalysisTimeResolution:
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.DEFAULT_14_DAYS,
+        window_days=14,
+        anchor_date=date(2026, 7, 26),
+        start_date=date(2026, 7, 13),
+        end_date=date(2026, 7, 26),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("fact_orders", "business_date"),
+        description="最近 14 个自然日",
+    )
+    return AnalysisTimeResolution(
+        policy=policy,
+        status="resolved",
+        warnings=warnings,
+        traces=traces,
     )
 
 
@@ -175,6 +207,7 @@ def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.M
         allowed_tables=["fact_payments"],
         data_skill="<Data-Skills>收入口径</Data-Skills>",
         tracking_config="<Tracking>支付事件字典</Tracking>",
+        business_context_hash="ctx",
     )
     calls: list[dict] = []
     snapshots: list[dict] = []
@@ -193,6 +226,9 @@ def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.M
     async def _fake_create_llm(*_args, **_kwargs):
         return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
 
+    async def _fake_resolve_time_policy(**_kwargs):
+        return _resolved_time()
+
     monkeypatch.setattr(analysis_api, "_sanitize_analysis_request_context_for_current_permissions", lambda _s, _u, req: req)
     monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", _no_rate_limit)
     monkeypatch.setattr(analysis_api, "_get_datasource", lambda *_args, **_kwargs: datasource)
@@ -202,6 +238,11 @@ def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.M
         analysis_api,
         "_create_llm",
         _fake_create_llm,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        _fake_resolve_time_policy,
     )
 
     def _snapshot(**kwargs):
@@ -227,6 +268,117 @@ def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.M
         "<Tracking>支付事件字典</Tracking>\n\n<Data-Skills>收入口径</Data-Skills>"
     )
     assert snapshots[0]["business_context"]["sql_dialect"] == "postgres"
+    assert snapshots[0]["business_context"]["analysis_time_policy"] == {
+        "source": "DEFAULT_14_DAYS",
+        "window_days": 14,
+        "start_date": "2026-07-13",
+        "end_date": "2026-07-26",
+        "start_inclusive": True,
+        "end_inclusive": True,
+        "anchor": {"table": "fact_orders", "field": "business_date"},
+        "status": "resolved",
+        "warnings": [],
+    }
+
+
+def test_chat_deduplicates_real_unresolved_time_policy_trace_after_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """真实 unresolved 的同一 warning/trace 在轨迹中只输出一次。"""
+    datasource = analysis_api.CoreDatasource(
+        id=1,
+        name="测试项目",
+        type="postgresql",
+        type_name="PostgreSQL",
+        configuration="{}",
+    )
+
+    class _BusinessContext(SimpleNamespace):
+        def snapshot_metadata(self):
+            return {
+                "context_hash": "ctx",
+                "datasource_id": "1",
+                "sql_dialect": "postgres",
+                "allowed_tables": ["fact_payments"],
+            }
+
+    business_context = _BusinessContext(
+        datasource=datasource,
+        schema="【Schema】\n# Table: fact_payments",
+        allowed_tables=["fact_payments"],
+        data_skill="",
+        tracking_config="",
+        business_context_hash="ctx",
+    )
+
+    class _Llm:
+        def stream(self, _messages):
+            raise AssertionError("读取时间策略轨迹时不应进入计划生成")
+
+    async def _no_rate_limit(*_args, **_kwargs):
+        return None
+
+    async def _fake_create_llm(*_args, **_kwargs):
+        return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
+
+    async def _fake_resolve_time_policy(**_kwargs):
+        return resolve_analysis_time_policy(
+            parse_analysis_time_intent("最近7天收入", []),
+            skill_window_days=None,
+            anchor=None,
+            anchor_date=None,
+        )
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_sanitize_analysis_request_context_for_current_permissions",
+        lambda _s, _u, req: req,
+    )
+    monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", _no_rate_limit)
+    monkeypatch.setattr(analysis_api, "_get_datasource", lambda *_args, **_kwargs: datasource)
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_custom_agent_context",
+        lambda *_args, **_kwargs: ("", None),
+    )
+    monkeypatch.setattr(
+        analysis_api.BusinessSqlContextService,
+        "build",
+        staticmethod(lambda **_kwargs: business_context),
+    )
+    monkeypatch.setattr(analysis_api, "_create_llm", _fake_create_llm)
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        _fake_resolve_time_policy,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "build_agent_context_snapshot",
+        lambda **_kwargs: {"snapshot": "ok"},
+    )
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="看收入趋势")],
+    )
+
+    async def _collect_first_three_chunks() -> list[str]:
+        response = await analysis_api.chat(request, _user(), _FakeSession())
+        chunks: list[str] = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
+            if len(chunks) == 3:
+                break
+        await response.body_iterator.aclose()
+        return chunks
+
+    chunks = asyncio.run(_collect_first_three_chunks())
+
+    assert '"type":"context_snapshot"' in chunks[0]
+    trace_chunks = [chunk for chunk in chunks if '"type":"trace"' in chunk]
+    assert len(trace_chunks) == 1
+    assert "无法确认当前数据源的时间锚点" in trace_chunks[0]
+    assert '"type":"error"' in chunks[2]
 
 
 def test_export_report_rejects_client_snapshot_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -425,6 +577,97 @@ def test_report_interpretation_returns_no_data_for_valid_empty_target(
     assert "没有查看权限" not in body
 
 
+def test_report_interpretation_does_not_resolve_chat_time_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """报表解读沿用可见图表上下文，不解析综合分析聊天的时间策略。"""
+    datasource = analysis_api.CoreDatasource(
+        id=1,
+        name="测试项目",
+        type="postgresql",
+        type_name="PostgreSQL",
+        configuration="{}",
+    )
+
+    async def _no_rate_limit(*_args, **_kwargs):
+        return None
+
+    class _Llm:
+        def __init__(self) -> None:
+            self.stream_calls = 0
+
+        def stream(self, _messages):
+            self.stream_calls += 1
+            yield SimpleNamespace(
+                content=(
+                    "### 数据概览\n当前收入为 12.5。\n\n"
+                    "### 分析建议\n继续核对当前可见数据。"
+                )
+            )
+
+    llm = _Llm()
+
+    async def _fake_create_llm(*_args, **_kwargs):
+        return llm, SimpleNamespace(model_id=7, model_name="test-model")
+
+    async def _unexpected_time_policy(**_kwargs):
+        raise AssertionError("报表解读不得解析综合分析聊天时间策略")
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_report_interpretation_preflight",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", _no_rate_limit)
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_report_interpretation_datasource",
+        lambda *_args, **_kwargs: datasource,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_data_skill_context",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_tracking_context",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(analysis_api, "_create_llm", _fake_create_llm)
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        _unexpected_time_policy,
+    )
+    usage_calls: list[dict] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **kwargs: usage_calls.append(kwargs),
+    )
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        context="当前可见图表数据：收入 12.5",
+        messages=[
+            analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")
+        ],
+    )
+
+    response = asyncio.run(
+        analysis_api.report_interpretation(request, _user(), _FakeSession())
+    )
+    body = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert response.media_type == "text/event-stream"
+    assert llm.stream_calls == 1
+    assert '"type":"final_delta"' in body
+    assert '"type":"final"' in body
+    assert '"type":"finish"' in body
+    assert '"type":"error"' not in body
+    assert usage_calls[-1]["success_count"] == 1
+
+
 def test_collect_data_skill_context_passes_full_current_user(monkeypatch) -> None:
     current_user = _user()
     captured = {}
@@ -445,6 +688,414 @@ def test_collect_data_skill_context_passes_full_current_user(monkeypatch) -> Non
 
     assert result == "skill context"
     assert captured["current_user"] is current_user
+
+
+def _mock_time_safe_chat_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    queries: list[object],
+) -> analysis_api.AnalysisAssistantRequest:
+    datasource = analysis_api.CoreDatasource(
+        id=1,
+        name="测试项目",
+        type="postgresql",
+        type_name="PostgreSQL",
+        configuration="{}",
+    )
+
+    class _BusinessContext(SimpleNamespace):
+        def snapshot_metadata(self):
+            return {
+                "context_hash": "ctx",
+                "datasource_id": "1",
+                "sql_dialect": "postgres",
+                "allowed_tables": ["fact_orders"],
+            }
+
+    business_context = _BusinessContext(
+        datasource=datasource,
+        schema=(
+            "【Schema】\n# Table: fact_orders\n[\n"
+            "(business_date:date, 业务日期),\n"
+            "(amount:numeric, 金额)\n]"
+        ),
+        allowed_tables=["fact_orders"],
+        data_skill="",
+        tracking_config="",
+        business_context_hash="ctx",
+        sql_dialect="postgres",
+    )
+
+    class _Llm:
+        def stream(self, _messages):
+            yield SimpleNamespace(content="已完成")
+
+    async def _no_rate_limit(*_args, **_kwargs):
+        return None
+
+    async def _fake_create_llm(*_args, **_kwargs):
+        return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
+
+    async def _fake_resolve_time_policy(**_kwargs):
+        return _resolved_time()
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_sanitize_analysis_request_context_for_current_permissions",
+        lambda _session, _user, request: request,
+    )
+    monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", _no_rate_limit)
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_datasource",
+        lambda *_args, **_kwargs: datasource,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_custom_agent_context",
+        lambda *_args, **_kwargs: ("", None),
+    )
+    monkeypatch.setattr(
+        analysis_api.BusinessSqlContextService,
+        "build",
+        staticmethod(lambda **_kwargs: business_context),
+    )
+    monkeypatch.setattr(analysis_api, "_create_llm", _fake_create_llm)
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        _fake_resolve_time_policy,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "build_agent_context_snapshot",
+        lambda **_kwargs: {"snapshot": "ok"},
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_build_plan",
+        lambda *_args, **_kwargs: {"intro": "测试分析", "queries": queries},
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_semantic_validation_error",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_build_chart_config",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_summarise_block",
+        lambda *_args, **_kwargs: "数据块摘要",
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **_kwargs: None,
+    )
+    return analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        messages=[
+            analysis_api.AnalysisAssistantMessage(role="user", content="分析收入")
+        ],
+    )
+
+
+def test_chat_time_policy_failure_is_non_blocking_for_other_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            {"id": "q1", "title": "无界角度", "sql": "SELECT unsafe"},
+            {"id": "q2", "title": "安全角度", "sql": "SELECT safe"},
+        ],
+    )
+    execute_calls: list[str] = []
+
+    def fake_prepare_time_safe_query_sql(**kwargs):
+        if kwargs["raw_query"]["id"] == "q1":
+            raise analysis_api.AnalysisTimeSqlError()
+        return "SELECT bounded"
+
+    def fake_execute(**kwargs):
+        execute_calls.append(kwargs["sql"])
+        return SimpleNamespace(
+            result={"fields": ["amount"], "data": [{"amount": 10}]}
+        )
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        fake_prepare_time_safe_query_sql,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        fake_execute,
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert '"type":"block"' in payload
+    assert '"status":"failed"' in payload
+    assert '"error_type":"time_policy_unresolved"' in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert execute_calls == ["SELECT bounded"]
+
+
+def test_chat_all_time_policy_failures_finish_without_executing_sql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            {"id": "q1", "title": "角度一", "sql": "SELECT unsafe_one"},
+            {"id": "q2", "title": "角度二", "sql": "SELECT unsafe_two"},
+        ],
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            analysis_api.AnalysisTimeSqlError()
+        ),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("时间策略失败时不得调用 SQL 执行器")
+        ),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert payload.count('"error_type":"time_policy_unresolved"') == 2
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
+
+
+def test_chat_invalid_recent_window_still_emits_final_and_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [{"id": "q1", "title": "非法时间窗口", "sql": "SELECT unsafe"}],
+    )
+    request.messages[-1].content = "最近0天收入"
+
+    async def resolve_invalid_window(**kwargs):
+        question = kwargs["request"].messages[-1].content
+        intent = parse_analysis_time_intent(question, [])
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=None,
+            anchor=AnalysisTimeAnchor("fact_orders", "business_date"),
+            anchor_date=date(2026, 7, 26),
+        )
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        resolve_invalid_window,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        lambda **_kwargs: (_ for _ in ()).throw(analysis_api.AnalysisTimeSqlError()),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("非法时间窗口不得执行 SQL")
+        ),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "用户指定的时间窗口无效" in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+
+
+@pytest.mark.parametrize("repair_trigger", ["database", "semantic"])
+def test_chat_repaired_sql_is_time_enforced_before_retry_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    repair_trigger: str,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            {
+                "id": "q1",
+                "title": "收入趋势",
+                "sql": (
+                    "SELECT amount FROM fact_orders "
+                    "WHERE business_date >= DATE '2026-07-13' "
+                    "AND business_date <= DATE '2026-07-26'"
+                ),
+                "time_fields": [
+                    {"table": "fact_orders", "field": "business_date"}
+                ],
+            }
+        ],
+    )
+    execute_calls: list[str] = []
+    repair_calls: list[str] = []
+    semantic_calls = 0
+
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"fact_orders"}),
+    )
+
+    def fake_repair(*_args, **_kwargs):
+        repair_calls.append("repair")
+        return "SELECT amount FROM fact_orders"
+
+    def fake_execute(**kwargs):
+        execute_calls.append(kwargs["sql"])
+        if repair_trigger == "database" and len(execute_calls) == 1:
+            raise RuntimeError("database error")
+        return SimpleNamespace(
+            result={"fields": ["amount"], "data": [{"amount": 10}]}
+        )
+
+    def fake_semantic_validation(*_args, **_kwargs):
+        nonlocal semantic_calls
+        semantic_calls += 1
+        if repair_trigger == "semantic" and semantic_calls == 1:
+            return "semantic mismatch"
+        return None
+
+    monkeypatch.setattr(analysis_api, "_repair_sql", fake_repair)
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_semantic_validation_error",
+        fake_semantic_validation,
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert repair_calls == ["repair"]
+    assert len(execute_calls) == 2
+    assert all("2026-07-13" in sql and "2026-07-26" in sql for sql in execute_calls)
+    assert '"status":"failed"' not in payload
+    assert '"type":"finish"' in payload
+
+
+def test_chat_second_plan_parse_failure_returns_safe_final_and_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_build_plan = analysis_api._build_plan
+    request = _mock_time_safe_chat_runtime(monkeypatch, [])
+    invalid_outputs = iter(
+        ["sensitive first malformed output", "sensitive second malformed output"]
+    )
+    usage_calls: list[dict] = []
+    monkeypatch.setattr(analysis_api, "_build_plan", real_build_plan)
+    monkeypatch.setattr(
+        analysis_api,
+        "_llm_text",
+        lambda *_args, **_kwargs: next(invalid_outputs),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **kwargs: usage_calls.append(kwargs),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "无法生成可执行分析计划" in payload
+    assert "未形成有数据支撑的结论" in payload
+    assert "sensitive" not in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
+    assert usage_calls[-1]["success_count"] == 1
+    assert usage_calls[-1]["failure_count"] == 0
+
+
+def test_chat_all_invalid_queries_returns_safe_final_without_calling_final_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        ["invalid", 7, None],
+    )
+    usage_calls: list[dict] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "record_tenant_usage_detached",
+        lambda **kwargs: usage_calls.append(kwargs),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert "无法生成可执行分析计划" in payload
+    assert "未形成有数据支撑的结论" in payload
+    assert '"type":"final","content":"已完成"' not in payload
+    assert '"type":"block"' not in payload
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
+    assert usage_calls[-1]["success_count"] == 1
+    assert usage_calls[-1]["failure_count"] == 0
+
+
+def test_chat_mixed_queries_skips_invalid_items_and_executes_valid_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mock_time_safe_chat_runtime(
+        monkeypatch,
+        [
+            "invalid",
+            {"id": "q2", "title": "安全角度", "sql": "SELECT safe"},
+            None,
+        ],
+    )
+    execute_calls: list[str] = []
+    monkeypatch.setattr(
+        analysis_api,
+        "_prepare_time_safe_query_sql",
+        lambda **_kwargs: "SELECT bounded",
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        lambda **kwargs: execute_calls.append(kwargs["sql"])
+        or SimpleNamespace(
+            result={"fields": ["amount"], "data": [{"amount": 10}]}
+        ),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert execute_calls == ["SELECT bounded"]
+    assert payload.count('"type":"block"') == 1
+    assert '"type":"final"' in payload
+    assert '"type":"finish"' in payload
+    assert '"type":"error"' not in payload
 
 
 async def _collect_stream_body(response) -> list[bytes]:
