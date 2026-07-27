@@ -2532,36 +2532,30 @@ def test_analysis_assistant_db_permission_failure_is_structured_and_sanitized():
     assert "secret_orders" not in block["warning"]
 
 
-def test_analysis_assistant_data_profile_uses_query_executor(monkeypatch):
+def test_analysis_assistant_anchor_probe_uses_query_executor(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_role="admin", tenant_id=1)
     datasource = SimpleNamespace(id=1, type="pg")
     calls = []
 
     def fake_execute_user_query_or_raise(**kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(
-            result={
-                "fields": ["f0_max", "f0_min"],
-                "data": [{"f0_max": "2026-01-31", "f0_min": "2026-01-01"}],
-            }
-        )
+        return SimpleNamespace(result={"data": [{"anchor_value": "2026-01-31"}]})
 
     monkeypatch.setattr(analysis_assistant_api, "execute_user_query_or_raise", fake_execute_user_query_or_raise)
 
-    profile = analysis_assistant_api._get_data_profile(
+    result = analysis_assistant_api._probe_latest_business_date(
         session=object(),
         current_user=current_user,
         datasource=datasource,
-        schema="# Table: public.orders\n[\n(order_date:timestamp),\n(amount:numeric)\n]\n",
         allowed_tables=["orders"],
+        anchor=analysis_assistant_api.AnalysisTimeAnchor("orders", "order_date"),
     )
 
-    assert "orders.order_date" in profile
-    assert calls
+    assert result.isoformat() == "2026-01-31"
     assert calls[0]["allowed_tables"] == ["orders"]
     assert calls[0]["apply_row_permissions"] is True
-    assert "::text" not in calls[0]["sql"]
-    assert 'MAX("order_date") AS f0_max' in calls[0]["sql"]
+    assert 'ORDER BY "order_date" DESC LIMIT 1' in calls[0]["sql"]
+    assert "MAX(" not in calls[0]["sql"]
 
 
 def test_user_schema_filters_relationships_outside_table_scope(monkeypatch):

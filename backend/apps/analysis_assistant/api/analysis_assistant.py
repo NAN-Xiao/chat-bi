@@ -1,14 +1,17 @@
 """
 脚本说明：这个脚本放分析助手的接口，把前端请求接进来并交给后面的业务逻辑处理。
 """
+import asyncio
 import copy
+import hashlib
+import json
 import re
 import traceback
 import zipfile
 from base64 import b64decode
+from datetime import date, datetime
 from html import escape as html_escape
 from io import BytesIO
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
@@ -18,13 +21,40 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
+from redis.exceptions import RedisError
 from sqlalchemy import and_, or_, select
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
+from apps.analysis_assistant.models import (
+    AnalysisAssistantConversation,
+    AnalysisAssistantConversationDetail,
+    AnalysisAssistantConversationSave,
+    AnalysisAssistantConversationSummary,
+)
+from apps.analysis_assistant.service.analysis_time_policy import (
+    AnalysisTimeAnchor,
+    AnalysisTimeResolution,
+    parse_analysis_time_intent,
+    parse_data_skill_time_directive,
+    resolve_analysis_time_policy,
+)
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
-from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
+from apps.chat.curd.custom_prompt import (
+    CustomPromptTargetScopeEnum,
+    find_custom_prompts,
+    find_data_skills,
+)
+from apps.dashboard.crud.dashboard_service import (
+    resolve_chart_execution_datasource,
+    validate_dashboard_report_target,
+)
 from apps.datasource.crud.datasource import get_datasource_list
-from apps.datasource.crud.permission import has_applicable_permissions, has_datasource_access, is_normal_user
+from apps.datasource.crud.permission import (
+    get_row_permission_filters,
+    has_applicable_permissions,
+    has_datasource_access,
+    is_normal_user,
+)
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_ERROR_TYPE,
@@ -38,25 +68,26 @@ from apps.datasource.crud.sql_engine import (
     validate_user_query_sql_or_raise,
 )
 from apps.datasource.models.datasource import CoreDatasource
-from apps.dashboard.crud.dashboard_service import (
-    resolve_chart_execution_datasource,
-    validate_dashboard_report_target,
-)
 from apps.db.constant import DB
-from apps.analysis_assistant.models import (
-    AnalysisAssistantConversation,
-    AnalysisAssistantConversationDetail,
-    AnalysisAssistantConversationSave,
-    AnalysisAssistantConversationSummary,
-)
-from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tenant_usage import (
+    check_tenant_usage_quota,
+    record_tenant_usage_detached,
+)
 from apps.system.crud.tracking_config import find_tracking_prompt_context
-from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
+from apps.system.crud.user import (
+    is_platform_admin,
+    is_platform_workspace_delegate,
+    is_system_admin,
+)
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
 from common.core.deps import CurrentUser, SessionDep
-from common.core.tenant_rate_limiter import consume_tenant_rate_limit, resolve_tenant_rate_limit
+from common.core.redis_client import datasource_redis_key, get_redis_client
+from common.core.tenant_rate_limiter import (
+    consume_tenant_rate_limit,
+    resolve_tenant_rate_limit,
+)
 from common.utils.chart_config import sanitize_chart_display_names
 from common.utils.utils import extract_nested_json
 
@@ -2002,86 +2033,263 @@ def _profile_table_expression(datasource: CoreDatasource, raw_table: str) -> tup
     return table_name, table_expr
 
 
-def _collect_date_bounds(
-    session: SessionDep,
-    current_user: CurrentUser,
-    datasource: CoreDatasource,
+ANALYSIS_TIME_ANCHOR_CACHE_TTL_SECONDS = 300
+ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS = 5
+
+
+def _schema_time_field_candidates(
     schema: str,
     allowed_tables: list[str],
+) -> dict[str, tuple[str, ...]]:
+    allowed = {str(table).split(".")[-1].lower() for table in allowed_tables}
+    candidates: dict[str, tuple[str, ...]] = {}
+    for raw_table, body in re.findall(
+        r"# Table:\s*([^\n,]+)[^\n]*\n\[\n(.*?)\n\]",
+        schema,
+        flags=re.DOTALL,
+    ):
+        table = raw_table.strip().split(".")[-1]
+        if table.lower() not in allowed:
+            continue
+        fields = tuple(
+            field.strip()
+            for field, field_type in re.findall(r"\(([^:()]+):([^,()]+)", body)
+            if any(
+                token in field_type.strip().lower()
+                for token in ("date", "time", "timestamp")
+            )
+        )
+        if fields:
+            candidates[table] = fields
+    return candidates
+
+
+def _select_analysis_time_anchor(
+    llm,
+    question: str,
+    semantic_context: str,
+    candidates: dict[str, tuple[str, ...]],
+) -> AnalysisTimeAnchor:
+    payload = orjson.dumps(candidates).decode()
+    messages = [
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(
+            content=(
+                "只选择本次问题最相关的主业务时间锚点，不生成 SQL。"
+                "只能从候选表字段中逐字选择；无法判断时返回空字符串。"
+                '严格返回 {"table":"...","field":"..."}。\n'
+                f"用户问题：{question}\n业务语义：{semantic_context[:12000]}\n候选：{payload}"
+            )
+        ),
+    ]
+    selected = _extract_json_object(_llm_text(llm, messages))
+    table = str(selected.get("table") or "").strip()
+    field = str(selected.get("field") or "").strip()
+    if table not in candidates or field not in candidates[table]:
+        raise ValueError("未选择有效的业务时间字段")
+    return AnalysisTimeAnchor(table=table, field=field)
+
+
+def _analysis_time_permission_fingerprint(
+    *,
+    session,
+    current_user,
+    datasource,
+    anchor: AnalysisTimeAnchor,
 ) -> str:
-    """
-    是什么：_collect_date_bounds 是一个可以复用的小步骤，负责分析助手相关的一件事。
-    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
-    做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    allowed_table_set = {str(table).lower() for table in allowed_tables}
-    table_blocks = re.findall(r"# Table:\s*([^\n,]+)[^\n]*\n\[\n(.*?)\n\]", schema, flags=re.DOTALL)
-    lines: list[str] = []
-    table_count = 0
-    for raw_table, body in table_blocks:
-        if table_count >= 8:
-            break
-        table_name, table_expr = _profile_table_expression(datasource, raw_table)
-        if not table_name or table_name.lower() not in allowed_table_set:
-            continue
-        date_fields: list[str] = []
-        for fname, ftype in re.findall(r"\(([^:()]+):([^,()]+)", body):
-            if any(keyword in ftype.strip().lower() for keyword in ("date", "time", "timestamp")):
-                date_fields.append(fname.strip())
-        date_fields = date_fields[:4]
-        if not date_fields:
-            continue
-        select_parts: list[str] = []
-        for index, field in enumerate(date_fields):
-            field_expr = _quote_identifier(datasource, field)
-            select_parts.append(f"MAX({field_expr}) AS f{index}_max")
-            select_parts.append(f"MIN({field_expr}) AS f{index}_min")
-        sql = f"SELECT {', '.join(select_parts)} FROM {table_expr}"
-        try:
-            query_result = execute_user_query_or_raise(
+    filters = get_row_permission_filters(
+        session=session,
+        current_user=current_user,
+        ds=datasource,
+        tables=[anchor.table],
+    )
+    payload = json.dumps(filters or [], ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _analysis_time_anchor_cache_key(
+    *,
+    tenant_id: int,
+    datasource_id: int,
+    user_id: int,
+    context_hash: str,
+    permission_hash: str,
+    anchor: AnalysisTimeAnchor,
+) -> str:
+    return datasource_redis_key(
+        tenant_id,
+        datasource_id,
+        "analysis-time-anchor",
+        user_id,
+        context_hash,
+        permission_hash,
+        anchor.table,
+        anchor.field,
+    )
+
+
+def _coerce_business_date(value: Any) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if re.fullmatch(r"\d{8}", text):
+        return datetime.strptime(text, "%Y%m%d").date()
+    return date.fromisoformat(text[:10])
+
+
+def _probe_latest_business_date(
+    *,
+    session,
+    current_user,
+    datasource,
+    allowed_tables: list[str],
+    anchor: AnalysisTimeAnchor,
+) -> date:
+    table_name, table_expr = _profile_table_expression(datasource, anchor.table)
+    allowed = {
+        str(table).strip().split(".")[-1].lower() for table in allowed_tables
+    }
+    if not table_name or table_name.lower() not in allowed:
+        raise ValueError("业务时间锚点不在授权表范围内")
+    field_expr = _quote_identifier(datasource, anchor.field)
+    sql = (
+        f"SELECT {field_expr} AS anchor_value FROM {table_expr} "
+        f"WHERE {field_expr} IS NOT NULL ORDER BY {field_expr} DESC LIMIT 1"
+    )
+    result = execute_user_query_or_raise(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        sql=sql,
+        allowed_tables=[table_name],
+        origin_column=False,
+        apply_row_permissions=True,
+        query_timeout=ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS,
+    ).result
+    rows = result.get("data") or []
+    if not rows:
+        raise ValueError("业务时间字段没有可用数据")
+    return _coerce_business_date(rows[0].get("anchor_value"))
+
+
+async def _resolve_chat_time_policy(
+    *,
+    session,
+    current_user,
+    datasource,
+    business_context,
+    llm,
+    request,
+    semantic_context: str,
+) -> AnalysisTimeResolution:
+    question = request.messages[-1].content.strip()
+    history = [
+        item.content for item in request.messages[-6:-1] if item.content.strip()
+    ]
+    intent = parse_analysis_time_intent(question, history)
+    skill_days, warnings = parse_data_skill_time_directive(business_context.data_skill)
+    if not intent.requires_anchor:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=None,
+            anchor_date=None,
+            warnings=warnings,
+        )
+
+    candidates = _schema_time_field_candidates(
+        business_context.schema,
+        business_context.allowed_tables,
+    )
+    try:
+        anchor = await asyncio.to_thread(
+            _select_analysis_time_anchor,
+            llm,
+            question,
+            semantic_context,
+            candidates,
+        )
+    except Exception:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=None,
+            anchor_date=None,
+            warnings=warnings,
+        )
+
+    key: str | None = None
+    client = None
+    cached_date: date | None = None
+    try:
+        key = _analysis_time_anchor_cache_key(
+            tenant_id=require_current_tenant_id(current_user),
+            datasource_id=int(datasource.id),
+            user_id=int(current_user.id),
+            context_hash=str(business_context.business_context_hash or "none"),
+            permission_hash=_analysis_time_permission_fingerprint(
                 session=session,
                 current_user=current_user,
                 datasource=datasource,
-                sql=sql,
-                allowed_tables=[table_name],
-                origin_column=False,
-                apply_row_permissions=True,
+                anchor=anchor,
+            ),
+            anchor=anchor,
+        )
+        client = get_redis_client()
+        raw_cached = await client.get(key)
+        if raw_cached:
+            cached_date = _coerce_business_date(
+                raw_cached.decode() if isinstance(raw_cached, bytes) else raw_cached
             )
-            data = query_result.result.get("data") or []
-            if not data:
-                continue
-            row = data[0]
-            for index, field in enumerate(date_fields):
-                max_value = row.get(f"f{index}_max")
-                min_value = row.get(f"f{index}_min")
-                if max_value is None and min_value is None:
-                    continue
-                lines.append(f"- {table_name}.{field}: 最早 {min_value}, 最新 {max_value}")
-            table_count += 1
-        except Exception:
-            traceback.print_exc()
-    if not lines:
-        return ""
-    header = (
-        "数据时间边界（以下是各表真实存在的日期范围。判断“最近 N 天 / 最近一个月 / 观察截止日”时，"
-        "必须以相关事实表的“最新”日期为基准来推算，不要使用系统当前日期）："
+    except (RedisError, RuntimeError, TypeError, ValueError):
+        key = None
+        client = None
+        cached_date = None
+
+    if cached_date is not None:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=anchor,
+            anchor_date=cached_date,
+            warnings=warnings,
+        )
+
+    try:
+        anchor_date = _probe_latest_business_date(
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            allowed_tables=business_context.allowed_tables,
+            anchor=anchor,
+        )
+    except Exception:
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=anchor,
+            anchor_date=None,
+            warnings=warnings,
+        )
+
+    if client is not None and key is not None:
+        try:
+            await client.set(
+                key,
+                anchor_date.isoformat(),
+                ex=ANALYSIS_TIME_ANCHOR_CACHE_TTL_SECONDS,
+            )
+        except RedisError:
+            pass
+    return resolve_analysis_time_policy(
+        intent,
+        skill_window_days=skill_days,
+        anchor=anchor,
+        anchor_date=anchor_date,
+        warnings=warnings,
     )
-    return header + "\n" + "\n".join(lines)
-
-
-def _get_data_profile(
-    session: SessionDep,
-    current_user: CurrentUser,
-    datasource: CoreDatasource,
-    schema: str,
-    allowed_tables: list[str],
-) -> str:
-    """
-    是什么：_get_data_profile 是一个可以复用的小步骤，负责分析助手相关的一件事。
-    谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
-    做了什么：把分析助手需要的数据找出来，整理成后面好用的样子。
-    """
-    return _collect_date_bounds(session, current_user, datasource, schema, allowed_tables)[:12000]
 
 
 def _is_forecast_question(question: str) -> bool:
