@@ -3,6 +3,7 @@ import type { ChartAxis, ChartData, ChartMountTarget } from '@/views/chat/compon
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
+  formatCategoryAxisLabel,
   formatNumber,
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
@@ -43,6 +44,7 @@ export class Heatmap extends BaseG2Chart {
       axis: {
         x: {
           title: false,
+          labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: true,
           labelAutoRotate: false,
         },

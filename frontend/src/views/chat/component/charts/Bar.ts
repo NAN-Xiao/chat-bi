@@ -3,6 +3,7 @@ import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
+  formatCategoryAxisLabel,
   formatNumber,
   formatTooltipValue,
   getAxesWithFilter,
@@ -96,6 +97,7 @@ export class Bar extends BaseG2Chart {
         x: {
           title: false, // x[0].name,
           labelFontSize: 11,
+          labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,

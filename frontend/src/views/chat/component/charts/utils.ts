@@ -552,6 +552,7 @@ export function buildMixedUnitComboOptions(
   const xAxisOptions = {
     title: false,
     labelFontSize: 11,
+    labelFormatter: formatCategoryAxisLabel,
     labelAutoHide: {
       type: 'hide',
       keepHeader: true,

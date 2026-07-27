@@ -5,6 +5,7 @@ import {
   buildMixedUnitComboOptions,
   buildMixedUnitData,
   checkIsPercent,
+  formatCategoryAxisLabel,
   formatNumber,
   formatTooltipValue,
   getAxesWithFilter,
@@ -118,6 +119,7 @@ export class Area extends BaseG2Chart {
         x: {
           title: false,
           labelFontSize: 11,
+          labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,

@@ -29,4 +29,32 @@ assert.equal(formatCategoryAxisLabel(20260727), '20260727')
 assert.equal(formatCategoryAxisLabel(null), '')
 assert.equal(formatCategoryAxisLabel(undefined), '')
 
+const chartFiles = ['Line.ts', 'Area.ts', 'Column.ts', 'Bar.ts', 'Scatter.ts', 'Heatmap.ts']
+for (const file of chartFiles) {
+  const source = readFileSync(`src/views/chat/component/charts/${file}`, 'utf8')
+  assert.match(
+    source,
+    /formatCategoryAxisLabel/,
+    `${file} 必须复用共享日期轴标签格式化函数`
+  )
+  assert.match(
+    source,
+    /axis:\s*\{[\s\S]*?x:\s*\{[\s\S]*?labelFormatter:\s*formatCategoryAxisLabel/,
+    `${file} 的横轴必须使用共享日期格式`
+  )
+}
+
+assert.match(
+  utilsSource,
+  /function buildMixedUnitComboOptions[\s\S]*?const xAxisOptions = \{[\s\S]*?labelFormatter:\s*formatCategoryAxisLabel/,
+  '混合单位图表横轴必须使用共享日期格式'
+)
+
+const tableSource = readFileSync('src/views/chat/component/charts/Table.ts', 'utf8')
+assert.doesNotMatch(
+  tableSource,
+  /formatCategoryAxisLabel/,
+  '明细表不得接入日期轴短格式'
+)
+
 console.log('Chart axis date label behavior tests passed')

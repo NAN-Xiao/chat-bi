@@ -3,6 +3,7 @@ import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
+  formatCategoryAxisLabel,
   formatNumber,
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
@@ -45,6 +46,7 @@ export class Scatter extends BaseG2Chart {
         x: {
           title: false,
           labelFontSize: 11,
+          labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: true,
           labelAutoRotate: false,
         },

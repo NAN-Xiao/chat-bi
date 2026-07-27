@@ -5,6 +5,7 @@ import {
   buildMixedUnitComboOptions,
   buildMixedUnitData,
   checkIsPercent,
+  formatCategoryAxisLabel,
   formatNumber,
   formatTooltipValue,
   getAxesWithFilter,
@@ -94,6 +95,7 @@ export class Line extends BaseG2Chart {
         x: {
           title: false, // x[0].name,
           labelFontSize: 11,
+          labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,
