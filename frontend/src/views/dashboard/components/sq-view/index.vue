@@ -2782,6 +2782,10 @@ defineExpose({
   box-shadow: none;
 }
 
+:global(.dashboard-date-filter-popper .el-date-table td.today.disabled .el-date-table-cell__text) {
+  color: var(--el-text-color-placeholder);
+}
+
 :global(.dashboard-date-filter-popper .date-filter-panel-footer) {
   display: flex;
   align-items: center;

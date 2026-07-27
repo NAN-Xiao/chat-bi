@@ -46,3 +46,7 @@ assert.match(applyHandler, /failDashboardDateRange/)
 const dateChangeHandler = source.match(/function onDashboardDateRangeChange\([\s\S]*?\n}/)?.[0] || ''
 assert.doesNotMatch(dateChangeHandler, /refreshData\(/)
 assert.doesNotMatch(source, /update_canvas|localStorage|sessionStorage/)
+assert.match(
+  source,
+  /\.dashboard-date-filter-popper \.el-date-table td\.today\.disabled[\s\S]*\.el-date-table-cell__text[\s\S]*color:\s*var\(--el-text-color-placeholder\)/
+)
