@@ -68,6 +68,8 @@ def test_serverpaylog_validation_separates_amount_and_payer_count():
     assert amount["required_sql_contains"] == ["ServerPayLog", "$.money"]
     assert payer["required_sql_contains"] == ["ServerPayLog"]
     assert payer["required_sql_patterns"] == [module.DISTINCT_UID_PATTERN]
+    assert "personal.money" not in payer["message"]
+    assert "按 uid 去重" in payer["message"]
 
 
 def test_xiuxian_date_partition_skill_is_scoped_and_actionable():

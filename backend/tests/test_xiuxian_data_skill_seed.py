@@ -491,8 +491,9 @@ def test_xiuxian_payment_skill_rejects_non_distinct_arppu_denominator() -> None:
     """
 
     assert _data_skill_sql_validation_error("查看近七天的 ARPPU", wrong_sql, prompt) == (
-        "修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；"
-        "PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
+        "修仙付费用户数以及 ARPU/ARPPU 分母必须使用 ServerPayLog 并按 uid 去重；"
+        "仅统计人数时不要求读取金额字段，PayBuyRet、ed_money 和 paytotal "
+        "不能作为付费用户来源。"
     )
 
 

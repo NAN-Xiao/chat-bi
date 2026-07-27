@@ -306,7 +306,7 @@ SERVERPAYLOG_VALIDATION = """<!-- data-skill-sql-validation:[
       "{DISTINCT_UID_PATTERN_JSON}"
     ],
     "forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"],
-    "message":"修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
+    "message":"修仙付费用户数以及 ARPU/ARPPU 分母必须使用 ServerPayLog 并按 uid 去重；仅统计人数时不要求读取金额字段，PayBuyRet、ed_money 和 paytotal 不能作为付费用户来源。"
   }
 ] -->""".replace("{DISTINCT_UID_PATTERN_JSON}", DISTINCT_UID_PATTERN_JSON)
 
