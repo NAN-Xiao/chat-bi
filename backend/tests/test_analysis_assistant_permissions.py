@@ -577,6 +577,74 @@ def test_report_interpretation_returns_no_data_for_valid_empty_target(
     assert "没有查看权限" not in body
 
 
+def test_report_interpretation_does_not_resolve_chat_time_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """报表解读沿用可见图表上下文，不解析综合分析聊天的时间策略。"""
+    datasource = analysis_api.CoreDatasource(
+        id=1,
+        name="测试项目",
+        type="postgresql",
+        type_name="PostgreSQL",
+        configuration="{}",
+    )
+
+    async def _no_rate_limit(*_args, **_kwargs):
+        return None
+
+    async def _fake_create_llm(*_args, **_kwargs):
+        return object(), SimpleNamespace(model_id=7, model_name="test-model")
+
+    async def _unexpected_time_policy(**_kwargs):
+        raise AssertionError("报表解读不得解析综合分析聊天时间策略")
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_report_interpretation_preflight",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", _no_rate_limit)
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_report_interpretation_datasource",
+        lambda *_args, **_kwargs: datasource,
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_data_skill_context",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_tracking_context",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(analysis_api, "_create_llm", _fake_create_llm)
+    monkeypatch.setattr(
+        analysis_api,
+        "_stream_report_interpretation",
+        lambda *_args, **_kwargs: iter(()),
+    )
+    monkeypatch.setattr(
+        analysis_api,
+        "_resolve_chat_time_policy",
+        _unexpected_time_policy,
+    )
+    request = analysis_api.AnalysisAssistantRequest(
+        datasource_id=1,
+        context="当前可见图表数据：收入 12.5",
+        messages=[
+            analysis_api.AnalysisAssistantMessage(role="user", content="解读这个图")
+        ],
+    )
+
+    response = asyncio.run(
+        analysis_api.report_interpretation(request, _user(), _FakeSession())
+    )
+
+    assert response.media_type == "text/event-stream"
+
+
 def test_collect_data_skill_context_passes_full_current_user(monkeypatch) -> None:
     current_user = _user()
     captured = {}

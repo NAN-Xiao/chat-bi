@@ -1,6 +1,7 @@
 """验证分析助手生成 SQL 时会显式接收语义字段表达式。"""
 
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -486,6 +487,34 @@ def test_sql_repair_prompt_only_requires_preserving_backend_time_bounds() -> Non
     assert "不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds" in prompt
     assert "time_fields" not in prompt
     assert "图表标题、分析说明和最终结论" not in prompt
+
+
+def test_default_analysis_time_policy_stays_inside_analysis_assistant() -> None:
+    """默认分析时间策略不得进入共享 Smart Q&A 或看板 SQL 路径。"""
+    repo_backend = Path(__file__).resolve().parents[1]
+    forbidden = [
+        repo_backend / "apps/chat/task/llm.py",
+        repo_backend / "apps/dashboard/crud/ai_sql_generator.py",
+    ]
+
+    for path in forbidden:
+        source = path.read_text(encoding="utf-8")
+        assert "AnalysisTimePolicy" not in source
+        assert "DEFAULT_14_DAYS" not in source
+
+
+def test_analysis_prompts_forbid_dynamic_time_bounds() -> None:
+    """计划、预测和修复提示词必须共同服从后端解析的常量时间边界。"""
+    prompts = (
+        analysis_api.PLAN_PROMPT,
+        analysis_api.FORECAST_PLAN_PROMPT,
+        analysis_api.SQL_REPAIR_PROMPT,
+    )
+
+    for prompt in prompts:
+        assert "具体日期常量" in prompt
+        assert "CROSS JOIN bounds" in prompt
+        assert "不得重新解释或扩大" in prompt
 
 
 def test_plan_prompt_receives_backend_resolved_constant_time_policy() -> None:
