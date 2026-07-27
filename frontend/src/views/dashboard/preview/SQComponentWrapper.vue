@@ -42,6 +42,10 @@ import {
   isMixedChart,
   refreshMixedChartData,
 } from '@/views/dashboard/utils/mixedChartData'
+import {
+  applyDashboardDateFilterCapability,
+  buildAppliedDashboardDatePivot,
+} from '@/views/dashboard/utils/dashboardDateFilter.ts'
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
@@ -645,7 +649,10 @@ async function previewChartSql(viewInfo: any, config?: any, forceRefresh = false
   const payload = {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
-    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    pivot: buildAppliedDashboardDatePivot(
+      viewInfo,
+      viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined
+    ),
   }
   if (forceRefresh) {
     return dashboardApi.preview_sql(
@@ -1143,6 +1150,7 @@ async function refreshChartData() {
         viewInfo.dataState = 'loading'
         viewInfo.refreshState = 'loading'
         const result = await previewChartSql(viewInfo, undefined, true)
+        applyDashboardDateFilterCapability(viewInfo, result)
         const fields = getResultFields(result)
         const data = Array.isArray(result?.data) ? result.data : []
         if (!viewInfo.data || typeof viewInfo.data !== 'object') {

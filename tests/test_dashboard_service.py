@@ -3012,6 +3012,44 @@ def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch)
     assert "amount" not in result["message"]
 
 
+def test_dashboard_preview_hides_date_filter_when_permission_is_denied(monkeypatch):
+    _force_bound_chart_execution_datasource(monkeypatch)
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda *_args, **_kwargs: pytest.fail("无权限 SQL 不应执行"),
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_column_rule(session)
+        session.commit()
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql=(
+                    "select amount from orders where order_id between "
+                    "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                ),
+                pivot=DashboardPivotRequest(
+                    enabled=False,
+                    time_field="order_id",
+                    date_parameter_type="yyyymmdd_number",
+                ),
+            ),
+        )
+
+    assert result["status"] == "failed"
+    assert result["date_filter_capability"] == {
+        "status": "forbidden",
+        "reason": "permission_denied",
+    }
+
+
 def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
     _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
@@ -3474,6 +3512,45 @@ def test_dashboard_preview_renders_date_template_before_permission_and_execution
     assert "{{dashboard_" not in exec_calls[0]
 
 
+def test_dashboard_source_preview_renders_date_template_without_outer_pivot(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": 20260713, "amount": 99}], "fields": ["order_day", "amount"]},
+    )
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+        result = dashboard_service.preview_sql(
+            session,
+            current_user,
+            DashboardSqlPreview(
+                datasource=1,
+                sql=(
+                    "select order_id as order_day, amount from orders "
+                    "where order_id between {{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                ),
+                pivot=DashboardPivotRequest(
+                    enabled=False,
+                    time_field="order_day",
+                    metric_field="amount",
+                    date_parameter_type="yyyymmdd_number",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert result["date_filter_capability"]["status"] == "available"
+    assert len(exec_calls) == 1
+    assert "20260713" in exec_calls[0] and "20260726" in exec_calls[0]
+    assert "pivot_src" not in exec_calls[0]
+    assert "{{dashboard_" not in exec_calls[0]
+
+
 def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
     prepared = DashboardDateFilterPreparation(
         sql="select dt from event_realtime",
@@ -3641,6 +3718,31 @@ def test_dashboard_payload_adds_transient_date_capability_without_persisting(mon
         session.expire_all()
         persisted = session.get(CoreDashboard, record.id)
         assert "dateFilterCapability" not in persisted.canvas_view_info
+
+
+def test_canvas_save_strips_transient_date_filter_capability_recursively():
+    canvas = {
+        "chart-1": {
+            "id": "chart-1",
+            "dateFilterCapability": {
+                "status": "available",
+                "defaultStart": "2026-07-13",
+                "defaultEnd": "2026-07-26",
+            },
+            "children": [
+                {
+                    "id": "nested-chart",
+                    "dateFilterCapability": {"status": "realtime"},
+                }
+            ],
+        }
+    }
+
+    sanitized = json.loads(dashboard_service._sanitize_canvas_view_info(json.dumps(canvas)))
+
+    assert "dateFilterCapability" not in sanitized["chart-1"]
+    assert "dateFilterCapability" not in sanitized["chart-1"]["children"][0]
+    assert sanitized["chart-1"]["id"] == "chart-1"
 
 
 def test_user_name_unwraps_row_result():

@@ -24,8 +24,52 @@ export type DashboardDateFilterState = {
   applyError: string
 }
 
+export type DashboardDateFilterContext = {
+  identity: string
+  status: string
+}
+
+export const dashboardDateParameterTokens = {
+  date: ['{{dashboard_start_date}}', '{{dashboard_end_date}}'],
+  yyyymmdd_number: ['{{dashboard_start_yyyymmdd}}', '{{dashboard_end_yyyymmdd}}'],
+  yyyymmdd_text: ['{{dashboard_start_yyyymmdd}}', '{{dashboard_end_yyyymmdd}}'],
+  timestamp: ['{{dashboard_start_timestamp}}', '{{dashboard_end_exclusive_timestamp}}'],
+} as const
+
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 const dashboardDateFilterStates = new WeakMap<object, DashboardDateFilterState>()
+const dashboardChartRequestStates = new WeakMap<object, { version: number; foregroundActive: boolean }>()
+const dashboardDateTokens = Array.from(new Set(Object.values(dashboardDateParameterTokens).flat()))
+
+export function beginDashboardChartRequest(
+  viewInfo: object,
+  mode: 'foreground' | 'background' = 'foreground'
+): number | null {
+  const state = dashboardChartRequestStates.get(viewInfo) || {
+    version: 0,
+    foregroundActive: false,
+  }
+  if (mode === 'background') {
+    dashboardChartRequestStates.set(viewInfo, state)
+    return state.foregroundActive ? null : state.version
+  }
+  state.version += 1
+  state.foregroundActive = true
+  dashboardChartRequestStates.set(viewInfo, state)
+  return state.version
+}
+
+export function isDashboardChartRequestCurrent(viewInfo: object, version: number | null): boolean {
+  if (version === null) return false
+  return dashboardChartRequestStates.get(viewInfo)?.version === version
+}
+
+export function finishDashboardChartRequest(viewInfo: object, version: number | null): void {
+  const state = dashboardChartRequestStates.get(viewInfo)
+  if (state && version !== null && state.version === version) {
+    state.foregroundActive = false
+  }
+}
 
 function copyRange(range: DashboardDateRange): DashboardDateRange {
   return [range[0], range[1]]
@@ -151,6 +195,140 @@ export function buildDashboardDatePivot(
     custom_start: range[0],
     custom_end: range[1],
   }
+}
+
+export function buildDashboardDateSourcePreviewPivot(
+  pivot: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...pivot,
+    enabled: false,
+  }
+}
+
+export function buildAppliedDashboardDatePivot(
+  viewInfo: {
+    pivot?: Record<string, unknown> | null
+    dateFilterCapability?: DashboardDateFilterCapability | null
+  } & object,
+  pivot: Record<string, unknown> | undefined = viewInfo.pivot || undefined
+): Record<string, unknown> | undefined {
+  if (!canShowDashboardDateFilter(viewInfo.dateFilterCapability)) return pivot
+  const state = getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
+  return buildDashboardDatePivot({ pivot }, state.appliedRange)
+}
+
+export function applyDashboardDateFilterCapability(
+  viewInfo: ({ dateFilterCapability?: DashboardDateFilterCapability | null } & object) | null | undefined,
+  result: { date_filter_capability?: DashboardDateFilterCapability | null } | null | undefined
+): DashboardDateFilterCapability | null {
+  const capability = result?.date_filter_capability
+  if (!viewInfo || !capability || typeof capability !== 'object') return null
+  viewInfo.dateFilterCapability = { ...capability }
+  if (canShowDashboardDateFilter(capability)) {
+    getOrCreateDashboardDateFilterState(viewInfo, capability)
+  }
+  return viewInfo.dateFilterCapability
+}
+
+export function dashboardDateFilterContext(
+  viewInfo: { id?: unknown; sql?: unknown } | null | undefined,
+  capability: DashboardDateFilterCapability | null | undefined
+): DashboardDateFilterContext {
+  return {
+    identity: `${String(viewInfo?.id || '')}:${String(viewInfo?.sql || '')}`,
+    status: String(capability?.status || ''),
+  }
+}
+
+export function shouldInitializeDashboardDateFilterState(
+  previous: DashboardDateFilterContext | null | undefined,
+  next: DashboardDateFilterContext
+): boolean {
+  if (!previous) return true
+  return previous.identity !== next.identity
+    || (previous.status !== 'available' && next.status === 'available')
+}
+
+export function shouldResetDashboardDateFilterState(
+  previous: DashboardDateFilterContext,
+  next: DashboardDateFilterContext,
+  sameViewInfo: boolean
+): boolean {
+  if (sameViewInfo && previous.identity !== next.identity) return true
+  return previous.identity === next.identity
+    && previous.status !== 'available'
+    && next.status === 'available'
+}
+
+export function scanDashboardDateParameterTokens(sql: string): string[] {
+  const active = new Set<string>()
+  let state = 'normal'
+  let dollarQuote = ''
+  let index = 0
+
+  while (index < sql.length) {
+    const char = sql[index]
+    const following = sql[index + 1] || ''
+    if (state === 'normal') {
+      const token = dashboardDateTokens.find((item) => sql.startsWith(item, index))
+      if (token) {
+        active.add(token)
+        index += token.length
+        continue
+      }
+      if (char === "'") state = 'single'
+      else if (char === '"') state = 'double'
+      else if (char === '`') state = 'backtick'
+      else if (char === '[') state = 'bracket'
+      else if ((char === '-' && following === '-') || char === '#') state = 'line_comment'
+      else if (char === '/' && following === '*') state = 'block_comment'
+      else if (char === '$') {
+        const closing = sql.indexOf('$', index + 1)
+        const candidate = closing >= 0 ? sql.slice(index, closing + 1) : ''
+        const tag = candidate.slice(1, -1)
+        const validTag = !tag || /^[A-Za-z_][A-Za-z0-9_]*$/.test(tag)
+        if (candidate && validTag) {
+          state = 'dollar_quote'
+          dollarQuote = candidate
+          index += candidate.length
+          continue
+        }
+      }
+      index += 1
+      continue
+    }
+
+    if (state === 'dollar_quote' && sql.startsWith(dollarQuote, index)) {
+      index += dollarQuote.length
+      state = 'normal'
+      dollarQuote = ''
+      continue
+    }
+    index += 1
+    if (['single', 'double', 'backtick'].includes(state) && char === '\\' && following) {
+      index += 1
+    } else if (state === 'single' && char === "'") {
+      if (following === "'") index += 1
+      else state = 'normal'
+    } else if (state === 'double' && char === '"') {
+      if (following === '"') index += 1
+      else state = 'normal'
+    } else if (state === 'backtick' && char === '`') {
+      if (following === '`') index += 1
+      else state = 'normal'
+    } else if (state === 'bracket' && char === ']') {
+      if (following === ']') index += 1
+      else state = 'normal'
+    } else if (state === 'line_comment' && (char === '\r' || char === '\n')) {
+      state = 'normal'
+    } else if (state === 'block_comment' && char === '*' && following === '/') {
+      index += 1
+      state = 'normal'
+    }
+  }
+
+  return dashboardDateTokens.filter((token) => active.has(token))
 }
 
 export function beginDashboardDateApply(state: DashboardDateFilterState): void {

@@ -182,7 +182,7 @@ defineExpose({
     <template v-if="renderReady">
       <SQComponentWrapper
         v-for="(item, index) in displayComponentData"
-        :key="index"
+        :key="item.id || index"
         ref="componentWrapperRefs"
         :active="!!curComponent && item.id === curComponent['id']"
         :config-item="item"

@@ -157,6 +157,42 @@ def _sql_string_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _normalize_datasource_type(ds_type: str | None) -> str:
+    return str(ds_type or "").strip().lower().replace("-", "_")
+
+
+def _sql_date_literal(value: str, ds_type: str | None) -> str:
+    literal = _sql_string_literal(value)
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"DATE({literal})"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"toDate({literal})"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"CAST({literal} AS DATE)"
+    if ds_key in {"oracle", "dm"}:
+        return f"TO_DATE({literal}, 'YYYY-MM-DD')"
+    if ds_key == "hive":
+        return f"TO_DATE({literal})"
+    return f"DATE {literal}"
+
+
+def _sql_timestamp_literal(value: str, ds_type: str | None) -> str:
+    literal = _sql_string_literal(value)
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"TIMESTAMP({literal})"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"toDateTime({literal})"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"CAST({literal} AS DATETIME2)"
+    if ds_key in {"oracle", "dm"}:
+        return f"TO_TIMESTAMP({literal}, 'YYYY-MM-DD HH24:MI:SS')"
+    if ds_key == "hive":
+        return f"CAST({literal} AS TIMESTAMP)"
+    return f"TIMESTAMP {literal}"
+
+
 def _parse_date_value(value: Any) -> date:
     text = str(value or "").strip()
     parsed = date.fromisoformat(text)
@@ -206,6 +242,9 @@ def prepare_dashboard_date_filter(
             capability={"status": "realtime", "reason": "realtime_table"},
         )
 
+    if _pivot_value(pivot, "range_enabled", True) is False:
+        return _unconfigured(source_sql, physical_tables, "range_disabled")
+
     if not str(_pivot_value(pivot, "time_field", "") or "").strip():
         return _unconfigured(source_sql, physical_tables, "missing_time_field")
 
@@ -245,7 +284,7 @@ def prepare_dashboard_date_filter(
     start_text = start.isoformat()
     end_text = end.isoformat()
     if parameter_type == "date":
-        values = (_sql_string_literal(start_text), _sql_string_literal(end_text))
+        values = (_sql_date_literal(start_text, ds_type), _sql_date_literal(end_text, ds_type))
     elif parameter_type == "yyyymmdd_number":
         values = (start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
     elif parameter_type == "yyyymmdd_text":
@@ -256,7 +295,10 @@ def prepare_dashboard_date_filter(
     else:
         start_timestamp = datetime.combine(start, time.min).strftime("%Y-%m-%d %H:%M:%S")
         end_exclusive = datetime.combine(end + timedelta(days=1), time.min).strftime("%Y-%m-%d %H:%M:%S")
-        values = (_sql_string_literal(start_timestamp), _sql_string_literal(end_exclusive))
+        values = (
+            _sql_timestamp_literal(start_timestamp, ds_type),
+            _sql_timestamp_literal(end_exclusive, ds_type),
+        )
 
     rendered_sql, _ = _scan_sql_tokens(
         source_sql,

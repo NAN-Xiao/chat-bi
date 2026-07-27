@@ -108,6 +108,55 @@ def test_missing_configuration_and_invalid_ranges_fail_closed(pivot):
     assert result.sql == sql
 
 
+def test_explicitly_disabled_range_is_unconfigured():
+    sql = "select dt from orders where dt between {{dashboard_start_date}} and {{dashboard_end_date}}"
+
+    result = prepare_dashboard_date_filter(
+        sql,
+        ds_type="postgres",
+        pivot=_pivot("date", range_enabled=False),
+        today=date(2026, 7, 27),
+    )
+
+    assert result.capability == {"status": "unconfigured", "reason": "range_disabled"}
+    assert result.sql == sql
+
+
+@pytest.mark.parametrize(
+    ("ds_type", "date_literal", "timestamp_literal"),
+    [
+        ("postgres", "DATE '2026-07-13'", "TIMESTAMP '2026-07-13 00:00:00'"),
+        ("mysql", "DATE('2026-07-13')", "TIMESTAMP('2026-07-13 00:00:00')"),
+        ("oracle", "TO_DATE('2026-07-13', 'YYYY-MM-DD')", "TO_TIMESTAMP('2026-07-13 00:00:00', 'YYYY-MM-DD HH24:MI:SS')"),
+        ("dm", "TO_DATE('2026-07-13', 'YYYY-MM-DD')", "TO_TIMESTAMP('2026-07-13 00:00:00', 'YYYY-MM-DD HH24:MI:SS')"),
+        ("sqlserver", "CAST('2026-07-13' AS DATE)", "CAST('2026-07-13 00:00:00' AS DATETIME2)"),
+        ("clickhouse", "toDate('2026-07-13')", "toDateTime('2026-07-13 00:00:00')"),
+        ("hive", "TO_DATE('2026-07-13')", "CAST('2026-07-13 00:00:00' AS TIMESTAMP)"),
+    ],
+)
+def test_date_and_timestamp_literals_are_explicit_for_each_dialect(
+    ds_type,
+    date_literal,
+    timestamp_literal,
+):
+    date_result = prepare_dashboard_date_filter(
+        "select dt from orders where dt between {{dashboard_start_date}} and {{dashboard_end_date}}",
+        ds_type=ds_type,
+        pivot=_pivot("date"),
+        today=date(2026, 7, 27),
+    )
+    timestamp_result = prepare_dashboard_date_filter(
+        "select dt from orders where dt >= {{dashboard_start_timestamp}} "
+        "and dt < {{dashboard_end_exclusive_timestamp}}",
+        ds_type=ds_type,
+        pivot=_pivot("timestamp"),
+        today=date(2026, 7, 27),
+    )
+
+    assert date_literal in date_result.sql
+    assert timestamp_literal in timestamp_result.sql
+
+
 def test_incomplete_mixed_and_inert_tokens_are_not_applied():
     incomplete = prepare_dashboard_date_filter(
         "select dt from orders where dt >= {{dashboard_start_date}}",
@@ -191,7 +240,7 @@ def test_tokens_inside_dollar_quoted_and_backslash_escaped_strings_are_ignored()
         today=date(2026, 7, 27),
     )
     assert "$$ {{dashboard_start_date}} $$" in postgres.sql
-    assert "dt between '2026-07-13' and '2026-07-26'" in postgres.sql
+    assert "dt between DATE '2026-07-13' and DATE '2026-07-26'" in postgres.sql
 
     mysql_sql = (
         r"select 'ignored \' {{dashboard_start_yyyymmdd}}' as note, dt from orders "

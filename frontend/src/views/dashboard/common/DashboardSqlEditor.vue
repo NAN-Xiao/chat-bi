@@ -52,6 +52,11 @@ import {
   isLikelyPivotDateField,
 } from '@/views/dashboard/utils/pivotDimensions.ts'
 import {
+  buildDashboardDateSourcePreviewPivot,
+  dashboardDateParameterTokens,
+  scanDashboardDateParameterTokens,
+} from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
   detectTrendAxisGranularity,
@@ -906,12 +911,6 @@ const forecastMethodOptions = computed<Array<{ label: string; value: ChartForeca
   { label: t('dashboard.forecast_method_holt_winters'), value: 'holt_winters' },
 ])
 type PivotGranularity = 'day' | 'week' | 'month'
-const dashboardDateParameterTokens: Record<Exclude<DashboardDateParameterType, ''>, readonly [string, string]> = {
-  date: ['{{dashboard_start_date}}', '{{dashboard_end_date}}'],
-  yyyymmdd_number: ['{{dashboard_start_yyyymmdd}}', '{{dashboard_end_yyyymmdd}}'],
-  yyyymmdd_text: ['{{dashboard_start_yyyymmdd}}', '{{dashboard_end_yyyymmdd}}'],
-  timestamp: ['{{dashboard_start_timestamp}}', '{{dashboard_end_exclusive_timestamp}}'],
-}
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
@@ -3030,13 +3029,16 @@ function previewPivotPayload() {
   return buildPivotConfig({ includeGroupValues: false })
 }
 
+function sourcePreviewPivotPayload() {
+  const pivot = previewPivotPayload()
+  return pivot ? buildDashboardDateSourcePreviewPivot(pivot) : undefined
+}
+
 function dashboardDateParameterValidationErrorKey() {
   if (!hasSqlSource.value) {
     return ''
   }
-  const activeTokens = Object.values(dashboardDateParameterTokens)
-    .flat()
-    .filter((token) => form.sql.includes(token))
+  const activeTokens = scanDashboardDateParameterTokens(form.sql)
   if (activeTokens.length === 0) {
     return ''
   }
@@ -4054,6 +4056,7 @@ async function previewSqlSource() {
     const sourceResult = await dashboardApi.preview_sql({
       datasource: selectedExecutionDatasourceId.value,
       sql: form.sql.trim(),
+      pivot: sourcePreviewPivotPayload(),
     })
     const sourceSnapshot = previewResultSnapshot(sourceResult)
     setSourceResult('sql', sourceSnapshot)

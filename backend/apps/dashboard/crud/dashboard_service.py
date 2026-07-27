@@ -131,6 +131,17 @@ def _normalize_persisted_dashboard_chart_state(canvas_view_obj: dict) -> dict:
     return canvas_view_obj
 
 
+def _strip_transient_dashboard_chart_state(value: Any) -> Any:
+    if isinstance(value, dict):
+        value.pop("dateFilterCapability", None)
+        for child in value.values():
+            _strip_transient_dashboard_chart_state(child)
+    elif isinstance(value, list):
+        for child in value:
+            _strip_transient_dashboard_chart_state(child)
+    return value
+
+
 def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | bytes | None:
     """
     是什么：_sanitize_canvas_view_info 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -144,6 +155,7 @@ def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | by
     except Exception:
         return canvas_view_info
     canvas_view_obj = sanitize_chart_display_names(canvas_view_obj)
+    canvas_view_obj = _strip_transient_dashboard_chart_state(canvas_view_obj)
     if isinstance(canvas_view_obj, dict):
         canvas_view_obj = _normalize_persisted_dashboard_chart_state(canvas_view_obj)
     return orjson.dumps(canvas_view_obj).decode()
@@ -5250,7 +5262,10 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         prepared_query.pivot,
     )
     if permission_failure is not None:
-        return _dashboard_date_filter_result(permission_failure, date_filter_capability)
+        return _dashboard_date_filter_result(
+            permission_failure,
+            {"status": "forbidden", "reason": "permission_denied"},
+        )
     cache_key = _dashboard_sql_preview_cache_key(
         current_user=current_user,
         datasource_id=datasource_id,

@@ -9,5 +9,8 @@ const source = readFileSync(
 
 assert.match(source, /pivotDateParameterType/)
 assert.match(source, /date_parameter_type:\s*form\.pivotDateParameterType/)
-assert.match(source, /dashboard_start_yyyymmdd/)
+assert.match(source, /scanDashboardDateParameterTokens/)
+assert.match(source, /buildDashboardDateSourcePreviewPivot/)
+assert.match(source, /pivot:\s*sourcePreviewPivotPayload\(\)/)
+assert.match(source, /dashboardDateParameterTokens/)
 assert.match(source, /validateBeforeApply[\s\S]*date_parameter_type/)
