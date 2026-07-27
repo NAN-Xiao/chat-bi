@@ -45,5 +45,20 @@ const previewSource = readFileSync(join(currentDir, 'SQPreview.vue'), 'utf8')
 assert.match(previewSource, /getDashboardGridContentRows\(displayComponentData\.value\)/)
 assert.match(previewSource, /class="canvas-scroll-spacer"/)
 assert.match(previewSource, /:style="canvasScrollSpacerStyle"/)
+assert.match(previewSource, /const PREVIEW_EDGE_GAP = 16/)
+assert.match(previewSource, /const edgeGap = props\.inTab \? gridGap : PREVIEW_EDGE_GAP/)
+assert.match(
+  previewSource,
+  /getDashboardGridCellWidth\(\s*screenWidth,\s*props\.baseMatrixCount\.x,\s*gridGap,\s*edgeGap\s*\)/
+)
+assert.match(previewSource, /basePaddingLeft\.value = edgeGap/)
+assert.match(
+  previewSource,
+  /left: cellWidth\.value \* \(gridX - 1\) \+ basePaddingLeft\.value \+ 'px'/
+)
+assert.match(
+  previewSource,
+  /width: Math\.max\(0, cellWidth\.value \* item\.sizeX - baseMarginLeft\.value\) \+ 'px'/
+)
 
 console.log('SQPreview scroll boundary tests passed')
