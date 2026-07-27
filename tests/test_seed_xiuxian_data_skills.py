@@ -42,7 +42,32 @@ def test_payer_penetration_topic_defines_active_payer_rate_contract():
     assert "同时" in topic.guidance
     assert "每日" in topic.guidance
     assert "不是累计付费率" in topic.guidance
-    assert "paytotal" in topic.guidance
+    assert "所选时间窗口" in topic.guidance
+    assert "SUM(ServerPayLog.personal.money)" in topic.guidance
+    assert "COUNT(DISTINCT ServerPayLog.uid)" in topic.guidance
+    assert "累计每日去重人数" in topic.guidance
+    assert "paytotal" not in topic.guidance
+
+
+def _parse_serverpaylog_validation(module) -> list[dict[str, object]]:
+    payload = module.SERVERPAYLOG_VALIDATION.split(
+        "data-skill-sql-validation:", 1
+    )[1].rsplit("-->", 1)[0].strip()
+    rules = json.loads(payload)
+    assert isinstance(rules, list)
+    return rules
+
+
+def test_serverpaylog_validation_separates_amount_and_payer_count():
+    module = _load_seed_module()
+    rules = _parse_serverpaylog_validation(module)
+
+    amount = next(rule for rule in rules if "付费金额" in rule["match"])
+    payer = next(rule for rule in rules if "付费用户" in rule["match"])
+
+    assert amount["required_sql_contains"] == ["ServerPayLog", "$.money"]
+    assert payer["required_sql_contains"] == ["ServerPayLog"]
+    assert payer["required_sql_patterns"] == [module.DISTINCT_UID_PATTERN]
 
 
 def test_xiuxian_date_partition_skill_is_scoped_and_actionable():

@@ -280,6 +280,11 @@ SERVERPAYLOG_MARKER = (
 EMPTY_DASHBOARD_VIEW_ID = "1e4e34743f2d47dfa1c2948742b93a50"
 DATA_SKILLS: list[dict[str, str]] = [DATE_PARTITION_SKILL]
 
+DISTINCT_UID_PATTERN = (
+    r"COUNT\s*\(\s*DISTINCT\s+(?:`?\w+`?\s*\.\s*)?`?uid`?\s*\)"
+)
+DISTINCT_UID_PATTERN_JSON = DISTINCT_UID_PATTERN.replace("\\", "\\\\")
+
 SERVERPAYLOG_VALIDATION = """<!-- data-skill-sql-validation:[
   {
     "match":["新增首日付费金额","首日付费金额","D0付费金额","注册日付费金额"],
@@ -288,20 +293,22 @@ SERVERPAYLOG_VALIDATION = """<!-- data-skill-sql-validation:[
     "message":"修仙新增首日付费金额必须按 UserRegister 去重用户，读取注册日 user 快照的 pay.pay1；dt/regdate 为 YYYYMMDD，当前方言必须 CAST AS SIGNED，不能使用 UNSIGNED。"
   },
   {
-    "match":["收入","流水","付费金额","付费用户","ARPU","arpu","ARPPU","arppu"],
+    "match":["收入","流水","付费金额","ARPU","arpu","ARPPU","arppu"],
     "allow_when":["新增首日付费金额","首日付费金额","D0付费金额","注册日付费金额"],
     "required_sql_contains":["ServerPayLog","$.money"],
     "forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"],
     "message":"修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
   },
   {
-    "match":["付费用户","ARPU","arpu","ARPPU","arppu"],
+    "match":["付费用户","付费人数","ARPU","arpu","ARPPU","arppu"],
+    "required_sql_contains":["ServerPayLog"],
     "required_sql_patterns":[
-      "COUNT\\\\s*\\\\(\\\\s*DISTINCT\\\\s+(?:`?\\\\w+`?\\\\s*\\\\.\\\\s*)?`?uid`?\\\\s*\\\\)"
+      "{DISTINCT_UID_PATTERN_JSON}"
     ],
+    "forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"],
     "message":"修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
   }
-] -->"""
+] -->""".replace("{DISTINCT_UID_PATTERN_JSON}", DISTINCT_UID_PATTERN_JSON)
 
 
 def dashboard_sql_block(view_id: str, sql: str) -> str:

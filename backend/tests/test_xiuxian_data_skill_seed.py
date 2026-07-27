@@ -117,6 +117,36 @@ def test_xiuxian_payment_skill_uses_serverpaylog_authority() -> None:
     assert '"forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"]' in prompt
 
 
+def test_payer_count_does_not_require_unrelated_money_field() -> None:
+    prompt = _payment_skill()["prompt"]
+    correct_sql = """
+    SELECT COUNT(DISTINCT e.uid) AS `付费用户数`
+    FROM `event` e
+    WHERE e.dt = 20260726
+      AND e.event = 'ServerPayLog'
+    """
+
+    assert _data_skill_sql_validation_violation(
+        "统计昨天的付费用户数", correct_sql, prompt
+    ) is None
+
+
+def test_payment_amount_still_requires_money_field() -> None:
+    prompt = _payment_skill()["prompt"]
+    invalid_sql = """
+    SELECT COUNT(*) AS `付费金额`
+    FROM `event` e
+    WHERE e.dt = 20260726
+      AND e.event = 'ServerPayLog'
+    """
+
+    violation = _data_skill_sql_validation_violation(
+        "统计昨天的付费金额", invalid_sql, prompt
+    )
+    assert violation is not None
+    assert violation.missing_required_contains == ("$.money",)
+
+
 def test_xiuxian_payment_skill_documents_first_day_payment_snapshot_semantics() -> None:
     prompt = _payment_skill()["prompt"]
 
