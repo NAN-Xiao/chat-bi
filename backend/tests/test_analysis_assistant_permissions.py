@@ -17,6 +17,8 @@ from apps.analysis_assistant.service.analysis_time_policy import (
     AnalysisTimePolicy,
     AnalysisTimeResolution,
     AnalysisTimeSource,
+    parse_analysis_time_intent,
+    resolve_analysis_time_policy,
 )
 from apps.system.schemas.system_schema import UserInfoDTO
 
@@ -279,10 +281,10 @@ def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.M
     }
 
 
-def test_chat_streams_time_policy_warnings_and_traces_after_snapshot(
+def test_chat_deduplicates_real_unresolved_time_policy_trace_after_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """时间策略告警和轨迹必须紧跟上下文快照输出。"""
+    """真实 unresolved 的同一 warning/trace 在轨迹中只输出一次。"""
     datasource = analysis_api.CoreDatasource(
         id=1,
         name="测试项目",
@@ -320,9 +322,11 @@ def test_chat_streams_time_policy_warnings_and_traces_after_snapshot(
         return _Llm(), SimpleNamespace(model_id=7, model_name="test-model")
 
     async def _fake_resolve_time_policy(**_kwargs):
-        return _resolved_time(
-            warnings=("时间策略告警",),
-            traces=("时间策略轨迹",),
+        return resolve_analysis_time_policy(
+            parse_analysis_time_intent("最近7天收入", []),
+            skill_window_days=None,
+            anchor=None,
+            anchor_date=None,
         )
 
     monkeypatch.setattr(
@@ -371,8 +375,10 @@ def test_chat_streams_time_policy_warnings_and_traces_after_snapshot(
     chunks = asyncio.run(_collect_first_three_chunks())
 
     assert '"type":"context_snapshot"' in chunks[0]
-    assert "时间策略告警" in chunks[1]
-    assert "时间策略轨迹" in chunks[2]
+    trace_chunks = [chunk for chunk in chunks if '"type":"trace"' in chunk]
+    assert len(trace_chunks) == 1
+    assert "无法确认当前数据源的时间锚点" in trace_chunks[0]
+    assert '"type":"error"' in chunks[2]
 
 
 def test_export_report_rejects_client_snapshot_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:

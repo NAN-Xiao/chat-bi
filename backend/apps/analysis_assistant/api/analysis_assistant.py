@@ -376,9 +376,8 @@ JSON 格式：
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
 - 后端提供的时间策略是最终约束，不得重新解释或扩大。
-- 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
-- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
-- 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
+- 修正后的 SQL 必须保留后端给出的具体起止日期和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 没有适用时间字段的维表不得虚构时间过滤。
 - 保持原分析目的和时间范围，不要扩大或缩小口径。
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
 - 输出字段别名应保持或恢复为面向用户的业务展示名；如果使用中文、空格或特殊字符别名，必须按 PostgreSQL 语法加双引号，并确保图表字段配置能用同名别名取数。
@@ -3430,6 +3429,8 @@ def _repair_sql(
     custom_agent: str = "",
     tracking_context: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> str:
     """
     是什么：_repair_sql 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3448,6 +3449,7 @@ def _repair_sql(
         f"分析目的：{raw_query.get('purpose')}\n"
         f"原始 SQL：\n{failed_sql}\n\n"
         f"执行错误：\n{str(error)[:3000]}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_data_skill_block(data_skill)}"
         f"{tracking_block}"
         f"{_custom_agent_block(custom_agent)}"
@@ -3471,6 +3473,8 @@ def _summarise_block(
     block: dict[str, Any],
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> str:
     """
     是什么：_summarise_block 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3484,6 +3488,8 @@ def _summarise_block(
         f"用户问题：{question}\n"
         f"数据块标题：{block.get('title')}\n"
         f"分析目的：{block.get('purpose')}\n"
+        f"{_time_policy_context(time_resolution)}"
+        "摘要必须说明实际使用的时间范围；维表无适用时间字段时不得虚构时间过滤。\n"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"SQL：{block.get('sql')}\n"
         f"字段：{block.get('fields')}\n"
@@ -3502,6 +3508,8 @@ def _final_answer_messages(
     blocks: list[dict[str, Any]],
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> list[BaseMessage]:
     """
     是什么：_final_answer_messages 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3565,6 +3573,8 @@ def _final_answer_messages(
     prompt = (
         f"用户问题：{question}\n"
         f"问题理解：{intro}\n"
+        f"{_time_policy_context(time_resolution)}"
+        "最终回答必须说明实际使用的时间范围；维表无适用时间字段时不得虚构时间过滤。\n"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"{permission_notice}"
         f"{failure_notice}"
@@ -3586,6 +3596,8 @@ def _final_answer(
     blocks: list[dict[str, Any]],
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> str:
     """
     是什么：_final_answer 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3594,18 +3606,28 @@ def _final_answer(
     """
     return _llm_text(
         llm,
-        _final_answer_messages(question, intro, blocks, custom_agent, data_skill),
+        _final_answer_messages(
+            question,
+            intro,
+            blocks,
+            custom_agent,
+            data_skill,
+            time_resolution=time_resolution,
+        ),
     )
 
 
 def _time_policy_context(resolution: AnalysisTimeResolution) -> str:
     if resolution.policy:
         return (
-            "分析时间策略（后端已确定，必须严格使用）：\n"
+            "分析时间策略（后端已确定，必须严格使用，不得重新解释或扩大）：\n"
             + resolution.policy.prompt_text()
             + "\n\n"
         )
-    return "分析时间策略：当前无法确认最大业务日期；只生成能够明确证明时间边界的数据块。\n\n"
+    return (
+        "分析时间策略：当前无法确认最大业务日期；只生成能够明确证明时间边界的数据块，"
+        "不得重新解释或扩大范围。\n\n"
+    )
 
 
 def _initial_outline_messages(
@@ -3847,9 +3869,11 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         success = False
         try:
             yield _sse({"type": "context_snapshot", "snapshot": context_snapshot})
-            for warning in time_resolution.warnings:
-                yield _trace(warning)
-            for trace_message in time_resolution.traces:
+            emitted_time_traces: set[str] = set()
+            for trace_message in (*time_resolution.warnings, *time_resolution.traces):
+                if trace_message in emitted_time_traces:
+                    continue
+                emitted_time_traces.add(trace_message)
                 yield _trace(trace_message)
             outline_text = ""
             for chunk in llm.stream(
@@ -3958,8 +3982,18 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             raise first_error
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
                         repaired_sql = _repair_sql(
-                            llm, question, raw_query, sql, first_error, schema, sample_data, data_profile,
-                            custom_agent, tracking_context, data_skill
+                            llm,
+                            question,
+                            raw_query,
+                            sql,
+                            first_error,
+                            schema,
+                            sample_data,
+                            data_profile,
+                            custom_agent,
+                            tracking_context,
+                            data_skill,
+                            time_resolution=time_resolution,
                         )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables
@@ -3978,8 +4012,18 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
                         repaired_sql = _repair_sql(
-                            llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data,
-                            data_profile, custom_agent, tracking_context, data_skill
+                            llm,
+                            question,
+                            raw_query,
+                            sql,
+                            ValueError(semantic_error),
+                            schema,
+                            sample_data,
+                            data_profile,
+                            custom_agent,
+                            tracking_context,
+                            data_skill,
+                            time_resolution=time_resolution,
                         )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables
@@ -4001,7 +4045,14 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     block["data"] = result.get("data") or []
                     yield _trace("这个角度的数据已经整理好，正在提炼关键发现。", block_id=block_id)
                     block["chart"] = _build_chart_config(raw_query, result)
-                    block["summary"] = _summarise_block(llm, question, block, custom_agent, semantic_context)
+                    block["summary"] = _summarise_block(
+                        llm,
+                        question,
+                        block,
+                        custom_agent,
+                        semantic_context,
+                        time_resolution=time_resolution,
+                    )
                 except Exception as query_error:
                     _mark_query_error_block(block, query_error, current_user)
 
@@ -4010,7 +4061,16 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
 
             yield _trace("正在汇总各个角度的发现，形成最终判断和建议。")
             final = ""
-            for chunk in llm.stream(_final_answer_messages(question, intro, blocks, custom_agent, semantic_context)):
+            for chunk in llm.stream(
+                _final_answer_messages(
+                    question,
+                    intro,
+                    blocks,
+                    custom_agent,
+                    semantic_context,
+                    time_resolution=time_resolution,
+                )
+            ):
                 content = _chunk_text(chunk.content)
                 if content:
                     final += content

@@ -45,20 +45,31 @@ def test_sql_generation_semantic_mappings_preserve_json_expression() -> None:
 
 
 def test_all_sql_generation_prompts_require_backend_resolved_time_policy() -> None:
-    """所有 SQL 生成链路都必须服从后端常量时间边界。"""
-    prompts = (
+    """计划与预测必须返回时间字段元数据并服从后端常量边界。"""
+    plan_prompts = (
         analysis_api.PLAN_PROMPT,
         analysis_api.FORECAST_PLAN_PROMPT,
-        analysis_api.SQL_REPAIR_PROMPT,
     )
 
-    for prompt in prompts:
+    for prompt in plan_prompts:
         assert "后端提供的时间策略是最终约束，不得重新解释或扩大" in prompt
         assert "具体日期常量" in prompt
         assert "不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds" in prompt
         assert '每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}' in prompt
         assert "图表标题、分析说明和最终结论必须说明实际使用的时间范围" in prompt
         assert "WITH bounds AS (SELECT MAX" not in prompt
+
+
+def test_sql_repair_prompt_only_requires_preserving_backend_time_bounds() -> None:
+    """SQL 修复输出只能包含 SQL，不承担计划或回答元数据契约。"""
+    prompt = analysis_api.SQL_REPAIR_PROMPT
+
+    assert '"sql": "修正后的只读 SQL"' in prompt
+    assert "后端提供的时间策略是最终约束，不得重新解释或扩大" in prompt
+    assert "具体起止日期和包含关系" in prompt
+    assert "不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds" in prompt
+    assert "time_fields" not in prompt
+    assert "图表标题、分析说明和最终结论" not in prompt
 
 
 def test_plan_prompt_receives_backend_resolved_constant_time_policy() -> None:
@@ -156,6 +167,50 @@ def test_unresolved_time_policy_context_limits_plan_scope() -> None:
     assert "只生成能够明确证明时间边界的数据块" in context
 
 
+def test_summary_and_final_answer_receive_backend_resolved_time_policy() -> None:
+    class CaptureLLM:
+        def __init__(self) -> None:
+            self.messages = []
+
+        def invoke(self, messages):
+            self.messages = messages
+            return SimpleNamespace(content="时间范围内收入稳定")
+
+    llm = CaptureLLM()
+    block = {
+        "title": "收入趋势",
+        "purpose": "查看收入",
+        "sql": "SELECT 1",
+        "fields": ["收入"],
+        "data": [{"收入": 1}],
+    }
+    time_resolution = _resolved_time()
+
+    analysis_api._summarise_block(
+        llm,
+        "分析收入",
+        block,
+        time_resolution=time_resolution,
+    )
+    summary_prompt = llm.messages[-1].content
+
+    analysis_api._final_answer(
+        llm,
+        "分析收入",
+        "分析收入趋势",
+        [block],
+        time_resolution=time_resolution,
+    )
+    final_prompt = llm.messages[-1].content
+
+    for prompt in (summary_prompt, final_prompt):
+        assert "2026-07-13" in prompt
+        assert "2026-07-26" in prompt
+        assert "不得重新解释或扩大" in prompt
+        assert "必须说明实际使用的时间范围" in prompt
+        assert "无适用时间字段时不得虚构时间过滤" in prompt
+
+
 def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
     """失败重试不能让长埋点上下文截断数据源专属 SQL 示例。"""
     class CaptureLLM:
@@ -180,6 +235,7 @@ def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
         sample_data="",
         tracking_context=tracking_context,
         data_skill=data_skill,
+        time_resolution=_resolved_time(),
     )
 
     prompt = llm.messages[-1].content
@@ -187,3 +243,5 @@ def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
     assert "工作空间数据字典/埋点方案" in prompt
     assert tracking_context[:12000] in prompt
     assert tracking_context[12000:] not in prompt
+    assert "2026-07-13" in prompt
+    assert "2026-07-26" in prompt
