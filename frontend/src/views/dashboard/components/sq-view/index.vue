@@ -106,7 +106,9 @@ import {
   commitDashboardDateRange,
   createDashboardDateFilterState,
   failDashboardDateRange,
+  getOrCreateDashboardDateFilterState,
   isDashboardDateApplyDisabled,
+  registerDashboardDateFilterState,
   type DashboardDateFilterCapability,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 const { t, locale } = useI18n()
@@ -354,13 +356,16 @@ const showDashboardDateFilter = computed(() =>
   dateFilterCapability.value?.status === 'available'
   && canShowDashboardDateFilter(dateFilterCapability.value)
 )
-const dateFilterState = reactive(createDashboardDateFilterState(dateFilterCapability.value))
+const dateFilterState = reactive(
+  getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
+)
 const dateFilterApplyDisabled = computed(() =>
   isDashboardDateApplyDisabled(dateFilterState, dateFilterCapability.value)
 )
 
 function resetDashboardDateFilterState() {
   Object.assign(dateFilterState, createDashboardDateFilterState(dateFilterCapability.value))
+  registerDashboardDateFilterState(props.viewInfo, dateFilterState)
 }
 
 function formatLocalDate(value: Date) {

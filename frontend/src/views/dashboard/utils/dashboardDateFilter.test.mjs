@@ -9,6 +9,8 @@ import {
   defaultDashboardDateRange,
   failDashboardDateRange,
   isDashboardDateApplyDisabled,
+  getOrCreateDashboardDateFilterState,
+  registerDashboardDateFilterState,
 } from './dashboardDateFilter.ts'
 
 assert.deepEqual(defaultDashboardDateRange('2026-07-27'), ['2026-07-13', '2026-07-26'])
@@ -67,3 +69,12 @@ for (const invalidRange of [
   state.draftRange = invalidRange
   assert.equal(isDashboardDateApplyDisabled(state, capability), true)
 }
+
+const viewInfo = { id: 'chart-1', pivot: {} }
+const sharedState = getOrCreateDashboardDateFilterState(viewInfo, capability, '2026-07-30')
+sharedState.appliedRange = ['2026-06-01', '2026-06-14']
+assert.equal(getOrCreateDashboardDateFilterState(viewInfo, capability), sharedState)
+
+const replacementState = createDashboardDateFilterState(capability, '2026-07-30')
+registerDashboardDateFilterState(viewInfo, replacementState)
+assert.equal(getOrCreateDashboardDateFilterState(viewInfo, capability), replacementState)

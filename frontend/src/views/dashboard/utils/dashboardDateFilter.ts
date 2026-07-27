@@ -25,6 +25,7 @@ export type DashboardDateFilterState = {
 }
 
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+const dashboardDateFilterStates = new WeakMap<object, DashboardDateFilterState>()
 
 function copyRange(range: DashboardDateRange): DashboardDateRange {
   return [range[0], range[1]]
@@ -103,6 +104,27 @@ export function createDashboardDateFilterState(
     applying: false,
     applyError: '',
   }
+}
+
+export function registerDashboardDateFilterState(
+  viewInfo: object,
+  state: DashboardDateFilterState
+): DashboardDateFilterState {
+  dashboardDateFilterStates.set(viewInfo, state)
+  return state
+}
+
+export function getOrCreateDashboardDateFilterState(
+  viewInfo: object,
+  capability: DashboardDateFilterCapability | null | undefined,
+  today?: string
+): DashboardDateFilterState {
+  const existing = dashboardDateFilterStates.get(viewInfo)
+  if (existing) return existing
+  return registerDashboardDateFilterState(
+    viewInfo,
+    createDashboardDateFilterState(capability, today)
+  )
 }
 
 export function isDashboardDateApplyDisabled(

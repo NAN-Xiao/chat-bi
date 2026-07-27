@@ -40,6 +40,11 @@ import {
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
   shouldRetryDashboardChartFailure,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
+import {
+  buildDashboardDatePivot,
+  canShowDashboardDateFilter,
+  getOrCreateDashboardDateFilterState,
+} from '@/views/dashboard/utils/dashboardDateFilter.ts'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -87,7 +92,7 @@ let chartRefreshRetryCount = 0
 const resolvingDashboardTarget = ref(false)
 const dashboardLandingRedirect = createDashboardLandingRedirectCoordinator()
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
-const CHART_DATABASE_REFRESH_CONCURRENCY = 4
+const CHART_DATABASE_REFRESH_CONCURRENCY = 2
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 180
 const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
 const CHART_TRANSIENT_MAX_RETRIES = 6
@@ -342,8 +347,24 @@ function inheritDashboardDatasource(viewInfo: any) {
 function collectNormalizedDashboardCharts(canvasData: any = state.canvasDataPreview) {
   return collectDashboardCharts(canvasData).map((entry) => {
     inheritDashboardDatasource(entry.viewInfo)
+    ensureChartDateFilterState(entry.viewInfo)
     return entry
   })
+}
+
+function ensureChartDateFilterState(viewInfo: any) {
+  if (!viewInfo || typeof viewInfo !== 'object') return null
+  if (!canShowDashboardDateFilter(viewInfo.dateFilterCapability)) {
+    return null
+  }
+  return getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
+}
+
+function normalizeChartDateFilterCapability(viewInfo: any, result: any) {
+  const capability = result?.date_filter_capability
+  if (!viewInfo || !capability || typeof capability !== 'object') return
+  viewInfo.dateFilterCapability = { ...capability }
+  ensureChartDateFilterState(viewInfo)
 }
 
 function prepareDashboardCharts(canvasData: any) {
@@ -377,6 +398,7 @@ function scheduleNextDashboardAutoRefresh(loadVersion: number) {
 }
 
 function applyChartResult(viewInfo: any, result: any) {
+  normalizeChartDateFilterCapability(viewInfo, result)
   const fields = getResultFields(result)
   const data = Array.isArray(result?.data) ? result.data : []
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
@@ -528,10 +550,16 @@ function prepareChartPreviewState(viewInfo: any) {
 }
 
 function chartSqlPayload(viewInfo: any) {
+  const dateFilterState = ensureChartDateFilterState(viewInfo)
+  const pivot = dateFilterState
+    ? buildDashboardDatePivot(viewInfo, dateFilterState.appliedRange)
+    : viewInfo.pivot?.enabled === true
+      ? viewInfo.pivot
+      : undefined
   return {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
-    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    pivot,
   }
 }
 
