@@ -2,6 +2,7 @@
 脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
 import secrets
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import urllib.parse
 from typing import Annotated, Any, Literal
 
@@ -128,9 +129,19 @@ class Settings(BaseSettings):
     DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS: float = 1.0
     DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS: float = 8.0
     DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS: int = 60
+    DASHBOARD_BUSINESS_TIMEZONE: str = "Asia/Shanghai"
     SMART_QA_EVENT_EXISTENCE_CACHE_TTL_SECONDS: int = 300
     SMART_QA_EVENT_EXISTENCE_BATCH_SIZE: int = 500
     SMART_QA_EVENT_UNKNOWN_POLICY: Literal["conservative", "strict"] = "conservative"
+
+    @field_validator("DASHBOARD_BUSINESS_TIMEZONE")
+    @classmethod
+    def validate_dashboard_business_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("DASHBOARD_BUSINESS_TIMEZONE 必须是有效的 IANA 时区") from exc
+        return value
 
     SHUZHI_REDIS_URL: str | None = None
     REDIS_URL: str | None = None
