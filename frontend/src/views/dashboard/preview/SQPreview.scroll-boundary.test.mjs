@@ -18,7 +18,7 @@ const build = await esbuild.build({
 
 const bundledSource = build.outputFiles[0].text
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(bundledSource).toString('base64')}`
-const { getDashboardGridContentRows } = await import(moduleUrl)
+const { getDashboardGridCellWidth, getDashboardGridContentRows } = await import(moduleUrl)
 
 assert.equal(
   getDashboardGridContentRows([
@@ -30,6 +30,16 @@ assert.equal(
 )
 assert.equal(getDashboardGridContentRows([{ y: 0, sizeY: 14 }]), 14)
 assert.equal(getDashboardGridContentRows([]), 0)
+
+const topLevelCellWidth = getDashboardGridCellWidth(1000, 72, 10, 16)
+assert.equal(topLevelCellWidth, (1000 - 16 * 2 + 10) / 72)
+assert.equal(16 + topLevelCellWidth * 72 - 10, 984)
+
+const tabCellWidth = getDashboardGridCellWidth(1000, 72, 6, 6)
+assert.equal(tabCellWidth, (1000 - 6) / 72)
+assert.equal(6 + tabCellWidth * 72 - 6, 994)
+
+assert.equal(getDashboardGridCellWidth(20, 72, 10, 16), 10 / 72)
 
 const previewSource = readFileSync(join(currentDir, 'SQPreview.vue'), 'utf8')
 assert.match(previewSource, /getDashboardGridContentRows\(displayComponentData\.value\)/)

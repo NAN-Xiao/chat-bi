@@ -3,6 +3,23 @@ type DashboardGridComponent = {
   sizeY?: unknown
 }
 
+export function getDashboardGridCellWidth(
+  containerWidth: number,
+  columnCount: number,
+  gridGap: number,
+  edgeGap: number
+): number {
+  const safeContainerWidth = Number.isFinite(containerWidth) ? Math.max(0, containerWidth) : 0
+  const safeColumnCount = Number.isFinite(columnCount)
+    ? Math.max(1, Math.round(columnCount))
+    : 1
+  const safeGridGap = Number.isFinite(gridGap) ? Math.max(0, gridGap) : 0
+  const safeEdgeGap = Number.isFinite(edgeGap) ? Math.max(0, edgeGap) : 0
+  const availableWidth = Math.max(0, safeContainerWidth - safeEdgeGap * 2)
+
+  return (availableWidth + safeGridGap) / safeColumnCount
+}
+
 export function normalizeDashboardGridCoordinate(value: unknown): number {
   const coordinate = Number(value)
   return Number.isFinite(coordinate) ? Math.max(1, Math.round(coordinate)) : 1
