@@ -1944,6 +1944,31 @@ def _dashboard_has_explicit_custom_date(pivot: Any | None) -> bool:
     )
 
 
+def _dashboard_chart_date_capability(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int | None,
+        item: dict[str, Any],
+) -> dict[str, Any]:
+    source_config = item.get("sourceConfig") if isinstance(item.get("sourceConfig"), dict) else {}
+    if (
+        item.get("dataSourceType") in {"mixed", DASHBOARD_SOURCE_EXTERNAL_MCP}
+        or source_config.get("mode") == "mixed"
+        or item.get("externalSnapshot") is True
+    ):
+        return {"status": "unsupported", "reason": "non_sql_chart"}
+    if datasource_id is None or item.get("sql") is None:
+        return {"status": "unconfigured", "reason": "missing_sql_or_datasource"}
+    datasource = session.get(CoreDatasource, datasource_id)
+    if datasource is None:
+        return {"status": "unconfigured", "reason": "datasource_missing"}
+    return _prepare_dashboard_chart_query(
+        datasource,
+        str(item.get("sql") or ""),
+        item.get("pivot"),
+    ).date_filter_capability
+
+
 def _dashboard_pivot_date_cast_error(message: str, pivot: Any | None) -> str | None:
     """
     是什么：_dashboard_pivot_date_cast_error 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -3876,6 +3901,7 @@ def _dashboard_payload(
             )
             item["dataSourceType"] = DASHBOARD_SOURCE_EXTERNAL_MCP
             item["externalSnapshot"] = True
+            item["dateFilterCapability"] = {"status": "unsupported", "reason": "external_mcp"}
             if isinstance(item.get("mcp"), dict):
                 item["mcp"]["externalMcpServerId"] = (
                     str(record.external_mcp_server_id) if record.external_mcp_server_id is not None else None
@@ -3895,9 +3921,37 @@ def _dashboard_payload(
                 )
                 item["datasource"] = item_datasource
             except HTTPException as exc:
+                item["dateFilterCapability"] = {
+                    "status": "forbidden",
+                    "reason": "execution_datasource_denied",
+                }
                 _apply_dashboard_chart_result(
                     item,
                     _failed_chart_result(str(exc.detail), "dashboard_execution_datasource_denied"),
+                )
+                continue
+            item["dateFilterCapability"] = _dashboard_chart_date_capability(
+                session,
+                current_user,
+                item_datasource,
+                item,
+            )
+            datasource = session.get(CoreDatasource, item_datasource) if item_datasource is not None else None
+            if datasource is None:
+                _apply_dashboard_chart_result(item, _failed_chart_result("项目不存在"))
+                continue
+            prepared_query = _prepare_dashboard_chart_query(
+                datasource,
+                item['sql'],
+                item.get("pivot"),
+            )
+            if (
+                prepared_query.date_filter_capability.get("status") == "unconfigured"
+                and has_dashboard_date_filter_parameters(item['sql'])
+            ):
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result("图表日期参数配置不完整", "dashboard_date_filter_unconfigured"),
                 )
                 continue
             if not include_data:
@@ -3906,10 +3960,14 @@ def _dashboard_payload(
                         session,
                         current_user,
                         item_datasource,
-                        item['sql'],
-                        item.get("pivot"),
+                        prepared_query.source_sql,
+                        prepared_query.pivot,
                     )
                     if permission_failure is not None:
+                        item["dateFilterCapability"] = {
+                            "status": "forbidden",
+                            "reason": "permission_denied",
+                        }
                         _apply_dashboard_chart_result(item, permission_failure)
                         continue
                 _clear_dashboard_chart_data(item)
@@ -3922,11 +3980,21 @@ def _dashboard_payload(
                     session,
                     current_user,
                     item_datasource,
-                    item['sql'],
-                    item.get("pivot"),
+                    prepared_query.source_sql,
+                    prepared_query.pivot,
                 )
             else:
-                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
+                data_result = _execute_dashboard_chart_sql(
+                    session,
+                    current_user,
+                    item_datasource,
+                    prepared_query.source_sql,
+                )
+            if data_result.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
+                item["dateFilterCapability"] = {
+                    "status": "forbidden",
+                    "reason": "permission_denied",
+                }
             _apply_dashboard_chart_result(item, data_result)
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
     return result_dict

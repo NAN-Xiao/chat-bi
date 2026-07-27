@@ -196,7 +196,7 @@ def test_dashboard_payload_without_data_strips_saved_chart_snapshot(monkeypatch:
     )
 
     result = dashboard_service._dashboard_payload(
-        object(),
+        _session(),
         _user(),
         record,
         default_context=True,
@@ -269,7 +269,7 @@ def test_dashboard_payload_with_data_executes_sql_engine_instead_of_saved_snapsh
     )
 
     result = dashboard_service._dashboard_payload(
-        object(),
+        _session(),
         _user(),
         record,
         default_context=True,

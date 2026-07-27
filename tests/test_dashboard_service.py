@@ -78,6 +78,18 @@ def _engine_with_dashboard_table():
                 ),
                 {"tenant_id": tenant_id, "user_id": user_id, "role": role},
             )
+        conn.execute(text(
+            """
+            CREATE TABLE core_roi_workspace_config (
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER NOT NULL,
+                deleted BOOLEAN NOT NULL DEFAULT 0
+            )
+            """
+        ))
+    with Session(engine) as session:
+        _create_simple_datasource_table(session)
+        session.commit()
     return engine
 
 
@@ -86,7 +98,7 @@ def _engine_with_dashboard_permission_tables():
     with engine.begin() as conn:
         conn.execute(text(
             """
-            CREATE TABLE core_datasource (
+            CREATE TABLE IF NOT EXISTS core_datasource (
                 id INTEGER PRIMARY KEY,
                 tenant_id INTEGER NOT NULL DEFAULT 1,
                 name VARCHAR(128) NOT NULL,
@@ -113,15 +125,6 @@ def _engine_with_dashboard_permission_tables():
                 role VARCHAR(32) NOT NULL DEFAULT 'viewer',
                 create_by INTEGER,
                 create_time DATETIME
-            )
-            """
-        ))
-        conn.execute(text(
-            """
-            CREATE TABLE core_roi_workspace_config (
-                tenant_id INTEGER NOT NULL,
-                datasource_id INTEGER NOT NULL,
-                deleted BOOLEAN NOT NULL DEFAULT 0
             )
             """
         ))
@@ -195,6 +198,7 @@ def test_validate_dashboard_report_target_accepts_visible_dashboard_component(mo
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 2)
+    _allow_requested_chart_execution_datasource(monkeypatch)
 
     with Session(engine) as session:
         session.add(
@@ -211,6 +215,9 @@ def test_validate_dashboard_report_target_accepts_visible_dashboard_component(mo
                 component_data=json.dumps(
                     [{"id": "chart-1", "component": "SQView"}],
                     ensure_ascii=False,
+                ),
+                canvas_view_info=json.dumps(
+                    {"chart-1": {"id": "chart-1", "datasource": 2, "sql": "select 1"}}
                 ),
             )
         )
@@ -275,7 +282,7 @@ def test_validate_dashboard_report_target_rejects_mismatched_target(
 def _create_simple_datasource_table(session: Session):
     session.execute(text(
         """
-        CREATE TABLE core_datasource (
+        CREATE TABLE IF NOT EXISTS core_datasource (
             id INTEGER PRIMARY KEY,
             tenant_id INTEGER NOT NULL DEFAULT 1,
             name VARCHAR(128) NOT NULL,
@@ -363,6 +370,14 @@ def _force_bound_chart_execution_datasource(monkeypatch):
         dashboard_service,
         "_configured_chart_execution_datasources",
         lambda *_args, **_kwargs: [(1, "bound")],
+    )
+
+
+def _allow_requested_chart_execution_datasource(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: int(datasource_id),
     )
 
 
@@ -886,6 +901,7 @@ def test_platform_delegate_create_canvas_is_workspace_asset(monkeypatch):
 
 
 def test_platform_delegate_updates_workspace_asset_directly(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     delegate_user = SimpleNamespace(
         id=9,
@@ -953,6 +969,7 @@ def test_platform_delegate_updates_workspace_asset_directly(monkeypatch):
 
 
 def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     delegate_user = SimpleNamespace(
         id=9,
@@ -2281,6 +2298,7 @@ def test_list_resource_includes_legacy_dashboard_when_canvas_uses_selected_datas
 
 
 def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
     chart_calls = []
@@ -2329,6 +2347,7 @@ def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
 
 
 def test_load_resource_marks_refreshed_loading_chart_ready(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
@@ -2394,6 +2413,7 @@ def test_load_resource_marks_refreshed_loading_chart_ready(monkeypatch):
 
 
 def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=True, tenant_id=1)
     chart_calls = []
@@ -2490,6 +2510,7 @@ def test_dashboard_create_base_info_normalizes_default_flag():
 
 
 def test_create_canvas_normalizes_materialized_loading_chart_state(monkeypatch):
+    _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
@@ -3486,6 +3507,56 @@ def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
     assert result["status"] == "failed"
     assert result["error_type"] == "dashboard_date_filter_realtime"
     assert result["date_filter_capability"]["status"] == "realtime"
+
+
+def test_dashboard_payload_adds_transient_date_capability_without_persisting(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    original = {
+        "available": {"id": "available", "sql": "select order_id as dt from orders", "pivot": {"time_field": "dt"}},
+        "realtime": {"id": "realtime", "sql": "select order_id as dt from orders", "pivot": {"time_field": "dt"}},
+        "plain": {"id": "plain", "sql": "select amount from orders", "pivot": {}},
+    }
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: None)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_chart_date_capability",
+        lambda _session, _user, _ds, item: {
+            "status": "realtime" if item["id"] == "realtime" else (
+                "available" if item["id"] == "available" else "unconfigured"
+            )
+        },
+    )
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        record = CoreDashboard(
+            id="dashboard-date-capability",
+            tenant_id=1,
+            name="日期能力测试",
+            pid="root",
+            node_type="leaf",
+            datasource=1,
+            component_data="[]",
+            canvas_style_data="{}",
+            canvas_view_info=json.dumps(original),
+        )
+        session.add(record)
+        session.commit()
+        payload = dashboard_service._dashboard_payload(
+            session,
+            current_user,
+            record,
+            default_context=True,
+            include_data=False,
+        )
+        response_views = json.loads(payload["canvas_view_info"])
+        assert response_views["available"]["dateFilterCapability"]["status"] == "available"
+        assert response_views["realtime"]["dateFilterCapability"]["status"] == "realtime"
+        assert response_views["plain"]["dateFilterCapability"]["status"] == "unconfigured"
+        session.expire_all()
+        persisted = session.get(CoreDashboard, record.id)
+        assert "dateFilterCapability" not in persisted.canvas_view_info
 
 
 def test_user_name_unwraps_row_result():
