@@ -280,7 +280,8 @@ JSON 格式：
       "chart_type": "line|area|column|bar|pie|metric|funnel|heatmap|scatter|sankey|treemap|table",
       "x": "结果集中作为维度或时间轴的字段别名",
       "y": "结果集中作为指标的字段别名",
-      "series": "可选，结果集中作为分组系列的字段别名"
+      "series": "可选，结果集中作为分组系列的字段别名",
+      "time_fields": [{"table": "物理表名", "field": "物理时间字段"}]
     }
   ]
 }
@@ -293,7 +294,10 @@ JSON 格式：
 - SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
-- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
+- 后端提供的时间策略是最终约束，不得重新解释或扩大。
+- 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
+- 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - ORDER BY、GROUP BY、HAVING 中引用的字段必须来自当前查询可见字段；ORDER BY 使用的别名必须在最终 SELECT 列表中真实输出。
 - 具体指标定义、字段选择、计算算法、时间窗口和异常判断必须严格遵循用户本次选择的 Data Skill，或用户本次明确给出的规则。
@@ -325,7 +329,8 @@ JSON 格式：
       "chart_type": "line|area|column|bar|pie|metric|funnel|heatmap|scatter|sankey|treemap|table",
       "x": "结果集中作为时间、序列点或维度的字段别名",
       "y": "结果集中作为预测值或核心指标的字段别名",
-      "series": "可选，结果集中作为分组系列的字段别名"
+      "series": "可选，结果集中作为分组系列的字段别名",
+      "time_fields": [{"table": "物理表名", "field": "物理时间字段"}]
     }
   ]
 }
@@ -341,7 +346,10 @@ JSON 格式：
 - SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
-- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
+- 后端提供的时间策略是最终约束，不得重新解释或扩大。
+- 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
+- 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - 预测必须尽量基于明细事实表在查询时计算，不要假设存在 agg/kpi/snapshot 表。
 - 预测结果要区分已观测值、历史基准、预测值和置信度；数据不足时要明确说明不确定性，不要把无数据当成确定结论。
@@ -367,7 +375,10 @@ JSON 格式：
 - 不要查询不存在于 schema 的表或字段。
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
-- 通用结构参照：WITH bounds AS (SELECT MAX(date_column) AS max_date FROM source_table) SELECT ... FROM source_table t CROSS JOIN bounds b WHERE t.date_column >= b.max_date；实际表名、字段名和日期计算必须以当前 schema 为准。
+- 后端提供的时间策略是最终约束，不得重新解释或扩大。
+- 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
+- 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - 保持原分析目的和时间范围，不要扩大或缩小口径。
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
 - 输出字段别名应保持或恢复为面向用户的业务展示名；如果使用中文、空格或特殊字符别名，必须按 PostgreSQL 语法加双引号，并确保图表字段配置能用同名别名取数。
@@ -3587,10 +3598,22 @@ def _final_answer(
     )
 
 
+def _time_policy_context(resolution: AnalysisTimeResolution) -> str:
+    if resolution.policy:
+        return (
+            "分析时间策略（后端已确定，必须严格使用）：\n"
+            + resolution.policy.prompt_text()
+            + "\n\n"
+        )
+    return "分析时间策略：当前无法确认最大业务日期；只生成能够明确证明时间边界的数据块。\n\n"
+
+
 def _initial_outline_messages(
     request: AnalysisAssistantRequest,
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> list[BaseMessage]:
     """
     是什么：_initial_outline_messages 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3607,6 +3630,7 @@ def _initial_outline_messages(
         f"页面上下文：{request.context or ''}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_data_skill_block(data_skill)}"
         f"{_custom_agent_block(custom_agent)}"
     )
@@ -3622,6 +3646,8 @@ def _build_plan(
     data_profile: str = "",
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> dict[str, Any]:
     """
     是什么：_build_plan 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3643,6 +3669,7 @@ def _build_plan(
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"{semantic_mappings}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
@@ -3680,6 +3707,8 @@ def _build_forecast_plan(
     data_profile: str = "",
     custom_agent: str = "",
     data_skill: str = "",
+    *,
+    time_resolution: AnalysisTimeResolution,
 ) -> dict[str, Any]:
     """
     是什么：_build_forecast_plan 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3701,6 +3730,7 @@ def _build_forecast_plan(
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_time_policy_context(time_resolution)}"
         f"{_context_blocks(custom_agent, data_skill)}"
         f"{semantic_mappings}"
         f"数据库 schema：\n{schema[:22000]}\n\n"
@@ -3781,6 +3811,17 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
     tracking_context = business_context.tracking_config
     semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, llm_config = await _create_llm(custom_agent_model_id)
+    time_resolution = await _resolve_chat_time_policy(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        business_context=business_context,
+        llm=llm,
+        request=request,
+        semantic_context=semantic_context,
+    )
+    snapshot_business_context = business_context.snapshot_metadata()
+    snapshot_business_context["analysis_time_policy"] = time_resolution.to_snapshot()
     context_snapshot = build_agent_context_snapshot(
         surface="analysis_assistant",
         datasource_id=datasource.id,
@@ -3793,7 +3834,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         ai_model_id=llm_config.model_id,
         ai_model_name=llm_config.model_name,
         target_scope=target_scope.value if target_scope else None,
-        business_context=business_context.snapshot_metadata(),
+        business_context=snapshot_business_context,
     )
 
     def generate():
@@ -3806,8 +3847,19 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         success = False
         try:
             yield _sse({"type": "context_snapshot", "snapshot": context_snapshot})
+            for warning in time_resolution.warnings:
+                yield _trace(warning)
+            for trace_message in time_resolution.traces:
+                yield _trace(trace_message)
             outline_text = ""
-            for chunk in llm.stream(_initial_outline_messages(request, custom_agent, semantic_context)):
+            for chunk in llm.stream(
+                _initial_outline_messages(
+                    request,
+                    custom_agent,
+                    semantic_context,
+                    time_resolution=time_resolution,
+                )
+            ):
                 content = _chunk_text(chunk.content)
                 if content:
                     outline_text += content
@@ -3832,13 +3884,29 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             if forecast_requested:
                 yield _trace("正在识别预测指标、目标对象和可用的历史观察窗口。")
                 plan = _build_forecast_plan(
-                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, semantic_context
+                    llm,
+                    request,
+                    schema,
+                    sample_data,
+                    datasource,
+                    data_profile,
+                    custom_agent,
+                    semantic_context,
+                    time_resolution=time_resolution,
                 )
                 yield _trace("预测方法和数据检查项已确定，下面按预测口径召回数据。")
             else:
                 yield _trace("正在把分析框架拆成可执行的数据检查项。")
                 plan = _build_plan(
-                    llm, request, schema, sample_data, datasource, data_profile, custom_agent, semantic_context
+                    llm,
+                    request,
+                    schema,
+                    sample_data,
+                    datasource,
+                    data_profile,
+                    custom_agent,
+                    semantic_context,
+                    time_resolution=time_resolution,
                 )
 
             intro = str(plan.get("intro") or "我会先识别问题指标，再从多个角度查看数据并给出分析建议。")
