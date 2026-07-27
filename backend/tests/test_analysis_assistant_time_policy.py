@@ -1,0 +1,138 @@
+from datetime import date
+
+import pytest
+
+from apps.analysis_assistant.service.analysis_time_policy import (
+    AnalysisTimeAnchor,
+    AnalysisTimeSource,
+    parse_analysis_time_intent,
+    parse_data_skill_time_directive,
+    resolve_analysis_time_policy,
+)
+
+ANCHOR = AnalysisTimeAnchor(table="fact_orders", field="business_date")
+
+
+def _resolve(
+    question: str,
+    *,
+    history: list[str] | None = None,
+    skill: str = "",
+    anchor_date: date = date(2026, 7, 26),
+):
+    intent = parse_analysis_time_intent(question, history or [])
+    window_days, warnings = parse_data_skill_time_directive(skill)
+    return resolve_analysis_time_policy(
+        intent,
+        skill_window_days=window_days,
+        anchor=ANCHOR,
+        anchor_date=anchor_date,
+        warnings=warnings,
+    )
+
+
+def test_default_window_contains_latest_fourteen_calendar_days() -> None:
+    resolution = _resolve("分析渠道收入变化")
+    assert resolution.status == "resolved"
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.DEFAULT_14_DAYS
+    assert resolution.policy.start_date == date(2026, 7, 13)
+    assert resolution.policy.end_date == date(2026, 7, 26)
+    assert resolution.policy.start_inclusive is True
+    assert resolution.policy.end_inclusive is True
+
+
+def test_structured_data_skill_window_overrides_default_only() -> None:
+    resolution = _resolve(
+        "分析渠道收入变化",
+        skill='<!-- data-skill-analysis-time:{"window_days":30,"anchor":"latest_available"} -->',
+    )
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.DATA_SKILL
+    assert resolution.policy.start_date == date(2026, 6, 27)
+
+
+def test_sql_example_does_not_override_default_window() -> None:
+    resolution = _resolve("分析渠道收入变化", skill="示例 SQL：WHERE day >= CURRENT_DATE - 30")
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.DEFAULT_14_DAYS
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_boundary", "inclusive", "expected_trace_start"),
+    [
+        ("分析14日之后的数据", date(2026, 7, 14), False, "2026-07-15"),
+        ("从14号开始分析", date(2026, 7, 14), True, "2026-07-14"),
+        ("分析14日起的数据", date(2026, 7, 14), True, "2026-07-14"),
+        ("分析14日及以后的数据", date(2026, 7, 14), True, "2026-07-14"),
+    ],
+)
+def test_day_only_open_ranges_have_deterministic_inclusion(
+    question: str,
+    expected_boundary: date,
+    inclusive: bool,
+    expected_trace_start: str,
+) -> None:
+    resolution = _resolve(question)
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.USER
+    assert resolution.policy.start_date == expected_boundary
+    assert resolution.policy.start_inclusive is inclusive
+    assert expected_trace_start in resolution.traces[0]
+
+
+def test_day_only_uses_previous_month_when_day_has_not_occurred() -> None:
+    resolution = _resolve("从14号开始分析", anchor_date=date(2026, 7, 10))
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2026, 6, 14)
+    assert resolution.policy.end_date == date(2026, 7, 10)
+
+
+def test_current_question_month_overrides_history_month() -> None:
+    resolution = _resolve("分析8月14日之后的数据", history=["看一下 2026 年 6 月收入"])
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2025, 8, 14)
+
+
+def test_explicit_year_is_not_rewritten_when_it_is_after_anchor() -> None:
+    resolution = _resolve("分析2026年8月14日之后的数据")
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2026, 8, 14)
+    assert resolution.policy.start_inclusive is False
+
+
+def test_recent_history_supplies_missing_month_and_year() -> None:
+    resolution = _resolve("从14号开始", history=["继续", "看一下 2026 年 6 月收入"])
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2026, 6, 14)
+
+
+def test_explicit_absolute_range_does_not_need_anchor() -> None:
+    intent = parse_analysis_time_intent("分析 2026-07-01 到 2026-07-10", [])
+    resolution = resolve_analysis_time_policy(
+        intent,
+        skill_window_days=None,
+        anchor=None,
+        anchor_date=None,
+    )
+    assert intent.requires_anchor is False
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2026, 7, 1)
+    assert resolution.policy.end_date == date(2026, 7, 10)
+
+
+@pytest.mark.parametrize("question", ["最近7天收入", "近两周收入", "昨天收入", "本月收入"])
+def test_explicit_relative_time_never_uses_platform_default(question: str) -> None:
+    resolution = _resolve(question)
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.USER
+
+
+def test_invalid_skill_directive_is_visible_and_falls_back_to_default() -> None:
+    resolution = _resolve(
+        "分析渠道收入变化",
+        skill='<!-- data-skill-analysis-time:{"window_days":0,"anchor":"today"} -->',
+    )
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.DEFAULT_14_DAYS
+    assert resolution.warnings == ("Data Skill 时间声明无效，已使用平台默认时间策略。",)
