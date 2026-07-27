@@ -30,9 +30,18 @@ DB = core_system_db_config()
 EVENT_TABLE_SCOPE_PATTERN = r"\b(?:from|join)\s+`?event(?:_realtime)?`?(?=\s|,|$)"
 REALTIME_TABLE_PATTERN = r"\b(?:from|join)\s+`?event_realtime`?(?=\s|,|$)"
 HISTORY_TABLE_PATTERN = r"\b(?:from|join)\s+`?event`?(?=\s|,|$)"
+REALTIME_TRIGGER_TERMS = (
+    "今天",
+    "当天",
+    "今日",
+    "实时",
+    "当前小时",
+    "当前分钟",
+    "当前整点",
+)
 SQL_VALIDATION_RULE = json.dumps(
     {
-        "match": ["今天", "当天", "今日", "截至目前", "当前", "实时"],
+        "match": list(REALTIME_TRIGGER_TERMS),
         "when_sql_patterns": [EVENT_TABLE_SCOPE_PATTERN],
         "required_sql_patterns": [REALTIME_TABLE_PATTERN],
         "forbidden_sql_patterns": [HISTORY_TABLE_PATTERN],
@@ -48,8 +57,8 @@ SQL_VALIDATION_RULE = json.dumps(
 SKILL = {
     "name": "平台通用 Data Skill：当天实时事件与完整历史事件选表",
     "description": (
-        "当当前授权数据源同时存在 event_realtime 与 event 时，"
-        "区分今天、当天、截至目前、实时、按分钟或按小时查询与完整历史查询。"
+        "当已授权数据源同时存在 event_realtime 与 event 时，"
+        "区分今天、当天、今日、实时、当前小时、当前分钟、当前整点与完整历史查询。"
     ),
     "prompt": f"""{SKILL_MARKER}
 <!-- platform-foundation-skill:realtime-event-table-selection:v1 -->
@@ -66,7 +75,8 @@ SKILL = {
 
 ## 选表规则
 
-- 未完成当日：问题包含“今天”“当天”“今日”“截至目前”“当前”“实时”，或要求今天按分钟、按小时统计时，必须查询 `event_realtime`，并直接限制当前业务日分区。
+- 未完成当日：问题包含“今天”“当天”“今日”“实时”“当前小时”“当前分钟”“当前整点”，或要求今天按分钟、按小时统计时，必须查询 `event_realtime`，并直接限制当前业务日分区。
+- 反例：“当前”“截至目前”“截至当前”单独出现时，不能触发实时选表；必须结合上述明确的当天或实时触发词判断。
 - 完整历史日：问题指定“昨天”“截至昨天”、某个已经结束的日期、完整自然日，或只分析完整历史分区时，查询 `event`。
 - 多日趋势：不包含今天的多日趋势查询使用 `event`。
 - 包含今天的跨日窗口：已完成历史日期读取 `event`，今天读取 `event_realtime`。只有工作空间口径确认两表字段语义一致且允许合并时，才可使用 `UNION ALL`，并在外层统一聚合，避免重复计算。

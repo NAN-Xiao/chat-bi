@@ -3,6 +3,10 @@
 """
 from __future__ import annotations
 
+import importlib
+import json
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import orjson
@@ -13,8 +17,31 @@ from apps.chat.task import llm
 from apps.chat.task.sql_repair import DataSkillSqlValidationError, DataSkillSqlViolation
 
 
+TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
+platform_skill = importlib.import_module("seed_platform_realtime_event_table_skill")
+
+
 def _data_skill(*rules: dict) -> str:
     return "<!-- data-skill-sql-validation: " + orjson.dumps(list(rules)).decode() + " -->"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "当前等级的活跃用户分布",
+        "截至目前的历史累计付费趋势",
+        "截至当前的完整历史日付费",
+    ],
+)
+def test_generic_current_phrases_do_not_activate_realtime_rule(question: str) -> None:
+    rule = json.loads(platform_skill.SQL_VALIDATION_RULE)
+    data_skill = _data_skill(rule)
+    sql = "SELECT COUNT(DISTINCT e.uid) FROM event e WHERE e.dt=20260726"
+
+    assert llm._data_skill_sql_validation_violation(question, sql, data_skill) is None
 
 
 def test_required_items_are_returned_as_structured_violation() -> None:

@@ -16,6 +16,22 @@ if str(TOOLS_DIR) not in sys.path:
 module = importlib.import_module("seed_platform_realtime_event_table_skill")
 
 
+def test_realtime_trigger_terms_are_explicit_and_narrow() -> None:
+    rule = json.loads(module.SQL_VALIDATION_RULE)
+
+    assert rule["match"] == [
+        "今天",
+        "当天",
+        "今日",
+        "实时",
+        "当前小时",
+        "当前分钟",
+        "当前整点",
+    ]
+    for term in ("当前", "截至目前", "截至当前"):
+        assert term not in rule["match"]
+
+
 class FakeBackend:
     def __init__(
         self,
@@ -91,7 +107,7 @@ def test_skill_is_platform_public_and_keeps_business_semantics_out() -> None:
         "event",
         "今天",
         "当天",
-        "截至目前",
+        "当前小时",
         "按小时",
     ):
         assert token in prompt
