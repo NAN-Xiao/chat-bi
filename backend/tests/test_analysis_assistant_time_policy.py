@@ -149,6 +149,22 @@ def test_day_only_searches_previous_leap_day_when_available() -> None:
     assert "2024-03-01" in resolution.traces[0]
 
 
+def test_month_without_year_searches_previous_year_for_latest_valid_leap_day() -> None:
+    resolution = _resolve("2月29日之后", anchor_date=date(2025, 3, 1))
+    assert resolution.policy is not None
+    assert resolution.policy.start_date == date(2024, 2, 29)
+    assert resolution.policy.start_inclusive is False
+    assert "2024-03-01" in resolution.traces[0]
+
+
+@pytest.mark.parametrize("question", ["4月31日之后", "2025年2月29日之后"])
+def test_invalid_explicit_month_day_is_not_rewritten_to_another_year(question: str) -> None:
+    resolution = _resolve(question, anchor_date=date(2025, 3, 1))
+    assert resolution.status == "unresolved"
+    assert resolution.policy is None
+    assert resolution.warnings == ("用户指定的日期无效，无法确定时间策略。",)
+
+
 def test_explicit_absolute_range_does_not_need_anchor() -> None:
     intent = parse_analysis_time_intent("分析 2026-07-01 到 2026-07-10", [])
     resolution = resolve_analysis_time_policy(

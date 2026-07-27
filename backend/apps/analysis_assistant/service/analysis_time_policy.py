@@ -224,14 +224,13 @@ def _latest_occurrence(
     if year is not None and month is not None:
         return _safe_date(year, month, day_of_month)
     if month is not None:
-        candidate = _safe_date(anchor_date.year, month, day_of_month)
-        if candidate is None:
-            return None
-        return (
-            candidate
-            if candidate <= anchor_date
-            else _safe_date(anchor_date.year - 1, month, day_of_month)
-        )
+        candidate_year = anchor_date.year
+        while candidate_year >= 1:
+            candidate = _safe_date(candidate_year, month, day_of_month)
+            if candidate is not None and candidate <= anchor_date:
+                return candidate
+            candidate_year -= 1
+        return None
     if not 1 <= day_of_month <= 31:
         return None
     candidate_year = anchor_date.year
