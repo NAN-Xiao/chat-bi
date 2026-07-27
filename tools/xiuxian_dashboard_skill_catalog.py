@@ -102,7 +102,7 @@ TOPICS = (
     TopicDefinition(
         "serverpaylog-revenue",
         "修仙 ServerPayLog 收入与 ARPU/ARPPU",
-        "真实收入、付费人均指标与新增首日付费 cohort。",
+        "真实收入、按渠道统计累计付费用户数、付费人均指标与新增首日付费 cohort。",
         (
             "22d89d4a69224e53994d21fb44b376aa",
             "2192510609759838208",
@@ -115,7 +115,7 @@ TOPICS = (
     TopicDefinition(
         "payer-penetration",
         "修仙付费用户、渗透与累计付费",
-        "付费用户、渗透率与累计金额。",
+        "按渠道统计累计付费用户数、付费渗透率与累计金额。",
         (
             "95d8497afac14f0a90342031fb43bc04",
             "f499305aa9b44a209cbe72cb68985a46",
@@ -128,7 +128,9 @@ TOPICS = (
             "日付费用户按 ServerPayLog.uid 去重；近15日活跃用户付费率按天计算，"
             "分母为 UserActive 去重 uid，分子为当天同时存在 UserActive 和 "
             "ServerPayLog 的去重 uid；这是每日比率，不是累计付费率。"
-            "累计 paytotal 只用于明确的累计快照指标，不能作为活跃用户付费率来源。"
+            "所选时间窗口的累计付费金额为 SUM(ServerPayLog.personal.money)；"
+            "累计付费用户为 COUNT(DISTINCT ServerPayLog.uid)，即全窗口去重 uid。按日累计用户趋势"
+            "先确定每名用户在窗口内的首次付费日，再累计首次付费人数，不能累计每日去重人数。"
         ),
     ),
     TopicDefinition(

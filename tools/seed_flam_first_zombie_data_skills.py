@@ -132,7 +132,10 @@ STALE_SKILL_MARKERS = (
 DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "flam 实时数据时区与日期口径",
-        "description": "flam / first_zombie 数据源的业务时区、dt 分区与实时看板 SQL 生成规则。",
+        "description": (
+            "flam / first_zombie 今天实时付费趋势、按小时付费、业务时区、"
+            "dt 分区与实时看板 SQL 生成规则。"
+        ),
         "prompt": """<!-- dashboard-refresh-policy:{"auto_refresh":true,"snapshot_max_age_hours":3} -->
 <!-- data-skill-source:flam:first-zombie:timezone-realtime -->
 # flam 实时数据时区与日期口径
@@ -267,7 +270,7 @@ LIMIT 24
 - 适用于新增用户数、渠道/系统新增、新增用户 D1/D3/D7 留存、渠道留存和 `新增看板`/`渠道分析`/`投放看板`中新增留存类组件。
 
 ## 表与字段
-- 今天、当天、今日、截至目前、当前或实时按小时统计新增用户时，必须使用 `event_realtime` 表的注册事件 `UserRegister`；不得静默改查 `event`。
+- 今天、当天、今日、实时、当前小时、当前分钟、当前整点统计新增用户时，必须使用 `event_realtime` 表的注册事件 `UserRegister`；不得静默改查 `event`。
 - 完整历史日和留存 cohort 使用 `event` 表的注册事件 `UserRegister`；已与 `user.userinfo.regdate = user.dt` 的注册日 cohort 按日核对一致，但事件表扫描更轻。
 - 需要读取 `pay.pay1/pay7`、当前等级等快照字段时，再按 `uid + 注册日 dt` 回连 `user` 用户日表。
 - `dt` 是业务日期分区，格式为 `YYYYMMDD` 数字。

@@ -73,6 +73,14 @@ def _player_snapshot_skill() -> dict[str, str]:
     )
 
 
+def _payer_penetration_skill() -> dict[str, str]:
+    return next(
+        skill
+        for skill in _skills()
+        if "data-skill-source:xiuxian:dashboard:payer-penetration" in skill["prompt"]
+    )
+
+
 def _repair_example_sql(title: str) -> str:
     match = re.search(
         rf"-- 修复示例：{re.escape(title)}\n(?P<sql>.*?)(?=\n```)",
@@ -86,7 +94,8 @@ def _repair_example_sql(title: str) -> str:
 def test_xiuxian_date_skill_uses_canonical_retrieval_description() -> None:
     expected = (
         "修仙 datasource_id=6 日期趋势口径："
-        "最近15天补齐新增趋势、按日补零、固定非递归日期骨架。"
+        "最近15天补齐新增趋势、按日补零、固定非递归日期骨架；"
+        "当前等级与活跃用户分布使用截至昨天的最新完整历史日。"
     )
 
     assert seed.DATE_PARTITION_SKILL_DESCRIPTION == expected
@@ -115,6 +124,61 @@ def test_xiuxian_payment_skill_uses_serverpaylog_authority() -> None:
     assert "COUNT(DISTINCT uid)" in prompt
     assert "data-skill-source:xiuxian:paybuyret-monetization-arppu" not in prompt
     assert '"forbidden_sql_contains":["PayBuyRet","ed_money","paytotal"]' in prompt
+
+
+def test_xiuxian_payment_skill_description_has_cumulative_payer_retrieval_anchor() -> None:
+    assert "按渠道统计累计付费用户数" in _payment_skill()["description"]
+
+
+def test_payer_penetration_description_has_cumulative_payer_retrieval_anchor() -> None:
+    assert "按渠道统计累计付费用户数" in _payer_penetration_skill()["description"]
+
+
+def test_payment_and_payer_skills_fit_runtime_prompt_budget_without_legacy_blocks() -> None:
+    payment = _payment_skill()
+    payer = _payer_penetration_skill()
+    estimated_chars = sum(
+        len(skill["name"])
+        + len(skill["description"])
+        + len(skill["prompt"])
+        + 96
+        for skill in (payment, payer)
+    )
+
+    assert estimated_chars <= 18_000
+    assert "paytotal" not in payer["prompt"]
+    for view_id in seed.PAYER_PROMPT_EXCLUDED_VIEW_IDS:
+        assert f"<!-- dashboard-sql:{view_id} -->" not in payer["prompt"]
+
+
+def test_payer_count_does_not_require_unrelated_money_field() -> None:
+    prompt = _payment_skill()["prompt"]
+    correct_sql = """
+    SELECT COUNT(DISTINCT e.uid) AS `付费用户数`
+    FROM `event` e
+    WHERE e.dt = 20260726
+      AND e.event = 'ServerPayLog'
+    """
+
+    assert _data_skill_sql_validation_violation(
+        "统计昨天的付费用户数", correct_sql, prompt
+    ) is None
+
+
+def test_payment_amount_still_requires_money_field() -> None:
+    prompt = _payment_skill()["prompt"]
+    invalid_sql = """
+    SELECT COUNT(*) AS `付费金额`
+    FROM `event` e
+    WHERE e.dt = 20260726
+      AND e.event = 'ServerPayLog'
+    """
+
+    violation = _data_skill_sql_validation_violation(
+        "统计昨天的付费金额", invalid_sql, prompt
+    )
+    assert violation is not None
+    assert violation.missing_required_contains == ("$.money",)
 
 
 def test_xiuxian_payment_skill_documents_first_day_payment_snapshot_semantics() -> None:
@@ -461,8 +525,9 @@ def test_xiuxian_payment_skill_rejects_non_distinct_arppu_denominator() -> None:
     """
 
     assert _data_skill_sql_validation_error("查看近七天的 ARPPU", wrong_sql, prompt) == (
-        "修仙收入、ARPU 和 ARPPU 必须使用 ServerPayLog 的 personal.money 与去重 uid；"
-        "PayBuyRet、ed_money 和 paytotal 不能作为真实收入来源。"
+        "修仙付费用户数以及 ARPU/ARPPU 分母必须使用 ServerPayLog 并按 uid 去重；"
+        "仅统计人数时不要求读取金额字段，PayBuyRet、ed_money 和 paytotal "
+        "不能作为付费用户来源。"
     )
 
 

@@ -42,7 +42,34 @@ def test_payer_penetration_topic_defines_active_payer_rate_contract():
     assert "同时" in topic.guidance
     assert "每日" in topic.guidance
     assert "不是累计付费率" in topic.guidance
-    assert "paytotal" in topic.guidance
+    assert "所选时间窗口" in topic.guidance
+    assert "SUM(ServerPayLog.personal.money)" in topic.guidance
+    assert "COUNT(DISTINCT ServerPayLog.uid)" in topic.guidance
+    assert "累计每日去重人数" in topic.guidance
+    assert "paytotal" not in topic.guidance
+
+
+def _parse_serverpaylog_validation(module) -> list[dict[str, object]]:
+    payload = module.SERVERPAYLOG_VALIDATION.split(
+        "data-skill-sql-validation:", 1
+    )[1].rsplit("-->", 1)[0].strip()
+    rules = json.loads(payload)
+    assert isinstance(rules, list)
+    return rules
+
+
+def test_serverpaylog_validation_separates_amount_and_payer_count():
+    module = _load_seed_module()
+    rules = _parse_serverpaylog_validation(module)
+
+    amount = next(rule for rule in rules if "付费金额" in rule["match"])
+    payer = next(rule for rule in rules if "付费用户" in rule["match"])
+
+    assert amount["required_sql_contains"] == ["ServerPayLog", "$.money"]
+    assert payer["required_sql_contains"] == ["ServerPayLog"]
+    assert payer["required_sql_patterns"] == [module.DISTINCT_UID_PATTERN]
+    assert "personal.money" not in payer["message"]
+    assert "按 uid 去重" in payer["message"]
 
 
 def test_xiuxian_date_partition_skill_is_scoped_and_actionable():
@@ -118,7 +145,9 @@ def test_build_data_skills_produces_one_base_and_twelve_topics():
     prompts = [skill["prompt"] for skill in skills]
 
     assert len(skills) == 13
-    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in prompts) == 43
+    assert sum(prompt.count("<!-- dashboard-sql:") for prompt in prompts) == (
+        43 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
+    )
     assert all("1e4e34743f2d47dfa1c2948742b93a50" not in prompt for prompt in prompts)
     assert all(len(prompt) <= 15_000 for prompt in prompts)
     assert len({prompt.splitlines()[0] for prompt in prompts}) == 13
@@ -282,7 +311,9 @@ def test_build_data_skills_ignores_the_known_empty_dashboard_view():
 
     skills = module.build_data_skills(dashboards)
 
-    assert sum(skill["prompt"].count("<!-- dashboard-sql:") for skill in skills) == 43
+    assert sum(skill["prompt"].count("<!-- dashboard-sql:") for skill in skills) == (
+        43 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
+    )
 
 
 class _FakeCursor:
