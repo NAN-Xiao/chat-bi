@@ -1,4 +1,3 @@
-import asyncio
 from datetime import date
 from types import SimpleNamespace
 
@@ -14,6 +13,11 @@ from apps.analysis_assistant.service.analysis_time_policy import (
 )
 
 ANCHOR = AnalysisTimeAnchor(table="fact_orders", field="business_date")
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
 
 
 def _resolve(
@@ -289,8 +293,64 @@ def test_schema_time_candidates_keep_only_allowed_exact_temporal_fields() -> Non
 ]
 """
     assert analysis_api._schema_time_field_candidates(schema, ["fact_orders"]) == {
-        "fact_orders": ("business_date", "created_at")
+        "public.fact_orders": ("business_date", "created_at")
     }
+
+
+def test_schema_time_candidates_parse_nested_temporal_types() -> None:
+    schema = """
+# Table: analytics.events
+[
+(event_time:Nullable(DateTime64(3))),
+(settled_on:Nullable(Date)),
+(amount:Decimal(18, 2))
+]
+"""
+    assert analysis_api._schema_time_field_candidates(schema, ["events"]) == {
+        "analytics.events": ("event_time", "settled_on")
+    }
+
+
+def test_schema_time_candidates_reject_ambiguous_bare_allowed_table() -> None:
+    schema = """
+# Table: public.orders
+[
+(business_date:date)
+]
+# Table: secret.orders
+[
+(business_date:date)
+]
+"""
+    assert analysis_api._schema_time_field_candidates(schema, ["orders"]) == {}
+
+
+def test_schema_time_candidates_keep_only_explicitly_allowed_qualified_table() -> None:
+    schema = """
+# Table: public.orders
+[
+(business_date:date)
+]
+# Table: secret.orders
+[
+(business_date:date)
+]
+"""
+    assert analysis_api._schema_time_field_candidates(
+        schema, ["public.orders"]
+    ) == {"public.orders": ("business_date",)}
+
+
+def test_schema_time_candidates_reject_unauthorized_qualified_table() -> None:
+    schema = """
+# Table: public.orders
+[
+(business_date:date)
+]
+"""
+    assert analysis_api._schema_time_field_candidates(
+        schema, ["secret.orders"]
+    ) == {}
 
 
 def test_anchor_selector_rejects_model_field_outside_exact_candidates() -> None:
@@ -323,13 +383,14 @@ def test_latest_date_probe_uses_single_ordered_field_and_permission_executor(
         current_user=SimpleNamespace(id=7),
         datasource=SimpleNamespace(id=1, type="postgresql"),
         allowed_tables=["fact_orders"],
-        anchor=AnalysisTimeAnchor("fact_orders", "business_date"),
+        anchor=AnalysisTimeAnchor("public.fact_orders", "business_date"),
     )
     assert value == date(2026, 7, 26)
     assert "ORDER BY" in calls[0]["sql"]
     assert "DESC" in calls[0]["sql"]
     assert "LIMIT 1" in calls[0]["sql"]
     assert "MAX(" not in calls[0]["sql"]
+    assert 'FROM "public"."fact_orders"' in calls[0]["sql"]
     assert calls[0]["allowed_tables"] == ["fact_orders"]
     assert calls[0]["apply_row_permissions"] is True
     assert calls[0]["query_timeout"] == 5
@@ -349,8 +410,8 @@ def test_latest_date_probe_rejects_anchor_outside_allowed_tables(
             session=object(),
             current_user=SimpleNamespace(id=7),
             datasource=SimpleNamespace(id=1, type="postgresql"),
-            allowed_tables=["fact_orders"],
-            anchor=AnalysisTimeAnchor("secret_orders", "business_date"),
+            allowed_tables=["public.fact_orders"],
+            anchor=AnalysisTimeAnchor("secret.fact_orders", "business_date"),
         )
 
 
@@ -361,11 +422,11 @@ def test_anchor_cache_key_is_user_business_context_and_permission_scoped() -> No
         user_id=11,
         context_hash="abc123",
         permission_hash="permission456",
-        anchor=AnalysisTimeAnchor("fact_orders", "business_date"),
+        anchor=AnalysisTimeAnchor("public.fact_orders", "business_date"),
     )
     assert ":tenant:9:datasource:10:" in key
     assert (
-        ":analysis-time-anchor:11:abc123:permission456:fact_orders:business_date"
+        ":analysis-time-anchor:11:abc123:permission456:public.fact_orders:business_date"
         in key
     )
 
@@ -374,26 +435,33 @@ def test_permission_fingerprint_changes_with_row_filter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     filters = [{"field": "region_id", "operator": "in", "value": [1]}]
-    monkeypatch.setattr(
-        analysis_api, "get_row_permission_filters", lambda **_kwargs: filters
-    )
+    calls: list[dict] = []
+
+    def fake_filters(**kwargs):
+        calls.append(kwargs)
+        return filters
+
+    monkeypatch.setattr(analysis_api, "get_row_permission_filters", fake_filters)
+    anchor = AnalysisTimeAnchor("public.fact_orders", "business_date")
     first = analysis_api._analysis_time_permission_fingerprint(
         session=object(),
         current_user=SimpleNamespace(id=7),
         datasource=SimpleNamespace(id=1),
-        anchor=ANCHOR,
+        anchor=anchor,
     )
     filters[0]["value"] = [2]
     second = analysis_api._analysis_time_permission_fingerprint(
         session=object(),
         current_user=SimpleNamespace(id=7),
         datasource=SimpleNamespace(id=1),
-        anchor=ANCHOR,
+        anchor=anchor,
     )
     assert first != second
+    assert [call["tables"] for call in calls] == [["fact_orders"], ["fact_orders"]]
 
 
-def test_time_policy_cache_hit_skips_latest_date_probe(
+@pytest.mark.anyio
+async def test_time_policy_cache_hit_skips_latest_date_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class FakeRedis:
@@ -425,23 +493,21 @@ def test_time_policy_cache_hit_skips_latest_date_probe(
         lambda **_kwargs: pytest.fail("缓存命中时不应探测最大业务日期"),
     )
 
-    resolution = asyncio.run(
-        analysis_api._resolve_chat_time_policy(
-            session=object(),
-            current_user=SimpleNamespace(id=7, tenant_id=9),
-            datasource=SimpleNamespace(id=10, type="postgresql"),
-            business_context=SimpleNamespace(
-                data_skill="",
-                schema="# Table: fact_orders\n[\n(business_date:date)\n]",
-                allowed_tables=["fact_orders"],
-                business_context_hash="context",
-            ),
-            llm=object(),
-            request=SimpleNamespace(
-                messages=[SimpleNamespace(content="分析收入", role="user")]
-            ),
-            semantic_context="",
-        )
+    resolution = await analysis_api._resolve_chat_time_policy(
+        session=object(),
+        current_user=SimpleNamespace(id=7, tenant_id=9),
+        datasource=SimpleNamespace(id=10, type="postgresql"),
+        business_context=SimpleNamespace(
+            data_skill="",
+            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
+            allowed_tables=["fact_orders"],
+            business_context_hash="context",
+        ),
+        llm=object(),
+        request=SimpleNamespace(
+            messages=[SimpleNamespace(content="分析收入", role="user")]
+        ),
+        semantic_context="",
     )
 
     assert resolution.policy is not None
@@ -450,7 +516,8 @@ def test_time_policy_cache_hit_skips_latest_date_probe(
     assert client.set_calls == 0
 
 
-def test_time_policy_cache_miss_probes_once_and_writes_short_ttl(
+@pytest.mark.anyio
+async def test_time_policy_cache_miss_probes_once_and_writes_short_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probe_calls = 0
@@ -483,23 +550,21 @@ def test_time_policy_cache_miss_probes_once_and_writes_short_ttl(
     )
     monkeypatch.setattr(analysis_api, "_probe_latest_business_date", fake_probe)
 
-    resolution = asyncio.run(
-        analysis_api._resolve_chat_time_policy(
-            session=object(),
-            current_user=SimpleNamespace(id=7, tenant_id=9),
-            datasource=SimpleNamespace(id=10, type="postgresql"),
-            business_context=SimpleNamespace(
-                data_skill="",
-                schema="# Table: fact_orders\n[\n(business_date:date)\n]",
-                allowed_tables=["fact_orders"],
-                business_context_hash="context",
-            ),
-            llm=object(),
-            request=SimpleNamespace(
-                messages=[SimpleNamespace(content="分析收入", role="user")]
-            ),
-            semantic_context="",
-        )
+    resolution = await analysis_api._resolve_chat_time_policy(
+        session=object(),
+        current_user=SimpleNamespace(id=7, tenant_id=9),
+        datasource=SimpleNamespace(id=10, type="postgresql"),
+        business_context=SimpleNamespace(
+            data_skill="",
+            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
+            allowed_tables=["fact_orders"],
+            business_context_hash="context",
+        ),
+        llm=object(),
+        request=SimpleNamespace(
+            messages=[SimpleNamespace(content="分析收入", role="user")]
+        ),
+        semantic_context="",
     )
 
     assert resolution.policy is not None
@@ -510,7 +575,8 @@ def test_time_policy_cache_miss_probes_once_and_writes_short_ttl(
     assert client.set_calls[0][1] == {"ex": 300}
 
 
-def test_redis_read_failure_bypasses_cache_and_probes_once(
+@pytest.mark.anyio
+async def test_redis_read_failure_bypasses_cache_and_probes_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probe_calls = 0
@@ -543,23 +609,21 @@ def test_redis_read_failure_bypasses_cache_and_probes_once(
     )
     monkeypatch.setattr(analysis_api, "_probe_latest_business_date", fake_probe)
 
-    resolution = asyncio.run(
-        analysis_api._resolve_chat_time_policy(
-            session=object(),
-            current_user=SimpleNamespace(id=7, tenant_id=9),
-            datasource=SimpleNamespace(id=10, type="postgresql"),
-            business_context=SimpleNamespace(
-                data_skill="",
-                schema="# Table: fact_orders\n[\n(business_date:date)\n]",
-                allowed_tables=["fact_orders"],
-                business_context_hash="context",
-            ),
-            llm=object(),
-            request=SimpleNamespace(
-                messages=[SimpleNamespace(content="分析收入", role="user")]
-            ),
-            semantic_context="",
-        )
+    resolution = await analysis_api._resolve_chat_time_policy(
+        session=object(),
+        current_user=SimpleNamespace(id=7, tenant_id=9),
+        datasource=SimpleNamespace(id=10, type="postgresql"),
+        business_context=SimpleNamespace(
+            data_skill="",
+            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
+            allowed_tables=["fact_orders"],
+            business_context_hash="context",
+        ),
+        llm=object(),
+        request=SimpleNamespace(
+            messages=[SimpleNamespace(content="分析收入", role="user")]
+        ),
+        semantic_context="",
     )
 
     assert resolution.policy is not None
@@ -568,7 +632,8 @@ def test_redis_read_failure_bypasses_cache_and_probes_once(
     assert client.set_calls == 0
 
 
-def test_permission_fingerprint_failure_bypasses_cache_and_probes_once(
+@pytest.mark.anyio
+async def test_permission_fingerprint_failure_bypasses_cache_and_probes_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probe_calls = 0
@@ -595,25 +660,94 @@ def test_permission_fingerprint_failure_bypasses_cache_and_probes_once(
     )
     monkeypatch.setattr(analysis_api, "_probe_latest_business_date", fake_probe)
 
-    resolution = asyncio.run(
-        analysis_api._resolve_chat_time_policy(
-            session=object(),
-            current_user=SimpleNamespace(id=7, tenant_id=9),
-            datasource=SimpleNamespace(id=10, type="postgresql"),
-            business_context=SimpleNamespace(
-                data_skill="",
-                schema="# Table: fact_orders\n[\n(business_date:date)\n]",
-                allowed_tables=["fact_orders"],
-                business_context_hash="context",
-            ),
-            llm=object(),
-            request=SimpleNamespace(
-                messages=[SimpleNamespace(content="分析收入", role="user")]
-            ),
-            semantic_context="",
-        )
+    resolution = await analysis_api._resolve_chat_time_policy(
+        session=object(),
+        current_user=SimpleNamespace(id=7, tenant_id=9),
+        datasource=SimpleNamespace(id=10, type="postgresql"),
+        business_context=SimpleNamespace(
+            data_skill="",
+            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
+            allowed_tables=["fact_orders"],
+            business_context_hash="context",
+        ),
+        llm=object(),
+        request=SimpleNamespace(
+            messages=[SimpleNamespace(content="分析收入", role="user")]
+        ),
+        semantic_context="",
     )
 
     assert resolution.policy is not None
     assert resolution.policy.anchor_date == date(2026, 7, 26)
     assert probe_calls == 1
+
+
+@pytest.mark.anyio
+async def test_time_policy_runs_permission_and_probe_in_threadpool_sequentially(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    bridged: list[tuple[object, dict]] = []
+    session = object()
+
+    class FakeRedis:
+        async def get(self, _key):
+            events.append("redis_get")
+            return None
+
+        async def set(self, *_args, **_kwargs):
+            events.append("redis_set")
+
+    def fake_fingerprint(**_kwargs):
+        events.append("fingerprint")
+        return "permission"
+
+    def fake_probe(**_kwargs):
+        events.append("probe")
+        return date(2026, 7, 26)
+
+    async def fake_run_in_threadpool(function, *args, **kwargs):
+        events.append(f"bridge:{function.__name__}")
+        bridged.append((function, kwargs))
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(analysis_api, "get_redis_client", FakeRedis)
+    monkeypatch.setattr(
+        analysis_api,
+        "_select_analysis_time_anchor",
+        lambda *_args, **_kwargs: ANCHOR,
+    )
+    monkeypatch.setattr(
+        analysis_api, "_analysis_time_permission_fingerprint", fake_fingerprint
+    )
+    monkeypatch.setattr(analysis_api, "_probe_latest_business_date", fake_probe)
+    monkeypatch.setattr(analysis_api, "run_in_threadpool", fake_run_in_threadpool)
+
+    resolution = await analysis_api._resolve_chat_time_policy(
+        session=session,
+        current_user=SimpleNamespace(id=7, tenant_id=9),
+        datasource=SimpleNamespace(id=10, type="postgresql"),
+        business_context=SimpleNamespace(
+            data_skill="",
+            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
+            allowed_tables=["fact_orders"],
+            business_context_hash="context",
+        ),
+        llm=object(),
+        request=SimpleNamespace(
+            messages=[SimpleNamespace(content="分析收入", role="user")]
+        ),
+        semantic_context="",
+    )
+
+    assert resolution.policy is not None
+    assert [item[0] for item in bridged] == [fake_fingerprint, fake_probe]
+    assert all(item[1]["session"] is session for item in bridged)
+    assert events == [
+        "bridge:fake_fingerprint",
+        "fingerprint",
+        "redis_get",
+        "bridge:fake_probe",
+        "probe",
+        "redis_set",
+    ]

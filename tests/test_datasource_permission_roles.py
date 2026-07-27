@@ -2548,12 +2548,13 @@ def test_analysis_assistant_anchor_probe_uses_query_executor(monkeypatch):
         current_user=current_user,
         datasource=datasource,
         allowed_tables=["orders"],
-        anchor=analysis_assistant_api.AnalysisTimeAnchor("orders", "order_date"),
+        anchor=analysis_assistant_api.AnalysisTimeAnchor("public.orders", "order_date"),
     )
 
     assert result.isoformat() == "2026-01-31"
     assert calls[0]["allowed_tables"] == ["orders"]
     assert calls[0]["apply_row_permissions"] is True
+    assert 'FROM "public"."orders"' in calls[0]["sql"]
     assert 'ORDER BY "order_date" DESC LIMIT 1' in calls[0]["sql"]
     assert "MAX(" not in calls[0]["sql"]
 

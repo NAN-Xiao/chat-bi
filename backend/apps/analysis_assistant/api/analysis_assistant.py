@@ -23,6 +23,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import RedisError
 from sqlalchemy import and_, or_, select
+from starlette.concurrency import run_in_threadpool
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.analysis_assistant.models import (
@@ -2035,29 +2036,80 @@ def _profile_table_expression(datasource: CoreDatasource, raw_table: str) -> tup
 
 ANALYSIS_TIME_ANCHOR_CACHE_TTL_SECONDS = 300
 ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS = 5
+ANALYSIS_TEMPORAL_TYPE_PATTERN = re.compile(
+    r"\b(?:date|datetime(?:2|64)?|smalldatetime|datetimeoffset|"
+    r"timestamp(?:tz)?|time(?:tz)?)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _normalize_analysis_table_name(raw_table: str) -> str:
+    parts = [
+        part.strip().strip('"`[]')
+        for part in str(raw_table or "").strip().split(".")
+        if part.strip().strip('"`[]')
+    ]
+    return ".".join(parts)
+
+
+def _schema_field_definitions(body: str) -> list[tuple[str, str]]:
+    definitions: list[tuple[str, str]] = []
+    depth = 0
+    start: int | None = None
+    for index, character in enumerate(body):
+        if character == "(":
+            if depth == 0:
+                start = index + 1
+            depth += 1
+        elif character == ")" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                definition = body[start:index].strip()
+                field, separator, field_type = definition.partition(":")
+                if separator and field.strip() and field_type.strip():
+                    definitions.append((field.strip(), field_type.strip()))
+                start = None
+    return definitions
 
 
 def _schema_time_field_candidates(
     schema: str,
     allowed_tables: list[str],
 ) -> dict[str, tuple[str, ...]]:
-    allowed = {str(table).split(".")[-1].lower() for table in allowed_tables}
+    table_blocks = [
+        (_normalize_analysis_table_name(raw_table), body)
+        for raw_table, body in re.findall(
+            r"# Table:\s*([^\n,]+)[^\n]*\n\[\n(.*?)\n\]",
+            schema,
+            flags=re.DOTALL,
+        )
+    ]
+    basename_counts: dict[str, int] = {}
+    for table, _body in table_blocks:
+        basename = table.rsplit(".", 1)[-1].lower()
+        basename_counts[basename] = basename_counts.get(basename, 0) + 1
+
+    normalized_allowed = {
+        normalized.lower()
+        for table in allowed_tables
+        if (normalized := _normalize_analysis_table_name(str(table)))
+    }
+    explicitly_allowed = {
+        table for table in normalized_allowed if "." in table
+    }
+    bare_allowed = {table for table in normalized_allowed if "." not in table}
     candidates: dict[str, tuple[str, ...]] = {}
-    for raw_table, body in re.findall(
-        r"# Table:\s*([^\n,]+)[^\n]*\n\[\n(.*?)\n\]",
-        schema,
-        flags=re.DOTALL,
-    ):
-        table = raw_table.strip().split(".")[-1]
-        if table.lower() not in allowed:
+    for table, body in table_blocks:
+        table_identity = table.lower()
+        basename = table.rsplit(".", 1)[-1].lower()
+        if table_identity not in explicitly_allowed and not (
+            basename in bare_allowed and basename_counts[basename] == 1
+        ):
             continue
         fields = tuple(
-            field.strip()
-            for field, field_type in re.findall(r"\(([^:()]+):([^,()]+)", body)
-            if any(
-                token in field_type.strip().lower()
-                for token in ("date", "time", "timestamp")
-            )
+            field
+            for field, field_type in _schema_field_definitions(body)
+            if ANALYSIS_TEMPORAL_TYPE_PATTERN.search(field_type)
         )
         if fields:
             candidates[table] = fields
@@ -2097,11 +2149,12 @@ def _analysis_time_permission_fingerprint(
     datasource,
     anchor: AnalysisTimeAnchor,
 ) -> str:
+    table_name = _normalize_analysis_table_name(anchor.table).rsplit(".", 1)[-1]
     filters = get_row_permission_filters(
         session=session,
         current_user=current_user,
         ds=datasource,
-        tables=[anchor.table],
+        tables=[table_name],
     )
     payload = json.dumps(filters or [], ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -2147,11 +2200,19 @@ def _probe_latest_business_date(
     allowed_tables: list[str],
     anchor: AnalysisTimeAnchor,
 ) -> date:
-    table_name, table_expr = _profile_table_expression(datasource, anchor.table)
-    allowed = {
-        str(table).strip().split(".")[-1].lower() for table in allowed_tables
+    anchor_table = _normalize_analysis_table_name(anchor.table)
+    table_name, table_expr = _profile_table_expression(datasource, anchor_table)
+    normalized_allowed = {
+        normalized.lower()
+        for table in allowed_tables
+        if (normalized := _normalize_analysis_table_name(str(table)))
     }
-    if not table_name or table_name.lower() not in allowed:
+    anchor_identity = anchor_table.lower()
+    bare_name = table_name.lower()
+    is_allowed = anchor_identity in normalized_allowed or (
+        "." in anchor_identity and bare_name in normalized_allowed
+    )
+    if not table_name or not is_allowed:
         raise ValueError("业务时间锚点不在授权表范围内")
     field_expr = _quote_identifier(datasource, anchor.field)
     sql = (
@@ -2224,17 +2285,19 @@ async def _resolve_chat_time_policy(
     client = None
     cached_date: date | None = None
     try:
+        permission_hash = await run_in_threadpool(
+            _analysis_time_permission_fingerprint,
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            anchor=anchor,
+        )
         key = _analysis_time_anchor_cache_key(
             tenant_id=require_current_tenant_id(current_user),
             datasource_id=int(datasource.id),
             user_id=int(current_user.id),
             context_hash=str(business_context.business_context_hash or "none"),
-            permission_hash=_analysis_time_permission_fingerprint(
-                session=session,
-                current_user=current_user,
-                datasource=datasource,
-                anchor=anchor,
-            ),
+            permission_hash=permission_hash,
             anchor=anchor,
         )
         client = get_redis_client()
@@ -2258,7 +2321,8 @@ async def _resolve_chat_time_policy(
         )
 
     try:
-        anchor_date = _probe_latest_business_date(
+        anchor_date = await run_in_threadpool(
+            _probe_latest_business_date,
             session=session,
             current_user=current_user,
             datasource=datasource,
