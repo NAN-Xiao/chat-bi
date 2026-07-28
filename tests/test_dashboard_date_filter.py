@@ -209,6 +209,25 @@ def test_custom_range_is_validated_and_rendered():
     assert "'2026-05-31'" in result.sql
 
 
+def test_custom_range_overrides_persisted_date_expression_for_card_filter():
+    result = prepare_dashboard_date_filter(
+        "select dt from orders where dt between {{dashboard_start_date}} and {{dashboard_end_date}}",
+        ds_type="postgres",
+        pivot=_pivot(
+            "date",
+            range="custom",
+            custom_start="2026-05-01",
+            custom_end="2026-05-31",
+            date_expression={"version": 1, "mode": "preset", "preset": "past_30_days"},
+        ),
+        today=date(2026, 7, 27),
+    )
+
+    assert result.start == "2026-05-01"
+    assert result.end == "2026-05-31"
+    assert result.capability["expression"] is None
+
+
 @pytest.mark.parametrize(
     "pivot",
     [

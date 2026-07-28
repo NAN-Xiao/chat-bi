@@ -337,9 +337,18 @@ def prepare_dashboard_date_filter(
 
     business_today = today or datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
     default_start, default_end = default_dashboard_date_range(today=business_today)
-    expression = _pivot_value(pivot, "date_expression", None)
+    custom_start = _pivot_value(pivot, "custom_start", "")
+    custom_end = _pivot_value(pivot, "custom_end", "")
+    has_custom_override = bool(
+        str(_pivot_value(pivot, "range", "") or "").strip().lower() == "custom"
+        and str(custom_start or "").strip()
+        and str(custom_end or "").strip()
+    )
+    expression = None if has_custom_override else _pivot_value(pivot, "date_expression", None)
     try:
-        if expression is not None:
+        if has_custom_override:
+            start, end = _parse_date_value(custom_start), _parse_date_value(custom_end)
+        elif expression is not None:
             if (
                 isinstance(expression, dict)
                 and expression.get("mode") == "preset"
@@ -348,11 +357,6 @@ def prepare_dashboard_date_filter(
             ):
                 raise ValueError("invalid_date_expression")
             start, end = resolve_dashboard_date_expression(expression, today=business_today)
-        elif str(_pivot_value(pivot, "range", "") or "").strip().lower() == "custom":
-            start, end = (
-                _parse_date_value(_pivot_value(pivot, "custom_start", "")),
-                _parse_date_value(_pivot_value(pivot, "custom_end", "")),
-            )
         else:
             start, end = default_start, default_end
     except (TypeError, ValueError):
