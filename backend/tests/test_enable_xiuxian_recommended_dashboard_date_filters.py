@@ -55,3 +55,28 @@ def test_configure_view_replaces_one_dt_window_and_preserves_metadata() -> None:
 )
 def test_is_safe_candidate_rejects_unsupported_sql(sql: str) -> None:
     assert migration.is_safe_candidate(sql) is False
+
+
+def _view(sql: str) -> dict:
+    return {
+        "sql": sql,
+        "chart": {"title": "测试图表"},
+        "sourceConfig": {"sql": {}},
+        "pivot": {},
+    }
+
+
+def test_migrate_canvas_changes_only_safe_drawers() -> None:
+    canvas = {
+        "safe": _view(_partition_sql()),
+        "realtime": _view("SELECT * FROM event_realtime WHERE dt BETWEEN 20260701 AND 20260702"),
+        "cohort": _view(_partition_sql() + " -- retention d7"),
+    }
+
+    migrated, target_ids, unchanged = migration.migrate_canvas(canvas)
+
+    assert target_ids == ["safe"]
+    assert migrated["safe"]["pivot"]["date_expression"] == migration.DEFAULT_EXPRESSION
+    assert migration.stable_json_hash(migrated["realtime"]) == unchanged["realtime"]
+    assert migration.stable_json_hash(migrated["cohort"]) == unchanged["cohort"]
+    assert migration.verify_canvas(migrated, target_ids=target_ids, unchanged=unchanged)["safe"]

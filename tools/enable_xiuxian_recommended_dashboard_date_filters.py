@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import re
 from typing import Any
 
@@ -144,4 +146,61 @@ def configure_view(view: dict[str, Any]) -> dict[str, Any]:
             "date_expression": copy.deepcopy(DEFAULT_EXPRESSION),
         }
     )
+    return result
+
+
+def stable_json_hash(value: Any) -> str:
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def migrate_canvas(canvas: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[str, str]]:
+    migrated = copy.deepcopy(canvas)
+    target_ids = [
+        chart_id
+        for chart_id, view in canvas.items()
+        if isinstance(view, dict) and is_safe_candidate(str(view.get("sql") or ""))
+    ]
+    unchanged = {
+        chart_id: stable_json_hash(view)
+        for chart_id, view in canvas.items()
+        if chart_id not in target_ids
+    }
+    for chart_id in target_ids:
+        migrated[chart_id] = configure_view(migrated[chart_id])
+    return migrated, target_ids, unchanged
+
+
+def verify_canvas(
+    canvas: dict[str, Any], *, target_ids: list[str], unchanged: dict[str, str]
+) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for chart_id in target_ids:
+        view = canvas.get(chart_id)
+        if not isinstance(view, dict):
+            raise RuntimeError(f"读回缺少目标图表：{chart_id}")
+        sql = str(view.get("sql") or "")
+        source_config = view.get("sourceConfig") if isinstance(view.get("sourceConfig"), dict) else {}
+        sql_config = source_config.get("sql") if isinstance(source_config.get("sql"), dict) else {}
+        builder = sql_config.get("builder") if isinstance(sql_config.get("builder"), dict) else {}
+        pivot = view.get("pivot") if isinstance(view.get("pivot"), dict) else {}
+        if (
+            sql.count(START_TOKEN) != 1
+            or sql.count(END_TOKEN) != 1
+            or builder.get("dateExpressionPickerEnabled") is not True
+            or builder.get("timeRange") != "expression"
+            or builder.get("timeExpression") != DEFAULT_EXPRESSION
+            or pivot.get("range_enabled") is not True
+            or pivot.get("client_filter_only") is not False
+            or pivot.get("date_parameter_type") != "yyyymmdd_number"
+            or pivot.get("date_expression") != DEFAULT_EXPRESSION
+        ):
+            raise RuntimeError(f"日期配置读回校验失败：{chart_id}")
+        result[chart_id] = {
+            "sql_sha256": hashlib.sha256(sql.encode("utf-8")).hexdigest(),
+            "expression": copy.deepcopy(DEFAULT_EXPRESSION),
+        }
+    for chart_id, expected_hash in unchanged.items():
+        if chart_id not in canvas or stable_json_hash(canvas[chart_id]) != expected_hash:
+            raise RuntimeError(f"非目标图表发生变化：{chart_id}")
     return result
