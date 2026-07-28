@@ -26,8 +26,9 @@ assert.match(source, /import elementZhCnLocale from 'element-plus\/es\/locale\/l
 assert.match(source, /import 'element-plus\/es\/components\/date-picker-panel\/style\/css'/)
 assert.match(source, /const calendarRange = computed/)
 assert.match(source, /function updateCalendarRange/)
-assert.match(source, /start:\s*{\s*mode:\s*'static',\s*date:\s*start\s*}/)
-assert.match(source, /end:\s*{\s*mode:\s*'static',\s*date:\s*end\s*}/)
+assert.match(source, /dashboardDateExpressionCalendarRange\(draft\.value, now\.value, props\.timezone\)/)
+assert.match(source, /buildDashboardDateExpressionFromCalendarRange\(value\)/)
+assert.match(source, /if \(next\) draft\.value = next/)
 assert.match(
   source,
   /<ElConfigProvider :locale="elementZhCnLocale">[\s\S]*<ElDatePickerPanel/
@@ -45,6 +46,18 @@ assert.match(
 assert.match(
   source,
   /\.calendar-panel :deep\(\.el-date-range-picker \.el-picker-panel__body\)\s*{[\s\S]*?min-width:\s*0/
+)
+assert.match(
+  source,
+  /:global\(\.dashboard-date-expression-popper\)\s*{[\s\S]*?max-width:\s*calc\(100vw - 16px\)/
+)
+assert.match(
+  source,
+  /@media \(max-width: 560px\)[\s\S]*?\.picker-body\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/
+)
+assert.match(
+  source,
+  /@media \(max-width: 560px\)[\s\S]*?\.calendar-panel\s*{[\s\S]*?min-width:\s*502px/
 )
 assert.doesNotMatch(source, /resourceId|dashboardMode|ROI看板|sq-view/)
 

@@ -6,12 +6,15 @@ import elementZhCnLocale from 'element-plus/es/locale/lang/zh-cn'
 import {
   DASHBOARD_DATE_PRESETS,
   DASHBOARD_DATE_PRESET_LABELS,
+  buildDashboardDateExpressionFromCalendarRange,
   cloneDashboardDateExpression,
+  dashboardDateExpressionCalendarRange,
   formatDashboardDateExpression,
   resolveDashboardDateExpression,
   validateDashboardDateExpression,
   type DashboardDateEndpoint,
   type DashboardDateExpression,
+  type DashboardDateExpressionCalendarRange,
   type DashboardDatePreset,
 } from './dashboardDateExpression'
 
@@ -52,12 +55,9 @@ const buttonLabel = computed(() =>
   model.value ? formatDashboardDateExpression(model.value) : '选择时间'
 )
 const activePreset = computed(() => (draft.value.mode === 'preset' ? draft.value.preset : ''))
-type CalendarRange = [string, string] | []
 
-const calendarRange = computed<CalendarRange>({
-  get: (): CalendarRange => draft.value.mode === 'preset' && draft.value.preset === 'all_time'
-    ? []
-    : [preview.value.start, preview.value.end],
+const calendarRange = computed<DashboardDateExpressionCalendarRange>({
+  get: () => dashboardDateExpressionCalendarRange(draft.value, now.value, props.timezone),
   set: updateCalendarRange,
 })
 
@@ -124,16 +124,9 @@ function updateDynamicDays(side: 'start' | 'end', value: number | undefined) {
   updateEndpoint(side, { mode: 'dynamic', unit: 'day', offset: -days })
 }
 
-function updateCalendarRange(value: CalendarRange | null) {
-  if (!Array.isArray(value) || value.length !== 2) return
-  const [start, end] = value
-  if (!start || !end) return
-  draft.value = {
-    version: 1,
-    mode: 'range',
-    start: { mode: 'static', date: start },
-    end: { mode: 'static', date: end },
-  }
+function updateCalendarRange(value: DashboardDateExpressionCalendarRange | null) {
+  const next = buildDashboardDateExpressionFromCalendarRange(value)
+  if (next) draft.value = next
 }
 
 function applyDraft() {
@@ -284,6 +277,10 @@ function applyDraft() {
   min-height: 286px;
 }
 
+:global(.dashboard-date-expression-popper) {
+  max-width: calc(100vw - 16px);
+}
+
 .preset-options {
   padding: 12px 10px;
   border-right: 1px solid #e5e6eb;
@@ -414,6 +411,25 @@ function applyDraft() {
 
   .endpoint-controls {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .picker-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preset-options {
+    border-right: 0;
+    border-bottom: 1px solid #e5e6eb;
+  }
+
+  .preset-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .calendar-panel {
+    min-width: 502px;
   }
 }
 </style>

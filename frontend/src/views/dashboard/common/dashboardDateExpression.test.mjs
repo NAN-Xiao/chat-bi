@@ -13,8 +13,10 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0
 const {
   ALL_TIME_END,
   ALL_TIME_START,
+  buildDashboardDateExpressionFromCalendarRange,
   buildDashboardDateExpressionPivot,
   cloneDashboardDateExpression,
+  dashboardDateExpressionCalendarRange,
   formatDashboardDateExpression,
   normalizeDashboardDateExpression,
   resolveDashboardDateExpression,
@@ -120,5 +122,40 @@ assert.equal(cardOverride.custom_start, '')
 assert.equal(cardOverride.custom_end, '')
 assert.equal(cardOverride.time_field, 'dt')
 assert.equal(cardOverride.date_parameter_type, 'yyyymmdd_number')
+
+assert.deepEqual(
+  dashboardDateExpressionCalendarRange(
+    { version: 1, mode: 'preset', preset: 'past_30_days' },
+    now,
+    'Asia/Shanghai'
+  ),
+  ['2026-06-28', '2026-07-27']
+)
+assert.deepEqual(
+  dashboardDateExpressionCalendarRange(
+    { version: 1, mode: 'preset', preset: 'all_time' },
+    now,
+    'Asia/Shanghai'
+  ),
+  []
+)
+assert.deepEqual(
+  buildDashboardDateExpressionFromCalendarRange(['2026-07-10', '2026-07-20']),
+  {
+    version: 1,
+    mode: 'range',
+    start: { mode: 'static', date: '2026-07-10' },
+    end: { mode: 'static', date: '2026-07-20' },
+  }
+)
+for (const invalidRange of [
+  null,
+  [],
+  ['2026-07-10'],
+  ['2026/07/10', '2026-07-20'],
+  ['2026-07-21', '2026-07-20'],
+]) {
+  assert.equal(buildDashboardDateExpressionFromCalendarRange(invalidRange), null)
+}
 
 console.log('dashboard date expression tests passed')

@@ -37,6 +37,7 @@ export type DashboardDateExpression =
       end: DashboardDateEndpoint
     }
 export type DashboardResolvedDateRange = { start: string; end: string }
+export type DashboardDateExpressionCalendarRange = [string, string] | []
 export type DashboardDateExpressionValidation = { valid: boolean; message: string }
 
 export const DASHBOARD_DATE_PRESET_LABELS: Record<DashboardDatePreset, string> = {
@@ -181,6 +182,30 @@ export function resolveDashboardDateExpression(
     all_time: { start: ALL_TIME_START, end: ALL_TIME_END },
   }
   return ranges[value.preset]
+}
+
+export function dashboardDateExpressionCalendarRange(
+  value: DashboardDateExpression,
+  now: string | Date,
+  timezone: string
+): DashboardDateExpressionCalendarRange {
+  if (value.mode === 'preset' && value.preset === 'all_time') return []
+  const range = resolveDashboardDateExpression(value, now, timezone)
+  return [range.start, range.end]
+}
+
+export function buildDashboardDateExpressionFromCalendarRange(
+  value: unknown
+): DashboardDateExpression | null {
+  if (!Array.isArray(value) || value.length !== 2) return null
+  const [start, end] = value
+  if (!isIsoDate(start) || !isIsoDate(end) || start > end) return null
+  return {
+    version: 1,
+    mode: 'range',
+    start: { mode: 'static', date: start },
+    end: { mode: 'static', date: end },
+  }
 }
 
 export function validateDashboardDateExpression(
