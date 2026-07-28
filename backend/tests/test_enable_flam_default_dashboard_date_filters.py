@@ -229,3 +229,124 @@ SELECT * FROM calendar
     assert repaired.startswith("WITH\n")
     assert "digit_offsets AS" in repaired
     assert "WHERE d.n <= DATEDIFF(p.end_date, p.start_date)" in repaired
+
+
+def test_target_manifest_covers_requested_drawers_and_excludes_daily_recharge():
+    titles = {target.title for target in migration.DATE_MIGRATION_TARGETS.values()}
+
+    assert {"活跃用户", "新增用户", "充值人数", "充值总额"} <= titles
+    assert {"ROI总览", "ROI地区总览", "ROI广告地区总览", "安装投放趋势"} <= titles
+    assert "日充值用户数" not in titles
+    assert not {"当日主城升级次数", "当日建筑升级次数", "当日科技升级次数"} & titles
+
+
+def test_migrate_end_anchor_metric_uses_selected_end_day_for_comparison():
+    source = """
+SELECT
+  DATE_SUB(CURDATE(), INTERVAL 1 DAY) AS selected_day,
+  DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 1 DAY) AS previous_day,
+  DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 7 DAY) AS previous_week_day
+""".strip()
+
+    migrated = migration.migrate_end_anchor_metric_sql(source)
+
+    end_date = "STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')"
+    assert "CURDATE()" not in migrated
+    assert end_date in migrated
+    assert f"DATE_SUB({end_date}, INTERVAL 1 DAY)" in migrated
+    assert f"DATE_SUB({end_date}, INTERVAL 7 DAY)" in migrated
+
+
+def test_migrate_range_sql_rejects_multiple_business_date_windows():
+    source = """
+SELECT *
+FROM event e
+JOIN payment p ON p.uid = e.uid
+WHERE e.dt BETWEEN 20260701 AND 20260707
+  AND p.dt BETWEEN 20260701 AND 20260707
+""".strip()
+
+    with pytest.raises(ValueError, match="唯一"):
+        migration.migrate_range_sql(source)
+
+
+def test_migrate_cohort_sql_keeps_d30_maturity_window():
+    source = """
+WITH bounds AS (
+  SELECT DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY) AS start_dt,
+         DATE_SUB(CURDATE(), INTERVAL 1 DAY) AS data_end_dt
+), cohort AS (
+  SELECT u.dt, DATE_ADD(u.dt, INTERVAL 29 DAY) AS d30_dt
+  FROM user u JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.data_end_dt
+)
+SELECT * FROM cohort
+""".strip()
+
+    migrated = migration.migrate_cohort_sql(source)
+
+    assert "{{dashboard_start_yyyymmdd}}" in migrated
+    assert "{{dashboard_end_yyyymmdd}}" in migrated
+    assert "INTERVAL 29 DAY" in migrated
+
+
+def test_migrate_weekly_snapshots_sql_anchors_weeks_to_selected_end_day():
+    source = """
+SELECT DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL WEEKDAY(DATE_SUB(CURDATE(), INTERVAL 1 DAY)) DAY) AS week_end
+""".strip()
+
+    migrated = migration.migrate_weekly_snapshots_sql(source)
+
+    assert "CURDATE()" not in migrated
+    assert migrated.count("{{dashboard_end_yyyymmdd}}") == 2
+
+
+def test_migrate_roi_sql_replaces_every_cohort_date_boundary_only():
+    source = """
+SELECT * FROM roi r
+WHERE r.dt >= CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 21 DAY), '%Y%m%d') AS BIGINT)
+  AND r.dt <= CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS BIGINT)
+  AND r.period <= 360
+""".strip()
+
+    migrated = migration.migrate_roi_sql(source)
+
+    assert "CURDATE()" not in migrated
+    assert "r.period <= 360" in migrated
+    assert "r.dt >= {{dashboard_start_yyyymmdd}}" in migrated
+    assert "r.dt <= {{dashboard_end_yyyymmdd}}" in migrated
+
+
+def test_migrate_core_realtime_metric_sql_uses_historical_event_range():
+    source = """
+SELECT COUNT(DISTINCT uid) AS `活跃用户`
+FROM event_realtime
+WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+  AND prod = 110000038
+  AND event = 'UserActive'
+""".strip()
+
+    migrated = migration.migrate_core_realtime_metric_sql(source)
+
+    assert "FROM event" in migrated
+    assert "event_realtime" not in migrated
+    assert "dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}" in migrated
+    assert "event = 'UserActive'" in migrated
+
+
+def test_migrate_canvas_does_not_skip_core_date_targets():
+    canvas = {
+        "c23c019171804f608e92961dc06ae8b2": {
+            "sql": "SELECT COUNT(*) FROM event_realtime WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)",
+            "chart": {"title": "活跃用户"},
+            "sourceConfig": {"sql": {}},
+            "pivot": {},
+        }
+    }
+
+    migrated, unchanged = migration.migrate_canvas(
+        canvas,
+        dashboard_id="6d50bd7dfc9f46ba961d636814c3294d",
+    )
+
+    assert unchanged == {}
+    assert "FROM event" in migrated["c23c019171804f608e92961dc06ae8b2"]["sql"]
