@@ -109,7 +109,10 @@ def resolve_dashboard_date_expression(expression: Any, *, today: date) -> tuple[
             and not isinstance(offset, bool)
             and offset <= 0
         ):
-            return today + timedelta(days=offset)
+            try:
+                return today + timedelta(days=offset)
+            except OverflowError as exc:
+                raise ValueError("invalid_date_expression") from exc
         raise ValueError("invalid_date_expression")
 
     start, end = endpoint(expression.get("start")), endpoint(expression.get("end"))

@@ -98,6 +98,29 @@ def test_invalid_date_expression_fails_closed(expression):
     }
 
 
+def test_dynamic_date_expression_overflow_fails_closed():
+    result = prepare_dashboard_date_filter(
+        "select dt from t where dt between {{dashboard_start_yyyymmdd}} "
+        "and {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        today=date(2026, 7, 28),
+        pivot=_pivot(
+            "yyyymmdd_number",
+            date_expression={
+                "version": 1,
+                "mode": "range",
+                "start": {"mode": "dynamic", "unit": "day", "offset": -(10**100)},
+                "end": {"mode": "dynamic", "unit": "day", "offset": 0},
+            },
+        ),
+    )
+
+    assert result.capability == {
+        "status": "unconfigured",
+        "reason": "invalid_date_expression",
+    }
+
+
 @pytest.mark.parametrize("parameter_type", ["date", "timestamp"])
 def test_all_time_rejects_parameter_types_without_safe_bounds(parameter_type):
     tokens = (

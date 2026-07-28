@@ -2339,6 +2339,8 @@ def _dashboard_sql_preview_cache_key(
         datasource_id: int,
         sql: str,
         pivot: Any | None,
+        *,
+        date_filter_capability: dict[str, Any] | None = None,
 ) -> DashboardSqlPreviewCacheKey:
     """
     是什么：_dashboard_sql_preview_cache_key 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -2347,12 +2349,24 @@ def _dashboard_sql_preview_cache_key(
     """
     tenant_id = _current_tenant_id(current_user)
     user_id = _user_id(current_user)
+    date_filter_context = date_filter_capability if isinstance(date_filter_capability, dict) else {}
     payload = {
         "tenant_id": tenant_id,
         "user_id": user_id,
         "datasource_id": datasource_id,
         "sql": sql.strip(),
         "pivot": _dashboard_sql_preview_pivot_payload(pivot),
+        "date_filter": {
+            "timezone": date_filter_context.get("timezone", settings.DASHBOARD_BUSINESS_TIMEZONE),
+            "resolved_start": date_filter_context.get("resolvedStart"),
+            "resolved_end": date_filter_context.get("resolvedEnd"),
+            "expression": date_filter_context.get(
+                "expression", _dashboard_pivot_value(pivot, "date_expression", None)
+            ),
+            "parameter_type": date_filter_context.get(
+                "parameterType", _dashboard_pivot_value(pivot, "date_parameter_type", None)
+            ),
+        },
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     fingerprint = hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -5271,6 +5285,7 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         datasource_id=datasource_id,
         sql=source_sql,
         pivot=prepared_query.pivot,
+        date_filter_capability=date_filter_capability,
     )
     if not request.force_refresh and not permissions_apply:
         cached = _dashboard_sql_preview_cache_get(cache_key)

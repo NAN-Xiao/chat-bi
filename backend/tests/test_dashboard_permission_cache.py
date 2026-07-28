@@ -106,6 +106,41 @@ def test_date_expression_is_preserved_by_pivot_request_and_separates_cache_keys(
     )
 
 
+def test_date_filter_cache_key_explicitly_separates_resolved_expression_context() -> None:
+    pivot = DashboardPivotRequest(time_field="dt", date_parameter_type="yyyymmdd_number")
+    base_context = {
+        "timezone": "Asia/Shanghai",
+        "resolvedStart": "2026-07-28",
+        "resolvedEnd": "2026-07-28",
+        "expression": {"version": 1, "mode": "preset", "preset": "today"},
+        "parameterType": "yyyymmdd_number",
+    }
+    contexts = [
+        base_context,
+        {**base_context, "timezone": "UTC"},
+        {**base_context, "resolvedStart": "2026-07-27"},
+        {**base_context, "resolvedEnd": "2026-07-29"},
+        {
+            **base_context,
+            "expression": {"version": 1, "mode": "preset", "preset": "past_30_days"},
+        },
+        {**base_context, "parameterType": "yyyymmdd_text"},
+    ]
+
+    fingerprints = {
+        dashboard_service._dashboard_sql_preview_cache_key(
+            _user(),
+            7,
+            "select dt from orders where dt between 20260728 and 20260728",
+            pivot,
+            date_filter_capability=context,
+        ).fingerprint
+        for context in contexts
+    }
+
+    assert len(fingerprints) == len(contexts)
+
+
 def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：权限校验失败时，看板预览不能先命中历史缓存。
