@@ -1,8 +1,8 @@
 export const TABLE_HEADER_ACTION_ICON_THEME = {
-  size: 24,
+  size: 16,
   margin: {
-    left: 0,
-    right: 4,
+    left: 6,
+    right: 2,
   },
 } as const
 

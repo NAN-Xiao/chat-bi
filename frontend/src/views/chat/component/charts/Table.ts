@@ -27,6 +27,8 @@ import {
   TABLE_HEADER_ACTION_ICON_THEME,
   resolveTableHeaderActionIconFill,
 } from '@/views/chat/component/charts/tableHeaderActions.ts'
+import { CaretBottom, CaretTop, DCaret, Filter } from '@element-plus/icons-vue'
+import { h, render, type Component } from 'vue'
 import '@antv/s2/dist/s2.min.css'
 import '@/views/chat/component/charts/tableFilter.css'
 
@@ -95,26 +97,19 @@ const TABLE_FILTER_ACTIVE_ICON = 'TableFilterActive'
 const TABLE_SORT_NONE_ICON = 'TableSortNone'
 const TABLE_SORT_ASC_ICON = 'TableSortAsc'
 const TABLE_SORT_DESC_ICON = 'TableSortDesc'
-const TABLE_FILTER_ICON_SVG = `
-  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path d="M5 6h14l-5.5 6.4V18l-3 1.5v-7.1L5 6z" />
-  </svg>
-`
-const TABLE_SORT_NONE_ICON_SVG = `
-  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path d="M8 9l4-4 4 4H8zm0 6h8l-4 4-4-4z" />
-  </svg>
-`
-const TABLE_SORT_ASC_ICON_SVG = `
-  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 5l5 5h-3v9h-4v-9H7l5-5z" />
-  </svg>
-`
-const TABLE_SORT_DESC_ICON_SVG = `
-  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 5h4v9h3l-5 5-5-5h3V5z" />
-  </svg>
-`
+
+function renderTableIconSvg(component: Component) {
+  const container = document.createElement('span')
+  render(h(component), container)
+  const svg = container.innerHTML
+  render(null, container)
+  return svg
+}
+
+const tableFilterIconSvg = renderTableIconSvg(Filter)
+const tableSortNoneIconSvg = renderTableIconSvg(DCaret)
+const tableSortAscIconSvg = renderTableIconSvg(CaretTop)
+const tableSortDescIconSvg = renderTableIconSvg(CaretBottom)
 
 function resolveTableColumnWidth(containerWidth: number, visibleColumnCount: number) {
   return Math.max(
@@ -537,11 +532,11 @@ export class Table extends BaseChart {
       showDefaultHeaderActionIcon: false,
       csp: { iconStrategy: 'path' },
       customSVGIcons: [
-        { name: TABLE_FILTER_ICON, src: TABLE_FILTER_ICON_SVG },
-        { name: TABLE_FILTER_ACTIVE_ICON, src: TABLE_FILTER_ICON_SVG },
-        { name: TABLE_SORT_NONE_ICON, src: TABLE_SORT_NONE_ICON_SVG },
-        { name: TABLE_SORT_ASC_ICON, src: TABLE_SORT_ASC_ICON_SVG },
-        { name: TABLE_SORT_DESC_ICON, src: TABLE_SORT_DESC_ICON_SVG },
+        { name: TABLE_FILTER_ICON, src: tableFilterIconSvg },
+        { name: TABLE_FILTER_ACTIVE_ICON, src: tableFilterIconSvg },
+        { name: TABLE_SORT_NONE_ICON, src: tableSortNoneIconSvg },
+        { name: TABLE_SORT_ASC_ICON, src: tableSortAscIconSvg },
+        { name: TABLE_SORT_DESC_ICON, src: tableSortDescIconSvg },
       ],
       headerActionIcons: [
         {
