@@ -36,6 +36,16 @@ assert.match(source, /<ElDatePickerPanel[\s\S]*v-model="calendarRange"/)
 assert.match(source, /type="daterange"/)
 assert.match(source, /value-format="YYYY-MM-DD"/)
 assert.match(source, /unlink-panels/)
+assert.match(source, /:width="680"/)
+assert.match(source, /grid-template-columns:\s*142px minmax\(0, 1fr\)/)
+assert.match(
+  source,
+  /\.calendar-panel :deep\(\.el-date-range-picker\)\s*{[\s\S]*?width:\s*100%/
+)
+assert.match(
+  source,
+  /\.calendar-panel :deep\(\.el-date-range-picker \.el-picker-panel__body\)\s*{[\s\S]*?min-width:\s*0/
+)
 assert.doesNotMatch(source, /resourceId|dashboardMode|ROI看板|sq-view/)
 
 console.log('dashboard date expression picker contract passed')

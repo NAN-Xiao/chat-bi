@@ -149,7 +149,7 @@ function applyDraft() {
 <template>
   <el-popover
     v-model:visible="visible"
-    :width="840"
+    :width="680"
     placement="bottom-start"
     trigger="click"
     popper-class="dashboard-date-expression-popper"
@@ -280,7 +280,7 @@ function applyDraft() {
 
 .picker-body {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: 142px minmax(0, 1fr);
   min-height: 286px;
 }
 
@@ -375,6 +375,18 @@ function applyDraft() {
   width: 100%;
   border: 0;
   box-shadow: none;
+}
+
+.calendar-panel :deep(.el-date-range-picker) {
+  width: 100%;
+}
+
+.calendar-panel :deep(.el-date-range-picker .el-picker-panel__body) {
+  min-width: 0;
+}
+
+.calendar-panel :deep(.el-date-range-picker__content) {
+  padding: 10px;
 }
 
 .picker-error {
