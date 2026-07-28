@@ -78,7 +78,15 @@ assert.doesNotMatch(source, /update_canvas|localStorage|sessionStorage/)
 assert.doesNotMatch(source, /4f08e75945c3498486963e70f3c75688|ROI看板/)
 assert.match(
   source,
-  /\.date-expression-toolbar\s*{[\s\S]*?width:\s*min\(242px,\s*100%\)/
+  /\.date-expression-toolbar\s*{[\s\S]*?width:\s*fit-content/
+)
+assert.match(
+  source,
+  /\.date-expression-toolbar\s*{[\s\S]*?width:\s*fit-content[\s\S]*?:deep\(\.date-expression-trigger\)[\s\S]*?width:\s*auto/
+)
+assert.match(
+  source,
+  /:deep\(\.date-expression-trigger\)[\s\S]*?border:\s*0[\s\S]*?background:\s*transparent[\s\S]*?color:\s*#2f6bff/
 )
 assert.match(
   source,

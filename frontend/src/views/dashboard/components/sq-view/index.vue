@@ -2826,7 +2826,26 @@ defineExpose({
   }
 
   .date-expression-toolbar {
-    width: min(242px, 100%);
+    width: fit-content;
+    max-width: 100%;
+
+    :deep(.date-expression-trigger) {
+      width: auto;
+      min-width: 84px;
+      height: 30px;
+      padding: 0 12px;
+      border: 0;
+      background: transparent;
+      color: #2f6bff;
+      justify-content: center;
+
+      &:hover,
+      &:focus-visible {
+        border-color: transparent;
+        background: rgba(47, 107, 255, 0.08);
+        color: #1f4ed8;
+      }
+    }
   }
 
   @container (max-width: 560px) {
