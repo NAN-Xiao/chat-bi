@@ -82,3 +82,27 @@ assert.match(
   /document\.removeEventListener\('pointerdown', handlePivotGroupOutsidePointerDown, true\)/,
   '分组可见项弹层隐藏或组件卸载时必须移除外部点击监听'
 )
+
+assert.match(source, /const pivotModePopoverVisible = ref\(false\)/)
+assert.match(source, /const pivotTimePopoverVisible = ref\(false\)/)
+assert.match(source, /:visible="pivotModePopoverVisible"[\s\S]*?trigger="manual"/)
+assert.match(source, /:visible="pivotTimePopoverVisible"[\s\S]*?trigger="manual"/)
+assert.doesNotMatch(source, /v-model:visible="pivot(?:Mode|Time)PopoverVisible"/)
+assert.match(source, /ref="pivotModeReferenceRef"/)
+assert.match(source, /ref="pivotModePanelRef"/)
+assert.match(source, /ref="pivotTimeReferenceRef"/)
+assert.match(source, /ref="pivotTimePanelRef"/)
+assert.match(source, /@click="togglePivotModePopover"/)
+assert.match(source, /@click="togglePivotTimePopover"/)
+assert.match(
+  source,
+  /document\.addEventListener\('pointerdown', handlePivotPopoverPointerDown, true\)/,
+  '透视弹层必须在捕获阶段监听外部点击，避免画布层阻止冒泡导致无法关闭'
+)
+assert.match(
+  source,
+  /document\.removeEventListener\('pointerdown', handlePivotPopoverPointerDown, true\)/,
+  '透视弹层隐藏或组件卸载时必须清理外部点击监听'
+)
+assert.match(source, /pivotTimePopoverVisible\.value = false/)
+assert.match(source, /pivotModePopoverVisible\.value = false/)

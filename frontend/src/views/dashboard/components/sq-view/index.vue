@@ -135,6 +135,12 @@ const blockingRefreshLoading = ref(false)
 const chartRenderVersion = ref(0)
 const pivotCalendarMonth = ref('')
 const pivotCalendarDraftStart = ref('')
+const pivotModePopoverVisible = ref(false)
+const pivotTimePopoverVisible = ref(false)
+const pivotModeReferenceRef = ref<HTMLElement | null>(null)
+const pivotModePanelRef = ref<HTMLElement | null>(null)
+const pivotTimeReferenceRef = ref<HTMLElement | null>(null)
+const pivotTimePanelRef = ref<HTMLElement | null>(null)
 const pivotGroupPopoverVisible = ref(false)
 const pivotGroupReferenceRef = ref<HTMLElement | null>(null)
 const pivotGroupPanelRef = ref<HTMLElement | null>(null)
@@ -1114,6 +1120,58 @@ function toggleAllPivotGroupValues(event: Event) {
   }
 }
 
+function containsPivotPopoverTarget(
+  target: EventTarget | null,
+  reference: HTMLElement | null,
+  panel: HTMLElement | null
+) {
+  return target instanceof Node && Boolean(reference?.contains(target) || panel?.contains(target))
+}
+
+function togglePivotModePopover() {
+  pivotModePopoverVisible.value = !pivotModePopoverVisible.value
+  if (!pivotModePopoverVisible.value) {
+    pivotTimePopoverVisible.value = false
+  }
+}
+
+function togglePivotTimePopover() {
+  pivotTimePopoverVisible.value = !pivotTimePopoverVisible.value
+}
+
+function handlePivotPopoverPointerDown(event: PointerEvent) {
+  if (!pivotModePopoverVisible.value && !pivotTimePopoverVisible.value) {
+    return
+  }
+  if (
+    containsPivotPopoverTarget(
+      event.target,
+      pivotTimeReferenceRef.value,
+      pivotTimePanelRef.value
+    )
+  ) {
+    return
+  }
+  pivotTimePopoverVisible.value = false
+  if (
+    !containsPivotPopoverTarget(
+      event.target,
+      pivotModeReferenceRef.value,
+      pivotModePanelRef.value
+    )
+  ) {
+    pivotModePopoverVisible.value = false
+  }
+}
+
+function addPivotPopoverPointerListener() {
+  document.addEventListener('pointerdown', handlePivotPopoverPointerDown, true)
+}
+
+function removePivotPopoverPointerListener() {
+  document.removeEventListener('pointerdown', handlePivotPopoverPointerDown, true)
+}
+
 function isInsidePivotGroupPopover(target: EventTarget | null) {
   if (!(target instanceof Node)) {
     return false
@@ -2045,6 +2103,17 @@ watch(
 )
 
 watch(
+  () => [pivotModePopoverVisible.value, pivotTimePopoverVisible.value],
+  ([modeVisible, timeVisible]) => {
+    if (modeVisible || timeVisible) {
+      addPivotPopoverPointerListener()
+    } else {
+      removePivotPopoverPointerListener()
+    }
+  }
+)
+
+watch(
   () => pivotGroupPopoverVisible.value,
   (visible) => {
     if (visible) {
@@ -2084,6 +2153,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  removePivotPopoverPointerListener()
   removePivotGroupOutsidePointerListener()
   resizeObserver?.disconnect()
   stopRefreshProgress()
@@ -2191,15 +2261,23 @@ defineExpose({
     </div>
     <div v-if="pivotEnabled" class="pivot-toolbar">
       <el-popover
-        trigger="click"
+        :visible="pivotModePopoverVisible"
+        trigger="manual"
         placement="bottom-start"
         width="148"
         popper-class="dashboard-pivot-popper"
       >
         <template #reference>
-          <button class="pivot-chip pivot-link" type="button">{{ pivotModeLabel }}</button>
+          <button
+            ref="pivotModeReferenceRef"
+            class="pivot-chip pivot-link"
+            type="button"
+            @click="togglePivotModePopover"
+          >
+            {{ pivotModeLabel }}
+          </button>
         </template>
-        <div class="pivot-time-panel">
+        <div ref="pivotModePanelRef" class="pivot-time-panel">
           <div class="pivot-menu">
             <button
               v-for="option in pivotGranularityOptions"
@@ -2214,16 +2292,19 @@ defineExpose({
           </div>
           <el-popover
             v-if="pivotRangeEnabled && !showDashboardDateFilter"
-            trigger="click"
+            :visible="pivotTimePopoverVisible"
+            trigger="manual"
             placement="right-start"
             width="326"
             popper-class="dashboard-pivot-popper dashboard-pivot-calendar-popper"
           >
             <template #reference>
               <button
+                ref="pivotTimeReferenceRef"
                 type="button"
                 class="pivot-menu-item with-arrow"
                 :class="{ active: pivotTimeRangeActive }"
+                @click="togglePivotTimePopover"
               >
                 <span>{{ t('dashboard.pivot_select_time') }}</span>
                 <el-icon size="14" class="pivot-menu-arrow">
@@ -2231,7 +2312,7 @@ defineExpose({
                 </el-icon>
               </button>
             </template>
-            <div class="pivot-time-panel">
+            <div ref="pivotTimePanelRef" class="pivot-time-panel">
               <div class="pivot-quick-row">
                 <button
                   v-for="option in pivotQuickRangeOptions"
