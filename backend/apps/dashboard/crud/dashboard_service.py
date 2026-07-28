@@ -1947,8 +1947,8 @@ def _dashboard_date_filter_result(
     return result
 
 
-def _dashboard_has_explicit_custom_date(pivot: Any | None) -> bool:
-    return bool(
+def _dashboard_has_explicit_date_range(pivot: Any | None) -> bool:
+    return _dashboard_pivot_value(pivot, "date_expression", None) is not None or bool(
         str(_dashboard_pivot_value(pivot, "date_parameter_type", "") or "").strip()
         and str(_dashboard_pivot_value(pivot, "range", "") or "").strip().lower() == "custom"
         and str(_dashboard_pivot_value(pivot, "custom_start", "") or "").strip()
@@ -3968,7 +3968,7 @@ def _dashboard_payload(
             item["dateFilterCapability"] = copy.deepcopy(prepared_query.date_filter_capability)
             if (
                 prepared_query.date_filter_capability.get("status") == "realtime"
-                and _dashboard_has_explicit_custom_date(item.get("pivot"))
+                and _dashboard_has_explicit_date_range(item.get("pivot"))
             ):
                 _apply_dashboard_chart_result(
                     item,
@@ -5253,7 +5253,7 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
     date_filter_capability = prepared_query.date_filter_capability
     if (
         date_filter_capability.get("status") == "realtime"
-        and _dashboard_has_explicit_custom_date(request.pivot)
+        and _dashboard_has_explicit_date_range(request.pivot)
     ):
         return _dashboard_date_filter_result(
             _failed_chart_result("实时图表不支持自定义日期范围", "dashboard_date_filter_realtime"),

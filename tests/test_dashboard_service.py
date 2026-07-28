@@ -3600,7 +3600,24 @@ def test_dashboard_preview_date_expression_allows_empty_results_after_permission
     assert events.index("audit") < events.index("cache_get")
 
 
-def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
+@pytest.mark.parametrize(
+    "pivot",
+    [
+        DashboardPivotRequest(
+            time_field="dt",
+            date_parameter_type="yyyymmdd_number",
+            range="custom",
+            custom_start="2026-05-01",
+            custom_end="2026-05-31",
+        ),
+        DashboardPivotRequest(
+            time_field="dt",
+            date_parameter_type="yyyymmdd_number",
+            date_expression={"version": 2, "mode": "preset", "preset": "today"},
+        ),
+    ],
+)
+def test_dashboard_preview_rejects_explicit_date_for_event_realtime(monkeypatch, pivot):
     prepared = DashboardDateFilterPreparation(
         sql="select dt from event_realtime",
         start=None,
@@ -3621,13 +3638,7 @@ def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
         request=DashboardSqlPreview(
             datasource=1,
             sql="select dt from event_realtime",
-            pivot=DashboardPivotRequest(
-                time_field="dt",
-                date_parameter_type="yyyymmdd_number",
-                range="custom",
-                custom_start="2026-05-01",
-                custom_end="2026-05-31",
-            ),
+            pivot=pivot,
         ),
     )
     assert result["status"] == "failed"
@@ -3649,7 +3660,24 @@ def test_dashboard_preview_empty_sql_returns_date_capability():
     }
 
 
-def test_dashboard_payload_rejects_custom_range_for_event_realtime(monkeypatch):
+@pytest.mark.parametrize(
+    "pivot",
+    [
+        {
+            "time_field": "dt",
+            "date_parameter_type": "yyyymmdd_number",
+            "range": "custom",
+            "custom_start": "2026-07-13",
+            "custom_end": "2026-07-26",
+        },
+        {
+            "time_field": "dt",
+            "date_parameter_type": "yyyymmdd_number",
+            "date_expression": {"version": 1, "mode": "preset", "preset": "today"},
+        },
+    ],
+)
+def test_dashboard_payload_rejects_explicit_date_for_event_realtime(monkeypatch, pivot):
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     executed = []
@@ -3680,13 +3708,7 @@ def test_dashboard_payload_rejects_custom_range_for_event_realtime(monkeypatch):
                         "select dt from event_realtime where dt between "
                         "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
                     ),
-                    "pivot": {
-                        "time_field": "dt",
-                        "date_parameter_type": "yyyymmdd_number",
-                        "range": "custom",
-                        "custom_start": "2026-07-13",
-                        "custom_end": "2026-07-26",
-                    },
+                    "pivot": pivot,
                 }
             }),
         )
