@@ -8,6 +8,9 @@ const source = readFileSync(
 )
 
 assert.match(source, /defineModel<DashboardDateExpression \| null>/)
+assert.match(source, /variant\?:\s*'default'\s*\|\s*'roi'/)
+assert.match(source, /variant:\s*'default'/)
+assert.match(source, /date-expression-picker--\$\{variant\}/)
 assert.match(source, /cloneDashboardDateExpression/)
 assert.match(source, /function openPicker/)
 assert.match(source, /function closeWithoutApply/)
@@ -18,6 +21,9 @@ assert.match(source, /endpoint-mode/)
 assert.match(source, /picker-footer/)
 assert.match(source, /动态时间/)
 assert.match(source, /静态时间/)
+assert.match(source, /endpoint-connector/)
+assert.match(source, /endpoint-static-badge/)
+assert.match(source, /side === 'start' && draft\[side\]\.mode === 'static'/)
 assert.match(
   source,
   /import\s*{[\s\S]*ElConfigProvider[\s\S]*ElDatePickerPanel[\s\S]*}\s*from\s*'element-plus'/
@@ -51,6 +57,9 @@ assert.match(
   source,
   /:global\(\.dashboard-date-expression-popper\)\s*{[\s\S]*?max-width:\s*calc\(100vw - 16px\)/
 )
+assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-controls[\s\S]*?display:\s*flex/)
+assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-connector[\s\S]*?color:\s*#86909c/)
+assert.match(source, /\.date-expression-picker--roi[\s\S]*?\.endpoint-static-badge[\s\S]*?background:\s*#f2f3f5/)
 assert.match(
   source,
   /@media \(max-width: 560px\)[\s\S]*?\.picker-body\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/

@@ -16,9 +16,51 @@ assert.match(source, /dateExpressionPickerEnabled/)
 assert.match(source, /timeExpression/)
 assert.match(source, /date_expression/)
 assert.match(source, /const dateExpressionEnabled = computed/)
+assert.match(source, /dateExpressionPickerEnabled:\s*true/)
+assert.match(source, /sqlBuilder\.dateExpressionPickerEnabled\s*=\s*true/)
+assert.match(source, /preset:\s*['"]past_30_days['"]/, 'SQL 日期控件默认使用过去 30 天')
+assert.match(source, /v-if="hasSqlSource\s*&&\s*dateExpressionEnabled"[\s\S]*date_parameter_type/)
 assert.match(source, /function applyDateExpression/)
-assert.match(source, /v-if="dateExpressionEnabled"/)
+assert.match(
+  source,
+  /function configuredDashboardTimeField\(\)[\s\S]*sqlBuilder\.timeField\s*\|\|\s*form\.pivotTimeField/
+)
+assert.match(
+  source,
+  /time_field:\s*expression\s*\?\s*expressionTimeField\s*:\s*form\.pivotTimeField/
+)
+assert.match(
+  source,
+  /if \(!configuredDashboardTimeField\(\) && eventFieldScope\.value\.status !== ['"]datasource-mismatch['"]\)/,
+  '非埋点绑定数据源不应触发时间字段必选校验'
+)
+assert.match(source, /v-if="hasSqlSource\s*&&\s*dateExpressionEnabled"/)
 assert.match(source, /<DashboardDateExpressionPicker/)
+assert.doesNotMatch(
+  source,
+  /class="builder-date-expression-options"|class="builder-date-expression-hint"/,
+  'SQL 日期控件下方不再显示日期参数类型和提示'
+)
+assert.doesNotMatch(
+  source,
+  /<el-checkbox[\s\S]*dateExpressionPickerEnabled/,
+  '日期控件默认启用后不再显示手动勾选项'
+)
+assert.match(
+  source,
+  /\.builder-compact-grid\s*:deep\(\.date-expression-trigger\)[\s\S]*?border:\s*0[\s\S]*?background:\s*transparent/,
+  '推荐看板 SQL 抽屉的日期入口应使用 ROI 的无框样式'
+)
+assert.match(
+  source,
+  /if\s*\(\s*!isExternalSnapshotChart\(viewInfo\)[\s\S]*?viewInfo\?\.datasource/,
+  'MCP 快照不能仅凭 datasource 字段被推断为 SQL 数据源'
+)
+assert.match(
+  source,
+  /<DashboardDateExpressionPicker[\s\S]*?variant="roi"/,
+  'SQL 编辑抽屉的日期表达式选择器应使用统一的 ROI 样式'
+)
 assert.match(
   source,
   /function previewPivotPayload\(\)[\s\S]*!dateExpressionEnabled\.value[\s\S]*return buildPivotConfig/

@@ -1926,11 +1926,14 @@ def _prepare_dashboard_chart_query(
         datasource: CoreDatasource,
         sql: str,
         pivot: Any | None,
+        *,
+        require_time_field: bool = True,
 ) -> PreparedDashboardChartQuery:
     prepared = prepare_dashboard_date_filter(
         sql,
         ds_type=getattr(datasource, "type", None),
         pivot=pivot,
+        require_time_field=require_time_field,
     )
     return PreparedDashboardChartQuery(
         source_sql=prepared.sql,
@@ -1959,6 +1962,8 @@ def _dashboard_has_explicit_date_range(pivot: Any | None) -> bool:
 def _prepare_dashboard_chart_item_query(
         datasource: CoreDatasource,
         item: dict[str, Any],
+        *,
+        require_time_field: bool = True,
 ) -> PreparedDashboardChartQuery:
     source_config = item.get("sourceConfig") if isinstance(item.get("sourceConfig"), dict) else {}
     if (
@@ -1975,6 +1980,24 @@ def _prepare_dashboard_chart_item_query(
         datasource,
         str(item.get("sql") or ""),
         item.get("pivot"),
+        require_time_field=require_time_field,
+    )
+
+
+def _dashboard_is_bound_datasource(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int | None,
+) -> bool:
+    """判断执行数据源是否为当前工作空间绑定的数据源。"""
+    bound_datasource_id = get_bound_datasource_id_for_tenant(
+        session,
+        _current_tenant_id(current_user),
+    )
+    return (
+        bound_datasource_id is not None
+        and datasource_id is not None
+        and int(bound_datasource_id) == int(datasource_id)
     )
 
 
@@ -3964,6 +3987,11 @@ def _dashboard_payload(
             prepared_query = _prepare_dashboard_chart_item_query(
                 datasource,
                 item,
+                require_time_field=_dashboard_is_bound_datasource(
+                    session,
+                    current_user,
+                    item_datasource,
+                ),
             )
             item["dateFilterCapability"] = copy.deepcopy(prepared_query.date_filter_capability)
             if (
@@ -5249,7 +5277,12 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             _failed_chart_result("项目不存在"),
             {"status": "unconfigured", "reason": "datasource_missing"},
         )
-    prepared_query = _prepare_dashboard_chart_query(datasource, normalized_sql, request.pivot)
+    prepared_query = _prepare_dashboard_chart_query(
+        datasource,
+        normalized_sql,
+        request.pivot,
+        require_time_field=_dashboard_is_bound_datasource(session, current_user, datasource_id),
+    )
     date_filter_capability = prepared_query.date_filter_capability
     if (
         date_filter_capability.get("status") == "realtime"

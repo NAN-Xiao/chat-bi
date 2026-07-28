@@ -9,7 +9,7 @@ import re
 import traceback
 import zipfile
 from base64 import b64decode
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
@@ -992,6 +992,95 @@ def _llm_text(llm, messages: list[BaseMessage]) -> str:
     return _chunk_text(getattr(response, "content", response)).strip()
 
 
+DATA_SKILL_EVENT_IDENTIFIER_PATTERN = re.compile(
+    r"(?:\bevent\b\s*=\s*|事件(?:名|值)?(?:\s*(?:为|使用|是))?\s*)"
+    r"[`'\"]([A-Za-z][A-Za-z0-9_.:-]*)[`'\"]",
+    flags=re.IGNORECASE,
+)
+OUTPUT_IDENTIFIER_PATTERN = re.compile(
+    r"[`'\"]([A-Za-z][A-Za-z0-9_.:-]*)[`'\"]"
+)
+
+
+def _data_skill_identifier_corrections(
+    text: str,
+    data_skill: str,
+) -> dict[str, str]:
+    allowed = {
+        match.group(1)
+        for match in DATA_SKILL_EVENT_IDENTIFIER_PATTERN.finditer(data_skill or "")
+    }
+    corrections: dict[str, str] = {}
+    for match in OUTPUT_IDENTIFIER_PATTERN.finditer(text or ""):
+        candidate = match.group(1)
+        if candidate in allowed:
+            continue
+        near_matches = [
+            exact
+            for exact in allowed
+            if exact.casefold().endswith(candidate.casefold())
+            and len(exact) > len(candidate)
+        ]
+        if len(near_matches) == 1:
+            corrections[candidate] = near_matches[0]
+    return corrections
+
+
+def _llm_text_with_data_skill_identifier_retry(
+    llm,
+    messages: list[BaseMessage],
+    data_skill: str,
+    *,
+    initial_text: str | None = None,
+) -> str:
+    text = initial_text if initial_text is not None else _llm_text(llm, messages)
+    corrections = _data_skill_identifier_corrections(text, data_skill)
+    if not corrections:
+        return text
+    required = "；".join(
+        f"`{invalid}` 必须改为 `{exact}`"
+        for invalid, exact in sorted(corrections.items())
+    )
+    retry = _llm_text(
+        llm,
+        messages
+        + [
+            AIMessage(content=text),
+            HumanMessage(
+                content=(
+                    "上一次输出改写了 Data Skill 的精确业务标识符。"
+                    f"请完整重新生成，并严格修正：{required}。"
+                    "不要把近似名称作为候选口径。"
+                )
+            ),
+        ],
+    )
+    if _data_skill_identifier_corrections(retry, data_skill):
+        raise ValueError("模型未遵循 Data Skill 的精确业务标识符")
+    return retry
+
+
+def _analysis_outline_with_identifier_fallback(
+    llm,
+    messages: list[BaseMessage],
+    data_skill: str,
+    *,
+    initial_text: str,
+) -> str:
+    try:
+        return _llm_text_with_data_skill_identifier_retry(
+            llm,
+            messages,
+            data_skill,
+            initial_text=initial_text,
+        )
+    except ValueError:
+        return (
+            "我会严格按照当前 Data Skill 已配置的业务口径，"
+            "在指定时间范围内分析指标趋势、关键波动和可执行建议。"
+        )
+
+
 def _extract_json_object(text: str) -> dict[str, Any]:
     """
     是什么：_extract_json_object 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -1891,8 +1980,10 @@ def _data_skill_block(data_skill: str) -> str:
         return ""
     return (
         "用户本次选择的数据 Skill（Markdown/自然语言业务知识、查询范式、SQL 示例或图表偏好；"
-        "生成分析计划、SQL 和结论时优先参考，但不得覆盖当前数据源、Schema、权限和 SQL 安全规则）：\n"
+        "生成分析计划、SQL 和结论时必须遵循；其中事件名、枚举值和业务标识符必须逐字沿用，"
+        "不得缩写、改写、翻译或替换；但不得覆盖当前数据源、Schema、权限和 SQL 安全规则）：\n"
         f"{data_skill[:20000]}\n\n"
+        "Data Skill 标识符强制校验：禁止把未在数据 Skill 中定义的近似名称作为候选口径。\n\n"
     )
 
 
@@ -2101,6 +2192,7 @@ def _profile_table_expression(datasource: CoreDatasource, raw_table: str) -> tup
 
 ANALYSIS_TIME_ANCHOR_CACHE_TTL_SECONDS = 300
 ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS = 5
+ANALYSIS_TIME_RECENT_PARTITION_PROBE_DAYS = 7
 ANALYSIS_TIMESTAMP_TYPE_PATTERN = re.compile(
     r"\b(?:datetime(?:2|64)?|smalldatetime|datetimeoffset|timestamp(?:tz)?)\b",
     flags=re.IGNORECASE,
@@ -2272,12 +2364,26 @@ def _select_analysis_time_anchor(
     semantic_context: str,
     candidates: dict[str, tuple[TimeFieldBinding | str, ...]],
 ) -> AnalysisTimeAnchor:
+    date_encodings = {"native_date", "iso_date", "yyyymmdd_text", "yyyymmdd_integer"}
+    date_candidates = {
+        table: tuple(
+            binding
+            for binding in bindings
+            if isinstance(binding, TimeFieldBinding)
+            and binding.encoding in date_encodings
+        )
+        for table, bindings in candidates.items()
+    }
+    date_candidates = {
+        table: bindings for table, bindings in date_candidates.items() if bindings
+    }
+    anchor_candidates = date_candidates or candidates
     payload_candidates = {
         table: [
             binding.field if isinstance(binding, TimeFieldBinding) else str(binding)
             for binding in bindings
         ]
-        for table, bindings in candidates.items()
+        for table, bindings in anchor_candidates.items()
     }
     payload = orjson.dumps(payload_candidates).decode()
     messages = [
@@ -2297,7 +2403,7 @@ def _select_analysis_time_anchor(
     binding = next(
         (
             candidate
-            for candidate in candidates.get(table, ())
+            for candidate in anchor_candidates.get(table, ())
             if (
                 candidate.field
                 if isinstance(candidate, TimeFieldBinding)
@@ -2380,6 +2486,7 @@ def _probe_latest_business_date(
     datasource,
     allowed_tables: list[str],
     anchor: AnalysisTimeAnchor,
+    reference_date: date | None = None,
 ) -> date:
     anchor_table = _normalize_analysis_table_name(anchor.table)
     table_name, table_expr = _profile_table_expression(datasource, anchor_table)
@@ -2396,6 +2503,34 @@ def _probe_latest_business_date(
     if not table_name or not is_allowed:
         raise ValueError("业务时间锚点不在授权表范围内")
     field_expr = _quote_identifier(datasource, anchor.field)
+    if anchor.encoding in {"yyyymmdd_integer", "yyyymmdd_text"}:
+        latest_candidate = reference_date or date.today()
+        for offset in range(ANALYSIS_TIME_RECENT_PARTITION_PROBE_DAYS):
+            candidate = (latest_candidate - timedelta(days=offset)).strftime("%Y%m%d")
+            candidate_literal = (
+                candidate if anchor.encoding == "yyyymmdd_integer" else f"'{candidate}'"
+            )
+            sql = (
+                f"SELECT {field_expr} AS anchor_value FROM {table_expr} "
+                f"WHERE {field_expr} = {candidate_literal} LIMIT 1"
+            )
+            result = execute_user_query_or_raise(
+                session=session,
+                current_user=current_user,
+                datasource=datasource,
+                sql=sql,
+                allowed_tables=[table_name],
+                origin_column=False,
+                apply_row_permissions=True,
+                query_timeout=ANALYSIS_TIME_ANCHOR_QUERY_TIMEOUT_SECONDS,
+            ).result
+            rows = result.get("data") or []
+            if rows:
+                return _coerce_business_date(
+                    rows[0].get("anchor_value"),
+                    anchor.encoding,
+                )
+
     sql = (
         f"SELECT {field_expr} AS anchor_value FROM {table_expr} "
         f"WHERE {field_expr} IS NOT NULL ORDER BY {field_expr} DESC LIMIT 1"
@@ -3623,7 +3758,15 @@ def _repair_sql(
         f"样例数据：\n{sample_data[:6000]}\n\n"
         f"实际数据画像（必须优先使用这些真实字段取值与枚举样本，不要编造当前数据中不存在的枚举值）：\n{data_profile[:12000]}"
     )
-    text = _llm_text(llm, [SystemMessage(content=SQL_REPAIR_PROMPT), HumanMessage(content=prompt)])
+    repair_messages = [
+        SystemMessage(content=SQL_REPAIR_PROMPT),
+        HumanMessage(content=prompt),
+    ]
+    text = _llm_text_with_data_skill_identifier_retry(
+        llm,
+        repair_messages,
+        data_skill,
+    )
     try:
         data = _extract_json_object(text)
         repaired_sql = str(data.get("sql") or "")
@@ -3943,7 +4086,7 @@ def _build_plan(
         f"实际数据画像（必须优先使用这些真实字段取值与枚举样本，不要编造当前数据中不存在的枚举值）：\n{data_profile[:12000]}"
     )
     messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=PLAN_PROMPT + "\n\n" + user_content)]
-    text = _llm_text(llm, messages)
+    text = _llm_text_with_data_skill_identifier_retry(llm, messages, data_skill)
     try:
         plan = _extract_json_object(text)
     except Exception:
@@ -4004,7 +4147,7 @@ def _build_forecast_plan(
         f"实际数据画像（必须优先使用这些真实字段取值与枚举样本，不要编造当前数据中不存在的枚举值）：\n{data_profile[:12000]}"
     )
     messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=FORECAST_PLAN_PROMPT + "\n\n" + user_content)]
-    text = _llm_text(llm, messages)
+    text = _llm_text_with_data_skill_identifier_retry(llm, messages, data_skill)
     try:
         plan = _extract_json_object(text)
     except Exception:
@@ -4129,21 +4272,26 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     continue
                 emitted_time_traces.add(trace_message)
                 yield _trace(trace_message)
+            outline_messages = _initial_outline_messages(
+                request,
+                custom_agent,
+                semantic_context,
+                time_resolution=time_resolution,
+            )
             outline_text = ""
-            for chunk in llm.stream(
-                _initial_outline_messages(
-                    request,
-                    custom_agent,
-                    semantic_context,
-                    time_resolution=time_resolution,
-                )
-            ):
+            for chunk in llm.stream(outline_messages):
                 content = _chunk_text(chunk.content)
                 if content:
                     outline_text += content
-                    yield _sse({"type": "plan_delta", "content": content})
+            outline_text = _analysis_outline_with_identifier_fallback(
+                llm,
+                outline_messages,
+                semantic_context,
+                initial_text=outline_text,
+            )
             if not outline_text.strip():
-                yield _sse({"type": "plan_delta", "content": "我会先理解你的分析目标，再拆解关键维度并结合数据给出结论和建议。"})
+                outline_text = "我会先理解你的分析目标，再拆解关键维度并结合数据给出结论和建议。"
+            yield _sse({"type": "plan_delta", "content": outline_text})
             yield _trace("正在确认本次分析使用的业务口径。")
             yield _trace("正在结合当前业务数据，梳理可分析的关键维度。")
             schema = business_context.schema

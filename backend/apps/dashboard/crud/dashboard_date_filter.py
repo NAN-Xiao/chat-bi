@@ -293,6 +293,7 @@ def prepare_dashboard_date_filter(
     ds_type: str | None,
     pivot: Any | None,
     today: date | None = None,
+    require_time_field: bool = True,
 ) -> DashboardDateFilterPreparation:
     """只处理显式受控模板，不猜测字段，也不改写其他 SQL 条件。"""
     source_sql = str(sql or "")
@@ -315,12 +316,15 @@ def prepare_dashboard_date_filter(
     if _pivot_value(pivot, "range_enabled", True) is False:
         return _unconfigured(source_sql, physical_tables, "range_disabled")
 
-    if not str(_pivot_value(pivot, "time_field", "") or "").strip():
+    if require_time_field and not str(_pivot_value(pivot, "time_field", "") or "").strip():
         return _unconfigured(source_sql, physical_tables, "missing_time_field")
 
     parameter_type = str(_pivot_value(pivot, "date_parameter_type", "") or "").strip()
     if parameter_type not in _PARAMETER_TOKENS:
         return _unconfigured(source_sql, physical_tables, "invalid_parameter_type")
+    parameter_mode = str(_pivot_value(pivot, "date_parameter_mode", "range") or "range").strip()
+    if parameter_mode not in {"range", "end_only"}:
+        return _unconfigured(source_sql, physical_tables, "invalid_parameter_mode")
     if not active_tokens:
         return _unconfigured(source_sql, physical_tables, "missing_parameters")
 
@@ -331,7 +335,11 @@ def prepare_dashboard_date_filter(
     if active_families != {expected_family}:
         return _unconfigured(source_sql, physical_tables, "parameter_type_mismatch")
 
-    expected_tokens = set(_PARAMETER_TOKENS[parameter_type])
+    expected_tokens = (
+        {_PARAMETER_TOKENS[parameter_type][1]}
+        if parameter_mode == "end_only"
+        else set(_PARAMETER_TOKENS[parameter_type])
+    )
     if active_tokens != expected_tokens:
         return _unconfigured(source_sql, physical_tables, "incomplete_parameters")
 
@@ -398,6 +406,7 @@ def prepare_dashboard_date_filter(
             "status": "available",
             "reason": "",
             "parameterType": parameter_type,
+            "parameterMode": parameter_mode,
             "defaultStart": default_start.isoformat(),
             "defaultEnd": default_end.isoformat(),
             "expression": expression,

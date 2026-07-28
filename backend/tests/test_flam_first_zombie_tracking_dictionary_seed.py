@@ -45,6 +45,8 @@ def test_tracking_dictionary_upserts_are_scoped_by_tenant_and_datasource() -> No
     assert "ON CONFLICT (tenant_id, datasource_id, table_name)" in content
     assert "ON CONFLICT (tenant_id, datasource_id, table_name, field_name)" in content
     assert "AND datasource_id = %s" in content
+    assert "extra_properties = COALESCE(sys_tenant_tracking_field.extra_properties" in content
+    assert "|| EXCLUDED.extra_properties" in content
 
 
 def test_tracking_dictionary_seed_does_not_overwrite_user_dictionary_or_groups() -> None:
@@ -88,6 +90,19 @@ def test_tracking_dictionary_exposes_realtime_event_table() -> None:
         ("event_time", "time"),
         ("partition_date", "dt"),
     } <= realtime_roles
+
+    fields = {
+        (item["table_name"], item["field_name"]): item
+        for item in tracking.FIELDS
+    }
+    for table_name in ("event", "event_realtime", "user"):
+        assert fields[(table_name, "dt")]["extra_properties"] == {
+            "encoding": "yyyyMMdd"
+        }
+    for table_name in ("event", "event_realtime"):
+        assert fields[(table_name, "time")]["extra_properties"] == {
+            "encoding": "epoch_milliseconds"
+        }
 
 
 def test_tracking_dictionary_merges_only_missing_events() -> None:

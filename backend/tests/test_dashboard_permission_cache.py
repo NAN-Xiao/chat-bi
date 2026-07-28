@@ -31,6 +31,7 @@ def _session():
 
 
 def _allow_chart_execution_datasource(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: None)
     monkeypatch.setattr(
         dashboard_service,
         "resolve_chart_execution_datasource",

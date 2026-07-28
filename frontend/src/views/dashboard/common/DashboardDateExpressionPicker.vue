@@ -22,10 +22,12 @@ const props = withDefaults(
   defineProps<{
     disabled?: boolean
     timezone?: string
+    variant?: 'default' | 'roi'
   }>(),
   {
     disabled: false,
     timezone: 'Asia/Shanghai',
+    variant: 'default',
   }
 )
 
@@ -155,7 +157,10 @@ function applyDraft() {
       </el-button>
     </template>
 
-    <div class="date-expression-picker">
+    <div
+      class="date-expression-picker"
+      :class="`date-expression-picker--${variant}`"
+    >
       <header class="picker-header">
         <span class="picker-title">日期范围</span>
         <strong>{{ formatDashboardDateExpression(draft) }}</strong>
@@ -184,37 +189,53 @@ function applyDraft() {
 
         <main class="range-editor">
           <div v-if="draft.mode === 'range'" class="endpoint-controls">
-            <section v-for="side in (['start', 'end'] as const)" :key="side" class="endpoint-panel">
-              <span class="endpoint-caption">{{ side === 'start' ? '开始时间' : '结束时间' }}</span>
-              <el-segmented
-                class="endpoint-mode"
-                :model-value="draft[side].mode"
-                :options="[
-                  { label: '动态时间', value: 'dynamic' },
-                  { label: '静态时间', value: 'static' },
-                ]"
-                @change="setEndpointMode(side, $event)"
-              />
-              <div v-if="draft[side].mode === 'dynamic'" class="dynamic-input">
-                <el-input-number
-                  :model-value="dynamicDays(draft[side])"
-                  :min="0"
-                  :max="36500"
-                  controls-position="right"
-                  @change="updateDynamicDays(side, $event)"
+            <template v-for="side in (['start', 'end'] as const)" :key="side">
+              <section class="endpoint-panel">
+                <span class="endpoint-caption">{{ side === 'start' ? '开始时间' : '结束时间' }}</span>
+                <span
+                  v-if="variant === 'roi' && side === 'start' && draft[side].mode === 'static'"
+                  class="endpoint-static-badge"
+                >
+                  静态时间
+                </span>
+                <el-segmented
+                  v-else
+                  class="endpoint-mode"
+                  :model-value="draft[side].mode"
+                  :options="[
+                    { label: '动态时间', value: 'dynamic' },
+                    { label: '静态时间', value: 'static' },
+                  ]"
+                  @change="setEndpointMode(side, $event)"
                 />
-                <span>天前</span>
-              </div>
-              <el-date-picker
-                v-else
-                :model-value="draft[side].date"
-                type="date"
-                value-format="YYYY-MM-DD"
-                :clearable="false"
-                @update:model-value="updateEndpoint(side, { mode: 'static', date: String($event) })"
-              />
-              <span class="endpoint-result">{{ preview[side] }}</span>
-            </section>
+                <div v-if="draft[side].mode === 'dynamic'" class="dynamic-input">
+                  <el-input-number
+                    :model-value="dynamicDays(draft[side])"
+                    :min="0"
+                    :max="36500"
+                    controls-position="right"
+                    @change="updateDynamicDays(side, $event)"
+                  />
+                  <span>天前</span>
+                </div>
+                <el-date-picker
+                  v-else
+                  :model-value="draft[side].date"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  :clearable="false"
+                  @update:model-value="updateEndpoint(side, { mode: 'static', date: String($event) })"
+                />
+                <span class="endpoint-result">{{ preview[side] }}</span>
+              </section>
+              <span
+                v-if="variant === 'roi' && side === 'start'"
+                class="endpoint-connector"
+                aria-hidden="true"
+              >
+                →
+              </span>
+            </template>
           </div>
           <div class="calendar-panel">
             <ElConfigProvider :locale="elementZhCnLocale">
@@ -361,6 +382,57 @@ function applyDraft() {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+.date-expression-picker--roi .endpoint-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.date-expression-picker--roi .endpoint-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 8px;
+}
+
+.date-expression-picker--roi .endpoint-mode,
+.date-expression-picker--roi .endpoint-panel :deep(.el-date-editor),
+.date-expression-picker--roi .endpoint-panel :deep(.el-input-number) {
+  width: 180px;
+  max-width: 100%;
+}
+
+.date-expression-picker--roi .endpoint-mode {
+  align-self: flex-end;
+}
+
+.date-expression-picker--roi .endpoint-caption,
+.date-expression-picker--roi .endpoint-result {
+  display: none;
+}
+
+.date-expression-picker--roi .endpoint-connector {
+  display: flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  color: #86909c;
+  font-size: 20px;
+}
+
+.date-expression-picker--roi .endpoint-static-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  background: #f2f3f5;
+  color: #1d2129;
+  font-size: 14px;
 }
 
 .calendar-panel {

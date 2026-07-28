@@ -159,6 +159,25 @@ def test_default_range_is_fourteen_complete_days():
     assert result.capability["status"] == "available"
 
 
+def test_end_only_date_parameter_renders_selected_range_end_for_snapshot_queries():
+    result = prepare_dashboard_date_filter(
+        "select * from user_snapshot where dt = {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot=_pivot(
+            "yyyymmdd_number",
+            date_parameter_mode="end_only",
+            date_expression={"version": 1, "mode": "preset", "preset": "current_month"},
+        ),
+        today=date(2026, 7, 28),
+    )
+
+    assert result.capability["status"] == "available"
+    assert result.capability["parameterMode"] == "end_only"
+    assert result.start == "2026-07-01"
+    assert result.end == "2026-07-28"
+    assert "dt = 20260728" in result.sql
+
+
 @pytest.mark.parametrize(
     ("parameter_type", "sql", "expected"),
     [

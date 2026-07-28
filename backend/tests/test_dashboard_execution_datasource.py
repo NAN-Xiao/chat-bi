@@ -139,6 +139,16 @@ def test_chart_execution_datasources_include_only_bound_and_roi(
     assert [(item.id, item.role) for item in options] == [(11, "bound"), (22, "roi")]
 
 
+def test_date_filter_validation_only_applies_to_bound_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """日期参数完整性只约束工作空间绑定数据源。"""
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: 11)
+
+    assert dashboard_service._dashboard_is_bound_datasource(_Session(), _user(), 11) is True
+    assert dashboard_service._dashboard_is_bound_datasource(_Session(), _user(), 22) is False
+
+
 def test_roi_chart_execution_datasource_does_not_require_user_grant(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -192,6 +202,7 @@ def test_dashboard_sql_preview_uses_resolved_chart_execution_datasource(
     """预览 SQL 必须执行服务端解析后的图表数据源。"""
     resolved_calls: list[int] = []
     execute_calls: list[int] = []
+    monkeypatch.setattr(dashboard_service, "_dashboard_is_bound_datasource", lambda *_args: False)
     monkeypatch.setattr(
         dashboard_service,
         "resolve_chart_execution_datasource",
@@ -223,6 +234,78 @@ def test_dashboard_sql_preview_uses_resolved_chart_execution_datasource(
     assert result["status"] == "success"
     assert resolved_calls == [22]
     assert execute_calls == [22]
+
+
+def test_dashboard_sql_preview_skips_date_parameter_gate_for_unbound_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """非绑定数据源不因缺少时间字段阻断原 SQL 预览。"""
+    executed_sql: list[str] = []
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: 11)
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, _datasource_id: 22,
+    )
+    monkeypatch.setattr(dashboard_service, "_dashboard_chart_permission_audit", lambda *_args, **_kwargs: (None, False))
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda _session, _user, _datasource, sql, *_args, **_kwargs: executed_sql.append(sql) or {
+            "status": "success",
+            "fields": ["dt", "value"],
+            "data": [{"dt": "2026-07-28", "value": 1}],
+            "message": "",
+        },
+    )
+
+    result = dashboard_service.preview_sql(
+        _Session(),
+        _user(),
+        DashboardSqlPreview(
+            datasource=22,
+            sql=(
+                "select dt, value from orders where dt between "
+                "{{dashboard_start_date}} and {{dashboard_end_date}}"
+            ),
+            pivot={"time_field": "", "date_parameter_type": "date"},
+            force_refresh=True,
+        ),
+    )
+
+    assert result["status"] == "success"
+    assert result["date_filter_capability"]["status"] == "available"
+    assert executed_sql and "{{dashboard_start_date}}" not in executed_sql[0]
+    assert executed_sql and "{{dashboard_end_date}}" not in executed_sql[0]
+
+
+def test_dashboard_sql_preview_keeps_date_parameter_gate_for_bound_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """绑定数据源仍需完整配置日期参数。"""
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *_args: 11)
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, _datasource_id: 11,
+    )
+
+    result = dashboard_service.preview_sql(
+        _Session(),
+        _user(),
+        DashboardSqlPreview(
+            datasource=11,
+            sql=(
+                "select dt, value from orders where dt between "
+                "{{dashboard_start_date}} and {{dashboard_end_date}}"
+            ),
+            pivot={"time_field": "", "date_parameter_type": "date"},
+            force_refresh=True,
+        ),
+    )
+
+    assert result["status"] == "failed"
+    assert result["error_type"] == "dashboard_date_filter_unconfigured"
 
 
 def test_dashboard_chart_execution_marks_resolved_datasource_as_prevalidated(
@@ -346,6 +429,7 @@ def test_dashboard_refresh_uses_saved_roi_chart_datasource(
 ) -> None:
     """已保存的 ROI 图表刷新时必须执行 ROI 数据源，而非被看板默认数据源拒绝。"""
     execute_calls: list[int] = []
+    monkeypatch.setattr(dashboard_service, "_dashboard_is_bound_datasource", lambda *_args: False)
     monkeypatch.setattr(
         dashboard_service,
         "resolve_chart_execution_datasource",

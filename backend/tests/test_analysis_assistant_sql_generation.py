@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from langchain_core.messages import HumanMessage
 from sqlglot import exp, parse_one
 
 from apps.analysis_assistant.api import analysis_assistant as analysis_api
@@ -18,6 +19,7 @@ from apps.analysis_assistant.service.analysis_time_policy import (
 )
 from apps.analysis_assistant.service.analysis_time_sql import (
     AnalysisTimeSqlError,
+    TimeFieldBinding,
     enforce_analysis_time_sql,
 )
 from apps.db.db import get_sqlglot_dialect
@@ -712,6 +714,65 @@ def test_structured_non_native_time_encoding_generates_matching_constants(
     assert expected_upper in rewritten
 
 
+def test_epoch_milliseconds_accepts_mysql_unix_timestamp_date_boundaries() -> None:
+    sql = """
+        SELECT COUNT(DISTINCT `uid`) AS `new_users`
+        FROM `event`
+        WHERE `event` = 'UserRegister'
+          AND `time` >= UNIX_TIMESTAMP('2026-07-13 00:00:00') * 1000
+          AND `time` < UNIX_TIMESTAMP('2026-07-27 00:00:00') * 1000
+    """
+
+    prepared = enforce_analysis_time_sql(
+        sql,
+        policy=_resolved_time().policy,
+        declared_time_fields=[{"table": "event", "field": "time"}],
+        schema_time_fields={
+            "event": (
+                TimeFieldBinding(
+                    field="time",
+                    data_type="bigint",
+                    encoding="epoch_milliseconds",
+                    quoted=True,
+                ),
+            )
+        },
+        dialect="mysql",
+        allow_rewrite=False,
+    )
+
+    assert "UserRegister" in prepared
+    assert "UNIX_TIMESTAMP('2026-07-13 00:00:00') * 1000" in prepared
+    assert "UNIX_TIMESTAMP('2026-07-27 00:00:00') * 1000" in prepared
+
+
+def test_epoch_milliseconds_rejects_conflicting_mysql_date_boundaries() -> None:
+    sql = """
+        SELECT * FROM `event`
+        WHERE `time` >= UNIX_TIMESTAMP('2026-07-12 00:00:00') * 1000
+          AND `time` < UNIX_TIMESTAMP('2026-07-27 00:00:00') * 1000
+    """
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=_resolved_time().policy,
+            declared_time_fields=[{"table": "event", "field": "time"}],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="time",
+                        data_type="bigint",
+                        encoding="epoch_milliseconds",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=True,
+        )
+
+
 def test_unstructured_non_native_time_declaration_fails_closed() -> None:
     schema = "# Table: event_log\n[\n(event_time:bigint, role=event_time)\n]"
     candidates = analysis_api._schema_time_field_candidates(schema, ["event_log"])
@@ -1087,6 +1148,60 @@ def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
     assert tracking_context[12000:] not in prompt
     assert "2026-07-13" in prompt
     assert "2026-07-26" in prompt
+
+
+def test_data_skill_block_requires_exact_business_identifiers() -> None:
+    block = analysis_api._data_skill_block(
+        "新增用户必须使用事件值 `UserRegister`，不得使用 `Register`。"
+    )
+
+    assert "事件名、枚举值和业务标识符必须逐字沿用" in block
+    assert "不得缩写、改写、翻译或替换" in block
+    assert block.rstrip().endswith(
+        "禁止把未在数据 Skill 中定义的近似名称作为候选口径。"
+    )
+
+
+def test_llm_text_retries_near_match_of_data_skill_identifier() -> None:
+    class SequenceLLM:
+        def __init__(self) -> None:
+            self.outputs = iter(
+                [
+                    "新增用户使用 `Register` 事件。",
+                    "新增用户使用 `UserRegister` 事件。",
+                ]
+            )
+            self.calls = 0
+
+        def invoke(self, _messages):
+            self.calls += 1
+            return SimpleNamespace(content=next(self.outputs))
+
+    llm = SequenceLLM()
+    result = analysis_api._llm_text_with_data_skill_identifier_retry(
+        llm,
+        [HumanMessage(content="解释新增用户口径")],
+        "新增用户必须使用 event='UserRegister'。",
+    )
+
+    assert result == "新增用户使用 `UserRegister` 事件。"
+    assert llm.calls == 2
+
+
+def test_outline_falls_back_without_invalid_near_match() -> None:
+    class InvalidLLM:
+        def invoke(self, _messages):
+            return SimpleNamespace(content="新增用户使用 `Register` 事件。")
+
+    result = analysis_api._analysis_outline_with_identifier_fallback(
+        InvalidLLM(),
+        [HumanMessage(content="解释新增用户口径")],
+        "新增用户必须使用 event='UserRegister'。",
+        initial_text="新增用户使用 `Register` 事件。",
+    )
+
+    assert "`Register`" not in result
+    assert "当前 Data Skill" in result
 
 
 def test_prepare_time_safe_sql_repairs_before_ast_rewrite(
