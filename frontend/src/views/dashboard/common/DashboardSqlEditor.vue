@@ -2,6 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CopyDocument, Delete, Filter, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
 import { trackingConfigApi } from '@/api/system.ts'
@@ -2745,15 +2746,23 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       const datasource = metadata || null
       const tables: any[] = metadata?.tables
       const normalizedTables = Array.isArray(tables) ? tables : []
+      const defaultEventTable = String(
+        trackingConfigResult?.default_event_table || trackingConfigResult?.defaultEventTable || '',
+      ).trim()
       const tablesWithFields = await Promise.all(
         normalizedTables.map(async (table) => {
           const tableName = table?.table_name || table?.tableName || table?.name || table?.table || ''
           const tableRole = table?.table_role || table?.tableRole || trackingTableRoleByName.get(tableName) || ''
           const tableWithRole = tableRole ? { ...table, tableRole } : table
-          if (Array.isArray(table?.fields)) {
-            return tableWithRole
+          if (tableName !== defaultEventTable || !table?.id) {
+            return Array.isArray(table?.fields) ? tableWithRole : { ...tableWithRole, fields: [] }
           }
-          return { ...tableWithRole, fields: [] }
+          try {
+            const fields = await datasourceApi.fieldList(table.id, { excludeContainerFields: false })
+            return { ...tableWithRole, fields: Array.isArray(fields) ? fields : table.fields || [] }
+          } catch {
+            return Array.isArray(table?.fields) ? tableWithRole : { ...tableWithRole, fields: [] }
+          }
         })
       )
       return {

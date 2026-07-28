@@ -4,6 +4,11 @@ import { readFileSync } from 'node:fs'
 const editor = readFileSync(new URL('./DashboardSqlEditor.vue', import.meta.url), 'utf8')
 const tree = readFileSync(new URL('./BuilderFilterTree.vue', import.meta.url), 'utf8')
 
+assert.match(editor, /import \{ datasourceApi \} from '@\/api\/datasource'/, '看板需要复用数据源字段接口')
+assert.match(editor, /datasourceApi\.fieldList\(/, '默认事件表需要加载权限受控字典字段')
+assert.match(editor, /source_field|sourceField/, '字段合并需要保留 JSON 宿主字段')
+assert.match(editor, /json_path|jsonPath/, '字段合并需要保留 JSON 路径')
+
 assert.match(editor, /const eventUserPropertyOptions = computed\(\(\) =>/, '编辑器需要独立的 event.userinfo 候选')
 assert.match(editor, /isEventUserPropertyOption\(option, 'event'\)/, '用户属性必须严格限定 event 表')
 
