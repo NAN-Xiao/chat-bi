@@ -26,6 +26,16 @@ assert.doesNotMatch(
   /\bactiveTab\b/,
   '保存图表时不应持久化图表配置 tab，避免再次打开时自动进入重面板'
 )
+assert.match(
+  builderConfigForSaveMatch[1],
+  /dateExpressionPickerEnabled/,
+  '保存图表时应保留日期表达式显式启用标志'
+)
+assert.match(
+  builderConfigForSaveMatch[1],
+  /timeExpression/,
+  '保存图表时应保留结构化日期表达式'
+)
 assert.doesNotMatch(
   builderConfigForSaveMatch[1],
   /\bmetricItems\b/,
@@ -41,6 +51,16 @@ assert.doesNotMatch(
   restoreSqlBuilderStateMatch[1],
   /sqlBuilder\.activeTab\s*=/,
   '打开历史图表时不应从旧 builder 配置恢复图表配置 tab'
+)
+assert.match(
+  restoreSqlBuilderStateMatch[1],
+  /dateExpressionPickerEnabled/,
+  '打开图表时应恢复日期表达式显式启用标志'
+)
+assert.match(
+  restoreSqlBuilderStateMatch[1],
+  /normalizeDashboardDateExpression/,
+  '打开图表时应严格规范化日期表达式'
 )
 assert.doesNotMatch(
   restoreSqlBuilderStateMatch[1],

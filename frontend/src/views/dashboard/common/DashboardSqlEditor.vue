@@ -10,6 +10,13 @@ import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
+import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
+import {
+  cloneDashboardDateExpression,
+  normalizeDashboardDateExpression,
+  validateDashboardDateExpression,
+  type DashboardDateExpression,
+} from '@/views/dashboard/common/dashboardDateExpression.ts'
 import {
   isNumericFieldOption,
   isSelectableFieldOption,
@@ -248,6 +255,8 @@ const sqlBuilder = reactive({
   timeGrain: 'day',
   timeRange: '30d',
   timeCustomRange: [] as string[],
+  dateExpressionPickerEnabled: false,
+  timeExpression: null as DashboardDateExpression | null,
   metricItems: [] as SqlBuilderMetricItem[],
   calculatedMetrics: [] as SqlBuilderCalculatedMetricItem[],
   groups: [] as string[],
@@ -314,6 +323,7 @@ const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
 const initializedPivotGroupValueField = ref('')
+const dateExpressionConfigError = ref('')
 const PIVOT_GROUP_SELECT_ALL_VALUE = '__dashboard_pivot_group_select_all__'
 const PIVOT_GROUP_SELECT_NONE_VALUE = '__dashboard_pivot_group_select_none__'
 let builderSchemaLoadSeq = 0
@@ -754,6 +764,9 @@ const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chart
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric'].includes(form.chartType))
+const dateExpressionEnabled = computed(
+  () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true
+)
 const supportsForecastConfig = computed(
   () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length > 0
 )
@@ -1383,6 +1396,9 @@ function resetSqlBuilderState() {
   sqlBuilder.timeGrain = 'day'
   sqlBuilder.timeRange = '30d'
   sqlBuilder.timeCustomRange = []
+  sqlBuilder.dateExpressionPickerEnabled = false
+  sqlBuilder.timeExpression = null
+  dateExpressionConfigError.value = ''
   sqlBuilder.metricItems = []
   sqlBuilder.calculatedMetrics = []
   sqlBuilder.groups = []
@@ -1746,6 +1762,10 @@ function builderConfigForSave() {
     timeGrain: sqlBuilder.timeGrain || 'day',
     timeRange: sqlBuilder.timeRange || '30d',
     timeCustomRange: Array.isArray(sqlBuilder.timeCustomRange) ? [...sqlBuilder.timeCustomRange] : [],
+    dateExpressionPickerEnabled: sqlBuilder.dateExpressionPickerEnabled === true,
+    timeExpression: sqlBuilder.timeExpression
+      ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
+      : null,
     groups: [...sqlBuilder.groups],
     globalFilters: compactBuilderFilters(sqlBuilder.globalFilters),
     globalFilterLogic: builderLogic(sqlBuilder.globalFilterLogic),
@@ -1762,7 +1782,11 @@ function restoreSqlBuilderState(value: any) {
   const timeRangeValues = builderTimeRangeOptions.map((item) => item.value)
   sqlBuilder.timeField = typeof value.timeField === 'string' ? value.timeField : ''
   sqlBuilder.timeGrain = timeGrainValues.includes(value.timeGrain) ? value.timeGrain : 'day'
-  sqlBuilder.timeRange = timeRangeValues.includes(value.timeRange) ? value.timeRange : '30d'
+  sqlBuilder.dateExpressionPickerEnabled = value.dateExpressionPickerEnabled === true
+  sqlBuilder.timeExpression = normalizeDashboardDateExpression(value.timeExpression)
+  sqlBuilder.timeRange = sqlBuilder.dateExpressionPickerEnabled
+    ? 'expression'
+    : timeRangeValues.includes(value.timeRange) ? value.timeRange : '30d'
   sqlBuilder.timeCustomRange = Array.isArray(value.timeCustomRange)
     ? value.timeCustomRange.filter((item: any) => typeof item === 'string')
     : []
@@ -2974,6 +2998,20 @@ function initPivotConfig(pivot?: any) {
   form.pivotDateParameterType = Object.prototype.hasOwnProperty.call(dashboardDateParameterTokens, pivot?.date_parameter_type)
     ? pivot.date_parameter_type
     : ''
+  const pivotDateExpression = normalizeDashboardDateExpression(pivot?.date_expression)
+  if (dateExpressionEnabled.value) {
+    if (!sqlBuilder.timeExpression) {
+      dateExpressionConfigError.value = '日期表达式配置无效'
+    } else if (!pivotDateExpression) {
+      dateExpressionConfigError.value = '日期表达式执行配置缺失'
+    } else if (JSON.stringify(sqlBuilder.timeExpression) !== JSON.stringify(pivotDateExpression)) {
+      dateExpressionConfigError.value = '日期表达式配置不一致'
+    } else {
+      dateExpressionConfigError.value = ''
+    }
+  } else {
+    dateExpressionConfigError.value = ''
+  }
   form.pivotGroupValues = []
   initializedPivotGroupValueField.value = ''
   normalizePivotSelections()
@@ -2993,29 +3031,40 @@ function initPivotConfig(pivot?: any) {
 }
 
 function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
-  if (!supportsPivotConfig.value || !form.pivotEnabled) {
+  const expression = dateExpressionEnabled.value && sqlBuilder.timeExpression
+    ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
+    : null
+  if ((!supportsPivotConfig.value || !form.pivotEnabled) && !expression) {
     return { enabled: false }
   }
   const groupField = activePivotGroupValueField.value
   const pivotGroupValues = groupField ? unique(form.pivotGroupValues.map(normalizePivotGroupValue)) : []
   const config: Record<string, any> = {
-    enabled: true,
+    enabled: supportsPivotConfig.value && form.pivotEnabled,
     client_filter_only: props.viewInfo?.pivot?.client_filter_only === true,
-    time_field: form.pivotTimeField,
+    time_field: expression ? sqlBuilder.timeField : form.pivotTimeField,
+    range_enabled: expression ? true : form.pivotRangeEnabled,
+    date_parameter_type: form.pivotDateParameterType,
+  }
+  if (expression) {
+    config.date_expression = expression
+  }
+  if (!config.enabled) {
+    return config
+  }
+  Object.assign(config, {
     metric_fields: [...form.y],
     metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
     metric_field: form.y[0] || '',
     group_field: groupField,
     group_enabled: Boolean(groupField && (form.pivotGroupEnabled || pivotGroupValues.length > 0)),
     dimensions: inferredPivotDimensions(),
-    range_enabled: form.pivotRangeEnabled,
     granularity: form.pivotGranularity,
     range: form.pivotRange,
     custom_start: form.pivotCustomStart,
     custom_end: form.pivotCustomEnd,
-    date_parameter_type: form.pivotDateParameterType,
     aggregation: defaultPivotAggregation(),
-  }
+  })
   if (options.includeGroupValues !== false) {
     config.group_values = pivotGroupValues
   }
@@ -3023,7 +3072,7 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
 }
 
 function previewPivotPayload() {
-  if (!supportsPivotConfig.value || !form.pivotEnabled) {
+  if ((!supportsPivotConfig.value || !form.pivotEnabled) && !dateExpressionEnabled.value) {
     return undefined
   }
   return buildPivotConfig({ includeGroupValues: false })
@@ -3049,6 +3098,36 @@ function dashboardDateParameterValidationErrorKey() {
   return activeTokens.length === expectedTokens.length && expectedTokens.every((token) => activeTokens.includes(token))
     ? ''
     : 'dashboard.pivot_date_parameter_type_invalid'
+}
+
+function dateExpressionValidationError() {
+  if (!dateExpressionEnabled.value) {
+    return ''
+  }
+  if (dateExpressionConfigError.value) {
+    return dateExpressionConfigError.value
+  }
+  const validation = validateDashboardDateExpression(
+    sqlBuilder.timeExpression,
+    new Date(),
+    'Asia/Shanghai'
+  )
+  if (!validation.valid) {
+    return validation.message
+  }
+  if (!sqlBuilder.timeField) {
+    return '请选择时间字段'
+  }
+  if (!form.pivotDateParameterType) {
+    return '请选择日期参数类型'
+  }
+  return ''
+}
+
+function applyDateExpression(value: DashboardDateExpression) {
+  sqlBuilder.timeExpression = cloneDashboardDateExpression(value)
+  sqlBuilder.timeRange = 'expression'
+  dateExpressionConfigError.value = ''
 }
 
 function currentPreviewSignature() {
@@ -4046,6 +4125,11 @@ async function previewSqlSource() {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return null
   }
+  const expressionValidationError = dateExpressionValidationError()
+  if (expressionValidationError) {
+    ElMessage.warning(expressionValidationError)
+    return null
+  }
   const dateParameterValidationError = dashboardDateParameterValidationErrorKey()
   if (dateParameterValidationError) {
     ElMessage.warning(t(dateParameterValidationError))
@@ -4254,6 +4338,11 @@ function validateBeforeApply() {
   }
   if (hasSqlSource.value && !form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
+    return false
+  }
+  const expressionValidationError = dateExpressionValidationError()
+  if (expressionValidationError) {
+    ElMessage.warning(expressionValidationError)
     return false
   }
   const dateParameterValidationError = dashboardDateParameterValidationErrorKey()
@@ -4638,7 +4727,14 @@ function closeDrawer() {
                     :value="item.value"
                   />
                 </el-select>
-                <el-select v-model="sqlBuilder.timeRange" size="small">
+                <DashboardDateExpressionPicker
+                  v-if="dateExpressionEnabled"
+                  :model-value="sqlBuilder.timeExpression"
+                  timezone="Asia/Shanghai"
+                  :disabled="loading || builderLoading"
+                  @apply="applyDateExpression"
+                />
+                <el-select v-else v-model="sqlBuilder.timeRange" size="small">
                   <el-option
                     v-for="item in builderTimeRangeOptions"
                     :key="item.value"
@@ -4648,7 +4744,7 @@ function closeDrawer() {
                 </el-select>
               </div>
               <el-date-picker
-                v-if="sqlBuilder.timeRange === 'custom'"
+                v-if="!dateExpressionEnabled && sqlBuilder.timeRange === 'custom'"
                 v-model="sqlBuilder.timeCustomRange"
                 type="daterange"
                 value-format="YYYY-MM-DD"
