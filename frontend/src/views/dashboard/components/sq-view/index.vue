@@ -3323,6 +3323,24 @@ defineExpose({
   height: calc(100% - 58px);
 }
 
+.chart-base-container:has(.date-expression-toolbar) .chart-show-area {
+  height: calc(100% - 82px);
+}
+
+.chart-base-container:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 116px);
+}
+
+.insight-density-mini:has(.date-expression-toolbar) .chart-show-area,
+.insight-density-basic:has(.date-expression-toolbar) .chart-show-area {
+  height: calc(100% - 70px);
+}
+
+.insight-density-mini:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area,
+.insight-density-basic:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 94px);
+}
+
 .buttons-bar {
   display: flex;
   flex-direction: row;

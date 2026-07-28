@@ -82,5 +82,21 @@ assert.match(
 )
 assert.match(
   source,
+  /\.chart-base-container:has\(\.date-expression-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 82px\)/
+)
+assert.match(
+  source,
+  /\.chart-base-container:has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 116px\)/
+)
+assert.match(
+  source,
+  /\.insight-density-mini:has\(\.date-expression-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 70px\)/
+)
+assert.match(
+  source,
+  /\.insight-density-basic:has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 94px\)/
+)
+assert.match(
+  source,
   /\.dashboard-date-filter-popper \.el-date-table td\.today\.disabled[\s\S]*\.el-date-table-cell__text[\s\S]*color:\s*var\(--el-text-color-placeholder\)/
 )
