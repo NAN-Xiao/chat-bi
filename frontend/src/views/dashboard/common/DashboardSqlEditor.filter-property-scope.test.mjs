@@ -23,10 +23,11 @@ assert.match(
 assert.doesNotMatch(metricOptions, /eventDetailFieldOptions/, '指标筛选不得混入事件公共物理字段')
 
 assert.match(tree, /pickerMode\?: 'property' \| 'filter-property'/, '筛选树需要透传字段选择器模式')
-assert.match(tree, /filterPropertyTabs\?: Array<'event' \| 'user'>/, '筛选树需要透传允许标签')
+assert.match(tree, /filterPropertyTabs\?: Array<'all' \| 'event' \| 'user'>/, '筛选树需要透传允许标签')
 assert.match(tree, /:filter-property-tabs="filterPropertyTabs"/, '递归筛选树必须保留允许标签')
 
-assert.match(editor, /:filter-property-tabs="\['event', 'user'\]"/, '指标筛选需要两个属性标签')
+const metricFilterTabBindings = editor.match(/:filter-property-tabs="\['all', 'event', 'user'\]"/g) || []
+assert.equal(metricFilterTabBindings.length, 2, '指标筛选和公式指标筛选都需要全部、事件、用户三个标签')
 assert.match(editor, /:filter-property-tabs="\['user'\]"/, '全局筛选只能显示用户属性')
 assert.match(editor, /:field-options="eventUserPropertyOptions"/, '全局筛选候选只能使用 event.userinfo')
 assert.match(editor, /function builderFilterScopeIssues\(\)/, '旧配置需要独立筛选范围校验')

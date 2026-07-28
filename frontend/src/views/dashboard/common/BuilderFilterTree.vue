@@ -33,7 +33,7 @@ const props = withDefaults(
     emptyText?: string
     showToolbar?: boolean
     pickerMode?: 'property' | 'filter-property'
-    filterPropertyTabs?: Array<'event' | 'user'>
+    filterPropertyTabs?: Array<'all' | 'event' | 'user'>
   }>(),
   {
     logic: 'and',
