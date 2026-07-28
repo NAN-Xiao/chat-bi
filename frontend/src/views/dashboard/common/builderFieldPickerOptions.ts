@@ -187,3 +187,17 @@ export function isContainerFieldOption(option: Pick<FieldOption, 'type' | 'seman
 export function isSelectableFieldOption(option: FieldOption) {
   return !isObjectGroupTableOption(option) && !isContainerFieldOption(option)
 }
+
+export function isTrackingEventPropertyOption(option: FieldOption) {
+  return option.kind === 'tracking-property' && isSelectableFieldOption(option)
+}
+
+export function isEventUserPropertyOption(option: FieldOption, eventTable = 'event') {
+  return (
+    option.kind !== 'tracking-property' &&
+    option.table === eventTable &&
+    normalizeRole(option.sourceField) === 'userinfo' &&
+    Boolean(String(option.jsonPath || '').trim()) &&
+    isSelectableFieldOption(option)
+  )
+}
