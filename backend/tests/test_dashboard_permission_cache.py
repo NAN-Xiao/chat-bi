@@ -72,6 +72,40 @@ def test_date_filter_cache_key_uses_rendered_dates_and_parameter_type() -> None:
     assert same_key.fingerprint == keys[0].fingerprint
 
 
+def test_date_expression_is_preserved_by_pivot_request_and_separates_cache_keys() -> None:
+    sql = (
+        "select dt from orders where dt between "
+        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+    )
+    today_pivot = DashboardPivotRequest(
+        enabled=False,
+        time_field="dt",
+        date_parameter_type="yyyymmdd_number",
+        date_expression={"version": 1, "mode": "preset", "preset": "today"},
+    )
+    past_pivot = today_pivot.model_copy(
+        update={
+            "date_expression": {"version": 1, "mode": "preset", "preset": "past_30_days"},
+        }
+    )
+    rendered_today_sql = prepare_dashboard_date_filter(
+        sql, ds_type="mysql", pivot=today_pivot, today=date(2026, 7, 28)
+    ).sql
+    rendered_past_sql = prepare_dashboard_date_filter(
+        sql, ds_type="mysql", pivot=past_pivot, today=date(2026, 7, 28)
+    ).sql
+
+    assert today_pivot.date_expression == {"version": 1, "mode": "preset", "preset": "today"}
+    assert (
+        dashboard_service._dashboard_sql_preview_cache_key(
+            _user(), 7, rendered_today_sql, today_pivot
+        ).fingerprint
+        != dashboard_service._dashboard_sql_preview_cache_key(
+            _user(), 7, rendered_past_sql, past_pivot
+        ).fingerprint
+    )
+
+
 def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：权限校验失败时，看板预览不能先命中历史缓存。

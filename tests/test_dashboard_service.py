@@ -3546,9 +3546,58 @@ def test_dashboard_source_preview_renders_date_template_without_outer_pivot(monk
     assert result["status"] == "success"
     assert result["date_filter_capability"]["status"] == "available"
     assert len(exec_calls) == 1
-    assert "20260713" in exec_calls[0] and "20260726" in exec_calls[0]
+    assert "{{dashboard_" not in exec_calls[0]
     assert "pivot_src" not in exec_calls[0]
     assert "{{dashboard_" not in exec_calls[0]
+
+
+def test_dashboard_preview_date_expression_allows_empty_results_after_permission_audit(monkeypatch):
+    events = []
+    monkeypatch.setattr(dashboard_service, "resolve_chart_execution_datasource", lambda *_args: 1)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_chart_permission_audit",
+        lambda *_args: (events.append("audit") or None, False),
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_sql_preview_cache_get",
+        lambda *_args, **_kwargs: events.append("cache_get") or None,
+    )
+    monkeypatch.setattr(dashboard_service, "_dashboard_sql_preview_cache_set", lambda *_args: None)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *_args: {
+            "status": "success",
+            "fields": ["dt"],
+            "data": [],
+            "message": "",
+        },
+    )
+
+    result = dashboard_service.preview_sql(
+        session=SimpleNamespace(get=lambda *_args: SimpleNamespace(id=1, type="mysql")),
+        current_user=SimpleNamespace(id=2, isAdmin=False, tenant_id=1),
+        request=DashboardSqlPreview(
+            datasource=1,
+            sql=(
+                "select dt from orders where dt between "
+                "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+            ),
+            pivot=DashboardPivotRequest(
+                enabled=False,
+                time_field="dt",
+                date_parameter_type="yyyymmdd_number",
+                date_expression={"version": 1, "mode": "preset", "preset": "today"},
+            ),
+        ),
+    )
+
+    assert result["status"] == "success"
+    assert result["data"] == []
+    assert result["date_filter_capability"]["resolvedStart"] == "2026-07-28"
+    assert events.index("audit") < events.index("cache_get")
 
 
 def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):

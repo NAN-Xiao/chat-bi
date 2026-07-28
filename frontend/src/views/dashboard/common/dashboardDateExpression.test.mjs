@@ -84,6 +84,12 @@ for (const invalid of [
     start: { mode: 'static', date: '2026-08-01' },
     end: { mode: 'static', date: '2026-07-01' },
   },
+  {
+    version: 1,
+    mode: 'range',
+    start: { mode: 'dynamic', unit: 'day', offset: 1 },
+    end: { mode: 'dynamic', unit: 'day', offset: 1 },
+  },
 ]) {
   assert.equal(validateDashboardDateExpression(invalid, now, 'Asia/Shanghai').valid, false)
 }

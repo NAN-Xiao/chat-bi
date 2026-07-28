@@ -82,7 +82,8 @@ function normalizeEndpoint(value: unknown): DashboardDateEndpoint | null {
     endpoint.mode === 'dynamic' &&
     endpoint.unit === 'day' &&
     typeof endpoint.offset === 'number' &&
-    Number.isInteger(endpoint.offset)
+    Number.isInteger(endpoint.offset) &&
+    endpoint.offset <= 0
   ) {
     return { mode: 'dynamic', unit: 'day', offset: endpoint.offset }
   }
