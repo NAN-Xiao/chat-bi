@@ -27,9 +27,9 @@ assert.doesNotMatch(
   source,
   /4f08e75945c3498486963e70f3c75688|ROI看板|dashboardMode\s*===\s*['"]roi/
 )
-assert.doesNotMatch(
-  cardSource,
-  /DashboardDateExpressionPicker|dateExpressionPickerEnabled|timeExpression/
-)
+assert.match(cardSource, /import DashboardDateExpressionPicker/)
+assert.match(cardSource, /dateExpressionPickerEnabled/)
+assert.match(cardSource, /<DashboardDateExpressionPicker/)
+assert.doesNotMatch(cardSource, /4f08e75945c3498486963e70f3c75688|ROI看板/)
 
 console.log('dashboard SQL editor date expression integration contract passed')

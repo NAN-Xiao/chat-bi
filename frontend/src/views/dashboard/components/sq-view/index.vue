@@ -6,6 +6,13 @@ import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { ElMessage } from 'element-plus-secondary'
 import { ElConfigProvider, ElDatePickerPanel } from 'element-plus'
+import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
+import {
+  buildDashboardDateExpressionPivot,
+  cloneDashboardDateExpression,
+  normalizeDashboardDateExpression,
+  type DashboardDateExpression,
+} from '@/views/dashboard/common/dashboardDateExpression.ts'
 import 'element-plus/es/components/date-picker-panel/style/css'
 import elementEnLocale from 'element-plus/es/locale/lang/en'
 import elementKoLocale from 'element-plus/es/locale/lang/ko'
@@ -376,6 +383,27 @@ const showDashboardDateFilter = computed(() =>
   dateFilterCapability.value?.status === 'available'
   && canShowDashboardDateFilter(dateFilterCapability.value)
 )
+const dateExpressionPickerEnabled = computed(
+  () => props.viewInfo?.sourceConfig?.sql?.builder?.dateExpressionPickerEnabled === true
+)
+const configuredDashboardDateExpression = computed(() =>
+  normalizeDashboardDateExpression(props.viewInfo?.pivot?.date_expression)
+)
+const configuredDashboardDateExpressionKey = computed(() =>
+  JSON.stringify(props.viewInfo?.pivot?.date_expression ?? null)
+)
+const dashboardDateExpression = ref<DashboardDateExpression | null>(
+  configuredDashboardDateExpression.value
+    ? cloneDashboardDateExpression(configuredDashboardDateExpression.value)
+    : null
+)
+const dashboardDateExpressionApplying = ref(false)
+const showDashboardDateExpression = computed(
+  () =>
+    showDashboardDateFilter.value
+    && dateExpressionPickerEnabled.value
+    && dashboardDateExpression.value !== null
+)
 const dateFilterState = ref(
   getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
 )
@@ -447,6 +475,21 @@ watch(
   () => dashboardDateFilterContext(props.viewInfo, dateFilterCapability.value),
   () => initializeDashboardDateFilterState(),
   { deep: true }
+)
+
+watch(
+  [
+    () => props.viewInfo,
+    configuredDashboardDateExpressionKey,
+    dateExpressionPickerEnabled,
+  ],
+  () => {
+    if (dashboardDateExpressionApplying.value) return
+    const configured = configuredDashboardDateExpression.value
+    dashboardDateExpression.value = dateExpressionPickerEnabled.value && configured
+      ? cloneDashboardDateExpression(configured)
+      : null
+  }
 )
 
 function clampChartLoadingProgress(progress: unknown) {
@@ -1759,6 +1802,27 @@ async function applyDashboardDateRange() {
   }
 }
 
+async function applyDashboardDateExpression(value: DashboardDateExpression) {
+  if (dashboardDateExpressionApplying.value) return
+  dashboardDateExpressionApplying.value = true
+  const next = cloneDashboardDateExpression(value)
+  try {
+    const succeeded = await refreshData({
+      forceRefresh: true,
+      blocking: true,
+      pivotOverride: buildDashboardDateExpressionPivot(
+        getPivotPayload() || props.viewInfo?.pivot,
+        next
+      ),
+    })
+    if (succeeded) {
+      dashboardDateExpression.value = next
+    }
+  } finally {
+    dashboardDateExpressionApplying.value = false
+  }
+}
+
 function setPivotGranularity(value: string) {
   pivotState.granularity = normalizePivotGranularity(value)
   pivotCalendarDraftStart.value = ''
@@ -2211,7 +2275,21 @@ defineExpose({
         <div class="divider" />
       </div>
     </div>
-    <div v-if="showDashboardDateFilter" class="date-filter-toolbar">
+    <div
+      v-if="showDashboardDateExpression"
+      class="date-filter-toolbar date-expression-toolbar"
+    >
+      <DashboardDateExpressionPicker
+        :model-value="dashboardDateExpression"
+        timezone="Asia/Shanghai"
+        :disabled="dashboardDateExpressionApplying"
+        @apply="applyDashboardDateExpression"
+      />
+    </div>
+    <div
+      v-else-if="showDashboardDateFilter && !dateExpressionPickerEnabled"
+      class="date-filter-toolbar"
+    >
       <el-popover
         v-model:visible="dateFilterPanelVisible"
         trigger="click"
@@ -2745,6 +2823,10 @@ defineExpose({
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+  }
+
+  .date-expression-toolbar {
+    width: min(242px, 100%);
   }
 
   @container (max-width: 560px) {

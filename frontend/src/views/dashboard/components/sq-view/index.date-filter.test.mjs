@@ -10,6 +10,21 @@ const previewSource = readFileSync(
 
 assert.match(source, /v-model="dateFilterState\.draftRange"/)
 assert.match(source, /@click="applyDashboardDateRange"/)
+assert.match(source, /import DashboardDateExpressionPicker/)
+assert.match(source, /const dateExpressionPickerEnabled = computed/)
+assert.match(
+  source,
+  /sourceConfig\?\.sql\?\.builder\?\.dateExpressionPickerEnabled\s*===\s*true/
+)
+assert.match(source, /<DashboardDateExpressionPicker/)
+assert.match(source, /v-if="showDashboardDateExpression"/)
+assert.match(
+  source,
+  /v-else-if="showDashboardDateFilter\s*&&\s*!dateExpressionPickerEnabled"/
+)
+assert.match(source, /async function applyDashboardDateExpression/)
+assert.match(source, /buildDashboardDateExpressionPivot/)
+assert.match(source, /const configuredDashboardDateExpressionKey = computed/)
 assert.match(source, /import\s*{\s*ElConfigProvider,\s*ElDatePickerPanel\s*}\s*from\s*'element-plus'/)
 assert.match(source, /const datePickerLocale = computed\(/)
 assert.match(source, /<ElConfigProvider :locale="datePickerLocale">[\s\S]*<ElDatePickerPanel/)
@@ -43,9 +58,28 @@ assert.match(applyHandler, /blocking:\s*true/)
 assert.match(applyHandler, /commitDashboardDateRange/)
 assert.match(applyHandler, /failDashboardDateRange/)
 
+const expressionApplyHandler =
+  source.match(/async function applyDashboardDateExpression\([\s\S]*?\n}/)?.[0] || ''
+assert.match(expressionApplyHandler, /dashboardDateExpressionApplying\.value\s*=\s*true/)
+assert.match(expressionApplyHandler, /refreshData\([\s\S]*forceRefresh:\s*true/)
+assert.match(expressionApplyHandler, /blocking:\s*true/)
+assert.match(expressionApplyHandler, /pivotOverride:\s*buildDashboardDateExpressionPivot/)
+assert.match(expressionApplyHandler, /if \(succeeded\)[\s\S]*dashboardDateExpression\.value\s*=\s*next/)
+assert.match(expressionApplyHandler, /finally[\s\S]*dashboardDateExpressionApplying\.value\s*=\s*false/)
+
+const expressionSyncWatcher =
+  source.match(/watch\(\s*\[\s*\(\) => props\.viewInfo,[\s\S]*?\n\)/)?.[0] || ''
+assert.match(expressionSyncWatcher, /configuredDashboardDateExpressionKey/)
+assert.doesNotMatch(expressionSyncWatcher, /deep:\s*true/)
+
 const dateChangeHandler = source.match(/function onDashboardDateRangeChange\([\s\S]*?\n}/)?.[0] || ''
 assert.doesNotMatch(dateChangeHandler, /refreshData\(/)
 assert.doesNotMatch(source, /update_canvas|localStorage|sessionStorage/)
+assert.doesNotMatch(source, /4f08e75945c3498486963e70f3c75688|ROI看板/)
+assert.match(
+  source,
+  /\.date-expression-toolbar\s*{[\s\S]*?width:\s*min\(242px,\s*100%\)/
+)
 assert.match(
   source,
   /\.dashboard-date-filter-popper \.el-date-table td\.today\.disabled[\s\S]*\.el-date-table-cell__text[\s\S]*color:\s*var\(--el-text-color-placeholder\)/
