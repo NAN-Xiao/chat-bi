@@ -55,7 +55,7 @@ const activePreset = computed(() => (draft.value.mode === 'preset' ? draft.value
 type CalendarRange = [string, string] | []
 
 const calendarRange = computed<CalendarRange>({
-  get: () => draft.value.mode === 'preset' && draft.value.preset === 'all_time'
+  get: (): CalendarRange => draft.value.mode === 'preset' && draft.value.preset === 'all_time'
     ? []
     : [preview.value.start, preview.value.end],
   set: updateCalendarRange,
