@@ -3,13 +3,16 @@ import { computed, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import {
   fieldOptionDisplayName,
+  isEventUserPropertyOption,
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
+  isTrackingEventPropertyOption,
 } from './builderFieldPickerOptions'
 import type { FieldOption } from './builderFieldPickerOptions'
 
-type PickerMode = 'field' | 'property' | 'metric' | 'time' | 'tracking-event'
+type PickerMode = 'field' | 'property' | 'metric' | 'time' | 'tracking-event' | 'filter-property'
+type FilterPropertyTab = 'event' | 'user'
 
 defineOptions({ name: 'BuilderFieldPicker' })
 
@@ -21,12 +24,14 @@ const props = withDefaults(
     placeholder?: string
     disabled?: boolean
     loading?: boolean
+    filterPropertyTabs?: FilterPropertyTab[]
   }>(),
   {
     mode: 'property',
     placeholder: '字段',
     disabled: false,
     loading: false,
+    filterPropertyTabs: () => [],
   }
 )
 
@@ -49,6 +54,7 @@ const selectedLabel = computed(() => fieldOptionDisplayName(selectedOption.value
 
 const selectableOptions = computed(() => props.options.filter(isSelectableFieldOption))
 const isTrackingEventMode = computed(() => props.mode === 'tracking-event')
+const isFilterPropertyMode = computed(() => props.mode === 'filter-property')
 
 function shortTableLabel(value = '') {
   const firstLine = String(value || '').split(/\r?\n/).find((line) => line.trim()) || ''
@@ -108,7 +114,15 @@ const tableTabs = computed(() => {
       value: `${TABLE_TAB_PREFIX}${tableName}`,
     }))
 })
+const filterPropertyTabOptions: Array<{ label: string; value: FilterPropertyTab }> = [
+  { label: '事件属性', value: 'event' },
+  { label: '用户属性', value: 'user' },
+]
+
 const tabOptions = computed(() => {
+  if (isFilterPropertyMode.value) {
+    return filterPropertyTabOptions.filter((item) => props.filterPropertyTabs.includes(item.value))
+  }
   return [
     { label: '全部', value: 'all' },
     ...tableTabs.value,
@@ -119,9 +133,10 @@ watch(
   () => [props.mode, tabOptions.value.map((item) => item.value).join('|')],
   () => {
     if (!tabOptions.value.some((item) => item.value === activeTab.value)) {
-      activeTab.value = 'all'
+      activeTab.value = tabOptions.value[0]?.value || 'all'
     }
-  }
+  },
+  { immediate: true }
 )
 
 function optionCategory(item: FieldOption) {
@@ -134,6 +149,12 @@ function isIdentifierField(item: FieldOption) {
 }
 
 function matchesTab(item: FieldOption, tab: string) {
+  if (isFilterPropertyMode.value && tab === 'event') {
+    return isTrackingEventPropertyOption(item)
+  }
+  if (isFilterPropertyMode.value && tab === 'user') {
+    return isEventUserPropertyOption(item)
+  }
   if (tab === 'all') {
     return true
   }
@@ -164,12 +185,16 @@ const groupedOptions = computed(() => {
   const tab = activeTab.value
   const keywordRows = selectableOptions.value.filter((item) => matchesKeyword(item, q))
   const tabRows = keywordRows.filter((item) => matchesTab(item, tab))
-  const rows = tabRows.length > 0 || tab === 'all' || tab.startsWith(TABLE_TAB_PREFIX)
+  const rows = isFilterPropertyMode.value
     ? tabRows
-    : keywordRows
+    : tabRows.length > 0 || tab === 'all' || tab.startsWith(TABLE_TAB_PREFIX)
+      ? tabRows
+      : keywordRows
   const groups = new Map<string, FieldOption[]>()
   rows.forEach((item) => {
-    const key = tableTabLabel(item.table || '字段', item.tableLabel || item.tableComment, optionTableReferenceLabel(item))
+    const key = isFilterPropertyMode.value
+      ? filterPropertyTabOptions.find((item) => item.value === tab)?.label || '筛选属性'
+      : tableTabLabel(item.table || '字段', item.tableLabel || item.tableComment, optionTableReferenceLabel(item))
     if (!groups.has(key)) {
       groups.set(key, [])
     }
@@ -187,6 +212,10 @@ const groupedOptions = computed(() => {
     }),
   }))
 })
+
+const propertyEmptyText = computed(() => (
+  activeTab.value === 'event' ? '暂无事件属性' : '暂无用户属性'
+))
 
 const eventRows = computed(() => {
   const q = keyword.value.trim().toLowerCase()
@@ -344,7 +373,9 @@ watch(
         </button>
         </div>
         <div v-if="loading" class="builder-field-picker-empty">加载中...</div>
-        <div v-else-if="groupedOptions.length === 0" class="builder-field-picker-empty">暂无数据</div>
+        <div v-else-if="groupedOptions.length === 0" class="builder-field-picker-empty">
+          {{ isFilterPropertyMode ? propertyEmptyText : '暂无数据' }}
+        </div>
         <div v-else class="builder-field-picker-body">
           <div class="builder-field-picker-list">
             <template v-for="group in groupedOptions" :key="group.name">
@@ -502,7 +533,7 @@ watch(
 
 .builder-field-picker-tabs button.active {
   border-color: #315cff;
-  color: #315cff;
+  color: #1f2633;
   font-weight: 600;
 }
 
