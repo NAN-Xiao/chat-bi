@@ -412,6 +412,10 @@ function applyDraft() {
   .endpoint-controls {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .calendar-panel {
+    min-width: 502px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -428,8 +432,5 @@ function applyDraft() {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .calendar-panel {
-    min-width: 502px;
-  }
 }
 </style>

@@ -55,10 +55,10 @@ assert.match(
   source,
   /@media \(max-width: 560px\)[\s\S]*?\.picker-body\s*{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/
 )
-assert.match(
-  source,
-  /@media \(max-width: 560px\)[\s\S]*?\.calendar-panel\s*{[\s\S]*?min-width:\s*502px/
-)
+const compactViewportStyles = source.match(
+  /@media \(max-width: 720px\) \{([\s\S]*?)\n\}\n\n@media \(max-width: 560px\)/
+)?.[1] || ''
+assert.match(compactViewportStyles, /\.calendar-panel\s*{[\s\S]*?min-width:\s*502px/)
 assert.doesNotMatch(source, /resourceId|dashboardMode|ROI看板|sq-view/)
 
 console.log('dashboard date expression picker contract passed')

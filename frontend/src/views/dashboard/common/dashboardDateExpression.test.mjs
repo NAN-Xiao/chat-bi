@@ -153,6 +153,7 @@ for (const invalidRange of [
   [],
   ['2026-07-10'],
   ['2026/07/10', '2026-07-20'],
+  ['2026-02-30', '2026-03-01'],
   ['2026-07-21', '2026-07-20'],
 ]) {
   assert.equal(buildDashboardDateExpressionFromCalendarRange(invalidRange), null)
