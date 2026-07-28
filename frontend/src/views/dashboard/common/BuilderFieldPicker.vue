@@ -12,7 +12,7 @@ import {
 import type { FieldOption } from './builderFieldPickerOptions'
 
 type PickerMode = 'field' | 'property' | 'metric' | 'time' | 'tracking-event' | 'filter-property'
-type FilterPropertyTab = 'event' | 'user'
+type FilterPropertyTab = 'all' | 'event' | 'user'
 
 defineOptions({ name: 'BuilderFieldPicker' })
 
@@ -115,9 +115,11 @@ const tableTabs = computed(() => {
     }))
 })
 const filterPropertyTabOptions: Array<{ label: string; value: FilterPropertyTab }> = [
+  { label: '全部', value: 'all' },
   { label: '事件属性', value: 'event' },
   { label: '用户属性', value: 'user' },
 ]
+const filterPropertyGroupOrder: FilterPropertyTab[] = ['event', 'user']
 
 const tabOptions = computed(() => {
   if (isFilterPropertyMode.value) {
@@ -149,6 +151,9 @@ function isIdentifierField(item: FieldOption) {
 }
 
 function matchesTab(item: FieldOption, tab: string) {
+  if (isFilterPropertyMode.value && tab === 'all') {
+    return isTrackingEventPropertyOption(item) || isEventUserPropertyOption(item)
+  }
   if (isFilterPropertyMode.value && tab === 'event') {
     return isTrackingEventPropertyOption(item)
   }
@@ -190,31 +195,40 @@ const groupedOptions = computed(() => {
     : tabRows.length > 0 || tab === 'all' || tab.startsWith(TABLE_TAB_PREFIX)
       ? tabRows
       : keywordRows
-  const groups = new Map<string, FieldOption[]>()
-  rows.forEach((item) => {
-    const key = isFilterPropertyMode.value
-      ? filterPropertyTabOptions.find((item) => item.value === tab)?.label || '筛选属性'
-      : tableTabLabel(item.table || '字段', item.tableLabel || item.tableComment, optionTableReferenceLabel(item))
-    if (!groups.has(key)) {
-      groups.set(key, [])
-    }
-    groups.get(key)?.push(item)
-  })
-  return Array.from(groups.entries()).map(([name, items]) => ({
-    name,
-    items: items.sort((a, b) => {
+  const sortItems = (items: FieldOption[]) => items.sort((a, b) => {
       const aSource = a.sourceField || a.field
       const bSource = b.sourceField || b.field
       const sourceCompare = aSource.localeCompare(bSource, undefined, { numeric: true, sensitivity: 'base' })
       if (sourceCompare !== 0) return sourceCompare
       if (a.isJsonSubfield !== b.isJsonSubfield) return a.isJsonSubfield ? 1 : -1
       return a.field.localeCompare(b.field, undefined, { numeric: true, sensitivity: 'base' })
-    }),
-  }))
+    })
+  if (isFilterPropertyMode.value) {
+    const groups: Array<{ name: string; items: FieldOption[] }> = []
+    const groupTabs = tab === 'all' ? filterPropertyGroupOrder : [tab as FilterPropertyTab]
+    groupTabs.forEach((groupTab) => {
+      const items = rows.filter((item) => matchesTab(item, groupTab))
+      if (!items.length) return
+      groups.push({
+        name: filterPropertyTabOptions.find((item) => item.value === groupTab)?.label || '筛选属性',
+        items: sortItems(items),
+      })
+    })
+    return groups
+  }
+  const groups = new Map<string, FieldOption[]>()
+  rows.forEach((item) => {
+    const key = tableTabLabel(item.table || '字段', item.tableLabel || item.tableComment, optionTableReferenceLabel(item))
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)?.push(item)
+  })
+  return Array.from(groups.entries()).map(([name, items]) => ({ name, items: sortItems(items) }))
 })
 
 const propertyEmptyText = computed(() => (
-  activeTab.value === 'event' ? '暂无事件属性' : '暂无用户属性'
+  activeTab.value === 'all' ? '暂无筛选属性' : activeTab.value === 'event' ? '暂无事件属性' : '暂无用户属性'
 ))
 
 const eventRows = computed(() => {
