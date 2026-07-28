@@ -13,6 +13,7 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(build.outputFiles[0
 const {
   ALL_TIME_END,
   ALL_TIME_START,
+  buildDashboardDateExpressionPivot,
   cloneDashboardDateExpression,
   formatDashboardDateExpression,
   normalizeDashboardDateExpression,
@@ -97,5 +98,27 @@ for (const invalid of [
 const cloned = cloneDashboardDateExpression(fixedToToday)
 cloned.start.date = '2025-01-01'
 assert.equal(fixedToToday.start.date, '2026-01-01')
+
+const cardOverride = buildDashboardDateExpressionPivot(
+  {
+    enabled: false,
+    time_field: 'dt',
+    date_parameter_type: 'yyyymmdd_number',
+    range: 'custom',
+    custom_start: '2026-07-01',
+    custom_end: '2026-07-27',
+  },
+  { version: 1, mode: 'preset', preset: 'today' }
+)
+assert.deepEqual(cardOverride.date_expression, {
+  version: 1,
+  mode: 'preset',
+  preset: 'today',
+})
+assert.equal(cardOverride.range, 'source')
+assert.equal(cardOverride.custom_start, '')
+assert.equal(cardOverride.custom_end, '')
+assert.equal(cardOverride.time_field, 'dt')
+assert.equal(cardOverride.date_parameter_type, 'yyyymmdd_number')
 
 console.log('dashboard date expression tests passed')
