@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Delete, Plus } from '@element-plus/icons-vue'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
+import type { FieldOption } from './builderFieldPickerOptions'
 
 type FilterLogic = 'and' | 'or'
 
@@ -12,19 +13,6 @@ type FilterNode = {
   value: string
   logic?: FilterLogic
   children?: FilterNode[]
-}
-
-type FieldOption = {
-  label: string
-  value: string
-  table: string
-  tableLabel?: string
-  field: string
-  displayName?: string
-  type?: string
-  comment?: string
-  tableComment?: string
-  category?: string
 }
 
 defineOptions({ name: 'BuilderFilterTree' })
@@ -44,6 +32,8 @@ const props = withDefaults(
     removable?: boolean
     emptyText?: string
     showToolbar?: boolean
+    pickerMode?: 'property' | 'filter-property'
+    filterPropertyTabs?: Array<'event' | 'user'>
   }>(),
   {
     logic: 'and',
@@ -52,6 +42,8 @@ const props = withDefaults(
     removable: true,
     emptyText: '暂无筛选条件',
     showToolbar: false,
+    pickerMode: 'property',
+    filterPropertyTabs: () => [],
   }
 )
 
@@ -133,6 +125,8 @@ function isGroup(node: FilterNode) {
             :schema-loading="schemaLoading"
             :level="level + 1"
             :show-toolbar="true"
+            :picker-mode="pickerMode"
+            :filter-property-tabs="filterPropertyTabs"
             @update:logic="updateNodeLogic(node, $event)"
           />
         </div>
@@ -140,8 +134,9 @@ function isGroup(node: FilterNode) {
           <BuilderFieldPicker
             v-model="node.field"
             class="builder-field-select"
-            mode="property"
+            :mode="pickerMode"
             :options="fieldOptions"
+            :filter-property-tabs="filterPropertyTabs"
             :loading="schemaLoading"
             placeholder="字段"
           />
