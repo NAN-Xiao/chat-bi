@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { ElConfigProvider, ElDatePickerPanel } from 'element-plus'
+import 'element-plus/es/components/date-picker-panel/style/css'
+import elementZhCnLocale from 'element-plus/es/locale/lang/zh-cn'
 import {
   DASHBOARD_DATE_PRESETS,
   DASHBOARD_DATE_PRESET_LABELS,
@@ -49,6 +52,14 @@ const buttonLabel = computed(() =>
   model.value ? formatDashboardDateExpression(model.value) : '选择时间'
 )
 const activePreset = computed(() => (draft.value.mode === 'preset' ? draft.value.preset : ''))
+type CalendarRange = [string, string] | []
+
+const calendarRange = computed<CalendarRange>({
+  get: () => draft.value.mode === 'preset' && draft.value.preset === 'all_time'
+    ? []
+    : [preview.value.start, preview.value.end],
+  set: updateCalendarRange,
+})
 
 function openPicker() {
   if (props.disabled) return
@@ -113,6 +124,18 @@ function updateDynamicDays(side: 'start' | 'end', value: number | undefined) {
   updateEndpoint(side, { mode: 'dynamic', unit: 'day', offset: -days })
 }
 
+function updateCalendarRange(value: CalendarRange | null) {
+  if (!Array.isArray(value) || value.length !== 2) return
+  const [start, end] = value
+  if (!start || !end) return
+  draft.value = {
+    version: 1,
+    mode: 'range',
+    start: { mode: 'static', date: start },
+    end: { mode: 'static', date: end },
+  }
+}
+
 function applyDraft() {
   if (!validation.value.valid) return
   const next = cloneDashboardDateExpression(draft.value)
@@ -126,7 +149,7 @@ function applyDraft() {
 <template>
   <el-popover
     v-model:visible="visible"
-    :width="620"
+    :width="840"
     placement="bottom-start"
     trigger="click"
     popper-class="dashboard-date-expression-popper"
@@ -167,7 +190,7 @@ function applyDraft() {
         </aside>
 
         <main class="range-editor">
-          <template v-if="draft.mode === 'range'">
+          <div v-if="draft.mode === 'range'" class="endpoint-controls">
             <section v-for="side in (['start', 'end'] as const)" :key="side" class="endpoint-panel">
               <span class="endpoint-caption">{{ side === 'start' ? '开始时间' : '结束时间' }}</span>
               <el-segmented
@@ -199,18 +222,20 @@ function applyDraft() {
               />
               <span class="endpoint-result">{{ preview[side] }}</span>
             </section>
-          </template>
-          <template v-else>
-            <section class="preset-endpoint">
-              <span>开始时间</span>
-              <strong>{{ preview.start }}</strong>
-            </section>
-            <span class="range-arrow">→</span>
-            <section class="preset-endpoint">
-              <span>结束时间</span>
-              <strong>{{ preview.end }}</strong>
-            </section>
-          </template>
+          </div>
+          <div class="calendar-panel">
+            <ElConfigProvider :locale="elementZhCnLocale">
+              <ElDatePickerPanel
+                v-model="calendarRange"
+                type="daterange"
+                value-format="YYYY-MM-DD"
+                :border="false"
+                :clearable="false"
+                :show-footer="false"
+                unlink-panels
+              />
+            </ElConfigProvider>
+          </div>
         </main>
       </div>
 
@@ -248,7 +273,6 @@ function applyDraft() {
 .picker-header span:last-child,
 .endpoint-caption,
 .preset-caption,
-.preset-endpoint span,
 .endpoint-result {
   color: #86909c;
   font-size: 12px;
@@ -306,11 +330,19 @@ function applyDraft() {
 }
 
 .range-editor {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.endpoint-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  padding: 18px;
+  padding: 4px 6px 10px;
+  border-bottom: 1px solid #e5e6eb;
 }
 
 .endpoint-panel {
@@ -334,24 +366,15 @@ function applyDraft() {
   white-space: nowrap;
 }
 
-.preset-endpoint {
-  display: flex;
+.calendar-panel {
   min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
-  background: #f7f8fa;
+  overflow: hidden;
 }
 
-.preset-endpoint strong {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.range-arrow {
-  color: #86909c;
+.calendar-panel :deep(.el-picker-panel) {
+  width: 100%;
+  border: 0;
+  box-shadow: none;
 }
 
 .picker-error {
@@ -374,12 +397,11 @@ function applyDraft() {
   }
 
   .range-editor {
-    grid-template-columns: minmax(0, 1fr);
+    overflow-x: auto;
   }
 
-  .range-arrow {
-    transform: rotate(90deg);
-    text-align: center;
+  .endpoint-controls {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

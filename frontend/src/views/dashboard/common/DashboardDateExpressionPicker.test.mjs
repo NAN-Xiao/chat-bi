@@ -18,6 +18,24 @@ assert.match(source, /endpoint-mode/)
 assert.match(source, /picker-footer/)
 assert.match(source, /动态时间/)
 assert.match(source, /静态时间/)
+assert.match(
+  source,
+  /import\s*{[\s\S]*ElConfigProvider[\s\S]*ElDatePickerPanel[\s\S]*}\s*from\s*'element-plus'/
+)
+assert.match(source, /import elementZhCnLocale from 'element-plus\/es\/locale\/lang\/zh-cn'/)
+assert.match(source, /import 'element-plus\/es\/components\/date-picker-panel\/style\/css'/)
+assert.match(source, /const calendarRange = computed/)
+assert.match(source, /function updateCalendarRange/)
+assert.match(source, /start:\s*{\s*mode:\s*'static',\s*date:\s*start\s*}/)
+assert.match(source, /end:\s*{\s*mode:\s*'static',\s*date:\s*end\s*}/)
+assert.match(
+  source,
+  /<ElConfigProvider :locale="elementZhCnLocale">[\s\S]*<ElDatePickerPanel/
+)
+assert.match(source, /<ElDatePickerPanel[\s\S]*v-model="calendarRange"/)
+assert.match(source, /type="daterange"/)
+assert.match(source, /value-format="YYYY-MM-DD"/)
+assert.match(source, /unlink-panels/)
 assert.doesNotMatch(source, /resourceId|dashboardMode|ROI看板|sq-view/)
 
 console.log('dashboard date expression picker contract passed')
