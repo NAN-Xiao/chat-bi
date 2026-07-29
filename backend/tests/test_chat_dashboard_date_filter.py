@@ -6,6 +6,7 @@ import pytest
 
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
+    normalize_chat_date_filter_for_question,
     normalize_chat_date_filter,
     render_chat_date_filter_sql,
 )
@@ -28,10 +29,22 @@ DATE_LITERAL_TEMPLATE_SQL = (
     "SELECT * FROM event "
     "WHERE `e`.`dt` BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
 )
+DATE_CURRENT_FUNCTION_SQL = (
+    "SELECT * FROM event "
+    "WHERE `e`.`dt` BETWEEN "
+    "CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 14 DAY), '%Y%m%d') AS SIGNED) "
+    "AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) "
+    "AND `e`.`prod` = 110000047"
+)
 DATE_FILTER = {
     "time_field": "dt",
     "date_parameter_type": "yyyymmdd_number",
     "date_expression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+}
+DATE_FILTER_WITH_MODEL_DEFAULT_PAST_28_DAYS = {
+    "time_field": "dt",
+    "date_parameter_type": "yyyymmdd_number",
+    "date_expression": {"version": 1, "mode": "preset", "preset": "past_28_days"},
 }
 
 
@@ -39,6 +52,77 @@ def test_normalize_accepts_complete_past_seven_days_yyyymmdd_template():
     pivot = normalize_chat_date_filter(DATE_FILTER, DATE_TEMPLATE_SQL, "line")
 
     assert pivot == {"enabled": False, **DATE_FILTER}
+
+
+def test_normalize_uses_explicit_fourteen_day_question_range_instead_of_default():
+    pivot = normalize_chat_date_filter_for_question(
+        "最近14天每日付费金额趋势",
+        DATE_FILTER,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot == {
+        "enabled": False,
+        "time_field": "dt",
+        "date_parameter_type": "yyyymmdd_number",
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "dynamic", "unit": "day", "offset": -14},
+            "end": {"mode": "dynamic", "unit": "day", "offset": -1},
+        },
+    }
+
+
+def test_normalize_keeps_default_past_seven_days_when_question_omits_time_range():
+    pivot = normalize_chat_date_filter_for_question(
+        "每日付费金额趋势",
+        DATE_FILTER,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot == {"enabled": False, **DATE_FILTER}
+
+
+def test_normalize_replaces_model_default_when_question_omits_time_range():
+    pivot = normalize_chat_date_filter_for_question(
+        "每日活跃用户趋势",
+        DATE_FILTER_WITH_MODEL_DEFAULT_PAST_28_DAYS,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot == {"enabled": False, **DATE_FILTER}
+
+
+def test_check_sql_uses_explicit_question_range_instead_of_llm_default():
+    service = object.__new__(LLMService)
+    service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.ds = SimpleNamespace(type="mysql")
+    service.chat_question = SimpleNamespace(question="过去15天各渠道D7留存率对比", data_skill="")
+    service.chat_date_pivot = None
+    response = {
+        "success": True,
+        "sql": DATE_TEMPLATE_SQL,
+        "tables": ["event"],
+        "chart-type": "line",
+        "date_filter": DATE_FILTER,
+    }
+
+    service.check_sql(
+        session=object(),
+        res=__import__("json").dumps(response),
+        operate=OperationEnum.GENERATE_SQL,
+    )
+
+    assert service.chat_date_pivot["date_expression"] == {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "dynamic", "unit": "day", "offset": -15},
+        "end": {"mode": "dynamic", "unit": "day", "offset": -1},
+    }
 
 
 def test_normalize_rejects_token_without_configuration():
@@ -134,6 +218,41 @@ def test_check_sql_rewrites_date_literals_to_template_for_declared_date_filter()
     assert sql == DATE_LITERAL_TEMPLATE_SQL
     assert tables == ["event"]
     assert service.chat_date_pivot == {"enabled": False, **DATE_FILTER}
+
+
+def test_check_sql_rewrites_declared_current_date_function_range_to_template():
+    service = object.__new__(LLMService)
+    service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.ds = SimpleNamespace(type="mysql")
+    service.chat_question = SimpleNamespace(question="最近14天每日付费金额趋势", data_skill="")
+    service.chat_date_pivot = None
+    response = {
+        "success": True,
+        "sql": DATE_CURRENT_FUNCTION_SQL,
+        "tables": ["event"],
+        "chart-type": "line",
+        "date_filter": DATE_FILTER,
+    }
+
+    sql, tables = service.check_sql(
+        session=object(),
+        res=__import__("json").dumps(response),
+        operate=OperationEnum.GENERATE_SQL,
+    )
+
+    assert "CURDATE" not in sql.upper()
+    assert sql == (
+        "SELECT * FROM event "
+        "WHERE `e`.`dt` BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} "
+        "AND `e`.`prod` = 110000047"
+    )
+    assert tables == ["event"]
+    assert service.chat_date_pivot["date_expression"] == {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "dynamic", "unit": "day", "offset": -14},
+        "end": {"mode": "dynamic", "unit": "day", "offset": -1},
+    }
 
 
 def test_prepare_sql_saves_template_but_validates_rendered_sql(monkeypatch):

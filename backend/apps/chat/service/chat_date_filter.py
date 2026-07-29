@@ -20,10 +20,53 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
 )
 
 _SQL_IDENTIFIER_PATTERN = r'(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$]*)'
+_EXPLICIT_PAST_DAYS_PATTERN = re.compile(
+    r"(?:最近|近|过去)\s*(?P<days>[1-9]\d{0,3})\s*(?:个\s*)?(?:完整\s*)?(?:自然\s*)?[天日]"
+)
+_DEFAULT_DATE_EXPRESSION = {"version": 1, "mode": "preset", "preset": "past_7_days"}
 
 
 class ChatDateFilterConfigurationError(ValueError):
     """聊天 SQL 的日期模板配置不完整或不一致。"""
+
+
+def _explicit_question_date_expression(question: str | None) -> dict[str, Any] | None:
+    """将问题中明确的最近 N 天转换为截至昨天的动态看板日期表达式。"""
+    matches = _EXPLICIT_PAST_DAYS_PATTERN.findall(str(question or ""))
+    distinct_days = {int(value) for value in matches}
+    if len(distinct_days) != 1:
+        return None
+    days = distinct_days.pop()
+    if days == 7:
+        return {"version": 1, "mode": "preset", "preset": "past_7_days"}
+    if days == 30:
+        return {"version": 1, "mode": "preset", "preset": "past_30_days"}
+    if days == 90:
+        return {"version": 1, "mode": "preset", "preset": "past_90_days"}
+    return {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "dynamic", "unit": "day", "offset": -days},
+        "end": {"mode": "dynamic", "unit": "day", "offset": -1},
+    }
+
+
+def normalize_chat_date_filter_for_question(
+    question: str | None,
+    payload: Any,
+    sql: str,
+    chart_type: str,
+) -> dict[str, Any] | None:
+    """将聊天日期配置对齐到用户明确范围或未指定时的过去七天默认值。"""
+    expression = _explicit_question_date_expression(question)
+    if not isinstance(payload, dict):
+        return normalize_chat_date_filter(payload, sql, chart_type)
+    if expression is None:
+        if _EXPLICIT_PAST_DAYS_PATTERN.search(str(question or "")):
+            return normalize_chat_date_filter(payload, sql, chart_type)
+        expression = _DEFAULT_DATE_EXPRESSION
+    normalized_payload = {**payload, "date_expression": expression}
+    return normalize_chat_date_filter(normalized_payload, sql, chart_type)
 
 
 def _date_literal_pattern(parameter_type: str) -> str | None:
@@ -39,7 +82,7 @@ def _date_literal_pattern(parameter_type: str) -> str | None:
 
 
 def rewrite_chat_date_filter_literals(payload: Any, sql: str) -> str:
-    """将已声明日期字段的直接 BETWEEN 字面量保留为看板日期模板。"""
+    """将已声明日期字段的 BETWEEN 边界保留为看板日期模板。"""
     if not isinstance(payload, dict) or has_dashboard_date_filter_parameters(sql):
         return sql
 
@@ -52,11 +95,27 @@ def rewrite_chat_date_filter_literals(payload: Any, sql: str) -> str:
         return sql
 
     field_pattern = rf"(?:(?:{_SQL_IDENTIFIER_PATTERN}\s*\.\s*)*)`?{re.escape(time_field)}`?"
+    start_token, end_token = tokens
+
+    # 模型可能把明确的日期范围写成 CURDATE() 计算式；只改写声明时间字段的完整范围。
+    current_date_range_pattern = re.compile(
+        rf"(?P<field>{field_pattern})\s+BETWEEN\s+"
+        rf"(?P<start>.*?{_DATABASE_CURRENT_DATE_PATTERN.pattern}.*?)\s+AND\s+"
+        rf"(?P<end>.*?{_DATABASE_CURRENT_DATE_PATTERN.pattern}.*?)"
+        rf"(?=\s+(?:AND|OR|GROUP|ORDER|HAVING|LIMIT|UNION)\b|\s*$)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    rewritten_sql = current_date_range_pattern.sub(
+        lambda match: f"{match.group('field')} BETWEEN {start_token} AND {end_token}",
+        sql,
+    )
+    if rewritten_sql != sql:
+        return rewritten_sql
+
     pattern = re.compile(
         rf"(?P<field>{field_pattern})\s+BETWEEN\s+(?P<start>{literal_pattern})\s+AND\s+(?P<end>{literal_pattern})",
         re.IGNORECASE,
     )
-    start_token, end_token = tokens
     return pattern.sub(
         lambda match: f"{match.group('field')} BETWEEN {start_token} AND {end_token}",
         sql,

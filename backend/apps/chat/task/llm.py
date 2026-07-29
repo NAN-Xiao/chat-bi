@@ -33,7 +33,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     trigger_log_error, save_agent_context_snapshot
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
-    normalize_chat_date_filter,
+    normalize_chat_date_filter_for_question,
     rewrite_chat_date_filter_literals,
     render_chat_date_filter_sql,
 )
@@ -2253,7 +2253,8 @@ class LLMService:
 
         sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
         try:
-            self.chat_date_pivot = normalize_chat_date_filter(
+            self.chat_date_pivot = normalize_chat_date_filter_for_question(
+                self.chat_question.question,
                 data.get("date_filter"),
                 sql,
                 data.get("chart-type") or data.get("chart_type") or "",
