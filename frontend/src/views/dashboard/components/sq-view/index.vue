@@ -10,6 +10,7 @@ import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDat
 import {
   buildDashboardDateExpressionPivot,
   cloneDashboardDateExpression,
+  defaultDashboardDateExpression,
   normalizeDashboardDateExpression,
   type DashboardDateExpression,
 } from '@/views/dashboard/common/dashboardDateExpression.ts'
@@ -413,13 +414,6 @@ const hasSqlDashboardSource = computed(() => {
 const dateExpressionPickerEnabled = computed(
   () => hasSqlDashboardSource.value
 )
-function defaultDashboardDateExpression(): DashboardDateExpression {
-  return {
-    version: 1,
-    mode: 'preset',
-    preset: 'past_30_days',
-  }
-}
 const configuredDashboardDateExpression = computed(() =>
   normalizeDashboardDateExpression(props.viewInfo?.pivot?.date_expression)
   || (hasSqlDashboardSource.value ? defaultDashboardDateExpression() : null)

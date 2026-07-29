@@ -18,7 +18,14 @@ assert.match(source, /date_expression/)
 assert.match(source, /const dateExpressionEnabled = computed/)
 assert.match(source, /dateExpressionPickerEnabled:\s*true/)
 assert.match(source, /sqlBuilder\.dateExpressionPickerEnabled\s*=\s*true/)
-assert.match(source, /preset:\s*['"]past_30_days['"]/, 'SQL 日期控件默认使用过去 30 天')
+assert.match(source, /defaultDashboardDateExpression/, 'SQL 日期控件应使用共享默认值工厂')
+assert.doesNotMatch(source, /preset:\s*['"]past_30_days['"]/, 'SQL 日期控件不得保留过去 30 天默认值')
+const initEditorSource = source.match(/function initEditor\(\)[\s\S]*?\n}/)?.[0] || ''
+assert.match(
+  initEditorSource,
+  /restoreSqlBuilderState\([^)]*\)[\s\S]*?normalizeDashboardDateExpression\(viewInfo\.pivot\?\.date_expression\)[\s\S]*?if \(pivotDateExpression\) \{[\s\S]*?cloneDashboardDateExpression\(pivotDateExpression\)/,
+  '有效的已保存日期表达式应优先于构建器表达式'
+)
 assert.match(source, /v-if="hasSqlSource\s*&&\s*dateExpressionEnabled"[\s\S]*date_parameter_type/)
 assert.match(source, /function applyDateExpression/)
 assert.match(

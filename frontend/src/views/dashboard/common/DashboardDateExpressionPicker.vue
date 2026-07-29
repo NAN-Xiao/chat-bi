@@ -8,6 +8,7 @@ import {
   DASHBOARD_DATE_PRESET_LABELS,
   buildDashboardDateExpressionFromCalendarRange,
   cloneDashboardDateExpression,
+  defaultDashboardDateExpression,
   dashboardDateExpressionCalendarRange,
   formatDashboardDateExpression,
   resolveDashboardDateExpression,
@@ -37,14 +38,9 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const defaultExpression: DashboardDateExpression = {
-  version: 1,
-  mode: 'preset',
-  preset: 'past_30_days',
-}
 const visible = ref(false)
 const appliedWhileOpen = ref(false)
-const draft = ref<DashboardDateExpression>(cloneDashboardDateExpression(defaultExpression))
+const draft = ref<DashboardDateExpression>(defaultDashboardDateExpression())
 const now = ref(new Date())
 
 const preview = computed(() =>
@@ -67,7 +63,7 @@ function openPicker() {
   if (props.disabled) return
   now.value = new Date()
   appliedWhileOpen.value = false
-  draft.value = cloneDashboardDateExpression(model.value || defaultExpression)
+  draft.value = cloneDashboardDateExpression(model.value || defaultDashboardDateExpression())
 }
 
 function closeWithoutApply() {
