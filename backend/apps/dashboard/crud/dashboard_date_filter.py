@@ -127,6 +127,12 @@ def _pivot_value(pivot: Any | None, key: str, default: Any = None) -> Any:
     return getattr(pivot, key, default)
 
 
+def _date_filter_value(date_filter: Any | None, key: str, default: Any = None) -> Any:
+    if isinstance(date_filter, dict):
+        return date_filter.get(key, default)
+    return getattr(date_filter, key, default)
+
+
 def _scan_sql_tokens(sql: str, replacements: dict[str, str] | None = None) -> tuple[str, set[str]]:
     """只读取 SQL 正文中的受控 token，并可在同一次扫描中替换。"""
     output: list[str] = []
@@ -320,6 +326,7 @@ def prepare_dashboard_date_filter(
     *,
     ds_type: str | None,
     pivot: Any | None,
+    date_filter: Any | None = None,
     today: date | None = None,
     require_time_field: bool = True,
 ) -> DashboardDateFilterPreparation:
@@ -341,13 +348,20 @@ def prepare_dashboard_date_filter(
             capability={"status": "realtime", "reason": "realtime_table"},
         )
 
-    if _pivot_value(pivot, "range_enabled", True) is False:
+    # 旧调用方仍可直接传入 pivot 日期配置；服务层会先将画布 V1/V2 配置解析为 date_filter。
+    uses_legacy_pivot = date_filter is None
+    if uses_legacy_pivot and _pivot_value(pivot, "range_enabled", True) is False:
         return _unconfigured(source_sql, physical_tables, "range_disabled")
 
     if require_time_field and not str(_pivot_value(pivot, "time_field", "") or "").strip():
         return _unconfigured(source_sql, physical_tables, "missing_time_field")
 
-    parameter_type = str(_pivot_value(pivot, "date_parameter_type", "") or "").strip()
+    parameter_type = str(
+        _date_filter_value(date_filter, "parameter_type", "")
+        if date_filter is not None
+        else _pivot_value(pivot, "date_parameter_type", "")
+        or ""
+    ).strip()
     parameter_error = validate_dashboard_date_parameter_sql(
         source_sql,
         parameter_type,
@@ -360,14 +374,20 @@ def prepare_dashboard_date_filter(
 
     business_today = today or datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
     default_start, default_end = default_dashboard_date_range(today=business_today)
-    custom_start = _pivot_value(pivot, "custom_start", "")
-    custom_end = _pivot_value(pivot, "custom_end", "")
+    custom_start = _date_filter_value(date_filter, "custom_start", "") if date_filter is not None else _pivot_value(pivot, "custom_start", "")
+    custom_end = _date_filter_value(date_filter, "custom_end", "") if date_filter is not None else _pivot_value(pivot, "custom_end", "")
+    if date_filter is not None and bool(str(custom_start or "").strip()) != bool(str(custom_end or "").strip()):
+        return _unconfigured(source_sql, physical_tables, "invalid_date_range")
     has_custom_override = bool(
-        str(_pivot_value(pivot, "range", "") or "").strip().lower() == "custom"
+        (date_filter is not None or str(_pivot_value(pivot, "range", "") or "").strip().lower() == "custom")
         and str(custom_start or "").strip()
         and str(custom_end or "").strip()
     )
-    expression = None if has_custom_override else _pivot_value(pivot, "date_expression", None)
+    expression = None if has_custom_override else (
+        _date_filter_value(date_filter, "expression", None)
+        if date_filter is not None
+        else _pivot_value(pivot, "date_expression", None)
+    )
     try:
         if has_custom_override:
             start, end = _parse_date_value(custom_start), _parse_date_value(custom_end)

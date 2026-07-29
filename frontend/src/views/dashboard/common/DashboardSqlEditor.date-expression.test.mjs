@@ -22,27 +22,18 @@ assert.match(source, /date_expression/)
 assert.match(source, /const dateExpressionEnabled = computed/)
 assert.match(source, /dateExpressionPickerEnabled:\s*true/)
 assert.match(source, /sqlBuilder\.dateExpressionPickerEnabled\s*=\s*true/)
-assert.match(
+assert.doesNotMatch(
   source,
-  /const DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE: Exclude<DashboardDateParameterType, ''> = 'yyyymmdd_number'/,
-  '未配置时应默认使用 YYYYMMDD 数字日期参数'
+  /DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE|pivotDateParameterType:\s*DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE/,
+  '日期参数类型缺失时不得静默猜测默认类型'
 )
-assert.match(
-  source,
-  /pivotDateParameterType: DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE as DashboardDateParameterType/,
-  '新建图表应预选默认日期参数类型'
-)
-assert.match(
-  source,
-  /:\s*DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE\s*\n\s*const pivotDateExpression/,
-  '旧图表缺少日期参数类型时应回退到默认值'
-)
+assert.match(source, /if \(usesDashboardDateParameters && !form\.pivotDateParameterType\)/)
 assert.match(source, /defaultDashboardDateExpression/, 'SQL 日期控件应使用共享默认值工厂')
 assert.doesNotMatch(source, /preset:\s*['"]past_30_days['"]/, 'SQL 日期控件不得保留过去 30 天默认值')
 const initEditorSource = source.match(/function initEditor\(\)[\s\S]*?\n}/)?.[0] || ''
 assert.match(
   initEditorSource,
-  /restoreSqlBuilderState\([^)]*\)[\s\S]*?normalizeDashboardDateExpression\(viewInfo\.pivot\?\.date_expression\)[\s\S]*?if \(pivotDateExpression\) \{[\s\S]*?cloneDashboardDateExpression\(pivotDateExpression\)/,
+  /restoreSqlBuilderState\([^)]*\)[\s\S]*?normalizeDashboardDateExpression\(normalizedConfig\.dateFilter\?\.expression\)[\s\S]*?if \(pivotDateExpression\) \{[\s\S]*?cloneDashboardDateExpression\(pivotDateExpression\)/,
   '有效的已保存日期表达式应优先于构建器表达式'
 )
 assert.doesNotMatch(
@@ -55,21 +46,7 @@ assert.match(
   /else if\s*\(\s*pivotDateExpression\s*&&\s*JSON\.stringify\(sqlBuilder\.timeExpression\) !== JSON\.stringify\(pivotDateExpression\)\s*\)/,
   '已保存日期表达式存在但与当前值不一致时仍应阻止执行'
 )
-assert.match(source, /v-if="hasSqlSource\s*&&\s*dateExpressionEnabled"[\s\S]*date_parameter_type/)
 assert.match(source, /function applyDateExpression/)
-assert.match(
-  source,
-  /function configuredDashboardTimeField\(\)[\s\S]*sqlBuilder\.timeField\s*\|\|\s*form\.pivotTimeField/
-)
-assert.match(
-  source,
-  /time_field:\s*expression\s*\?\s*expressionTimeField\s*:\s*form\.pivotTimeField/
-)
-assert.match(
-  source,
-  /if\s*\(\s*form\.pivotEnabled\s*&&\s*!configuredDashboardTimeField\(\)\s*&&\s*eventFieldScope\.value\.status !== ['"]datasource-mismatch['"]\s*\)/,
-  '仅启用交互透视筛选时才要求时间字段'
-)
 assert.match(source, /v-if="hasSqlSource\s*&&\s*dateExpressionEnabled"/)
 assert.match(source, /<DashboardDateExpressionPicker/)
 assert.doesNotMatch(
@@ -99,7 +76,7 @@ assert.match(
 )
 assert.match(
   source,
-  /function previewPivotPayload\(\)[\s\S]*!dateExpressionEnabled\.value[\s\S]*return buildPivotConfig/
+  /function dashboardDateFilterConfigForWrite\(\)[\s\S]*buildDashboardDateFilterConfig/
 )
 assert.doesNotMatch(
   source,

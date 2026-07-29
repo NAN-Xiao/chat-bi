@@ -5,6 +5,8 @@ import {
   beginDashboardChartRequest,
   beginDashboardDateApply,
   buildAppliedDashboardDatePivot,
+  buildDashboardDateFilterRequest,
+  buildDashboardDateFilterRequestForView,
   buildDashboardDatePivot,
   buildDashboardDateSourcePreviewPivot,
   canShowDashboardDateFilter,
@@ -119,6 +121,38 @@ assert.deepEqual(
     metric_fields: ['amount'],
   }
 )
+assert.deepEqual(
+  buildDashboardDateFilterRequestForView(
+    {
+      dateFilter: { enabled: true, parameterType: 'date', expression: { mode: 'preset', preset: 'past_7_days' } },
+      dateFilterCapability: { status: 'available', parameterType: 'date' },
+    },
+    ['2026-05-01', '2026-05-14']
+  ),
+  {
+    parameter_type: 'date',
+    expression: { mode: 'preset', preset: 'past_7_days' },
+    custom_start: '2026-05-01',
+    custom_end: '2026-05-14',
+  }
+)
+
+assert.deepEqual(
+  buildDashboardDateFilterRequest(
+    {
+      enabled: true,
+      parameterType: 'date',
+      expression: { mode: 'relative', value: 'last_14_days' },
+    },
+    ['2026-05-01', '2026-05-14']
+  ),
+  {
+    parameter_type: 'date',
+    expression: { mode: 'relative', value: 'last_14_days' },
+    custom_start: '2026-05-01',
+    custom_end: '2026-05-14',
+  }
+)
 
 replacementState.appliedRange = ['2026-05-01', '2026-05-14']
 viewInfo.dateFilterCapability = capability
@@ -150,6 +184,16 @@ assert.deepEqual(
 const previousContext = dashboardDateFilterContext(
   { id: 'chart-1', sql: 'select 1' },
   { status: 'available', defaultStart: '2026-07-13', defaultEnd: '2026-07-26' }
+)
+assert.deepEqual(
+  createDashboardDateFilterState({
+    status: 'available',
+    defaultStart: '2026-07-13',
+    defaultEnd: '2026-07-26',
+    resolvedStart: '2026-07-20',
+    resolvedEnd: '2026-07-26',
+  }).appliedRange,
+  ['2026-07-20', '2026-07-26']
 )
 const nextDefaultContext = dashboardDateFilterContext(
   { id: 'chart-1', sql: 'select 1' },

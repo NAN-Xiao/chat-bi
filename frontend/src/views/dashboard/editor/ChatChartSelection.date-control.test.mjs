@@ -8,5 +8,6 @@ const source = readFileSync(
 )
 
 assert.match(source, /\['table', 'metric'\]\.includes\(type\)/)
-assert.match(source, /configuredPivot\.enabled === false && !configuredPivot\.date_expression/)
+assert.match(source, /normalizeDashboardChartConfig/)
 assert.match(source, /return \{[\s\S]*\.\.\.defaultPivot,[\s\S]*\.\.\.configuredPivot/)
+assert.doesNotMatch(source, /\.date_expression/)

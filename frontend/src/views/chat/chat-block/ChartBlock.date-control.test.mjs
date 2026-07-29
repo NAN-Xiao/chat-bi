@@ -8,5 +8,7 @@ const source = readFileSync(
 )
 
 assert.match(source, /const configuredPivot = chartBaseInfo\?\.pivot/)
-assert.match(source, /configuredPivot\.enabled === false && !configuredPivot\.date_expression/)
-assert.match(source, /recordeInfo\['pivot'\] = resolveChartPivot\(chartBaseInfo, recordeInfo\)/)
+assert.match(source, /normalizeDashboardChartConfig/)
+assert.match(source, /pivot: resolveChartPivot\(chartBaseInfo, recordeInfo\)/)
+assert.match(source, /recordeInfo\['dateFilter'\] = dashboardConfig\.dateFilter/)
+assert.doesNotMatch(source, /\.date_expression/)

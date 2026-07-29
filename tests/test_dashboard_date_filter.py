@@ -8,6 +8,7 @@ from apps.dashboard.crud.dashboard_date_filter import (
     prepare_dashboard_date_filter,
     resolve_dashboard_date_expression,
 )
+from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
 from common.core.config import Settings
 
 
@@ -430,3 +431,40 @@ def test_sql_parse_failure_is_unconfigured():
 def test_invalid_business_timezone_fails_configuration_validation():
     with pytest.raises(ValidationError, match="DASHBOARD_BUSINESS_TIMEZONE"):
         Settings(_env_file=None, DASHBOARD_BUSINESS_TIMEZONE="Invalid/Timezone")
+
+
+def test_independent_date_filter_renders_yyyymmdd_without_pivot():
+    result = prepare_dashboard_date_filter(
+        "select dt from orders where dt between {{dashboard_start_yyyymmdd}} "
+        "and {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot={"enabled": False},
+        date_filter=DashboardDateFilterRequest(
+            parameter_type="yyyymmdd_number",
+            custom_start="2026-05-01",
+            custom_end="2026-05-31",
+        ),
+        require_time_field=False,
+        today=date(2026, 7, 28),
+    )
+
+    assert result.capability["status"] == "available"
+    assert "20260501" in result.sql
+    assert "20260531" in result.sql
+
+
+def test_independent_date_filter_rejects_partial_custom_range():
+    result = prepare_dashboard_date_filter(
+        "select dt from orders where dt between {{dashboard_start_yyyymmdd}} "
+        "and {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot={"enabled": False},
+        date_filter=DashboardDateFilterRequest(
+            parameter_type="yyyymmdd_number",
+            custom_start="2026-05-01",
+        ),
+        require_time_field=False,
+        today=date(2026, 7, 28),
+    )
+
+    assert result.capability == {"status": "unconfigured", "reason": "invalid_date_range"}

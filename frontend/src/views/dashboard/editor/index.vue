@@ -39,7 +39,9 @@ import {
 import {
   applyDashboardDateFilterCapability,
   beginDashboardChartRequest,
-  buildAppliedDashboardDatePivot,
+  buildDashboardDateFilterRequestForView,
+  canShowDashboardDateFilter,
+  getOrCreateDashboardDateFilterState,
   isDashboardChartRequestCurrent,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 
@@ -235,13 +237,14 @@ function normalizePermissionDeniedChart(viewInfo: any) {
 }
 
 function chartSqlPayload(viewInfo: any) {
+  const dateFilterState = canShowDashboardDateFilter(viewInfo.dateFilterCapability)
+    ? getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
+    : null
   return {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
-    pivot: buildAppliedDashboardDatePivot(
-      viewInfo,
-      viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined
-    ),
+    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    date_filter: buildDashboardDateFilterRequestForView(viewInfo, dateFilterState?.appliedRange),
   }
 }
 

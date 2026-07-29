@@ -106,7 +106,8 @@ const sendMessage = async () => {
   try {
     currentController = new AbortController()
     const response = await chatApi.predict(currentRecord.predict_record_id, currentController)
-    currentReader = response.body.getReader()
+    const reader = response.body.getReader()
+    currentReader = reader
     const decoder = new TextDecoder('utf-8')
 
     let predict_answer = ''
@@ -121,7 +122,7 @@ const sendMessage = async () => {
         break
       }
 
-      const { done, value } = await currentReader.read()
+      const { done, value } = await reader.read()
       if (done) {
         _loading.value = false
         break

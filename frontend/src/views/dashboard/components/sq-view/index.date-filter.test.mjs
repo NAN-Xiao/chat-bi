@@ -31,7 +31,7 @@ assert.match(
 assert.match(source, /<DashboardDateExpressionPicker/)
 assert.match(
   source,
-  /normalizeDashboardDateExpression\(props\.viewInfo\?\.pivot\?\.date_expression\)[\s\S]*\|\|\s*\(hasSqlDashboardSource\.value\s*\?\s*defaultDashboardDateExpression\(\)/,
+  /normalizeDashboardDateExpression\([\s\S]*props\.viewInfo\?\.dateFilter\?\.expression[\s\S]*props\.viewInfo\?\.pivot\?\.date_expression[\s\S]*\|\|\s*\(hasSqlDashboardSource\.value\s*\?\s*defaultDashboardDateExpression\(\)/,
   'SQL 图表缺少历史表达式时应使用共享的默认过去七天'
 )
 assert.doesNotMatch(source, /preset:\s*['"]past_30_days['"]/, '展示层不得保留过去 30 天默认值')
@@ -54,7 +54,6 @@ assert.match(
   /v-else-if="showDashboardDateFilter\s*&&\s*!dateExpressionPickerEnabled"/
 )
 assert.match(source, /async function applyDashboardDateExpression/)
-assert.match(source, /buildDashboardDateExpressionPivot/)
 assert.match(source, /const configuredDashboardDateExpressionKey = computed/)
 assert.match(source, /import\s*{\s*ElConfigProvider,\s*ElDatePickerPanel\s*}\s*from\s*'element-plus'/)
 assert.match(source, /const datePickerLocale = computed\(/)
@@ -68,7 +67,7 @@ assert.match(
 assert.doesNotMatch(source, /<el-date-picker[\s\S]*class="date-filter-picker"/)
 assert.match(source, /dateFilterCapability[\s\S]*status\s*===\s*'available'/)
 assert.match(source, /pivotOverride\?:/)
-assert.match(source, /buildAppliedDashboardDatePivot/)
+assert.match(source, /buildDashboardDateFilterRequestForView/)
 assert.match(source, /date_parameter_type:\s*props\.viewInfo\?\.pivot\?\.date_parameter_type/)
 assert.match(source, /v-if="pivotRangeEnabled\s*&&\s*!showDashboardDateFilter"/)
 assert.doesNotMatch(source, /dateFilterCapability\.value\?\.defaultStart,[\s\S]{0,180}resetDashboardDateFilterState/)
@@ -94,8 +93,9 @@ const expressionApplyHandler =
 assert.match(expressionApplyHandler, /dashboardDateExpressionApplying\.value\s*=\s*true/)
 assert.match(expressionApplyHandler, /refreshData\([\s\S]*forceRefresh:\s*true/)
 assert.match(expressionApplyHandler, /blocking:\s*true/)
-assert.match(expressionApplyHandler, /pivotOverride:\s*buildDashboardDateExpressionPivot/)
+assert.match(expressionApplyHandler, /dateFilterOverride:\s*buildDashboardDateFilterRequestForView/)
 assert.match(expressionApplyHandler, /if \(succeeded\)[\s\S]*dashboardDateExpression\.value\s*=\s*next/)
+assert.match(expressionApplyHandler, /props\.viewInfo\?\.dateFilterCapability\?\.parameterType/)
 assert.match(expressionApplyHandler, /finally[\s\S]*dashboardDateExpressionApplying\.value\s*=\s*false/)
 
 const expressionSyncWatcher =

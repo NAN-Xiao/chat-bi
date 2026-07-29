@@ -45,7 +45,7 @@ import {
 import {
   applyDashboardDateFilterCapability,
   beginDashboardChartRequest,
-  buildAppliedDashboardDatePivot,
+  buildDashboardDateFilterRequestForView,
   canShowDashboardDateFilter,
   getOrCreateDashboardDateFilterState,
   isDashboardChartRequestCurrent,
@@ -553,15 +553,12 @@ function prepareChartPreviewState(viewInfo: any) {
 }
 
 function chartSqlPayload(viewInfo: any) {
-  ensureChartDateFilterState(viewInfo)
-  const pivot = buildAppliedDashboardDatePivot(
-    viewInfo,
-    viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined
-  )
+  const dateFilterState = ensureChartDateFilterState(viewInfo)
   return {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
-    pivot,
+    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    date_filter: buildDashboardDateFilterRequestForView(viewInfo, dateFilterState?.appliedRange),
   }
 }
 

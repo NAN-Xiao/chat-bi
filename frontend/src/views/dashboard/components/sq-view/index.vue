@@ -8,7 +8,6 @@ import { ElMessage } from 'element-plus-secondary'
 import { ElConfigProvider, ElDatePickerPanel } from 'element-plus'
 import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
 import {
-  buildDashboardDateExpressionPivot,
   cloneDashboardDateExpression,
   defaultDashboardDateExpression,
   normalizeDashboardDateExpression,
@@ -117,8 +116,7 @@ import {
   applyDashboardDateFilterCapability,
   beginDashboardChartRequest,
   beginDashboardDateApply,
-  buildAppliedDashboardDatePivot,
-  buildDashboardDatePivot,
+  buildDashboardDateFilterRequestForView,
   canShowDashboardDateFilter,
   commitDashboardDateRange,
   createDashboardDateFilterState,
@@ -374,6 +372,8 @@ type RefreshDataOptions = {
   forceRefresh?: boolean
   blocking?: boolean
   pivotOverride?: Record<string, unknown>
+  dateFilterOverride?: Record<string, unknown>
+  dateFilterRangeOverride?: [string, string] | null
 }
 
 const dateFilterCapability = computed<DashboardDateFilterCapability | null>(() => {
@@ -415,11 +415,18 @@ const dateExpressionPickerEnabled = computed(
   () => hasSqlDashboardSource.value
 )
 const configuredDashboardDateExpression = computed(() =>
-  normalizeDashboardDateExpression(props.viewInfo?.pivot?.date_expression)
+  normalizeDashboardDateExpression(
+    props.viewInfo?.dateFilter?.expression
+      ?? props.viewInfo?.pivot?.date_expression
+  )
   || (hasSqlDashboardSource.value ? defaultDashboardDateExpression() : null)
 )
 const configuredDashboardDateExpressionKey = computed(() =>
-  JSON.stringify(props.viewInfo?.pivot?.date_expression ?? null)
+  JSON.stringify(
+    props.viewInfo?.dateFilter?.expression
+      ?? props.viewInfo?.pivot?.date_expression
+      ?? null
+  )
 )
 const dashboardDateExpression = ref<DashboardDateExpression | null>(
   configuredDashboardDateExpression.value
@@ -1711,14 +1718,20 @@ async function refreshData(options: RefreshDataOptions = {}) {
     blockingRefreshLoading.value = true
     blockingRefreshRequestSeq = requestSeq
   }
-  const pivotPayload = options.pivotOverride
-    ?? buildAppliedDashboardDatePivot(props.viewInfo, getPivotPayload())
+  const pivotPayload = options.pivotOverride ?? getPivotPayload()
+  const dateFilterRange = options.dateFilterRangeOverride
+    ?? (canShowDashboardDateFilter(props.viewInfo?.dateFilterCapability)
+      ? dateFilterState.value.appliedRange
+      : null)
+  const dateFilterPayload = options.dateFilterOverride
+    ?? buildDashboardDateFilterRequestForView(props.viewInfo, dateFilterRange)
   let refreshSucceeded = false
   try {
     const result = await previewChartSqlWithCacheFallback({
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
       pivot: pivotPayload,
+      ...(dateFilterPayload ? { date_filter: dateFilterPayload } : {}),
     }, forceRefresh)
     if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
       return false
@@ -1820,7 +1833,7 @@ async function applyDashboardDateRange() {
   const succeeded = await refreshData({
     forceRefresh: true,
     blocking: true,
-    pivotOverride: buildDashboardDatePivot(props.viewInfo, pendingRange),
+    dateFilterRangeOverride: pendingRange,
   })
   if (succeeded) {
     commitDashboardDateRange(dateFilterState.value)
@@ -1837,13 +1850,32 @@ async function applyDashboardDateExpression(value: DashboardDateExpression) {
     const succeeded = await refreshData({
       forceRefresh: true,
       blocking: true,
-      pivotOverride: buildDashboardDateExpressionPivot(
-        getPivotPayload() || props.viewInfo?.pivot,
-        next
+      dateFilterOverride: buildDashboardDateFilterRequestForView(
+        {
+          ...props.viewInfo,
+          dateFilter: {
+            ...(props.viewInfo?.dateFilter || {}),
+            enabled: true,
+            parameterType: props.viewInfo?.dateFilter?.parameterType
+              || props.viewInfo?.dateFilterCapability?.parameterType,
+            expression: next,
+          },
+        },
+        null
       ),
+      dateFilterRangeOverride: null,
     })
     if (succeeded) {
       dashboardDateExpression.value = next
+      if (!props.viewInfo?.dateFilter && props.viewInfo?.dateFilterCapability?.parameterType) {
+        props.viewInfo.dateFilter = {
+          enabled: true,
+          parameterType: props.viewInfo.dateFilterCapability.parameterType,
+          expression: cloneDashboardDateExpression(next),
+        }
+      } else if (props.viewInfo?.dateFilter && typeof props.viewInfo.dateFilter === 'object') {
+        props.viewInfo.dateFilter.expression = cloneDashboardDateExpression(next)
+      }
     }
   } finally {
     dashboardDateExpressionApplying.value = false

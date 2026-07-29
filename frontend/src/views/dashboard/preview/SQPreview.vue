@@ -164,7 +164,6 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(sizeInit)
     resizeObserver.observe(previewCanvas.value)
   }
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   detectorTargetElement = document.getElementById(domId)
   if (detectorTargetElement) {
     elementResizeDetector = elementResizeDetectorMaker()

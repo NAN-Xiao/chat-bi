@@ -15,6 +15,7 @@ from apps.dashboard.crud.dashboard_date_filter import (
     validate_dashboard_date_parameter_sql,
 )
 from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardPivotRequest, DashboardSqlPreview
+from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
 
 
 def _request(cache_only: bool = False) -> DashboardSqlPreview:
@@ -68,14 +69,15 @@ def test_end_only_sql_does_not_need_pivot_date_parameter_mode() -> None:
     pivot = DashboardPivotRequest.model_validate(
         {
             "time_field": "dt",
-            "date_parameter_type": "yyyymmdd_number",
         }
     )
+    date_filter = DashboardDateFilterRequest(parameter_type="yyyymmdd_number")
 
     prepared = prepare_dashboard_date_filter(
         "select * from `user` where dt = {{dashboard_end_yyyymmdd}}",
         ds_type="mysql",
         pivot=pivot,
+        date_filter=date_filter,
         today=date(2026, 7, 29),
     )
 
@@ -153,31 +155,30 @@ def test_date_filter_cache_key_uses_rendered_dates_and_parameter_type() -> None:
         "select dt from orders where dt between "
         "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
     )
-    number_pivot = DashboardPivotRequest(
-        time_field="dt",
-        date_parameter_type="yyyymmdd_number",
-    )
-    text_pivot = number_pivot.model_copy(update={"date_parameter_type": "yyyymmdd_text"})
+    number_pivot = DashboardPivotRequest(time_field="dt")
+    text_pivot = DashboardPivotRequest(time_field="dt")
+    number_filter = DashboardDateFilterRequest(parameter_type="yyyymmdd_number")
+    text_filter = DashboardDateFilterRequest(parameter_type="yyyymmdd_text")
     day_one = prepare_dashboard_date_filter(
-        sql, ds_type="mysql", pivot=number_pivot, today=date(2026, 7, 27)
+        sql, ds_type="mysql", pivot=number_pivot, date_filter=number_filter, today=date(2026, 7, 27)
     )
     day_two = prepare_dashboard_date_filter(
-        sql, ds_type="mysql", pivot=number_pivot, today=date(2026, 7, 28)
+        sql, ds_type="mysql", pivot=number_pivot, date_filter=number_filter, today=date(2026, 7, 28)
     )
     text_range = prepare_dashboard_date_filter(
-        sql, ds_type="mysql", pivot=text_pivot, today=date(2026, 7, 27)
+        sql, ds_type="mysql", pivot=text_pivot, date_filter=text_filter, today=date(2026, 7, 27)
     )
     keys = [
-        dashboard_service._dashboard_sql_preview_cache_key(_user(), 1, prepared.sql, pivot)
-        for prepared, pivot in (
-            (day_one, number_pivot),
-            (day_two, number_pivot),
-            (text_range, text_pivot),
+        dashboard_service._dashboard_sql_preview_cache_key(_user(), 1, prepared.sql, pivot, date_filter=date_filter)
+        for prepared, pivot, date_filter in (
+            (day_one, number_pivot, number_filter),
+            (day_two, number_pivot, number_filter),
+            (text_range, text_pivot, text_filter),
         )
     ]
     assert len({key.fingerprint for key in keys}) == 3
     same_key = dashboard_service._dashboard_sql_preview_cache_key(
-        _user(), 1, day_one.sql, number_pivot
+        _user(), 1, day_one.sql, number_pivot, date_filter=number_filter
     )
     assert same_key.fingerprint == keys[0].fingerprint
 
@@ -187,37 +188,35 @@ def test_date_expression_is_preserved_by_pivot_request_and_separates_cache_keys(
         "select dt from orders where dt between "
         "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
     )
-    today_pivot = DashboardPivotRequest(
-        enabled=False,
-        time_field="dt",
-        date_parameter_type="yyyymmdd_number",
-        date_expression={"version": 1, "mode": "preset", "preset": "today"},
+    pivot = DashboardPivotRequest(enabled=False, time_field="dt")
+    today_filter = DashboardDateFilterRequest(
+        parameter_type="yyyymmdd_number",
+        expression={"version": 1, "mode": "preset", "preset": "today"},
     )
-    past_pivot = today_pivot.model_copy(
-        update={
-            "date_expression": {"version": 1, "mode": "preset", "preset": "past_30_days"},
-        }
+    past_filter = today_filter.model_copy(
+        update={"expression": {"version": 1, "mode": "preset", "preset": "past_30_days"}}
     )
     rendered_today_sql = prepare_dashboard_date_filter(
-        sql, ds_type="mysql", pivot=today_pivot, today=date(2026, 7, 28)
+        sql, ds_type="mysql", pivot=pivot, date_filter=today_filter, today=date(2026, 7, 28)
     ).sql
     rendered_past_sql = prepare_dashboard_date_filter(
-        sql, ds_type="mysql", pivot=past_pivot, today=date(2026, 7, 28)
+        sql, ds_type="mysql", pivot=pivot, date_filter=past_filter, today=date(2026, 7, 28)
     ).sql
 
-    assert today_pivot.date_expression == {"version": 1, "mode": "preset", "preset": "today"}
+    assert today_filter.expression == {"version": 1, "mode": "preset", "preset": "today"}
     assert (
         dashboard_service._dashboard_sql_preview_cache_key(
-            _user(), 7, rendered_today_sql, today_pivot
+            _user(), 7, rendered_today_sql, pivot, date_filter=today_filter
         ).fingerprint
         != dashboard_service._dashboard_sql_preview_cache_key(
-            _user(), 7, rendered_past_sql, past_pivot
+            _user(), 7, rendered_past_sql, pivot, date_filter=past_filter
         ).fingerprint
     )
 
 
 def test_date_filter_cache_key_explicitly_separates_resolved_expression_context() -> None:
-    pivot = DashboardPivotRequest(time_field="dt", date_parameter_type="yyyymmdd_number")
+    pivot = DashboardPivotRequest(time_field="dt")
+    date_filter = DashboardDateFilterRequest(parameter_type="yyyymmdd_number")
     base_context = {
         "timezone": "Asia/Shanghai",
         "resolvedStart": "2026-07-28",
@@ -243,12 +242,41 @@ def test_date_filter_cache_key_explicitly_separates_resolved_expression_context(
             7,
             "select dt from orders where dt between 20260728 and 20260728",
             pivot,
+            date_filter=date_filter,
             date_filter_capability=context,
         ).fingerprint
         for context in contexts
     }
 
     assert len(fingerprints) == len(contexts)
+
+
+def test_date_filter_cache_key_separates_range_and_pivot_enabled() -> None:
+    date_filter = DashboardDateFilterRequest(parameter_type="yyyymmdd_number")
+    base_context = {
+        "timezone": "Asia/Shanghai",
+        "resolvedStart": "2026-07-01",
+        "resolvedEnd": "2026-07-28",
+        "expression": {"version": 1, "mode": "preset", "preset": "current_month"},
+        "parameterType": "yyyymmdd_number",
+    }
+    keys = {
+        dashboard_service._dashboard_sql_preview_cache_key(
+            _user(),
+            7,
+            "select dt from orders where dt between 20260701 and 20260728",
+            DashboardPivotRequest(enabled=enabled),
+            date_filter=date_filter,
+            date_filter_capability={**base_context, **range_context},
+        ).fingerprint
+        for enabled, range_context in (
+            (False, {}),
+            (True, {}),
+            (False, {"resolvedStart": "2026-06-01", "resolvedEnd": "2026-06-30"}),
+        )
+    }
+
+    assert len(keys) == 3
 
 
 def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -458,3 +486,72 @@ def test_dashboard_payload_with_data_executes_sql_engine_instead_of_saved_snapsh
     chart = json.loads(result["canvas_view_info"])["chart-1"]
     assert calls == [(1, "select day, revenue from fact_payments")]
     assert chart["data"]["data"] == [{"day": "2026-07-01", "revenue": 20}]
+
+
+def test_dashboard_payload_executes_complete_v1_date_filter_canvas(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    _allow_chart_execution_datasource(monkeypatch)
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(dashboard_service, "_can_edit_dashboard", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_can_share_dashboard", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_can_set_default_dashboard", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda _session, _user, _datasource_id, sql, pivot=None: calls.append(sql) or {
+            "status": "success",
+            "fields": ["dt"],
+            "data": [{"dt": 20260501}],
+            "message": "",
+        },
+    )
+    record = CoreDashboard(
+        id="dashboard-v1",
+        tenant_id=2001,
+        name="历史日期画布",
+        pid="root",
+        datasource=1,
+        node_type="leaf",
+        type="dashboard",
+        canvas_style_data="{}",
+        component_data="[]",
+        canvas_view_info=json.dumps(
+            {
+                "chart-1": {
+                    "id": "chart-1",
+                    "datasource": 1,
+                    "sql": (
+                        "select dt from fact_payments where dt between "
+                        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                    ),
+                    "pivot": {
+                        "enabled": False,
+                        "date_parameter_type": "yyyymmdd_number",
+                        "date_expression": {
+                            "version": 1,
+                            "mode": "range",
+                            "start": {"mode": "static", "date": "2026-05-01"},
+                            "end": {"mode": "static", "date": "2026-05-31"},
+                        },
+                    },
+                }
+            }
+        ),
+        status=1,
+        is_default=1,
+        delete_flag=0,
+    )
+
+    result = dashboard_service._dashboard_payload(
+        _session(),
+        _user(),
+        record,
+        default_context=True,
+        include_data=True,
+    )
+
+    chart = json.loads(result["canvas_view_info"])["chart-1"]
+    assert chart["dateFilterCapability"]["status"] == "available"
+    assert calls and "20260501" in calls[0] and "20260531" in calls[0]

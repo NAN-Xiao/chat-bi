@@ -60,10 +60,14 @@ import {
   isLikelyPivotDateField,
 } from '@/views/dashboard/utils/pivotDimensions.ts'
 import {
+  buildDashboardDateFilterRequest,
   buildDashboardDateSourcePreviewPivot,
-  dashboardDateParameterTokens,
   scanDashboardDateParameterTokens,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  buildDashboardDateFilterConfig,
+  normalizeDashboardChartConfig,
+} from '@/views/dashboard/utils/dashboardChartConfig.ts'
 import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
@@ -95,7 +99,6 @@ const { t } = useI18n()
 const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
 type ChartDataSourceType = 'sql' | 'external_mcp'
 type DashboardDateParameterType = '' | 'date' | 'yyyymmdd_number' | 'yyyymmdd_text' | 'timestamp'
-const DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE: Exclude<DashboardDateParameterType, ''> = 'yyyymmdd_number'
 type ExecutionDatasourceOption = {
   id: number
   name: string
@@ -241,7 +244,7 @@ const form = reactive({
   pivotRange: 'source' as 'source' | '7d' | '14d' | '30d' | '90d' | 'all' | 'custom',
   pivotCustomStart: '',
   pivotCustomEnd: '',
-  pivotDateParameterType: DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE as DashboardDateParameterType,
+  pivotDateParameterType: '' as DashboardDateParameterType,
   pivotGroupValues: [] as string[],
   mcpServerId: '',
   mcpTool: '',
@@ -3040,10 +3043,8 @@ function initPivotConfig(pivot?: any) {
   form.pivotRange = pivot?.range || 'source'
   form.pivotCustomStart = pivot?.custom_start || ''
   form.pivotCustomEnd = pivot?.custom_end || ''
-  form.pivotDateParameterType = Object.prototype.hasOwnProperty.call(dashboardDateParameterTokens, pivot?.date_parameter_type)
-    ? pivot.date_parameter_type
-    : DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE
-  const pivotDateExpression = normalizeDashboardDateExpression(pivot?.date_expression)
+  form.pivotDateParameterType = ''
+  const pivotDateExpression = null
   if (dateExpressionEnabled.value) {
     if (!sqlBuilder.timeExpression) {
       dateExpressionConfigError.value = '日期表达式配置无效'
@@ -3077,11 +3078,7 @@ function initPivotConfig(pivot?: any) {
 }
 
 function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
-  const expression = dateExpressionEnabled.value && sqlBuilder.timeExpression
-    ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
-    : null
-  const expressionTimeField = configuredDashboardTimeField()
-  if ((!supportsPivotConfig.value || !form.pivotEnabled) && !expression) {
+  if (!supportsPivotConfig.value || !form.pivotEnabled) {
     return { enabled: false }
   }
   const groupField = activePivotGroupValueField.value
@@ -3089,15 +3086,8 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
   const config: Record<string, any> = {
     enabled: supportsPivotConfig.value && form.pivotEnabled,
     client_filter_only: props.viewInfo?.pivot?.client_filter_only === true,
-    time_field: expression ? expressionTimeField : form.pivotTimeField,
-    range_enabled: expression ? true : form.pivotRangeEnabled,
-    date_parameter_type: form.pivotDateParameterType,
-  }
-  if (expression) {
-    config.date_expression = expression
-  }
-  if (!config.enabled) {
-    return config
+    time_field: form.pivotTimeField,
+    range_enabled: form.pivotRangeEnabled,
   }
   Object.assign(config, {
     metric_fields: [...form.y],
@@ -3119,7 +3109,7 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
 }
 
 function previewPivotPayload() {
-  if ((!supportsPivotConfig.value || !form.pivotEnabled) && !dateExpressionEnabled.value) {
+  if (!supportsPivotConfig.value || !form.pivotEnabled) {
     return undefined
   }
   return buildPivotConfig({ includeGroupValues: false })
@@ -3128,6 +3118,24 @@ function previewPivotPayload() {
 function sourcePreviewPivotPayload() {
   const pivot = previewPivotPayload()
   return pivot ? buildDashboardDateSourcePreviewPivot(pivot) : undefined
+}
+
+function dashboardDateFilterConfigForWrite() {
+  const expression = dateExpressionEnabled.value && sqlBuilder.timeExpression
+    ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
+    : undefined
+  return buildDashboardDateFilterConfig(
+    form.sql,
+    form.pivotDateParameterType,
+    expression
+  )
+}
+
+function dashboardDateFilterRequestPayload() {
+  const customRange = form.pivotRangeEnabled && form.pivotRange === 'custom'
+    ? [form.pivotCustomStart, form.pivotCustomEnd] as [string, string]
+    : undefined
+  return buildDashboardDateFilterRequest(dashboardDateFilterConfigForWrite(), customRange)
 }
 
 function dashboardDateParameterValidationErrorKey() {
@@ -3141,10 +3149,12 @@ function dashboardDateParameterValidationErrorKey() {
   if (!form.pivotDateParameterType) {
     return 'dashboard.pivot_date_parameter_type_required'
   }
-  const expectedTokens = dashboardDateParameterTokens[form.pivotDateParameterType]
-  return activeTokens.length === expectedTokens.length && expectedTokens.every((token) => activeTokens.includes(token))
-    ? ''
-    : 'dashboard.pivot_date_parameter_type_invalid'
+  try {
+    dashboardDateFilterConfigForWrite()
+    return ''
+  } catch {
+    return 'dashboard.pivot_date_parameter_type_invalid'
+  }
 }
 
 function dateExpressionValidationError() {
@@ -3193,6 +3203,7 @@ function currentPreviewSignature() {
           datasource: selectedExecutionDatasourceId.value,
           sql: form.sql.trim(),
           pivot: previewPivotPayload() || { enabled: false },
+          dateFilter: dashboardDateFilterRequestPayload(),
         }
       : null,
     mcp: hasMcpSource.value
@@ -3951,7 +3962,8 @@ function initEditor() {
   }
   resetSqlBuilderState()
   restoreSqlBuilderState(sourceConfig.sql?.builder || sourceConfig.builder)
-  const pivotDateExpression = normalizeDashboardDateExpression(viewInfo.pivot?.date_expression)
+  const normalizedConfig = normalizeDashboardChartConfig(viewInfo)
+  const pivotDateExpression = normalizeDashboardDateExpression(normalizedConfig.dateFilter?.expression)
   if (pivotDateExpression) {
     sqlBuilder.timeExpression = cloneDashboardDateExpression(pivotDateExpression)
   }
@@ -3997,7 +4009,10 @@ function initEditor() {
   resetFieldSelections()
   initInsightConfig(chart.insight)
   initForecastConfig(chart.forecast)
-  initPivotConfig(viewInfo.pivot)
+  initPivotConfig(normalizedConfig.pivot)
+  if (normalizedConfig.dateFilter) {
+    form.pivotDateParameterType = normalizedConfig.dateFilter.parameterType
+  }
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
   if (hasMcpSource.value) {
@@ -4202,6 +4217,7 @@ async function previewSqlSource() {
       datasource: selectedExecutionDatasourceId.value,
       sql: form.sql.trim(),
       pivot: sourcePreviewPivotPayload(),
+      date_filter: dashboardDateFilterRequestPayload(),
     })
     const sourceSnapshot = previewResultSnapshot(sourceResult)
     setSourceResult('sql', sourceSnapshot)
@@ -4221,6 +4237,7 @@ async function previewSqlSource() {
     datasource: selectedExecutionDatasourceId.value,
     sql: form.sql.trim(),
     pivot: previewPivotPayload(),
+    date_filter: dashboardDateFilterRequestPayload(),
   })
   const snapshot = previewResultSnapshot(result)
   setSourceResult('sql', snapshot)
@@ -4559,8 +4576,16 @@ function writeEditorStateToViewInfo(options: {
   delete props.viewInfo.dataState
   props.viewInfo.loadingProgress = 100
   delete props.viewInfo.message
+  const normalizedConfig = normalizeDashboardChartConfig({
+    ...props.viewInfo,
+    sql: props.viewInfo.sql,
+    pivot: buildPivotConfig(),
+    dateFilter: dashboardDateFilterConfigForWrite(),
+  })
   props.viewInfo.chart = buildChart()
-  props.viewInfo.pivot = buildPivotConfig()
+  props.viewInfo.configVersion = normalizedConfig.configVersion
+  props.viewInfo.dateFilter = normalizedConfig.dateFilter
+  props.viewInfo.pivot = normalizedConfig.pivot
   if (hasSqlSource.value) {
     props.viewInfo.datasource = selectedExecutionDatasourceId.value
   } else {

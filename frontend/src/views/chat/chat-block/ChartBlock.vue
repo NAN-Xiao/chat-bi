@@ -41,6 +41,7 @@ import {
   inferPivotDimensions,
   isLikelyPivotDateField,
 } from '@/views/dashboard/utils/pivotDimensions.ts'
+import { normalizeDashboardChartConfig } from '@/views/dashboard/utils/dashboardChartConfig.ts'
 
 const chatConfig = useChatConfigStore()
 const showSQLBtn = chatConfig.getShowSQL
@@ -409,8 +410,8 @@ function resolveChartPivot(chartBaseInfo: any, viewInfo: any) {
   if (!configuredPivot || typeof configuredPivot !== 'object') {
     return defaultPivot
   }
-  if (configuredPivot.enabled === false && !configuredPivot.date_expression) {
-    return { enabled: false }
+  if (configuredPivot.enabled === false) {
+    return { ...configuredPivot, enabled: false }
   }
   return {
     ...defaultPivot,
@@ -430,7 +431,7 @@ function resolveChartPivot(chartBaseInfo: any, viewInfo: any) {
 
 function addToDashboard() {
   if (!canAddToDashboard.value) return
-  const recordeInfo = {
+  const recordeInfo: Record<string, any> = {
     id: '1-1',
     data: {
       data: data.value,
@@ -473,7 +474,15 @@ function addToDashboard() {
       dashboardChart.insight = chartBaseInfo.insight
     }
     recordeInfo['chart'] = dashboardChart
-    recordeInfo['pivot'] = resolveChartPivot(chartBaseInfo, recordeInfo)
+    const dashboardConfig = normalizeDashboardChartConfig({
+      ...recordeInfo,
+      configVersion: chartBaseInfo?.configVersion,
+      dateFilter: chartBaseInfo?.dateFilter,
+      pivot: resolveChartPivot(chartBaseInfo, recordeInfo),
+    })
+    recordeInfo['configVersion'] = dashboardConfig.configVersion
+    recordeInfo['dateFilter'] = dashboardConfig.dateFilter
+    recordeInfo['pivot'] = dashboardConfig.pivot
   }
 
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment

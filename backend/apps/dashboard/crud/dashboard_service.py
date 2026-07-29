@@ -39,6 +39,7 @@ from apps.dashboard.crud.dashboard_date_filter import (
     has_dashboard_date_filter_parameters,
     prepare_dashboard_date_filter,
 )
+from apps.dashboard.crud.dashboard_date_filter_legacy import resolve_dashboard_chart_date_filter
 from apps.roi_dashboard.service import list_roi_workspace_config_rows
 from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_external_mcp_id_for_tenant
 from apps.datasource.crud.permission import (
@@ -1919,7 +1920,9 @@ def _dashboard_pivot_enabled(pivot: Any | None) -> bool:
 class PreparedDashboardChartQuery:
     source_sql: str
     pivot: Any | None
+    date_filter: Any | None
     date_filter_capability: dict[str, Any]
+    date_filter_error_type: str = ""
 
 
 def _prepare_dashboard_chart_query(
@@ -1927,17 +1930,20 @@ def _prepare_dashboard_chart_query(
         sql: str,
         pivot: Any | None,
         *,
+        date_filter: Any | None = None,
         require_time_field: bool = True,
 ) -> PreparedDashboardChartQuery:
     prepared = prepare_dashboard_date_filter(
         sql,
         ds_type=getattr(datasource, "type", None),
         pivot=pivot,
+        date_filter=date_filter,
         require_time_field=require_time_field,
     )
     return PreparedDashboardChartQuery(
         source_sql=prepared.sql,
         pivot=pivot,
+        date_filter=date_filter,
         date_filter_capability=prepared.capability,
     )
 
@@ -1950,7 +1956,17 @@ def _dashboard_date_filter_result(
     return result
 
 
-def _dashboard_has_explicit_date_range(pivot: Any | None) -> bool:
+def _dashboard_has_explicit_date_range(pivot: Any | None, date_filter: Any | None = None) -> bool:
+    if date_filter is not None:
+        if isinstance(date_filter, dict):
+            expression = date_filter.get("expression")
+            custom_start = date_filter.get("custom_start", "")
+            custom_end = date_filter.get("custom_end", "")
+        else:
+            expression = getattr(date_filter, "expression", None)
+            custom_start = getattr(date_filter, "custom_start", "")
+            custom_end = getattr(date_filter, "custom_end", "")
+        return expression is not None or bool(str(custom_start or "").strip() and str(custom_end or "").strip())
     return _dashboard_pivot_value(pivot, "date_expression", None) is not None or bool(
         str(_dashboard_pivot_value(pivot, "date_parameter_type", "") or "").strip()
         and str(_dashboard_pivot_value(pivot, "range", "") or "").strip().lower() == "custom"
@@ -1974,12 +1990,26 @@ def _prepare_dashboard_chart_item_query(
         return PreparedDashboardChartQuery(
             source_sql=str(item.get("sql") or ""),
             pivot=item.get("pivot"),
+            date_filter=None,
             date_filter_capability={"status": "unsupported", "reason": "non_sql_chart"},
+        )
+    resolution = resolve_dashboard_chart_date_filter(
+        item,
+        allow_legacy=bool(settings.DASHBOARD_DATE_FILTER_V1_READ_ENABLED),
+    )
+    if resolution.error_type:
+        return PreparedDashboardChartQuery(
+            source_sql=str(item.get("sql") or ""),
+            pivot=item.get("pivot"),
+            date_filter=None,
+            date_filter_capability={"status": "unconfigured", "reason": resolution.reason},
+            date_filter_error_type=resolution.error_type,
         )
     return _prepare_dashboard_chart_query(
         datasource,
         str(item.get("sql") or ""),
         item.get("pivot"),
+        date_filter=resolution.date_filter,
         require_time_field=require_time_field,
     )
 
@@ -2367,12 +2397,19 @@ def _dashboard_sql_preview_pivot_payload(pivot: Any | None) -> Any | None:
     return str(pivot)
 
 
+def _dashboard_sql_preview_date_filter_value(date_filter: Any | None, key: str) -> Any:
+    if isinstance(date_filter, dict):
+        return date_filter.get(key)
+    return getattr(date_filter, key, None)
+
+
 def _dashboard_sql_preview_cache_key(
         current_user: CurrentUser,
         datasource_id: int,
         sql: str,
         pivot: Any | None,
         *,
+        date_filter: Any | None = None,
         date_filter_capability: dict[str, Any] | None = None,
 ) -> DashboardSqlPreviewCacheKey:
     """
@@ -2390,14 +2427,15 @@ def _dashboard_sql_preview_cache_key(
         "sql": sql.strip(),
         "pivot": _dashboard_sql_preview_pivot_payload(pivot),
         "date_filter": {
+            "request": _dashboard_sql_preview_pivot_payload(date_filter),
             "timezone": date_filter_context.get("timezone", settings.DASHBOARD_BUSINESS_TIMEZONE),
             "resolved_start": date_filter_context.get("resolvedStart"),
             "resolved_end": date_filter_context.get("resolvedEnd"),
             "expression": date_filter_context.get(
-                "expression", _dashboard_pivot_value(pivot, "date_expression", None)
+                "expression", _dashboard_sql_preview_date_filter_value(date_filter, "expression")
             ),
             "parameter_type": date_filter_context.get(
-                "parameterType", _dashboard_pivot_value(pivot, "date_parameter_type", None)
+                "parameterType", _dashboard_sql_preview_date_filter_value(date_filter, "parameter_type")
             ),
         },
     }
@@ -4005,9 +4043,18 @@ def _dashboard_payload(
                 ),
             )
             item["dateFilterCapability"] = copy.deepcopy(prepared_query.date_filter_capability)
+            if prepared_query.date_filter_error_type:
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result(
+                        "图表日期参数配置无效",
+                        prepared_query.date_filter_error_type,
+                    ),
+                )
+                continue
             if (
                 prepared_query.date_filter_capability.get("status") == "realtime"
-                and _dashboard_has_explicit_date_range(item.get("pivot"))
+                and _dashboard_has_explicit_date_range(item.get("pivot"), prepared_query.date_filter)
             ):
                 _apply_dashboard_chart_result(
                     item,
@@ -5292,6 +5339,7 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         datasource,
         normalized_sql,
         request.pivot,
+        date_filter=request.date_filter,
         require_time_field=_dashboard_requires_pivot_time_field(
             session,
             current_user,
@@ -5302,7 +5350,7 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
     date_filter_capability = prepared_query.date_filter_capability
     if (
         date_filter_capability.get("status") == "realtime"
-        and _dashboard_has_explicit_date_range(request.pivot)
+        and _dashboard_has_explicit_date_range(request.pivot, request.date_filter)
     ):
         return _dashboard_date_filter_result(
             _failed_chart_result("实时图表不支持自定义日期范围", "dashboard_date_filter_realtime"),
@@ -5334,6 +5382,7 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         datasource_id=datasource_id,
         sql=source_sql,
         pivot=prepared_query.pivot,
+        date_filter=prepared_query.date_filter,
         date_filter_capability=date_filter_capability,
     )
     if not request.force_refresh and not permissions_apply:
