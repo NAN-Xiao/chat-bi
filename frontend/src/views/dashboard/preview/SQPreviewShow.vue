@@ -36,7 +36,9 @@ import {
 } from '@/views/dashboard/utils/dashboardRefreshPolicy'
 import {
   createPermissionDeniedChartRegistry,
+  dashboardChartFailureResultFromError,
   dashboardCacheRefreshDisposition,
+  nextDashboardChartRetryDelayMs,
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
   shouldRetryDashboardChartFailure,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
@@ -97,8 +99,7 @@ const dashboardLandingRedirect = createDashboardLandingRedirectCoordinator()
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
 const CHART_DATABASE_REFRESH_CONCURRENCY = 2
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 180
-const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
-const CHART_TRANSIENT_MAX_RETRIES = 6
+const CHART_TRANSIENT_MAX_RETRIES = 3
 const DASHBOARD_MODE_DEFAULT = 'default'
 const permissionDeniedCharts = createPermissionDeniedChartRegistry()
 
@@ -774,9 +775,11 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
             permissionDeniedCharts.mark(entry)
             applyChartResult(viewInfo, result)
           } else {
-            keepChartSnapshotOrLoading(viewInfo)
             if (shouldRetryDashboardChartFailure(result, hasUsableChartSnapshot(viewInfo))) {
+              keepChartSnapshotOrLoading(viewInfo)
               transientPendingCount += 1
+            } else {
+              applyChartResult(viewInfo, result)
             }
           }
         } else {
@@ -795,9 +798,12 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
           loadVersion === dashboardLoadVersion
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
-          keepChartSnapshotOrLoading(viewInfo)
-          if (!hasUsableChartSnapshot(viewInfo)) {
+          const failureResult = dashboardChartFailureResultFromError(error)
+          if (shouldRetryDashboardChartFailure(failureResult, hasUsableChartSnapshot(viewInfo))) {
+            keepChartSnapshotOrLoading(viewInfo)
             transientPendingCount += 1
+          } else {
+            applyChartResult(viewInfo, failureResult)
           }
         }
       } finally {
@@ -815,8 +821,11 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
       !controller.signal.aborted &&
       chartRefreshRetryCount < CHART_TRANSIENT_MAX_RETRIES
     ) {
-      chartRefreshRetryCount += 1
-      scheduleDashboardChartRefresh(loadVersion, CHART_TRANSIENT_RETRY_DELAY_MS)
+      const retryDelay = nextDashboardChartRetryDelayMs(chartRefreshRetryCount)
+      if (retryDelay !== null) {
+        chartRefreshRetryCount += 1
+        scheduleDashboardChartRefresh(loadVersion, retryDelay)
+      }
     } else if (loadVersion === dashboardLoadVersion && !controller.signal.aborted) {
       chartRefreshRetryCount = 0
       scheduleNextDashboardAutoRefresh(loadVersion)

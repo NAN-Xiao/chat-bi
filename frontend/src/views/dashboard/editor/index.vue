@@ -30,7 +30,9 @@ import {
 } from '@/views/dashboard/utils/mixedChartData'
 import {
   createPermissionDeniedChartRegistry,
+  dashboardChartFailureResultFromError,
   dashboardCacheRefreshDisposition,
+  nextDashboardChartRetryDelayMs,
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
   shouldRetryDashboardChartFailure,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
@@ -69,8 +71,7 @@ let chartRefreshRetryCount = 0
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
 const CHART_DATABASE_REFRESH_CONCURRENCY = 4
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 160
-const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
-const CHART_TRANSIENT_MAX_RETRIES = 6
+const CHART_TRANSIENT_MAX_RETRIES = 3
 const permissionDeniedCharts = createPermissionDeniedChartRegistry()
 
 const canUseCanvasDraft = (sourceKey?: string | null) => Boolean(sourceKey?.startsWith('create:'))
@@ -604,9 +605,11 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
               permissionDeniedCharts.mark(entry)
               applyChartResult(viewInfo, result)
             } else {
-              keepChartSnapshotOrLoading(viewInfo)
               if (shouldRetryDashboardChartFailure(result, hasChartSnapshot(viewInfo))) {
+                keepChartSnapshotOrLoading(viewInfo)
                 transientPendingCount += 1
+              } else {
+                applyChartResult(viewInfo, result)
               }
             }
           } else {
@@ -627,10 +630,13 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
           withAutoChartUpdate(() => {
+          const failureResult = dashboardChartFailureResultFromError(error)
+          if (shouldRetryDashboardChartFailure(failureResult, hasChartSnapshot(viewInfo))) {
             keepChartSnapshotOrLoading(viewInfo)
-            if (!hasChartSnapshot(viewInfo)) {
-              transientPendingCount += 1
-            }
+            transientPendingCount += 1
+          } else {
+            applyChartResult(viewInfo, failureResult)
+          }
           })
         }
       } finally {
@@ -648,8 +654,11 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       !controller.signal.aborted &&
       chartRefreshRetryCount < CHART_TRANSIENT_MAX_RETRIES
     ) {
-      chartRefreshRetryCount += 1
-      scheduleEditorChartRefresh(loadVersion, CHART_TRANSIENT_RETRY_DELAY_MS)
+      const retryDelay = nextDashboardChartRetryDelayMs(chartRefreshRetryCount)
+      if (retryDelay !== null) {
+        chartRefreshRetryCount += 1
+        scheduleEditorChartRefresh(loadVersion, retryDelay)
+      }
     }
   }
 }
