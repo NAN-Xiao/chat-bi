@@ -69,7 +69,7 @@ function legacyDateFilter(pivot: Record<string, unknown>, sql: string): Dashboar
     return migrationRequired()
   }
   return {
-    enabled: pivot.enabled !== false,
+    enabled: true,
     parameterType,
     expression: { ...expression },
   }

@@ -80,6 +80,25 @@ assert.deepEqual(legacy.pivot, {
   time_field: 'stat_date',
 })
 
+const legacyPivotDisabled = normalizeDashboardChartConfig({
+  sql: tokenSql,
+  pivot: {
+    enabled: false,
+    time_field: 'stat_date',
+    date_parameter_type: 'date',
+    date_expression: expression,
+  },
+})
+assert.deepEqual(legacyPivotDisabled.dateFilter, {
+  enabled: true,
+  parameterType: 'date',
+  expression,
+})
+assert.deepEqual(legacyPivotDisabled.pivot, {
+  enabled: false,
+  time_field: 'stat_date',
+})
+
 const endOnly = normalizeDashboardChartConfig({
   sql: endOnlySql,
   configVersion: 2,
