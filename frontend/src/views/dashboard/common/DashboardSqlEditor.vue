@@ -95,6 +95,7 @@ const { t } = useI18n()
 const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
 type ChartDataSourceType = 'sql' | 'external_mcp'
 type DashboardDateParameterType = '' | 'date' | 'yyyymmdd_number' | 'yyyymmdd_text' | 'timestamp'
+const DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE: Exclude<DashboardDateParameterType, ''> = 'yyyymmdd_number'
 type ExecutionDatasourceOption = {
   id: number
   name: string
@@ -240,7 +241,7 @@ const form = reactive({
   pivotRange: 'source' as 'source' | '7d' | '14d' | '30d' | '90d' | 'all' | 'custom',
   pivotCustomStart: '',
   pivotCustomEnd: '',
-  pivotDateParameterType: '' as DashboardDateParameterType,
+  pivotDateParameterType: DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE as DashboardDateParameterType,
   pivotGroupValues: [] as string[],
   mcpServerId: '',
   mcpTool: '',
@@ -3004,7 +3005,7 @@ function initPivotConfig(pivot?: any) {
   form.pivotCustomEnd = pivot?.custom_end || ''
   form.pivotDateParameterType = Object.prototype.hasOwnProperty.call(dashboardDateParameterTokens, pivot?.date_parameter_type)
     ? pivot.date_parameter_type
-    : ''
+    : DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE
   const pivotDateExpression = normalizeDashboardDateExpression(pivot?.date_expression)
   if (dateExpressionEnabled.value) {
     if (!sqlBuilder.timeExpression) {
@@ -3123,7 +3124,11 @@ function dateExpressionValidationError() {
   if (!validation.valid) {
     return validation.message
   }
-  if (!configuredDashboardTimeField() && eventFieldScope.value.status !== 'datasource-mismatch') {
+  if (
+    form.pivotEnabled &&
+    !configuredDashboardTimeField() &&
+    eventFieldScope.value.status !== 'datasource-mismatch'
+  ) {
     return '请选择时间字段'
   }
   if (!form.pivotDateParameterType) {
