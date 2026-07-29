@@ -191,6 +191,8 @@ export function createSmartQaTaskStore(initialOptions: SmartQaTaskRuntimeOptions
             error: eventPage.error,
           })
         }
+        // Clean up completed task from map to prevent memory leak
+        entries.delete(entry.key)
         return
       }
 

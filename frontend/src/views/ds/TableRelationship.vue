@@ -330,6 +330,9 @@ onMounted(() => {
   getTableData()
 })
 onBeforeUnmount(() => {
+  if (graph) {
+    graph.dispose()
+  }
   graph = null
 })
 const dragover = () => {
