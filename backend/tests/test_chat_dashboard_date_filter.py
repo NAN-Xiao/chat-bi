@@ -20,6 +20,14 @@ DATE_TEMPLATE_SQL = (
     "SELECT * FROM event "
     "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
 )
+DATE_LITERAL_SQL = (
+    "SELECT * FROM event "
+    "WHERE `e`.`dt` BETWEEN 20260701 AND 20260728"
+)
+DATE_LITERAL_TEMPLATE_SQL = (
+    "SELECT * FROM event "
+    "WHERE `e`.`dt` BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
+)
 DATE_FILTER = {
     "time_field": "dt",
     "date_parameter_type": "yyyymmdd_number",
@@ -99,6 +107,31 @@ def test_check_sql_keeps_date_template_and_date_filter_pivot():
     )
 
     assert sql == DATE_TEMPLATE_SQL
+    assert tables == ["event"]
+    assert service.chat_date_pivot == {"enabled": False, **DATE_FILTER}
+
+
+def test_check_sql_rewrites_date_literals_to_template_for_declared_date_filter():
+    service = object.__new__(LLMService)
+    service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.ds = SimpleNamespace(type="mysql")
+    service.chat_question = SimpleNamespace(question="DAU趋势", data_skill="")
+    service.chat_date_pivot = None
+    response = {
+        "success": True,
+        "sql": DATE_LITERAL_SQL,
+        "tables": ["event"],
+        "chart-type": "line",
+        "date_filter": DATE_FILTER,
+    }
+
+    sql, tables = service.check_sql(
+        session=object(),
+        res=__import__("json").dumps(response),
+        operate=OperationEnum.GENERATE_SQL,
+    )
+
+    assert sql == DATE_LITERAL_TEMPLATE_SQL
     assert tables == ["event"]
     assert service.chat_date_pivot == {"enabled": False, **DATE_FILTER}
 

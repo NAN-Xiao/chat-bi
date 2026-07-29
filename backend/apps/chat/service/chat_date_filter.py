@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 
 from apps.dashboard.crud.dashboard_date_filter import (
+    dashboard_date_parameter_tokens,
     has_dashboard_date_filter_parameters,
     prepare_dashboard_date_filter,
     validate_dashboard_date_parameter_sql,
@@ -18,9 +19,48 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_SQL_IDENTIFIER_PATTERN = r'(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$]*)'
+
 
 class ChatDateFilterConfigurationError(ValueError):
     """聊天 SQL 的日期模板配置不完整或不一致。"""
+
+
+def _date_literal_pattern(parameter_type: str) -> str | None:
+    if parameter_type == "yyyymmdd_number":
+        return r"\b\d{8}\b"
+    if parameter_type == "yyyymmdd_text":
+        return r"(?:'\d{8}'|\"\d{8}\")"
+    if parameter_type == "date":
+        return r"(?:DATE\s+)?(?:'\d{4}-\d{2}-\d{2}'|\"\d{4}-\d{2}-\d{2}\")"
+    if parameter_type == "timestamp":
+        return r"(?:TIMESTAMP\s+)?(?:'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}'|\"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\")"
+    return None
+
+
+def rewrite_chat_date_filter_literals(payload: Any, sql: str) -> str:
+    """将已声明日期字段的直接 BETWEEN 字面量保留为看板日期模板。"""
+    if not isinstance(payload, dict) or has_dashboard_date_filter_parameters(sql):
+        return sql
+
+    time_field = str(payload.get("time_field") or "").strip().rsplit(".", 1)[-1]
+    time_field = time_field.strip("`\"[]")
+    parameter_type = str(payload.get("date_parameter_type") or "").strip()
+    tokens = dashboard_date_parameter_tokens(parameter_type)
+    literal_pattern = _date_literal_pattern(parameter_type)
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", time_field) or not tokens or not literal_pattern:
+        return sql
+
+    field_pattern = rf"(?:(?:{_SQL_IDENTIFIER_PATTERN}\s*\.\s*)*)`?{re.escape(time_field)}`?"
+    pattern = re.compile(
+        rf"(?P<field>{field_pattern})\s+BETWEEN\s+(?P<start>{literal_pattern})\s+AND\s+(?P<end>{literal_pattern})",
+        re.IGNORECASE,
+    )
+    start_token, end_token = tokens
+    return pattern.sub(
+        lambda match: f"{match.group('field')} BETWEEN {start_token} AND {end_token}",
+        sql,
+    )
 
 
 def normalize_chat_date_filter(payload: Any, sql: str, chart_type: str) -> dict[str, Any] | None:

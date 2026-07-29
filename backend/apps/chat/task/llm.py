@@ -34,6 +34,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
     normalize_chat_date_filter,
+    rewrite_chat_date_filter_literals,
     render_chat_date_filter_sql,
 )
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
@@ -2250,6 +2251,7 @@ class LLMService:
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
 
+        sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
         try:
             self.chat_date_pivot = normalize_chat_date_filter(
                 data.get("date_filter"),
