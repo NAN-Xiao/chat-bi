@@ -198,3 +198,4 @@ appendonlydir/
 
 
 !/.venv/
+logs/dashboard_ai_sql_llm_outputs.jsonl
