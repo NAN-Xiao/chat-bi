@@ -158,9 +158,12 @@ template:
         </rule>
         <rule priority="high">
           请使用JSON格式返回你的回答:
-          若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段","message":"可选；当只能回答部分问题或需要提示缺失数据时填写"}}
+          若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段","message":"可选；当只能回答部分问题或需要提示缺失数据时填写","date_filter":{{"time_field":"时间字段","date_parameter_type":"date/yyyymmdd_number/yyyymmdd_text/timestamp","date_expression":{{"version":1,"mode":"preset","preset":"past_7_days"}}}}}}
           若不能生成，则返回格式如：{{"success":false,"message":"说明无法生成SQL的原因"}}
           返回内容必须是严格 JSON，不要包含 Markdown 或其他文本；由于 SQL 放在 JSON 字符串内，SQL 中的双引号必须转义为 \"，换行必须转义为 \n。
+        </rule>
+        <rule priority="high">
+          当 SQL 是具备时间字段的非 metric 图表时，必须返回 date_filter。SQL 日期边界必须使用与 date_parameter_type 一致的看板日期 token；date_filter 必须包含 time_field、date_parameter_type 和 date_expression。用户未指定日期范围时，date_expression 必须为 {{"version":1,"mode":"preset","preset":"past_7_days"}}。固定 metric 图表或无时间维度图表不得返回 date_filter，也不得使用看板日期 token。date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。
         </rule>
         <rule>
           如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/bar/line/area/pie/funnel/heatmap/scatter/sankey/treemap 中的一个

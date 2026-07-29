@@ -15,6 +15,7 @@ from sqlalchemy.orm import aliased
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
+from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError, render_chat_date_filter_sql
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_DISPLAY_MESSAGE,
@@ -1023,7 +1024,7 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent需要的数据找出来，整理成后面好用的样子。
     """
-    stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(
+    stmt = select(ChatRecord.datasource, ChatRecord.sql, ChatRecord.chart).where(and_(
         ChatRecord.id == chat_record_id,
         ChatRecord.create_by == current_user.id,
         ChatRecord.tenant_id == _current_tenant_id(current_user),
@@ -1031,12 +1032,33 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
     row = session.execute(stmt).first()
     if row is None or row.datasource is None or not row.sql:
         return {'status': 'failed', 'fields': [], 'data': [], 'message': '记录不存在或没有可执行 SQL'}
+    execution_sql = row.sql
+    chart_config = row.chart
+    if isinstance(chart_config, (str, bytes, bytearray)):
+        try:
+            chart_config = orjson.loads(chart_config)
+        except orjson.JSONDecodeError:
+            chart_config = None
+    pivot = chart_config.get("pivot") if isinstance(chart_config, dict) else None
+    if isinstance(pivot, dict) and isinstance(pivot.get("date_expression"), dict):
+        datasource = session.get(CoreDatasource, row.datasource)
+        if datasource is None:
+            return {'status': 'failed', 'fields': [], 'data': [], 'message': '数据源不存在，无法渲染日期参数'}
+        try:
+            execution_sql = render_chat_date_filter_sql(row.sql, datasource.type, pivot)
+        except ChatDateFilterConfigurationError as error:
+            return {
+                'status': 'failed',
+                'fields': [],
+                'data': [],
+                'message': f'图表日期参数配置无效：{error}',
+            }
     projection = _saved_record_missing_event_projection(
         session=session,
         current_user=current_user,
         record_id=chat_record_id,
         datasource_id=row.datasource,
-        sql=row.sql,
+        sql=execution_sql,
         data=None,
     )
     if projection:
@@ -1044,7 +1066,7 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
             return projection.data
         if projection.execute_sql:
             return _execute_dashboard_chart_sql(session, current_user, row.datasource, projection.execute_sql)
-    return _execute_dashboard_chart_sql(session, current_user, row.datasource, row.sql)
+    return _execute_dashboard_chart_sql(session, current_user, row.datasource, execution_sql)
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     """

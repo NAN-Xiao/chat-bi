@@ -159,7 +159,7 @@ function resolveChartPivot(chartBaseInfo: any, viewInfo: any) {
   if (!configuredPivot || typeof configuredPivot !== 'object') {
     return defaultPivot
   }
-  if (configuredPivot.enabled === false) {
+  if (configuredPivot.enabled === false && !configuredPivot.date_expression) {
     return { enabled: false }
   }
   return {

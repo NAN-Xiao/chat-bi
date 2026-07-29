@@ -3,10 +3,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const source = readFileSync(
-  fileURLToPath(new URL('./ChatChartSelection.vue', import.meta.url)),
+  fileURLToPath(new URL('./ChartBlock.vue', import.meta.url)),
   'utf8'
 )
 
-assert.match(source, /\['table', 'metric'\]\.includes\(type\)/)
+assert.match(source, /const configuredPivot = chartBaseInfo\?\.pivot/)
 assert.match(source, /configuredPivot\.enabled === false && !configuredPivot\.date_expression/)
-assert.match(source, /return \{[\s\S]*\.\.\.defaultPivot,[\s\S]*\.\.\.configuredPivot/)
+assert.match(source, /recordeInfo\['pivot'\] = resolveChartPivot\(chartBaseInfo, recordeInfo\)/)

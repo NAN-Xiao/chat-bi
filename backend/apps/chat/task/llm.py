@@ -2,6 +2,7 @@
 脚本说明：这个脚本放聊天问数据和 Agent里较长或较复杂的处理流程，把一次任务分成可维护的步骤。
 """
 import concurrent
+import copy
 import json
 import os
 import re
@@ -30,6 +31,11 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_chart_data_with_user, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error, format_chart_fields, get_chat_brief_generate, \
     trigger_log_error, save_agent_context_snapshot
+from apps.chat.service.chat_date_filter import (
+    ChatDateFilterConfigurationError,
+    normalize_chat_date_filter,
+    render_chat_date_filter_sql,
+)
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
@@ -1141,6 +1147,7 @@ class LLMService:
 
         self.table_name_list = []
         self.business_sql_context = None
+        self.chat_date_pivot = None
 
         chat_id = chat_question.chat_id
         chat: Chat | None = session.get(Chat, chat_id)
@@ -2243,6 +2250,16 @@ class LLMService:
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
 
+        try:
+            self.chat_date_pivot = normalize_chat_date_filter(
+                data.get("date_filter"),
+                sql,
+                data.get("chart-type") or data.get("chart_type") or "",
+            )
+        except ChatDateFilterConfigurationError as error:
+            trigger_log_error(session, log)
+            raise SingleMessageError(f"日期参数配置无效：{error}") from error
+
         if str(getattr(getattr(self, "ds", None), "type", "") or "").strip().lower() in {
             "mysql",
             "doris",
@@ -2313,6 +2330,14 @@ class LLMService:
 
         return sql
 
+    def render_chat_sql_for_execution(self, template_sql: str) -> str:
+        """执行聊天 SQL 前，按已校验的日期配置临时渲染模板。"""
+        return render_chat_date_filter_sql(
+            template_sql,
+            getattr(self.ds, "type", None),
+            self.chat_date_pivot,
+        )
+
     def save_checked_sql(self, session: Session, sql: str) -> str:
         """
         是什么：LLMService.save_checked_sql 是 LLMService 里的一个步骤，帮它完成聊天问数据和 Agent相关的一件事。
@@ -2369,6 +2394,9 @@ class LLMService:
                 result.get("fields"),
                 result.get("data"),
             )
+
+        if self.chat_date_pivot is not None:
+            chart["pivot"] = copy.deepcopy(self.chat_date_pivot)
 
         save_chart(session=session, chart=orjson.dumps(chart).decode(), record_id=self.record.id)
 
