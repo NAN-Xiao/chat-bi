@@ -41,6 +41,16 @@ assert.match(
   /restoreSqlBuilderState\([^)]*\)[\s\S]*?normalizeDashboardDateExpression\(viewInfo\.pivot\?\.date_expression\)[\s\S]*?if \(pivotDateExpression\) \{[\s\S]*?cloneDashboardDateExpression\(pivotDateExpression\)/,
   '有效的已保存日期表达式应优先于构建器表达式'
 )
+assert.doesNotMatch(
+  source,
+  /else if \(!pivotDateExpression\) \{\s*dateExpressionConfigError\.value = '日期表达式执行配置缺失'/,
+  '旧图表缺少已保存日期表达式时应使用默认值，而非阻止执行'
+)
+assert.match(
+  source,
+  /else if\s*\(\s*pivotDateExpression\s*&&\s*JSON\.stringify\(sqlBuilder\.timeExpression\) !== JSON\.stringify\(pivotDateExpression\)\s*\)/,
+  '已保存日期表达式存在但与当前值不一致时仍应阻止执行'
+)
 assert.match(source, /v-if="hasSqlSource\s*&&\s*dateExpressionEnabled"[\s\S]*date_parameter_type/)
 assert.match(source, /function applyDateExpression/)
 assert.match(

@@ -3010,9 +3010,10 @@ function initPivotConfig(pivot?: any) {
   if (dateExpressionEnabled.value) {
     if (!sqlBuilder.timeExpression) {
       dateExpressionConfigError.value = '日期表达式配置无效'
-    } else if (!pivotDateExpression) {
-      dateExpressionConfigError.value = '日期表达式执行配置缺失'
-    } else if (JSON.stringify(sqlBuilder.timeExpression) !== JSON.stringify(pivotDateExpression)) {
+    } else if (
+      pivotDateExpression &&
+      JSON.stringify(sqlBuilder.timeExpression) !== JSON.stringify(pivotDateExpression)
+    ) {
       dateExpressionConfigError.value = '日期表达式配置不一致'
     } else {
       dateExpressionConfigError.value = ''
