@@ -19,6 +19,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
+from apps.dashboard.crud.dashboard_date_filter import (
+    dashboard_date_parameter_tokens,
+    validate_dashboard_date_parameter_sql,
+)
 from apps.dashboard.models.dashboard_model import (
     DashboardAiSqlGenerateRequest,
     DashboardAiSqlGenerateResponse,
@@ -44,6 +48,10 @@ from common.utils.utils import AppLogUtil, extract_nested_json
 
 DASHBOARD_AI_SQL_LLM_OUTPUT_FILE = (
     Path(__file__).resolve().parents[4] / "logs" / "dashboard_ai_sql_llm_outputs.jsonl"
+)
+_DATABASE_CURRENT_DATE_PATTERN = re.compile(
+    r"\b(?:curdate\s*\(|current_date\b|now\s*\(|current_timestamp\b|localtime\b|localtimestamp\b|getdate\s*\(|getutcdate\s*\()",
+    flags=re.IGNORECASE,
 )
 
 
@@ -602,13 +610,18 @@ def _normalize_manual_config(
     context = _compile_json_subfield_fields(copy.deepcopy(dict(request.context or {})), datasource_type)
     metrics = _list_dict_items(context.get("metrics"))
     formula_metrics = _formula_metric_items_from_context(context)
+    time_config = dict(context.get("time") or {}) if isinstance(context.get("time"), dict) else {}
+    time_config["date_parameter_type"] = str(
+        time_config.get("dateParameterType") or time_config.get("date_parameter_type") or ""
+    ).strip()
+    time_config["date_expression"] = time_config.get("dateExpression") or time_config.get("date_expression")
     return {
         "chart": context.get("chart") if isinstance(context.get("chart"), dict) else {
             "title": request.title,
             "type": request.chart_type,
         },
         "datasource": context.get("datasource") if isinstance(context.get("datasource"), dict) else {},
-        "time": context.get("time") if isinstance(context.get("time"), dict) else {},
+        "time": time_config,
         "metrics": metrics,
         "formula_metrics": formula_metrics,
         "groups": _list_dict_items(context.get("groups")),
@@ -1170,6 +1183,13 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
     return tables
 
 
+def _uses_dashboard_date_parameters(chart_type: Any, time_config: dict[str, Any]) -> bool:
+    return (
+        str(chart_type or "").strip().lower() != "metric"
+        and _field_table_name(time_config.get("field")) != ""
+    )
+
+
 def _deterministic_validate_manual_config(
         request: DashboardAiSqlGenerateRequest,
         normalized_config: dict[str, Any],
@@ -1188,6 +1208,15 @@ def _deterministic_validate_manual_config(
 
     if not request.datasource:
         issues.append("没有数据源，无法生成 SQL。")
+
+    time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
+    chart_config = normalized_config.get("chart") if isinstance(normalized_config.get("chart"), dict) else {}
+    if _uses_dashboard_date_parameters(chart_config.get("type"), time_config):
+        parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+        if dashboard_date_parameter_tokens(parameter_type) is None:
+            issues.append("生成 SQL 前请先选择日期参数类型。")
+        if not isinstance(time_config.get("date_expression"), dict):
+            issues.append("生成 SQL 前请选择有效日期表达式。")
 
     metrics = _list_dict_items(normalized_config.get("metrics"))
     formula_metrics = _list_dict_items(normalized_config.get("formula_metrics"))
@@ -1235,8 +1264,21 @@ def _build_sql_plan(normalized_config: dict[str, Any], formula_ir: dict[str, Any
     """
     是什么：把已通过校验的手动配置整理成 SQL 生成计划，作为 LLM SQL 节点的结构化上下文。
     """
+    time_config = normalized_config.get("time") if isinstance(normalized_config.get("time"), dict) else {}
+    parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+    parameter_tokens = dashboard_date_parameter_tokens(parameter_type)
+    uses_date_parameters = _uses_dashboard_date_parameters(
+        (normalized_config.get("chart") or {}).get("type"),
+        time_config,
+    )
     return {
-        "time": normalized_config.get("time") or {},
+        "time": time_config,
+        "date_parameters": {
+            "enabled": uses_date_parameters,
+            "type": parameter_type if uses_date_parameters else "",
+            "start_token": parameter_tokens[0] if uses_date_parameters and parameter_tokens else "",
+            "end_token": parameter_tokens[1] if uses_date_parameters and parameter_tokens else "",
+        },
         "groups": normalized_config.get("groups") or [],
         "filters": normalized_config.get("filters") or {},
         "metrics": normalized_config.get("metrics") or [],
@@ -1298,6 +1340,29 @@ def _dashboard_config_prompt(
         context["chartType"] = request.chart_type
     if request.title and not context.get("title"):
         context["title"] = request.title
+    time_config = context.get("time") if isinstance(context.get("time"), dict) else {}
+    parameter_type = str(
+        time_config.get("dateParameterType") or time_config.get("date_parameter_type") or ""
+    ).strip()
+    parameter_tokens = dashboard_date_parameter_tokens(parameter_type)
+    chart_config = context.get("chart") if isinstance(context.get("chart"), dict) else {}
+    uses_date_parameters = _uses_dashboard_date_parameters(
+        chart_config.get("type") or request.chart_type,
+        time_config,
+    )
+    date_parameter_rules = (
+        [
+            "看板日期参数规则：SQL 必须使用且只能使用以下一对日期占位符："
+            f"{parameter_tokens[0]} 和 {parameter_tokens[1]}。",
+            "禁止使用数据库当前日期函数，包括 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、LOCALTIME、LOCALTIMESTAMP、GETDATE 和 GETUTCDATE。",
+        ]
+        if uses_date_parameters and parameter_tokens
+        else (
+            ["当前图表不包含可变时间范围，不生成看板日期参数或日期控件；若其为固定语义指标，必须保留原有时间含义。"]
+            if not uses_date_parameters
+            else ["看板日期参数类型缺失，不能生成 SQL。"]
+        )
+    )
     return "\n".join([
         "请处理下面的手动图表配置。",
         "",
@@ -1335,8 +1400,20 @@ def _dashboard_config_prompt(
         "字段对象包含 sourceField、jsonPath 和 expression 时，JSON 子字段必须使用 expression；不得自行改写 JSON 宿主列或路径。",
         "指标内筛选 rules 是可选配置；没有 rules 或 rules 为空时不是配置缺失，不要要求补筛选条件，不要生成空 WHERE/AND/CASE 条件；只有 rules 里存在有效字段、操作符和值时才应用该筛选。",
         "只允许使用 manual-dashboard-context 里的 selectedFields/metrics/formulaMetrics/calculatedMetrics/groups/filters 字段信息生成 SQL；不要编造未提供字段。",
+        *date_parameter_rules,
         *_dashboard_sql_dialect_rules(sql_dialect, datasource),
     ])
+
+
+def _dashboard_date_sql_issues(sql: str, time_config: dict[str, Any]) -> list[str]:
+    parameter_type = str(time_config.get("date_parameter_type") or "").strip()
+    token_error = validate_dashboard_date_parameter_sql(sql, parameter_type)
+    issues: list[str] = []
+    if token_error:
+        issues.append("生成 SQL 未使用当前图表日期参数，请重新生成。")
+    if _DATABASE_CURRENT_DATE_PATTERN.search(sql):
+        issues.append("生成 SQL 使用了数据库当前日期函数，请改用看板日期参数。")
+    return _unique_text_items(issues)
 
 
 def _dashboard_sql_system_prompt() -> str:
@@ -1350,24 +1427,8 @@ def _dashboard_sql_system_prompt() -> str:
         "- 聚合函数和窗口函数不得出现在同一查询层的 WHERE 条件中。\n"
         "- 当结束日期来自 MAX(date_field) 时，必须先在独立 CTE 中计算最大日期，再在下一层 bounds CTE 中计算开始日期。\n"
         "- 禁止生成 WHERE date_field >= <包含 MAX(date_field) 的表达式>。\n"
-        "- 只有 Data Skill 明确声明可使用系统日期作为锚点时，bounds 才能直接使用系统日期表达式。\n"
-        "- 具体日期函数、日期格式和分区字段类型必须服从当前 SQL 方言与 Data Skill。\n"
-        "MySQL/MariaDB 最近 30 个完整自然日边界示例（仅当当前 SQL 方言为 MySQL/MariaDB，且 Data Skill 明确允许使用系统日期作为锚点时使用）：\n"
-        "WITH bounds AS (\n"
-        "    SELECT\n"
-        "        CAST(\n"
-        "            DATE_FORMAT(\n"
-        "                DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY),\n"
-        "                '%Y%m%d'\n"
-        "            ) AS SIGNED\n"
-        "        ) AS start_dt,\n"
-        "        CAST(\n"
-        "            DATE_FORMAT(\n"
-        "                DATE_SUB(CURDATE(), INTERVAL 1 DAY),\n"
-        "                '%Y%m%d'\n"
-        "            ) AS SIGNED\n"
-        "        ) AS end_dt\n"
-        ")\n"
+        "- 仅当当前图表配置要求可变时间范围时，日期边界必须使用当前配置提供的看板日期参数占位符，不能使用数据库当前日期函数。\n"
+        "- 具体日期格式和分区字段类型必须服从当前 SQL 方言与配置的日期参数类型。\n"
         "推荐 SQL 结构范式：\n"
         "WITH bounds AS (\n"
         "    -- 1. 时间边界层：统一管理查询窗口和数据成熟窗口\n"
@@ -1795,6 +1856,24 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "SQL 不是只读查询。"
         response.advice = "只能生成 SELECT/WITH 查询，请重新生成。"
         response.issues = list(response.issues or []) + ["生成 SQL 不是只读 SELECT/WITH 查询。"]
+    elif isinstance(state.get("normalized_config"), dict) and _uses_dashboard_date_parameters(
+        response.chart_type
+        or ((state["normalized_config"].get("chart") or {}).get("type")),
+        state["normalized_config"].get("time")
+        if isinstance(state["normalized_config"].get("time"), dict)
+        else {},
+    ) and (
+        date_issues := _dashboard_date_sql_issues(
+            sql,
+            state["normalized_config"].get("time")
+            if isinstance(state["normalized_config"].get("time"), dict)
+            else {},
+        )
+    ):
+        response.success = False
+        response.message = "生成 SQL 未满足看板日期参数要求。"
+        response.advice = "请使用当前图表配置的起止日期参数重新生成。"
+        response.issues = _unique_text_items(list(response.issues or []) + date_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],

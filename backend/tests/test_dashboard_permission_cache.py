@@ -10,7 +10,10 @@ from types import SimpleNamespace
 import pytest
 
 from apps.dashboard.crud import dashboard_service
-from apps.dashboard.crud.dashboard_date_filter import prepare_dashboard_date_filter
+from apps.dashboard.crud.dashboard_date_filter import (
+    prepare_dashboard_date_filter,
+    validate_dashboard_date_parameter_sql,
+)
 from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardPivotRequest, DashboardSqlPreview
 
 
@@ -28,6 +31,31 @@ def _user():
 
 def _session():
     return SimpleNamespace(get=lambda *_args: SimpleNamespace(id=1, type="pg"))
+
+
+def test_date_parameter_sql_requires_exact_configured_token_pair() -> None:
+    assert validate_dashboard_date_parameter_sql(
+        "select * from event where dt between "
+        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}",
+        "yyyymmdd_number",
+    ) is None
+    assert (
+        validate_dashboard_date_parameter_sql("select * from event where dt >= 20260101", "yyyymmdd_number")
+        == "missing_parameters"
+    )
+    assert validate_dashboard_date_parameter_sql(
+        "select * from event where dt between "
+        "{{dashboard_start_date}} and {{dashboard_end_date}}",
+        "yyyymmdd_number",
+    ) == "parameter_type_mismatch"
+
+
+def test_date_parameter_sql_allows_end_only_mode() -> None:
+    assert validate_dashboard_date_parameter_sql(
+        "select * from event where dt <= {{dashboard_end_yyyymmdd}}",
+        "yyyymmdd_number",
+        parameter_mode="end_only",
+    ) is None
 
 
 def _allow_chart_execution_datasource(monkeypatch: pytest.MonkeyPatch) -> None:
