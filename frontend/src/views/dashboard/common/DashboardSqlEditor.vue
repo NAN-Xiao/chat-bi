@@ -771,8 +771,21 @@ const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].incl
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric'].includes(form.chartType))
 const dateExpressionEnabled = computed(
-  () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true
+  () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters()
 )
+
+function shouldUseDashboardDateParameters(chartType: ChartTypes | string = form.chartType) {
+  return chartType !== 'metric' && Boolean(sqlBuilder.timeField)
+}
+
+function syncDashboardDateParameterUsage(chartType: ChartTypes | string = form.chartType) {
+  const enabled = shouldUseDashboardDateParameters(chartType)
+  sqlBuilder.dateExpressionPickerEnabled = enabled
+  if (!enabled) {
+    form.pivotDateParameterType = ''
+  }
+  dateExpressionConfigError.value = ''
+}
 const supportsForecastConfig = computed(
   () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length > 0
 )
@@ -1763,13 +1776,14 @@ function restoreBuilderFilters(value: any): SqlBuilderFilter[] {
 }
 
 function builderConfigForSave() {
+  const usesDashboardDateParameters = shouldUseDashboardDateParameters()
   return {
     timeField: sqlBuilder.timeField || '',
     timeGrain: sqlBuilder.timeGrain || 'day',
     timeRange: sqlBuilder.timeRange || '30d',
     timeCustomRange: Array.isArray(sqlBuilder.timeCustomRange) ? [...sqlBuilder.timeCustomRange] : [],
-    dateExpressionPickerEnabled: sqlBuilder.dateExpressionPickerEnabled === true,
-    timeExpression: sqlBuilder.timeExpression
+    dateExpressionPickerEnabled: usesDashboardDateParameters,
+    timeExpression: usesDashboardDateParameters && sqlBuilder.timeExpression
       ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
       : null,
     groups: [...sqlBuilder.groups],
@@ -2317,6 +2331,12 @@ function collectBuilderAiContext() {
       grain: sqlBuilder.timeGrain,
       range: sqlBuilder.timeRange,
       customRange: sqlBuilder.timeCustomRange,
+      dateParameterType: shouldUseDashboardDateParameters()
+        ? form.pivotDateParameterType
+        : '',
+      dateExpression: shouldUseDashboardDateParameters() && sqlBuilder.timeExpression
+        ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
+        : null,
     },
     metrics: sqlBuilder.metricItems.map((item, index) => ({
       id: item.id,
@@ -2547,6 +2567,22 @@ async function generateBuilderAiSql() {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
+  const usesDashboardDateParameters = shouldUseDashboardDateParameters()
+  if (usesDashboardDateParameters && !form.pivotDateParameterType) {
+    ElMessage.warning('生成 SQL 前请先选择日期参数类型。')
+    return false
+  }
+  if (usesDashboardDateParameters) {
+    const validation = validateDashboardDateExpression(
+      sqlBuilder.timeExpression,
+      new Date(),
+      'Asia/Shanghai'
+    )
+    if (!validation.valid) {
+      ElMessage.warning(validation.message)
+      return false
+    }
+  }
   const eventScopeIssues = builderEventScopeIssues()
   if (eventScopeIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
@@ -2646,6 +2682,7 @@ async function generateBuilderAiSql() {
   if (nextChartType && chartTypes.some((item) => item.value === nextChartType)) {
     form.chartType = nextChartType
   }
+  syncDashboardDateParameterUsage(nextChartType || form.chartType)
   if (result.success) {
     ElMessage.success('已生成 SQL')
   } else {

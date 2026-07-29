@@ -1137,12 +1137,87 @@ def test_dashboard_prompt_requires_safe_cte_time_boundaries() -> None:
     assert "聚合函数和窗口函数不得出现在同一查询层的 WHERE 条件中" in prompt
     assert "必须先在独立 CTE 中计算最大日期" in prompt
     assert "禁止生成 WHERE date_field >= <包含 MAX(date_field) 的表达式>" in prompt
-    assert "具体日期函数、日期格式和分区字段类型必须服从当前 SQL 方言与 Data Skill" in prompt
-    assert "MySQL/MariaDB 最近 30 个完整自然日边界示例" in prompt
-    assert "仅当当前 SQL 方言为 MySQL/MariaDB" in prompt
-    assert "DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL 29 DAY)" in prompt
-    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
-    assert "'%Y%m%d'" in prompt
+    assert "仅当当前图表配置要求可变时间范围时，日期边界必须使用当前配置提供的看板日期参数占位符" in prompt
+    assert "MySQL/MariaDB 最近 30 个完整自然日边界示例" not in prompt
+    assert "DATE_SUB(CURDATE" not in prompt
+
+
+def test_dashboard_sql_prompt_requires_configured_date_tokens() -> None:
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        context={
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "dateParameterType": "yyyymmdd_number",
+                "dateExpression": {"version": 1, "mode": "preset", "preset": "past_30_days"},
+            },
+        },
+    )
+
+    prompt = ai_sql_generator._dashboard_sql_system_prompt() + "\n" + ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="mysql", type_name="MySQL"),
+        "",
+        "",
+    )
+
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "DATE_SUB(CURDATE" not in prompt
+    assert "禁止使用数据库当前日期函数" in prompt
+
+
+def test_validate_sql_node_rejects_current_date_function_and_missing_date_tokens() -> None:
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql="SELECT * FROM event WHERE dt >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)",
+    )
+
+    result = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": {
+            "chart": {"type": "line"},
+            "time": {
+                "field": {"table": "event", "field": "dt"},
+                "date_parameter_type": "yyyymmdd_number",
+            },
+        },
+        "graph_trace": [],
+    })["response"]
+
+    assert result.success is False
+    assert "看板日期参数" in result.message
+
+
+def test_metric_chart_does_not_require_dashboard_date_parameters() -> None:
+    request = DashboardAiSqlGenerateRequest(
+        datasource=1,
+        chart_type="metric",
+        context={
+            "chart": {"type": "metric"},
+            "time": {"field": {"table": "event", "field": "dt"}},
+        },
+    )
+
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        request,
+        SimpleNamespace(name="测试", type="mysql", type_name="MySQL"),
+        "",
+        "",
+    )
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        chart_type="metric",
+        sql="SELECT COUNT(*) AS 今日销售额 FROM event WHERE dt = CURDATE()",
+    )
+    result = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "normalized_config": {"chart": {"type": "metric"}, "time": request.context["time"]},
+        "graph_trace": [],
+    })["response"]
+
+    assert "不生成看板日期参数或日期控件" in prompt
+    assert result.success is True
 
 
 def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.MonkeyPatch) -> None:

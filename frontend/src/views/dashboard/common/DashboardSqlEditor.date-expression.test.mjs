@@ -13,6 +13,10 @@ const cardSource = readFileSync(
 
 assert.match(source, /import DashboardDateExpressionPicker/)
 assert.match(source, /dateExpressionPickerEnabled/)
+assert.match(
+  source,
+  /const dateExpressionEnabled = computed\(\s*\(\) => hasSqlSource\.value && sqlBuilder\.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters\(\)/
+)
 assert.match(source, /timeExpression/)
 assert.match(source, /date_expression/)
 assert.match(source, /const dateExpressionEnabled = computed/)

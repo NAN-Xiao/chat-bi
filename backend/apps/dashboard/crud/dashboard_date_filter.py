@@ -287,6 +287,42 @@ def has_dashboard_date_filter_parameters(sql: str) -> bool:
     return bool(active_tokens)
 
 
+def dashboard_date_parameter_tokens(parameter_type: str) -> tuple[str, str] | None:
+    """返回指定日期参数类型的起止 token。"""
+    return _PARAMETER_TOKENS.get(parameter_type)
+
+
+def validate_dashboard_date_parameter_sql(
+    sql: str,
+    parameter_type: str,
+    *,
+    parameter_mode: str = "range",
+) -> str | None:
+    """校验 SQL 使用的看板日期 token 与配置类型完全一致。"""
+    tokens = dashboard_date_parameter_tokens(parameter_type)
+    if tokens is None:
+        return "invalid_parameter_type"
+    if parameter_mode not in {"range", "end_only"}:
+        return "invalid_parameter_mode"
+    _, active_tokens = _scan_sql_tokens(str(sql or ""))
+    if not active_tokens:
+        return "missing_parameters"
+    active_families = {_TOKEN_FAMILIES[token] for token in active_tokens}
+    expected_family = "yyyymmdd" if parameter_type.startswith("yyyymmdd") else parameter_type
+    if len(active_families) > 1:
+        return "mixed_parameter_families"
+    if active_families != {expected_family}:
+        return "parameter_type_mismatch"
+    expected_tokens = (
+        {tokens[1]}
+        if parameter_mode == "end_only"
+        else set(tokens)
+    )
+    if active_tokens != expected_tokens:
+        return "incomplete_parameters"
+    return None
+
+
 def prepare_dashboard_date_filter(
     sql: str,
     *,
@@ -320,28 +356,14 @@ def prepare_dashboard_date_filter(
         return _unconfigured(source_sql, physical_tables, "missing_time_field")
 
     parameter_type = str(_pivot_value(pivot, "date_parameter_type", "") or "").strip()
-    if parameter_type not in _PARAMETER_TOKENS:
-        return _unconfigured(source_sql, physical_tables, "invalid_parameter_type")
     parameter_mode = str(_pivot_value(pivot, "date_parameter_mode", "range") or "range").strip()
-    if parameter_mode not in {"range", "end_only"}:
-        return _unconfigured(source_sql, physical_tables, "invalid_parameter_mode")
-    if not active_tokens:
-        return _unconfigured(source_sql, physical_tables, "missing_parameters")
-
-    active_families = {_TOKEN_FAMILIES[token] for token in active_tokens}
-    expected_family = "yyyymmdd" if parameter_type.startswith("yyyymmdd") else parameter_type
-    if len(active_families) > 1:
-        return _unconfigured(source_sql, physical_tables, "mixed_parameter_families")
-    if active_families != {expected_family}:
-        return _unconfigured(source_sql, physical_tables, "parameter_type_mismatch")
-
-    expected_tokens = (
-        {_PARAMETER_TOKENS[parameter_type][1]}
-        if parameter_mode == "end_only"
-        else set(_PARAMETER_TOKENS[parameter_type])
+    parameter_error = validate_dashboard_date_parameter_sql(
+        source_sql,
+        parameter_type,
+        parameter_mode=parameter_mode,
     )
-    if active_tokens != expected_tokens:
-        return _unconfigured(source_sql, physical_tables, "incomplete_parameters")
+    if parameter_error:
+        return _unconfigured(source_sql, physical_tables, parameter_error)
 
     business_today = today or datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
     default_start, default_end = default_dashboard_date_range(today=business_today)
