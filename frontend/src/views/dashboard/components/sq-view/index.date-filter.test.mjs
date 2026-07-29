@@ -32,8 +32,9 @@ assert.match(source, /<DashboardDateExpressionPicker/)
 assert.match(
   source,
   /normalizeDashboardDateExpression\(props\.viewInfo\?\.pivot\?\.date_expression\)[\s\S]*\|\|\s*\(hasSqlDashboardSource\.value\s*\?\s*defaultDashboardDateExpression\(\)/,
-  'SQL 图表缺少历史表达式时应使用默认过去 30 天'
+  'SQL 图表缺少历史表达式时应使用共享的默认过去七天'
 )
+assert.doesNotMatch(source, /preset:\s*['"]past_30_days['"]/, '展示层不得保留过去 30 天默认值')
 assert.match(source, /<DashboardDateExpressionPicker[\s\S]*variant="roi"/)
 assert.match(source, /dashboard-filter-controls/)
 assert.match(source, /dashboard-filter-controls--combined/)

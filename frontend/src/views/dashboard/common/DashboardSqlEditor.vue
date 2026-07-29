@@ -13,6 +13,7 @@ import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
 import {
   cloneDashboardDateExpression,
+  defaultDashboardDateExpression,
   normalizeDashboardDateExpression,
   validateDashboardDateExpression,
   type DashboardDateExpression,
@@ -165,14 +166,6 @@ type SchemaFieldOption = {
   eventNameField?: string
   propertyName?: string
   propertyType?: string
-}
-
-function defaultDashboardDateExpression(): DashboardDateExpression {
-  return {
-    version: 1,
-    mode: 'preset',
-    preset: 'past_30_days',
-  }
 }
 
 const mcpTextFallbacks: Record<string, string> = {
@@ -1794,8 +1787,8 @@ function restoreSqlBuilderState(value: any) {
   sqlBuilder.timeField = typeof value.timeField === 'string' ? value.timeField : ''
   sqlBuilder.timeGrain = timeGrainValues.includes(value.timeGrain) ? value.timeGrain : 'day'
   sqlBuilder.dateExpressionPickerEnabled = true
-  sqlBuilder.timeExpression = normalizeDashboardDateExpression(value.timeExpression)
-    || defaultDashboardDateExpression()
+  const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
+  sqlBuilder.timeExpression = timeExpression || defaultDashboardDateExpression()
   sqlBuilder.timeRange = 'expression'
   sqlBuilder.timeCustomRange = Array.isArray(value.timeCustomRange)
     ? value.timeCustomRange.filter((item: any) => typeof item === 'string')
@@ -3915,6 +3908,10 @@ function initEditor() {
   }
   resetSqlBuilderState()
   restoreSqlBuilderState(sourceConfig.sql?.builder || sourceConfig.builder)
+  const pivotDateExpression = normalizeDashboardDateExpression(viewInfo.pivot?.date_expression)
+  if (pivotDateExpression) {
+    sqlBuilder.timeExpression = cloneDashboardDateExpression(pivotDateExpression)
+  }
   const fields = collectFields(viewInfo)
   const currentFields = collectCurrentPreviewFields(viewInfo)
   form.sourceTypes = sourceTypes

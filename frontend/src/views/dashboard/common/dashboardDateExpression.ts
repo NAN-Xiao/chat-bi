@@ -40,6 +40,14 @@ export type DashboardResolvedDateRange = { start: string; end: string }
 export type DashboardDateExpressionCalendarRange = [string, string] | []
 export type DashboardDateExpressionValidation = { valid: boolean; message: string }
 
+export function defaultDashboardDateExpression(): DashboardDateExpression {
+  return {
+    version: 1,
+    mode: 'preset',
+    preset: 'past_7_days',
+  }
+}
+
 export const DASHBOARD_DATE_PRESET_LABELS: Record<DashboardDatePreset, string> = {
   yesterday: '昨日',
   today: '今日',

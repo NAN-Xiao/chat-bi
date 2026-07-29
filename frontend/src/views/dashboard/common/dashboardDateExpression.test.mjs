@@ -16,6 +16,7 @@ const {
   buildDashboardDateExpressionFromCalendarRange,
   buildDashboardDateExpressionPivot,
   cloneDashboardDateExpression,
+  defaultDashboardDateExpression,
   dashboardDateExpressionCalendarRange,
   formatDashboardDateExpression,
   normalizeDashboardDateExpression,
@@ -24,6 +25,14 @@ const {
 } = await import(moduleUrl)
 
 const now = '2026-07-28T12:00:00+08:00'
+const defaultExpression = defaultDashboardDateExpression()
+assert.deepEqual(defaultExpression, {
+  version: 1,
+  mode: 'preset',
+  preset: 'past_7_days',
+})
+assert.notEqual(defaultDashboardDateExpression(), defaultExpression)
+
 const expected = new Map([
   ['yesterday', ['2026-07-27', '2026-07-27']],
   ['today', ['2026-07-28', '2026-07-28']],
