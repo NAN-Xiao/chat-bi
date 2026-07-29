@@ -295,15 +295,11 @@ def dashboard_date_parameter_tokens(parameter_type: str) -> tuple[str, str] | No
 def validate_dashboard_date_parameter_sql(
     sql: str,
     parameter_type: str,
-    *,
-    parameter_mode: str = "range",
 ) -> str | None:
     """校验 SQL 使用的看板日期 token 与配置类型完全一致。"""
     tokens = dashboard_date_parameter_tokens(parameter_type)
     if tokens is None:
         return "invalid_parameter_type"
-    if parameter_mode not in {"range", "end_only"}:
-        return "invalid_parameter_mode"
     _, active_tokens = _scan_sql_tokens(str(sql or ""))
     if not active_tokens:
         return "missing_parameters"
@@ -313,12 +309,8 @@ def validate_dashboard_date_parameter_sql(
         return "mixed_parameter_families"
     if active_families != {expected_family}:
         return "parameter_type_mismatch"
-    expected_tokens = (
-        {tokens[1]}
-        if parameter_mode == "end_only"
-        else set(tokens)
-    )
-    if active_tokens != expected_tokens:
+    allowed_token_sets = ({tokens[1]}, set(tokens))
+    if active_tokens not in allowed_token_sets:
         return "incomplete_parameters"
     return None
 
@@ -356,14 +348,15 @@ def prepare_dashboard_date_filter(
         return _unconfigured(source_sql, physical_tables, "missing_time_field")
 
     parameter_type = str(_pivot_value(pivot, "date_parameter_type", "") or "").strip()
-    parameter_mode = str(_pivot_value(pivot, "date_parameter_mode", "range") or "range").strip()
     parameter_error = validate_dashboard_date_parameter_sql(
         source_sql,
         parameter_type,
-        parameter_mode=parameter_mode,
     )
     if parameter_error:
         return _unconfigured(source_sql, physical_tables, parameter_error)
+    tokens = dashboard_date_parameter_tokens(parameter_type)
+    _, active_tokens = _scan_sql_tokens(source_sql)
+    parameter_mode = "end_only" if active_tokens == {tokens[1]} else "range"
 
     business_today = today or datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
     default_start, default_end = default_dashboard_date_range(today=business_today)

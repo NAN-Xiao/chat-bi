@@ -50,12 +50,37 @@ def test_date_parameter_sql_requires_exact_configured_token_pair() -> None:
     ) == "parameter_type_mismatch"
 
 
-def test_date_parameter_sql_allows_end_only_mode() -> None:
+def test_date_parameter_sql_infers_end_only_mode() -> None:
     assert validate_dashboard_date_parameter_sql(
         "select * from event where dt <= {{dashboard_end_yyyymmdd}}",
         "yyyymmdd_number",
-        parameter_mode="end_only",
     ) is None
+
+
+def test_date_parameter_sql_rejects_start_only_mode() -> None:
+    assert validate_dashboard_date_parameter_sql(
+        "select * from event where dt >= {{dashboard_start_yyyymmdd}}",
+        "yyyymmdd_number",
+    ) == "incomplete_parameters"
+
+
+def test_end_only_sql_does_not_need_pivot_date_parameter_mode() -> None:
+    pivot = DashboardPivotRequest.model_validate(
+        {
+            "time_field": "dt",
+            "date_parameter_type": "yyyymmdd_number",
+        }
+    )
+
+    prepared = prepare_dashboard_date_filter(
+        "select * from `user` where dt = {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot=pivot,
+        today=date(2026, 7, 29),
+    )
+
+    assert prepared.capability["status"] == "available"
+    assert "20260728" in prepared.sql
 
 
 def _allow_chart_execution_datasource(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -65,6 +90,62 @@ def _allow_chart_execution_datasource(monkeypatch: pytest.MonkeyPatch) -> None:
         "resolve_chart_execution_datasource",
         lambda _session, _user, datasource_id: int(datasource_id),
     )
+
+
+def test_bound_datasource_requires_time_field_only_for_enabled_pivot(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """绑定数据源只在启用透视聚合时要求配置时间字段。"""
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_is_bound_datasource",
+        lambda *_args, **_kwargs: True,
+    )
+
+    assert not dashboard_service._dashboard_requires_pivot_time_field(
+        _session(),
+        _user(),
+        1,
+        {"enabled": False, "time_field": ""},
+    )
+    assert dashboard_service._dashboard_requires_pivot_time_field(
+        _session(),
+        _user(),
+        1,
+        {"enabled": True, "time_field": ""},
+    )
+
+    sql = (
+        "select * from `event` where dt between "
+        "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+    )
+    non_pivot = {"enabled": False, "time_field": "", "date_parameter_type": "yyyymmdd_number"}
+    non_pivot_prepared = dashboard_service._prepare_dashboard_chart_query(
+        SimpleNamespace(type="mysql"),
+        sql,
+        non_pivot,
+        require_time_field=dashboard_service._dashboard_requires_pivot_time_field(
+            _session(), _user(), 1, non_pivot
+        ),
+    )
+    pivot_prepared = dashboard_service._prepare_dashboard_chart_query(
+        SimpleNamespace(type="mysql"),
+        sql,
+        {"enabled": True, "time_field": "", "date_parameter_type": "yyyymmdd_number"},
+        require_time_field=dashboard_service._dashboard_requires_pivot_time_field(
+            _session(),
+            _user(),
+            1,
+            {"enabled": True, "time_field": "", "date_parameter_type": "yyyymmdd_number"},
+        ),
+    )
+
+    assert non_pivot_prepared.date_filter_capability["status"] == "available"
+    assert "{{dashboard_start_yyyymmdd}}" not in non_pivot_prepared.source_sql
+    assert pivot_prepared.date_filter_capability == {
+        "status": "unconfigured",
+        "reason": "missing_time_field",
+    }
 
 
 def test_date_filter_cache_key_uses_rendered_dates_and_parameter_type() -> None:

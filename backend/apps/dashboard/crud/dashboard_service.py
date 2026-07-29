@@ -2001,6 +2001,16 @@ def _dashboard_is_bound_datasource(
     )
 
 
+def _dashboard_requires_pivot_time_field(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int | None,
+        pivot: Any | None,
+) -> bool:
+    """仅绑定数据源的服务端透视聚合需要时间字段。"""
+    return _dashboard_is_bound_datasource(session, current_user, datasource_id) and _dashboard_pivot_enabled(pivot)
+
+
 def _dashboard_pivot_date_cast_error(message: str, pivot: Any | None) -> str | None:
     """
     是什么：_dashboard_pivot_date_cast_error 是一个可以复用的小步骤，负责仪表盘相关的一件事。
@@ -3987,10 +3997,11 @@ def _dashboard_payload(
             prepared_query = _prepare_dashboard_chart_item_query(
                 datasource,
                 item,
-                require_time_field=_dashboard_is_bound_datasource(
+                require_time_field=_dashboard_requires_pivot_time_field(
                     session,
                     current_user,
                     item_datasource,
+                    item.get("pivot"),
                 ),
             )
             item["dateFilterCapability"] = copy.deepcopy(prepared_query.date_filter_capability)
@@ -5281,7 +5292,12 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         datasource,
         normalized_sql,
         request.pivot,
-        require_time_field=_dashboard_is_bound_datasource(session, current_user, datasource_id),
+        require_time_field=_dashboard_requires_pivot_time_field(
+            session,
+            current_user,
+            datasource_id,
+            request.pivot,
+        ),
     )
     date_filter_capability = prepared_query.date_filter_capability
     if (
