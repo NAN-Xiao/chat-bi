@@ -56,10 +56,10 @@ METRIC_SPECS = (
         field="活跃用户",
         x=1,
         sql="""SELECT
-    DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `活跃用户`
 FROM event
-WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
   AND prod = 110000047
   AND event = 'UserActive'""",
     ),
@@ -69,10 +69,10 @@ WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
         field="新增用户",
         x=19,
         sql="""SELECT
-    DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `新增用户`
 FROM event
-WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
   AND prod = 110000047
   AND event = 'UserRegister'""",
     ),
@@ -82,10 +82,10 @@ WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
         field="充值人数",
         x=37,
         sql="""SELECT
-    DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `充值人数`
 FROM event_realtime
-WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
   AND prod = 110000047
   AND event = 'ServerPayLog'""",
     ),
@@ -95,7 +95,7 @@ WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
         field="充值总额（万）",
         x=55,
         sql="""SELECT
-    DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
     ROUND(
         COALESCE(
             SUM(
@@ -114,7 +114,7 @@ WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
         2
     ) AS `充值总额（万）`
 FROM event_realtime
-WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)
+WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
   AND prod = 110000047
   AND event = 'ServerPayLog'""",
     ),
