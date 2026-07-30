@@ -229,7 +229,7 @@ def _normalized_mysql_expression(expression: exp.Expression) -> str:
 
 
 def validate_mysql_date_format_grouping(sql: str) -> None:
-    """校验 MySQL/AnalyticDB 的 DATE_FORMAT 投影与 GROUP BY 完全一致。"""
+    """校验 MySQL/AnalyticDB 的 DATE_FORMAT 投影可由分组键确定。"""
     for statement in sqlglot.parse(sql, read="mysql"):
         for select in statement.find_all(exp.Select):
             group = select.args.get("group")
@@ -239,6 +239,11 @@ def validate_mysql_date_format_grouping(sql: str) -> None:
                 _normalized_mysql_expression(expression)
                 for expression in group.expressions
             }
+            directly_grouped_columns = {
+                _normalized_mysql_expression(expression)
+                for expression in group.expressions
+                if isinstance(expression, exp.Column)
+            }
             for projection in select.expressions:
                 expression = projection.unalias()
                 if any(isinstance(node, exp.AggFunc) for node in expression.walk()):
@@ -247,9 +252,15 @@ def validate_mysql_date_format_grouping(sql: str) -> None:
                     continue
                 if _normalized_mysql_expression(expression) in grouped_expressions:
                     continue
+                referenced_columns = {
+                    _normalized_mysql_expression(column)
+                    for column in expression.find_all(exp.Column)
+                }
+                if referenced_columns and referenced_columns <= directly_grouped_columns:
+                    continue
                 raise SqlStructureValidationError(
-                    "MySQL/AnalyticDB 的非聚合 DATE_FORMAT 投影必须以完全相同的表达式出现在 GROUP BY 中；"
-                    "日期格式、函数参数和类型转换均不得不同。"
+                    "MySQL/AnalyticDB 的非聚合 DATE_FORMAT 投影必须以完全相同的表达式出现在 "
+                    "GROUP BY 中，或其依赖的原始字段必须直接分组；不得仅按另一个不同的日期表达式分组。"
                 )
 
 

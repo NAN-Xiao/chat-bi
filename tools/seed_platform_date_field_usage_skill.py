@@ -31,7 +31,7 @@ SKILL = {
         "依据当前数据源已配置的字段角色和 realtime_date_policy，"
         "统一日期范围参数、时间分组和实时查询的字段契约。"
     ),
-    "prompt": f"""{SKILL_MARKER}
+    "prompt": SKILL_MARKER + "\n" + """
 <!-- platform-foundation-skill:date-field-usage-contract:v1 -->
 # 平台通用 Data Skill：日期字段用途与范围筛选契约
 

@@ -49,6 +49,22 @@ def test_payer_penetration_topic_defines_active_payer_rate_contract():
     assert "paytotal" not in topic.guidance
 
 
+def test_new_user_retention_topic_excludes_immature_d7_cohorts() -> None:
+    _load_seed_module()
+    from xiuxian_dashboard_skill_catalog import TOPICS
+
+    topic = next(item for item in TOPICS if item.slug == "new-user-retention")
+
+    assert "D7" in topic.guidance
+    assert "至少 7 个完整自然日" in topic.guidance
+    assert "未成熟 cohort 不得进入分母" in topic.guidance
+    assert "样本数" in topic.guidance
+    assert "成熟 cohort" in topic.guidance
+    assert "{{dashboard_end_yyyymmdd}}" in topic.guidance
+    assert "INTERVAL 7 DAY" in topic.guidance
+    assert "e.dt <=" in topic.guidance
+
+
 def _parse_serverpaylog_validation(module) -> list[dict[str, object]]:
     payload = module.SERVERPAYLOG_VALIDATION.split(
         "data-skill-sql-validation:", 1

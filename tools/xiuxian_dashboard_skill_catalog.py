@@ -90,7 +90,14 @@ TOPICS = (
             "b0f27793e48349c1a6a7fbf40ff03ffd",
             "e797a8af6785452e9fdcee7d80786b6e",
         ),
-        "分母固定 UserRegister cohort，渠道依次取 mediaSource、campaignName、未知；Dn 分子为精确第 n 日 UserActive 去重 uid；近 15 个截至昨天的 cohort 日期补齐，未成熟或无注册分母时按 0 展示。",
+        "分母固定 UserRegister cohort，渠道依次取 mediaSource、campaignName、未知；Dn 分子为精确第 n 日 UserActive 去重 uid。"
+        "D7 只统计相对观察截止日已经过至少 7 个完整自然日的注册 cohort，未成熟 cohort 不得进入分母；"
+        "使用看板日期 token 时，注册事件别名必须在自身分区条件中同时写 "
+        "`e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}` 以及 "
+        "`e.dt <= CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)`；"
+        "对应 D7 活跃观察日必须等于注册日加 7 天且不得超过 `{{dashboard_end_yyyymmdd}}`。"
+        "用户要求样本数时，输出各渠道纳入计算的成熟 cohort 注册用户数。"
+        "按日趋势可补齐 cohort 日期，但未成熟 Dn 单元格返回 NULL；已成熟且无留存用户时才显示 0。",
     ),
     TopicDefinition(
         "active-retention",

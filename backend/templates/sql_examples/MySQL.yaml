@@ -26,6 +26,15 @@ template:
     <rule>函数字段必须加别名</rule>
     <rule>百分比显示为：CONCAT(ROUND(x*100,2),'%')</rule>
     <rule>避免与MySQL关键字冲突（如`order`/`group`/`desc`）</rule>
+    <rule priority="critical">
+      MySQL/AnalyticDB 查询中，SELECT 的非聚合 DATE_FORMAT 投影必须能由同一查询块的分组键确定：
+      可以在 GROUP BY 中重复完全相同的表达式，也可以直接分组该投影依赖的全部原始字段。
+      生成 JSON 前，必须逐个 SELECT 查询块检查所有非聚合 DATE_FORMAT 投影；不得只按另一个日期格式、函数参数或类型转换不同的派生表达式分组。
+      <example-bad>SELECT DATE_FORMAT(`e`.`dt`, '%Y-%m-%d') AS `日期` FROM `event` `e` GROUP BY DATE_FORMAT(`e`.`dt`, '%Y%m%d')</example-bad>
+      <example-good>SELECT DATE_FORMAT(`e`.`dt`, '%Y-%m-%d') AS `日期` FROM `event` `e` GROUP BY `e`.`dt`</example-good>
+      <example-good>SELECT DATE_FORMAT(`e`.`dt`, '%Y-%m-%d') AS `日期` FROM `event` `e` GROUP BY DATE_FORMAT(`e`.`dt`, '%Y-%m-%d')</example-good>
+      <example-good>SELECT DATE_FORMAT(DATE_ADD(`t`.`business_date`, INTERVAL 7 DAY), '%Y%m%d') AS `mature_date`, `t`.`entity_id` AS `entity_id` FROM `sample_table` `t` GROUP BY `t`.`business_date`, `t`.`entity_id`</example-good>
+    </rule>
 
   basic_example: |
     <basic-examples>

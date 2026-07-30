@@ -201,6 +201,22 @@ def test_mysql_date_format_grouping_accepts_matching_projection_expression() -> 
     validate_mysql_date_format_grouping(sql)
 
 
+def test_mysql_date_format_grouping_accepts_projection_derived_from_grouped_columns() -> None:
+    sql = """
+    SELECT CAST(
+               DATE_FORMAT(
+                   DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY),
+                   '%Y%m%d'
+               ) AS SIGNED
+           ) AS mature_date,
+           e.uid AS user_id
+    FROM event e
+    GROUP BY e.dt, e.uid
+    """
+
+    validate_mysql_date_format_grouping(sql)
+
+
 def test_execute_error_rejects_unrelated_cannot_be_resolved_text() -> None:
     error = _MysqlError("storage backend cannot be resolved", 1815)
 

@@ -10,8 +10,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = ROOT / "tools"
+BACKEND_DIR = ROOT / "backend"
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 module = importlib.import_module("seed_platform_date_field_usage_skill")
 
@@ -52,6 +55,27 @@ def test_skill_requires_date_field_and_parameter_contract() -> None:
     assert "没有日期 token 时不能返回普通 `date_filter`" in prompt
     assert "默认实时查询不套用历史日期 pivot" in prompt
     assert "不得静默回退" in prompt
+
+
+def test_dashboard_date_tokens_keep_double_braces_in_skill_and_model_prompt() -> None:
+    from apps.chat.models.chat_model import AiModelQuestion
+
+    start_token = "{{dashboard_start_yyyymmdd}}"
+    end_token = "{{dashboard_end_yyyymmdd}}"
+    prompt = module.SKILL["prompt"]
+
+    assert start_token in prompt
+    assert end_token in prompt
+    assert prompt.count(start_token) == 1
+    assert prompt.count(end_token) == 1
+
+    model_prompt = AiModelQuestion(
+        engine="MySQL 8.0",
+        db_schema="【DB_ID】 test\n【Schema】",
+        data_skill=prompt,
+    ).sql_sys_question("mysql")["data_skill"]
+    assert start_token in model_prompt
+    assert end_token in model_prompt
 
 
 class FakeBackend:
