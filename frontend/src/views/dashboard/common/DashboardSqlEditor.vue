@@ -2758,7 +2758,7 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
             return Array.isArray(table?.fields) ? tableWithRole : { ...tableWithRole, fields: [] }
           }
           try {
-            const fields = await datasourceApi.fieldList(table.id, { excludeContainerFields: false })
+            const fields = await datasourceApi.fieldList(table.id, { fieldName: '', excludeContainerFields: false })
             return { ...tableWithRole, fields: Array.isArray(fields) ? fields : table.fields || [] }
           } catch {
             return Array.isArray(table?.fields) ? tableWithRole : { ...tableWithRole, fields: [] }
