@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 import sys
 from pathlib import Path
 
@@ -283,7 +284,8 @@ LIMIT 24
 - D1 留存分子：先固定注册事件 cohort，再在该 cohort 的精确次日 `UserActive` 中查同一 `uid`；不能只读取注册当天，也不要跨多日 `MAX(remain1)`。
 - 默认只展示已成熟 cohort：近月看板以当前日前一完整分区为成熟截止，D1 默认窗口排除最近 1 天，D7 默认窗口排除最近 7 天，避免把未成熟 cohort 当 0%。
 - 用户问“最近 N 天新增用户留存/滞留情况”且未指定 D3/D7 时，默认按 D1 精确日留存理解；cohort 窗口应取最近 N 个已成熟注册日。例如系统日期为 2026-06-30 时，“最近三天新增用户留存”应统计注册日 2026-06-26、2026-06-27、2026-06-28，对应活跃观察日 2026-06-27、2026-06-28、2026-06-29；不要把 2026-06-29 注册 cohort 纳入 D1 留存分母。
-- flam ADS 对 `MAX(user.dt)` / `MAX(event.dt)` 这类大视图聚合较慢；持久看板以 `CURDATE()` 前一日派生最近完整 `dt` 分区窗口，并显式过滤 `prod = 110000038`。
+- flam ADS 对 `MAX(user.dt)` / `MAX(event.dt)` 这类大视图聚合较慢；非 `metric` 历史时序图必须以 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整 `dt` 分区窗口，并显式过滤 `prod = 110000038`。
+- 非 `metric` 历史时序图的 SQL 必须返回完整 `date_filter`：`{{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{{"version":1,"mode":"preset","preset":"past_7_days"}}}}`；SQL 的日期条件使用 `{{dashboard_start_yyyymmdd}}` 与 `{{dashboard_end_yyyymmdd}}`。用户指定范围时，`date_expression` 必须按用户范围生成。`metric` 图表不得返回 `date_filter` 或看板日期 token。
 
 ## 推荐输出
 - 默认优先使用中文 SQL 输出别名：`日期`、`新增用户数`、`次日留存用户数`、`次日留存率`；图表配置的 `value` 必须与 SQL 返回字段完全一致。
@@ -307,7 +309,8 @@ LIMIT 24
 - 适用于 `核心看板`、`新增看板`、`活跃看板`、`付费概览`、`渠道分析`、`投放看板` 等离线历史看板的日期窗口选择。
 
 ## 日期窗口
-- flam 的 ADS 视图对 `MAX(dt)`、`DISTINCT dt` 和先取最大分区的 CTE 计划较重；历史活跃、DAU/WAU/MAU、ARPU/ARPPU 这类近月趋势以 `CURDATE()` 前一日生成最近完整 `dt` 分区窗口，并显式过滤 `prod = 110000038` 和目标事件。
+- flam 的 ADS 视图对 `MAX(dt)`、`DISTINCT dt` 和先取最大分区的 CTE 计划较重；历史活跃、DAU/WAU/MAU、ARPU/ARPPU 这类近月趋势必须用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整 `dt` 分区窗口，并显式过滤 `prod = 110000038` 和目标事件。
+- 非 `metric` 历史时序图必须返回 `date_filter`：`{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}}`；用户指定范围时按用户范围生成 `date_expression`。`metric` 图表必须省略 `date_filter` 及全部看板日期 token。
 - DAU/活跃趋势在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用当前日前一完整分区作为结束边界，避免额外扫描事件视图获取最大分区。
 - 指标需要成熟 cohort 或最新快照语义时，使用当前日前一完整分区或排除对应成熟窗口，例如新增留存、7 日 LTV、当前等级分布；这类问题不能把未成熟 cohort 当 0。
 - 需要计算 D1/D3/D7 留存或 7 日 LTV 时，只展示成熟 cohort：D1 默认排除最近 1 天，D7 默认排除最近 7 天。
@@ -332,7 +335,7 @@ LIMIT 24
 ## 活跃用户
 - DAU/WAU/MAU 使用 `event` 表的归一化活跃事件 `UserActive` 计算 `uid` 去重，并显式过滤 `prod = 110000038` 以帮助 ADS 分区/条件下推。
 - 按渠道/系统拆分活跃时，使用活跃事件行上的 `adinfo` / `deviceinfo`。
-- 历史活跃趋势在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；以 `CURDATE()` 前一日生成最近完整 `dt` 分区窗口，不要为了取最大分区对大视图做 `MAX(dt)` / `DISTINCT dt` 聚合。
+- 历史活跃趋势在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；SQL 必须以 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定 `dt` 分区窗口，并返回同范围的 `date_filter`，不要为了取最大分区对大视图做 `MAX(dt)` / `DISTINCT dt` 聚合。
 - DAU 在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；WAU/周登录天数按自然周聚合，观察窗口应扩展到完整周；MAU 按自然月聚合，观察窗口应扩展到完整月。
 - 活跃生命周期先用 `UserActive` 确定当日活跃 `uid`，再关联同日 `user` 快照读取 `lastinfo.regnday` 分层：`<=1` 新增期，`<=7` 成长期，`<=30` 稳定期，其余成熟期。
 
@@ -395,7 +398,7 @@ LIMIT 24
 ## 付费与累计
 - `user.pay.paytotal` 是用户截至该 `dt` 的累计付费快照，可用于累计付费金额、累计付费用户、当前等级段累计人均付费等快照指标。
 - 历史日充值金额直接汇总 `event='ServerPayLog'` 的 `personal.money`；不要按日汇总 `paytotal`，也不要用支付流程事件筛人后再推导交易金额。
-- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；最近窗口以 `CURDATE()` 前一日为最近完整业务日，不扫描大视图取得最大分区。
+- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；非 `metric` 时间图必须以 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定窗口并返回同范围的 `date_filter`，不扫描大视图取得最大分区。
 - 只有结果需要按渠道/系统等维度拆分时才解析交易事件行的 `adinfo` / `deviceinfo` JSON；国家拆分统一使用活跃事件和 `ServerPayLog` 事件各自行的 `userinfo.country`，不使用 `currentinfo.country`。
 - 日充值次数使用 `ServerPayLog.personal.orderId` 去重；日充值用户数使用同日 `ServerPayLog.uid` 去重。
 - 日新增充值用户数使用 `user.pay.firstpaytime` 转换的首付业务日；不得使用分析窗口内最小付费事件日期。
@@ -446,7 +449,7 @@ LIMIT 24
 - 核心看板 `礼包购买情况` 当前使用 `event='ServerPayLog'` 作为落地口径。
 - `购买礼包ID` 取 `ServerPayLog.personal.productid`：`NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')), '')`；该字段为空的支付事件不进入礼包排行。
 - `购买次数` 统计符合条件的 `ServerPayLog` 事件行数；`购买人数` 统计去重 `uid`。
-- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用 `CURDATE()` 前一日派生完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；非 `metric` 时间图使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整业务日 `dt` 分区、过滤 `prod = 110000038`，并返回同范围的 `date_filter`。
 
 ## 禁止事项
 - 生成核心看板 `礼包购买情况` 的 SQL 时，不要再使用 `ext.payId` / `ext.rechargeId` / `ext.productId` / `ext.goodsId` 作为该组件的礼包标识。
@@ -525,7 +528,7 @@ LIMIT 24
 - 渠道投放注册必须先固定注册日 cohort：`user.userinfo.regdate = user.dt`，按 `uid` 去重。
 - 渠道归因取注册日快照行的 `adinfo.mediaSource`，缺失时用 `adinfo.campaignName`，仍缺失记为“未知”。
 - 首日付费金额固定读取注册日快照 `pay.pay1`；7 日累计付费读取注册日后第 6 天快照的 `pay.pay7`，未成熟时返回空值；累计付费读取当前日前一完整快照的 `pay.paytotal`。
-- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用 `CURDATE()` 前一日派生完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；非 `metric` 时间图使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整业务日 `dt` 分区、过滤 `prod = 110000038`，并返回同范围的 `date_filter`。
 
 ## 禁止事项
 - 不要用活跃事件行的渠道覆盖注册归因。
@@ -610,7 +613,7 @@ LIMIT 24
 - “免费钻石获取途径分布”只统计 `personal.ed_changeFree > 0` 的获取记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，仅输出获取途径和免费钻石获取量。
 - “钻石消耗途径分布”只统计 `personal.ed_changeFree < 0` 或 `personal.ed_changePaid < 0` 的消耗记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，分别输出免费钻石消耗量和付费钻石消耗量。
 - 获取/消耗途径优先取 `personal.ed_route`，缺失时取 `personal.ed_detailReason`，仍缺失记为“未知”。
-- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用 `CURDATE()` 前一日派生完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；非 `metric` 时间图使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整业务日 `dt` 分区、过滤 `prod = 110000038`，并返回同范围的 `date_filter`。
 
 ## 禁止事项
 - 不要再从 `ext.ed_changeFree/ext.ed_changePaid` 读取钻石变化；当前 `GoldChange` 样本中 `ext` 为空，字段在 `personal`。
@@ -727,6 +730,7 @@ LIMIT 24
 - 招募情况使用 `event='HeroRecruit'`，招募池 ID 取 `personal.ed_cardType`，招募方式取 `personal.ed_recruitNumType`；`ONE` 映射为“单抽”，`TEN` 映射为“十连抽”，缺失或其它值归为“未知”。
 - 加速类型当前没有已验证字段映射；组件必须显示“待补充字段映射”，不得从 `ext.ed_detailReason`、`ext.ed_route` 或其他相邻字段猜测类型。
 - 主城升级漏斗使用最新快照主城等级阈值，而不是历史升级事件次数。
+- 三个“当日升级次数” `metric` 使用 UTC+8 当前业务日的前一日作为最新完整业务日，并据此计算前一日和上周同日；不得返回 `date_filter` 或看板日期 token。示例中的 `20260730` 仅表示已由调用方确定的 UTC+8 当前业务日，实际生成时必须替换为本次请求确定的日期字面量。
 
 ## 禁止事项
 - 不要把最近 30 天所有用户快照合并后统计当前等级分布。
@@ -757,7 +761,7 @@ LIMIT 24
 - 用户未指定沉默天数时，默认 `沉默用户` 为最近 3 到 6 个完整业务日没有 `UserActive`、且此前 30 天内有过 `UserActive` 的用户。
 - 用户未指定回流天数时，默认 `回流用户` 为当前观察日 `UserActive`，且此前连续 7 个完整业务日没有 `UserActive`，再往前 30 天内有过 `UserActive` 的用户。
 - 流失前画像可以按渠道、系统、区服、等级、主城等级、付费分层、最近一次活动/付费/建筑/出征行为拆分；涉及当前状态时使用 `user` 当前日前一完整分区。
-- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt` 分区，并过滤 `prod = 110000038`；避免先对 ADS 大视图做 `MAX(dt)` 或全历史扫描。
+- 历史窗口优先使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定固定完整 `dt` 分区，并过滤 `prod = 110000038`；非 `metric` 时间图返回同范围的 `date_filter`，避免先对 ADS 大视图做 `MAX(dt)` 或全历史扫描。
 
 ## 七日留存 SQL 示例（MySQL/StarRocks）
 当用户要求查看最近一段已成熟 cohort 的 D7 留存趋势时，使用以下结构作为生成 SQL 的参照。可以按用户指定的 cohort 数量调整窗口，但必须保留 `bounds`、注册 cohort 和第 7 日快照三层结构。
@@ -843,7 +847,7 @@ ORDER BY cohort_dt;
 - 行为人群使用 `event` 表先固定行为 cohort，再回连同日或当前快照读取画像字段。
 - 高价值用户、付费用户、未付费用户等金额相关人群必须遵守字段权限；如果当前用户无权读取 `pay`，不得生成金额或 ARPU/ARPPU 相关 SQL。
 - 交叉分析默认输出每个分层的用户数、占比；需要业务效果时再追加 DAU、付费用户数、付费金额、留存率等指标。
-- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt`，并过滤 `prod = 110000038`。
+- 历史窗口优先使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定固定完整 `dt`，并过滤 `prod = 110000038`；非 `metric` 时间图返回同范围的 `date_filter`。
 
 ## 推荐输出
 - 人群分层表字段建议为 `分层名称`、`用户数`、`占比`。
@@ -878,7 +882,7 @@ ORDER BY cohort_dt;
 - 区服付费用户和充值次数使用付费事件集合；区服累计付费金额使用当前日前一完整分区 `user.pay.paytotal`，金额字段需遵守权限。
 - 区服留存先固定区服注册 cohort，再看精确 D1/D3/D7 `UserActive`；不要用当前区服活跃用户反推注册留存。
 - 区服健康度默认同时看最近 7 天 DAU 趋势、新增趋势、付费用户数、付费金额、D1/D7 留存和流失/回流；没有成本字段时不要输出 ROI。
-- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt`，并过滤 `prod = 110000038`。
+- 历史窗口优先使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定固定完整 `dt`，并过滤 `prod = 110000038`；非 `metric` 时间图返回同范围的 `date_filter`。
 
 ## 推荐输出
 - 区服排行榜字段建议为 `区服ID`、`新增用户数`、`DAU`、`付费用户数`、`付费金额`、`D1留存率`、`开服天数`。
@@ -908,7 +912,7 @@ ORDER BY cohort_dt;
 - JSON 字段空值判断使用 `NULLIF(JSON_UNQUOTE(JSON_EXTRACT(...)), '') IS NULL`，同时兼容 JSON path 不存在和空字符串。
 - 事件波动默认按最近 7 天与前 7 天对比，输出事件量、事件用户数、环比变化；用户要求同比时再查上周同日或更长窗口。
 - 版本、系统、设备、渠道、国家等维度需先确认字段存在：常见来源为 `deviceinfo._platform`、`deviceinfo._osVersion`、`deviceinfo._model`、`adinfo.mediaSource`、`adinfo.campaignName`、`userinfo.country`。
-- 历史窗口优先使用 `CURDATE()` 前一日派生固定最近完整 `dt`，并过滤 `prod = 110000038`；避免大范围 JSON_KEYS 聚合或全历史扫描。
+- 历史窗口优先使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定固定完整 `dt`，并过滤 `prod = 110000038`；非 `metric` 时间图返回同范围的 `date_filter`，避免大范围 JSON_KEYS 聚合或全历史扫描。
 
 ## 推荐输出
 - 事件健康表字段建议为 `日期`、`事件名`、`事件量`、`触发用户数`、`较前期变化率`。
@@ -923,7 +927,81 @@ ORDER BY cohort_dt;
     },
 ]
 
-DATA_SKILLS = apply_dashboard_skill_overrides(DATA_SKILLS)
+_DASHBOARD_SQL_BLOCK_PATTERN = re.compile(
+    r"(?P<header><!-- dashboard-sql:(?P<view_id>[^ ]+?) -->\s*```sql\s*\n)"
+    r"(?P<sql>[\s\S]*?)(?P<footer>\n```)"
+)
+_DASHBOARD_TOKEN_DATE_VIEW_IDS = {
+    "839ce2cab673467ab22fe508bf822d61",
+    "f0793fb6af7845c8be2b39e2d7ea523f",
+    "97337c8b63544de89f26d2719cc45e75",
+}
+_DASHBOARD_REALTIME_DATE_VIEW_IDS = {
+    "4fc570b4be7d406c9f648d9088f760bb",
+    "2149b7abbc6c4cd7ad6f52379e69b15a",
+}
+_DASHBOARD_METRIC_DATE_VIEW_IDS = {
+    "9d4add7a8be048ea9c7beb62a43e50cc",
+    "9325211a9f594376bf818cec639aa103",
+    "440303dfdf39408ba86ffb222f3334f2",
+    "0b849c96c0a3480c9e940b92995d5e3e",
+    "4608fb0831cd4845ba881678fb778b2f",
+    "dbc481fea69d4314af8535600fa4f8c8",
+    "48f02edf9a364e1082cd67008cd60b2b",
+    "8f6dcec8cfdb40b4a7c02139b7d35f56",
+}
+_DASHBOARD_END_DATE_SQL = (
+    "STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')"
+)
+_DASHBOARD_START_DATE_SQL = (
+    "STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d')"
+)
+_REALTIME_BUSINESS_DATE_SQL = "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))"
+_METRIC_EXAMPLE_BUSINESS_DATE_SQL = "STR_TO_DATE('20260730', '%Y%m%d')"
+_DATABASE_CURRENT_DATE_PATTERN = re.compile(
+    r"\b(?:CURDATE|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|"
+    r"GETDATE|GETUTCDATE)\s*(?:\(\s*\))?",
+    re.IGNORECASE,
+)
+
+
+def _tokenize_dashboard_sql_current_date(prompt: str) -> str:
+    """按看板语义替换旧日期函数，未知用法直接拒绝发布。"""
+
+    def replace_sql_block(match: re.Match[str]) -> str:
+        view_id = match.group("view_id")
+        sql = match.group("sql")
+        current_date_match = _DATABASE_CURRENT_DATE_PATTERN.search(sql)
+        if view_id in _DASHBOARD_METRIC_DATE_VIEW_IDS:
+            sql = sql.replace(_DASHBOARD_START_DATE_SQL, _METRIC_EXAMPLE_BUSINESS_DATE_SQL)
+            sql = sql.replace(_DASHBOARD_END_DATE_SQL, _METRIC_EXAMPLE_BUSINESS_DATE_SQL)
+            sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_METRIC_EXAMPLE_BUSINESS_DATE_SQL, sql)
+        elif current_date_match is None:
+            return match.group(0)
+        elif view_id in _DASHBOARD_TOKEN_DATE_VIEW_IDS:
+            sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_DASHBOARD_END_DATE_SQL, sql)
+            if view_id == "97337c8b63544de89f26d2719cc45e75":
+                sql = sql.replace(
+                    f"DATE_SUB({_DASHBOARD_END_DATE_SQL}, INTERVAL 60 DAY)",
+                    f"DATE_SUB({_DASHBOARD_START_DATE_SQL}, INTERVAL 30 DAY)",
+                )
+        elif view_id in _DASHBOARD_REALTIME_DATE_VIEW_IDS:
+            sql = sql.replace(
+                "FROM_UNIXTIME(e.time / 1000)",
+                "DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)",
+            )
+            sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_REALTIME_BUSINESS_DATE_SQL, sql)
+        else:
+            raise ValueError(f"Flam 看板 SQL 存在未分类的数据库当前日期函数: {view_id}")
+        return f"{match.group('header')}{sql}{match.group('footer')}"
+
+    return _DASHBOARD_SQL_BLOCK_PATTERN.sub(replace_sql_block, prompt)
+
+
+DATA_SKILLS = [
+    {**skill, "prompt": _tokenize_dashboard_sql_current_date(skill["prompt"])}
+    for skill in apply_dashboard_skill_overrides(DATA_SKILLS)
+]
 
 
 def _prompt(skill: dict[str, str]) -> str:

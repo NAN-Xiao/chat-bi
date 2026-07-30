@@ -13,7 +13,7 @@ import pytest
 from apps.chat.models.chat_model import ChatFinishStep, OperationEnum
 from apps.chat.task import llm
 from apps.chat.task import smart_qa_graph as graph
-from apps.chat.task.sql_repair import SqlStructureValidationError
+from apps.chat.task.sql_repair import SqlRepairReason, SqlStructureValidationError
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 
@@ -591,6 +591,132 @@ def test_prepare_sql_response_format_error_repairs_then_revalidates(
 
     assert service.repair_contexts[0].reason.value == "sql_response_format"
     assert service.saved_sql == [repaired_sql]
+    assert not any(event["type"] == "error" for event in _events(chunks))
+
+
+@pytest.mark.parametrize(
+    ("date_error", "invalid_payload", "repaired_payload"),
+    [
+        (
+            "missing_parameters",
+            {
+                "sql": "SELECT dt, COUNT(*) FROM event GROUP BY dt",
+                "chart_type": "line",
+            },
+            {
+                "sql": (
+                    "SELECT dt, COUNT(*) FROM event WHERE dt BETWEEN "
+                    "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} GROUP BY dt"
+                ),
+                "chart_type": "line",
+                "date_filter": {
+                    "time_field": "dt",
+                    "date_parameter_type": "yyyymmdd_number",
+                    "date_expression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+                },
+            },
+        ),
+        (
+            "database_current_date",
+            {
+                "sql": "SELECT dt, COUNT(*) FROM event WHERE dt <= CURRENT_DATE GROUP BY dt",
+                "chart_type": "line",
+                "date_filter": {
+                    "time_field": "dt",
+                    "date_parameter_type": "yyyymmdd_number",
+                    "date_expression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+                },
+            },
+            {
+                "sql": (
+                    "SELECT dt, COUNT(*) FROM event WHERE dt BETWEEN "
+                    "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} GROUP BY dt"
+                ),
+                "chart_type": "line",
+                "date_filter": {
+                    "time_field": "dt",
+                    "date_parameter_type": "yyyymmdd_number",
+                    "date_expression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+                },
+            },
+        ),
+        (
+            "metric_chart",
+            {
+                "sql": (
+                    "SELECT COUNT(*) FROM event WHERE dt BETWEEN "
+                    "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
+                ),
+                "chart_type": "metric",
+                "date_filter": {
+                    "time_field": "dt",
+                    "date_parameter_type": "yyyymmdd_number",
+                    "date_expression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
+                },
+            },
+            {
+                "sql": "SELECT COUNT(*) FROM event WHERE dt = 20260730",
+                "chart_type": "metric",
+            },
+        ),
+    ],
+)
+def test_prepare_sql_date_filter_error_repairs_then_revalidates(
+        monkeypatch: pytest.MonkeyPatch,
+        date_error: str,
+        invalid_payload: dict[str, Any],
+        repaired_payload: dict[str, Any],
+) -> None:
+    invalid_answer = json.dumps({"success": True, "tables": ["event"], **invalid_payload})
+    repaired_answer = json.dumps({"success": True, "tables": ["event"], **repaired_payload})
+    repaired_sql = repaired_payload["sql"]
+    service = FakeSmartQAService(sql_answer=invalid_answer)
+    service.repair_answers = [repaired_answer]
+    service.render_chat_sql_for_execution = lambda sql: sql
+
+    def check_sql(*, session, res, operate):
+        assert session is not None
+        assert operate == OperationEnum.GENERATE_SQL
+        if res == invalid_answer:
+            raise SingleMessageError(f"日期参数配置无效：{date_error}")
+        payload = json.loads(res)
+        service.chat_date_pivot = llm.normalize_chat_date_filter_for_question(
+            service.chat_question.question,
+            payload.get("date_filter"),
+            payload["sql"],
+            payload.get("chart_type") or "",
+        )
+        return payload["sql"], payload.get("tables")
+
+    service.check_sql = check_sql
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"event"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table event(dt bigint)", ["event"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert service.repair_contexts[0].reason.value == "date_filter_configuration"
+    assert service.saved_sql == [repaired_sql]
+    if date_error == "metric_chart":
+        assert service.chat_date_pivot is None
+        assert "{{dashboard_" not in repaired_sql
+    else:
+        assert service.chat_date_pivot["time_field"] == "dt"
+        assert "CURRENT_DATE" not in repaired_sql
     assert not any(event["type"] == "error" for event in _events(chunks))
 
 
@@ -1717,6 +1843,48 @@ def test_dynamic_assistant_datasource_executes_expanded_sql():
         "finish",
     ]
     assert not any(event["type"] == "chart" for event in events)
+
+
+def test_dynamic_sql_date_filter_error_repairs_then_revalidates():
+    sql_answer = _sql_answer("select * from orders", ["orders"])
+    service = FakeSmartQAService(
+        current_assistant=SimpleNamespace(type=1),
+        sql_answer=sql_answer,
+    )
+    service.repair_answers = [sql_answer]
+    checks = 0
+
+    def _dynamic_sql(session, sql, tables):
+        return {
+            "orders": "select id, amount from public.orders",
+            "app_temp_sql_text": _sql_answer(
+                "select * from app_dynamic_temp_table_orders", ["orders"]
+            ),
+        }
+
+    def _check_save_sql(*, session, res, operate):
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            raise SingleMessageError("日期参数配置无效：missing_date_filter")
+        return "select * from app_dynamic_temp_table_orders"
+
+    service.generate_assistant_dynamic_sql = _dynamic_sql
+    service.check_save_sql = _check_save_sql
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.QUERY_DATA,
+        ),
+    )
+
+    assert checks == 2
+    assert service.repair_contexts[0].reason is SqlRepairReason.DATE_FILTER_CONFIGURATION
+    assert len(service.executed) == 1
+    assert not any(event["type"] == "error" for event in _events(chunks))
 
 
 def test_non_chat_stream_query_data_returns_markdown(monkeypatch: pytest.MonkeyPatch):

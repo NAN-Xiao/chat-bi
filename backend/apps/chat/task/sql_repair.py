@@ -80,6 +80,15 @@ _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
         re.IGNORECASE,
     ),
 )
+_PREPARE_DATE_FILTER_CONFIGURATION_PATTERN = re.compile(
+    r"日期参数配置无效\s*[：:]\s*(?:"
+    r"missing_parameters|database_current_date|metric_chart|"
+    r"missing_date_filter|invalid_date_filter|missing_time_field|"
+    r"invalid_parameter_type|mixed_parameter_families|parameter_type_mismatch|"
+    r"incomplete_parameters|missing_date_expression"
+    r")",
+    re.IGNORECASE,
+)
 _URI_PASSWORD_PATTERN = re.compile(
     r"(?P<prefix>\b[a-z][a-z0-9+.-]*://[^\s/:@]+:)(?P<secret>[^\s/@]+)(?=@)",
     re.IGNORECASE,
@@ -114,6 +123,7 @@ class SqlRepairReason(str, Enum):
     SQL_RESPONSE_FORMAT = "sql_response_format"
     SQL_PARSE = "sql_parse"
     DATA_SKILL_VALIDATION = "data_skill_validation"
+    DATE_FILTER_CONFIGURATION = "date_filter_configuration"
     DATABASE_SYNTAX_OR_DIALECT = "database_syntax_or_dialect"
 
 
@@ -202,6 +212,11 @@ def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
         return SqlRepairReason.SQL_RESPONSE_FORMAT
     if any(pattern.search(message) for pattern in _PREPARE_EMPTY_SQL_PATTERNS):
         return SqlRepairReason.SQL_RESPONSE_FORMAT
+    if any(
+        _PREPARE_DATE_FILTER_CONFIGURATION_PATTERN.fullmatch(str(item or "").strip())
+        for item in _walk_error_chain(error)
+    ):
+        return SqlRepairReason.DATE_FILTER_CONFIGURATION
     if "parse sql error" in lowered:
         return SqlRepairReason.SQL_PARSE
     return None
@@ -314,6 +329,21 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         "max_attempts": context.max_attempts,
         "violation": asdict(context.violation) if context.violation is not None else None,
     }
+    if context.reason is SqlRepairReason.DATE_FILTER_CONFIGURATION:
+        payload["repair_requirements"] = [
+            (
+                "具备时间字段的非 metric 图表必须返回完整 date_filter，SQL 日期边界必须使用与 "
+                "date_parameter_type 匹配的看板日期 token；yyyymmdd_number 使用 "
+                "{{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}。"
+            ),
+            (
+                "metric 图表不得返回 date_filter，也不得使用看板日期 token；保留用户要求的固定时间语义。"
+            ),
+            (
+                "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、"
+                "LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。"
+            ),
+        ]
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
     return (
         "上一版 SQL 未通过校验或执行，请根据下方修复上下文重写完整 SQL JSON。\n"

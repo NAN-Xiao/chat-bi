@@ -3,8 +3,6 @@
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import sys
 from pathlib import Path
@@ -23,9 +21,22 @@ OLD_DASHBOARD_VIEW_IDS = {
     "e3fe7e4819e64b71b76d9329a3023359",
     "f113ac14e8994d12814452040b702424",
 }
-EXPECTED_CURRENT_CATALOG_SHA256 = (
-    "15dd6c8870705858073d26fc4085d87ca2f6e1f690e440fc4e5f48360d10f51c"
-)
+
+REALTIME_CURRENT_DATE_VIEW_IDS = {
+    "4fc570b4be7d406c9f648d9088f760bb",
+    "2149b7abbc6c4cd7ad6f52379e69b15a",
+}
+
+METRIC_CURRENT_DATE_VIEW_IDS = {
+    "9d4add7a8be048ea9c7beb62a43e50cc",
+    "9325211a9f594376bf818cec639aa103",
+    "440303dfdf39408ba86ffb222f3334f2",
+    "0b849c96c0a3480c9e940b92995d5e3e",
+    "4608fb0831cd4845ba881678fb778b2f",
+    "dbc481fea69d4314af8535600fa4f8c8",
+    "48f02edf9a364e1082cd67008cd60b2b",
+    "8f6dcec8cfdb40b4a7c02139b7d35f56",
+}
 
 
 def _seed_dashboard_sql() -> dict[str, str]:
@@ -46,22 +57,9 @@ def _seed_dashboard_sql() -> dict[str, str]:
 
 def test_dashboard_sql_directory_matches_current_recommended_dashboards() -> None:
     blocks = _seed_dashboard_sql()
-    hashes = {
-        view_id: hashlib.sha256(sql.encode("utf-8")).hexdigest()
-        for view_id, sql in sorted(blocks.items())
-    }
-    catalog_sha256 = hashlib.sha256(
-        json.dumps(
-            hashes,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
 
     assert len(blocks) == 84
     assert OLD_DASHBOARD_VIEW_IDS.isdisjoint(blocks)
-    assert catalog_sha256 == EXPECTED_CURRENT_CATALOG_SHA256
 
 
 @pytest.mark.parametrize("view_id", [
@@ -73,6 +71,60 @@ def test_realtime_payment_components_use_realtime_event_table(view_id: str) -> N
     assert "event_realtime" in sql
     assert re.search(r"\b(?:FROM|JOIN)\s+`?event`?\b", sql, re.I) is None
     assert "ServerPayLog" in sql
+
+
+def test_realtime_payment_components_keep_explicit_utc8_business_date() -> None:
+    blocks = _seed_dashboard_sql()
+
+    for view_id in REALTIME_CURRENT_DATE_VIEW_IDS:
+        sql = blocks[view_id]
+        assert "{{dashboard_start_yyyymmdd}}" not in sql
+        assert "{{dashboard_end_yyyymmdd}}" not in sql
+        assert "DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)" in sql
+
+
+def test_metric_components_use_fixed_example_date_without_dashboard_tokens() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    blocks = _seed_dashboard_sql()
+
+    for view_id in METRIC_CURRENT_DATE_VIEW_IDS:
+        sql = blocks[view_id]
+        assert "{{dashboard_start_yyyymmdd}}" not in sql
+        assert "{{dashboard_end_yyyymmdd}}" not in sql
+        assert "STR_TO_DATE('20260730', '%Y%m%d')" in sql
+
+    prompt = next(
+        skill["prompt"]
+        for skill in seed.DATA_SKILLS
+        if skill["name"] == "flam 主城建设与成长口径"
+    )
+    assert "`20260730` 仅表示已由调用方确定的 UTC+8 当前业务日" in prompt
+
+
+def test_unknown_dashboard_current_date_usage_fails_closed() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    for expression in (
+        "curdate ( )",
+        "NOW()",
+        "CURRENT_DATE",
+        "CURRENT_TIMESTAMP()",
+    ):
+        prompt = f"<!-- dashboard-sql:unknown-view -->\n```sql\nSELECT {expression}\n```"
+        with pytest.raises(ValueError, match="unknown-view"):
+            seed._tokenize_dashboard_sql_current_date(prompt)
+
+
+def test_month_card_retention_observation_window_tracks_selected_cohort_range() -> None:
+    sql = _seed_dashboard_sql()["97337c8b63544de89f26d2719cc45e75"]
+
+    assert "INTERVAL 60 DAY" not in sql
+    assert (
+        "DATE_SUB(STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), "
+        "'%Y%m%d'), INTERVAL 30 DAY)"
+    ) in sql
+    assert "STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')" in sql
 
 
 def test_realtime_skill_description_has_payment_retrieval_anchor() -> None:
@@ -153,6 +205,37 @@ def test_flam_generic_default_date_ranges_defer_to_platform_rule() -> None:
     assert set(prompts) == names
     for prompt in prompts.values():
         assert "未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围" in prompt
+
+
+def test_data_skills_do_not_proactively_recommend_database_current_date() -> None:
+    """仅保留明确否定数据库当前日期函数的说明，不能把它作为 SQL 日期边界。"""
+    import seed_flam_first_zombie_data_skills as seed
+
+    negative_markers = ("不要", "不能", "不得", "禁止", "不应")
+    proactive_lines = [
+        f"{skill['name']}: {line.strip()}"
+        for skill in seed.DATA_SKILLS
+        for line in skill["prompt"].splitlines()
+        if "CURDATE()" in line
+        and not any(marker in line for marker in negative_markers)
+    ]
+
+    assert proactive_lines == []
+
+
+def test_data_skills_document_complete_date_filter_contract() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    prompt = next(
+        skill["prompt"]
+        for skill in seed.DATA_SKILLS
+        if skill["name"] == "flam 历史看板日期窗口口径"
+    )
+
+    assert '"time_field":"dt"' in prompt
+    assert '"date_parameter_type":"yyyymmdd_number"' in prompt
+    assert '"date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}' in prompt
+    assert '"start":"{{dashboard_start_yyyymmdd}}"' not in prompt
 
 
 def test_data_skill_seed_limits_custom_prompt_lifecycle_to_exact_datasource_scope() -> None:

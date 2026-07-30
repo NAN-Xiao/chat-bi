@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -55,12 +56,11 @@ _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
     "message":"修仙数据源禁止使用 bounds CTE 关联事件或快照大表；请把动态日期表达式直接写入每个表别名自己的 dt 分区条件。"
   },
   {
-    "match":["最近28个自然日","最近 28 个自然日"],
+    "match":["最近 28 个完整自然日","最近28个完整自然日"],
     "forbidden_sql_patterns":[
-      "\\\\bDATE_SUB\\\\s*\\\\(\\\\s*CURDATE\\\\s*\\\\(\\\\s*\\\\)\\\\s*,\\\\s*INTERVAL\\\\s+27\\\\s+DAY\\\\s*\\\\)",
-      "\\\\bDATE_SUB\\\\s*\\\\(\\\\s*CURDATE\\\\s*\\\\(\\\\s*\\\\)\\\\s*,\\\\s*INTERVAL\\\\s+`?(?:day_offset|offset)`?\\\\s+DAY\\\\s*\\\\)"
+      "\\\\b(?:CURDATE|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|GETDATE|GETUTCDATE)\\\\s*(?:\\\\(\\\\s*\\\\))?"
     ],
-    "message":"修仙最近 28 个完整自然日必须使用 CURDATE()-28 至 CURDATE()-1；日期骨架不得从今天开始，offset=0 必须锚定昨天。"
+    "message":"修仙最近 28 个完整自然日必须使用看板起止日期 token；日期骨架不得使用数据库当前日期函数。"
   }
 ] -->
 # 修仙业务日期与按日聚合口径
@@ -87,18 +87,19 @@ _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
 ## 日期窗口规则
 
 - 用户指定绝对起止日期时，直接将用户日期转换为 `YYYYMMDD` 整数边界。
-- 用户指定相对日期窗口时，根据用户要求的窗口长度动态计算边界，结束日期默认为昨天。
+- 用户指定相对日期窗口时，根据用户要求的窗口长度动态计算边界，结束日期默认为最后一个完整业务日。
 - “当前等级”“活跃用户分布”等当前快照分布问题必须使用截至昨天的最新完整历史日，不能因“当前”一词改查未完成当天的 `event_realtime`。
-- 用户未指定日期窗口时，默认查询截至昨天的最近 7 个自然日。
-- 起止日期均包含。最近 `N` 个完整自然日使用当前日期减 `N` 天作为开始日期、当前日期减 1 天作为结束日期。
-- 日期骨架使用从 0 开始的偏移量时，必须先锚定昨天，再减 `day_offset`；禁止直接用 `CURDATE() - day_offset`，否则 offset 0 会错误包含今天。
-- 下面 SQL 只展示一种相对日期边界写法；其中 29 天是示例参数，不表示固定查询范围，必须按用户问题替换。
+- 用户未指定日期窗口时，默认查询最近 7 个完整自然日。
+- 可转存看板的非 `metric` 日期趋势必须使用 `{{dashboard_start_yyyymmdd}}` 和 `{{dashboard_end_yyyymmdd}}` 作为包含式整数边界，并返回完整 `"date_filter"`：`{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}}`。用户指定范围时，`date_expression` 必须按用户范围生成。
+- `metric` 图表不得返回 `date_filter` 或任何看板日期 token；固定业务日必须在生成 SQL 前确定为明确的 `YYYYMMDD` 字面量。
+- 日期骨架使用从 0 开始的偏移量时，必须先锚定 `{{dashboard_end_yyyymmdd}}`，再减 `day_offset`。
+- 下面 SQL 展示非 `metric` 日期趋势的统一边界写法。
 - 动态边界必须直接写入每个大表别名自己的 `WHERE` 或 `JOIN ON` 分区条件，禁止先生成单行 `bounds` CTE 后再通过 `JOIN` / `CROSS JOIN` 引用。
 
 ```sql
 WHERE e.dt BETWEEN
-    CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED)
-    AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    {{dashboard_start_yyyymmdd}}
+    AND {{dashboard_end_yyyymmdd}}
 ```
 
 - 后续每个读取 `event`、`user` 等大表的 CTE 都必须在自身的 `WHERE` 或 `JOIN ON` 中直接限制对应别名的原始整数 `dt` 分区字段。
@@ -123,7 +124,9 @@ SERVERPAYLOG_SECTION_END_MARKER = "<!-- managed:xiuxian-sql-repair:serverpaylog:
 
 DATE_SPINE_GUIDANCE = """## SQL 修复示例：固定 0-14 日日期骨架
 
-需要补齐最近 15 个完整自然日时，使用固定偏移的非递归日期骨架：
+需要补齐已配置为最近 15 个完整自然日的非 `metric` 趋势时，使用固定偏移的非递归日期骨架。SQL 的事实表过滤必须使用同一组看板日期 token，并返回对应的完整 `"date_filter"`：
+
+`{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}}`
 
 ```sql
 WITH day_offsets AS (
@@ -144,7 +147,13 @@ WITH day_offsets AS (
     UNION ALL SELECT 14
 ), date_spine AS (
     SELECT CAST(
-        DATE_FORMAT(DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL day_offset DAY), '%Y%m%d')
+        DATE_FORMAT(
+            DATE_SUB(
+                STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                INTERVAL day_offset DAY
+            ),
+            '%Y%m%d'
+        )
         AS SIGNED
     ) AS dt
     FROM day_offsets
@@ -152,10 +161,12 @@ WITH day_offsets AS (
 SELECT dt FROM date_spine ORDER BY dt
 ```
 
-读取 `event`、`user` 时仍必须在各自表别名上直接写 `dt` 分区条件；日期骨架只负责补齐输出日期，不得代替业务表自身的分区过滤。
+读取 `event`、`user` 时仍必须在各自表别名上直接写 `dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}` 分区条件；日期骨架只负责补齐输出日期，不得代替业务表自身的分区过滤。
 """.strip()
 
 SERVERPAYLOG_REPAIR_EXAMPLES = """## SQL 修复示例
+
+“等级段人均付费”和“最新完整数据日核心指标”均为固定 `metric` 示例，`20260729` 仅表示已由调用方确定的完整业务日；实际生成时必须替换为该次请求已确定的 `YYYYMMDD` 字面量，不得使用看板日期 token、`date_filter` 或数据库当前日期函数。
 
 ```sql
 -- 修复示例：按渠道付费用户
@@ -172,8 +183,7 @@ SELECT
         2
     ) AS `付费金额`
 FROM `event` e
-WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
   AND e.prod = 110000047
   AND e.event = 'ServerPayLog'
 GROUP BY e.dt, `渠道`
@@ -192,13 +202,13 @@ WITH user_level AS (
             ELSE '30+'
         END AS level_band
     FROM `user` u
-    WHERE u.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE u.dt = 20260729
       AND u.prod = 110000047
 ), user_payment AS (
     SELECT e.uid,
            SUM(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')), '') AS DECIMAL(18, 4))) AS pay_amount
     FROM `event` e
-    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt = 20260729
       AND e.prod = 110000047
       AND e.event = 'ServerPayLog'
     GROUP BY e.uid
@@ -215,13 +225,13 @@ GROUP BY ul.level_band;
 WITH active_metrics AS (
     SELECT COUNT(DISTINCT e.uid) AS dau
     FROM `event` e
-    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt = 20260729
       AND e.prod = 110000047
       AND e.event = 'UserActive'
 ), register_metrics AS (
     SELECT COUNT(DISTINCT e.uid) AS new_users
     FROM `event` e
-    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt = 20260729
       AND e.prod = 110000047
       AND e.event = 'UserRegister'
 ), payment_metrics AS (
@@ -232,12 +242,12 @@ WITH active_metrics AS (
             2
         ) AS pay_amount
     FROM `event` e
-    WHERE e.dt = CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt = 20260729
       AND e.prod = 110000047
       AND e.event = 'ServerPayLog'
 )
 SELECT
-    DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y-%m-%d') AS dt,
+    '2026-07-29' AS dt,
     a.dau AS `DAU`,
     r.new_users AS `新增用户数`,
     p.payers AS `付费用户数`,
@@ -320,10 +330,43 @@ SERVERPAYLOG_VALIDATION = """<!-- data-skill-sql-validation:[
 ] -->""".replace("{DISTINCT_UID_PATTERN_JSON}", DISTINCT_UID_PATTERN_JSON)
 
 
+_REALTIME_CURRENT_DATE_EVENTS = {
+    "f212cbcd03a15590a39519e874a1a6f4": "ServerPayLog",
+    "5bb72c937f565b7295b3bf4d1b746496": "ServerPayLog",
+    "2ca07023c33d514eaa07977425ee7f53": "UserRegister",
+    "c3d6ca851f8150ba94d73a83ca18b438": "UserActive",
+}
+_REALTIME_CURRENT_DATE_VIEW_IDS = set(_REALTIME_CURRENT_DATE_EVENTS)
+_REALTIME_BUSINESS_DATE_SQL = "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))"
+_DATABASE_CURRENT_DATE_PATTERN = re.compile(
+    r"\b(?:CURDATE|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|"
+    r"GETDATE|GETUTCDATE)\s*(?:\(\s*\))?",
+    re.IGNORECASE,
+)
+
+
+def _normalize_dashboard_sql_current_date(view_id: str, sql: str) -> str:
+    """实时 metric 使用明确 UTC+8 业务日，未知当前日期用法拒绝发布。"""
+
+    if view_id not in _REALTIME_CURRENT_DATE_VIEW_IDS:
+        if _DATABASE_CURRENT_DATE_PATTERN.search(sql) is not None or "MAX(rt.dt)" in sql:
+            raise ValueError(f"修仙看板 SQL 存在未分类的数据库当前日期函数: {view_id}")
+        return sql
+
+    normalized = _DATABASE_CURRENT_DATE_PATTERN.sub(_REALTIME_BUSINESS_DATE_SQL, sql)
+    event_name = _REALTIME_CURRENT_DATE_EVENTS[view_id]
+    legacy_latest_dt = (
+        "STR_TO_DATE(CAST((SELECT MAX(rt.dt) FROM event_realtime rt "
+        f"WHERE rt.prod = 110000047 AND rt.event = '{event_name}') AS CHAR), '%Y%m%d')"
+    )
+    return normalized.replace(legacy_latest_dt, _REALTIME_BUSINESS_DATE_SQL)
+
+
 def dashboard_sql_block(view_id: str, sql: str) -> str:
     """把一个推荐看板抽屉保存为可追溯 SQL 块。"""
 
-    return f"<!-- dashboard-sql:{view_id} -->\n```sql\n{sql.strip()}\n```"
+    normalized_sql = _normalize_dashboard_sql_current_date(view_id, sql.strip())
+    return f"<!-- dashboard-sql:{view_id} -->\n```sql\n{normalized_sql}\n```"
 
 
 def _index_dashboard_drawers(dashboards: Sequence[Any]) -> dict[str, Any]:
@@ -366,7 +409,7 @@ def _topic_authority(topic_slug: str) -> str:
 - 新增用户按 `UserRegister` 的 `dt + uid` 去重，并按 `prod + dt + uid` 连接注册日 `user` 快照。
 - `event.dt` 与 `user.dt` 是数值型 `YYYYMMDD`；`userinfo.regdate` 是 JSON 字符串 `YYYYMMDD`，比较时使用 `CAST(... AS SIGNED)`，当前方言不支持 `UNSIGNED`。
 - 只有 `CAST(JSON_UNQUOTE(JSON_EXTRACT(userinfo, '$.regdate')) AS SIGNED) = dt` 才属于注册日 cohort；金额读取注册日快照的 `pay.pay1`。
-- 最近 30 个完整自然日为 `CURDATE() - 30 DAY` 至 `CURDATE() - 1 DAY`，按天展示时补齐无数据日期并返回 0。
+- 最近 30 个完整自然日的非 `metric` 趋势使用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 过滤，并返回同范围的 `"date_filter"`；按天展示时补齐无数据日期并返回 0。
 """.strip()
 
 

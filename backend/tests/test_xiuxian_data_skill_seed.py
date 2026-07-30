@@ -20,6 +20,14 @@ if str(TOOLS_DIR) not in sys.path:
 import seed_xiuxian_data_skills as seed  # noqa: E402
 
 
+REALTIME_CURRENT_DATE_VIEWS = {
+    "f212cbcd03a15590a39519e874a1a6f4": "ServerPayLog",
+    "5bb72c937f565b7295b3bf4d1b746496": "ServerPayLog",
+    "2ca07023c33d514eaa07977425ee7f53": "UserRegister",
+    "c3d6ca851f8150ba94d73a83ca18b438": "UserActive",
+}
+
+
 @lru_cache(maxsize=1)
 def _skills() -> tuple[dict[str, str], ...]:
     from xiuxian_dashboard_skill_catalog import EXPECTED_VIEW_IDS
@@ -73,6 +81,47 @@ def _player_snapshot_skill() -> dict[str, str]:
     )
 
 
+def test_realtime_dashboard_sql_uses_explicit_utc8_business_date() -> None:
+    sql = """SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS dt
+FROM event_realtime
+WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"""
+
+    for view_id in REALTIME_CURRENT_DATE_VIEWS:
+        block = seed.dashboard_sql_block(view_id, sql)
+        assert "CURDATE()" not in block
+        assert "{{dashboard_start_yyyymmdd}}" not in block
+        assert "{{dashboard_end_yyyymmdd}}" not in block
+        assert "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))" in block
+        assert "SELECT MAX(rt.dt)" not in block
+
+
+def test_realtime_dashboard_sql_migrates_legacy_latest_partition_anchor() -> None:
+    for view_id, event_name in REALTIME_CURRENT_DATE_VIEWS.items():
+        legacy_date = (
+            "STR_TO_DATE(CAST((SELECT MAX(rt.dt) FROM event_realtime rt "
+            f"WHERE rt.prod = 110000047 AND rt.event = '{event_name}') AS CHAR), '%Y%m%d')"
+        )
+        block = seed.dashboard_sql_block(view_id, f"SELECT {legacy_date} AS dt")
+
+        assert "MAX(rt.dt)" not in block
+        assert "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))" in block
+
+
+def test_unknown_realtime_dashboard_current_date_fails_closed() -> None:
+    for expression in (
+        "curdate ( )",
+        "NOW()",
+        "CURRENT_DATE",
+        "CURRENT_TIMESTAMP()",
+    ):
+        try:
+            seed.dashboard_sql_block("unknown-view", f"SELECT {expression}")
+        except ValueError as exc:
+            assert "unknown-view" in str(exc)
+        else:
+            raise AssertionError("未知数据库当前日期函数必须拒绝生成")
+
+
 def _payer_penetration_skill() -> dict[str, str]:
     return next(
         skill
@@ -89,6 +138,33 @@ def _repair_example_sql(title: str) -> str:
     )
     assert match is not None
     return match.group("sql").strip()
+
+
+def test_xiuxian_skills_do_not_actively_instruct_database_current_date() -> None:
+    conflicts: list[str] = []
+    for skill in _skills():
+        active_lines = [
+            line
+            for line in skill["prompt"].splitlines()
+            if not any(negation in line for negation in ("不得使用", "禁止", "不要使用", "不要在"))
+        ]
+        if re.search(
+            r"\b(?:CURDATE|CURRENT_DATE|NOW)\s*\(",
+            "\n".join(active_lines),
+            flags=re.IGNORECASE,
+        ):
+            conflicts.append(skill["name"])
+
+    assert conflicts == []
+
+
+def test_xiuxian_date_skill_documents_complete_date_filter_contract() -> None:
+    prompt = _date_skill()["prompt"]
+
+    assert '"time_field":"dt"' in prompt
+    assert '"date_parameter_type":"yyyymmdd_number"' in prompt
+    assert '"date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}' in prompt
+    assert '"start":"{{dashboard_start_yyyymmdd}}"' not in prompt
 
 
 def test_xiuxian_date_skill_uses_canonical_retrieval_description() -> None:
@@ -244,11 +320,12 @@ def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
     assert "WITH bounds AS" not in prompt
     assert "CROSS JOIN bounds" not in prompt
     assert "## 标准聚合 SQL" not in prompt
-    assert "未指定日期窗口时，默认查询截至昨天的最近 7 个自然日" in prompt
+    assert "未指定日期窗口时，默认查询最近 7 个完整自然日" in prompt
     assert "用户指定相对日期窗口" in prompt
     assert "用户指定绝对起止日期" in prompt
-    assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" in prompt
-    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert '"date_filter"' in prompt
     assert "禁止使用 `MAX(dt)`" in prompt
 
 
@@ -259,7 +336,7 @@ def test_date_skill_contains_non_recursive_spine() -> None:
     assert "SELECT 0 AS day_offset" in prompt
     assert "UNION ALL SELECT 14" in prompt
     assert "WITH RECURSIVE" not in prompt
-    assert "读取 `event`、`user` 时仍必须在各自表别名上直接写 `dt` 分区条件" in prompt
+    assert "读取 `event`、`user` 时仍必须在各自表别名上直接写" in prompt
     assert "日期骨架只负责补齐输出日期" in prompt
 
 
@@ -374,42 +451,39 @@ def test_xiuxian_date_skill_rejects_bounds_cte_join_for_partition_filter() -> No
     )
 
 
-def test_xiuxian_date_skill_rejects_current_day_in_28_complete_day_spine() -> None:
-    """最近 28 个完整自然日不得把今天放进日期骨架。"""
+def test_xiuxian_date_skill_documents_dashboard_tokens_for_28_day_trend() -> None:
+    """最近 28 个完整自然日的非 metric 趋势必须绑定看板日期 token。"""
+    prompt = _date_skill()["prompt"]
+
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert '"date_filter"' in prompt
+    assert "metric` 图表不得返回 `date_filter`" in prompt
+
+
+def test_xiuxian_date_skill_rejects_database_date_anchored_28_day_spine() -> None:
     prompt = _date_skill()["prompt"]
     wrong_sql = """
     WITH day_offsets AS (
         SELECT 0 AS day_offset UNION ALL SELECT 1 UNION ALL SELECT 27
-    ), date_spine AS (
-        SELECT CAST(
-            DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL day_offset DAY), '%Y%m%d')
-            AS SIGNED
-        ) AS dt
-        FROM day_offsets
-    ), daily_active AS (
-        SELECT e.dt, COUNT(DISTINCT e.uid) AS dau
-        FROM event e
-        WHERE e.dt BETWEEN
-              CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 27 DAY), '%Y%m%d') AS SIGNED)
-              AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-        GROUP BY e.dt
     )
-    SELECT * FROM date_spine
-    LEFT JOIN daily_active USING (dt)
+    SELECT CAST(
+        DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL day_offset DAY), '%Y%m%d')
+        AS SIGNED
+    ) AS dt
+    FROM day_offsets
     """
 
     assert _data_skill_sql_validation_error(
-        "检查最近28个自然日新增、活跃、付费用户和付费金额是否存在缺失或全零日期",
-        wrong_sql,
-        prompt,
+        "查看最近 28 个完整自然日趋势", wrong_sql, prompt
     ) == (
-        "修仙最近 28 个完整自然日必须使用 CURDATE()-28 至 CURDATE()-1；"
-        "日期骨架不得从今天开始，offset=0 必须锚定昨天。"
+        "修仙最近 28 个完整自然日必须使用看板起止日期 token；"
+        "日期骨架不得使用数据库当前日期函数。"
     )
 
 
-def test_xiuxian_date_skill_allows_yesterday_anchored_28_complete_day_spine() -> None:
-    """日期骨架锚定昨天且事实表覆盖完整 28 天时允许执行。"""
+def test_xiuxian_date_skill_allows_end_token_anchored_28_complete_day_spine() -> None:
+    """日期骨架锚定结束 token 且事实表覆盖完整窗口时允许执行。"""
     prompt = _date_skill()["prompt"]
     correct_sql = """
     WITH day_offsets AS (
@@ -417,7 +491,10 @@ def test_xiuxian_date_skill_allows_yesterday_anchored_28_complete_day_spine() ->
     ), date_spine AS (
         SELECT CAST(
             DATE_FORMAT(
-                DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL day_offset DAY),
+                DATE_SUB(
+                    STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                    INTERVAL day_offset DAY
+                ),
                 '%Y%m%d'
             ) AS SIGNED
         ) AS dt
@@ -426,8 +503,8 @@ def test_xiuxian_date_skill_allows_yesterday_anchored_28_complete_day_spine() ->
         SELECT e.dt, COUNT(DISTINCT e.uid) AS dau
         FROM event e
         WHERE e.dt BETWEEN
-              CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 28 DAY), '%Y%m%d') AS SIGNED)
-              AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+              {{dashboard_start_yyyymmdd}}
+              AND {{dashboard_end_yyyymmdd}}
         GROUP BY e.dt
     )
     SELECT * FROM date_spine

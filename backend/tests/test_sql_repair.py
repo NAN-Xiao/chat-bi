@@ -81,6 +81,34 @@ def test_public_models_preserve_structured_violation() -> None:
         (SingleMessageError("Parse SQL Error: invalid token"), SqlRepairReason.SQL_PARSE),
         (ParseError("Expected TYPE"), SqlRepairReason.SQL_PARSE),
         (DataSkillSqlValidationError(_violation()), SqlRepairReason.DATA_SKILL_VALIDATION),
+        (
+            SingleMessageError("日期参数配置无效：missing_parameters"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
+        (
+            SingleMessageError("日期参数配置无效：database_current_date"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
+        (
+            SingleMessageError("日期参数配置无效：metric_chart"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
+        *[
+            (
+                SingleMessageError(f"日期参数配置无效：{code}"),
+                SqlRepairReason.DATE_FILTER_CONFIGURATION,
+            )
+            for code in (
+                "missing_date_filter",
+                "invalid_date_filter",
+                "missing_time_field",
+                "invalid_parameter_type",
+                "mixed_parameter_families",
+                "parameter_type_mismatch",
+                "incomplete_parameters",
+                "missing_date_expression",
+            )
+        ],
     ],
 )
 def test_prepare_error_classification(error: Exception, expected: SqlRepairReason) -> None:
@@ -90,6 +118,18 @@ def test_prepare_error_classification(error: Exception, expected: SqlRepairReaso
 def test_prepare_error_classification_rejects_unknown_errors() -> None:
     assert classify_prepare_sql_error(SingleMessageError("模型服务暂时不可用")) is None
     assert classify_prepare_sql_error(ValueError("unexpected response")) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "上游失败：日期参数配置无效：missing_parameters",
+        "日期参数配置无效：database_current_date，请稍后重试",
+        "日期参数配置无效：metric_chart | unrelated failure",
+    ],
+)
+def test_prepare_error_classification_rejects_embedded_date_filter_markers(message: str) -> None:
+    assert classify_prepare_sql_error(SingleMessageError(message)) is None
 
 
 @pytest.mark.parametrize("sqlstate", ["42601", "42804", "42883", "42P18"])
@@ -392,6 +432,25 @@ def test_build_sql_repair_message_contains_sanitized_json_contract() -> None:
             "matched_forbidden_groups": [["legacy_table", "legacy_field"]],
         },
     }
+
+
+def test_build_date_filter_repair_message_contains_explicit_contract() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        dialect="mysql",
+        failed_sql="SELECT COUNT(*) FROM event WHERE dt = 20260730",
+        error_message="日期参数配置无效：missing_parameters",
+        violation=None,
+        attempt=0,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "{{dashboard_start_yyyymmdd}}" in message
+    assert "{{dashboard_end_yyyymmdd}}" in message
+    assert "metric" in message
+    assert "date_filter" in message
+    assert "CURDATE" in message
 
 def test_regenerate_sql_after_error_streaming_reasoning_uses_structured_context(
     monkeypatch: pytest.MonkeyPatch,

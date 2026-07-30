@@ -1810,6 +1810,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
             reason = classify_prepare_sql_error(response_error)
             if reason not in {
                 SqlRepairReason.SQL_RESPONSE_FORMAT,
+                SqlRepairReason.DATE_FILTER_CONFIGURATION,
                 SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
             }:
                 raise
@@ -1961,6 +1962,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     if reason in {
                         SqlRepairReason.SQL_RESPONSE_FORMAT,
                         SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+                        SqlRepairReason.DATE_FILTER_CONFIGURATION,
                     }:
                         return _queue_sql_repair(
                             state,
