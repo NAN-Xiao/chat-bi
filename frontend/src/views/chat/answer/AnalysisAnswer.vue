@@ -78,6 +78,9 @@ const _loading = computed({
 })
 
 const stopFlag = ref(false)
+let currentController: AbortController | null = null
+let currentReader: ReadableStreamDefaultReader<Uint8Array> | null = null
+
 const sendMessage = async () => {
   stopFlag.value = false
   _loading.value = true
@@ -96,9 +99,10 @@ const sendMessage = async () => {
   if (error) return
 
   try {
-    const controller: AbortController = new AbortController()
-    const response = await chatApi.analysis(currentRecord.analysis_record_id, controller)
+    currentController = new AbortController()
+    const response = await chatApi.analysis(currentRecord.analysis_record_id, currentController)
     const reader = response.body.getReader()
+    currentReader = reader
     const decoder = new TextDecoder('utf-8')
 
     let analysis_answer = ''
@@ -108,7 +112,7 @@ const sendMessage = async () => {
 
     while (true) {
       if (stopFlag.value) {
-        controller.abort()
+        currentController.abort()
         _loading.value = false
         break
       }
@@ -181,11 +185,23 @@ const sendMessage = async () => {
     emits('error')
   } finally {
     _loading.value = false
+    currentController = null
+    currentReader = null
   }
 }
 function stop() {
   stopFlag.value = true
   _loading.value = false
+  if (currentController) {
+    currentController.abort()
+  }
+  if (currentReader) {
+    try {
+      currentReader.releaseLock()
+    } catch (e) {
+      // Reader may already be released
+    }
+  }
   emits('stop')
 }
 

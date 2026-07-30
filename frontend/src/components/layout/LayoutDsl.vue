@@ -48,6 +48,7 @@ const handleThemeChange = (event: Event) => {
 onUnmounted(() => {
   clearTimeout(time)
   window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+  window.removeEventListener('resize', updateTopNavOverflowState)
   topNavResizeObserver?.disconnect()
 })
 const loginBg = computed(() => {
@@ -226,9 +227,6 @@ onMounted(() => {
     topNavResizeObserver.observe(menuEl)
     window.addEventListener('resize', updateTopNavOverflowState)
   }
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', updateTopNavOverflowState)
 })
 </script>
 

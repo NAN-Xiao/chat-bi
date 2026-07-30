@@ -141,6 +141,7 @@ const mismatchedDatasourceScope = resolveDashboardBuilderEventScope({
   tableNames: ['event'],
 })
 assert.equal(mismatchedDatasourceScope.status, 'datasource-mismatch')
+assert.equal(mismatchedDatasourceScope.mode, 'event')
 
 const unavailableTableScope = resolveDashboardBuilderEventScope({
   config: { id: 1, enabled: true, datasource_id: 6, default_event_table: 'event_log' },

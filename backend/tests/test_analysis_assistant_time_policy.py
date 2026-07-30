@@ -11,6 +11,8 @@ from apps.analysis_assistant.service.analysis_time_policy import (
     parse_data_skill_time_directive,
     resolve_analysis_time_policy,
 )
+from apps.analysis_assistant.service.analysis_time_sql import TimeFieldBinding
+from apps.datasource.crud import datasource as datasource_crud
 
 ANCHOR = AnalysisTimeAnchor(table="fact_orders", field="business_date")
 
@@ -431,6 +433,31 @@ def test_schema_time_candidates_reject_unauthorized_qualified_table() -> None:
     ) == {}
 
 
+def test_dictionary_field_comment_exposes_structured_time_encoding() -> None:
+    comment = datasource_crud._dictionary_field_comment(
+        SimpleNamespace(
+            aliases=[],
+            example_values=[],
+            value_mappings=None,
+            expression=None,
+            field_comment="事件业务日期分区",
+            field_role="partition_date",
+            source_field=None,
+            json_path=None,
+            required=True,
+            ai_notes=None,
+            extra_properties={"encoding": "yyyyMMdd"},
+        )
+    )
+
+    assert "role=partition_date" in comment
+    assert "encoding=yyyyMMdd" in comment
+    assert datasource_crud._dictionary_schema_field_type(
+        SimpleNamespace(semantic_type="date"),
+        "bigint",
+    ) == "bigint"
+
+
 def test_anchor_selector_rejects_model_field_outside_exact_candidates() -> None:
     llm = SimpleNamespace(
         invoke=lambda _messages: SimpleNamespace(
@@ -444,6 +471,30 @@ def test_anchor_selector_rejects_model_field_outside_exact_candidates() -> None:
             "",
             {"fact_orders": ("business_date",)},
         )
+
+
+def test_anchor_selector_prefers_date_partition_over_epoch_timestamp() -> None:
+    prompts: list[str] = []
+
+    def invoke(messages):
+        prompts.append(messages[-1].content)
+        return SimpleNamespace(content='{"table":"event","field":"dt"}')
+
+    anchor = analysis_api._select_analysis_time_anchor(
+        SimpleNamespace(invoke=invoke),
+        "最近7天每日新增用户趋势",
+        "",
+        {
+            "event": (
+                TimeFieldBinding("time", "bigint", "epoch_milliseconds", True),
+                TimeFieldBinding("dt", "bigint", "yyyymmdd_integer", True),
+            )
+        },
+    )
+
+    assert anchor.field == "dt"
+    assert '"dt"' in prompts[0]
+    assert '"time"' not in prompts[0]
 
 
 def test_latest_date_probe_uses_single_ordered_field_and_permission_executor(
@@ -472,6 +523,41 @@ def test_latest_date_probe_uses_single_ordered_field_and_permission_executor(
     assert calls[0]["allowed_tables"] == ["fact_orders"]
     assert calls[0]["apply_row_permissions"] is True
     assert calls[0]["query_timeout"] == 5
+
+
+def test_latest_date_probe_checks_recent_yyyymmdd_partitions_before_full_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict] = []
+
+    def fake_execute(**kwargs):
+        calls.append(kwargs)
+        if "= 20260727" in kwargs["sql"]:
+            return SimpleNamespace(result={"data": [{"anchor_value": 20260727}]})
+        return SimpleNamespace(result={"data": []})
+
+    monkeypatch.setattr(analysis_api, "execute_user_query_or_raise", fake_execute)
+
+    value = analysis_api._probe_latest_business_date(
+        session=object(),
+        current_user=SimpleNamespace(id=7),
+        datasource=SimpleNamespace(id=3, type="mysql"),
+        allowed_tables=["event"],
+        anchor=AnalysisTimeAnchor(
+            "event",
+            "dt",
+            data_type="bigint",
+            encoding="yyyymmdd_integer",
+        ),
+        reference_date=date(2026, 7, 28),
+    )
+
+    assert value == date(2026, 7, 27)
+    assert [call["sql"] for call in calls] == [
+        "SELECT `dt` AS anchor_value FROM `event` WHERE `dt` = 20260728 LIMIT 1",
+        "SELECT `dt` AS anchor_value FROM `event` WHERE `dt` = 20260727 LIMIT 1",
+    ]
+    assert all(call["apply_row_permissions"] is True for call in calls)
 
 
 def test_latest_date_probe_rejects_anchor_outside_allowed_tables(

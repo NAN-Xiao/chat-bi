@@ -39,6 +39,15 @@ BOUNDED_SCAN_SECTION = f"""{BOUNDED_SCAN_MARKER}
 - 对高成本事实明细，应优先使用用户指定的时间范围；用户未指定时，只能使用平台允许的有界时间或分区条件，再查询对应数据。
 - 当前数据源权限、实时 Schema、空间级 Data Skill 和用户明确条件优先；若不存在可确认的时间字段，应说明缺少的元数据，而不是静默替换为相似字段。
 """.strip()
+DATE_DEFAULT_MARKER = "<!-- data-skill-managed-section:default-date-window:v1 -->"
+DATE_DEFAULT_SECTION = f"""{DATE_DEFAULT_MARKER}
+## 默认日期范围与看板参数
+
+- 用户明确指定日期、自然周期或相对时间范围时，严格按用户范围执行。
+- 用户未指定日期范围时，默认使用过去 7 个完整自然日。
+- 对可转存到看板的时序图，保存 SQL 时保留 `{{{{dashboard_start_yyyymmdd}}}}` 与 `{{{{dashboard_end_yyyymmdd}}}}` 日期占位符，并保存对应日期配置；执行时再由当前看板日期控件传入实际边界。
+- 固定语义指标卡（例如明确限定“今日”或“本月”的单值指标）保持其自身语义，不将看板日期范围强加到该指标。
+""".strip()
 
 EXPECTED_IDENTITIES: dict[int, dict[str, Any]] = {
     171: {
@@ -147,16 +156,22 @@ def _normalized_datasource_ids(value: Any) -> list[int]:
 
 
 def _base_171_prompt(prompt: str) -> str:
-    count = prompt.count(BOUNDED_SCAN_MARKER)
-    if count > 1:
-        raise RuntimeError("Skill 171 前置状态存在重复受管段落")
-    if count == 0:
-        return prompt.strip()
-    prefix, marker_and_suffix = prompt.split(BOUNDED_SCAN_MARKER, 1)
-    actual_section = (BOUNDED_SCAN_MARKER + marker_and_suffix).strip()
-    if actual_section != BOUNDED_SCAN_SECTION:
-        raise RuntimeError("Skill 171 前置状态的受管段落已漂移")
-    return prefix.strip()
+    base_prompt = prompt.strip()
+    for marker, expected_section in (
+        (DATE_DEFAULT_MARKER, DATE_DEFAULT_SECTION),
+        (BOUNDED_SCAN_MARKER, BOUNDED_SCAN_SECTION),
+    ):
+        count = base_prompt.count(marker)
+        if count > 1:
+            raise RuntimeError("Skill 171 前置状态存在重复受管段落")
+        if count == 0:
+            continue
+        prefix, marker_and_suffix = base_prompt.rsplit(marker, 1)
+        actual_section = (marker + marker_and_suffix).strip()
+        if actual_section != expected_section:
+            raise RuntimeError("Skill 171 前置状态的受管段落已漂移")
+        base_prompt = prefix.strip()
+    return base_prompt
 
 
 def validate_targets(rows: Mapping[int, Mapping[str, Any]]) -> None:
@@ -215,8 +230,12 @@ def build_desired_rows(
     desired = {skill_id: copy.deepcopy(dict(rows[skill_id])) for skill_id in TARGET_IDS}
 
     prompt_171 = str(desired[171].get("prompt") or "")
-    if BOUNDED_SCAN_MARKER not in prompt_171:
-        desired[171]["prompt"] = f"{prompt_171.strip()}\n\n{BOUNDED_SCAN_SECTION}\n"
+    base_171_prompt = _base_171_prompt(prompt_171)
+    desired_171_prompt = (
+        f"{base_171_prompt}\n\n{BOUNDED_SCAN_SECTION}\n\n{DATE_DEFAULT_SECTION}\n"
+    )
+    if desired_171_prompt != prompt_171:
+        desired[171]["prompt"] = desired_171_prompt
         desired[171]["embedding"] = None
         desired[171]["embedding_signature"] = None
 

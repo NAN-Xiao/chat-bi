@@ -1,0 +1,14 @@
+{
+  "tenant_id": 7482727237662281728,
+  "dashboard_id": "1752a05a80724b379438838bee516a46",
+  "charts": {
+    "2197205356986408960": {
+      "parameter_type": "yyyymmdd_number",
+      "expression": {"version": 1, "mode": "preset", "preset": "past_7_days"}
+    },
+    "2197218114511478784": {
+      "parameter_type": "yyyymmdd_number",
+      "expression": {"version": 1, "mode": "preset", "preset": "past_7_days"}
+    }
+  }
+}

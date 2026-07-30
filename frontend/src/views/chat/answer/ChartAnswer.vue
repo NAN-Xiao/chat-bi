@@ -732,6 +732,7 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask, l
       />
       <MdComponent v-else-if="message.record?.analysis" :message="message.record.analysis" />
       <ChartBlock
+        v-if="!message.record?.error"
         style="margin-top: 6px"
         :message="message"
         :record-id="recordId"

@@ -1283,6 +1283,31 @@ def _rewrite_sql_for_missing_events(service: Any, sql: str) -> _MissingEventSqlR
     )
 
 
+_DATE_TEMPLATE_REWRITE_MARKERS = {
+    "{{dashboard_start_date}}": "2999-12-30",
+    "{{dashboard_end_date}}": "2999-12-31",
+    "{{dashboard_start_yyyymmdd}}": "29991230",
+    "{{dashboard_end_yyyymmdd}}": "29991231",
+    "{{dashboard_start_timestamp}}": "2999-12-30 00:00:00",
+    "{{dashboard_end_exclusive_timestamp}}": "2999-12-31 00:00:00",
+}
+
+
+def _rewrite_template_sql_for_missing_events(service: Any, template_sql: str) -> _MissingEventSqlRewrite:
+    """保护日期 token，使缺失事件改写不会把模板 SQL 固化为字面日期。"""
+    masked_sql = template_sql
+    for token, marker in _DATE_TEMPLATE_REWRITE_MARKERS.items():
+        masked_sql = masked_sql.replace(token, marker)
+
+    rewrite = _rewrite_sql_for_missing_events(service, masked_sql)
+    if rewrite.sql:
+        restored_sql = rewrite.sql
+        for token, marker in _DATE_TEMPLATE_REWRITE_MARKERS.items():
+            restored_sql = restored_sql.replace(marker, token)
+        rewrite.sql = restored_sql
+    return rewrite
+
+
 def _cleanup_missing_event_result(
         service: Any,
         sql: str,
@@ -1734,6 +1759,11 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     json_result = state["json_result"]
     full_sql_text = state["full_sql_text"]
 
+    def render_template_for_execution(template_sql: str) -> str:
+        if getattr(service, "chat_date_pivot", None) is None:
+            return template_sql
+        return service.render_chat_sql_for_execution(template_sql)
+
     with _session_scope() as session:
         use_dynamic_ds = service.current_assistant and service.current_assistant.type in dynamic_ds_types
         dynamic_sql_result = None
@@ -1747,7 +1777,9 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         event_availability = None
 
         try:
-            sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
+            template_sql, tables = service.check_sql(session=session, res=full_sql_text, operate=sql_operate)
+            execution_sql = render_template_for_execution(template_sql)
+            sql = template_sql
         except DataSkillSqlValidationError as semantic_error:
             if looks_like_data_skill_schema_unavailable_error(str(semantic_error)):
                 message = user_data_unavailable_message(str(semantic_error))
@@ -1837,10 +1869,10 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     session=session,
                     current_user=service.current_user,
                     datasource=service.ds,
-                    sql=sql,
+                    sql=execution_sql,
                     allowed_tables=service.table_name_list,
                 )
-                rewrite = _rewrite_sql_for_missing_events(service, checked_sql)
+                rewrite = _rewrite_template_sql_for_missing_events(service, template_sql)
                 event_availability = rewrite.availability
                 if rewrite.missing_events:
                     supported_removed_fields = rewrite.removed_fields if rewrite.executable else []
@@ -1873,11 +1905,13 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                             "stop": True,
                         }
                     if rewrite.changed:
+                        template_sql = rewrite.sql
+                        execution_sql = render_template_for_execution(template_sql)
                         checked_sql, _actual_tables = validate_user_query_sql_or_raise(
                             session=session,
                             current_user=service.current_user,
                             datasource=service.ds,
-                            sql=rewrite.sql,
+                            sql=execution_sql,
                             allowed_tables=service.table_name_list,
                         )
                         tables = sorted(_actual_tables)
@@ -1893,7 +1927,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 elif rewrite.unknown_events:
                     unknown_event_message = _unknown_event_feedback(rewrite.unknown_events)
                     unknown_event_notice = _unknown_event_notice(rewrite.unknown_events)
-                sql = service.save_checked_sql(session=session, sql=checked_sql)
+                sql = service.save_checked_sql(session=session, sql=template_sql)
         except Exception as prepare_error:
             if isinstance(prepare_error, DataSkillSqlValidationError):
                 if looks_like_data_skill_schema_unavailable_error(str(prepare_error)):
@@ -2036,8 +2070,8 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 notice=unknown_event_notice,
             )
 
-    real_execute_sql = sql
-    execute_scope_sql = sql
+    real_execute_sql = render_template_for_execution(sql)
+    execute_scope_sql = real_execute_sql
     execute_allowed_tables = service.table_name_list
 
     if app_temp_sql_text and assistant_dynamic_sql:

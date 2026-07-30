@@ -6,7 +6,9 @@ from pydantic import ValidationError
 from apps.dashboard.crud.dashboard_date_filter import (
     default_dashboard_date_range,
     prepare_dashboard_date_filter,
+    resolve_dashboard_date_expression,
 )
+from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
 from common.core.config import Settings
 
 
@@ -16,6 +18,128 @@ def _pivot(parameter_type: str, **overrides):
         "date_parameter_type": parameter_type,
         **overrides,
     }
+
+
+@pytest.mark.parametrize(
+    ("preset", "expected"),
+    [
+        ("yesterday", ("2026-07-27", "2026-07-27")),
+        ("today", ("2026-07-28", "2026-07-28")),
+        ("previous_week", ("2026-07-20", "2026-07-26")),
+        ("current_week", ("2026-07-27", "2026-07-28")),
+        ("previous_month", ("2026-06-01", "2026-06-30")),
+        ("current_month", ("2026-07-01", "2026-07-28")),
+        ("past_7_days", ("2026-07-21", "2026-07-27")),
+        ("recent_7_days", ("2026-07-22", "2026-07-28")),
+        ("past_30_days", ("2026-06-28", "2026-07-27")),
+        ("recent_30_days", ("2026-06-29", "2026-07-28")),
+        ("past_90_days", ("2026-04-29", "2026-07-27")),
+        ("all_time", ("1000-01-01", "9999-12-31")),
+    ],
+)
+def test_date_expression_presets(preset, expected):
+    assert resolve_dashboard_date_expression(
+        {"version": 1, "mode": "preset", "preset": preset},
+        today=date(2026, 7, 28),
+    ) == tuple(date.fromisoformat(item) for item in expected)
+
+
+def test_date_expression_allows_today_and_renders_every_physical_scan():
+    sql = " UNION ALL ".join(
+        f"select dt from t{i} where dt >= {{{{dashboard_start_yyyymmdd}}}} "
+        f"and dt <= {{{{dashboard_end_yyyymmdd}}}}"
+        for i in range(4)
+    )
+    result = prepare_dashboard_date_filter(
+        sql,
+        ds_type="mysql",
+        today=date(2026, 7, 28),
+        pivot=_pivot(
+            "yyyymmdd_number",
+            date_expression={"version": 1, "mode": "preset", "preset": "today"},
+        ),
+    )
+
+    assert result.capability["status"] == "available"
+    assert result.start == result.end == "2026-07-28"
+    assert result.sql.count("20260728") == 8
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        {"version": 2, "mode": "preset", "preset": "today"},
+        {"version": 1, "mode": "preset", "preset": "unknown"},
+        {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "dynamic", "unit": "day", "offset": 1},
+            "end": {"mode": "dynamic", "unit": "day", "offset": 1},
+        },
+        {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-08-01"},
+            "end": {"mode": "static", "date": "2026-07-01"},
+        },
+    ],
+)
+def test_invalid_date_expression_fails_closed(expression):
+    result = prepare_dashboard_date_filter(
+        "select dt from t where dt between {{dashboard_start_yyyymmdd}} "
+        "and {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        today=date(2026, 7, 28),
+        pivot=_pivot("yyyymmdd_number", date_expression=expression),
+    )
+
+    assert result.capability == {
+        "status": "unconfigured",
+        "reason": "invalid_date_expression",
+    }
+
+
+def test_dynamic_date_expression_overflow_fails_closed():
+    result = prepare_dashboard_date_filter(
+        "select dt from t where dt between {{dashboard_start_yyyymmdd}} "
+        "and {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        today=date(2026, 7, 28),
+        pivot=_pivot(
+            "yyyymmdd_number",
+            date_expression={
+                "version": 1,
+                "mode": "range",
+                "start": {"mode": "dynamic", "unit": "day", "offset": -(10**100)},
+                "end": {"mode": "dynamic", "unit": "day", "offset": 0},
+            },
+        ),
+    )
+
+    assert result.capability == {
+        "status": "unconfigured",
+        "reason": "invalid_date_expression",
+    }
+
+
+@pytest.mark.parametrize("parameter_type", ["date", "timestamp"])
+def test_all_time_rejects_parameter_types_without_safe_bounds(parameter_type):
+    tokens = (
+        ("{{dashboard_start_date}}", "{{dashboard_end_date}}")
+        if parameter_type == "date"
+        else ("{{dashboard_start_timestamp}}", "{{dashboard_end_exclusive_timestamp}}")
+    )
+    result = prepare_dashboard_date_filter(
+        f"select dt from t where dt >= {tokens[0]} and dt <= {tokens[1]}",
+        ds_type="mysql",
+        today=date(2026, 7, 28),
+        pivot=_pivot(
+            parameter_type,
+            date_expression={"version": 1, "mode": "preset", "preset": "all_time"},
+        ),
+    )
+
+    assert result.capability["reason"] == "invalid_date_expression"
 
 
 def test_default_range_is_fourteen_complete_days():
@@ -34,6 +158,25 @@ def test_default_range_is_fourteen_complete_days():
     assert result.end == "2026-07-26"
     assert "20260713" in result.sql and "20260726" in result.sql
     assert result.capability["status"] == "available"
+
+
+def test_end_only_date_parameter_renders_selected_range_end_for_snapshot_queries():
+    result = prepare_dashboard_date_filter(
+        "select * from user_snapshot where dt = {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot=_pivot(
+            "yyyymmdd_number",
+            date_parameter_mode="end_only",
+            date_expression={"version": 1, "mode": "preset", "preset": "current_month"},
+        ),
+        today=date(2026, 7, 28),
+    )
+
+    assert result.capability["status"] == "available"
+    assert result.capability["parameterMode"] == "end_only"
+    assert result.start == "2026-07-01"
+    assert result.end == "2026-07-28"
+    assert "dt = 20260728" in result.sql
 
 
 @pytest.mark.parametrize(
@@ -84,6 +227,25 @@ def test_custom_range_is_validated_and_rendered():
     assert result.end == "2026-05-31"
     assert "'2026-05-01'" in result.sql
     assert "'2026-05-31'" in result.sql
+
+
+def test_custom_range_overrides_persisted_date_expression_for_card_filter():
+    result = prepare_dashboard_date_filter(
+        "select dt from orders where dt between {{dashboard_start_date}} and {{dashboard_end_date}}",
+        ds_type="postgres",
+        pivot=_pivot(
+            "date",
+            range="custom",
+            custom_start="2026-05-01",
+            custom_end="2026-05-31",
+            date_expression={"version": 1, "mode": "preset", "preset": "past_30_days"},
+        ),
+        today=date(2026, 7, 27),
+    )
+
+    assert result.start == "2026-05-01"
+    assert result.end == "2026-05-31"
+    assert result.capability["expression"] is None
 
 
 @pytest.mark.parametrize(
@@ -269,3 +431,40 @@ def test_sql_parse_failure_is_unconfigured():
 def test_invalid_business_timezone_fails_configuration_validation():
     with pytest.raises(ValidationError, match="DASHBOARD_BUSINESS_TIMEZONE"):
         Settings(_env_file=None, DASHBOARD_BUSINESS_TIMEZONE="Invalid/Timezone")
+
+
+def test_independent_date_filter_renders_yyyymmdd_without_pivot():
+    result = prepare_dashboard_date_filter(
+        "select dt from orders where dt between {{dashboard_start_yyyymmdd}} "
+        "and {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot={"enabled": False},
+        date_filter=DashboardDateFilterRequest(
+            parameter_type="yyyymmdd_number",
+            custom_start="2026-05-01",
+            custom_end="2026-05-31",
+        ),
+        require_time_field=False,
+        today=date(2026, 7, 28),
+    )
+
+    assert result.capability["status"] == "available"
+    assert "20260501" in result.sql
+    assert "20260531" in result.sql
+
+
+def test_independent_date_filter_rejects_partial_custom_range():
+    result = prepare_dashboard_date_filter(
+        "select dt from orders where dt between {{dashboard_start_yyyymmdd}} "
+        "and {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot={"enabled": False},
+        date_filter=DashboardDateFilterRequest(
+            parameter_type="yyyymmdd_number",
+            custom_start="2026-05-01",
+        ),
+        require_time_field=False,
+        today=date(2026, 7, 28),
+    )
+
+    assert result.capability == {"status": "unconfigured", "reason": "invalid_date_range"}

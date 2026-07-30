@@ -10,6 +10,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from apps.dashboard.crud import dashboard_service
 from apps.dashboard.crud.dashboard_date_filter import DashboardDateFilterPreparation
+from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
 from apps.datasource.crud import sql_engine_executor as query_executor
 import pytest
 from fastapi import HTTPException
@@ -3035,11 +3036,11 @@ def test_dashboard_preview_hides_date_filter_when_permission_is_denied(monkeypat
                     "select amount from orders where order_id between "
                     "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
                 ),
-                pivot=DashboardPivotRequest(
-                    enabled=False,
-                    time_field="order_id",
-                    date_parameter_type="yyyymmdd_number",
-                ),
+                    pivot=DashboardPivotRequest(
+                        enabled=False,
+                        time_field="order_id",
+                    ),
+                    date_filter=DashboardDateFilterRequest(parameter_type="yyyymmdd_number"),
             ),
         )
 
@@ -3050,7 +3051,7 @@ def test_dashboard_preview_hides_date_filter_when_permission_is_denied(monkeypat
     }
 
 
-def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
+def test_dashboard_preview_denies_unbounded_query_when_row_permission_applies(monkeypatch):
     _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
@@ -3073,12 +3074,96 @@ def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
             request=DashboardSqlPreview(datasource=1, sql="select order_id from orders"),
         )
 
+    assert result["status"] == "failed"
+    assert result["error_type"] == "permission_denied"
+    assert result["message"] == "没有查看权限"
+    assert result["executed_sql"] is None
+    assert exec_calls == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "select order_id from orders where region in ('EU', 'US')",
+        "select o.order_id from orders o where o.region in ('EU', 'US')",
+        "select order_id from orders where region like '%S'",
+        "select order_id from orders where region not like 'EU%'",
+        "select order_id from orders where region = 'EU' or region = 'US'",
+        (
+            "with scoped as ("
+            "select order_id, region, max(case when region = 'US' then 1 else 0 end) as denied "
+            "from orders where region in ('EU', 'US') group by order_id, region"
+            ") select order_id from scoped"
+        ),
+    ],
+)
+def test_dashboard_preview_denies_query_that_can_read_forbidden_rows(monkeypatch, sql):
+    _force_bound_chart_execution_datasource(monkeypatch)
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_id": 1}], "fields": ["order_id"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_row_rule(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(datasource=1, sql=sql),
+        )
+
+    assert result["status"] == "failed"
+    assert result["error_type"] == "permission_denied"
+    assert result["message"] == "没有查看权限"
+    assert result["executed_sql"] is None
+    assert exec_calls == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "select order_id from orders where region = 'EU'",
+        "select o.order_id from orders o where o.region = 'EU'",
+        "select order_id from orders where region in ('EU', 'APAC')",
+        "select order_id from orders where region <> 'US'",
+        "select order_id from orders where region not like '%US%'",
+    ],
+)
+def test_dashboard_preview_executes_original_sql_when_forbidden_rows_are_excluded(monkeypatch, sql):
+    _force_bound_chart_execution_datasource(monkeypatch)
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_id": 1}], "fields": ["order_id"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_row_rule(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(datasource=1, sql=sql),
+        )
+
     assert result["status"] == "success"
-    assert len(exec_calls) == 1
-    assert "FROM (SELECT * FROM orders WHERE" in exec_calls[0]
-    assert "NOT" in exec_calls[0]
-    assert "region" in exec_calls[0]
-    assert "'US'" in exec_calls[0]
+    assert result["requested_sql"] == sql
+    assert result["executed_sql"] == sql
+    assert exec_calls == [sql]
 
 
 def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch):
@@ -3123,7 +3208,6 @@ def test_dashboard_preview_builds_pivot_sql(monkeypatch):
 
     with Session(engine) as session:
         _insert_dashboard_permission_fixture(session)
-        _insert_orders_row_rule(session)
         session.commit()
 
         result = dashboard_service.preview_sql(
@@ -3136,11 +3220,10 @@ def test_dashboard_preview_builds_pivot_sql(monkeypatch):
                     enabled=True,
                     time_field="order_day",
                     metric_field="amount",
-                    group_field="region",
-                    group_enabled=True,
-                    granularity="day",
-                    range="30d",
-                    aggregation="sum",
+                        group_field="region",
+                        group_enabled=True,
+                        granularity="day",
+                        aggregation="sum",
                 ),
             ),
         )
@@ -3149,13 +3232,14 @@ def test_dashboard_preview_builds_pivot_sql(monkeypatch):
     assert len(exec_calls) == 1
     executed_sql = exec_calls[0]
     normalized_sql = executed_sql.lower()
-    assert 'FROM (SELECT * FROM orders WHERE' in executed_sql
+    assert "FROM (" in executed_sql
+    assert 'select order_id as "order_day", amount, region from orders' in executed_sql
+    assert ') AS "pivot_src"' in executed_sql
     assert 'order_id as "order_day"' in normalized_sql
     assert 'SUM("pivot_src"."amount") AS "amount"' in executed_sql
     assert '"pivot_src"."region" AS "region"' in executed_sql
-    assert 'WITH "pivot_src" AS' in executed_sql
-    assert '"pivot_bounds" AS' in executed_sql
-    assert 'MAX(CAST("pivot_src"."order_day" AS DATE)) AS "max_period"' in executed_sql
+    assert 'WITH "pivot_src" AS' not in executed_sql
+    assert '"pivot_bounds" AS' not in executed_sql
     assert 'CURRENT_DATE' not in executed_sql
     assert "GROUP BY" in executed_sql
     assert "LIMIT 1000" in executed_sql
@@ -3342,16 +3426,21 @@ def test_dashboard_preview_pivot_custom_range_filters_literal_dates(monkeypatch)
             current_user=current_user,
             request=DashboardSqlPreview(
                 datasource=1,
-                sql="select order_id as order_day, amount from orders",
+                sql=(
+                    "select order_id as order_day, amount from orders where order_id between "
+                    "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                ),
                 pivot=DashboardPivotRequest(
                     enabled=True,
                     time_field="order_day",
                     metric_field="amount",
                     granularity="day",
-                    range="custom",
+                    aggregation="sum",
+                ),
+                date_filter=DashboardDateFilterRequest(
+                    parameter_type="yyyymmdd_number",
                     custom_start="2026-05-01",
                     custom_end="2026-05-31",
-                    aggregation="sum",
                 ),
             ),
         )
@@ -3361,8 +3450,8 @@ def test_dashboard_preview_pivot_custom_range_filters_literal_dates(monkeypatch)
     executed_sql = exec_calls[0]
     assert 'WITH "pivot_src"' not in executed_sql
     assert '"pivot_bounds"' not in executed_sql
-    assert 'CAST("pivot_src"."order_day" AS DATE) >= DATE \'2026-05-01\'' in executed_sql
-    assert 'CAST("pivot_src"."order_day" AS DATE) <= DATE \'2026-05-31\'' in executed_sql
+    assert "20260501" in executed_sql
+    assert "20260531" in executed_sql
 
 
 def test_dashboard_preview_pivot_rejects_same_time_and_metric_field(monkeypatch):
@@ -3473,6 +3562,135 @@ def test_dashboard_preview_ignores_disabled_pivot(monkeypatch):
     assert exec_calls == ["select order_id from orders"]
 
 
+def test_dashboard_preview_missing_date_filter_does_not_execute(monkeypatch):
+    monkeypatch.setattr(dashboard_service, "resolve_chart_execution_datasource", lambda *_args: 1)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *_args, **_kwargs: pytest.fail("缺少日期配置时不得执行 SQL"),
+    )
+
+    result = dashboard_service.preview_sql(
+        session=SimpleNamespace(get=lambda *_args: SimpleNamespace(id=1, type="mysql")),
+        current_user=SimpleNamespace(id=2, isAdmin=False, tenant_id=1),
+        request=DashboardSqlPreview(
+            datasource=1,
+            sql=(
+                "select dt from orders where dt between "
+                "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+            ),
+            pivot=DashboardPivotRequest(enabled=False),
+        ),
+    )
+
+    assert result["status"] == "failed"
+    assert result["error_type"] == "dashboard_date_filter_unconfigured"
+
+
+@pytest.mark.parametrize(
+    ("date_filter", "expected_error_type"),
+    [
+        (None, "dashboard_date_filter_migration_required"),
+        (
+            {
+                "parameterType": "yyyymmdd_number",
+                "expression": {"version": 2, "mode": "preset", "preset": "today"},
+            },
+            "dashboard_date_filter_invalid_template",
+        ),
+    ],
+)
+def test_dashboard_payload_preserves_date_filter_resolution_error_type(
+    monkeypatch,
+    date_filter,
+    expected_error_type,
+):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: None)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *_args, **_kwargs: pytest.fail("日期配置错误时不得执行 SQL"),
+    )
+    chart = {
+        "id": "chart-1",
+        "datasource": 1,
+        "sql": (
+            "select dt from orders where dt between "
+            "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+        ),
+        "configVersion": 2,
+    }
+    if date_filter is not None:
+        chart["dateFilter"] = date_filter
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        record = CoreDashboard(
+            id=f"dashboard-date-error-{expected_error_type}",
+            tenant_id=1,
+            name="日期配置错误",
+            pid="root",
+            node_type="leaf",
+            datasource=1,
+            component_data="[]",
+            canvas_style_data="{}",
+            canvas_view_info=json.dumps({"chart-1": chart}),
+        )
+        session.add(record)
+        session.commit()
+        result = dashboard_service._dashboard_payload(
+            session,
+            current_user,
+            record,
+            default_context=True,
+            include_data=True,
+        )
+
+    response_chart = json.loads(result["canvas_view_info"])["chart-1"]
+    assert response_chart["status"] == "failed"
+    assert response_chart["error_type"] == expected_error_type
+
+
+def test_dashboard_preview_date_filter_renders_before_disabled_pivot_execution(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"dt": 20260501}], "fields": ["dt"]},
+    )
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+        result = dashboard_service.preview_sql(
+            session,
+            current_user,
+            DashboardSqlPreview(
+                datasource=1,
+                sql=(
+                    "select order_id as dt from orders where order_id between "
+                    "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+                ),
+                pivot=DashboardPivotRequest(enabled=False),
+                date_filter=DashboardDateFilterRequest(
+                    parameter_type="yyyymmdd_number",
+                    custom_start="2026-05-01",
+                    custom_end="2026-05-31",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert len(exec_calls) == 1
+    assert "20260501" in exec_calls[0] and "20260531" in exec_calls[0]
+    assert "pivot_src" not in exec_calls[0]
+
+
 def test_dashboard_preview_renders_date_template_before_permission_and_execution(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
@@ -3495,15 +3713,16 @@ def test_dashboard_preview_renders_date_template_before_permission_and_execution
                     "select order_id as order_day, amount from orders "
                     "where order_id between {{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
                 ),
-                pivot=DashboardPivotRequest(
-                    enabled=True,
-                    time_field="order_day",
-                    metric_field="amount",
-                    date_parameter_type="yyyymmdd_number",
-                    range="custom",
-                    custom_start="2026-05-01",
-                    custom_end="2026-05-31",
-                ),
+                    pivot=DashboardPivotRequest(
+                        enabled=True,
+                        time_field="order_day",
+                        metric_field="amount",
+                    ),
+                    date_filter=DashboardDateFilterRequest(
+                        parameter_type="yyyymmdd_number",
+                        custom_start="2026-05-01",
+                        custom_end="2026-05-31",
+                    ),
             ),
         )
     assert result["date_filter_capability"]["status"] == "available"
@@ -3534,24 +3753,96 @@ def test_dashboard_source_preview_renders_date_template_without_outer_pivot(monk
                     "select order_id as order_day, amount from orders "
                     "where order_id between {{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
                 ),
-                pivot=DashboardPivotRequest(
-                    enabled=False,
-                    time_field="order_day",
-                    metric_field="amount",
-                    date_parameter_type="yyyymmdd_number",
-                ),
+                    pivot=DashboardPivotRequest(
+                        enabled=False,
+                        time_field="order_day",
+                        metric_field="amount",
+                    ),
+                    date_filter=DashboardDateFilterRequest(parameter_type="yyyymmdd_number"),
             ),
         )
 
     assert result["status"] == "success"
     assert result["date_filter_capability"]["status"] == "available"
     assert len(exec_calls) == 1
-    assert "20260713" in exec_calls[0] and "20260726" in exec_calls[0]
+    assert "{{dashboard_" not in exec_calls[0]
     assert "pivot_src" not in exec_calls[0]
     assert "{{dashboard_" not in exec_calls[0]
 
 
-def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
+def test_dashboard_preview_date_filter_allows_empty_results_after_permission_audit(monkeypatch):
+    events = []
+    monkeypatch.setattr(dashboard_service, "resolve_chart_execution_datasource", lambda *_args: 1)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_chart_permission_audit",
+        lambda *_args: (events.append("audit") or None, False),
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_sql_preview_cache_get",
+        lambda *_args, **_kwargs: events.append("cache_get") or None,
+    )
+    monkeypatch.setattr(dashboard_service, "_dashboard_sql_preview_cache_set", lambda *_args: None)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *_args: {
+            "status": "success",
+            "fields": ["dt"],
+            "data": [],
+            "message": "",
+        },
+    )
+
+    result = dashboard_service.preview_sql(
+        session=SimpleNamespace(get=lambda *_args: SimpleNamespace(id=1, type="mysql")),
+        current_user=SimpleNamespace(id=2, isAdmin=False, tenant_id=1),
+        request=DashboardSqlPreview(
+            datasource=1,
+            sql=(
+                "select dt from orders where dt between "
+                "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
+            ),
+                pivot=DashboardPivotRequest(
+                    enabled=False,
+                    time_field="dt",
+                ),
+                    date_filter=DashboardDateFilterRequest(
+                        parameter_type="yyyymmdd_number",
+                        custom_start="2026-07-28",
+                        custom_end="2026-07-28",
+                    ),
+        ),
+    )
+
+    assert result["status"] == "success"
+    assert result["data"] == []
+    assert result["date_filter_capability"]["resolvedStart"] == "2026-07-28"
+    assert events.index("audit") < events.index("cache_get")
+
+
+@pytest.mark.parametrize(
+    ("pivot", "date_filter"),
+    [
+        (
+            DashboardPivotRequest(time_field="dt"),
+            DashboardDateFilterRequest(
+                parameter_type="yyyymmdd_number",
+                custom_start="2026-05-01",
+                custom_end="2026-05-31",
+            ),
+        ),
+        (
+            DashboardPivotRequest(time_field="dt"),
+            DashboardDateFilterRequest(
+                parameter_type="yyyymmdd_number",
+                expression={"version": 1, "mode": "preset", "preset": "today"},
+            ),
+        ),
+    ],
+)
+def test_dashboard_preview_rejects_explicit_date_for_event_realtime(monkeypatch, pivot, date_filter):
     prepared = DashboardDateFilterPreparation(
         sql="select dt from event_realtime",
         start=None,
@@ -3572,13 +3863,8 @@ def test_dashboard_preview_rejects_custom_range_for_event_realtime(monkeypatch):
         request=DashboardSqlPreview(
             datasource=1,
             sql="select dt from event_realtime",
-            pivot=DashboardPivotRequest(
-                time_field="dt",
-                date_parameter_type="yyyymmdd_number",
-                range="custom",
-                custom_start="2026-05-01",
-                custom_end="2026-05-31",
-            ),
+            pivot=pivot,
+            date_filter=date_filter,
         ),
     )
     assert result["status"] == "failed"
@@ -3600,7 +3886,25 @@ def test_dashboard_preview_empty_sql_returns_date_capability():
     }
 
 
-def test_dashboard_payload_rejects_custom_range_for_event_realtime(monkeypatch):
+@pytest.mark.parametrize(
+    "date_filter",
+    [
+        {
+            "parameterType": "yyyymmdd_number",
+            "expression": {
+                "version": 1,
+                "mode": "range",
+                "start": {"mode": "static", "date": "2026-07-13"},
+                "end": {"mode": "static", "date": "2026-07-26"},
+            },
+        },
+        {
+            "parameterType": "yyyymmdd_number",
+            "expression": {"version": 1, "mode": "preset", "preset": "today"},
+        },
+    ],
+)
+def test_dashboard_payload_rejects_explicit_date_for_event_realtime(monkeypatch, date_filter):
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     executed = []
@@ -3631,13 +3935,8 @@ def test_dashboard_payload_rejects_custom_range_for_event_realtime(monkeypatch):
                         "select dt from event_realtime where dt between "
                         "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
                     ),
-                    "pivot": {
-                        "time_field": "dt",
-                        "date_parameter_type": "yyyymmdd_number",
-                        "range": "custom",
-                        "custom_start": "2026-07-13",
-                        "custom_end": "2026-07-26",
-                    },
+                    "configVersion": 2,
+                    "dateFilter": date_filter,
                 }
             }),
         )
@@ -3668,21 +3967,24 @@ def test_dashboard_payload_adds_transient_date_capability_without_persisting(mon
                 "select order_id as dt from orders where order_id between "
                 "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
             ),
-            "pivot": {"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
+            "configVersion": 2,
+            "dateFilter": {
+                "parameterType": "yyyymmdd_number",
+                "expression": {"version": 1, "mode": "preset", "preset": "past_30_days"},
+            },
         },
         "realtime": {
             "id": "realtime",
             "sql": "select dt from event_realtime",
-            "pivot": {"time_field": "dt", "date_parameter_type": "yyyymmdd_number"},
         },
         "plain": {"id": "plain", "sql": "select amount from orders", "pivot": {}},
     }
     prepare_calls = []
     original_prepare = dashboard_service._prepare_dashboard_chart_query
 
-    def count_prepare(datasource, sql, pivot):
+    def count_prepare(datasource, sql, pivot, **kwargs):
         prepare_calls.append(sql)
-        return original_prepare(datasource, sql, pivot)
+        return original_prepare(datasource, sql, pivot, **kwargs)
 
     monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: None)

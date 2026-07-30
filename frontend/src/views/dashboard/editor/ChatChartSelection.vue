@@ -76,6 +76,7 @@ import {
   inferPivotDimensions,
   isLikelyPivotDateField,
 } from '@/views/dashboard/utils/pivotDimensions.ts'
+import { normalizeDashboardChartConfig } from '@/views/dashboard/utils/dashboardChartConfig.ts'
 
 const dialogShow = ref(false)
 const { t } = useI18n()
@@ -160,7 +161,7 @@ function resolveChartPivot(chartBaseInfo: any, viewInfo: any) {
     return defaultPivot
   }
   if (configuredPivot.enabled === false) {
-    return { enabled: false }
+    return { ...configuredPivot, enabled: false }
   }
   return {
     ...defaultPivot,
@@ -241,7 +242,7 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
           record?.predict_record_id !== null &&
           data?.data?.length > 0)
       ) {
-        const recordeInfo = {
+        const recordeInfo: Record<string, any> = {
           id: chatInfo.id + '_' + record.id,
           sql: record.sql,
           datasource: record.datasource,
@@ -277,7 +278,15 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
             yAxis: yAxis,
             series: axis?.series ? [axis?.series] : [],
           }
-          recordeInfo['pivot'] = resolveChartPivot(chartBaseInfo, recordeInfo)
+          const dashboardConfig = normalizeDashboardChartConfig({
+            ...recordeInfo,
+            configVersion: chartBaseInfo?.configVersion,
+            dateFilter: chartBaseInfo?.dateFilter,
+            pivot: resolveChartPivot(chartBaseInfo, recordeInfo),
+          })
+          recordeInfo['configVersion'] = dashboardConfig.configVersion
+          recordeInfo['dateFilter'] = dashboardConfig.dateFilter
+          recordeInfo['pivot'] = dashboardConfig.pivot
           chartInfoList.value.push(recordeInfo)
         }
       }

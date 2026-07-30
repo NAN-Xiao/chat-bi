@@ -916,6 +916,11 @@ def _schema_field_type(value: str | None, fallback: str = "text") -> str:
     return value or fallback
 
 
+def _dictionary_schema_field_type(field: Any, cached_type: str | None) -> str:
+    semantic_type = getattr(field, "semantic_type", None)
+    return _schema_field_type(cached_type, semantic_type or "text")
+
+
 def _schema_field_comment(*parts: str | None) -> str:
     values = [part.strip() for part in parts if part and part.strip()]
     return "; ".join(dict.fromkeys(values))
@@ -937,10 +942,13 @@ def _dictionary_field_comment(field: Any, cached_comment: str | None = None) -> 
     examples = getattr(field, "example_values", None)
     value_mappings = getattr(field, "value_mappings", None)
     expression = getattr(field, "expression", None)
+    extra_properties = getattr(field, "extra_properties", None) or {}
+    encoding = extra_properties.get("encoding") if isinstance(extra_properties, dict) else None
     parts = [
         cached_comment,
         getattr(field, "field_comment", None),
         f"role={getattr(field, 'field_role', None)}" if getattr(field, "field_role", None) else None,
+        f"encoding={encoding}" if encoding else None,
         f"source={getattr(field, 'source_field', None)}" if getattr(field, "source_field", None) else None,
         f"json_path={getattr(field, 'json_path', None)}" if getattr(field, "json_path", None) else None,
         "required=true" if getattr(field, "required", False) else None,
@@ -1136,7 +1144,7 @@ def _dictionary_schema_from_workspace(
                 continue
             cached_field = cached_fields_by_name.get(field_name)
             cached_type = getattr(cached_field, "field_type", None)
-            field_type = _schema_field_type(getattr(field, "semantic_type", None), cached_type or "text")
+            field_type = _dictionary_schema_field_type(field, cached_type)
             field_comment = _dictionary_field_comment(
                 field,
                 schema_field_comments.get((table_name, field_name)),

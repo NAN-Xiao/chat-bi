@@ -92,6 +92,8 @@ const PREVIEW_EDGE_GAP = 16
 const PREVIEW_TOP_GAP = 4
 const TAB_PREVIEW_GRID_GAP = 6
 let resizeObserver: ResizeObserver | undefined
+let elementResizeDetector: any = null
+let detectorTargetElement: HTMLElement | null = null
 const canvasStyle = computed(() => {
   if (props.inTab) {
     return { background: '#ffffff' }
@@ -162,12 +164,18 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(sizeInit)
     resizeObserver.observe(previewCanvas.value)
   }
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  elementResizeDetectorMaker().listenTo(document.getElementById(domId), sizeInit)
+  detectorTargetElement = document.getElementById(domId)
+  if (detectorTargetElement) {
+    elementResizeDetector = elementResizeDetectorMaker()
+    elementResizeDetector.listenTo(detectorTargetElement, sizeInit)
+  }
 })
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  if (elementResizeDetector && detectorTargetElement) {
+    elementResizeDetector.removeAllListeners(detectorTargetElement)
+  }
 })
 
 defineExpose({

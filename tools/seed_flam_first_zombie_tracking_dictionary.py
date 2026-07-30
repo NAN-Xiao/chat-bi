@@ -300,6 +300,7 @@ FIELDS = [
         "field_comment": "事件业务日期分区，格式 yyyyMMdd。flam 持久历史看板以 CURDATE() 前一日派生最近完整 dt 窗口，避免先扫 event 做 MAX(dt)。",
         "field_role": "partition_date",
         "semantic_type": "date",
+        "extra_properties": {"encoding": "yyyyMMdd"},
         "aliases": ["事件日期", "分区日期", "业务日期"],
         "required": True,
     },
@@ -309,6 +310,7 @@ FIELDS = [
         "field_comment": "事件发生毫秒时间戳。实时看板需要 DATE_ADD(FROM_UNIXTIME(time/1000), INTERVAL 8 HOUR) 转业务时间。",
         "field_role": "event_time",
         "semantic_type": "timestamp_ms",
+        "extra_properties": {"encoding": "epoch_milliseconds"},
         "aliases": ["事件时间", "毫秒时间戳"],
     },
     {
@@ -702,6 +704,7 @@ FIELDS = [
         "field_comment": "用户快照业务日期，格式 yyyyMMdd。flam 持久看板以 CURDATE() 前一日派生最近完整 dt 窗口，当前快照默认取最近完整分区。",
         "field_role": "snapshot_date",
         "semantic_type": "date",
+        "extra_properties": {"encoding": "yyyyMMdd"},
         "aliases": ["快照日期", "业务日期"],
         "required": True,
     },
@@ -1325,9 +1328,9 @@ def upsert_fields(cur, now: int) -> None:
             INSERT INTO public.sys_tenant_tracking_field (
                 id, tenant_id, datasource_id, table_name, field_name, field_comment, field_role,
                 semantic_type, source_field, json_path, aliases, value_mappings, expression, required,
-                example_values, ai_notes, create_by, update_by, create_time, update_time
+                example_values, ai_notes, extra_properties, create_by, update_by, create_time, update_time
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (tenant_id, datasource_id, table_name, field_name) DO UPDATE SET
                 field_comment = EXCLUDED.field_comment,
                 field_role = EXCLUDED.field_role,
@@ -1339,6 +1342,8 @@ def upsert_fields(cur, now: int) -> None:
                 required = EXCLUDED.required,
                 example_values = EXCLUDED.example_values,
                 ai_notes = EXCLUDED.ai_notes,
+                extra_properties = COALESCE(sys_tenant_tracking_field.extra_properties, '{}'::jsonb)
+                    || EXCLUDED.extra_properties,
                 update_by = EXCLUDED.update_by,
                 update_time = EXCLUDED.update_time
             """,
@@ -1359,6 +1364,7 @@ def upsert_fields(cur, now: int) -> None:
                 bool(item.get("required", False)),
                 Jsonb(item.get("example_values") or []),
                 item.get("ai_notes"),
+                Jsonb(item.get("extra_properties") or {}),
                 UPDATE_BY,
                 UPDATE_BY,
                 now,

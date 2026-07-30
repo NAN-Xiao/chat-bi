@@ -38,6 +38,14 @@ SKILL_PROMPT = f"""{SKILL_MARKER}
 3. 禁止 `SELECT DATE_FORMAT(date_expr, '%Y-%m-%d')`，却按 `DATE_FORMAT(date_expr, '%Y%m%d')` 分组。
 5. MySQL、AnalyticDB、Doris 和 StarRocks 不得依赖同层 `SELECT` 别名进行 `GROUP BY`；应重复完整表达式，或先在子查询中计算后再按子查询字段分组。
 6. `ORDER BY` 可以使用最终输出别名；方言兼容性不明确时重复完整表达式。
+
+<!-- platform-foundation-skill:default-date-window:v1 -->
+## 默认日期范围与看板参数
+
+1. 用户明确指定日期、自然周期或相对时间范围时，严格按用户范围执行。
+2. 用户未指定日期范围时，默认使用过去 7 个完整自然日。
+3. 对可转存到看板的时序图，保存 SQL 时保留 `{{{{dashboard_start_yyyymmdd}}}}` 与 `{{{{dashboard_end_yyyymmdd}}}}` 日期占位符，并保存对应日期配置；执行时再由当前看板日期控件传入实际边界。
+4. 固定语义指标卡（例如明确限定“今日”或“本月”的单值指标）保持其自身语义，不将看板日期范围强加到该指标。
 """
 
 

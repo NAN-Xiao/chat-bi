@@ -44,7 +44,9 @@ import {
 } from '@/views/dashboard/utils/mixedChartData'
 import {
   applyDashboardDateFilterCapability,
-  buildAppliedDashboardDatePivot,
+  buildDashboardDateFilterRequestForView,
+  canShowDashboardDateFilter,
+  getOrCreateDashboardDateFilterState,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 
 const componentWrapperInnerRef = ref(null)
@@ -646,13 +648,14 @@ async function previewChartSql(viewInfo: any, config?: any, forceRefresh = false
       requestConfig: config,
     })
   }
+  const dateFilterState = canShowDashboardDateFilter(viewInfo.dateFilterCapability)
+    ? getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
+    : null
   const payload = {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
-    pivot: buildAppliedDashboardDatePivot(
-      viewInfo,
-      viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined
-    ),
+    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    date_filter: buildDashboardDateFilterRequestForView(viewInfo, dateFilterState?.appliedRange),
   }
   if (forceRefresh) {
     return dashboardApi.preview_sql(

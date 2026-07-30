@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -22,25 +23,9 @@ OLD_DASHBOARD_VIEW_IDS = {
     "e3fe7e4819e64b71b76d9329a3023359",
     "f113ac14e8994d12814452040b702424",
 }
-EXPECTED_CHANGED_SQL_SHA256 = {
-    "2149b7abbc6c4cd7ad6f52379e69b15a": "7d6852514d2270bebb7c2eb7d9d2292ab08dfd29b63217d36df317b02da4dc19",
-    "2187432754973679616": "49aa5883b49242188e43d642c11cd1a67a933694cf9fb00029cea4d3ef5aba29",
-    "22f0761ab59449189707aca09323810e": "74c8c45d23d2fd30476cff5841ed436b9457fee6ae9bfad874cafbfa2a1866a3",
-    "3bb23e771d584610a2c88a38760163b6": "3d63ae7018684ec69c493c5d77756165223decfe11895af58194d6bbdb9daa5f",
-    "4d250a8575cc4bcd84f7b9514abbf455": "e02956d0746e910d1a4bd569588ef83d5a853aa95a956d7a3db78365a3f49db6",
-    "4fc570b4be7d406c9f648d9088f760bb": "c720ae5e0d8393f24aca399892d6d45ab793bcbcecd1ff91aa1aa5e93682fa92",
-    "531012d01f104a509da2d1926692ee1d": "039eb5012bf3f4a58c2956029483e08f0d0e9e947a28cd2537a06f7d8a92875f",
-    "63e03c7e2ad34ad58321892998497a85": "112a33b31fc3ff51a90a798d132254a0e45c1684f7575c438003e11c8d227352",
-    "97337c8b63544de89f26d2719cc45e75": "5e738ef4d573ffb70e1fc7139fd0cc787baacbf718fa4fba71470e1d17067b99",
-    "b55382d46c664f1dbd465964cc5e8da2": "112a33b31fc3ff51a90a798d132254a0e45c1684f7575c438003e11c8d227352",
-    "ba0dc1580f0d43c29c0d6cdf26a6239c": "666913e0f9857e759857df94144df03853a33ce9624d39691243ab6673473c4f",
-    "ba48ea6e38e748ee9990b59324459b64": "71f7968b3d9e82238467da3514bab7881d7a6c1050359e5af63ed44584f414fe",
-    "c23c019171804f608e92961dc06ae8b2": "67679b4379d938a4e3953eaf86bedd1f126959235000844cbc65dea94249da6f",
-    "d84e234a7f3b4e728a8b02d61911d88f": "dbf2a7f6be2edf965a27b8c17e40a79d8ee2c858b62ca7f6c099b53d44b4b27c",
-    "e3e716d42d654e61ab80c62c1915d0e8": "28e12cc68dbd83758a2a2fb080e182e357bf8307dfad81d6e055bf1d377d97fe",
-    "f0d759307a304043883a23499a281b97": "0c1aa9ce3f88793ae0d1cb3ac5ada2089d0290a5ed052e187df21ca7d7125886",
-    "f39bac6b01784ca5b92c60ffe4348756": "112a33b31fc3ff51a90a798d132254a0e45c1684f7575c438003e11c8d227352",
-}
+EXPECTED_CURRENT_CATALOG_SHA256 = (
+    "15dd6c8870705858073d26fc4085d87ca2f6e1f690e440fc4e5f48360d10f51c"
+)
 
 
 def _seed_dashboard_sql() -> dict[str, str]:
@@ -61,14 +46,22 @@ def _seed_dashboard_sql() -> dict[str, str]:
 
 def test_dashboard_sql_directory_matches_current_recommended_dashboards() -> None:
     blocks = _seed_dashboard_sql()
+    hashes = {
+        view_id: hashlib.sha256(sql.encode("utf-8")).hexdigest()
+        for view_id, sql in sorted(blocks.items())
+    }
+    catalog_sha256 = hashlib.sha256(
+        json.dumps(
+            hashes,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
 
     assert len(blocks) == 84
     assert OLD_DASHBOARD_VIEW_IDS.isdisjoint(blocks)
-    assert EXPECTED_CHANGED_SQL_SHA256.keys() <= blocks.keys()
-    assert {
-        view_id: hashlib.sha256(blocks[view_id].encode("utf-8")).hexdigest()
-        for view_id in EXPECTED_CHANGED_SQL_SHA256
-    } == EXPECTED_CHANGED_SQL_SHA256
+    assert catalog_sha256 == EXPECTED_CURRENT_CATALOG_SHA256
 
 
 @pytest.mark.parametrize("view_id", [
@@ -138,6 +131,28 @@ def test_new_user_skill_routes_current_day_to_realtime_table() -> None:
     assert "截至目前、当前或实时按小时" not in prompt
     assert "必须使用 `event_realtime`" in prompt
     assert "完整历史日和留存 cohort 使用 `event`" in prompt
+
+
+def test_flam_generic_default_date_ranges_defer_to_platform_rule() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    names = {
+        "flam 历史看板日期窗口口径",
+        "flam 活跃用户口径",
+        "flam 礼包购买结构口径",
+        "flam 新手引导漏斗口径",
+        "flam 渠道投放注册与付费口径",
+        "flam 钻石经济口径",
+    }
+    prompts = {
+        skill["name"]: skill["prompt"]
+        for skill in seed.DATA_SKILLS
+        if skill["name"] in names
+    }
+
+    assert set(prompts) == names
+    for prompt in prompts.values():
+        assert "未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围" in prompt
 
 
 def test_data_skill_seed_limits_custom_prompt_lifecycle_to_exact_datasource_scope() -> None:

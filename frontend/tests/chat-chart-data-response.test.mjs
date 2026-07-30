@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import esbuild from 'esbuild'
 
 const build = await esbuild.build({
@@ -16,6 +18,7 @@ const { applyChartDataResponseToRecord } = await import(moduleUrl)
 
 const record = {
   id: 460,
+  error: '上一次请求失败',
   data: {
     status: 'business_notice',
   },
@@ -45,6 +48,41 @@ assert.deepEqual(record.data.data, [
     新增用户数: 46375,
   },
 ])
+assert.equal(record.error, undefined)
+
+const permissionDeniedRecord = {
+  id: 462,
+}
+
+applyChartDataResponseToRecord(permissionDeniedRecord, {
+  status: 'failed',
+  error_type: 'permission_denied',
+  message: '没有查看权限',
+})
+
+assert.equal(permissionDeniedRecord.error, '没有查看权限')
+assert.equal(permissionDeniedRecord.data.error_type, 'permission_denied')
+
+const permissionDeniedFallbackRecord = {
+  id: 463,
+}
+
+applyChartDataResponseToRecord(permissionDeniedFallbackRecord, {
+  status: 'failed',
+  error_type: 'permission_denied',
+})
+
+assert.equal(permissionDeniedFallbackRecord.error, '没有查看权限')
+
+const chartAnswerSource = fs.readFileSync(
+  path.join(process.cwd(), 'src/views/chat/answer/ChartAnswer.vue'),
+  'utf8'
+)
+assert.match(
+  chartAnswerSource,
+  /<ChartBlock\s+v-if="!message\.record\?\.error"/,
+  '统一错误组件展示失败信息时不应再挂载图表块'
+)
 
 const noticeRecord = {
   id: 461,

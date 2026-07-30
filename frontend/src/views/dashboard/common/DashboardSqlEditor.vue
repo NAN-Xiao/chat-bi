@@ -11,6 +11,14 @@ import { formatRequestErrorMessage } from '@/utils/request.ts'
 import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
+import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
+import {
+  cloneDashboardDateExpression,
+  defaultDashboardDateExpression,
+  normalizeDashboardDateExpression,
+  validateDashboardDateExpression,
+  type DashboardDateExpression,
+} from '@/views/dashboard/common/dashboardDateExpression.ts'
 import {
   isEventUserPropertyOption,
   isNumericFieldOption,
@@ -54,10 +62,14 @@ import {
   isLikelyPivotDateField,
 } from '@/views/dashboard/utils/pivotDimensions.ts'
 import {
+  buildDashboardDateFilterRequest,
   buildDashboardDateSourcePreviewPivot,
-  dashboardDateParameterTokens,
   scanDashboardDateParameterTokens,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  buildDashboardDateFilterConfig,
+  normalizeDashboardChartConfig,
+} from '@/views/dashboard/utils/dashboardChartConfig.ts'
 import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
@@ -250,6 +262,8 @@ const sqlBuilder = reactive({
   timeGrain: 'day',
   timeRange: '30d',
   timeCustomRange: [] as string[],
+  dateExpressionPickerEnabled: true,
+  timeExpression: defaultDashboardDateExpression(),
   metricItems: [] as SqlBuilderMetricItem[],
   calculatedMetrics: [] as SqlBuilderCalculatedMetricItem[],
   groups: [] as string[],
@@ -316,6 +330,7 @@ const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
 const initializedPivotGroupValueField = ref('')
+const dateExpressionConfigError = ref('')
 const PIVOT_GROUP_SELECT_ALL_VALUE = '__dashboard_pivot_group_select_all__'
 const PIVOT_GROUP_SELECT_NONE_VALUE = '__dashboard_pivot_group_select_none__'
 let builderSchemaLoadSeq = 0
@@ -361,7 +376,11 @@ function resolveChartSourceTypes(viewInfo: any): ChartDataSourceType[] {
   const config = chartSourceConfig(viewInfo)
   const configured = normalizeSourceTypes(config.sources || config.sourceTypes || viewInfo?.sources)
   const sourceTypes = configured.length ? configured : []
-  if ((viewInfo?.sql || viewInfo?.datasource) && !sourceTypes.includes('sql')) {
+  if (
+    !isExternalSnapshotChart(viewInfo)
+    && (viewInfo?.sql || viewInfo?.datasource)
+    && !sourceTypes.includes('sql')
+  ) {
     sourceTypes.push('sql')
   }
   if (
@@ -759,6 +778,22 @@ const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chart
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric'].includes(form.chartType))
+const dateExpressionEnabled = computed(
+  () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters()
+)
+
+function shouldUseDashboardDateParameters(chartType: ChartTypes | string = form.chartType) {
+  return chartType !== 'metric' && Boolean(sqlBuilder.timeField)
+}
+
+function syncDashboardDateParameterUsage(chartType: ChartTypes | string = form.chartType) {
+  const enabled = shouldUseDashboardDateParameters(chartType)
+  sqlBuilder.dateExpressionPickerEnabled = enabled
+  if (!enabled) {
+    form.pivotDateParameterType = ''
+  }
+  dateExpressionConfigError.value = ''
+}
 const supportsForecastConfig = computed(
   () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length > 0
 )
@@ -1388,6 +1423,9 @@ function resetSqlBuilderState() {
   sqlBuilder.timeGrain = 'day'
   sqlBuilder.timeRange = '30d'
   sqlBuilder.timeCustomRange = []
+  sqlBuilder.dateExpressionPickerEnabled = true
+  sqlBuilder.timeExpression = defaultDashboardDateExpression()
+  dateExpressionConfigError.value = ''
   sqlBuilder.metricItems = []
   sqlBuilder.calculatedMetrics = []
   sqlBuilder.groups = []
@@ -1746,11 +1784,16 @@ function restoreBuilderFilters(value: any): SqlBuilderFilter[] {
 }
 
 function builderConfigForSave() {
+  const usesDashboardDateParameters = shouldUseDashboardDateParameters()
   return {
     timeField: sqlBuilder.timeField || '',
     timeGrain: sqlBuilder.timeGrain || 'day',
     timeRange: sqlBuilder.timeRange || '30d',
     timeCustomRange: Array.isArray(sqlBuilder.timeCustomRange) ? [...sqlBuilder.timeCustomRange] : [],
+    dateExpressionPickerEnabled: usesDashboardDateParameters,
+    timeExpression: usesDashboardDateParameters && sqlBuilder.timeExpression
+      ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
+      : null,
     groups: [...sqlBuilder.groups],
     globalFilters: compactBuilderFilters(sqlBuilder.globalFilters),
     globalFilterLogic: builderLogic(sqlBuilder.globalFilterLogic),
@@ -1764,10 +1807,12 @@ function restoreSqlBuilderState(value: any) {
     return
   }
   const timeGrainValues = builderTimeGrainOptions.map((item) => item.value)
-  const timeRangeValues = builderTimeRangeOptions.map((item) => item.value)
   sqlBuilder.timeField = typeof value.timeField === 'string' ? value.timeField : ''
   sqlBuilder.timeGrain = timeGrainValues.includes(value.timeGrain) ? value.timeGrain : 'day'
-  sqlBuilder.timeRange = timeRangeValues.includes(value.timeRange) ? value.timeRange : '30d'
+  sqlBuilder.dateExpressionPickerEnabled = true
+  const timeExpression = normalizeDashboardDateExpression(value.timeExpression)
+  sqlBuilder.timeExpression = timeExpression || defaultDashboardDateExpression()
+  sqlBuilder.timeRange = 'expression'
   sqlBuilder.timeCustomRange = Array.isArray(value.timeCustomRange)
     ? value.timeCustomRange.filter((item: any) => typeof item === 'string')
     : []
@@ -2341,6 +2386,12 @@ function collectBuilderAiContext() {
       grain: sqlBuilder.timeGrain,
       range: sqlBuilder.timeRange,
       customRange: sqlBuilder.timeCustomRange,
+      dateParameterType: shouldUseDashboardDateParameters()
+        ? form.pivotDateParameterType
+        : '',
+      dateExpression: shouldUseDashboardDateParameters() && sqlBuilder.timeExpression
+        ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
+        : null,
     },
     metrics: sqlBuilder.metricItems.map((item, index) => ({
       id: item.id,
@@ -2571,6 +2622,22 @@ async function generateBuilderAiSql() {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
+  const usesDashboardDateParameters = shouldUseDashboardDateParameters()
+  if (usesDashboardDateParameters && !form.pivotDateParameterType) {
+    ElMessage.warning('生成 SQL 前请先选择日期参数类型。')
+    return false
+  }
+  if (usesDashboardDateParameters) {
+    const validation = validateDashboardDateExpression(
+      sqlBuilder.timeExpression,
+      new Date(),
+      'Asia/Shanghai'
+    )
+    if (!validation.valid) {
+      ElMessage.warning(validation.message)
+      return false
+    }
+  }
   const eventScopeIssues = builderBlockingScopeIssues()
   if (eventScopeIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
@@ -2670,6 +2737,7 @@ async function generateBuilderAiSql() {
   if (nextChartType && chartTypes.some((item) => item.value === nextChartType)) {
     form.chartType = nextChartType
   }
+  syncDashboardDateParameterUsage(nextChartType || form.chartType)
   if (result.success) {
     ElMessage.success('已生成 SQL')
   } else {
@@ -2950,6 +3018,10 @@ function defaultPivotAggregation() {
   return defaultPivotAggregationForAxes(toAxes(form.y, { metrics: true }), sourcePreview.data)
 }
 
+function configuredDashboardTimeField() {
+  return String(sqlBuilder.timeField || form.pivotTimeField || '').trim()
+}
+
 function inferredPivotDimensions() {
   return inferPivotDimensions({
     fields: sourcePreview.fields,
@@ -3031,9 +3103,22 @@ function initPivotConfig(pivot?: any) {
   form.pivotRange = pivot?.range || 'source'
   form.pivotCustomStart = pivot?.custom_start || ''
   form.pivotCustomEnd = pivot?.custom_end || ''
-  form.pivotDateParameterType = Object.prototype.hasOwnProperty.call(dashboardDateParameterTokens, pivot?.date_parameter_type)
-    ? pivot.date_parameter_type
-    : ''
+  form.pivotDateParameterType = ''
+  const pivotDateExpression = null
+  if (dateExpressionEnabled.value) {
+    if (!sqlBuilder.timeExpression) {
+      dateExpressionConfigError.value = '日期表达式配置无效'
+    } else if (
+      pivotDateExpression &&
+      JSON.stringify(sqlBuilder.timeExpression) !== JSON.stringify(pivotDateExpression)
+    ) {
+      dateExpressionConfigError.value = '日期表达式配置不一致'
+    } else {
+      dateExpressionConfigError.value = ''
+    }
+  } else {
+    dateExpressionConfigError.value = ''
+  }
   form.pivotGroupValues = []
   initializedPivotGroupValueField.value = ''
   normalizePivotSelections()
@@ -3059,23 +3144,24 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
   const groupField = activePivotGroupValueField.value
   const pivotGroupValues = groupField ? unique(form.pivotGroupValues.map(normalizePivotGroupValue)) : []
   const config: Record<string, any> = {
-    enabled: true,
+    enabled: supportsPivotConfig.value && form.pivotEnabled,
     client_filter_only: props.viewInfo?.pivot?.client_filter_only === true,
     time_field: form.pivotTimeField,
+    range_enabled: form.pivotRangeEnabled,
+  }
+  Object.assign(config, {
     metric_fields: [...form.y],
     metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
     metric_field: form.y[0] || '',
     group_field: groupField,
     group_enabled: Boolean(groupField && (form.pivotGroupEnabled || pivotGroupValues.length > 0)),
     dimensions: inferredPivotDimensions(),
-    range_enabled: form.pivotRangeEnabled,
     granularity: form.pivotGranularity,
     range: form.pivotRange,
     custom_start: form.pivotCustomStart,
     custom_end: form.pivotCustomEnd,
-    date_parameter_type: form.pivotDateParameterType,
     aggregation: defaultPivotAggregation(),
-  }
+  })
   if (options.includeGroupValues !== false) {
     config.group_values = pivotGroupValues
   }
@@ -3094,6 +3180,24 @@ function sourcePreviewPivotPayload() {
   return pivot ? buildDashboardDateSourcePreviewPivot(pivot) : undefined
 }
 
+function dashboardDateFilterConfigForWrite() {
+  const expression = dateExpressionEnabled.value && sqlBuilder.timeExpression
+    ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
+    : undefined
+  return buildDashboardDateFilterConfig(
+    form.sql,
+    form.pivotDateParameterType,
+    expression
+  )
+}
+
+function dashboardDateFilterRequestPayload() {
+  const customRange = form.pivotRangeEnabled && form.pivotRange === 'custom'
+    ? [form.pivotCustomStart, form.pivotCustomEnd] as [string, string]
+    : undefined
+  return buildDashboardDateFilterRequest(dashboardDateFilterConfigForWrite(), customRange)
+}
+
 function dashboardDateParameterValidationErrorKey() {
   if (!hasSqlSource.value) {
     return ''
@@ -3105,10 +3209,50 @@ function dashboardDateParameterValidationErrorKey() {
   if (!form.pivotDateParameterType) {
     return 'dashboard.pivot_date_parameter_type_required'
   }
-  const expectedTokens = dashboardDateParameterTokens[form.pivotDateParameterType]
-  return activeTokens.length === expectedTokens.length && expectedTokens.every((token) => activeTokens.includes(token))
-    ? ''
-    : 'dashboard.pivot_date_parameter_type_invalid'
+  try {
+    dashboardDateFilterConfigForWrite()
+    return ''
+  } catch {
+    return 'dashboard.pivot_date_parameter_type_invalid'
+  }
+}
+
+function dateExpressionValidationError() {
+  if (!dateExpressionEnabled.value) {
+    return ''
+  }
+  if (dateExpressionConfigError.value) {
+    return dateExpressionConfigError.value
+  }
+  const validation = validateDashboardDateExpression(
+    sqlBuilder.timeExpression,
+    new Date(),
+    'Asia/Shanghai'
+  )
+  if (!validation.valid) {
+    return validation.message
+  }
+  if (
+    form.pivotEnabled &&
+    !configuredDashboardTimeField() &&
+    eventFieldScope.value.status !== 'datasource-mismatch'
+  ) {
+    return '请选择时间字段'
+  }
+  if (!form.pivotDateParameterType) {
+    return '请选择日期参数类型'
+  }
+  const activeDateTokens = scanDashboardDateParameterTokens(form.sql)
+  if (activeDateTokens.length === 0) {
+    return t('dashboard.date_expression_parameter_hint')
+  }
+  return ''
+}
+
+function applyDateExpression(value: DashboardDateExpression) {
+  sqlBuilder.timeExpression = cloneDashboardDateExpression(value)
+  sqlBuilder.timeRange = 'expression'
+  dateExpressionConfigError.value = ''
 }
 
 function currentPreviewSignature() {
@@ -3119,6 +3263,7 @@ function currentPreviewSignature() {
           datasource: selectedExecutionDatasourceId.value,
           sql: form.sql.trim(),
           pivot: previewPivotPayload() || { enabled: false },
+          dateFilter: dashboardDateFilterRequestPayload(),
         }
       : null,
     mcp: hasMcpSource.value
@@ -3877,6 +4022,11 @@ function initEditor() {
   }
   resetSqlBuilderState()
   restoreSqlBuilderState(sourceConfig.sql?.builder || sourceConfig.builder)
+  const normalizedConfig = normalizeDashboardChartConfig(viewInfo)
+  const pivotDateExpression = normalizeDashboardDateExpression(normalizedConfig.dateFilter?.expression)
+  if (pivotDateExpression) {
+    sqlBuilder.timeExpression = cloneDashboardDateExpression(pivotDateExpression)
+  }
   const fields = collectFields(viewInfo)
   const currentFields = collectCurrentPreviewFields(viewInfo)
   form.sourceTypes = sourceTypes
@@ -3919,7 +4069,10 @@ function initEditor() {
   resetFieldSelections()
   initInsightConfig(chart.insight)
   initForecastConfig(chart.forecast)
-  initPivotConfig(viewInfo.pivot)
+  initPivotConfig(normalizedConfig.pivot)
+  if (normalizedConfig.dateFilter) {
+    form.pivotDateParameterType = normalizedConfig.dateFilter.parameterType
+  }
   lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
   if (hasMcpSource.value) {
@@ -4071,6 +4224,8 @@ watch(
     form.pivotCustomEnd,
     form.pivotDateParameterType,
     form.pivotGroupValues.join('|'),
+    sqlBuilder.dateExpressionPickerEnabled,
+    JSON.stringify(sqlBuilder.timeExpression),
   ],
   () => {
     previewVersion.value += 1
@@ -4106,6 +4261,11 @@ async function previewSqlSource() {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return null
   }
+  const expressionValidationError = dateExpressionValidationError()
+  if (expressionValidationError) {
+    ElMessage.warning(expressionValidationError)
+    return null
+  }
   const dateParameterValidationError = dashboardDateParameterValidationErrorKey()
   if (dateParameterValidationError) {
     ElMessage.warning(t(dateParameterValidationError))
@@ -4117,6 +4277,7 @@ async function previewSqlSource() {
       datasource: selectedExecutionDatasourceId.value,
       sql: form.sql.trim(),
       pivot: sourcePreviewPivotPayload(),
+      date_filter: dashboardDateFilterRequestPayload(),
     })
     const sourceSnapshot = previewResultSnapshot(sourceResult)
     setSourceResult('sql', sourceSnapshot)
@@ -4136,6 +4297,7 @@ async function previewSqlSource() {
     datasource: selectedExecutionDatasourceId.value,
     sql: form.sql.trim(),
     pivot: previewPivotPayload(),
+    date_filter: dashboardDateFilterRequestPayload(),
   })
   const snapshot = previewResultSnapshot(result)
   setSourceResult('sql', snapshot)
@@ -4316,6 +4478,11 @@ function validateBeforeApply() {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return false
   }
+  const expressionValidationError = dateExpressionValidationError()
+  if (expressionValidationError) {
+    ElMessage.warning(expressionValidationError)
+    return false
+  }
   const dateParameterValidationError = dashboardDateParameterValidationErrorKey()
   if (dateParameterValidationError) {
     ElMessage.warning(t(dateParameterValidationError))
@@ -4469,8 +4636,16 @@ function writeEditorStateToViewInfo(options: {
   delete props.viewInfo.dataState
   props.viewInfo.loadingProgress = 100
   delete props.viewInfo.message
+  const normalizedConfig = normalizeDashboardChartConfig({
+    ...props.viewInfo,
+    sql: props.viewInfo.sql,
+    pivot: buildPivotConfig(),
+    dateFilter: dashboardDateFilterConfigForWrite(),
+  })
   props.viewInfo.chart = buildChart()
-  props.viewInfo.pivot = buildPivotConfig()
+  props.viewInfo.configVersion = normalizedConfig.configVersion
+  props.viewInfo.dateFilter = normalizedConfig.dateFilter
+  props.viewInfo.pivot = normalizedConfig.pivot
   if (hasSqlSource.value) {
     props.viewInfo.datasource = selectedExecutionDatasourceId.value
   } else {
@@ -4698,7 +4873,15 @@ function closeDrawer() {
                     :value="item.value"
                   />
                 </el-select>
-                <el-select v-model="sqlBuilder.timeRange" size="small">
+                <DashboardDateExpressionPicker
+                  v-if="hasSqlSource && dateExpressionEnabled"
+                  :model-value="sqlBuilder.timeExpression"
+                  variant="roi"
+                  timezone="Asia/Shanghai"
+                  :disabled="loading || builderLoading"
+                  @apply="applyDateExpression"
+                />
+                <el-select v-else v-model="sqlBuilder.timeRange" size="small">
                   <el-option
                     v-for="item in builderTimeRangeOptions"
                     :key="item.value"
@@ -4708,7 +4891,7 @@ function closeDrawer() {
                 </el-select>
               </div>
               <el-date-picker
-                v-if="sqlBuilder.timeRange === 'custom'"
+                v-if="!dateExpressionEnabled && sqlBuilder.timeRange === 'custom'"
                 v-model="sqlBuilder.timeCustomRange"
                 type="daterange"
                 value-format="YYYY-MM-DD"
@@ -5957,6 +6140,30 @@ function closeDrawer() {
 .builder-compact-grid :deep(.builder-field-picker-trigger),
 .group-row :deep(.builder-field-picker-trigger) {
   width: 100%;
+}
+
+.builder-compact-grid :deep(.date-expression-trigger) {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--workspace-text-primary, #1f2329);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  font-weight: 400;
+  justify-content: flex-start;
+
+  &:hover,
+  &:focus-visible {
+    border-color: transparent;
+    background: transparent;
+    color: var(--workspace-text-primary, #1f2329);
+  }
 }
 
 .builder-date-range {

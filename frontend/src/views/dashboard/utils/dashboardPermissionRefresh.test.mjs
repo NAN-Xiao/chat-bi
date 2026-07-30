@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 const {
   createPermissionDeniedChartRegistry,
   dashboardCacheRefreshDisposition,
+  classifyDashboardChartFailure,
+  nextDashboardChartRetryDelayMs,
+  resolveDashboardChartRenderState,
   isPermissionDeniedRefreshResult,
   shouldRetryDashboardChartFailure,
 } = await import('./dashboardPermissionRefresh.ts')
@@ -70,4 +73,36 @@ assert.equal(
   shouldRetryDashboardChartFailure({ status: 'success' }, false),
   false,
   '成功结果不能进入失败重试'
+)
+
+assert.equal(
+  classifyDashboardChartFailure({ status: 'failed', error_type: 'dashboard_date_filter_unconfigured' }),
+  'terminal',
+  '日期配置错误必须是终态错误'
+)
+assert.equal(
+  classifyDashboardChartFailure({ status: 'failed', error_type: 'dashboard_query_busy' }),
+  'transient',
+  '查询繁忙才允许短时重试'
+)
+assert.equal(
+  classifyDashboardChartFailure({
+    status: 'failed',
+    error_type: 'datasource_connection_failed',
+    recoverable: false,
+  }),
+  'terminal',
+  '未标记可恢复的数据源错误不能自动重试'
+)
+assert.equal(nextDashboardChartRetryDelayMs(0, () => 0.5), 2000)
+assert.equal(nextDashboardChartRetryDelayMs(1, () => 0.5), 5000)
+assert.equal(nextDashboardChartRetryDelayMs(2, () => 0.5), 15000)
+assert.equal(nextDashboardChartRetryDelayMs(3, () => 0.5), null)
+assert.equal(
+  resolveDashboardChartRenderState({ phase: 'loading', failed: true, hasSnapshot: false }),
+  'failed'
+)
+assert.equal(
+  resolveDashboardChartRenderState({ phase: 'refreshing', failed: true, hasSnapshot: true }),
+  'stale'
 )

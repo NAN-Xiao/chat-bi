@@ -6,6 +6,13 @@ import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { ElMessage } from 'element-plus-secondary'
 import { ElConfigProvider, ElDatePickerPanel } from 'element-plus'
+import DashboardDateExpressionPicker from '@/views/dashboard/common/DashboardDateExpressionPicker.vue'
+import {
+  cloneDashboardDateExpression,
+  defaultDashboardDateExpression,
+  normalizeDashboardDateExpression,
+  type DashboardDateExpression,
+} from '@/views/dashboard/common/dashboardDateExpression.ts'
 import 'element-plus/es/components/date-picker-panel/style/css'
 import elementEnLocale from 'element-plus/es/locale/lang/en'
 import elementKoLocale from 'element-plus/es/locale/lang/ko'
@@ -109,8 +116,7 @@ import {
   applyDashboardDateFilterCapability,
   beginDashboardChartRequest,
   beginDashboardDateApply,
-  buildAppliedDashboardDatePivot,
-  buildDashboardDatePivot,
+  buildDashboardDateFilterRequestForView,
   canShowDashboardDateFilter,
   commitDashboardDateRange,
   createDashboardDateFilterState,
@@ -366,6 +372,8 @@ type RefreshDataOptions = {
   forceRefresh?: boolean
   blocking?: boolean
   pivotOverride?: Record<string, unknown>
+  dateFilterOverride?: Record<string, unknown>
+  dateFilterRangeOverride?: [string, string] | null
 }
 
 const dateFilterCapability = computed<DashboardDateFilterCapability | null>(() => {
@@ -375,6 +383,62 @@ const dateFilterCapability = computed<DashboardDateFilterCapability | null>(() =
 const showDashboardDateFilter = computed(() =>
   dateFilterCapability.value?.status === 'available'
   && canShowDashboardDateFilter(dateFilterCapability.value)
+)
+const hasExplicitMcpSource = computed(() => {
+  const sourceConfig = props.viewInfo?.sourceConfig || props.viewInfo?.source_config || {}
+  return Boolean(
+    isExternalSnapshotChart(props.viewInfo)
+    || sourceConfig?.mcp
+    || props.viewInfo?.mcp
+    || props.viewInfo?.external_mcp_server_id
+  )
+})
+const hasSqlDashboardSource = computed(() => {
+  if (isExternalSnapshotChart(props.viewInfo)) {
+    return false
+  }
+  const sourceConfig = props.viewInfo?.sourceConfig || props.viewInfo?.source_config || {}
+  const sources = sourceConfig?.sources || props.viewInfo?.sources
+  if (Array.isArray(sources) && sources.length) {
+    return sources.includes('sql')
+  }
+  if (hasExplicitMcpSource.value) {
+    return Boolean(sourceConfig?.sql?.sql || String(props.viewInfo?.sql || '').trim())
+  }
+  return Boolean(
+    sourceConfig?.sql
+    || props.viewInfo?.sql
+    || props.viewInfo?.datasource
+  )
+})
+const dateExpressionPickerEnabled = computed(
+  () => hasSqlDashboardSource.value
+)
+const configuredDashboardDateExpression = computed(() =>
+  normalizeDashboardDateExpression(
+    props.viewInfo?.dateFilter?.expression
+      ?? props.viewInfo?.pivot?.date_expression
+  )
+  || (hasSqlDashboardSource.value ? defaultDashboardDateExpression() : null)
+)
+const configuredDashboardDateExpressionKey = computed(() =>
+  JSON.stringify(
+    props.viewInfo?.dateFilter?.expression
+      ?? props.viewInfo?.pivot?.date_expression
+      ?? null
+  )
+)
+const dashboardDateExpression = ref<DashboardDateExpression | null>(
+  configuredDashboardDateExpression.value
+    ? cloneDashboardDateExpression(configuredDashboardDateExpression.value)
+    : null
+)
+const dashboardDateExpressionApplying = ref(false)
+const showDashboardDateExpression = computed(
+  () =>
+    showDashboardDateFilter.value
+    && dateExpressionPickerEnabled.value
+    && dashboardDateExpression.value !== null
 )
 const dateFilterState = ref(
   getOrCreateDashboardDateFilterState(props.viewInfo, dateFilterCapability.value)
@@ -447,6 +511,21 @@ watch(
   () => dashboardDateFilterContext(props.viewInfo, dateFilterCapability.value),
   () => initializeDashboardDateFilterState(),
   { deep: true }
+)
+
+watch(
+  [
+    () => props.viewInfo,
+    configuredDashboardDateExpressionKey,
+    dateExpressionPickerEnabled,
+  ],
+  () => {
+    if (dashboardDateExpressionApplying.value) return
+    const configured = configuredDashboardDateExpression.value
+    dashboardDateExpression.value = dateExpressionPickerEnabled.value && configured
+      ? cloneDashboardDateExpression(configured)
+      : null
+  }
 )
 
 function clampChartLoadingProgress(progress: unknown) {
@@ -618,9 +697,7 @@ const pivotGranularityLabel = computed(
     pivotGranularityOptions.value.find((item) => item.value === pivotState.granularity)?.label ||
     t('dashboard.pivot_day')
 )
-const pivotModeLabel = computed(() =>
-  pivotTimeRangeActive.value ? t('dashboard.pivot_select_time') : pivotGranularityLabel.value
-)
+const pivotModeLabel = computed(() => pivotGranularityLabel.value)
 const currentPivotTimeAxis = computed<ChartAxis | undefined>(() =>
   axisForField(props.viewInfo?.chart?.xAxis, pivotTimeField.value) ||
   (pivotTimeField.value ? { name: pivotTimeField.value, value: pivotTimeField.value } : undefined)
@@ -1641,14 +1718,20 @@ async function refreshData(options: RefreshDataOptions = {}) {
     blockingRefreshLoading.value = true
     blockingRefreshRequestSeq = requestSeq
   }
-  const pivotPayload = options.pivotOverride
-    ?? buildAppliedDashboardDatePivot(props.viewInfo, getPivotPayload())
+  const pivotPayload = options.pivotOverride ?? getPivotPayload()
+  const dateFilterRange = options.dateFilterRangeOverride
+    ?? (canShowDashboardDateFilter(props.viewInfo?.dateFilterCapability)
+      ? dateFilterState.value.appliedRange
+      : null)
+  const dateFilterPayload = options.dateFilterOverride
+    ?? buildDashboardDateFilterRequestForView(props.viewInfo, dateFilterRange)
   let refreshSucceeded = false
   try {
     const result = await previewChartSqlWithCacheFallback({
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
       pivot: pivotPayload,
+      ...(dateFilterPayload ? { date_filter: dateFilterPayload } : {}),
     }, forceRefresh)
     if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
       return false
@@ -1750,12 +1833,52 @@ async function applyDashboardDateRange() {
   const succeeded = await refreshData({
     forceRefresh: true,
     blocking: true,
-    pivotOverride: buildDashboardDatePivot(props.viewInfo, pendingRange),
+    dateFilterRangeOverride: pendingRange,
   })
   if (succeeded) {
     commitDashboardDateRange(dateFilterState.value)
   } else {
     failDashboardDateRange(dateFilterState.value, t('dashboard.chart_refresh_failed'))
+  }
+}
+
+async function applyDashboardDateExpression(value: DashboardDateExpression) {
+  if (dashboardDateExpressionApplying.value) return
+  dashboardDateExpressionApplying.value = true
+  const next = cloneDashboardDateExpression(value)
+  try {
+    const succeeded = await refreshData({
+      forceRefresh: true,
+      blocking: true,
+      dateFilterOverride: buildDashboardDateFilterRequestForView(
+        {
+          ...props.viewInfo,
+          dateFilter: {
+            ...(props.viewInfo?.dateFilter || {}),
+            enabled: true,
+            parameterType: props.viewInfo?.dateFilter?.parameterType
+              || props.viewInfo?.dateFilterCapability?.parameterType,
+            expression: next,
+          },
+        },
+        null
+      ),
+      dateFilterRangeOverride: null,
+    })
+    if (succeeded) {
+      dashboardDateExpression.value = next
+      if (!props.viewInfo?.dateFilter && props.viewInfo?.dateFilterCapability?.parameterType) {
+        props.viewInfo.dateFilter = {
+          enabled: true,
+          parameterType: props.viewInfo.dateFilterCapability.parameterType,
+          expression: cloneDashboardDateExpression(next),
+        }
+      } else if (props.viewInfo?.dateFilter && typeof props.viewInfo.dateFilter === 'object') {
+        props.viewInfo.dateFilter.expression = cloneDashboardDateExpression(next)
+      }
+    }
+  } finally {
+    dashboardDateExpressionApplying.value = false
   }
 }
 
@@ -2211,7 +2334,30 @@ defineExpose({
         <div class="divider" />
       </div>
     </div>
-    <div v-if="showDashboardDateFilter" class="date-filter-toolbar">
+    <div
+      class="dashboard-filter-controls"
+      :class="{
+        'dashboard-filter-controls--combined':
+          pivotEnabled
+          && (showDashboardDateExpression || (showDashboardDateFilter && !dateExpressionPickerEnabled)),
+      }"
+    >
+      <div
+      v-if="showDashboardDateExpression"
+      class="date-filter-toolbar date-expression-toolbar"
+      >
+      <DashboardDateExpressionPicker
+        :model-value="dashboardDateExpression"
+        variant="roi"
+        timezone="Asia/Shanghai"
+        :disabled="dashboardDateExpressionApplying"
+        @apply="applyDashboardDateExpression"
+      />
+      </div>
+      <div
+      v-else-if="showDashboardDateFilter && !dateExpressionPickerEnabled"
+      class="date-filter-toolbar"
+      >
       <el-popover
         v-model:visible="dateFilterPanelVisible"
         trigger="click"
@@ -2258,8 +2404,13 @@ defineExpose({
           </div>
         </div>
       </el-popover>
-    </div>
-    <div v-if="pivotEnabled" class="pivot-toolbar">
+      </div>
+      <span
+        v-if="pivotEnabled && (showDashboardDateExpression || (showDashboardDateFilter && !dateExpressionPickerEnabled))"
+        class="dashboard-filter-divider"
+        aria-hidden="true"
+      />
+      <div v-if="pivotEnabled" class="pivot-toolbar">
       <el-popover
         :visible="pivotModePopoverVisible"
         trigger="manual"
@@ -2435,6 +2586,7 @@ defineExpose({
         </div>
       </el-popover>
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
+      </div>
     </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="showFullChartLoading" class="chart-loading-info">
@@ -2714,8 +2866,10 @@ defineExpose({
       align-items: center;
       gap: 7px;
       cursor: pointer;
+      font-family: inherit;
       font-size: 12px;
-      line-height: 20px;
+      line-height: 24px;
+      font-weight: 400;
       text-align: left;
       transition: border-color 0.16s ease, box-shadow 0.16s ease;
 
@@ -2747,6 +2901,87 @@ defineExpose({
     }
   }
 
+  .dashboard-filter-controls {
+    display: contents;
+  }
+
+  .dashboard-filter-controls--combined {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: -2px 0 8px;
+
+    > .pivot-toolbar {
+      order: 0;
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+
+    > .dashboard-filter-divider {
+      order: 1;
+    }
+
+    > .date-filter-toolbar {
+      order: 2;
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+
+    > .pivot-toolbar .pivot-chip.pivot-link {
+      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      font-size: 12px;
+      line-height: 24px;
+      font-weight: 400;
+    }
+
+    > .date-filter-toolbar :deep(.date-expression-trigger) {
+      height: 24px;
+      min-height: 24px;
+      font-size: 12px;
+      line-height: 24px;
+      font-weight: 400;
+    }
+
+    > .pivot-toolbar .pivot-chip.pivot-link:hover,
+    > .pivot-toolbar .pivot-chip.pivot-link:focus-visible {
+      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      background: transparent;
+    }
+
+    .dashboard-filter-divider {
+      flex: 0 0 1px;
+      width: 1px;
+      height: 16px;
+      margin: 0 8px;
+      border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
+    }
+  }
+
+  .date-expression-toolbar {
+    width: fit-content;
+    max-width: 100%;
+
+    :deep(.date-expression-trigger) {
+      width: auto;
+      min-width: 84px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-family: inherit;
+      font-size: 12px;
+      line-height: 24px;
+      font-weight: 400;
+      justify-content: flex-start;
+
+      &:hover,
+      &:focus-visible {
+        border-color: transparent;
+        background: transparent;
+      }
+    }
+  }
+
   @container (max-width: 560px) {
     .date-filter-toolbar {
       width: min(242px, 100%);
@@ -2775,8 +3010,10 @@ defineExpose({
       background: transparent;
       color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
       cursor: pointer;
+      font-family: inherit;
       font-size: 12px;
       line-height: 24px;
+      font-weight: 400;
       padding: 0 4px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -2819,7 +3056,10 @@ defineExpose({
       overflow: hidden;
       text-overflow: ellipsis;
       color: var(--workspace-text-secondary, rgba(100, 106, 115, 1));
+      font-family: inherit;
       font-size: 12px;
+      line-height: 24px;
+      font-weight: 400;
     }
   }
 
@@ -3239,6 +3479,33 @@ defineExpose({
 .insight-density-mini:has(.pivot-toolbar) .chart-show-area,
 .insight-density-basic:has(.pivot-toolbar) .chart-show-area {
   height: calc(100% - 58px);
+}
+
+.chart-base-container:has(.date-expression-toolbar) .chart-show-area {
+  height: calc(100% - 82px);
+}
+
+.chart-base-container:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 116px);
+}
+
+.chart-base-container:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 82px);
+}
+
+.insight-density-mini:has(.date-expression-toolbar) .chart-show-area,
+.insight-density-basic:has(.date-expression-toolbar) .chart-show-area {
+  height: calc(100% - 70px);
+}
+
+.insight-density-mini:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area,
+.insight-density-basic:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 94px);
+}
+
+.insight-density-mini:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area,
+.insight-density-basic:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 70px);
 }
 
 .buttons-bar {

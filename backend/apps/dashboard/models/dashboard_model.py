@@ -5,6 +5,7 @@ from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index, UniqueConstraint
 from typing import Any, Optional, List, Literal, Dict
 from pydantic import BaseModel
+from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
 
 class CoreDashboard(SQLModel, table=True):
     """
@@ -423,7 +424,6 @@ class DashboardPivotRequest(BaseModel):
     custom_start: str = ''
     custom_end: str = ''
     aggregation: Literal["sum", "avg", "min", "max", "count"] = "sum"
-    date_parameter_type: Literal["date", "yyyymmdd_number", "yyyymmdd_text", "timestamp"] | None = None
 
 
 class DashboardSqlPreview(BaseModel):
@@ -433,6 +433,7 @@ class DashboardSqlPreview(BaseModel):
     datasource: int
     sql: str = ''
     pivot: Optional[DashboardPivotRequest] = None
+    date_filter: DashboardDateFilterRequest | None = None
     cache_only: bool = False
     force_refresh: bool = False
 

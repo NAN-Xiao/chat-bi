@@ -703,6 +703,30 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
+    constraints = get_applicable_row_permission_constraints(
+        session=session,
+        current_user=current_user,
+        ds=ds,
+        tables=tables,
+        single_table=single_table,
+    )
+    filters_by_table: dict[str, list[str]] = {}
+    for constraint in constraints:
+        filters_by_table.setdefault(constraint["table"], []).append(constraint["enforcement_sql"])
+    return [
+        {"table": table_name, "filter": " AND ".join(filters)}
+        for table_name, filters in filters_by_table.items()
+    ]
+
+
+def get_applicable_row_permission_constraints(
+        session: SessionDep,
+        current_user: CurrentUser,
+        ds: CoreDatasource,
+        tables: Optional[list] = None,
+        single_table: Optional[CoreTable] = None,
+) -> list[dict[str, Any]]:
+    """返回当前用户实际生效的正向禁止条件及其执行过滤条件。"""
     if single_table:
         table_list = [session.get(CoreTable, single_table.id)]
     elif tables is None:
@@ -712,7 +736,7 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
             and_(CoreTable.ds_id == ds.id, CoreTable.table_name.in_(tables))
         ).all()
 
-    filters = []
+    constraints: list[dict[str, Any]] = []
     if is_normal_user(current_user):
         contain_rules = get_user_permission_rules(session, current_user, ds.id)
         for table in table_list:
@@ -738,13 +762,33 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
                             break
                     if flag:
                         res.append(trans_record_to_dto(session, permission))
-            if not res:
-                continue
-            where_str = transFilterTree(session, current_user, res, ds, deny_mode=True, strict=True)
-            if not where_str:
-                raise ValueError("行权限过滤条件未生成有效限制")
-            filters.append({"table": table.table_name, "filter": where_str})
-    return filters
+            for dto in res:
+                deny_sql = transFilterTree(
+                    session,
+                    current_user,
+                    [dto],
+                    ds,
+                    deny_mode=False,
+                    strict=True,
+                )
+                enforcement_sql = transFilterTree(
+                    session,
+                    current_user,
+                    [dto],
+                    ds,
+                    deny_mode=True,
+                    strict=True,
+                )
+                if not deny_sql or not enforcement_sql:
+                    raise ValueError("行权限过滤条件未生成有效限制")
+                constraints.append({
+                    "table": table.table_name,
+                    "table_id": table.id,
+                    "permission_id": getattr(dto, "id", None),
+                    "deny_sql": deny_sql,
+                    "enforcement_sql": enforcement_sql,
+                })
+    return constraints
 
 
 def _permission_applies_to_user(permission: Any, contain_rules: list[Any], current_user: CurrentUser) -> bool:

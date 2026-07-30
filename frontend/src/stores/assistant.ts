@@ -112,7 +112,7 @@ export const AssistantStore = defineStore('assistant', {
         const timeoutId = setTimeout(() => {
           console.error(`Request ${currentRequestId}[${requestUrl}] timed out after ${timeout}ms`)
           resolve(null)
-          removeRequest(currentRequestId, peddingList)
+          removeRequest(currentRequestId, peddingList, this, this.id)
           if (timeoutId) {
             clearTimeout(timeoutId)
           }
@@ -124,14 +124,14 @@ export const AssistantStore = defineStore('assistant', {
             clearTimeout(timeoutId)
           }
           resolve(value)
-          removeRequest(currentRequestId, peddingList)
+          removeRequest(currentRequestId, peddingList, this, this.id)
         }
 
         const cleanupAndReject = (reason: any) => {
           if (timeoutId) {
             clearTimeout(timeoutId)
           }
-          removeRequest(currentRequestId, peddingList)
+          removeRequest(currentRequestId, peddingList, this, this.id)
           reject(reason)
         }
 
@@ -214,7 +214,7 @@ export const AssistantStore = defineStore('assistant', {
   },
 })
 
-const removeRequest = (requestId: string, peddingList: PendingRequest[]) => {
+const removeRequest = (requestId: string, peddingList: PendingRequest[], storeInstance?: any, mapKey?: string) => {
   if (!peddingList) return
   let len = peddingList.length
   while (len--) {
@@ -222,6 +222,10 @@ const removeRequest = (requestId: string, peddingList: PendingRequest[]) => {
     if (peddingRequest?.requestId === requestId) {
       peddingList.splice(len, 1)
     }
+  }
+  // Clean up empty arrays from the map to prevent key accumulation
+  if (peddingList.length === 0 && storeInstance && mapKey) {
+    storeInstance.requestPromiseMap.delete(mapKey)
   }
 }
 

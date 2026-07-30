@@ -12,6 +12,9 @@ assert.match(source, /createPermissionDeniedChartRegistry/)
 assert.match(source, /dashboardCacheRefreshDisposition/)
 assert.match(source, /shouldRetryDashboardChartFailure/)
 assert.match(source, /const permissionDeniedCharts = createPermissionDeniedChartRegistry\(\)/)
+assert.match(source, /buildDashboardDateFilterRequestForView/)
+assert.match(source, /date_filter:\s*buildDashboardDateFilterRequestForView/)
+assert.doesNotMatch(source, /buildAppliedDashboardDatePivot/)
 assert.match(refreshCharts, /filter\(\s*\(entry\) =>[\s\S]*?!permissionDeniedCharts\.has\(entry\)/)
 assert.match(
   refreshCharts,

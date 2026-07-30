@@ -34,6 +34,20 @@ _TOKEN_FAMILIES = {
     for parameter_type, pair in _PARAMETER_TOKENS.items()
     for token in pair
 }
+_DATE_EXPRESSION_PRESETS = {
+    "yesterday",
+    "today",
+    "previous_week",
+    "current_week",
+    "previous_month",
+    "current_month",
+    "past_7_days",
+    "recent_7_days",
+    "past_30_days",
+    "recent_30_days",
+    "past_90_days",
+    "all_time",
+}
 
 
 @dataclass(frozen=True)
@@ -51,10 +65,72 @@ def default_dashboard_date_range(*, today: date | None = None) -> tuple[date, da
     return end - timedelta(days=13), end
 
 
+def resolve_dashboard_date_expression(expression: Any, *, today: date) -> tuple[date, date]:
+    """将版本化看板日期表达式解析为业务日期范围。"""
+    if not isinstance(expression, dict) or expression.get("version") != 1:
+        raise ValueError("invalid_date_expression")
+
+    mode = expression.get("mode")
+    if mode == "preset":
+        preset = expression.get("preset")
+        if preset not in _DATE_EXPRESSION_PRESETS:
+            raise ValueError("invalid_date_expression")
+        monday = today - timedelta(days=today.weekday())
+        previous_month_end = today.replace(day=1) - timedelta(days=1)
+        ranges = {
+            "yesterday": (today - timedelta(days=1), today - timedelta(days=1)),
+            "today": (today, today),
+            "previous_week": (monday - timedelta(days=7), monday - timedelta(days=1)),
+            "current_week": (monday, today),
+            "previous_month": (previous_month_end.replace(day=1), previous_month_end),
+            "current_month": (today.replace(day=1), today),
+            "past_7_days": (today - timedelta(days=7), today - timedelta(days=1)),
+            "recent_7_days": (today - timedelta(days=6), today),
+            "past_30_days": (today - timedelta(days=30), today - timedelta(days=1)),
+            "recent_30_days": (today - timedelta(days=29), today),
+            "past_90_days": (today - timedelta(days=90), today - timedelta(days=1)),
+            "all_time": (date(1000, 1, 1), date(9999, 12, 31)),
+        }
+        return ranges[preset]
+
+    if mode != "range":
+        raise ValueError("invalid_date_expression")
+
+    def endpoint(raw: Any) -> date:
+        if not isinstance(raw, dict):
+            raise ValueError("invalid_date_expression")
+        if raw.get("mode") == "static":
+            return _parse_date_value(raw.get("date"))
+        offset = raw.get("offset")
+        if (
+            raw.get("mode") == "dynamic"
+            and raw.get("unit") == "day"
+            and isinstance(offset, int)
+            and not isinstance(offset, bool)
+            and offset <= 0
+        ):
+            try:
+                return today + timedelta(days=offset)
+            except OverflowError as exc:
+                raise ValueError("invalid_date_expression") from exc
+        raise ValueError("invalid_date_expression")
+
+    start, end = endpoint(expression.get("start")), endpoint(expression.get("end"))
+    if start > end:
+        raise ValueError("invalid_date_expression")
+    return start, end
+
+
 def _pivot_value(pivot: Any | None, key: str, default: Any = None) -> Any:
     if isinstance(pivot, dict):
         return pivot.get(key, default)
     return getattr(pivot, key, default)
+
+
+def _date_filter_value(date_filter: Any | None, key: str, default: Any = None) -> Any:
+    if isinstance(date_filter, dict):
+        return date_filter.get(key, default)
+    return getattr(date_filter, key, default)
 
 
 def _scan_sql_tokens(sql: str, replacements: dict[str, str] | None = None) -> tuple[str, set[str]]:
@@ -217,12 +293,42 @@ def has_dashboard_date_filter_parameters(sql: str) -> bool:
     return bool(active_tokens)
 
 
+def dashboard_date_parameter_tokens(parameter_type: str) -> tuple[str, str] | None:
+    """返回指定日期参数类型的起止 token。"""
+    return _PARAMETER_TOKENS.get(parameter_type)
+
+
+def validate_dashboard_date_parameter_sql(
+    sql: str,
+    parameter_type: str,
+) -> str | None:
+    """校验 SQL 使用的看板日期 token 与配置类型完全一致。"""
+    tokens = dashboard_date_parameter_tokens(parameter_type)
+    if tokens is None:
+        return "invalid_parameter_type"
+    _, active_tokens = _scan_sql_tokens(str(sql or ""))
+    if not active_tokens:
+        return "missing_parameters"
+    active_families = {_TOKEN_FAMILIES[token] for token in active_tokens}
+    expected_family = "yyyymmdd" if parameter_type.startswith("yyyymmdd") else parameter_type
+    if len(active_families) > 1:
+        return "mixed_parameter_families"
+    if active_families != {expected_family}:
+        return "parameter_type_mismatch"
+    allowed_token_sets = ({tokens[1]}, set(tokens))
+    if active_tokens not in allowed_token_sets:
+        return "incomplete_parameters"
+    return None
+
+
 def prepare_dashboard_date_filter(
     sql: str,
     *,
     ds_type: str | None,
     pivot: Any | None,
+    date_filter: Any | None = None,
     today: date | None = None,
+    require_time_field: bool = True,
 ) -> DashboardDateFilterPreparation:
     """只处理显式受控模板，不猜测字段，也不改写其他 SQL 条件。"""
     source_sql = str(sql or "")
@@ -242,43 +348,65 @@ def prepare_dashboard_date_filter(
             capability={"status": "realtime", "reason": "realtime_table"},
         )
 
-    if _pivot_value(pivot, "range_enabled", True) is False:
+    # 旧调用方仍可直接传入 pivot 日期配置；服务层会先将画布 V1/V2 配置解析为 date_filter。
+    uses_legacy_pivot = date_filter is None
+    if uses_legacy_pivot and _pivot_value(pivot, "range_enabled", True) is False:
         return _unconfigured(source_sql, physical_tables, "range_disabled")
 
-    if not str(_pivot_value(pivot, "time_field", "") or "").strip():
+    if require_time_field and not str(_pivot_value(pivot, "time_field", "") or "").strip():
         return _unconfigured(source_sql, physical_tables, "missing_time_field")
 
-    parameter_type = str(_pivot_value(pivot, "date_parameter_type", "") or "").strip()
-    if parameter_type not in _PARAMETER_TOKENS:
-        return _unconfigured(source_sql, physical_tables, "invalid_parameter_type")
-    if not active_tokens:
-        return _unconfigured(source_sql, physical_tables, "missing_parameters")
-
-    active_families = {_TOKEN_FAMILIES[token] for token in active_tokens}
-    expected_family = "yyyymmdd" if parameter_type.startswith("yyyymmdd") else parameter_type
-    if len(active_families) > 1:
-        return _unconfigured(source_sql, physical_tables, "mixed_parameter_families")
-    if active_families != {expected_family}:
-        return _unconfigured(source_sql, physical_tables, "parameter_type_mismatch")
-
-    expected_tokens = set(_PARAMETER_TOKENS[parameter_type])
-    if active_tokens != expected_tokens:
-        return _unconfigured(source_sql, physical_tables, "incomplete_parameters")
+    parameter_type = str(
+        _date_filter_value(date_filter, "parameter_type", "")
+        if date_filter is not None
+        else _pivot_value(pivot, "date_parameter_type", "")
+        or ""
+    ).strip()
+    parameter_error = validate_dashboard_date_parameter_sql(
+        source_sql,
+        parameter_type,
+    )
+    if parameter_error:
+        return _unconfigured(source_sql, physical_tables, parameter_error)
+    tokens = dashboard_date_parameter_tokens(parameter_type)
+    _, active_tokens = _scan_sql_tokens(source_sql)
+    parameter_mode = "end_only" if active_tokens == {tokens[1]} else "range"
 
     business_today = today or datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
     default_start, default_end = default_dashboard_date_range(today=business_today)
+    custom_start = _date_filter_value(date_filter, "custom_start", "") if date_filter is not None else _pivot_value(pivot, "custom_start", "")
+    custom_end = _date_filter_value(date_filter, "custom_end", "") if date_filter is not None else _pivot_value(pivot, "custom_end", "")
+    if date_filter is not None and bool(str(custom_start or "").strip()) != bool(str(custom_end or "").strip()):
+        return _unconfigured(source_sql, physical_tables, "invalid_date_range")
+    has_custom_override = bool(
+        (date_filter is not None or str(_pivot_value(pivot, "range", "") or "").strip().lower() == "custom")
+        and str(custom_start or "").strip()
+        and str(custom_end or "").strip()
+    )
+    expression = None if has_custom_override else (
+        _date_filter_value(date_filter, "expression", None)
+        if date_filter is not None
+        else _pivot_value(pivot, "date_expression", None)
+    )
     try:
-        if str(_pivot_value(pivot, "range", "") or "").strip().lower() == "custom":
-            start, end = (
-                _parse_date_value(_pivot_value(pivot, "custom_start", "")),
-                _parse_date_value(_pivot_value(pivot, "custom_end", "")),
-            )
+        if has_custom_override:
+            start, end = _parse_date_value(custom_start), _parse_date_value(custom_end)
+        elif expression is not None:
+            if (
+                isinstance(expression, dict)
+                and expression.get("mode") == "preset"
+                and expression.get("preset") == "all_time"
+                and not parameter_type.startswith("yyyymmdd")
+            ):
+                raise ValueError("invalid_date_expression")
+            start, end = resolve_dashboard_date_expression(expression, today=business_today)
         else:
             start, end = default_start, default_end
     except (TypeError, ValueError):
-        return _unconfigured(source_sql, physical_tables, "invalid_date_range")
+        reason = "invalid_date_expression" if expression is not None else "invalid_date_range"
+        return _unconfigured(source_sql, physical_tables, reason)
 
-    if start > end or start > default_end or end > default_end:
+    if expression is None and (start > end or start > default_end or end > default_end):
         return _unconfigured(source_sql, physical_tables, "invalid_date_range")
 
     start_text = start.isoformat()
@@ -313,8 +441,13 @@ def prepare_dashboard_date_filter(
             "status": "available",
             "reason": "",
             "parameterType": parameter_type,
+            "parameterMode": parameter_mode,
             "defaultStart": default_start.isoformat(),
             "defaultEnd": default_end.isoformat(),
-            "maxEnd": default_end.isoformat(),
+            "expression": expression,
+            "resolvedStart": start_text,
+            "resolvedEnd": end_text,
+            "timezone": settings.DASHBOARD_BUSINESS_TIMEZONE,
+            "maxEnd": business_today.isoformat() if expression is not None else default_end.isoformat(),
         },
     )

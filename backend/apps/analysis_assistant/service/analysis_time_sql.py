@@ -566,6 +566,47 @@ def _boundary_value(binding: _Binding, value: date) -> str:
     return value.isoformat()
 
 
+def _static_boundary_value(
+    node: exp.Expression,
+    binding: _Binding,
+) -> str | None:
+    """把 MySQL 静态时间函数还原为当前字段编码对应的边界值。"""
+    literal = _literal_date(node)
+    if literal is not None:
+        return literal
+
+    encoding = binding.time_field.encoding
+    expression = node
+    if encoding == "epoch_milliseconds":
+        if not isinstance(node, exp.Mul):
+            return None
+        if _literal_date(node.expression) == "1000":
+            expression = node.this
+        elif _literal_date(node.this) == "1000":
+            expression = node.expression
+        else:
+            return None
+    elif encoding != "epoch_seconds":
+        return None
+
+    if not (
+        isinstance(expression, exp.Anonymous)
+        and str(expression.this).upper() == "UNIX_TIMESTAMP"
+        and len(expression.expressions) == 1
+    ):
+        return None
+    datetime_text = _literal_date(expression.expressions[0])
+    if datetime_text is None:
+        return None
+    try:
+        boundary_datetime = datetime.fromisoformat(datetime_text)
+    except ValueError:
+        return None
+    if boundary_datetime.time() != time.min:
+        return None
+    return _boundary_value(binding, boundary_datetime.date())
+
+
 def _expected_comparison(
     comparison_type: type[exp.Expression],
     value: str | None,
@@ -609,7 +650,7 @@ def _comparison_coverage(
     if comparison_type is None:
         return _Coverage(invalid=True)
     expected = _expected_comparison(
-        comparison_type, _literal_date(boundary), policy, binding
+        comparison_type, _static_boundary_value(boundary, binding), policy, binding
     )
     if expected is None:
         return _Coverage(invalid=True)
@@ -631,9 +672,9 @@ def _between_coverage(
         and not node.args.get("symmetric")
         and _effective_bounds(binding, policy)[0] is exp.GTE
         and _effective_bounds(binding, policy)[2] is exp.LTE
-        and _literal_date(node.args["low"])
+        and _static_boundary_value(node.args["low"], binding)
         == _boundary_value(binding, _effective_bounds(binding, policy)[1])
-        and _literal_date(node.args["high"])
+        and _static_boundary_value(node.args["high"], binding)
         == _boundary_value(binding, _effective_bounds(binding, policy)[3])
     )
     return _Coverage(has_lower=valid, has_upper=valid, invalid=not valid)

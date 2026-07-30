@@ -11,6 +11,9 @@ export type DashboardDateFilterCapability = {
   status?: DashboardDateCapabilityStatus | string
   defaultStart?: string
   defaultEnd?: string
+  resolvedStart?: string
+  resolvedEnd?: string
+  expression?: Record<string, unknown> | null
   maxEnd?: string
   parameterType?: string
   reason?: string
@@ -27,6 +30,17 @@ export type DashboardDateFilterState = {
 export type DashboardDateFilterContext = {
   identity: string
   status: string
+}
+
+export type DashboardDateFilterRequestConfig = {
+  enabled?: boolean
+  parameterType?: string
+  expression?: Record<string, unknown>
+}
+
+type DashboardDateFilterViewInfo = {
+  dateFilter?: DashboardDateFilterRequestConfig | null
+  dateFilterCapability?: DashboardDateFilterCapability | null
 }
 
 export const dashboardDateParameterTokens = {
@@ -135,8 +149,8 @@ export function createDashboardDateFilterState(
   today?: string
 ): DashboardDateFilterState {
   const configuredRange: DashboardDateRange = [
-    String(capability?.defaultStart || ''),
-    String(capability?.defaultEnd || ''),
+    String(capability?.resolvedStart || capability?.defaultStart || ''),
+    String(capability?.resolvedEnd || capability?.defaultEnd || ''),
   ]
   const initialRange = isValidRange(configuredRange)
     ? configuredRange
@@ -204,6 +218,42 @@ export function buildDashboardDateSourcePreviewPivot(
     ...pivot,
     enabled: false,
   }
+}
+
+export function buildDashboardDateFilterRequest(
+  config: DashboardDateFilterRequestConfig | null | undefined,
+  range: DashboardDateRange | null | undefined
+): Record<string, unknown> | undefined {
+  if (!config || config.enabled === false || !config.parameterType) {
+    return undefined
+  }
+  const hasCustomRange = Boolean(range?.[0] && range?.[1])
+  if (!config.expression && !hasCustomRange) {
+    return undefined
+  }
+  const request: Record<string, unknown> = {
+    parameter_type: config.parameterType,
+    custom_start: range?.[0] || '',
+    custom_end: range?.[1] || '',
+  }
+  if (config.expression) request.expression = { ...config.expression }
+  return request
+}
+
+export function buildDashboardDateFilterRequestForView(
+  viewInfo: DashboardDateFilterViewInfo | null | undefined,
+  range: DashboardDateRange | null | undefined
+): Record<string, unknown> | undefined {
+  const explicit = viewInfo?.dateFilter
+  const capability = viewInfo?.dateFilterCapability
+  const config = explicit && typeof explicit === 'object'
+    ? explicit
+    : {
+        enabled: true,
+        parameterType: capability?.parameterType,
+        expression: capability?.expression as Record<string, unknown> | undefined,
+      }
+  return buildDashboardDateFilterRequest(config, range)
 }
 
 export function buildAppliedDashboardDatePivot(

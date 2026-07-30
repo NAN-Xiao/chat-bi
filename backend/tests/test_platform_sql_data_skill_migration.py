@@ -35,6 +35,23 @@ def test_platform_sql_grouping_skill_is_global_and_contains_required_rules() -> 
     assert "完全一致" in migration.SKILL_PROMPT
 
 
+def test_platform_sql_grouping_skill_includes_default_date_window_and_dashboard_tokens() -> None:
+    migration = _load_migration("147_refresh_platform_sql_grouping_data_skill.py")
+
+    assert "用户未指定日期范围时，默认使用过去 7 个完整自然日。" in migration.SKILL_PROMPT
+    assert "{{dashboard_start_yyyymmdd}}" in migration.SKILL_PROMPT
+    assert "{{dashboard_end_yyyymmdd}}" in migration.SKILL_PROMPT
+
+
+def test_default_date_window_followup_migration_keeps_dashboard_template_tokens() -> None:
+    migration = _load_migration("151_platform_default_date_window_data_skill.py")
+
+    assert migration.down_revision == "150dashboarddatefilteraudit"
+    assert "用户未指定日期范围时，默认使用过去 7 个完整自然日。" in migration.DATE_SECTION
+    assert "{{dashboard_start_yyyymmdd}}" in migration.DATE_SECTION
+    assert "{{dashboard_end_yyyymmdd}}" in migration.DATE_SECTION
+
+
 def test_followup_migration_refreshes_existing_platform_skill() -> None:
     original = _load_migration()
     followup = _load_migration("147_refresh_platform_sql_grouping_data_skill.py")
