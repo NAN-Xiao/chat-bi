@@ -12,6 +12,7 @@ from typing import Any
 from sqlglot import exp
 
 from apps.datasource.crud.permission import (
+    get_applicable_row_permission_constraints,
     get_row_permission_filters,
     has_datasource_access,
     is_normal_user,
@@ -19,10 +20,13 @@ from apps.datasource.crud.permission import (
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_DISPLAY_MESSAGE,
     PERMISSION_DENIED_ERROR_TYPE,
+    SqlPermissionScopeError,
     audit_permission_denied,
     looks_like_permission_scope_error,
 )
 from apps.datasource.crud.sql_permission import (
+    RowPermissionRelation,
+    analyze_row_permission_relation,
     apply_row_permission_filters,
     extract_physical_tables,
     normalize_identifier,
@@ -524,6 +528,7 @@ def prepare_query_sql(
         apply_row_permissions: bool = True,
         validate_columns: bool = True,
         apply_user_permission_scope: bool = True,
+        row_permission_policy: str = "rewrite",
 ) -> tuple[str, set[str]]:
     """
     是什么：prepare_query_sql 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -554,7 +559,26 @@ def prepare_query_sql(
     _validate_allowed_tables(actual_tables, allowed_tables)
 
     executed_sql = sql
-    if apply_row_permissions and apply_user_permission_scope and is_normal_user(current_user):
+    if apply_row_permissions and is_normal_user(current_user):
+        if row_permission_policy == "deny_on_overlap":
+            # 数据源访问权限可在上游确认，但看板行权限必须在执行前再次判定。
+            constraints = get_applicable_row_permission_constraints(
+                session=session,
+                current_user=current_user,
+                ds=datasource,
+                tables=sorted(actual_tables),
+            )
+            relation = analyze_row_permission_relation(sql, datasource, constraints)
+            if relation != RowPermissionRelation.DISJOINT:
+                raise SqlPermissionScopeError(
+                    "SQL 可能读取行权限禁止的数据",
+                    rule_type="row",
+                )
+            return executed_sql, actual_tables
+        if row_permission_policy != "rewrite":
+            raise ValueError("未知的行权限执行策略")
+        if not apply_user_permission_scope:
+            return executed_sql, actual_tables
         row_filters = get_row_permission_filters(
             session=session,
             current_user=current_user,
@@ -586,6 +610,7 @@ def validate_user_query_sql_or_raise(
         *,
         allowed_tables: list[str] | set[str] | None = None,
         datasource_access_checked: bool = False,
+        row_permission_policy: str = "rewrite",
 ) -> tuple[str, set[str]]:
     """
     是什么：validate_user_query_sql_or_raise 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -606,9 +631,10 @@ def validate_user_query_sql_or_raise(
         datasource=datasource,
         sql=sql,
         allowed_tables=allowed_tables,
-        apply_row_permissions=False,
+        apply_row_permissions=row_permission_policy == "deny_on_overlap",
         validate_columns=True,
         apply_user_permission_scope=not datasource_access_checked,
+        row_permission_policy=row_permission_policy,
     )
 
 
@@ -625,6 +651,7 @@ def execute_user_query_or_raise(
         query_timeout: int | None = None,
         close_system_transaction_before_query: bool = False,
         datasource_access_checked: bool = False,
+        row_permission_policy: str = "rewrite",
 ) -> QueryExecutionResult:
     """
     是什么：execute_user_query_or_raise 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -646,9 +673,13 @@ def execute_user_query_or_raise(
         datasource=datasource,
         sql=sql,
         allowed_tables=allowed_tables,
-        apply_row_permissions=apply_row_permissions and not datasource_access_checked,
+        apply_row_permissions=(
+            apply_row_permissions
+            and (row_permission_policy == "deny_on_overlap" or not datasource_access_checked)
+        ),
         validate_columns=validate_columns,
         apply_user_permission_scope=not datasource_access_checked,
+        row_permission_policy=row_permission_policy,
     )
     datasource_for_query = _copy_datasource_for_query(datasource)
     if close_system_transaction_before_query:
@@ -765,6 +796,7 @@ def execute_user_query(
         close_system_transaction_before_query: bool = False,
         include_execution_meta: bool = False,
         datasource_access_checked: bool = False,
+        row_permission_policy: str = "rewrite",
 ) -> dict[str, Any]:
     """
     是什么：execute_user_query 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -799,6 +831,7 @@ def execute_user_query(
             query_timeout=query_timeout,
             close_system_transaction_before_query=close_system_transaction_before_query,
             datasource_access_checked=datasource_access_checked,
+            row_permission_policy=row_permission_policy,
         )
         return SqlEngineResult.from_query_execution(query_result).to_legacy_dict(
             include_execution_meta=include_execution_meta

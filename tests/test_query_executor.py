@@ -213,6 +213,36 @@ def test_validate_user_query_sql_does_not_apply_row_permissions(monkeypatch):
     assert tables == {"orders"}
 
 
+def test_execute_with_prechecked_datasource_still_denies_overlapping_row_permission(monkeypatch):
+    monkeypatch.setattr(query_executor, "check_sql_read", lambda sql, ds: (True, ""))
+    monkeypatch.setattr(query_executor, "is_normal_user", lambda current_user: True)
+    monkeypatch.setattr(
+        query_executor,
+        "validate_sql_scope",
+        lambda *args, **kwargs: ([], {"orders"}, {}),
+    )
+    monkeypatch.setattr(
+        query_executor,
+        "get_applicable_row_permission_constraints",
+        lambda *args, **kwargs: [{"table": "orders", "deny_sql": "region = 'US'"}],
+    )
+    monkeypatch.setattr(
+        query_executor,
+        "analyze_row_permission_relation",
+        lambda *args, **kwargs: query_executor.RowPermissionRelation.OVERLAP,
+    )
+
+    with pytest.raises(query_executor.SqlPermissionScopeError, match="可能读取行权限禁止的数据"):
+        query_executor.execute_user_query_or_raise(
+            session=object(),
+            current_user=_user(),
+            datasource=_datasource(),
+            sql="select id from orders",
+            datasource_access_checked=True,
+            row_permission_policy="deny_on_overlap",
+        )
+
+
 def test_external_user_query_uses_scope_sql_for_allowed_table_checks(monkeypatch):
     datasource = _external_datasource(rule="region = 'US'")
     captured = {}

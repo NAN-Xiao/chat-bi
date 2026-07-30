@@ -3051,7 +3051,7 @@ def test_dashboard_preview_hides_date_filter_when_permission_is_denied(monkeypat
     }
 
 
-def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
+def test_dashboard_preview_denies_unbounded_query_when_row_permission_applies(monkeypatch):
     _force_bound_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
@@ -3074,12 +3074,96 @@ def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
             request=DashboardSqlPreview(datasource=1, sql="select order_id from orders"),
         )
 
+    assert result["status"] == "failed"
+    assert result["error_type"] == "permission_denied"
+    assert result["message"] == "没有查看权限"
+    assert result["executed_sql"] is None
+    assert exec_calls == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "select order_id from orders where region in ('EU', 'US')",
+        "select o.order_id from orders o where o.region in ('EU', 'US')",
+        "select order_id from orders where region like '%S'",
+        "select order_id from orders where region not like 'EU%'",
+        "select order_id from orders where region = 'EU' or region = 'US'",
+        (
+            "with scoped as ("
+            "select order_id, region, max(case when region = 'US' then 1 else 0 end) as denied "
+            "from orders where region in ('EU', 'US') group by order_id, region"
+            ") select order_id from scoped"
+        ),
+    ],
+)
+def test_dashboard_preview_denies_query_that_can_read_forbidden_rows(monkeypatch, sql):
+    _force_bound_chart_execution_datasource(monkeypatch)
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_id": 1}], "fields": ["order_id"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_row_rule(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(datasource=1, sql=sql),
+        )
+
+    assert result["status"] == "failed"
+    assert result["error_type"] == "permission_denied"
+    assert result["message"] == "没有查看权限"
+    assert result["executed_sql"] is None
+    assert exec_calls == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "select order_id from orders where region = 'EU'",
+        "select o.order_id from orders o where o.region = 'EU'",
+        "select order_id from orders where region in ('EU', 'APAC')",
+        "select order_id from orders where region <> 'US'",
+        "select order_id from orders where region not like '%US%'",
+    ],
+)
+def test_dashboard_preview_executes_original_sql_when_forbidden_rows_are_excluded(monkeypatch, sql):
+    _force_bound_chart_execution_datasource(monkeypatch)
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_id": 1}], "fields": ["order_id"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_row_rule(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(datasource=1, sql=sql),
+        )
+
     assert result["status"] == "success"
-    assert len(exec_calls) == 1
-    assert "FROM (SELECT * FROM orders WHERE" in exec_calls[0]
-    assert "NOT" in exec_calls[0]
-    assert "region" in exec_calls[0]
-    assert "'US'" in exec_calls[0]
+    assert result["requested_sql"] == sql
+    assert result["executed_sql"] == sql
+    assert exec_calls == [sql]
 
 
 def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch):
@@ -3124,7 +3208,6 @@ def test_dashboard_preview_builds_pivot_sql(monkeypatch):
 
     with Session(engine) as session:
         _insert_dashboard_permission_fixture(session)
-        _insert_orders_row_rule(session)
         session.commit()
 
         result = dashboard_service.preview_sql(
@@ -3149,7 +3232,9 @@ def test_dashboard_preview_builds_pivot_sql(monkeypatch):
     assert len(exec_calls) == 1
     executed_sql = exec_calls[0]
     normalized_sql = executed_sql.lower()
-    assert 'FROM (SELECT * FROM orders WHERE' in executed_sql
+    assert "FROM (" in executed_sql
+    assert 'select order_id as "order_day", amount, region from orders' in executed_sql
+    assert ') AS "pivot_src"' in executed_sql
     assert 'order_id as "order_day"' in normalized_sql
     assert 'SUM("pivot_src"."amount") AS "amount"' in executed_sql
     assert '"pivot_src"."region" AS "region"' in executed_sql

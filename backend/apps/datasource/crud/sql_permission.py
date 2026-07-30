@@ -1,6 +1,8 @@
 """
 脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
+import re
+from enum import Enum
 from typing import Any
 
 import sqlglot
@@ -544,6 +546,260 @@ def parse_condition_expression(filter_sql: str, ds_type: str | None) -> exp.Expr
     if where_expr is None or where_expr.this is None:
         raise ValueError("行权限过滤条件解析失败")
     return where_expr.this
+
+
+class RowPermissionRelation(str, Enum):
+    DISJOINT = "disjoint"
+    OVERLAP = "overlap"
+    UNKNOWN = "unknown"
+
+
+class _TruthValue(str, Enum):
+    FALSE = "false"
+    TRUE = "true"
+    UNKNOWN = "unknown"
+
+
+def _literal_value(node: exp.Expression) -> Any:
+    if isinstance(node, exp.Literal):
+        if node.is_string:
+            return str(node.this)
+        try:
+            return int(node.this)
+        except (TypeError, ValueError):
+            try:
+                return float(node.this)
+            except (TypeError, ValueError):
+                return str(node.this)
+    if isinstance(node, exp.Null):
+        return None
+    return _MISSING
+
+
+_MISSING = object()
+
+
+def _normalized_scalar(value: Any) -> Any:
+    return value.casefold() if isinstance(value, str) else value
+
+
+def _merge_assignment(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any] | None:
+    merged = dict(left)
+    for field_name, value in right.items():
+        if field_name in merged and _normalized_scalar(merged[field_name]) != _normalized_scalar(value):
+            return None
+        merged[field_name] = value
+    return merged
+
+
+def _finite_denied_assignments(node: exp.Expression) -> list[dict[str, Any]] | None:
+    """把有限 EQ/IN 禁止条件展开为字段赋值；其他形态交给 fail-closed。"""
+    if isinstance(node, exp.Paren):
+        return _finite_denied_assignments(node.this)
+    if isinstance(node, exp.EQ) and isinstance(node.this, exp.Column):
+        value = _literal_value(node.expression)
+        if value is _MISSING:
+            return None
+        return [{normalize_identifier(node.this.name): value}]
+    if isinstance(node, exp.In) and isinstance(node.this, exp.Column) and not node.args.get("query"):
+        values = [_literal_value(item) for item in node.expressions]
+        if any(value is _MISSING for value in values):
+            return None
+        return [{normalize_identifier(node.this.name): value} for value in values]
+    if isinstance(node, exp.And):
+        left = _finite_denied_assignments(node.this)
+        right = _finite_denied_assignments(node.expression)
+        if left is None or right is None:
+            return None
+        merged: list[dict[str, Any]] = []
+        for left_assignment in left:
+            for right_assignment in right:
+                assignment = _merge_assignment(left_assignment, right_assignment)
+                if assignment is not None:
+                    merged.append(assignment)
+        return merged
+    if isinstance(node, exp.Or):
+        left = _finite_denied_assignments(node.this)
+        right = _finite_denied_assignments(node.expression)
+        if left is None or right is None:
+            return None
+        return [*left, *right]
+    return None
+
+
+def _sql_like_matches(value: Any, pattern: Any) -> bool | None:
+    if not isinstance(value, str) or not isinstance(pattern, str):
+        return None
+    parts: list[str] = []
+    escaped = False
+    for char in pattern:
+        if escaped:
+            parts.append(re.escape(char))
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "%":
+            parts.append(".*")
+        elif char == "_":
+            parts.append(".")
+        else:
+            parts.append(re.escape(char))
+    if escaped:
+        parts.append(re.escape("\\"))
+    return re.fullmatch("".join(parts), value, flags=re.IGNORECASE | re.DOTALL) is not None
+
+
+def _column_assignment_value(
+        node: exp.Expression,
+        assignment: dict[str, Any],
+        aliases: set[str],
+) -> Any:
+    if not isinstance(node, exp.Column):
+        return _MISSING
+    qualifier = normalize_identifier(node.table)
+    if qualifier and qualifier not in aliases:
+        return _MISSING
+    return assignment.get(normalize_identifier(node.name), _MISSING)
+
+
+def _truth_not(value: _TruthValue) -> _TruthValue:
+    if value == _TruthValue.TRUE:
+        return _TruthValue.FALSE
+    if value == _TruthValue.FALSE:
+        return _TruthValue.TRUE
+    return _TruthValue.UNKNOWN
+
+
+def _evaluate_query_predicate(
+        node: exp.Expression,
+        assignment: dict[str, Any],
+        aliases: set[str],
+) -> _TruthValue:
+    if isinstance(node, exp.Paren):
+        return _evaluate_query_predicate(node.this, assignment, aliases)
+    if isinstance(node, exp.And):
+        left = _evaluate_query_predicate(node.this, assignment, aliases)
+        right = _evaluate_query_predicate(node.expression, assignment, aliases)
+        if _TruthValue.FALSE in {left, right}:
+            return _TruthValue.FALSE
+        if left == right == _TruthValue.TRUE:
+            return _TruthValue.TRUE
+        return _TruthValue.UNKNOWN
+    if isinstance(node, exp.Or):
+        left = _evaluate_query_predicate(node.this, assignment, aliases)
+        right = _evaluate_query_predicate(node.expression, assignment, aliases)
+        if _TruthValue.TRUE in {left, right}:
+            return _TruthValue.TRUE
+        if left == right == _TruthValue.FALSE:
+            return _TruthValue.FALSE
+        return _TruthValue.UNKNOWN
+    if isinstance(node, exp.Not):
+        return _truth_not(_evaluate_query_predicate(node.this, assignment, aliases))
+
+    if isinstance(node, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)):
+        left = _column_assignment_value(node.this, assignment, aliases)
+        right = _literal_value(node.expression)
+        if left is _MISSING or right is _MISSING:
+            return _TruthValue.UNKNOWN
+        left_value = _normalized_scalar(left)
+        right_value = _normalized_scalar(right)
+        try:
+            if isinstance(node, exp.EQ):
+                result = left_value == right_value
+            elif isinstance(node, exp.NEQ):
+                result = left_value != right_value
+            elif isinstance(node, exp.GT):
+                result = left_value > right_value
+            elif isinstance(node, exp.GTE):
+                result = left_value >= right_value
+            elif isinstance(node, exp.LT):
+                result = left_value < right_value
+            else:
+                result = left_value <= right_value
+        except TypeError:
+            return _TruthValue.UNKNOWN
+        return _TruthValue.TRUE if result else _TruthValue.FALSE
+
+    if isinstance(node, exp.In) and not node.args.get("query"):
+        value = _column_assignment_value(node.this, assignment, aliases)
+        candidates = [_literal_value(item) for item in node.expressions]
+        if value is _MISSING or any(item is _MISSING for item in candidates):
+            return _TruthValue.UNKNOWN
+        normalized = _normalized_scalar(value)
+        result = normalized in {_normalized_scalar(item) for item in candidates}
+        return _TruthValue.TRUE if result else _TruthValue.FALSE
+
+    if isinstance(node, exp.Like):
+        value = _column_assignment_value(node.this, assignment, aliases)
+        pattern = _literal_value(node.expression)
+        matched = _sql_like_matches(value, pattern)
+        if matched is None:
+            return _TruthValue.UNKNOWN
+        if node.args.get("negate"):
+            matched = not matched
+        return _TruthValue.TRUE if matched else _TruthValue.FALSE
+
+    return _TruthValue.UNKNOWN
+
+
+def analyze_row_permission_relation(
+        sql: str,
+        datasource: CoreDatasource,
+        constraints: list[dict[str, Any]],
+) -> RowPermissionRelation:
+    """判断原始查询是否可能读取任一正向禁止条件命中的行。"""
+    if not constraints:
+        return RowPermissionRelation.DISJOINT
+    statements = parse_sql_statements(sql, datasource.type)
+    table_nodes: dict[str, list[exp.Table]] = {}
+    for statement in statements:
+        cte_names = {
+            normalize_identifier(cte.alias_or_name)
+            for cte in statement.find_all(exp.CTE)
+            if cte.alias_or_name
+        }
+        for table in statement.find_all(exp.Table):
+            table_name = normalize_identifier(table.name)
+            if (
+                table_name in cte_names
+                and not normalize_identifier(table.db)
+                and not normalize_identifier(table.catalog)
+            ):
+                continue
+            table_nodes.setdefault(table_name, []).append(table)
+
+    saw_unknown = False
+    for constraint in constraints:
+        table_name = normalize_identifier(constraint.get("table"))
+        nodes = table_nodes.get(table_name, [])
+        if not nodes:
+            continue
+        try:
+            denied_expression = parse_condition_expression(
+                str(constraint.get("deny_sql") or ""),
+                datasource.type,
+            )
+        except Exception:
+            saw_unknown = True
+            continue
+        assignments = _finite_denied_assignments(denied_expression)
+        if assignments is None or not assignments:
+            saw_unknown = True
+            continue
+        for table in nodes:
+            select_expr = _nearest_select(table)
+            where_expr = select_expr.args.get("where") if select_expr is not None else None
+            if where_expr is None or where_expr.this is None:
+                return RowPermissionRelation.OVERLAP
+            aliases = {
+                normalize_identifier(table_name),
+                normalize_identifier(table.alias_or_name),
+            }
+            for assignment in assignments:
+                relation = _evaluate_query_predicate(where_expr.this, assignment, aliases)
+                if relation != _TruthValue.FALSE:
+                    return RowPermissionRelation.OVERLAP
+    return RowPermissionRelation.UNKNOWN if saw_unknown else RowPermissionRelation.DISJOINT
 
 
 def apply_row_permission_filters(

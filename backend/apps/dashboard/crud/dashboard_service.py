@@ -2258,14 +2258,19 @@ def _dashboard_chart_permission_audit(
             datasource=datasource,
             sql=validation_sql,
             datasource_access_checked=datasource_access_checked,
+            row_permission_policy="deny_on_overlap",
         )
     except Exception as exc:
         message = f"{exc}"
         error_type = safe_query_error_type(current_user, message)
-        return _failed_chart_result(
+        failure = _failed_chart_result(
             safe_query_error_message(current_user, message),
             PERMISSION_DENIED_ERROR_TYPE if error_type else None,
-        ), False
+        )
+        if failure.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
+            failure["requested_sql"] = validation_sql
+            failure["executed_sql"] = None
+        return failure, False
     if not is_normal_user(current_user):
         return None, False
     try:
@@ -2852,6 +2857,7 @@ def _execute_dashboard_chart_sql(
         close_system_transaction_before_query=True,
         include_execution_meta=True,
         datasource_access_checked=datasource_access_checked,
+        row_permission_policy="deny_on_overlap",
     )
     result = _normalize_dashboard_chart_result(result)
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
