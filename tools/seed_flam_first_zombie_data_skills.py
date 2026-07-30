@@ -12,6 +12,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from core_system_db import core_system_db_config, export_postgres_compat_env
+from dashboard_date_contract import append_dashboard_date_contract
 from flam_first_zombie_active_dashboard_sql import sql_blocks_markdown as active_sql_blocks_markdown
 from flam_first_zombie_core_dashboard_sql import sql_blocks_markdown as core_sql_blocks_markdown
 from flam_first_zombie_dashboard_sql import sql_blocks_markdown
@@ -994,7 +995,12 @@ def _tokenize_dashboard_sql_current_date(prompt: str) -> str:
 
 
 DATA_SKILLS = [
-    {**skill, "prompt": _tokenize_dashboard_sql_current_date(skill["prompt"])}
+    {
+        **skill,
+        "prompt": append_dashboard_date_contract(
+            _tokenize_dashboard_sql_current_date(skill["prompt"])
+        ),
+    }
     for skill in apply_dashboard_skill_overrides(DATA_SKILLS)
 ]
 

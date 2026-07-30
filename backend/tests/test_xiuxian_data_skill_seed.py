@@ -18,6 +18,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 import seed_xiuxian_data_skills as seed  # noqa: E402
+from dashboard_date_contract import DASHBOARD_DATE_CONTRACT_MARKER  # noqa: E402
 
 
 REALTIME_CURRENT_DATE_VIEWS = {
@@ -165,6 +166,20 @@ def test_xiuxian_date_skill_documents_complete_date_filter_contract() -> None:
     assert '"date_parameter_type":"yyyymmdd_number"' in prompt
     assert '"date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}' in prompt
     assert '"start":"{{dashboard_start_yyyymmdd}}"' not in prompt
+
+
+def _assert_dashboard_date_contract(prompt: str) -> None:
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "固定语义 `metric`" in prompt
+    assert "不得返回 `date_filter`" in prompt
+    assert "`time_field` 必须对应 SQL 中实际参数化字段" in prompt
+    assert "返回 `date_filter` 时不得使用 `CURDATE()`" in prompt
+
+
+def test_all_xiuxian_skills_contain_dashboard_date_contract() -> None:
+    for skill in _skills():
+        _assert_dashboard_date_contract(skill["prompt"])
 
 
 def test_xiuxian_date_skill_uses_canonical_retrieval_description() -> None:
@@ -326,6 +341,7 @@ def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
     assert "{{dashboard_start_yyyymmdd}}" in prompt
     assert "{{dashboard_end_yyyymmdd}}" in prompt
     assert '"date_filter"' in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" not in prompt
     assert "禁止使用 `MAX(dt)`" in prompt
 
 
@@ -386,10 +402,14 @@ def test_seed_prompts_use_single_managed_section_at_prompt_end() -> None:
     date_prompt = seed.DATE_PARTITION_SKILL["prompt"]
     payment_prompt = _payment_skill()["prompt"]
 
-    assert date_prompt.endswith(seed.DATE_SECTION_END_MARKER)
+    assert date_prompt.index(seed.DATE_SECTION_END_MARKER) < date_prompt.index(
+        DASHBOARD_DATE_CONTRACT_MARKER
+    )
     assert date_prompt.count(seed.DATE_SECTION_MARKER) == 1
     assert date_prompt.count(seed.DATE_SECTION_END_MARKER) == 1
-    assert payment_prompt.endswith(seed.SERVERPAYLOG_SECTION_END_MARKER)
+    assert payment_prompt.index(seed.SERVERPAYLOG_SECTION_END_MARKER) < payment_prompt.index(
+        DASHBOARD_DATE_CONTRACT_MARKER
+    )
     assert payment_prompt.count(seed.SERVERPAYLOG_SECTION_MARKER) == 1
     assert payment_prompt.count(seed.SERVERPAYLOG_SECTION_END_MARKER) == 1
     assert payment_prompt.rfind("<!-- dashboard-sql:") < payment_prompt.index(

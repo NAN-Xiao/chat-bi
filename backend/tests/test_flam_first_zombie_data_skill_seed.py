@@ -55,6 +55,22 @@ def _seed_dashboard_sql() -> dict[str, str]:
     return blocks
 
 
+def _assert_dashboard_date_contract(prompt: str) -> None:
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "固定语义 `metric`" in prompt
+    assert "不得返回 `date_filter`" in prompt
+    assert "`time_field` 必须对应 SQL 中实际参数化字段" in prompt
+    assert "返回 `date_filter` 时不得使用 `CURDATE()`" in prompt
+
+
+def test_all_flam_skills_contain_dashboard_date_contract() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    for skill in seed.DATA_SKILLS:
+        _assert_dashboard_date_contract(skill["prompt"])
+
+
 def test_dashboard_sql_directory_matches_current_recommended_dashboards() -> None:
     blocks = _seed_dashboard_sql()
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from core_system_db import core_system_db_config, export_postgres_compat_env
+from dashboard_date_contract import append_dashboard_date_contract
 from psycopg.types.json import Jsonb
 from xiuxian_dashboard_skill_catalog import (
     EXPECTED_VIEW_IDS,
@@ -277,7 +278,7 @@ SERVERPAYLOG_MANAGED_SECTION = _managed_section(
 DATE_PARTITION_SKILL = {
     **_LEGACY_DATA_SKILLS[0],
     "description": DATE_PARTITION_SKILL_DESCRIPTION,
-    "prompt": (
+    "prompt": append_dashboard_date_contract(
         _LEGACY_DATA_SKILLS[0]["prompt"].rstrip()
         + "\n\n"
         + DATE_SPINE_MANAGED_SECTION
@@ -458,7 +459,7 @@ def build_data_skills(dashboards: Sequence[Any]) -> list[dict[str, str]]:
         sections.extend(blocks)
         if topic.slug == "serverpaylog-revenue":
             sections.append(SERVERPAYLOG_MANAGED_SECTION)
-        prompt = "\n\n".join(sections).strip()
+        prompt = append_dashboard_date_contract("\n\n".join(sections).strip())
         validate_prompt_length(prompt)
         if len(blocks) > 6 or len(prompt) > MAX_PROMPT_CHARS:
             raise ValueError(f"Skill 体积超限: {topic.slug}")

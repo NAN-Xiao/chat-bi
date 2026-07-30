@@ -140,6 +140,7 @@ Expected: 全部 PASS。
 ### Task 2: 清理并发布 flam/修仙工作空间 Data Skill
 
 **Files:**
+- Create: `tools/dashboard_date_contract.py`
 - Modify: `tools/seed_xiuxian_data_skills.py`
 - Modify: `tools/seed_flam_first_zombie_data_skills.py`
 - Test: `backend/tests/test_xiuxian_data_skill_seed.py`
@@ -150,7 +151,7 @@ Expected: 全部 PASS。
 - Consumes: 两个 seed 的现有幂等 upsert、精确 tenant/datasource 作用域与 embedding 刷新。
 - Produces: 对可变时间 SQL 明确使用 dashboard token、对固定 metric 明确省略 `date_filter` 的实际空间级 prompt。
 
-- [ ] **Step 1: 写两个 seed 的失败契约测试**
+- [x] **Step 1: 写两个 seed 的失败契约测试**
 
 ```python
 def assert_dashboard_date_contract(prompt: str) -> None:
@@ -170,13 +171,13 @@ def test_all_flam_analysis_skills_contain_dashboard_date_contract() -> None:
         assert_dashboard_date_contract(skill["prompt"])
 ```
 
-- [ ] **Step 2: 运行测试并确认缺少工作空间级契约**
+- [x] **Step 2: 运行测试并确认缺少工作空间级契约**
 
 Run: `cd backend; ./.venv/Scripts/python.exe -m pytest tests/test_xiuxian_data_skill_seed.py tests/test_flam_first_zombie_data_skill_seed.py -k "dashboard_date_contract" -q`
 
 Expected: FAIL，prompt 缺少至少一个明确约束。
 
-- [ ] **Step 3: 增加统一、短小的工作空间级日期输出段并附加到 seed prompt**
+- [x] **Step 3: 增加统一、短小的工作空间级日期输出段并附加到 seed prompt**
 
 ```python
 DASHBOARD_DATE_CONTRACT = """## AI 看板日期输出契约
@@ -189,13 +190,13 @@ DASHBOARD_DATE_CONTRACT = """## AI 看板日期输出契约
 
 将该段放在每条最终 prompt 的末尾，使其优先于前面的历史 SQL 示例；修仙可变日期和日期骨架示例同时替换为 token，固定最新完整日 metric 示例保留并标注不返回 `date_filter`。
 
-- [ ] **Step 4: 更新原有 CURDATE 断言并运行 seed 全量测试**
+- [x] **Step 4: 更新原有 CURDATE 断言并运行 seed 全量测试**
 
 Run: `cd backend; ./.venv/Scripts/python.exe -m pytest tests/test_xiuxian_data_skill_seed.py tests/test_flam_first_zombie_data_skill_seed.py tests/test_platform_sql_data_skill_migration.py -q`
 
 Expected: 全部 PASS，prompt 长度仍不超过 `MAX_PROMPT_CHARS=18000`。
 
-- [ ] **Step 5: 备份实际数据库中两个作用域的 Data Skill**
+- [x] **Step 5: 备份实际数据库中两个作用域的 Data Skill**
 
 Run: 使用只读 SQL 导出 `custom_prompt` 中 tenant/datasource 精确匹配的记录到 `.codex-runtime/data-skill-backups/ai-dashboard-date-contract-20260730.json`。
 
