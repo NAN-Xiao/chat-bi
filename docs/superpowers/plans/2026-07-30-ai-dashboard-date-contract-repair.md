@@ -30,7 +30,7 @@
 - Consumes: `ChatDateFilterConfigurationError(reason: str)`、`SqlRepairContext`、现有 `repair_sql -> prepare_sql` 环路。
 - Produces: `SqlRepairReason.DASHBOARD_DATE_CONTRACT`，最多沿用 `SQL_REPAIR_MAX_ATTEMPTS=2` 次重试。
 
-- [ ] **Step 1: 写错误分类与修复消息失败测试**
+- [x] **Step 1: 写错误分类与修复消息失败测试**
 
 ```python
 def test_prepare_error_classifies_dashboard_date_contract() -> None:
@@ -53,13 +53,13 @@ def test_dashboard_date_contract_repair_message_requires_consistent_json() -> No
     assert "不得使用 CURDATE" in message
 ```
 
-- [ ] **Step 2: 运行测试并确认因缺少新枚举/分类而失败**
+- [x] **Step 2: 运行测试并确认因缺少新枚举/分类而失败**
 
 Run: `cd backend; ./.venv/Scripts/python.exe -m pytest tests/test_sql_repair.py -k "dashboard_date_contract" -q`
 
 Expected: FAIL，错误指向 `DASHBOARD_DATE_CONTRACT` 不存在或错误未被分类。
 
-- [ ] **Step 3: 最小实现类型分类与专用修复指令**
+- [x] **Step 3: 最小实现类型分类与专用修复指令**
 
 ```python
 class SqlRepairReason(str, Enum):
@@ -101,7 +101,7 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
     )
 ```
 
-- [ ] **Step 4: 写 Smart Q&A 图路由失败测试**
+- [x] **Step 4: 写 Smart Q&A 图路由失败测试**
 
 ```python
 def test_prepare_sql_date_contract_error_queues_repair(monkeypatch):
@@ -114,13 +114,13 @@ def test_prepare_sql_date_contract_error_queues_repair(monkeypatch):
     assert update["sql_repair_context"].reason is SqlRepairReason.DASHBOARD_DATE_CONTRACT
 ```
 
-- [ ] **Step 5: 运行图测试并确认当前直接抛错**
+- [x] **Step 5: 运行图测试并确认当前直接抛错**
 
 Run: `cd backend; ./.venv/Scripts/python.exe -m pytest tests/test_smart_qa_graph.py -k "date_contract_error" -q`
 
 Expected: FAIL，`_prepare_sql` 未接受新的重试原因。
 
-- [ ] **Step 6: 将新原因加入 `_prepare_sql` 可重试集合**
+- [x] **Step 6: 将新原因加入 `_prepare_sql` 可重试集合**
 
 ```python
 if reason not in {
@@ -131,7 +131,7 @@ if reason not in {
     raise
 ```
 
-- [ ] **Step 7: 运行目标回归**
+- [x] **Step 7: 运行目标回归**
 
 Run: `cd backend; ./.venv/Scripts/python.exe -m pytest tests/test_sql_repair.py tests/test_smart_qa_graph.py tests/test_chat_dashboard_date_filter.py -q`
 

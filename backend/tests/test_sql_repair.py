@@ -10,6 +10,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 from sqlglot.errors import ParseError
 
+from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
 from apps.chat.task import llm
 from apps.chat.task.sql_repair import (
     SQL_REPAIR_MAX_ATTEMPTS,
@@ -113,6 +114,9 @@ def test_public_models_preserve_structured_violation() -> None:
                 "missing_date_expression",
             )
         ],
+            ChatDateFilterConfigurationError("missing_parameters"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
     ],
 )
 def test_prepare_error_classification(error: Exception, expected: SqlRepairReason) -> None:
@@ -459,6 +463,11 @@ def test_build_date_filter_repair_message_contains_explicit_contract() -> None:
         reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
         dialect="mysql",
         failed_sql="SELECT COUNT(*) FROM event WHERE dt = 20260730",
+        error_message="日期参数配置无效：missing_parameters",
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        dialect="mysql",
+        failed_sql='{"chart-type":"line","date_filter":{}}',
         error_message="日期参数配置无效：missing_parameters",
         violation=None,
         attempt=0,

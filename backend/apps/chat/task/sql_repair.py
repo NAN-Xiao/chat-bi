@@ -14,6 +14,7 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.errors import ParseError
 
+from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 from common.user_facing_errors import (
     DATA_UNAVAILABLE_ERROR_TYPE,
@@ -200,6 +201,8 @@ def sanitize_sql_repair_error(error: Any) -> str:
 
 
 def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
+    if any(isinstance(item, ChatDateFilterConfigurationError) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATE_FILTER_CONFIGURATION
     if any(isinstance(item, DataSkillSqlValidationError) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATA_SKILL_VALIDATION
     if any(isinstance(item, ParseError) for item in _walk_error_chain(error)):
@@ -367,10 +370,18 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
                 "必须返回按时间字段分组的非 metric 小时序列，并提供完整 date_filter。"
             )
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
+    date_contract_guidance = ""
+    if context.reason is SqlRepairReason.DASHBOARD_DATE_CONTRACT:
+        date_contract_guidance = (
+            "固定语义 metric 不得返回 date_filter；可变时间图表必须让 SQL 使用与 "
+            "date_parameter_type 匹配的看板日期 token，并让 time_field 对应实际过滤字段；"
+            "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW 或同类当前时间函数。\n"
+        )
     return (
         "上一版 SQL 未通过校验或执行，请根据下方修复上下文重写完整 SQL JSON。\n"
         "只修复上下文指出的问题，继续遵守当前数据源、权限和 Data Skills 约束，"
         "不得编造表、字段或业务口径。\n"
+        f"{date_contract_guidance}"
         "请仅返回完整 SQL JSON，不要返回解释、Markdown 或局部 SQL。\n"
         f"```json\n{serialized}\n```"
     )
