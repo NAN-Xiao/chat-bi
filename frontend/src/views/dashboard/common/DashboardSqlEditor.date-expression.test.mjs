@@ -78,6 +78,32 @@ assert.match(
   source,
   /function dashboardDateFilterConfigForWrite\(\)[\s\S]*buildDashboardDateFilterConfig/
 )
+const dateFilterWriteSource = source.match(
+  /function dashboardDateFilterConfigForWrite\(\)[\s\S]*?\n}/
+)?.[0] || ''
+assert.match(
+  dateFilterWriteSource,
+  /sqlBuilder\.timeExpression\s*\?\s*cloneDashboardDateExpression\(sqlBuilder\.timeExpression\)/,
+  '独立 dateFilter 必须直接使用已恢复的日期表达式，不能依赖 SQL Builder timeField'
+)
+assert.doesNotMatch(
+  dateFilterWriteSource,
+  /dateExpressionEnabled/,
+  'dateFilter 写入和预览签名不得被 SQL Builder timeField 间接禁用'
+)
+const modelValueWatchSource = source.match(
+  /watch\(\s*\(\) => props\.modelValue,[\s\S]*?\n\)/
+)?.[0] || ''
+assert.match(
+  modelValueWatchSource,
+  /try\s*\{[\s\S]*initEditor\(\)[\s\S]*catch\s*\(error\)/,
+  'SQL 编辑器初始化异常必须被捕获，不能中断 Vue 更新'
+)
+assert.match(
+  modelValueWatchSource,
+  /DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED[\s\S]*ElMessage\.error[\s\S]*visible\.value\s*=\s*false/,
+  '未迁移日期配置必须显示明确提示并关闭半初始化抽屉'
+)
 assert.doesNotMatch(
   source,
   /4f08e75945c3498486963e70f3c75688|ROI看板|dashboardMode\s*===\s*['"]roi/

@@ -67,6 +67,7 @@ import {
   scanDashboardDateParameterTokens,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 import {
+  DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED,
   buildDashboardDateFilterConfig,
   normalizeDashboardChartConfig,
 } from '@/views/dashboard/utils/dashboardChartConfig.ts'
@@ -3181,7 +3182,7 @@ function sourcePreviewPivotPayload() {
 }
 
 function dashboardDateFilterConfigForWrite() {
-  const expression = dateExpressionEnabled.value && sqlBuilder.timeExpression
+  const expression = sqlBuilder.timeExpression
     ? cloneDashboardDateExpression(sqlBuilder.timeExpression)
     : undefined
   return buildDashboardDateFilterConfig(
@@ -4200,7 +4201,15 @@ watch(
   () => props.modelValue,
   (value) => {
     if (value) {
-      initEditor()
+      try {
+        initEditor()
+      } catch (error) {
+        if ((error as Error)?.message !== DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED) {
+          throw error
+        }
+        ElMessage.error('当前图表的日期配置尚未迁移，暂时无法编辑。')
+        visible.value = false
+      }
     }
   }
 )
