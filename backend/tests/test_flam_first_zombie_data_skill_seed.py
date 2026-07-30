@@ -133,6 +133,28 @@ def test_new_user_skill_routes_current_day_to_realtime_table() -> None:
     assert "完整历史日和留存 cohort 使用 `event`" in prompt
 
 
+def test_flam_generic_default_date_ranges_defer_to_platform_rule() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    names = {
+        "flam 历史看板日期窗口口径",
+        "flam 活跃用户口径",
+        "flam 礼包购买结构口径",
+        "flam 新手引导漏斗口径",
+        "flam 渠道投放注册与付费口径",
+        "flam 钻石经济口径",
+    }
+    prompts = {
+        skill["name"]: skill["prompt"]
+        for skill in seed.DATA_SKILLS
+        if skill["name"] in names
+    }
+
+    assert set(prompts) == names
+    for prompt in prompts.values():
+        assert "未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围" in prompt
+
+
 def test_data_skill_seed_limits_custom_prompt_lifecycle_to_exact_datasource_scope() -> None:
     content = SEED_SCRIPT.read_text(encoding="utf-8")
     upsert_section = content[content.index("def _upsert_skill") : content.index("def _delete_stale_skills")]

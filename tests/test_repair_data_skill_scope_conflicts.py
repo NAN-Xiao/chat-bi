@@ -189,6 +189,18 @@ def test_apply_merges_234_into_171_and_scopes_280(configured_module) -> None:
     assert backend.events[-1] == "unlock"
 
 
+def test_apply_adds_platform_default_date_and_dashboard_parameter_rules(configured_module) -> None:
+    backend = FakeBackend(_valid_rows())
+
+    configured_module.repair_skills(backend, apply=True)
+
+    prompt = str(backend.rows[171]["prompt"])
+    assert "用户明确指定日期、自然周期或相对时间范围时，严格按用户范围执行。" in prompt
+    assert "用户未指定日期范围时，默认使用过去 7 个完整自然日。" in prompt
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+
+
 @pytest.mark.parametrize(
     ("skill_id", "field", "value"),
     [

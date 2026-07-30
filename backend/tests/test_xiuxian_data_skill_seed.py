@@ -244,7 +244,7 @@ def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
     assert "WITH bounds AS" not in prompt
     assert "CROSS JOIN bounds" not in prompt
     assert "## 标准聚合 SQL" not in prompt
-    assert "未指定日期窗口时，默认查询截至昨天的最近 28 个自然日" in prompt
+    assert "未指定日期窗口时，默认查询截至昨天的最近 7 个自然日" in prompt
     assert "用户指定相对日期窗口" in prompt
     assert "用户指定绝对起止日期" in prompt
     assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" in prompt
@@ -323,7 +323,7 @@ def test_seed_prompts_use_single_managed_section_at_prompt_end() -> None:
 def test_xiuxian_date_skill_rejects_max_dt_partition_probe() -> None:
     """修仙日期口径禁止通过 MAX(dt) 全表扫描探测最大业务日期。"""
     prompt = _date_skill()["prompt"]
-    message = "修仙数据源禁止使用 MAX(dt) 扫描最大业务日期；请根据用户时间范围或默认最近 28 天直接生成 dt 分区边界。"
+    message = "修仙数据源禁止使用 MAX(dt) 扫描最大业务日期；请根据用户时间范围或默认最近 7 天直接生成 dt 分区边界。"
 
     assert _data_skill_sql_validation_error(
         "查看近七天日活",

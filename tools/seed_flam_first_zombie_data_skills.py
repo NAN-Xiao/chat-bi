@@ -308,7 +308,7 @@ LIMIT 24
 
 ## 日期窗口
 - flam 的 ADS 视图对 `MAX(dt)`、`DISTINCT dt` 和先取最大分区的 CTE 计划较重；历史活跃、DAU/WAU/MAU、ARPU/ARPPU 这类近月趋势以 `CURDATE()` 前一日生成最近完整 `dt` 分区窗口，并显式过滤 `prod = 110000038` 和目标事件。
-- DAU/活跃趋势默认使用最近完整日为结束分区、向前回溯 29 天的 30 日窗口，避免额外扫描事件视图获取最大分区。
+- DAU/活跃趋势在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用当前日前一完整分区作为结束边界，避免额外扫描事件视图获取最大分区。
 - 指标需要成熟 cohort 或最新快照语义时，使用当前日前一完整分区或排除对应成熟窗口，例如新增留存、7 日 LTV、当前等级分布；这类问题不能把未成熟 cohort 当 0。
 - 需要计算 D1/D3/D7 留存或 7 日 LTV 时，只展示成熟 cohort：D1 默认排除最近 1 天，D7 默认排除最近 7 天。
 - 实时看板继续遵循 `flam 实时数据时区与日期口径` Data Skill 的 UTC+8 规则；不要把实时规则套到历史离线看板。
@@ -332,8 +332,8 @@ LIMIT 24
 ## 活跃用户
 - DAU/WAU/MAU 使用 `event` 表的归一化活跃事件 `UserActive` 计算 `uid` 去重，并显式过滤 `prod = 110000038` 以帮助 ADS 分区/条件下推。
 - 按渠道/系统拆分活跃时，使用活跃事件行上的 `adinfo` / `deviceinfo`。
-- 历史活跃趋势遵循 `flam 历史看板日期窗口口径`：以 `CURDATE()` 前一日生成近 1 个月最近完整 `dt` 分区窗口，不要为了取最大分区对大视图做 `MAX(dt)` / `DISTINCT dt` 聚合。
-- DAU 展示最近 30 个业务分区；WAU/周登录天数按自然周聚合，观察窗口应扩展到完整周，不能只拿最近 30 天后再按周聚合；MAU 按自然月聚合，观察窗口应扩展到完整月。
+- 历史活跃趋势在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；以 `CURDATE()` 前一日生成最近完整 `dt` 分区窗口，不要为了取最大分区对大视图做 `MAX(dt)` / `DISTINCT dt` 聚合。
+- DAU 在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；WAU/周登录天数按自然周聚合，观察窗口应扩展到完整周；MAU 按自然月聚合，观察窗口应扩展到完整月。
 - 活跃生命周期先用 `UserActive` 确定当日活跃 `uid`，再关联同日 `user` 快照读取 `lastinfo.regnday` 分层：`<=1` 新增期，`<=7` 成长期，`<=30` 稳定期，其余成熟期。
 
 ## 禁止事项
@@ -446,7 +446,7 @@ LIMIT 24
 - 核心看板 `礼包购买情况` 当前使用 `event='ServerPayLog'` 作为落地口径。
 - `购买礼包ID` 取 `ServerPayLog.personal.productid`：`NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')), '')`；该字段为空的支付事件不进入礼包排行。
 - `购买次数` 统计符合条件的 `ServerPayLog` 事件行数；`购买人数` 统计去重 `uid`。
-- 历史窗口遵循 `flam 历史看板日期窗口口径`：优先使用 `CURDATE()` 前一日派生最近 30 个完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用 `CURDATE()` 前一日派生完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
 - 生成核心看板 `礼包购买情况` 的 SQL 时，不要再使用 `ext.payId` / `ext.rechargeId` / `ext.productId` / `ext.goodsId` 作为该组件的礼包标识。
@@ -476,7 +476,7 @@ LIMIT 24
   - 引导开始：`NewUserGuideStart`,`DialogueStart`
   - 引导完成：`NewUserGuide`,`DialogueEnd`
   - 章节/任务领奖：`ChapterTaskReward`,`TaskReward`
-- 默认观察窗口使用当前日前一完整分区作为截止，最近 30 个业务分区；事件窗口与 cohort 窗口一致，并过滤 `prod = 110000038`。
+- 默认观察窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用当前日前一完整分区作为截止，事件窗口与 cohort 窗口一致，并过滤 `prod = 110000038`。
 - 漏斗输出必须包含 `step_order`、`新手步骤`、`用户数`、`整体转化率`、`上步转化率`、`流失人数`，图表类型使用 `funnel`。
 
 ## 禁止事项
@@ -525,7 +525,7 @@ LIMIT 24
 - 渠道投放注册必须先固定注册日 cohort：`user.userinfo.regdate = user.dt`，按 `uid` 去重。
 - 渠道归因取注册日快照行的 `adinfo.mediaSource`，缺失时用 `adinfo.campaignName`，仍缺失记为“未知”。
 - 首日付费金额固定读取注册日快照 `pay.pay1`；7 日累计付费读取注册日后第 6 天快照的 `pay.pay7`，未成熟时返回空值；累计付费读取当前日前一完整快照的 `pay.paytotal`。
-- 历史窗口优先使用 `CURDATE()` 前一日派生最近 30 个完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用 `CURDATE()` 前一日派生完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
 - 不要用活跃事件行的渠道覆盖注册归因。
@@ -610,7 +610,7 @@ LIMIT 24
 - “免费钻石获取途径分布”只统计 `personal.ed_changeFree > 0` 的获取记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，仅输出获取途径和免费钻石获取量。
 - “钻石消耗途径分布”只统计 `personal.ed_changeFree < 0` 或 `personal.ed_changePaid < 0` 的消耗记录，按 `personal.ed_route` 聚合，缺失时使用 `personal.ed_detailReason`，分别输出免费钻石消耗量和付费钻石消耗量。
 - 获取/消耗途径优先取 `personal.ed_route`，缺失时取 `personal.ed_detailReason`，仍缺失记为“未知”。
-- 历史窗口优先使用 `CURDATE()` 前一日派生最近 30 个完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
+- 历史窗口在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用 `CURDATE()` 前一日派生完整业务日 `dt` 分区，并过滤 `prod = 110000038`。
 
 ## 禁止事项
 - 不要再从 `ext.ed_changeFree/ext.ed_changePaid` 读取钻石变化；当前 `GoldChange` 样本中 `ext` 为空，字段在 `personal`。
