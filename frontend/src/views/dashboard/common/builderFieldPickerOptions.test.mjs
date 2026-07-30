@@ -168,3 +168,59 @@ assert.equal(
   'event.event_date',
   '没有业务日期或分区日期字段时应继续优先选择事件日期'
 )
+
+const trackingProperty = {
+  label: '获得金币',
+  value: 'tracking-property:event.event:ResourceChange:gold',
+  table: 'event',
+  field: 'gold',
+  kind: 'tracking-property',
+  eventName: 'ResourceChange',
+  sourceField: 'personal',
+  jsonPath: '$.gold',
+  isJsonSubfield: true,
+}
+
+assert.equal(
+  options.isTrackingEventPropertyOption(trackingProperty),
+  true,
+  'tracking-property 应识别为事件属性'
+)
+
+const eventUserProperty = {
+  label: '国家',
+  value: 'event.userinfo.country',
+  table: 'event',
+  field: 'userinfo.country',
+  sourceField: 'userinfo',
+  jsonPath: '$.country',
+  expression: "JSON_UNQUOTE(JSON_EXTRACT(`event`.`userinfo`, '$.country'))",
+  isJsonSubfield: true,
+  type: 'text',
+}
+
+assert.equal(
+  options.isEventUserPropertyOption(eventUserProperty),
+  true,
+  'event.userinfo JSON 叶子字段应识别为用户属性'
+)
+assert.equal(
+  options.isEventUserPropertyOption({ ...eventUserProperty, table: 'user', value: 'user.userinfo.country' }),
+  false,
+  'user 表的 userinfo 字段不得进入筛选用户属性'
+)
+assert.equal(
+  options.isEventUserPropertyOption({ ...eventUserProperty, sourceField: 'personal', value: 'event.personal.country' }),
+  false,
+  '其他 JSON 宿主列不得识别为用户属性'
+)
+assert.equal(
+  options.isEventUserPropertyOption({ ...eventUserProperty, jsonPath: '', isJsonSubfield: false }),
+  false,
+  'userinfo 容器本身不得识别为可筛选用户属性'
+)
+assert.equal(
+  options.isEventUserPropertyOption(trackingProperty),
+  false,
+  '事件目录参数不得重复进入用户属性'
+)

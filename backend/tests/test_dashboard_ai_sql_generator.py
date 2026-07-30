@@ -1336,3 +1336,85 @@ def test_timed_graph_node_logs_async_node_failure(monkeypatch: pytest.MonkeyPatc
     assert "tenant_id=2001" in warnings[0]
     assert "user_id=1001" in warnings[0]
     assert "error=LLM unavailable" in warnings[0]
+
+
+def test_global_json_filter_requires_complete_mapping() -> None:
+    normalized = {
+        "time": {},
+        "metrics": [],
+        "formula_metrics": [],
+        "groups": [],
+        "filters": {
+            "logic": "and",
+            "rules": [
+                {
+                    "field": {
+                        "table": "event",
+                        "field": "userinfo.country",
+                        "sourceField": "userinfo",
+                        "jsonPath": "$.country",
+                        "isJsonSubfield": True,
+                    },
+                    "operator": "eq",
+                    "value": "US",
+                }
+            ],
+        },
+    }
+
+    issues = ai_sql_generator._configured_field_permission_issues(
+        normalized,
+        allowed_tables=["event"],
+        allowed_fields_by_table={"event": {"userinfo"}},
+    )
+
+    assert any("全局筛选1 的 JSON 字段映射不完整" in item for item in issues)
+    assert any("expression" in item for item in issues)
+
+
+def test_dashboard_prompt_keeps_user_properties_on_event_userinfo() -> None:
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            title="按国家统计活跃",
+            chart_type="table",
+            context={
+                "time": {"field": {"table": "event", "field": "dt"}, "grain": "day", "range": "30d"},
+                "metrics": [
+                    {
+                        "field": {
+                            "kind": "tracking-event",
+                            "table": "event",
+                            "field": "event",
+                            "eventName": "UserActive",
+                        },
+                        "aggregation": "count",
+                    }
+                ],
+                "groups": [],
+                "filters": {
+                    "logic": "and",
+                    "rules": [
+                        {
+                            "field": {
+                                "table": "event",
+                                "field": "userinfo.country",
+                                "sourceField": "userinfo",
+                                "jsonPath": "$.country",
+                                "expression": "JSON_UNQUOTE(JSON_EXTRACT(`event`.`userinfo`, '$.country'))",
+                            },
+                            "operator": "eq",
+                            "value": "US",
+                        }
+                    ],
+                },
+                "selectedFields": [],
+            },
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
+        data_skill="",
+        tracking_config="",
+    )
+
+    assert "全局筛选只允许使用 context.filters 中提供的 event.userinfo JSON 子字段" in prompt
+    assert "不得把用户属性改为 user 表" in prompt

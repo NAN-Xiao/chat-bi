@@ -2,6 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CopyDocument, Delete, Filter, MoreFilled, Plus, WarningFilled } from '@element-plus/icons-vue'
+import { datasourceApi } from '@/api/datasource'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi, type ExternalMcpServerInfo, type ExternalMcpToolInfo } from '@/api/externalMcp.ts'
 import { trackingConfigApi } from '@/api/system.ts'
@@ -11,6 +12,7 @@ import BuilderSectionIcon from '@/assets/svg/dv-view.svg'
 import BuilderFieldPicker from '@/views/dashboard/common/BuilderFieldPicker.vue'
 import BuilderFilterTree from '@/views/dashboard/common/BuilderFilterTree.vue'
 import {
+  isEventUserPropertyOption,
   isNumericFieldOption,
   isSelectableFieldOption,
   isTimeFieldOption,
@@ -564,6 +566,9 @@ const eventScopedSchemaFieldOptions = computed(() =>
   getEventScopedFields(schemaFieldOptions.value, eventFieldScope.value)
 )
 const builderFieldOptions = computed(() => eventScopedSchemaFieldOptions.value.filter(isSelectableFieldOption))
+const eventUserPropertyOptions = computed(() =>
+  builderFieldOptions.value.filter((option) => isEventUserPropertyOption(option, 'event'))
+)
 const trackingEventCatalogOptions = computed<SchemaFieldOption[]>(() => {
   const groups = Array.isArray(trackingEventCatalog.value?.groups) ? trackingEventCatalog.value.groups : []
   return groups.flatMap((group: any) => {
@@ -1860,12 +1865,16 @@ function recommendedMetricField(item: SqlBuilderMetricItem, preferredTable = '')
 
 function metricFilterFieldOptions(item: SqlBuilderMetricItem) {
   const eventOption = fieldOptionByValue(item.field)
-  if (eventOption?.kind !== 'tracking-event' || !eventOption.eventName) {
+  if (
+    eventOption?.kind !== 'tracking-event' ||
+    !eventOption.eventName ||
+    (eventOption.eventTable || eventOption.table) !== 'event'
+  ) {
     return []
   }
   const options = [
     ...(trackingEventPropertyOptionsByEvent.value.get(eventOption.eventName) || []),
-    ...eventDetailFieldOptions(eventOption.eventTable || eventOption.table),
+    ...eventUserPropertyOptions.value,
   ]
   return Array.from(new Map(options.map((option) => [option.value, option])).values())
 }
@@ -2158,6 +2167,49 @@ function builderEventScopeIssues() {
   return unique(issues)
 }
 
+function appendFilterRangeIssues(
+  filters: SqlBuilderFilter[],
+  allowedOptions: SchemaFieldOption[],
+  prefix: string,
+  issues: string[]
+) {
+  const allowedValues = new Set(
+    allowedOptions.flatMap((option) => [option.value, option.field]).filter(Boolean)
+  )
+  filterFieldValues(filters).forEach((field, index) => {
+    if (!allowedValues.has(field)) {
+      issues.push(`${prefix}[${index}].field：字段不属于当前筛选范围：${field}。`)
+    }
+  })
+}
+
+function builderFilterScopeIssues() {
+  if (eventFieldScope.value.status !== 'active') {
+    return []
+  }
+  const issues: string[] = []
+  sqlBuilder.metricItems.forEach((item, index) => {
+    appendFilterRangeIssues(item.filters || [], metricFilterFieldOptions(item), `metric[${index}].filter`, issues)
+  })
+  sqlBuilder.calculatedMetrics.forEach((item, formulaIndex) => {
+    item.tokens.forEach((token, tokenIndex) => {
+      if (token.type !== 'atomicMetric') return
+      appendFilterRangeIssues(
+        (token.metric.filters || []) as SqlBuilderFilter[],
+        metricFilterFieldOptions(token.metric as SqlBuilderMetricItem),
+        `formula[${formulaIndex}].token[${tokenIndex}].filter`,
+        issues
+      )
+    })
+  })
+  appendFilterRangeIssues(sqlBuilder.globalFilters, eventUserPropertyOptions.value, 'global_filter', issues)
+  return unique(issues)
+}
+
+function builderBlockingScopeIssues() {
+  return unique([...builderEventScopeIssues(), ...builderFilterScopeIssues()])
+}
+
 function metricMeasureField(item: SqlBuilderMetricItem) {
   return item.aggregation === 'count' ? item.field : item.metric || item.field
 }
@@ -2352,7 +2404,7 @@ function generatedSqlMatchesBuilderMetrics(sql: string) {
 }
 
 function collectLocalBuilderConfigIssues() {
-  const eventScopeIssues = builderEventScopeIssues()
+  const eventScopeIssues = builderBlockingScopeIssues()
   const issues: string[] = [...eventScopeIssues]
   const suggestions: string[] = []
   if (eventScopeIssues.length && eventFieldScope.value.defaultEventTable) {
@@ -2519,7 +2571,7 @@ async function generateBuilderAiSql() {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
     return false
   }
-  const eventScopeIssues = builderEventScopeIssues()
+  const eventScopeIssues = builderBlockingScopeIssues()
   if (eventScopeIssues.length) {
     const localAdvice = collectLocalBuilderConfigIssues()
     setBuilderAgentAdvice({
@@ -2694,15 +2746,23 @@ async function loadSchemaTables(startViewInfo: any, requestSeq: number) {
       const datasource = metadata || null
       const tables: any[] = metadata?.tables
       const normalizedTables = Array.isArray(tables) ? tables : []
+      const defaultEventTable = String(
+        trackingConfigResult?.default_event_table || trackingConfigResult?.defaultEventTable || '',
+      ).trim()
       const tablesWithFields = await Promise.all(
         normalizedTables.map(async (table) => {
           const tableName = table?.table_name || table?.tableName || table?.name || table?.table || ''
           const tableRole = table?.table_role || table?.tableRole || trackingTableRoleByName.get(tableName) || ''
           const tableWithRole = tableRole ? { ...table, tableRole } : table
-          if (Array.isArray(table?.fields)) {
-            return tableWithRole
+          if (tableName !== defaultEventTable || !table?.id) {
+            return Array.isArray(table?.fields) ? tableWithRole : { ...tableWithRole, fields: [] }
           }
-          return { ...tableWithRole, fields: [] }
+          try {
+            const fields = await datasourceApi.fieldList(table.id, { fieldName: '', excludeContainerFields: false })
+            return { ...tableWithRole, fields: Array.isArray(fields) ? fields : table.fields || [] }
+          } catch {
+            return Array.isArray(table?.fields) ? tableWithRole : { ...tableWithRole, fields: [] }
+          }
         })
       )
       return {
@@ -4734,6 +4794,8 @@ function closeDrawer() {
                       :field-options="metricFilterFieldOptions(item)"
                       :operator-options="builderFilterOperatorOptions"
                       :schema-loading="schemaLoading"
+                      picker-mode="filter-property"
+                      :filter-property-tabs="['all', 'event', 'user']"
                       :show-toolbar="false"
                       empty-text="暂无指标筛选"
                       @update:logic="item.filterLogic = $event"
@@ -4897,6 +4959,8 @@ function closeDrawer() {
                                 :field-options="metricFilterFieldOptions(token.metric as any)"
                                 :operator-options="builderFilterOperatorOptions"
                                 :schema-loading="schemaLoading"
+                                picker-mode="filter-property"
+                                :filter-property-tabs="['all', 'event', 'user']"
                                 :show-toolbar="true"
                                 empty-text="暂无事件筛选"
                                 @update:logic="token.metric.filterLogic = $event"
@@ -5006,9 +5070,11 @@ function closeDrawer() {
               <BuilderFilterTree
                 :nodes="sqlBuilder.globalFilters"
                 :logic="sqlBuilder.globalFilterLogic"
-                :field-options="builderFieldOptions"
+                :field-options="eventUserPropertyOptions"
                 :operator-options="builderFilterOperatorOptions"
                 :schema-loading="schemaLoading"
+                picker-mode="filter-property"
+                :filter-property-tabs="['user']"
                 :show-toolbar="false"
                 empty-text="暂无全局筛选"
                 @update:logic="sqlBuilder.globalFilterLogic = $event"
