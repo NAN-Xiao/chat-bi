@@ -37,6 +37,12 @@ const curSelectChange = (value: boolean) => {
   padding: 8px;
   float: left;
   overflow: hidden;
+
+  :deep(.chart-base-container:has(.date-expression-toolbar) .header-bar) {
+    min-height: 28px;
+    margin-bottom: 6px;
+  }
+
   .select-area {
     position: absolute;
     top: 26px;

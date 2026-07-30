@@ -4063,7 +4063,7 @@ function initEditor() {
   form.mcpKeyField = mcpConfig.keyField || mcpConfig.key_field || ''
   form.mcpValueField = mcpConfig.valueField || mcpConfig.value_field || ''
   executionDatasourceOptions.value = []
-  selectedExecutionDatasourceId.value = null
+  selectedExecutionDatasourceId.value = normalizeExecutionDatasourceId(viewInfo?.datasource)
   executionDatasourceError.value = ''
   lastPreviewSql.value = form.sql.trim()
   resetFieldSelections()
@@ -4095,6 +4095,8 @@ function normalizeExecutionDatasourceId(value: unknown) {
 }
 
 async function loadExecutionDatasources(viewInfo: any) {
+  const initialPreviewSignature = currentPreviewSignature()
+  const initialRecordedPreviewSignature = lastPreviewSignature.value
   try {
     const options = await dashboardApi.execution_datasources()
     executionDatasourceOptions.value = Array.isArray(options) ? options : []
@@ -4104,11 +4106,18 @@ async function loadExecutionDatasources(viewInfo: any) {
       executionDatasourceError.value = '当前图表选择的数据源已不在此空间可用范围内。'
       return
     }
+    const canRebaseAutoSelectedDatasource =
+      !savedDatasourceId &&
+      currentPreviewSignature() === initialPreviewSignature &&
+      lastPreviewSignature.value === initialRecordedPreviewSignature
     selectedExecutionDatasourceId.value = savedDatasourceId ||
       executionDatasourceOptions.value.find((item) => item.role === 'bound')?.id || null
     if (!selectedExecutionDatasourceId.value) {
       executionDatasourceError.value = '当前空间未配置可用于图表 SQL 的数据源。'
       return
+    }
+    if (canRebaseAutoSelectedDatasource) {
+      lastPreviewSignature.value = currentPreviewSignature()
     }
     ensureBuilderSchemaLoaded()
   } catch {
