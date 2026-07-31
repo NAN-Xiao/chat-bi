@@ -301,6 +301,7 @@ const routerList = computed(() => {
   .ed-sub-menu .ed-sub-menu__title {
     display: flex !important;
     align-items: center;
+    position: relative !important;
     height: 40px !important;
     padding: 0 28px 0 10px !important;
     border-radius: 8px;
@@ -365,9 +366,12 @@ const routerList = computed(() => {
   }
 
   .ed-sub-menu__icon-arrow {
+    position: absolute !important;
+    width: 12px !important;
     top: 50% !important;
     right: 8px !important;
-    margin-top: -6px !important;
+    margin-right: 0 !important;
+    margin-top: -8px !important;
   }
 
   .ed-menu-item,

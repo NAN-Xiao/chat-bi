@@ -4,7 +4,7 @@
 
 **Goal:** 将纵向侧栏子菜单的展开/收起箭头固定在菜单项右侧，距右边缘 `8px`，同时保留垂直居中和旋转行为。
 
-**Architecture:** 保留 `element-plus-secondary` 生成的子菜单 DOM 和绝对定位方式，只在现有纵向菜单样式作用域内覆盖组件库继承宽度。使用源码样式回归测试锁定纵向规则，避免影响横向顶栏菜单。
+**Architecture:** 保留 `element-plus-secondary` 生成的子菜单 DOM，在现有纵向菜单样式作用域内显式建立标题与箭头的相对/绝对定位关系，并覆盖组件库宽度和通用图标外边距。使用源码样式回归测试锁定纵向规则，避免影响横向顶栏菜单。
 
 **Tech Stack:** Vue 3、Less、element-plus-secondary、Node.js 内置测试运行器
 
@@ -12,6 +12,7 @@
 
 - 纵向侧栏箭头容器宽度固定为 `12px`。
 - 箭头距菜单项右边缘保持 `8px`，并继续垂直居中。
+- 标题作为定位参照，箭头使用绝对定位且不继承通用图标右外边距。
 - 展开和收起状态的旋转动画保持不变。
 - 横向顶栏菜单样式不受影响。
 - 不调整菜单项文字、图标、行高或侧栏宽度。
@@ -39,11 +40,24 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const source = readFileSync(fileURLToPath(new URL('./Menu.vue', import.meta.url)), 'utf8')
+const verticalMenuStart = source.indexOf('.ed-menu-vertical {')
+const horizontalMenuStart = source.indexOf('.shuzhi-layout-menu-horizontal {')
+
+assert.ok(verticalMenuStart >= 0, '应存在纵向菜单样式作用域')
+assert.ok(horizontalMenuStart > verticalMenuStart, '横向菜单样式应位于纵向菜单样式之后')
+
+const verticalMenuStyles = source.slice(verticalMenuStart, horizontalMenuStart)
 
 assert.match(
-  source,
-  /\.ed-menu-vertical\s*\{[\s\S]*?\.ed-sub-menu__icon-arrow\s*\{[\s\S]*?width:\s*12px\s*!important;[\s\S]*?right:\s*8px\s*!important;/,
-  '纵向侧栏子菜单箭头应使用固定宽度，并定位在菜单项右侧'
+  verticalMenuStyles,
+  /\.ed-sub-menu \.ed-sub-menu__title\s*\{[\s\S]*?position:\s*relative\s*!important;/,
+  '纵向侧栏子菜单标题应作为箭头的定位参照'
+)
+
+assert.match(
+  verticalMenuStyles,
+  /\.ed-sub-menu__icon-arrow\s*\{[\s\S]*?position:\s*absolute\s*!important;[\s\S]*?width:\s*12px\s*!important;[\s\S]*?right:\s*8px\s*!important;[\s\S]*?margin-right:\s*0\s*!important;[\s\S]*?margin-top:\s*-8px\s*!important;/,
+  '纵向侧栏子菜单箭头应使用固定宽度和绝对定位，并精确停靠在菜单项右侧和垂直中心'
 )
 ```
 
@@ -51,7 +65,7 @@ assert.match(
 
 Run: `cd frontend; node --test src/components/layout/Menu.layout.test.mjs`
 
-Expected: FAIL，错误信息包含“纵向侧栏子菜单箭头应使用固定宽度，并定位在菜单项右侧”，原因是纵向箭头规则尚无 `width: 12px !important`。
+Expected: FAIL，错误信息包含“纵向侧栏子菜单标题应作为箭头的定位参照”，原因是纵向标题和箭头尚未建立明确的定位关系。
 
 - [ ] **Step 3: 实施最小样式修改**
 
@@ -59,11 +73,19 @@ Expected: FAIL，错误信息包含“纵向侧栏子菜单箭头应使用固定
 
 ```less
   .ed-sub-menu__icon-arrow {
+    position: absolute !important;
     width: 12px !important;
     top: 50% !important;
     right: 8px !important;
-    margin-top: -6px !important;
+    margin-right: 0 !important;
+    margin-top: -8px !important;
   }
+```
+
+同时在 `.ed-sub-menu .ed-sub-menu__title` 中加入：
+
+```less
+    position: relative !important;
 ```
 
 不要修改 `.shuzhi-layout-menu-horizontal .ed-sub-menu .ed-sub-menu__icon-arrow`，也不要覆盖箭头的 `transform`。
@@ -90,7 +112,7 @@ Expected: `vue-tsc -b` 和 `vite build` 均以退出码 `0` 完成。
 横向顶栏：下拉箭头样式和位置保持原样。
 ```
 
-同时读取箭头元素计算样式，确认 `width` 为 `12px`，`right` 为 `8px`。
+同时读取箭头元素计算样式和几何位置，确认 `width` 为 `12px`、`right` 为 `8px`、标题右缘到箭头右缘为 `8px`，且两者垂直中心误差为 `0px`。
 
 - [ ] **Step 7: 提交实现**
 
