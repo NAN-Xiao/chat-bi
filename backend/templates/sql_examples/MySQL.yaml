@@ -23,6 +23,14 @@ template:
     {multi_table_condition}
     <rule>禁止使用星号(*)，必须明确字段名</rule>
     <rule>输出列必须添加面向用户的可读展示别名；别名可使用用户语言，含中文/特殊字符时按当前数据库引擎规则加引号</rule>
+    <rule priority="critical">
+      中文或特殊字符输出别名必须使用反引号，例如 AS `注册日期`、AS `地区`；不得写成 AS '注册日期'，因为单引号表示字符串值。
+      ORDER BY 引用最终输出中文别名时必须继续保留反引号，例如 ORDER BY `注册日期`, `地区`。
+      同一查询块的 GROUP BY 应使用原始字段或完整表达式，不得把当前层刚定义的 SELECT 别名伪装成来源表字段。
+      <example-good>SELECT `c`.`register_date` AS `注册日期`, `c`.`region` AS `地区`, COUNT(`c`.`user_id`) AS `用户数` FROM `cohort` `c` GROUP BY `c`.`register_date`, `c`.`region` ORDER BY `注册日期`, `地区`</example-good>
+      只有上游 CTE 或子查询已经输出中文列时，外层才可使用限定中文字段，例如 GROUP BY `c`.`注册日期`, `c`.`地区`。
+      <example-good>WITH `cohort` AS (SELECT `u`.`user_id` AS `用户ID`, `u`.`register_date` AS `注册日期`, `u`.`region` AS `地区` FROM `users` `u`) SELECT `c`.`注册日期`, `c`.`地区`, COUNT(`c`.`用户ID`) AS `用户数` FROM `cohort` `c` GROUP BY `c`.`注册日期`, `c`.`地区` ORDER BY `注册日期`, `地区`</example-good>
+    </rule>
     <rule>函数字段必须加别名</rule>
     <rule>百分比显示为：CONCAT(ROUND(x*100,2),'%')</rule>
     <rule>避免与MySQL关键字冲突（如`order`/`group`/`desc`）</rule>

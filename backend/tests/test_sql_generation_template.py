@@ -43,3 +43,19 @@ def test_first_generation_prompt_requires_date_filter_for_filtered_category_summ
     assert "只要 SQL 使用看板日期 token 进行时间范围筛选" in rules
     assert "都必须返回 date_filter" in rules
     assert "只有 SQL 完全不使用日期范围筛选和看板日期 token" in rules
+
+
+def test_mysql_prompt_requires_backticks_for_chinese_output_aliases() -> None:
+    rules = AiModelQuestion(
+        engine="MySQL 8.0",
+        db_schema="【DB_ID】 test\n【Schema】",
+    ).sql_sys_question("mysql")["rules"]
+
+    assert "中文或特殊字符输出别名必须使用反引号" in rules
+    assert "单引号表示字符串值" in rules
+    assert "AS `注册日期`" in rules
+    assert "ORDER BY `注册日期`, `地区`" in rules
+    assert "GROUP BY `c`.`register_date`, `c`.`region`" in rules
+    assert "上游 CTE 或子查询已经输出中文列" in rules
+    assert "GROUP BY `c`.`注册日期`, `c`.`地区`" in rules
+    assert "COUNT(*) AS `用户数`" not in rules
