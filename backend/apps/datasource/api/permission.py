@@ -4,6 +4,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import select
 
 from apps.datasource.crud.permission_rules import (
     DEFAULT_RULE_TENANT_ID,
@@ -16,11 +17,13 @@ from apps.datasource.crud.permission_rules import (
     save_rule_dto,
 )
 from apps.datasource.crud.permission_fields import normalize_permission_field_entries
-from apps.datasource.crud.permission import has_datasource_access
+from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access
+from apps.datasource.crud.table import get_tables_by_ds_id
 from apps.system.schemas.business_access import require_chatbi_business_or_platform_admin
 from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.schemas.access_context import current_tenant_id, is_global_platform_context
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
+from apps.roi_dashboard.models import CoreRoiWorkspaceConfig
 from common.core.deps import CurrentUser, SessionDep
 
 
@@ -28,6 +31,95 @@ router = APIRouter(
     tags=["permission"],
     dependencies=[Depends(require_chatbi_business_or_platform_admin)],
 )
+
+
+PERMISSION_TYPES = {"table", "column", "row"}
+
+
+def _normalize_permission_type(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized not in PERMISSION_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported permission type")
+    return normalized
+
+
+def _active_roi_datasource_id(session: SessionDep, user: CurrentUser) -> int | None:
+    if is_global_platform_context(user):
+        return None
+    tenant_id = current_tenant_id(user)
+    if tenant_id is None:
+        return None
+    value = session.exec(
+        select(CoreRoiWorkspaceConfig.datasource_id).where(
+            CoreRoiWorkspaceConfig.tenant_id == int(tenant_id),
+            CoreRoiWorkspaceConfig.deleted.is_(False),
+        )
+    ).first()
+    return int(value) if value is not None else None
+
+
+def _permission_datasource_access(
+    session: SessionDep,
+    user: CurrentUser,
+    datasource_id: int,
+    permission_type: str,
+) -> tuple[CoreDatasource | None, str | None]:
+    permission_type = _normalize_permission_type(permission_type)
+    datasource = session.get(CoreDatasource, int(datasource_id))
+    if datasource is None:
+        return None, None
+    if is_global_platform_context(user):
+        return datasource, "ordinary"
+    if has_datasource_access(session, user, int(datasource_id)):
+        return datasource, "ordinary"
+    if permission_type == "table" and _active_roi_datasource_id(session, user) == int(datasource_id):
+        return datasource, "roi"
+    return None, None
+
+
+def _datasource_option(datasource: CoreDatasource, permission_source: str) -> dict[str, Any]:
+    return {
+        "id": datasource.id,
+        "name": datasource.name,
+        "type": datasource.type,
+        "type_name": datasource.type_name,
+        "permission_source": permission_source,
+    }
+
+
+def _list_permission_datasources(
+    session: SessionDep,
+    user: CurrentUser,
+    permission_type: str,
+) -> list[dict[str, Any]]:
+    permission_type = _normalize_permission_type(permission_type)
+    ordinary_ids = get_accessible_datasource_ids(session, user)
+    statement = select(CoreDatasource)
+    if ordinary_ids is not None:
+        if not ordinary_ids:
+            ordinary_rows = []
+        else:
+            statement = statement.where(CoreDatasource.id.in_(sorted(ordinary_ids)))
+            ordinary_rows = list(session.exec(statement).all())
+    else:
+        ordinary_rows = list(session.exec(statement).all())
+
+    rows_by_id: dict[int, dict[str, Any]] = {
+        int(datasource.id): _datasource_option(datasource, "ordinary")
+        for datasource in sorted(
+            ordinary_rows,
+            key=lambda item: (str(item.name or ""), int(item.id)),
+        )
+    }
+
+    if permission_type == "table":
+        roi_datasource_id = _active_roi_datasource_id(session, user)
+        if roi_datasource_id is not None and int(roi_datasource_id) not in rows_by_id:
+            datasource = session.get(CoreDatasource, int(roi_datasource_id))
+            if datasource is not None:
+                rows_by_id[int(datasource.id)] = _datasource_option(datasource, "roi")
+
+    return list(rows_by_id.values())
 
 
 def _permission_belongs_to_current_tenant(session: SessionDep, user: CurrentUser, permission: dict[str, Any]) -> bool:
@@ -40,7 +132,9 @@ def _permission_belongs_to_current_tenant(session: SessionDep, user: CurrentUser
         datasource_id = int(permission.get("ds_id"))
     except (TypeError, ValueError):
         return False
-    return _datasource_visible_in_current_context(session, user, datasource_id) is not None
+    permission_type = str(permission.get("type") or "").strip().lower()
+    datasource, _source = _permission_datasource_access(session, user, datasource_id, permission_type)
+    return datasource is not None
 
 
 def _datasource_visible_in_current_context(
@@ -165,12 +259,25 @@ def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule
             datasource_id = int(table.ds_id)
             permission["ds_id"] = datasource_id
 
-        datasource = _datasource_visible_in_current_context(session, user, datasource_id)
+        permission_type = str(permission.get("type") or "").strip().lower()
+        datasource, permission_source = _permission_datasource_access(
+            session,
+            user,
+            datasource_id,
+            permission_type,
+        )
         if datasource is None:
+            if (
+                permission_type != "table"
+                and _active_roi_datasource_id(session, user) == int(datasource_id)
+            ):
+                raise HTTPException(status_code=400, detail="ROI 数据源仅支持表禁止")
             raise HTTPException(status_code=404, detail="Datasource not found")
+        if permission_source == "roi" and permission_type != "table":
+            raise HTTPException(status_code=400, detail="ROI 数据源仅支持表禁止")
         if table is None or int(table.ds_id) != datasource_id:
             raise HTTPException(status_code=400, detail="Permission table does not belong to datasource")
-        if str(permission.get("type") or "").strip().lower() == "column":
+        if permission_type == "column":
             try:
                 permission["permissions"] = normalize_permission_field_entries(
                     session,
@@ -182,6 +289,35 @@ def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule
                 )
             except (TypeError, ValueError) as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/ds_permission/datasources")
+@require_permissions(permission=AppPermission(role=["admin"]))
+async def permission_datasources(
+    session: SessionDep,
+    user: CurrentUser,
+    permission_type: str,
+):
+    return _list_permission_datasources(session, user, permission_type)
+
+
+@router.get("/ds_permission/datasources/{datasource_id}/tables")
+@require_permissions(permission=AppPermission(role=["admin"]))
+async def permission_datasource_tables(
+    session: SessionDep,
+    user: CurrentUser,
+    datasource_id: int,
+    permission_type: str,
+):
+    datasource, _source = _permission_datasource_access(
+        session,
+        user,
+        datasource_id,
+        permission_type,
+    )
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="Datasource not found")
+    return get_tables_by_ds_id(session, int(datasource.id))
 
 
 @router.post("/ds_permission/list")
