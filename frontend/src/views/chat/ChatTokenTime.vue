@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import icon_logs_outlined from '@/assets/svg/icon_logs_outlined.svg'
 import ExecutionDetails from './ExecutionDetails.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
+import { resolveChatUsageDisplay } from './chatUsageDisplay'
 const props = defineProps<{
   recordId?: number
   duration?: number | undefined
@@ -11,15 +12,23 @@ const props = defineProps<{
 const chatConfig = useChatConfigStore()
 const showLogBtn = chatConfig.getShowLog
 const executionDetailsRef = ref()
+const usageDisplay = computed(() => resolveChatUsageDisplay(props.duration, props.totalTokens))
 function getLogList() {
   executionDetailsRef.value.getLogList(props.recordId)
 }
 </script>
 
 <template>
-  <div v-if="recordId && (duration || totalTokens)" class="tool-container">
-    <span>{{ $t('parameter.tokens_required') }} {{ totalTokens }}</span>
-    <span style="margin-left: 12px">{{ $t('parameter.time_execution') }} {{ duration }} s</span>
+  <div v-if="recordId && usageDisplay.showContainer" class="tool-container">
+    <span v-if="usageDisplay.showTotalTokens">
+      {{ $t('parameter.tokens_required') }} {{ totalTokens }}
+    </span>
+    <span
+      v-if="usageDisplay.showDuration"
+      :class="{ 'with-leading-space': usageDisplay.showTotalTokens }"
+    >
+      {{ $t('parameter.time_execution') }} {{ duration }} s
+    </span>
 
     <div v-if="showLogBtn" class="detail" @click="getLogList">
       <el-icon style="margin-right: 4px" size="16">
@@ -45,6 +54,10 @@ function getLogList() {
   font-size: 14px;
   line-height: 22px;
   color: #646a73;
+
+  .with-leading-space {
+    margin-left: 12px;
+  }
 
   .detail {
     cursor: pointer;

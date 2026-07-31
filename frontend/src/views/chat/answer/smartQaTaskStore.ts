@@ -39,6 +39,7 @@ export interface SmartQaTaskRegisterInput {
 
 export interface SmartQaTaskRuntimeOptions {
   pollIntervalMs?: number
+  terminalRefreshMaxDelayMs?: number
   getTaskEvents?: (taskId: string, offset: number, limit: number) => Promise<SmartQaTaskEventPage>
   refreshRecord?: (input: SmartQaTaskRuntimeCallbackInput) => Promise<boolean | void>
   loadRecordData?: (input: SmartQaTaskRuntimeCallbackInput) => Promise<void>
@@ -69,6 +70,7 @@ export interface SmartQaTaskEntry {
   events: string[]
   deliveredEventCount: number
   eventDelivery: Promise<void>
+  terminalRefreshAttempts: number
 }
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
@@ -145,7 +147,16 @@ export function createSmartQaTaskStore(initialOptions: SmartQaTaskRuntimeOptions
       if (!runtime.getTaskEvents) {
         entry.status = 'failed'
         entry.error = new Error('Smart Q&A task event API is not configured')
-        await runtime.onError?.({ key: entry.key, taskId: entry.taskId, record: entry.record, error: entry.error })
+        try {
+          await runtime.onError?.({
+            key: entry.key,
+            taskId: entry.taskId,
+            record: entry.record,
+            error: entry.error,
+          })
+        } finally {
+          entries.delete(entry.key)
+        }
         return
       }
 
@@ -156,7 +167,16 @@ export function createSmartQaTaskStore(initialOptions: SmartQaTaskRuntimeOptions
         entry.status = 'failed'
         entry.error = error
         entry.updatedAt = Date.now()
-        await runtime.onError?.({ key: entry.key, taskId: entry.taskId, record: entry.record, error })
+        try {
+          await runtime.onError?.({
+            key: entry.key,
+            taskId: entry.taskId,
+            record: entry.record,
+            error,
+          })
+        } finally {
+          entries.delete(entry.key)
+        }
         return
       }
 
@@ -179,17 +199,52 @@ export function createSmartQaTaskStore(initialOptions: SmartQaTaskRuntimeOptions
         entry.status = status as TaskStatus
         entry.error = eventPage.error
         if (status === 'succeeded') {
-          await callbacks.refreshRecord?.({ key: entry.key, taskId: entry.taskId, record: entry.record, eventPage })
-          await callbacks.loadRecordData?.({ key: entry.key, taskId: entry.taskId, record: entry.record, eventPage })
-          await callbacks.onFinish?.({ key: entry.key, taskId: entry.taskId, record: entry.record, eventPage })
-        } else {
-          await callbacks.onError?.({
+          const callbackInput = {
             key: entry.key,
             taskId: entry.taskId,
             record: entry.record,
             eventPage,
-            error: eventPage.error,
-          })
+          }
+          try {
+            const recordReady = await callbacks.refreshRecord?.(callbackInput)
+            if (recordReady === false) {
+              entry.status = 'running'
+              const pollIntervalMs = callbacks.pollIntervalMs || options.pollIntervalMs || 1000
+              const maxDelayMs =
+                callbacks.terminalRefreshMaxDelayMs || options.terminalRefreshMaxDelayMs || 5000
+              const retryDelayMs = Math.min(
+                pollIntervalMs * 2 ** entry.terminalRefreshAttempts,
+                maxDelayMs
+              )
+              entry.terminalRefreshAttempts += 1
+              await sleep(retryDelayMs)
+              continue
+            }
+            await callbacks.loadRecordData?.(callbackInput)
+            await callbacks.onFinish?.(callbackInput)
+          } catch (error) {
+            entry.status = 'failed'
+            entry.error = error
+            try {
+              await callbacks.onError?.({ ...callbackInput, error })
+            } finally {
+              entries.delete(entry.key)
+            }
+            return
+          }
+        } else {
+          try {
+            await callbacks.onError?.({
+              key: entry.key,
+              taskId: entry.taskId,
+              record: entry.record,
+              eventPage,
+              error: eventPage.error,
+            })
+          } finally {
+            entries.delete(entry.key)
+          }
+          return
         }
         // Clean up completed task from map to prevent memory leak
         entries.delete(entry.key)
@@ -197,6 +252,7 @@ export function createSmartQaTaskStore(initialOptions: SmartQaTaskRuntimeOptions
       }
 
       entry.status = 'running'
+      entry.terminalRefreshAttempts = 0
       await sleep(callbacks.pollIntervalMs || options.pollIntervalMs || 1000)
     }
     entry.status = 'paused'
@@ -232,6 +288,7 @@ export function createSmartQaTaskStore(initialOptions: SmartQaTaskRuntimeOptions
       events: [],
       deliveredEventCount: 0,
       eventDelivery: Promise.resolve(),
+      terminalRefreshAttempts: 0,
     }
     entry.promise = poll(entry)
     entries.set(key, entry)

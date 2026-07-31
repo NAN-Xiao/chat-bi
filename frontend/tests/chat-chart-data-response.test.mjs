@@ -80,8 +80,8 @@ const chartAnswerSource = fs.readFileSync(
 )
 assert.match(
   chartAnswerSource,
-  /<ChartBlock\s+v-if="!message\.record\?\.error"/,
-  '统一错误组件展示失败信息时不应再挂载图表块'
+  /<ChartBlock\s+v-if="showTerminalResult && !message\.record\?\.error"/,
+  '只有最终结果就绪且无错误时才应挂载图表块'
 )
 
 const noticeRecord = {

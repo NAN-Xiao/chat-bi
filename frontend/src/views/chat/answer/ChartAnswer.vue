@@ -17,6 +17,11 @@ import {
 import { buildSmartQaTaskKey, smartQaTaskStore } from './smartQaTaskStore'
 import { applyChartDataResponseToRecord } from './chartDataResponse'
 import {
+  partitionTerminalRecordUpdate,
+  shouldShowFinalAnswer,
+  shouldShowTerminalResult,
+} from './answerVisibility'
+import {
   applyBriefToTaskOwner,
   isTaskOwnerChatVisible,
   resolveTaskOwnerChatId,
@@ -103,7 +108,9 @@ const _loading = computed({
 
 const stopFlag = ref(false)
 const restoringTask = ref(false)
-const finalAnswerReady = ref(!!(props.message?.record?.finish || props.message?.record?.finish_time))
+const finalAnswerReady = ref(
+  !!(props.message?.record?.finish || props.message?.record?.finish_time)
+)
 const POLL_INTERVAL_MS = 1000
 const activeTaskStoragePrefix = 'chat.smartQa.activeTask.'
 const notifiedFinishRecordIds = new Set<number>()
@@ -150,19 +157,20 @@ function updateOwnedRecord(record: ChatRecord, values: Partial<ChatRecord>) {
   return visibleRecord || record
 }
 
-const showFinalAnswer = computed(() => {
-  const record = props.message?.record
-  if (!record || props.message?.isTyping) {
-    return false
-  }
-  if (record.error || record.stopped) {
-    return true
-  }
-  if (record.finish || record.finish_time) {
-    return finalAnswerReady.value
-  }
-  return !record.task_id
-})
+const showFinalAnswer = computed(() =>
+  shouldShowFinalAnswer({
+    record: props.message?.record,
+    isTyping: props.message?.isTyping,
+    finalAnswerReady: finalAnswerReady.value,
+  })
+)
+const showTerminalResult = computed(() =>
+  shouldShowTerminalResult({
+    record: props.message?.record,
+    isTyping: props.message?.isTyping,
+    finalAnswerReady: finalAnswerReady.value,
+  })
+)
 
 interface ActiveTaskState {
   task_id: string
@@ -383,38 +391,30 @@ async function handlePayload(
       }
       break
     case 'finish':
-      updateOwnedRecord(currentRecord, { finish: true })
-      await markFinalAnswerReady()
-      clearCurrentTask(currentRecord)
       break
   }
   await nextTick()
 }
 
-async function refreshCurrentRecord(
+async function fetchCurrentRecord(
   recordId?: number,
   targetRecord: ChatRecord | undefined = props.message?.record
-) {
+): Promise<ChatRecord | undefined> {
   const ownerChatId = taskOwnerChatId(targetRecord)
   if (!ownerChatId || !targetRecord || !recordId) {
-    return false
+    return undefined
   }
 
   try {
     const chat = await chatApi.get(ownerChatId, { includeRecordData: false })
     const latestRecord = chat?.records?.find((record) => record.id === recordId)
     if (!latestRecord) {
-      return false
+      return undefined
     }
-    const currentTaskId = targetRecord.task_id
-    updateOwnedRecord(targetRecord, {
-      ...latestRecord,
-      task_id: latestRecord.task_id || currentTaskId,
-    })
-    return true
+    return latestRecord
   } catch (error) {
     console.error('Refresh chat record failed:', error)
-    return false
+    return undefined
   }
 }
 
@@ -558,6 +558,9 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
     analysis: currentRecord.analysis || '',
     analysis_thinking: currentRecord.analysis_thinking || '',
   }
+  let pendingTerminalUpdate:
+    | ReturnType<typeof partitionTerminalRecordUpdate<ChatRecord>>
+    | undefined
   const entry = smartQaTaskStore.ensureTask({
     tenantId: tenantTaskScope(currentRecord),
     chatId: taskOwnerChatId(currentRecord),
@@ -574,24 +577,35 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
         }
       },
       refreshRecord: async ({ record }) => {
-        await refreshCurrentRecord(Number(record.id || currentRecord.id), currentRecord)
-        const latestRecord = currentRecord
-        if (latestRecord?.finish || latestRecord?.finish_time) {
-          await markFinalAnswerReady()
+        const latestRecord = await fetchCurrentRecord(
+          Number(record.id || currentRecord.id),
+          currentRecord
+        )
+        if (!latestRecord || !(latestRecord.finish || latestRecord.finish_time)) {
+          return false
         }
-        if (latestRecord) {
-          clearCurrentTask(latestRecord)
-        }
+        pendingTerminalUpdate = partitionTerminalRecordUpdate(latestRecord, currentRecord.task_id)
+        return true
       },
       loadRecordData: async ({ record }) => {
+        if (pendingTerminalUpdate) {
+          updateOwnedRecord(currentRecord, pendingTerminalUpdate.content as Partial<ChatRecord>)
+        }
         const recordId = Number(record.id || currentRecord.id)
         if (recordId) {
           await loadChartData(recordId, undefined, currentRecord)
         }
+        if (pendingTerminalUpdate) {
+          updateOwnedRecord(currentRecord, pendingTerminalUpdate.afterData as Partial<ChatRecord>)
+        }
       },
       onFinish: async ({ record }) => {
-        _loading.value = false
         await markFinalAnswerReady()
+        if (pendingTerminalUpdate) {
+          updateOwnedRecord(currentRecord, pendingTerminalUpdate.terminal as Partial<ChatRecord>)
+        }
+        clearCurrentTask(currentRecord)
+        _loading.value = false
         emitFinishOnce(Number(record.id || currentRecord.id))
       },
       onError: ({ error }) => {
@@ -602,21 +616,6 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
   })
   if (entry) {
     _loading.value = true
-    if (currentRecord.id) {
-      void refreshCurrentRecord(currentRecord.id, currentRecord).then(async (refreshed) => {
-        const latestRecord = currentRecord
-        if (refreshed && latestRecord && hasStoredFinalAnswer(latestRecord)) {
-          if (latestRecord.finish || latestRecord.finish_time) {
-            await markFinalAnswerReady()
-          }
-          clearCurrentTask(latestRecord)
-          _loading.value = false
-          if (latestRecord.id && latestRecord.chart && !hasRecordData(latestRecord)) {
-            getChatData(latestRecord.id, latestRecord)
-          }
-        }
-      })
-    }
   }
   return entry
 }
@@ -667,17 +666,24 @@ async function restoreRecordTask() {
       return
     }
 
-    const refreshed = await refreshCurrentRecord(record.id, record)
-    if (refreshed) {
-      const latestRecord = record
-      if (latestRecord?.finish) {
+    const latestRecord = await fetchCurrentRecord(record.id, record)
+    if (latestRecord) {
+      if (latestRecord?.finish || latestRecord?.finish_time) {
+        const pendingTerminalUpdate = partitionTerminalRecordUpdate(latestRecord, record.task_id)
+        updateOwnedRecord(record, pendingTerminalUpdate.content as Partial<ChatRecord>)
+        await loadChartData(latestRecord.id, undefined, record)
+        updateOwnedRecord(record, pendingTerminalUpdate.afterData as Partial<ChatRecord>)
         await markFinalAnswerReady()
-        clearCurrentTask(latestRecord)
+        updateOwnedRecord(record, pendingTerminalUpdate.terminal as Partial<ChatRecord>)
+        clearCurrentTask(record)
         _loading.value = false
-        getChatData(latestRecord.id, latestRecord)
         emits('finish', latestRecord.id)
         return
       }
+      updateOwnedRecord(record, {
+        ...latestRecord,
+        task_id: latestRecord.task_id || record.task_id,
+      })
       if (latestRecord?.error) {
         _loading.value = false
         emits('error', latestRecord.id)
@@ -717,12 +723,7 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask, l
 </script>
 
 <template>
-  <BaseAnswer
-    v-if="message"
-    :message="message"
-    :reasoning-name="reasoningName"
-    :loading="_loading"
-  >
+  <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
     <template v-if="showFinalAnswer">
       <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
       <BusinessNotice
@@ -732,7 +733,7 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask, l
       />
       <MdComponent v-else-if="message.record?.analysis" :message="message.record.analysis" />
       <ChartBlock
-        v-if="!message.record?.error"
+        v-if="showTerminalResult && !message.record?.error"
         style="margin-top: 6px"
         :message="message"
         :record-id="recordId"
@@ -741,10 +742,16 @@ defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask, l
       <slot></slot>
     </template>
     <template #tool>
-      <slot v-if="showFinalAnswer" name="tool"></slot>
+      <slot
+        v-if="showFinalAnswer && (!message.record?.analysis_notice || showTerminalResult)"
+        name="tool"
+      ></slot>
     </template>
     <template #footer>
-      <slot v-if="showFinalAnswer" name="footer"></slot>
+      <slot
+        v-if="showFinalAnswer && (!message.record?.analysis_notice || showTerminalResult)"
+        name="footer"
+      ></slot>
     </template>
   </BaseAnswer>
 </template>

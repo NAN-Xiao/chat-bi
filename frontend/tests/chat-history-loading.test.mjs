@@ -19,14 +19,18 @@ function loadTsModule(relativePath) {
     },
   }).outputText
   const module = { exports: {} }
-  vm.runInNewContext(output, {
-    exports: module.exports,
-    module,
-    require,
-    URLSearchParams,
-    setTimeout,
-    clearTimeout,
-  }, { filename: filePath })
+  vm.runInNewContext(
+    output,
+    {
+      exports: module.exports,
+      module,
+      require,
+      URLSearchParams,
+      setTimeout,
+      clearTimeout,
+    },
+    { filename: filePath }
+  )
   return module.exports
 }
 
@@ -34,6 +38,129 @@ async function flushMicrotasks(times = 4) {
   for (let i = 0; i < times; i += 1) {
     await Promise.resolve()
   }
+}
+
+function testFinalAnswerVisibilityRequiresTerminalRefresh() {
+  const { partitionTerminalRecordUpdate, shouldShowFinalAnswer, shouldShowTerminalResult } =
+    loadTsModule('src/views/chat/answer/answerVisibility.ts')
+
+  assert.equal(typeof partitionTerminalRecordUpdate, 'function')
+  assert.equal(typeof shouldShowTerminalResult, 'function')
+
+  assert.equal(
+    shouldShowFinalAnswer({
+      record: { task_id: 'running', chart: '{"type":"column"}' },
+      isTyping: false,
+      finalAnswerReady: false,
+    }),
+    false
+  )
+  assert.equal(
+    shouldShowFinalAnswer({
+      record: { finish: true, chart: '{"type":"column"}' },
+      isTyping: false,
+      finalAnswerReady: false,
+    }),
+    false
+  )
+  assert.equal(
+    shouldShowFinalAnswer({
+      record: { finish: true, chart: '{"type":"column"}' },
+      isTyping: false,
+      finalAnswerReady: true,
+    }),
+    true
+  )
+  assert.equal(
+    shouldShowFinalAnswer({
+      record: { error: 'failed' },
+      isTyping: true,
+      finalAnswerReady: false,
+    }),
+    true
+  )
+  assert.equal(
+    shouldShowFinalAnswer({
+      record: { stopped: true },
+      isTyping: false,
+      finalAnswerReady: false,
+    }),
+    true
+  )
+  assert.equal(
+    shouldShowFinalAnswer({
+      record: {
+        analysis: '当前数据源缺少所需埋点数据。',
+        analysis_notice: { reason: 'missing_event' },
+      },
+      isTyping: true,
+      finalAnswerReady: false,
+    }),
+    true
+  )
+  assert.equal(
+    shouldShowTerminalResult({
+      record: {
+        analysis_notice: { reason: 'missing_event' },
+        chart: '{"type":"column"}',
+      },
+      isTyping: true,
+      finalAnswerReady: false,
+    }),
+    false
+  )
+  assert.equal(
+    shouldShowTerminalResult({
+      record: {
+        finish: true,
+        analysis_notice: { reason: 'missing_event' },
+        chart: '{"type":"column"}',
+      },
+      isTyping: false,
+      finalAnswerReady: true,
+    }),
+    true
+  )
+
+  const partitioned = partitionTerminalRecordUpdate(
+    {
+      id: 94,
+      task_id: undefined,
+      finish: true,
+      finish_time: '2026-07-31T12:00:00Z',
+      chart: '{"type":"column"}',
+      analysis: '已生成其余可支持的结果。',
+      analysis_notice: { reason: 'missing_event' },
+      total_tokens: 100,
+    },
+    'task-still-active'
+  )
+  assert.equal(Object.hasOwn(partitioned.content, 'finish'), false)
+  assert.equal(Object.hasOwn(partitioned.content, 'finish_time'), false)
+  assert.equal(partitioned.content.task_id, 'task-still-active')
+  assert.equal(partitioned.content.chart, '{"type":"column"}')
+  assert.deepEqual(
+    { ...partitioned.afterData },
+    {
+      analysis: '已生成其余可支持的结果。',
+      analysis_notice: { reason: 'missing_event' },
+    }
+  )
+  assert.equal(partitioned.terminal.finish, true)
+  assert.equal(partitioned.terminal.finish_time, '2026-07-31T12:00:00Z')
+
+  const { applyChartDataResponseToRecord } = loadTsModule(
+    'src/views/chat/answer/chartDataResponse.ts'
+  )
+  const partialResultRecord = { ...partitioned.content }
+  applyChartDataResponseToRecord(partialResultRecord, {
+    status: 'success',
+    fields: ['日期', 'DAU'],
+    data: [{ 日期: '2026-07-30', DAU: 100 }],
+  })
+  assert.equal(partialResultRecord.analysis_notice, undefined)
+  Object.assign(partialResultRecord, partitioned.afterData)
+  assert.deepEqual(partialResultRecord.analysis_notice, { reason: 'missing_event' })
 }
 
 async function testTerminalRecordsDoNotRestoreTasks() {
@@ -98,11 +225,20 @@ async function testTerminalRecordsDoNotRestoreTasks() {
   const previousRecord = { id: 8, finish: true, question: '上一个会话的问题' }
   const nextRunningRecord = { id: 9, question: '切换后的执行中问题' }
   assert.equal(shouldRestoreWhenAnswerRecordChanges(previousRecord, nextRunningRecord, true), true)
-  assert.equal(shouldRestoreWhenAnswerRecordChanges(nextRunningRecord, nextRunningRecord, true), false)
-  assert.equal(shouldRestoreWhenAnswerRecordChanges(previousRecord, { id: 10, finish: true }, true), false)
+  assert.equal(
+    shouldRestoreWhenAnswerRecordChanges(nextRunningRecord, nextRunningRecord, true),
+    false
+  )
+  assert.equal(
+    shouldRestoreWhenAnswerRecordChanges(previousRecord, { id: 10, finish: true }, true),
+    false
+  )
 
   assert.equal(shouldMarkChatTypingOnRestore([]), false)
-  assert.equal(shouldMarkChatTypingOnRestore([{ id: 11, question: '历史已完成', finish: true }]), false)
+  assert.equal(
+    shouldMarkChatTypingOnRestore([{ id: 11, question: '历史已完成', finish: true }]),
+    false
+  )
   assert.equal(
     shouldMarkChatTypingOnRestore([
       { id: 12, question: '旧问题', finish: true },
@@ -432,6 +568,180 @@ async function testSmartQaTaskStoreDrainsUnreadEventsBeforeTerminalCallbacks() {
   assert.deepEqual(finished, ['finish'])
 }
 
+async function testSmartQaTaskStoreWaitsForTerminalRecordRefresh() {
+  const { createSmartQaTaskStore } = loadTsModule('src/views/chat/answer/smartQaTaskStore.ts')
+  let polls = 0
+  let refreshes = 0
+  const callbackOrder = []
+  const sleepDurations = []
+  const store = createSmartQaTaskStore({
+    sleep: async (duration) => sleepDurations.push(duration),
+    getTaskEvents: async () => {
+      polls += 1
+      return {
+        status: 'succeeded',
+        events: polls === 1 ? ['data:{"type":"finish"}\n\n'] : [],
+        next_offset: 1,
+        total: 1,
+      }
+    },
+  })
+  const record = { id: 91, chat_id: 81, task_id: 'task-terminal-refresh' }
+  const entry = store.ensureTask({
+    tenantId: 'tenant-a',
+    chatId: 81,
+    record,
+    callbacks: {
+      refreshRecord: async () => {
+        refreshes += 1
+        callbackOrder.push('refresh')
+        return refreshes >= 2
+      },
+      loadRecordData: async () => callbackOrder.push('load'),
+      onFinish: async () => callbackOrder.push('finish'),
+    },
+  })
+
+  await entry.promise
+
+  assert.equal(polls, 2)
+  assert.equal(refreshes, 2)
+  assert.deepEqual(sleepDurations, [1000])
+  assert.deepEqual(callbackOrder, ['refresh', 'refresh', 'load', 'finish'])
+}
+
+async function testSmartQaTaskStoreBacksOffWhileTerminalRecordIsUnavailable() {
+  const { createSmartQaTaskStore } = loadTsModule('src/views/chat/answer/smartQaTaskStore.ts')
+  let refreshes = 0
+  const sleepDurations = []
+  const store = createSmartQaTaskStore({
+    pollIntervalMs: 100,
+    terminalRefreshMaxDelayMs: 250,
+    sleep: async (duration) => sleepDurations.push(duration),
+    getTaskEvents: async () => ({
+      status: 'succeeded',
+      events: [],
+      next_offset: 0,
+      total: 0,
+    }),
+  })
+  const entry = store.ensureTask({
+    tenantId: 'tenant-a',
+    chatId: 81,
+    record: { id: 92, chat_id: 81, task_id: 'task-terminal-backoff' },
+    callbacks: {
+      refreshRecord: async () => {
+        refreshes += 1
+        return refreshes >= 4
+      },
+    },
+  })
+
+  await entry.promise
+
+  assert.deepEqual(sleepDurations, [100, 200, 250])
+}
+
+async function testSmartQaTaskStoreReportsTerminalCallbackErrors() {
+  const { createSmartQaTaskStore } = loadTsModule('src/views/chat/answer/smartQaTaskStore.ts')
+  const errors = []
+  const store = createSmartQaTaskStore({
+    getTaskEvents: async () => ({
+      status: 'succeeded',
+      events: [],
+      next_offset: 0,
+      total: 0,
+    }),
+  })
+  const entry = store.ensureTask({
+    tenantId: 'tenant-a',
+    chatId: 81,
+    record: { id: 93, chat_id: 81, task_id: 'task-terminal-load-error' },
+    callbacks: {
+      refreshRecord: async () => true,
+      loadRecordData: async () => {
+        throw new Error('load failed')
+      },
+      onError: async ({ error }) => errors.push(error?.message),
+    },
+  })
+  let rejected
+  try {
+    await entry.promise
+  } catch (error) {
+    rejected = error
+  }
+
+  assert.equal(rejected, undefined)
+  assert.equal(entry.status, 'failed')
+  assert.deepEqual(errors, ['load failed'])
+}
+
+async function testSmartQaTaskStoreRemovesEntriesAfterEventRequestFailure() {
+  const { buildSmartQaTaskKey, createSmartQaTaskStore } = loadTsModule(
+    'src/views/chat/answer/smartQaTaskStore.ts'
+  )
+  const errors = []
+  const store = createSmartQaTaskStore({
+    getTaskEvents: async () => {
+      throw new Error('events unavailable')
+    },
+  })
+  const record = { id: 95, chat_id: 81, task_id: 'task-event-error' }
+  const key = buildSmartQaTaskKey({ tenantId: 'tenant-a', chatId: 81, recordId: 95 })
+  const entry = store.ensureTask({
+    tenantId: 'tenant-a',
+    chatId: 81,
+    record,
+    callbacks: {
+      onError: async ({ error }) => errors.push(error?.message),
+    },
+  })
+
+  await entry.promise
+
+  assert.deepEqual(errors, ['events unavailable'])
+  assert.equal(store.getTask(key), undefined)
+}
+
+async function testSmartQaTaskStoreCleansUpWhenTerminalErrorHandlerThrows() {
+  const { buildSmartQaTaskKey, createSmartQaTaskStore } = loadTsModule(
+    'src/views/chat/answer/smartQaTaskStore.ts'
+  )
+  const store = createSmartQaTaskStore({
+    getTaskEvents: async () => ({
+      status: 'succeeded',
+      events: [],
+      next_offset: 0,
+      total: 0,
+    }),
+  })
+  const key = buildSmartQaTaskKey({ tenantId: 'tenant-a', chatId: 81, recordId: 96 })
+  const entry = store.ensureTask({
+    tenantId: 'tenant-a',
+    chatId: 81,
+    record: { id: 96, chat_id: 81, task_id: 'task-terminal-error-handler' },
+    callbacks: {
+      refreshRecord: async () => true,
+      loadRecordData: async () => {
+        throw new Error('load failed')
+      },
+      onError: async () => {
+        throw new Error('error handler failed')
+      },
+    },
+  })
+  let rejected
+  try {
+    await entry.promise
+  } catch (error) {
+    rejected = error
+  }
+
+  assert.equal(rejected?.message, 'error handler failed')
+  assert.equal(store.getTask(key), undefined)
+}
+
 async function testSmartQaTaskStoreDetachesCallbacksButKeepsPolling() {
   const { buildSmartQaTaskKey, createSmartQaTaskStore } = loadTsModule(
     'src/views/chat/answer/smartQaTaskStore.ts'
@@ -575,9 +885,7 @@ function testChatTaskContextKeepsOldTaskOutOfCurrentChat() {
 }
 
 function testChatMessageRenderKeySurvivesActiveRecordRefresh() {
-  const { buildChatMessageRenderKey } = loadTsModule(
-    'src/views/chat/answer/chatTaskContext.ts'
-  )
+  const { buildChatMessageRenderKey } = loadTsModule('src/views/chat/answer/chatTaskContext.ts')
   const record = { create_time: new Date('2026-07-21T00:42:52.497Z') }
   const initialKey = buildChatMessageRenderKey(257, 'assistant', record, 1)
 
@@ -600,12 +908,48 @@ function testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh() {
   const refreshRecordStart = chartAnswerSource.indexOf('async function refreshCurrentRecord')
   const handlePayloadSource = chartAnswerSource.slice(handlePayloadStart, refreshRecordStart)
   const finishCaseSource = handlePayloadSource.match(/case 'finish':[\s\S]*?break/)?.[0]
+  const attachTaskStart = chartAnswerSource.indexOf('function attachGlobalTask')
+  const attachTaskEnd = chartAnswerSource.indexOf('function stop()', attachTaskStart)
+  const attachTaskSource = chartAnswerSource.slice(attachTaskStart, attachTaskEnd)
+  const refreshCallbackSource = attachTaskSource.match(
+    /refreshRecord:\s*async[\s\S]*?(?=\n\s*loadRecordData:)/
+  )?.[0]
+  const finishCallbackSource = attachTaskSource.match(
+    /onFinish:\s*async[\s\S]*?(?=\n\s*onError:)/
+  )?.[0]
 
   assert.ok(finishCaseSource, 'ChartAnswer 应包含流式 finish 事件处理')
   assert.doesNotMatch(
     finishCaseSource,
     /emitFinishOnce/,
     '流式 finish 只能结束答案状态，不能提前启动完成后动作'
+  )
+  assert.equal(
+    (attachTaskSource.match(/fetchCurrentRecord\(/g) || []).length,
+    1,
+    '任务附加后不得通过并行记录刷新绕过队列 succeeded 和事件排空门禁'
+  )
+  assert.ok(refreshCallbackSource, '任务存储应配置最终记录刷新回调')
+  assert.doesNotMatch(
+    refreshCallbackSource,
+    /markFinalAnswerReady|clearCurrentTask/,
+    '记录刷新回调只确认持久化终态，不得提前解锁或清除任务'
+  )
+  assert.ok(finishCallbackSource, '任务存储应配置最终完成回调')
+  assert.match(
+    finishCallbackSource,
+    /markFinalAnswerReady\(\)[\s\S]*clearCurrentTask\(currentRecord\)[\s\S]*emitFinishOnce/,
+    '最终数据加载完成后才可解锁答案、清除任务并通知父组件'
+  )
+  assert.match(
+    chartAnswerSource,
+    /v-if="showTerminalResult && !message\.record\?\.error"/,
+    '业务提示运行中不得展示阶段性图表，完成后应恢复合法图表'
+  )
+  assert.doesNotMatch(
+    finishCaseSource,
+    /finish:\s*true|markFinalAnswerReady|clearCurrentTask/,
+    '流式 finish 不得在队列成功和持久化记录刷新前解锁最终答案'
   )
   assert.match(
     chartAnswerSource,
@@ -621,6 +965,11 @@ function testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh() {
     chartAnswerSource,
     /onFinish:\s*async\s*\(\{ record }\)\s*=>\s*\{[\s\S]*?emitFinishOnce\(Number\(record\.id \|\| currentRecord\.id\)\)/,
     '任务终态刷新完成后仍应统一通知父组件启动完成后动作'
+  )
+  assert.match(
+    chartAnswerSource,
+    /if \(latestRecord\?\.finish \|\| latestRecord\?\.finish_time\) \{[\s\S]*?await loadChartData[\s\S]*?await markFinalAnswerReady[\s\S]*?emits\('finish'/,
+    '无活动任务恢复也必须先加载最终数据，再解锁答案并通知父组件'
   )
 }
 
@@ -647,6 +996,7 @@ function testSendMessageKeepsOriginalChatContextAcrossAsyncTaskStart() {
   )
 }
 
+testFinalAnswerVisibilityRequiresTerminalRefresh()
 await testTerminalRecordsDoNotRestoreTasks()
 await testSchedulerHonorsConcurrencyAndPriority()
 await testSchedulerDedupesCancelsAndSkipsStaleApply()
@@ -655,6 +1005,11 @@ await testSmartQaTaskStorePollsIndependentlyAndDedupes()
 await testSmartQaTaskStoreSkipsTerminalRecords()
 await testSmartQaTaskStoreRefreshesCallbacksWithoutDuplicatePolling()
 await testSmartQaTaskStoreDrainsUnreadEventsBeforeTerminalCallbacks()
+await testSmartQaTaskStoreWaitsForTerminalRecordRefresh()
+await testSmartQaTaskStoreBacksOffWhileTerminalRecordIsUnavailable()
+await testSmartQaTaskStoreReportsTerminalCallbackErrors()
+await testSmartQaTaskStoreRemovesEntriesAfterEventRequestFailure()
+await testSmartQaTaskStoreCleansUpWhenTerminalErrorHandlerThrows()
 await testSmartQaTaskStoreDetachesCallbacksButKeepsPolling()
 await testSmartQaTaskStoreReplaysBufferedEventsWhenCallbacksReattach()
 testChatTaskContextKeepsOldTaskOutOfCurrentChat()
