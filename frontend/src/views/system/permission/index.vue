@@ -12,7 +12,14 @@ import Card from './Card.vue'
 import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import SelectPermission from './SelectPermission.vue'
 import AuthTree from './auth-tree/RowAuth.vue'
-import { getList, savePermissions, delPermissions } from '@/api/permissions'
+import {
+  getList,
+  savePermissions,
+  delPermissions,
+  getPermissionDatasources,
+  getPermissionDatasourceTables,
+  type PermissionType,
+} from '@/api/permissions'
 import { datasourceApi } from '@/api/datasource'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
@@ -54,7 +61,7 @@ const defaultForm = {
   name: '',
   id: '',
   table_id: '',
-  type: 'row',
+  type: 'row' as PermissionType,
   ds_id: '',
   table_name: '',
   ds_name: '',
@@ -79,8 +86,8 @@ const canDeleteRuleGroup = (row: any) => row?.can_delete !== false
 const readonlyRuleMessage = () => {
   ElMessage.warning(t('permission.readonly_rule_group'))
 }
-const loadDatasourceOptions = () =>
-  isGlobalPlatformAdmin.value ? datasourceApi.list() : datasourceApi.accessibleList()
+const idsEqual = (left: any, right: any) => String(left ?? '') === String(right ?? '')
+const loadDatasourceOptions = () => getPermissionDatasources(columnForm.type)
 const permissionDataSourceIds = (row: any) => {
   const ids = (row.permissions || [])
     .map((item: any) => Number(item.ds_id))
@@ -221,38 +228,37 @@ const getDsList = (row: any) => {
   activeDs.value = null
   activeTable.value = null
   loadDatasourceOptions()
-    .then((res: any) => {
+    .then(async (res: any) => {
       dsListOptions.value = res || []
       if (!row && isWorkspacePermissionContext.value) {
-        const datasource = dsListOptions.value[0]
-        if (!datasource) {
+        const defaultDatasource = dsListOptions.value[0]
+        if (!defaultDatasource) {
           ElMessage.warning(t('permission.no_data_source_bound'))
           dialogFormVisible.value = false
           return
         }
-        activeDs.value = datasource
-        handleInitDsIdChange(datasource)
+        activeDs.value = defaultDatasource
+        await handleInitDsIdChange(defaultDatasource)
         return
       }
       if (!row?.ds_id) return
-      dsListOptions.value.forEach((ele) => {
-        if (+ele.id === +row.ds_id) {
-          activeDs.value = ele
-        }
-      })
+      const datasource = dsListOptions.value.find((item) => idsEqual(item.id, row.ds_id))
+      if (!datasource) {
+        ElMessage.error(t('permission.datasource_not_available'))
+        dialogFormVisible.value = false
+        return
+      }
+      activeDs.value = datasource
+      await handleDsIdChange(datasource)
+      if (row.type !== 'table') {
+        handleEditeTable(row.table_id)
+      }
     })
     .finally(() => {
       if (!row && columnForm.type === 'row' && dialogFormVisible.value) {
         authTreeRef.value?.init(columnForm.expression_tree)
       }
     })
-
-  if (row) {
-    handleDsIdChange({ id: row.ds_id, name: row.ds_name })
-    if (row.type !== 'table') {
-      handleEditeTable(row.table_id)
-    }
-  }
 }
 const handleRowPermission = (row: any) => {
   columnForm.type = 'row'
@@ -333,7 +339,7 @@ const handleInitDsIdChange = (val: any) => {
     clearTimeout(time)
     columnFormRef.value?.clearValidate('table_id')
   }, 0)
-  datasourceApi.tableList(val.id).then((res: any) => {
+  return getPermissionDatasourceTables(val.id, columnForm.type).then((res: any) => {
     tableListOptions.value = res || []
     if (authTreeRef.value) {
       authTreeRef.value.init({})
@@ -344,11 +350,11 @@ const handleInitDsIdChange = (val: any) => {
 const handleDsIdChange = (val: any) => {
   columnForm.ds_id = val.id
   columnForm.ds_name = val.name
-  datasourceApi.tableList(val.id).then((res: any) => {
+  return getPermissionDatasourceTables(val.id, columnForm.type).then((res: any) => {
     tableListOptions.value = res || []
     if (!columnForm.table_id) return
     tableListOptions.value.forEach((ele) => {
-      if (+ele.id === +columnForm.table_id) {
+      if (idsEqual(ele.id, columnForm.table_id)) {
         activeTable.value = ele
       }
     })
@@ -942,7 +948,7 @@ const columnRules = {
         </el-form-item>
         <el-form-item prop="table_id" :label="t('permission.data_table')">
           <el-select
-            v-if="isGlobalPlatformAdmin"
+            v-if="isGlobalPlatformAdmin || (columnForm.type === 'table' && dsListOptions.length > 1)"
             v-model="activeDs"
             filterable
             style="width: 416px"
@@ -972,8 +978,14 @@ const columnRules = {
             v-model="activeTable"
             filterable
             :style="{
-              width: isGlobalPlatformAdmin ? '416px' : '100%',
-              marginLeft: isGlobalPlatformAdmin ? 'auto' : '0',
+              width:
+                isGlobalPlatformAdmin || (columnForm.type === 'table' && dsListOptions.length > 1)
+                  ? '416px'
+                  : '100%',
+              marginLeft:
+                isGlobalPlatformAdmin || (columnForm.type === 'table' && dsListOptions.length > 1)
+                  ? 'auto'
+                  : '0',
             }"
             :disabled="!columnForm.ds_id"
             value-key="id"
