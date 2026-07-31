@@ -23,7 +23,34 @@ const compiledPath = join(tempDir, 'dashboardOptions.mjs')
 writeFileSync(compiledPath, compiled.outputText, 'utf8')
 
 try {
-  const { flattenSelectableDashboardOptions } = await import(pathToFileURL(compiledPath).href)
+  const {
+    flattenSelectableDashboardOptions,
+    resolveDashboardMoveTargetDatasource,
+  } = await import(pathToFileURL(compiledPath).href)
+
+  assert.equal(
+    resolveDashboardMoveTargetDatasource({ datasource: 3 }, { datasource: 7 }),
+    3,
+    'ROI 图表移动目标必须使用看板归属数据源'
+  )
+  assert.equal(
+    resolveDashboardMoveTargetDatasource({ datasource: '3' }, { datasource: '3' }),
+    '3',
+    '普通图表移动目标应保持看板归属数据源'
+  )
+  assert.equal(
+    resolveDashboardMoveTargetDatasource(
+      { datasource: 'legacy-inferred-datasource' },
+      { datasource: 7 }
+    ),
+    'legacy-inferred-datasource',
+    '后端推导出的历史看板归属数据源应直接使用'
+  )
+  assert.equal(
+    resolveDashboardMoveTargetDatasource({ datasource: null }, { datasource: 7 }),
+    undefined,
+    '看板缺少归属数据源时不得回退到图表执行数据源'
+  )
 
   const options = flattenSelectableDashboardOptions([
     {

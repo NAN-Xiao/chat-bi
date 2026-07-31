@@ -6,6 +6,16 @@ export type SelectableDashboardOption = {
   level: number
 }
 
+export function resolveDashboardMoveTargetDatasource(
+  dashboardInfo?: Pick<SQTreeNode, 'datasource'> | null,
+  _viewInfo?: Pick<SQTreeNode, 'datasource'> | null
+): string | number | undefined {
+  const datasource = dashboardInfo?.datasource
+  return datasource === null || datasource === undefined || datasource === ''
+    ? undefined
+    : datasource
+}
+
 export function flattenSelectableDashboardOptions(
   nodes: SQTreeNode[] = [],
   level = 0,

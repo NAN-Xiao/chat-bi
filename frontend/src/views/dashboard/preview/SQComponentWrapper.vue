@@ -48,6 +48,7 @@ import {
   canShowDashboardDateFilter,
   getOrCreateDashboardDateFilterState,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import { resolveDashboardMoveTargetDatasource } from '@/views/dashboard/utils/dashboardOptions.ts'
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
@@ -362,8 +363,10 @@ async function updateDashboardCanvas(
 }
 
 async function loadMoveTargets() {
-  const datasourceId =
-    currentViewInfo.value?.datasource || props.dashboardInfo?.datasource || undefined
+  const datasourceId = resolveDashboardMoveTargetDatasource(
+    props.dashboardInfo,
+    currentViewInfo.value
+  )
   if (!datasourceId) {
     targetDashboardList.value = []
     return
