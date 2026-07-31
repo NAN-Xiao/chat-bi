@@ -58,3 +58,4 @@ def test_mysql_prompt_requires_backticks_for_chinese_output_aliases() -> None:
     assert "GROUP BY `c`.`register_date`, `c`.`region`" in rules
     assert "上游 CTE 或子查询已经输出中文列" in rules
     assert "GROUP BY `c`.`注册日期`, `c`.`地区`" in rules
+    assert "COUNT(*) AS `用户数`" not in rules

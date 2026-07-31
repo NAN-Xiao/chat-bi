@@ -29,7 +29,7 @@ template:
       同一查询块的 GROUP BY 应使用原始字段或完整表达式，不得把当前层刚定义的 SELECT 别名伪装成来源表字段。
       <example-good>SELECT `c`.`register_date` AS `注册日期`, `c`.`region` AS `地区`, COUNT(`c`.`user_id`) AS `用户数` FROM `cohort` `c` GROUP BY `c`.`register_date`, `c`.`region` ORDER BY `注册日期`, `地区`</example-good>
       只有上游 CTE 或子查询已经输出中文列时，外层才可使用限定中文字段，例如 GROUP BY `c`.`注册日期`, `c`.`地区`。
-      <example-good>WITH `cohort` AS (SELECT `u`.`register_date` AS `注册日期`, `u`.`region` AS `地区` FROM `users` `u`) SELECT `c`.`注册日期`, `c`.`地区`, COUNT(*) AS `用户数` FROM `cohort` `c` GROUP BY `c`.`注册日期`, `c`.`地区` ORDER BY `注册日期`, `地区`</example-good>
+      <example-good>WITH `cohort` AS (SELECT `u`.`user_id` AS `用户ID`, `u`.`register_date` AS `注册日期`, `u`.`region` AS `地区` FROM `users` `u`) SELECT `c`.`注册日期`, `c`.`地区`, COUNT(`c`.`用户ID`) AS `用户数` FROM `cohort` `c` GROUP BY `c`.`注册日期`, `c`.`地区` ORDER BY `注册日期`, `地区`</example-good>
     </rule>
     <rule>函数字段必须加别名</rule>
     <rule>百分比显示为：CONCAT(ROUND(x*100,2),'%')</rule>
