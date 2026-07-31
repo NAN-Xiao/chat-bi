@@ -85,3 +85,52 @@ def test_followup_migration_refreshes_existing_platform_skill() -> None:
     assert "embedding_signature = NULL" in statement
     assert params["marker"] == original.SKILL_MARKER
     assert params["prompt"] == original.SKILL_PROMPT.strip()
+
+
+def test_alias_quoting_followup_migration_contains_dialect_and_scope_rules() -> None:
+    module_path = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "152_platform_sql_alias_quoting_data_skill.py"
+    )
+    assert module_path.exists(), "缺少平台 SQL 中文别名引用刷新迁移"
+    migration = _load_migration("152_platform_sql_alias_quoting_data_skill.py")
+
+    assert migration.down_revision == "151platformdefaultdate"
+    assert "platform-foundation-skill:sql-alias-quoting:v1" in migration.ALIAS_SECTION
+    assert "MySQL、AnalyticDB、Doris 和 StarRocks" in migration.ALIAS_SECTION
+    assert "AS `注册日期`" in migration.ALIAS_SECTION
+    assert "单引号表示字符串值" in migration.ALIAS_SECTION
+    assert "ORDER BY `注册日期`, `地区`" in migration.ALIAS_SECTION
+    assert "同一查询块" in migration.ALIAS_SECTION
+    assert "上游 CTE 或子查询" in migration.ALIAS_SECTION
+
+
+def test_alias_quoting_followup_migration_appends_section_idempotently() -> None:
+    migration = _load_migration("152_platform_sql_alias_quoting_data_skill.py")
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    migration.op.get_bind = lambda: bind
+
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert "position(:alias_marker" in statement
+    assert "embedding = NULL" in statement
+    assert params["alias_marker"] == migration.ALIAS_SECTION_MARKER
+    assert params["alias_section"] == migration.ALIAS_SECTION
+    assert params["skill_marker"] == migration.SKILL_MARKER
