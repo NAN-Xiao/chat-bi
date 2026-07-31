@@ -134,7 +134,7 @@ DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "flam 实时数据时区与日期口径",
         "description": (
-            "flam / first_zombie 今天实时付费趋势、按小时付费、业务时区、"
+            "flam / first_zombie 今天实时付费趋势、按小时付费、实时日期、"
             "dt 分区与实时看板 SQL 生成规则。"
         ),
         "prompt": """<!-- dashboard-refresh-policy:{"auto_refresh":true,"snapshot_max_age_hours":3} -->
@@ -144,11 +144,6 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## 适用范围
 - 仅适用于当前 flam 数据源 `first_zombie`，datasource_id=3。
 - 适用于 `event`、`user` 两张表中的日期过滤、实时看板、实时付费、在线人数、小时趋势等问题。
-
-## 业务时区
-- 业务时区为 UTC+8（Asia/Shanghai 口径）。
-- MySQL 会话的 `CURDATE()`、`NOW()`、`UTC_DATE()`、`UTC_TIMESTAMP()` 可能按 UTC 返回，不能直接代表 flam 业务日。
-- 生成 SQL 时如果用户说“今天”“实时”“当前小时”“截至当前整点”，必须先转换到 UTC+8 业务时间。
 
 ## 字段口径
 - `time` 是毫秒时间戳。业务时间表达式使用：
@@ -162,20 +157,20 @@ DATA_SKILLS: list[dict[str, str]] = [
   `DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d %H:00:00')`
 
 ## 实时看板 SQL 规则
-- 实时小时维度应基于 UTC+8 业务时间取小时：
+- 实时小时维度应基于事件业务时间取小时：
   `DATE_FORMAT(DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%Y-%m-%d %H:00:00'), '%H:00')`
 - flam ADS/MySQL 返回中文 SELECT 别名时可能变成 `??`，持久看板 SQL 字段必须使用 ASCII 别名：
   `time_label`、`hour_label`、`online_users`、`pay_count`、`cumulative_pay_count`；图表配置用中文 `name` 展示、英文 `value` 绑定字段。
 - ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板用 `tools/repair_flam_first_zombie_realtime_dashboard.py` 先探测最近可用业务日，再把 SQL 固化为常量 `dt`/业务日期窗口。
-- 实时付费优先展示 UTC+8 业务今天；如果今天没有付费事件，回退到最近有付费事件的业务日。回退是为了展示“最近可用实时趋势”，不得虚构今天数据。
+- 实时付费优先展示业务今天；如果今天没有付费事件，回退到最近有付费事件的业务日。回退是为了展示“最近可用实时趋势”，不得虚构今天数据。
 - 实时真实交易次数使用 `event='ServerPayLog'` 的订单行；支付流程事件只能作为独立流程事件量，不能命名为真实充值次数。
 - 累计真实交易次数应先按业务小时聚合，再对小时做累计求和。
 - 在线人数的业务字段是 `CCU.personal.ed_ccu`。如果当前数据行的 `personal` 没有 `ed_ccu`，应说明数据侧缺少当前在线人数值，不要把 CCU 事件条数或空 `uid` 去重数当成真实在线人数。
 
 ## 禁止事项
 - 不要在 flam 实时问题里直接用 `CURDATE()` / `NOW()` 作为业务日口径。
-- 不要硬猜服务器时区；以本 Data Skill 的 UTC+8 业务时区为准。
-- 不要把该时区规则套用到其他数据源。
+- 实时查询应遵循本 Data Skill 的日期规则。
+- 不要把该日期规则套用到其他数据源。
 
 ## 实时看板持久 SQL
 以下 SQL 是本 Data Skill 对 `实时看板` 已保存组件的模板配置；修复脚本会基于当前数据把付费/在线日期固化后写入看板，避免打开看板时动态探测超时。
@@ -314,7 +309,7 @@ LIMIT 24
 - DAU/活跃趋势在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用当前日前一完整分区作为结束边界，避免额外扫描事件视图获取最大分区。
 - 指标需要成熟 cohort 或最新快照语义时，使用当前日前一完整分区或排除对应成熟窗口，例如新增留存、7 日 LTV、当前等级分布；这类问题不能把未成熟 cohort 当 0。
 - 需要计算 D1/D3/D7 留存或 7 日 LTV 时，只展示成熟 cohort：D1 默认排除最近 1 天，D7 默认排除最近 7 天。
-- 实时看板继续遵循 `flam 实时数据时区与日期口径` Data Skill 的 UTC+8 规则；不要把实时规则套到历史离线看板。
+- 实时看板继续遵循 `flam 实时数据时区与日期口径` Data Skill 的实时日期规则；不要把实时规则套到历史离线看板。
 
 ## 禁止事项
 - 不要为了近月活跃趋势额外构造 `MAX(event.dt)` / `SELECT DISTINCT dt` 分区 CTE；这会显著拖慢 ADS 查询。
@@ -402,7 +397,7 @@ LIMIT 24
 - 只有结果需要按渠道/系统等维度拆分时才解析交易事件行的 `adinfo` / `deviceinfo` JSON；国家拆分统一使用活跃事件和 `ServerPayLog` 事件各自行的 `userinfo.country`，不使用 `currentinfo.country`。
 - 日充值次数使用 `ServerPayLog.personal.orderId` 去重；日充值用户数使用同日 `ServerPayLog.uid` 去重。
 - 日新增充值用户数使用 `user.pay.firstpaytime` 转换的首付业务日；不得使用分析窗口内最小付费事件日期。
-- `firstpaytime` 为毫秒时间戳，历史首付日使用 `DATE_FORMAT(FROM_UNIXTIME(firstpaytime / 1000), '%Y%m%d')`；抽样与 `ServerPayLog.dt` 对齐，不额外套用实时 UTC+8 转换。
+- `firstpaytime` 为毫秒时间戳，历史首付日使用 `DATE_FORMAT(FROM_UNIXTIME(firstpaytime / 1000), '%Y%m%d')`；抽样与 `ServerPayLog.dt` 对齐。
 - 近 7 日累充排名直接汇总最近 7 天 `ServerPayLog.personal.money`；不能把支付流程事件或窗口内 `paytotal` 差分当交易金额。
 - 支付流程事件可以按 `event` 名展示流程量，但不得命名为充值次数、真实订单数、付费人数、ARPU 或 ARPPU。
 - ARPU 分母是同日 `UserActive` 活跃用户数，ARPPU 分母是同日付费用户数，二者分母不同。
@@ -730,7 +725,7 @@ LIMIT 24
 - 招募情况使用 `event='HeroRecruit'`，招募池 ID 取 `personal.ed_cardType`，招募方式取 `personal.ed_recruitNumType`；`ONE` 映射为“单抽”，`TEN` 映射为“十连抽”，缺失或其它值归为“未知”。
 - 加速类型当前没有已验证字段映射；组件必须显示“待补充字段映射”，不得从 `ext.ed_detailReason`、`ext.ed_route` 或其他相邻字段猜测类型。
 - 主城升级漏斗使用最新快照主城等级阈值，而不是历史升级事件次数。
-- 三个“当日升级次数” `metric` 使用 UTC+8 当前业务日的前一日作为最新完整业务日，并据此计算前一日和上周同日；不得返回 `date_filter` 或看板日期 token。示例中的 `20260730` 仅表示已由调用方确定的 UTC+8 当前业务日，实际生成时必须替换为本次请求确定的日期字面量。
+- 三个“当日升级次数” `metric` 使用当前业务日的前一日作为最新完整业务日，并据此计算前一日和上周同日；不得返回 `date_filter` 或看板日期 token。示例中的 `20260730` 仅表示已由调用方确定的当前业务日，实际生成时必须替换为本次请求确定的日期字面量。
 
 ## 禁止事项
 - 不要把最近 30 天所有用户快照合并后统计当前等级分布。

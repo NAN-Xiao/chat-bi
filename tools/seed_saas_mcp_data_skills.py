@@ -73,7 +73,7 @@ DATA_SKILLS: list[dict[str, str]] = [
 
 ## 工具说明
 - MCP 工具：`alerts.filter_options`
-- 时间口径：工具返回的日期/时间过滤项遵循 MCP 服务声明，一般为 Asia/Shanghai。
+- 时间口径：工具返回的日期/时间过滤项遵循 MCP 服务声明。
 - 该 Skill 不提供业务指标口径；不能替代工作空间 Data Skill、Schema 或权限配置。
 """,
     },

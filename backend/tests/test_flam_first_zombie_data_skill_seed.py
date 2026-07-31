@@ -99,7 +99,8 @@ def test_metric_components_use_fixed_example_date_without_dashboard_tokens() -> 
         for skill in seed.DATA_SKILLS
         if skill["name"] == "flam 主城建设与成长口径"
     )
-    assert "`20260730` 仅表示已由调用方确定的 UTC+8 当前业务日" in prompt
+    assert "`20260730` 仅表示已由调用方确定的当前业务日" in prompt
+    assert "UTC+8 当前业务日" not in prompt
 
 
 def test_unknown_dashboard_current_date_usage_fails_closed() -> None:
@@ -131,6 +132,19 @@ def test_realtime_skill_description_has_payment_retrieval_anchor() -> None:
     import seed_flam_first_zombie_data_skills as seed
 
     assert "今天实时付费趋势" in seed.DATA_SKILLS[0]["description"]
+
+
+def test_platform_data_skills_do_not_expose_explicit_timezone_guidance() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    text = "\n".join(
+        f"{skill['name']}\n{skill['description']}\n{skill['prompt']}"
+        for skill in seed.DATA_SKILLS
+    )
+
+    assert "UTC+8" not in text
+    assert "Asia/Shanghai" not in text
+    assert "业务时区" not in text
 
 
 class _StaleSkillCursor:
