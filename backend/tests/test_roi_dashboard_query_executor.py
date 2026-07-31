@@ -2,12 +2,12 @@
 
 import ast
 import inspect
+import json
 import logging
 from datetime import date
 from types import SimpleNamespace
 
 import pytest
-import sqlglot
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
@@ -43,6 +43,47 @@ def session() -> Session:
                 "id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, datasource_id BIGINT NOT NULL, "
                 "version INTEGER NOT NULL, create_by BIGINT, update_by BIGINT, "
                 "create_time BIGINT NOT NULL, update_time BIGINT NOT NULL, deleted BOOLEAN NOT NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE core_table ("
+                "id BIGINT PRIMARY KEY, ds_id BIGINT, checked BOOLEAN, "
+                "table_name TEXT, table_comment TEXT, custom_comment TEXT, embedding TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE core_field ("
+                "id BIGINT PRIMARY KEY, ds_id BIGINT, table_id BIGINT, checked BOOLEAN, "
+                "field_name TEXT, field_type TEXT, field_comment TEXT, custom_comment TEXT, field_index BIGINT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ds_permission ("
+                "id BIGINT PRIMARY KEY, name TEXT, enable BOOLEAN, auth_target_type TEXT, "
+                "auth_target_id BIGINT, type TEXT, ds_id BIGINT, table_id BIGINT, "
+                "expression_tree TEXT, permissions TEXT, white_list_user TEXT, create_time DATETIME)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ds_rules ("
+                "id INTEGER PRIMARY KEY, enable BOOLEAN, name TEXT, description TEXT, "
+                "tenant_id BIGINT, scope TEXT, permission_list TEXT, user_list TEXT, "
+                "white_list_user TEXT, create_time DATETIME)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO core_table "
+                "(id, ds_id, checked, table_name, table_comment, custom_comment) VALUES "
+                "(2001, 202, 1, 'private_table', '', ''), "
+                "(2002, 202, 1, 'orders', '', ''), "
+                "(2003, 202, 1, 'archived_orders', '', ''), "
+                "(2004, 202, 1, 'payments', '', ''), "
+                "(2005, 202, 1, 'large_table', '', '')"
             )
         )
     with Session(engine) as db_session:
@@ -84,6 +125,43 @@ def _prepare_authorized_query(
     return datasource
 
 
+def seed_permission_rule(
+    session: Session,
+    *,
+    permission_id: int,
+    permission_type: str,
+    table_id: int,
+    user_id: int,
+    white_list_user: list[str] | None = None,
+) -> None:
+    session.exec(
+        text(
+            "INSERT INTO ds_permission "
+            "(id, name, enable, type, ds_id, table_id, permissions, white_list_user) "
+            "VALUES (:id, '测试规则', 1, :type, 202, :table_id, '[]', :white_list_user)"
+        ),
+        params={
+            "id": permission_id,
+            "type": permission_type,
+            "table_id": table_id,
+            "white_list_user": json.dumps(white_list_user or []),
+        },
+    )
+    session.exec(
+        text(
+            "INSERT INTO ds_rules "
+            "(id, enable, name, tenant_id, scope, permission_list, user_list, white_list_user) "
+            "VALUES (:id, 1, 'ROI 规则组', 11, 'TENANT', :permissions, :users, '[]')"
+        ),
+        params={
+            "id": permission_id,
+            "permissions": json.dumps([permission_id]),
+            "users": json.dumps([str(user_id)]),
+        },
+    )
+    session.commit()
+
+
 def test_query_executor_uses_current_workspace_roi_datasource(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
@@ -116,26 +194,187 @@ def test_query_executor_uses_current_workspace_roi_datasource(
     assert result_b.data == [{"value": 303}]
 
 
-def test_roi_query_skips_platform_table_field_and_row_permissions(
+def test_roi_query_applies_table_rules_to_selected_workspace_admin(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
 ) -> None:
+    seed_permission_rule(
+        session,
+        permission_id=9001,
+        permission_type="table",
+        table_id=2001,
+        user_id=7,
+    )
     _prepare_authorized_query(monkeypatch, session)
-
     monkeypatch.setattr(
         query_executor,
         "_run_validated_read",
-        lambda **_kwargs: {"columns": ["secret"], "data": [[1]]},
+        lambda **_kwargs: pytest.fail("禁止表 SQL 不应到达数据库"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(
+            session,
+            make_user(id=7, tenant_role="admin"),
+            "SELECT secret FROM private_table",
+        )
+
+    assert exc.value.status_code == 403
+    assert "ROI SQL 包含禁止访问的数据表" in exc.value.detail
+
+
+def test_roi_query_ignores_column_and_row_rules(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    seed_permission_rule(
+        session,
+        permission_id=9002,
+        permission_type="column",
+        table_id=2002,
+        user_id=7,
+    )
+    seed_permission_rule(
+        session,
+        permission_id=9003,
+        permission_type="row",
+        table_id=2002,
+        user_id=7,
+    )
+    _prepare_authorized_query(monkeypatch, session)
+    calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **kwargs: calls.append(kwargs)
+        or {"fields": ["secret"], "data": [{"secret": 1}]},
+    )
+
+    result = execute_roi_read_query(session, make_user(), "SELECT secret FROM orders")
+
+    assert result.status == "success"
+    assert result.data == [{"secret": 1}]
+    assert calls[0]["sql"] == "SELECT secret FROM orders"
+
+
+def test_roi_query_allows_user_not_selected_by_table_rule(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    seed_permission_rule(
+        session,
+        permission_id=9004,
+        permission_type="table",
+        table_id=2001,
+        user_id=8,
+    )
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: {"fields": ["secret"], "data": [{"secret": 1}]},
+    )
+
+    result = execute_roi_read_query(session, make_user(id=7), "SELECT secret FROM private_table")
+
+    assert result.status == "success"
+
+
+def test_roi_query_allows_permission_white_listed_user(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    seed_permission_rule(
+        session,
+        permission_id=9005,
+        permission_type="table",
+        table_id=2001,
+        user_id=7,
+        white_list_user=["7"],
+    )
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: {"fields": ["secret"], "data": [{"secret": 1}]},
+    )
+
+    result = execute_roi_read_query(session, make_user(id=7), "SELECT secret FROM private_table")
+
+    assert result.status == "success"
+
+
+def test_roi_query_rejects_when_any_joined_table_is_denied(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    seed_permission_rule(
+        session,
+        permission_id=9006,
+        permission_type="table",
+        table_id=2001,
+        user_id=7,
+    )
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("多表命中禁止表时不应执行数据库"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(
+            session,
+            make_user(id=7),
+            "SELECT orders.id FROM orders JOIN private_table ON private_table.id = orders.id",
+        )
+
+    assert exc.value.status_code == 403
+
+
+def test_roi_query_does_not_treat_cte_name_as_denied_physical_table(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    seed_permission_rule(
+        session,
+        permission_id=9007,
+        permission_type="table",
+        table_id=2001,
+        user_id=7,
+    )
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: {"fields": ["id"], "data": [{"id": 1}]},
     )
 
     result = execute_roi_read_query(
         session,
-        make_user(),
-        "select secret from private_table",
+        make_user(id=7),
+        "WITH private_table AS (SELECT id FROM orders) SELECT id FROM private_table",
     )
 
     assert result.status == "success"
-    assert result.data == [{"secret": 1}]
+
+
+def test_roi_query_fails_closed_for_unregistered_physical_table(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    _prepare_authorized_query(monkeypatch, session)
+    monkeypatch.setattr(
+        query_executor,
+        "_run_validated_read",
+        lambda **_kwargs: pytest.fail("未登记表不应到达数据库"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        execute_roi_read_query(session, make_user(id=7), "SELECT * FROM missing_table")
+
+    assert exc.value.status_code == 403
+    assert "missing_table" in exc.value.detail
 
 
 def test_roi_query_rejects_write_sql(
@@ -298,28 +537,23 @@ def test_roi_query_executes_mysql_native_date_add_without_interval(
     assert result.data == [{"cohort_day": "2026-07-18"}]
 
 
-def test_roi_query_does_not_call_sqlglot_parser(
+def test_roi_query_keeps_original_sql_after_table_extraction(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
 ) -> None:
     _prepare_authorized_query(monkeypatch, session, datasource_type="mysql")
-    monkeypatch.setattr(
-        sqlglot,
-        "parse",
-        lambda *_args, **_kwargs: pytest.fail("ROI 预览不应调用 SQLGlot"),
-    )
+    captured: dict[str, object] = {}
     monkeypatch.setattr(
         query_executor,
         "_run_validated_read",
-        lambda **_kwargs: {"fields": ["value"], "data": [{"value": 1}]},
+        lambda **kwargs: captured.update(kwargs)
+        or {"fields": ["value"], "data": [{"value": 1}]},
     )
+    sql = "SELECT DATE_ADD(dt, period) AS value FROM payments"
 
-    result = execute_roi_read_query(
-        session,
-        make_user(),
-        "SELECT DATE_ADD(dt, period) AS value FROM payments",
-    )
+    result = execute_roi_read_query(session, make_user(), sql)
 
+    assert captured["sql"] == sql
     assert result.data == [{"value": 1}]
 
 

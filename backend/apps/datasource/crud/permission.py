@@ -975,14 +975,16 @@ def is_normal_user(current_user: CurrentUser):
 def get_user_permission_rules(
         session: SessionDep,
         current_user: CurrentUser,
-        datasource_id: Optional[int] = None
+        datasource_id: Optional[int] = None,
+        *,
+        enforce_for_scope_admin: bool = False,
 ) -> list[Any]:
     """
     是什么：get_user_permission_rules 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
-    if not is_normal_user(current_user):
+    if not enforce_for_scope_admin and not is_normal_user(current_user):
         return []
 
     rules = list_rule_records(
@@ -1030,13 +1032,15 @@ def get_user_scoped_table_ids(
         current_user: CurrentUser,
         datasource_id: int,
         contain_rules: Optional[list[Any]] = None,
+        *,
+        enforce_for_scope_admin: bool = False,
 ) -> Optional[set[int]]:
     """
     是什么：get_user_scoped_table_ids 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
-    if not is_normal_user(current_user):
+    if not enforce_for_scope_admin and not is_normal_user(current_user):
         return None
 
     checked_table_ids = {
@@ -1051,6 +1055,7 @@ def get_user_scoped_table_ids(
         session,
         current_user,
         datasource_id,
+        enforce_for_scope_admin=enforce_for_scope_admin,
     )
     if not contain_rules:
         return checked_table_ids
