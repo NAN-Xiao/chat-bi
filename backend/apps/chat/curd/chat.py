@@ -1183,8 +1183,29 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     chart_alias_log = aliased(ChatLog)
     analysis_alias_log = aliased(ChatLog)
     predict_alias_log = aliased(ChatLog)
-
     tenant_id = _current_tenant_id(current_user)
+
+    def latest_stage_log_id(operation: OperationEnum):
+        return (
+            select(
+                ChatLog.pid.label('pid'),
+                ChatLog.tenant_id.label('tenant_id'),
+                func.max(ChatLog.id).label('log_id'),
+            )
+            .where(and_(
+                ChatLog.tenant_id == tenant_id,
+                ChatLog.type == TypeEnum.CHAT,
+                ChatLog.operate == operation,
+            ))
+            .group_by(ChatLog.pid, ChatLog.tenant_id)
+            .subquery()
+        )
+
+    latest_sql_log = latest_stage_log_id(OperationEnum.GENERATE_SQL)
+    latest_chart_log = latest_stage_log_id(OperationEnum.GENERATE_CHART)
+    latest_analysis_log = latest_stage_log_id(OperationEnum.ANALYSIS)
+    latest_predict_log = latest_stage_log_id(OperationEnum.PREDICT_DATA)
+
     include_cached_record_data = with_data or include_record_data
     record_columns = [
         ChatRecord.id, ChatRecord.tenant_id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
@@ -1207,18 +1228,18 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     ])
 
     stmt = (select(*record_columns)
-    .outerjoin(sql_alias_log, and_(sql_alias_log.pid == ChatRecord.id,
-                                   sql_alias_log.type == TypeEnum.CHAT,
-                                   sql_alias_log.operate == OperationEnum.GENERATE_SQL))
-    .outerjoin(chart_alias_log, and_(chart_alias_log.pid == ChatRecord.id,
-                                     chart_alias_log.type == TypeEnum.CHAT,
-                                     chart_alias_log.operate == OperationEnum.GENERATE_CHART))
-    .outerjoin(analysis_alias_log, and_(analysis_alias_log.pid == ChatRecord.id,
-                                        analysis_alias_log.type == TypeEnum.CHAT,
-                                        analysis_alias_log.operate == OperationEnum.ANALYSIS))
-    .outerjoin(predict_alias_log, and_(predict_alias_log.pid == ChatRecord.id,
-                                       predict_alias_log.type == TypeEnum.CHAT,
-                                       predict_alias_log.operate == OperationEnum.PREDICT_DATA))
+    .outerjoin(latest_sql_log, and_(latest_sql_log.c.pid == ChatRecord.id,
+                                    latest_sql_log.c.tenant_id == ChatRecord.tenant_id))
+    .outerjoin(sql_alias_log, sql_alias_log.id == latest_sql_log.c.log_id)
+    .outerjoin(latest_chart_log, and_(latest_chart_log.c.pid == ChatRecord.id,
+                                      latest_chart_log.c.tenant_id == ChatRecord.tenant_id))
+    .outerjoin(chart_alias_log, chart_alias_log.id == latest_chart_log.c.log_id)
+    .outerjoin(latest_analysis_log, and_(latest_analysis_log.c.pid == ChatRecord.id,
+                                         latest_analysis_log.c.tenant_id == ChatRecord.tenant_id))
+    .outerjoin(analysis_alias_log, analysis_alias_log.id == latest_analysis_log.c.log_id)
+    .outerjoin(latest_predict_log, and_(latest_predict_log.c.pid == ChatRecord.id,
+                                        latest_predict_log.c.tenant_id == ChatRecord.tenant_id))
+    .outerjoin(predict_alias_log, predict_alias_log.id == latest_predict_log.c.log_id)
     .where(and_(
         ChatRecord.create_by == current_user.id,
         ChatRecord.chat_id == chart_id,

@@ -8,10 +8,25 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
+from sqlmodel import Session
 
 from apps.chat.curd import chat as chat_crud
-from apps.chat.models.chat_model import Chat
+from apps.chat.models.chat_model import (
+    Chat,
+    ChatLog,
+    ChatRecord,
+    OperationEnum,
+    TypeEnum,
+)
 from apps.system.schemas.system_schema import UserInfoDTO
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(_type, _compiler, **_kwargs):
+    return "TEXT"
 
 
 class _FakeResult:
@@ -167,6 +182,89 @@ def _history_row(**overrides):
     )
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def test_history_loading_uses_latest_stage_logs_without_duplicate_records(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = create_engine("sqlite://")
+    Chat.__table__.create(engine)
+    ChatRecord.__table__.create(engine)
+    ChatLog.__table__.create(engine)
+
+    monkeypatch.setattr(chat_crud, "_record_allowed_by_current_permissions", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(chat_crud, "_record_requires_live_data_for_current_permissions", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        chat_crud,
+        "_source_record_requires_live_data_for_current_permissions",
+        lambda *_args, **_kwargs: False,
+    )
+
+    with Session(engine) as session:
+        session.add(
+            Chat(
+                id=8002,
+                tenant_id=2001,
+                create_by=1001,
+                create_time=datetime(2026, 7, 31, 13, 15, 0),
+                brief="SQL 重试会话",
+                chat_type="chat",
+                datasource=None,
+                engine_type="PostgreSQL",
+            )
+        )
+        session.add(
+            ChatRecord(
+                id=9003,
+                tenant_id=2001,
+                chat_id=8002,
+                create_by=1001,
+                create_time=datetime(2026, 7, 31, 13, 15, 55),
+                finish_time=datetime(2026, 7, 31, 13, 19, 12),
+                datasource=None,
+                question="按国家维度分析最近 30 天的安装量与累计回收",
+                finish=True,
+            )
+        )
+        stage_logs = [
+            (OperationEnum.GENERATE_SQL, "SQL"),
+            (OperationEnum.GENERATE_CHART, "图表"),
+            (OperationEnum.ANALYSIS, "分析"),
+            (OperationEnum.PREDICT_DATA, "预测"),
+        ]
+        for stage_index, (operation, stage_name) in enumerate(stage_logs):
+            for attempt in (1, 2):
+                attempt_name = {1: "第一", 2: "第二"}[attempt]
+                session.add(
+                    ChatLog(
+                        id=9101 + stage_index * 2 + attempt - 1,
+                        tenant_id=2001,
+                        type=TypeEnum.CHAT,
+                        operate=operation,
+                        pid=9003,
+                        reasoning_content=f"{attempt_name}次 {stage_name} 推理",
+                        start_time=datetime(2026, 7, 31, 13, 15 + stage_index, attempt),
+                        finish_time=datetime(2026, 7, 31, 13, 16 + stage_index, attempt),
+                        local_operation=False,
+                        error=False,
+                    )
+                )
+        session.commit()
+
+        chat_info = chat_crud.get_chat_with_records(
+            session=session,
+            chart_id=8002,
+            current_user=_user(),
+            current_assistant=None,
+            with_data=False,
+        )
+
+    assert len(chat_info.records) == 1
+    assert chat_info.records[0]["id"] == 9003
+    assert chat_info.records[0]["sql_answer"] == "第二次 SQL 推理"
+    assert chat_info.records[0]["chart_answer"] == "第二次 图表 推理"
+    assert chat_info.records[0]["analysis_thinking"] == "第二次 分析 推理"
+    assert chat_info.records[0]["predict"] == "第二次 预测 推理"
 
 
 def test_default_history_loading_uses_cached_data_without_executing_sql(monkeypatch: pytest.MonkeyPatch) -> None:
