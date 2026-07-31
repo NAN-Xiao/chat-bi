@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
+from apps.datasource.crud.sql_engine_executor import validate_user_query_sql_or_raise
 from apps.roi_dashboard import query_executor
 from apps.roi_dashboard.models import CoreRoiWorkspaceConfig
 from apps.roi_dashboard.query_executor import execute_roi_read_query, render_roi_sql_date_range
@@ -221,6 +222,30 @@ def test_roi_query_applies_table_rules_to_selected_workspace_admin(
 
     assert exc.value.status_code == 403
     assert "ROI SQL 包含禁止访问的数据表" in exc.value.detail
+
+
+def test_prevalidated_dashboard_roi_datasource_still_enforces_table_rule(
+    session: Session,
+) -> None:
+    """普通看板预授权 ROI 数据源后，仍必须执行当前用户的表禁止规则。"""
+    seed_permission_rule(
+        session,
+        permission_id=9004,
+        permission_type="table",
+        table_id=2001,
+        user_id=7,
+    )
+    datasource = SimpleNamespace(id=202, type="pg", configuration="{}")
+
+    with pytest.raises(ValueError, match="private_table"):
+        validate_user_query_sql_or_raise(
+            session,
+            make_user(id=7, tenant_role="member"),
+            datasource,
+            "SELECT secret FROM private_table",
+            datasource_access_checked=True,
+            row_permission_policy="deny_on_overlap",
+        )
 
 
 def test_roi_query_ignores_column_and_row_rules(

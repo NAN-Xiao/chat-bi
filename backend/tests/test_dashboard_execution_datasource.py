@@ -364,10 +364,10 @@ def test_dashboard_roi_permission_audit_marks_validation_as_prevalidated(
     assert validation_options == [True]
 
 
-def test_prevalidated_roi_sql_validation_skips_user_permission_scope(
+def test_prevalidated_roi_sql_validation_keeps_user_permission_scope(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ROI 图表仍校验表字段，但不应用用户级表字段权限范围。"""
+    """ROI 数据源只跳过重复授权检查，仍应用用户级表字段权限。"""
     scope_options: list[bool] = []
     datasource = SimpleNamespace(id=22, type="mysql")
     monkeypatch.setattr(sql_engine_executor, "has_datasource_access", lambda *_args: False)
@@ -388,7 +388,43 @@ def test_prevalidated_roi_sql_validation_skips_user_permission_scope(
     )
 
     assert result == ("select 1", {"roi_metric"})
-    assert scope_options == [False]
+    assert scope_options == [True]
+
+
+def test_prevalidated_roi_sql_execution_keeps_user_permission_scope(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ROI 数据源实际执行时也不能绕过用户级表字段权限。"""
+    scope_options: list[bool] = []
+    datasource = SimpleNamespace(id=22, type="mysql")
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "has_datasource_access",
+        lambda *_args: pytest.fail("已确认的 ROI 数据源不应重复检查用户级授权"),
+    )
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "prepare_query_sql",
+        lambda *_args, **kwargs: scope_options.append(
+            kwargs.get("apply_user_permission_scope", True)
+        ) or ("select 1", {"roi_metric"}),
+    )
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_execute_after_validation",
+        lambda **_kwargs: {"status": "success", "data": [{"value": 1}]},
+    )
+
+    result = sql_engine_executor.execute_user_query_or_raise(
+        _Session(),
+        _user(),
+        datasource,
+        "select 1",
+        datasource_access_checked=True,
+    )
+
+    assert result.result["data"] == [{"value": 1}]
+    assert scope_options == [True]
 
 
 def test_dashboard_execution_datasource_metadata_uses_roi_space_scope(

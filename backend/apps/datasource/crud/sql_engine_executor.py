@@ -633,7 +633,7 @@ def validate_user_query_sql_or_raise(
         allowed_tables=allowed_tables,
         apply_row_permissions=row_permission_policy == "deny_on_overlap",
         validate_columns=True,
-        apply_user_permission_scope=not datasource_access_checked,
+        apply_user_permission_scope=True,
         row_permission_policy=row_permission_policy,
     )
 
@@ -678,7 +678,7 @@ def execute_user_query_or_raise(
             and (row_permission_policy == "deny_on_overlap" or not datasource_access_checked)
         ),
         validate_columns=validate_columns,
-        apply_user_permission_scope=not datasource_access_checked,
+        apply_user_permission_scope=True,
         row_permission_policy=row_permission_policy,
     )
     datasource_for_query = _copy_datasource_for_query(datasource)
