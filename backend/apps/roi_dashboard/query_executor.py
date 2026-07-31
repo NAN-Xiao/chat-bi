@@ -10,10 +10,16 @@ from datetime import date, timedelta
 from typing import Any
 
 import sqlparse
+import sqlglot
 from fastapi import HTTPException
 from sqlparse import tokens as sqlparse_tokens
 from sqlmodel import select
 
+from apps.datasource.crud.permission_errors import (
+    SqlPermissionScopeError,
+    audit_permission_denied,
+)
+from apps.datasource.crud.sql_permission import validate_sql_table_scope
 from apps.datasource.crud.sql_engine_executor import _execute_after_validation
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import (
@@ -238,6 +244,39 @@ def validate_roi_read_sql(sql: str, datasource: CoreDatasource) -> None:
     _validate_roi_read_sql_tokens(sql, datasource)
 
 
+def validate_roi_table_access(
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    sql: str,
+) -> set[str]:
+    """ROI 只启用表禁止规则；SQLGlot 仅用于提取物理表，不重写 SQL。"""
+    try:
+        return validate_sql_table_scope(
+            session,
+            current_user,
+            datasource,
+            sql,
+            apply_user_permission_scope=True,
+            enforce_for_scope_admin=True,
+            allow_empty_tables=True,
+        )
+    except SqlPermissionScopeError as exc:
+        audit_permission_denied(
+            current_user=current_user,
+            datasource_id=datasource.id,
+            operation="roi.query.table_permission",
+            reason=str(exc),
+            rule_type="table",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"ROI SQL 包含禁止访问的数据表：{exc}",
+        ) from exc
+    except (ValueError, sqlglot.errors.ParseError) as exc:
+        raise HTTPException(status_code=400, detail="ROI SQL 无法确认数据表范围") from exc
+
+
 def _normalize_rows(raw: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
     raw_rows = list(raw.get("data") or raw.get("rows") or [])
     raw_fields = raw.get("fields") or raw.get("columns") or []
@@ -311,6 +350,7 @@ def execute_roi_read_query(
                 status_code=400,
                 detail=detail,
             )
+        validate_roi_table_access(session, current_user, datasource, rendered_sql)
         raw = _run_validated_read(
             datasource=datasource,
             sql=rendered_sql,
@@ -360,5 +400,6 @@ __all__ = [
     "RoiQueryResult",
     "execute_roi_read_query",
     "normalize_roi_query_result",
+    "validate_roi_table_access",
     "validate_roi_read_sql",
 ]

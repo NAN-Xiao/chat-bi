@@ -1610,6 +1610,7 @@
     "filter_data_source": "Filter by data source",
     "no_project_bound": "No data source bound",
     "no_data_source_bound": "No data source bound",
+    "datasource_not_available": "This data source is no longer in the current workspace permission management scope",
     "scope_platform": "Platform generic",
     "scope_workspace": "Workspace",
     "readonly_rule_group": "SaaS rules are read-only in this workspace",

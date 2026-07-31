@@ -1610,6 +1610,7 @@
     "filter_data_source": "按資料來源篩選",
     "no_project_bound": "未綁定資料來源",
     "no_data_source_bound": "未綁定資料來源",
+    "datasource_not_available": "該資料來源已不在目前工作空間的權限管理範圍內",
     "scope_platform": "平台通用",
     "scope_workspace": "工作空間",
     "readonly_rule_group": "SaaS 規則在目前工作空間內唯讀",

@@ -13,6 +13,8 @@ from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
+from apps.datasource.crud.binding import list_bound_datasource_ids_for_tenant
+from apps.datasource.crud.permission_rules import delete_permission_records_for_datasources
 from apps.datasource.models.datasource import CoreDatasource
 from apps.roi_dashboard.models import (
     CoreRoiDashboard,
@@ -27,6 +29,7 @@ from apps.roi_dashboard.query_executor import (
     RoiQueryResult,
     execute_roi_read_query,
     render_roi_sql_date_range,
+    validate_roi_table_access,
 )
 from apps.roi_dashboard.schemas import (
     RoiChartCreate,
@@ -304,6 +307,7 @@ def set_roi_datasource_for_tenant(
     record = lock_active_roi_config(session, target_tenant_id)
     if record is not None and target_datasource_id == int(record.datasource_id):
         return record
+    previous_datasource_id = int(record.datasource_id) if record is not None else None
 
     if record is not None:
         _require_no_active_roi_charts(
@@ -385,6 +389,18 @@ def set_roi_datasource_for_tenant(
         record.update_time = now
         session.add(record)
         result = record
+
+    if previous_datasource_id is not None and previous_datasource_id != target_datasource_id:
+        ordinary_datasource_ids = list_bound_datasource_ids_for_tenant(
+            session,
+            target_tenant_id,
+        )
+        if previous_datasource_id not in ordinary_datasource_ids:
+            delete_permission_records_for_datasources(
+                session,
+                [previous_datasource_id],
+                tenant_id=target_tenant_id,
+            )
 
     if record is not None:
         session.flush()
@@ -828,6 +844,11 @@ def list_roi_charts(
             else "当前工作空间尚未配置 ROI 数据源"
         )
     )
+    datasource = (
+        session.get(CoreDatasource, int(config.datasource_id))
+        if can_execute and config is not None
+        else None
+    )
     result: list[dict[str, Any]] = []
     for chart in charts:
         item = chart.model_dump()
@@ -855,6 +876,12 @@ def list_roi_charts(
             )
             cached = _cache(cache_adapter).get(key)
             if cached is not None:
+                validate_roi_table_access(
+                    session,
+                    current_user,
+                    datasource,
+                    rendered_sql,
+                )
                 item["query_result"] = cached
                 result.append(item)
                 continue
@@ -880,6 +907,8 @@ def list_roi_charts(
                 if isinstance(exc, HTTPException)
                 else "ROI 查询执行失败"
             )
+            item["can_execute"] = False
+            item["can_edit"] = False
             item["error"] = message
             item["query_result"] = asdict(
                 RoiQueryResult(status="failed", message=message)

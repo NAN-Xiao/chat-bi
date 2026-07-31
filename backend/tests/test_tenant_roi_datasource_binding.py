@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -577,7 +578,21 @@ def roi_transaction_engine(tmp_path) -> Engine:
             create_by BIGINT, create_time DATETIME
         )
         """,
-        "CREATE TABLE ds_permission (id BIGINT PRIMARY KEY, ds_id BIGINT)",
+        """
+        CREATE TABLE ds_permission (
+            id BIGINT PRIMARY KEY, name TEXT, enable BOOLEAN, auth_target_type TEXT,
+            auth_target_id BIGINT, type TEXT, ds_id BIGINT, table_id BIGINT,
+            expression_tree TEXT, permissions TEXT, white_list_user TEXT,
+            create_time DATETIME
+        )
+        """,
+        """
+        CREATE TABLE ds_rules (
+            id INTEGER PRIMARY KEY, enable BOOLEAN, name TEXT, description TEXT,
+            tenant_id BIGINT, scope TEXT, permission_list TEXT, user_list TEXT,
+            white_list_user TEXT, create_time DATETIME
+        )
+        """,
         """
         CREATE TABLE core_external_mcp_server (
             id BIGINT PRIMARY KEY, name TEXT, endpoint TEXT, description TEXT,
@@ -605,6 +620,17 @@ def roi_transaction_engine(tmp_path) -> Engine:
         ON core_roi_workspace_config (tenant_id) WHERE deleted = 0
         """,
         """
+        CREATE TABLE core_roi_dashboard_chart (
+            id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+            roi_dashboard_id BIGINT NOT NULL, title TEXT NOT NULL,
+            sql TEXT NOT NULL, chart_type TEXT NOT NULL, chart_config TEXT NOT NULL,
+            layout_span TEXT NOT NULL, sort INTEGER NOT NULL, status INTEGER NOT NULL,
+            version INTEGER NOT NULL, create_by BIGINT, update_by BIGINT,
+            create_time BIGINT NOT NULL, update_time BIGINT NOT NULL,
+            deleted BOOLEAN NOT NULL
+        )
+        """,
+        """
         CREATE TABLE sys_logs (
             id INTEGER PRIMARY KEY, tenant_id BIGINT, operation_type TEXT,
             operation_detail TEXT, user_id BIGINT, operation_status TEXT,
@@ -629,7 +655,10 @@ def roi_transaction_engine(tmp_path) -> Engine:
         connection.execute(
             text(
                 "INSERT INTO core_datasource (id, tenant_id, name, status) "
-                "VALUES (101, 1, 'ROI 数据源', 'success')"
+                "VALUES "
+                "(101, 1, 'ROI 数据源', 'success'), "
+                "(202, 1, '旧 ROI 数据源', 'success'), "
+                "(303, 1, '新 ROI 数据源', 'success')"
             )
         )
         connection.execute(
@@ -640,6 +669,104 @@ def roi_transaction_engine(tmp_path) -> Engine:
         )
     yield engine
     engine.dispose()
+
+
+def seed_roi_config_and_table_rule(
+    session: Session,
+    *,
+    tenant_id: int,
+    roi_datasource_id: int,
+) -> None:
+    session.exec(
+        text(
+            "INSERT INTO core_roi_workspace_config "
+            "(tenant_id, datasource_id, version, create_by, update_by, create_time, update_time, deleted) "
+            "VALUES (:tenant_id, :datasource_id, 1, 7, 7, 1, 1, 0)"
+        ),
+        params={"tenant_id": tenant_id, "datasource_id": roi_datasource_id},
+    )
+    session.exec(
+        text(
+            "INSERT INTO ds_permission "
+            "(id, name, enable, type, ds_id, table_id, permissions, white_list_user) "
+            "VALUES (9001, 'ROI 禁止表', 1, 'table', :datasource_id, 2001, '[]', '[]')"
+        ),
+        params={"datasource_id": roi_datasource_id},
+    )
+    session.exec(
+        text(
+            "INSERT INTO ds_rules "
+            "(id, enable, name, tenant_id, scope, permission_list, user_list, white_list_user) "
+            "VALUES (9001, 1, 'ROI 规则组', :tenant_id, 'TENANT', :permissions, :users, '[]')"
+        ),
+        params={
+            "tenant_id": tenant_id,
+            "permissions": json.dumps([9001]),
+            "users": json.dumps(["7"]),
+        },
+    )
+    session.commit()
+
+
+def bind_ordinary_datasource(
+    session: Session,
+    *,
+    tenant_id: int,
+    datasource_id: int,
+) -> None:
+    session.exec(
+        text(
+            "INSERT INTO core_datasource_tenant_binding "
+            "(tenant_id, datasource_id) VALUES (:tenant_id, :datasource_id)"
+        ),
+        params={"tenant_id": tenant_id, "datasource_id": datasource_id},
+    )
+    session.commit()
+
+
+def tenant_permission_ids(session: Session, tenant_id: int) -> list[int]:
+    rows = session.exec(
+        text(
+            "SELECT p.id FROM ds_permission p "
+            "JOIN ds_rules r ON r.permission_list LIKE '%' || p.id || '%' "
+            "WHERE r.tenant_id = :tenant_id ORDER BY p.id"
+        ),
+        params={"tenant_id": tenant_id},
+    ).all()
+    return [int(row[0]) for row in rows]
+
+
+def test_roi_rebinding_clears_old_tenant_rules_when_old_source_is_not_ordinary(
+    roi_transaction_engine: Engine,
+) -> None:
+    with Session(roi_transaction_engine) as session:
+        seed_roi_config_and_table_rule(session, tenant_id=11, roi_datasource_id=202)
+        roi_service.set_roi_datasource_for_tenant(
+            session,
+            tenant_id=11,
+            datasource_id=303,
+            operator_id=7,
+            commit=False,
+        )
+
+        assert tenant_permission_ids(session, 11) == []
+
+
+def test_roi_rebinding_keeps_rules_when_old_source_remains_ordinary(
+    roi_transaction_engine: Engine,
+) -> None:
+    with Session(roi_transaction_engine) as session:
+        bind_ordinary_datasource(session, tenant_id=11, datasource_id=202)
+        seed_roi_config_and_table_rule(session, tenant_id=11, roi_datasource_id=202)
+        roi_service.set_roi_datasource_for_tenant(
+            session,
+            tenant_id=11,
+            datasource_id=303,
+            operator_id=7,
+            commit=False,
+        )
+
+        assert tenant_permission_ids(session, 11) == [9001]
 
 
 def _patch_integration_response(

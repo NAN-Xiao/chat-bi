@@ -1611,6 +1611,7 @@
     "filter_data_source": "按数据源筛选",
     "no_project_bound": "未绑定数据源",
     "no_data_source_bound": "未绑定数据源",
+    "datasource_not_available": "该数据源已不在当前工作空间的权限管理范围内",
     "scope_platform": "平台通用",
     "scope_workspace": "工作空间",
     "readonly_rule_group": "SaaS 规则在当前工作空间内只读",

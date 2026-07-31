@@ -1578,6 +1578,7 @@
     "filter_data_source": "데이터 소스로 필터",
     "no_project_bound": "연결된 데이터 소스 없음",
     "no_data_source_bound": "연결된 데이터 소스 없음",
+    "datasource_not_available": "이 데이터 소스는 더 이상 현재 워크스페이스 권한 관리 범위에 없습니다",
     "scope_platform": "플랫폼 공통",
     "scope_workspace": "워크스페이스",
     "readonly_rule_group": "SaaS 규칙은 현재 워크스페이스에서 읽기 전용입니다",

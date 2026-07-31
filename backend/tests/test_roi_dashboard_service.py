@@ -1,6 +1,7 @@
 """验证 ROI 配置和工作空间共享看板服务。"""
 
 import hashlib
+from dataclasses import asdict
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -71,7 +72,10 @@ def session() -> Session:
     statements = [
         (
             "CREATE TABLE core_datasource ("
-            "id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, name TEXT NOT NULL, status TEXT)"
+            "id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, name TEXT NOT NULL, "
+            "description TEXT, type TEXT, type_name TEXT, configuration TEXT, "
+            "create_time DATETIME, create_by BIGINT, status TEXT, num TEXT, "
+            "table_relation TEXT, embedding TEXT, recommended_config BIGINT)"
         ),
         (
             "CREATE TABLE core_datasource_user ("
@@ -80,6 +84,18 @@ def session() -> Session:
         (
             "CREATE TABLE core_datasource_tenant_binding ("
             "id INTEGER PRIMARY KEY, tenant_id BIGINT NOT NULL, datasource_id BIGINT NOT NULL)"
+        ),
+        (
+            "CREATE TABLE ds_permission ("
+            "id BIGINT PRIMARY KEY, name TEXT, enable BOOLEAN, auth_target_type TEXT, "
+            "auth_target_id BIGINT, type TEXT, ds_id BIGINT, table_id BIGINT, "
+            "expression_tree TEXT, permissions TEXT, white_list_user TEXT, create_time DATETIME)"
+        ),
+        (
+            "CREATE TABLE ds_rules ("
+            "id INTEGER PRIMARY KEY, enable BOOLEAN, name TEXT, description TEXT, "
+            "tenant_id BIGINT, scope TEXT, permission_list TEXT, user_list TEXT, "
+            "white_list_user TEXT, create_time DATETIME)"
         ),
         (
             "CREATE TABLE core_roi_workspace_config ("
@@ -921,6 +937,43 @@ def test_chart_list_checks_permission_before_cache_and_keeps_structure_visible(
     assert third[0]["can_execute"] is True
     assert third[0]["can_edit"] is True
     assert third[0]["query_result"]["data"] == [{"value": 9}]
+
+
+def test_chart_list_validates_table_permission_before_returning_cached_data(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = prepare_chart_context(session)
+    chart = seed_roi_chart(session, tenant_id=11, dashboard_id=301, chart_id=901)
+    cache = FakeRoiChartCache()
+    rendered_sql = service.render_roi_sql_date_range(chart.sql)
+    key = roi_chart_cache_key(
+        11,
+        user.id,
+        202,
+        301,
+        901,
+        chart.version,
+        service._sql_hash(rendered_sql),
+    )
+    cache.set(key, asdict(successful_query(9)))
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.validate_roi_table_access",
+        lambda *_args: (_ for _ in ()).throw(
+            HTTPException(status_code=403, detail="禁止表")
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.roi_dashboard.service.execute_roi_read_query",
+        lambda *_args: pytest.fail("缓存命中不应执行数据库"),
+    )
+
+    result = list_roi_charts(session, user, 301, cache_adapter=cache)
+
+    assert result[0]["can_execute"] is False
+    assert result[0]["can_edit"] is False
+    assert result[0]["query_result"]["status"] == "failed"
+    assert result[0]["error"] == "禁止表"
 
 
 def test_chart_list_rejects_execution_when_configured_datasource_inactive(

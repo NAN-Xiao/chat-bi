@@ -31,14 +31,24 @@ def normalize_identifier(value: str | None) -> str:
     return str(value or "").strip('"`[]').lower()
 
 
-def parse_sql_statements(sql: str, ds_type: str | None) -> list[exp.Expression]:
+def parse_sql_statements(
+        sql: str,
+        ds_type: str | None,
+        *,
+        fallback_to_generic: bool = False,
+) -> list[exp.Expression]:
     """
     是什么：parse_sql_statements 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
     """
     dialect = get_sqlglot_dialect(ds_type)
-    statements = [stmt for stmt in sqlglot.parse(sql, dialect=dialect) if stmt is not None]
+    try:
+        statements = [stmt for stmt in sqlglot.parse(sql, dialect=dialect) if stmt is not None]
+    except sqlglot.errors.ParseError:
+        if not fallback_to_generic or not dialect:
+            raise
+        statements = [stmt for stmt in sqlglot.parse(sql) if stmt is not None]
     if not statements:
         raise ValueError("SQL 解析失败，无法确认查询范围")
     return statements
@@ -75,6 +85,7 @@ def build_permission_scope(
         datasource: CoreDatasource,
         *,
         apply_user_permission_scope: bool = True,
+        enforce_for_scope_admin: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """
     是什么：build_permission_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -93,10 +104,27 @@ def build_permission_scope(
         for field in fields:
             fields_by_table.setdefault(int(field.table_id), []).append(field)
 
-    user_permissions_apply = apply_user_permission_scope and is_normal_user(current_user)
-    contain_rules = get_user_permission_rules(session, current_user, datasource.id) if user_permissions_apply else []
+    user_permissions_apply = apply_user_permission_scope and (
+        enforce_for_scope_admin or is_normal_user(current_user)
+    )
+    contain_rules = (
+        get_user_permission_rules(
+            session,
+            current_user,
+            datasource.id,
+            enforce_for_scope_admin=enforce_for_scope_admin,
+        )
+        if user_permissions_apply
+        else []
+    )
     scoped_table_ids = (
-        get_user_scoped_table_ids(session, current_user, datasource.id, contain_rules)
+        get_user_scoped_table_ids(
+            session,
+            current_user,
+            datasource.id,
+            contain_rules,
+            enforce_for_scope_admin=enforce_for_scope_admin,
+        )
         if user_permissions_apply
         else None
     )
@@ -473,6 +501,7 @@ def validate_sql_scope(
         sql: str,
         *,
         apply_user_permission_scope: bool = True,
+        enforce_for_scope_admin: bool = False,
 ) -> tuple[list[exp.Expression], set[str], dict[str, dict[str, Any]]]:
     """
     是什么：validate_sql_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -489,6 +518,7 @@ def validate_sql_scope(
         current_user,
         datasource,
         apply_user_permission_scope=apply_user_permission_scope,
+        enforce_for_scope_admin=enforce_for_scope_admin,
     )
     unauthorized_tables = actual_tables - set(permission_scope.keys())
     if unauthorized_tables:
@@ -510,15 +540,19 @@ def validate_sql_table_scope(
         sql: str,
         *,
         apply_user_permission_scope: bool = True,
+        enforce_for_scope_admin: bool = False,
+        allow_empty_tables: bool = False,
 ) -> set[str]:
     """
     是什么：validate_sql_table_scope 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
-    statements = parse_sql_statements(sql, datasource.type)
+    statements = parse_sql_statements(sql, datasource.type, fallback_to_generic=True)
     actual_tables = extract_physical_tables(statements)
     if not actual_tables:
+        if allow_empty_tables:
+            return set()
         raise ValueError("SQL 解析失败，无法确认查询表范围")
 
     permission_scope = build_permission_scope(
@@ -526,10 +560,14 @@ def validate_sql_table_scope(
         current_user,
         datasource,
         apply_user_permission_scope=apply_user_permission_scope,
+        enforce_for_scope_admin=enforce_for_scope_admin,
     )
     unauthorized_tables = actual_tables - set(permission_scope.keys())
     if unauthorized_tables:
-        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
+        raise SqlPermissionScopeError(
+            f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}",
+            rule_type="table",
+        )
     return actual_tables
 
 
