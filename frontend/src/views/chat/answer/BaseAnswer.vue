@@ -7,6 +7,7 @@ import icon_down_outlined from '@/assets/svg/icon_down_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import {
   initialThinkingVisibility,
+  isThinkingActive,
   transitionThinkingVisibility,
 } from './thinkingVisibility.ts'
 
@@ -29,6 +30,9 @@ const props = withDefaults(
 const { t } = useI18n()
 
 const show = ref<boolean>(false)
+const thinkingActive = computed(() =>
+  isThinkingActive(!!props.message.isTyping, !!props.loading)
+)
 
 const reasoningContent = computed<Array<string>>(() => {
   const names: Array<'sql_answer' | 'chart_answer' | 'analysis_thinking' | 'predict'> = []
@@ -51,7 +55,7 @@ const reasoningContent = computed<Array<string>>(() => {
 })
 
 const showReasoningPlaceholder = computed<boolean>(() => {
-  return show.value && !!props.message.isTyping && !hasReasoning.value
+  return show.value && thinkingActive.value && !hasReasoning.value
 })
 
 const hasReasoning = computed<boolean>(() => {
@@ -70,22 +74,26 @@ function clickShow() {
 }
 
 watch(
-  () => !!props.message.isTyping,
-  (currentTyping, previousTyping) => {
-    show.value = transitionThinkingVisibility(show.value, previousTyping, currentTyping)
+  () => thinkingActive.value,
+  (currentThinkingActive, previousThinkingActive) => {
+    show.value = transitionThinkingVisibility(
+      show.value,
+      previousThinkingActive,
+      currentThinkingActive
+    )
   }
 )
 
 onMounted(() => {
-  show.value = initialThinkingVisibility(!!props.message.isTyping)
+  show.value = initialThinkingVisibility(thinkingActive.value)
 })
 </script>
 
 <template>
   <div class="base-answer-block">
-    <el-button v-if="message.isTyping || hasReasoning" class="thinking-btn" @click="clickShow">
+    <el-button v-if="thinkingActive || hasReasoning" class="thinking-btn" @click="clickShow">
       <div class="thinking-btn-inner">
-        <span v-if="message.isTyping">{{ t('qa.thinking') }}</span>
+        <span v-if="thinkingActive">{{ t('qa.thinking') }}</span>
         <span v-else>{{ t('qa.thinking_step') }}</span>
         <span class="btn-icon">
           <el-icon v-if="show">
@@ -109,7 +117,7 @@ onMounted(() => {
     </div>
     <div class="answer-container">
       <slot></slot>
-      <el-button v-if="message.isTyping" style="min-width: unset" type="primary" link loading />
+      <el-button v-if="thinkingActive" style="min-width: unset" type="primary" link loading />
       <slot name="tool"></slot>
       <slot name="footer"></slot>
     </div>

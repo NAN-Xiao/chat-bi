@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   initialThinkingVisibility,
+  isThinkingActive,
   transitionThinkingVisibility,
 } from '../src/views/chat/answer/thinkingVisibility.ts'
 
@@ -25,4 +26,9 @@ test('生成期间保留用户手动选择', () => {
 
 test('生成完成时收起思考过程', () => {
   assert.equal(transitionThinkingVisibility(true, true, false), false)
+})
+
+test('加载中时也算思考中', () => {
+  assert.equal(isThinkingActive(false, true), true)
+  assert.equal(isThinkingActive(false, false), false)
 })
