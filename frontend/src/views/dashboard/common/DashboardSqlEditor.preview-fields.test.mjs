@@ -115,10 +115,12 @@ assert.doesNotMatch(
   /pivotToggleDisabled/,
   '交互透视开关不应因 SQL 结果缺少日期字段而禁用'
 )
-assert.match(
+assert.match(source, /const SQL_EDITOR_TIME_FIELD = 'dt'/, 'SQL 编辑器时间字段必须固定为 dt')
+assert.match(source, /function fixedSqlEditorTimeFieldIssue\(\)/, '固定时间字段缺失时必须显式校验')
+assert.doesNotMatch(
   source,
-  /if \(!sqlBuilder\.timeField\) \{\s*sqlBuilder\.timeField = preferredBuilderTimeField\(builderTimeFieldOptions\.value\)/,
-  '加载字段后只应为空配置写入通用优先级函数选择的默认时间字段'
+  /preferredBuilderTimeField\(builderTimeFieldOptions\.value\)/,
+  '固定时间字段缺失时不得自动回退到其他时间字段'
 )
 
 assert.match(
@@ -648,6 +650,6 @@ assert.match(
 )
 assert.match(
   source,
-  /eventScopedSchemaFieldOptions\.value\.filter\(isTimeFieldOption\)/,
-  '时间范围字段需要在事件范围内复用统一的时间字段判断'
+  /option\.field === SQL_EDITOR_TIME_FIELD \|\| option\.value === SQL_EDITOR_TIME_FIELD/,
+  '固定 dt 字段必须在当前 Schema 中精确匹配'
 )

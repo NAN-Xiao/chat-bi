@@ -43,7 +43,11 @@ assert.doesNotMatch(
   /DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE|pivotDateParameterType:\s*DEFAULT_DASHBOARD_DATE_PARAMETER_TYPE/,
   '日期参数类型缺失时不得静默猜测默认类型'
 )
-assert.match(source, /if \(usesDashboardDateParameters && !form\.pivotDateParameterType\)/)
+assert.doesNotMatch(
+  source,
+  /if \(usesDashboardDateParameters && !form\.pivotDateParameterType\)/,
+  '固定日期参数类型后不得继续要求用户选择日期格式'
+)
 assert.match(source, /defaultDashboardDateExpression/, 'SQL 日期控件应使用共享默认值工厂')
 assert.doesNotMatch(source, /preset:\s*['"]past_30_days['"]/, 'SQL 日期控件不得保留过去 30 天默认值')
 const initEditorSource = source.match(/function initEditor\(\)[\s\S]*?\n}/)?.[0] || ''

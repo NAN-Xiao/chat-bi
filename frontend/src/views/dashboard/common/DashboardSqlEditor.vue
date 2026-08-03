@@ -2617,10 +2617,6 @@ async function generateBuilderAiSql() {
     return false
   }
   const usesDashboardDateParameters = shouldUseDashboardDateParameters()
-  if (usesDashboardDateParameters && !form.pivotDateParameterType) {
-    ElMessage.warning('生成 SQL 前请先选择日期参数类型。')
-    return false
-  }
   if (usesDashboardDateParameters) {
     const validation = validateDashboardDateExpression(
       sqlBuilder.timeExpression,
@@ -3197,9 +3193,6 @@ function dashboardDateParameterValidationErrorKey() {
   if (activeTokens.length === 0) {
     return ''
   }
-  if (!form.pivotDateParameterType) {
-    return 'dashboard.pivot_date_parameter_type_required'
-  }
   try {
     dashboardDateFilterConfigForWrite()
     return ''
@@ -3229,9 +3222,6 @@ function dateExpressionValidationError() {
     eventFieldScope.value.status !== 'datasource-mismatch'
   ) {
     return '请选择时间字段'
-  }
-  if (!form.pivotDateParameterType) {
-    return '请选择日期参数类型'
   }
   const activeDateTokens = scanDashboardDateParameterTokens(form.sql)
   if (activeDateTokens.length === 0) {
