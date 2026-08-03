@@ -25,7 +25,8 @@ DATASOURCE_ID = 6
 DASHBOARD_ID = "afe201c9762c448aa0495f3508c01793"
 DASHBOARD_NAME = "核心看板"
 PRODUCT_ID = 110000047
-HEADER_HEIGHT = 8
+HEADER_HEIGHT = 10
+LEGACY_HEADER_HEIGHT = 8
 START_TOKEN = "{{dashboard_start_yyyymmdd}}"
 END_TOKEN = "{{dashboard_end_yyyymmdd}}"
 YESTERDAY_EXPRESSION = {"version": 1, "mode": "preset", "preset": "yesterday"}
@@ -285,17 +286,32 @@ def rewrite_dashboard(
         raise ValueError(f"缺少实时指标查询结果：{missing_rows}")
 
     already_installed = bool(component_metric_ids)
+    vertical_shift = HEADER_HEIGHT
+    if already_installed:
+        existing_heights = {
+            item.get("sizeY")
+            for item in components
+            if str(item.get("id")) in METRIC_VIEW_IDS
+        }
+        if existing_heights == {HEADER_HEIGHT}:
+            vertical_shift = 0
+        elif existing_heights == {LEGACY_HEADER_HEIGHT}:
+            vertical_shift = HEADER_HEIGHT - LEGACY_HEADER_HEIGHT
+        else:
+            raise ValueError(
+                f"核心看板实时指标组件高度不一致或不受支持：{sorted(existing_heights, key=str)}"
+            )
     normal_components: list[dict[str, Any]] = []
     for item in components:
         item_id = str(item.get("id"))
         if item_id in METRIC_VIEW_IDS:
             continue
         copied = dict(item)
-        if not already_installed:
+        if vertical_shift:
             y = copied.get("y")
             if not isinstance(y, int):
                 raise ValueError(f"组件 {item_id} 缺少整数 y 坐标")
-            copied["y"] = y + HEADER_HEIGHT
+            copied["y"] = y + vertical_shift
         normal_components.append(copied)
 
     new_components = [_metric_component(spec) for spec in METRIC_SPECS]
@@ -743,6 +759,11 @@ def _summary(metric_rows: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="实际写入核心看板")
+    parser.add_argument(
+        "--skip-skill-sync",
+        action="store_true",
+        help="仅更新核心看板，不同步 Data Skill",
+    )
     args = parser.parse_args(argv)
 
     metric_rows = query_metric_rows()
@@ -752,6 +773,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     backup_dir = apply_dashboard(metric_rows)
+    if args.skip_skill_sync:
+        print(f"核心看板已更新，已按参数跳过 Skill 同步，备份目录：{backup_dir}")
+        return 0
     skill_ids = apply_skill_prompts(backup_dir)
     print(
         f"核心看板已更新，Skill 已同步：{list(skill_ids)}，"

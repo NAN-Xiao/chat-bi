@@ -108,6 +108,32 @@ def test_apply_entrypoint_syncs_skill_prompts_after_dashboard(monkeypatch, tmp_p
     assert events == [("dashboard", rows), ("skills", backup_dir)]
 
 
+def test_apply_entrypoint_can_update_dashboard_layout_without_touching_skills(
+    monkeypatch, tmp_path
+) -> None:
+    events = []
+    rows = {
+        spec.view_id: {"日期": "2026-08-02", spec.field: 0}
+        for spec in repair.METRIC_SPECS
+    }
+    backup_dir = tmp_path / "backup"
+
+    monkeypatch.setattr(repair, "query_metric_rows", lambda: rows)
+    monkeypatch.setattr(
+        repair,
+        "apply_dashboard",
+        lambda metric_rows: events.append(("dashboard", metric_rows)) or backup_dir,
+    )
+    monkeypatch.setattr(
+        repair,
+        "apply_skill_prompts",
+        lambda path: events.append(("skills", path)) or (270, 272),
+    )
+
+    assert repair.main(["--apply", "--skip-skill-sync"]) == 0
+    assert events == [("dashboard", rows)]
+
+
 def test_rewrite_dashboard_adds_four_top_metrics_and_shifts_existing_components() -> None:
     components = [
         {"id": "old-a", "x": 1, "y": 1, "sizeX": 36, "sizeY": 13},
@@ -122,17 +148,17 @@ def test_rewrite_dashboard_adds_four_top_metrics_and_shifts_existing_components(
     new_components, new_canvas = repair.rewrite_dashboard(components, canvas, rows)
 
     old_components = {item["id"]: item for item in new_components if item["id"].startswith("old-")}
-    assert old_components["old-a"]["y"] == 9
-    assert old_components["old-b"]["y"] == 22
+    assert old_components["old-a"]["y"] == 11
+    assert old_components["old-b"]["y"] == 24
 
     metric_components = [
         item for item in new_components if item["id"] in repair.METRIC_VIEW_IDS
     ]
     assert [(item["x"], item["y"], item["sizeX"], item["sizeY"]) for item in metric_components] == [
-        (1, 1, 18, 8),
-        (19, 1, 18, 8),
-        (37, 1, 18, 8),
-        (55, 1, 18, 8),
+        (1, 1, 18, 10),
+        (19, 1, 18, 10),
+        (37, 1, 18, 10),
+        (55, 1, 18, 10),
     ]
     assert set(canvas).issubset(new_canvas)
     for spec in repair.METRIC_SPECS:
@@ -158,6 +184,38 @@ def test_rewrite_dashboard_adds_four_top_metrics_and_shifts_existing_components(
         assert view["pivot"]["date_expression"] == YESTERDAY_EXPRESSION
         assert "{{dashboard_start_yyyymmdd}}" in view["sql"]
         assert "{{dashboard_end_yyyymmdd}}" in view["sql"]
+
+
+def test_rewrite_dashboard_expands_existing_metrics_and_shifts_following_components_once() -> None:
+    rows = {
+        spec.view_id: {"日期": "2026-08-02", spec.field: index}
+        for index, spec in enumerate(repair.METRIC_SPECS, start=1)
+    }
+    components = [repair._metric_component(spec) for spec in repair.METRIC_SPECS]
+    for component in components:
+        component["sizeY"] = 8
+    components.append({"id": "old-a", "x": 1, "y": 9, "sizeX": 36, "sizeY": 13})
+    canvas = {
+        **{
+            spec.view_id: repair._metric_view(spec, rows[spec.view_id], 0)
+            for spec in repair.METRIC_SPECS
+        },
+        "old-a": {"id": "old-a"},
+    }
+
+    expanded_components, expanded_canvas = repair.rewrite_dashboard(components, canvas, rows)
+    expanded_by_id = {item["id"]: item for item in expanded_components}
+
+    assert expanded_by_id["old-a"]["y"] == 11
+    assert all(expanded_by_id[view_id]["sizeY"] == 10 for view_id in repair.METRIC_VIEW_IDS)
+
+    repeated_components, _ = repair.rewrite_dashboard(
+        expanded_components,
+        expanded_canvas,
+        rows,
+    )
+    repeated_by_id = {item["id"]: item for item in repeated_components}
+    assert repeated_by_id["old-a"]["y"] == 11
 
 
 def test_validate_dashboard_rejects_stale_nested_sql() -> None:
@@ -192,6 +250,6 @@ def test_rewrite_dashboard_is_idempotent() -> None:
     )
 
     old_component = next(item for item in second_components if item["id"] == "old")
-    assert old_component["y"] == 9
+    assert old_component["y"] == 11
     assert second_components == first_components
     assert second_canvas == first_canvas
