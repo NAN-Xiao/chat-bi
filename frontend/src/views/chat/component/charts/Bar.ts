@@ -11,7 +11,10 @@ import {
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
-import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
+import {
+  resolveCategoryAxisResponsiveOptions,
+  resolveG2ResponsiveStyle,
+} from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Bar extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -99,16 +102,8 @@ export class Bar extends BaseG2Chart {
       axis: {
         x: {
           title: false, // x[0].name,
-          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: formatCategoryAxisLabel,
-          labelAutoHide: {
-            type: 'hide',
-            keepHeader: true,
-            keepTail: true,
-          },
-          labelAutoRotate: false,
-          labelAutoWrap: true,
-          labelAutoEllipsis: true,
+          ...resolveCategoryAxisResponsiveOptions(responsive),
         },
         y: {
           title: false, // y[0].name,

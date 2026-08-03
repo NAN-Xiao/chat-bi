@@ -8,7 +8,10 @@ import {
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
-import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
+import {
+  resolveCategoryAxisResponsiveOptions,
+  resolveG2ResponsiveStyle,
+} from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Heatmap extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -47,10 +50,8 @@ export class Heatmap extends BaseG2Chart {
       axis: {
         x: {
           title: false,
-          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: formatCategoryAxisLabel,
-          labelAutoHide: true,
-          labelAutoRotate: false,
+          ...resolveCategoryAxisResponsiveOptions(responsive),
         },
         y: {
           title: false,

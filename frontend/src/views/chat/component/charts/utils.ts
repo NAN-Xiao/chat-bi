@@ -1,6 +1,11 @@
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import { axisLabel } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
+import {
+  resolveCategoryAxisResponsiveOptions,
+  resolveG2ResponsiveStyle,
+  type G2ResponsiveStyle,
+} from '@/views/chat/component/charts/g2Responsive.ts'
 import { endsWith, replace } from 'lodash-es'
 
 const AUTO_VALUE_FIELD = 'shuzhi_auto_quota'
@@ -542,7 +547,8 @@ export function buildMixedUnitComboOptions(
   baseOptions: G2Spec,
   xAxis: ChartAxis,
   mixedData: MixedUnitChartData,
-  showLabel: boolean
+  showLabel: boolean,
+  responsive: G2ResponsiveStyle = resolveG2ResponsiveStyle(undefined, 'cartesian')
 ): G2Spec {
   const countValueField = mixedData.countValueField
   const percentValueField = mixedData.percentValueField
@@ -551,16 +557,8 @@ export function buildMixedUnitComboOptions(
 
   const xAxisOptions = {
     title: false,
-    labelFontSize: 11,
     labelFormatter: formatCategoryAxisLabel,
-    labelAutoHide: {
-      type: 'hide',
-      keepHeader: true,
-      keepTail: true,
-    },
-    labelAutoRotate: false,
-    labelAutoWrap: true,
-    labelAutoEllipsis: true,
+    ...resolveCategoryAxisResponsiveOptions(responsive),
   }
 
   const countLabels = showLabel
