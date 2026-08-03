@@ -1,3 +1,5 @@
+import type { ChartLayoutContext } from '@/views/chat/component/chartLayout.ts'
+
 export interface ChartAxis {
   name?: string
   value: string
@@ -65,6 +67,7 @@ export abstract class BaseChart {
   hideZeroLabel: boolean = false
   hideValueAxis: boolean = false
   forecast?: ChartForecastConfig
+  layoutContext?: ChartLayoutContext
 
   constructor(mountTarget: ChartMountTarget, name: string) {
     this.mountTarget = mountTarget

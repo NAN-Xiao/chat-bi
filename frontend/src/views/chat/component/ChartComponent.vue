@@ -2,6 +2,11 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getChartInstance } from '@/views/chat/component/index.ts'
 import {
+  buildChartLayoutContext,
+  type ChartDensity,
+  type ChartSurface,
+} from '@/views/chat/component/chartLayout.ts'
+import {
   axisValue,
   type BaseChart,
   type ChartAxis,
@@ -24,6 +29,8 @@ const params = withDefaults(
     hideZeroLabel?: boolean
     hideValueAxis?: boolean
     forecast?: ChartForecastConfig
+    surface?: ChartSurface
+    hasOuterTitle?: boolean
   }>(),
   {
     data: () => [],
@@ -36,6 +43,8 @@ const params = withDefaults(
     hideZeroLabel: false,
     hideValueAxis: false,
     forecast: undefined,
+    surface: 'preview',
+    hasOuterTitle: false,
   }
 )
 
@@ -88,14 +97,38 @@ const axis = computed(() => {
 
 let chartInstance: BaseChart | undefined
 const chartContainerRef = ref<HTMLElement>()
+const chartSize = ref({ width: 0, height: 0 })
+const previousDensity = ref<ChartDensity>()
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
 let renderToken = 0
 const maxRenderRetries = 2
 
-function hasRenderableSize() {
+const currentLayoutContext = computed(() => {
+  const context = buildChartLayoutContext({
+    ...chartSize.value,
+    surface: params.surface,
+    hasOuterTitle: params.hasOuterTitle,
+    previousDensity: previousDensity.value,
+  })
+  previousDensity.value = context.density
+  return context
+})
+
+function measureChartContainer() {
   const element = chartContainerRef.value
-  return Boolean(element && element.clientWidth > 0 && element.clientHeight > 0)
+  if (!element) return false
+  const width = Math.round(element.clientWidth)
+  const height = Math.round(element.clientHeight)
+  if (width <= 0 || height <= 0) return false
+  if (width !== chartSize.value.width || height !== chartSize.value.height) {
+    chartSize.value = { width, height }
+  }
+  return true
+}
+
+function hasRenderableSize() {
+  return measureChartContainer()
 }
 
 function hasRenderedOutput() {
@@ -151,7 +184,7 @@ function handleRenderError(error: unknown, token: number, retry: number) {
 }
 
 function renderChart(retry = 0) {
-  if (!hasRenderableSize()) {
+  if (!measureChartContainer()) {
     return
   }
   const token = ++renderToken
@@ -162,6 +195,7 @@ function renderChart(retry = 0) {
   }
   chartInstance = getChartInstance(params.type, container)
   if (chartInstance) {
+    chartInstance.layoutContext = currentLayoutContext.value
     chartInstance.showLabel = params.showLabel
     chartInstance.hideZeroLabel = params.hideZeroLabel
     chartInstance.hideValueAxis = params.hideValueAxis
@@ -234,7 +268,8 @@ defineExpose({
 
 onMounted(() => {
   resizeObserver = new ResizeObserver(() => {
-    if (params.type !== 'table') scheduleRenderChart(80)
+    const changed = measureChartContainer()
+    if (changed && params.type !== 'table') scheduleRenderChart(80)
   })
   if (chartContainerRef.value) {
     resizeObserver.observe(chartContainerRef.value)

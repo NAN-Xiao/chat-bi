@@ -5,6 +5,21 @@ const component = readFileSync('src/views/chat/component/ChartComponent.vue', 'u
 const dashboardView = readFileSync('src/views/dashboard/components/sq-view/index.vue', 'utf8')
 const table = readFileSync('src/views/chat/component/charts/Table.ts', 'utf8')
 
+assert.match(component, /surface\?:\s*ChartSurface/, 'ChartComponent 必须声明调用表面')
+assert.match(component, /hasOuterTitle\?:\s*boolean/, '调用方必须能声明外层已有标题')
+assert.match(component, /buildChartLayoutContext\(/, '组件必须从自身容器尺寸构建布局上下文')
+assert.match(
+  component,
+  /chartInstance\.layoutContext\s*=\s*currentLayoutContext\.value/,
+  '实例初始化前必须收到布局上下文'
+)
+assert.match(component, /previousDensity:/, '密度切换必须使用前一档做边界稳定')
+assert.match(
+  component,
+  /params\.type\s*!==\s*['"]table['"]/,
+  'table 仍由自身 ResizeObserver 原地调整'
+)
+
 assert.match(
   table,
   /changeSheetSize\(contentWidth, viewportHeight\)[\s\S]*?render\(false\)/,
