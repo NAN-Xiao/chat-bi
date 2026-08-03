@@ -96,13 +96,19 @@ const axis = computed(() => {
 })
 
 let chartInstance: BaseChart | undefined
+let stagingChartInstance: BaseChart | undefined
 const chartContainerRef = ref<HTMLElement>()
+const chartRenderHostRef = ref<HTMLElement>()
+const activeLayerRef = ref<HTMLElement>()
+const stagingLayerRef = ref<HTMLElement>()
+const showInitialLoading = ref(true)
 const chartSize = ref({ width: 0, height: 0 })
 const previousDensity = ref<ChartDensity>()
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
 let renderToken = 0
 const maxRenderRetries = 2
+const destroyedChartInstances = new WeakSet<BaseChart>()
 
 const currentLayoutContext = computed(() => {
   const context = buildChartLayoutContext({
@@ -132,8 +138,7 @@ function hasRenderableSize() {
   return measureChartContainer().renderable
 }
 
-function hasRenderedOutput() {
-  const element = chartContainerRef.value
+function hasRenderedOutput(element = activeLayerRef.value || chartRenderHostRef.value) {
   if (!element) {
     return false
   }
@@ -150,6 +155,7 @@ function hasRenderedOutput() {
 }
 
 function scheduleRenderChart(delay = 0, retry = 0) {
+  renderToken += 1
   if (renderTimer) {
     window.clearTimeout(renderTimer)
   }
@@ -163,18 +169,63 @@ function scheduleRenderChart(delay = 0, retry = 0) {
   }, delay)
 }
 
-function retryRenderIfNeeded(token: number, retry: number) {
-  window.setTimeout(() => {
-    if (token !== renderToken || !hasRenderableSize() || hasRenderedOutput()) {
-      return
-    }
-    if (retry < maxRenderRetries) {
-      scheduleRenderChart(120, retry + 1)
-    }
-  }, 120)
+function configureChart(instance: BaseChart) {
+  instance.layoutContext = currentLayoutContext.value
+  instance.showLabel = params.showLabel
+  instance.hideZeroLabel = params.hideZeroLabel
+  instance.hideValueAxis = params.hideValueAxis
+  instance.forecast = params.forecast
+  instance.init(axis.value, params.data)
 }
 
-function handleRenderError(error: unknown, token: number, retry: number) {
+function destroyChartInstance(instance: BaseChart | undefined) {
+  if (!instance || destroyedChartInstances.has(instance)) {
+    return
+  }
+  destroyedChartInstances.add(instance)
+  try {
+    instance.destroy()
+  } catch (error) {
+    console.warn('[ChartComponent] chart destroy failed', error)
+  }
+}
+
+function cleanupStagedChart(instance: BaseChart | undefined, layer: HTMLElement | undefined) {
+  destroyChartInstance(instance)
+  layer?.remove()
+  if (stagingChartInstance === instance) {
+    stagingChartInstance = undefined
+  }
+  if (stagingLayerRef.value === layer) {
+    stagingLayerRef.value = undefined
+  }
+}
+
+function commitStagedChart(nextInstance: BaseChart, stagingLayer: HTMLElement, token: number) {
+  if (token !== renderToken) {
+    cleanupStagedChart(nextInstance, stagingLayer)
+    return
+  }
+  const previousInstance = chartInstance
+  const previousLayer = activeLayerRef.value
+  stagingLayer.classList.replace('chart-render-layer--staging', 'chart-render-layer--active')
+  chartInstance = nextInstance
+  activeLayerRef.value = stagingLayer
+  stagingChartInstance = undefined
+  stagingLayerRef.value = undefined
+  showInitialLoading.value = false
+  destroyChartInstance(previousInstance)
+  previousLayer?.remove()
+}
+
+function handleAtomicRenderError(
+  error: unknown,
+  nextInstance: BaseChart | undefined,
+  stagingLayer: HTMLElement,
+  token: number,
+  retry: number
+) {
+  cleanupStagedChart(nextInstance, stagingLayer)
   if (token !== renderToken) {
     return
   }
@@ -184,43 +235,68 @@ function handleRenderError(error: unknown, token: number, retry: number) {
   }
 }
 
+function renderAtomicChart(retry = 0) {
+  const host = chartRenderHostRef.value
+  if (!host) {
+    return
+  }
+  const token = ++renderToken
+  cleanupStagedChart(stagingChartInstance, stagingLayerRef.value)
+  const stagingLayer = document.createElement('div')
+  stagingLayer.className = 'chart-render-layer chart-render-layer--staging'
+  host.appendChild(stagingLayer)
+  stagingLayerRef.value = stagingLayer
+  let nextInstance: BaseChart | undefined
+  try {
+    nextInstance = getChartInstance(params.type, stagingLayer)
+    stagingChartInstance = nextInstance
+    if (!nextInstance) {
+      throw new Error(`Unsupported chart type: ${params.type}`)
+    }
+    const renderInstance = nextInstance
+    configureChart(renderInstance)
+    Promise.resolve(renderInstance.render())
+      .then(() => {
+        if (token !== renderToken) {
+          cleanupStagedChart(renderInstance, stagingLayer)
+          return
+        }
+        if (!hasRenderedOutput(stagingLayer)) {
+          handleAtomicRenderError(
+            new Error(`Chart rendered without output: ${params.type}`),
+            renderInstance,
+            stagingLayer,
+            token,
+            retry
+          )
+          return
+        }
+        commitStagedChart(renderInstance, stagingLayer, token)
+      })
+      .catch((error) => handleAtomicRenderError(error, renderInstance, stagingLayer, token, retry))
+  } catch (error) {
+    handleAtomicRenderError(error, nextInstance, stagingLayer, token, retry)
+  }
+}
+
 function renderChart(retry = 0) {
   if (!measureChartContainer().renderable) {
     return
   }
-  const token = ++renderToken
-  destroyChart(false)
-  const container = chartContainerRef.value
-  if (!container) {
-    return
-  }
-  chartInstance = getChartInstance(params.type, container)
-  if (chartInstance) {
-    chartInstance.layoutContext = currentLayoutContext.value
-    chartInstance.showLabel = params.showLabel
-    chartInstance.hideZeroLabel = params.hideZeroLabel
-    chartInstance.hideValueAxis = params.hideValueAxis
-    chartInstance.forecast = params.forecast
-    chartInstance.init(axis.value, params.data)
-    try {
-      Promise.resolve(chartInstance.render())
-        .then(() => retryRenderIfNeeded(token, retry))
-        .catch((error) => handleRenderError(error, token, retry))
-    } catch (error) {
-      handleRenderError(error, token, retry)
-    }
-  }
+  renderAtomicChart(retry)
 }
 
 function destroyChart(invalidate = true) {
   if (invalidate) {
     renderToken += 1
   }
-  if (chartInstance) {
-    chartInstance.destroy()
-    chartInstance = undefined
-  }
-  chartContainerRef.value?.replaceChildren()
+  cleanupStagedChart(stagingChartInstance, stagingLayerRef.value)
+  destroyChartInstance(chartInstance)
+  chartInstance = undefined
+  activeLayerRef.value?.remove()
+  activeLayerRef.value = undefined
+  chartRenderHostRef.value?.replaceChildren()
+  showInitialLoading.value = true
 }
 
 watch(
@@ -312,12 +388,57 @@ function handleVisibilityChange() {
 </script>
 
 <template>
-  <div :id="chartId" ref="chartContainerRef" class="chart-container"></div>
+  <div :id="chartId" ref="chartContainerRef" class="chart-container">
+    <div v-if="showInitialLoading" class="chart-component-loading" aria-label="loading">
+      <span class="chart-component-loading-ring"></span>
+    </div>
+    <div ref="chartRenderHostRef" class="chart-render-host"></div>
+  </div>
 </template>
 
 <style scoped lang="less">
 .chart-container {
   height: 100%;
+  min-height: 0;
+  position: relative;
   width: 100%;
+}
+
+.chart-render-host,
+:deep(.chart-render-layer) {
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+:deep(.chart-render-layer--staging) {
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.chart-component-loading {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  z-index: 1;
+}
+
+.chart-component-loading-ring {
+  animation: chart-component-loading-spin 0.85s linear infinite;
+  border: 3px solid #eef1f5;
+  border-radius: 50%;
+  border-top-color: var(--ed-color-primary, #2f6bff);
+  height: 28px;
+  width: 28px;
+}
+
+@keyframes chart-component-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

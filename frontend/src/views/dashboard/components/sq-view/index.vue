@@ -139,7 +139,6 @@ const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
 const refreshing = ref(false)
 const blockingRefreshLoading = ref(false)
-const chartRenderVersion = ref(0)
 const pivotCalendarMonth = ref('')
 const pivotCalendarDraftStart = ref('')
 const pivotModePopoverVisible = ref(false)
@@ -310,12 +309,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  chartRef.value?.destroyChart()
-  //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
   chartRef.value?.renderChart()
 }
 const chartComponentKey = computed(
-  () => `${props.outerId || props.viewInfo?.id || 'chart'}-${chartRenderVersion.value}`
+  () => props.outerId || props.viewInfo?.id || 'chart'
 )
 
 const enlargeDialogVisible = ref(false)
@@ -1191,7 +1188,7 @@ function setPivotGroupValueChecked(value: string, checked: boolean) {
     selected.size === pivotGroupValueTotal.value && pivotGroupValueTotal.value > 0 ? 'all' : 'custom'
   pivotGroupValueState.selectedValues =
     pivotGroupValueState.mode === 'all' ? pivotGroupValueOptions.value.map((option) => option.value) : Array.from(selected)
-  chartRenderVersion.value += 1
+  scheduleRenderChart()
 }
 
 function togglePivotGroupValue(value: string, event: Event) {
@@ -1285,12 +1282,12 @@ function removePivotGroupOutsidePointerListener() {
 
 function selectAllPivotGroupValues() {
   resetPivotGroupValueSelection('all')
-  chartRenderVersion.value += 1
+  scheduleRenderChart()
 }
 
 function clearPivotGroupValues() {
   resetPivotGroupValueSelection('custom')
-  chartRenderVersion.value += 1
+  scheduleRenderChart()
 }
 
 function getPivotPayload() {
@@ -1368,12 +1365,10 @@ function schedulePivotRefresh() {
     window.clearTimeout(pivotRefreshTimer)
   }
   if (pivotClientFilterOnly.value) {
-    chartRenderVersion.value += 1
     scheduleRenderChart()
     return
   }
   if (props.platformTemplate) {
-    chartRenderVersion.value += 1
     scheduleRenderChart()
     return
   }
@@ -1555,7 +1550,6 @@ async function refreshData(options: RefreshDataOptions = {}) {
         }
       }
       props.viewInfo.loadingProgress = 100
-      chartRenderVersion.value += 1
       await nextTick()
     } catch (error: any) {
       if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
@@ -1661,7 +1655,6 @@ async function refreshData(options: RefreshDataOptions = {}) {
         }
       }
       props.viewInfo.loadingProgress = 100
-      chartRenderVersion.value += 1
       await nextTick()
     } catch (error: any) {
       if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
@@ -1793,7 +1786,6 @@ async function refreshData(options: RefreshDataOptions = {}) {
       }
     }
     props.viewInfo.loadingProgress = 100
-    chartRenderVersion.value += 1
     await nextTick()
   } catch (error: any) {
     if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
@@ -2147,16 +2139,17 @@ const isFeaturedSideInsight = computed(() => insightDisplay.value.featuredSide =
 function measureFrame() {
   const el = chartShowAreaRef.value
   if (!el) {
-    return
+    return false
   }
   const nextSize = {
     width: Math.round(el.clientWidth),
     height: Math.round(el.clientHeight),
   }
   if (nextSize.width === frameSize.value.width && nextSize.height === frameSize.value.height) {
-    return
+    return false
   }
   frameSize.value = nextSize
+  return true
 }
 
 function scheduleRenderChart() {
@@ -2261,10 +2254,7 @@ function onTypeChange(val: any) {
   // eslint-disable-next-line vue/no-mutating-props
   props.viewInfo.chart.type = val
   nextTick(() => {
-    //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    chartRef.value?.destroyChart()
-    //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    chartRef.value?.renderChart()
+    renderChart()
   })
 }
 
@@ -2276,8 +2266,8 @@ onMounted(() => {
     measureFrame()
     if (containerRef.value) {
       resizeObserver = new ResizeObserver(() => {
-        measureFrame()
-        if (chartType.value !== 'table') scheduleRenderChart()
+        const frameChanged = measureFrame()
+        if (frameChanged && chartType.value !== 'table') scheduleRenderChart()
       })
       resizeObserver.observe(containerRef.value)
       if (chartShowAreaRef.value) {

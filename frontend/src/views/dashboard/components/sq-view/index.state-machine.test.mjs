@@ -88,6 +88,41 @@ assert.match(
   '空结果显示必须通过状态机函数统一判断'
 )
 
+const fullLoadingMatch = source.match(
+  /const showFullChartLoading = computed\(\s*\(\) =>([\s\S]*?)\r?\n\)/
+)
+assert.ok(fullLoadingMatch, '需要集中判断图表是否显示完整加载态')
+assert.match(
+  fullLoadingMatch[1],
+  /chartLoading\.value && \(blockingRefreshLoading\.value \|\| !hasRenderedChartData\.value\)/,
+  '首次加载没有可渲染数据时必须显示完整加载态'
+)
+assert.match(
+  fullLoadingMatch[1],
+  /chartResultPending\.value && !hasRenderedChartData\.value/,
+  '结果仍 pending 且没有数据时不能提前挂载空图表'
+)
+
+const chartContentMatch = source.match(
+  /const showChartContent = computed\(\(\) => \{([\s\S]*?)\r?\n\}\)/
+)
+assert.ok(chartContentMatch, '需要集中判断图表内容是否可以挂载')
+assert.match(
+  chartContentMatch[1],
+  /!showFullChartLoading\.value/,
+  '完整加载态期间必须阻止图表内容挂载，避免显示空坐标轴'
+)
+assert.match(
+  source,
+  /<div v-if="showFullChartLoading" class="chart-loading-info">[\s\S]*?<div\s+v-if="showChartContent"/,
+  '模板必须先渲染完整加载态，再按状态挂载图表内容'
+)
+assert.doesNotMatch(
+  source,
+  /chartRef\.value\?\.destroyChart\(\)[\s\S]*?chartRef\.value\?\.renderChart\(\)/,
+  '看板外层不得先清空可见图表再调用异步重绘'
+)
+
 const staleRecoveryMatch = source.match(
   /async function recoverStaleLoadingState\(\) \{([\s\S]*?)\r?\n\}/
 )

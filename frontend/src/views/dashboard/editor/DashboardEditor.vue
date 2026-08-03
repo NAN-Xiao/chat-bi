@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import CanvasCore from '@/views/dashboard/canvas/CanvasCore.vue'
-import { computed, nextTick, onMounted, type PropType, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, type PropType, ref } from 'vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
-import { useEmitt, useEmittLazy } from '@/utils/useEmitt.ts'
+import { useEmitt } from '@/utils/useEmitt.ts'
 
 const canvasCoreRef = ref(null)
 const dashboardEditorRef = ref(null)
@@ -10,6 +10,12 @@ const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
+let viewRenderTimer: ReturnType<typeof window.setTimeout> | undefined
+let lastEditorSize = {
+  width: -1,
+  height: -1,
+}
+const { emitter } = useEmitt()
 
 // Props
 const props = defineProps({
@@ -80,20 +86,40 @@ const canvasSizeInit = () => {
   }
 }
 
-const sizeInit = () => {
-  if (dashboardEditorRef.value) {
-    baseMarginLeft.value = 0
-    baseMarginTop.value = 0
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    const screenWidth = dashboardEditorRef.value.offsetWidth
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    const screenHeight = dashboardEditorRef.value.offsetHeight
-    baseWidth.value =
-      (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
-    baseHeight.value =
-      (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
-    useEmittLazy('view-render-all')
+function scheduleViewRenderAll() {
+  if (viewRenderTimer) {
+    return
   }
+  viewRenderTimer = window.setTimeout(() => {
+    viewRenderTimer = undefined
+    emitter.emit('view-render-all')
+  }, 150)
+}
+
+const sizeInit = (force = false) => {
+  if (!dashboardEditorRef.value) {
+    return false
+  }
+  baseMarginLeft.value = 0
+  baseMarginTop.value = 0
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  const screenWidth = Math.round(dashboardEditorRef.value.offsetWidth)
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  const screenHeight = Math.round(dashboardEditorRef.value.offsetHeight)
+  if (
+    !force &&
+    screenWidth === lastEditorSize.width &&
+    screenHeight === lastEditorSize.height
+  ) {
+    return false
+  }
+  lastEditorSize = { width: screenWidth, height: screenHeight }
+  baseWidth.value =
+    (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
+  baseHeight.value =
+    (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
+  scheduleViewRenderAll()
+  return true
 }
 
 const addItemToBox = (item: CanvasItem) => {
@@ -142,7 +168,7 @@ onMounted(() => {
   window.addEventListener('resize', canvasSizeInit)
   nextTick(() => {
     if (dashboardEditorRef.value) {
-      sizeInit()
+      sizeInit(true)
       nextTick(() => {
         if (canvasCoreRef.value) {
           // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -151,6 +177,13 @@ onMounted(() => {
       })
     }
   })
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', canvasSizeInit)
+  if (viewRenderTimer) {
+    window.clearTimeout(viewRenderTimer)
+    viewRenderTimer = undefined
+  }
 })
 const emits = defineEmits(['parentAddItemBox'])
 </script>

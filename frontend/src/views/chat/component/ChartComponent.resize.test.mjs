@@ -10,7 +10,7 @@ assert.match(component, /hasOuterTitle\?:\s*boolean/, '调用方必须能声明�
 assert.match(component, /buildChartLayoutContext\(/, '组件必须从自身容器尺寸构建布局上下文')
 assert.match(
   component,
-  /chartInstance\.layoutContext\s*=\s*currentLayoutContext\.value/,
+  /function configureChart\(instance: BaseChart\)[\s\S]*?instance\.layoutContext\s*=\s*currentLayoutContext\.value[\s\S]*?instance\.init\(axis\.value, params\.data\)/,
   '实例初始化前必须收到布局上下文'
 )
 assert.match(component, /previousDensity:/, '密度切换必须使用前一档做边界稳定')
