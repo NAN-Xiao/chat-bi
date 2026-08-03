@@ -66,6 +66,16 @@ assert.match(
 )
 assert.doesNotMatch(source, /<el-date-picker[\s\S]*class="date-filter-picker"/)
 assert.match(source, /dateFilterCapability[\s\S]*status\s*===\s*'available'/)
+assert.match(
+  source,
+  /const insightDateRange = computed<[\s\S]*resolvedStart[\s\S]*resolvedEnd/,
+  '图表摘要应从后端日期能力中取已解析的真实筛选范围'
+)
+assert.equal(
+  (source.match(/:date-range="insightDateRange"/g) || []).length,
+  2,
+  '顶部和侧边两种图表摘要布局都必须使用真实筛选范围'
+)
 assert.match(source, /pivotOverride\?:/)
 assert.match(source, /buildDashboardDateFilterRequestForView/)
 assert.match(source, /date_parameter_type:\s*props\.viewInfo\?\.pivot\?\.date_parameter_type/)

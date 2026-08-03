@@ -380,6 +380,14 @@ const dateFilterCapability = computed<DashboardDateFilterCapability | null>(() =
   const capability = props.viewInfo?.dateFilterCapability
   return capability && typeof capability === 'object' ? capability : null
 })
+const insightDateRange = computed<[string, string] | null>(() => {
+  if (dateFilterCapability.value?.status !== 'available') {
+    return null
+  }
+  const start = String(dateFilterCapability.value.resolvedStart || '')
+  const end = String(dateFilterCapability.value.resolvedEnd || '')
+  return start && end ? [start, end] : null
+})
 const showDashboardDateFilter = computed(() =>
   dateFilterCapability.value?.status === 'available'
   && canShowDashboardDateFilter(dateFilterCapability.value)
@@ -2611,6 +2619,7 @@ defineExpose({
         :series="renderSeries"
         :data="displayData"
         :sql="viewInfo.sql"
+        :date-range="insightDateRange"
         :insight="viewInfo.chart?.insight"
       />
       <div
@@ -2635,6 +2644,7 @@ defineExpose({
           :series="renderSeries"
           :data="displayData"
           :sql="viewInfo.sql"
+          :date-range="insightDateRange"
           :insight="viewInfo.chart?.insight"
           :featured-side="isFeaturedSideInsight"
         />

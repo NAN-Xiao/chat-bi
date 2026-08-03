@@ -43,6 +43,30 @@ const TOP_RANKED_COMPACT_MIN_WIDTH = 500
 const TOP_RANKED_MAX_STATS = 4
 const DAY_MS = 24 * 60 * 60 * 1000
 const TOP_RICH_SUMMARY_TYPES = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'funnel'])
+const INSIGHT_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+
+function isValidInsightDate(value: string) {
+  const match = INSIGHT_DATE_PATTERN.exec(value)
+  if (!match) {
+    return false
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day
+}
+
+export function formatInsightDateRange(range?: [string, string] | null) {
+  const start = String(range?.[0] || '').trim()
+  const end = String(range?.[1] || '').trim()
+  if (!isValidInsightDate(start) || !isValidInsightDate(end) || start > end) {
+    return ''
+  }
+  return start === end ? start : `${start} - ${end}`
+}
 
 function axisValues(axes?: Array<ChartAxis>) {
   return (axes || []).map((axis) => axis.value).filter(Boolean)
