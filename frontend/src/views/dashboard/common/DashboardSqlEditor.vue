@@ -2232,7 +2232,7 @@ function builderFilterScopeIssues() {
 }
 
 function fixedSqlEditorTimeFieldIssue() {
-  if (schemaLoading.value || schemaFieldOptions.value.length === 0) {
+  if (!hasSqlSource.value || schemaLoading.value || schemaFieldOptions.value.length === 0) {
     return ''
   }
   const hasFixedField = schemaFieldOptions.value.some((option) => (
@@ -2241,11 +2241,19 @@ function fixedSqlEditorTimeFieldIssue() {
   return hasFixedField ? '' : '当前执行数据源缺少固定时间字段 dt。'
 }
 
+function blockMissingFixedTimeField() {
+  const issue = fixedSqlEditorTimeFieldIssue()
+  if (!issue) {
+    return false
+  }
+  ElMessage.warning(issue)
+  return true
+}
+
 function builderBlockingScopeIssues() {
   return unique([
     ...builderEventScopeIssues(),
     ...builderFilterScopeIssues(),
-    fixedSqlEditorTimeFieldIssue(),
   ].filter(Boolean))
 }
 
@@ -2614,6 +2622,9 @@ async function generateBuilderAiSql() {
   }
   if (!selectedExecutionDatasourceId.value) {
     ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
+    return false
+  }
+  if (blockMissingFixedTimeField()) {
     return false
   }
   const usesDashboardDateParameters = shouldUseDashboardDateParameters()
@@ -4348,6 +4359,9 @@ async function runPreview(options: { useGlobalLoading?: boolean } = {}) {
     ElMessage.warning(sqlEditorPermissionMessage)
     return false
   }
+  if (blockMissingFixedTimeField()) {
+    return false
+  }
   const useGlobalLoading = options.useGlobalLoading !== false
   if (useGlobalLoading) {
     loadingText.value = loadingText.value || '正在执行'
@@ -4468,6 +4482,9 @@ function validateBeforeApply() {
   }
   if (hasSqlSource.value && !selectedExecutionDatasourceId.value) {
     ElMessage.warning(executionDatasourceError.value || '请选择图表执行数据源。')
+    return false
+  }
+  if (blockMissingFixedTimeField()) {
     return false
   }
   if (hasSqlSource.value && !form.sql.trim()) {

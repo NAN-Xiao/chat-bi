@@ -39,7 +39,32 @@ assert.match(resetSource, /form\.pivotDateParameterType = SQL_EDITOR_DATE_PARAME
 
 assert.match(source, /function fixedSqlEditorTimeFieldIssue\(\)/)
 assert.match(source, /当前执行数据源缺少固定时间字段 dt/)
-assert.match(source, /fixedSqlEditorTimeFieldIssue\(\)/)
+
+const missingTimeFieldGuardSource = source.match(
+  /function blockMissingFixedTimeField\(\) \{([\s\S]*?)\n\}/
+)?.[1] || ''
+assert.match(missingTimeFieldGuardSource, /fixedSqlEditorTimeFieldIssue\(\)/)
+assert.match(missingTimeFieldGuardSource, /ElMessage\.warning\(issue\)/)
+assert.match(missingTimeFieldGuardSource, /return true/)
+assert.doesNotMatch(missingTimeFieldGuardSource, /ElMessage\.error|preview\.status/)
+
+const blockingIssuesSource = source.match(
+  /function builderBlockingScopeIssues\(\) \{([\s\S]*?)\n\}/
+)?.[1] || ''
+assert.doesNotMatch(
+  blockingIssuesSource,
+  /fixedSqlEditorTimeFieldIssue\(\)/,
+  '缺少 dt 应使用独立黄色拦截提示，不得混入配置问题列表'
+)
+
+const generateSource = source.match(/async function generateBuilderAiSql\(\) \{([\s\S]*?)\n\}/)?.[1] || ''
+assert.match(generateSource, /blockMissingFixedTimeField\(\)/)
+
+const previewSource = source.match(/async function runPreview\([^)]*\) \{([\s\S]*?)\n\}/)?.[1] || ''
+assert.match(previewSource, /blockMissingFixedTimeField\(\)/)
+
+const applyValidationSource = source.match(/function validateBeforeApply\(\) \{([\s\S]*?)\n\}/)?.[1] || ''
+assert.match(applyValidationSource, /blockMissingFixedTimeField\(\)/)
 
 const restoreSource = source.match(/function restoreSqlBuilderState\(value: any\) \{([\s\S]*?)\n\}/)?.[1] || ''
 assert.match(restoreSource, /sqlBuilder\.timeField = SQL_EDITOR_TIME_FIELD/)
