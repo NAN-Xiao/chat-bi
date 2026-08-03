@@ -11,6 +11,7 @@ import {
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Bar extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -57,9 +58,11 @@ export class Bar extends BaseG2Chart {
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'cartesian')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'interval',
+      padding: responsive.padding,
       data: _data.data,
       coordinate: { transform: [{ type: 'transpose' }] },
       encode: {
@@ -96,7 +99,7 @@ export class Bar extends BaseG2Chart {
       axis: {
         x: {
           title: false, // x[0].name,
-          labelFontSize: 11,
+          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: {
             type: 'hide',
@@ -113,7 +116,7 @@ export class Bar extends BaseG2Chart {
           label: this.hideValueAxis ? false : undefined,
           tick: this.hideValueAxis ? false : undefined,
           line: this.hideValueAxis ? false : undefined,
-          labelFontSize: 11,
+          labelFontSize: responsive.axisLabelFontSize,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,
@@ -152,7 +155,7 @@ export class Bar extends BaseG2Chart {
           }
         }
       },
-      labels: this.showLabel
+      labels: this.showLabel && responsive.showPointLabels
         ? [
             {
               text: (data: any) => {

@@ -13,6 +13,7 @@ import {
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Column extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -73,9 +74,11 @@ export class Column extends BaseG2Chart {
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'cartesian')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'interval',
+      padding: responsive.padding,
       data: _data.data,
       encode: {
         x: x[0].value,
@@ -111,7 +114,7 @@ export class Column extends BaseG2Chart {
       axis: {
         x: {
           title: false, // x[0].name,
-          labelFontSize: 11,
+          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: {
             type: 'hide',
@@ -124,6 +127,7 @@ export class Column extends BaseG2Chart {
         },
         y: {
           title: false, // y[0].name,
+          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: (value: any) => {
             return String(formatNumber(value))
           },
@@ -155,7 +159,7 @@ export class Column extends BaseG2Chart {
           }
         }
       },
-      labels: this.showLabel
+      labels: this.showLabel && responsive.showPointLabels
         ? [
             {
               text: (data: any) => {

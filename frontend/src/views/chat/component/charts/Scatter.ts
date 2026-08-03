@@ -8,6 +8,7 @@ import {
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Scatter extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -28,9 +29,11 @@ export class Scatter extends BaseG2Chart {
     const series = axes.series
     const _data = checkIsPercent(y, data)
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'cartesian')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'point',
+      padding: responsive.padding,
       data: _data.data,
       encode: {
         x: x[0].value,
@@ -45,13 +48,14 @@ export class Scatter extends BaseG2Chart {
       axis: {
         x: {
           title: false,
-          labelFontSize: 11,
+          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: formatCategoryAxisLabel,
           labelAutoHide: true,
           labelAutoRotate: false,
         },
         y: {
           title: false,
+          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: (value: any) => String(formatNumber(value)),
         },
       },
@@ -62,7 +66,7 @@ export class Scatter extends BaseG2Chart {
       interaction: {
         tooltip: { shared: false },
       },
-      labels: this.showLabel
+      labels: this.showLabel && responsive.showPointLabels
         ? [
             {
               text: (datum: any) =>
