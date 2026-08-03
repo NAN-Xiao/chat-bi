@@ -83,9 +83,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import {
+  buildInsightLayoutStateKey,
   buildInsightColumns,
   detectTrendAxisGranularity,
   resolveInsightDisplay,
+  type InsightLayout,
 } from '@/views/chat/component/chartInsight.ts'
 import { axisValue } from '@/views/chat/component/BaseChart.ts'
 import { toNullableNumber } from '@/views/chat/component/charts/utils.ts'
@@ -137,6 +139,8 @@ const chartShowAreaRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
+let previousInsightLayoutKey: string | undefined
+let previousInsightLayout: InsightLayout | undefined
 const refreshing = ref(false)
 const blockingRefreshLoading = ref(false)
 const pivotCalendarMonth = ref('')
@@ -2071,8 +2075,20 @@ const insightColumns = computed(() =>
     ...(props.viewInfo.chart?.columns || []),
   ])
 )
-const insightDisplay = computed(() =>
-  resolveInsightDisplay({
+const insightDisplay = computed(() => {
+  const layoutStateKey = buildInsightLayoutStateKey({
+    viewId: props.viewInfo?.id,
+    chartType: chartType.value,
+    x: renderXAxis.value,
+    y: renderYAxis.value,
+    series: renderSeries.value,
+    dashboard: isDashboardSurface.value,
+  })
+  if (layoutStateKey !== previousInsightLayoutKey) {
+    previousInsightLayoutKey = layoutStateKey
+    previousInsightLayout = undefined
+  }
+  const display = resolveInsightDisplay({
     chartType: chartType.value,
     data: displayData.value,
     x: renderXAxis.value,
@@ -2081,8 +2097,11 @@ const insightDisplay = computed(() =>
     width: frameSize.value.width,
     height: frameSize.value.height,
     dashboard: isDashboardSurface.value,
+    previousLayout: previousInsightLayout,
   })
-)
+  previousInsightLayout = display.layout
+  return display
+})
 const canShowInsightHeader = computed(() => {
   if (!showInsightHeader.value) {
     return false

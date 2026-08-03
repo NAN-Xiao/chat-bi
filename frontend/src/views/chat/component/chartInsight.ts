@@ -34,6 +34,7 @@ const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
 const SIDE_COMPACT_MAX_HEIGHT = 390
 const WIDE_TREND_SIDE_MIN_WIDTH = 1100
+const WIDE_TREND_SIDE_MIN_HEIGHT = 260
 const WIDE_TREND_SIDE_MIN_ASPECT_RATIO = 2.2
 const SIDE_MAX_STATS = 8
 const SIDE_COMPACT_RESERVED_HEIGHT = 130
@@ -70,6 +71,24 @@ export function formatInsightDateRange(range?: [string, string] | null) {
 
 function axisValues(axes?: Array<ChartAxis>) {
   return (axes || []).map((axis) => axis.value).filter(Boolean)
+}
+
+export function buildInsightLayoutStateKey(params: {
+  viewId?: string | number | null
+  chartType: ChartTypes
+  x?: Array<ChartAxis>
+  y?: Array<ChartAxis>
+  series?: Array<ChartAxis>
+  dashboard?: boolean
+}) {
+  return JSON.stringify([
+    params.viewId ?? null,
+    params.chartType,
+    Boolean(params.dashboard),
+    axisValues(params.x),
+    axisValues(params.y),
+    axisValues(params.series),
+  ])
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -333,6 +352,7 @@ export function resolveInsightDisplay(params: {
   width?: number
   height?: number
   dashboard?: boolean
+  previousLayout?: InsightLayout
 }): InsightDisplayStrategy {
   const preferredLayout = resolveInsightLayout(params)
   const width = params.width || 0
@@ -344,6 +364,8 @@ export function resolveInsightDisplay(params: {
     preferredLayout === 'top' &&
     TOP_RICH_SUMMARY_TYPES.has(params.chartType) &&
     axisValues(params.series).length === 0
+  const wideTrendMinHeight =
+    params.previousLayout === 'side' ? WIDE_TREND_SIDE_MIN_HEIGHT : SIDE_MIN_HEIGHT
   const isWideSingleMetricTrend =
     params.dashboard &&
     preferredLayout === 'top' &&
@@ -352,7 +374,7 @@ export function resolveInsightDisplay(params: {
     axisValues(params.series).length === 0 &&
     trendGranularity !== null &&
     width >= WIDE_TREND_SIDE_MIN_WIDTH &&
-    height >= SIDE_MIN_HEIGHT &&
+    height >= wideTrendMinHeight &&
     width / Math.max(height, 1) >= WIDE_TREND_SIDE_MIN_ASPECT_RATIO
 
   if (!params.dashboard || width <= 0 || height <= 0) {
