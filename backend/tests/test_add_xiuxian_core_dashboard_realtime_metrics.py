@@ -12,13 +12,17 @@ if str(TOOLS_DIR) not in sys.path:
 import add_xiuxian_core_dashboard_realtime_metrics as repair  # noqa: E402
 
 
+YESTERDAY_EXPRESSION = {"version": 1, "mode": "preset", "preset": "yesterday"}
+
+
 def test_metric_specs_use_authoritative_event_tables() -> None:
     specs = {spec.title: spec for spec in repair.METRIC_SPECS}
 
     assert list(specs) == ["活跃用户", "新增用户", "充值人数", "充值总额"]
     for spec in specs.values():
         assert "prod = 110000047" in spec.sql
-        assert "DATE_FORMAT(CURDATE(), '%Y%m%d')" in spec.sql
+        assert "{{dashboard_start_yyyymmdd}}" in spec.sql
+        assert "{{dashboard_end_yyyymmdd}}" in spec.sql
         assert "`日期`" in spec.sql
 
     assert "FROM event\n" in specs["活跃用户"].sql
@@ -29,10 +33,12 @@ def test_metric_specs_use_authoritative_event_tables() -> None:
     assert "event_realtime" not in specs["新增用户"].sql
     assert "event = 'UserRegister'" in specs["新增用户"].sql
     assert "COUNT(DISTINCT uid)" in specs["新增用户"].sql
-    assert "FROM event_realtime\n" in specs["充值人数"].sql
+    assert "FROM event\n" in specs["充值人数"].sql
+    assert "event_realtime" not in specs["充值人数"].sql
     assert "event = 'ServerPayLog'" in specs["充值人数"].sql
     assert "COUNT(DISTINCT uid)" in specs["充值人数"].sql
-    assert "FROM event_realtime\n" in specs["充值总额"].sql
+    assert "FROM event\n" in specs["充值总额"].sql
+    assert "event_realtime" not in specs["充值总额"].sql
     assert "event = 'ServerPayLog'" in specs["充值总额"].sql
     assert "$.money" in specs["充值总额"].sql
     assert "/ 10000" in specs["充值总额"].sql
@@ -136,6 +142,40 @@ def test_rewrite_dashboard_adds_four_top_metrics_and_shifts_existing_components(
         assert view["chart"]["xAxis"] == [{"value": "日期", "type": "other-info"}]
         assert view["chart"]["yAxis"] == [{"value": spec.field, "type": "y"}]
         assert view["data"]["data"] == [rows[spec.view_id]]
+        assert view["sourceConfig"]["sql"]["sql"] == spec.sql
+        builder = view["sourceConfig"]["sql"]["builder"]
+        assert builder["metricDateExpressionEnabled"] is True
+        assert builder["dateExpressionPickerEnabled"] is True
+        assert builder["timeField"] == "event.dt"
+        assert builder["timeRange"] == "expression"
+        assert builder["timeExpression"] == YESTERDAY_EXPRESSION
+        assert view["configVersion"] == 2
+        assert view["dateFilter"] == {
+            "enabled": True,
+            "parameterType": "yyyymmdd_number",
+            "expression": YESTERDAY_EXPRESSION,
+        }
+        assert view["pivot"]["date_expression"] == YESTERDAY_EXPRESSION
+        assert "{{dashboard_start_yyyymmdd}}" in view["sql"]
+        assert "{{dashboard_end_yyyymmdd}}" in view["sql"]
+
+
+def test_validate_dashboard_rejects_stale_nested_sql() -> None:
+    components = []
+    canvas = {}
+    rows = {
+        spec.view_id: {"日期": "2026-07-20", spec.field: 0}
+        for spec in repair.METRIC_SPECS
+    }
+    components, canvas = repair.rewrite_dashboard(components, canvas, rows)
+    canvas[repair.METRIC_SPECS[0].view_id]["sourceConfig"]["sql"]["sql"] = "SELECT 1"
+
+    try:
+        repair.validate_dashboard(components, canvas, rows)
+    except ValueError as exc:
+        assert "嵌套 SQL" in str(exc)
+    else:
+        raise AssertionError("嵌套 SQL 与顶层 SQL 不一致时必须拒绝")
 
 
 def test_rewrite_dashboard_is_idempotent() -> None:

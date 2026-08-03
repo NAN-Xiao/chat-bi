@@ -1,4 +1,4 @@
-"""在修仙核心看板顶部添加四张当天实时指标卡。"""
+"""在修仙核心看板顶部添加四张可选日期的指标卡。"""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -26,6 +26,9 @@ DASHBOARD_ID = "afe201c9762c448aa0495f3508c01793"
 DASHBOARD_NAME = "核心看板"
 PRODUCT_ID = 110000047
 HEADER_HEIGHT = 8
+START_TOKEN = "{{dashboard_start_yyyymmdd}}"
+END_TOKEN = "{{dashboard_end_yyyymmdd}}"
+YESTERDAY_EXPRESSION = {"version": 1, "mode": "preset", "preset": "yesterday"}
 
 
 @dataclass(frozen=True)
@@ -56,10 +59,10 @@ METRIC_SPECS = (
         field="活跃用户",
         x=1,
         sql="""SELECT
-    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `活跃用户`
 FROM event
-WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
   AND prod = 110000047
   AND event = 'UserActive'""",
     ),
@@ -69,10 +72,10 @@ WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d'
         field="新增用户",
         x=19,
         sql="""SELECT
-    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `新增用户`
 FROM event
-WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
   AND prod = 110000047
   AND event = 'UserRegister'""",
     ),
@@ -82,10 +85,10 @@ WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d'
         field="充值人数",
         x=37,
         sql="""SELECT
-    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
     COUNT(DISTINCT uid) AS `充值人数`
-FROM event_realtime
-WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+FROM event
+WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
   AND prod = 110000047
   AND event = 'ServerPayLog'""",
     ),
@@ -95,7 +98,7 @@ WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d'
         field="充值总额（万）",
         x=55,
         sql="""SELECT
-    DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d') AS `日期`,
+    DATE_FORMAT(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
     ROUND(
         COALESCE(
             SUM(
@@ -113,8 +116,8 @@ WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d'
         ) / 10000,
         2
     ) AS `充值总额（万）`
-FROM event_realtime
-WHERE dt = CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+FROM event
+WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
   AND prod = 110000047
   AND event = 'ServerPayLog'""",
     ),
@@ -215,7 +218,37 @@ def _metric_view(
             "series": [],
         },
         "refreshState": "",
-        "pivot": {"enabled": False},
+        "configVersion": 2,
+        "dateFilter": {
+            "enabled": True,
+            "parameterType": "yyyymmdd_number",
+            "expression": dict(YESTERDAY_EXPRESSION),
+        },
+        "sourceConfig": {
+            "sql": {
+                "sql": spec.sql,
+                "builder": {
+                    "metricDateExpressionEnabled": True,
+                    "dateExpressionPickerEnabled": True,
+                    "timeField": "event.dt",
+                    "timeGrain": "day",
+                    "timeRange": "expression",
+                    "timeCustomRange": [],
+                    "timeExpression": dict(YESTERDAY_EXPRESSION),
+                    "groups": [],
+                    "globalFilters": [],
+                    "globalFilterLogic": "and",
+                    "approximate": False,
+                }
+            }
+        },
+        "pivot": {
+            "enabled": False,
+            "time_field": "event.dt",
+            "range_enabled": True,
+            "date_parameter_type": "yyyymmdd_number",
+            "date_expression": dict(YESTERDAY_EXPRESSION),
+        },
         "external_mcp_server_id": None,
         "mcp": None,
         "externalSnapshot": False,
@@ -303,6 +336,14 @@ def validate_dashboard(
         view = canvas[spec.view_id]
         if view.get("sql") != spec.sql:
             raise ValueError(f"覆盖复验失败：{spec.title} SQL 不一致")
+        source_config = view.get("sourceConfig")
+        sql_config = (
+            source_config.get("sql", {})
+            if isinstance(source_config, Mapping)
+            else {}
+        )
+        if not isinstance(sql_config, Mapping) or sql_config.get("sql") != spec.sql:
+            raise ValueError(f"覆盖复验失败：{spec.title} 嵌套 SQL 不一致")
         if view.get("datasource") != DATASOURCE_ID:
             raise ValueError(f"覆盖复验失败：{spec.title} 数据源不一致")
         if view.get("chart", {}).get("type") != "metric":
@@ -369,8 +410,14 @@ def query_metric_rows() -> dict[str, dict[str, Any]]:
     try:
         rows: dict[str, dict[str, Any]] = {}
         with business_connection.cursor() as cursor:
+            yesterday = (
+                datetime.now(timezone.utc) + timedelta(hours=8) - timedelta(days=1)
+            ).strftime("%Y%m%d")
             for spec in METRIC_SPECS:
-                cursor.execute(spec.sql)
+                execution_sql = spec.sql.replace(START_TOKEN, yesterday).replace(
+                    END_TOKEN, yesterday
+                )
+                cursor.execute(execution_sql)
                 row = cursor.fetchone()
                 if row is None:
                     raise ValueError(f"{spec.title} SQL 未返回结果")
