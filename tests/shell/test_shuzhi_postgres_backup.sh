@@ -38,7 +38,7 @@ run_backup() {
     ENV_FILE="$TEST_ROOT/missing.env" \
     POSTGRES_SERVER="10.1.5.28" \
     POSTGRES_PORT="5432" \
-    POSTGRES_DB="zhishu_bi" \
+    POSTGRES_DB="zhishu_bi_2.0.0" \
     POSTGRES_USER="root" \
     POSTGRES_PASSWORD="test-only" \
     BACKUP_DIR="$backup_dir" \
@@ -71,7 +71,7 @@ if env \
   ENV_FILE="$TEST_ROOT/missing.env" \
   POSTGRES_SERVER="10.1.5.28" \
   POSTGRES_PORT="5432" \
-  POSTGRES_DB="zhishu_bi" \
+  POSTGRES_DB="zhishu_bi_2.0.0" \
   POSTGRES_USER="root" \
   POSTGRES_PASSWORD="test-only" \
   BACKUP_DIR="$checksum_missing_dir" \
@@ -93,17 +93,17 @@ fi
 
 success_dir="$TEST_ROOT/success"
 run_backup "$success_dir"
-backup_file="$(find "$success_dir" -maxdepth 1 -type f -name 'zhishu_bi-*.dump' | head -n 1)"
+backup_file="$(find "$success_dir" -maxdepth 1 -type f -name 'zhishu_bi_2.0.0-*.dump' | head -n 1)"
 [[ -n "$backup_file" && -s "$backup_file" ]] || fail "没有生成非空正式备份"
 [[ -s "$backup_file.sha256" ]] || fail "没有生成校验文件"
 case "$(uname -s)" in
   MINGW*|MSYS*)
-    cmp -s "$success_dir/zhishu_bi-latest.dump" "$backup_file" || fail "latest 备份内容与正式备份不一致"
-    cmp -s "$success_dir/zhishu_bi-latest.dump.sha256" "$backup_file.sha256" || fail "latest 校验内容与正式校验不一致"
+    cmp -s "$success_dir/zhishu_bi_2.0.0-latest.dump" "$backup_file" || fail "latest 备份内容与正式备份不一致"
+    cmp -s "$success_dir/zhishu_bi_2.0.0-latest.dump.sha256" "$backup_file.sha256" || fail "latest 校验内容与正式校验不一致"
     ;;
   *)
-    [[ -L "$success_dir/zhishu_bi-latest.dump" ]] || fail "没有生成 latest 备份链接"
-    [[ -L "$success_dir/zhishu_bi-latest.dump.sha256" ]] || fail "没有生成 latest 校验链接"
+    [[ -L "$success_dir/zhishu_bi_2.0.0-latest.dump" ]] || fail "没有生成 latest 备份链接"
+    [[ -L "$success_dir/zhishu_bi_2.0.0-latest.dump.sha256" ]] || fail "没有生成 latest 校验链接"
     ;;
 esac
 if find "$success_dir" -maxdepth 1 -type f -name '*.partial' | grep -q .; then
@@ -112,11 +112,11 @@ fi
 
 expired_dir="$TEST_ROOT/expired"
 mkdir -p "$expired_dir"
-printf 'old archive\n' > "$expired_dir/zhishu_bi-20000101T000000Z.dump"
-printf 'old checksum\n' > "$expired_dir/zhishu_bi-20000101T000000Z.dump.sha256"
-touch -d '20 days ago' "$expired_dir"/zhishu_bi-20000101T000000Z.dump*
+printf 'old archive\n' > "$expired_dir/zhishu_bi_2.0.0-20000101T000000Z.dump"
+printf 'old checksum\n' > "$expired_dir/zhishu_bi_2.0.0-20000101T000000Z.dump.sha256"
+touch -d '20 days ago' "$expired_dir"/zhishu_bi_2.0.0-20000101T000000Z.dump*
 run_backup "$expired_dir"
-[[ ! -e "$expired_dir/zhishu_bi-20000101T000000Z.dump" ]] || fail "过期备份未删除"
-[[ ! -e "$expired_dir/zhishu_bi-20000101T000000Z.dump.sha256" ]] || fail "过期校验文件未删除"
+[[ ! -e "$expired_dir/zhishu_bi_2.0.0-20000101T000000Z.dump" ]] || fail "过期备份未删除"
+[[ ! -e "$expired_dir/zhishu_bi_2.0.0-20000101T000000Z.dump.sha256" ]] || fail "过期校验文件未删除"
 
 echo "PASS: PostgreSQL backup shell behavior"

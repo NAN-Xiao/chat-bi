@@ -192,7 +192,7 @@ fi""" in readiness_doc
     assert "chmod 0600 /etc/shuzhi/shuzhi-backup.env" in readiness_doc
     assert "POSTGRES_SERVER=10.1.5.28" in readiness_doc
     assert "POSTGRES_PORT=5432" in readiness_doc
-    assert "POSTGRES_DB=zhishu_bi" in readiness_doc
+    assert "POSTGRES_DB=zhishu_bi_2.0.0" in readiness_doc
     assert "POSTGRES_USER=root" in readiness_doc
     assert "POSTGRES_PASSWORD" in readiness_doc
     assert "不进入 Git、命令输出或 journal" in readiness_doc

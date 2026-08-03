@@ -29,7 +29,7 @@ $ErrorActionPreference = "Stop"
 
 $appSystemDbHost = "10.1.5.28"
 $appSystemDbPort = 5432
-$appSystemDbName = "zhishu_bi"
+$appSystemDbName = "zhishu_bi_2.0.0"
 $appSystemDbUser = "root"
 $appSystemDbPassword = "Password123@pg"
 $biDemoDatasourcePort = 5432

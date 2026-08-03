@@ -1,7 +1,7 @@
 param(
     [ValidateSet("start", "stop", "restart", "status")]
     [string]$Action = "start",
-    [string]$AppDbName = "zhishu_bi",
+    [string]$AppDbName = "zhishu_bi_2.0.0",
     [int]$FrontendPort = 5173,
     [int]$BackendPort = 8000,
     [int]$McpPort = 8001,

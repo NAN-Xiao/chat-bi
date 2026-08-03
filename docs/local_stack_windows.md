@@ -6,7 +6,7 @@
 - backend API：Uvicorn `main:app`，默认 `0.0.0.0:8000`。
 - MCP app：Uvicorn `main:mcp_app`，默认 `0.0.0.0:8001`。
 
-脚本会使用核心应用数据库 `10.1.5.28:5432/zhishu_bi` 和核心 Redis `10.1.5.28:6379`，不会回退到旧的本地系统库。日志写入 `.codex-runtime`。
+脚本会使用核心应用数据库 `10.1.5.28:5432/zhishu_bi_2.0.0` 和核心 Redis `10.1.5.28:6379`，不会回退到旧的本地系统库。日志写入 `.codex-runtime`。
 
 ## 日常启动/重启
 

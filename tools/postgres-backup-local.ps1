@@ -3,7 +3,7 @@ param(
     [string]$Action = "backup",
     [string]$HostAddress = "10.1.5.28",
     [int]$Port = 5432,
-    [string]$Database = "zhishu_bi",
+    [string]$Database = "zhishu_bi_2.0.0",
     [string]$User = "root",
     [string]$Password = "Password123@pg",
     [string]$BackupDir = "",

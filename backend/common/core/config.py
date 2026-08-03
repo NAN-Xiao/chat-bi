@@ -87,7 +87,7 @@ class Settings(BaseSettings):
 
     SHUZHI_DB_HOST: str = "10.1.5.28"
     SHUZHI_DB_PORT: int = 5432
-    SHUZHI_DB_DB: str = "zhishu_bi"
+    SHUZHI_DB_DB: str = "zhishu_bi_2.0.0"
     SHUZHI_DB_USER: str = "root"
     SHUZHI_DB_PASSWORD: str = "Password123@pg"
     POSTGRES_SERVER: str = ''

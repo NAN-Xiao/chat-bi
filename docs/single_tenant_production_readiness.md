@@ -111,7 +111,7 @@ APP_ENV=production python -m scripts.db_migrate
 ```bash
 POSTGRES_SERVER=10.1.5.28
 POSTGRES_PORT=5432
-POSTGRES_DB=zhishu_bi
+POSTGRES_DB=zhishu_bi_2.0.0
 POSTGRES_USER=root
 BACKUP_DIR=/var/backups/shuzhi/postgres
 BACKUP_RETENTION_DAYS=14

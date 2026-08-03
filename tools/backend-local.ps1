@@ -24,7 +24,7 @@ $replicaRuntime = Join-Path $runtimeRoot "backend-replicas"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $appSystemDbHost = "10.1.5.28"
 $appSystemDbPort = 5432
-$appSystemDbName = "zhishu_bi"
+$appSystemDbName = "zhishu_bi_2.0.0"
 $biDemoDatasourcePort = 5432
 
 if (-not (Test-Path -LiteralPath $pythonExe)) {
@@ -238,7 +238,7 @@ try:
     database_name, has_core_datasource, has_sys_tenant, has_sys_user, dashboard_count = cur.fetchone()
     conn.close()
     if (
-        database_name != "zhishu_bi"
+        database_name != "zhishu_bi_2.0.0"
         or not has_core_datasource
         or not has_sys_tenant
         or not has_sys_user

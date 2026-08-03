@@ -37,7 +37,7 @@ def test_preview_defaults_to_authoritative_zhishu_bi_backup_target() -> None:
     assert preview["task_name"] == "ZhishuBI-Postgres-Backup"
     assert preview["host"] == "10.1.5.28"
     assert preview["port"] == 5432
-    assert preview["database"] == "zhishu_bi"
+    assert preview["database"] == "zhishu_bi_2.0.0"
     assert preview["user"] == "root"
     assert preview["backup_script"].endswith("tools\\postgres-backup-local.ps1")
     assert preview["task_script"].endswith("tools\\zhishu-bi-scheduled-backup.ps1")
@@ -68,7 +68,7 @@ def test_preview_allows_schedule_retention_and_backup_dir_overrides(tmp_path: Pa
 def test_run_keeps_control_after_backup_script_exit_and_cleans_expired_files(tmp_path: Path) -> None:
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
-    expired = backup_dir / "zhishu_bi-20000101_000000.dump"
+    expired = backup_dir / "zhishu_bi_2.0.0-20000101_000000.dump"
     expired.write_text("old", encoding="utf-8")
     old_time = 946684800
     os.utime(expired, (old_time, old_time))
@@ -87,7 +87,7 @@ param(
 )
 if ($Action -ne "backup") { throw "unexpected action $Action" }
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-Set-Content -LiteralPath (Join-Path $BackupDir "zhishu_bi-new.dump") -Value "new" -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $BackupDir "zhishu_bi_2.0.0-new.dump") -Value "new" -Encoding ASCII
 exit 0
 """.strip(),
         encoding="utf-8",
@@ -117,4 +117,4 @@ exit 0
     )
 
     assert not expired.exists()
-    assert (backup_dir / "zhishu_bi-new.dump").exists()
+    assert (backup_dir / "zhishu_bi_2.0.0-new.dump").exists()

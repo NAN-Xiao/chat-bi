@@ -5,7 +5,7 @@ param(
     [string]$At = "02:30",
     [string]$HostAddress = "10.1.5.28",
     [int]$Port = 5432,
-    [string]$Database = "zhishu_bi",
+    [string]$Database = "zhishu_bi_2.0.0",
     [string]$User = "root",
     [string]$Password = "Password123@pg",
     [string]$BackupDir = "",
@@ -165,7 +165,7 @@ function Register-BackupTask {
     $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument (New-TaskArguments) -WorkingDirectory $workspaceRoot
     $trigger = New-ScheduledTaskTrigger -Daily -At $startAt
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-    Register-ScheduledTask -TaskName $TaskName -Action $taskAction -Trigger $trigger -Settings $settings -Description "Scheduled backup for zhishu_bi PostgreSQL database into .codex-runtime\pg-backups." -Force | Out-Null
+    Register-ScheduledTask -TaskName $TaskName -Action $taskAction -Trigger $trigger -Settings $settings -Description "Scheduled backup for zhishu_bi_2.0.0 PostgreSQL database into .codex-runtime\pg-backups." -Force | Out-Null
     Write-Host "Scheduled task registered: $TaskName at $At"
 }
 

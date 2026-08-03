@@ -16,7 +16,7 @@ from typing import Any
 DEFAULT_CORE_DB = {
     "host": "10.1.5.28",
     "port": 5432,
-    "dbname": "zhishu_bi",
+    "dbname": "zhishu_bi_2.0.0",
     "user": "root",
     "password": "Password123@pg",
 }

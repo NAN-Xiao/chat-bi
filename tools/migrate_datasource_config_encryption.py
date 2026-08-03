@@ -150,9 +150,9 @@ def _resolve_encryption_secret(args: argparse.Namespace) -> str:
 
 def _db_config(args: argparse.Namespace) -> dict[str, Any]:
     return {
-        "host": args.host or os.getenv("POSTGRES_SERVER", "127.0.0.1"),
-        "port": int(args.port or os.getenv("POSTGRES_PORT", "15432")),
-        "dbname": args.database or os.getenv("POSTGRES_DB", "zhishu_bi"),
+        "host": args.host or os.getenv("POSTGRES_SERVER", "10.1.5.28"),
+        "port": int(args.port or os.getenv("POSTGRES_PORT", "5432")),
+        "dbname": args.database or os.getenv("POSTGRES_DB", "zhishu_bi_2.0.0"),
         "user": args.user or os.getenv("POSTGRES_USER", "root"),
         "password": args.password or os.getenv("POSTGRES_PASSWORD", "Password123@pg"),
     }

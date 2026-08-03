@@ -80,14 +80,14 @@ EXPECTED_COPY_SNIPPETS = {
 }
 
 EXPECTED_EXISTING_CORE_DB_SNIPPETS = {
-    "backend/common/core/config.py": ['SHUZHI_DB_DB: str = "zhishu_bi"'],
-    "tools/backend-local.ps1": ['$appSystemDbName = "zhishu_bi"'],
-    "tools/stack-local.ps1": ['$appSystemDbName = "zhishu_bi"'],
+    "backend/common/core/config.py": ['SHUZHI_DB_DB: str = "zhishu_bi_2.0.0"'],
+    "tools/backend-local.ps1": ['$appSystemDbName = "zhishu_bi_2.0.0"'],
+    "tools/stack-local.ps1": ['$appSystemDbName = "zhishu_bi_2.0.0"'],
     "tools/worker-local.ps1": [
-        '$env:POSTGRES_DB = "zhishu_bi"',
-        '$env:SHUZHI_DB_DB = "zhishu_bi"',
+        '$env:POSTGRES_DB = "zhishu_bi_2.0.0"',
+        '$env:SHUZHI_DB_DB = "zhishu_bi_2.0.0"',
     ],
-    "tools/core_system_db.py": ['"dbname": "zhishu_bi"'],
+    "tools/core_system_db.py": ['"dbname": "zhishu_bi_2.0.0"'],
 }
 
 
