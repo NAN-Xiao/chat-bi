@@ -133,6 +133,7 @@ import {
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
+const chartShowAreaRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
@@ -2144,7 +2145,7 @@ const insightMaxStats = computed(() => insightDisplay.value.maxStats)
 const isFeaturedSideInsight = computed(() => insightDisplay.value.featuredSide === true)
 
 function measureFrame() {
-  const el = containerRef.value
+  const el = chartShowAreaRef.value
   if (!el) {
     return
   }
@@ -2279,6 +2280,9 @@ onMounted(() => {
         if (chartType.value !== 'table') scheduleRenderChart()
       })
       resizeObserver.observe(containerRef.value)
+      if (chartShowAreaRef.value) {
+        resizeObserver.observe(chartShowAreaRef.value)
+      }
     }
   })
 })
@@ -2596,7 +2600,7 @@ defineExpose({
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
       </div>
     </div>
-    <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
+    <div ref="chartShowAreaRef" class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="showFullChartLoading" class="chart-loading-info">
         <div class="chart-loading-ring" aria-hidden="true"></div>
         <div class="chart-loading-text">{{ chartLoadingText }}</div>
@@ -2652,6 +2656,8 @@ defineExpose({
           :key="chartComponentKey"
           :id="outerId || viewInfo.id"
           ref="chartRef"
+          surface="dashboard"
+          :has-outer-title="true"
           :type="chartType"
           :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
           :x="renderXAxis"
@@ -2716,11 +2722,16 @@ defineExpose({
   box-shadow: none;
   overflow: hidden;
   container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
   div::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
   }
   .header-bar {
+    flex: 0 0 auto;
     min-height: 34px;
     display: flex;
     margin-bottom: 10px;
@@ -2912,11 +2923,16 @@ defineExpose({
   }
 
   .dashboard-filter-controls {
-    display: contents;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .dashboard-filter-controls--combined {
     display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0;
     margin: -2px 0 8px;
@@ -3418,7 +3434,8 @@ defineExpose({
 
 .chart-show-area {
   width: 100%;
-  height: calc(100% - 46px);
+  flex: 1 1 auto;
+  height: auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -3472,50 +3489,6 @@ defineExpose({
   justify-content: center;
   color: var(--workspace-text-secondary, #66758f);
   font-size: 13px;
-}
-
-.chart-base-container:has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 80px);
-}
-
-.insight-density-mini .chart-show-area {
-  height: calc(100% - 34px);
-}
-
-.insight-density-basic .chart-show-area {
-  height: calc(100% - 28px);
-}
-
-.insight-density-mini:has(.pivot-toolbar) .chart-show-area,
-.insight-density-basic:has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 58px);
-}
-
-.chart-base-container:has(.date-expression-toolbar) .chart-show-area {
-  height: calc(100% - 82px);
-}
-
-.chart-base-container:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 116px);
-}
-
-.chart-base-container:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 82px);
-}
-
-.insight-density-mini:has(.date-expression-toolbar) .chart-show-area,
-.insight-density-basic:has(.date-expression-toolbar) .chart-show-area {
-  height: calc(100% - 70px);
-}
-
-.insight-density-mini:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area,
-.insight-density-basic:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 94px);
-}
-
-.insight-density-mini:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area,
-.insight-density-basic:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 70px);
 }
 
 .buttons-bar {
@@ -3579,7 +3552,7 @@ defineExpose({
 .chart-loading-info {
   width: 100%;
   height: 100%;
-  min-height: 140px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;

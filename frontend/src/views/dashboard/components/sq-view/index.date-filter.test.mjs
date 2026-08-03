@@ -175,25 +175,10 @@ assert.match(
 )
 assert.match(
   source,
-  /\.chart-base-container:has\(\.dashboard-filter-controls--combined\):has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\)[\s\S]*?height:\s*calc\(100% - 82px\)/
+  /\.dashboard-filter-controls--combined[\s\S]*?flex-wrap:\s*wrap/
 )
 assert.doesNotMatch(source, /:deep\(\.date-expression-trigger\)[\s\S]*?color:\s*#2f6bff/)
-assert.match(
-  source,
-  /\.chart-base-container:has\(\.date-expression-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 82px\)/
-)
-assert.match(
-  source,
-  /\.chart-base-container:has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 116px\)/
-)
-assert.match(
-  source,
-  /\.insight-density-mini:has\(\.date-expression-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 70px\)/
-)
-assert.match(
-  source,
-  /\.insight-density-basic:has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 94px\)/
-)
+assert.doesNotMatch(source, /\.chart-show-area[\s\S]{0,120}?height:\s*calc\(/)
 assert.match(
   source,
   /\.dashboard-date-filter-popper \.el-date-table td\.today\.disabled[\s\S]*\.el-date-table-cell__text[\s\S]*color:\s*var\(--el-text-color-placeholder\)/
