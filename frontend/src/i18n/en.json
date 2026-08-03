@@ -926,6 +926,7 @@
     "delete_resource_warn": "Are you sure you want to delete {0}?",
     "new_folder": "New Folder",
     "new_dashboard": "New Dashboard",
+    "saved_layout_invalid": "The saved layout contains an invalid position or overlapping components. Original coordinates were preserved; adjust the layout before saving.",
     "default_dashboard": "Recommended Dashboards",
     "default_mark": "Default",
     "edit_order": "Edit Order",

@@ -926,6 +926,7 @@
     "delete_success": "删除成功",
     "new_folder": "新建目录",
     "new_dashboard": "新建看板",
+    "saved_layout_invalid": "已保存布局存在无效位置或组件重叠，编辑器已保留原始坐标，请调整后保存",
     "default_dashboard": "推荐看板",
     "default_mark": "默认",
     "edit_order": "编辑顺序",

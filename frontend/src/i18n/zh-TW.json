@@ -926,6 +926,7 @@
     "delete_success": "刪除成功",
     "new_folder": "新建目錄",
     "new_dashboard": "新建看板",
+    "saved_layout_invalid": "已儲存版面存在無效位置或元件重疊，編輯器已保留原始座標，請調整後儲存",
     "default_dashboard": "推薦看板",
     "default_mark": "預設",
     "edit_order": "編輯順序",
