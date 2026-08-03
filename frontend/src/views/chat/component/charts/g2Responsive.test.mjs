@@ -19,6 +19,15 @@ assert.deepEqual(miniCartesian.padding, [4, 6, 18, 28])
 
 const miniCategoryAxis = resolveCategoryAxisResponsiveOptions(miniCartesian)
 assert.equal(miniCategoryAxis.labelAutoEllipsis, false)
+assert.doesNotThrow(
+  () => miniCategoryAxis.labelFilter('2026-07-01', 0),
+  'G2 自动布局仅传 datum 和 index 时，分类轴过滤器不得读取缺失的数组参数'
+)
+assert.equal(
+  miniCategoryAxis.labelFilter('2026-07-01', 0),
+  true,
+  '缺少完整刻度数组时必须保留标签，由 G2 自身完成自动隐藏'
+)
 const thirtyTicks = Array.from({ length: 30 }, (_, index) => `2026-07-${String(index + 1).padStart(2, '0')}`)
 const visibleMiniTicks = thirtyTicks.filter((tick, index, array) =>
   miniCategoryAxis.labelFilter(tick, index, array)

@@ -117,18 +117,19 @@ const currentLayoutContext = computed(() => {
 
 function measureChartContainer() {
   const element = chartContainerRef.value
-  if (!element) return false
+  if (!element) return { renderable: false, changed: false }
   const width = Math.round(element.clientWidth)
   const height = Math.round(element.clientHeight)
-  if (width <= 0 || height <= 0) return false
-  if (width !== chartSize.value.width || height !== chartSize.value.height) {
+  if (width <= 0 || height <= 0) return { renderable: false, changed: false }
+  const changed = width !== chartSize.value.width || height !== chartSize.value.height
+  if (changed) {
     chartSize.value = { width, height }
   }
-  return true
+  return { renderable: true, changed }
 }
 
 function hasRenderableSize() {
-  return measureChartContainer()
+  return measureChartContainer().renderable
 }
 
 function hasRenderedOutput() {
@@ -184,7 +185,7 @@ function handleRenderError(error: unknown, token: number, retry: number) {
 }
 
 function renderChart(retry = 0) {
-  if (!measureChartContainer()) {
+  if (!measureChartContainer().renderable) {
     return
   }
   const token = ++renderToken
@@ -268,7 +269,7 @@ defineExpose({
 
 onMounted(() => {
   resizeObserver = new ResizeObserver(() => {
-    const changed = measureChartContainer()
+    const { changed } = measureChartContainer()
     if (changed && params.type !== 'table') scheduleRenderChart(80)
   })
   if (chartContainerRef.value) {

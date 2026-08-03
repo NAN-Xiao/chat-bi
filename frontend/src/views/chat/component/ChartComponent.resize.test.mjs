@@ -16,6 +16,11 @@ assert.match(
 assert.match(component, /previousDensity:/, '密度切换必须使用前一档做边界稳定')
 assert.match(
   component,
+  /function measureChartContainer\(\)[\s\S]*?renderable:\s*false,\s*changed:\s*false[\s\S]*?const changed\s*=[\s\S]*?renderable:\s*true,\s*changed/,
+  '图表容器测量必须区分可渲染尺寸和实际尺寸变化'
+)
+assert.match(
+  component,
   /params\.type\s*!==\s*['"]table['"]/,
   'table 仍由自身 ResizeObserver 原地调整'
 )
@@ -89,8 +94,8 @@ assert.match(
 )
 assert.match(
   component,
-  /new ResizeObserver\([\s\S]*?params\.type\s*!==\s*['"]table['"][\s\S]*?scheduleRenderChart/,
-  'ChartComponent 的尺寸监听不得销毁并重建 table 图表'
+  /new ResizeObserver\([\s\S]*?const \{ changed \} = measureChartContainer\(\)[\s\S]*?changed && params\.type\s*!==\s*['"]table['"][\s\S]*?scheduleRenderChart/,
+  'ChartComponent 仅在容器宽高实际变化时重绘，且不得销毁并重建 table 图表'
 )
 assert.match(
   component,

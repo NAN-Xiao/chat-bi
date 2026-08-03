@@ -86,7 +86,9 @@ export function resolveCategoryAxisResponsiveOptions(responsive: G2ResponsiveSty
     labelAutoRotate: false,
     labelAutoWrap: false,
     labelAutoEllipsis: false,
-    labelFilter: (_datum: unknown, index: number, array: unknown[]) =>
-      keepSampledAxisLabel(index, array.length, responsive.maxCategoryAxisLabels),
+    labelFilter: (_datum: unknown, index: number, array?: unknown[]) => {
+      if (!Array.isArray(array)) return true
+      return keepSampledAxisLabel(index, array.length, responsive.maxCategoryAxisLabels)
+    },
   }
 }
