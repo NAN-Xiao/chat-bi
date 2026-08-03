@@ -39,6 +39,16 @@ assert.match(
 )
 assert.match(
   table,
+  /function resolveTableViewportHeight\([\s\S]*Math\.max\(containerHeight, TABLE_HEADER_CELL_HEIGHT\)/,
+  '极小高度下 S2 viewport 至少保住表头，内容区由自身滚动处理'
+)
+assert.doesNotMatch(
+  dashboardView,
+  /\.chart-loading-info\s*\{[^}]*min-height:\s*140px/s,
+  '加载态不得撑破小尺寸抽屉'
+)
+assert.match(
+  table,
   /const viewportHeight = resolveTableViewportHeight\(height\)[\s\S]*?height: viewportHeight[\s\S]*?changeSheetSize\(contentWidth, viewportHeight\)/,
   '容器缩放时必须使用完整行高度更新 S2 画布'
 )

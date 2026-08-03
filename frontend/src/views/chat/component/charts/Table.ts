@@ -128,11 +128,12 @@ function resolveTableContainerSize(container: Element | null) {
 }
 
 function resolveTableViewportHeight(containerHeight: number) {
+  const safeHeight = Math.max(containerHeight, TABLE_HEADER_CELL_HEIGHT)
   const minimumTableHeight = TABLE_HEADER_CELL_HEIGHT + TABLE_DATA_CELL_HEIGHT
-  if (containerHeight <= minimumTableHeight) {
-    return containerHeight
+  if (safeHeight <= minimumTableHeight) {
+    return safeHeight
   }
-  const availableDataHeight = containerHeight - TABLE_HEADER_CELL_HEIGHT
+  const availableDataHeight = safeHeight - TABLE_HEADER_CELL_HEIGHT
   const completeDataRows = Math.max(
     1,
     Math.floor(availableDataHeight / TABLE_DATA_CELL_HEIGHT)

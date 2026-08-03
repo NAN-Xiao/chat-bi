@@ -18,6 +18,16 @@ assert.equal(mini.showAccent, false)
 assert.equal(mini.comparisonColumns, 2)
 assert.ok(mini.requiredHeight <= 79)
 
+const tiny = resolveMetricLayout(
+  { width: 213, height: 43, density: 'mini', surface: 'dashboard', hasOuterTitle: true },
+  2
+)
+assert.equal(tiny.showInnerLabel, false)
+assert.equal(tiny.showAccent, false)
+assert.equal(tiny.comparisonColumns, 2)
+assert.ok(tiny.requiredHeight <= 43)
+assert.ok(tiny.valueLineHeight <= 20)
+
 const basic = resolveMetricLayout(
   { width: 360, height: 180, density: 'basic', surface: 'dashboard', hasOuterTitle: true },
   2

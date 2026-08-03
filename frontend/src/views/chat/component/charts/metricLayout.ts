@@ -7,8 +7,13 @@ export interface MetricLayout {
   cardPadding: string
   valueFontSize: number
   valueLineHeight: number
+  dateLineHeight: number
+  valueMarginTop: string
   comparisonColumns: number
   comparisonGap: string
+  comparisonFontSize: number
+  comparisonLineHeight: number
+  comparisonMarginTop: string
   requiredHeight: number
 }
 
@@ -17,6 +22,24 @@ export function resolveMetricLayout(
   compareCount: number
 ): MetricLayout {
   if (context.density === 'mini') {
+    if (context.height < 56) {
+      return {
+        showInnerLabel: !(context.surface === 'dashboard' && context.hasOuterTitle),
+        showAccent: false,
+        wrapperPadding: '0 4px',
+        cardPadding: '0 6px',
+        valueFontSize: 20,
+        valueLineHeight: 20,
+        dateLineHeight: 11,
+        valueMarginTop: '0',
+        comparisonColumns: compareCount > 1 && context.width >= 180 ? 2 : 1,
+        comparisonGap: '0 8px',
+        comparisonFontSize: 10,
+        comparisonLineHeight: 12,
+        comparisonMarginTop: '0',
+        requiredHeight: 43,
+      }
+    }
     return {
       showInnerLabel: !(context.surface === 'dashboard' && context.hasOuterTitle),
       showAccent: false,
@@ -24,8 +47,13 @@ export function resolveMetricLayout(
       cardPadding: '0 6px',
       valueFontSize: 26,
       valueLineHeight: 30,
+      dateLineHeight: 15,
+      valueMarginTop: '1px',
       comparisonColumns: compareCount > 1 && context.width >= 180 ? 2 : 1,
       comparisonGap: '2px 10px',
+      comparisonFontSize: 11,
+      comparisonLineHeight: 16,
+      comparisonMarginTop: '1px',
       requiredHeight: context.surface === 'dashboard' && context.hasOuterTitle ? 68 : 79,
     }
   }
@@ -37,8 +65,13 @@ export function resolveMetricLayout(
       cardPadding: '6px 10px 8px',
       valueFontSize: 28,
       valueLineHeight: 34,
+      dateLineHeight: 16,
+      valueMarginTop: '6px',
       comparisonColumns: compareCount > 1 ? 2 : 1,
       comparisonGap: '4px 12px',
+      comparisonFontSize: 12,
+      comparisonLineHeight: 18,
+      comparisonMarginTop: '8px',
       requiredHeight: 132,
     }
   }
@@ -49,8 +82,13 @@ export function resolveMetricLayout(
     cardPadding: '12px 18px 14px',
     valueFontSize: 36,
     valueLineHeight: 44,
+    dateLineHeight: 16,
+    valueMarginTop: '6px',
     comparisonColumns: compareCount > 1 ? 2 : 1,
     comparisonGap: '6px 14px',
+    comparisonFontSize: 12,
+    comparisonLineHeight: 18,
+    comparisonMarginTop: '8px',
     requiredHeight: 174,
   }
 }
