@@ -44,6 +44,10 @@ import {
   getOrCreateDashboardDateFilterState,
   isDashboardChartRequestCurrent,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  resolveOrdinaryDashboardMode,
+  type OrdinaryDashboardMode,
+} from '@/views/dashboard/utils/dashboardRouteMode'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -58,6 +62,7 @@ const state = reactive({
   platformTemplateId: null as string | null,
   opt: null as string | null,
   datasource: null as number | string | null | undefined,
+  dashboardMode: 'my' as OrdinaryDashboardMode,
 })
 
 const dashboardEditorInnerRef = ref(null)
@@ -673,6 +678,7 @@ const syncRouteState = () => {
   state.platformTemplateId = firstQueryValue(query.platformTemplateId)
   state.routerPid = firstQueryValue(query.pid)
   state.datasource = firstQueryValue(query.datasource) || datasourceContext.datasourceId
+  state.dashboardMode = resolveOrdinaryDashboardMode(query.dashboardMode)
 }
 
 const applyLoadedCanvasResource = async (
@@ -1009,6 +1015,7 @@ const baseParams = computed(() => {
     platformTemplateId: state.platformTemplateId,
     pid: state.routerPid,
     datasource: state.datasource,
+    dashboardMode: state.dashboardMode,
     canUseChatHistory: !state.platformTemplateId,
   }
 })
