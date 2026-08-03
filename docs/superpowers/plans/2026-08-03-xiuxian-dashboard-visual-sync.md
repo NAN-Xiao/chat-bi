@@ -12,7 +12,7 @@
 
 - 同步方向只能是 flam 到修仙；不得写入 flam 记录。
 - 目标看板固定为修仙默认推荐核心看板 `afe201c9762c448aa0495f3508c01793` 与 ROI 看板 `17531de20e5d439f9ddfb2eeececced5`。
-- 修仙 SQL、datasource `6`、日期过滤、字段名和业务口径必须保留；禁止复制 datasource `3` SQL。
+- 修仙看板绑定 datasource `6`、原有视图 datasource、SQL、日期过滤、字段名和业务口径必须保留；新增 ROI 图表继承修仙 `ROI总览` 的视图 datasource；禁止复制 datasource `3` SQL。
 - 迁移默认只读，只有 `--apply` 写库；每条记录必须完整备份并用原始 `component_data` 与 `canvas_view_info` 做 CAS。
 - 不覆盖工作区其他未提交文件，不执行 `git add .`、`git reset --hard` 或回滚用户修改。
 
@@ -78,13 +78,13 @@
 - Test: `tests/test_sync_xiuxian_dashboard_visuals.py`
 
 **Interfaces:**
-- `run(*, apply: bool, verify: bool = False) -> dict[str, Any]`
+- `run(*, apply: bool) -> dict[str, Any]`
 - `restore_backup(path: Path) -> dict[str, Any]`
 - CLI: `--apply`、`--verify`、`--restore PATH`。
 
 - [ ] **Step 1: 写数据库边界测试**
 
-  用 fake cursor 验证查询同时限制两个目标 ID、tenant `7482727237662281728`、datasource `6`、`scope='default'`；验证备份包含完整原始行、旧/新 SHA-256；验证 `rowcount != 1` 或读回不一致时回滚并抛错；验证 `--apply` 未提供时不执行 UPDATE。
+  用 fake cursor 验证查询同时限制两个目标 ID、tenant `7482727237662281728`、看板 datasource `6`、`scope='default'`；验证备份包含完整原始行、旧/新 SHA-256；验证 `rowcount != 1` 或读回不一致时回滚并抛错；验证 `--apply` 未提供时不执行 UPDATE。
 
 - [ ] **Step 2: 实现目标查询和事务锁**
 
@@ -96,7 +96,7 @@
 
 - [ ] **Step 4: 实现只读验证与恢复**
 
-  `--verify` 重新加载两条记录，检查目标图表、SQL 哈希、datasource、日期配置、组件 ID 和布局；`--restore` 仅在当前新画布 SHA 与备份记录的 new SHA 一致时按 CAS 恢复旧 JSON，避免覆盖后续人工编辑。
+  `--verify` 重新加载两条记录，使用匹配当前状态的 v2 备份检查目标图表、迁移前 SQL/datasource/dateFilter/fields、flam 基准哈希、组件 ID 和布局；`--restore` 严格校验目标身份、默认目录、旧/新 SHA，并仅在当前 JSON 与备份 new SHA 一致时按 CAS 恢复，避免覆盖后续人工编辑。
 
 - [ ] **Step 5: 运行边界测试**
 
@@ -151,4 +151,11 @@
 - [ ] **Step 4: Report evidence**
 
   Record migration JSON output, backup paths, verification output, test output, and any UI limitation. Do not stage runtime backups or unrelated worktree changes.
+
+## 执行结果
+
+- 修仙核心看板与 ROI 看板已按目标配置应用；ROI 新图完整继承修仙 `ROI总览` 的执行配置，视图 datasource 为 `8`。
+- v2 备份已记录迁移前完整行、原新 JSON SHA-256 及 flam 核心/ROI 基准哈希；`--verify` 已完成迁移前后逐视图对照。
+- 聚焦测试覆盖纯转换、字段/布局漂移、幂等、恢复边界、dry-run、CAS 和事务内读回失败。
+- 本地浏览器已检查修仙核心/ROI 看板渲染、ROI 五组件布局和新增柱状图，无空组件或重叠。
 
