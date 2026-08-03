@@ -13,6 +13,22 @@ const cardSource = readFileSync(
 
 assert.match(source, /import DashboardDateExpressionPicker/)
 assert.match(source, /dateExpressionPickerEnabled/)
+assert.match(source, /metricDateExpressionEnabled:\s*false/)
+assert.match(
+  source,
+  /chartType\s*!==\s*'metric'\s*\|\|\s*sqlBuilder\.metricDateExpressionEnabled\s*===\s*true/,
+  '指标卡应仅在持久化配置显式启用时使用日期表达式控件',
+)
+assert.match(
+  source,
+  /metricDateExpressionEnabled:\s*sqlBuilder\.metricDateExpressionEnabled\s*===\s*true/,
+  '保存 builder 时应保留指标卡日期表达式开关',
+)
+assert.match(
+  source,
+  /sqlBuilder\.metricDateExpressionEnabled\s*=\s*value\.metricDateExpressionEnabled\s*===\s*true/,
+  '恢复 builder 时不应默认为所有指标卡启用新版控件',
+)
 assert.match(
   source,
   /const dateExpressionEnabled = computed\(\s*\(\) => hasSqlSource\.value && sqlBuilder\.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters\(\)/
@@ -47,7 +63,7 @@ assert.match(
   '已保存日期表达式存在但与当前值不一致时仍应阻止执行'
 )
 assert.match(source, /function applyDateExpression/)
-assert.match(source, /v-if="hasSqlSource\s*&&\s*dateExpressionEnabled"/)
+assert.match(source, /<el-form-item v-if="hasSqlSource" label="时间范围">/)
 assert.match(source, /<DashboardDateExpressionPicker/)
 assert.doesNotMatch(
   source,
@@ -61,8 +77,8 @@ assert.doesNotMatch(
 )
 assert.match(
   source,
-  /\.builder-compact-grid\s*:deep\(\.date-expression-trigger\)[\s\S]*?border:\s*0[\s\S]*?background:\s*transparent/,
-  '推荐看板 SQL 抽屉的日期入口应使用 ROI 的无框样式'
+  /\.sql-editor-time-range-picker\s*:deep\(\.date-expression-trigger\)[\s\S]*?width:\s*100%/,
+  'SQL 抽屉的公共日期入口应填满表单项宽度'
 )
 assert.match(
   source,

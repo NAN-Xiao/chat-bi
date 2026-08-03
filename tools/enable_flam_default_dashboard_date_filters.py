@@ -33,6 +33,7 @@ EXCLUDED_TITLES = {"活跃用户", "新增用户", "充值人数", "充值总额
 START_TOKEN = "{{dashboard_start_yyyymmdd}}"
 END_TOKEN = "{{dashboard_end_yyyymmdd}}"
 DEFAULT_EXPRESSION = {"version": 1, "mode": "preset", "preset": "past_30_days"}
+CORE_METRIC_EXPRESSION = {"version": 1, "mode": "preset", "preset": "yesterday"}
 
 _PARTITION_RANGE = re.compile(r"\b(?P<alias>[A-Za-z_][\w]*)\.dt\s+BETWEEN\b", re.IGNORECASE)
 _CURRENT_DATE = re.compile(r"\bCURDATE\s*\(|\bCURRENT_DATE\b", re.IGNORECASE)
@@ -551,7 +552,13 @@ def _date_field(view: dict[str, Any]) -> str:
     return "dt"
 
 
-def configure_explicit_date_view(view: dict[str, Any], sql: str) -> dict[str, Any]:
+def configure_explicit_date_view(
+    view: dict[str, Any],
+    sql: str,
+    *,
+    expression: dict[str, Any] = DEFAULT_EXPRESSION,
+    metric_date_expression_enabled: bool = False,
+) -> dict[str, Any]:
     result = copy.deepcopy(view)
     result["sql"] = str(sql or "")
     time_field = _date_field(result)
@@ -561,15 +568,17 @@ def configure_explicit_date_view(view: dict[str, Any], sql: str) -> dict[str, An
     sql_config = source_config.setdefault("sql", {})
     if not isinstance(sql_config, dict):
         raise ValueError("sourceConfig.sql 配置无效")
+    sql_config["sql"] = result["sql"]
     builder = sql_config.setdefault("builder", {})
     if not isinstance(builder, dict):
         raise ValueError("sourceConfig.sql.builder 配置无效")
     builder.update(
         {
             "dateExpressionPickerEnabled": True,
+            "metricDateExpressionEnabled": metric_date_expression_enabled,
             "timeField": time_field,
             "timeRange": "expression",
-            "timeExpression": copy.deepcopy(DEFAULT_EXPRESSION),
+            "timeExpression": copy.deepcopy(expression),
         }
     )
     pivot = result.setdefault("pivot", {})
@@ -581,9 +590,16 @@ def configure_explicit_date_view(view: dict[str, Any], sql: str) -> dict[str, An
             "range_enabled": True,
             "client_filter_only": False,
             "date_parameter_type": "yyyymmdd_number",
-            "date_expression": copy.deepcopy(DEFAULT_EXPRESSION),
+            "date_expression": copy.deepcopy(expression),
         }
     )
+    if metric_date_expression_enabled:
+        result["configVersion"] = 2
+        result["dateFilter"] = {
+            "enabled": True,
+            "parameterType": "yyyymmdd_number",
+            "expression": copy.deepcopy(expression),
+        }
     return result
 
 
@@ -668,6 +684,12 @@ def migrate_canvas(canvas: dict[str, Any], *, dashboard_id: str) -> tuple[dict[s
             if builder.get("dateExpressionPickerEnabled") is not True or (
                 END_TOKEN not in sql
                 or (target.kind in {"range", "core_range", "cohort", "roi"} and START_TOKEN not in sql)
+            ) or (
+                target.kind == "core_range"
+                and (
+                    builder.get("metricDateExpressionEnabled") is not True
+                    or builder.get("timeExpression") != CORE_METRIC_EXPRESSION
+                )
             ):
                 targets.append(chart_id)
             continue
@@ -703,6 +725,12 @@ def migrate_canvas(canvas: dict[str, Any], *, dashboard_id: str) -> tuple[dict[s
             migrated[chart_id] = configure_explicit_date_view(
                 source_view,
                 target_migration(target)(str(source_view.get("sql") or "")),
+                expression=(
+                    CORE_METRIC_EXPRESSION
+                    if target.kind == "core_range"
+                    else DEFAULT_EXPRESSION
+                ),
+                metric_date_expression_enabled=target.kind == "core_range",
             )
         else:
             migrated[chart_id] = (
@@ -724,6 +752,11 @@ def verify_canvas(canvas: dict[str, Any], *, target_ids: list[str], unchanged: d
         builder = source_config.get("sql", {}).get("builder", {}) if isinstance(source_config.get("sql"), dict) else {}
         pivot = view.get("pivot") if isinstance(view.get("pivot"), dict) else {}
         target = date_migration_target_by_chart_id(chart_id)
+        expected_expression = (
+            CORE_METRIC_EXPRESSION
+            if target and target.kind == "core_range"
+            else DEFAULT_EXPRESSION
+        )
         explicit_target = any(chart_id == target_id for _, target_id in EXPLICIT_DATE_VIEW_MIGRATIONS)
         if target and target.kind in {"end_anchor", "weekly_snapshots"}:
             invalid_token_counts = sql.count(START_TOKEN) != 0 or sql.count(END_TOKEN) < 1
@@ -734,11 +767,16 @@ def verify_canvas(canvas: dict[str, Any], *, target_ids: list[str], unchanged: d
         if (
             invalid_token_counts
             or builder.get("dateExpressionPickerEnabled") is not True
-            or builder.get("timeExpression") != DEFAULT_EXPRESSION
+            or builder.get("timeExpression") != expected_expression
+            or (
+                target is not None
+                and target.kind == "core_range"
+                and builder.get("metricDateExpressionEnabled") is not True
+            )
             or pivot.get("range_enabled") is not True
             or pivot.get("client_filter_only") is not False
             or pivot.get("date_parameter_type") != "yyyymmdd_number"
-            or pivot.get("date_expression") != DEFAULT_EXPRESSION
+            or pivot.get("date_expression") != expected_expression
         ):
             raise RuntimeError(f"日期配置读回校验失败：{chart_id}")
         result[chart_id] = {"title": _chart_title(view, chart_id), "sql_sha256": sha256_text(sql)}
