@@ -1838,6 +1838,21 @@
     "no_data": "No Data",
     "loading_data": "Loading ...",
     "permission_denied_tip": "This account does not have permission to access the data required for this question. Switch data sources or contact an administrator to adjust table, field, or row data permissions.",
+    "task_error": {
+      "http_400": "The request parameters are invalid. Check them and try again.",
+      "http_401": "Your session has expired. Sign in again.",
+      "http_403": "This account does not have permission to perform this action.",
+      "http_404": "The data question task no longer exists or has expired. Ask the question again.",
+      "http_422": "The request parameters could not be validated. Ask the question again.",
+      "http_429": "Too many requests. Try again later.",
+      "http_500": "The data question service encountered an error. Try again later.",
+      "http_502": "The data question service gateway encountered an error. Try again later.",
+      "http_503": "The data question service is temporarily unavailable. Try again later.",
+      "http_504": "The data question service timed out. Try again later.",
+      "data_unavailable": "The current data source does not contain the data required for this question.",
+      "network": "A network error occurred. Check your connection and try again.",
+      "generic": "The data question task failed. Try again later."
+    },
     "show_error_detail": "Show error info",
     "log": {
       "GENERATE_SQL": "Generate SQL",
