@@ -101,3 +101,14 @@ test('ChartAnswer 统一使用 AI 看板错误解析器', () => {
   assert.doesNotMatch(source, /normalizeTaskError/)
   assert.doesNotMatch(source, /Error:\$\{error\}/)
 })
+
+test('Smart Q&A 外层发送入口统一使用错误解析器', () => {
+  const source = fs.readFileSync(new URL('../index.vue', import.meta.url), 'utf8')
+
+  assert.match(
+    source,
+    /import \{ resolveSmartQaErrorMessage \} from '.\/answer\/smartQaErrorMessage'/
+  )
+  assert.match(source, /currentRecord\.error = resolveSmartQaErrorMessage\(error, t\)/)
+  assert.doesNotMatch(source, /Error:\$\{error\}/)
+})

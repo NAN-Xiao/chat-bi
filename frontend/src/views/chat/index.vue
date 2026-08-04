@@ -537,6 +537,7 @@ import {
   shouldRunPostAnswerActions,
 } from './answer/postAnswerActions'
 import { buildChatMessageRenderKey } from './answer/chatTaskContext'
+import { resolveSmartQaErrorMessage } from './answer/smartQaErrorMessage'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -1384,7 +1385,7 @@ const sendMessage = async (
       requestChat.records[currentRecordIndex].task_id = task.task_id
     }
   } catch (error) {
-    currentRecord.error = `${currentRecord.error ? `${currentRecord.error}\n` : ''}Error:${error}`
+    currentRecord.error = resolveSmartQaErrorMessage(error, t)
     if (currentChatId.value === requestChatId) {
       loading.value = false
       isTyping.value = false
