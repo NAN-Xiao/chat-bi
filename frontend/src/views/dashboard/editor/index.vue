@@ -55,7 +55,7 @@ const datasourceContext = useDatasourceContextStore()
 const { dashboardInfo, componentData, canvasStyleData, canvasViewInfo, fullscreenFlag, baseMatrixCount } =
   storeToRefs(dashboardStore)
 
-const dataInitState = ref(true)
+const dataInitState = ref(false)
 const state = reactive({
   routerPid: null as string | null,
   resourceId: null as string | null,
@@ -715,10 +715,6 @@ const loadCanvasFromRoute = async () => {
   chartRefreshRetryCount = 0
   canvasStateReady = false
   syncRouteState()
-  if (!state.platformTemplateId) {
-    await datasourceContext.loadDatasources()
-    if (loadVersion !== routeLoadVersion) return
-  }
 
   const sourceKey =
     state.platformTemplateId
@@ -735,12 +731,17 @@ const loadCanvasFromRoute = async () => {
     dashboardStore.canvasEditingSourceKey === sourceKey &&
     dashboardStore.hasUnsavedCanvasChanges
   ) {
+    dataInitState.value = true
     canvasStateReady = true
     return
   }
 
   dataInitState.value = false
   try {
+    if (!state.platformTemplateId) {
+      await datasourceContext.loadDatasources()
+      if (loadVersion !== routeLoadVersion) return
+    }
     if (state.platformTemplateId && sourceKey) {
       const templateId = state.platformTemplateId
       const result = await loadPlatformTemplateResource(templateId)
@@ -1027,22 +1028,23 @@ const findPositionX = (width: number) => {
 
 <template>
   <div class="editor-content" :class="{ 'editor-content-fullscreen': fullscreenFlag }">
-    <div class="editor-main">
-      <Toolbar
-        :base-params="baseParams"
-        :find-position-x="findPositionX"
-        @add-components="addComponents"
-      ></Toolbar>
-      <DashboardEditor
-        v-if="dataInitState"
-        ref="dashboardEditorInnerRef"
-        :dashboard-info="dashboardInfo"
-        :canvas-component-data="componentData"
-        :canvas-view-info="canvasViewInfo"
-        :can-edit-sql="dashboardInfo.canEdit !== false"
-        :platform-template="Boolean(state.platformTemplateId)"
-      >
-      </DashboardEditor>
+    <div class="editor-main" :aria-busy="!dataInitState">
+      <template v-if="dataInitState">
+        <Toolbar
+          :base-params="baseParams"
+          :find-position-x="findPositionX"
+          @add-components="addComponents"
+        ></Toolbar>
+        <DashboardEditor
+          ref="dashboardEditorInnerRef"
+          :dashboard-info="dashboardInfo"
+          :canvas-component-data="componentData"
+          :canvas-view-info="canvasViewInfo"
+          :can-edit-sql="dashboardInfo.canEdit !== false"
+          :platform-template="Boolean(state.platformTemplateId)"
+        >
+        </DashboardEditor>
+      </template>
     </div>
   </div>
 </template>
