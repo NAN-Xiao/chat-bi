@@ -33,7 +33,10 @@ const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
 const SIDE_COMPACT_MAX_HEIGHT = 390
-const SIDE_DENSITY_HYSTERESIS = 20
+// 密度阈值的迟滞区间：卡片的 header-bar 高度会随密度档位变化，而密度又由填充剩余空间的
+// chart-show-area 测量高度决定，两者互相反馈。迟滞必须大于最大的 header 高差(compact↔basic
+// 约 10px)，才能保证档位切换后测量高度的回弹不会再次越过阈值造成无限震荡与重绘。
+const DENSITY_HYSTERESIS = 20
 const WIDE_TREND_SIDE_MIN_WIDTH = 1100
 const WIDE_TREND_SIDE_MIN_HEIGHT = 260
 const WIDE_TREND_SIDE_MIN_ASPECT_RATIO = 2.2
@@ -102,10 +105,10 @@ function isBelowDensityThreshold(
   previousBelow: boolean | undefined
 ) {
   if (previousBelow === true) {
-    return value < threshold + SIDE_DENSITY_HYSTERESIS
+    return value < threshold + DENSITY_HYSTERESIS
   }
   if (previousBelow === false) {
-    return value < threshold - SIDE_DENSITY_HYSTERESIS
+    return value < threshold - DENSITY_HYSTERESIS
   }
   return value < threshold
 }
@@ -419,22 +422,39 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
+    // top 布局下 header 高度会随密度档位变化（compact/regular=34，mini=28，basic=24），
+    // 而密度由 chart-show-area 的测量高度决定，因此这里的阈值必须与 side 分支一样带迟滞，
+    // 否则测量高度在阈值附近会与 header 高度互相反馈、无限翻转档位造成图表持续重绘。
+    const wasBasic = params.previousDensity === 'basic'
+    const wasMiniOrDenser =
+      params.previousDensity === 'basic' || params.previousDensity === 'mini'
+    const belowBasicThreshold =
+      isBelowDensityThreshold(
+        width,
+        TOP_BASIC_MAX_WIDTH,
+        params.previousDensity ? wasBasic : undefined
+      ) ||
+      isBelowDensityThreshold(
+        height,
+        TOP_BASIC_MAX_HEIGHT,
+        params.previousDensity ? wasBasic : undefined
+      )
+
     if (isRichTopSummary && width >= TOP_RANKED_COMPACT_MIN_WIDTH) {
       return {
         show: true,
         layout,
-        density:
-          width >= TOP_RANKED_REGULAR_MIN_WIDTH && height >= TOP_BASIC_MAX_HEIGHT
+        density: belowBasicThreshold
+          ? 'basic'
+          : width >= TOP_RANKED_REGULAR_MIN_WIDTH
             ? 'regular'
-            : height >= TOP_BASIC_MAX_HEIGHT
-              ? 'compact'
-              : 'basic',
+            : 'compact',
         maxStats: TOP_RANKED_MAX_STATS,
         featuredSide: false,
       }
     }
 
-    if (width < TOP_BASIC_MAX_WIDTH || height < TOP_BASIC_MAX_HEIGHT) {
+    if (belowBasicThreshold) {
       return {
         show: true,
         layout,
@@ -444,7 +464,18 @@ export function resolveInsightDisplay(params: {
       }
     }
 
-    if (width < TOP_MINI_MAX_WIDTH || height < TOP_MINI_MAX_HEIGHT) {
+    const belowMiniThreshold =
+      isBelowDensityThreshold(
+        width,
+        TOP_MINI_MAX_WIDTH,
+        params.previousDensity ? wasMiniOrDenser : undefined
+      ) ||
+      isBelowDensityThreshold(
+        height,
+        TOP_MINI_MAX_HEIGHT,
+        params.previousDensity ? wasMiniOrDenser : undefined
+      )
+    if (belowMiniThreshold) {
       return {
         show: true,
         layout,
