@@ -2985,13 +2985,28 @@ defineExpose({
 
   &.insight-density-mini,
   &.insight-density-basic {
+    padding: 10px 12px !important;
+
     .header-bar {
+      min-height: 28px;
+      margin-bottom: 6px;
+
       .title {
         font-size: 14px;
         line-height: 22px;
       }
     }
   }
+
+  &.insight-density-basic {
+    padding: 8px 10px !important;
+
+    .header-bar {
+      min-height: 24px;
+      margin-bottom: 4px;
+    }
+  }
+
   .date-filter-toolbar {
     width: fit-content;
     max-width: 100%;

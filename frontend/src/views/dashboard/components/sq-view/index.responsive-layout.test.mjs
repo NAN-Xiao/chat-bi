@@ -78,11 +78,21 @@ assert.match(style, /min-height:\s*var\(--insight-frame-compact-header-height\)/
 assert.match(style, /margin-bottom:\s*var\(--insight-frame-compact-header-gap\)/)
 assert.match(
   style,
+  /&\.insight-density-mini,\s*&\.insight-density-basic\s*\{[^}]*padding:\s*10px\s+12px[^}]*\.header-bar\s*\{[^}]*min-height:\s*28px[^}]*margin-bottom:\s*6px/s,
+  'mini/basic 必须保留原有紧凑外层几何，规范帧只统一策略输入'
+)
+assert.match(
+  style,
+  /&\.insight-density-basic\s*\{[^}]*padding:\s*8px\s+10px[^}]*\.header-bar\s*\{[^}]*min-height:\s*24px[^}]*margin-bottom:\s*4px/s,
+  'basic 必须保留最紧凑的原有外层几何'
+)
+assert.match(
+  style,
   /\.dashboard-filter-controls--combined\s*\{[\s\S]*> \.pivot-toolbar\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*min-width:\s*0/s
 )
 assert.doesNotMatch(
   style,
-  /\.pivot-toolbar\s*\{\s*margin-bottom:\s*4px/,
+  /\.pivot-toolbar\s*\{[^}]*margin-bottom:\s*4px/s,
   'density 不得改变工具栏外层 block contribution'
 )
 assert.match(source, /type !== 'table' && type !== 'metric'/)
