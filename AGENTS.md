@@ -6,6 +6,15 @@ Scope: entire repository.
 
 - When generating Git commit messages, push summaries, PR titles, PR descriptions, changelog entries, or release notes for this repository, use Chinese by default unless the user explicitly asks for another language.
 
+### Mandatory Worktree Isolation
+
+- Before modifying any source code, tests, scripts, migrations, or runtime/configuration files, first detect whether the current checkout is already a linked Git worktree. Read-only investigation, review, status checks, and documentation-only edits are exempt.
+- If the current checkout is the primary repository checkout rather than a linked worktree, create or enter a dedicated linked worktree and task branch before the first file write. Do not make the scoped changes directly in the primary `D:\AIWork3\chat-bi` checkout, even when the change is small.
+- If the current checkout is already a linked worktree, continue there and do not create a nested worktree.
+- Preserve all pre-existing changes in the primary checkout. Do not move, copy, reset, overwrite, or incorporate them into the task worktree unless the user explicitly asks for that migration.
+- If a required worktree cannot be created or entered, stop and report the blocker. Do not silently fall back to editing the primary checkout.
+- In the final task report, state the linked worktree path and branch used for the changes.
+
 ## Local Dev Runbook
 
 - For local Windows development, treat the stack as four local services/processes:
