@@ -105,8 +105,21 @@ def extract_nested_json(text):
     stack = []
     start_index = -1
     results = []
+    in_string = False
+    escaped = False
 
     for i, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"' and stack:
+            in_string = True
+            continue
         if char in '{[':
             if not stack:  # 记录起始位置
                 start_index = i

@@ -23,6 +23,7 @@ _SQL_IDENTIFIER_PATTERN = r'(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$]
 _EXPLICIT_PAST_DAYS_PATTERN = re.compile(
     r"(?:最近|近|过去)\s*(?P<days>[1-9]\d{0,3})\s*(?:个\s*)?(?:完整\s*)?(?:自然\s*)?[天日]"
 )
+_EXPLICIT_CURRENT_DAY_PATTERN = re.compile(r"(?:今天|今日|当天)")
 _DEFAULT_DATE_EXPRESSION = {"version": 1, "mode": "preset", "preset": "past_7_days"}
 
 
@@ -32,9 +33,13 @@ class ChatDateFilterConfigurationError(ValueError):
 
 def _explicit_question_date_expression(question: str | None) -> dict[str, Any] | None:
     """将问题中明确的最近 N 天转换为截至昨天的动态看板日期表达式。"""
-    matches = _EXPLICIT_PAST_DAYS_PATTERN.findall(str(question or ""))
+    question_text = str(question or "")
+    matches = _EXPLICIT_PAST_DAYS_PATTERN.findall(question_text)
     distinct_days = {int(value) for value in matches}
-    if len(distinct_days) != 1:
+    has_current_day = bool(_EXPLICIT_CURRENT_DAY_PATTERN.search(question_text))
+    if has_current_day and not distinct_days:
+        return {"version": 1, "mode": "preset", "preset": "today"}
+    if len(distinct_days) != 1 or has_current_day:
         return None
     days = distinct_days.pop()
     if days == 7:
@@ -62,7 +67,11 @@ def normalize_chat_date_filter_for_question(
     if not isinstance(payload, dict):
         return normalize_chat_date_filter(payload, sql, chart_type)
     if expression is None:
-        if _EXPLICIT_PAST_DAYS_PATTERN.search(str(question or "")):
+        question_text = str(question or "")
+        if (
+            _EXPLICIT_PAST_DAYS_PATTERN.search(question_text)
+            or _EXPLICIT_CURRENT_DAY_PATTERN.search(question_text)
+        ):
             return normalize_chat_date_filter(payload, sql, chart_type)
         expression = _DEFAULT_DATE_EXPRESSION
     normalized_payload = {**payload, "date_expression": expression}
@@ -170,6 +179,7 @@ def render_chat_date_filter_sql(
         ds_type=datasource_type,
         pivot=pivot,
         today=today,
+        allow_realtime_current_day=True,
     )
     if prepared.capability.get("status") != "available":
         reason = str(prepared.capability.get("reason") or "date_filter_unavailable")

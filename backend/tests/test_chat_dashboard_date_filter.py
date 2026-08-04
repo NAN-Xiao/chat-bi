@@ -21,6 +21,13 @@ DATE_TEMPLATE_SQL = (
     "SELECT * FROM event "
     "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
 )
+REALTIME_DATE_TEMPLATE_SQL = (
+    "SELECT * FROM event_realtime "
+    "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
+)
+REALTIME_DATE_END_ONLY_SQL = (
+    "SELECT * FROM event_realtime WHERE dt <= {{dashboard_end_yyyymmdd}}"
+)
 DATE_LITERAL_SQL = (
     "SELECT * FROM event "
     "WHERE `e`.`dt` BETWEEN 20260701 AND 20260728"
@@ -45,6 +52,16 @@ DATE_FILTER_WITH_MODEL_DEFAULT_PAST_28_DAYS = {
     "time_field": "dt",
     "date_parameter_type": "yyyymmdd_number",
     "date_expression": {"version": 1, "mode": "preset", "preset": "past_28_days"},
+}
+TODAY_DATE_FILTER = {
+    "time_field": "dt",
+    "date_parameter_type": "yyyymmdd_number",
+    "date_expression": {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "dynamic", "unit": "day", "offset": 0},
+        "end": {"mode": "dynamic", "unit": "day", "offset": 0},
+    },
 }
 
 
@@ -95,6 +112,22 @@ def test_normalize_replaces_model_default_when_question_omits_time_range():
     )
 
     assert pivot == {"enabled": False, **DATE_FILTER}
+
+
+def test_normalize_uses_today_for_explicit_current_day_question():
+    pivot = normalize_chat_date_filter_for_question(
+        "今天每小时的付费事件次数如何变化？",
+        DATE_FILTER,
+        REALTIME_DATE_TEMPLATE_SQL,
+        "column",
+    )
+
+    assert pivot == {
+        "enabled": False,
+        "time_field": "dt",
+        "date_parameter_type": "yyyymmdd_number",
+        "date_expression": {"version": 1, "mode": "preset", "preset": "today"},
+    }
 
 
 def test_check_sql_uses_explicit_question_range_instead_of_llm_default():
@@ -156,6 +189,39 @@ def test_render_uses_past_seven_days_before_execution():
     assert "20260728" in sql
     assert "{{dashboard_start_yyyymmdd}}" not in sql
     assert "{{dashboard_end_yyyymmdd}}" not in sql
+
+
+def test_render_allows_current_business_day_for_realtime_table():
+    sql = render_chat_date_filter_sql(
+        REALTIME_DATE_TEMPLATE_SQL,
+        "mysql",
+        {"enabled": False, **TODAY_DATE_FILTER},
+        today=date(2026, 8, 4),
+    )
+
+    assert sql.count("20260804") == 2
+    assert "{{dashboard_start_yyyymmdd}}" not in sql
+    assert "{{dashboard_end_yyyymmdd}}" not in sql
+
+
+def test_render_rejects_historical_range_for_realtime_table():
+    with pytest.raises(ChatDateFilterConfigurationError, match="realtime_table"):
+        render_chat_date_filter_sql(
+            REALTIME_DATE_TEMPLATE_SQL,
+            "mysql",
+            {"enabled": False, **DATE_FILTER},
+            today=date(2026, 8, 4),
+        )
+
+
+def test_render_rejects_end_only_filter_for_realtime_table():
+    with pytest.raises(ChatDateFilterConfigurationError, match="realtime_table"):
+        render_chat_date_filter_sql(
+            REALTIME_DATE_END_ONLY_SQL,
+            "mysql",
+            {"enabled": False, **TODAY_DATE_FILTER},
+            today=date(2026, 8, 4),
+        )
 
 
 def test_llm_service_renders_date_template_only_for_execution():

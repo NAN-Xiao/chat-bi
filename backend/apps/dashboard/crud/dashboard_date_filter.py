@@ -329,6 +329,7 @@ def prepare_dashboard_date_filter(
     date_filter: Any | None = None,
     today: date | None = None,
     require_time_field: bool = True,
+    allow_realtime_current_day: bool = False,
 ) -> DashboardDateFilterPreparation:
     """只处理显式受控模板，不猜测字段，也不改写其他 SQL 条件。"""
     source_sql = str(sql or "")
@@ -339,7 +340,8 @@ def prepare_dashboard_date_filter(
     except Exception:
         return _unconfigured(source_sql, set(), "sql_parse_failed")
 
-    if "event_realtime" in {table.lower() for table in physical_tables}:
+    is_realtime = "event_realtime" in {table.lower() for table in physical_tables}
+    if is_realtime and not allow_realtime_current_day:
         return DashboardDateFilterPreparation(
             sql=source_sql,
             start=None,
@@ -405,6 +407,20 @@ def prepare_dashboard_date_filter(
     except (TypeError, ValueError):
         reason = "invalid_date_expression" if expression is not None else "invalid_date_range"
         return _unconfigured(source_sql, physical_tables, reason)
+
+    if is_realtime and (
+        expression is None
+        or parameter_mode != "range"
+        or start != business_today
+        or end != business_today
+    ):
+        return DashboardDateFilterPreparation(
+            sql=source_sql,
+            start=None,
+            end=None,
+            physical_tables=physical_tables,
+            capability={"status": "realtime", "reason": "realtime_table"},
+        )
 
     if expression is None and (start > end or start > default_end or end > default_end):
         return _unconfigured(source_sql, physical_tables, "invalid_date_range")
