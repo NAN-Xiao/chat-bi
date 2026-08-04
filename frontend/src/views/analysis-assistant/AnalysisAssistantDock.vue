@@ -30,6 +30,8 @@ import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import AgentSelector from '@/components/custom-agent/AgentSelector.vue'
 import DataSkillSelector from '@/components/data-skill/DataSkillSelector.vue'
+import { isWorkspaceContextStaleError } from '@/utils/workspaceContextCore'
+import { workspaceContextState } from '@/utils/workspaceContext'
 
 interface DockMessage extends AnalysisAssistantMessage {
   id: number
@@ -106,6 +108,7 @@ const streamController = ref<AbortController>()
 const exporting = ref(false)
 const generatingDashboard = ref(false)
 const dockWidth = ref(360)
+const workspaceContextSwitching = computed(() => workspaceContextState.phase === 'switching')
 let messageId = 0
 let streamBuffer = ''
 let streamFinished = false
@@ -519,6 +522,7 @@ const finishAssistantMessage = (assistantMessage: DockMessage) => {
 }
 
 const loadHistoryList = async () => {
+  if (workspaceContextSwitching.value) return
   historyLoading.value = true
   try {
     historyList.value = await analysisAssistantApi.history(analysisContext.datasourceId)
@@ -530,11 +534,13 @@ const loadHistoryList = async () => {
 }
 
 const openHistory = () => {
+  if (workspaceContextSwitching.value) return
   historyVisible.value = true
   loadHistoryList()
 }
 
 const saveCurrentConversation = async () => {
+  if (workspaceContextSwitching.value) return
   const savedMessages = serializeMessages()
   if (savedMessages.length < 2 || savingHistory.value) return
   savingHistory.value = true
@@ -561,7 +567,7 @@ const saveCurrentConversation = async () => {
 }
 
 const loadConversation = async (conversation: AnalysisAssistantConversationSummary) => {
-  if (isStreaming.value) return
+  if (workspaceContextSwitching.value || isStreaming.value) return
   historyLoading.value = true
   try {
     const detail = await analysisAssistantApi.historyDetail(conversation.id)
@@ -579,7 +585,7 @@ const loadConversation = async (conversation: AnalysisAssistantConversationSumma
 }
 
 const deleteHistoryConversation = async (conversation: AnalysisAssistantConversationSummary) => {
-  if (isStreaming.value || deletingHistoryId.value) return
+  if (workspaceContextSwitching.value || isStreaming.value || deletingHistoryId.value) return
   const title = conversation.title || '新分析对话'
   try {
     await ElMessageBox.confirm(`确定删除历史对话「${title}」吗？删除后无法恢复。`, {
@@ -833,7 +839,7 @@ const buildDashboardChartInfo = (block: AnalysisBlock, componentId: string) => {
 }
 
 const generateDashboardFromMessage = async (message: DockMessage) => {
-  if (isStreaming.value || generatingDashboard.value) return
+  if (workspaceContextSwitching.value || isStreaming.value || generatingDashboard.value) return
   const blocks = getDashboardChartBlocks(message)
   if (!blocks.length) {
     ElMessage.warning('暂无可生成看板的图表')
@@ -906,7 +912,7 @@ const generateDashboardFromMessage = async (message: DockMessage) => {
 }
 
 const exportCurrentMessage = async (message: DockMessage) => {
-  if (exporting.value) return
+  if (workspaceContextSwitching.value || exporting.value) return
   exporting.value = true
   try {
     const file = await pickExportFile(message)
@@ -1023,6 +1029,7 @@ const appendStreamChunk = (text: string, assistantMessage: DockMessage) => {
 }
 
 const runQuestion = async (question: string, options: { appendUser?: boolean } = {}) => {
+  if (workspaceContextSwitching.value) return
   try {
     await analysisContext.loadDatasources()
   } catch (e) {
@@ -1068,7 +1075,7 @@ const runQuestion = async (question: string, options: { appendUser?: boolean } =
       streamBuffer = ''
     }
   } catch (e: any) {
-    if (e?.name !== 'AbortError') {
+    if (!isWorkspaceContextStaleError(e) && e?.name !== 'AbortError') {
       assistantMessage.error = true
       assistantMessage.content = e?.message || '综合分析助手暂时不可用'
     }
@@ -1090,7 +1097,7 @@ const runQuestion = async (question: string, options: { appendUser?: boolean } =
 }
 
 const sendMessage = async ($event: any = {}) => {
-  if ($event?.isComposing || isStreaming.value) {
+  if ($event?.isComposing || workspaceContextSwitching.value || isStreaming.value) {
     return
   }
   const question = inputMessage.value.trim()
@@ -1103,7 +1110,7 @@ const sendMessage = async ($event: any = {}) => {
 }
 
 const regenerateMessage = async (message: DockMessage) => {
-  if (isStreaming.value) return
+  if (workspaceContextSwitching.value || isStreaming.value) return
   const assistantIndex = messages.value.findIndex((item) => item.id === message.id)
   if (assistantIndex < 0) return
   const question = findPreviousUserQuestion(assistantIndex)
@@ -1134,6 +1141,18 @@ const clearMessages = () => {
   inputMessage.value = ''
   currentConversationId.value = null
 }
+
+watch(
+  () => workspaceContextState.phase,
+  (phase, previousPhase) => {
+    if (phase !== 'switching' || previousPhase === 'switching') return
+    streamController.value?.abort()
+    selectedCustomPromptId.value = null
+    selectedDataSkillId.value = null
+    historyVisible.value = false
+    clearMessages()
+  }
+)
 
 watch(
   () => analysisContext.datasourceId,
@@ -1204,7 +1223,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
             <template #reference>
               <span class="action-slot">
                 <el-tooltip effect="dark" content="历史对话" placement="bottom">
-                  <button class="icon-btn" type="button" :disabled="isStreaming">
+                  <button class="icon-btn" type="button" :disabled="workspaceContextSwitching || isStreaming">
                     <el-icon>
                       <Clock />
                     </el-icon>
@@ -1235,7 +1254,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                   <button
                     type="button"
                     class="history-item-main"
-                    :disabled="isStreaming || deletingHistoryId === conversation.id"
+                    :disabled="workspaceContextSwitching || isStreaming || deletingHistoryId === conversation.id"
                     @click="loadConversation(conversation)"
                   >
                     <span class="history-title">{{ conversation.title || '新分析对话' }}</span>
@@ -1249,7 +1268,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                     <button
                       type="button"
                       class="history-delete-btn"
-                      :disabled="isStreaming || deletingHistoryId === conversation.id"
+                      :disabled="workspaceContextSwitching || isStreaming || deletingHistoryId === conversation.id"
                       @click.stop="deleteHistoryConversation(conversation)"
                     >
                       <el-icon>
@@ -1263,7 +1282,12 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           </el-popover>
           <el-tooltip effect="dark" content="新对话" placement="bottom">
             <span class="action-slot">
-              <button class="icon-btn" type="button" :disabled="isStreaming" @click="clearMessages">
+              <button
+                class="icon-btn"
+                type="button"
+                :disabled="workspaceContextSwitching || isStreaming"
+                @click="clearMessages"
+              >
                 <el-icon>
                   <CirclePlus />
                 </el-icon>
@@ -1419,7 +1443,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 <button
                   class="message-action-btn"
                   type="button"
-                  :disabled="isStreaming"
+                  :disabled="workspaceContextSwitching || isStreaming"
                   @click="regenerateMessage(message)"
                 >
                   <el-icon>
@@ -1430,7 +1454,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 <button
                   class="message-action-btn"
                   type="button"
-                  :disabled="isStreaming || generatingDashboard || !canGenerateDashboard(message)"
+                  :disabled="workspaceContextSwitching || isStreaming || generatingDashboard || !canGenerateDashboard(message)"
                   @click="generateDashboardFromMessage(message)"
                 >
                   <el-icon>
@@ -1441,7 +1465,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 <button
                   class="message-action-btn"
                   type="button"
-                  :disabled="isStreaming || exporting"
+                  :disabled="workspaceContextSwitching || isStreaming || exporting"
                   @click="exportCurrentMessage(message)"
                 >
                   <el-icon>
@@ -1463,7 +1487,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           <el-input
             ref="inputRef"
             v-model="inputMessage"
-            :disabled="isStreaming"
+            :disabled="workspaceContextSwitching || isStreaming"
             type="textarea"
             :rows="3"
             placeholder="输入问题"
@@ -1474,7 +1498,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           <AgentSelector
             v-model="selectedCustomPromptId"
             class="agent-select"
-            :disabled="isStreaming"
+            :disabled="workspaceContextSwitching || isStreaming"
             :datasource-id="analysisContext.datasourceId"
             :datasource-name="analysisContext.datasourceName"
             target-scope="ANALYSIS_ASSISTANT"
@@ -1484,7 +1508,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           <DataSkillSelector
             v-model="selectedDataSkillId"
             class="skill-select"
-            :disabled="isStreaming"
+            :disabled="workspaceContextSwitching || isStreaming"
             :datasource-id="analysisContext.datasourceId"
             :datasource-name="analysisContext.datasourceName"
             target-scope="ANALYSIS_ASSISTANT"
