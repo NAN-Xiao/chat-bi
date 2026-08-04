@@ -29,6 +29,7 @@ const TOP_BASIC_MAX_WIDTH = 440
 const TOP_BASIC_MAX_HEIGHT = 360
 const TOP_MINI_MAX_WIDTH = 560
 const TOP_MINI_MAX_HEIGHT = 430
+const TOP_SUMMARY_REENTER_MIN_HEIGHT = TOP_MINI_MAX_HEIGHT
 const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
@@ -372,6 +373,7 @@ export function resolveInsightDisplay(params: {
   dashboard?: boolean
   previousLayout?: InsightLayout
   previousDensity?: InsightDensity
+  previousShow?: boolean
 }): InsightDisplayStrategy {
   const preferredLayout = resolveInsightLayout(params)
   const width = params.width || 0
@@ -422,9 +424,24 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
-    // top 布局下 header 高度会随密度档位变化（compact/regular=34，mini=28，basic=24），
-    // 而密度由 chart-show-area 的测量高度决定，因此这里的阈值必须与 side 分支一样带迟滞，
-    // 否则测量高度在阈值附近会与 header 高度互相反馈、无限翻转档位造成图表持续重绘。
+    // 摘要显隐迟滞：卡片过小（宽<440 或 高<360）时隐藏摘要；隐藏后需回升到宽≥440 且
+    // 高≥430 才重新显示，避免在显隐边界反复出现/消失造成抖动。
+    const topSummaryTooSmall = width < TOP_BASIC_MAX_WIDTH || height < TOP_BASIC_MAX_HEIGHT
+    const topSummaryCanReenter =
+      width >= TOP_BASIC_MAX_WIDTH && height >= TOP_SUMMARY_REENTER_MIN_HEIGHT
+    if (topSummaryTooSmall || (params.previousShow === false && !topSummaryCanReenter)) {
+      return {
+        show: false,
+        layout,
+        density: 'basic',
+        maxStats: 0,
+        featuredSide: false,
+      }
+    }
+
+    // 密度档位迟滞：header 高度随密度档位（compact/regular=34，mini=28，basic=24）变化，
+    // 而密度由 chart-show-area 的测量高度决定，两者互相反馈。TOP 分支的档位阈值必须与 side
+    // 分支一样带迟滞，否则测量高度在阈值（尤其 430 的 mini↔compact）附近会无限翻转造成重绘。
     const wasBasic = params.previousDensity === 'basic'
     const wasMiniOrDenser =
       params.previousDensity === 'basic' || params.previousDensity === 'mini'

@@ -16,7 +16,18 @@ assert.match(style, /\.header-bar\s*\{[^}]*flex:\s*0\s+0\s+auto/s)
 assert.match(style, /\.dashboard-filter-controls\s*\{[^}]*flex:\s*0\s+0\s+auto/s)
 assert.match(
   style,
-  /\.chart-show-area\s*\{[^}]*flex:\s*1\s+1\s+auto[^}]*height:\s*auto/s
+  /\.chart-show-area\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*height:\s*auto[^}]*min-width:\s*0[^}]*min-height:\s*0/s,
+  '图表外层必须使用零基准并允许双轴收缩，避免摘要尺寸反推父容器'
+)
+assert.match(
+  style,
+  /\.chart-content-row\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*min-width:\s*0[^}]*min-height:\s*0/s,
+  '顶部和侧边摘要共用的图表行必须使用稳定剩余空间'
+)
+assert.match(
+  style,
+  /:deep\(\.chart-container\)\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*min-width:\s*0[^}]*min-height:\s*0/s,
+  '图表容器不能通过内容宽高反向撑开图表行'
 )
 assert.doesNotMatch(style, /\.chart-show-area\s*\{[^}]*height:\s*calc\(/s)
 assert.doesNotMatch(

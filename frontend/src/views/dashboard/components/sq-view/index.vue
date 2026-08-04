@@ -144,6 +144,7 @@ const frameSize = ref({ width: 0, height: 0 })
 let previousInsightLayoutKey: string | undefined
 let previousInsightLayout: InsightLayout | undefined
 let previousInsightDensity: InsightDensity | undefined
+let previousInsightShow: boolean | undefined
 const refreshing = ref(false)
 const blockingRefreshLoading = ref(false)
 const pivotCalendarMonth = ref('')
@@ -2103,6 +2104,7 @@ const insightDisplay = computed(() => {
     previousInsightLayoutKey = layoutStateKey
     previousInsightLayout = undefined
     previousInsightDensity = undefined
+    previousInsightShow = undefined
   }
   const display = resolveInsightDisplay({
     chartType: chartType.value,
@@ -2115,9 +2117,11 @@ const insightDisplay = computed(() => {
     dashboard: isDashboardSurface.value,
     previousLayout: previousInsightLayout,
     previousDensity: previousInsightDensity,
+    previousShow: previousInsightShow,
   })
   previousInsightLayout = display.layout
   previousInsightDensity = display.density
+  previousInsightShow = display.show
   return display
 })
 const canShowInsightHeader = computed(() => {
@@ -3465,21 +3469,24 @@ defineExpose({
 
 .chart-show-area {
   width: 100%;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   height: auto;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   position: relative;
 
   :deep(.chart-container) {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
   }
 
   .chart-content-row {
     position: relative;
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
