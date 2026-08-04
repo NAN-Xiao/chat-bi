@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { parse } from '@vue/compiler-sfc'
+import { baseParse } from '@vue/compiler-dom'
 
 const source = readFileSync(fileURLToPath(new URL('./index.vue', import.meta.url)), 'utf8')
 const loadCanvas =
@@ -37,18 +39,55 @@ assert.match(
 )
 assert.match(
   loadCanvas,
-  /finally \{\s*if \(loadVersion === routeLoadVersion\) \{\s*dataInitState\.value = true\s*canvasStateReady = true/,
-  '只有当前加载版本可以在 finally 中放行画布'
+  /finally \{\s*if \(routeLoadLifecycle\.isCurrent\(loadVersion\) && routeStateApplied\) \{\s*dataInitState\.value = true\s*canvasStateReady = true/,
+  '只有已提交目标状态的当前加载可以在 finally 中放行画布'
 )
-assert.match(
-  source,
-  /<template v-if="dataInitState">\s*<Toolbar[\s\S]*?<DashboardEditor/,
-  '工具栏和画布必须由同一个资源就绪门控制'
+const findElements = (node, matches = []) => {
+  if (node?.type === 1) matches.push(node)
+  for (const child of node?.children || []) findElements(child, matches)
+  return matches
+}
+
+const assertSharedEditorGate = (templateSource) => {
+  const ast = baseParse(templateSource)
+  const elements = findElements(ast)
+  const gates = elements.filter(
+    (element) =>
+      element.tag === 'template' &&
+      element.props.some(
+        (prop) => prop.type === 7 && prop.name === 'if' && prop.exp?.content === 'dataInitState'
+      )
+  )
+  assert.equal(gates.length, 1, '完整编辑 UI 必须只有一个资源就绪门')
+
+  const editorComponents = elements.filter((element) =>
+    ['Toolbar', 'DashboardEditor'].includes(element.tag)
+  )
+  const gatedComponents = findElements(gates[0]).filter((element) =>
+    ['Toolbar', 'DashboardEditor'].includes(element.tag)
+  )
+  assert.deepEqual(
+    gatedComponents.map((element) => element.tag),
+    ['Toolbar', 'DashboardEditor'],
+    '资源就绪门必须同时包含工具栏和画布'
+  )
+  assert.equal(
+    editorComponents.every((element) => gatedComponents.includes(element)),
+    true,
+    '工具栏或画布不能出现在资源就绪门之外'
+  )
+}
+
+assert.throws(
+  () =>
+    assertSharedEditorGate(
+      '<template v-if="dataInitState"><Toolbar /></template><DashboardEditor />'
+    ),
+  '模板结构测试必须能识别门外的 DashboardEditor'
 )
-assert.doesNotMatch(
-  source,
-  /<DashboardEditor\s+v-if="dataInitState"/,
-  '资源就绪门应控制完整编辑 UI，不能只控制画布子树'
-)
+
+const templateSource = parse(source).descriptor.template?.content || ''
+assert.ok(templateSource, '编辑页必须保留 Vue 模板')
+assertSharedEditorGate(templateSource)
 
 console.log('Dashboard editor route mount lifecycle tests passed')

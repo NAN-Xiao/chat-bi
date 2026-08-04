@@ -20,9 +20,12 @@ defineProps({
   },
 })
 
+const syncFullscreenState = () => {
+  dashboardStore.setFullscreenFlag(!!document.fullscreenElement)
+}
+
 const fullscreenChange = () => {
-  const isFullscreen = !!document.fullscreenElement
-  dashboardStore.setFullscreenFlag(isFullscreen)
+  syncFullscreenState()
   setTimeout(() => {
     useEmitt().emitter.emit('custom-canvas-resize')
   }, 100)
@@ -44,6 +47,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 onMounted(() => {
+  syncFullscreenState()
   document.addEventListener('fullscreenchange', fullscreenChange)
   document.addEventListener('keydown', handleKeydown)
 })

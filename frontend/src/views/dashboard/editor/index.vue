@@ -48,6 +48,7 @@ import {
   resolveOrdinaryDashboardMode,
   type OrdinaryDashboardMode,
 } from '@/views/dashboard/utils/dashboardRouteMode'
+import { createRouteLoadLifecycle } from '@/views/dashboard/editor/routeLoadLifecycle'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -70,7 +71,7 @@ let canvasStateReady = false
 let applyingCanvasState = false
 let suppressCanvasStateChange = 0
 let draftSaveTimer: number | null = null
-let routeLoadVersion = 0
+const routeLoadLifecycle = createRouteLoadLifecycle()
 let chartRefreshTimer: number | undefined
 let chartRefreshController: AbortController | null = null
 let chartRefreshRetryCount = 0
@@ -453,7 +454,7 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
   chartRefreshController = controller
   chartRefreshTimer = window.setTimeout(() => {
     chartRefreshTimer = undefined
-    if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+    if (!routeLoadLifecycle.isCurrent(loadVersion) || controller.signal.aborted) {
       return
     }
     void refreshEditorCharts(loadVersion, controller)
@@ -526,7 +527,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       const { viewInfo, requestVersion } = entry
       try {
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -534,7 +535,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         }
         const cachedResult = await previewChartSqlCacheOnly(viewInfo, requestConfig)
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -566,7 +567,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           return
         }
         if (
-          loadVersion === routeLoadVersion
+          routeLoadLifecycle.isCurrent(loadVersion)
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
           && (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo))
         ) {
@@ -579,7 +580,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     })
 
     const databaseTotal = databaseRefreshEntries.length
-    if (!databaseTotal || loadVersion !== routeLoadVersion || controller.signal.aborted) {
+    if (!databaseTotal || !routeLoadLifecycle.isCurrent(loadVersion) || controller.signal.aborted) {
       return
     }
     withAutoChartUpdate(() => {
@@ -593,7 +594,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       const { viewInfo, requestVersion } = entry
       try {
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -601,7 +602,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         }
         const result = await previewChartSqlFromDatabase(viewInfo, requestConfig)
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -634,7 +635,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           return
         }
         if (
-          loadVersion === routeLoadVersion
+          routeLoadLifecycle.isCurrent(loadVersion)
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
           withAutoChartUpdate(() => {
@@ -658,7 +659,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     }
     if (
       transientPendingCount > 0 &&
-      loadVersion === routeLoadVersion &&
+      routeLoadLifecycle.isCurrent(loadVersion) &&
       !controller.signal.aborted &&
       chartRefreshRetryCount < CHART_TRANSIENT_MAX_RETRIES
     ) {
@@ -684,15 +685,23 @@ const syncRouteState = () => {
 const applyLoadedCanvasResource = async (
   resourceId: string | number,
   result: any,
+  loadVersion: number,
   sourceKeyOverride?: string | null
 ) => {
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) {
+    return false
+  }
   if (
     result?.dashboardInfo?.datasource &&
     String(datasourceContext.datasourceId || '') !== String(result.dashboardInfo.datasource)
   ) {
     await datasourceContext.activateDatasourceById(result.dashboardInfo.datasource, false)
   }
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) {
+    return false
+  }
   await pauseCanvasStateWatch(() => {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
     dashboardStore.setDashboardInfo(result?.dashboardInfo)
     dashboardStore.setCanvasStyleData(result?.canvasStyleResult || {})
     dashboardStore.setComponentData(result?.canvasDataResult || [])
@@ -705,10 +714,21 @@ const applyLoadedCanvasResource = async (
       sourceKeyOverride || getDashboardCanvasSourceKey(result?.dashboardInfo?.id || resourceId)
     )
   })
+  return routeLoadLifecycle.isCurrent(loadVersion)
+}
+
+const resetCanvasAfterLoadFailure = async (loadVersion: number) => {
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) return false
+  await pauseCanvasStateWatch(() => {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+    dashboardStore.canvasDataInit()
+  })
+  return routeLoadLifecycle.isCurrent(loadVersion)
 }
 
 const loadCanvasFromRoute = async () => {
-  const loadVersion = ++routeLoadVersion
+  const loadVersion = routeLoadLifecycle.begin()
+  let routeStateApplied = false
   persistCanvasDraft()
   cancelDashboardChartRefresh()
   permissionDeniedCharts.reset()
@@ -740,21 +760,28 @@ const loadCanvasFromRoute = async () => {
   try {
     if (!state.platformTemplateId) {
       await datasourceContext.loadDatasources()
-      if (loadVersion !== routeLoadVersion) return
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
     }
     if (state.platformTemplateId && sourceKey) {
       const templateId = state.platformTemplateId
       const result = await loadPlatformTemplateResource(templateId)
-      if (loadVersion !== routeLoadVersion) return
-      await applyLoadedCanvasResource(templateId, result, sourceKey)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+      if (!result?.dashboardInfo?.id) {
+        routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
+        return
+      }
+      const applied = await applyLoadedCanvasResource(templateId, result, loadVersion, sourceKey)
+      if (!applied) return
       dashboardStore.updateDashboardInfo({
         canEdit: true,
         canShare: false,
       })
       dashboardStore.markCanvasSaved()
+      routeStateApplied = true
     } else if (state.opt === 'create') {
       const createSourceKey = getCreateCanvasSourceKey(state.datasource, state.routerPid)
       await pauseCanvasStateWatch(() => {
+        if (!routeLoadLifecycle.isCurrent(loadVersion)) return
         dashboardStore.canvasDataInit()
         dashboardStore.updateDashboardInfo({
           dataState: 'prepare',
@@ -766,24 +793,37 @@ const loadCanvasFromRoute = async () => {
         })
         dashboardStore.setCanvasEditingSourceKey(createSourceKey)
       })
-      const restored = await restoreCanvasDraft(createSourceKey)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+      const restored = await restoreCanvasDraft(createSourceKey, loadVersion)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
       if (!restored) {
         dashboardStore.markCanvasSaved()
       }
+      routeStateApplied = true
     } else if (state.resourceId && sourceKey) {
       const resourceId = state.resourceId
       const result = await loadCanvasResource(resourceId)
-      if (loadVersion !== routeLoadVersion) return
-      await applyLoadedCanvasResource(resourceId, result)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+      if (!result?.dashboardInfo?.id) {
+        routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
+        return
+      }
+      const applied = await applyLoadedCanvasResource(resourceId, result, loadVersion)
+      if (!applied) return
       dashboardStore.markCanvasSaved()
       scheduleEditorChartRefresh(loadVersion)
+      routeStateApplied = true
     } else {
-      await pauseCanvasStateWatch(() => {
-        dashboardStore.canvasDataInit()
-      })
+      routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
     }
+  } catch (error) {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+    if (!isAbortError(error)) {
+      console.error('load_canvas_from_route', error)
+    }
+    routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
   } finally {
-    if (loadVersion === routeLoadVersion) {
+    if (routeLoadLifecycle.isCurrent(loadVersion) && routeStateApplied) {
       dataInitState.value = true
       canvasStateReady = true
     }
@@ -815,17 +855,20 @@ const buildDraftDashboardInfo = (draftInfo: any) => {
   }
 }
 
-const restoreCanvasDraft = async (sourceKey: string) => {
+const restoreCanvasDraft = async (sourceKey: string, loadVersion: number) => {
   if (!canUseCanvasDraft(sourceKey)) return false
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) return false
   const draft = loadDashboardCanvasDraft(sourceKey)
   if (!draft) return false
   await pauseCanvasStateWatch(() => {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
     dashboardStore.setDashboardInfo(buildDraftDashboardInfo(draft.dashboardInfo))
     dashboardStore.setCanvasStyleData(cloneDeep(draft.canvasStyleData || {}))
     dashboardStore.setComponentData(cloneDeep(draft.componentData || []))
     dashboardStore.setCanvasViewInfo(cloneDeep(draft.canvasViewInfo || {}))
     dashboardStore.setCanvasEditingSourceKey(sourceKey)
   })
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) return false
   dashboardStore.markCanvasChanged()
   return true
 }
@@ -999,6 +1042,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  routeLoadLifecycle.dispose()
   persistCanvasDraft()
   cancelDashboardChartRefresh()
   if (draftSaveTimer) {
