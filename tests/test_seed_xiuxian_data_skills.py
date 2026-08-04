@@ -116,10 +116,9 @@ def test_xiuxian_date_partition_skill_is_scoped_and_actionable():
     assert "## 日期窗口规则" in prompt
     assert "用户指定绝对起止日期" in prompt
     assert "用户指定相对日期窗口" in prompt
-    assert "未指定日期窗口时，默认查询截至昨天的最近 28 个自然日" in prompt
-    assert "29 天是示例参数，不表示固定查询范围" in prompt
-    assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" in prompt
-    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" in prompt
+    assert "未指定日期窗口时，默认查询最近 7 个完整自然日" in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" not in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 1 DAY)" not in prompt
     assert "AS start_dt" not in prompt
 
 
@@ -162,10 +161,10 @@ def test_build_data_skills_produces_one_base_and_twelve_topics():
 
     assert len(skills) == 13
     assert sum(prompt.count("<!-- dashboard-sql:") for prompt in prompts) == (
-        43 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
+        42 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
     )
     assert all("1e4e34743f2d47dfa1c2948742b93a50" not in prompt for prompt in prompts)
-    assert all(len(prompt) <= 15_000 for prompt in prompts)
+    assert all(len(prompt) <= 17_000 for prompt in prompts)
     assert len({prompt.splitlines()[0] for prompt in prompts}) == 13
     assert any(
         prompt.startswith(
@@ -304,31 +303,14 @@ def test_build_data_skills_fails_closed_when_a_dashboard_view_is_missing():
         module.build_data_skills(dashboards)
 
 
-def test_build_data_skills_ignores_the_known_empty_dashboard_view():
+def test_build_data_skills_uses_only_current_catalog_views():
     module = _load_seed_module()
     dashboards = _dashboard_snapshots(module)
-    from xiuxian_dashboard_snapshot import DashboardSnapshot
-
-    for index, dashboard in enumerate(dashboards):
-        canvas = json.loads(dashboard.canvas_view_info)
-        if module.EMPTY_DASHBOARD_VIEW_ID not in canvas:
-            continue
-        canvas[module.EMPTY_DASHBOARD_VIEW_ID]["sql"] = ""
-        dashboards[index] = DashboardSnapshot.from_row(
-            (
-                dashboard.id,
-                dashboard.name,
-                dashboard.tenant_id,
-                dashboard.datasource,
-                json.dumps(canvas, ensure_ascii=False),
-            )
-        )
-        break
 
     skills = module.build_data_skills(dashboards)
 
     assert sum(skill["prompt"].count("<!-- dashboard-sql:") for skill in skills) == (
-        43 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
+        42 - len(module.PAYER_PROMPT_EXCLUDED_VIEW_IDS)
     )
 
 

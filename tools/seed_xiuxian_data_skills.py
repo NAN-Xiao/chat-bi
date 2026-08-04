@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from core_system_db import core_system_db_config, export_postgres_compat_env
-from dashboard_date_contract import append_dashboard_date_contract
 from psycopg.types.json import Jsonb
 from xiuxian_dashboard_skill_catalog import (
     EXPECTED_VIEW_IDS,
@@ -278,11 +277,9 @@ SERVERPAYLOG_MANAGED_SECTION = _managed_section(
 DATE_PARTITION_SKILL = {
     **_LEGACY_DATA_SKILLS[0],
     "description": DATE_PARTITION_SKILL_DESCRIPTION,
-    "prompt": append_dashboard_date_contract(
-        _LEGACY_DATA_SKILLS[0]["prompt"].rstrip()
-        + "\n\n"
-        + DATE_SPINE_MANAGED_SECTION
-    ),
+    "prompt": _LEGACY_DATA_SKILLS[0]["prompt"].rstrip()
+    + "\n\n"
+    + DATE_SPINE_MANAGED_SECTION,
 }
 LEGACY_PAYMENT_MARKER = (
     "<!-- data-skill-source:xiuxian:paybuyret-monetization-arppu -->"
@@ -290,7 +287,6 @@ LEGACY_PAYMENT_MARKER = (
 SERVERPAYLOG_MARKER = (
     "<!-- data-skill-source:xiuxian:serverpaylog-monetization-arppu -->"
 )
-EMPTY_DASHBOARD_VIEW_ID = "1e4e34743f2d47dfa1c2948742b93a50"
 PAYER_PROMPT_EXCLUDED_VIEW_IDS = frozenset(
     {
         "f499305aa9b44a209cbe72cb68985a46",
@@ -420,8 +416,7 @@ def _topic_prompt_view_ids(topic: Any) -> tuple[str, ...]:
     return tuple(
         view_id
         for view_id in topic.view_ids
-        if view_id != EMPTY_DASHBOARD_VIEW_ID
-        and not (
+        if not (
             topic.slug == "payer-penetration"
             and view_id in PAYER_PROMPT_EXCLUDED_VIEW_IDS
         )
@@ -459,7 +454,7 @@ def build_data_skills(dashboards: Sequence[Any]) -> list[dict[str, str]]:
         sections.extend(blocks)
         if topic.slug == "serverpaylog-revenue":
             sections.append(SERVERPAYLOG_MANAGED_SECTION)
-        prompt = append_dashboard_date_contract("\n\n".join(sections).strip())
+        prompt = "\n\n".join(sections).strip()
         validate_prompt_length(prompt)
         if len(blocks) > 6 or len(prompt) > MAX_PROMPT_CHARS:
             raise ValueError(f"Skill 体积超限: {topic.slug}")
