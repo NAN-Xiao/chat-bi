@@ -1,18 +1,15 @@
 import assert from 'node:assert/strict'
 import { resolveInsightDisplay } from './chartInsight.ts'
 
-// 看板卡片是纵向 flex：header-bar(高度随 density 变化) + chart-show-area(填充剩余高度)。
-// insightDensity 由 chart-show-area 的测量高度算出，而 density 又通过根节点 class 改变
-// header-bar 的 min-height，从而反过来改变 chart-show-area 高度。
-// 若密度阈值没有滞回，测量高度会在阈值附近来回跳变 → density 反复翻转 → ResizeObserver
-// 每次都触发重渲染 → 图表“不停重新加载/闪烁”。
+// 当前运行时只以真实外部 resize 产生的规范帧决定布局和密度。本测试保留旧的密度相关
+// 内部剩余高度模型作为防回归模型：若迟滞被移除，曾经的档位翻转路径会再次暴露出来。
 //
 // header-bar min-height 取自 sq-view/index.vue 的样式：regular/compact=34，mini=28，basic=24。
 const HEADER_HEIGHT = { regular: 34, compact: 34, mini: 28, basic: 24 }
 
-// 模拟 ResizeObserver ↔ density 的反馈回路：每一步用“当前 density 对应的 header 高度”推出
-// chart-show-area 的测量高度，再喂回 resolveInsightDisplay。稳定布局必须收敛到不动点。
-function simulateDensityFeedback(base, containerInnerHeight) {
+// 防回归模型：每一步用当前 density 的 header 高度推导历史内部可用高度，再喂回策略。
+// 这不是 SQView 当前的测量来源；策略仍须在该旧路径上收敛，避免未来恢复类似反馈时震荡。
+function simulateLegacyDensityFeedback(base, containerInnerHeight) {
   const measuredHeight = (density) =>
     containerInnerHeight - HEADER_HEIGHT[density ?? 'compact']
 
@@ -54,9 +51,9 @@ const lineBase = {
   width: 600,
 }
 
-// containerInnerHeight=462 让 chart-show-area 落在 TOP_MINI_MAX_HEIGHT(430) 附近：
+// containerInnerHeight=462 让历史内部可用高度落在 TOP_MINI_MAX_HEIGHT(430) 附近：
 // compact header(34) → 428(<430 判 mini)，mini header(28) → 434(≥430 判 compact) → 无滞回则震荡。
-const lineResult = simulateDensityFeedback(lineBase, 462)
+const lineResult = simulateLegacyDensityFeedback(lineBase, 462)
 assert.ok(
   lineResult.converged,
   `折线卡片自适应密度必须收敛，否则 header 高度与测量高度互相反馈导致不停重绘：${lineResult.trail.join(' -> ')}`
@@ -77,7 +74,7 @@ const columnBase = {
 
 // rich top summary(column) 在 TOP_BASIC_MAX_HEIGHT(360) 附近 compact(34)↔basic(24) 高差 10px。
 // containerInnerHeight=390：compact → 356(<360 判 basic)，basic → 366(≥360 判 compact) → 无滞回则震荡。
-const columnResult = simulateDensityFeedback(columnBase, 390)
+const columnResult = simulateLegacyDensityFeedback(columnBase, 390)
 assert.ok(
   columnResult.converged,
   `柱状卡片自适应密度必须收敛，rich top summary 也不能在 basic/compact 间反复翻转：${columnResult.trail.join(' -> ')}`

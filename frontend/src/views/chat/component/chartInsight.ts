@@ -33,9 +33,9 @@ const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
 const SIDE_COMPACT_MAX_HEIGHT = 390
-// 密度阈值的迟滞区间：卡片的 header-bar 高度会随密度档位变化，而密度又由填充剩余空间的
-// chart-show-area 测量高度决定，两者互相反馈。迟滞必须大于最大的 header 高差(compact↔basic
-// 约 10px)，才能保证档位切换后测量高度的回弹不会再次越过阈值造成无限震荡与重绘。
+// 真实外部 resize 会在阈值附近带来相邻帧的轻微尺寸回摆。布局与密度历史在此保留迟滞，
+// 其窗口必须大于最大 header 高差（compact↔basic 约 10px），避免一次外部 resize 的回摆
+// 立即反向切换档位，导致摘要布局频繁改变。
 const DENSITY_HYSTERESIS = 20
 const WIDE_TREND_SIDE_MIN_WIDTH = 1100
 const WIDE_TREND_SIDE_MIN_HEIGHT = 260
@@ -433,9 +433,8 @@ export function resolveInsightDisplay(params: {
       }
     }
 
-    // 密度档位迟滞：header 高度随密度档位（compact/regular=34，mini=28，basic=24）变化，
-    // 而密度由 chart-show-area 的测量高度决定，两者互相反馈。TOP 分支的档位阈值必须与 side
-    // 分支一样带迟滞，否则测量高度在阈值（尤其 430 的 mini↔compact）附近会无限翻转造成重绘。
+    // TOP 分支的密度历史迟滞与 side 分支一致。真实外部 resize 在 430px mini↔compact
+    // 等边界附近反复接近时，必须保持当前档位直到越过退出阈值，避免摘要布局频繁切换。
     const wasBasic = params.previousDensity === 'basic'
     const wasMiniOrDenser =
       params.previousDensity === 'basic' || params.previousDensity === 'mini'
