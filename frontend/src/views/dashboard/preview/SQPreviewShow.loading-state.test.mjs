@@ -66,8 +66,8 @@ assert.match(
 assert.ok(preparePreviewStateMatch, '首次加载需要明确初始化图表等待状态')
 assert.match(
   preparePreviewStateMatch[1],
-  /clearPendingChartData\(viewInfo, 'waiting'\)/,
-  '首次加载的无数据图表必须进入 loading/waiting，由完整加载态接管显示'
+  /prepareDashboardChartRefreshState\(viewInfo, 'waiting'\)/,
+  '首次加载必须保留已有快照，仅让无快照图表进入 loading/waiting'
 )
 assert.ok(prepareDatabaseStateMatch, '数据库后台刷新需要独立的状态准备函数')
 assert.match(

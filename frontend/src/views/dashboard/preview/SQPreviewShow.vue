@@ -34,6 +34,7 @@ import {
   ensureChartSnapshotRefreshedAt,
   nextDashboardRefreshDelayMs,
 } from '@/views/dashboard/utils/dashboardRefreshPolicy'
+import { prepareDashboardChartRefreshState } from '@/views/dashboard/utils/dashboardChartLifecycle'
 import {
   createPermissionDeniedChartRegistry,
   dashboardChartFailureResultFromError,
@@ -289,25 +290,6 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   viewInfo.data.snapshotRefreshedAt = refreshedAt
 }
 
-function clearPendingChartData(viewInfo: any, refreshState = 'waiting') {
-  if (!viewInfo) {
-    return
-  }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
-  }
-  viewInfo.data.data = []
-  viewInfo.data.fields = []
-  viewInfo.fields = []
-  viewInfo.status = 'loading'
-  viewInfo.message = ''
-  delete viewInfo.error_type
-  delete viewInfo.reason
-  viewInfo.dataState = 'loading'
-  setChartLoadingProgress(viewInfo, 0, true)
-  viewInfo.refreshState = refreshState
-}
-
 function normalizePermissionDeniedChart(viewInfo: any) {
   if (!viewInfo) {
     return
@@ -543,13 +525,7 @@ function prepareChartPreviewState(viewInfo: any) {
   if (!canLookupChartCache(viewInfo)) {
     return
   }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
-  }
-  viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
-  viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
-  viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
-  clearPendingChartData(viewInfo, 'waiting')
+  prepareDashboardChartRefreshState(viewInfo, 'waiting')
 }
 
 function chartSqlPayload(viewInfo: any) {
@@ -1078,6 +1054,7 @@ defineExpose({
         <SQPreviewHead
           :dashboard-info="previewShowFlag ? state.dashboardInfo : {}"
           :component-data="state.canvasDataPreview"
+          :canvas-style-data="state.canvasStylePreview"
           :canvas-view-info="state.canvasViewInfoPreview"
           :get-report-context-snapshots="getDashboardReportContextSnapshots"
           @reload="reload"

@@ -49,6 +49,8 @@ import {
   type OrdinaryDashboardMode,
 } from '@/views/dashboard/utils/dashboardRouteMode'
 import { createRouteLoadLifecycle } from '@/views/dashboard/editor/routeLoadLifecycle'
+import { consumeCanvasRouteHandoff } from '@/views/dashboard/editor/canvasRouteHandoff'
+import { prepareDashboardChartRefreshState } from '@/views/dashboard/utils/dashboardChartLifecycle'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -56,18 +58,49 @@ const datasourceContext = useDatasourceContextStore()
 const { dashboardInfo, componentData, canvasStyleData, canvasViewInfo, fullscreenFlag, baseMatrixCount } =
   storeToRefs(dashboardStore)
 
+function firstQueryValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value[0] ? String(value[0]) : null
+  }
+  return value ? String(value) : null
+}
+
+const initialPlatformTemplateId = firstQueryValue(router.currentRoute.value.query.platformTemplateId)
+const initialResourceId = firstQueryValue(router.currentRoute.value.query.resourceId)
+const initialRouteSourceKey = initialPlatformTemplateId
+  ? getPlatformTemplateCanvasSourceKey(initialPlatformTemplateId)
+  : getDashboardCanvasSourceKey(initialResourceId)
+const initialCanvasRouteHandoff = consumeCanvasRouteHandoff(initialRouteSourceKey)
+if (initialCanvasRouteHandoff) {
+  dashboardStore.setDashboardInfo({
+    ...initialCanvasRouteHandoff.dashboardInfo,
+    ...(initialPlatformTemplateId ? { canEdit: true, canShare: false } : {}),
+  })
+  dashboardStore.setCanvasStyleData(initialCanvasRouteHandoff.canvasStyleResult || {})
+  dashboardStore.setComponentData(initialCanvasRouteHandoff.canvasDataResult || [])
+  dashboardStore.setCanvasViewInfo(initialCanvasRouteHandoff.canvasViewInfoPreview || {})
+  dashboardStore.setCanvasEditingSourceKey(initialCanvasRouteHandoff.sourceKey)
+  dashboardStore.markCanvasSaved()
+}
+
 const dataInitState = ref(false)
+if (initialCanvasRouteHandoff) {
+  dataInitState.value = true
+}
 const state = reactive({
   routerPid: null as string | null,
-  resourceId: null as string | null,
-  platformTemplateId: null as string | null,
+  resourceId: initialResourceId,
+  platformTemplateId: initialPlatformTemplateId,
   opt: null as string | null,
   datasource: null as number | string | null | undefined,
-  dashboardMode: 'my' as OrdinaryDashboardMode,
+  dashboardMode: resolveOrdinaryDashboardMode(
+    router.currentRoute.value.query.dashboardMode
+  ) as OrdinaryDashboardMode,
 })
 
 const dashboardEditorInnerRef = ref(null)
-let canvasStateReady = false
+let canvasStateReady = Boolean(initialCanvasRouteHandoff)
+let prefetchedRouteSourceKey = initialCanvasRouteHandoff?.sourceKey || null
 let applyingCanvasState = false
 let suppressCanvasStateChange = 0
 let draftSaveTimer: number | null = null
@@ -110,13 +143,6 @@ const loadPlatformTemplateResource = (id: string | number) =>
       { platformTemplate: true, includeData: false }
     )
   })
-
-const firstQueryValue = (value: unknown) => {
-  if (Array.isArray(value)) {
-    return value[0] ? String(value[0]) : null
-  }
-  return value ? String(value) : null
-}
 
 function clampChartLoadingProgress(progress: unknown) {
   const numericProgress = Number(progress)
@@ -203,25 +229,6 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   }
   viewInfo.snapshotRefreshedAt = refreshedAt
   viewInfo.data.snapshotRefreshedAt = refreshedAt
-}
-
-function clearPendingChartData(viewInfo: any, refreshState = 'waiting') {
-  if (!viewInfo) {
-    return
-  }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
-  }
-  viewInfo.data.data = []
-  viewInfo.data.fields = []
-  viewInfo.fields = []
-  viewInfo.status = 'loading'
-  viewInfo.message = ''
-  delete viewInfo.error_type
-  delete viewInfo.reason
-  viewInfo.dataState = 'loading'
-  setChartLoadingProgress(viewInfo, 0, true)
-  viewInfo.refreshState = refreshState
 }
 
 function normalizePermissionDeniedChart(viewInfo: any) {
@@ -332,13 +339,7 @@ function prepareEditorChartState(viewInfo: any) {
   if (!canRefreshChart) {
     return
   }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
-  }
-  viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
-  viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
-  viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
-  clearPendingChartData(viewInfo, 'waiting')
+  prepareDashboardChartRefreshState(viewInfo, 'waiting')
 }
 
 function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {
@@ -756,7 +757,13 @@ const loadCanvasFromRoute = async () => {
     return
   }
 
-  dataInitState.value = false
+  const keepPrefetchedCanvasVisible = prefetchedRouteSourceKey === sourceKey
+  prefetchedRouteSourceKey = null
+  if (keepPrefetchedCanvasVisible) {
+    dataInitState.value = true
+  } else {
+    dataInitState.value = false
+  }
   try {
     if (!state.platformTemplateId) {
       await datasourceContext.loadDatasources()

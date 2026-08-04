@@ -22,20 +22,59 @@ import {
 import { buildReportInterpretationTarget } from '@/views/dashboard/preview/reportInterpretationTarget'
 import { shouldSubmitReportPromptOnEnter } from '@/views/dashboard/preview/reportPromptKeyboard'
 import { buildOrdinaryDashboardQuery } from '@/views/dashboard/utils/dashboardRouteMode'
+import {
+  getDashboardCanvasSourceKey,
+  getPlatformTemplateCanvasSourceKey,
+} from '@/views/dashboard/utils/canvasDraft'
+import {
+  clearCanvasRouteHandoff,
+  primeCanvasRouteHandoff,
+} from '@/views/dashboard/editor/canvasRouteHandoff'
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
+const editLoading = ref(false)
 
-const edit = () => {
-  router.push({
-    path: '/canvas',
-    query: props.platformTemplate
-      ? { platformTemplateId: props.dashboardInfo.id }
-      : buildOrdinaryDashboardQuery(
-          props.dashboardInfo.id,
-          props.dashboardInfo.dashboardMode
-        ),
+const edit = async () => {
+  const isPlatformTemplate = props.platformTemplate
+  if (editLoading.value) {
+    return
+  }
+  const dashboardId = props.dashboardInfo?.id
+  if (!dashboardId) {
+    return
+  }
+  const sourceKey = isPlatformTemplate
+    ? getPlatformTemplateCanvasSourceKey(dashboardId)
+    : getDashboardCanvasSourceKey(dashboardId)
+  if (!sourceKey) return
+  editLoading.value = true
+  primeCanvasRouteHandoff({
+    sourceKey,
+    dashboardInfo: props.dashboardInfo,
+    canvasDataResult: props.componentData,
+    canvasStyleResult: props.canvasStyleData,
+    canvasViewInfoPreview: props.canvasViewInfo,
   })
+
+  try {
+    const navigationFailure = await router.push({
+      path: '/canvas',
+      query: isPlatformTemplate
+        ? { platformTemplateId: props.dashboardInfo.id }
+        : buildOrdinaryDashboardQuery(
+            props.dashboardInfo.id,
+            props.dashboardInfo.dashboardMode
+          ),
+    })
+    if (navigationFailure) {
+      clearCanvasRouteHandoff()
+    }
+  } catch {
+    clearCanvasRouteHandoff()
+  } finally {
+    editLoading.value = false
+  }
 }
 const props = defineProps({
   dashboardInfo: {
@@ -47,6 +86,11 @@ const props = defineProps({
     type: Array,
     required: false,
     default: () => [],
+  },
+  canvasStyleData: {
+    type: Object,
+    required: false,
+    default: () => ({}),
   },
   canvasViewInfo: {
     type: Object,
@@ -586,7 +630,14 @@ onBeforeUnmount(() => {
         </template>
         {{ t('dashboard.dashboard_report_interpret') }}
       </el-button>
-      <el-button v-if="canEdit" class="custom-button" type="primary" @click="edit">
+      <el-button
+        v-if="canEdit"
+        class="custom-button"
+        type="primary"
+        :loading="editLoading"
+        :disabled="editLoading"
+        @click="edit"
+      >
         <template #icon>
           <Icon name="icon_edit_outlined">
             <icon_edit_outlined class="svg-icon" />
