@@ -29,7 +29,6 @@ const TOP_BASIC_MAX_WIDTH = 440
 const TOP_BASIC_MAX_HEIGHT = 360
 const TOP_MINI_MAX_WIDTH = 560
 const TOP_MINI_MAX_HEIGHT = 430
-const TOP_SUMMARY_REENTER_MIN_HEIGHT = TOP_MINI_MAX_HEIGHT
 const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
@@ -373,7 +372,6 @@ export function resolveInsightDisplay(params: {
   dashboard?: boolean
   previousLayout?: InsightLayout
   previousDensity?: InsightDensity
-  previousShow?: boolean
 }): InsightDisplayStrategy {
   const preferredLayout = resolveInsightLayout(params)
   const width = params.width || 0
@@ -424,12 +422,8 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
-    // 摘要显隐迟滞：卡片过小（宽<440 或 高<360）时隐藏摘要；隐藏后需回升到宽≥440 且
-    // 高≥430 才重新显示，避免在显隐边界反复出现/消失造成抖动。
     const topSummaryTooSmall = width < TOP_BASIC_MAX_WIDTH || height < TOP_BASIC_MAX_HEIGHT
-    const topSummaryCanReenter =
-      width >= TOP_BASIC_MAX_WIDTH && height >= TOP_SUMMARY_REENTER_MIN_HEIGHT
-    if (topSummaryTooSmall || (params.previousShow === false && !topSummaryCanReenter)) {
+    if (topSummaryTooSmall) {
       return {
         show: false,
         layout,

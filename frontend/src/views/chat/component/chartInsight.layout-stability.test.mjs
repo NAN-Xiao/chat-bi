@@ -97,31 +97,53 @@ assert.equal(
   '真实高度跨出迟滞下界后应允许 compact 切换为 mini'
 )
 
-assert.equal(
-  resolveInsightDisplay({ ...trend, width: 520, height: 359 }).show,
-  false,
-  '看板顶部摘要首次测量低于可读高度时应隐藏，避免挤占图表'
+const hiddenByWidth = resolveInsightDisplay({
+  ...trend,
+  width: 439,
+  height: 400,
+  previousLayout: 'top',
+  previousDensity: 'mini',
+})
+assert.equal(hiddenByWidth.show, false, '宽度低于可读下界时应隐藏摘要')
+
+const restoredAfterWidth = resolveInsightDisplay({
+  ...trend,
+  width: 520,
+  height: 400,
+  previousLayout: 'top',
+  previousDensity: 'mini',
+  previousShow: false,
+})
+const freshAtRestoredSize = resolveInsightDisplay({
+  ...trend,
+  width: 520,
+  height: 400,
+  previousLayout: 'top',
+  previousDensity: 'mini',
+})
+assert.equal(restoredAfterWidth.show, true, '恢复宽度后不应再额外要求高度达到 430px')
+assert.deepEqual(
+  restoredAfterWidth,
+  freshAtRestoredSize,
+  '固定布局与密度历史时，显隐结果不能依赖 previousShow 路径'
 )
-assert.equal(
-  resolveInsightDisplay({ ...trend, width: 520, height: 368, previousShow: false }).show,
-  false,
-  '摘要隐藏后高度小幅回升仍应保持隐藏，不能在临界尺寸反复出现'
-)
-assert.equal(
-  resolveInsightDisplay({ ...trend, width: 520, height: 432, previousShow: false }).show,
-  true,
-  '摘要隐藏后高度明确恢复到 mini 可读区间才重新显示'
-)
-assert.equal(
-  resolveInsightDisplay({ ...trend, width: 520, height: 368, previousShow: true }).show,
-  true,
-  '已显示摘要时高度仍在可读下界上方应保持显示，避免轻微抖动导致消失'
-)
-assert.equal(
-  resolveInsightDisplay({ ...trend, width: 520, height: 352, previousShow: true }).show,
-  false,
-  '已显示摘要跌破可读下界后应隐藏'
-)
+
+const topHistory = resolveInsightDisplay({
+  ...trend,
+  width: 1102,
+  height: 270,
+  previousLayout: 'top',
+  previousDensity: 'basic',
+})
+const sideHistory = resolveInsightDisplay({
+  ...trend,
+  width: 1102,
+  height: 270,
+  previousLayout: 'side',
+  previousDensity: 'mini',
+})
+assert.equal(topHistory.layout, 'top', '布局迟滞区允许保留 top 历史')
+assert.equal(sideHistory.layout, 'side', '布局迟滞区允许保留 side 历史')
 
 const stateKey = buildInsightLayoutStateKey({
   viewId: 'chart-a',
