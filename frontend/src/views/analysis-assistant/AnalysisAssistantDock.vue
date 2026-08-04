@@ -1033,8 +1033,11 @@ const runQuestion = async (question: string, options: { appendUser?: boolean } =
   try {
     await analysisContext.loadDatasources()
   } catch (e) {
+    if (isWorkspaceContextStaleError(e) || workspaceContextSwitching.value) return
     console.error(e)
   }
+
+  if (workspaceContextSwitching.value) return
 
   if (options.appendUser !== false) {
     pushMessage('user', question)
