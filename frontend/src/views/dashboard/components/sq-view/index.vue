@@ -134,13 +134,21 @@ import {
   shouldResetDashboardDateFilterState,
   type DashboardDateFilterCapability,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  INSIGHT_FRAME_CSS_PROPERTIES,
+  parseCssPixel,
+  resolveCanonicalInsightFrame,
+  sameInsightFrame,
+  type InsightFrameSize,
+} from './insightFrame.ts'
 const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
-const chartShowAreaRef = ref<HTMLElement | null>(null)
+const dashboardFilterControlsRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const chartFrameReady = ref(false)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
-const frameSize = ref({ width: 0, height: 0 })
+const frameSize = ref<InsightFrameSize | null>(null)
+const reportedFrameMeasurementErrors = new Set<string>()
 let previousInsightLayoutKey: string | undefined
 let previousInsightLayout: InsightLayout | undefined
 let previousInsightDensity: InsightDensity | undefined
@@ -2104,24 +2112,30 @@ const insightDisplay = computed(() => {
     previousInsightLayout = undefined
     previousInsightDensity = undefined
   }
+  const measuredFrame = frameSize.value
   const display = resolveInsightDisplay({
     chartType: chartType.value,
     data: displayData.value,
     x: renderXAxis.value,
     y: renderYAxis.value,
     series: renderSeries.value,
-    width: frameSize.value.width,
-    height: frameSize.value.height,
+    width: measuredFrame?.width,
+    height: measuredFrame?.height,
     dashboard: isDashboardSurface.value,
     previousLayout: previousInsightLayout,
     previousDensity: previousInsightDensity,
   })
-  previousInsightLayout = display.layout
-  previousInsightDensity = display.density
+  if (measuredFrame || !isDashboardSurface.value) {
+    previousInsightLayout = display.layout
+    previousInsightDensity = display.density
+  }
   return display
 })
 const canShowInsightHeader = computed(() => {
   if (!showInsightHeader.value) {
+    return false
+  }
+  if (isDashboardSurface.value && !frameSize.value) {
     return false
   }
   return insightDisplay.value.show
@@ -2176,21 +2190,106 @@ const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
 const insightMaxStats = computed(() => insightDisplay.value.maxStats)
 const isFeaturedSideInsight = computed(() => insightDisplay.value.featuredSide === true)
 
-function measureFrame() {
-  const el = chartShowAreaRef.value
-  if (!el) {
+function reportFrameMeasurementError(reason: string) {
+  if (reportedFrameMeasurementErrors.has(reason)) return
+  reportedFrameMeasurementErrors.add(reason)
+  console.error(`[SQView] insight frame measurement failed: ${reason}`)
+}
+
+function requiredCssPixel(style: CSSStyleDeclaration, property: string) {
+  const value = parseCssPixel(style.getPropertyValue(property))
+  if (value === null) reportFrameMeasurementError(`invalid ${property}`)
+  return value
+}
+
+function elementBlockContribution(element: HTMLElement) {
+  const style = window.getComputedStyle(element)
+  const marginStart = parseCssPixel(style.marginBlockStart)
+  const marginEnd = parseCssPixel(style.marginBlockEnd)
+  if (marginStart === null || marginEnd === null) {
+    reportFrameMeasurementError('invalid dashboard filter block margin')
+    return null
+  }
+  return element.getBoundingClientRect().height + marginStart + marginEnd
+}
+
+function measureCanonicalFrame() {
+  const container = containerRef.value
+  const controls = dashboardFilterControlsRef.value
+  if (!container || !controls) return false
+
+  const style = window.getComputedStyle(container)
+  const compactPaddingInline = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactPaddingInline
+  )
+  const compactPaddingBlock = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactPaddingBlock
+  )
+  const compactHeaderHeight = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactHeaderHeight
+  )
+  const compactHeaderGap = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactHeaderGap
+  )
+  const borderInlineStart = parseCssPixel(style.borderInlineStartWidth)
+  const borderInlineEnd = parseCssPixel(style.borderInlineEndWidth)
+  const borderBlockStart = parseCssPixel(style.borderBlockStartWidth)
+  const borderBlockEnd = parseCssPixel(style.borderBlockEndWidth)
+  const controlsBlock = elementBlockContribution(controls)
+  const requiredValues = [
+    compactPaddingInline,
+    compactPaddingBlock,
+    compactHeaderHeight,
+    compactHeaderGap,
+    borderInlineStart,
+    borderInlineEnd,
+    borderBlockStart,
+    borderBlockEnd,
+    controlsBlock,
+  ]
+  if (requiredValues.some((value) => value === null)) {
+    reportFrameMeasurementError('incomplete canonical geometry')
     return false
   }
-  const nextSize = {
-    width: Math.round(el.clientWidth),
-    height: Math.round(el.clientHeight),
-  }
-  if (nextSize.width === frameSize.value.width && nextSize.height === frameSize.value.height) {
+
+  const rect = container.getBoundingClientRect()
+  const nextSize = resolveCanonicalInsightFrame({
+    borderBox: { width: rect.width, height: rect.height },
+    borderInline: borderInlineStart! + borderInlineEnd!,
+    borderBlock: borderBlockStart! + borderBlockEnd!,
+    compactPaddingInline: compactPaddingInline!,
+    compactPaddingBlock: compactPaddingBlock!,
+    compactHeaderHeight: compactHeaderHeight!,
+    compactHeaderGap: compactHeaderGap!,
+    controlsBlock: controlsBlock!,
+  })
+  if (!nextSize) {
+    reportFrameMeasurementError('non-positive canonical frame')
     return false
   }
+  if (sameInsightFrame(nextSize, frameSize.value)) return false
   frameSize.value = nextSize
   return true
 }
+
+const insightFrameStructureKey = computed(() =>
+  JSON.stringify([
+    showDashboardDateExpression.value,
+    showDashboardDateFilter.value && !dateExpressionPickerEnabled.value,
+    pivotEnabled.value,
+    locale.value,
+  ])
+)
+
+watch(
+  insightFrameStructureKey,
+  () => nextTick(measureCanonicalFrame),
+  { flush: 'post' }
+)
 
 function scheduleRenderChart() {
   if (renderTimer) {
@@ -2303,16 +2402,20 @@ onMounted(() => {
   props.viewInfo.chart['sourceType'] =
     props.viewInfo.chart['sourceType'] ?? props.viewInfo.chart.type
   nextTick(() => {
-    measureFrame()
+    measureCanonicalFrame()
+    resizeObserver = new ResizeObserver((entries) => {
+      const ownsEntry = entries.some(
+        (entry) =>
+          entry.target === containerRef.value ||
+          entry.target === dashboardFilterControlsRef.value
+      )
+      if (ownsEntry) measureCanonicalFrame()
+    })
     if (containerRef.value) {
-      resizeObserver = new ResizeObserver(() => {
-        const frameChanged = measureFrame()
-        if (frameChanged && chartType.value !== 'table') scheduleRenderChart()
-      })
-      resizeObserver.observe(containerRef.value)
-      if (chartShowAreaRef.value) {
-        resizeObserver.observe(chartShowAreaRef.value)
-      }
+      resizeObserver.observe(containerRef.value, { box: 'border-box' })
+    }
+    if (dashboardFilterControlsRef.value) {
+      resizeObserver.observe(dashboardFilterControlsRef.value, { box: 'border-box' })
     }
   })
 })
@@ -2377,6 +2480,7 @@ defineExpose({
       </div>
     </div>
     <div
+      ref="dashboardFilterControlsRef"
       class="dashboard-filter-controls"
       :class="{
         'dashboard-filter-controls--combined':
@@ -2630,7 +2734,7 @@ defineExpose({
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
       </div>
     </div>
-    <div ref="chartShowAreaRef" class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
+    <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="showFullChartLoading" class="chart-loading-info">
         <div class="chart-loading-ring" aria-hidden="true"></div>
         <div class="chart-loading-text">{{ chartLoadingText }}</div>
@@ -2744,10 +2848,16 @@ defineExpose({
 
 <style scoped lang="less">
 .chart-base-container {
+  --insight-frame-compact-padding-inline: 16px;
+  --insight-frame-compact-padding-block: 14px;
+  --insight-frame-compact-header-height: 34px;
+  --insight-frame-compact-header-gap: 10px;
+
   width: 100%;
   height: 100%;
   background: #ffffff;
-  padding: 14px 16px !important;
+  padding: var(--insight-frame-compact-padding-block)
+    var(--insight-frame-compact-padding-inline) !important;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -2763,9 +2873,9 @@ defineExpose({
   }
   .header-bar {
     flex: 0 0 auto;
-    min-height: 34px;
+    min-height: var(--insight-frame-compact-header-height);
     display: flex;
-    margin-bottom: 10px;
+    margin-bottom: var(--insight-frame-compact-header-gap);
 
     align-items: center;
     flex-direction: row;
@@ -2875,28 +2985,13 @@ defineExpose({
 
   &.insight-density-mini,
   &.insight-density-basic {
-    padding: 10px 12px !important;
-
     .header-bar {
-      min-height: 28px;
-      margin-bottom: 6px;
-
       .title {
         font-size: 14px;
         line-height: 22px;
       }
     }
   }
-
-  &.insight-density-basic {
-    padding: 8px 10px !important;
-
-    .header-bar {
-      min-height: 24px;
-      margin-bottom: 4px;
-    }
-  }
-
   .date-filter-toolbar {
     width: fit-content;
     max-width: 100%;
@@ -2970,6 +3065,8 @@ defineExpose({
 
     > .pivot-toolbar {
       order: 0;
+      flex: 1 1 0;
+      min-width: 0;
       margin-top: 0;
       margin-bottom: 0;
     }
@@ -3123,7 +3220,6 @@ defineExpose({
   &.insight-density-mini,
   &.insight-density-basic {
     .pivot-toolbar {
-      margin-bottom: 4px;
       gap: 4px;
 
       .pivot-summary,
