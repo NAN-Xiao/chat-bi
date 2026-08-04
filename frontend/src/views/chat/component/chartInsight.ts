@@ -29,6 +29,7 @@ const TOP_BASIC_MAX_WIDTH = 440
 const TOP_BASIC_MAX_HEIGHT = 360
 const TOP_MINI_MAX_WIDTH = 560
 const TOP_MINI_MAX_HEIGHT = 430
+const TOP_SUMMARY_REENTER_MIN_HEIGHT = TOP_MINI_MAX_HEIGHT
 const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
@@ -369,6 +370,7 @@ export function resolveInsightDisplay(params: {
   dashboard?: boolean
   previousLayout?: InsightLayout
   previousDensity?: InsightDensity
+  previousShow?: boolean
 }): InsightDisplayStrategy {
   const preferredLayout = resolveInsightLayout(params)
   const width = params.width || 0
@@ -419,6 +421,19 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
+    const topSummaryTooSmall = width < TOP_BASIC_MAX_WIDTH || height < TOP_BASIC_MAX_HEIGHT
+    const topSummaryCanReenter =
+      width >= TOP_BASIC_MAX_WIDTH && height >= TOP_SUMMARY_REENTER_MIN_HEIGHT
+    if (topSummaryTooSmall || params.previousShow === false && !topSummaryCanReenter) {
+      return {
+        show: false,
+        layout,
+        density: 'basic',
+        maxStats: 0,
+        featuredSide: false,
+      }
+    }
+
     if (isRichTopSummary && width >= TOP_RANKED_COMPACT_MIN_WIDTH) {
       return {
         show: true,

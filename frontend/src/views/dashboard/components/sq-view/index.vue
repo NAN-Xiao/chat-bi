@@ -144,6 +144,7 @@ const frameSize = ref({ width: 0, height: 0 })
 let previousInsightLayoutKey: string | undefined
 let previousInsightLayout: InsightLayout | undefined
 let previousInsightDensity: InsightDensity | undefined
+let previousInsightShow: boolean | undefined
 const refreshing = ref(false)
 const blockingRefreshLoading = ref(false)
 const pivotCalendarMonth = ref('')
@@ -2103,6 +2104,7 @@ const insightDisplay = computed(() => {
     previousInsightLayoutKey = layoutStateKey
     previousInsightLayout = undefined
     previousInsightDensity = undefined
+    previousInsightShow = undefined
   }
   const display = resolveInsightDisplay({
     chartType: chartType.value,
@@ -2115,9 +2117,11 @@ const insightDisplay = computed(() => {
     dashboard: isDashboardSurface.value,
     previousLayout: previousInsightLayout,
     previousDensity: previousInsightDensity,
+    previousShow: previousInsightShow,
   })
   previousInsightLayout = display.layout
   previousInsightDensity = display.density
+  previousInsightShow = display.show
   return display
 })
 const canShowInsightHeader = computed(() => {

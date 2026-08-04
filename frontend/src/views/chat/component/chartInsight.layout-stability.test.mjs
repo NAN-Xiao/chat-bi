@@ -97,6 +97,32 @@ assert.equal(
   '真实高度跨出迟滞下界后应允许 compact 切换为 mini'
 )
 
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 520, height: 359 }).show,
+  false,
+  '看板顶部摘要首次测量低于可读高度时应隐藏，避免挤占图表'
+)
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 520, height: 368, previousShow: false }).show,
+  false,
+  '摘要隐藏后高度小幅回升仍应保持隐藏，不能在临界尺寸反复出现'
+)
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 520, height: 432, previousShow: false }).show,
+  true,
+  '摘要隐藏后高度明确恢复到 mini 可读区间才重新显示'
+)
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 520, height: 368, previousShow: true }).show,
+  true,
+  '已显示摘要时高度仍在可读下界上方应保持显示，避免轻微抖动导致消失'
+)
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 520, height: 352, previousShow: true }).show,
+  false,
+  '已显示摘要跌破可读下界后应隐藏'
+)
+
 const stateKey = buildInsightLayoutStateKey({
   viewId: 'chart-a',
   chartType: 'line',
