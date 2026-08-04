@@ -15,6 +15,14 @@ Scope: entire repository.
 - If a required worktree cannot be created or entered, stop and report the blocker. Do not silently fall back to editing the primary checkout.
 - In the final task report, state the linked worktree path and branch used for the changes.
 
+## Bug Fixing Principles
+
+- 修复 Bug 时，不得采用局部打补丁、硬编码特例、静默兜底、绕过校验，或仅在报错点增加条件判断等方式掩盖问题。
+- 以用户可见的异常现象作为修复范围，而不是以单个报错位置、单个组件、单个接口或单条调用路径作为修复范围。必须梳理能够产生同一现象的相关入口、数据流、状态变化、权限条件和边界场景。
+- 以根因作为实际修改依据。在明确完整调用链和职责边界后，应在负责该行为的正确层级统一修正逻辑，保证所有相关路径得到一致处理；如果同一现象存在多个根因，应在本次修复范围内分别处理并验证。
+- 不得因为当前复现用例只经过某个路径，就只修该路径。应检查同类调用方、复用组件、异步流程及不同状态下是否存在相同问题，避免问题从其他入口再次出现。
+- 回归验证必须围绕现象建立，覆盖主要触发路径和必要的边界条件；同时补充针对根因的测试，证明修复消除了问题且没有依赖临时规避逻辑。
+
 ## Local Dev Runbook
 
 - For local Windows development, treat the stack as four local services/processes:
