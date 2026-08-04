@@ -6,6 +6,7 @@ import {
   type WorkspaceContextState,
   type WorkspaceContextStorage,
 } from '@/utils/workspaceContextCore'
+import { getPlatformWorkspaceDelegateTenantId } from '@/utils/platformWorkspaceDelegate'
 
 const { wsCache: localCache } = useCache()
 const { wsCache: sessionCache } = useCache('sessionStorage')
@@ -31,6 +32,8 @@ export const workspaceContext = createWorkspaceContextCore(workspaceStorage, ini
 export const workspaceContextState = initialState
 export const isWorkspaceReady = computed(() => workspaceContextState.phase === 'ready')
 export const isWorkspaceSwitching = computed(() => workspaceContextState.phase === 'switching')
+export const getEffectiveWorkspaceTenantId = () =>
+  getPlatformWorkspaceDelegateTenantId() || workspaceContextState.activeTenantId
 
 const legacyWorkspaceKeys = [
   'user.tenantId',

@@ -53,3 +53,8 @@ export function clearRequestCache(prefix = '') {
     }
   }
 }
+
+export function clearWorkspaceSelectorCaches() {
+  clearRequestCache('agent-selector:')
+  clearRequestCache('data-skill-selector:')
+}

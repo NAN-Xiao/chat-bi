@@ -527,6 +527,7 @@ import QuickQuestion from '@/views/chat/QuickQuestion.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
+import { workspaceContextState } from '@/utils/workspaceContext'
 import { createChatLoadScheduler } from './answer/chatLoadScheduler'
 import { isRestorableAnswerRecord, shouldMarkChatTypingOnRestore } from './answer/taskRestore'
 import {
@@ -607,7 +608,7 @@ const scrollToBottom = debounce(() => {
 const loading = ref<boolean>(false)
 const chatList = ref<Array<ChatInfo>>([])
 const appearanceStore = useAppearanceStoreWithOut()
-const workspaceContextSwitching = ref(false)
+const workspaceContextSwitching = computed(() => workspaceContextState.phase === 'switching')
 const currentChatStoragePrefix = 'chat.currentChat.'
 
 const currentChatId = ref<number | undefined>()
@@ -974,9 +975,6 @@ watch(
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,
   callback: (event?: any) => {
-    if (event?.phase === 'changing') {
-      workspaceContextSwitching.value = true
-    }
     stop()
     resetChatContext()
     if (event?.phase === 'changing') {
@@ -984,14 +982,12 @@ useEmitt({
       return
     }
     if (!userStore.getTenantId) {
-      workspaceContextSwitching.value = false
       loading.value = false
       return
     }
-    datasourceContext.loadDatasources().finally(() => {
-      workspaceContextSwitching.value = false
+    if (event?.phase === 'changed') {
       getChatList()
-    })
+    }
   },
 })
 

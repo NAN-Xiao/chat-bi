@@ -84,11 +84,25 @@ export const createWorkspaceContextCore = (
     return state.activeTenantId
   }
 
-  const isCurrentSwitch = (transaction: WorkspaceSwitchTransaction) =>
-    state.phase === 'switching' &&
-    state.epoch === transaction.epoch &&
-    state.switchId === transaction.switchId &&
-    state.pendingTenantId === transaction.targetTenantId
+  const isCurrentSwitch = (
+    transactionOrTenantId: WorkspaceSwitchTransaction | string,
+    switchId?: number
+  ) => {
+    const targetTenantId =
+      typeof transactionOrTenantId === 'string'
+        ? transactionOrTenantId
+        : transactionOrTenantId.targetTenantId
+    const expectedSwitchId =
+      typeof transactionOrTenantId === 'string' ? switchId : transactionOrTenantId.switchId
+    const expectedEpoch =
+      typeof transactionOrTenantId === 'string' ? state.epoch : transactionOrTenantId.epoch
+    return (
+      state.phase === 'switching' &&
+      state.epoch === expectedEpoch &&
+      state.switchId === expectedSwitchId &&
+      state.pendingTenantId === targetTenantId
+    )
+  }
 
   const beginSwitch = (targetTenantId: string): WorkspaceSwitchTransaction | null => {
     const normalizedTarget = normalizeTenantId(targetTenantId)
@@ -148,6 +162,15 @@ export const createWorkspaceContextCore = (
       activeTenantId: state.activeTenantId,
       replaced: Boolean(previousTenantId && previousTenantId !== state.activeTenantId),
     }
+  }
+
+  const clearActiveTenant = () => {
+    state.epoch += 1
+    state.switchId += 1
+    state.activeTenantId = ''
+    state.pendingTenantId = ''
+    state.phase = 'ready'
+    persistActiveTenant()
   }
 
   const captureRequest = (
@@ -255,6 +278,7 @@ export const createWorkspaceContextCore = (
     finishSwitch,
     rollbackSwitch,
     completeBootstrap,
+    clearActiveTenant,
     captureRequest,
     assertConsumable,
     clear,

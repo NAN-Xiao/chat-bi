@@ -18,13 +18,10 @@ import {
   clearRememberedBusinessTenant,
   getRememberedBusinessTenant,
 } from '@/utils/workspaceAdminContext'
-import { useDatasourceContextStore } from '@/stores/datasourceContext'
-import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { canManageCurrentWorkspace } from '@/utils/workspacePermission'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
-const datasourceContext = useDatasourceContextStore()
 const { wsCache } = useCache()
 const whiteList = ['/login', '/admin-login']
 const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
@@ -70,12 +67,8 @@ const restoreBusinessTenantAfterWorkspaceAdmin = async (to: any, from: any) => {
   if (!rememberedTenant?.id) return
   const tenantId = String(rememberedTenant.id)
   if (tenantId !== String(userStore.getTenantId || '')) {
-    emitWorkspaceContextChange({ tenantId, phase: 'changing' })
-    await userStore.switchTenant(tenantId)
-    datasourceContext.clear(true)
-    await datasourceContext.loadDatasources(true)
-    useEmitt().emitter.emit('datasource-context-change', null)
-    emitWorkspaceContextChange({ tenantId, phase: 'changed' })
+    const switched = await userStore.switchTenant(tenantId)
+    if (!switched) return
   }
   clearRememberedBusinessTenant()
 }

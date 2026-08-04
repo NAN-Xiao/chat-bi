@@ -986,16 +986,16 @@ onMounted(() => {
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,
   callback: (event?: any) => {
-    workspaceContextSwitching.value = event?.phase === 'changing' || event?.phase === 'changed'
+    workspaceContextSwitching.value = event?.phase === 'changing'
     resetTreeState()
     emit('deleteCurResource')
     if (event?.phase === 'changing') {
       return
     }
-    datasourceContext.loadDatasources().finally(() => {
+    if (event?.phase === 'changed') {
       workspaceContextSwitching.value = false
       getTree()
-    })
+    }
   },
 })
 

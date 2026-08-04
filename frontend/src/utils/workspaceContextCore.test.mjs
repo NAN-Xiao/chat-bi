@@ -125,3 +125,14 @@ test('新的切换使旧显式验证请求过期', () => {
     WorkspaceContextStaleError
   )
 })
+
+test('退出最后一个工作空间会清空标签页租户并使旧请求过期', () => {
+  const context = readyContext('A')
+  const snapshot = context.captureRequest('normal')
+
+  context.clearActiveTenant()
+
+  assert.equal(context.state.activeTenantId, '')
+  assert.equal(context.state.phase, 'ready')
+  assert.throws(() => context.assertConsumable(snapshot, 'A'), WorkspaceContextStaleError)
+})

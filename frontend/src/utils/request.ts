@@ -17,29 +17,21 @@ import {
   isPlatformWorkspaceDelegateSession,
   PLATFORM_WORKSPACE_DELEGATE_HEADER,
 } from '@/utils/platformWorkspaceDelegate'
+import { workspaceContext } from '@/utils/workspaceContext'
+import {
+  isWorkspaceContextStaleError,
+  type WorkspaceRequestMode,
+  type WorkspaceRequestSnapshot,
+} from '@/utils/workspaceContextCore'
 // import { i18n } from '@/i18n'
 // const t = i18n.global.t
 const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
-const TENANT_CONTEXT_HEADERS = {
-  id: 'x-shuzhi-current-tenant-id',
-  publicId: 'x-shuzhi-current-tenant-public-id',
-  name: 'x-shuzhi-current-tenant-name',
-  role: 'x-shuzhi-current-tenant-role',
-  status: 'x-shuzhi-current-workspace-status',
-}
+const TENANT_CONTEXT_HEADER = 'x-shuzhi-current-tenant-id'
 
 const readHeader = (response: AxiosResponse, name: string) => {
   const headers = response.headers || {}
   return String(headers[name] || headers[name.toLowerCase()] || '').trim()
-}
-
-const decodeHeader = (value: string) => {
-  try {
-    return decodeURIComponent(value || '')
-  } catch {
-    return value || ''
-  }
 }
 
 const HTML_ERROR_RESPONSE_PATTERN = /<\s*(?:!doctype|html|head|body|title|center|h[1-6])[\s>]/i
@@ -127,49 +119,6 @@ const showErrorMessage = (message: string) => {
   })
 }
 
-const syncTenantContextFromResponse = (response: AxiosResponse) => {
-  if (assistantStore.getToken) return
-  const tenantId = readHeader(response, TENANT_CONTEXT_HEADERS.id)
-  const workspaceStatus = decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.status))
-  if (!tenantId || workspaceStatus === 'platform_admin') return
-  if (tenantId === String(wsCache.get('user.tenantId') || '')) return
-
-  const tenant = {
-    id: tenantId,
-    public_id: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.publicId)),
-    name: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.name)),
-    role: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.role)),
-  }
-  wsCache.set('user.tenantId', tenant.id)
-  wsCache.set('user.tenantPublicId', tenant.public_id)
-  wsCache.set('user.tenantName', tenant.name)
-  wsCache.set('user.tenantRole', tenant.role)
-  wsCache.set('user.workspaceRole', tenant.role)
-  wsCache.set('user.hasWorkspace', workspaceStatus === 'active' || workspaceStatus === 'platform_workspace_delegate')
-  wsCache.set('user.workspaceStatus', workspaceStatus || 'active')
-
-  import('@/stores/user')
-    .then(({ useUserStore }) => {
-      const userStore = useUserStore()
-      userStore.setTenant(tenant)
-      return Promise.all([
-        import('@/stores/datasourceContext'),
-        import('@/utils/useEmitt'),
-      ])
-    })
-    .then(([{ useDatasourceContextStore }, { useEmitt, emitWorkspaceContextChange }]) => {
-      const datasourceContext = useDatasourceContextStore()
-      datasourceContext.clear(true)
-      return datasourceContext.loadDatasources(true).finally(() => {
-        useEmitt().emitter.emit('datasource-context-change', null)
-        emitWorkspaceContextChange({ tenantId, phase: 'changed' })
-      })
-    })
-    .catch((error) => {
-      console.warn('Failed to sync workspace context from response headers', error)
-    })
-}
-
 const pushAppRoute = async (route: any, fallbackHash: string) => {
   try {
     const { default: router } = await import('@/router')
@@ -194,11 +143,50 @@ export interface RequestOptions {
   rawResponse?: boolean // Return raw Axios response
   customError?: boolean // Custom error handling
   retryCount?: number // Number of retry attempts
+  workspaceMode?: WorkspaceRequestMode
+  workspaceTenantId?: string
+  workspaceSwitchId?: number
 }
 
 // Merged request configuration
 export interface FullRequestConfig extends AxiosRequestConfig {
   requestOptions?: RequestOptions
+  __workspaceSnapshot?: WorkspaceRequestSnapshot
+}
+
+const captureWorkspaceRequest = (options: RequestOptions = {}) => {
+  const workspaceMode =
+    assistantStore.getToken || isPlatformWorkspaceDelegateSession()
+      ? 'none'
+      : options.workspaceMode || 'normal'
+  return workspaceContext.captureRequest(
+    workspaceMode,
+    options.workspaceTenantId,
+    options.workspaceSwitchId
+  )
+}
+
+const captureWorkspaceRequestConfig = (config: FullRequestConfig): FullRequestConfig => {
+  const snapshot = captureWorkspaceRequest(config.requestOptions)
+  const headers: Record<string, any> = { ...(config.headers || {}) }
+  if (snapshot.tenantId && snapshot.mode !== 'none') {
+    headers['X-SHUZHI-TENANT-ID'] = snapshot.tenantId
+  }
+  return {
+    ...config,
+    headers: headers as AxiosRequestConfig['headers'],
+    __workspaceSnapshot: snapshot,
+  }
+}
+
+const assertWorkspaceResponseConsumable = (
+  config?: FullRequestConfig,
+  response?: AxiosResponse
+) => {
+  workspaceContext.assertConsumable(
+    config?.__workspaceSnapshot,
+    response ? readHeader(response, TENANT_CONTEXT_HEADER) : ''
+  )
 }
 
 // Custom error type
@@ -260,9 +248,8 @@ class HttpService {
           config.headers['X-SHUZHI-TOKEN'] = `Bearer ${token}`
         }
         const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
-        const tenantId = delegateTenantId || wsCache.get('user.tenantId')
-        if (tenantId && config.headers) {
-          config.headers['X-SHUZHI-TENANT-ID'] = String(tenantId)
+        if (delegateTenantId && config.headers) {
+          config.headers['X-SHUZHI-TENANT-ID'] = delegateTenantId
         }
         if (isPlatformWorkspaceDelegateSession() && config.headers) {
           config.headers[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
@@ -317,7 +304,7 @@ class HttpService {
     this.instance.interceptors.response.use(
       (response: AxiosResponse) => {
         // console.log(`[Response] ${response.config.url}`, response.data)
-        syncTenantContextFromResponse(response)
+        assertWorkspaceResponseConsumable(response.config, response)
 
         // Return raw response if configured
         if ((response.config as FullRequestConfig).requestOptions?.rawResponse) {
@@ -338,6 +325,15 @@ class HttpService {
       async (error: AxiosError) => {
         const config = error.config as FullRequestConfig & { __retryCount?: number }
         const requestOptions = config?.requestOptions || {}
+
+        try {
+          assertWorkspaceResponseConsumable(config, error.response)
+        } catch (workspaceError) {
+          return Promise.reject(workspaceError)
+        }
+        if (isWorkspaceContextStaleError(error)) {
+          return Promise.reject(error)
+        }
 
         // Retry logic for specific status codes
         const shouldRetry =
@@ -364,6 +360,7 @@ class HttpService {
   }
 
   private handleError(error: AxiosError) {
+    if (isWorkspaceContextStaleError(error)) return
     let errorMessage = 'Request error'
     const hasUserToken = Boolean(wsCache.get('user.token'))
 
@@ -421,10 +418,15 @@ class HttpService {
 
   // Base request method
   public request<T = any>(config: FullRequestConfig): Promise<T> {
-    return this.instance.request({
-      cancelToken: this.cancelTokenSource.token,
-      ...config,
-    })
+    try {
+      const capturedConfig = captureWorkspaceRequestConfig(config)
+      return this.instance.request({
+        cancelToken: this.cancelTokenSource.token,
+        ...capturedConfig,
+      })
+    } catch (error) {
+      return Promise.reject(error)
+    }
   }
 
   // GET request
@@ -438,6 +440,7 @@ class HttpService {
   }
 
   public async fetchStream(url: string, data?: any, controller?: AbortController): Promise<any> {
+    const workspaceSnapshot = captureWorkspaceRequest()
     const token = wsCache.get('user.token')
     const heads: any = {
       'Content-Type': 'application/json',
@@ -446,7 +449,7 @@ class HttpService {
       heads['X-SHUZHI-TOKEN'] = `Bearer ${token}`
     }
     const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
-    const tenantId = delegateTenantId || wsCache.get('user.tenantId')
+    const tenantId = delegateTenantId || workspaceSnapshot.tenantId
     if (tenantId) {
       heads['X-SHUZHI-TENANT-ID'] = String(tenantId)
     }
@@ -476,12 +479,15 @@ class HttpService {
     }
 
     const real_url = import.meta.env.VITE_API_BASE_URL
-    return fetch(real_url + url, {
+    const response = await fetch(real_url + url, {
       method: 'POST',
       headers: heads,
       body: JSON.stringify(data),
       signal: controller?.signal,
     })
+    const responseTenantId = response.headers.get(TENANT_CONTEXT_HEADER) || ''
+    workspaceContext.assertConsumable(workspaceSnapshot, responseTenantId)
+    return response
   }
 
   // PUT request

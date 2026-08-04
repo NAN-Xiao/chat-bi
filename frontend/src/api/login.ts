@@ -12,12 +12,19 @@ export const AuthApi = {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
+      requestOptions: { workspaceMode: 'none' },
     })
   },
   feishuStatus: (params?: { redirect?: string }, config?: FullRequestConfig) =>
-    request.get('/login/feishu/status', { ...config, params }),
+    request.get('/login/feishu/status', {
+      ...config,
+      params,
+      requestOptions: { workspaceMode: 'none', ...config?.requestOptions },
+    }),
   feishuCallback: (data: { code: string; state: string }) =>
-    request.post('/login/feishu/callback', data),
+    request.post('/login/feishu/callback', data, {
+      requestOptions: { workspaceMode: 'none' },
+    }),
   submitTrialApplication: (data: {
     account: string
     password: string
@@ -25,7 +32,20 @@ export const AuthApi = {
     email: string
     company?: string
     reason?: string
-  }) => request.post('/login/trial-application', data),
-  logout: (data: any) => request.post('/login/logout', data),
-  info: () => request.get('/user/info'),
+  }) =>
+    request.post('/login/trial-application', data, {
+      requestOptions: { workspaceMode: 'none' },
+    }),
+  logout: (data: any) =>
+    request.post('/login/logout', data, {
+      requestOptions: { workspaceMode: 'none' },
+    }),
+  info: (config?: FullRequestConfig) =>
+    request.get('/user/info', {
+      ...config,
+      requestOptions: {
+        workspaceMode: 'bootstrap',
+        ...config?.requestOptions,
+      },
+    }),
 }

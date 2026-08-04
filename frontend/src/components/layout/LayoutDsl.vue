@@ -14,8 +14,7 @@ import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.sv
 import { useRoute, useRouter } from 'vue-router'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
-import { emitWorkspaceContextChange, useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
-import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { isMobile } from '@/utils/utils'
 import { PLATFORM_ADMIN_HOME } from '@/utils/navigation'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
@@ -30,7 +29,6 @@ const isPhone = computed(() => {
 })
 const router = useRouter()
 const userStore = useUserStore()
-const datasourceContext = useDatasourceContextStore()
 const collapse = ref(false)
 const collapseCopy = ref(false)
 const analysisAssistantExpanded = ref(false)
@@ -165,12 +163,8 @@ const restoreBusinessTenant = async () => {
   if (!rememberedTenant?.id) return
   const tenantId = String(rememberedTenant.id)
   if (tenantId !== String(userStore.getTenantId || '')) {
-    emitWorkspaceContextChange({ tenantId, phase: 'changing' })
-    await userStore.switchTenant(tenantId)
-    datasourceContext.clear(true)
-    await datasourceContext.loadDatasources(true)
-    useEmitt().emitter.emit('datasource-context-change', null)
-    emitWorkspaceContextChange({ tenantId, phase: 'changed' })
+    const switched = await userStore.switchTenant(tenantId)
+    if (!switched) return
   }
   clearRememberedBusinessTenant()
 }

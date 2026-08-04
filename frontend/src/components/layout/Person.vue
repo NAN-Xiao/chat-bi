@@ -16,13 +16,11 @@ import Apikey from './Apikey.vue'
 import UserAvatar from '@/components/user-avatar/UserAvatar.vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { userApi } from '@/api/auth'
 import { tenantApi, type TenantInfo } from '@/api/tenant'
 import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
-import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { ElMessage } from 'element-plus-secondary'
 import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
@@ -36,7 +34,6 @@ import {
 const { wsCache } = useCache()
 const router = useRouter()
 const userStore = useUserStore()
-const datasourceContext = useDatasourceContextStore()
 const dashboardStore = dashboardStoreWithOut()
 const pwdFormRef = ref()
 const { t, locale } = useI18n()
@@ -165,19 +162,14 @@ const enterTenantAdmin = async (tenant?: TenantInfo) => {
   rememberBusinessTenantBeforeAdmin(currentBusinessTenant())
   try {
     if (tenantId !== String(userStore.getTenantId || '')) {
-      emitWorkspaceContextChange({ tenantId, phase: 'changing' })
-      await userStore.switchTenant(tenantId)
-      datasourceContext.clear(true)
-      await datasourceContext.loadDatasources(true)
+      const switched = await userStore.switchTenant(tenantId)
+      if (!switched) return
       dashboardStore.canvasDataInit()
-      useEmitt().emitter.emit('datasource-context-change', null)
-      emitWorkspaceContextChange({ tenantId, phase: 'changed' })
       ElMessage.success(t('common.switch_success'))
     }
     popoverRef.value?.hide?.()
     router.push(resolveManagementHome(userStore))
   } catch (error) {
-    emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
     throw error
   }
 }

@@ -5,6 +5,10 @@ import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
 import { dataSkillApi } from '@/api/dataSkill'
 import { cachedRequest, clearRequestCache } from '@/utils/requestDedupe'
+import {
+  getEffectiveWorkspaceTenantId,
+  workspaceContextState,
+} from '@/utils/workspaceContext'
 import icon_ai from '@/assets/svg/icon_ai.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
@@ -42,6 +46,7 @@ const skillFormRef = ref()
 const skillDialogVisible = ref(false)
 const skillDialogTitle = ref('')
 const savingSkill = ref(false)
+let loadSequence = 0
 const DATA_SKILL_SELECTOR_CACHE_PREFIX = 'data-skill-selector:'
 
 const defaultSkillForm = {
@@ -165,8 +170,12 @@ const buildListQuery = () => {
   return query ? `?${query}` : ''
 }
 
-const buildSkillsCacheKey = (query: string) =>
-  `${DATA_SKILL_SELECTOR_CACHE_PREFIX}${props.targetScope}|${query}`
+const buildSkillsCacheKey = (
+  query: string,
+  tenantId: string,
+  datasourceId: number,
+  targetScope: string
+) => `${DATA_SKILL_SELECTOR_CACHE_PREFIX}${tenantId}|${datasourceId}|${targetScope}|${query}`
 
 const selectSkill = (value: string | number | null) => {
   emit('update:modelValue', value)
@@ -175,12 +184,35 @@ const selectSkill = (value: string | number | null) => {
 }
 
 const loadSkills = async () => {
+  const loadId = ++loadSequence
+  const tenantId = getEffectiveWorkspaceTenantId()
+  const datasourceId = datasourceIdValue.value
+  const targetScope = props.targetScope
+  if (
+    workspaceContextState.phase !== 'ready' ||
+    !tenantId ||
+    !datasourceIdValue.value ||
+    !datasourceId
+  ) {
+    skillList.value = []
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
     const query = buildListQuery()
-    const res: any = await cachedRequest(buildSkillsCacheKey(query), () =>
+    const res: any = await cachedRequest(buildSkillsCacheKey(query, tenantId, datasourceId, targetScope), () =>
       dataSkillApi.getList(1, 100, query).catch(() => ({ data: [] }))
     )
+    if (loadId !== loadSequence) return
+    if (
+      workspaceContextState.phase !== 'ready' ||
+      getEffectiveWorkspaceTenantId() !== tenantId ||
+      datasourceIdValue.value !== datasourceId ||
+      props.targetScope !== targetScope
+    ) {
+      return
+    }
     skillList.value = (res?.data || [])
       .filter(
         (row: any) =>
@@ -199,7 +231,9 @@ const loadSkills = async () => {
       selectSkill(null)
     }
   } finally {
-    loading.value = false
+    if (loadId === loadSequence) {
+      loading.value = false
+    }
   }
 }
 
@@ -272,7 +306,13 @@ const saveSkill = () => {
 }
 
 watch(
-  () => [props.datasourceId, props.targetScope, keyword.value],
+  () => [
+    props.datasourceId,
+    props.targetScope,
+    keyword.value,
+    workspaceContextState.phase,
+    workspaceContextState.activeTenantId,
+  ],
   () => {
     loadSkills()
   }

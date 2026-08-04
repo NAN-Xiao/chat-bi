@@ -2,9 +2,8 @@
 import { h, defineComponent, onBeforeUnmount, ref } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 import { useRouter, useRoute } from 'vue-router'
-import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
+import { useEmitt } from '@/utils/useEmitt'
 import { useUserStore } from '@/stores/user'
-import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { resolveManagementHome } from '@/utils/navigation'
@@ -212,7 +211,6 @@ const MenuItem = defineComponent({
     const router = useRouter()
     const route = useRoute()
     const userStore = useUserStore()
-    const datasourceContext = useDatasourceContextStore()
     const dashboardStore = dashboardStoreWithOut()
     const analysisAssistantExpanded = ref(false)
     const emitter = useEmitt().emitter
@@ -264,17 +262,12 @@ const MenuItem = defineComponent({
       rememberBusinessTenantBeforeAdmin(currentBusinessTenant())
       try {
         if (tenantId !== String(userStore.getTenantId || '')) {
-          emitWorkspaceContextChange({ tenantId, phase: 'changing' })
-          await userStore.switchTenant(tenantId)
-          datasourceContext.clear(true)
-          await datasourceContext.loadDatasources(true)
+          const switched = await userStore.switchTenant(tenantId)
+          if (!switched) return
           dashboardStore.canvasDataInit()
-          useEmitt().emitter.emit('datasource-context-change', null)
-          emitWorkspaceContextChange({ tenantId, phase: 'changed' })
         }
         router.push(resolveManagementHome(userStore))
       } catch (error) {
-        emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
         throw error
       }
     }
