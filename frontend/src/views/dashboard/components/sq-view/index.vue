@@ -3469,21 +3469,24 @@ defineExpose({
 
 .chart-show-area {
   width: 100%;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   height: auto;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   position: relative;
 
   :deep(.chart-container) {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
   }
 
   .chart-content-row {
     position: relative;
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
