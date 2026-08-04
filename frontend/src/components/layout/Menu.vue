@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MenuItem from './MenuItem.vue'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
-import { canManageWorkspaceRole } from '@/utils/workspacePermission'
+import { resolveCurrentWorkspaceAdminTenant } from '@/utils/workspaceAdminEntry'
 // import { routes } from '@/router'
 const router = useRouter()
 const userStore = useUserStore()
@@ -97,42 +97,13 @@ const mainMenuOrder = (path: string) => {
   return 100
 }
 
-const adminWorkspaceTenants = computed(() => {
-  if (userStore.isPlatformWorkspaceDelegate && userStore.getTenantId) {
-    return [
-      {
-        id: userStore.getTenantId,
-        public_id: userStore.getTenantPublicId,
-        name: userStore.getTenantName,
-        role: userStore.getTenantRole || 'owner',
-      },
-    ]
-  }
-  const tenants = userStore.getTenants.filter((tenant: any) => canManageWorkspaceRole(tenant.role))
-  if (tenants.length) {
-    return tenants
-  }
-  if (userStore.isTenantAdminUser && userStore.getTenantId) {
-    return [
-      {
-        id: userStore.getTenantId,
-        public_id: userStore.getTenantPublicId,
-        name: userStore.getTenantName,
-        role: userStore.getTenantRole,
-      },
-    ]
-  }
-  return []
-})
+const currentWorkspaceAdminTenant = computed(() => resolveCurrentWorkspaceAdminTenant(userStore))
 
 const workspaceAdminMenu = computed(() => {
-  if (props.mode !== 'horizontal' || !adminWorkspaceTenants.value.length) {
+  const currentTenant = currentWorkspaceAdminTenant.value
+  if (props.mode !== 'horizontal' || !currentTenant) {
     return null
   }
-  const currentTenant =
-    adminWorkspaceTenants.value.find(
-      (tenant: any) => String(tenant.id) === String(userStore.getTenantId || '')
-    ) || adminWorkspaceTenants.value[0]
   return {
     path: '/system/workspace-admin',
     tenant: currentTenant,

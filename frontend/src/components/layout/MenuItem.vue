@@ -4,10 +4,10 @@ import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 import { useRouter, useRoute } from 'vue-router'
 import { useEmitt } from '@/utils/useEmitt'
 import { useUserStore } from '@/stores/user'
-import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
+import { enterCurrentWorkspaceAdmin } from '@/utils/workspaceAdminEntry'
 
 type IconNode = {
   tag: 'path' | 'circle' | 'rect' | 'ellipse' | 'polyline' | 'line'
@@ -211,7 +211,6 @@ const MenuItem = defineComponent({
     const router = useRouter()
     const route = useRoute()
     const userStore = useUserStore()
-    const dashboardStore = dashboardStoreWithOut()
     const analysisAssistantExpanded = ref(false)
     const emitter = useEmitt().emitter
     const updateAnalysisAssistantExpanded = (expanded: unknown) => {
@@ -241,7 +240,7 @@ const MenuItem = defineComponent({
         return
       }
       if (e.meta?.action === 'workspace-admin-entry') {
-        await enterWorkspaceAdmin(e.tenant)
+        await enterWorkspaceAdmin()
         return
       }
       if (index) {
@@ -249,28 +248,11 @@ const MenuItem = defineComponent({
       }
     }
 
-    const currentBusinessTenant = () => ({
-      id: userStore.getTenantId,
-      public_id: userStore.getTenantPublicId,
-      name: userStore.getTenantName,
-      role: userStore.getTenantRole,
-    })
-
-    const enterWorkspaceAdmin = async (tenant?: any) => {
-      const tenantId = String(tenant?.id || userStore.getTenantId || '')
-      if (!tenantId) return
-      rememberBusinessTenantBeforeAdmin(currentBusinessTenant())
-      try {
-        if (tenantId !== String(userStore.getTenantId || '')) {
-          const switched = await userStore.switchTenant(tenantId)
-          if (!switched) return
-          dashboardStore.canvasDataInit()
-        }
-        router.push(resolveManagementHome(userStore))
-      } catch (error) {
-        throw error
-      }
-    }
+    const enterWorkspaceAdmin = () =>
+      enterCurrentWorkspaceAdmin(userStore, {
+        remember: rememberBusinessTenantBeforeAdmin,
+        navigate: () => router.push(resolveManagementHome(userStore)),
+      })
 
     return () => {
       const { children, hidden, path } = props.menu
