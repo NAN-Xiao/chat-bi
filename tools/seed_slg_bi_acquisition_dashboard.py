@@ -1,7 +1,7 @@
 """Seed acquisition fields and create the SLG BI Mock acquisition dashboard.
 
 Targets:
-- BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
+- BI tracking database: the datasource currently bound as SLG BI Mock
 - App system database: core SHUZHI_DB_* settings from the repo .env
 
 The dataset remains detail-level. Acquisition cost is stored on dim_player as
@@ -22,19 +22,13 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from core_system_db import core_system_db_config
+from slg_bi_datasource import resolve_slg_bi_datasource_context
 
 
-BI_DB = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "dbname": "slg_bi_mock",
-    "user": "postgres",
-    "password": "111111",
-}
 SYSTEM_DB = core_system_db_config()
 
 DASHBOARD_ID = "bf7f0accd27f45fc9915cbd2cc1c1511"
-DATASOURCE_ID = 1
+DATASOURCE_ID: int | None = None
 UPDATE_BY = "7471612174524223488"
 BACKUP_DIR = Path(".codex-runtime/backups")
 USD_TO_CNY = Decimal("7.15")
@@ -504,16 +498,21 @@ def verify(system_conn: Any, bi_conn: Any) -> None:
 
 
 def main() -> None:
-    bi_conn = psycopg2.connect(**BI_DB)
     system_conn = psycopg2.connect(**SYSTEM_DB)
     try:
-        ensure_acquisition_columns(bi_conn)
-        seed_acquisition_fields(bi_conn)
-        component_data, canvas_view_info = build_dashboard_payload(bi_conn)
-        update_dashboard(system_conn, component_data, canvas_view_info)
-        verify(system_conn, bi_conn)
+        context = resolve_slg_bi_datasource_context(system_conn, DASHBOARD_ID)
+        global DATASOURCE_ID
+        DATASOURCE_ID = context.datasource_id
+        bi_conn = psycopg2.connect(**context.connection)
+        try:
+            ensure_acquisition_columns(bi_conn)
+            seed_acquisition_fields(bi_conn)
+            component_data, canvas_view_info = build_dashboard_payload(bi_conn)
+            update_dashboard(system_conn, component_data, canvas_view_info)
+            verify(system_conn, bi_conn)
+        finally:
+            bi_conn.close()
     finally:
-        bi_conn.close()
         system_conn.close()
 
 

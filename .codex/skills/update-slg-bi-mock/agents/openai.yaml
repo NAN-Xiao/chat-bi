@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update SLG BI Mock Data"
+  short_description: "Back up and refresh SLG BI Mock sample data"
+  default_prompt: "Use the project workflow to back up and regenerate SLG BI Mock data, then verify acquisition and expedition results."
