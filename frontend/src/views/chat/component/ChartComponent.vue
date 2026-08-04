@@ -160,6 +160,14 @@ function hasRenderedOutput(element = activeLayerRef.value || chartRenderHostRef.
   return Boolean(element.querySelector('canvas, svg'))
 }
 
+function hasActiveRenderedLayer() {
+  return Boolean(
+    activeLayerRef.value &&
+      !stagingLayerRef.value &&
+      hasRenderedOutput(activeLayerRef.value)
+  )
+}
+
 function cancelPendingRenderReady() {
   if (renderReadyFrame === undefined) {
     return
@@ -172,19 +180,16 @@ function scheduleRenderReady() {
   cancelPendingRenderReady()
   renderReadyFrame = window.requestAnimationFrame(() => {
     renderReadyFrame = undefined
-    if (
-      activeLayerRef.value &&
-      !stagingLayerRef.value &&
-      !rerenderAfterStaging &&
-      !renderTimer
-    ) {
+    if (hasActiveRenderedLayer()) {
       emit('render-ready')
     }
   })
 }
 
 function scheduleRenderChart(delay = 0, retry = 0, invalidate = false) {
-  cancelPendingRenderReady()
+  if (!hasActiveRenderedLayer()) {
+    cancelPendingRenderReady()
+  }
   if (invalidate && stagingLayerRef.value && !activeLayerRef.value) {
     rerenderAfterStaging = true
     pendingRenderRetry = retry

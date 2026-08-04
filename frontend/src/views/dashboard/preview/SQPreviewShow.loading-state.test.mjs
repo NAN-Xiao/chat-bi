@@ -72,7 +72,7 @@ assert.match(
 assert.ok(prepareDatabaseStateMatch, '数据库后台刷新需要独立的状态准备函数')
 assert.match(
   prepareDatabaseStateMatch[1],
-  /if \(hasUsableChartSnapshot\(viewInfo\)\) \{[\s\S]*?viewInfo\.status = 'success'[\s\S]*?viewInfo\.dataState = 'ready'[\s\S]*?return/,
+  /if \(hasDashboardChartSnapshot\(viewInfo\)\) \{[\s\S]*?viewInfo\.status = 'success'[\s\S]*?viewInfo\.dataState = 'ready'[\s\S]*?return/,
   '已有可用快照时后台刷新必须保留 success/ready，不能清空当前图表'
 )
 assert.ok(refreshChartsMatch, '刷新队列需要存在')

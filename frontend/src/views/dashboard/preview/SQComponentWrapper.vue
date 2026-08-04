@@ -48,6 +48,10 @@ import {
   canShowDashboardDateFilter,
   getOrCreateDashboardDateFilterState,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  hasDashboardChartSnapshot,
+  prepareDashboardChartRefreshState,
+} from '@/views/dashboard/utils/dashboardChartLifecycle'
 import { resolveDashboardMoveTargetDatasource } from '@/views/dashboard/utils/dashboardOptions.ts'
 
 const componentWrapperInnerRef = ref(null)
@@ -607,14 +611,9 @@ function getResultFields(result: any) {
   ])
 }
 
-function hasChartSnapshot(viewInfo: any) {
-  const rows = viewInfo?.data?.data
-  return Array.isArray(rows) && rows.length > 0
-}
-
 function hasChartShape(viewInfo: any) {
   return (
-    hasChartSnapshot(viewInfo) ||
+    hasDashboardChartSnapshot(viewInfo) ||
     (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
     (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
   )
@@ -1151,10 +1150,9 @@ async function refreshChartData() {
           ? [...viewInfo.data.fields]
           : []
         const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
-        const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+        const hasPreviousSnapshot = hasDashboardChartSnapshot(viewInfo)
         const hasPreviousShape = hasChartShape(viewInfo)
-        viewInfo.dataState = 'loading'
-        viewInfo.refreshState = 'loading'
+        prepareDashboardChartRefreshState(viewInfo, 'loading')
         const result = await previewChartSql(viewInfo, undefined, true)
         applyDashboardDateFilterCapability(viewInfo, result)
         const fields = getResultFields(result)
@@ -1196,7 +1194,7 @@ async function refreshChartData() {
         emitter.emit(`view-render-${viewInfo.id || entry?.component?.id}`)
       } catch (error: any) {
         viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
-        if (hasChartSnapshot(viewInfo)) {
+        if (hasDashboardChartSnapshot(viewInfo)) {
           viewInfo.status = 'success'
           viewInfo.dataState = 'ready'
         } else {

@@ -22,9 +22,8 @@ const compiledPath = join(tempDir, 'dashboardChartLifecycle.mjs')
 writeFileSync(compiledPath, compiled.outputText, 'utf8')
 
 try {
-  const { prepareDashboardChartRefreshState, reconcileDashboardViewInfo } = await import(
-    pathToFileURL(compiledPath).href
-  )
+  const { hasDashboardChartSnapshot, prepareDashboardChartRefreshState, reconcileDashboardViewInfo } =
+    await import(pathToFileURL(compiledPath).href)
 
   const rows = [{ day: '2026-08-01', value: 10 }]
   const snapshot = {
@@ -56,6 +55,18 @@ try {
   )
   assert.equal(completedEmpty.status, 'success')
   assert.equal(completedEmpty.dataState, 'ready')
+
+  const refreshedFieldOnly = {
+    status: 'success',
+    dataState: 'ready',
+    data: { data: [], fields: ['day', 'value'], snapshotRefreshedAt: 456 },
+    fields: ['day', 'value'],
+  }
+  assert.equal(
+    hasDashboardChartSnapshot(refreshedFieldOnly),
+    true,
+    '已刷新成功的字段快照即使没有行，也必须被所有刷新入口视为可用快照'
+  )
 
   const pending = { data: { data: [], fields: [] }, fields: [] }
   assert.equal(prepareDashboardChartRefreshState(pending, 'waiting'), false)
@@ -114,12 +125,26 @@ assert.doesNotMatch(
   '后台刷新不能通过变更 key 销毁并重挂全部看板面板'
 )
 
-for (const relativePath of ['../preview/SQPreviewShow.vue', '../editor/index.vue']) {
+for (const relativePath of [
+  '../preview/SQPreviewShow.vue',
+  '../editor/index.vue',
+  '../preview/SQComponentWrapper.vue',
+]) {
   const consumerSource = readFileSync(join(currentDir, relativePath), 'utf8')
   assert.match(
     consumerSource,
     /prepareDashboardChartRefreshState\(/,
     `${relativePath} 必须复用公共快照保留协议`
+  )
+  assert.match(
+    consumerSource,
+    /hasDashboardChartSnapshot/,
+    `${relativePath} 必须直接使用公共快照判断，不能继续维护 row-only 快照定义`
+  )
+  assert.doesNotMatch(
+    consumerSource,
+    /function hasChartSnapshot\(/,
+    `${relativePath} 不能继续定义局部 row-only hasChartSnapshot`
   )
 }
 

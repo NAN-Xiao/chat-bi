@@ -34,7 +34,10 @@ import {
   ensureChartSnapshotRefreshedAt,
   nextDashboardRefreshDelayMs,
 } from '@/views/dashboard/utils/dashboardRefreshPolicy'
-import { prepareDashboardChartRefreshState } from '@/views/dashboard/utils/dashboardChartLifecycle'
+import {
+  hasDashboardChartSnapshot,
+  prepareDashboardChartRefreshState,
+} from '@/views/dashboard/utils/dashboardChartLifecycle'
 import {
   createPermissionDeniedChartRegistry,
   dashboardChartFailureResultFromError,
@@ -250,21 +253,12 @@ function collectDashboardCharts(items: any[], entries: Array<{ component: any; v
   return entries
 }
 
-function hasChartSnapshot(viewInfo: any) {
-  const rows = viewInfo?.data?.data
-  return Array.isArray(rows) && rows.length > 0
-}
-
 function hasChartShape(viewInfo: any) {
   return (
-    hasChartSnapshot(viewInfo) ||
+    hasDashboardChartSnapshot(viewInfo) ||
     (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
     (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
   )
-}
-
-function hasUsableChartSnapshot(viewInfo: any) {
-  return hasChartSnapshot(viewInfo)
 }
 
 function isExternalSnapshotChart(viewInfo: any) {
@@ -276,7 +270,10 @@ function hasUsableResultSnapshot(result: any) {
     return false
   }
   const rows = result?.data
-  return Array.isArray(rows) && rows.length > 0
+  return (
+    (Array.isArray(rows) && rows.length > 0) ||
+    (Array.isArray(result?.fields) && result.fields.length > 0)
+  )
 }
 
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
@@ -389,7 +386,7 @@ function applyChartResult(viewInfo: any, result: any) {
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
   const previousDataFields = Array.isArray(viewInfo?.data?.fields) ? [...viewInfo.data.fields] : []
   const previousFields = Array.isArray(viewInfo?.fields) ? [...viewInfo.fields] : []
-  const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+  const hasPreviousSnapshot = hasDashboardChartSnapshot(viewInfo)
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
     viewInfo.data = {}
   }
@@ -455,7 +452,7 @@ function keepChartSnapshotState(viewInfo: any) {
 }
 
 function keepChartSnapshotOrLoading(viewInfo: any) {
-  if (hasUsableChartSnapshot(viewInfo)) {
+  if (hasDashboardChartSnapshot(viewInfo)) {
     keepChartSnapshotState(viewInfo)
   } else {
     keepChartLoadingState(viewInfo, 'loading')
@@ -466,7 +463,7 @@ function failChartWithoutSnapshot(viewInfo: any, result?: any) {
   if (!viewInfo) {
     return
   }
-  if (hasUsableChartSnapshot(viewInfo)) {
+  if (hasDashboardChartSnapshot(viewInfo)) {
     keepChartSnapshotState(viewInfo)
     return
   }
@@ -502,7 +499,7 @@ function prepareChartDatabaseRefreshState(viewInfo: any) {
   viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
   viewInfo.message = ''
   viewInfo.refreshState = ''
-  if (hasUsableChartSnapshot(viewInfo)) {
+  if (hasDashboardChartSnapshot(viewInfo)) {
     viewInfo.status = 'success'
     viewInfo.dataState = 'ready'
     viewInfo.loadingProgress = 100
@@ -660,7 +657,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     chartEntries.forEach((entry) => {
       if (
         isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
-        && !hasChartSnapshot(entry.viewInfo)
+        && !hasDashboardChartSnapshot(entry.viewInfo)
       ) {
         keepChartLoadingState(entry.viewInfo, 'waiting')
       }
@@ -748,7 +745,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
             permissionDeniedCharts.mark(entry)
             applyChartResult(viewInfo, result)
           } else {
-            if (shouldRetryDashboardChartFailure(result, hasUsableChartSnapshot(viewInfo))) {
+            if (shouldRetryDashboardChartFailure(result, hasDashboardChartSnapshot(viewInfo))) {
               keepChartSnapshotOrLoading(viewInfo)
               transientPendingCount += 1
             } else {
@@ -772,7 +769,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
           const failureResult = dashboardChartFailureResultFromError(error)
-          if (shouldRetryDashboardChartFailure(failureResult, hasUsableChartSnapshot(viewInfo))) {
+          if (shouldRetryDashboardChartFailure(failureResult, hasDashboardChartSnapshot(viewInfo))) {
             keepChartSnapshotOrLoading(viewInfo)
             transientPendingCount += 1
           } else {

@@ -50,7 +50,10 @@ import {
 } from '@/views/dashboard/utils/dashboardRouteMode'
 import { createRouteLoadLifecycle } from '@/views/dashboard/editor/routeLoadLifecycle'
 import { consumeCanvasRouteHandoff } from '@/views/dashboard/editor/canvasRouteHandoff'
-import { prepareDashboardChartRefreshState } from '@/views/dashboard/utils/dashboardChartLifecycle'
+import {
+  hasDashboardChartSnapshot,
+  prepareDashboardChartRefreshState,
+} from '@/views/dashboard/utils/dashboardChartLifecycle'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -187,14 +190,9 @@ function isAbortError(error: any) {
   )
 }
 
-function hasChartSnapshot(viewInfo: any) {
-  const rows = viewInfo?.data?.data
-  return Array.isArray(rows) && rows.length > 0
-}
-
 function hasChartShape(viewInfo: any) {
   return (
-    hasChartSnapshot(viewInfo) ||
+    hasDashboardChartSnapshot(viewInfo) ||
     (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
     (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
   )
@@ -384,7 +382,7 @@ function applyChartResult(viewInfo: any, result: any) {
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
   const previousDataFields = Array.isArray(viewInfo?.data?.fields) ? [...viewInfo.data.fields] : []
   const previousFields = Array.isArray(viewInfo?.fields) ? [...viewInfo.fields] : []
-  const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+  const hasPreviousSnapshot = hasDashboardChartSnapshot(viewInfo)
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
     viewInfo.data = {}
   }
@@ -518,7 +516,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       chartEntries.forEach((entry) => {
         if (
           isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
-          && !hasChartSnapshot(entry.viewInfo)
+          && !hasDashboardChartSnapshot(entry.viewInfo)
         ) {
           keepChartLoadingState(entry.viewInfo, 'waiting')
         }
@@ -550,7 +548,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           permissionDeniedCharts.mark(entry)
           withAutoChartUpdate(() => applyChartResult(viewInfo, cachedResult))
         } else if (cacheDisposition === 'refresh_database') {
-          if (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo)) {
+          if (isMixedChart(viewInfo) || !hasDashboardChartSnapshot(viewInfo)) {
             databaseRefreshEntries.push(entry)
           }
         } else {
@@ -570,7 +568,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         if (
           routeLoadLifecycle.isCurrent(loadVersion)
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
-          && (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo))
+          && (isMixedChart(viewInfo) || !hasDashboardChartSnapshot(viewInfo))
         ) {
           databaseRefreshEntries.push(entry)
         }
@@ -587,7 +585,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     withAutoChartUpdate(() => {
       databaseRefreshEntries.forEach((entry) => {
         if (isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)) {
-          keepChartLoadingState(entry.viewInfo, 'loading')
+          prepareDashboardChartRefreshState(entry.viewInfo, 'loading')
         }
       })
     })
@@ -615,7 +613,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
               permissionDeniedCharts.mark(entry)
               applyChartResult(viewInfo, result)
             } else {
-              if (shouldRetryDashboardChartFailure(result, hasChartSnapshot(viewInfo))) {
+              if (shouldRetryDashboardChartFailure(result, hasDashboardChartSnapshot(viewInfo))) {
                 keepChartSnapshotOrLoading(viewInfo)
                 transientPendingCount += 1
               } else {
@@ -640,13 +638,13 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
           withAutoChartUpdate(() => {
-          const failureResult = dashboardChartFailureResultFromError(error)
-          if (shouldRetryDashboardChartFailure(failureResult, hasChartSnapshot(viewInfo))) {
-            keepChartSnapshotOrLoading(viewInfo)
-            transientPendingCount += 1
-          } else {
-            applyChartResult(viewInfo, failureResult)
-          }
+            const failureResult = dashboardChartFailureResultFromError(error)
+            if (shouldRetryDashboardChartFailure(failureResult, hasDashboardChartSnapshot(viewInfo))) {
+              keepChartSnapshotOrLoading(viewInfo)
+              transientPendingCount += 1
+            } else {
+              applyChartResult(viewInfo, failureResult)
+            }
           })
         }
       } finally {
