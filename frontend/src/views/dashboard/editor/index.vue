@@ -51,6 +51,7 @@ import {
 import { createRouteLoadLifecycle } from '@/views/dashboard/editor/routeLoadLifecycle'
 import { consumeCanvasRouteHandoff } from '@/views/dashboard/editor/canvasRouteHandoff'
 import {
+  hasDashboardChartRows,
   hasDashboardChartSnapshot,
   prepareDashboardChartRefreshState,
 } from '@/views/dashboard/utils/dashboardChartLifecycle'
@@ -382,7 +383,7 @@ function applyChartResult(viewInfo: any, result: any) {
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
   const previousDataFields = Array.isArray(viewInfo?.data?.fields) ? [...viewInfo.data.fields] : []
   const previousFields = Array.isArray(viewInfo?.fields) ? [...viewInfo.fields] : []
-  const hasPreviousSnapshot = hasDashboardChartSnapshot(viewInfo)
+  const hasPreviousRows = hasDashboardChartRows(viewInfo)
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
     viewInfo.data = {}
   }
@@ -391,7 +392,7 @@ function applyChartResult(viewInfo: any, result: any) {
   viewInfo.fields = fields
   viewInfo.status = result?.status || 'success'
   viewInfo.message = result?.message || ''
-  if (viewInfo.status === 'failed' && hasPreviousSnapshot && !isPermissionDeniedResult(result)) {
+  if (viewInfo.status === 'failed' && hasPreviousRows && !isPermissionDeniedResult(result)) {
     viewInfo.data.fields = previousDataFields
     viewInfo.data.data = previousData
     viewInfo.fields = previousFields
@@ -613,7 +614,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
               permissionDeniedCharts.mark(entry)
               applyChartResult(viewInfo, result)
             } else {
-              if (shouldRetryDashboardChartFailure(result, hasDashboardChartSnapshot(viewInfo))) {
+              if (shouldRetryDashboardChartFailure(result, hasDashboardChartRows(viewInfo))) {
                 keepChartSnapshotOrLoading(viewInfo)
                 transientPendingCount += 1
               } else {
@@ -639,7 +640,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         ) {
           withAutoChartUpdate(() => {
             const failureResult = dashboardChartFailureResultFromError(error)
-            if (shouldRetryDashboardChartFailure(failureResult, hasDashboardChartSnapshot(viewInfo))) {
+            if (shouldRetryDashboardChartFailure(failureResult, hasDashboardChartRows(viewInfo))) {
               keepChartSnapshotOrLoading(viewInfo)
               transientPendingCount += 1
             } else {

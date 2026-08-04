@@ -24,9 +24,13 @@ function normalizeChartResultArrays(viewInfo: DashboardViewInfo) {
   viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
 }
 
-export function hasDashboardChartSnapshot(viewInfo: DashboardViewInfo) {
+export function hasDashboardChartRows(viewInfo: DashboardViewInfo) {
   const rows = viewInfo?.data?.data
-  if (Array.isArray(rows) && rows.length > 0) {
+  return Array.isArray(rows) && rows.length > 0
+}
+
+export function hasDashboardChartSnapshot(viewInfo: DashboardViewInfo) {
+  if (hasDashboardChartRows(viewInfo)) {
     return true
   }
   return (

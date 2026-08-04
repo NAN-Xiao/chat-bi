@@ -22,8 +22,12 @@ const compiledPath = join(tempDir, 'dashboardChartLifecycle.mjs')
 writeFileSync(compiledPath, compiled.outputText, 'utf8')
 
 try {
-  const { hasDashboardChartSnapshot, prepareDashboardChartRefreshState, reconcileDashboardViewInfo } =
-    await import(pathToFileURL(compiledPath).href)
+  const {
+    hasDashboardChartRows,
+    hasDashboardChartSnapshot,
+    prepareDashboardChartRefreshState,
+    reconcileDashboardViewInfo,
+  } = await import(pathToFileURL(compiledPath).href)
 
   const rows = [{ day: '2026-08-01', value: 10 }]
   const snapshot = {
@@ -66,6 +70,16 @@ try {
     hasDashboardChartSnapshot(refreshedFieldOnly),
     true,
     '已刷新成功的字段快照即使没有行，也必须被所有刷新入口视为可用快照'
+  )
+  assert.equal(
+    hasDashboardChartRows(refreshedFieldOnly),
+    false,
+    '空快照没有可恢复的行数据，失败回退不能把它当成旧内容吞掉错误'
+  )
+  assert.equal(
+    hasDashboardChartRows(snapshot),
+    true,
+    '有行数据的快照才允许在刷新失败时恢复旧内容'
   )
 
   const pending = { data: { data: [], fields: [] }, fields: [] }
@@ -145,6 +159,35 @@ for (const relativePath of [
     consumerSource,
     /function hasChartSnapshot\(/,
     `${relativePath} 不能继续定义局部 row-only hasChartSnapshot`
+  )
+}
+
+for (const relativePath of ['../preview/SQPreviewShow.vue', '../editor/index.vue']) {
+  const consumerSource = readFileSync(join(currentDir, relativePath), 'utf8')
+  assert.match(
+    consumerSource,
+    /const hasPreviousRows = hasDashboardChartRows\(viewInfo\)/,
+    `${relativePath} 的结果应用必须先记录旧行数据是否存在`
+  )
+  assert.match(
+    consumerSource,
+    /viewInfo\.status === 'failed' && hasPreviousRows && !isPermissionDeniedResult\(result\)/,
+    `${relativePath} 刷新失败只能用真实行数据回退；空快照不能吞掉失败信息，否则界面显示“没有找到数据”而看不到错误`
+  )
+  assert.doesNotMatch(
+    consumerSource,
+    /viewInfo\.status === 'failed' && hasPreviousSnapshot/,
+    `${relativePath} 失败回退不能使用宽口径快照判断`
+  )
+  assert.match(
+    consumerSource,
+    /shouldRetryDashboardChartFailure\(result, hasDashboardChartRows\(viewInfo\)\)/,
+    `${relativePath} 瞬时失败重试必须按行数据判定，空快照图表也要保留静默重试`
+  )
+  assert.match(
+    consumerSource,
+    /shouldRetryDashboardChartFailure\(failureResult, hasDashboardChartRows\(viewInfo\)\)/,
+    `${relativePath} 请求异常重试必须按行数据判定，空快照图表也要保留静默重试`
   )
 }
 

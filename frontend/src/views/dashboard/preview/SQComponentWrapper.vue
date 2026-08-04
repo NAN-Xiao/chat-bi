@@ -49,6 +49,7 @@ import {
   getOrCreateDashboardDateFilterState,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 import {
+  hasDashboardChartRows,
   hasDashboardChartSnapshot,
   prepareDashboardChartRefreshState,
 } from '@/views/dashboard/utils/dashboardChartLifecycle'
@@ -1150,9 +1151,13 @@ async function refreshChartData() {
           ? [...viewInfo.data.fields]
           : []
         const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
-        const hasPreviousSnapshot = hasDashboardChartSnapshot(viewInfo)
+        const hasPreviousRows = hasDashboardChartRows(viewInfo)
         const hasPreviousShape = hasChartShape(viewInfo)
         prepareDashboardChartRefreshState(viewInfo, 'loading')
+        if (hasPreviousRows) {
+          viewInfo.dataState = 'loading'
+          viewInfo.refreshState = 'loading'
+        }
         const result = await previewChartSql(viewInfo, undefined, true)
         applyDashboardDateFilterCapability(viewInfo, result)
         const fields = getResultFields(result)
@@ -1170,13 +1175,15 @@ async function refreshChartData() {
           viewInfo.message = result?.message || ''
         }
         if (viewInfo.status === 'failed') {
-          if (hasPreviousSnapshot || (isDashboardQueryBusy(result) && hasPreviousShape)) {
+          if (hasPreviousRows || (isDashboardQueryBusy(result) && hasPreviousShape)) {
             viewInfo.data.fields = previousDataFields
             viewInfo.data.data = previousData
             viewInfo.fields = previousFields
             viewInfo.status = 'success'
             viewInfo.message = ''
             viewInfo.dataState = 'ready'
+          } else {
+            viewInfo.dataState = 'failed'
           }
           if (isDashboardQueryBusy(result) && hasPreviousShape) {
             viewInfo.refreshState = 'queued'
@@ -1194,7 +1201,7 @@ async function refreshChartData() {
         emitter.emit(`view-render-${viewInfo.id || entry?.component?.id}`)
       } catch (error: any) {
         viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
-        if (hasDashboardChartSnapshot(viewInfo)) {
+        if (hasDashboardChartRows(viewInfo)) {
           viewInfo.status = 'success'
           viewInfo.dataState = 'ready'
         } else {
