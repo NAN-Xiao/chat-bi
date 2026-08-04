@@ -53,10 +53,30 @@ assert.match(
   /function renderChart\(retry = 0\) \{[\s\S]*?renderAtomicChart\(retry\)/,
   '所有图表类型都应通过完整层交换提交，table 只在 resize 时保留原地调整'
 )
+assert.doesNotMatch(
+  component,
+  /function scheduleRenderChart\(delay = 0, retry = 0\) \{\s*renderToken \+= 1/,
+  '尺寸和全局重绘通知不能无条件作废正在完成的首次 staging，否则持续通知会让加载态永不结束'
+)
 assert.match(
   component,
-  /function scheduleRenderChart\(delay = 0, retry = 0\) \{[\s\S]*?renderToken \+= 1[\s\S]*?window\.setTimeout/,
-  '新渲染一旦排队就必须让旧 staging token 失效，避免旧数据抢先提交'
+  /function scheduleRenderChart\(delay = 0, retry = 0, invalidate = false\) \{[\s\S]*?if \(invalidate\) \{\s*renderToken \+= 1/,
+  '调度器必须只在内容变化时作废旧 staging'
+)
+assert.match(
+  component,
+  /watch\([\s\S]*?\(\) => \{\s*scheduleRenderChart\(0, 0, true\)\s*\}/,
+  '数据、轴和类型变化必须作废旧 staging，不能提交过期图表'
+)
+assert.match(
+  component,
+  /function renderAtomicChart\(retry = 0\) \{[\s\S]*?if \(stagingLayerRef\.value\) \{[\s\S]*?rerenderAfterStaging = true[\s\S]*?return/,
+  '已有 staging 渲染时必须把后续请求合并为一次重绘，不能并发启动并互相取消'
+)
+assert.match(
+  component,
+  /function drainPendingRender\(\) \{[\s\S]*?rerenderAfterStaging[\s\S]*?scheduleRenderChart/,
+  'staging 完成或失效后必须执行合并后的最新重绘'
 )
 assert.doesNotMatch(
   component,

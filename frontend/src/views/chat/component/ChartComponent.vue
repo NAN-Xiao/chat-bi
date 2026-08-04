@@ -107,6 +107,8 @@ const previousDensity = ref<ChartDensity>()
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
 let renderToken = 0
+let rerenderAfterStaging = false
+let pendingRenderRetry = 0
 const maxRenderRetries = 2
 const destroyedChartInstances = new WeakSet<BaseChart>()
 
@@ -154,8 +156,10 @@ function hasRenderedOutput(element = activeLayerRef.value || chartRenderHostRef.
   return Boolean(element.querySelector('canvas, svg'))
 }
 
-function scheduleRenderChart(delay = 0, retry = 0) {
-  renderToken += 1
+function scheduleRenderChart(delay = 0, retry = 0, invalidate = false) {
+  if (invalidate) {
+    renderToken += 1
+  }
   if (renderTimer) {
     window.clearTimeout(renderTimer)
   }
@@ -167,6 +171,16 @@ function scheduleRenderChart(delay = 0, retry = 0) {
       }
     })
   }, delay)
+}
+
+function drainPendingRender() {
+  if (!rerenderAfterStaging) {
+    return
+  }
+  const retry = pendingRenderRetry
+  rerenderAfterStaging = false
+  pendingRenderRetry = 0
+  scheduleRenderChart(0, retry)
 }
 
 function configureChart(instance: BaseChart) {
@@ -204,6 +218,7 @@ function cleanupStagedChart(instance: BaseChart | undefined, layer: HTMLElement 
 function commitStagedChart(nextInstance: BaseChart, stagingLayer: HTMLElement, token: number) {
   if (token !== renderToken) {
     cleanupStagedChart(nextInstance, stagingLayer)
+    drainPendingRender()
     return
   }
   const previousInstance = chartInstance
@@ -216,6 +231,7 @@ function commitStagedChart(nextInstance: BaseChart, stagingLayer: HTMLElement, t
   showInitialLoading.value = false
   destroyChartInstance(previousInstance)
   previousLayer?.remove()
+  drainPendingRender()
 }
 
 function handleAtomicRenderError(
@@ -227,21 +243,30 @@ function handleAtomicRenderError(
 ) {
   cleanupStagedChart(nextInstance, stagingLayer)
   if (token !== renderToken) {
+    drainPendingRender()
     return
   }
   console.warn('[ChartComponent] chart render failed, retrying if possible', error)
+  if (rerenderAfterStaging) {
+    drainPendingRender()
+    return
+  }
   if (retry < maxRenderRetries) {
     scheduleRenderChart(160, retry + 1)
   }
 }
 
 function renderAtomicChart(retry = 0) {
+  if (stagingLayerRef.value) {
+    rerenderAfterStaging = true
+    pendingRenderRetry = retry
+    return
+  }
   const host = chartRenderHostRef.value
   if (!host) {
     return
   }
   const token = ++renderToken
-  cleanupStagedChart(stagingChartInstance, stagingLayerRef.value)
   const stagingLayer = document.createElement('div')
   stagingLayer.className = 'chart-render-layer chart-render-layer--staging'
   host.appendChild(stagingLayer)
@@ -259,6 +284,7 @@ function renderAtomicChart(retry = 0) {
       .then(() => {
         if (token !== renderToken) {
           cleanupStagedChart(renderInstance, stagingLayer)
+          drainPendingRender()
           return
         }
         if (!hasRenderedOutput(stagingLayer)) {
@@ -290,6 +316,8 @@ function destroyChart(invalidate = true) {
   if (invalidate) {
     renderToken += 1
   }
+  rerenderAfterStaging = false
+  pendingRenderRetry = 0
   cleanupStagedChart(stagingChartInstance, stagingLayerRef.value)
   destroyChartInstance(chartInstance)
   chartInstance = undefined
@@ -314,7 +342,7 @@ watch(
     forecast: params.forecast,
   }),
   () => {
-    scheduleRenderChart()
+    scheduleRenderChart(0, 0, true)
   },
   { deep: true, flush: 'post' }
 )
