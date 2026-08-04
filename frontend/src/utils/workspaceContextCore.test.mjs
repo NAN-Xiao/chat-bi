@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   WorkspaceContextStaleError,
   createWorkspaceContextCore,
+  isWorkspaceContextStaleError,
 } from './workspaceContextCore.ts'
 
 const memoryStorage = () => {
@@ -94,10 +95,23 @@ test('普通请求拒绝租户不一致的响应', () => {
   const context = readyContext('A')
   const snapshot = context.captureRequest('normal')
 
-  assert.throws(
-    () => context.assertConsumable(snapshot, 'B'),
-    WorkspaceContextStaleError
-  )
+  let error
+  try {
+    context.assertConsumable(snapshot, 'B')
+  } catch (caught) {
+    error = caught
+  }
+  assert.ok(error)
+  assert.equal(error.name, 'WorkspaceContextMismatchError')
+  assert.equal(isWorkspaceContextStaleError(error), false)
+})
+
+test('旧请求即使响应租户不一致也保持静默 stale', () => {
+  const context = readyContext('A')
+  const snapshot = context.captureRequest('normal')
+  context.beginSwitch('B')
+
+  assert.throws(() => context.assertConsumable(snapshot, 'B'), WorkspaceContextStaleError)
 })
 
 test('switching 阶段拒绝新的普通请求但允许当前显式验证请求', () => {

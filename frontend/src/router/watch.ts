@@ -76,13 +76,14 @@ const restoreBusinessTenantAfterWorkspaceAdmin = async (to: any, from: any) => {
 export const watchRouter = (router: Router) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
     await appearanceStore.setAppearance()
+    const token = wsCache.get('user.token')
     const shouldEnterDelegate = applyPlatformWorkspaceDelegateRouteQuery(to.query || {})
     const shouldExitDelegate =
       !shouldEnterDelegate &&
       (to.path === platformAdminHome || to.path === platformTenantManagementPath) &&
       isPlatformWorkspaceDelegateSession() &&
       to.query?.platform_workspace_delegate !== '1'
-    if (to.path.startsWith('/login') && userStore.getUid) {
+    if (to.path.startsWith('/login') && token && userStore.getUid) {
       const redirect = Array.isArray(to?.query?.redirect)
         ? to.query.redirect[0]
         : to?.query?.redirect
@@ -93,7 +94,6 @@ export const watchRouter = (router: Router) => {
       next()
       return
     }
-    const token = wsCache.get('user.token')
     if (whiteList.includes(to.path)) {
       next()
       return

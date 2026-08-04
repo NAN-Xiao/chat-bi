@@ -4,6 +4,10 @@ import test from 'node:test'
 
 const requestSource = readFileSync(new URL('./request.ts', import.meta.url), 'utf8')
 const authSource = readFileSync(new URL('../api/login.ts', import.meta.url), 'utf8')
+const delegateSource = readFileSync(
+  new URL('./platformWorkspaceDelegate.ts', import.meta.url),
+  'utf8'
+)
 
 const requestInterceptorSource = requestSource.slice(
   requestSource.indexOf('this.instance.interceptors.request.use'),
@@ -50,4 +54,17 @@ test('fetchStream 在第一个 await 前捕获快照并校验响应', () => {
   assert.ok(capture > 0)
   assert.ok(firstAwait === -1 || capture < firstAwait)
   assert.match(fetchSource, /workspaceContext\.assertConsumable\(workspaceSnapshot, responseTenantId\)/)
+})
+
+test('平台代理请求在同步入口捕获租户和 generation', () => {
+  assert.match(delegateSource, /capturePlatformWorkspaceDelegateSnapshot/)
+  assert.match(delegateSource, /assertPlatformWorkspaceDelegateSnapshot/)
+  assert.match(requestSource, /__platformDelegateSnapshot/)
+  assert.match(requestSource, /capturePlatformWorkspaceDelegateSnapshot\(\)/)
+  assert.match(
+    requestSource,
+    /assertPlatformWorkspaceDelegateSnapshot\([\s\S]*responseTenantId/
+  )
+  assert.doesNotMatch(requestInterceptorSource, /getPlatformWorkspaceDelegateTenantId/)
+  assert.doesNotMatch(requestInterceptorSource, /isPlatformWorkspaceDelegateSession/)
 })

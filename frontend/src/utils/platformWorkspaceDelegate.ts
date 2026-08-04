@@ -1,4 +1,8 @@
 import { useCache } from '@/utils/useCache'
+import {
+  createPlatformWorkspaceDelegateRequestContext,
+  type PlatformWorkspaceDelegateRequestSnapshot,
+} from '@/utils/platformWorkspaceDelegateCore'
 
 export const PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY = 'platform_workspace_delegate'
 export const PLATFORM_WORKSPACE_DELEGATE_TENANT_QUERY_KEY = 'tenant_id'
@@ -10,6 +14,15 @@ const DELEGATE_FLAG_KEY = 'user.platformWorkspaceDelegate'
 const DELEGATE_TENANT_ID_KEY = 'user.platformWorkspaceDelegateTenantId'
 const DELEGATE_TENANT_PUBLIC_ID_KEY = 'user.platformWorkspaceDelegateTenantPublicId'
 const DELEGATE_TENANT_NAME_KEY = 'user.platformWorkspaceDelegateTenantName'
+
+const storedDelegateTenantId = () =>
+  sessionCache.get(DELEGATE_FLAG_KEY) === '1'
+    ? String(sessionCache.get(DELEGATE_TENANT_ID_KEY) || '')
+    : ''
+
+const delegateRequestContext = createPlatformWorkspaceDelegateRequestContext(
+  storedDelegateTenantId()
+)
 
 export interface PlatformWorkspaceDelegateTenant {
   id: number | string
@@ -33,10 +46,12 @@ export const setPlatformWorkspaceDelegateContext = (
   sessionCache.set(DELEGATE_TENANT_ID_KEY, tenantId)
   sessionCache.set(DELEGATE_TENANT_PUBLIC_ID_KEY, tenant.public_id ? String(tenant.public_id) : '')
   sessionCache.set(DELEGATE_TENANT_NAME_KEY, tenant.name ? String(tenant.name) : '')
+  delegateRequestContext.update(tenantId)
   return true
 }
 
 export const clearPlatformWorkspaceDelegateContext = () => {
+  delegateRequestContext.update('')
   sessionCache.delete(DELEGATE_FLAG_KEY)
   sessionCache.delete(DELEGATE_TENANT_ID_KEY)
   sessionCache.delete(DELEGATE_TENANT_PUBLIC_ID_KEY)
@@ -44,10 +59,18 @@ export const clearPlatformWorkspaceDelegateContext = () => {
 }
 
 export const isPlatformWorkspaceDelegateSession = () =>
-  sessionCache.get(DELEGATE_FLAG_KEY) === '1' && !!sessionCache.get(DELEGATE_TENANT_ID_KEY)
+  delegateRequestContext.capture().active
 
 export const getPlatformWorkspaceDelegateTenantId = () =>
-  isPlatformWorkspaceDelegateSession() ? String(sessionCache.get(DELEGATE_TENANT_ID_KEY)) : ''
+  delegateRequestContext.capture().tenantId
+
+export const capturePlatformWorkspaceDelegateSnapshot = () =>
+  delegateRequestContext.capture()
+
+export const assertPlatformWorkspaceDelegateSnapshot = (
+  snapshot: PlatformWorkspaceDelegateRequestSnapshot | undefined,
+  responseTenantId = ''
+) => delegateRequestContext.assertCurrent(snapshot, responseTenantId)
 
 export const applyPlatformWorkspaceDelegateRouteQuery = (query: Record<string, unknown>) => {
   const enabled = firstQueryValue(query[PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY]) === '1'

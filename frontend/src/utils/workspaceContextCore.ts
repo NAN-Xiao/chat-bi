@@ -41,6 +41,15 @@ export class WorkspaceContextStaleError extends Error {
   }
 }
 
+export class WorkspaceContextMismatchError extends Error {
+  readonly code = 'WORKSPACE_CONTEXT_MISMATCH'
+
+  constructor(message = '目标工作空间校验失败，请刷新后重试') {
+    super(message)
+    this.name = 'WorkspaceContextMismatchError'
+  }
+}
+
 const normalizeTenantId = (tenantId: unknown) => String(tenantId || '').trim()
 
 const stale = (message: string): never => {
@@ -255,7 +264,7 @@ export const createWorkspaceContextCore = (
       normalizedResponseTenantId &&
       normalizedResponseTenantId !== snapshot.tenantId
     ) {
-      return stale('Workspace response tenant does not match the request')
+      throw new WorkspaceContextMismatchError()
     }
   }
 

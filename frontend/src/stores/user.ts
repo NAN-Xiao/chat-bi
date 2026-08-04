@@ -223,7 +223,12 @@ export const UserStore = defineStore('user', {
   actions: {
     async login(formData: { username: string; password: string }) {
       const res: any = await AuthApi.login(formData)
-      this.setToken(res.access_token)
+      this.startAuthenticatedSession(res.access_token)
+    },
+
+    startAuthenticatedSession(token: string) {
+      this.clear()
+      this.setToken(token)
     },
 
     async logout() {
@@ -485,6 +490,7 @@ export const UserStore = defineStore('user', {
     clear() {
       clearPlatformWorkspaceDelegateContext()
       workspaceContext.clear()
+      clearWorkspaceSelectorCaches()
       const keys: string[] = [
         'token',
         'uid',

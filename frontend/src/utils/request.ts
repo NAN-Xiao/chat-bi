@@ -13,11 +13,14 @@ import { getLocale, toLoginPage } from './utils'
 import { useAssistantStore } from '@/stores/assistant'
 import JSONBig from 'json-bigint'
 import {
-  getPlatformWorkspaceDelegateTenantId,
-  isPlatformWorkspaceDelegateSession,
+  assertPlatformWorkspaceDelegateSnapshot,
+  capturePlatformWorkspaceDelegateSnapshot,
+  clearPlatformWorkspaceDelegateContext,
   PLATFORM_WORKSPACE_DELEGATE_HEADER,
 } from '@/utils/platformWorkspaceDelegate'
+import type { PlatformWorkspaceDelegateRequestSnapshot } from '@/utils/platformWorkspaceDelegateCore'
 import { workspaceContext } from '@/utils/workspaceContext'
+import { clearWorkspaceSelectorCaches } from '@/utils/requestDedupe'
 import {
   isWorkspaceContextStaleError,
   type WorkspaceRequestMode,
@@ -128,6 +131,18 @@ const pushAppRoute = async (route: any, fallbackHash: string) => {
     window.location.hash = fallbackHash
   }
 }
+
+const invalidateAuthenticationSession = () => {
+  wsCache.delete('user.token')
+  clearPlatformWorkspaceDelegateContext()
+  workspaceContext.clear()
+  clearWorkspaceSelectorCaches()
+}
+
+const clearUserStore = async () => {
+  const { useUserStore } = await import('@/stores/user')
+  useUserStore().clear()
+}
 // Response data structure
 export interface ApiResponse<T = unknown> {
   code: number
@@ -152,11 +167,15 @@ export interface RequestOptions {
 export interface FullRequestConfig extends AxiosRequestConfig {
   requestOptions?: RequestOptions
   __workspaceSnapshot?: WorkspaceRequestSnapshot
+  __platformDelegateSnapshot?: PlatformWorkspaceDelegateRequestSnapshot
 }
 
-const captureWorkspaceRequest = (options: RequestOptions = {}) => {
+const captureWorkspaceRequest = (
+  options: RequestOptions = {},
+  delegateSnapshot = capturePlatformWorkspaceDelegateSnapshot()
+) => {
   const workspaceMode =
-    assistantStore.getToken || isPlatformWorkspaceDelegateSession()
+    assistantStore.getToken || delegateSnapshot.active
       ? 'none'
       : options.workspaceMode || 'normal'
   return workspaceContext.captureRequest(
@@ -167,15 +186,20 @@ const captureWorkspaceRequest = (options: RequestOptions = {}) => {
 }
 
 const captureWorkspaceRequestConfig = (config: FullRequestConfig): FullRequestConfig => {
-  const snapshot = captureWorkspaceRequest(config.requestOptions)
+  const delegateSnapshot = capturePlatformWorkspaceDelegateSnapshot()
+  const snapshot = captureWorkspaceRequest(config.requestOptions, delegateSnapshot)
   const headers: Record<string, any> = { ...(config.headers || {}) }
-  if (snapshot.tenantId && snapshot.mode !== 'none') {
+  if (delegateSnapshot.active) {
+    headers['X-SHUZHI-TENANT-ID'] = delegateSnapshot.tenantId
+    headers[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
+  } else if (snapshot.tenantId && snapshot.mode !== 'none') {
     headers['X-SHUZHI-TENANT-ID'] = snapshot.tenantId
   }
   return {
     ...config,
     headers: headers as AxiosRequestConfig['headers'],
     __workspaceSnapshot: snapshot,
+    __platformDelegateSnapshot: delegateSnapshot,
   }
 }
 
@@ -183,9 +207,11 @@ const assertWorkspaceResponseConsumable = (
   config?: FullRequestConfig,
   response?: AxiosResponse
 ) => {
+  const responseTenantId = response ? readHeader(response, TENANT_CONTEXT_HEADER) : ''
+  assertPlatformWorkspaceDelegateSnapshot(config?.__platformDelegateSnapshot, responseTenantId)
   workspaceContext.assertConsumable(
     config?.__workspaceSnapshot,
-    response ? readHeader(response, TENANT_CONTEXT_HEADER) : ''
+    responseTenantId
   )
 }
 
@@ -246,13 +272,6 @@ class HttpService {
         const token = wsCache.get('user.token')
         if (token && config.headers) {
           config.headers['X-SHUZHI-TOKEN'] = `Bearer ${token}`
-        }
-        const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
-        if (delegateTenantId && config.headers) {
-          config.headers['X-SHUZHI-TENANT-ID'] = delegateTenantId
-        }
-        if (isPlatformWorkspaceDelegateSession() && config.headers) {
-          config.headers[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
         }
         if (assistantStore.getToken) {
           const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
@@ -369,20 +388,29 @@ class HttpService {
       switch (error.response.status) {
         case 401:
           // Redirect to login page if needed
+          invalidateAuthenticationSession()
           if (assistantStore.getAssistant) {
-            wsCache.delete('user.token')
-            pushAppRoute(
-              `/401?title=${encodeURIComponent(errorMessage)}`,
-              `/401?title=${encodeURIComponent(errorMessage)}`
-            )
+            clearUserStore()
+              .catch((clearError) => {
+                console.warn('Failed to clear user session after 401', clearError)
+              })
+              .finally(() => {
+                pushAppRoute(
+                  `/401?title=${encodeURIComponent(errorMessage)}`,
+                  `/401?title=${encodeURIComponent(errorMessage)}`
+                )
+              })
             return
           }
           if (hasUserToken) {
             showErrorMessage(errorMessage)
           }
           setTimeout(() => {
-            wsCache.delete('user.token')
-            import('@/router')
+            clearUserStore()
+              .catch((clearError) => {
+                console.warn('Failed to clear user session after 401', clearError)
+              })
+              .then(() => import('@/router'))
               .then(({ default: router }) => {
                 const currentRoute = router.currentRoute.value
                 return router.push(toLoginPage(currentRoute?.fullPath || ''))
@@ -440,7 +468,8 @@ class HttpService {
   }
 
   public async fetchStream(url: string, data?: any, controller?: AbortController): Promise<any> {
-    const workspaceSnapshot = captureWorkspaceRequest()
+    const delegateSnapshot = capturePlatformWorkspaceDelegateSnapshot()
+    const workspaceSnapshot = captureWorkspaceRequest({}, delegateSnapshot)
     const token = wsCache.get('user.token')
     const heads: any = {
       'Content-Type': 'application/json',
@@ -448,12 +477,11 @@ class HttpService {
     if (token) {
       heads['X-SHUZHI-TOKEN'] = `Bearer ${token}`
     }
-    const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
-    const tenantId = delegateTenantId || workspaceSnapshot.tenantId
+    const tenantId = delegateSnapshot.tenantId || workspaceSnapshot.tenantId
     if (tenantId) {
       heads['X-SHUZHI-TENANT-ID'] = String(tenantId)
     }
-    if (isPlatformWorkspaceDelegateSession()) {
+    if (delegateSnapshot.active) {
       heads[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
     }
     if (assistantStore.getToken) {
@@ -486,6 +514,7 @@ class HttpService {
       signal: controller?.signal,
     })
     const responseTenantId = response.headers.get(TENANT_CONTEXT_HEADER) || ''
+    assertPlatformWorkspaceDelegateSnapshot(delegateSnapshot, responseTenantId)
     workspaceContext.assertConsumable(workspaceSnapshot, responseTenantId)
     return response
   }
