@@ -47,6 +47,9 @@ const params = withDefaults(
     hasOuterTitle: false,
   }
 )
+const emit = defineEmits<{
+  (event: 'render-ready'): void
+}>()
 
 const chartId = computed(() => {
   return 'chart-component-' + params.id
@@ -106,6 +109,7 @@ const chartSize = ref({ width: 0, height: 0 })
 const previousDensity = ref<ChartDensity>()
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
+let renderReadyFrame: number | undefined
 let renderToken = 0
 let rerenderAfterStaging = false
 let pendingRenderRetry = 0
@@ -156,7 +160,36 @@ function hasRenderedOutput(element = activeLayerRef.value || chartRenderHostRef.
   return Boolean(element.querySelector('canvas, svg'))
 }
 
+function cancelPendingRenderReady() {
+  if (renderReadyFrame === undefined) {
+    return
+  }
+  window.cancelAnimationFrame(renderReadyFrame)
+  renderReadyFrame = undefined
+}
+
+function scheduleRenderReady() {
+  cancelPendingRenderReady()
+  renderReadyFrame = window.requestAnimationFrame(() => {
+    renderReadyFrame = undefined
+    if (
+      activeLayerRef.value &&
+      !stagingLayerRef.value &&
+      !rerenderAfterStaging &&
+      !renderTimer
+    ) {
+      emit('render-ready')
+    }
+  })
+}
+
 function scheduleRenderChart(delay = 0, retry = 0, invalidate = false) {
+  cancelPendingRenderReady()
+  if (invalidate && stagingLayerRef.value && !activeLayerRef.value) {
+    rerenderAfterStaging = true
+    pendingRenderRetry = retry
+    return
+  }
   if (invalidate) {
     renderToken += 1
   }
@@ -229,6 +262,9 @@ function commitStagedChart(nextInstance: BaseChart, stagingLayer: HTMLElement, t
   stagingChartInstance = undefined
   stagingLayerRef.value = undefined
   showInitialLoading.value = false
+  if (!rerenderAfterStaging) {
+    scheduleRenderReady()
+  }
   destroyChartInstance(previousInstance)
   previousLayer?.remove()
   drainPendingRender()
@@ -269,11 +305,14 @@ function renderAtomicChart(retry = 0) {
   const token = ++renderToken
   const stagingLayer = document.createElement('div')
   stagingLayer.className = 'chart-render-layer chart-render-layer--staging'
+  const stagingMount = document.createElement('div')
+  stagingMount.className = 'chart-render-mount'
+  stagingLayer.appendChild(stagingMount)
   host.appendChild(stagingLayer)
   stagingLayerRef.value = stagingLayer
   let nextInstance: BaseChart | undefined
   try {
-    nextInstance = getChartInstance(params.type, stagingLayer)
+    nextInstance = getChartInstance(params.type, stagingMount)
     stagingChartInstance = nextInstance
     if (!nextInstance) {
       throw new Error(`Unsupported chart type: ${params.type}`)
@@ -313,6 +352,7 @@ function renderChart(retry = 0) {
 }
 
 function destroyChart(invalidate = true) {
+  cancelPendingRenderReady()
   if (invalidate) {
     renderToken += 1
   }
@@ -354,9 +394,20 @@ function getExcelData() {
   }
 }
 
+function handleViewRenderAll(event?: { reason?: string }) {
+  if (event?.reason !== 'resize') {
+    scheduleRenderChart()
+    return
+  }
+  const { changed } = measureChartContainer()
+  if (changed) {
+    scheduleRenderChart()
+  }
+}
+
 useEmitt({
   name: 'view-render-all',
-  callback: () => scheduleRenderChart(),
+  callback: handleViewRenderAll,
 })
 
 useEmitt({
@@ -386,7 +437,6 @@ onMounted(() => {
   window.addEventListener('pageshow', handlePageRestore)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   scheduleRenderChart()
-  scheduleRenderChart(160)
 })
 
 onUnmounted(() => {
@@ -417,7 +467,11 @@ function handleVisibilityChange() {
 
 <template>
   <div :id="chartId" ref="chartContainerRef" class="chart-container">
-    <div v-if="showInitialLoading" class="chart-component-loading" aria-label="loading">
+    <div
+      v-if="showInitialLoading && params.surface !== 'dashboard'"
+      class="chart-component-loading"
+      aria-label="loading"
+    >
       <span class="chart-component-loading-ring"></span>
     </div>
     <div ref="chartRenderHostRef" class="chart-render-host"></div>
@@ -443,6 +497,11 @@ function handleVisibilityChange() {
 :deep(.chart-render-layer--staging) {
   pointer-events: none;
   visibility: hidden;
+}
+
+:deep(.chart-render-mount) {
+  height: 100%;
+  width: 100%;
 }
 
 .chart-component-loading {

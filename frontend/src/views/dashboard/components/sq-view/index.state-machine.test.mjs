@@ -94,13 +94,13 @@ const fullLoadingMatch = source.match(
 assert.ok(fullLoadingMatch, '需要集中判断图表是否显示完整加载态')
 assert.match(
   fullLoadingMatch[1],
-  /chartLoading\.value && \(blockingRefreshLoading\.value \|\| !hasRenderedChartData\.value\)/,
-  '首次加载没有可渲染数据时必须显示完整加载态'
+  /chartDataLoading\.value/,
+  '首次数据未完成时必须显示完整加载态'
 )
 assert.match(
   fullLoadingMatch[1],
-  /chartResultPending\.value && !hasRenderedChartData\.value/,
-  '结果仍 pending 且没有数据时不能提前挂载空图表'
+  /showChartContent\.value && !chartFrameReady\.value/,
+  '数据就绪后仍必须等待图表首帧提交才能移除完整加载态'
 )
 
 const chartContentMatch = source.match(
@@ -109,13 +109,55 @@ const chartContentMatch = source.match(
 assert.ok(chartContentMatch, '需要集中判断图表内容是否可以挂载')
 assert.match(
   chartContentMatch[1],
-  /!showFullChartLoading\.value/,
-  '完整加载态期间必须阻止图表内容挂载，避免显示空坐标轴'
+  /hasRenderedChartData\.value/,
+  '只有存在可渲染数据时才挂载图表'
+)
+assert.doesNotMatch(
+  chartContentMatch[1],
+  /showFullChartLoading\.value/,
+  '图表必须能在首次完整遮罩后挂载并完成首帧，不能形成等待闭环'
+)
+assert.match(
+  source,
+  /const chartFrameReady = ref\(false\)/,
+  '卡片需要独立记录图表首帧是否已经提交'
+)
+assert.match(
+  source,
+  /function handleChartRenderReady\(\) \{\s*chartFrameReady\.value = true\s*\}/,
+  '收到图表提交事件后应结束首次遮罩'
+)
+assert.match(
+  source,
+  /watch\(\s*chartComponentKey,\s*\(\) => \{\s*chartFrameReady\.value = false\s*\}\s*\)/,
+  '只有图表实例身份变化时才重置首帧状态，后台刷新不能回退到首次加载'
 )
 assert.match(
   source,
   /<div v-if="showFullChartLoading" class="chart-loading-info">[\s\S]*?<div\s+v-if="showChartContent"/,
-  '模板必须先渲染完整加载态，再按状态挂载图表内容'
+  '模板必须让完整加载遮罩与图表挂载独立存在'
+)
+assert.match(
+  source,
+  /<ChartComponent[\s\S]*?@render-ready="handleChartRenderReady"/,
+  '卡片必须接收图表原子提交后的首帧事件'
+)
+assert.match(
+  source,
+  /const chartRenderColumns = computed\(\(\) => \[\s*\.\.\.\(props\.viewInfo\.chart\.columns \|\| \[\]\),\s*\.\.\.insightColumns\.value,?\s*\]\)/,
+  '传给图表的列配置必须使用稳定 computed 引用'
+)
+const chartComponentTemplateMatch = source.match(/<ChartComponent([\s\S]*?)\/>/)
+assert.ok(chartComponentTemplateMatch, '需要保留图表组件挂载')
+assert.match(
+  chartComponentTemplateMatch[1],
+  /:columns="chartRenderColumns"/,
+  '父组件 ready 状态变化时不能创建新的 columns 数组并反向触发一次图表重绘'
+)
+assert.doesNotMatch(
+  chartComponentTemplateMatch[1],
+  /:columns="\[/,
+  '图表组件模板不能使用内联数组作为受监听的内容属性'
 )
 assert.doesNotMatch(
   source,

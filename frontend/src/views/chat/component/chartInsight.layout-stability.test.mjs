@@ -48,6 +48,55 @@ assert.equal(
   '多指标趋势图不能误用宽屏单指标布局迟滞'
 )
 
+assert.equal(
+  resolveInsightDisplay({
+    ...trend,
+    y: [{ value: 'value' }, { value: 'd1' }, { value: 'd3' }, { value: 'd7' }],
+    width: 1094,
+    height: 324,
+    previousLayout: 'side',
+    previousDensity: 'compact',
+  }).density,
+  'compact',
+  'compact 样式压缩后的 324px 高度仍应保持 compact，不能反向切换成 mini'
+)
+assert.equal(
+  resolveInsightDisplay({
+    ...trend,
+    y: [{ value: 'value' }, { value: 'd1' }, { value: 'd3' }, { value: 'd7' }],
+    width: 1102,
+    height: 342,
+    previousLayout: 'side',
+    previousDensity: 'mini',
+  }).density,
+  'mini',
+  'mini 样式扩展后的 342px 高度仍应保持 mini，不能反向切换成 compact'
+)
+assert.equal(
+  resolveInsightDisplay({
+    ...trend,
+    y: [{ value: 'value' }, { value: 'd1' }, { value: 'd3' }, { value: 'd7' }],
+    width: 1102,
+    height: 355,
+    previousLayout: 'side',
+    previousDensity: 'mini',
+  }).density,
+  'compact',
+  '真实高度跨出迟滞上界后应允许 mini 切换为 compact'
+)
+assert.equal(
+  resolveInsightDisplay({
+    ...trend,
+    y: [{ value: 'value' }, { value: 'd1' }, { value: 'd3' }, { value: 'd7' }],
+    width: 1094,
+    height: 305,
+    previousLayout: 'side',
+    previousDensity: 'compact',
+  }).density,
+  'mini',
+  '真实高度跨出迟滞下界后应允许 compact 切换为 mini'
+)
+
 const stateKey = buildInsightLayoutStateKey({
   viewId: 'chart-a',
   chartType: 'line',

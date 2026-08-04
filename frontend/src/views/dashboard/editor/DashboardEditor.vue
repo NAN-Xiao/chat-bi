@@ -92,11 +92,11 @@ function scheduleViewRenderAll() {
   }
   viewRenderTimer = window.setTimeout(() => {
     viewRenderTimer = undefined
-    emitter.emit('view-render-all')
+    emitter.emit('view-render-all', { reason: 'resize' })
   }, 150)
 }
 
-const sizeInit = (force = false) => {
+const sizeInit = (force = false, notifyCharts = true) => {
   if (!dashboardEditorRef.value) {
     return false
   }
@@ -118,7 +118,9 @@ const sizeInit = (force = false) => {
     (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
   baseHeight.value =
     (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
-  scheduleViewRenderAll()
+  if (notifyCharts) {
+    scheduleViewRenderAll()
+  }
   return true
 }
 
@@ -168,7 +170,7 @@ onMounted(() => {
   window.addEventListener('resize', canvasSizeInit)
   nextTick(() => {
     if (dashboardEditorRef.value) {
-      sizeInit(true)
+      sizeInit(true, false)
       nextTick(() => {
         if (canvasCoreRef.value) {
           // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment

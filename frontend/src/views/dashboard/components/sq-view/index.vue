@@ -87,6 +87,7 @@ import {
   buildInsightColumns,
   detectTrendAxisGranularity,
   resolveInsightDisplay,
+  type InsightDensity,
   type InsightLayout,
 } from '@/views/chat/component/chartInsight.ts'
 import { axisValue } from '@/views/chat/component/BaseChart.ts'
@@ -137,10 +138,12 @@ const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
 const chartShowAreaRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
+const chartFrameReady = ref(false)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
 let previousInsightLayoutKey: string | undefined
 let previousInsightLayout: InsightLayout | undefined
+let previousInsightDensity: InsightDensity | undefined
 const refreshing = ref(false)
 const blockingRefreshLoading = ref(false)
 const pivotCalendarMonth = ref('')
@@ -318,6 +321,14 @@ const renderChart = () => {
 const chartComponentKey = computed(
   () => props.outerId || props.viewInfo?.id || 'chart'
 )
+
+function handleChartRenderReady() {
+  chartFrameReady.value = true
+}
+
+watch(chartComponentKey, () => {
+  chartFrameReady.value = false
+})
 
 const enlargeDialogVisible = ref(false)
 
@@ -2075,6 +2086,10 @@ const insightColumns = computed(() =>
     ...(props.viewInfo.chart?.columns || []),
   ])
 )
+const chartRenderColumns = computed(() => [
+  ...(props.viewInfo.chart.columns || []),
+  ...insightColumns.value,
+])
 const insightDisplay = computed(() => {
   const layoutStateKey = buildInsightLayoutStateKey({
     viewId: props.viewInfo?.id,
@@ -2087,6 +2102,7 @@ const insightDisplay = computed(() => {
   if (layoutStateKey !== previousInsightLayoutKey) {
     previousInsightLayoutKey = layoutStateKey
     previousInsightLayout = undefined
+    previousInsightDensity = undefined
   }
   const display = resolveInsightDisplay({
     chartType: chartType.value,
@@ -2098,8 +2114,10 @@ const insightDisplay = computed(() => {
     height: frameSize.value.height,
     dashboard: isDashboardSurface.value,
     previousLayout: previousInsightLayout,
+    previousDensity: previousInsightDensity,
   })
   previousInsightLayout = display.layout
+  previousInsightDensity = display.density
   return display
 })
 const canShowInsightHeader = computed(() => {
@@ -2123,10 +2141,10 @@ const hasSourceChartData = computed(() => {
 const chartResultPending = computed(() => {
   return isChartResultPendingState(props.viewInfo, chartLoading.value)
 })
-const showFullChartLoading = computed(
+const chartDataLoading = computed(
   () =>
-    (chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)) ||
-    (chartResultPending.value && !hasRenderedChartData.value)
+    !hasRenderedChartData.value &&
+    (chartLoading.value || chartResultPending.value || blockingRefreshLoading.value)
 )
 const chartLoadingText = computed(() =>
   ['waiting', 'queued'].includes(String(props.viewInfo?.refreshState || ''))
@@ -2143,12 +2161,15 @@ const showEmptyChartState = computed(() => {
 })
 const showChartContent = computed(() => {
   return (
-    !showFullChartLoading.value &&
+    hasRenderedChartData.value &&
     !showEmptyChartState.value &&
     props.viewInfo?.status !== 'failed' &&
     props.viewInfo?.id
   )
 })
+const showFullChartLoading = computed(
+  () => chartDataLoading.value || (showChartContent.value && !chartFrameReady.value)
+)
 const insightDensity = computed(() => insightDisplay.value.density)
 const compactInsightHeader = computed(() => insightDensity.value !== 'regular')
 const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
@@ -2614,7 +2635,7 @@ defineExpose({
         <div class="chart-loading-ring" aria-hidden="true"></div>
         <div class="chart-loading-text">{{ chartLoadingText }}</div>
       </div>
-      <div v-else-if="viewInfo.status === 'failed'" class="error-info">
+      <div v-if="viewInfo.status === 'failed'" class="error-info">
         {{ viewInfo.message }}
       </div>
       <div v-else-if="showEmptyChartState" class="chart-empty-info">
@@ -2626,7 +2647,7 @@ defineExpose({
         :density="insightDensity"
         :max-stats="insightMaxStats"
         :chart-type="chartType"
-        :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+        :columns="chartRenderColumns"
         :x="renderXAxis"
         :y="renderYAxis"
         :series="renderSeries"
@@ -2651,7 +2672,7 @@ defineExpose({
           layout="side"
           :max-stats="insightMaxStats"
           :chart-type="chartType"
-          :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+          :columns="chartRenderColumns"
           :x="renderXAxis"
           :y="renderYAxis"
           :series="renderSeries"
@@ -2668,7 +2689,7 @@ defineExpose({
           surface="dashboard"
           :has-outer-title="true"
           :type="chartType"
-          :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+          :columns="chartRenderColumns"
           :x="renderXAxis"
           :y="renderYAxis"
           :series="renderSeries"
@@ -2676,6 +2697,7 @@ defineExpose({
           :multi-quota-name="renderMultiQuotaName"
           :show-label="showLabel"
           :forecast="renderForecast"
+          @render-ready="handleChartRenderReady"
         />
       </div>
     </div>
@@ -3448,6 +3470,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
 
   :deep(.chart-container) {
     flex: 1 1 auto;
@@ -3559,14 +3582,16 @@ defineExpose({
 }
 
 .chart-loading-info {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
   min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 14px;
+  background: var(--workspace-panel-bg, var(--theme-panel-bg, #ffffff));
   color: var(--workspace-text-primary, #1f2329);
 }
 

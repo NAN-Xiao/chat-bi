@@ -99,6 +99,16 @@ assert.match(
 )
 assert.match(
   component,
+  /function handleViewRenderAll\(event\?: \{ reason\?: string \}\) \{[\s\S]*?event\?\.reason !== 'resize'[\s\S]*?scheduleRenderChart\(\)[\s\S]*?const \{ changed \} = measureChartContainer\(\)[\s\S]*?if \(changed\) \{\s*scheduleRenderChart\(\)\s*\}/,
+  '尺寸全量广播到达时必须再次按当前组件尺寸去重，其他业务广播仍需正常重绘'
+)
+assert.match(
+  component,
+  /name: 'view-render-all',\s*callback: handleViewRenderAll/,
+  '全量广播必须统一通过带原因的去重入口处理'
+)
+assert.match(
+  component,
   /function handlePageRestore\(\)[\s\S]*?params\.type\s*===\s*['"]table['"][\s\S]*?hasRenderedOutput\(\)[\s\S]*?return[\s\S]*?scheduleRenderChart\(120\)/,
   '页面恢复时，已渲染的 table 图表不得销毁并重建'
 )

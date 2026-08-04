@@ -15,13 +15,33 @@ assert.match(
 )
 assert.match(
   component,
-  /function renderAtomicChart\(retry = 0\) \{[\s\S]*?getChartInstance\(params\.type, stagingLayer\)[\s\S]*?Promise\.resolve\(renderInstance\.render\(\)\)[\s\S]*?commitStagedChart\(renderInstance, stagingLayer, token\)/,
+  /function renderAtomicChart\(retry = 0\) \{[\s\S]*?getChartInstance\(params\.type, stagingMount\)[\s\S]*?Promise\.resolve\(renderInstance\.render\(\)\)[\s\S]*?commitStagedChart\(renderInstance, stagingLayer, token\)/,
   '新图必须在隐藏层完成异步绘制后再提交为可见图表'
 )
 assert.match(
   component,
   /function commitStagedChart\([\s\S]*?stagingLayer\.classList\.replace\('chart-render-layer--staging', 'chart-render-layer--active'\)[\s\S]*?destroyChartInstance\(previousInstance\)[\s\S]*?previousLayer\?\.remove\(\)/,
   '提交新图时必须切换完整挂载层后再销毁旧实例，不能搬运 G2 持有的内部 DOM'
+)
+assert.match(
+  component,
+  /const emit = defineEmits<[\s\S]*?'render-ready'[\s\S]*?>\(\)/,
+  '图表组件需要声明首帧提交事件'
+)
+assert.match(
+  component,
+  /function scheduleRenderReady\(\) \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?!stagingLayerRef\.value[\s\S]*?!rerenderAfterStaging[\s\S]*?!renderTimer[\s\S]*?emit\('render-ready'\)/,
+  '首帧通知必须等到下一绘制帧确认没有 staging、待合并重绘或调度器'
+)
+assert.match(
+  component,
+  /function scheduleRenderChart\([\s\S]*?cancelPendingRenderReady\(\)/,
+  '任何新重绘请求都必须取消尚未发出的首帧通知'
+)
+assert.match(
+  component,
+  /function commitStagedChart\([\s\S]*?showInitialLoading\.value = false[\s\S]*?if \(!rerenderAfterStaging\) \{\s*scheduleRenderReady\(\)\s*\}[\s\S]*?drainPendingRender\(\)/,
+  '只有新图原子提交且没有待合并重绘时才能开始稳定首帧确认'
 )
 assert.match(
   component,
@@ -40,7 +60,7 @@ assert.match(
 )
 assert.match(
   component,
-  /function renderAtomicChart\(retry = 0\) \{[\s\S]*?let nextInstance: BaseChart \| undefined[\s\S]*?try \{[\s\S]*?nextInstance = getChartInstance\(params\.type, stagingLayer\)[\s\S]*?const renderInstance = nextInstance[\s\S]*?configureChart\(renderInstance\)[\s\S]*?Promise\.resolve\(renderInstance\.render\(\)\)/,
+  /function renderAtomicChart\(retry = 0\) \{[\s\S]*?let nextInstance: BaseChart \| undefined[\s\S]*?try \{[\s\S]*?nextInstance = getChartInstance\(params\.type, stagingMount\)[\s\S]*?const renderInstance = nextInstance[\s\S]*?configureChart\(renderInstance\)[\s\S]*?Promise\.resolve\(renderInstance\.render\(\)\)/,
   '实例构造、初始化和 render 都必须处于同一异常清理边界内'
 )
 assert.doesNotMatch(
@@ -65,6 +85,11 @@ assert.match(
 )
 assert.match(
   component,
+  /function scheduleRenderChart\(delay = 0, retry = 0, invalidate = false\) \{[\s\S]*?if \(invalidate && stagingLayerRef\.value && !activeLayerRef\.value\) \{[\s\S]*?rerenderAfterStaging = true[\s\S]*?pendingRenderRetry = retry[\s\S]*?return[\s\S]*?if \(invalidate\) \{\s*renderToken \+= 1/,
+  '首次 staging 尚无可见图表时，内容更新必须先保住首帧并合并最新重绘，不能延长加载圆环'
+)
+assert.match(
+  component,
   /watch\([\s\S]*?\(\) => \{\s*scheduleRenderChart\(0, 0, true\)\s*\}/,
   '数据、轴和类型变化必须作废旧 staging，不能提交过期图表'
 )
@@ -85,8 +110,37 @@ assert.doesNotMatch(
 )
 assert.match(
   component,
-  /<div v-if="showInitialLoading" class="chart-component-loading"/,
-  '首次没有旧图时应显示组件加载态，不能暴露隐藏层的绘制中间帧'
+  /<div\s+v-if="showInitialLoading && params\.surface !== 'dashboard'"\s+class="chart-component-loading"/,
+  '看板首绘必须只由卡片完整遮罩负责，其他独立图表仍保留组件加载态'
+)
+assert.doesNotMatch(
+  component,
+  /chart-component-loading-reveal/,
+  '统一生命周期后不能再依赖延迟显示圆环掩盖状态交接'
+)
+assert.doesNotMatch(
+  component,
+  /\.chart-component-loading\s*\{[^}]*visibility:\s*hidden/s,
+  '独立图表的组件加载态不应再靠隐藏计时器控制可见性'
+)
+assert.match(
+  component,
+  /const stagingMount = document\.createElement\('div'\)[\s\S]*?stagingMount\.className = 'chart-render-mount'[\s\S]*?stagingLayer\.appendChild\(stagingMount\)[\s\S]*?getChartInstance\(params\.type, stagingMount\)/,
+  '图表库必须挂载到独立内层，不能改写组件拥有的绝对定位渲染层并引发布局闪烁'
+)
+assert.doesNotMatch(
+  component,
+  /getChartInstance\(params\.type, stagingLayer\)/,
+  '组件拥有的 staging layer 不能直接交给图表库'
+)
+
+const mountedMatch = component.match(/onMounted\(\(\) => \{([\s\S]*?)\r?\n\}\)/)
+assert.ok(mountedMatch, '图表组件需要保留挂载初始化')
+assert.match(mountedMatch[1], /scheduleRenderChart\(\)/, '挂载后必须立即调度首绘')
+assert.doesNotMatch(
+  mountedMatch[1],
+  /scheduleRenderChart\(160\)/,
+  '不能用第二次延迟调度取消立即首绘并人为延长首次加载'
 )
 
 console.log('ChartComponent atomic render tests passed')

@@ -19,8 +19,15 @@ assert.match(
   /let viewRenderTimer: ReturnType<typeof window\.setTimeout> \| undefined/,
   '编辑器需要持有自己的重绘定时器'
 )
+assert.match(
+  source,
+  /emitter\.emit\('view-render-all', \{ reason: 'resize' \}\)/,
+  '编辑器尺寸广播必须携带 resize 原因，供图表接收端去重'
+)
 
-const sizeInitMatch = source.match(/const sizeInit = \(force = false\) => \{([\s\S]*?)\r?\n\}/)
+const sizeInitMatch = source.match(
+  /const sizeInit = \(force = false, notifyCharts = true\) => \{([\s\S]*?)\r?\n\}/
+)
 assert.ok(sizeInitMatch, '编辑器需要统一测量尺寸')
 assert.match(
   sizeInitMatch[1],
@@ -32,7 +39,11 @@ assert.match(
   /lastEditorSize = \{ width: screenWidth, height: screenHeight \}/,
   '有效变化后需要记录新尺寸'
 )
-assert.match(sizeInitMatch[1], /scheduleViewRenderAll\(\)[\s\S]*?return true/)
+assert.match(
+  sizeInitMatch[1],
+  /if \(notifyCharts\) \{\s*scheduleViewRenderAll\(\)\s*\}[\s\S]*?return true/,
+  '真实尺寸变化默认需要通知图表，但允许首次网格初始化跳过广播'
+)
 
 const canvasSizeInitMatch = source.match(
   /const canvasSizeInit = \(\) => \{([\s\S]*?)\r?\n\}/
@@ -48,6 +59,11 @@ assert.match(
   source,
   /onBeforeUnmount\(\(\) => \{[\s\S]*?window\.removeEventListener\('resize', canvasSizeInit\)[\s\S]*?window\.clearTimeout\(viewRenderTimer\)/,
   '卸载时必须移除窗口监听并取消待发送的重绘事件'
+)
+assert.match(
+  source,
+  /sizeInit\(true, false\)/,
+  '首次挂载只初始化网格尺寸，不能广播一次冗余的全量图表重绘'
 )
 
 console.log('DashboardEditor resize lifecycle tests passed')

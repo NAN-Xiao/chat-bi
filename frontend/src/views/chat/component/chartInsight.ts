@@ -33,6 +33,7 @@ const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
 const SIDE_COMPACT_MAX_HEIGHT = 390
+const SIDE_DENSITY_HYSTERESIS = 20
 const WIDE_TREND_SIDE_MIN_WIDTH = 1100
 const WIDE_TREND_SIDE_MIN_HEIGHT = 260
 const WIDE_TREND_SIDE_MIN_ASPECT_RATIO = 2.2
@@ -93,6 +94,20 @@ export function buildInsightLayoutStateKey(params: {
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
+}
+
+function isBelowDensityThreshold(
+  value: number,
+  threshold: number,
+  previousBelow: boolean | undefined
+) {
+  if (previousBelow === true) {
+    return value < threshold + SIDE_DENSITY_HYSTERESIS
+  }
+  if (previousBelow === false) {
+    return value < threshold - SIDE_DENSITY_HYSTERESIS
+  }
+  return value < threshold
 }
 
 function resolveSideMaxStats(height: number, fallback: number) {
@@ -353,6 +368,7 @@ export function resolveInsightDisplay(params: {
   height?: number
   dashboard?: boolean
   previousLayout?: InsightLayout
+  previousDensity?: InsightDensity
 }): InsightDisplayStrategy {
   const preferredLayout = resolveInsightLayout(params)
   const width = params.width || 0
@@ -447,7 +463,11 @@ export function resolveInsightDisplay(params: {
     }
   }
 
-  if (width < SIDE_MINI_MAX_WIDTH || height < SIDE_MINI_MAX_HEIGHT) {
+  const wasMini = params.previousDensity === 'mini'
+  const useMiniDensity =
+    isBelowDensityThreshold(width, SIDE_MINI_MAX_WIDTH, params.previousDensity ? wasMini : undefined) ||
+    isBelowDensityThreshold(height, SIDE_MINI_MAX_HEIGHT, params.previousDensity ? wasMini : undefined)
+  if (useMiniDensity) {
     return {
       show: true,
       layout,
@@ -457,14 +477,23 @@ export function resolveInsightDisplay(params: {
     }
   }
 
+  const wasCompact = params.previousDensity === 'mini' || params.previousDensity === 'compact'
+  const useCompactDensity =
+    isBelowDensityThreshold(
+      width,
+      SIDE_COMPACT_MAX_WIDTH,
+      params.previousDensity ? wasCompact : undefined
+    ) ||
+    isBelowDensityThreshold(
+      height,
+      SIDE_COMPACT_MAX_HEIGHT,
+      params.previousDensity ? wasCompact : undefined
+    )
   return {
     show: true,
     layout,
-    density: width < SIDE_COMPACT_MAX_WIDTH || height < SIDE_COMPACT_MAX_HEIGHT ? 'compact' : 'regular',
-    maxStats: resolveSideMaxStats(
-      height,
-      width < SIDE_COMPACT_MAX_WIDTH || height < SIDE_COMPACT_MAX_HEIGHT ? 3 : 4
-    ),
+    density: useCompactDensity ? 'compact' : 'regular',
+    maxStats: resolveSideMaxStats(height, useCompactDensity ? 3 : 4),
     featuredSide: isWideSingleMetricTrend,
   }
 }

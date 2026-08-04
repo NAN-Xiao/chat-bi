@@ -140,11 +140,11 @@ function scheduleViewRenderAll() {
   }
   viewRenderTimer = window.setTimeout(() => {
     viewRenderTimer = undefined
-    emitter.emit('view-render-all')
+    emitter.emit('view-render-all', { reason: 'resize' })
   }, 150)
 }
 
-const sizeInit = (force = false) => {
+const sizeInit = (force = false, notifyCharts = true) => {
   if (!previewCanvas.value) {
     return false
   }
@@ -176,12 +176,14 @@ const sizeInit = (force = false) => {
   baseHeight.value =
     (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
   cellHeight.value = baseHeight.value + baseMarginTop.value
-  scheduleViewRenderAll()
+  if (notifyCharts) {
+    scheduleViewRenderAll()
+  }
   return true
 }
 
 onMounted(() => {
-  sizeInit(true)
+  sizeInit(true, false)
   if (previewCanvas.value) {
     resizeObserver = new ResizeObserver(() => sizeInit())
     resizeObserver.observe(previewCanvas.value)

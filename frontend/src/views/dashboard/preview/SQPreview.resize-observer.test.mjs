@@ -22,8 +22,13 @@ assert.match(
 )
 assert.match(
   source,
-  /function scheduleViewRenderAll\(\) \{[\s\S]*?if \(viewRenderTimer\) \{\s*return\s*\}[\s\S]*?viewRenderTimer = window\.setTimeout\([\s\S]*?emitter\.emit\('view-render-all'\)[\s\S]*?}, 150\)/,
+  /function scheduleViewRenderAll\(\) \{[\s\S]*?if \(viewRenderTimer\) \{\s*return\s*\}[\s\S]*?viewRenderTimer = window\.setTimeout\([\s\S]*?emitter\.emit\('view-render-all', \{ reason: 'resize' \}\)[\s\S]*?}, 150\)/,
   '重复尺寸事件应合并为一次可由组件管理的延迟广播'
+)
+assert.match(
+  source,
+  /emitter\.emit\('view-render-all', \{ reason: 'resize' \}\)/,
+  '预览尺寸广播必须携带 resize 原因，供图表接收端去重'
 )
 
 assert.match(
@@ -32,7 +37,9 @@ assert.match(
   '预览层需要保存上一次测量尺寸'
 )
 
-const sizeInitMatch = source.match(/const sizeInit = \(force = false\) => \{([\s\S]*?)\r?\n\}/)
+const sizeInitMatch = source.match(
+  /const sizeInit = \(force = false, notifyCharts = true\) => \{([\s\S]*?)\r?\n\}/
+)
 assert.ok(sizeInitMatch, '尺寸初始化函数需要支持首次强制初始化')
 assert.match(
   sizeInitMatch[1],
@@ -46,11 +53,15 @@ assert.match(
 )
 assert.match(
   sizeInitMatch[1],
-  /scheduleViewRenderAll\(\)[\s\S]*?return true/,
-  '只有完成有效尺寸更新后才广播，并返回已变化'
+  /if \(notifyCharts\) \{\s*scheduleViewRenderAll\(\)\s*\}[\s\S]*?return true/,
+  '真实尺寸变化默认需要通知图表，但允许首次网格初始化跳过广播'
 )
 
-assert.match(source, /sizeInit\(true\)/, '首次挂载必须强制完成一次布局初始化')
+assert.match(
+  source,
+  /sizeInit\(true, false\)/,
+  '首次挂载必须完成布局初始化，但不能广播一次冗余的全量图表重绘'
+)
 assert.match(
   source,
   /resizeObserver = new ResizeObserver\(\(\) => sizeInit\(\)\)/,
