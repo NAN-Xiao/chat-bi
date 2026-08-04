@@ -94,6 +94,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
           requestOptions: options?.workspaceSwitchId
             ? {
                 workspaceMode: 'switch',
+                customError: true,
                 workspaceTenantId: requestTenantId,
                 workspaceSwitchId: options?.workspaceSwitchId,
               }

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 // import { ref } from 'vue'
 import { AuthApi } from '@/api/login'
 import { tenantApi, type TenantInfo } from '@/api/tenant'
-import type { FullRequestConfig } from '@/utils/request'
+import { formatRequestErrorMessage, type FullRequestConfig } from '@/utils/request'
 import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
@@ -342,22 +342,21 @@ export const UserStore = defineStore('user', {
       }
     },
     async switchTenant(tenantId: string | number): Promise<boolean> {
+      const { useDatasourceContextStore } = await import('./datasourceContext')
+      const datasourceContext = useDatasourceContextStore()
+      const previous = captureWorkspaceStoreSnapshot(this, datasourceContext.datasourceId)
       const transaction = workspaceContext.beginSwitch(String(tenantId || ''))
       if (!transaction) return false
 
-      const { useDatasourceContextStore } = await import('./datasourceContext')
-      if (!workspaceContext.isCurrentSwitch(transaction)) return false
-      const datasourceContext = useDatasourceContextStore()
-      const previous = captureWorkspaceStoreSnapshot(this, datasourceContext.datasourceId)
-
-      emitWorkspaceContextChange({ tenantId: transaction.targetTenantId, phase: 'changing' })
-      clearWorkspaceSelectorCaches()
-      datasourceContext.clear(false)
-
       try {
+        if (!workspaceContext.isCurrentSwitch(transaction)) return false
+        emitWorkspaceContextChange({ tenantId: transaction.targetTenantId, phase: 'changing' })
+        clearWorkspaceSelectorCaches()
+        datasourceContext.clear(false)
         const userInfo = await this.requestInfo({
           requestOptions: {
             workspaceMode: 'switch',
+            customError: true,
             workspaceTenantId: transaction.targetTenantId,
             workspaceSwitchId: transaction.switchId,
           },
@@ -383,7 +382,8 @@ export const UserStore = defineStore('user', {
           console.warn('Failed to restore datasource after workspace switch', restoreError)
         }
         emitWorkspaceChanged(previous.tenantId)
-        throw error
+        ElMessage.error(formatRequestErrorMessage(error, '工作空间切换失败'))
+        return false
       }
     },
     async clearActiveTenant(): Promise<void> {

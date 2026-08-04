@@ -37,6 +37,19 @@ test('退出最后一个工作空间也由 User Store 统一处理', () => {
   assert.doesNotMatch(myWorkspaces, /userStore\.setTenant\(null\)/)
 })
 
+test('退出当前工作空间后先废止旧上下文再切换剩余空间', () => {
+  const myWorkspaces = callsiteSources.find(([name]) => name === 'MyWorkspaces.vue')[1]
+  const activeLeave = myWorkspaces.slice(
+    myWorkspaces.indexOf("if (tenantId === String(userStore.getTenantId || ''))"),
+    myWorkspaces.indexOf('} else {', myWorkspaces.indexOf("if (tenantId === String(userStore.getTenantId || ''))"))
+  )
+  const clearIndex = activeLeave.indexOf('await userStore.clearActiveTenant()')
+  const switchIndex = activeLeave.indexOf('await userStore.switchTenant(nextTenant.id)')
+
+  assert.ok(clearIndex > 0)
+  assert.ok(switchIndex > clearIndex)
+})
+
 test('聊天切换状态直接来自 WorkspaceContext 且不重复加载数据源', () => {
   assert.match(
     chatSource,

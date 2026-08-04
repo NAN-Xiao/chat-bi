@@ -52,3 +52,26 @@ test('只有当前事务失败时才执行回滚和原数据源恢复', () => {
   assert.match(userSource, /workspaceContext\.rollbackSwitch\(transaction\)/)
   assert.match(userSource, /datasourceContext\.setDatasourceById\(previous\.datasourceId, false\)/)
 })
+
+test('事务开始前解析依赖且开始后的副作用全部受 try catch 保护', () => {
+  const switchSource = userSource.slice(
+    userSource.indexOf('async switchTenant'),
+    userSource.indexOf('async clearActiveTenant')
+  )
+  const importIndex = switchSource.indexOf("await import('./datasourceContext')")
+  const beginIndex = switchSource.indexOf('workspaceContext.beginSwitch')
+  const tryIndex = switchSource.indexOf('try {', beginIndex)
+  const changingIndex = switchSource.indexOf("phase: 'changing'", beginIndex)
+
+  assert.ok(importIndex > 0 && importIndex < beginIndex)
+  assert.ok(tryIndex > beginIndex && tryIndex < changingIndex)
+})
+
+test('当前切换失败由 Store 统一显示一次错误', () => {
+  assert.match(userSource, /workspaceMode: 'switch'[\s\S]*customError: true/)
+  assert.match(datasourceSource, /workspaceMode: 'switch'[\s\S]*customError: true/)
+  assert.match(
+    userSource,
+    /workspaceContext\.rollbackSwitch\(transaction\)[\s\S]*ElMessage\.error\(formatRequestErrorMessage\(error, '工作空间切换失败'\)\)/
+  )
+})

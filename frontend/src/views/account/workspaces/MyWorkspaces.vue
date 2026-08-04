@@ -555,13 +555,13 @@ const leaveWorkspace = async (tenant: TenantInfo) => {
     const remaining = await tenantApi.leave(tenantId)
     userStore.tenants = Array.isArray(remaining) ? remaining : []
     if (tenantId === String(userStore.getTenantId || '')) {
+      await userStore.clearActiveTenant()
       const nextTenant = userStore.tenants[0] || null
       if (nextTenant?.id) {
         const switched = await userStore.switchTenant(nextTenant.id)
         if (!switched) return
         dashboardStore.canvasDataInit()
       } else {
-        await userStore.clearActiveTenant()
         dashboardStore.canvasDataInit()
       }
     } else {
