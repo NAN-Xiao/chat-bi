@@ -7,6 +7,7 @@ import {
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Funnel extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -26,9 +27,11 @@ export class Funnel extends BaseG2Chart {
     const y = axes.y
     const _data = checkIsPercent(y, data)
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'structure')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'interval',
+      padding: responsive.padding,
       data: _data.data,
       encode: {
         x: x[0].value,
@@ -41,9 +44,10 @@ export class Funnel extends BaseG2Chart {
       transform: [{ type: 'symmetryY' }],
       axis: false,
       legend: false,
-      labels: this.showLabel
+      labels: this.showLabel && responsive.showPointLabels
         ? [
             {
+              fontSize: responsive.structureLabelFontSize,
               text: (datum: any) =>
                 `${datum[x[0].value]} ${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
               position: 'inside',

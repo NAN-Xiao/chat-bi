@@ -20,6 +20,7 @@ import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import router from '@/router'
+import { buildOrdinaryDashboardQuery } from '@/views/dashboard/utils/dashboardRouteMode'
 const fullScreeRef = ref(null)
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -115,7 +116,7 @@ const canEditDashboard = computed(() => dashboardInfo.value.canEdit !== false)
 const groupOptFinish = (result: any) => {
   router.replace({
     path: '/canvas',
-    query: { resourceId: result.resourceId },
+    query: buildOrdinaryDashboardQuery(result.resourceId, props.baseParams?.dashboardMode),
   })
 }
 
@@ -176,7 +177,9 @@ const backToMain = () => {
   }
   router.push({
     path: '/dashboard/index',
-    query: dashboardInfo.value.id ? { resourceId: dashboardInfo.value.id } : undefined,
+    query: dashboardInfo.value.id
+      ? buildOrdinaryDashboardQuery(dashboardInfo.value.id, props.baseParams?.dashboardMode)
+      : undefined,
   })
 }
 

@@ -337,8 +337,8 @@ def test_migrate_canvas_does_not_skip_core_date_targets():
     canvas = {
         "c23c019171804f608e92961dc06ae8b2": {
             "sql": "SELECT COUNT(*) FROM event_realtime WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)",
-            "chart": {"title": "活跃用户"},
-            "sourceConfig": {"sql": {}},
+            "chart": {"type": "metric", "title": "活跃用户"},
+            "sourceConfig": {"sql": {"sql": "SELECT old"}},
             "pivot": {},
         }
     }
@@ -350,3 +350,11 @@ def test_migrate_canvas_does_not_skip_core_date_targets():
 
     assert unchanged == {}
     assert "FROM event" in migrated["c23c019171804f608e92961dc06ae8b2"]["sql"]
+    view = migrated["c23c019171804f608e92961dc06ae8b2"]
+    builder = view["sourceConfig"]["sql"]["builder"]
+    yesterday = {"version": 1, "mode": "preset", "preset": "yesterday"}
+    assert builder["metricDateExpressionEnabled"] is True
+    assert builder["timeExpression"] == yesterday
+    assert view["sourceConfig"]["sql"]["sql"] == view["sql"]
+    assert view["dateFilter"]["expression"] == yesterday
+    assert view["pivot"]["date_expression"] == yesterday

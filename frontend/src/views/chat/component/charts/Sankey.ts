@@ -3,6 +3,7 @@ import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from
 import type { G2Spec } from '@antv/g2'
 import { formatNumber, getAxesWithFilter, toNumber } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Sankey extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -28,9 +29,11 @@ export class Sankey extends BaseG2Chart {
       }))
       .filter((datum) => datum[source.value] && datum[target.value] && datum[value.value] > 0)
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'structure')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'sankey',
+      padding: responsive.padding,
       data: normalizedData,
       encode: {
         source: source.value,
@@ -48,7 +51,7 @@ export class Sankey extends BaseG2Chart {
         nodeStroke: '#fff',
         nodeLineWidth: 1,
         linkFillOpacity: 0.36,
-        labelFontSize: 11,
+        labelFontSize: responsive.structureLabelFontSize,
         labelFill: '#5b6f95',
       },
       tooltip: {

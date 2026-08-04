@@ -3,6 +3,7 @@ import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from
 import type { G2Spec } from '@antv/g2'
 import { formatNumber, getAxesWithFilter, toNumber } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 
 interface TreeNode {
   name: string
@@ -65,9 +66,11 @@ export class Treemap extends BaseG2Chart {
     const group = axes.series[0]
     const treeData = buildTreemapData(data, category, value, group)
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'structure')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'treemap',
+      padding: responsive.padding,
       data: treeData,
       encode: {
         value: 'value',
@@ -78,7 +81,7 @@ export class Treemap extends BaseG2Chart {
       },
       style: {
         labelFill: '#15233b',
-        labelFontSize: 11,
+        labelFontSize: responsive.structureLabelFontSize,
       },
       labels: this.showLabel
         ? [

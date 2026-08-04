@@ -13,6 +13,7 @@ import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
   detectTrendAxisGranularity,
+  formatInsightDateRange,
   parseTrendDateValue,
   type InsightDensity,
   type ParsedTrendDateValue,
@@ -45,6 +46,7 @@ const props = withDefaults(
     series?: Array<ChartAxis>
     columns?: Array<ChartAxis>
     sql?: string
+    dateRange?: [string, string] | null
     compact?: boolean
     maxStats?: number
     layout?: InsightLayout
@@ -59,6 +61,7 @@ const props = withDefaults(
     series: () => [],
     columns: () => [],
     sql: '',
+    dateRange: null,
     compact: false,
     maxStats: 4,
     layout: 'top',
@@ -1204,7 +1207,9 @@ const inferredDataDateRangeLabel = computed(() => {
 
 const metaItems = computed(() => {
   const items: Array<string> = []
-  const dataPeriod = dataDateRangeLabel.value || inferredDataDateRangeLabel.value
+  const dataPeriod = formatInsightDateRange(props.dateRange)
+    || dataDateRangeLabel.value
+    || inferredDataDateRangeLabel.value
   if (dataPeriod) {
     items.push(t('chat.insight_data_period', [dataPeriod]))
   }

@@ -17,3 +17,11 @@ export const isUnsupportedDashboardMode = (value: unknown) => {
   const mode = firstDashboardMode(value)
   return !!mode && mode !== 'default' && mode !== 'my'
 }
+
+export const buildOrdinaryDashboardQuery = (
+  resourceId: string | number,
+  dashboardMode: unknown
+) => ({
+  resourceId,
+  dashboardMode: resolveOrdinaryDashboardMode(dashboardMode),
+})

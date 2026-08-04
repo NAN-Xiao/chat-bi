@@ -21,6 +21,7 @@ import {
 } from '@/views/dashboard/preview/reportPromptHistory'
 import { buildReportInterpretationTarget } from '@/views/dashboard/preview/reportInterpretationTarget'
 import { shouldSubmitReportPromptOnEnter } from '@/views/dashboard/preview/reportPromptKeyboard'
+import { buildOrdinaryDashboardQuery } from '@/views/dashboard/utils/dashboardRouteMode'
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
@@ -30,7 +31,10 @@ const edit = () => {
     path: '/canvas',
     query: props.platformTemplate
       ? { platformTemplateId: props.dashboardInfo.id }
-      : { resourceId: props.dashboardInfo.id },
+      : buildOrdinaryDashboardQuery(
+          props.dashboardInfo.id,
+          props.dashboardInfo.dashboardMode
+        ),
   })
 }
 const props = defineProps({

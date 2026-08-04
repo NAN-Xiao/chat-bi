@@ -14,6 +14,10 @@ import {
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 import { buildForecastRows } from '@/views/chat/component/charts/forecast.ts'
+import {
+  resolveCategoryAxisResponsiveOptions,
+  resolveG2ResponsiveStyle,
+} from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Line extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -36,13 +40,15 @@ export class Line extends BaseG2Chart {
       series: axes.series,
     }
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'cartesian')
     const mixedUnitData = buildMixedUnitData(axes.x, axes.y, config.data)
     if (mixedUnitData) {
       const options = buildMixedUnitComboOptions(
         this.chart.options(),
         axes.x[0],
         mixedUnitData,
-        this.showLabel
+        this.showLabel,
+        responsive
       )
       this.chart.options(options)
       return
@@ -85,6 +91,7 @@ export class Line extends BaseG2Chart {
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'view',
+      padding: responsive.padding,
       data: _data.data,
       encode: {
         x: x[0].value,
@@ -94,19 +101,12 @@ export class Line extends BaseG2Chart {
       axis: {
         x: {
           title: false, // x[0].name,
-          labelFontSize: 11,
           labelFormatter: formatCategoryAxisLabel,
-          labelAutoHide: {
-            type: 'hide',
-            keepHeader: true,
-            keepTail: true,
-          },
-          labelAutoRotate: false,
-          labelAutoWrap: true,
-          labelAutoEllipsis: true,
+          ...resolveCategoryAxisResponsiveOptions(responsive),
         },
         y: {
           title: false, // y[0].name,
+          labelFontSize: responsive.axisLabelFontSize,
           labelFormatter: (value: any) => {
             return String(formatNumber(value))
           },
@@ -124,7 +124,7 @@ export class Line extends BaseG2Chart {
       children: [
         {
           type: 'line',
-          labels: this.showLabel
+          labels: this.showLabel && responsive.showPointLabels
             ? [
                 {
                   text: (data: any) => {

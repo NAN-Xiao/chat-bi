@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import elementResizeDetectorMaker from 'element-resize-detector'
-
 const dashboardStore = dashboardStoreWithOut()
 const { curComponent } = storeToRefs(dashboardStore)
 
@@ -9,7 +7,7 @@ import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { storeToRefs } from 'pinia'
 import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
-import { useEmittLazy } from '@/utils/useEmitt.ts'
+import { useEmitt } from '@/utils/useEmitt.ts'
 import {
   getDashboardGridCellWidth,
   getDashboardGridContentRows,
@@ -92,8 +90,12 @@ const PREVIEW_EDGE_GAP = 16
 const PREVIEW_TOP_GAP = 4
 const TAB_PREVIEW_GRID_GAP = 6
 let resizeObserver: ResizeObserver | undefined
-let elementResizeDetector: any = null
-let detectorTargetElement: HTMLElement | null = null
+let viewRenderTimer: ReturnType<typeof window.setTimeout> | undefined
+let lastPreviewSize = {
+  width: -1,
+  height: -1,
+}
+const { emitter } = useEmitt()
 const canvasStyle = computed(() => {
   if (props.inTab) {
     return { background: '#ffffff' }
@@ -132,49 +134,67 @@ function nowItemStyle(item: CanvasItem) {
   }
 }
 
-const sizeInit = () => {
-  if (previewCanvas.value) {
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    const screenWidth = previewCanvas.value.offsetWidth
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    const screenHeight = previewCanvas.value.offsetHeight
-    viewportHeight.value = screenHeight
-    const gridGap = props.inTab ? TAB_PREVIEW_GRID_GAP : PREVIEW_GRID_GAP
-    const edgeGap = props.inTab ? gridGap : PREVIEW_EDGE_GAP
-    baseMarginLeft.value = gridGap
-    baseMarginTop.value = gridGap
-    basePaddingLeft.value = edgeGap
-    basePaddingTop.value = props.inTab ? gridGap : PREVIEW_TOP_GAP
-    cellWidth.value = getDashboardGridCellWidth(
-      screenWidth,
-      props.baseMatrixCount.x,
-      gridGap,
-      edgeGap
-    )
-    baseHeight.value =
-      (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
-    cellHeight.value = baseHeight.value + baseMarginTop.value
+function scheduleViewRenderAll() {
+  if (viewRenderTimer) {
+    return
   }
-  useEmittLazy('view-render-all')
+  viewRenderTimer = window.setTimeout(() => {
+    viewRenderTimer = undefined
+    emitter.emit('view-render-all', { reason: 'resize' })
+  }, 150)
+}
+
+const sizeInit = (force = false, notifyCharts = true) => {
+  if (!previewCanvas.value) {
+    return false
+  }
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  const screenWidth = Math.round(previewCanvas.value.offsetWidth)
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  const screenHeight = Math.round(previewCanvas.value.offsetHeight)
+  if (
+    !force &&
+    screenWidth === lastPreviewSize.width &&
+    screenHeight === lastPreviewSize.height
+  ) {
+    return false
+  }
+  lastPreviewSize = { width: screenWidth, height: screenHeight }
+  viewportHeight.value = screenHeight
+  const gridGap = props.inTab ? TAB_PREVIEW_GRID_GAP : PREVIEW_GRID_GAP
+  const edgeGap = props.inTab ? gridGap : PREVIEW_EDGE_GAP
+  baseMarginLeft.value = gridGap
+  baseMarginTop.value = gridGap
+  basePaddingLeft.value = edgeGap
+  basePaddingTop.value = props.inTab ? gridGap : PREVIEW_TOP_GAP
+  cellWidth.value = getDashboardGridCellWidth(
+    screenWidth,
+    props.baseMatrixCount.x,
+    gridGap,
+    edgeGap
+  )
+  baseHeight.value =
+    (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
+  cellHeight.value = baseHeight.value + baseMarginTop.value
+  if (notifyCharts) {
+    scheduleViewRenderAll()
+  }
+  return true
 }
 
 onMounted(() => {
-  sizeInit()
+  sizeInit(true, false)
   if (previewCanvas.value) {
-    resizeObserver = new ResizeObserver(sizeInit)
+    resizeObserver = new ResizeObserver(() => sizeInit())
     resizeObserver.observe(previewCanvas.value)
-  }
-  detectorTargetElement = document.getElementById(domId)
-  if (detectorTargetElement) {
-    elementResizeDetector = elementResizeDetectorMaker()
-    elementResizeDetector.listenTo(detectorTargetElement, sizeInit)
   }
 })
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
-  if (elementResizeDetector && detectorTargetElement) {
-    elementResizeDetector.removeAllListeners(detectorTargetElement)
+  if (viewRenderTimer) {
+    window.clearTimeout(viewRenderTimer)
+    viewRenderTimer = undefined
   }
 })
 

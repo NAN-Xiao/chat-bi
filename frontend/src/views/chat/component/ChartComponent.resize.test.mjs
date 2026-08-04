@@ -5,6 +5,26 @@ const component = readFileSync('src/views/chat/component/ChartComponent.vue', 'u
 const dashboardView = readFileSync('src/views/dashboard/components/sq-view/index.vue', 'utf8')
 const table = readFileSync('src/views/chat/component/charts/Table.ts', 'utf8')
 
+assert.match(component, /surface\?:\s*ChartSurface/, 'ChartComponent 必须声明调用表面')
+assert.match(component, /hasOuterTitle\?:\s*boolean/, '调用方必须能声明外层已有标题')
+assert.match(component, /buildChartLayoutContext\(/, '组件必须从自身容器尺寸构建布局上下文')
+assert.match(
+  component,
+  /function configureChart\(instance: BaseChart\)[\s\S]*?instance\.layoutContext\s*=\s*currentLayoutContext\.value[\s\S]*?instance\.init\(axis\.value, params\.data\)/,
+  '实例初始化前必须收到布局上下文'
+)
+assert.match(component, /previousDensity:/, '密度切换必须使用前一档做边界稳定')
+assert.match(
+  component,
+  /function measureChartContainer\(\)[\s\S]*?renderable:\s*false,\s*changed:\s*false[\s\S]*?const changed\s*=[\s\S]*?renderable:\s*true,\s*changed/,
+  '图表容器测量必须区分可渲染尺寸和实际尺寸变化'
+)
+assert.match(
+  component,
+  /params\.type\s*!==\s*['"]table['"]/,
+  'table 仍由自身 ResizeObserver 原地调整'
+)
+
 assert.match(
   table,
   /changeSheetSize\(contentWidth, viewportHeight\)[\s\S]*?render\(false\)/,
@@ -21,6 +41,16 @@ assert.match(
   table,
   /function resolveTableViewportHeight\([\s\S]*?Math\.floor\([\s\S]*?TABLE_DATA_CELL_HEIGHT/,
   'S2 表格高度必须对齐完整数据行，避免卡片底部显示半行'
+)
+assert.match(
+  table,
+  /function resolveTableViewportHeight\([\s\S]*Math\.max\(containerHeight, TABLE_HEADER_CELL_HEIGHT\)/,
+  '极小高度下 S2 viewport 至少保住表头，内容区由自身滚动处理'
+)
+assert.doesNotMatch(
+  dashboardView,
+  /\.chart-loading-info\s*\{[^}]*min-height:\s*140px/s,
+  '加载态不得撑破小尺寸抽屉'
 )
 assert.match(
   table,
@@ -64,8 +94,18 @@ assert.match(
 )
 assert.match(
   component,
-  /new ResizeObserver\([\s\S]*?params\.type\s*!==\s*['"]table['"][\s\S]*?scheduleRenderChart/,
-  'ChartComponent 的尺寸监听不得销毁并重建 table 图表'
+  /new ResizeObserver\([\s\S]*?const \{ changed \} = measureChartContainer\(\)[\s\S]*?changed && params\.type\s*!==\s*['"]table['"][\s\S]*?scheduleRenderChart/,
+  'ChartComponent 仅在容器宽高实际变化时重绘，且不得销毁并重建 table 图表'
+)
+assert.match(
+  component,
+  /function handleViewRenderAll\(event\?: \{ reason\?: string \}\) \{[\s\S]*?event\?\.reason !== 'resize'[\s\S]*?scheduleRenderChart\(\)[\s\S]*?const \{ changed \} = measureChartContainer\(\)[\s\S]*?if \(changed\) \{\s*scheduleRenderChart\(\)\s*\}/,
+  '尺寸全量广播到达时必须再次按当前组件尺寸去重，其他业务广播仍需正常重绘'
+)
+assert.match(
+  component,
+  /name: 'view-render-all',\s*callback: handleViewRenderAll/,
+  '全量广播必须统一通过带原因的去重入口处理'
 )
 assert.match(
   component,

@@ -1,11 +1,13 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
 import { axisLabel, type ChartAxis, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
+import { buildChartLayoutContext } from '@/views/chat/component/chartLayout.ts'
 import {
   formatNumber,
   isPercentAxis,
   toNullableNumber,
 } from '@/views/chat/component/charts/utils.ts'
 import { chartPalette } from '@/views/chat/component/charts/theme.ts'
+import { resolveMetricLayout } from '@/views/chat/component/charts/metricLayout.ts'
 
 export class Metric extends BaseChart {
   container: HTMLElement | null = null
@@ -141,10 +143,6 @@ export class Metric extends BaseChart {
       return
     }
 
-    const frameWidth = this.container.clientWidth || 0
-    const frameHeight = this.container.clientHeight || 0
-    const compactFrame = frameWidth > 0 && frameWidth < 260
-    const shallowFrame = frameHeight > 0 && frameHeight < 220
     const firstRow = this.data[0] || {}
     const valueAxes = this.axis.filter((axis) => axis.type === 'y')
     const compareValueAxes = valueAxes.filter((axis) => this.isCompareAxis(axis))
@@ -159,83 +157,99 @@ export class Metric extends BaseChart {
     const compareAxes = [...compareValueAxes, ...infoAxes.filter((axis) => this.isCompareAxis(axis))]
       .filter((axis, index, list) => list.findIndex((item) => item.value === axis.value) === index)
       .slice(0, 2)
+    const context =
+      this.layoutContext ||
+      buildChartLayoutContext({
+        width: this.container.clientWidth,
+        height: this.container.clientHeight,
+        surface: 'preview',
+      })
+    const layout = resolveMetricLayout(this.layoutContext || context, compareAxes.length)
+    const isMini = context.density === 'mini'
 
     this.container.innerHTML = ''
     const wrapper = document.createElement('div')
+    wrapper.className = 'metric-wrapper'
     Object.assign(wrapper.style, {
       width: '100%',
-      minHeight: '100%',
+      height: '100%',
       display: 'grid',
-      gridTemplateColumns: compactFrame
+      gridTemplateColumns: isMini
         ? 'minmax(0, 1fr)'
         : 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))',
-      gap: shallowFrame ? '6px' : '12px',
+      gap: isMini ? '4px' : '12px',
       alignItems: 'start',
       alignContent: 'start',
-      padding: compactFrame || shallowFrame ? '2px 4px 6px' : '6px 10px 10px',
+      padding: layout.wrapperPadding,
       boxSizing: 'border-box',
       overflow: 'hidden',
     })
 
     axes.forEach((axis) => {
       const card = document.createElement('div')
+      card.className = 'metric-card'
       Object.assign(card.style, {
         minWidth: '0',
         width: '100%',
         border: '0',
         borderRadius: '8px',
         background: '#fff',
-        padding: compactFrame || shallowFrame ? '8px 10px 10px' : '12px 18px 14px',
+        padding: layout.cardPadding,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-start',
         justifyContent: 'flex-start',
         boxShadow: 'none',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       })
 
       const label = document.createElement('div')
-      const axisLabel = this.displayAxisName(axis)
-      label.textContent = axisLabel
+      const metricLabel = this.displayAxisName(axis)
+      label.textContent = metricLabel
       Object.assign(label.style, {
         color: '#6b7a90',
-        fontSize: compactFrame || shallowFrame ? '12px' : '13px',
-        lineHeight: compactFrame || shallowFrame ? '18px' : '20px',
+        fontSize: isMini ? '11px' : '13px',
+        lineHeight: isMini ? '15px' : '20px',
         maxWidth: '100%',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
       })
 
-      if (axisLabel && dateAxis) {
-        const date = document.createElement('div')
+      const date = document.createElement('div')
+      date.className = 'metric-date'
+      if (dateAxis) {
         date.textContent = String(firstRow[dateAxis.value])
         Object.assign(date.style, {
           color: '#6b7a90',
           fontSize: '11px',
-          lineHeight: '16px',
-          marginTop: compactFrame || shallowFrame ? '2px' : '6px',
+          lineHeight: `${layout.dateLineHeight}px`,
+          marginTop: layout.showInnerLabel && metricLabel ? (isMini ? '1px' : '6px') : '0',
           maxWidth: '100%',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
         })
+      }
+
+      if (layout.showInnerLabel && metricLabel) {
         card.appendChild(label)
+      }
+      if (dateAxis) {
         card.appendChild(date)
-      } else {
-        if (axisLabel) {
-          card.appendChild(label)
-        }
       }
 
       const value = document.createElement('div')
+      value.className = 'metric-value'
       const rawValue = firstRow[axis.value]
       value.textContent = this.formatValue(rawValue, axis)
       Object.assign(value.style, {
         color: '#15233b',
-        fontSize: compactFrame ? '24px' : shallowFrame ? '28px' : '36px',
+        fontSize: `${layout.valueFontSize}px`,
         fontWeight: '700',
-        lineHeight: compactFrame ? '30px' : shallowFrame ? '34px' : '44px',
-        marginTop: compactFrame || shallowFrame ? '4px' : '6px',
+        lineHeight: `${layout.valueLineHeight}px`,
+        marginTop: layout.valueMarginTop,
         maxWidth: '100%',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
@@ -243,15 +257,18 @@ export class Metric extends BaseChart {
       })
 
       const compareRow = document.createElement('div')
+      compareRow.className = 'metric-comparisons'
       Object.assign(compareRow.style, {
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '6px 14px',
-        minHeight: '18px',
-        marginTop: compactFrame || shallowFrame ? '4px' : '8px',
+        display: 'grid',
+        gridTemplateColumns: `repeat(${layout.comparisonColumns}, minmax(0, 1fr))`,
+        gap: layout.comparisonGap,
+        minHeight: `${layout.comparisonLineHeight}px`,
+        marginTop: layout.comparisonMarginTop,
         color: '#667891',
-        fontSize: '12px',
-        lineHeight: '18px',
+        fontSize: `${layout.comparisonFontSize}px`,
+        lineHeight: `${layout.comparisonLineHeight}px`,
+        width: '100%',
+        minWidth: '0',
       })
 
       compareAxes.forEach((compareAxis) => {
@@ -268,28 +285,31 @@ export class Metric extends BaseChart {
         compareItem.title = compareItem.textContent
         Object.assign(compareItem.style, {
           color: this.compareTone(compareValue),
-          maxWidth: '140px',
+          maxWidth: '100%',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          minWidth: '0',
         })
         compareRow.appendChild(compareItem)
       })
 
       const accent = document.createElement('div')
       Object.assign(accent.style, {
-        width: compactFrame ? '28px' : '36px',
+        width: isMini ? '28px' : '36px',
         height: '4px',
         borderRadius: '999px',
         background: chartPalette[axes.indexOf(axis) % chartPalette.length],
-        marginTop: compactFrame || shallowFrame ? '6px' : '10px',
+        marginTop: isMini ? '6px' : '10px',
       })
 
       card.appendChild(value)
       if (compareAxes.length > 0) {
         card.appendChild(compareRow)
       }
-      card.appendChild(accent)
+      if (layout.showAccent) {
+        card.appendChild(accent)
+      }
       wrapper.appendChild(card)
     })
 

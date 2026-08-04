@@ -43,6 +43,8 @@ def test_first_generation_prompt_requires_date_filter_for_filtered_category_summ
     assert "只要 SQL 使用看板日期 token 进行时间范围筛选" in rules
     assert "都必须返回 date_filter" in rules
     assert "只有 SQL 完全不使用日期范围筛选和看板日期 token" in rules
+    assert "固定 metric 图表不得返回 date_filter，也不得使用看板日期 token" in rules
+    assert "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW" in rules
 
 
 def test_mysql_prompt_requires_backticks_for_chinese_output_aliases() -> None:

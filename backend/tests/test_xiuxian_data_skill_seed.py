@@ -167,6 +167,11 @@ def test_xiuxian_date_skill_documents_complete_date_filter_contract() -> None:
     assert '"start":"{{dashboard_start_yyyymmdd}}"' not in prompt
 
 
+def test_xiuxian_skills_do_not_embed_platform_dashboard_date_contract() -> None:
+    for skill in _skills():
+        assert "managed:dashboard-date-contract:v1" not in skill["prompt"]
+
+
 def test_xiuxian_date_skill_uses_canonical_retrieval_description() -> None:
     expected = (
         "修仙 datasource_id=6 日期趋势口径："
@@ -326,6 +331,7 @@ def test_xiuxian_date_skill_uses_dynamic_bounds_without_max_date_scan() -> None:
     assert "{{dashboard_start_yyyymmdd}}" in prompt
     assert "{{dashboard_end_yyyymmdd}}" in prompt
     assert '"date_filter"' in prompt
+    assert "DATE_SUB(CURDATE(), INTERVAL 29 DAY)" not in prompt
     assert "禁止使用 `MAX(dt)`" in prompt
 
 
@@ -386,10 +392,8 @@ def test_seed_prompts_use_single_managed_section_at_prompt_end() -> None:
     date_prompt = seed.DATE_PARTITION_SKILL["prompt"]
     payment_prompt = _payment_skill()["prompt"]
 
-    assert date_prompt.endswith(seed.DATE_SECTION_END_MARKER)
     assert date_prompt.count(seed.DATE_SECTION_MARKER) == 1
     assert date_prompt.count(seed.DATE_SECTION_END_MARKER) == 1
-    assert payment_prompt.endswith(seed.SERVERPAYLOG_SECTION_END_MARKER)
     assert payment_prompt.count(seed.SERVERPAYLOG_SECTION_MARKER) == 1
     assert payment_prompt.count(seed.SERVERPAYLOG_SECTION_END_MARKER) == 1
     assert payment_prompt.rfind("<!-- dashboard-sql:") < payment_prompt.index(

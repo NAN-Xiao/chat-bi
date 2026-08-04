@@ -277,11 +277,9 @@ SERVERPAYLOG_MANAGED_SECTION = _managed_section(
 DATE_PARTITION_SKILL = {
     **_LEGACY_DATA_SKILLS[0],
     "description": DATE_PARTITION_SKILL_DESCRIPTION,
-    "prompt": (
-        _LEGACY_DATA_SKILLS[0]["prompt"].rstrip()
-        + "\n\n"
-        + DATE_SPINE_MANAGED_SECTION
-    ),
+    "prompt": _LEGACY_DATA_SKILLS[0]["prompt"].rstrip()
+    + "\n\n"
+    + DATE_SPINE_MANAGED_SECTION,
 }
 LEGACY_PAYMENT_MARKER = (
     "<!-- data-skill-source:xiuxian:paybuyret-monetization-arppu -->"
@@ -289,7 +287,6 @@ LEGACY_PAYMENT_MARKER = (
 SERVERPAYLOG_MARKER = (
     "<!-- data-skill-source:xiuxian:serverpaylog-monetization-arppu -->"
 )
-EMPTY_DASHBOARD_VIEW_ID = "1e4e34743f2d47dfa1c2948742b93a50"
 PAYER_PROMPT_EXCLUDED_VIEW_IDS = frozenset(
     {
         "f499305aa9b44a209cbe72cb68985a46",
@@ -419,8 +416,7 @@ def _topic_prompt_view_ids(topic: Any) -> tuple[str, ...]:
     return tuple(
         view_id
         for view_id in topic.view_ids
-        if view_id != EMPTY_DASHBOARD_VIEW_ID
-        and not (
+        if not (
             topic.slug == "payer-penetration"
             and view_id in PAYER_PROMPT_EXCLUDED_VIEW_IDS
         )

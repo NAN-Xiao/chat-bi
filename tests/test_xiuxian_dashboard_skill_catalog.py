@@ -20,10 +20,14 @@ def test_catalog_maps_all_nonempty_views_once():
     mapped = [view_id for topic in catalog.TOPICS for view_id in topic.view_ids]
 
     assert len(catalog.TOPICS) == 12
-    assert len(mapped) == 45
-    assert len(set(mapped)) == 45
+    assert len(mapped) == 42
+    assert len(set(mapped)) == 42
     assert set(mapped) == catalog.EXPECTED_VIEW_IDS
-    assert "1e4e34743f2d47dfa1c2948742b93a50" in mapped
+    assert "1e4e34743f2d47dfa1c2948742b93a50" not in mapped
+
+
+def test_current_recommended_dashboard_skill_capacity_is_seventeen_thousand():
+    assert catalog.MAX_PROMPT_CHARS == 17_000
 
 
 def test_catalog_enforces_topic_size():

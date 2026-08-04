@@ -66,6 +66,16 @@ assert.match(
 )
 assert.doesNotMatch(source, /<el-date-picker[\s\S]*class="date-filter-picker"/)
 assert.match(source, /dateFilterCapability[\s\S]*status\s*===\s*'available'/)
+assert.match(
+  source,
+  /const insightDateRange = computed<[\s\S]*resolvedStart[\s\S]*resolvedEnd/,
+  '图表摘要应从后端日期能力中取已解析的真实筛选范围'
+)
+assert.equal(
+  (source.match(/:date-range="insightDateRange"/g) || []).length,
+  2,
+  '顶部和侧边两种图表摘要布局都必须使用真实筛选范围'
+)
 assert.match(source, /pivotOverride\?:/)
 assert.match(source, /buildDashboardDateFilterRequestForView/)
 assert.match(source, /date_parameter_type:\s*props\.viewInfo\?\.pivot\?\.date_parameter_type/)
@@ -165,25 +175,10 @@ assert.match(
 )
 assert.match(
   source,
-  /\.chart-base-container:has\(\.dashboard-filter-controls--combined\):has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\)[\s\S]*?height:\s*calc\(100% - 82px\)/
+  /\.dashboard-filter-controls--combined[\s\S]*?flex-wrap:\s*wrap/
 )
 assert.doesNotMatch(source, /:deep\(\.date-expression-trigger\)[\s\S]*?color:\s*#2f6bff/)
-assert.match(
-  source,
-  /\.chart-base-container:has\(\.date-expression-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 82px\)/
-)
-assert.match(
-  source,
-  /\.chart-base-container:has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 116px\)/
-)
-assert.match(
-  source,
-  /\.insight-density-mini:has\(\.date-expression-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 70px\)/
-)
-assert.match(
-  source,
-  /\.insight-density-basic:has\(\.date-expression-toolbar\):has\(\.pivot-toolbar\) \.chart-show-area[\s\S]*?height:\s*calc\(100% - 94px\)/
-)
+assert.doesNotMatch(source, /\.chart-show-area[\s\S]{0,120}?height:\s*calc\(/)
 assert.match(
   source,
   /\.dashboard-date-filter-popper \.el-date-table td\.today\.disabled[\s\S]*\.el-date-table-cell__text[\s\S]*color:\s*var\(--el-text-color-placeholder\)/

@@ -17,8 +17,8 @@ from xiuxian_dashboard_skill_catalog import EXPECTED_VIEW_IDS
 
 
 EXPECTED_DASHBOARD_COUNT = 9
-EXPECTED_DRAWER_COUNT = 44
-EXPECTED_NONEMPTY_DRAWER_COUNT = 44
+EXPECTED_DRAWER_COUNT = 42
+EXPECTED_NONEMPTY_DRAWER_COUNT = 42
 BACKUP_VERSION = 1
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKUP_ROOT = ROOT / ".codex-runtime" / "xiuxian-dashboard-sql-backups"

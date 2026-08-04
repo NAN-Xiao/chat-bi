@@ -55,6 +55,13 @@ def _seed_dashboard_sql() -> dict[str, str]:
     return blocks
 
 
+def test_flam_skills_do_not_embed_platform_dashboard_date_contract() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    for skill in seed.DATA_SKILLS:
+        assert "managed:dashboard-date-contract:v1" not in skill["prompt"]
+
+
 def test_dashboard_sql_directory_matches_current_recommended_dashboards() -> None:
     blocks = _seed_dashboard_sql()
 

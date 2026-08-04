@@ -8,6 +8,10 @@ import {
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import {
+  resolveCategoryAxisResponsiveOptions,
+  resolveG2ResponsiveStyle,
+} from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Heatmap extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -28,9 +32,11 @@ export class Heatmap extends BaseG2Chart {
     const series = axes.series
     const _data = checkIsPercent(y, data)
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'cartesian')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'cell',
+      padding: responsive.padding,
       data: _data.data,
       encode: {
         x: x[0].value,
@@ -45,11 +51,11 @@ export class Heatmap extends BaseG2Chart {
         x: {
           title: false,
           labelFormatter: formatCategoryAxisLabel,
-          labelAutoHide: true,
-          labelAutoRotate: false,
+          ...resolveCategoryAxisResponsiveOptions(responsive),
         },
         y: {
           title: false,
+          labelFontSize: responsive.axisLabelFontSize,
           labelAutoHide: true,
         },
       },
@@ -59,9 +65,12 @@ export class Heatmap extends BaseG2Chart {
         },
       },
       legend: {
-        color: { position: 'right' },
+        color: {
+          position: responsive.legendPosition,
+          itemLabelFontSize: responsive.legendItemFontSize,
+        },
       },
-      labels: this.showLabel
+      labels: this.showLabel && responsive.showPointLabels
         ? [
             {
               text: (datum: any) =>

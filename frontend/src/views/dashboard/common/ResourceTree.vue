@@ -37,6 +37,7 @@ import {
   getRememberedDefaultDashboardId,
   rememberDefaultDashboardId,
 } from '@/utils/dashboardLanding'
+import { buildOrdinaryDashboardQuery } from '@/views/dashboard/utils/dashboardRouteMode'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -913,7 +914,7 @@ function onClickSideBarBtn() {
 const resourceEdit = (resourceId) => {
   router.push({
     path: '/canvas',
-    query: { resourceId },
+    query: buildOrdinaryDashboardQuery(resourceId, currentRouteDashboardScope()),
   })
 }
 

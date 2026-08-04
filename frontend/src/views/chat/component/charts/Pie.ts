@@ -3,6 +3,7 @@ import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from
 import type { G2Spec } from '@antv/g2'
 import { checkIsPercent, formatNumber, getAxesWithFilter } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 
 export class Pie extends BaseG2Chart {
   constructor(mountTarget: ChartMountTarget) {
@@ -22,10 +23,12 @@ export class Pie extends BaseG2Chart {
 
     console.debug({ 'render-info': { y: y, series: series, data: _data }, instance: this })
 
+    const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'structure')
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'interval',
-      coordinate: { type: 'theta', outerRadius: 0.8 },
+      padding: responsive.padding,
+      coordinate: { type: 'theta', outerRadius: responsive.outerRadius },
       transform: [{ type: 'stackY' }],
       data: _data.data,
       encode: {
@@ -41,13 +44,18 @@ export class Pie extends BaseG2Chart {
         },
       },
       legend: {
-        color: { position: 'bottom', layout: { justifyContent: 'center' } },
+        color: {
+          position: responsive.legendPosition,
+          itemLabelFontSize: responsive.legendItemFontSize,
+          layout: { justifyContent: 'center' },
+        },
       },
       animate: { enter: { type: 'waveIn' } },
-      labels: this.showLabel
+      labels: this.showLabel && responsive.showPointLabels
         ? [
             {
               position: 'spider',
+              fontSize: responsive.structureLabelFontSize,
               text: (data: any) => {
                 return `${data[series[0].value]}: ${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`
               },

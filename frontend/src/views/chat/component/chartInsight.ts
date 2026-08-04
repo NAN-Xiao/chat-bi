@@ -33,7 +33,9 @@ const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
 const SIDE_COMPACT_MAX_HEIGHT = 390
+const SIDE_DENSITY_HYSTERESIS = 20
 const WIDE_TREND_SIDE_MIN_WIDTH = 1100
+const WIDE_TREND_SIDE_MIN_HEIGHT = 260
 const WIDE_TREND_SIDE_MIN_ASPECT_RATIO = 2.2
 const SIDE_MAX_STATS = 8
 const SIDE_COMPACT_RESERVED_HEIGHT = 130
@@ -43,13 +45,69 @@ const TOP_RANKED_COMPACT_MIN_WIDTH = 500
 const TOP_RANKED_MAX_STATS = 4
 const DAY_MS = 24 * 60 * 60 * 1000
 const TOP_RICH_SUMMARY_TYPES = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'funnel'])
+const INSIGHT_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+
+function isValidInsightDate(value: string) {
+  const match = INSIGHT_DATE_PATTERN.exec(value)
+  if (!match) {
+    return false
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day
+}
+
+export function formatInsightDateRange(range?: [string, string] | null) {
+  const start = String(range?.[0] || '').trim()
+  const end = String(range?.[1] || '').trim()
+  if (!isValidInsightDate(start) || !isValidInsightDate(end) || start > end) {
+    return ''
+  }
+  return start === end ? start : `${start} - ${end}`
+}
 
 function axisValues(axes?: Array<ChartAxis>) {
   return (axes || []).map((axis) => axis.value).filter(Boolean)
 }
 
+export function buildInsightLayoutStateKey(params: {
+  viewId?: string | number | null
+  chartType: ChartTypes
+  x?: Array<ChartAxis>
+  y?: Array<ChartAxis>
+  series?: Array<ChartAxis>
+  dashboard?: boolean
+}) {
+  return JSON.stringify([
+    params.viewId ?? null,
+    params.chartType,
+    Boolean(params.dashboard),
+    axisValues(params.x),
+    axisValues(params.y),
+    axisValues(params.series),
+  ])
+}
+
 function clampNumber(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
+}
+
+function isBelowDensityThreshold(
+  value: number,
+  threshold: number,
+  previousBelow: boolean | undefined
+) {
+  if (previousBelow === true) {
+    return value < threshold + SIDE_DENSITY_HYSTERESIS
+  }
+  if (previousBelow === false) {
+    return value < threshold - SIDE_DENSITY_HYSTERESIS
+  }
+  return value < threshold
 }
 
 function resolveSideMaxStats(height: number, fallback: number) {
@@ -309,6 +367,8 @@ export function resolveInsightDisplay(params: {
   width?: number
   height?: number
   dashboard?: boolean
+  previousLayout?: InsightLayout
+  previousDensity?: InsightDensity
 }): InsightDisplayStrategy {
   const preferredLayout = resolveInsightLayout(params)
   const width = params.width || 0
@@ -320,6 +380,8 @@ export function resolveInsightDisplay(params: {
     preferredLayout === 'top' &&
     TOP_RICH_SUMMARY_TYPES.has(params.chartType) &&
     axisValues(params.series).length === 0
+  const wideTrendMinHeight =
+    params.previousLayout === 'side' ? WIDE_TREND_SIDE_MIN_HEIGHT : SIDE_MIN_HEIGHT
   const isWideSingleMetricTrend =
     params.dashboard &&
     preferredLayout === 'top' &&
@@ -328,7 +390,7 @@ export function resolveInsightDisplay(params: {
     axisValues(params.series).length === 0 &&
     trendGranularity !== null &&
     width >= WIDE_TREND_SIDE_MIN_WIDTH &&
-    height >= SIDE_MIN_HEIGHT &&
+    height >= wideTrendMinHeight &&
     width / Math.max(height, 1) >= WIDE_TREND_SIDE_MIN_ASPECT_RATIO
 
   if (!params.dashboard || width <= 0 || height <= 0) {
@@ -401,7 +463,11 @@ export function resolveInsightDisplay(params: {
     }
   }
 
-  if (width < SIDE_MINI_MAX_WIDTH || height < SIDE_MINI_MAX_HEIGHT) {
+  const wasMini = params.previousDensity === 'mini'
+  const useMiniDensity =
+    isBelowDensityThreshold(width, SIDE_MINI_MAX_WIDTH, params.previousDensity ? wasMini : undefined) ||
+    isBelowDensityThreshold(height, SIDE_MINI_MAX_HEIGHT, params.previousDensity ? wasMini : undefined)
+  if (useMiniDensity) {
     return {
       show: true,
       layout,
@@ -411,14 +477,23 @@ export function resolveInsightDisplay(params: {
     }
   }
 
+  const wasCompact = params.previousDensity === 'mini' || params.previousDensity === 'compact'
+  const useCompactDensity =
+    isBelowDensityThreshold(
+      width,
+      SIDE_COMPACT_MAX_WIDTH,
+      params.previousDensity ? wasCompact : undefined
+    ) ||
+    isBelowDensityThreshold(
+      height,
+      SIDE_COMPACT_MAX_HEIGHT,
+      params.previousDensity ? wasCompact : undefined
+    )
   return {
     show: true,
     layout,
-    density: width < SIDE_COMPACT_MAX_WIDTH || height < SIDE_COMPACT_MAX_HEIGHT ? 'compact' : 'regular',
-    maxStats: resolveSideMaxStats(
-      height,
-      width < SIDE_COMPACT_MAX_WIDTH || height < SIDE_COMPACT_MAX_HEIGHT ? 3 : 4
-    ),
+    density: useCompactDensity ? 'compact' : 'regular',
+    maxStats: resolveSideMaxStats(height, useCompactDensity ? 3 : 4),
     featuredSide: isWideSingleMetricTrend,
   }
 }

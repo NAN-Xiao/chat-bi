@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { isMainCanvas } from '@/views/dashboard/utils/canvasUtils.ts'
 import DashboardSqlEditor from '@/views/dashboard/common/DashboardSqlEditor.vue'
 import { ElMessage } from 'element-plus-secondary'
+import { validateSavedCanvasLayout } from '@/views/dashboard/utils/savedCanvasLayout'
 
 const { t } = useI18n()
 const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
@@ -607,19 +608,17 @@ function init() {
   recomputeCellWidth()
   resetPositionBox()
 
-  let i = 0
-  const timeId = setInterval(() => {
-    if (i >= canvasComponentData.value.length) {
-      clearInterval(timeId)
-      nextTick(() => {
-        moveAnimate.value = true
-      })
-    } else {
-      const item = canvasComponentData.value[i]
-      addItem(item, i)
-      i++
-    }
-  }, 1)
+  canvasComponentData.value.forEach((item) => {
+    item._dragId = item.id || getNextDragId()
+  })
+  const savedLayoutIssues = validateSavedCanvasLayout(canvasComponentData.value, itemMaxX)
+  if (savedLayoutIssues.length > 0) {
+    ElMessage.warning(t('dashboard.saved_layout_invalid'))
+  }
+  rebuildPositionBox()
+  nextTick(() => {
+    moveAnimate.value = true
+  })
   renderOk.value = true
 }
 

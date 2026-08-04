@@ -83,9 +83,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import {
+  buildInsightLayoutStateKey,
   buildInsightColumns,
   detectTrendAxisGranularity,
   resolveInsightDisplay,
+  type InsightDensity,
+  type InsightLayout,
 } from '@/views/chat/component/chartInsight.ts'
 import { axisValue } from '@/views/chat/component/BaseChart.ts'
 import { toNullableNumber } from '@/views/chat/component/charts/utils.ts'
@@ -133,12 +136,16 @@ import {
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
 const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
+const chartShowAreaRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
+const chartFrameReady = ref(false)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
+let previousInsightLayoutKey: string | undefined
+let previousInsightLayout: InsightLayout | undefined
+let previousInsightDensity: InsightDensity | undefined
 const refreshing = ref(false)
 const blockingRefreshLoading = ref(false)
-const chartRenderVersion = ref(0)
 const pivotCalendarMonth = ref('')
 const pivotCalendarDraftStart = ref('')
 const pivotModePopoverVisible = ref(false)
@@ -309,13 +316,19 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  chartRef.value?.destroyChart()
-  //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
   chartRef.value?.renderChart()
 }
 const chartComponentKey = computed(
-  () => `${props.outerId || props.viewInfo?.id || 'chart'}-${chartRenderVersion.value}`
+  () => props.outerId || props.viewInfo?.id || 'chart'
 )
+
+function handleChartRenderReady() {
+  chartFrameReady.value = true
+}
+
+watch(chartComponentKey, () => {
+  chartFrameReady.value = false
+})
 
 const enlargeDialogVisible = ref(false)
 
@@ -379,6 +392,14 @@ type RefreshDataOptions = {
 const dateFilterCapability = computed<DashboardDateFilterCapability | null>(() => {
   const capability = props.viewInfo?.dateFilterCapability
   return capability && typeof capability === 'object' ? capability : null
+})
+const insightDateRange = computed<[string, string] | null>(() => {
+  if (dateFilterCapability.value?.status !== 'available') {
+    return null
+  }
+  const start = String(dateFilterCapability.value.resolvedStart || '')
+  const end = String(dateFilterCapability.value.resolvedEnd || '')
+  return start && end ? [start, end] : null
 })
 const showDashboardDateFilter = computed(() =>
   dateFilterCapability.value?.status === 'available'
@@ -1182,7 +1203,7 @@ function setPivotGroupValueChecked(value: string, checked: boolean) {
     selected.size === pivotGroupValueTotal.value && pivotGroupValueTotal.value > 0 ? 'all' : 'custom'
   pivotGroupValueState.selectedValues =
     pivotGroupValueState.mode === 'all' ? pivotGroupValueOptions.value.map((option) => option.value) : Array.from(selected)
-  chartRenderVersion.value += 1
+  scheduleRenderChart()
 }
 
 function togglePivotGroupValue(value: string, event: Event) {
@@ -1276,12 +1297,12 @@ function removePivotGroupOutsidePointerListener() {
 
 function selectAllPivotGroupValues() {
   resetPivotGroupValueSelection('all')
-  chartRenderVersion.value += 1
+  scheduleRenderChart()
 }
 
 function clearPivotGroupValues() {
   resetPivotGroupValueSelection('custom')
-  chartRenderVersion.value += 1
+  scheduleRenderChart()
 }
 
 function getPivotPayload() {
@@ -1359,12 +1380,10 @@ function schedulePivotRefresh() {
     window.clearTimeout(pivotRefreshTimer)
   }
   if (pivotClientFilterOnly.value) {
-    chartRenderVersion.value += 1
     scheduleRenderChart()
     return
   }
   if (props.platformTemplate) {
-    chartRenderVersion.value += 1
     scheduleRenderChart()
     return
   }
@@ -1546,7 +1565,6 @@ async function refreshData(options: RefreshDataOptions = {}) {
         }
       }
       props.viewInfo.loadingProgress = 100
-      chartRenderVersion.value += 1
       await nextTick()
     } catch (error: any) {
       if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
@@ -1652,7 +1670,6 @@ async function refreshData(options: RefreshDataOptions = {}) {
         }
       }
       props.viewInfo.loadingProgress = 100
-      chartRenderVersion.value += 1
       await nextTick()
     } catch (error: any) {
       if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
@@ -1784,7 +1801,6 @@ async function refreshData(options: RefreshDataOptions = {}) {
       }
     }
     props.viewInfo.loadingProgress = 100
-    chartRenderVersion.value += 1
     await nextTick()
   } catch (error: any) {
     if (!isCurrentRefreshRequest(requestSeq, requestVersion)) {
@@ -2070,8 +2086,25 @@ const insightColumns = computed(() =>
     ...(props.viewInfo.chart?.columns || []),
   ])
 )
-const insightDisplay = computed(() =>
-  resolveInsightDisplay({
+const chartRenderColumns = computed(() => [
+  ...(props.viewInfo.chart.columns || []),
+  ...insightColumns.value,
+])
+const insightDisplay = computed(() => {
+  const layoutStateKey = buildInsightLayoutStateKey({
+    viewId: props.viewInfo?.id,
+    chartType: chartType.value,
+    x: renderXAxis.value,
+    y: renderYAxis.value,
+    series: renderSeries.value,
+    dashboard: isDashboardSurface.value,
+  })
+  if (layoutStateKey !== previousInsightLayoutKey) {
+    previousInsightLayoutKey = layoutStateKey
+    previousInsightLayout = undefined
+    previousInsightDensity = undefined
+  }
+  const display = resolveInsightDisplay({
     chartType: chartType.value,
     data: displayData.value,
     x: renderXAxis.value,
@@ -2080,8 +2113,13 @@ const insightDisplay = computed(() =>
     width: frameSize.value.width,
     height: frameSize.value.height,
     dashboard: isDashboardSurface.value,
+    previousLayout: previousInsightLayout,
+    previousDensity: previousInsightDensity,
   })
-)
+  previousInsightLayout = display.layout
+  previousInsightDensity = display.density
+  return display
+})
 const canShowInsightHeader = computed(() => {
   if (!showInsightHeader.value) {
     return false
@@ -2103,10 +2141,10 @@ const hasSourceChartData = computed(() => {
 const chartResultPending = computed(() => {
   return isChartResultPendingState(props.viewInfo, chartLoading.value)
 })
-const showFullChartLoading = computed(
+const chartDataLoading = computed(
   () =>
-    (chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)) ||
-    (chartResultPending.value && !hasRenderedChartData.value)
+    !hasRenderedChartData.value &&
+    (chartLoading.value || chartResultPending.value || blockingRefreshLoading.value)
 )
 const chartLoadingText = computed(() =>
   ['waiting', 'queued'].includes(String(props.viewInfo?.refreshState || ''))
@@ -2123,12 +2161,15 @@ const showEmptyChartState = computed(() => {
 })
 const showChartContent = computed(() => {
   return (
-    !showFullChartLoading.value &&
+    hasRenderedChartData.value &&
     !showEmptyChartState.value &&
     props.viewInfo?.status !== 'failed' &&
     props.viewInfo?.id
   )
 })
+const showFullChartLoading = computed(
+  () => chartDataLoading.value || (showChartContent.value && !chartFrameReady.value)
+)
 const insightDensity = computed(() => insightDisplay.value.density)
 const compactInsightHeader = computed(() => insightDensity.value !== 'regular')
 const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
@@ -2136,18 +2177,19 @@ const insightMaxStats = computed(() => insightDisplay.value.maxStats)
 const isFeaturedSideInsight = computed(() => insightDisplay.value.featuredSide === true)
 
 function measureFrame() {
-  const el = containerRef.value
+  const el = chartShowAreaRef.value
   if (!el) {
-    return
+    return false
   }
   const nextSize = {
     width: Math.round(el.clientWidth),
     height: Math.round(el.clientHeight),
   }
   if (nextSize.width === frameSize.value.width && nextSize.height === frameSize.value.height) {
-    return
+    return false
   }
   frameSize.value = nextSize
+  return true
 }
 
 function scheduleRenderChart() {
@@ -2252,10 +2294,7 @@ function onTypeChange(val: any) {
   // eslint-disable-next-line vue/no-mutating-props
   props.viewInfo.chart.type = val
   nextTick(() => {
-    //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    chartRef.value?.destroyChart()
-    //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    chartRef.value?.renderChart()
+    renderChart()
   })
 }
 
@@ -2267,10 +2306,13 @@ onMounted(() => {
     measureFrame()
     if (containerRef.value) {
       resizeObserver = new ResizeObserver(() => {
-        measureFrame()
-        if (chartType.value !== 'table') scheduleRenderChart()
+        const frameChanged = measureFrame()
+        if (frameChanged && chartType.value !== 'table') scheduleRenderChart()
       })
       resizeObserver.observe(containerRef.value)
+      if (chartShowAreaRef.value) {
+        resizeObserver.observe(chartShowAreaRef.value)
+      }
     }
   })
 })
@@ -2588,12 +2630,12 @@ defineExpose({
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
       </div>
     </div>
-    <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
+    <div ref="chartShowAreaRef" class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="showFullChartLoading" class="chart-loading-info">
         <div class="chart-loading-ring" aria-hidden="true"></div>
         <div class="chart-loading-text">{{ chartLoadingText }}</div>
       </div>
-      <div v-else-if="viewInfo.status === 'failed'" class="error-info">
+      <div v-if="viewInfo.status === 'failed'" class="error-info">
         {{ viewInfo.message }}
       </div>
       <div v-else-if="showEmptyChartState" class="chart-empty-info">
@@ -2605,12 +2647,13 @@ defineExpose({
         :density="insightDensity"
         :max-stats="insightMaxStats"
         :chart-type="chartType"
-        :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+        :columns="chartRenderColumns"
         :x="renderXAxis"
         :y="renderYAxis"
         :series="renderSeries"
         :data="displayData"
         :sql="viewInfo.sql"
+        :date-range="insightDateRange"
         :insight="viewInfo.chart?.insight"
       />
       <div
@@ -2629,12 +2672,13 @@ defineExpose({
           layout="side"
           :max-stats="insightMaxStats"
           :chart-type="chartType"
-          :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+          :columns="chartRenderColumns"
           :x="renderXAxis"
           :y="renderYAxis"
           :series="renderSeries"
           :data="displayData"
           :sql="viewInfo.sql"
+          :date-range="insightDateRange"
           :insight="viewInfo.chart?.insight"
           :featured-side="isFeaturedSideInsight"
         />
@@ -2642,8 +2686,10 @@ defineExpose({
           :key="chartComponentKey"
           :id="outerId || viewInfo.id"
           ref="chartRef"
+          surface="dashboard"
+          :has-outer-title="true"
           :type="chartType"
-          :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+          :columns="chartRenderColumns"
           :x="renderXAxis"
           :y="renderYAxis"
           :series="renderSeries"
@@ -2651,6 +2697,7 @@ defineExpose({
           :multi-quota-name="renderMultiQuotaName"
           :show-label="showLabel"
           :forecast="renderForecast"
+          @render-ready="handleChartRenderReady"
         />
       </div>
     </div>
@@ -2706,11 +2753,16 @@ defineExpose({
   box-shadow: none;
   overflow: hidden;
   container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
   div::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
   }
   .header-bar {
+    flex: 0 0 auto;
     min-height: 34px;
     display: flex;
     margin-bottom: 10px;
@@ -2902,11 +2954,16 @@ defineExpose({
   }
 
   .dashboard-filter-controls {
-    display: contents;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .dashboard-filter-controls--combined {
     display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0;
     margin: -2px 0 8px;
@@ -3408,10 +3465,12 @@ defineExpose({
 
 .chart-show-area {
   width: 100%;
-  height: calc(100% - 46px);
+  flex: 1 1 auto;
+  height: auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
 
   :deep(.chart-container) {
     flex: 1 1 auto;
@@ -3462,50 +3521,6 @@ defineExpose({
   justify-content: center;
   color: var(--workspace-text-secondary, #66758f);
   font-size: 13px;
-}
-
-.chart-base-container:has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 80px);
-}
-
-.insight-density-mini .chart-show-area {
-  height: calc(100% - 34px);
-}
-
-.insight-density-basic .chart-show-area {
-  height: calc(100% - 28px);
-}
-
-.insight-density-mini:has(.pivot-toolbar) .chart-show-area,
-.insight-density-basic:has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 58px);
-}
-
-.chart-base-container:has(.date-expression-toolbar) .chart-show-area {
-  height: calc(100% - 82px);
-}
-
-.chart-base-container:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 116px);
-}
-
-.chart-base-container:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 82px);
-}
-
-.insight-density-mini:has(.date-expression-toolbar) .chart-show-area,
-.insight-density-basic:has(.date-expression-toolbar) .chart-show-area {
-  height: calc(100% - 70px);
-}
-
-.insight-density-mini:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area,
-.insight-density-basic:has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 94px);
-}
-
-.insight-density-mini:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area,
-.insight-density-basic:has(.dashboard-filter-controls--combined):has(.date-expression-toolbar):has(.pivot-toolbar) .chart-show-area {
-  height: calc(100% - 70px);
 }
 
 .buttons-bar {
@@ -3567,14 +3582,16 @@ defineExpose({
 }
 
 .chart-loading-info {
-  width: 100%;
-  height: 100%;
-  min-height: 140px;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 14px;
+  background: var(--workspace-panel-bg, var(--theme-panel-bg, #ffffff));
   color: var(--workspace-text-primary, #1f2329);
 }
 
