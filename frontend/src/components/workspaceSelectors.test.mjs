@@ -31,6 +31,13 @@ test('两个缓存键都包含租户、数据源和目标作用域', () => {
   )
 })
 
+test('两个私有选择器缓存键都包含用户边界', () => {
+  assert.match(agentSource, /getUid|userStore/)
+  assert.match(skillSource, /getUid|userStore/)
+  assert.match(agentSource, /uid.*tenantId.*datasourceId.*targetScope/s)
+  assert.match(skillSource, /uid.*tenantId.*datasourceId.*targetScope/s)
+})
+
 test('只有最新加载序号可以更新列表与 loading', () => {
   for (const source of [agentSource, skillSource]) {
     assert.match(source, /const loadId = \+\+loadSequence/)

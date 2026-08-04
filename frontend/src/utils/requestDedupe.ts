@@ -5,6 +5,7 @@ interface RequestCacheEntry<T> {
 }
 
 const requestCache = new Map<string, RequestCacheEntry<unknown>>()
+let requestCacheGeneration = 0
 
 export function cachedRequest<T>(
   key: string,
@@ -20,12 +21,16 @@ export function cachedRequest<T>(
     return Promise.resolve(existing.value as T)
   }
 
+  const generation = requestCacheGeneration
   const promise = factory()
     .then((value) => {
-      requestCache.set(key, {
-        value,
-        expiresAt: Date.now() + ttlMs,
-      })
+      const current = requestCache.get(key) as RequestCacheEntry<T> | undefined
+      if (requestCacheGeneration === generation && current?.promise === promise) {
+        requestCache.set(key, {
+          value,
+          expiresAt: Date.now() + ttlMs,
+        })
+      }
       return value
     })
     .catch((error) => {
@@ -43,6 +48,7 @@ export function cachedRequest<T>(
 }
 
 export function clearRequestCache(prefix = '') {
+  requestCacheGeneration += 1
   if (!prefix) {
     requestCache.clear()
     return

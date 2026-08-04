@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
 import { dataSkillApi } from '@/api/dataSkill'
+import { useUserStore } from '@/stores/user'
 import { cachedRequest, clearRequestCache } from '@/utils/requestDedupe'
 import {
   getEffectiveWorkspaceTenantId,
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const userStore = useUserStore()
 
 const popoverVisible = ref(false)
 const keyword = ref('')
@@ -172,10 +174,11 @@ const buildListQuery = () => {
 
 const buildSkillsCacheKey = (
   query: string,
+  uid: string,
   tenantId: string,
   datasourceId: number,
   targetScope: string
-) => `${DATA_SKILL_SELECTOR_CACHE_PREFIX}${tenantId}|${datasourceId}|${targetScope}|${query}`
+) => `${DATA_SKILL_SELECTOR_CACHE_PREFIX}${uid}|${tenantId}|${datasourceId}|${targetScope}|${query}`
 
 const selectSkill = (value: string | number | null) => {
   emit('update:modelValue', value)
@@ -185,11 +188,13 @@ const selectSkill = (value: string | number | null) => {
 
 const loadSkills = async () => {
   const loadId = ++loadSequence
+  const uid = String(userStore.getUid || '')
   const tenantId = getEffectiveWorkspaceTenantId()
   const datasourceId = datasourceIdValue.value
   const targetScope = props.targetScope
   if (
     workspaceContextState.phase !== 'ready' ||
+    !uid ||
     !tenantId ||
     !datasourceIdValue.value ||
     !datasourceId
@@ -201,12 +206,13 @@ const loadSkills = async () => {
   loading.value = true
   try {
     const query = buildListQuery()
-    const res: any = await cachedRequest(buildSkillsCacheKey(query, tenantId, datasourceId, targetScope), () =>
+    const res: any = await cachedRequest(buildSkillsCacheKey(query, uid, tenantId, datasourceId, targetScope), () =>
       dataSkillApi.getList(1, 100, query).catch(() => ({ data: [] }))
     )
     if (loadId !== loadSequence) return
     if (
       workspaceContextState.phase !== 'ready' ||
+      String(userStore.getUid || '') !== uid ||
       getEffectiveWorkspaceTenantId() !== tenantId ||
       datasourceIdValue.value !== datasourceId ||
       props.targetScope !== targetScope

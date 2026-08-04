@@ -5,6 +5,7 @@ import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
 import { promptApi } from '@/api/prompt'
 import { modelApi } from '@/api/system'
+import { useUserStore } from '@/stores/user'
 import { cachedRequest, clearRequestCache } from '@/utils/requestDedupe'
 import {
   getEffectiveWorkspaceTenantId,
@@ -44,6 +45,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const userStore = useUserStore()
 
 const popoverVisible = ref(false)
 const keyword = ref('')
@@ -187,11 +189,12 @@ const buildListQuery = () => {
 
 const buildAgentsCacheKey = (
   query: string,
+  uid: string,
   tenantId: string,
   datasourceId: number,
   targetScope: string
 ) =>
-  `${AGENT_SELECTOR_CACHE_PREFIX}${tenantId}|${datasourceId}|${targetScope}|${usablePromptTypes.value.join(',')}|${query}`
+  `${AGENT_SELECTOR_CACHE_PREFIX}${uid}|${tenantId}|${datasourceId}|${targetScope}|${usablePromptTypes.value.join(',')}|${query}`
 
 const selectAgent = (value: string | number | null) => {
   emit('update:modelValue', value)
@@ -207,11 +210,13 @@ const loadAiModels = () => {
 
 const loadAgents = async () => {
   const loadId = ++loadSequence
+  const uid = String(userStore.getUid || '')
   const tenantId = getEffectiveWorkspaceTenantId()
   const datasourceId = datasourceIdValue.value
   const targetScope = props.targetScope
   if (
     workspaceContextState.phase !== 'ready' ||
+    !uid ||
     !tenantId ||
     !datasourceIdValue.value ||
     !datasourceId
@@ -223,7 +228,7 @@ const loadAgents = async () => {
   loading.value = true
   try {
     const query = buildListQuery()
-    const responses = await cachedRequest(buildAgentsCacheKey(query, tenantId, datasourceId, targetScope), () =>
+    const responses = await cachedRequest(buildAgentsCacheKey(query, uid, tenantId, datasourceId, targetScope), () =>
       Promise.all(
         usablePromptTypes.value.map((type) =>
           promptApi.getList(1, 100, type, query).catch(() => ({ data: [] }))
@@ -233,6 +238,7 @@ const loadAgents = async () => {
     if (loadId !== loadSequence) return
     if (
       workspaceContextState.phase !== 'ready' ||
+      String(userStore.getUid || '') !== uid ||
       getEffectiveWorkspaceTenantId() !== tenantId ||
       datasourceIdValue.value !== datasourceId ||
       props.targetScope !== targetScope
