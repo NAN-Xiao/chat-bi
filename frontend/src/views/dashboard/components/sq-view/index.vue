@@ -3201,6 +3201,9 @@ defineExpose({
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
+    align-self: flex-start;
+    width: fit-content;
+    max-width: 100%;
     gap: 0;
     margin: -2px 0 8px;
 
