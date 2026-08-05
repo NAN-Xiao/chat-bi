@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from sqlalchemy import CheckConstraint
 
@@ -80,6 +81,14 @@ def test_datasource_entrypoint_registers_semantic_epoch_metadata() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "semantic_scope_epoch" in result.stdout
+
+
+def test_alembic_metadata_entrypoint_registers_datasource_models() -> None:
+    env_source = (
+        Path(__file__).resolve().parents[1] / "alembic" / "env.py"
+    ).read_text(encoding="utf-8")
+
+    assert "import apps.datasource.models.datasource" in env_source
 
 
 def test_semantic_epoch_migration_uses_named_expression_index() -> None:

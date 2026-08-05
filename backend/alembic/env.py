@@ -7,11 +7,10 @@ from os.path import abspath, dirname
 
 sys.path.insert(0, dirname(dirname(abspath(__file__))))
 
-import os
-
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
+
+from alembic import context
 
 # 这是 Alembic 配置对象，提供
 # 对当前 .ini 配置文件中各项值的访问能力。
@@ -31,6 +30,7 @@ config = context.config
 #from apps.chat.models.chat_model import SQLModel
 import apps.chat.models.custom_prompt_model  # noqa
 import apps.analysis_assistant.models  # noqa
+import apps.datasource.models.datasource  # noqa
 import apps.external_mcp.models  # noqa
 import apps.knowledge_base.models  # noqa
 import apps.system.models.tenant  # noqa
