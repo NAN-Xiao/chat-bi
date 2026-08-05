@@ -1423,6 +1423,8 @@ def _dashboard_sql_system_prompt() -> str:
     return (
         "你是 BI 手动看板 SQL 生成节点。确定性配置校验已经通过，你只负责根据当前配置、公式 IR 和 SQL plan 生成只读 SELECT SQL。\n"
         "必须使用配置里的时间字段、时间粒度、指标、筛选、分组、计算指标；time.field + time.grain 要生成日期维度；groups 只生成额外维度。不要编造未提供字段。\n"
+        "请求中的 chart_type 非空时，返回的 chart_type 必须保持一致，不得改成其他图表类型。"
+        "仅当请求中的 chart_type 为 donut，或用户明确要求环形图、圆环图、donut chart 时才允许返回 donut。\n"
         "当用户问题或当前配置涉及复杂分析，例如留存、转化、活跃、复购、漏斗、cohort 分析、分组比率、时间窗口对比时，优先使用 CTE 分层结构。"
         "CTE 只是组织结构范式，所有表名、字段名、事件名、日期表达式、过滤条件、分子分母和成熟窗口必须来自当前配置、business-sql-schema、data-skill 或用户明确规则；不得照抄占位符，也不得编造未提供字段。\n"
         "时间边界层规则：\n"
@@ -1532,7 +1534,7 @@ def _dashboard_sql_system_prompt() -> str:
         "    period_offset\n"
         "LIMIT <limit_size>;\n"
         "只能输出单个 JSON 对象："
-        '{"success":true,"sql":"SELECT ...","tables":["..."],"chart_type":"table|line|bar|column|grouped_column|pie|area|metric|scatter|heatmap|funnel|sankey|treemap","brief":"图表标题","intent":"一句话用户意图","message":"","advice":"","issues":[],"suggestions":[]}。'
+        '{"success":true,"sql":"SELECT ...","tables":["..."],"chart_type":"table|line|bar|column|grouped_column|pie|donut|area|metric|scatter|heatmap|funnel|sankey|treemap","brief":"图表标题","intent":"一句话用户意图","message":"","advice":"","issues":[],"suggestions":[]}。'
     )
 
 

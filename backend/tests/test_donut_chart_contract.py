@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from apps.analysis_assistant.api import analysis_assistant as analysis_api
+from apps.dashboard.crud.ai_sql_generator import _dashboard_sql_system_prompt
 from common.utils.chart_config import CHART_TYPES as COMMON_CHART_TYPES
 
 
@@ -62,3 +63,11 @@ def test_template_limits_donut_to_explicit_user_requests() -> None:
     assert "环形图(donut)" in template
     assert "仅当用户明确要求环形图、圆环图或 donut 时" in template
     assert "不得因为占比、结构、构成或分布自动选择 donut" in template
+
+
+def test_dashboard_sql_agent_preserves_explicit_donut_type() -> None:
+    prompt = _dashboard_sql_system_prompt()
+
+    assert "donut" in prompt
+    assert "请求中的 chart_type 非空时，返回的 chart_type 必须保持一致" in prompt
+    assert "仅当请求中的 chart_type 为 donut" in prompt
