@@ -179,7 +179,6 @@ def render_chat_date_filter_sql(
         ds_type=datasource_type,
         pivot=pivot,
         today=today,
-        allow_realtime_current_day=True,
     )
     if prepared.capability.get("status") != "available":
         reason = str(prepared.capability.get("reason") or "date_filter_unavailable")

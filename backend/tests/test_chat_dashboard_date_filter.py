@@ -25,6 +25,9 @@ REALTIME_DATE_TEMPLATE_SQL = (
     "SELECT * FROM event_realtime "
     "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
 )
+REALTIME_DATE_START_ONLY_SQL = (
+    "SELECT * FROM event_realtime WHERE dt >= {{dashboard_start_yyyymmdd}}"
+)
 REALTIME_DATE_END_ONLY_SQL = (
     "SELECT * FROM event_realtime WHERE dt <= {{dashboard_end_yyyymmdd}}"
 )
@@ -204,24 +207,38 @@ def test_render_allows_current_business_day_for_realtime_table():
     assert "{{dashboard_end_yyyymmdd}}" not in sql
 
 
-def test_render_rejects_historical_range_for_realtime_table():
-    with pytest.raises(ChatDateFilterConfigurationError, match="realtime_table"):
-        render_chat_date_filter_sql(
-            REALTIME_DATE_TEMPLATE_SQL,
-            "mysql",
-            {"enabled": False, **DATE_FILTER},
-            today=date(2026, 8, 4),
-        )
+def test_render_allows_historical_range_for_realtime_table():
+    sql = render_chat_date_filter_sql(
+        REALTIME_DATE_TEMPLATE_SQL,
+        "mysql",
+        {"enabled": False, **DATE_FILTER},
+        today=date(2026, 8, 4),
+    )
+
+    assert "20260728" in sql
+    assert "20260803" in sql
 
 
-def test_render_rejects_end_only_filter_for_realtime_table():
-    with pytest.raises(ChatDateFilterConfigurationError, match="realtime_table"):
-        render_chat_date_filter_sql(
-            REALTIME_DATE_END_ONLY_SQL,
-            "mysql",
-            {"enabled": False, **TODAY_DATE_FILTER},
-            today=date(2026, 8, 4),
-        )
+@pytest.mark.parametrize(
+    ("sql_template", "expected_date"),
+    [
+        (REALTIME_DATE_START_ONLY_SQL, "20260804"),
+        (REALTIME_DATE_END_ONLY_SQL, "20260804"),
+    ],
+)
+def test_render_allows_single_boundary_filter_for_realtime_table(
+    sql_template: str,
+    expected_date: str,
+):
+    sql = render_chat_date_filter_sql(
+        sql_template,
+        "mysql",
+        {"enabled": False, **TODAY_DATE_FILTER},
+        today=date(2026, 8, 4),
+    )
+
+    assert expected_date in sql
+    assert "{{dashboard_" not in sql
 
 
 def test_llm_service_renders_date_template_only_for_execution():
