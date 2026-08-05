@@ -272,7 +272,9 @@ const chartTypeList = computed(() => {
         })
         break
       case 'pie':
+      case 'donut':
         pushChartType('pie', PieChart)
+        pushChartType('donut', PieChart)
         break
       case 'metric':
         pushChartType('metric', DataBoard)

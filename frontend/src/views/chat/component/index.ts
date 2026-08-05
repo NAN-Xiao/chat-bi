@@ -5,6 +5,7 @@ import { Line } from '@/views/chat/component/charts/Line.ts'
 import { Area } from '@/views/chat/component/charts/Area.ts'
 import { Table } from '@/views/chat/component/charts/Table.ts'
 import { Pie } from '@/views/chat/component/charts/Pie.ts'
+import { Donut } from '@/views/chat/component/charts/Donut.ts'
 import { Metric } from '@/views/chat/component/charts/Metric.ts'
 import { Funnel } from '@/views/chat/component/charts/Funnel.ts'
 import { Heatmap } from '@/views/chat/component/charts/Heatmap.ts'
@@ -19,6 +20,7 @@ const CHART_TYPE_MAP: { [key: string]: any } = {
   line: Line,
   area: Area,
   pie: Pie,
+  donut: Donut,
   metric: Metric,
   funnel: Funnel,
   heatmap: Heatmap,

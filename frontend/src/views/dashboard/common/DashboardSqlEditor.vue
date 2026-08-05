@@ -50,6 +50,7 @@ import type {
   ChartForecastMethod,
   ChartTypes,
 } from '@/views/chat/component/BaseChart.ts'
+import { isRadialPartitionChartType } from '@/views/chat/component/chartTypes.ts'
 import { isAverageAxis, isPercentAxis } from '@/views/chat/component/charts/utils.ts'
 import {
   defaultPivotAggregationForAxes,
@@ -420,6 +421,7 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'line', value: 'line' },
   { label: 'area', value: 'area' },
   { label: 'pie', value: 'pie' },
+  { label: 'donut', value: 'donut' },
   { label: 'funnel', value: 'funnel' },
   { label: 'heatmap', value: 'heatmap' },
   { label: 'scatter', value: 'scatter' },
@@ -715,7 +717,7 @@ const builderMetricOptions = computed(() =>
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
 const seriesFieldOptions = computed(() => {
   const excluded = new Set(form.y)
-  if (form.chartType !== 'pie' && form.x) {
+  if (!isRadialPartitionChartType(form.chartType) && form.x) {
     excluded.add(form.x)
   }
   return toFieldOptions(sourcePreview.fields.filter((field) => !excluded.has(field)))
@@ -766,7 +768,9 @@ const mixedChangedAfterPreview = computed(() => isMixedSource.value && sourceCha
 const previewDisplayFields = computed(() => visiblePreviewFields(preview.fields, preview.data))
 const previewTableFields = computed(() => previewDisplayFields.value.slice(0, 10))
 const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.id || 'new'}-${previewVersion.value}`)
-const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chartType))
+const showXAxis = computed(() =>
+  !['table', 'metric'].includes(form.chartType) && !isRadialPartitionChartType(form.chartType)
+)
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric'].includes(form.chartType))
@@ -816,13 +820,13 @@ const chartPreviewYFields = computed(() => {
   if (form.chartType === 'table') {
     return []
   }
-  if (form.chartType === 'pie') {
+  if (isRadialPartitionChartType(form.chartType)) {
     return form.y.slice(0, 1)
   }
   return form.y
 })
 const activePivotGroupValueField = computed(() =>
-  form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+  isRadialPartitionChartType(form.chartType) ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
 )
 const previewHasPivotGroupField = computed(() => {
   const field = activePivotGroupValueField.value
@@ -833,7 +837,7 @@ const sourceHasPivotGroupValues = computed(() => {
   return Boolean(field && collectPivotGroupValueCounts(field).size > 0)
 })
 const chartPreviewSeriesFields = computed(() => {
-  const field = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+  const field = isRadialPartitionChartType(form.chartType) ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
   return field && visiblePreviewFields([field], previewDisplayData.value).includes(field) ? [field] : []
 })
 const showPivotGroupValueConfig = computed(
@@ -858,7 +862,7 @@ const pivotGroupValueOptions = computed(() => {
 })
 const previewDisplayData = computed(() => {
   let rows = preview.data
-  const seriesField = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+  const seriesField = isRadialPartitionChartType(form.chartType) ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
   const previewHasSeriesField = !seriesField || visiblePreviewFields([seriesField], rows).includes(seriesField)
   if (!previewHasSeriesField && visiblePreviewFields([seriesField], sourcePreview.data).includes(seriesField)) {
     rows = sourcePreview.data
@@ -2894,7 +2898,7 @@ function normalizeSeriesField(field: string) {
   if (form.y.includes(field)) {
     return ''
   }
-  if (form.chartType !== 'pie' && field === form.x) {
+  if (!isRadialPartitionChartType(form.chartType) && field === form.x) {
     return ''
   }
   return field
@@ -4459,7 +4463,7 @@ function buildChart() {
     return chart
   }
 
-  if (form.chartType === 'pie') {
+  if (isRadialPartitionChartType(form.chartType)) {
     chart.yAxis = toAxes(form.y.slice(0, 1), { metrics: true })
     chart.series = toAxes([effectiveSeriesField.value || form.x].filter(Boolean) as string[])
     return chart
@@ -4542,11 +4546,11 @@ function validateBeforeApply() {
   if (form.chartType === 'metric') {
     return true
   }
-  if (form.chartType === 'pie' && !(form.series || form.x)) {
+  if (isRadialPartitionChartType(form.chartType) && !(form.series || form.x)) {
     ElMessage.warning(t('dashboard.sql_editor_select_series'))
     return false
   }
-  if (form.chartType !== 'pie' && !form.x) {
+  if (!isRadialPartitionChartType(form.chartType) && !form.x) {
     ElMessage.warning(t('dashboard.sql_editor_select_x'))
     return false
   }
@@ -5774,7 +5778,7 @@ function closeDrawer() {
           :id="chartPreviewId"
           :type="form.chartType"
           :columns="form.chartType === 'table' ? toAxes(previewTableFields) : []"
-          :x="form.chartType !== 'table' && form.chartType !== 'metric' && form.chartType !== 'pie' ? toAxes([form.x]) : []"
+          :x="form.chartType !== 'table' && form.chartType !== 'metric' && !isRadialPartitionChartType(form.chartType) ? toAxes([form.x]) : []"
           :y="toAxes(chartPreviewYFields, { metrics: true })"
           :series="toAxes(chartPreviewSeriesFields)"
           :data="previewDisplayData"

@@ -50,6 +50,7 @@ export type ChartTypes =
   | 'line'
   | 'area'
   | 'pie'
+  | 'donut'
   | 'metric'
   | 'funnel'
   | 'heatmap'

@@ -2055,7 +2055,9 @@ const chartTypeList = computed(() => {
         })
         break
       case 'pie':
+      case 'donut':
         pushChartType('pie', ICON_PIE)
+        pushChartType('donut', ICON_PIE)
         break
       case 'metric':
         pushChartType('metric', ICON_TABLE)

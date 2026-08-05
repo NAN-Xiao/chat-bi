@@ -1,3 +1,5 @@
+import { isRadialPartitionChartType } from '@/views/chat/component/chartTypes.ts'
+
 const DEFAULT_CHART_SIZE_Y = 14
 const DEFAULT_DASHBOARD_GRID_COLUMNS = 72
 const MIN_CHART_SIZE_Y_WITH_INSIGHT = 16
@@ -60,7 +62,7 @@ export const getRecommendedDashboardChartFrame = (viewInfo?: any, chartCount = 1
     }
   }
 
-  if (chartType === 'pie' || chartType === 'funnel') {
+  if (isRadialPartitionChartType(chartType) || chartType === 'funnel') {
     return {
       sizeX: chartCount <= 2 ? 36 : 24,
       sizeY: 16,

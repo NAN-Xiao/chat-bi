@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ChartAxis, ChartData, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import { isRadialPartitionChartType } from '@/views/chat/component/chartTypes.ts'
 import {
   formatNumber,
   isAverageAxis,
@@ -94,7 +95,7 @@ interface ConversionFieldMatch {
   label: string
 }
 
-const structureChartTypes = new Set<ChartTypes>(['pie', 'funnel', 'treemap'])
+const structureChartTypes = new Set<ChartTypes>(['pie', 'donut', 'funnel', 'treemap'])
 const rankedChartTypes = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'sankey'])
 const trendChartTypes = new Set<ChartTypes>(['line', 'area'])
 const conversionSummaryChartTypes = new Set<ChartTypes>(['bar', 'column'])
@@ -632,7 +633,9 @@ function categoryLabel(row: ChartData, index: number) {
     return `${yValue} / ${xValue}`
   }
 
-  const axis = props.chartType === 'pie' ? seriesAxis.value || xAxis.value : xAxis.value || seriesAxis.value
+  const axis = isRadialPartitionChartType(props.chartType)
+    ? seriesAxis.value || xAxis.value
+    : xAxis.value || seriesAxis.value
   return axis ? stringifyValue(row[axis.value]) || `${index + 1}` : `${index + 1}`
 }
 

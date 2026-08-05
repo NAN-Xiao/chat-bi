@@ -68,6 +68,7 @@ const sideSummaryTypes = new Set<ChartTypes>([
   'sankey',
   'treemap',
   'pie',
+  'donut',
   'funnel',
 ])
 const useSideSummary = computed(() => hasInsight.value && sideSummaryTypes.has(chartType.value))
@@ -360,6 +361,7 @@ function closeDialog() {
 }
 
 .chart-layout-pie,
+.chart-layout-donut,
 .chart-layout-funnel,
 .chart-layout-treemap,
 .chart-layout-sankey {
@@ -417,6 +419,7 @@ function closeDialog() {
   .chart-layout-heatmap .fullscreen-content,
   .chart-layout-bar .fullscreen-content,
   .chart-layout-pie .fullscreen-content,
+  .chart-layout-donut .fullscreen-content,
   .chart-layout-funnel .fullscreen-content,
   .chart-layout-treemap .fullscreen-content,
   .chart-layout-sankey .fullscreen-content {
