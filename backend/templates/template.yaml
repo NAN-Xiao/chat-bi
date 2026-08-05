@@ -11,7 +11,7 @@ template:
         <step>4. <strong>强制检查：应用数据量限制规则（默认限制或用户指定数量）</strong></step>
         <step>5. 应用其他规则（引号、别名、格式化等）</step>
         <step>6. <strong>强制检查：验证SQL语法是否符合<db-engine>规范</strong></step>
-        <step>7. 确定图表类型（根据规则选择table/column/bar/line/area/pie/metric/funnel/heatmap/scatter/sankey/treemap）</step>
+        <step>7. 确定图表类型（根据规则选择table/column/bar/line/area/pie/donut/metric/funnel/heatmap/scatter/sankey/treemap）</step>
         <step>8. 确定对话标题</step>
         <step>9. 生成JSON结果</step>
         <step>10. <strong>强制检查：JSON格式是否正确</strong></step>
@@ -166,8 +166,9 @@ template:
           当 SQL 使用时间范围筛选的非 metric 图表时，必须返回 date_filter。即使最终 SELECT 不输出日期列，只要 SQL 使用看板日期 token 进行时间范围筛选（例如按分类维度汇总最近 N 天），都必须返回 date_filter。SQL 日期边界必须使用与 date_parameter_type 一致的看板日期 token；date_filter 必须包含 time_field、date_parameter_type 和 date_expression。用户未指定日期范围时，date_expression 必须为 {{"version":1,"mode":"preset","preset":"past_7_days"}}。用户明确指定“最近/近/过去 N 天”时，N 是正整数，必须保留该范围：N=7/30/90 时分别使用 past_7_days/past_30_days/past_90_days；其他 N 必须使用 {{"version":1,"mode":"range","start":{{"mode":"dynamic","unit":"day","offset":-N}},"end":{{"mode":"dynamic","unit":"day","offset":-1}}}}，表示截至昨天的 N 个完整自然日，例如最近14天的 start.offset 为 -14、end.offset 为 -1。固定 metric 图表不得返回 date_filter，也不得使用看板日期 token。只有 SQL 完全不使用日期范围筛选和看板日期 token 的无时间范围图表，才不得返回 date_filter。date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。
         </rule>
         <rule>
-          如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/bar/line/area/pie/funnel/heatmap/scatter/sankey/treemap 中的一个
+          如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、环形图(donut)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/bar/line/area/pie/donut/funnel/heatmap/scatter/sankey/treemap 中的一个
           图表类型选择原则推荐：核心单值指标用 metric，单条趋势曲线 over time 用 line，多个可比较的率/比例/均值等非可累加趋势指标用 line，多条可累加贡献趋势（有分类 series 或多指标 multi-quota）用 area，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
+          仅当用户明确要求环形图、圆环图或 donut 时才选择 donut；不得因为占比、结构、构成或分布自动选择 donut。
         </rule>
         <rule priority="high">
           当用户要求按某个分类维度统计某个时间窗口内的每日/按天/按日/每周/按周/每月/按月指标时，必须保留“时间粒度字段 + 分类字段 + 单一指标字段”三列进行聚合，SQL 需要同时按时间粒度字段和分类字段 GROUP BY，并按时间字段、分类字段排序。
@@ -185,8 +186,8 @@ template:
               <sub-requirement>有分类维度时，只能有一个指标字段（纵轴）</sub-requirement>
               <sub-requirement>没有分类维度时，可以有多个指标字段</sub-requirement>
             </requirement-group>
-            <requirement-group chart="pie">
-              <title>饼图(pie)：</title>
+            <requirement-group chart="pie/donut">
+              <title>饼图(pie)与环形图(donut)：</title>
               <sub-requirement>必须有一个分类维度字段（扇区）</sub-requirement>
               <sub-requirement>不能有其他维度字段</sub-requirement>
               <sub-requirement>只能有一个指标字段（扇区大小）</sub-requirement>
@@ -233,7 +234,7 @@ template:
           </note>
         </rule>
         <rule>
-          如果图表类型为柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
+          如果图表类型为柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、环形图(donut)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
           且查询的字段中包含分类字段（非数值类型字段，如城市、类别、状态等）
           在没有明确业务场景说明、或用户没有明确指定不需要聚合的情况下
           必须对数值类型指标字段进行聚合计算（默认使用SUM函数）
@@ -459,8 +460,9 @@ template:
       以下是你必须遵守的规则和可以参考的基础示例：  
       <Rules>
         <rule>
-          支持的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap), 提供给你的<chart-type>值则为 table/metric/column/bar/line/area/pie/funnel/heatmap/scatter/sankey/treemap 中的一个，若没有推荐类型，则由你自己选择一个合适的类型。
+          支持的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、环形图(donut)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap), 提供给你的<chart-type>值则为 table/metric/column/bar/line/area/pie/donut/funnel/heatmap/scatter/sankey/treemap 中的一个，若没有推荐类型，则由你自己选择一个合适的类型。
           图表类型选择原则推荐：核心单值指标用 metric，单条趋势曲线 over time 用 line，多个可比较的率/比例/均值等非可累加趋势指标用 line，多条可累加贡献趋势（有分类 series 或多指标 multi-quota）用 area，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
+          仅当用户明确要求环形图、圆环图或 donut 时才选择 donut；不得因为占比、结构、构成或分布自动选择 donut。
         </rule>
         <rule priority="high">
           如果 SQL 结果同时包含一个时间粒度字段（如日期、日、周、月、date、day、week、month）、一个离散分类字段和一个数值指标字段，且用户问题表达的是最近一段时间内每日/按天/按日/每周/按周/每月/按月的分类趋势，则必须生成堆叠面积图(area)配置：
@@ -563,6 +565,12 @@ template:
           <strong>1. y轴：数值字段，表示各部分的大小</strong>
           <strong>2. series：分类字段，表示各部分的名称</strong>
           饼图使用一个分类字段（series）和一个<strong>数值</strong>字段（y），其中必须从SQL查询列中提取"y"与"series"。
+        </rule>
+        <rule>
+          仅当用户明确要求环形图、圆环图或 donut 时，才可以生成环形图；不得因为占比、结构、构成或分布自动选择 donut。
+          如果需要环形图，JSON格式应为：
+          {{"type":"donut", "title": "标题", "axis": {{"y": {{"value":"SQL 查询数值的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "series": {{"value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
+          环形图使用一个分类字段（series）和一个数值字段（y），分类数量不得超过 12 个。
         </rule>
         <rule>
           如果需要指标卡，JSON格式应为：
@@ -679,7 +687,7 @@ template:
       您的任务是根据给定的表结构，用户问题以及以往用户提问，推测用户接下来可能提问的1-{articles_number}个问题。
       请遵循以下规则：
       - 推测的问题需要与提供的表结构相关，生成的提问例子如：["查询所有用户数据","使用饼图展示各产品类型的占比","使用折线图展示销售额趋势",...]
-      - 推测问题如果涉及图形展示，支持的图形类型为：表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
+      - 推测问题如果涉及图形展示，支持的图形类型为：表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、环形图(donut)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
       - 推测的问题不能与当前用户问题重复
       - 推测的问题必须与给出的表结构相关
       - 若有以往用户提问列表，则根据以往用户提问列表，推测用户最频繁提问的问题，加入到你生成的推测问题中

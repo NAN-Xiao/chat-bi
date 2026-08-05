@@ -12,6 +12,7 @@ CHART_TYPES = {
     "line",
     "area",
     "pie",
+    "donut",
     "funnel",
     "heatmap",
     "scatter",
