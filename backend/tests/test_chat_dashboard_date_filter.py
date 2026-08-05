@@ -15,6 +15,7 @@ from apps.chat.models.chat_model import OperationEnum
 from apps.chat.task.llm import LLMService
 from apps.chat.task import smart_qa_graph
 from apps.chat.curd import chat as chat_crud
+from common.error import SingleMessageError
 
 
 DATE_TEMPLATE_SQL = (
@@ -131,6 +132,75 @@ def test_normalize_uses_today_for_explicit_current_day_question():
         "date_parameter_type": "yyyymmdd_number",
         "date_expression": {"version": 1, "mode": "preset", "preset": "today"},
     }
+
+
+def test_normalize_rejects_missing_date_filter_for_explicit_today_time_series():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
+        normalize_chat_date_filter_for_question(
+            "按小时统计今天的付费次数",
+            None,
+            (
+                "SELECT COUNT(*) FROM event_realtime "
+                "WHERE dt = 20260805 GROUP BY HOUR(FROM_UNIXTIME(time / 1000))"
+            ),
+            "line",
+        )
+
+
+def test_normalize_rejects_missing_date_filter_for_explicit_recent_days_time_series():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
+        normalize_chat_date_filter_for_question(
+            "最近14天每日付费金额趋势",
+            None,
+            "SELECT dt, SUM(amount) FROM event GROUP BY dt",
+            "line",
+        )
+
+
+def test_normalize_allows_missing_date_filter_for_explicit_today_metric():
+    assert (
+        normalize_chat_date_filter_for_question(
+            "今天的付费总额",
+            None,
+            "SELECT SUM(amount) FROM event_realtime WHERE dt = 20260805",
+            "metric",
+        )
+        is None
+    )
+
+
+def test_normalize_allows_missing_date_filter_when_question_has_no_explicit_range():
+    assert (
+        normalize_chat_date_filter_for_question(
+            "每日付费金额趋势",
+            None,
+            "SELECT dt, SUM(amount) FROM event GROUP BY dt",
+            "line",
+        )
+        is None
+    )
+
+
+def test_check_sql_rejects_explicit_today_time_series_without_date_filter(monkeypatch):
+    monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
+    service = object.__new__(LLMService)
+    service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.ds = SimpleNamespace(type="mysql")
+    service.chat_question = SimpleNamespace(question="按小时统计今天的付费次数", data_skill="")
+    service.chat_date_pivot = None
+    response = {
+        "success": True,
+        "sql": "SELECT COUNT(*) FROM event_realtime WHERE dt = 20260805",
+        "tables": ["event_realtime"],
+        "chart-type": "line",
+    }
+
+    with pytest.raises(SingleMessageError, match="missing_date_filter"):
+        service.check_sql(
+            session=object(),
+            res=__import__("json").dumps(response),
+            operate=OperationEnum.GENERATE_SQL,
+        )
 
 
 def test_check_sql_uses_explicit_question_range_instead_of_llm_default():

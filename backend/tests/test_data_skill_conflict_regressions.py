@@ -22,6 +22,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 import seed_flam_first_zombie_data_skills as flam_seed  # noqa: E402
+import seed_platform_date_field_usage_skill as date_field_seed  # noqa: E402
 import seed_platform_realtime_event_table_skill as realtime_seed  # noqa: E402
 import seed_xiuxian_data_skills as xiuxian_seed  # noqa: E402
 from xiuxian_dashboard_skill_catalog import EXPECTED_VIEW_IDS  # noqa: E402
@@ -253,6 +254,27 @@ def _selected_ids(skill_logs: list[str], name_to_id: dict[str, int]) -> set[int]
         name = log.split("\n", 1)[0].removeprefix("名称：")
         selected.add(name_to_id[name])
     return selected
+
+
+def test_realtime_selection_skill_requires_today_date_template_for_time_series() -> None:
+    prompt = realtime_seed.SKILL["prompt"]
+
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert '"preset":"today"' in prompt
+    assert "非 `metric`" in prompt
+    assert "执行阶段" in prompt
+
+
+def test_date_field_skill_parameterizes_partition_roles_without_policy_prerequisite() -> None:
+    prompt = date_field_seed.SKILL["prompt"]
+
+    assert "`partition_date`" in prompt
+    assert "`realtime_partition`" in prompt
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "默认实时查询不套用历史日期 pivot" not in prompt
+    assert "不是使用日期 token 或返回 `date_filter` 的前置条件" in prompt
 
 
 SCENARIOS = (

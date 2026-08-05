@@ -56,6 +56,16 @@ def _explicit_question_date_expression(question: str | None) -> dict[str, Any] |
     }
 
 
+def _question_requires_date_filter(question: str | None, chart_type: str) -> bool:
+    if str(chart_type or "").strip().lower() == "metric":
+        return False
+    question_text = str(question or "")
+    return bool(
+        _EXPLICIT_CURRENT_DAY_PATTERN.search(question_text)
+        or _EXPLICIT_PAST_DAYS_PATTERN.search(question_text)
+    )
+
+
 def normalize_chat_date_filter_for_question(
     question: str | None,
     payload: Any,
@@ -65,6 +75,8 @@ def normalize_chat_date_filter_for_question(
     """将聊天日期配置对齐到用户明确范围或未指定时的过去七天默认值。"""
     expression = _explicit_question_date_expression(question)
     if not isinstance(payload, dict):
+        if _question_requires_date_filter(question, chart_type):
+            raise ChatDateFilterConfigurationError("missing_date_filter")
         return normalize_chat_date_filter(payload, sql, chart_type)
     if expression is None:
         question_text = str(question or "")

@@ -259,6 +259,26 @@ def test_data_skills_document_complete_date_filter_contract() -> None:
     assert '"start":"{{dashboard_start_yyyymmdd}}"' not in prompt
 
 
+def test_payment_ltv_skill_uses_reusable_today_template_for_realtime_time_series() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    prompt = next(
+        skill["prompt"]
+        for skill in seed.DATA_SKILLS
+        if skill["name"] == "flam 付费与 LTV 口径"
+    )
+
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "`event_realtime`" in prompt
+    assert "非 `metric`" in prompt
+    assert '"preset":"today"' in prompt
+    assert re.search(
+        r"(?<!\{)\{dashboard_(?:start|end)_yyyymmdd\}(?!\})",
+        prompt,
+    ) is None
+
+
 def test_data_skill_seed_limits_custom_prompt_lifecycle_to_exact_datasource_scope() -> None:
     content = SEED_SCRIPT.read_text(encoding="utf-8")
     upsert_section = content[content.index("def _upsert_skill") : content.index("def _delete_stale_skills")]
