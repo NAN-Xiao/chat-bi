@@ -140,6 +140,9 @@ def test_normalize_uses_today_for_explicit_current_day_question():
     [
         ("实时收入", "current_day"),
         ("今天实时收入", "current_day"),
+        ("当前小时收入", "current_day"),
+        ("当前分钟收入", "current_day"),
+        ("当前整点收入", "current_day"),
         ("昨天实时收入", "explicit_other"),
         ("最近14天实时收入", "explicit_other"),
         ("2026-08-01实时收入", "explicit_other"),

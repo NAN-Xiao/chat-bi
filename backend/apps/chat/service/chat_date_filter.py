@@ -24,6 +24,7 @@ _EXPLICIT_PAST_DAYS_PATTERN = re.compile(
     r"(?:最近|近|过去)\s*(?P<days>[1-9]\d{0,3})\s*(?:个\s*)?(?:完整\s*)?(?:自然\s*)?[天日]"
 )
 _EXPLICIT_CURRENT_DAY_PATTERN = re.compile(r"(?:今天|今日|当天)")
+_EXPLICIT_CURRENT_TIME_BUCKET_PATTERN = re.compile(r"当前\s*(?:小时|分钟|整点)")
 _REALTIME_PATTERN = re.compile(r"实时")
 _EXPLICIT_YESTERDAY_PATTERN = re.compile(r"(?:昨天|昨日)")
 _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN = re.compile(r"前天")
@@ -57,7 +58,11 @@ def question_date_scope(question: str | None) -> QuestionDateScope:
     )
     if has_explicit_other:
         return "explicit_other"
-    if _EXPLICIT_CURRENT_DAY_PATTERN.search(text) or _REALTIME_PATTERN.search(text):
+    if (
+        _EXPLICIT_CURRENT_DAY_PATTERN.search(text)
+        or _EXPLICIT_CURRENT_TIME_BUCKET_PATTERN.search(text)
+        or _REALTIME_PATTERN.search(text)
+    ):
         return "current_day"
     return "unspecified"
 
