@@ -13,7 +13,7 @@ from apps.knowledge_base.publish_jobs import (
     fail_publish_job_after_enqueue_rejection,
     fail_publish_job_from_inconsistent_task,
     fail_publish_job_from_task,
-    keep_publish_job_queuing,
+    keep_publish_job_pending_confirmation,
     list_due_publish_job_ids,
     lock_publish_job,
     mark_publish_job_queued,
@@ -96,11 +96,12 @@ async def _enqueue_publish_job(
         return result
 
     error_code = result.error_code or "TASK_QUEUE_CONFIRMATION_REQUIRED"
+    pending_status = "QUEUED" if job.status == "QUEUED" else "QUEUING"
     if replace_missing_publish_task(
         session,
         job=job,
         task_id=task_id,
-        status="QUEUING",
+        status=pending_status,
         error_code=error_code,
         now=now,
     ) and result.outcome is EnqueueOutcome.UNKNOWN:
@@ -295,7 +296,7 @@ async def _reconcile_locked_job(
         )
         return
 
-    if keep_publish_job_queuing(
+    if keep_publish_job_pending_confirmation(
         session,
         job=job,
         error_code=result.error_code or "TASK_QUEUE_CONFIRMATION_REQUIRED",

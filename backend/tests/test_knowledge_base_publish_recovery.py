@@ -117,6 +117,30 @@ def test_unknown_confirmation_keeps_same_task_and_queuing(monkeypatch, publish_e
     assert summary["pending_confirmation"] == 1
 
 
+def test_unknown_confirmation_keeps_queued_status_and_records_error(
+    monkeypatch,
+    publish_engine,
+) -> None:
+    _add_job(publish_engine, status="QUEUED")
+
+    async def unknown(task_id, **_kwargs):
+        return EnqueueResult(
+            outcome=EnqueueOutcome.UNKNOWN,
+            task={"id": task_id, "status": "pending"},
+            error_code="TASK_QUEUE_CONFIRMATION_REQUIRED",
+        )
+
+    monkeypatch.setattr(reconciliation, "confirm_or_repair_task", unknown)
+    with Session(publish_engine) as session:
+        summary = asyncio.run(reconciliation.reconcile_publish_jobs(session))
+
+    job = _reload_job(publish_engine)
+    assert job.status == "QUEUED"
+    assert job.task_id == "task-1"
+    assert job.error_code == "TASK_QUEUE_CONFIRMATION_REQUIRED"
+    assert summary["pending_confirmation"] == 1
+
+
 def test_queued_transition_cas_never_moves_running_job_back(monkeypatch, publish_engine) -> None:
     _add_job(publish_engine)
 
@@ -298,6 +322,36 @@ def test_missing_exact_task_reenqueues_only_after_not_found(monkeypatch, publish
     ]
     assert job.task_id == "task-2"
     assert job.status == "QUEUED"
+    assert job.enqueue_attempts == 1
+
+
+def test_missing_queued_task_reenqueues_without_status_regression(
+    monkeypatch,
+    publish_engine,
+) -> None:
+    _add_job(publish_engine, status="QUEUED")
+
+    async def missing(_task_id, **_kwargs):
+        return EnqueueResult(
+            outcome=EnqueueOutcome.REJECTED,
+            task=None,
+            error_code="TASK_NOT_FOUND",
+        )
+
+    async def enqueue(*_args, **_kwargs):
+        return EnqueueResult(
+            outcome=EnqueueOutcome.ENQUEUED,
+            task={"id": "task-2", "status": "pending"},
+        )
+
+    monkeypatch.setattr(reconciliation, "confirm_or_repair_task", missing)
+    monkeypatch.setattr(reconciliation, "enqueue_task_confirmed", enqueue)
+    with Session(publish_engine) as session:
+        asyncio.run(reconciliation.reconcile_publish_jobs(session))
+
+    job = _reload_job(publish_engine)
+    assert job.status == "QUEUED"
+    assert job.task_id == "task-2"
     assert job.enqueue_attempts == 1
 
 

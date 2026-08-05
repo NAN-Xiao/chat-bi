@@ -45,7 +45,15 @@ def list_due_publish_job_ids(
                     ),
                 ),
                 and_(
-                    KnowledgePublishJob.status.in_(("QUEUED", "RUNNING")),
+                    KnowledgePublishJob.status == "QUEUED",
+                    or_(
+                        KnowledgePublishJob.last_enqueue_at.is_(None),
+                        KnowledgePublishJob.last_enqueue_at <= queue_due_at,
+                        KnowledgePublishJob.deadline_at <= now,
+                    ),
+                ),
+                and_(
+                    KnowledgePublishJob.status == "RUNNING",
                     KnowledgePublishJob.deadline_at <= now,
                 ),
             ),
@@ -123,7 +131,7 @@ def mark_publish_job_running(
     )
 
 
-def keep_publish_job_queuing(
+def keep_publish_job_pending_confirmation(
     session: Session,
     *,
     job: KnowledgePublishJob,
@@ -135,7 +143,9 @@ def keep_publish_job_queuing(
         update(KnowledgePublishJob)
         .where(
             KnowledgePublishJob.id == job.id,
-            KnowledgePublishJob.status == "QUEUING",
+            KnowledgePublishJob.status == job.status,
+            KnowledgePublishJob.status.in_(("QUEUING", "QUEUED")),
+            KnowledgePublishJob.task_id == job.task_id,
         )
         .values(
             error_code=error_code,
@@ -159,7 +169,9 @@ def replace_missing_publish_task(
         update(KnowledgePublishJob)
         .where(
             KnowledgePublishJob.id == job.id,
-            KnowledgePublishJob.status == "QUEUING",
+            KnowledgePublishJob.status == job.status,
+            KnowledgePublishJob.status.in_(("QUEUING", "QUEUED")),
+            KnowledgePublishJob.task_id == job.task_id,
         )
         .values(
             status=status,
