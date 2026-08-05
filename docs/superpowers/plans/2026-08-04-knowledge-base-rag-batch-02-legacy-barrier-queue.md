@@ -114,6 +114,7 @@ git commit -m "feat: 建立知识库新旧写入切换屏障"
 ### Task 2: Atomic Confirmed Enqueue and Original-Task Repair
 
 **Files:**
+- Create: `backend/common/core/task_queue_enqueue.py`
 - Modify: `backend/common/core/task_queue.py`
 - Test: `backend/tests/test_task_queue_worker.py`
 - Test: `tests/test_task_queue_reliability.py`
@@ -162,7 +163,7 @@ class EnqueueResult:
     error_code: str | None = None
 ```
 
-The Lua script must atomically write task, tenant index, dedupe key, global pending queue, and tenant pending index with TTLs. A pre-script quota/dedupe rejection maps to `REJECTED`; script success maps to `ENQUEUED`; connection loss where execution cannot be proven maps to `UNKNOWN`. `confirm_or_repair_task()` checks the exact task ID and repairs missing queue/index membership without creating a replacement ID. Keep `enqueue_task()` as an adapter that returns `result.task` on `ENQUEUED` and raises on other outcomes.
+The Lua script must atomically write task, tenant index, dedupe key, global pending queue, and tenant pending index with TTLs. A pre-script quota/dedupe rejection maps to `REJECTED`; script success maps to `ENQUEUED`; connection loss where execution cannot be proven maps to `UNKNOWN`. `confirm_or_repair_task()` checks the exact task ID and repairs missing queue/index membership without creating a replacement ID. Keep `enqueue_task()` as an adapter that returns `result.task` on `ENQUEUED` and raises on other outcomes. Keep the public compatibility surface in `task_queue.py`, but place the new Lua transaction, enqueue result types, and repair transport logic in the focused `task_queue_enqueue.py` module so the existing large queue/Worker module only contains the necessary integration.
 
 - [ ] **Step 4: Run queue reliability tests**
 
@@ -173,7 +174,7 @@ Expected: PASS, including response loss, pre-commit failure, dedupe, retry, and 
 - [ ] **Step 5: Commit queue reliability**
 
 ```powershell
-git add backend/common/core/task_queue.py backend/tests/test_task_queue_worker.py tests/test_task_queue_reliability.py
+git add backend/common/core/task_queue_enqueue.py backend/common/core/task_queue.py backend/tests/test_task_queue_worker.py tests/test_task_queue_reliability.py
 git commit -m "feat: 增加任务队列原子入队与三态确认"
 ```
 
