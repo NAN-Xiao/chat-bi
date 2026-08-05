@@ -132,9 +132,23 @@ def test_catalog_upgrade_backfills_without_inventing_schema() -> None:
     assert "CREATE TRIGGER trg_core_field_legacy_catalog_keys" in sql
     assert "CREATE TRIGGER trg_core_table_catalog_invalidation" in sql
     assert "CREATE TRIGGER trg_core_field_catalog_invalidation" in sql
-    assert "AFTER INSERT OR UPDATE OR DELETE ON core_table" in sql
-    assert "AFTER INSERT OR UPDATE OR DELETE ON core_field" in sql
     assert "LEGACY_WRITE_REQUIRES_REFRESH" not in sql
+
+
+def test_catalog_invalidation_ignores_metadata_only_updates() -> None:
+    sql = _offline_sql(_load_migration(), "upgrade")
+    normalized_sql = " ".join(sql.split())
+
+    assert (
+        "AFTER INSERT OR DELETE OR UPDATE OF ds_id, catalog_name, schema_name, "
+        "catalog_key, schema_key, table_name, table_key ON core_table"
+    ) in normalized_sql
+    assert (
+        "AFTER INSERT OR DELETE OR UPDATE OF ds_id, table_id, field_name, "
+        "field_type, field_key ON core_field"
+    ) in normalized_sql
+    assert "AFTER INSERT OR UPDATE OR DELETE ON core_table" not in normalized_sql
+    assert "AFTER INSERT OR UPDATE OR DELETE ON core_field" not in normalized_sql
 
 
 def test_catalog_downgrade_removes_new_contracts() -> None:

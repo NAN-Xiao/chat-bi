@@ -306,7 +306,10 @@ def _create_catalog_invalidation_guards() -> None:
         sa.text(
             """
             CREATE TRIGGER trg_core_table_catalog_invalidation
-            AFTER INSERT OR UPDATE OR DELETE ON core_table
+            AFTER INSERT OR DELETE OR UPDATE OF
+                ds_id, catalog_name, schema_name, catalog_key,
+                schema_key, table_name, table_key
+            ON core_table
             FOR EACH ROW
             EXECUTE FUNCTION invalidate_core_datasource_catalog()
             """
@@ -316,7 +319,9 @@ def _create_catalog_invalidation_guards() -> None:
         sa.text(
             """
             CREATE TRIGGER trg_core_field_catalog_invalidation
-            AFTER INSERT OR UPDATE OR DELETE ON core_field
+            AFTER INSERT OR DELETE OR UPDATE OF
+                ds_id, table_id, field_name, field_type, field_key
+            ON core_field
             FOR EACH ROW
             EXECUTE FUNCTION invalidate_core_datasource_catalog()
             """
