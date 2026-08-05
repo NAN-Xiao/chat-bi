@@ -2,7 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ChartAxis, ChartData, ChartTypes } from '@/views/chat/component/BaseChart.ts'
-import { isRadialPartitionChartType } from '@/views/chat/component/chartTypes.ts'
 import {
   formatNumber,
   isAverageAxis,
@@ -640,9 +639,11 @@ function categoryLabel(row: ChartData, index: number) {
     return `${yValue} / ${xValue}`
   }
 
-  const axis = isRadialPartitionChartType(props.chartType)
-    ? seriesAxis.value || xAxis.value
-    : xAxis.value || seriesAxis.value
+  const axis = props.chartType === 'donut'
+    ? seriesAxis.value
+    : props.chartType === 'pie'
+      ? seriesAxis.value || xAxis.value
+      : xAxis.value || seriesAxis.value
   return axis ? stringifyValue(row[axis.value]) || `${index + 1}` : `${index + 1}`
 }
 

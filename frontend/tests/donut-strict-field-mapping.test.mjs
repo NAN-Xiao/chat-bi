@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const dashboardEditor = readFileSync('src/views/dashboard/common/DashboardSqlEditor.vue', 'utf8')
 const analysisAssistant = readFileSync('src/views/analysis-assistant/AnalysisAssistantDock.vue', 'utf8')
+const chartInsightHeader = readFileSync('src/views/chat/component/ChartInsightHeader.vue', 'utf8')
 const radialChart = readFileSync('src/views/chat/component/charts/RadialPartitionChart.ts', 'utf8')
 const radialValidation = readFileSync('src/views/chat/component/charts/radialPartition.ts', 'utf8')
 
@@ -57,6 +58,17 @@ test('AnalysisAssistantDock only falls back from pie series to x', () => {
 
   assert.match(getChartSeries, /chart\?\.type === 'pie' && chart\.axis\?\.x/)
   assert.doesNotMatch(getChartSeries, /isRadialPartitionChartType\(chart\.type\)/)
+})
+
+test('ChartInsightHeader only falls back from pie series to x', () => {
+  const categoryLabel = functionBody(chartInsightHeader, 'categoryLabel')
+
+  assert.match(categoryLabel, /props\.chartType === 'donut'[\s\S]*seriesAxis\.value/)
+  assert.match(categoryLabel, /props\.chartType === 'pie'[\s\S]*seriesAxis\.value \|\| xAxis\.value/)
+  assert.doesNotMatch(
+    categoryLabel,
+    /isRadialPartitionChartType\(props\.chartType\)[\s\S]*seriesAxis\.value \|\| xAxis\.value/
+  )
 })
 
 test('DashboardSqlEditor preserves pie single-value and x fallback compatibility', () => {
