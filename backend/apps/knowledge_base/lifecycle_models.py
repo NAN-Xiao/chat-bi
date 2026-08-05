@@ -272,7 +272,6 @@ class KnowledgePublishJob(SQLModel, table=True):
         default=None, sa_column=Column(DateTime(timezone=False), nullable=True)
     )
 
-
 class KnowledgeMigrationState(SQLModel, table=True):
     __tablename__ = "knowledge_migration_state"
     __table_args__ = (
@@ -370,4 +369,3 @@ class KnowledgeStorageProbeReceipt(SQLModel, table=True):
     update_time: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=False), nullable=True)
     )
-
