@@ -50,6 +50,34 @@ assert.deepEqual(
   { width: 1147, height: 252 },
   '录屏卡片必须归一到 compact 稳定帧，不能继续使用 basic/mini 的 280/270px 子区域'
 )
+const compactDashboardFrame = resolveCanonicalInsightFrame({
+  borderBox: { width: 752, height: 330 },
+  borderInline: 0,
+  borderBlock: 0,
+  compactPaddingInline: 16,
+  compactPaddingBlock: 14,
+  compactHeaderHeight: 34,
+  compactHeaderGap: 10,
+  controlsBlock: 36,
+})
+assert.deepEqual(
+  compactDashboardFrame,
+  { width: 720, height: 222 },
+  '截图中的第一行卡片必须按 Card 根节点得到稳定规范帧'
+)
+assert.equal(
+  resolveInsightDisplay({
+    chartType: 'line',
+    data: [{ date: '2026-08-04', value: 10 }],
+    x: [{ value: 'date' }],
+    y: [{ value: 'value' }],
+    series: [],
+    dashboard: true,
+    ...compactDashboardFrame,
+  }).show,
+  true,
+  '752x330 且包含日期控件的看板卡片必须显示 basic 摘要'
+)
 assert.equal(resolveCanonicalInsightFrame(geometryForFrame(0, 300)), null)
 assert.equal(
   sameInsightFrame(
