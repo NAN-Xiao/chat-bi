@@ -238,19 +238,21 @@ git commit -m "修复：统一看板日期参数规则"
 - Consumes: Tasks 1-2 的前后端统一日期契约。
 - Produces: 可交付的测试与构建证据。
 
-- [ ] **Step 1: 运行所有相关前端契约测试**
+- [x] **Step 1: 运行所有相关前端契约测试**
 
 Run: `node frontend/src/views/dashboard/utils/dashboardChartConfig.test.mjs`
 
 Expected: exit code 0。
 
-- [ ] **Step 2: 运行后端相关回归**
+- [x] **Step 2: 运行后端相关回归**
 
 Run: `D:\AIWork3\chat-bi\backend\.venv\Scripts\python.exe -m pytest backend/tests/test_dashboard_permission_cache.py backend/tests/test_chat_dashboard_date_filter.py backend/tests/test_dashboard_date_filter_migration.py backend/tests/test_dashboard_execution_datasource.py -q`
 
 Expected: 全部通过。
 
-- [ ] **Step 3: 运行前端构建**
+Actual: 计划内日期过滤与聊天测试 `38 passed`；扩大到四个文件后 `61 passed, 1 failed`。唯一失败 `test_dashboard_sql_preview_skips_date_parameter_gate_for_unbound_datasource` 已在未修改的主 checkout 独立复现，属于既有测试仍向 `DashboardPivotRequest` 传入已移除字段 `date_parameter_type` 的基线漂移。
+
+- [x] **Step 3: 运行前端构建**
 
 Run: `npm run build`
 
@@ -258,7 +260,7 @@ Working directory: `frontend`
 
 Expected: exit code 0；允许现有非阻断 warning，但不得出现 TypeScript 或 Vue 编译错误。
 
-- [ ] **Step 4: 检查差异与工作区**
+- [x] **Step 4: 检查差异与工作区**
 
 Run: `git diff --check`
 
