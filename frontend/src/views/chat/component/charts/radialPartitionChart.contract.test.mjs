@@ -10,7 +10,7 @@ test('pie and donut use the shared radial partition renderer', () => {
   assert.match(base, /export class RadialPartitionChart extends BaseG2Chart/)
   assert.match(base, /prepareRadialSlices/)
   assert.match(base, /innerRadius/)
-  assert.match(base, /RADIAL_PERCENTAGE_FIELD/)
+  assert.match(base, /prepared\?\.percentageField/)
   assert.match(pie, /extends RadialPartitionChart/)
   assert.match(pie, /name: 'pie'/)
   assert.match(pie, /innerRadius: 0/)

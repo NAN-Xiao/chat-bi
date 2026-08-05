@@ -10,7 +10,6 @@ import { checkIsPercent, formatNumber, getAxesWithFilter } from '@/views/chat/co
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 import { resolveG2ResponsiveStyle } from '@/views/chat/component/charts/g2Responsive.ts'
 import {
-  RADIAL_PERCENTAGE_FIELD,
   RadialPartitionValidationError,
   prepareRadialSlices,
 } from '@/views/chat/component/charts/radialPartition.ts'
@@ -49,6 +48,7 @@ export class RadialPartitionChart extends BaseG2Chart {
       ? prepareRadialSlices(data, series[0].value, y[0].value)
       : undefined
     const checkedData = prepared ? { data: prepared.data, isPercent: false } : checkIsPercent(y, data)
+    const percentageField = prepared?.percentageField
 
     console.debug({
       'render-info': { y, series, data: checkedData, chartType: this.radialOptions.name },
@@ -100,7 +100,7 @@ export class RadialPartitionChart extends BaseG2Chart {
                 if (!this.radialOptions.showPercentage) {
                   return `${datum[series[0].value]}: ${value}`
                 }
-                return `${datum[series[0].value]}: ${value} (${formatNumber(datum[RADIAL_PERCENTAGE_FIELD])}%)`
+                return `${datum[series[0].value]}: ${value} (${formatNumber(datum[percentageField!])}%)`
               },
             },
           ]
@@ -113,7 +113,7 @@ export class RadialPartitionChart extends BaseG2Chart {
             return {
               name: axisLabel(y[0]),
               value: this.radialOptions.showPercentage
-                ? `${value} (${formatNumber(datum[RADIAL_PERCENTAGE_FIELD])}%)`
+                ? `${value} (${formatNumber(datum[percentageField!])}%)`
                 : value,
             }
           },

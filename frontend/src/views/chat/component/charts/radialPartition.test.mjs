@@ -38,6 +38,37 @@ test('prepareRadialSlices returns immutable rows with percentages', () => {
     { range: 'A', count: 1 },
     { range: 'B', count: '3' },
   ])
+  assert.equal(result.percentageField, RADIAL_PERCENTAGE_FIELD)
+})
+
+test('prepareRadialSlices preserves business fields that use the internal percentage name', () => {
+  const categoryCollision = prepareRadialSlices(
+    [{ [RADIAL_PERCENTAGE_FIELD]: 'A', count: 5 }],
+    RADIAL_PERCENTAGE_FIELD,
+    'count'
+  )
+  assert.equal(categoryCollision.data[0][RADIAL_PERCENTAGE_FIELD], 'A')
+  assert.notEqual(categoryCollision.percentageField, RADIAL_PERCENTAGE_FIELD)
+  assert.equal(categoryCollision.data[0][categoryCollision.percentageField], 100)
+
+  const valueCollision = prepareRadialSlices(
+    [{ range: 'A', [RADIAL_PERCENTAGE_FIELD]: 5 }],
+    'range',
+    RADIAL_PERCENTAGE_FIELD
+  )
+  assert.equal(valueCollision.data[0][RADIAL_PERCENTAGE_FIELD], 5)
+  assert.notEqual(valueCollision.percentageField, RADIAL_PERCENTAGE_FIELD)
+  assert.equal(valueCollision.data[0][valueCollision.percentageField], 100)
+})
+
+test('prepareRadialSlices accepts only valid decimal and thousands formats', () => {
+  const result = prepareRadialSlices([{ range: 'A', count: '1,234.5' }], 'range', 'count')
+  assert.equal(result.data[0].count, 1234.5)
+
+  assert.throws(
+    () => prepareRadialSlices([{ range: 'A', count: '1,2' }], 'range', 'count'),
+    (error) => error?.code === 'invalid_value'
+  )
 })
 
 test('formatRadialPercentage keeps at most two decimal places', () => {
@@ -51,6 +82,12 @@ const invalidCases = [
   ['empty_category', [{ range: ' ', count: 1 }], 'range', 'count'],
   ['duplicate_category', [{ range: 'A', count: 1 }, { range: 'A', count: 2 }], 'range', 'count'],
   ['invalid_value', [{ range: 'A', count: 'abc' }], 'range', 'count'],
+  [
+    'invalid_value',
+    [{ range: 'A', count: Number.MAX_VALUE }, { range: 'B', count: Number.MAX_VALUE }],
+    'range',
+    'count',
+  ],
   ['negative_value', [{ range: 'A', count: -1 }], 'range', 'count'],
   ['zero_total', [{ range: 'A', count: 0 }], 'range', 'count'],
   [

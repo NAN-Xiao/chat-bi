@@ -22,6 +22,7 @@ export class RadialPartitionValidationError extends ChartValidationError {
 export interface PreparedRadialSlices {
   data: Array<Record<string, unknown>>
   total: number
+  percentageField: string
 }
 
 function parseRadialValue(value: unknown): number | null {
@@ -31,7 +32,13 @@ function parseRadialValue(value: unknown): number | null {
   if (typeof value !== 'string') {
     return null
   }
-  const normalized = value.trim().replace(/,/g, '')
+  const trimmed = value.trim()
+  const isPlainDecimal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(trimmed)
+  const isThousandsDecimal = /^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(trimmed)
+  if (!isPlainDecimal && !isThousandsDecimal) {
+    return null
+  }
+  const normalized = trimmed.replace(/,/g, '')
   if (!normalized) {
     return null
   }
@@ -88,16 +95,29 @@ export function prepareRadialSlices(
   })
 
   const total = normalized.reduce((sum, item) => sum + item.value, 0)
+  if (!Number.isFinite(total)) {
+    throw new RadialPartitionValidationError('invalid_value')
+  }
   if (total <= 0) {
     throw new RadialPartitionValidationError('zero_total')
   }
 
+  const occupiedFields = new Set<string>([categoryField, valueField])
+  data.forEach((row) => Object.keys(row).forEach((field) => occupiedFields.add(field)))
+  let percentageField = RADIAL_PERCENTAGE_FIELD
+  let percentageFieldSuffix = 1
+  while (occupiedFields.has(percentageField)) {
+    percentageField = `${RADIAL_PERCENTAGE_FIELD}_${percentageFieldSuffix}`
+    percentageFieldSuffix += 1
+  }
+
   return {
     total,
+    percentageField,
     data: normalized.map(({ row, value }) => ({
       ...row,
       [valueField]: value,
-      [RADIAL_PERCENTAGE_FIELD]: Number(formatRadialPercentage(value, total)),
+      [percentageField]: Number(formatRadialPercentage(value, total)),
     })),
   }
 }
