@@ -28,7 +28,7 @@ DB = core_system_db_config()
 SKILL = {
     "name": "平台通用 Data Skill：日期字段用途与范围筛选契约",
     "description": (
-        "依据当前数据源已配置的字段角色和 realtime_date_policy，"
+        "依据当前数据源已配置的字段角色、日期编码和可选 realtime_date_policy，"
         "统一日期范围参数、时间分组和实时查询的字段契约。"
     ),
     "prompt": SKILL_MARKER + "\n" + """
@@ -43,15 +43,16 @@ SKILL = {
 
 ## 日期字段角色
 
-- `range_filter`：允许作为日期范围筛选字段；只有该角色可用于普通历史 `date_filter`。
+- `range_filter`：允许作为通用日期范围筛选字段。
+- `partition_date`：业务数据的日期分区字段；当前 Schema 提供日期编码时可用于参数化 `date_filter`。
 - `display_only`：仅用于展示或分组，默认不可作为日期范围参数。
 - `cohort_date`：用于注册、加入、生命周期等 cohort 口径或展示；默认不可作为普通日期范围参数。
 - `event_time`：事件时间戳，用于小时、分钟或其他时间粒度分组；不能仅凭字段名替代已配置的范围字段。
-- `realtime_partition`：实时业务日分区；是否允许普通历史日期筛选由数据源的 `realtime_date_policy` 明确决定。
+- `realtime_partition`：实时业务日分区；当前 Schema 提供日期编码时可用于参数化 `date_filter`。
 
 ## 日期范围参数契约
 
-- `date_filter.time_field` 必须等于 SQL 中实际参数化字段，并且该字段必须是已配置的 `range_filter`；不得返回展示字段、cohort 字段、JSON 路径字段或事件时间戳作为替代。
+- `date_filter.time_field` 必须等于 SQL 中实际参数化字段，并且该字段必须已配置为 `range_filter`、`partition_date` 或 `realtime_partition`；不得返回展示字段、cohort 字段、JSON 路径字段或事件时间戳作为替代。
 - 数字格式 `yyyymmdd_number` 必须使用成对的 `{{dashboard_start_yyyymmdd}}` 和 `{{dashboard_end_yyyymmdd}}` token，并保持字段类型一致。
 - 文本格式 `yyyymmdd_text`、`date`、`timestamp` 必须遵循当前数据源字段元数据；不同格式不能混用，也不能仅通过字符串改写掩盖类型不匹配。
 - 没有日期 token 时不能返回普通 `date_filter`；需要日期范围时应先补齐当前配置允许的参数化字段。
@@ -59,8 +60,8 @@ SKILL = {
 
 ## 实时查询规则
 
-- 实时字段是否可返回普通 `date_filter`，完全由当前数据源的 `realtime_date_policy` 决定。
-- 默认实时查询不套用历史日期 pivot；应遵循数据源配置的实时业务日规则和 `realtime_partition` 角色。
+- `partition_date` 与 `realtime_partition` 遵循同一日期参数契约；明确日期范围的非 `metric` 图表应依据当前 Schema 返回成对 token 和完整 `date_filter`。
+- `realtime_date_policy` 仅用于当前数据源明确配置的额外实时限制，不是使用日期 token 或返回 `date_filter` 的前置条件。
 - 实时表与历史表跨表查询只有在数据源元数据明确允许、字段语义一致且边界规则已配置时才可合并。
 - 不得根据字段名、表名、历史问答或其他数据源推断实时日期策略。
 
@@ -68,7 +69,7 @@ SKILL = {
 
 - 不得静默回退到未配置的日期字段或其他日期策略。
 
-- 缺少字段角色、日期格式、范围配置或 `realtime_date_policy` 时，必须明确说明配置缺失并请求补充或选择正确字段。
+- 缺少字段角色、日期格式或范围配置时，必须明确说明配置缺失并请求补充或选择正确字段；仅在数据源声明存在额外实时限制时才要求 `realtime_date_policy`。
 - 不得把 `display_only`、`cohort_date`、`event_time`、JSON 派生字段或第一列静默替换为 `range_filter`。
 - 不得在普通 `date_filter`、实时规则、字段类型或权限校验失败时静默回退到其他日期字段、其他数据源或完整历史扫描。
 """,

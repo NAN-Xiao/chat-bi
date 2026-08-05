@@ -22,6 +22,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 import seed_flam_first_zombie_data_skills as flam_seed  # noqa: E402
+import seed_platform_date_field_usage_skill as date_field_seed  # noqa: E402
 import seed_platform_realtime_event_table_skill as realtime_seed  # noqa: E402
 import seed_xiuxian_data_skills as xiuxian_seed  # noqa: E402
 from xiuxian_dashboard_skill_catalog import EXPECTED_VIEW_IDS  # noqa: E402
@@ -255,6 +256,27 @@ def _selected_ids(skill_logs: list[str], name_to_id: dict[str, int]) -> set[int]
     return selected
 
 
+def test_realtime_selection_skill_requires_today_date_template_for_time_series() -> None:
+    prompt = realtime_seed.SKILL["prompt"]
+
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert '"preset":"today"' in prompt
+    assert "非 `metric`" in prompt
+    assert "执行阶段" in prompt
+
+
+def test_date_field_skill_parameterizes_partition_roles_without_policy_prerequisite() -> None:
+    prompt = date_field_seed.SKILL["prompt"]
+
+    assert "`partition_date`" in prompt
+    assert "`realtime_partition`" in prompt
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "默认实时查询不套用历史日期 pivot" not in prompt
+    assert "不是使用日期 token 或返回 `date_filter` 的前置条件" in prompt
+
+
 SCENARIOS = (
     (
         3,
@@ -372,6 +394,37 @@ def test_realtime_payment_conflict_sql_is_rejected(monkeypatch) -> None:
     )
     assert violation is not None
     assert "event_realtime" in violation.message
+
+
+def test_explicit_historical_realtime_query_keeps_history_table(monkeypatch) -> None:
+    rows, name_to_id = _fixture_rows()
+    monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime", "user"},
+    )
+
+    question = "昨天实时付费趋势"
+    skill_text, skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=6,
+        tenant_id=XIUXIAN_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=question,
+    )
+
+    assert 282 in _selected_ids(skill_logs, name_to_id)
+    assert (
+        _data_skill_sql_validation_violation(
+            question,
+            "SELECT e.dt, COUNT(*) FROM event e "
+            "WHERE e.dt = 20260804 GROUP BY e.dt",
+            skill_text,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("datasource, expected_visible", [(6, True), (3, False), (1, False)])

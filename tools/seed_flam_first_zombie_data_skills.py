@@ -393,7 +393,8 @@ LIMIT 24
 ## 付费与累计
 - `user.pay.paytotal` 是用户截至该 `dt` 的累计付费快照，可用于累计付费金额、累计付费用户、当前等级段累计人均付费等快照指标。
 - 历史日充值金额直接汇总 `event='ServerPayLog'` 的 `personal.money`；不要按日汇总 `paytotal`，也不要用支付流程事件筛人后再推导交易金额。
-- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；非 `metric` 时间图必须以 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定窗口并返回同范围的 `date_filter`，不扫描大视图取得最大分区。
+- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；非 `metric` 时间图必须以 `{{{{dashboard_start_yyyymmdd}}}}` 至 `{{{{dashboard_end_yyyymmdd}}}}` 限定窗口并返回同范围的 `date_filter`，不扫描大视图取得最大分区。
+- 用户明确查询今天、今日、当天的实时付费非 `metric` 时间图时，使用 `event_realtime`，SQL 的 `dt` 条件保存成对的 `{{{{dashboard_start_yyyymmdd}}}}` 和 `{{{{dashboard_end_yyyymmdd}}}}`，并返回 `{{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{{"version":1,"mode":"preset","preset":"today"}}}}`；不得把实际 `yyyyMMdd` 固化到可保存、复制的图表 SQL 中。
 - 只有结果需要按渠道/系统等维度拆分时才解析交易事件行的 `adinfo` / `deviceinfo` JSON；国家拆分统一使用活跃事件和 `ServerPayLog` 事件各自行的 `userinfo.country`，不使用 `currentinfo.country`。
 - 日充值次数使用 `ServerPayLog.personal.orderId` 去重；日充值用户数使用同日 `ServerPayLog.uid` 去重。
 - 日新增充值用户数使用 `user.pay.firstpaytime` 转换的首付业务日；不得使用分析窗口内最小付费事件日期。
