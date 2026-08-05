@@ -315,7 +315,7 @@ def validate_dashboard_date_parameter_sql(
         return "mixed_parameter_families"
     if active_families != {expected_family}:
         return "parameter_type_mismatch"
-    allowed_token_sets = ({tokens[1]}, set(tokens))
+    allowed_token_sets = ({tokens[0]}, {tokens[1]}, set(tokens))
     if active_tokens not in allowed_token_sets:
         return "incomplete_parameters"
     return None
@@ -329,26 +329,15 @@ def prepare_dashboard_date_filter(
     date_filter: Any | None = None,
     today: date | None = None,
     require_time_field: bool = True,
-    allow_realtime_current_day: bool = False,
 ) -> DashboardDateFilterPreparation:
     """只处理显式受控模板，不猜测字段，也不改写其他 SQL 条件。"""
     source_sql = str(sql or "")
     parse_replacements = {token: "0" for token in _ALL_TOKENS}
-    parse_sql, active_tokens = _scan_sql_tokens(source_sql, parse_replacements)
+    parse_sql, _ = _scan_sql_tokens(source_sql, parse_replacements)
     try:
         physical_tables = extract_physical_tables(parse_sql_statements(parse_sql, ds_type))
     except Exception:
         return _unconfigured(source_sql, set(), "sql_parse_failed")
-
-    is_realtime = "event_realtime" in {table.lower() for table in physical_tables}
-    if is_realtime and not allow_realtime_current_day:
-        return DashboardDateFilterPreparation(
-            sql=source_sql,
-            start=None,
-            end=None,
-            physical_tables=physical_tables,
-            capability={"status": "realtime", "reason": "realtime_table"},
-        )
 
     # 旧调用方仍可直接传入 pivot 日期配置；服务层会先将画布 V1/V2 配置解析为 date_filter。
     uses_legacy_pivot = date_filter is None
@@ -372,8 +361,12 @@ def prepare_dashboard_date_filter(
         return _unconfigured(source_sql, physical_tables, parameter_error)
     tokens = dashboard_date_parameter_tokens(parameter_type)
     _, active_tokens = _scan_sql_tokens(source_sql)
-    parameter_mode = "end_only" if active_tokens == {tokens[1]} else "range"
-
+    if active_tokens == {tokens[0]}:
+        parameter_mode = "start_only"
+    elif active_tokens == {tokens[1]}:
+        parameter_mode = "end_only"
+    else:
+        parameter_mode = "range"
     business_today = today or datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
     default_start, default_end = default_dashboard_date_range(today=business_today)
     custom_start = _date_filter_value(date_filter, "custom_start", "") if date_filter is not None else _pivot_value(pivot, "custom_start", "")
@@ -407,20 +400,6 @@ def prepare_dashboard_date_filter(
     except (TypeError, ValueError):
         reason = "invalid_date_expression" if expression is not None else "invalid_date_range"
         return _unconfigured(source_sql, physical_tables, reason)
-
-    if is_realtime and (
-        expression is None
-        or parameter_mode != "range"
-        or start != business_today
-        or end != business_today
-    ):
-        return DashboardDateFilterPreparation(
-            sql=source_sql,
-            start=None,
-            end=None,
-            physical_tables=physical_tables,
-            capability={"status": "realtime", "reason": "realtime_table"},
-        )
 
     if expression is None and (start > end or start > default_end or end > default_end):
         return _unconfigured(source_sql, physical_tables, "invalid_date_range")

@@ -28,7 +28,7 @@
 - Consumes: `scanDashboardDateParameterTokens(sql: string): string[]` 和 `dashboardDateParameterTokens[parameterType]`。
 - Produces: `hasMatchingTokens(sql, parameterType)` 对三种合法 token 集合返回 `true`。
 
-- [ ] **Step 1: 写仅开始参数的失败测试**
+- [x] **Step 1: 写仅开始参数的失败测试**
 
 在现有 `endOnlySql` 旁增加：
 
@@ -52,13 +52,13 @@ const startOnly = normalizeDashboardChartConfig({
 assert.equal(startOnly.dateFilter.parameterType, 'date')
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `node frontend/src/views/dashboard/utils/dashboardChartConfig.test.mjs`
 
 Expected: 因 `DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED` 失败，证明当前实现拒绝仅开始 token。
 
-- [ ] **Step 3: 最小修改 token 匹配逻辑**
+- [x] **Step 3: 最小修改 token 匹配逻辑**
 
 将仅结束判断改为任一单边 token：
 
@@ -68,13 +68,13 @@ const isSingleBoundary = activeTokens.length === 1
 return isCompleteRange || isSingleBoundary
 ```
 
-- [ ] **Step 4: 运行测试确认 GREEN**
+- [x] **Step 4: 运行测试确认 GREEN**
 
 Run: `node frontend/src/views/dashboard/utils/dashboardChartConfig.test.mjs`
 
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交前端契约修改**
+- [x] **Step 5: 提交前端契约修改**
 
 ```powershell
 git add -- frontend/src/views/dashboard/utils/dashboardChartConfig.ts frontend/src/views/dashboard/utils/dashboardChartConfig.test.mjs
@@ -96,7 +96,7 @@ git commit -m "修复：允许单边看板日期参数"
 - Consumes: `validate_dashboard_date_parameter_sql(sql: str, parameter_type: str) -> str | None`。
 - Produces: `prepare_dashboard_date_filter(...) -> DashboardDateFilterPreparation` 对普通表和 `event_realtime` 使用相同行为；普通看板和聊天不再返回实时表日期限制错误。
 
-- [ ] **Step 1: 把仅开始参数测试改成合法并验证渲染**
+- [x] **Step 1: 把仅开始参数测试改成合法并验证渲染**
 
 将拒绝测试替换为：
 
@@ -170,18 +170,29 @@ def test_render_allows_single_boundary_filter_for_realtime_table(
     assert "{{dashboard_" not in sql
 ```
 
-- [ ] **Step 2: 运行测试确认 RED**
+- [x] **Step 2: 运行测试确认 RED**
 
 Run: `D:\AIWork3\chat-bi\backend\.venv\Scripts\python.exe -m pytest backend/tests/test_dashboard_permission_cache.py backend/tests/test_chat_dashboard_date_filter.py -q`
 
 Expected: 仅开始校验返回 `incomplete_parameters`，实时表历史范围和单边 SQL 仍返回 `realtime_table`。
 
-- [ ] **Step 3: 放开三个合法 token 集合**
+- [x] **Step 3: 放开三个合法 token 集合**
 
 在 `validate_dashboard_date_parameter_sql` 中使用：
 
 ```python
 allowed_token_sets = ({tokens[0]}, {tokens[1]}, set(tokens))
+```
+
+根据实际 token 集合保留能力响应中的参数模式：
+
+```python
+if active_tokens == {tokens[0]}:
+    parameter_mode = "start_only"
+elif active_tokens == {tokens[1]}:
+    parameter_mode = "end_only"
+else:
+    parameter_mode = "range"
 ```
 
 删除 `prepare_dashboard_date_filter` 的 `allow_realtime_current_day` 参数、`is_realtime` 判断、提前返回 `realtime_table` 的分支，以及解析日期表达式后的实时表当天完整区间限制。保留物理表解析与正常 token 替换。
@@ -194,19 +205,19 @@ allow_realtime_current_day=True,
 
 在 `dashboard_service.py` 删除 `_dashboard_has_explicit_date_range` 及普通看板批量加载、SQL 预览中的 `status == "realtime"` 拦截块。不得增加新的表名判断或兼容兜底。
 
-- [ ] **Step 4: 运行测试确认 GREEN**
+- [x] **Step 4: 运行测试确认 GREEN**
 
 Run: `D:\AIWork3\chat-bi\backend\.venv\Scripts\python.exe -m pytest backend/tests/test_dashboard_permission_cache.py backend/tests/test_chat_dashboard_date_filter.py -q`
 
 Expected: 全部通过。
 
-- [ ] **Step 5: 验证生产路径不再包含日期实时表特例**
+- [x] **Step 5: 验证生产路径不再包含日期实时表特例**
 
 Run: `rg -n "allow_realtime_current_day|dashboard_date_filter_realtime|realtime_table" backend/apps/dashboard backend/apps/chat/service/chat_date_filter.py`
 
 Expected: 无匹配。
 
-- [ ] **Step 6: 提交后端统一规则修改**
+- [x] **Step 6: 提交后端统一规则修改**
 
 ```powershell
 git add -- backend/apps/dashboard/crud/dashboard_date_filter.py backend/apps/chat/service/chat_date_filter.py backend/apps/dashboard/crud/dashboard_service.py backend/tests/test_dashboard_permission_cache.py backend/tests/test_chat_dashboard_date_filter.py
