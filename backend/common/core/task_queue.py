@@ -15,10 +15,39 @@ from typing import Any
 
 from redis.exceptions import RedisError
 
-from apps.system.crud.tenant_usage import check_tenant_usage_quota_detached, record_tenant_usage_detached
+from apps.system.crud.tenant_usage import record_tenant_usage_detached
 from common.core.config import settings
 from common.core.event_loop import submit_to_main_loop
 from common.core.redis_client import get_redis_client, redis_key, tenant_redis_key
+from common.core.task_queue_enqueue import (
+    DEFAULT_TASK_TENANT_ID,
+    EnqueueOutcome,
+    EnqueueResult,
+)
+from common.core.task_queue_enqueue import (
+    confirm_or_repair_task as _confirm_or_repair_task,
+)
+from common.core.task_queue_enqueue import (
+    enqueue_task_confirmed as _enqueue_task_confirmed,
+)
+from common.core.task_queue_enqueue import (
+    normalize_tenant_id as _normalize_tenant_id,
+)
+from common.core.task_queue_enqueue import (
+    queue_key as _queue_key,
+)
+from common.core.task_queue_enqueue import (
+    task_dedupe_key as _task_dedupe_key,
+)
+from common.core.task_queue_enqueue import (
+    task_key as _task_key,
+)
+from common.core.task_queue_enqueue import (
+    task_tenant_index_key as _task_tenant_index_key,
+)
+from common.core.task_queue_enqueue import (
+    tenant_pending_key as _tenant_pending_key,
+)
 from common.utils.utils import AppLogUtil
 
 
@@ -35,7 +64,6 @@ class TaskStatus(str, Enum):
 TaskHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 _task_handlers: dict[str, TaskHandler] = {}
 _current_task_context: ContextVar[dict[str, Any] | None] = ContextVar("current_task_context", default=None)
-DEFAULT_TASK_TENANT_ID = 1
 
 
 def utc_now() -> str:
@@ -69,15 +97,6 @@ def _json_loads(value: bytes | str | None) -> dict[str, Any] | None:
     return json.loads(value)
 
 
-def _queue_key(queue_name: str | None = None) -> str:
-    """
-    是什么：_queue_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    return redis_key("task", "queue", queue_name or settings.TASK_QUEUE_NAME)
-
-
 def _processing_key(queue_name: str | None = None) -> str:
     """
     是什么：_processing_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -85,17 +104,6 @@ def _processing_key(queue_name: str | None = None) -> str:
     做了什么：把后端基础能力的主要流程跑起来，一步步调用需要的处理。
     """
     return redis_key("task", "processing", queue_name or settings.TASK_QUEUE_NAME)
-
-
-def _normalize_tenant_id(tenant_id: int | str | None) -> int:
-    """
-    是什么：_normalize_tenant_id 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力的原始内容拆开、转换或整理，变成程序更好处理的格式。
-    """
-    if tenant_id in (None, ""):
-        return DEFAULT_TASK_TENANT_ID
-    return int(tenant_id)
 
 
 def _record_task_usage(tenant_id: int | str | None, metric: str, *, success: bool | None = None) -> None:
@@ -114,21 +122,6 @@ def _record_task_usage(tenant_id: int | str | None, metric: str, *, success: boo
     )
 
 
-def _tenant_pending_key(tenant_id: int | str | None, queue_name: str | None = None) -> str:
-    """
-    是什么：_tenant_pending_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    return tenant_redis_key(
-        _normalize_tenant_id(tenant_id),
-        "task",
-        "queue",
-        queue_name or settings.TASK_QUEUE_NAME,
-        "pending",
-    )
-
-
 def _tenant_processing_key(tenant_id: int | str | None, queue_name: str | None = None) -> str:
     """
     是什么：_tenant_processing_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -144,15 +137,6 @@ def _tenant_processing_key(tenant_id: int | str | None, queue_name: str | None =
     )
 
 
-def _task_key(task_id: str, tenant_id: int | str | None = None) -> str:
-    """
-    是什么：_task_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    return tenant_redis_key(_normalize_tenant_id(tenant_id), "task", "item", task_id)
-
-
 def _legacy_task_key(task_id: str) -> str:
     """
     是什么：_legacy_task_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
@@ -160,28 +144,6 @@ def _legacy_task_key(task_id: str) -> str:
     做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     return redis_key("task", "item", task_id)
-
-
-def _task_tenant_index_key(task_id: str) -> str:
-    """
-    是什么：_task_tenant_index_key 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    return redis_key("task", "tenant", task_id)
-
-
-def _task_dedupe_key(tenant_id: int | str | None, queue_name: str | None, dedupe_key: str) -> str:
-    """
-    是什么：_task_dedupe_key 生成租户内任务去重键。
-    """
-    return tenant_redis_key(
-        _normalize_tenant_id(tenant_id),
-        "task",
-        "dedupe",
-        queue_name or settings.TASK_QUEUE_NAME,
-        dedupe_key,
-    )
 
 
 def _decode_redis_value(value: bytes | str) -> str:
@@ -264,6 +226,41 @@ def registered_task_names() -> list[str]:
     return sorted(_task_handlers)
 
 
+async def confirm_or_repair_task(
+    task_id: str,
+    *,
+    tenant_id: int | str | None,
+    queue_name: str | None = None,
+) -> EnqueueResult:
+    return await _confirm_or_repair_task(
+        task_id,
+        tenant_id=tenant_id,
+        queue_name=queue_name,
+    )
+
+
+async def enqueue_task_confirmed(
+    name: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    created_by: int | None = None,
+    tenant_id: int | str | None = None,
+    queue_name: str | None = None,
+    max_attempts: int | None = None,
+    dedupe_key: str | None = None,
+) -> EnqueueResult:
+    return await _enqueue_task_confirmed(
+        name,
+        payload,
+        handler_registered=name in _task_handlers,
+        created_by=created_by,
+        tenant_id=tenant_id,
+        queue_name=queue_name,
+        max_attempts=max_attempts,
+        dedupe_key=dedupe_key,
+    )
+
+
 async def enqueue_task(
     name: str,
     payload: dict[str, Any] | None = None,
@@ -274,100 +271,29 @@ async def enqueue_task(
     max_attempts: int | None = None,
     dedupe_key: str | None = None,
 ) -> dict[str, Any]:
-    """
-    是什么：enqueue_task 是一个可以复用的小步骤，负责后端基础能力相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端基础能力里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    if name not in _task_handlers:
+    """Enqueue a task while preserving the original dictionary contract."""
+    result = await enqueue_task_confirmed(
+        name,
+        payload,
+        created_by=created_by,
+        tenant_id=tenant_id,
+        queue_name=queue_name,
+        max_attempts=max_attempts,
+        dedupe_key=dedupe_key,
+    )
+    if result.outcome is EnqueueOutcome.ENQUEUED and result.task is not None:
+        return result.task
+    if result.error_code == "TASK_HANDLER_NOT_REGISTERED":
         raise ValueError(f"Unknown task handler: {name}")
-
-    now = utc_now()
-    resolved_tenant_id = _normalize_tenant_id(tenant_id)
-    resolved_queue_name = queue_name or settings.TASK_QUEUE_NAME
-    client = get_redis_client()
-    task_id = uuid.uuid4().hex
-    dedupe_redis_key = None
-    if dedupe_key:
-        dedupe_redis_key = _task_dedupe_key(resolved_tenant_id, resolved_queue_name, str(dedupe_key))
-        acquired = await client.set(
-            dedupe_redis_key,
-            task_id,
-            ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
-            nx=True,
-        )
-        if not acquired:
-            raw_existing_task_id = await client.get(dedupe_redis_key)
-            if raw_existing_task_id is not None:
-                existing_task = await get_task(_decode_redis_value(raw_existing_task_id), tenant_id=resolved_tenant_id)
-                if existing_task and existing_task.get("status") in {
-                    TaskStatus.PENDING.value,
-                    TaskStatus.RUNNING.value,
-                }:
-                    return existing_task
-            await client.set(
-                dedupe_redis_key,
-                task_id,
-                ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
-            )
-
-    quota_state = check_tenant_usage_quota_detached(tenant_id=resolved_tenant_id, action="task")
-    if not quota_state.allowed:
-        if dedupe_redis_key:
-            await client.delete(dedupe_redis_key)
-        if getattr(quota_state, "reason", None) == "subscription_suspended":
-            raise RuntimeError(
-                f"Tenant {resolved_tenant_id} subscription is {quota_state.subscription_status}; "
-                "task enqueue is suspended by SaaS administrator."
-            )
-        raise RuntimeError(
-            f"Tenant {resolved_tenant_id} task quota exceeded "
-            f"({quota_state.used}/{quota_state.limit} {quota_state.window})."
-        )
-    max_pending_per_tenant = int(settings.TASK_QUEUE_MAX_PENDING_PER_TENANT or 0)
-    if max_pending_per_tenant > 0:
-        current_pending = await tenant_queue_size(resolved_tenant_id, queue_name)
-        if current_pending >= max_pending_per_tenant:
-            if dedupe_redis_key:
-                await client.delete(dedupe_redis_key)
-            raise RuntimeError(
-                f"Tenant {resolved_tenant_id} task queue is full "
-                f"({current_pending}/{max_pending_per_tenant} pending)."
-            )
-    task = {
-        "id": task_id,
-        "tenant_id": resolved_tenant_id,
-        "name": name,
-        "queue": resolved_queue_name,
-        "status": TaskStatus.PENDING.value,
-        "payload": payload or {},
-        "result": None,
-        "error": None,
-        "created_by": created_by,
-        "created_at": now,
-        "updated_at": now,
-        "started_at": None,
-        "finished_at": None,
-        "attempts": 0,
-        "max_attempts": max_attempts or settings.TASK_QUEUE_MAX_ATTEMPTS,
-        "worker": None,
-        "dedupe_key": str(dedupe_key) if dedupe_key else None,
-    }
-
-    await client.set(
-        _task_key(task_id, resolved_tenant_id),
-        _json_dumps(task),
-        ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
-    )
-    await client.set(
-        _task_tenant_index_key(task_id),
-        str(resolved_tenant_id),
-        ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
-    )
-    await client.lpush(_queue_key(queue_name), task_id)
-    await _push_pending_task(task_id, resolved_tenant_id, queue_name)
-    _record_task_usage(resolved_tenant_id, "task.enqueued", success=True)
-    return task
+    if result.error_code == "TENANT_SUBSCRIPTION_SUSPENDED":
+        raise RuntimeError("Task enqueue is suspended by SaaS administrator.")
+    if result.error_code == "TENANT_TASK_QUOTA_EXCEEDED":
+        raise RuntimeError(f"Tenant {_normalize_tenant_id(tenant_id)} task quota exceeded.")
+    if result.error_code == "TASK_QUEUE_FULL":
+        raise RuntimeError(f"Tenant {_normalize_tenant_id(tenant_id)} task queue is full.")
+    if result.outcome is EnqueueOutcome.UNKNOWN:
+        raise RuntimeError("Task enqueue result is unknown; confirmation is required.")
+    raise RuntimeError(f"Task enqueue rejected: {result.error_code or 'UNKNOWN'}")
 
 
 async def _enqueue_task_and_log(

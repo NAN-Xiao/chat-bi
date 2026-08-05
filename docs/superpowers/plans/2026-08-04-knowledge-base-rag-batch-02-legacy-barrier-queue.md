@@ -115,6 +115,7 @@ git commit -m "feat: 建立知识库新旧写入切换屏障"
 
 **Files:**
 - Create: `backend/common/core/task_queue_enqueue.py`
+- Create: `tests/test_task_queue_confirmed_enqueue.py`
 - Modify: `backend/common/core/task_queue.py`
 - Test: `backend/tests/test_task_queue_worker.py`
 - Test: `tests/test_task_queue_reliability.py`
@@ -174,7 +175,7 @@ Expected: PASS, including response loss, pre-commit failure, dedupe, retry, and 
 - [ ] **Step 5: Commit queue reliability**
 
 ```powershell
-git add backend/common/core/task_queue_enqueue.py backend/common/core/task_queue.py backend/tests/test_task_queue_worker.py tests/test_task_queue_reliability.py
+git add backend/common/core/task_queue_enqueue.py backend/common/core/task_queue.py backend/tests/test_task_queue_worker.py tests/test_task_queue_reliability.py tests/test_task_queue_confirmed_enqueue.py
 git commit -m "feat: 增加任务队列原子入队与三态确认"
 ```
 

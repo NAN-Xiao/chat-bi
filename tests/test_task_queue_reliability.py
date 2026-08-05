@@ -1,15 +1,19 @@
 import asyncio
+import json
 import os
 import threading
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+from redis.exceptions import ConnectionError as RedisConnectionError
+
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
 from apps.system.api.task_queue import _can_read_task
-from common.core import task_queue
+from common.core import task_queue, task_queue_enqueue
 from common.core.config import settings
+from common.core.event_loop import register_main_event_loop
 from common.core.task_queue import TaskStatus
 
 
@@ -17,6 +21,10 @@ class FakeRedis:
     def __init__(self):
         self.values = {}
         self.lists = defaultdict(list)
+        self.expirations = {}
+        self.fail_ping = False
+        self.disconnect_after_eval = False
+        self.repair_status_before_eval = None
 
     async def set(self, key, value, ex=None, nx=False):
         if nx and key in self.values:
@@ -59,16 +67,109 @@ class FakeRedis:
             return values[start:]
         return values[start:end + 1]
 
-    async def ping(self):
+    async def expire(self, key, seconds):
+        self.expirations[key] = int(seconds)
         return True
+
+    async def ping(self):
+        if self.fail_ping:
+            raise RedisConnectionError("connection refused before enqueue")
+        return True
+
+    async def eval(self, _script, numkeys, *values):
+        keys = values[:numkeys]
+        args = values[numkeys:]
+        if numkeys == 5:
+            result = self._eval_enqueue(keys, args)
+        elif numkeys == 4:
+            result = self._eval_repair(keys, args)
+        else:
+            raise AssertionError(f"unexpected Lua key count: {numkeys}")
+        if self.disconnect_after_eval:
+            self.disconnect_after_eval = False
+            raise RedisConnectionError("response lost after Lua commit")
+        return result
+
+    def _eval_enqueue(self, keys, args):
+        task_key, tenant_index_key, dedupe_key, queue_key, pending_key = keys
+        (
+            task_json,
+            task_id,
+            tenant_id,
+            ttl,
+            task_key_prefix,
+            max_pending,
+            tenant_index_key_prefix,
+        ) = args
+        ttl = int(ttl)
+        max_pending = int(max_pending)
+
+        if dedupe_key:
+            existing_id = self.values.get(dedupe_key)
+            if existing_id:
+                existing_id = existing_id.decode() if isinstance(existing_id, bytes) else str(existing_id)
+                existing_raw = self.values.get(f"{task_key_prefix}{existing_id}")
+                if existing_raw:
+                    existing = json.loads(existing_raw)
+                    if existing.get("status") in {"pending", "running"}:
+                        if existing.get("status") == "pending":
+                            self._replace_in_list(queue_key, existing_id)
+                            self._replace_in_list(pending_key, existing_id)
+                        return ["DEDUPED", existing_id, existing_raw]
+                self.lists[queue_key] = [item for item in self.lists[queue_key] if item != existing_id]
+                self.lists[pending_key] = [item for item in self.lists[pending_key] if item != existing_id]
+                if not existing_raw:
+                    self.values.pop(f"{tenant_index_key_prefix}{existing_id}", None)
+                self.values.pop(dedupe_key, None)
+
+        if max_pending > 0 and len(self.lists[pending_key]) >= max_pending:
+            return ["REJECTED", "TASK_QUEUE_FULL", ""]
+
+        self.values[task_key] = task_json
+        self.values[tenant_index_key] = str(tenant_id)
+        if dedupe_key:
+            self.values[dedupe_key] = task_id
+        self._replace_in_list(queue_key, task_id)
+        self._replace_in_list(pending_key, task_id)
+        for key in [task_key, tenant_index_key, dedupe_key, queue_key, pending_key]:
+            if key:
+                self.expirations[key] = ttl
+        return ["ENQUEUED", task_id, task_json]
+
+    def _eval_repair(self, keys, args):
+        task_key, tenant_index_key, queue_key, pending_key = keys
+        task_id, tenant_id, ttl, _queue_name = args
+        if self.repair_status_before_eval and task_key in self.values:
+            updated = json.loads(self.values[task_key])
+            updated["status"] = self.repair_status_before_eval
+            self.values[task_key] = json.dumps(updated)
+        raw_task = self.values.get(task_key)
+        if raw_task is None:
+            return ["REJECTED", "TASK_NOT_FOUND", ""]
+        task = json.loads(raw_task)
+        self.values[tenant_index_key] = str(tenant_id)
+        self.expirations[task_key] = int(ttl)
+        self.expirations[tenant_index_key] = int(ttl)
+        if task.get("status") == "pending":
+            self._replace_in_list(queue_key, task_id)
+            self._replace_in_list(pending_key, task_id)
+            self.expirations[queue_key] = int(ttl)
+            self.expirations[pending_key] = int(ttl)
+        return ["ENQUEUED", task_id, raw_task]
+
+    def _replace_in_list(self, key, value):
+        self.lists[key] = [item for item in self.lists[key] if item != value]
+        self.lists[key].insert(0, value)
 
 
 def _install_fake_redis(monkeypatch):
     fake = FakeRedis()
     monkeypatch.setattr(task_queue, "get_redis_client", lambda: fake)
+    monkeypatch.setattr(task_queue_enqueue, "get_redis_client", lambda: fake)
     monkeypatch.setattr(task_queue, "record_tenant_usage_detached", lambda **kwargs: True)
+    monkeypatch.setattr(task_queue_enqueue, "record_tenant_usage_detached", lambda **kwargs: True)
     monkeypatch.setattr(
-        task_queue,
+        task_queue_enqueue,
         "check_tenant_usage_quota_detached",
         lambda **kwargs: SimpleNamespace(allowed=True),
     )
@@ -241,7 +342,7 @@ def test_enqueue_rejects_when_tenant_pending_limit_is_reached(monkeypatch):
 def test_enqueue_rejects_when_tenant_task_quota_is_exceeded(monkeypatch):
     _install_fake_redis(monkeypatch)
     monkeypatch.setattr(
-        task_queue,
+        task_queue_enqueue,
         "check_tenant_usage_quota_detached",
         lambda **kwargs: SimpleNamespace(allowed=False, used=10, limit=10, window="daily"),
     )
@@ -347,7 +448,7 @@ def test_detached_enqueue_from_sync_thread_uses_registered_event_loop(monkeypatc
 
     monkeypatch.setattr(task_queue, "_enqueue_task_and_log", fake_enqueue)
     try:
-        task_queue.configure_task_queue_event_loop(owner_loop)
+        register_main_event_loop(owner_loop)
         owner_loop.call_soon_threadsafe(block_owner_loop)
         assert owner_blocked.wait(timeout=1)
         caller_thread = threading.Thread(target=call_from_sync_thread)
@@ -358,8 +459,7 @@ def test_detached_enqueue_from_sync_thread_uses_registered_event_loop(monkeypatc
         assert enqueue_finished.wait(timeout=1)
     finally:
         release_owner.set()
-        if hasattr(task_queue, "configure_task_queue_event_loop"):
-            task_queue.configure_task_queue_event_loop(None)
+        register_main_event_loop(None)
         owner_loop.call_soon_threadsafe(owner_loop.stop)
         owner_thread.join(timeout=2)
         owner_loop.close()
