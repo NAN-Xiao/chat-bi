@@ -73,8 +73,23 @@ def test_sql_example_does_not_override_default_window() -> None:
         ("实时收入", "current_day", date(2026, 7, 26), date(2026, 7, 26), 1),
         ("今天实时收入", "current_day", date(2026, 7, 26), date(2026, 7, 26), 1),
         ("昨天实时收入", "yesterday", date(2026, 7, 25), date(2026, 7, 25), 1),
+        ("昨日实时收入", "yesterday", date(2026, 7, 25), date(2026, 7, 25), 1),
+        (
+            "前天实时收入",
+            "day_before_yesterday",
+            date(2026, 7, 24),
+            date(2026, 7, 24),
+            1,
+        ),
         ("最近14天实时收入", "relative_days", date(2026, 7, 13), date(2026, 7, 26), 14),
         ("本月实时收入", "month", date(2026, 7, 1), date(2026, 7, 26), None),
+        (
+            "2026-08-01实时收入",
+            "absolute",
+            date(2026, 8, 1),
+            date(2026, 8, 1),
+            None,
+        ),
         (
             "2026-07-01 到 2026-07-10 实时收入",
             "absolute",

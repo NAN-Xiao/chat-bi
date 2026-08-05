@@ -19,6 +19,9 @@ _ISO_RANGE_RE = re.compile(
     r"(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?\s*"
     r"(?:到|至|~|～|—|-)\s*(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?"
 )
+_ISO_DATE_RE = re.compile(
+    r"(?<!\d)(\d{4})(?:[-/.](\d{1,2})[-/.](\d{1,2})|年(\d{1,2})月(\d{1,2})日?)(?!\d)"
+)
 _FULL_OPEN_RE = re.compile(
     r"(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})[日号]\s*"
     r"(之后|以后|起|开始|及以后)"
@@ -62,6 +65,7 @@ class AnalysisTimeIntent:
         "day_open",
         "month",
         "yesterday",
+        "day_before_yesterday",
         "current_day",
         "invalid",
     ]
@@ -218,8 +222,13 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
             source=AnalysisTimeSource.USER,
             window_days=30,
         )
-    if "昨天" in text:
+    if "昨天" in text or "昨日" in text:
         return AnalysisTimeIntent(kind="yesterday", source=AnalysisTimeSource.USER)
+    if "前天" in text:
+        return AnalysisTimeIntent(
+            kind="day_before_yesterday",
+            source=AnalysisTimeSource.USER,
+        )
     if "本月" in text:
         return AnalysisTimeIntent(kind="month", source=AnalysisTimeSource.USER)
     full_open = _FULL_OPEN_RE.search(text)
@@ -247,6 +256,25 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
             month=question_month if question_month is not None else history_month,
             day_of_month=int(day_only.group(1)),
             start_inclusive=marker not in {"之后", "以后"},
+        )
+    single_date = _ISO_DATE_RE.search(text)
+    if single_date:
+        year = int(single_date.group(1))
+        month = int(single_date.group(2) or single_date.group(4))
+        day = int(single_date.group(3) or single_date.group(5))
+        selected_date = _safe_date(year, month, day)
+        if selected_date is None:
+            return AnalysisTimeIntent(
+                kind="invalid",
+                source=AnalysisTimeSource.USER,
+                requires_anchor=False,
+            )
+        return AnalysisTimeIntent(
+            kind="absolute",
+            source=AnalysisTimeSource.USER,
+            start_date=selected_date,
+            end_date=selected_date,
+            requires_anchor=False,
         )
     if question_date_scope(text) == "current_day":
         return AnalysisTimeIntent(kind="current_day", source=AnalysisTimeSource.USER)
@@ -373,6 +401,19 @@ def resolve_analysis_time_policy(
             True,
             anchor,
             "用户指定昨天",
+        )
+    elif intent.kind == "day_before_yesterday":
+        day_before_yesterday = anchor_date - timedelta(days=2)
+        policy = AnalysisTimePolicy(
+            AnalysisTimeSource.USER,
+            1,
+            anchor_date,
+            day_before_yesterday,
+            day_before_yesterday,
+            True,
+            True,
+            anchor,
+            "用户指定前天",
         )
     elif intent.kind == "current_day":
         policy = AnalysisTimePolicy(
