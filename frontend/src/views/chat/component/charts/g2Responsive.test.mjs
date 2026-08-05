@@ -53,7 +53,6 @@ const files = [
   'Bar.ts',
   'Scatter.ts',
   'Heatmap.ts',
-  'Pie.ts',
   'Funnel.ts',
   'Sankey.ts',
   'Treemap.ts',
@@ -61,6 +60,20 @@ const files = [
 for (const file of files) {
   const chart = readFileSync(`src/views/chat/component/charts/${file}`, 'utf8')
   assert.match(chart, /resolveG2ResponsiveStyle\(this\.layoutContext/, `${file} 必须消费共享尺寸策略`)
+}
+
+const radialPartitionChart = readFileSync(
+  'src/views/chat/component/charts/RadialPartitionChart.ts',
+  'utf8'
+)
+assert.match(
+  radialPartitionChart,
+  /resolveG2ResponsiveStyle\(this\.layoutContext/,
+  '共享径向图渲染器必须消费共享尺寸策略'
+)
+for (const file of ['Pie.ts', 'Donut.ts']) {
+  const chart = readFileSync(`src/views/chat/component/charts/${file}`, 'utf8')
+  assert.match(chart, /extends RadialPartitionChart/, `${file} 必须继承共享径向图渲染器`)
 }
 
 for (const file of ['Line.ts', 'Area.ts', 'Column.ts']) {
