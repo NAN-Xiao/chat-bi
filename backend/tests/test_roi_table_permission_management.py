@@ -50,7 +50,9 @@ def session() -> Session:
             id BIGINT PRIMARY KEY, tenant_id BIGINT, name TEXT, description TEXT,
             type TEXT, type_name TEXT, configuration TEXT, create_time DATETIME,
             create_by BIGINT, status TEXT, num TEXT, table_relation TEXT,
-            embedding TEXT, recommended_config BIGINT
+            embedding TEXT, recommended_config BIGINT,
+            catalog_complete BOOLEAN NOT NULL DEFAULT 0,
+            catalog_incomplete_reason TEXT, physical_schema_hash VARCHAR(64)
         )
         """,
         """
@@ -76,7 +78,9 @@ def session() -> Session:
         """
         CREATE TABLE core_table (
             id BIGINT PRIMARY KEY, ds_id BIGINT, checked BOOLEAN,
-            table_name TEXT, table_comment TEXT, custom_comment TEXT, embedding TEXT
+            table_name TEXT, table_comment TEXT, custom_comment TEXT, embedding TEXT,
+            catalog_name VARCHAR(255), schema_name VARCHAR(255),
+            catalog_key VARCHAR(255), schema_key VARCHAR(255), table_key VARCHAR(255)
         )
         """,
         """

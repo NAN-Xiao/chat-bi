@@ -18,6 +18,12 @@ from apps.datasource.crud.permission_rules import (
 )
 from apps.datasource.crud.permission_fields import normalize_permission_field_entries
 from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access
+from apps.datasource.crud.binding import list_bound_tenant_ids_for_datasource
+from apps.datasource.crud.metadata_permission import (
+    METADATA_PERMISSION_TYPES,
+    MetadataPermissionService,
+    MetadataPermissionValidationError,
+)
 from apps.datasource.crud.table import get_tables_by_ds_id
 from apps.system.schemas.business_access import require_chatbi_business_or_platform_admin
 from apps.system.schemas.permission import AppPermission, require_permissions
@@ -33,13 +39,19 @@ router = APIRouter(
 )
 
 
-PERMISSION_TYPES = {"table", "column", "row"}
+PERMISSION_TYPES = {"table", "column", "row", *METADATA_PERMISSION_TYPES}
 
 
 def _normalize_permission_type(value: object) -> str:
     normalized = str(value or "").strip().lower()
     if normalized not in PERMISSION_TYPES:
-        raise HTTPException(status_code=400, detail="Unsupported permission type")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "PERMISSION_TYPE_UNSUPPORTED",
+                "message": "不支持的权限类型。",
+            },
+        )
     return normalized
 
 
@@ -244,6 +256,80 @@ def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule
         raise HTTPException(status_code=400, detail="Permission rule must contain at least one datasource-scoped permission")
 
     for permission in permissions:
+        permission_type = _normalize_permission_type(permission.get("type"))
+        permission["type"] = permission_type
+        if permission_type in METADATA_PERMISSION_TYPES:
+            try:
+                datasource_id = int(permission.get("ds_id"))
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "PERMISSION_DATASOURCE_REQUIRED",
+                        "message": "请选择当前工作空间的数据源。",
+                    },
+                )
+            datasource, permission_source = _permission_datasource_access(
+                session,
+                user,
+                datasource_id,
+                permission_type,
+            )
+            if datasource is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "code": "PERMISSION_DATASOURCE_NOT_FOUND",
+                        "message": "数据源不存在或不属于当前工作空间。",
+                    },
+                )
+            if permission_source == "roi":
+                raise HTTPException(status_code=400, detail="ROI 数据源仅支持表禁止")
+            if is_global_platform_context(user):
+                bound_tenant_ids = list_bound_tenant_ids_for_datasource(
+                    session,
+                    datasource_id,
+                )
+                tenant_id = bound_tenant_ids[0] if len(bound_tenant_ids) == 1 else None
+            else:
+                tenant_id = current_tenant_id(user)
+            if tenant_id is None:
+                raise HTTPException(
+                    status_code=400 if is_global_platform_context(user) else 403,
+                    detail={
+                        "code": (
+                            "PERMISSION_DATASOURCE_BINDING_INVALID"
+                            if is_global_platform_context(user)
+                            else "WORKSPACE_CONTEXT_REQUIRED"
+                        ),
+                        "message": (
+                            "数据源未绑定唯一工作空间，无法配置元数据权限。"
+                            if is_global_platform_context(user)
+                            else "请先进入工作空间后再配置元数据权限。"
+                        ),
+                    },
+                )
+            targets = permission.get("permissions")
+            if isinstance(permission.get("target"), dict):
+                targets = [permission["target"]]
+            try:
+                permission["permissions"] = MetadataPermissionService.normalize_permission_targets(
+                    session=session,
+                    current_user=user,
+                    tenant_id=int(tenant_id),
+                    datasource_id=datasource_id,
+                    permission_type=permission_type,
+                    targets=targets,
+                )
+            except MetadataPermissionValidationError as exc:
+                raise HTTPException(
+                    status_code=exc.status_code,
+                    detail={"code": exc.code, "message": exc.message},
+                ) from exc
+            permission.pop("target", None)
+            permission["table_id"] = None
+            continue
+
         try:
             table_id = int(permission.get("table_id"))
         except (TypeError, ValueError):
@@ -259,7 +345,6 @@ def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule
             datasource_id = int(table.ds_id)
             permission["ds_id"] = datasource_id
 
-        permission_type = str(permission.get("type") or "").strip().lower()
         datasource, permission_source = _permission_datasource_access(
             session,
             user,

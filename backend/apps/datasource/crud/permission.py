@@ -805,6 +805,15 @@ def _permission_applies_to_user(permission: Any, contain_rules: list[Any], curre
     return False
 
 
+def permission_applies_to_user(
+    permission: Any,
+    contain_rules: list[Any],
+    current_user: CurrentUser,
+) -> bool:
+    """Expose the established rule and whitelist semantics to permission services."""
+    return _permission_applies_to_user(permission, contain_rules, current_user)
+
+
 def has_applicable_row_permissions(
         session: SessionDep,
         current_user: CurrentUser,

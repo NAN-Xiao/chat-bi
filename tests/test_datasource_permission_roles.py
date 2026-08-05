@@ -63,7 +63,10 @@ def _engine_with_permission_tables():
                 num VARCHAR(256),
                 table_relation TEXT,
                 embedding TEXT,
-                recommended_config INTEGER
+                recommended_config INTEGER,
+                catalog_complete BOOLEAN NOT NULL DEFAULT 0,
+                catalog_incomplete_reason TEXT,
+                physical_schema_hash VARCHAR(64)
             )
             """
         ))
@@ -76,6 +79,16 @@ def _engine_with_permission_tables():
                 role VARCHAR(32) NOT NULL DEFAULT 'viewer',
                 create_by INTEGER,
                 create_time DATETIME
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE core_roi_workspace_config (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER NOT NULL,
+                deleted BOOLEAN NOT NULL DEFAULT 0
             )
             """
         ))
@@ -104,7 +117,12 @@ def _engine_with_permission_tables():
                 table_name TEXT,
                 table_comment TEXT,
                 custom_comment TEXT,
-                embedding TEXT
+                embedding TEXT,
+                catalog_name VARCHAR(255),
+                schema_name VARCHAR(255),
+                catalog_key VARCHAR(255),
+                schema_key VARCHAR(255),
+                table_key VARCHAR(255)
             )
             """
         ))
@@ -119,7 +137,8 @@ def _engine_with_permission_tables():
                 field_type VARCHAR(128),
                 field_comment TEXT,
                 custom_comment TEXT,
-                field_index INTEGER
+                field_index INTEGER,
+                field_key VARCHAR(255)
             )
             """
         ))
