@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from pathlib import Path
+
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.engine import Engine
+from sqlmodel import Session
 
 from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.lifecycle_models import (
@@ -32,6 +38,19 @@ class _Session:
     def exec(self, statement):
         self.statements.append(statement)
         return _OneResult(self.row)
+
+
+@pytest.fixture
+def migration_state_engine(tmp_path: Path) -> Iterator[Engine]:
+    engine = create_engine(f"sqlite:///{tmp_path / 'migration-state.db'}")
+    KnowledgeMigrationState.__table__.create(engine)
+    with Session(engine) as session:
+        session.add(
+            KnowledgeMigrationState(phase=KnowledgeMigrationPhase.LEGACY_OPEN)
+        )
+        session.commit()
+    yield engine
+    engine.dispose()
 
 
 @pytest.mark.parametrize(
@@ -101,6 +120,52 @@ def test_legacy_write_lock_uses_shared_row_lock() -> None:
     assert row.phase == KnowledgeMigrationPhase.LEGACY_OPEN
     assert "WHERE knowledge_migration_state.id = 1" in sql
     assert "FOR SHARE" in sql
+
+
+def test_get_refreshes_cached_phase_from_database(
+    migration_state_engine: Engine,
+) -> None:
+    with Session(migration_state_engine) as cached_session:
+        cached = cached_session.get(KnowledgeMigrationState, 1)
+        assert cached is not None
+        assert cached.phase == KnowledgeMigrationPhase.LEGACY_OPEN
+
+        with Session(migration_state_engine) as updating_session:
+            updated = updating_session.get(KnowledgeMigrationState, 1)
+            assert updated is not None
+            updated.phase = KnowledgeMigrationPhase.CUTOVER_BARRIER
+            updating_session.commit()
+
+        assert cached.phase == KnowledgeMigrationPhase.LEGACY_OPEN
+
+        refreshed = KnowledgeMigrationStateRepository.get(cached_session)
+
+        assert refreshed is cached
+        assert refreshed.phase == KnowledgeMigrationPhase.CUTOVER_BARRIER
+
+
+def test_legacy_write_lock_rejects_phase_changed_after_session_cached_it(
+    migration_state_engine: Engine,
+) -> None:
+    with Session(migration_state_engine) as cached_session:
+        cached = cached_session.get(KnowledgeMigrationState, 1)
+        assert cached is not None
+        assert cached.phase == KnowledgeMigrationPhase.LEGACY_OPEN
+
+        with Session(migration_state_engine) as updating_session:
+            updated = updating_session.get(KnowledgeMigrationState, 1)
+            assert updated is not None
+            updated.phase = KnowledgeMigrationPhase.CUTOVER_BARRIER
+            updating_session.commit()
+
+        assert cached.phase == KnowledgeMigrationPhase.LEGACY_OPEN
+
+        with pytest.raises(KnowledgeBusinessError) as caught:
+            KnowledgeMigrationStateRepository.lock_for_legacy_write(cached_session)
+
+        assert caught.value.code == "KNOWLEDGE_UPGRADE_IN_PROGRESS"
+        assert caught.value.status_code == 409
+        assert cached.phase == KnowledgeMigrationPhase.CUTOVER_BARRIER
 
 
 @pytest.mark.parametrize(

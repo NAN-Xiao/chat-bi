@@ -29,7 +29,9 @@ class KnowledgeMigrationStateRepository:
     @staticmethod
     def get(session: Session) -> KnowledgeMigrationState:
         return session.exec(
-            select(KnowledgeMigrationState).where(KnowledgeMigrationState.id == 1)
+            select(KnowledgeMigrationState)
+            .where(KnowledgeMigrationState.id == 1)
+            .execution_options(populate_existing=True)
         ).one()
 
     @staticmethod
@@ -38,6 +40,7 @@ class KnowledgeMigrationStateRepository:
             select(KnowledgeMigrationState)
             .where(KnowledgeMigrationState.id == 1)
             .with_for_update(read=True)
+            .execution_options(populate_existing=True)
         ).one()
         phase = KnowledgeMigrationPhase(row.phase)
         if phase == KnowledgeMigrationPhase.CUTOVER_BARRIER:
