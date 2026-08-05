@@ -6,8 +6,22 @@ from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Identity, Index, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKeyConstraint,
+    Identity,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlmodel import Field, SQLModel
+
+from apps.knowledge_base import lifecycle_models as _lifecycle_models  # noqa: F401
 
 
 class KnowledgeBaseVisibilityScopeEnum(str, Enum):
@@ -34,6 +48,54 @@ class KnowledgeBase(SQLModel, table=True):
     """
     __tablename__ = "knowledge_base"
     __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_knowledge_base_id_tenant"),
+        UniqueConstraint(
+            "tenant_id",
+            "visibility_scope",
+            "stable_key",
+            name="uq_knowledge_base_tenant_scope_stable_key",
+        ),
+        CheckConstraint(
+            "knowledge_type IS NULL OR knowledge_type IN "
+            "('DOCUMENT','BUSINESS','EVENT','JSON_FIELD')",
+            name="ck_knowledge_base_knowledge_type",
+        ),
+        ForeignKeyConstraint(
+            ["id", "tenant_id", "draft_version_id"],
+            [
+                "knowledge_base_version.knowledge_base_id",
+                "knowledge_base_version.tenant_id",
+                "knowledge_base_version.id",
+            ],
+            name="fk_knowledge_base_draft_version_id_version",
+            ondelete="RESTRICT",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        ForeignKeyConstraint(
+            ["id", "tenant_id", "current_version_id"],
+            [
+                "knowledge_base_version.knowledge_base_id",
+                "knowledge_base_version.tenant_id",
+                "knowledge_base_version.id",
+            ],
+            name="fk_knowledge_base_current_version_id_version",
+            ondelete="RESTRICT",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        ForeignKeyConstraint(
+            ["id", "tenant_id", "publishing_version_id"],
+            [
+                "knowledge_base_version.knowledge_base_id",
+                "knowledge_base_version.tenant_id",
+                "knowledge_base_version.id",
+            ],
+            name="fk_knowledge_base_publishing_version_id_version",
+            ondelete="RESTRICT",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
         Index("idx_knowledge_base_tenant_scope", "tenant_id", "visibility_scope"),
         Index("idx_knowledge_base_create_by", "create_by"),
         Index("idx_knowledge_base_status", "status"),
@@ -65,6 +127,34 @@ class KnowledgeBase(SQLModel, table=True):
     error_message: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     create_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
     update_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
+    knowledge_type: Optional[str] = Field(
+        default=None, sa_column=Column(String(32), nullable=True)
+    )
+    stable_key: Optional[str] = Field(
+        default=None, sa_column=Column(String(255), nullable=True)
+    )
+    draft_version_id: Optional[int] = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )
+    current_version_id: Optional[int] = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )
+    publishing_version_id: Optional[int] = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )
+    archived: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+    )
+    update_by: Optional[int] = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )
+    publish_by: Optional[int] = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )
+    publish_time: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=False), nullable=True)
+    )
 
 
 class KnowledgeBaseItem(BaseModel):
