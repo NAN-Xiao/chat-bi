@@ -7,7 +7,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from sqlalchemy import desc, or_
 from sqlmodel import select
 
@@ -17,8 +25,13 @@ from apps.knowledge_base.models import (
     KnowledgeBaseStatusEnum,
     KnowledgeBaseVisibilityScopeEnum,
 )
+from apps.knowledge_base.repository import KnowledgeMigrationStateRepository
 from apps.knowledge_base.tasks import process_knowledge_base_document
-from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tenant import (
+    DEFAULT_TENANT_ID,
+    TENANT_ADMIN_ROLES,
+    normalize_tenant_role,
+)
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.access_context import require_current_tenant_id
 from common.core.config import settings
@@ -259,6 +272,7 @@ async def save_knowledge_base(
             update_time=now,
         )
 
+    KnowledgeMigrationStateRepository.lock_for_legacy_write(session)
     record.name = clean_name
     record.description = description.strip()
     record.active = active
@@ -281,6 +295,7 @@ async def save_knowledge_base(
     session.refresh(record)
 
     if should_process:
+        KnowledgeMigrationStateRepository.lock_for_legacy_write(session)
         try:
             register_builtin_tasks()
             task = await enqueue_task(
@@ -316,6 +331,7 @@ async def delete_knowledge_base(session: SessionDep, current_user: CurrentUser, 
     if not record:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     _require_record_manage(current_user, record)
+    KnowledgeMigrationStateRepository.lock_for_legacy_write(session)
     AppFileUtils.delete_file(record.file_id)
     session.delete(record)
     return {"id": id}

@@ -12,6 +12,10 @@ from xml.etree import ElementTree as ET
 from sqlmodel import Session
 
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
+from apps.knowledge_base.repository import (
+    KnowledgeBusinessError,
+    KnowledgeMigrationStateRepository,
+)
 from common.core.db import engine
 from common.core.task_queue import current_task_tenant_id, task_handler
 from common.utils.file_utils import AppFileUtils
@@ -104,6 +108,19 @@ def _extract_content(record: KnowledgeBase) -> str:
     return content
 
 
+def _phase_rejected_result(
+    record_id: int,
+    tenant_id: int,
+    error: KnowledgeBusinessError,
+) -> dict[str, Any]:
+    return {
+        "id": record_id,
+        "tenant_id": tenant_id,
+        "status": "REJECTED_BY_PHASE",
+        "error_code": error.code,
+    }
+
+
 @task_handler("knowledge_base.process_document")
 def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
     """
@@ -119,6 +136,12 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
         if record is None or int(record.tenant_id) != tenant_id:
             return {"id": record_id, "tenant_id": tenant_id, "status": "missing"}
 
+        try:
+            KnowledgeMigrationStateRepository.lock_for_legacy_write(session)
+        except KnowledgeBusinessError as exc:
+            session.rollback()
+            return _phase_rejected_result(record_id, tenant_id, exc)
+
         now = datetime.now()
         record.status = KnowledgeBaseStatusEnum.PROCESSING
         record.error_message = None
@@ -129,12 +152,23 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
 
         try:
             content = _extract_content(record)
-            record.content = content
-            record.status = KnowledgeBaseStatusEnum.READY
-            record.error_message = None
+            target_status = KnowledgeBaseStatusEnum.READY
+            error_message = None
         except Exception as exc:
-            record.status = KnowledgeBaseStatusEnum.FAILED
-            record.error_message = str(exc)[:1000]
+            content = None
+            target_status = KnowledgeBaseStatusEnum.FAILED
+            error_message = str(exc)[:1000]
+
+        try:
+            KnowledgeMigrationStateRepository.lock_for_legacy_write(session)
+        except KnowledgeBusinessError as exc:
+            session.rollback()
+            return _phase_rejected_result(record_id, tenant_id, exc)
+
+        if target_status == KnowledgeBaseStatusEnum.READY:
+            record.content = content
+        record.status = target_status
+        record.error_message = error_message
         record.update_time = datetime.now()
         session.add(record)
         session.commit()
