@@ -86,3 +86,26 @@ def test_dashboard_sql_preview_cache_key_changes_across_tenant_user_and_datasour
         same_tenant_other_user.memory_key,
         same_user_other_datasource.memory_key,
     }) == 4
+
+
+def test_permission_snapshot_cache_key_contains_full_authority_scope(monkeypatch):
+    from apps.datasource.crud.permission_scope import (
+        PermissionScopeSnapshot,
+        permission_cache_key,
+    )
+
+    monkeypatch.setattr(settings, "REDIS_KEY_PREFIX", "test")
+    snapshot = PermissionScopeSnapshot(
+        tenant_id=42,
+        user_id=7,
+        datasource_id=3,
+        permission_version="version-9",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="rows",
+    )
+
+    assert permission_cache_key(snapshot) == (
+        "test:tenant:42:user:7:datasource:3:permission_scope:version-9"
+    )

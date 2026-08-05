@@ -2,15 +2,99 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlmodel import Session
 
 from apps.datasource.models.semantic_scope import SemanticScopeEpoch, SemanticScopeType
+from common.core.redis_client import user_redis_key
+
+
+class PermissionScopeUnavailableError(RuntimeError):
+    """A safe caller-visible failure when authority state cannot be trusted."""
+
+
+@dataclass(frozen=True)
+class PermissionScopeSnapshot:
+    tenant_id: int
+    user_id: int
+    datasource_id: int
+    permission_version: str
+    schema_hash: str
+    allowed_object_keys: frozenset[str]
+    denied_object_keys: frozenset[str]
+    row_constraints_hash: str
+
+
+def stable_permission_hash(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def permission_cache_key(snapshot: PermissionScopeSnapshot) -> str:
+    return user_redis_key(
+        snapshot.tenant_id,
+        snapshot.user_id,
+        "datasource",
+        snapshot.datasource_id,
+        "permission_scope",
+        snapshot.permission_version,
+    )
+
+
+class PermissionScopeService:
+    @staticmethod
+    def build_snapshot(
+        *,
+        session: Session,
+        current_user: Any,
+        tenant_id: int,
+        datasource_id: int,
+        repository=None,
+    ) -> PermissionScopeSnapshot:
+        from apps.system.schemas.access_context import (
+            current_tenant_id,
+            is_global_platform_context,
+        )
+
+        try:
+            user_id = int(current_user.id)
+            requested_tenant_id = int(tenant_id)
+            requested_datasource_id = int(datasource_id)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise PermissionScopeUnavailableError("权限上下文不一致，请重新进入当前工作空间。") from exc
+
+        context_tenant_id = current_tenant_id(current_user)
+        if (
+            context_tenant_id != requested_tenant_id
+            and not is_global_platform_context(current_user)
+        ):
+            raise PermissionScopeUnavailableError("权限上下文不一致，请重新进入当前工作空间。")
+
+        if repository is None:
+            from apps.datasource.crud.permission_scope_repository import (
+                PermissionScopeRepository,
+            )
+
+            bind = session.get_bind()
+            repository = PermissionScopeRepository(getattr(bind, "engine", bind))
+        return repository.build_snapshot(
+            tenant_id=requested_tenant_id,
+            user_id=user_id,
+            datasource_id=requested_datasource_id,
+        )
 
 
 @dataclass(frozen=True)

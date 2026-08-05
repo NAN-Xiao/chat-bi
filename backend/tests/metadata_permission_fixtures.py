@@ -45,6 +45,27 @@ def metadata_permission_session(database_path):
         )
         """,
         """
+        CREATE TABLE core_datasource_user (
+            id BIGINT PRIMARY KEY, ds_id BIGINT NOT NULL, user_id BIGINT NOT NULL,
+            role TEXT NOT NULL, create_by BIGINT, create_time DATETIME
+        )
+        """,
+        """
+        CREATE TABLE sys_user (
+            id BIGINT PRIMARY KEY, account TEXT NOT NULL, name TEXT NOT NULL,
+            password TEXT NOT NULL, email TEXT NOT NULL, status BIGINT NOT NULL,
+            origin BIGINT NOT NULL, create_time BIGINT NOT NULL, language TEXT NOT NULL,
+            system_role TEXT NOT NULL, system_variables TEXT
+        )
+        """,
+        """
+        CREATE TABLE sys_tenant_user (
+            id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, user_id BIGINT NOT NULL,
+            role TEXT NOT NULL, member_remark TEXT, is_primary BOOLEAN NOT NULL,
+            status BIGINT NOT NULL, create_time BIGINT NOT NULL
+        )
+        """,
+        """
         CREATE TABLE core_table (
             id BIGINT PRIMARY KEY, ds_id BIGINT NOT NULL, checked BOOLEAN NOT NULL,
             table_name TEXT NOT NULL, table_comment TEXT, custom_comment TEXT,
@@ -144,6 +165,28 @@ def metadata_permission_session(database_path):
             text(
                 "INSERT INTO core_datasource_tenant_binding "
                 "(id, tenant_id, datasource_id) VALUES (1, 2, 9), (2, 3, 10)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO core_datasource_user "
+                "(id, ds_id, user_id, role) VALUES (1, 9, 7, 'viewer')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO sys_user "
+                "(id, account, name, password, email, status, origin, create_time, "
+                "language, system_role) VALUES "
+                "(7, 'user-7', 'User 7', 'hash', 'user7@example.com', 1, 0, 1, "
+                "'zh-CN', 'viewer')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO sys_tenant_user "
+                "(id, tenant_id, user_id, role, is_primary, status, create_time) "
+                "VALUES (1, 2, 7, 'member', 1, 1, 1)"
             )
         )
         connection.execute(

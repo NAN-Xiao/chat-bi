@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import importlib.util
+import inspect
+import json
 import os
 import subprocess
 import sys
-import importlib.util
-import inspect
 from pathlib import Path
 
+import pytest
 from sqlalchemy import CheckConstraint, text
 from sqlmodel import Session, create_engine
 
 from apps.datasource.models.datasource import SemanticScopeEpoch, SemanticScopeType
+from tests.metadata_permission_fixtures import metadata_permission_session
 from tests.permission_scope_fixtures import (
     permission_engine,
     read_epoch,
@@ -300,7 +303,11 @@ def test_tracking_write_increments_epoch_before_commit(tmp_path) -> None:
 
 def test_schema_refresh_increments_epoch_once_per_transaction(tmp_path) -> None:
     from apps.datasource.crud.datasource import sync_fields
-    from apps.datasource.models.datasource import ColumnSchema, CoreDatasource, CoreTable
+    from apps.datasource.models.datasource import (
+        ColumnSchema,
+        CoreDatasource,
+        CoreTable,
+    )
 
     engine = schema_engine(tmp_path)
     with Session(engine) as session:
@@ -468,3 +475,224 @@ def test_management_script_epoch_upsert_supports_sqlalchemy_connection() -> None
         "datasource_id": 9,
         "subject_id": None,
     }
+
+
+def test_permission_scope_repository_uses_read_only_repeatable_read() -> None:
+    from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+
+    expected = PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+        permission_version="v1",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="r1",
+    )
+    calls: list[object] = []
+
+    class Transaction:
+        def rollback(self):
+            calls.append("rollback")
+
+    class Connection:
+        def __enter__(self):
+            calls.append("enter")
+            return self
+
+        def __exit__(self, *_args):
+            calls.append("exit")
+
+        def execution_options(self, **options):
+            calls.append(("execution_options", options))
+            return self
+
+        def begin(self):
+            calls.append("begin")
+            return Transaction()
+
+        def exec_driver_sql(self, statement):
+            calls.append(("sql", statement))
+
+    class Engine:
+        dialect = type("Dialect", (), {"name": "postgresql"})()
+
+        @staticmethod
+        def connect():
+            calls.append("connect")
+            return Connection()
+
+    class Repository(PermissionScopeRepository):
+        def _read_snapshot(self, connection, *, tenant_id, user_id, datasource_id):
+            calls.append(("read", tenant_id, user_id, datasource_id, connection))
+            return expected
+
+    assert Repository(Engine()).build_snapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+    ) == expected
+    assert calls.index(("execution_options", {"isolation_level": "REPEATABLE READ"})) < calls.index("begin")
+    assert calls.index("begin") < calls.index(("sql", "SET TRANSACTION READ ONLY"))
+    assert calls.index(("sql", "SET TRANSACTION READ ONLY")) < next(
+        index for index, call in enumerate(calls) if isinstance(call, tuple) and call[0] == "read"
+    )
+    assert calls[-2:] == ["rollback", "exit"]
+
+
+def test_permission_scope_repository_retries_once_then_returns_chinese_error() -> None:
+    from apps.datasource.crud.permission_scope import PermissionScopeUnavailableError
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeReadError,
+        PermissionScopeRepository,
+    )
+
+    class FailingRepository(PermissionScopeRepository):
+        attempts = 0
+
+        def _build_snapshot_once(self, *, tenant_id, user_id, datasource_id):
+            self.attempts += 1
+            raise PermissionScopeReadError("transient")
+
+    repository = FailingRepository(object())
+    with pytest.raises(PermissionScopeUnavailableError, match="无法读取一致的权限状态，请稍后重试"):
+        repository.build_snapshot(tenant_id=2, user_id=7, datasource_id=9)
+    assert repository.attempts == 2
+
+
+def test_permission_scope_snapshot_version_changes_with_authority_epoch(tmp_path) -> None:
+    from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+
+    with metadata_permission_session(tmp_path / "permission-snapshot.db") as session:
+        repository = PermissionScopeRepository(session.get_bind())
+        before = repository.build_snapshot(tenant_id=2, user_id=7, datasource_id=9)
+
+        bump_semantic_scope_epoch(
+            session,
+            scope_type=SemanticScopeType.DATASOURCE_ROLE,
+            tenant_id=2,
+            datasource_id=9,
+            subject_id=7,
+        )
+        session.commit()
+
+        after = repository.build_snapshot(tenant_id=2, user_id=7, datasource_id=9)
+
+    assert before.permission_version != after.permission_version
+    assert before.schema_hash == "a" * 64
+    assert before.allowed_object_keys
+    assert before.denied_object_keys == frozenset()
+    assert len(before.row_constraints_hash) == 64
+
+
+def test_permission_scope_service_rejects_mismatched_request_context(tmp_path) -> None:
+    from apps.datasource.crud.permission_scope import (
+        PermissionScopeService,
+        PermissionScopeUnavailableError,
+    )
+    from tests.metadata_permission_fixtures import workspace_user
+
+    with metadata_permission_session(tmp_path / "permission-service.db") as session:
+        with pytest.raises(PermissionScopeUnavailableError, match="权限上下文不一致"):
+            PermissionScopeService.build_snapshot(
+                session=session,
+                current_user=workspace_user(user_id=7, tenant_id=3),
+                tenant_id=2,
+                datasource_id=9,
+            )
+
+
+def test_permission_scope_snapshot_fails_closed_for_invalid_tracking_authority(tmp_path) -> None:
+    from apps.datasource.crud.permission_scope import PermissionScopeUnavailableError
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+
+    invalid_mapping = json.dumps(
+        [
+            {
+                "event_name": "purchase",
+                "properties": [
+                    {
+                        "property_name": "secret",
+                        "source_field": "missing_payload",
+                        "json_path": "$.secret",
+                    }
+                ],
+            }
+        ]
+    )
+    with metadata_permission_session(tmp_path / "permission-invalid-tracking.db") as session:
+        session.execute(
+            text(
+                "UPDATE sys_tenant_tracking_config "
+                "SET event_name_mappings = :mapping WHERE tenant_id = 2 AND datasource_id = 9"
+            ),
+            {"mapping": invalid_mapping},
+        )
+        session.commit()
+
+        with pytest.raises(PermissionScopeUnavailableError, match="无法读取一致的权限状态，请稍后重试"):
+            PermissionScopeRepository(session.get_bind()).build_snapshot(
+                tenant_id=2,
+                user_id=7,
+                datasource_id=9,
+            )
+
+
+def test_row_constraint_hash_is_independent_of_query_order() -> None:
+    from apps.datasource.crud.permission_scope_objects import row_constraints_hash
+
+    constraints = [
+        {
+            "table": "orders",
+            "table_id": 91,
+            "permission_id": 12,
+            "deny_sql": "region = 'blocked'",
+            "enforcement_sql": "region <> 'blocked'",
+        },
+        {
+            "table": "events",
+            "table_id": 90,
+            "permission_id": 11,
+            "deny_sql": "country = 'blocked'",
+            "enforcement_sql": "country <> 'blocked'",
+        },
+    ]
+
+    assert row_constraints_hash(constraints) == row_constraints_hash(
+        list(reversed(constraints))
+    )
+
+
+def test_permission_scope_ignores_enabled_fields_under_disabled_table(tmp_path) -> None:
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+
+    with metadata_permission_session(tmp_path / "permission-disabled-table.db") as session:
+        session.execute(text("UPDATE core_table SET checked = 0 WHERE id = 91"))
+        session.execute(
+            text(
+                "INSERT INTO core_field "
+                "(id, ds_id, table_id, checked, field_name, field_type, field_comment, "
+                "custom_comment, field_index, field_key) VALUES "
+                "(903, 9, 91, 1, 'archived_value', 'text', '', '', 1, 'archived_value')"
+            )
+        )
+        session.commit()
+
+        snapshot = PermissionScopeRepository(session.get_bind()).build_snapshot(
+            tenant_id=2,
+            user_id=7,
+            datasource_id=9,
+        )
+
+    assert snapshot.allowed_object_keys
