@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 
@@ -189,3 +190,21 @@ def test_assistant_certificate_header_is_url_quoted_base64_json() -> None:
     assert json.loads(smoke.urllib.parse.unquote(decoded)) == [
         {"target": "header", "key": "X-Test", "value": "a b"}
     ]
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "_temporary_graph_column_permission_fixture",
+        "_temporary_graph_row_invalid_permission_fixture",
+    ],
+)
+def test_permission_fixture_bumps_epoch_for_create_and_cleanup(fixture_name: str) -> None:
+    smoke = _load_smoke_tool()
+    source = inspect.getsource(getattr(smoke, fixture_name))
+
+    assert source.count("bump_semantic_scope_epoch_connection") == 2
+    first_bump = source.index("bump_semantic_scope_epoch_connection")
+    second_bump = source.index("bump_semantic_scope_epoch_connection", first_bump + 1)
+    assert source.index("insert(ds_permission)") < first_bump
+    assert source.index("delete(ds_permission)") < second_bump

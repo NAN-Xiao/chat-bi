@@ -8,7 +8,9 @@ from sqlalchemy import inspect
 from sqlmodel import select
 
 from apps.datasource.crud.permission_rules import delete_permission_records_for_datasources
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceTenantBinding, CoreDatasourceUser
+from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.tenant import TenantModel, TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
@@ -21,6 +23,17 @@ def _finish_binding(session: SessionDep, record, *, commit: bool) -> None:
             session.refresh(record)
         return
     session.flush()
+
+
+def _bump_binding_epochs(session: SessionDep, tenant_ids: set[int]) -> None:
+    for tenant_id in tenant_ids:
+        if int(tenant_id) == DEFAULT_TENANT_ID:
+            continue
+        bump_semantic_scope_epoch(
+            session,
+            scope_type=SemanticScopeType.DATASOURCE_BINDING,
+            tenant_id=int(tenant_id),
+        )
 
 
 def supports_datasource_tenant_binding(session: SessionDep) -> bool:
@@ -199,6 +212,26 @@ def _delete_datasource_users(
             TenantUserModel.status == 1,
         )
         query = query.filter(CoreDatasourceUser.user_id.in_(tenant_user_ids))
+    rows = query.with_entities(CoreDatasourceUser.ds_id, CoreDatasourceUser.user_id).all()
+    for datasource_id, user_id in rows:
+        authority_tenant_ids = {int(tenant_id)} if tenant_id is not None else set(
+            list_bound_tenant_ids_for_datasource(session, int(datasource_id))
+        )
+        if not authority_tenant_ids:
+            datasource = session.get(CoreDatasource, int(datasource_id))
+            authority_tenant_ids.add(
+                int(datasource.tenant_id or DEFAULT_TENANT_ID)
+                if datasource is not None
+                else DEFAULT_TENANT_ID
+            )
+        for authority_tenant_id in authority_tenant_ids:
+            bump_semantic_scope_epoch(
+                session,
+                scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+                tenant_id=authority_tenant_id,
+                datasource_id=int(datasource_id),
+                subject_id=int(user_id),
+            )
     query.delete(synchronize_session=False)
 
 
@@ -233,6 +266,12 @@ def bind_datasource_to_tenant(
     做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
     target_tenant_id = int(tenant_id or DEFAULT_TENANT_ID)
+    affected_tenant_ids = set(list_bound_tenant_ids_for_datasource(session, int(datasource.id)))
+    legacy_tenant_id = int(datasource.tenant_id or DEFAULT_TENANT_ID)
+    if legacy_tenant_id != DEFAULT_TENANT_ID:
+        affected_tenant_ids.add(legacy_tenant_id)
+    if target_tenant_id != DEFAULT_TENANT_ID:
+        affected_tenant_ids.add(target_tenant_id)
 
     if target_tenant_id != DEFAULT_TENANT_ID:
         tenant = session.get(TenantModel, target_tenant_id)
@@ -244,6 +283,7 @@ def bind_datasource_to_tenant(
             datasource.tenant_id = DEFAULT_TENANT_ID
             clear_datasource_workspace_permissions(session, [int(datasource.id)])
             session.add(datasource)
+            _bump_binding_epochs(session, affected_tenant_ids)
             _finish_binding(session, datasource, commit=commit)
             return datasource
 
@@ -263,6 +303,7 @@ def bind_datasource_to_tenant(
             clear_datasource_workspace_permissions(session, [int(datasource.id)], tenant_id=target_tenant_id)
         datasource.tenant_id = target_tenant_id
         session.add(datasource)
+        _bump_binding_epochs(session, affected_tenant_ids)
         _finish_binding(session, datasource, commit=commit)
         return datasource
 
@@ -275,6 +316,7 @@ def bind_datasource_to_tenant(
         if int(datasource.tenant_id or DEFAULT_TENANT_ID) in bound_tenant_ids:
             datasource.tenant_id = DEFAULT_TENANT_ID
             session.add(datasource)
+        _bump_binding_epochs(session, affected_tenant_ids)
         _finish_binding(session, datasource, commit=commit)
         return datasource
 
@@ -305,6 +347,7 @@ def bind_datasource_to_tenant(
         datasource.tenant_id = target_tenant_id
         session.add(datasource)
 
+    _bump_binding_epochs(session, affected_tenant_ids)
     _finish_binding(session, datasource, commit=commit)
     return datasource
 
@@ -347,6 +390,7 @@ def bind_tenant_to_datasource(
                 if still_bound is None:
                     datasource.tenant_id = DEFAULT_TENANT_ID
                     session.add(datasource)
+            _bump_binding_epochs(session, {target_tenant_id})
             _finish_binding(session, None, commit=commit)
         else:
             current = session.get(CoreDatasource, current_datasource_id)

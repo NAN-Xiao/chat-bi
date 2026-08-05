@@ -24,7 +24,8 @@ TOOLS_DIR = Path(__file__).resolve().parent
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
-from core_system_db import core_system_db_url
+from core_system_db import core_system_db_url  # noqa: E402
+from semantic_scope_epoch_sql import bump_semantic_scope_epoch_connection  # noqa: E402
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000/api/v1"
 DEFAULT_SYSTEM_DB_URL = core_system_db_url()
@@ -354,6 +355,12 @@ def _temporary_graph_column_permission_fixture(
             )
             .returning(ds_rules.c.id)
         ).scalar_one()
+        bump_semantic_scope_epoch_connection(
+            connection,
+            scope_type="PERMISSION",
+            tenant_id=tenant_id,
+            datasource_id=datasource,
+        )
     try:
         yield {"permission_id": int(permission_id), "rule_id": int(rule_id)}
     finally:
@@ -362,6 +369,12 @@ def _temporary_graph_column_permission_fixture(
                 connection.execute(delete(ds_rules).where(ds_rules.c.id == int(rule_id)))
             if permission_id is not None:
                 connection.execute(delete(ds_permission).where(ds_permission.c.id == int(permission_id)))
+            bump_semantic_scope_epoch_connection(
+                connection,
+                scope_type="PERMISSION",
+                tenant_id=tenant_id,
+                datasource_id=datasource,
+            )
 
 
 def _row_invalid_expression_tree(field_id: int) -> dict[str, Any]:
@@ -452,6 +465,12 @@ def _temporary_graph_row_invalid_permission_fixture(
             )
             .returning(ds_rules.c.id)
         ).scalar_one()
+        bump_semantic_scope_epoch_connection(
+            connection,
+            scope_type="PERMISSION",
+            tenant_id=tenant_id,
+            datasource_id=datasource,
+        )
     try:
         yield {
             "permission_id": int(permission_id),
@@ -466,6 +485,12 @@ def _temporary_graph_row_invalid_permission_fixture(
                 connection.execute(delete(ds_rules).where(ds_rules.c.id == int(rule_id)))
             if permission_id is not None:
                 connection.execute(delete(ds_permission).where(ds_permission.c.id == int(permission_id)))
+            bump_semantic_scope_epoch_connection(
+                connection,
+                scope_type="PERMISSION",
+                tenant_id=tenant_id,
+                datasource_id=datasource,
+            )
 
 
 @contextmanager

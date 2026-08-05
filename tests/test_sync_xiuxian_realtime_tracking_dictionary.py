@@ -210,3 +210,39 @@ def test_sync_rejects_source_change_before_write() -> None:
 
     assert backend.applied is None
     assert backend.events[-2:] == ["rollback", "release_lock"]
+
+
+def test_psycopg_apply_bumps_tracking_epoch_with_same_cursor(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        rowcount = 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, statement, parameters):
+            calls.append((str(statement), parameters))
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+    backend = module.PsycopgBackend()
+    backend._write_connection = FakeConnection()
+    monkeypatch.setattr(module, "_snowflake_id", lambda: 123)
+
+    backend.apply_desired(module.build_desired_dictionary(_snapshot()))
+
+    epoch_calls = [call for call in calls if "INSERT INTO semantic_scope_epoch" in call[0]]
+    assert len(epoch_calls) == 1
+    assert epoch_calls[0][1] == (
+        "TRACKING",
+        module.TENANT_ID,
+        module.DATASOURCE_ID,
+        None,
+    )
+    assert calls[-1] == epoch_calls[0]

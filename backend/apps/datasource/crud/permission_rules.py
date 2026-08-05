@@ -9,7 +9,9 @@ from typing import Any
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, MetaData, String, Table, Text
 from sqlalchemy import and_, delete, insert, or_, select, update
 
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
+from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.models.user import UserModel
 from common.core.deps import SessionDep
 
@@ -421,6 +423,7 @@ def save_rule_dto(session: SessionDep, rule_data: dict[str, Any]) -> dict[str, A
     rule_id = rule_data.get("id")
     old_rule = get_rule_record(session, int(rule_id)) if rule_id else None
     old_permission_ids = _int_list(old_rule.permission_list) if old_rule else []
+    old_permission_records = list_permission_records(session, ids=old_permission_ids)
     submitted_permissions = rule_data.get("permissions") or []
     submitted_ids = []
     for permission in submitted_permissions:
@@ -479,6 +482,28 @@ def save_rule_dto(session: SessionDep, rule_data: dict[str, Any]) -> dict[str, A
         saved_rule_id = int(old_rule.id)
 
     session.flush()
+    affected_tenants = {
+        _rule_tenant_id(getattr(old_rule, "tenant_id", None))
+        if old_rule is not None
+        else _rule_tenant_id(rule_data.get("tenant_id")),
+        _rule_tenant_id(values.get("tenant_id")),
+    }
+    affected_datasources = {
+        int(datasource_id)
+        for datasource_id in (
+            [record.ds_id for record in old_permission_records]
+            + [permission.get("ds_id") for permission in submitted_permissions]
+        )
+        if datasource_id is not None
+    }
+    for tenant_id in affected_tenants:
+        for datasource_id in affected_datasources or {None}:
+            bump_semantic_scope_epoch(
+                session,
+                scope_type=SemanticScopeType.PERMISSION,
+                tenant_id=tenant_id,
+                datasource_id=datasource_id,
+            )
     return get_rule_dto(session, int(saved_rule_id))
 
 
@@ -492,10 +517,21 @@ def delete_rule_dto(session: SessionDep, rule_id: int) -> None:
     if rule is None:
         return
     permission_ids = _int_list(rule.permission_list)
+    permission_records = list_permission_records(session, ids=permission_ids)
     session.execute(delete(ds_rules_table).where(ds_rules_table.c.id == rule_id))
     if permission_ids:
         session.execute(delete(ds_permission_table).where(ds_permission_table.c.id.in_(permission_ids)))
     session.flush()
+    for datasource_id in {
+        int(record.ds_id) if record.ds_id is not None else None
+        for record in permission_records
+    } or {None}:
+        bump_semantic_scope_epoch(
+            session,
+            scope_type=SemanticScopeType.PERMISSION,
+            tenant_id=_rule_tenant_id(getattr(rule, "tenant_id", None)),
+            datasource_id=datasource_id,
+        )
 
 
 def delete_permission_records_for_datasources(
@@ -514,7 +550,9 @@ def delete_permission_records_for_datasources(
         return
 
     permission_rows = session.execute(
-        select(ds_permission_table.c.id).where(ds_permission_table.c.ds_id.in_(ids))
+        select(ds_permission_table.c.id, ds_permission_table.c.ds_id).where(
+            ds_permission_table.c.ds_id.in_(ids)
+        )
     ).all()
     permission_ids = {int(row[0]) for row in permission_rows if row[0] is not None}
     if not permission_ids:
@@ -525,8 +563,21 @@ def delete_permission_records_for_datasources(
         if tenant_id is not None
         else list_rule_records(session)
     )
+    affected_coordinates: set[tuple[int, int | None]] = set()
+    permission_datasources = {
+        int(row[0]): int(row[1]) if row[1] is not None else None
+        for row in permission_rows
+        if row[0] is not None
+    }
     for rule in rules:
         rule_permission_ids = _int_list(rule.permission_list)
+        for permission_id in set(rule_permission_ids) & permission_ids:
+            affected_coordinates.add(
+                (
+                    _rule_tenant_id(getattr(rule, "tenant_id", None)),
+                    permission_datasources.get(permission_id),
+                )
+            )
         next_permission_ids = [
             permission_id for permission_id in rule_permission_ids if permission_id not in permission_ids
         ]
@@ -547,6 +598,13 @@ def delete_permission_records_for_datasources(
     if orphan_permission_ids:
         session.execute(delete(ds_permission_table).where(ds_permission_table.c.id.in_(orphan_permission_ids)))
     session.flush()
+    for affected_tenant_id, affected_datasource_id in affected_coordinates:
+        bump_semantic_scope_epoch(
+            session,
+            scope_type=SemanticScopeType.PERMISSION,
+            tenant_id=affected_tenant_id,
+            datasource_id=affected_datasource_id,
+        )
 
 
 def list_rule_user_ids(session: SessionDep, rule: SimpleNamespace) -> list[str]:

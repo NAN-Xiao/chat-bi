@@ -8,6 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, create_engine
 
+from apps.datasource.models.semantic_scope import SemanticScopeType
+from tests.permission_scope_fixtures import EPOCH_STATEMENTS, read_epoch
+
 
 @pytest.fixture
 def engine(tmp_path) -> Engine:
@@ -28,7 +31,9 @@ def engine(tmp_path) -> Engine:
             id BIGINT PRIMARY KEY, tenant_id BIGINT, name TEXT, description TEXT,
             type TEXT, type_name TEXT, configuration TEXT, create_time DATETIME,
             create_by BIGINT, status TEXT, num TEXT, table_relation TEXT,
-            embedding TEXT, recommended_config BIGINT
+            embedding TEXT, recommended_config BIGINT,
+            catalog_complete BOOLEAN NOT NULL DEFAULT 0,
+            catalog_incomplete_reason TEXT, physical_schema_hash VARCHAR(64)
         )
         """,
         """
@@ -60,6 +65,8 @@ def engine(tmp_path) -> Engine:
         """,
     ]
     with engine.begin() as connection:
+        for statement in EPOCH_STATEMENTS:
+            connection.execute(text(statement))
         for statement in statements:
             connection.execute(text(statement))
         connection.execute(text("INSERT INTO sys_tenant (id, status) VALUES (11, 1)"))
@@ -139,8 +146,19 @@ def test_datasource_binding_can_defer_commit(
     commit.assert_not_called()
     refresh.assert_not_called()
     assert get_bound_datasource_id_for_tenant(session, 11) == 101
+    assert read_epoch(
+        session,
+        SemanticScopeType.DATASOURCE_BINDING,
+        tenant_id=11,
+    ) == 1
     session.rollback()
     assert persisted_datasource_id(engine) is None
+    with Session(engine) as verification_session:
+        assert read_epoch(
+            verification_session,
+            SemanticScopeType.DATASOURCE_BINDING,
+            tenant_id=11,
+        ) == 0
 
 
 def test_direct_datasource_binding_can_defer_commit(
@@ -163,6 +181,11 @@ def test_direct_datasource_binding_can_defer_commit(
     commit.assert_not_called()
     refresh.assert_not_called()
     assert get_bound_datasource_id_for_tenant(session, 11) == 101
+    assert read_epoch(
+        session,
+        SemanticScopeType.DATASOURCE_BINDING,
+        tenant_id=11,
+    ) == 1
     session.rollback()
     assert persisted_datasource_id(engine) is None
 
@@ -221,6 +244,37 @@ def test_clearing_datasource_binding_can_defer_commit(
     assert get_bound_datasource_id_for_tenant(session, 11) is None
     session.rollback()
     assert persisted_datasource_id(engine) == 101
+
+
+def test_clearing_datasource_binding_bumps_removed_user_access_epoch(
+    session: Session,
+    user: SimpleNamespace,
+) -> None:
+    from apps.datasource.crud.binding import bind_tenant_to_datasource
+
+    session.exec(
+        text(
+            "INSERT INTO core_datasource_tenant_binding "
+            "(id, tenant_id, datasource_id) VALUES (1, 11, 101)"
+        )
+    )
+    session.exec(
+        text(
+            "INSERT INTO core_datasource_user "
+            "(id, ds_id, user_id, role) VALUES (1, 101, 8, 'viewer')"
+        )
+    )
+    session.commit()
+
+    bind_tenant_to_datasource(session, user, 11, None, commit=False)
+
+    assert read_epoch(
+        session,
+        SemanticScopeType.DATASOURCE_ACCESS,
+        tenant_id=11,
+        datasource_id=101,
+        subject_id=8,
+    ) == 1
 
 
 def test_legacy_datasource_clearing_can_defer_commit(

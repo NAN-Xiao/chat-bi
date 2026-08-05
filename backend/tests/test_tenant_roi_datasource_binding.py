@@ -546,9 +546,12 @@ def test_edit_tenant_rejects_default_workspace_roi_configuration(
 
 @pytest.fixture
 def roi_transaction_engine(tmp_path) -> Engine:
+    from tests.permission_scope_fixtures import EPOCH_STATEMENTS
+
     database_path = tmp_path / "tenant_roi_transaction.db"
     engine = create_engine(f"sqlite:///{database_path}")
     statements = [
+        *EPOCH_STATEMENTS,
         """
         CREATE TABLE sys_tenant (
             id BIGINT PRIMARY KEY, public_id TEXT, name TEXT, status BIGINT,
@@ -563,7 +566,9 @@ def roi_transaction_engine(tmp_path) -> Engine:
             id BIGINT PRIMARY KEY, tenant_id BIGINT, name TEXT, description TEXT,
             type TEXT, type_name TEXT, configuration TEXT, create_time DATETIME,
             create_by BIGINT, status TEXT, num TEXT, table_relation TEXT,
-            embedding TEXT, recommended_config BIGINT
+            embedding TEXT, recommended_config BIGINT,
+            catalog_complete BOOLEAN NOT NULL DEFAULT 0,
+            catalog_incomplete_reason TEXT, physical_schema_hash VARCHAR(64)
         )
         """,
         """

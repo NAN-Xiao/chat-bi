@@ -21,6 +21,7 @@ from apps.system.crud.tracking_excel import parse_tracking_excel  # noqa: E402
 from apps.system.schemas.tenant_schema import TenantTrackingConfigDTO  # noqa: E402
 from core_system_db import core_system_db_config  # noqa: E402
 from flam_first_zombie_dashboard_sql import DATASOURCE_ID, TENANT_ID  # noqa: E402
+from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor  # noqa: E402
 
 EXPECTED_TOTAL = 755
 EXPECTED_DISTRIBUTION = {"personal": 469, "ext": 286}
@@ -194,6 +195,12 @@ def repair_event_sources(
             )
             if cur.rowcount != 1:
                 raise RuntimeError(f"配置更新行数异常：{cur.rowcount}")
+            bump_semantic_scope_epoch_cursor(
+                cur,
+                scope_type="TRACKING",
+                tenant_id=TENANT_ID,
+                datasource_id=DATASOURCE_ID,
+            )
             summary["applied"] = True
             summary["backup_path"] = str(backup_path.resolve())
         conn.commit()

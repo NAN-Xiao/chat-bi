@@ -177,3 +177,54 @@ def test_event_group_defaults_require_explicit_validated_seed() -> None:
             tracking.EVENT_GROUPS,
             [{"event_name": "ServerPayLog"}],
         )
+
+
+def test_tracking_seed_bumps_tracking_and_schema_epochs_before_commit(monkeypatch) -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    events: list[object] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, statement, parameters):
+            events.append(("execute", str(statement), parameters))
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            events.append("commit")
+
+    monkeypatch.setattr(tracking, "apply_chart_builder_expressions", lambda: None)
+    monkeypatch.setattr(tracking, "upsert_config", lambda *_args: None)
+    monkeypatch.setattr(tracking, "ensure_default_event_mappings", lambda *_args: 0)
+    monkeypatch.setattr(tracking, "upsert_event_groups", lambda *_args: 0)
+    monkeypatch.setattr(tracking, "upsert_tables", lambda *_args: None)
+    monkeypatch.setattr(tracking, "upsert_fields", lambda *_args: None)
+    monkeypatch.setattr(tracking, "delete_stale_fields", lambda *_args: 0)
+    monkeypatch.setattr(tracking, "upsert_schema_comments", lambda *_args: (0, 0))
+    monkeypatch.setattr(tracking.psycopg, "connect", lambda **_kwargs: FakeConnection())
+
+    tracking.main()
+
+    epoch_calls = [
+        item for item in events
+        if isinstance(item, tuple) and "INSERT INTO semantic_scope_epoch" in item[1]
+    ]
+    assert [call[2] for call in epoch_calls] == [
+        ("TRACKING", tracking.TENANT_ID, tracking.DATASOURCE_ID, None),
+        ("SCHEMA", tracking.TENANT_ID, tracking.DATASOURCE_ID, None),
+    ]
+    assert all(events.index(call) < events.index("commit") for call in epoch_calls)

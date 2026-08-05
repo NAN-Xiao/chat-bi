@@ -21,7 +21,9 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from catalog_metadata_sql import refresh_physical_schema_hash_cursor
 from core_system_db import core_system_db_config
+from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor
 from zoneinfo import ZoneInfo
 
 
@@ -123,6 +125,22 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
         with system_conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
+                SELECT COALESCE(binding.tenant_id, datasource.tenant_id, 1) AS tenant_id
+                FROM public.core_datasource AS datasource
+                LEFT JOIN public.core_datasource_tenant_binding AS binding
+                  ON binding.datasource_id = datasource.id
+                WHERE datasource.id = %s
+                ORDER BY binding.id
+                LIMIT 1
+                """,
+                (DATASOURCE_ID,),
+            )
+            datasource = cur.fetchone()
+            if datasource is None:
+                raise RuntimeError(f"数据源不存在：{DATASOURCE_ID}")
+            tenant_id = int(datasource["tenant_id"])
+            cur.execute(
+                """
                 SELECT id, table_name
                 FROM public.core_table
                 WHERE ds_id = %s
@@ -137,41 +155,64 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
                     continue
                 cur.execute(
                     """
-                    SELECT id, field_name
+                    UPDATE public.core_table
+                       SET catalog_name = NULL,
+                           schema_name = 'public',
+                           catalog_key = '',
+                           schema_key = 'public',
+                           table_key = %s
+                     WHERE id = %s
+                    """,
+                    (table["table_name"], table["id"]),
+                )
+                cur.execute(
+                    """
+                    SELECT id, field_key
                     FROM public.core_field
                     WHERE ds_id = %s AND table_id = %s
                     """,
                     (DATASOURCE_ID, table["id"]),
                 )
-                existing_by_name = {row["field_name"]: row["id"] for row in cur.fetchall()}
+                existing_by_key = {row["field_key"]: row["id"] for row in cur.fetchall()}
                 for index, field in enumerate(physical_fields):
                     comment = field["field_comment"] or field["field_name"]
-                    field_id = existing_by_name.get(field["field_name"])
+                    field_key = field["field_name"]
+                    field_id = existing_by_key.get(field_key)
                     if field_id:
                         cur.execute(
                             """
                             UPDATE public.core_field
-                               SET field_type = %s,
+                               SET field_name = %s,
+                                   field_key = %s,
+                                   field_type = %s,
                                    field_comment = %s,
                                    field_index = %s
                              WHERE id = %s
                             """,
-                            (field["field_type"], comment, index, field_id),
+                            (
+                                field["field_name"],
+                                field_key,
+                                field["field_type"],
+                                comment,
+                                index,
+                                field_id,
+                            ),
                         )
                         updated += cur.rowcount
                     else:
                         cur.execute(
                             """
                             INSERT INTO public.core_field
-                                (ds_id, table_id, checked, field_name, field_type,
+                                (ds_id, table_id, checked, field_name, field_key, field_type,
                                  field_comment, custom_comment, field_index)
                             VALUES
-                                (%s, %s, true, %s, %s, %s, %s, %s)
+                                (%s, %s, true, %s, %s, %s, %s, %s, %s)
                             """,
                             (
                                 DATASOURCE_ID,
                                 table["id"],
                                 field["field_name"],
+                                field_key,
                                 field["field_type"],
                                 comment,
                                 comment,
@@ -179,6 +220,13 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
                             ),
                         )
                         added.append(f"{table['table_name']}.{field['field_name']}")
+            refresh_physical_schema_hash_cursor(cur, datasource_id=DATASOURCE_ID)
+            bump_semantic_scope_epoch_cursor(
+                cur,
+                scope_type="SCHEMA",
+                tenant_id=tenant_id,
+                datasource_id=DATASOURCE_ID,
+            )
     print(f"synced metadata updated={updated} added={len(added)}")
     for item in added:
         print(f"metadata add {item}")

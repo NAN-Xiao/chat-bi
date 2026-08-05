@@ -13,6 +13,7 @@ import psycopg
 from core_system_db import core_system_db_config
 from flam_first_zombie_dashboard_sql import DATASOURCE_ID, TENANT_ID
 from psycopg.types.json import Jsonb
+from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "backend"
@@ -1460,6 +1461,18 @@ def main(*, seed_event_groups: bool = False) -> None:
             upsert_fields(cur, now)
             deleted_stale_fields = delete_stale_fields(cur)
             schema_tables, schema_fields = upsert_schema_comments(cur, now)
+            bump_semantic_scope_epoch_cursor(
+                cur,
+                scope_type="TRACKING",
+                tenant_id=TENANT_ID,
+                datasource_id=DATASOURCE_ID,
+            )
+            bump_semantic_scope_epoch_cursor(
+                cur,
+                scope_type="SCHEMA",
+                tenant_id=TENANT_ID,
+                datasource_id=DATASOURCE_ID,
+            )
         conn.commit()
     print(
         json.dumps(

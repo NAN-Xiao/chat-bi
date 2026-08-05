@@ -9,6 +9,8 @@ from types import SimpleNamespace
 from sqlalchemy import create_engine, text
 from sqlmodel import Session
 
+from tests.permission_scope_fixtures import EPOCH_STATEMENTS
+
 
 def workspace_user(*, user_id: int = 7, tenant_id: int = 2, role: str = "member") -> SimpleNamespace:
     return SimpleNamespace(
@@ -25,6 +27,7 @@ def workspace_user(*, user_id: int = 7, tenant_id: int = 2, role: str = "member"
 def metadata_permission_session(database_path):
     engine = create_engine(f"sqlite:///{database_path}")
     statements = [
+        *EPOCH_STATEMENTS,
         """
         CREATE TABLE core_datasource (
             id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, name TEXT NOT NULL,

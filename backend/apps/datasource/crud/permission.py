@@ -16,8 +16,14 @@ from apps.datasource.crud.permission_rules import (
     trans_record_to_dto,
 )
 from apps.datasource.crud.row_permission import transFilterTree
-from apps.datasource.crud.binding import datasource_tenant_binding_active
+from apps.datasource.crud.binding import (
+    datasource_tenant_binding_active,
+    list_bound_tenant_ids_for_datasource,
+)
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceTenantBinding, CoreDatasourceUser, CoreField, CoreTable
+from apps.datasource.models.semantic_scope import SemanticScopeType
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.tenant import TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
 from common.sql_json_paths import normalize_json_path
@@ -417,17 +423,34 @@ def update_datasource_users(
     next_user_ids = list_project_assignable_user_ids(session, user_ids, current_user)
     current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource.id).all()
     current_rows_by_user = {int(row.user_id): row for row in current_rows}
+    tenant_ids = _datasource_authority_tenant_ids(session, current_user, datasource)
 
     for row in current_rows:
         if int(row.user_id) not in next_user_ids:
             session.delete(row)
+            _bump_datasource_user_epochs(
+                session,
+                tenant_ids=tenant_ids,
+                datasource_id=int(datasource.id),
+                user_id=int(row.user_id),
+                scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+            )
 
     for user_id in next_user_ids:
         next_role = normalize_project_role(user_roles.get(user_id))
         row = current_rows_by_user.get(user_id)
         if row:
+            role_changed = normalize_project_role(row.role) != next_role
             row.role = next_role
             session.add(row)
+            if role_changed:
+                _bump_datasource_user_epochs(
+                    session,
+                    tenant_ids=tenant_ids,
+                    datasource_id=int(datasource.id),
+                    user_id=user_id,
+                    scope_type=SemanticScopeType.DATASOURCE_ROLE,
+                )
         else:
             session.add(CoreDatasourceUser(
                 ds_id=datasource.id,
@@ -436,6 +459,13 @@ def update_datasource_users(
                 create_by=current_user.id,
                 create_time=datetime.datetime.now()
             ))
+            _bump_datasource_user_epochs(
+                session,
+                tenant_ids=tenant_ids,
+                datasource_id=int(datasource.id),
+                user_id=user_id,
+                scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+            )
 
     session.flush()
     return [
@@ -495,14 +525,34 @@ def update_user_datasources(
 
     for row in current_rows:
         datasource_id = int(row.ds_id)
+        datasource = datasource_map.get(datasource_id) or session.get(CoreDatasource, datasource_id)
+        tenant_ids = _datasource_authority_tenant_ids(session, current_user, datasource)
         if datasource_id not in next_datasource_ids:
             session.delete(row)
+            _bump_datasource_user_epochs(
+                session,
+                tenant_ids=tenant_ids,
+                datasource_id=datasource_id,
+                user_id=target_user_id,
+                scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+            )
         elif should_update_roles:
-            row.role = normalized_roles.get(datasource_id, PROJECT_ROLE_VIEWER)
+            next_role = normalized_roles.get(datasource_id, PROJECT_ROLE_VIEWER)
+            role_changed = normalize_project_role(row.role) != next_role
+            row.role = next_role
             session.add(row)
+            if role_changed:
+                _bump_datasource_user_epochs(
+                    session,
+                    tenant_ids=tenant_ids,
+                    datasource_id=datasource_id,
+                    user_id=target_user_id,
+                    scope_type=SemanticScopeType.DATASOURCE_ROLE,
+                )
 
     add_datasource_ids = next_datasource_ids - current_datasource_ids
     for datasource_id in add_datasource_ids:
+        datasource = datasource_map[datasource_id]
         session.add(CoreDatasourceUser(
             ds_id=datasource_id,
             user_id=target_user_id,
@@ -510,9 +560,49 @@ def update_user_datasources(
             create_by=current_user.id if current_user else None,
             create_time=datetime.datetime.now()
         ))
+        _bump_datasource_user_epochs(
+            session,
+            tenant_ids=_datasource_authority_tenant_ids(session, current_user, datasource),
+            datasource_id=datasource_id,
+            user_id=target_user_id,
+            scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+        )
 
     session.flush()
     return sorted(next_datasource_ids)
+
+
+def _datasource_authority_tenant_ids(
+    session: SessionDep,
+    current_user: CurrentUser | None,
+    datasource: CoreDatasource | None,
+) -> set[int]:
+    if datasource is None:
+        return {DEFAULT_TENANT_ID}
+    tenant_ids = set(list_bound_tenant_ids_for_datasource(session, int(datasource.id)))
+    if tenant_ids:
+        return tenant_ids
+    context_tenant_id = current_tenant_id(current_user)
+    fallback_tenant_id = context_tenant_id or int(datasource.tenant_id or DEFAULT_TENANT_ID)
+    return {int(fallback_tenant_id)}
+
+
+def _bump_datasource_user_epochs(
+    session: SessionDep,
+    *,
+    tenant_ids: set[int],
+    datasource_id: int,
+    user_id: int,
+    scope_type: SemanticScopeType,
+) -> None:
+    for tenant_id in tenant_ids:
+        bump_semantic_scope_epoch(
+            session,
+            scope_type=scope_type,
+            tenant_id=tenant_id,
+            datasource_id=datasource_id,
+            subject_id=user_id,
+        )
 
 
 JS_SAFE_INTEGER_MAX = 9007199254740991

@@ -12,7 +12,12 @@ from sqlmodel import select
 from apps.datasource.crud.permission import can_access_table, current_tenant_id, get_accessible_datasource_ids, \
     get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
     has_datasource_access, is_normal_user
-from apps.datasource.crud.binding import datasource_bound_to_tenant
+from apps.datasource.crud.binding import (
+    bind_datasource_to_tenant,
+    datasource_bound_to_tenant,
+    list_bound_tenant_ids_for_datasource,
+)
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
 from apps.datasource.crud.semantic_object_key import (
     normalize_discovered_identifier,
     normalized_table_identity,
@@ -33,6 +38,7 @@ from apps.system.crud.schema_metadata import (
     table_comment_map,
 )
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.crud.tracking_config import (
     compile_tracking_config_expressions,
     datasource_physical_schema,
@@ -56,7 +62,7 @@ from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
 from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
-    CoreDatasourceUser, DatasourceConf, TableAndFields
+    DatasourceConf, TableAndFields
 
 
 def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreDatasource]:
@@ -335,11 +341,12 @@ async def delete_ds(session: SessionDep, id: int, user: CurrentUser | None = Non
                 conn.execute(text(f'DROP TABLE IF EXISTS "{sheet["tableName"]}"'))
             conn.commit()
 
-    session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == id).delete(synchronize_session=False)
+    _bump_schema_epoch(session, id, fallback_tenant_id=term.tenant_id)
+    bind_datasource_to_tenant(session, user, term, None, commit=False)
+    delete_field_by_ds_id(session, id, commit=False)
+    delete_table_by_ds_id(session, id, commit=False)
     session.delete(term)
     session.commit()
-    delete_table_by_ds_id(session, id)
-    delete_field_by_ds_id(session, id)
     return {
         "message": f"项目 {id} 已删除。"
     }
@@ -515,6 +522,7 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
         complete=not incomplete_reasons,
         incomplete_reason=",".join(sorted(incomplete_reasons)) or None,
     )
+    _bump_schema_epoch(session, ds.id, fallback_tenant_id=ds.tenant_id)
     session.commit()
 
     run_save_table_embeddings(id_list, tenant_id=ds.tenant_id)
@@ -573,6 +581,7 @@ def sync_fields(
             complete=bool(ds.catalog_complete),
             incomplete_reason=ds.catalog_incomplete_reason,
         )
+        _bump_schema_epoch(session, ds.id, fallback_tenant_id=ds.tenant_id)
         session.commit()
 
 
@@ -599,6 +608,24 @@ def _update_physical_schema_state(
     session.add(ds)
 
 
+def _bump_schema_epoch(
+    session: SessionDep,
+    datasource_id: int,
+    *,
+    fallback_tenant_id: int | None = None,
+) -> None:
+    tenant_ids = set(list_bound_tenant_ids_for_datasource(session, datasource_id))
+    if not tenant_ids:
+        tenant_ids.add(int(fallback_tenant_id or DEFAULT_TENANT_ID))
+    for tenant_id in tenant_ids:
+        bump_semantic_scope_epoch(
+            session,
+            scope_type=SemanticScopeType.SCHEMA,
+            tenant_id=tenant_id,
+            datasource_id=int(datasource_id),
+        )
+
+
 def update_table_and_fields(
         session: SessionDep,
         data: TableObj,
@@ -610,7 +637,7 @@ def update_table_and_fields(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
-    update_table(session, data.table)
+    update_table(session, data.table, commit=False)
     metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, data.table.ds_id)
     save_table_comment(
         session,
@@ -620,7 +647,7 @@ def update_table_and_fields(
         current_user_id=current_user_id,
     )
     for field in data.fields:
-        update_field(session, field)
+        update_field(session, field, commit=False)
         save_field_comment(
             session,
             metadata_tenant_id,
@@ -629,6 +656,11 @@ def update_table_and_fields(
             field.custom_comment,
             current_user_id=current_user_id,
         )
+    _bump_schema_epoch(
+        session,
+        data.table.ds_id,
+        fallback_tenant_id=metadata_tenant_id,
+    )
     session.commit()
 
     run_save_table_embeddings([data.table.id], tenant_id=metadata_tenant_id)
@@ -646,7 +678,7 @@ def updateTable(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
-    update_table(session, table)
+    update_table(session, table, commit=False)
 
     metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, table.ds_id)
     save_table_comment(
@@ -655,6 +687,11 @@ def updateTable(
         table.table_name,
         table.custom_comment,
         current_user_id=current_user_id,
+    )
+    _bump_schema_epoch(
+        session,
+        table.ds_id,
+        fallback_tenant_id=metadata_tenant_id,
     )
     session.commit()
     run_save_table_embeddings([table.id], tenant_id=metadata_tenant_id)
@@ -672,7 +709,7 @@ def updateField(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
-    update_field(session, field)
+    update_field(session, field, commit=False)
 
     metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, field.ds_id)
     table = session.get(CoreTable, field.table_id)
@@ -685,7 +722,12 @@ def updateField(
             field.custom_comment,
             current_user_id=current_user_id,
         )
-        session.commit()
+    _bump_schema_epoch(
+        session,
+        field.ds_id,
+        fallback_tenant_id=metadata_tenant_id,
+    )
+    session.commit()
     run_save_table_embeddings([field.table_id], tenant_id=metadata_tenant_id)
     run_save_ds_embeddings([field.ds_id], tenant_id=metadata_tenant_id)
 

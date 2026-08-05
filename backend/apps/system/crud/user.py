@@ -3,7 +3,9 @@
 """
 
 from sqlmodel import Session, func, select
-from apps.system.crud.tenant import user_belongs_to_tenant
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
+from apps.datasource.models.semantic_scope import SemanticScopeType
+from apps.system.crud.tenant import DEFAULT_TENANT_ID, user_belongs_to_tenant
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import EMAIL_REGEX, PWD_REGEX, BaseUserDTO, UserInfoDTO
 from common.core.app_cache import cache, clear_cache
@@ -23,6 +25,15 @@ SYSTEM_ROLE_ORDER = {
     SYSTEM_ROLE_COLLAB_ADMIN: 20,
     SYSTEM_ROLE_SYSTEM_ADMIN: 30,
 }
+
+
+def bump_system_role_epoch(session: Session, user_id: int) -> None:
+    bump_semantic_scope_epoch(
+        session,
+        scope_type=SemanticScopeType.SYSTEM_ROLE,
+        tenant_id=DEFAULT_TENANT_ID,
+        subject_id=int(user_id),
+    )
 
 
 def normalize_system_role(role: str | None) -> str:

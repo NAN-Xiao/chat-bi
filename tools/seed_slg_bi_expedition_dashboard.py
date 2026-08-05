@@ -28,7 +28,9 @@ from zoneinfo import ZoneInfo
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from catalog_metadata_sql import refresh_physical_schema_hash_cursor
 from core_system_db import core_system_db_config
+from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor
 
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -547,9 +549,28 @@ def sync_expedition_metadata(system_conn: Any, bi_conn: Any, datasource_id: int)
         with system_conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
+                SELECT COALESCE(binding.tenant_id, datasource.tenant_id, 1) AS tenant_id
+                FROM public.core_datasource AS datasource
+                LEFT JOIN public.core_datasource_tenant_binding AS binding
+                  ON binding.datasource_id = datasource.id
+                WHERE datasource.id = %s
+                ORDER BY binding.id
+                LIMIT 1
+                """,
+                (datasource_id,),
+            )
+            datasource = cur.fetchone()
+            if datasource is None:
+                raise RuntimeError(f"数据源不存在：{datasource_id}")
+            tenant_id = int(datasource["tenant_id"])
+            cur.execute(
+                """
                 SELECT id
                 FROM public.core_table
-                WHERE ds_id = %s AND table_name = %s
+                WHERE ds_id = %s
+                  AND catalog_key = ''
+                  AND schema_key = 'public'
+                  AND table_key = %s
                 LIMIT 1
                 """,
                 (datasource_id, EXPEDITION_TABLE_NAME),
@@ -561,24 +582,39 @@ def sync_expedition_metadata(system_conn: Any, bi_conn: Any, datasource_id: int)
                     """
                     UPDATE public.core_table
                        SET checked = true,
+                           table_name = %s,
+                           catalog_name = NULL,
+                           schema_name = 'public',
+                           catalog_key = '',
+                           schema_key = 'public',
+                           table_key = %s,
                            table_comment = %s,
                            custom_comment = %s
                      WHERE id = %s
                     """,
-                    (EXPEDITION_TABLE_COMMENT, EXPEDITION_TABLE_COMMENT, table_id),
+                    (
+                        EXPEDITION_TABLE_NAME,
+                        EXPEDITION_TABLE_NAME,
+                        EXPEDITION_TABLE_COMMENT,
+                        EXPEDITION_TABLE_COMMENT,
+                        table_id,
+                    ),
                 )
                 print(f"updated_metadata_table id={table_id} rows={cur.rowcount}")
             else:
                 cur.execute(
                     """
                     INSERT INTO public.core_table
-                        (ds_id, checked, table_name, table_comment, custom_comment, embedding)
+                        (ds_id, checked, table_name, catalog_name, schema_name,
+                         catalog_key, schema_key, table_key,
+                         table_comment, custom_comment, embedding)
                     VALUES
-                        (%s, true, %s, %s, %s, NULL)
+                        (%s, true, %s, NULL, 'public', '', 'public', %s, %s, %s, NULL)
                     RETURNING id
                     """,
                     (
                         datasource_id,
+                        EXPEDITION_TABLE_NAME,
                         EXPEDITION_TABLE_NAME,
                         EXPEDITION_TABLE_COMMENT,
                         EXPEDITION_TABLE_COMMENT,
@@ -589,45 +625,57 @@ def sync_expedition_metadata(system_conn: Any, bi_conn: Any, datasource_id: int)
 
             cur.execute(
                 """
-                SELECT id, field_name
+                SELECT id, field_key
                 FROM public.core_field
                 WHERE ds_id = %s AND table_id = %s
                 """,
                 (datasource_id, table_id),
             )
-            existing_by_name = {row["field_name"]: int(row["id"]) for row in cur.fetchall()}
+            existing_by_key = {row["field_key"]: int(row["id"]) for row in cur.fetchall()}
 
             for index, field in enumerate(physical_fields):
                 field_name = field["field_name"]
                 comment = EXPEDITION_FIELD_COMMENTS.get(field_name) or field["field_comment"] or field_name
-                field_id = existing_by_name.get(field_name)
+                field_key = field_name
+                field_id = existing_by_key.get(field_key)
                 if field_id:
                     cur.execute(
                         """
                         UPDATE public.core_field
                            SET checked = true,
+                               field_name = %s,
+                               field_key = %s,
                                field_type = %s,
                                field_comment = %s,
                                custom_comment = %s,
                                field_index = %s
                          WHERE id = %s
                         """,
-                        (field["field_type"], comment, comment, index, field_id),
+                        (
+                            field_name,
+                            field_key,
+                            field["field_type"],
+                            comment,
+                            comment,
+                            index,
+                            field_id,
+                        ),
                     )
                     updated_fields += cur.rowcount
                 else:
                     cur.execute(
                         """
                         INSERT INTO public.core_field
-                            (ds_id, table_id, checked, field_name, field_type,
+                            (ds_id, table_id, checked, field_name, field_key, field_type,
                              field_comment, custom_comment, field_index)
                         VALUES
-                            (%s, %s, true, %s, %s, %s, %s, %s)
+                            (%s, %s, true, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             datasource_id,
                             table_id,
                             field_name,
+                            field_key,
                             field["field_type"],
                             comment,
                             comment,
@@ -635,6 +683,13 @@ def sync_expedition_metadata(system_conn: Any, bi_conn: Any, datasource_id: int)
                         ),
                     )
                     added_fields.append(field_name)
+            refresh_physical_schema_hash_cursor(cur, datasource_id=datasource_id)
+            bump_semantic_scope_epoch_cursor(
+                cur,
+                scope_type="SCHEMA",
+                tenant_id=tenant_id,
+                datasource_id=datasource_id,
+            )
 
     print(
         "synced_expedition_metadata="

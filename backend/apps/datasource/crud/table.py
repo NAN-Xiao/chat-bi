@@ -29,14 +29,17 @@ def _stale_embedding_ids(rows) -> list[int]:
     return ids
 
 
-def delete_table_by_ds_id(session: SessionDep, id: int):
+def delete_table_by_ds_id(session: SessionDep, id: int, *, commit: bool = True):
     """
     是什么：delete_table_by_ds_id 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     session.query(CoreTable).filter(CoreTable.ds_id == id).delete(synchronize_session=False)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
 
 
 def get_tables_by_ds_id(session: SessionDep, id: int):
@@ -49,7 +52,7 @@ def get_tables_by_ds_id(session: SessionDep, id: int):
         CoreTable.table_name.asc()).all()
 
 
-def update_table(session: SessionDep, item: CoreTable):
+def update_table(session: SessionDep, item: CoreTable, *, commit: bool = True):
     """
     是什么：update_table 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -59,7 +62,10 @@ def update_table(session: SessionDep, item: CoreTable):
     record.checked = item.checked
     record.custom_comment = item.custom_comment
     session.add(record)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
 
 
 def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None = None):

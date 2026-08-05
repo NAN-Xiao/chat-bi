@@ -56,6 +56,9 @@ from apps.system.schemas.tenant_schema import (
     TenantStatus,
 )
 from common.audit.models.log_model import SystemLog
+from apps.datasource.models.semantic_scope import SemanticScopeType
+from tests.permission_scope_fixtures import EPOCH_STATEMENTS
+from tests.permission_scope_fixtures import read_epoch
 
 
 def _engine():
@@ -72,6 +75,8 @@ def _engine():
     TenantDataRequestModel.__table__.create(engine)
     SystemLog.__table__.create(engine)
     with engine.begin() as conn:
+        for statement in EPOCH_STATEMENTS:
+            conn.execute(text(statement))
         conn.execute(text(
             """
             CREATE TABLE sys_user (
@@ -105,7 +110,25 @@ def _engine():
                 num VARCHAR(256),
                 table_relation TEXT,
                 embedding TEXT,
-                recommended_config INTEGER
+                recommended_config INTEGER,
+                catalog_complete BOOLEAN NOT NULL DEFAULT 0,
+                catalog_incomplete_reason TEXT,
+                physical_schema_hash VARCHAR(64)
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE core_roi_workspace_config (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER NOT NULL,
+                version INTEGER NOT NULL DEFAULT 1,
+                create_by INTEGER,
+                update_by INTEGER,
+                create_time INTEGER NOT NULL DEFAULT 0,
+                update_time INTEGER NOT NULL DEFAULT 0,
+                deleted BOOLEAN NOT NULL DEFAULT 0
             )
             """
         ))
@@ -231,6 +254,28 @@ def _engine():
             """
         ))
     return engine
+
+
+def test_new_workspace_owner_bumps_system_role_epoch() -> None:
+    engine = _engine()
+    with Session(engine) as session:
+        user = tenant_api._resolve_owner_user(
+            session,
+            tenant_api.TenantCreator(
+                name="New Workspace",
+                owner_account="new-owner",
+                owner_name="New Owner",
+                owner_email="new-owner@example.com",
+            ),
+        )
+
+        assert user is not None
+        assert read_epoch(
+            session,
+            SemanticScopeType.SYSTEM_ROLE,
+            tenant_id=1,
+            subject_id=int(user.id),
+        ) == 1
 
 
 def _user(user_id: int, role: str = "viewer"):

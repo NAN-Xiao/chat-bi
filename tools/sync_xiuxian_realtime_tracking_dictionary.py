@@ -16,6 +16,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from core_system_db import core_system_db_config
+from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -433,6 +434,12 @@ class PsycopgBackend:
                         UPDATE_BY, UPDATE_BY, now, now,
                     ),
                 )
+            bump_semantic_scope_epoch_cursor(
+                cur,
+                scope_type="TRACKING",
+                tenant_id=TENANT_ID,
+                datasource_id=DATASOURCE_ID,
+            )
 
     def verify_desired(self, desired: dict[str, Any]) -> None:
         connection = self._require_connection()

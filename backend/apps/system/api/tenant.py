@@ -30,6 +30,8 @@ from apps.datasource.crud.permission import (
     list_user_datasource_roles,
     update_user_datasources,
 )
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
+from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
     SAMPLE_TENANT_NAME,
@@ -41,6 +43,7 @@ from apps.system.crud.tenant import (
     TENANT_DATA_REQUEST_TYPE_DELETE,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_OWNER,
+    _bump_membership_epoch,
     assign_user_to_tenant,
     approve_tenant_application,
     cancel_tenant_application,
@@ -83,6 +86,7 @@ from apps.system.crud.tenant_usage import (
 )
 from apps.system.crud.user import (
     SYSTEM_ROLE_VIEWER,
+    bump_system_role_epoch,
     check_email_format,
     is_high_privilege_user,
     is_platform_admin,
@@ -364,12 +368,26 @@ def _remove_tenant_project_permissions(session: SessionDep, *, tenant_id: int, u
     bound_datasource_id = get_bound_datasource_id_for_tenant(session, int(tenant_id))
     if bound_datasource_id is None:
         return
+    existing = session.exec(
+        select(CoreDatasourceUser.id).where(
+            CoreDatasourceUser.user_id == int(user_id),
+            CoreDatasourceUser.ds_id == int(bound_datasource_id),
+        )
+    ).first()
     session.exec(
         sqlmodel_delete(CoreDatasourceUser).where(
             CoreDatasourceUser.user_id == int(user_id),
             CoreDatasourceUser.ds_id == int(bound_datasource_id),
         )
     )
+    if existing is not None:
+        bump_semantic_scope_epoch(
+            session,
+            scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+            tenant_id=int(tenant_id),
+            datasource_id=int(bound_datasource_id),
+            subject_id=int(user_id),
+        )
 
 
 def _tenant_owner_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
@@ -1170,6 +1188,7 @@ def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserMode
     )
     session.add(user)
     session.flush()
+    bump_system_role_epoch(session, int(user.id))
     ensure_user_sample_workspace_membership(session, user)
     return user
 
@@ -2456,9 +2475,12 @@ async def update_tenant_member(
         tenant_id=int(current_tenant.id),
         user_id=user_id,
     )
+    previous_role = normalize_tenant_role(membership.role)
     membership.role = normalize_application_role(editor.tenant_role, TENANT_APPLICATION_TYPE_JOIN)
     membership.member_remark = (editor.member_remark or "").strip() or None
     session.add(membership)
+    if normalize_tenant_role(membership.role) != previous_role:
+        _bump_membership_epoch(session, membership)
     if editor.project_ids is not None:
         datasource_ids, datasource_role_map = _scope_member_datasource_payload_to_bound_datasource(
             session,

@@ -38,6 +38,7 @@ from apps.analysis_assistant.service.analysis_time_policy import (
     AnalysisTimeResolution,
     AnalysisTimeSource,
 )
+from tests.permission_scope_fixtures import EPOCH_STATEMENTS
 
 
 def _engine_with_permission_tables():
@@ -47,6 +48,8 @@ def _engine_with_permission_tables():
         poolclass=StaticPool,
     )
     with engine.begin() as conn:
+        for statement in EPOCH_STATEMENTS:
+            conn.execute(text(statement))
         conn.execute(text(
             """
             CREATE TABLE core_datasource (

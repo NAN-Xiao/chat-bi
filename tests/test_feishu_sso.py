@@ -27,6 +27,8 @@ from apps.system.models.user import UserModel, UserPlatformModel
 from apps.system.schemas.sso import FeishuCallbackRequest, FeishuSsoConfigEditor
 from common.core.config import settings
 from common.core.security import ALGORITHM, hash_password
+from apps.datasource.models.semantic_scope import SemanticScopeType
+from tests.permission_scope_fixtures import EPOCH_STATEMENTS, read_epoch
 
 
 def _engine():
@@ -42,6 +44,8 @@ def _engine():
     AuthenticationModel.__table__.create(engine)
     UserPlatformModel.__table__.create(engine)
     with engine.begin() as conn:
+        for statement in EPOCH_STATEMENTS:
+            conn.execute(text(statement))
         conn.execute(text(
             """
             CREATE TABLE sys_user (
@@ -60,6 +64,26 @@ def _engine():
             """
         ))
     return engine
+
+
+def test_new_feishu_user_bumps_system_role_epoch() -> None:
+    engine = _engine()
+    with Session(engine) as session:
+        user = feishu_crud.bind_or_create_feishu_user(
+            session,
+            FeishuIdentity(
+                platform_uid="ou_new_user",
+                email="new-user@example.com",
+                name="New Feishu User",
+            ),
+        )
+
+        assert read_epoch(
+            session,
+            SemanticScopeType.SYSTEM_ROLE,
+            tenant_id=1,
+            subject_id=int(user.id),
+        ) == 1
 
 
 def _editor(**kwargs):

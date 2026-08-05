@@ -6,14 +6,17 @@ from ..models.datasource import CoreField, FieldObj
 from sqlalchemy import or_, and_
 
 
-def delete_field_by_ds_id(session: SessionDep, id: int):
+def delete_field_by_ds_id(session: SessionDep, id: int, *, commit: bool = True):
     """
     是什么：delete_field_by_ds_id 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源不再需要的数据、缓存或临时内容清理掉。
     """
     session.query(CoreField).filter(CoreField.ds_id == id).delete(synchronize_session=False)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
 
 
 def get_fields_by_table_id(session: SessionDep, id: int, field: FieldObj):
@@ -32,7 +35,7 @@ def get_fields_by_table_id(session: SessionDep, id: int, field: FieldObj):
         return session.query(CoreField).filter(CoreField.table_id == id).order_by(CoreField.field_index.asc()).all()
 
 
-def update_field(session: SessionDep, item: CoreField):
+def update_field(session: SessionDep, item: CoreField, *, commit: bool = True):
     """
     是什么：update_field 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -42,4 +45,7 @@ def update_field(session: SessionDep, item: CoreField):
     record.checked = item.checked
     record.custom_comment = item.custom_comment
     session.add(record)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()

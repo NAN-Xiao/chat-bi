@@ -13,6 +13,8 @@ from apps.system.crud.tenant import SAMPLE_TENANT_NAME, TENANT_ROLE_ADMIN
 from apps.system.models.tenant import TenantModel, TenantUserModel
 from apps.system.models.user import UserModel, UserPlatformModel
 from apps.system.schemas.system_schema import UserCreator, UserEditor, UserStatus
+from apps.datasource.models.semantic_scope import SemanticScopeType
+from tests.permission_scope_fixtures import EPOCH_STATEMENTS, read_epoch
 
 
 def _engine():
@@ -22,6 +24,8 @@ def _engine():
         poolclass=StaticPool,
     )
     with engine.begin() as conn:
+        for statement in EPOCH_STATEMENTS:
+            conn.execute(text(statement))
         conn.execute(text(
             """
             CREATE TABLE sys_user (
@@ -100,7 +104,10 @@ def _engine():
                 num VARCHAR(256),
                 table_relation TEXT,
                 embedding TEXT,
-                recommended_config INTEGER
+                recommended_config INTEGER,
+                catalog_complete BOOLEAN NOT NULL DEFAULT 0,
+                catalog_incomplete_reason TEXT,
+                physical_schema_hash VARCHAR(64)
             )
             """
         ))
@@ -219,6 +226,12 @@ def test_tenant_admin_creates_enterprise_admin_without_platform_role():
 
         assert db_user.system_role == "viewer"
         assert membership.role == "admin"
+        assert read_epoch(
+            session,
+            SemanticScopeType.MEMBERSHIP,
+            tenant_id=10,
+            subject_id=int(created.id),
+        ) == 1
 
 
 def test_platform_admin_creates_platform_user_with_sample_workspace_membership():
@@ -455,6 +468,74 @@ def test_platform_admin_can_disable_user_outside_current_tenant():
         ))
 
         assert session.get(UserModel, 5).status == 0
+
+
+def test_platform_admin_system_role_change_increments_global_user_epoch():
+    engine = _engine()
+    endpoint = inspect.unwrap(user_api.update)
+    with Session(engine) as session:
+        asyncio.run(endpoint(
+            session=session,
+            current_user=_platform_admin(),
+            editor=UserEditor(
+                id=5,
+                account="tenant-b-only",
+                name="Tenant B Only",
+                email="tenant-b-only@example.com",
+                status=1,
+                origin=8,
+                system_role="collab_admin",
+            ),
+            trans=_trans,
+        ))
+
+        assert read_epoch(
+            session,
+            SemanticScopeType.SYSTEM_ROLE,
+            tenant_id=1,
+            subject_id=5,
+        ) == 1
+
+
+def test_datasource_access_and_role_writes_increment_distinct_epochs():
+    from apps.datasource.crud.permission import update_datasource_users
+    from apps.datasource.models.datasource import CoreDatasource
+
+    engine = _engine()
+    with Session(engine) as session:
+        datasource = session.get(CoreDatasource, 501)
+        assert datasource is not None
+
+        update_datasource_users(
+            session,
+            _tenant_admin(),
+            datasource,
+            [3],
+            {3: "editor"},
+        )
+        assert read_epoch(
+            session,
+            SemanticScopeType.DATASOURCE_ROLE,
+            tenant_id=10,
+            datasource_id=501,
+            subject_id=3,
+        ) == 1
+        assert read_epoch(
+            session,
+            SemanticScopeType.DATASOURCE_ACCESS,
+            tenant_id=10,
+            datasource_id=501,
+            subject_id=3,
+        ) == 0
+
+        update_datasource_users(session, _tenant_admin(), datasource, [])
+        assert read_epoch(
+            session,
+            SemanticScopeType.DATASOURCE_ACCESS,
+            tenant_id=10,
+            datasource_id=501,
+            subject_id=3,
+        ) == 1
 
 
 def test_platform_admin_delete_removes_global_user_and_identity_bindings():

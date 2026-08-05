@@ -7,18 +7,22 @@ from fastapi import APIRouter, File, HTTPException, Path, Query, UploadFile
 from sqlmodel import SQLModel, delete as sqlmodel_delete, or_, select
 
 from apps.datasource.crud.permission import (
+    _bump_datasource_user_epochs,
+    _datasource_authority_tenant_ids,
     list_user_datasource_ids,
     list_user_datasource_roles,
     update_user_datasources,
 )
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
-from apps.datasource.models.datasource import CoreDatasourceUser
+from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
+from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_MEMBER,
     TENANT_ROLE_OWNER,
+    _bump_membership_epoch,
     assign_user_to_tenant,
     ensure_user_sample_workspace_membership,
     normalize_tenant_role,
@@ -27,6 +31,7 @@ from apps.system.crud.tenant import (
 from apps.system.crud.user import (
     SYSTEM_ADMIN_ROLES,
     SYSTEM_ROLE_SYSTEM_ADMIN,
+    bump_system_role_epoch,
     check_email_format,
     check_pwd_format,
     check_user_in_tenant,
@@ -400,12 +405,27 @@ def _remove_current_tenant_project_permissions(session: SessionDep, current_user
     datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(current_user))
     if datasource_id is None:
         return
+    existing = session.exec(
+        select(CoreDatasourceUser.id).where(
+            CoreDatasourceUser.user_id == int(user_id),
+            CoreDatasourceUser.ds_id == int(datasource_id),
+        )
+    ).first()
     session.exec(
         sqlmodel_delete(CoreDatasourceUser).where(
             CoreDatasourceUser.user_id == int(user_id),
             CoreDatasourceUser.ds_id == int(datasource_id),
         )
     )
+    if existing is not None:
+        datasource = session.get(CoreDatasource, int(datasource_id))
+        _bump_datasource_user_epochs(
+            session,
+            tenant_ids=_datasource_authority_tenant_ids(session, current_user, datasource),
+            datasource_id=int(datasource_id),
+            user_id=int(user_id),
+            scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+        )
 
 
 def _delete_global_user(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
@@ -422,6 +442,24 @@ def _delete_global_user(session: SessionDep, current_user: CurrentUser, user_id:
     if is_high_privilege_user(user_model) and not is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="Only system admin can delete administrator roles")
     _ensure_user_not_sole_active_owner(session, user_id)
+    memberships = session.exec(
+        select(TenantUserModel).where(TenantUserModel.user_id == int(user_id))
+    ).all()
+    datasource_rows = session.exec(
+        select(CoreDatasourceUser).where(CoreDatasourceUser.user_id == int(user_id))
+    ).all()
+    bump_system_role_epoch(session, user_id)
+    for membership in memberships:
+        _bump_membership_epoch(session, membership)
+    for datasource_row in datasource_rows:
+        datasource = session.get(CoreDatasource, int(datasource_row.ds_id))
+        _bump_datasource_user_epochs(
+            session,
+            tenant_ids=_datasource_authority_tenant_ids(session, current_user, datasource),
+            datasource_id=int(datasource_row.ds_id),
+            user_id=int(user_id),
+            scope_type=SemanticScopeType.DATASOURCE_ACCESS,
+        )
     session.exec(sqlmodel_delete(CoreDatasourceUser).where(CoreDatasourceUser.user_id == int(user_id)))
     session.exec(sqlmodel_delete(TenantUserModel).where(TenantUserModel.user_id == int(user_id)))
     session.exec(sqlmodel_delete(UserPlatformModel).where(UserPlatformModel.uid == int(user_id)))
@@ -607,6 +645,7 @@ async def review_trial_application(
     )
     session.add(user_model)
     session.flush()
+    bump_system_role_epoch(session, int(user_model.id))
     ensure_user_sample_workspace_membership(session, user_model)
     application.status = "approved"
     application.approved_user_id = int(user_model.id)
@@ -790,6 +829,7 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
     user_model.language = "zh-CN"
     session.add(user_model)
     session.flush()
+    bump_system_role_epoch(session, int(user_model.id))
     assigned_to_tenant = _should_assign_tenant_from_payload(current_user, creator.tenant_id)
     if assigned_to_tenant:
         target_tenant_id = _target_tenant_id_for_payload(current_user, creator.tenant_id)
@@ -863,8 +903,17 @@ async def update(
         raise Exception("System admin cannot be disabled")
     if int(data.get("status", 1) or 0) == 0:
         _ensure_user_not_sole_active_owner(session, int(user_model.id))
+    previous_system_authority = (
+        normalize_system_role(user_model.system_role),
+        int(user_model.status or 0),
+    )
     user_model.sqlmodel_update(data)
     session.add(user_model)
+    if previous_system_authority != (
+        normalize_system_role(user_model.system_role),
+        int(user_model.status or 0),
+    ):
+        bump_system_role_epoch(session, int(user_model.id))
     if should_update_tenant_membership:
         target_tenant_id = _target_tenant_id_for_payload(current_user, editor.tenant_id)
         cache_tenant_ids.append(int(target_tenant_id))
@@ -1004,6 +1053,9 @@ async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Tr
         raise Exception("System admin cannot be disabled")
     if status == 0:
         _ensure_user_not_sole_active_owner(session, int(db_user.id))
+    previous_status = int(db_user.status or 0)
     db_user.status = status
     session.add(db_user)
+    if previous_status != int(status):
+        bump_system_role_epoch(session, int(db_user.id))
     await _clear_user_cache_for_tenants(session, int(statusDto.id), cache_tenant_ids)

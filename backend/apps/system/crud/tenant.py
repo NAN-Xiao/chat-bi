@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy import column as sa_column, func, inspect, or_, table as sa_table
 from sqlmodel import Session, select
 
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
+from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.models.tenant import (
     TenantApplicationModel,
     TenantDataRequestModel,
@@ -65,6 +67,15 @@ TENANT_APPLICATION_TYPES = {
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_APPLICATION_TYPE_INVITE,
 }
+
+
+def _bump_membership_epoch(session: Session, membership: TenantUserModel) -> None:
+    bump_semantic_scope_epoch(
+        session,
+        scope_type=SemanticScopeType.MEMBERSHIP,
+        tenant_id=int(membership.tenant_id),
+        subject_id=int(membership.user_id),
+    )
 TENANT_MEMBERSHIP_APPLICATION_ROLES = {TENANT_ROLE_ADMIN, TENANT_ROLE_MEMBER}
 TENANT_DOMAIN_STATUS_PENDING = "pending"
 TENANT_DOMAIN_STATUS_VERIFIED = "verified"
@@ -379,6 +390,7 @@ def ensure_user_sample_workspace_membership(session: Session, user) -> TenantUse
     if not changed:
         return None
     session.add(membership)
+    _bump_membership_epoch(session, membership)
     session.flush()
     return membership
 
@@ -1323,6 +1335,7 @@ def remove_user_from_tenant(session: Session, user_id: int, *, tenant_id: int) -
     membership.status = 0
     membership.is_primary = False
     session.add(membership)
+    _bump_membership_epoch(session, membership)
     session.flush()
     return membership
 
@@ -1346,6 +1359,7 @@ def leave_tenant(session: Session, user_id: int, *, tenant_id: int) -> TenantUse
     membership.status = 0
     membership.is_primary = False
     session.add(membership)
+    _bump_membership_epoch(session, membership)
     session.flush()
     return membership
 
@@ -1369,12 +1383,22 @@ def transfer_tenant_owner(session: Session, *, tenant_id: int, target_user_id: i
         )
     ).all()
     for membership in active_memberships:
+        before = (
+            normalize_tenant_role(membership.role),
+            bool(membership.is_primary),
+        )
         if int(membership.user_id) == int(target_user_id):
             membership.role = TENANT_ROLE_OWNER
             membership.is_primary = True
         elif normalize_tenant_role(membership.role) == TENANT_ROLE_OWNER:
             membership.role = TENANT_ROLE_ADMIN
         session.add(membership)
+        after = (
+            normalize_tenant_role(membership.role),
+            bool(membership.is_primary),
+        )
+        if after != before:
+            _bump_membership_epoch(session, membership)
     session.flush()
     return target_membership
 
@@ -1403,9 +1427,19 @@ def assign_user_to_tenant(
         )
     ).first()
     if membership:
+        before = (
+            normalize_tenant_role(membership.role),
+            int(membership.status or 0),
+            bool(membership.is_primary),
+        )
         membership.role = normalize_tenant_role(role or membership.role)
         membership.status = 1
         membership.is_primary = bool(is_primary or membership.is_primary)
+        changed = before != (
+            normalize_tenant_role(membership.role),
+            int(membership.status or 0),
+            bool(membership.is_primary),
+        )
     else:
         membership = TenantUserModel(
             tenant_id=tenant.id,
@@ -1414,7 +1448,10 @@ def assign_user_to_tenant(
             is_primary=is_primary,
             status=1,
         )
+        changed = True
     session.add(membership)
+    if changed:
+        _bump_membership_epoch(session, membership)
     session.flush()
     return membership
 

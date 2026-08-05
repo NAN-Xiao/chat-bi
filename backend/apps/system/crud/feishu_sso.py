@@ -21,6 +21,7 @@ from apps.system.crud.tenant import (
 )
 from apps.system.models.system_model import AuthenticationModel
 from apps.system.models.user import UserModel, UserPlatformModel
+from apps.system.crud.user import bump_system_role_epoch
 from apps.system.schemas.sso import FeishuSsoConfigDTO, FeishuSsoConfigEditor
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
@@ -667,6 +668,7 @@ def bind_or_create_feishu_user(session: Session, identity: FeishuIdentity) -> Ba
         )
         session.add(user)
         session.flush()
+        bump_system_role_epoch(session, int(user.id))
 
     _bind_platform(session, user_id=int(user.id), identity=identity)
     auto_assign_tenants_by_email_domain(session, user)

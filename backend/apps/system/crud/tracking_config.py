@@ -9,7 +9,9 @@ from typing import Any
 from sqlalchemy import delete, or_
 from sqlmodel import Session, select
 
+from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
 from apps.datasource.models.datasource import CoreField, CoreTable
+from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from apps.system.models.tenant import (
     TenantTrackingConfigModel,
@@ -872,6 +874,12 @@ def save_tracking_config(
                 )
             )
 
+    bump_semantic_scope_epoch(
+        session,
+        scope_type=SemanticScopeType.TRACKING,
+        tenant_id=int(tenant_id),
+        datasource_id=int(datasource_id) if datasource_id is not None else None,
+    )
     session.commit()
     return get_tracking_config(session, int(tenant_id), datasource_id, include_legacy=False)
 

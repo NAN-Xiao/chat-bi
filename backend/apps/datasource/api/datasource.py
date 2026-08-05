@@ -85,7 +85,7 @@ from common.utils.utils import AppLogUtil
 from ..utils.utils import decrypt_datasource_configuration_for_output
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
-    check_status_by_id
+    check_status_by_id, _bump_schema_epoch
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField, FieldObj, \
@@ -2021,6 +2021,11 @@ async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
                                      CoreField.field_name == field[f_n_col])).update(
                                 {'custom_comment': field[f_c_col]})
                             affected_table_ids.add(int(table.id))
+        _bump_schema_epoch(
+            session,
+            id,
+            fallback_tenant_id=metadata_tenant_id,
+        )
         session.commit()
         if affected_table_ids:
             run_save_table_embeddings(list(affected_table_ids), tenant_id=metadata_tenant_id)
