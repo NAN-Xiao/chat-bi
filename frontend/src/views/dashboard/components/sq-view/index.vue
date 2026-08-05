@@ -2017,7 +2017,7 @@ function exportTableData() {
 }
 
 const chartTypeList = computed(() => {
-  const _list = []
+  const _list: Array<{ value: ChartTypes; name: string; icon: any }> = []
   const pushChartType = (value: ChartTypes, icon: any) => {
     _list.push({
       value,
@@ -2030,29 +2030,15 @@ const chartTypeList = computed(() => {
       case 'table':
         break
       case 'column':
+      case 'grouped_column':
       case 'bar':
       case 'line':
       case 'area':
-        _list.push({
-          value: 'column',
-          name: t('chat.chart_type.column'),
-          icon: ICON_COLUMN,
-        })
-        _list.push({
-          value: 'bar',
-          name: t('chat.chart_type.bar'),
-          icon: ICON_BAR,
-        })
-        _list.push({
-          value: 'line',
-          name: t('chat.chart_type.line'),
-          icon: ICON_LINE,
-        })
-        _list.push({
-          value: 'area',
-          name: t('chat.chart_type.area'),
-          icon: ICON_LINE,
-        })
+        pushChartType('column', ICON_COLUMN)
+        pushChartType('grouped_column', ICON_COLUMN)
+        pushChartType('bar', ICON_BAR)
+        pushChartType('line', ICON_LINE)
+        pushChartType('area', ICON_LINE)
         break
       case 'pie':
       case 'donut':

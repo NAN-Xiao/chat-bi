@@ -1,6 +1,7 @@
 import { BaseChart, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import { Bar } from '@/views/chat/component/charts/Bar.ts'
 import { Column } from '@/views/chat/component/charts/Column.ts'
+import { GroupedColumn } from '@/views/chat/component/charts/GroupedColumn.ts'
 import { Line } from '@/views/chat/component/charts/Line.ts'
 import { Area } from '@/views/chat/component/charts/Area.ts'
 import { Table } from '@/views/chat/component/charts/Table.ts'
@@ -16,6 +17,7 @@ import { Treemap } from '@/views/chat/component/charts/Treemap.ts'
 const CHART_TYPE_MAP: { [key: string]: any } = {
   table: Table,
   column: Column,
+  grouped_column: GroupedColumn,
   bar: Bar,
   line: Line,
   area: Area,

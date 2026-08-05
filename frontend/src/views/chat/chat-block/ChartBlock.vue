@@ -234,7 +234,7 @@ const chartBlockStyle = computed(() => {
 })
 
 const chartTypeList = computed(() => {
-  const _list = []
+  const _list: Array<{ value: ChartTypes; name: string; icon: any }> = []
   const pushChartType = (value: ChartTypes, icon: any) => {
     _list.push({
       value,
@@ -247,29 +247,15 @@ const chartTypeList = computed(() => {
       case 'table':
         break
       case 'column':
+      case 'grouped_column':
       case 'bar':
       case 'line':
       case 'area':
-        _list.push({
-          value: 'column',
-          name: t('chat.chart_type.column'),
-          icon: Histogram,
-        })
-        _list.push({
-          value: 'bar',
-          name: t('chat.chart_type.bar'),
-          icon: DataAnalysis,
-        })
-        _list.push({
-          value: 'line',
-          name: t('chat.chart_type.line'),
-          icon: TrendCharts,
-        })
-        _list.push({
-          value: 'area',
-          name: t('chat.chart_type.area'),
-          icon: TrendCharts,
-        })
+        pushChartType('column', Histogram)
+        pushChartType('grouped_column', Histogram)
+        pushChartType('bar', DataAnalysis)
+        pushChartType('line', TrendCharts)
+        pushChartType('area', TrendCharts)
         break
       case 'pie':
       case 'donut':
@@ -282,6 +268,7 @@ const chartTypeList = computed(() => {
       case 'funnel':
         pushChartType('funnel', DataAnalysis)
         pushChartType('column', Histogram)
+        pushChartType('grouped_column', Histogram)
         pushChartType('bar', DataAnalysis)
         break
       case 'heatmap':

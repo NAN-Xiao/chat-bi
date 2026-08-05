@@ -656,6 +656,7 @@ const getChartTypeLabel = (type?: ChartTypes) => {
     table: '数据表',
     bar: '条形图',
     column: '柱图',
+    grouped_column: '分组柱状图',
     line: '折线图',
     area: '堆叠面积图',
     pie: '饼图',

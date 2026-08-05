@@ -252,6 +252,7 @@ CHART_TYPES = {
     "table",
     "bar",
     "column",
+    "grouped_column",
     "line",
     "area",
     "pie",
@@ -284,7 +285,7 @@ JSON 格式：
       "title": "图表标题",
       "purpose": "为什么要查这组数据",
       "sql": "只读 SQL，必须是 PostgreSQL 语法，最多返回 200 行",
-      "chart_type": "line|area|column|bar|pie|donut|metric|funnel|heatmap|scatter|sankey|treemap|table",
+      "chart_type": "line|area|column|grouped_column|bar|pie|donut|metric|funnel|heatmap|scatter|sankey|treemap|table",
       "x": "结果集中作为维度或时间轴的字段别名",
       "y": "结果集中作为指标的字段别名",
       "series": "可选，结果集中作为分组系列的字段别名",
@@ -314,6 +315,7 @@ JSON 格式：
 - 如果问题是归因类，至少覆盖趋势、结构拆解和语义层或用户问题中明确提到的关键维度中的两个。
 - 图表类型应尽量可视化：核心单值指标用 metric，单条趋势曲线用 line，多条趋势曲线（有分类 series 或多指标）用 area，结构/分布/占比用 bar/pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey；只有无法确定维度和指标时才使用 table。
 - 仅当用户原问题明确要求环形图、圆环图或 donut 时才允许使用 donut；不得因为占比、结构、构成或分布自动选择 donut。
+- 只有当用户明确要求分组、并排或同组比较，或者问题明确要求比较同一横轴分类内的不同系列数值时，才使用 grouped_column。不能仅因为结果包含多个字段就选择 grouped_column；时间趋势仍优先使用 line 或 area。
 """
 
 
@@ -334,7 +336,7 @@ JSON 格式：
       "title": "图表标题",
       "purpose": "为什么要查这组数据",
       "sql": "只读 SQL，必须是 PostgreSQL 语法，最多返回 200 行",
-      "chart_type": "line|area|column|bar|pie|donut|metric|funnel|heatmap|scatter|sankey|treemap|table",
+      "chart_type": "line|area|column|grouped_column|bar|pie|donut|metric|funnel|heatmap|scatter|sankey|treemap|table",
       "x": "结果集中作为时间、序列点或维度的字段别名",
       "y": "结果集中作为预测值或核心指标的字段别名",
       "series": "可选，结果集中作为分组系列的字段别名",
@@ -364,8 +366,9 @@ JSON 格式：
 - 查询结果中如果包含 confidence/confidence_level，取值必须与样本量、已观测天数和历史基准可用性一致；不要出现字段为 High 但总结又说 Low 的矛盾。
 - 查询结果中尽量包含 sample_size、actual_value、predicted_value、benchmark_value、forecast_basis、confidence 等字段；如果字段命名和业务不匹配，可用同义字段，但必须让图表和总结能区分实测与预测。
 - 折线图必须至少有两个时间点或序列点；单个倍率、单个基准值、单行结果不要使用 line，应使用 table、metric 或 bar。
-- 单条趋势或序列曲线用 line；多条趋势曲线（有分类 series 或多指标）用 area；核心单值指标用 metric；分组对比用 bar/column；占比结构且指标可累加时可用 pie，层级/贡献结构可用 treemap；步骤或阶段流转用 funnel；二维分布或矩阵用 heatmap；二维关系用 scatter；流向/路径/资源转移用 sankey。
+- 单条趋势或序列曲线用 line；多条趋势曲线（有分类 series 或多指标）用 area；核心单值指标用 metric；分类对比用 bar/column；占比结构且指标可累加时可用 pie，层级/贡献结构可用 treemap；步骤或阶段流转用 funnel；二维分布或矩阵用 heatmap；二维关系用 scatter；流向/路径/资源转移用 sankey。
 - 仅当用户原问题明确要求环形图、圆环图或 donut 时才允许使用 donut；不得因为占比、结构、构成或分布自动选择 donut。
+- 只有当用户明确要求分组、并排或同组比较，或者问题明确要求比较同一横轴分类内的不同系列数值时，才使用 grouped_column。不能仅因为结果包含多个字段就选择 grouped_column；时间趋势仍优先使用 line 或 area。
 - queries 数量 2 到 4 个：至少包含一个主预测曲线/预测表；如果用户需要归因或结构拆解，再包含语义层或用户问题中明确提到的关键维度。
 """
 

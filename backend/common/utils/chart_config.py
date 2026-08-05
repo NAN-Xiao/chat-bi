@@ -8,6 +8,7 @@ CHART_TYPES = {
     "table",
     "metric",
     "column",
+    "grouped_column",
     "bar",
     "line",
     "area",
