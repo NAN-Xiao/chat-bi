@@ -2,7 +2,7 @@
 const dashboardStore = dashboardStoreWithOut()
 const { curComponent } = storeToRefs(dashboardStore)
 
-import { onMounted, toRefs, ref, computed, reactive, onBeforeUnmount } from 'vue'
+import { onMounted, toRefs, ref, computed, reactive, onBeforeUnmount, type PropType } from 'vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { storeToRefs } from 'pinia'
 import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
@@ -13,6 +13,10 @@ import {
   getDashboardGridContentRows,
   normalizeDashboardGridCoordinate,
 } from '@/views/dashboard/utils/dashboardGridPosition.ts'
+import {
+  DEFAULT_DASHBOARD_LAYOUT_SURFACE,
+  type DashboardLayoutSurface,
+} from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
 
 const props = defineProps({
   canvasStyleData: {
@@ -55,6 +59,10 @@ const props = defineProps({
   inTab: {
     type: Boolean,
     default: false,
+  },
+  dashboardLayoutSurface: {
+    type: String as PropType<DashboardLayoutSurface>,
+    default: DEFAULT_DASHBOARD_LAYOUT_SURFACE,
   },
   readonlyTemplate: {
     type: Boolean,
@@ -230,6 +238,7 @@ defineExpose({
         :style="nowItemStyle(item)"
         :index="index"
         :frameless="inTab"
+        :dashboard-layout-surface="dashboardLayoutSurface"
         :readonly-template="readonlyTemplate"
         :platform-template="platformTemplate"
         @chart-moved="emit('chartMoved', $event)"

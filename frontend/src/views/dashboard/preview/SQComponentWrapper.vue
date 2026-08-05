@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount } from 'vue'
+import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount, type PropType } from 'vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import {
   ChatLineSquare,
@@ -54,6 +54,10 @@ import {
   prepareDashboardChartRefreshState,
 } from '@/views/dashboard/utils/dashboardChartLifecycle'
 import { resolveDashboardMoveTargetDatasource } from '@/views/dashboard/utils/dashboardOptions.ts'
+import {
+  DEFAULT_DASHBOARD_LAYOUT_SURFACE,
+  type DashboardLayoutSurface,
+} from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
@@ -101,6 +105,10 @@ const props = defineProps({
   frameless: {
     type: Boolean,
     default: false,
+  },
+  dashboardLayoutSurface: {
+    type: String as PropType<DashboardLayoutSurface>,
+    default: DEFAULT_DASHBOARD_LAYOUT_SURFACE,
   },
   readonlyTemplate: {
     type: Boolean,
@@ -208,9 +216,13 @@ const reportDialogTitle = computed(() => reportSubmittedQuestion.value || report
 const reportTargetContext = computed(() =>
   t('dashboard.chart_report_target_context', [reportScopeTitle.value])
 )
-const componentExtraProps = computed(() =>
-  props.configItem?.component === 'SQView' ? { showLabel: chartShowLabel.value } : {}
-)
+const componentExtraProps = computed(() => {
+  if (props.configItem?.component !== 'SQView') return {}
+  return {
+    showLabel: chartShowLabel.value,
+    dashboardLayoutSurface: props.dashboardLayoutSurface,
+  }
+})
 const reportHasConversation = computed(
   () =>
     reportGenerating.value ||
