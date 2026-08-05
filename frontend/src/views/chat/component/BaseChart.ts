@@ -47,6 +47,7 @@ export type ChartTypes =
   | 'table'
   | 'bar'
   | 'column'
+  | 'grouped_column'
   | 'line'
   | 'area'
   | 'pie'

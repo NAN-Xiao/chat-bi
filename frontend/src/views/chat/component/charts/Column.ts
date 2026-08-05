@@ -17,10 +17,22 @@ import {
   resolveCategoryAxisResponsiveOptions,
   resolveG2ResponsiveStyle,
 } from '@/views/chat/component/charts/g2Responsive.ts'
+import {
+  resolveColumnSeriesTransform,
+  type ColumnSeriesLayout,
+} from '@/views/chat/component/charts/columnSeriesLayout.ts'
+
+export type ColumnOptions = {
+  chartName?: 'column' | 'grouped_column'
+  seriesLayout?: ColumnSeriesLayout
+}
 
 export class Column extends BaseG2Chart {
-  constructor(mountTarget: ChartMountTarget) {
-    super(mountTarget, 'column')
+  private readonly seriesLayout: ColumnSeriesLayout
+
+  constructor(mountTarget: ChartMountTarget, options: ColumnOptions = {}) {
+    super(mountTarget, options.chartName || 'column')
+    this.seriesLayout = options.seriesLayout || 'stacked'
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {
@@ -42,12 +54,17 @@ export class Column extends BaseG2Chart {
     const responsive = resolveG2ResponsiveStyle(this.layoutContext, 'cartesian')
     const mixedUnitData = buildMixedUnitData(axes.x, axes.y, config.data)
     if (mixedUnitData) {
+      const intervalTransform =
+        this.seriesLayout === 'grouped'
+          ? resolveColumnSeriesTransform('grouped', mixedUnitData.countData.length > 0)
+          : undefined
       const options = buildMixedUnitComboOptions(
         this.chart.options(),
         axes.x[0],
         mixedUnitData,
         this.showLabel,
-        responsive
+        responsive,
+        intervalTransform as G2Spec['transform']
       )
       this.chart.options(options)
       return
@@ -181,9 +198,7 @@ export class Column extends BaseG2Chart {
         : [],
     } as G2Spec)
 
-    if (series.length > 0) {
-      options.transform = [{ type: 'stackY' }]
-    }
+    options.transform = resolveColumnSeriesTransform(this.seriesLayout, series.length > 0) as G2Spec['transform']
 
     this.chart.options(options)
   }

@@ -95,9 +95,16 @@ interface ConversionFieldMatch {
 }
 
 const structureChartTypes = new Set<ChartTypes>(['pie', 'funnel', 'treemap'])
-const rankedChartTypes = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'sankey'])
+const rankedChartTypes = new Set<ChartTypes>([
+  'bar',
+  'column',
+  'grouped_column',
+  'heatmap',
+  'scatter',
+  'sankey',
+])
 const trendChartTypes = new Set<ChartTypes>(['line', 'area'])
-const conversionSummaryChartTypes = new Set<ChartTypes>(['bar', 'column'])
+const conversionSummaryChartTypes = new Set<ChartTypes>(['bar', 'column', 'grouped_column'])
 const SIDE_FIT_MIN_SCALE = 0.9
 const SIDE_FIT_EPSILON = 1
 

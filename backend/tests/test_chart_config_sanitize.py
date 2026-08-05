@@ -35,3 +35,14 @@ def test_sanitize_chart_display_names_keeps_explicit_display_labels() -> None:
     assert chart["columns"][0] == {"value": "cohort_date", "name": "日期"}
     assert chart["yAxis"][1] == {"value": "new_users"}
     assert chart["multiQuotaName"] == "指标"
+
+
+def test_sanitize_chart_display_names_recognizes_grouped_column() -> None:
+    chart = {
+        "type": "grouped_column",
+        "columns": [{"value": "date", "name": "date"}],
+    }
+
+    sanitized = sanitize_chart_display_names(chart)
+
+    assert sanitized["columns"] == [{"value": "date"}]
