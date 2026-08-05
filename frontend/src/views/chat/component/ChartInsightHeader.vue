@@ -1921,6 +1921,10 @@ onBeforeUnmount(() => {
       display: none;
     }
 
+    .insight-stat-meta {
+      display: block;
+    }
+
     .configured-trend-layout {
       grid-template-columns: auto minmax(0, 1fr);
       gap: 8px 18px;
@@ -2095,6 +2099,10 @@ onBeforeUnmount(() => {
       display: none;
     }
 
+    .insight-stat-meta {
+      display: block;
+    }
+
     &.side {
       width: 176px;
       height: 100%;
@@ -2240,6 +2248,10 @@ onBeforeUnmount(() => {
     .insight-stat-sub-label,
     .insight-stat-meta {
       display: none;
+    }
+
+    .insight-stat-meta {
+      display: block;
     }
 
     .configured-trend-layout {
