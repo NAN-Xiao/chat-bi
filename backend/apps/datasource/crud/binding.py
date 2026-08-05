@@ -89,7 +89,12 @@ def _table_exists(session: SessionDep, table_name: str) -> bool:
         return False
 
 
-def get_bound_datasource_id_for_tenant(session: SessionDep, tenant_id: int | None) -> int | None:
+def get_bound_datasource_id_for_tenant(
+    session: SessionDep,
+    tenant_id: int | None,
+    *,
+    allow_legacy_fallback: bool = True,
+) -> int | None:
     """
     是什么：get_bound_datasource_id_for_tenant 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -104,6 +109,8 @@ def get_bound_datasource_id_for_tenant(session: SessionDep, tenant_id: int | Non
             .order_by(CoreDatasourceTenantBinding.id)
         ).first()
         return int(datasource_id) if datasource_id is not None else None
+    if not allow_legacy_fallback:
+        raise RuntimeError("datasource binding authority is unavailable")
     datasource_id = session.exec(
         select(CoreDatasource.id)
         .where(CoreDatasource.tenant_id == int(tenant_id))

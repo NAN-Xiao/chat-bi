@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy import select
@@ -25,7 +26,6 @@ from apps.datasource.crud.permission import (
 )
 from apps.datasource.crud.permission_rules import (
     list_permission_records,
-    parse_json_list,
 )
 from apps.datasource.crud.semantic_object_key import (
     SemanticObjectKey,
@@ -40,6 +40,31 @@ __all__ = [
     "MetadataPermissionService",
     "MetadataPermissionValidationError",
 ]
+
+
+def _strict_json_list(value: Any) -> list[Any]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, str):
+        raise MetadataPermissionValidationError(
+            "METADATA_PERMISSION_CONFIG_INVALID",
+            "权限配置格式无效。",
+        )
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError) as exc:
+        raise MetadataPermissionValidationError(
+            "METADATA_PERMISSION_CONFIG_INVALID",
+            "权限配置格式无效。",
+        ) from exc
+    if not isinstance(parsed, list):
+        raise MetadataPermissionValidationError(
+            "METADATA_PERMISSION_CONFIG_INVALID",
+            "权限配置格式无效。",
+        )
+    return parsed
 
 
 class MetadataPermissionService:
@@ -185,6 +210,7 @@ class MetadataPermissionService:
         current_user: Any,
         tenant_id: int,
         datasource_id: int,
+        expand_physical_descendants: bool = False,
     ) -> frozenset[str]:
         require_bound_context(
             session,
@@ -192,11 +218,16 @@ class MetadataPermissionService:
             tenant_id=tenant_id,
             datasource_id=datasource_id,
         )
-        rules = get_user_permission_rules(session, current_user, datasource_id)
+        rules = get_user_permission_rules(
+            session,
+            current_user,
+            datasource_id,
+            strict_json=True,
+        )
         permission_ids = {
             int(value)
             for rule in rules
-            for value in parse_json_list(rule.permission_list)
+            for value in _strict_json_list(rule.permission_list)
             if str(value).strip().isdigit()
         }
         permissions = list_permission_records(
@@ -225,7 +256,7 @@ class MetadataPermissionService:
                     tenant_id=tenant_id,
                     datasource_id=datasource_id,
                     permission_type=permission_type,
-                    targets=parse_json_list(permission.permissions),
+                    targets=_strict_json_list(permission.permissions),
                 )
                 for entry in normalized:
                     if entry["enable"]:
@@ -262,7 +293,7 @@ class MetadataPermissionService:
                     tenant_id=tenant_id,
                     datasource_id=datasource_id,
                     table_id=int(permission.table_id),
-                    entries=parse_json_list(permission.permissions),
+                    entries=_strict_json_list(permission.permissions),
                     denied=denied,
                     denied_fields=denied_fields,
                     denied_json_paths=denied_json_paths,
@@ -270,6 +301,16 @@ class MetadataPermissionService:
 
         if not permissions:
             return frozenset()
+        if expand_physical_descendants:
+            MetadataPermissionService._expand_physical_denials(
+                session=session,
+                tenant_id=tenant_id,
+                datasource_id=datasource_id,
+                denied=denied,
+                denied_schemas=denied_schemas,
+                denied_table_ids=denied_table_ids,
+                denied_fields=denied_fields,
+            )
         authority = load_optional_tracking_authority(
             session,
             tenant_id=tenant_id,
@@ -323,7 +364,133 @@ class MetadataPermissionService:
                             )
                         )
                     )
+                    if expand_physical_descendants and property_definition.json_path:
+                        denied.add(
+                            canonical_object_key(
+                                SemanticObjectKey(
+                                    object_type="JSON_PATH",
+                                    tenant_id=int(tenant_id),
+                                    datasource_id=int(datasource_id),
+                                    catalog=authority.table.catalog,
+                                    schema=authority.table.schema,
+                                    table=authority.table.table,
+                                    field=property_definition.source_field,
+                                    json_path=property_definition.json_path,
+                                )
+                            )
+                        )
         return frozenset(denied)
+
+    @staticmethod
+    def _expand_physical_denials(
+        *,
+        session: Session,
+        tenant_id: int,
+        datasource_id: int,
+        denied: set[str],
+        denied_schemas: set[tuple[str, str]],
+        denied_table_ids: set[int],
+        denied_fields: set[tuple[int, str]],
+    ) -> None:
+        tables = session.execute(
+            select(CoreTable).where(
+                CoreTable.ds_id == int(datasource_id),
+                CoreTable.checked.is_(True),
+            )
+        ).scalars().all()
+        for table in tables:
+            table_id = int(table.id)
+            if (str(table.catalog_key or ""), str(table.schema_key or "")) in denied_schemas:
+                denied_table_ids.add(table_id)
+            if table_id in denied_table_ids:
+                denied.add(
+                    canonical_object_key(
+                        SemanticObjectKey(
+                            object_type="TABLE",
+                            tenant_id=int(tenant_id),
+                            datasource_id=int(datasource_id),
+                            catalog=str(table.catalog_key or ""),
+                            schema=str(table.schema_key or ""),
+                            table=str(table.table_key or ""),
+                        )
+                    )
+                )
+
+        fields = session.execute(
+            select(CoreField).where(
+                CoreField.ds_id == int(datasource_id),
+                CoreField.checked.is_(True),
+            )
+        ).scalars().all()
+        table_by_id = {int(table.id): table for table in tables}
+        for field in fields:
+            table = table_by_id.get(int(field.table_id))
+            if table is None:
+                continue
+            field_key = str(field.field_key or "")
+            if int(field.table_id) in denied_table_ids:
+                denied_fields.add((int(field.table_id), field_key))
+            if (int(field.table_id), field_key) not in denied_fields:
+                continue
+            denied.add(
+                canonical_object_key(
+                    SemanticObjectKey(
+                        object_type="FIELD",
+                        tenant_id=int(tenant_id),
+                        datasource_id=int(datasource_id),
+                        catalog=str(table.catalog_key or ""),
+                        schema=str(table.schema_key or ""),
+                        table=str(table.table_key or ""),
+                        field=field_key,
+                    )
+                )
+            )
+
+        tracking_fields = session.execute(
+            select(
+                TenantTrackingFieldModel.table_name,
+                TenantTrackingFieldModel.source_field,
+                TenantTrackingFieldModel.json_path,
+            ).where(
+                TenantTrackingFieldModel.tenant_id == int(tenant_id),
+                TenantTrackingFieldModel.datasource_id == int(datasource_id),
+                TenantTrackingFieldModel.json_path.is_not(None),
+            )
+        ).all()
+        for tracking_field in tracking_fields:
+            matching_tables = [
+                table
+                for table in tables
+                if str(table.table_name or "") == str(tracking_field.table_name or "")
+            ]
+            if len(matching_tables) != 1:
+                continue
+            table = matching_tables[0]
+            source_field = physical_field_key(
+                session,
+                datasource_id=datasource_id,
+                table_id=int(table.id),
+                field_name=str(tracking_field.source_field or ""),
+            )
+            if (int(table.id), source_field) not in denied_fields:
+                continue
+            json_path = normalize_json_path(tracking_field.json_path)
+            if not json_path:
+                continue
+            denied.add(
+                canonical_object_key(
+                    SemanticObjectKey(
+                        object_type="JSON_PATH",
+                        tenant_id=int(tenant_id),
+                        datasource_id=int(datasource_id),
+                        catalog=str(table.catalog_key or ""),
+                        schema=str(table.schema_key or ""),
+                        table=str(table.table_key or ""),
+                        field=source_field,
+                        json_path=json_path,
+                    )
+                )
+            )
 
     @staticmethod
     def _collect_denied_columns(

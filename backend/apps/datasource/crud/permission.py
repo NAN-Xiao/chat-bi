@@ -13,6 +13,7 @@ from apps.datasource.crud.permission_rules import (
     list_permission_records,
     list_rule_records,
     parse_json_list,
+    parse_json_list_strict,
     trans_record_to_dto,
 )
 from apps.datasource.crud.row_permission import transFilterTree
@@ -24,13 +25,11 @@ from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceTenantBinding, CoreDatasourceUser, CoreField, CoreTable
 from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
-from apps.system.models.tenant import TenantUserModel
-from common.core.deps import CurrentUser, SessionDep
-from common.sql_json_paths import normalize_json_path
 from apps.system.crud.user import (
     SYSTEM_ADMIN_ROLES,
     is_system_admin,
 )
+from apps.system.models.tenant import TenantUserModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.access_context import (
     current_tenant_id,
@@ -38,6 +37,8 @@ from apps.system.schemas.access_context import (
     is_global_platform_context,
     can_manage_workspace_scope,
 )
+from common.core.deps import CurrentUser, SessionDep
+from common.sql_json_paths import normalize_json_path
 
 PROJECT_ROLE_VIEWER = "viewer"
 PROJECT_ROLE_EDITOR = "editor"
@@ -1077,6 +1078,7 @@ def get_user_permission_rules(
         datasource_id: Optional[int] = None,
         *,
         enforce_for_scope_admin: bool = False,
+        strict_json: bool = False,
 ) -> list[Any]:
     """
     是什么：get_user_permission_rules 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -1116,7 +1118,8 @@ def get_user_permission_rules(
         if _rule_whitelists_user(rule, current_user):
             continue
         rule_permission_ids = set()
-        for permission_id in parse_json_list(rule.permission_list):
+        parser = parse_json_list_strict if strict_json else parse_json_list
+        for permission_id in parser(rule.permission_list):
             try:
                 rule_permission_ids.add(int(permission_id))
             except (TypeError, ValueError):

@@ -185,6 +185,7 @@ class PermissionScopeRepository:
                     current_user=current_user,
                     tenant_id=tenant_id,
                     datasource_id=datasource_id,
+                    expand_physical_descendants=True,
                 )
                 constraints = get_applicable_row_permission_constraints(
                     session=session,
@@ -250,7 +251,14 @@ class PermissionScopeRepository:
         if membership is None or int(membership.status or 0) != 1:
             raise PermissionScopeReadError("workspace membership is missing or disabled")
 
-        bound_datasource_id = get_bound_datasource_id_for_tenant(session, tenant_id)
+        try:
+            bound_datasource_id = get_bound_datasource_id_for_tenant(
+                session,
+                tenant_id,
+                allow_legacy_fallback=False,
+            )
+        except Exception as exc:
+            raise PermissionScopeReadError("datasource binding authority is unavailable") from exc
         if bound_datasource_id != datasource_id:
             raise PermissionScopeReadError("datasource is not bound to workspace")
 

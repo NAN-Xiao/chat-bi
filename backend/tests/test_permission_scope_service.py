@@ -8,6 +8,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import uuid
 from pathlib import Path
 
 import pytest
@@ -15,7 +17,7 @@ from sqlalchemy import CheckConstraint, text
 from sqlmodel import Session, create_engine
 
 from apps.datasource.models.datasource import SemanticScopeEpoch, SemanticScopeType
-from tests.metadata_permission_fixtures import metadata_permission_session
+from tests.metadata_permission_fixtures import insert_rule, metadata_permission_session
 from tests.permission_scope_fixtures import (
     permission_engine,
     read_epoch,
@@ -696,3 +698,223 @@ def test_permission_scope_ignores_enabled_fields_under_disabled_table(tmp_path) 
         )
 
     assert snapshot.allowed_object_keys
+
+
+@pytest.mark.parametrize(
+    ("permission_type", "table_id", "targets", "descendant_type", "descendant_values"),
+    [
+        (
+            "schema",
+            None,
+            [{"catalog_key": "", "schema_key": "public", "enable": False}],
+            "TABLE",
+            {"catalog": "", "schema": "public", "table": "events"},
+        ),
+        (
+            "table",
+            90,
+            [],
+            "FIELD",
+            {
+                "catalog": "",
+                "schema": "public",
+                "table": "events",
+                "field": "payload",
+            },
+        ),
+        (
+            "column",
+            90,
+            [{"field_id": 902, "field_name": "payload", "enable": False}],
+            "JSON_PATH",
+            {
+                "catalog": "",
+                "schema": "public",
+                "table": "events",
+                "field": "payload",
+                "json_path": "$.amount",
+            },
+        ),
+    ],
+)
+def test_permission_scope_parent_denials_remove_descendant_objects(
+    tmp_path,
+    permission_type,
+    table_id,
+    targets,
+    descendant_type,
+    descendant_values,
+) -> None:
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+    from apps.datasource.crud.semantic_object_key import (
+        SemanticObjectKey,
+        canonical_object_key,
+    )
+
+    with metadata_permission_session(tmp_path / f"permission-{permission_type}-inheritance.db") as session:
+        insert_rule(
+            session,
+            permission_id=20,
+            permission_type=permission_type,
+            table_id=table_id,
+            targets=targets,
+        )
+
+        snapshot = PermissionScopeRepository(session.get_bind()).build_snapshot(
+            tenant_id=2,
+            user_id=7,
+            datasource_id=9,
+        )
+
+    descendant_key = canonical_object_key(
+        SemanticObjectKey(
+            object_type=descendant_type,
+            tenant_id=2,
+            datasource_id=9,
+            **descendant_values,
+        )
+    )
+    assert descendant_key in snapshot.denied_object_keys
+    assert descendant_key not in snapshot.allowed_object_keys
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE ds_rules SET permission_list = '{broken' WHERE id = 1021",
+        "UPDATE ds_permission SET permissions = '{broken' WHERE id = 21",
+    ],
+)
+def test_permission_scope_fails_closed_for_malformed_permission_json(tmp_path, statement) -> None:
+    from apps.datasource.crud.permission_scope import PermissionScopeUnavailableError
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+
+    with metadata_permission_session(tmp_path / "permission-malformed-json.db") as session:
+        insert_rule(
+            session,
+            permission_id=21,
+            permission_type="schema",
+            targets=[{"catalog_key": "", "schema_key": "public", "enable": False}],
+        )
+        session.execute(text(statement))
+        session.commit()
+
+        with pytest.raises(PermissionScopeUnavailableError, match="无法读取一致的权限状态，请稍后重试"):
+            PermissionScopeRepository(session.get_bind()).build_snapshot(
+                tenant_id=2,
+                user_id=7,
+                datasource_id=9,
+            )
+
+
+def test_permission_scope_does_not_fallback_when_binding_authority_read_fails(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from apps.datasource.crud import binding
+    from apps.datasource.crud.permission_scope import PermissionScopeUnavailableError
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+
+    with metadata_permission_session(tmp_path / "permission-binding-read.db") as session:
+        session.execute(text("UPDATE core_datasource SET tenant_id = 2 WHERE id = 9"))
+        session.commit()
+
+        def fail_inspection(_connection):
+            raise RuntimeError("binding authority unavailable")
+
+        monkeypatch.setattr(binding, "inspect", fail_inspection)
+
+        with pytest.raises(PermissionScopeUnavailableError, match="无法读取一致的权限状态，请稍后重试"):
+            PermissionScopeRepository(session.get_bind()).build_snapshot(
+                tenant_id=2,
+                user_id=7,
+                datasource_id=9,
+            )
+
+
+def test_postgresql_snapshot_keeps_epoch_and_permission_content_consistent() -> None:
+    """A revocation committed mid-read cannot create a mixed authority view."""
+    pytest.importorskip("psycopg")
+    from sqlalchemy import create_engine
+
+    from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+    from apps.datasource.crud.permission_scope_repository import (
+        PermissionScopeRepository,
+    )
+    from tests.knowledge_migration_support import isolated_database_url
+
+    database_url = isolated_database_url()
+    schema = f"permission_snapshot_{uuid.uuid4().hex[:12]}"
+    admin_engine = create_engine(database_url)
+    engine = create_engine(database_url, connect_args={"options": f"-csearch_path={schema}"})
+    revoker_engine = create_engine(
+        database_url,
+        connect_args={"options": f"-csearch_path={schema}"},
+    )
+    ready = threading.Event()
+    committed = threading.Event()
+    table_name = f'"{schema}".permission_probe'
+
+    with admin_engine.begin() as connection:
+        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                f"CREATE TABLE {table_name} (epoch INTEGER NOT NULL, denied BOOLEAN NOT NULL)"
+            )
+            connection.exec_driver_sql(f"INSERT INTO {table_name} VALUES (1, FALSE)")
+
+        class ProbeRepository(PermissionScopeRepository):
+            def _read_snapshot(self, connection, *, tenant_id, user_id, datasource_id):
+                first = connection.exec_driver_sql(
+                    f"SELECT epoch, denied FROM {table_name}"
+                ).one()
+                ready.set()
+                assert committed.wait(10)
+                second = connection.exec_driver_sql(
+                    f"SELECT epoch, denied FROM {table_name}"
+                ).one()
+                return PermissionScopeSnapshot(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    datasource_id=datasource_id,
+                    permission_version=str(second.epoch),
+                    schema_hash="a" * 64,
+                    allowed_object_keys=frozenset() if second.denied else frozenset({"orders"}),
+                    denied_object_keys=frozenset({"orders"}) if second.denied else frozenset(),
+                    row_constraints_hash=str(first.epoch),
+                )
+
+        def revoke() -> None:
+            assert ready.wait(10)
+            with revoker_engine.begin() as connection:
+                connection.exec_driver_sql(
+                    f"UPDATE {table_name} SET epoch = 2, denied = TRUE"
+                )
+            committed.set()
+
+        revoker = threading.Thread(target=revoke)
+        revoker.start()
+        snapshot = ProbeRepository(engine).build_snapshot(
+            tenant_id=2,
+            user_id=7,
+            datasource_id=9,
+        )
+        revoker.join(timeout=10)
+
+        assert not revoker.is_alive()
+        assert snapshot.permission_version == "1"
+        assert snapshot.allowed_object_keys == frozenset({"orders"})
+        assert snapshot.denied_object_keys == frozenset()
+    finally:
+        with admin_engine.begin() as connection:
+            connection.exec_driver_sql(f'DROP SCHEMA "{schema}" CASCADE')
+        admin_engine.dispose()
+        engine.dispose()
+        revoker_engine.dispose()

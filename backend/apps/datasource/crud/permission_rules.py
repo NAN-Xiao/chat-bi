@@ -15,7 +15,6 @@ from apps.datasource.models.semantic_scope import SemanticScopeType
 from apps.system.models.user import UserModel
 from common.core.deps import SessionDep
 
-
 _metadata = MetaData()
 DEFAULT_RULE_TENANT_ID = 1
 RULE_SCOPE_TENANT = "TENANT"
@@ -99,6 +98,19 @@ def parse_json_list(value: Any) -> list:
     """
     parsed = _parse_json(value, [])
     return parsed if isinstance(parsed, list) else []
+
+
+def parse_json_list_strict(value: Any) -> list:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, str):
+        raise ValueError("permission JSON must be a list")
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("permission JSON must be a list")
+    return parsed
 
 
 def _json_text(value: Any, fallback: Any) -> str:
