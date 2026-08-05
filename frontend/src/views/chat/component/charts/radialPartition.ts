@@ -4,7 +4,9 @@ export const RADIAL_PERCENTAGE_FIELD = 'shuzhi_radial_percentage'
 
 export type RadialPartitionValidationCode =
   | 'missing_category_field'
+  | 'multiple_category_fields'
   | 'missing_value_field'
+  | 'multiple_value_fields'
   | 'empty_category'
   | 'duplicate_category'
   | 'invalid_value'

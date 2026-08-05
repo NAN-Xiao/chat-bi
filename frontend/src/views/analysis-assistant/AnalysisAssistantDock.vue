@@ -9,7 +9,6 @@ import type {
   ChartForecastConfig,
   ChartTypes,
 } from '@/views/chat/component/BaseChart.ts'
-import { isRadialPartitionChartType } from '@/views/chat/component/chartTypes.ts'
 import { dashboardApi } from '@/api/dashboard'
 import { findNewComponentFromList } from '@/views/dashboard/components/component-list.ts'
 import { layoutDashboardChartComponents } from '@/views/dashboard/utils/chartSizing.ts'
@@ -636,7 +635,7 @@ const getChartYAxis = (chart?: AnalysisChartConfig) => {
 
 const getChartSeries = (chart?: AnalysisChartConfig) => {
   if (chart?.axis?.series) return [chart.axis.series]
-  if (chart?.type && isRadialPartitionChartType(chart.type) && chart.axis?.x) return [chart.axis.x]
+  if (chart?.type === 'pie' && chart.axis?.x) return [chart.axis.x]
   return []
 }
 

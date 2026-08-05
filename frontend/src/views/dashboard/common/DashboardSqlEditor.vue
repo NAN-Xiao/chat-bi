@@ -260,6 +260,7 @@ const form = reactive({
   mcpKeyField: '',
   mcpValueField: '',
 })
+const donutSeriesFields = ref<string[]>([])
 const sqlBuilder = reactive({
   activeTab: 'builder',
   timeField: SQL_EDITOR_TIME_FIELD,
@@ -821,13 +822,16 @@ const chartPreviewYFields = computed(() => {
   if (form.chartType === 'table') {
     return []
   }
-  if (isRadialPartitionChartType(form.chartType)) {
+  if (form.chartType === 'pie') {
     return form.y.slice(0, 1)
+  }
+  if (form.chartType === 'donut') {
+    return form.y.length === 1 ? form.y : []
   }
   return form.y
 })
 const activePivotGroupValueField = computed(() =>
-  isRadialPartitionChartType(form.chartType) ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+  form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
 )
 const previewHasPivotGroupField = computed(() => {
   const field = activePivotGroupValueField.value
@@ -838,7 +842,7 @@ const sourceHasPivotGroupValues = computed(() => {
   return Boolean(field && collectPivotGroupValueCounts(field).size > 0)
 })
 const chartPreviewSeriesFields = computed(() => {
-  const field = isRadialPartitionChartType(form.chartType) ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+  const field = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
   return field && visiblePreviewFields([field], previewDisplayData.value).includes(field) ? [field] : []
 })
 const showPivotGroupValueConfig = computed(
@@ -863,7 +867,7 @@ const pivotGroupValueOptions = computed(() => {
 })
 const previewDisplayData = computed(() => {
   let rows = preview.data
-  const seriesField = isRadialPartitionChartType(form.chartType) ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
+  const seriesField = form.chartType === 'pie' ? effectiveSeriesField.value || form.x : effectiveSeriesField.value
   const previewHasSeriesField = !seriesField || visiblePreviewFields([seriesField], rows).includes(seriesField)
   if (!previewHasSeriesField && visiblePreviewFields([seriesField], sourcePreview.data).includes(seriesField)) {
     rows = sourcePreview.data
@@ -2906,6 +2910,9 @@ function normalizeSeriesField(field: string) {
 }
 
 function sanitizeSeriesSelection() {
+  if (form.chartType === 'donut') {
+    return
+  }
   const nextSeries = normalizeSeriesField(form.series)
   if (form.series !== nextSeries) {
     form.series = nextSeries
@@ -3989,22 +3996,26 @@ function resetFieldSelections() {
   const fields = sourcePreview.fields
   if (!fields.length) {
     form.columns = []
-    form.x = ''
-    form.y = []
-    form.series = ''
+    if (form.chartType !== 'donut') {
+      form.x = ''
+      form.y = []
+      form.series = ''
+    }
     return
   }
   form.columns = form.columns.filter((field) => fields.includes(field))
-  form.y = form.y.filter((field) => fields.includes(field))
   if (form.columns.length === 0) form.columns = fields.slice(0, 8)
-  if (!fields.includes(form.x)) form.x = fields[0] || ''
-  if (!fields.includes(form.series)) form.series = ''
-  sanitizeSeriesSelection()
-  if (form.y.length === 0) {
-    const numericField = fields.find((field) =>
-      sourcePreview.data.some((row) => typeof row?.[field] === 'number')
-    )
-    form.y = [numericField || fields[Math.min(1, fields.length - 1)] || fields[0]]
+  if (form.chartType !== 'donut') {
+    form.y = form.y.filter((field) => fields.includes(field))
+    if (!fields.includes(form.x)) form.x = fields[0] || ''
+    if (!fields.includes(form.series)) form.series = ''
+    sanitizeSeriesSelection()
+    if (form.y.length === 0) {
+      const numericField = fields.find((field) =>
+        sourcePreview.data.some((row) => typeof row?.[field] === 'number')
+      )
+      form.y = [numericField || fields[Math.min(1, fields.length - 1)] || fields[0]]
+    }
   }
 }
 
@@ -4035,7 +4046,9 @@ function initEditor() {
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
   pruneAutoSeededMetricItemsForFormulaOnlyBuilder()
-  form.series = axisValues(chart.series)[0] || ''
+  const persistedSeries = axisValues(chart.series)
+  donutSeriesFields.value = persistedSeries
+  form.series = persistedSeries[0] || ''
   form.multiQuotaName = t('dashboard.metric_type')
   sourcePreview.fields = fields
   sourcePreview.data = viewInfo.data?.source_data || viewInfo.data?.data || []
@@ -4464,7 +4477,13 @@ function buildChart() {
     return chart
   }
 
-  if (isRadialPartitionChartType(form.chartType)) {
+  if (form.chartType === 'donut') {
+    chart.yAxis = toAxes(form.y, { metrics: true })
+    chart.series = toAxes(donutSeriesFields.value)
+    return chart
+  }
+
+  if (form.chartType === 'pie') {
     chart.yAxis = toAxes(form.y.slice(0, 1), { metrics: true })
     chart.series = toAxes([effectiveSeriesField.value || form.x].filter(Boolean) as string[])
     return chart
@@ -4474,6 +4493,41 @@ function buildChart() {
   chart.yAxis = toAxes(form.y, { metrics: true })
   chart.series = toAxes([effectiveSeriesField.value].filter(Boolean) as string[])
   return chart
+}
+
+function donutFieldMappingValidationErrorKey() {
+  if (form.chartType !== 'donut') {
+    return ''
+  }
+  if (form.y.length === 0) {
+    return 'dashboard.sql_editor_donut_value_required'
+  }
+  if (form.y.length !== 1) {
+    return 'dashboard.sql_editor_donut_single_value'
+  }
+  if (!sourcePreview.fields.includes(form.y[0])) {
+    return 'dashboard.sql_editor_donut_value_invalid'
+  }
+  if (donutSeriesFields.value.length === 0) {
+    return 'dashboard.sql_editor_donut_category_required'
+  }
+  if (donutSeriesFields.value.length !== 1) {
+    return 'dashboard.sql_editor_donut_single_category'
+  }
+  const categoryField = donutSeriesFields.value[0]
+  if (!sourcePreview.fields.includes(categoryField) || !normalizeSeriesField(categoryField)) {
+    return 'dashboard.sql_editor_donut_category_invalid'
+  }
+  return ''
+}
+
+function validateDonutFieldMapping() {
+  const errorKey = donutFieldMappingValidationErrorKey()
+  if (!errorKey) {
+    return true
+  }
+  ElMessage.warning(t(errorKey))
+  return false
 }
 
 function validateBeforeApply() {
@@ -4514,6 +4568,9 @@ function validateBeforeApply() {
     ElMessage.warning(mt('mcp_editor_select_tool'))
     return false
   }
+  if (!validateDonutFieldMapping()) {
+    return false
+  }
   if (props.allowStaticApply && !isMaterializedSource.value && !canRunPreview.value) {
     return true
   }
@@ -4547,7 +4604,7 @@ function validateBeforeApply() {
   if (form.chartType === 'metric') {
     return true
   }
-  if (isRadialPartitionChartType(form.chartType) && !(form.series || form.x)) {
+  if (form.chartType === 'pie' && !(form.series || form.x)) {
     ElMessage.warning(t('dashboard.sql_editor_select_series'))
     return false
   }
@@ -4618,6 +4675,9 @@ function writeEditorStateToViewInfo(options: {
   message?: string
 } = {}) {
   if (!props.viewInfo) {
+    return false
+  }
+  if (!validateDonutFieldMapping()) {
     return false
   }
   const strictMcpArguments = options.strictMcpArguments !== false
@@ -4793,6 +4853,18 @@ function applyChange() {
     close: true,
     notify: true,
   })
+}
+
+function handleChartTypeChange(chartType: ChartTypes) {
+  if (chartType === 'donut') {
+    donutSeriesFields.value = form.series ? [form.series] : []
+  }
+}
+
+function handleSeriesFieldChange(series: string) {
+  if (form.chartType === 'donut') {
+    donutSeriesFields.value = series ? [series] : []
+  }
 }
 
 function closeDrawer() {
@@ -5522,7 +5594,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-model="form.chartType">
+            <el-select v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -5564,7 +5636,7 @@ function closeDrawer() {
             </el-select>
           </el-form-item>
           <el-form-item v-if="showSeries" :label="t('dashboard.sql_editor_series')">
-            <el-select v-model="form.series" filterable clearable>
+            <el-select v-model="form.series" filterable clearable @change="handleSeriesFieldChange">
               <el-option
                 v-for="field in seriesFieldOptions"
                 :key="field.value"

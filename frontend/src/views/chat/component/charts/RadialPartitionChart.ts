@@ -34,12 +34,18 @@ export class RadialPartitionChart extends BaseG2Chart {
     const y = axes.y
     const series = axes.series
 
-    if (series.length !== 1 || y.length !== 1 || axes.groupedMultiQuota.length > 1) {
-      if (this.radialOptions.name === 'donut') {
+    if (this.radialOptions.name === 'donut') {
+      if (series.length !== 1) {
         throw new RadialPartitionValidationError(
-          series.length !== 1 ? 'missing_category_field' : 'missing_value_field'
+          series.length === 0 ? 'missing_category_field' : 'multiple_category_fields'
         )
       }
+      if (y.length !== 1 || axes.groupedMultiQuota.length > 1) {
+        throw new RadialPartitionValidationError(
+          y.length === 0 ? 'missing_value_field' : 'multiple_value_fields'
+        )
+      }
+    } else if (series.length !== 1 || y.length !== 1 || axes.groupedMultiQuota.length > 1) {
       console.debug({ instance: this })
       return
     }
