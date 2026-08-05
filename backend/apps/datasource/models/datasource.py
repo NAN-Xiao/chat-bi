@@ -5,9 +5,25 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Text, BigInteger, DateTime, Identity, Index, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Identity,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
+
+from apps.datasource.models.semantic_scope import (  # noqa: F401
+    SemanticScopeEpoch,
+    SemanticScopeType,
+)
 
 
 class CoreDatasource(SQLModel, table=True):
@@ -16,6 +32,10 @@ class CoreDatasource(SQLModel, table=True):
     """
     __tablename__ = "core_datasource"
     __table_args__ = (
+        CheckConstraint(
+            "catalog_complete = false OR physical_schema_hash IS NOT NULL",
+            name="ck_core_datasource_catalog_complete_hash",
+        ),
         Index("idx_core_datasource_tenant_id", "tenant_id"),
     )
 
@@ -33,6 +53,16 @@ class CoreDatasource(SQLModel, table=True):
     table_relation: List = Field(sa_column=Column(JSONB, nullable=True))
     embedding: str = Field(sa_column=Column(Text, nullable=True))
     recommended_config: int = Field(sa_column=Column(BigInteger()))
+    catalog_complete: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+    )
+    catalog_incomplete_reason: str | None = Field(
+        default=None, sa_column=Column(Text, nullable=True)
+    )
+    physical_schema_hash: str | None = Field(
+        default=None, sa_column=Column(String(64), nullable=True)
+    )
 
 
 class CoreDatasourceUser(SQLModel, table=True):
@@ -77,6 +107,16 @@ class CoreTable(SQLModel, table=True):
     类说明：CoreTable 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
     """
     __tablename__ = "core_table"
+    __table_args__ = (
+        UniqueConstraint(
+            "ds_id",
+            "catalog_key",
+            "schema_key",
+            "table_key",
+            name="uq_core_table_full_identity",
+        ),
+    )
+
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
     ds_id: int = Field(sa_column=Column(BigInteger()))
     checked: bool = Field(default=True)
@@ -84,6 +124,21 @@ class CoreTable(SQLModel, table=True):
     table_comment: str = Field(sa_column=Column(Text))
     custom_comment: str = Field(sa_column=Column(Text))
     embedding: str = Field(sa_column=Column(Text, nullable=True))
+    catalog_name: str | None = Field(
+        default=None, sa_column=Column(String(255), nullable=True)
+    )
+    schema_name: str | None = Field(
+        default=None, sa_column=Column(String(255), nullable=True)
+    )
+    catalog_key: str | None = Field(
+        default=None, sa_column=Column(String(255), nullable=False)
+    )
+    schema_key: str | None = Field(
+        default=None, sa_column=Column(String(255), nullable=False)
+    )
+    table_key: str | None = Field(
+        default=None, sa_column=Column(String(255), nullable=False)
+    )
 
 
 class DsRecommendedProblem(SQLModel, table=True):
@@ -105,6 +160,14 @@ class CoreField(SQLModel, table=True):
     类说明：CoreField 表示数据源里的一类数据，通常用来和数据库表或业务对象对应。
     """
     __tablename__ = "core_field"
+    __table_args__ = (
+        UniqueConstraint(
+            "table_id",
+            "field_key",
+            name="uq_core_field_full_identity",
+        ),
+    )
+
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
     ds_id: int = Field(sa_column=Column(BigInteger()))
     table_id: int = Field(sa_column=Column(BigInteger()))
@@ -114,6 +177,9 @@ class CoreField(SQLModel, table=True):
     field_comment: str = Field(sa_column=Column(Text))
     custom_comment: str = Field(sa_column=Column(Text))
     field_index: int = Field(sa_column=Column(BigInteger()))
+    field_key: str | None = Field(
+        default=None, sa_column=Column(String(255), nullable=False)
+    )
 
 
 # 数据源创建对象
