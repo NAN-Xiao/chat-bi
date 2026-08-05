@@ -209,7 +209,13 @@ def _snapshot_source_aliases(
         if key is None:
             continue
         aliases[normalize_identifier(source.alias_or_name or source.name)] = key
-        aliases[normalize_identifier(source.name)] = key
+        table_name = normalize_identifier(source.name)
+        schema_name = normalize_identifier(key.schema)
+        catalog_name = normalize_identifier(key.catalog)
+        if schema_name and table_name:
+            aliases[f"{schema_name}.{table_name}"] = key
+        if catalog_name and schema_name and table_name:
+            aliases[f"{catalog_name}.{schema_name}.{table_name}"] = key
     return aliases
 
 
@@ -249,7 +255,14 @@ def _resolve_snapshot_column_tables(
 ) -> set[str]:
     table_alias = normalize_identifier(column.table)
     if table_alias:
-        key = aliases.get(table_alias)
+        schema_name = normalize_identifier(column.db)
+        catalog_name = normalize_identifier(column.catalog)
+        qualified_name = ".".join(
+            part for part in (catalog_name, schema_name, table_alias) if part
+        )
+        key = aliases.get(qualified_name) or aliases.get(
+            f"{schema_name}.{table_alias}" if schema_name else table_alias
+        )
         return {canonical_object_key(key)} if key is not None else set()
     field_name = normalize_identifier(column.name)
     return {
@@ -278,6 +291,13 @@ def _validate_snapshot_columns(
         keys_by_hash[table_hash] = key
 
     for statement in statements:
+        denied_paths = _snapshot_denied_json_paths(
+            session=session,
+            snapshot=snapshot,
+            table_records=table_records,
+            fields_by_table=fields_by_table,
+            keys_by_hash=keys_by_hash,
+        )
         for select_expr in statement.find_all(exp.Select):
             aliases = _snapshot_source_aliases(select_expr, table_keys)
             source_hashes = {
@@ -313,12 +333,21 @@ def _validate_snapshot_columns(
                                 "SQL 使用了 SELECT *，无法安全应用字段权限；请显式选择授权字段",
                                 rule_type="column",
                             )
+                    if any(table_hash == path_table for path_table, _field in denied_paths):
+                        raise SqlPermissionScopeError(
+                            "SQL 使用了 SELECT *，无法安全应用 JSON 路径权限；请显式选择授权字段",
+                            rule_type="json_path",
+                        )
             for column in select_expr.find_all(exp.Column):
                 if not _is_in_current_select_scope(column, select_expr):
                     continue
                 if isinstance(column.this, exp.Star):
                     continue
-                if not column.table and normalize_identifier(column.name) in output_aliases:
+                if (
+                        not column.table
+                        and normalize_identifier(column.name) in output_aliases
+                        and not isinstance(column.parent, exp.Alias)
+                ):
                     continue
                 candidates = _resolve_snapshot_column_tables(column, aliases, fields_by_table)
                 if not candidates:
@@ -345,19 +374,18 @@ def _validate_snapshot_columns(
                 keys_by_hash=keys_by_hash,
                 snapshot=snapshot,
                 json_accesses=json_accesses,
+                denied_paths=denied_paths,
             )
 
 
-def _validate_snapshot_static_json_accesses(
+def _snapshot_denied_json_paths(
         *,
         session: SessionDep,
-        aliases: dict[str, SemanticObjectKey],
-        fields_by_table: dict[str, dict[str, CoreField]],
-        table_records: dict[str, CoreTable],
-        keys_by_hash: dict[str, SemanticObjectKey],
         snapshot: PermissionScopeSnapshot,
-        json_accesses: Any,
-) -> None:
+        table_records: dict[str, CoreTable],
+        fields_by_table: dict[str, dict[str, CoreField]],
+        keys_by_hash: dict[str, SemanticObjectKey],
+) -> dict[tuple[str, str], set[str]]:
     denied_paths: dict[tuple[str, str], set[str]] = {}
     for table_hash, table in table_records.items():
         rows = session.execute(
@@ -379,7 +407,20 @@ def _validate_snapshot_static_json_accesses(
             json_key = _snapshot_json_key(keys_by_hash[table_hash], field_name, path)
             if json_key in snapshot.denied_object_keys:
                 denied_paths.setdefault((table_hash, field_name), set()).add(path)
+    return denied_paths
 
+
+def _validate_snapshot_static_json_accesses(
+        *,
+        session: SessionDep,
+        aliases: dict[str, SemanticObjectKey],
+        fields_by_table: dict[str, dict[str, CoreField]],
+        table_records: dict[str, CoreTable],
+        keys_by_hash: dict[str, SemanticObjectKey],
+        snapshot: PermissionScopeSnapshot,
+        json_accesses: Any,
+        denied_paths: dict[tuple[str, str], set[str]],
+) -> None:
     for access in json_accesses.accesses:
         field_name = normalize_identifier(access.source_field)
         alias = normalize_identifier(access.table_alias)
@@ -455,6 +496,26 @@ def compile_event_constraints(
     if len(statements) != 1:
         raise SqlPermissionScopeError("SQL 包含多个语句，无法安全应用事件权限", rule_type="event")
     statement = statements[0]
+    references_event_table = False
+    for table in statement.find_all(exp.Table):
+        result = resolve_table_key(
+            session,
+            datasource_id=int(datasource.id),
+            declared=DeclaredObjectPath(
+                object_type="TABLE",
+                catalog=str(table.catalog) if table.catalog else None,
+                schema=str(table.db) if table.db else None,
+                table=str(table.name),
+            ),
+        )
+        if result.status is ObjectResolutionStatus.RESOLVED and result.key is not None:
+            references_event_table = references_event_table or (
+                result.key.catalog == authority.table.catalog
+                and result.key.schema == authority.table.schema
+                and result.key.table == authority.table.table
+            )
+    if not references_event_table:
+        return sql
     selects = list(statement.find_all(exp.Select))
     if len(selects) != 1 or any(statement.find_all(exp.Subquery)) or any(statement.find_all(exp.CTE)):
         raise SqlPermissionScopeError("SQL 查询结构无法安全应用事件权限", rule_type="event")

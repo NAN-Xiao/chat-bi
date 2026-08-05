@@ -639,12 +639,6 @@ def prepare_query_sql(
                     sql=executed_sql,
                     snapshot=permission_snapshot,
                 )
-                compile_event_constraints(
-                    session=session,
-                    datasource=datasource,
-                    sql=executed_sql,
-                    snapshot=permission_snapshot,
-                )
 
     return executed_sql, actual_tables
 

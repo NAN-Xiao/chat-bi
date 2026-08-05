@@ -295,6 +295,46 @@ def test_snapshot_scope_rejects_denied_static_json_path(tmp_path) -> None:
             )
 
 
+def test_snapshot_scope_rejects_star_when_table_has_denied_json_path(tmp_path) -> None:
+    from apps.datasource.crud.permission_errors import SqlPermissionScopeError
+    from apps.datasource.crud.sql_permission import validate_sql_object_scope
+
+    with metadata_permission_session(tmp_path / "snapshot-star-denied-json.db") as session:
+        datasource = session.get(CoreDatasource, 9)
+        assert datasource is not None
+
+        with pytest.raises(SqlPermissionScopeError, match="SELECT \\*"):
+            validate_sql_object_scope(
+                session=session,
+                datasource=datasource,
+                sql="SELECT * FROM public.events",
+                snapshot=_snapshot(
+                    allowed={_table_key(), _field_key("event_name"), _field_key("payload")},
+                    denied={_json_path_key("payload", "$.amount")},
+                ),
+            )
+
+
+def test_snapshot_scope_does_not_treat_source_column_as_output_alias(tmp_path) -> None:
+    from apps.datasource.crud.permission_errors import SqlPermissionScopeError
+    from apps.datasource.crud.sql_permission import validate_sql_object_scope
+
+    with metadata_permission_session(tmp_path / "snapshot-output-alias.db") as session:
+        datasource = session.get(CoreDatasource, 9)
+        assert datasource is not None
+
+        with pytest.raises(SqlPermissionScopeError, match="无权限字段"):
+            validate_sql_object_scope(
+                session=session,
+                datasource=datasource,
+                sql="SELECT payload AS payload FROM public.events",
+                snapshot=_snapshot(
+                    allowed={_table_key(), _field_key("event_name")},
+                    denied={_field_key("payload")},
+                ),
+            )
+
+
 def test_snapshot_scope_rejects_json_access_when_source_field_is_denied(tmp_path) -> None:
     from apps.datasource.crud.permission_errors import SqlPermissionScopeError
     from apps.datasource.crud.sql_permission import validate_sql_object_scope
@@ -418,3 +458,18 @@ def test_compile_event_constraints_rejects_outer_join(tmp_path) -> None:
                     denied={_event_key()},
                 ),
             )
+
+
+def test_compile_event_constraints_ignores_unrelated_aggregate(tmp_path) -> None:
+    from apps.datasource.crud.sql_permission import compile_event_constraints
+
+    with metadata_permission_session(tmp_path / "denied-event-unrelated-aggregate.db") as session:
+        datasource = session.get(CoreDatasource, 9)
+        assert datasource is not None
+
+        assert compile_event_constraints(
+            session=session,
+            datasource=datasource,
+            sql="SELECT COUNT(*) FROM archive.orders",
+            snapshot=_snapshot(allowed={_table_key(), _event_key()}, denied={_event_key()}),
+        ) == "SELECT COUNT(*) FROM archive.orders"
