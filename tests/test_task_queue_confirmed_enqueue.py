@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from common.core import task_queue, task_queue_enqueue
 from test_task_queue_reliability import _install_fake_redis
 
@@ -65,6 +67,117 @@ def test_confirmed_enqueue_returns_unknown_after_post_commit_disconnect(monkeypa
         assert await task_queue.tenant_queue_size(7, "local-test") == 1
 
     asyncio.run(scenario())
+
+
+def test_confirmed_enqueue_reconciles_deduped_task_after_post_commit_disconnect(monkeypatch):
+    fake = _install_fake_redis(monkeypatch)
+    task_queue._task_handlers["test.confirmed"] = lambda payload: payload
+
+    async def scenario():
+        first = await task_queue.enqueue_task_confirmed(
+            "test.confirmed",
+            {"value": 1},
+            tenant_id=7,
+            queue_name="local-test",
+            dedupe_key="job:deduped-disconnect",
+        )
+        fake.disconnect_after_eval = True
+
+        second = await task_queue.enqueue_task_confirmed(
+            "test.confirmed",
+            {"value": 2},
+            tenant_id=7,
+            queue_name="local-test",
+            dedupe_key="job:deduped-disconnect",
+        )
+
+        assert second.outcome is task_queue.EnqueueOutcome.ENQUEUED
+        assert second.task["id"] == first.task["id"]
+        repaired = await task_queue.confirm_or_repair_task(
+            second.task["id"],
+            tenant_id=7,
+            queue_name="local-test",
+        )
+        assert repaired.outcome is task_queue.EnqueueOutcome.ENQUEUED
+        assert repaired.task["id"] == first.task["id"]
+
+    asyncio.run(scenario())
+
+
+def test_task_queue_platform_transport_keys_use_platform_scope(monkeypatch):
+    monkeypatch.setattr(task_queue.settings, "REDIS_KEY_PREFIX", "test")
+
+    assert task_queue._queue_key("local-test") == "test:platform:task:queue:local-test"
+    assert task_queue._processing_key("local-test") == "test:platform:task:processing:local-test"
+    assert task_queue._task_tenant_index_key("task-1") == "test:platform:task:tenant:task-1"
+
+
+@pytest.mark.parametrize(
+    ("result", "expected_code", "expected_message"),
+    [
+        (
+            task_queue.EnqueueResult(
+                outcome=task_queue.EnqueueOutcome.REJECTED,
+                task=None,
+                error_code="TENANT_SUBSCRIPTION_SUSPENDED",
+            ),
+            "TENANT_SUBSCRIPTION_SUSPENDED",
+            "当前租户的任务提交已暂停，请联系管理员。",
+        ),
+        (
+            task_queue.EnqueueResult(
+                outcome=task_queue.EnqueueOutcome.REJECTED,
+                task=None,
+                error_code="TENANT_TASK_QUOTA_EXCEEDED",
+            ),
+            "TENANT_TASK_QUOTA_EXCEEDED",
+            "当前租户的任务额度已用完，请稍后重试或联系管理员。",
+        ),
+        (
+            task_queue.EnqueueResult(
+                outcome=task_queue.EnqueueOutcome.REJECTED,
+                task=None,
+                error_code="TASK_QUEUE_FULL",
+            ),
+            "TASK_QUEUE_FULL",
+            "当前任务队列繁忙，请稍后重试。",
+        ),
+        (
+            task_queue.EnqueueResult(
+                outcome=task_queue.EnqueueOutcome.UNKNOWN,
+                task={"id": "task-unknown"},
+                error_code="TASK_QUEUE_CONFIRMATION_REQUIRED",
+            ),
+            "TASK_QUEUE_CONFIRMATION_REQUIRED",
+            "任务提交结果暂时无法确认，请稍后查询任务状态。",
+        ),
+        (
+            task_queue.EnqueueResult(
+                outcome=task_queue.EnqueueOutcome.REJECTED,
+                task=None,
+                error_code="TASK_QUEUE_UNAVAILABLE",
+            ),
+            "TASK_QUEUE_UNAVAILABLE",
+            "任务提交失败，请稍后重试。",
+        ),
+    ],
+)
+def test_enqueue_task_adapter_raises_safe_chinese_message_with_error_code(
+    monkeypatch,
+    result,
+    expected_code,
+    expected_message,
+):
+    async def fake_enqueue_task_confirmed(*_args, **_kwargs):
+        return result
+
+    monkeypatch.setattr(task_queue, "enqueue_task_confirmed", fake_enqueue_task_confirmed)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        asyncio.run(task_queue.enqueue_task("test.confirmed", tenant_id=7))
+
+    assert str(exc_info.value) == expected_message
+    assert exc_info.value.error_code == expected_code
 
 
 def test_confirmed_enqueue_rejects_before_lua_without_partial_state(monkeypatch):

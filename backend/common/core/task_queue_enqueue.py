@@ -16,7 +16,11 @@ from apps.system.crud.tenant_usage import (
     record_tenant_usage_detached,
 )
 from common.core.config import settings
-from common.core.redis_client import get_redis_client, redis_key, tenant_redis_key
+from common.core.redis_client import (
+    get_redis_client,
+    platform_redis_key,
+    tenant_redis_key,
+)
 from common.utils.utils import AppLogUtil
 
 DEFAULT_TASK_TENANT_ID = 1
@@ -29,7 +33,7 @@ def normalize_tenant_id(tenant_id: int | str | None) -> int:
 
 
 def queue_key(queue_name: str | None = None) -> str:
-    return redis_key("task", "queue", queue_name or settings.TASK_QUEUE_NAME)
+    return platform_redis_key("task", "queue", queue_name or settings.TASK_QUEUE_NAME)
 
 
 def tenant_pending_key(
@@ -55,7 +59,7 @@ def task_key(task_id: str, tenant_id: int | str | None = None) -> str:
 
 
 def task_tenant_index_key(task_id: str) -> str:
-    return redis_key("task", "tenant", task_id)
+    return platform_redis_key("task", "tenant", task_id)
 
 
 def task_dedupe_key(
@@ -455,20 +459,21 @@ async def enqueue_task_confirmed(
         max_attempts=max_attempts,
         dedupe_key=dedupe_key,
     )
+    resolved_dedupe_key = (
+        task_dedupe_key(
+            resolved_tenant_id,
+            resolved_queue_name,
+            str(dedupe_key),
+        )
+        if dedupe_key
+        else ""
+    )
     try:
         reply = await execute_atomic_enqueue(
             client,
             task_key=task_key(task["id"], resolved_tenant_id),
             tenant_index_key=task_tenant_index_key(task["id"]),
-            dedupe_key=(
-                task_dedupe_key(
-                    resolved_tenant_id,
-                    resolved_queue_name,
-                    str(dedupe_key),
-                )
-                if dedupe_key
-                else ""
-            ),
+            dedupe_key=resolved_dedupe_key,
             queue_key=queue_key(resolved_queue_name),
             pending_key=tenant_pending_key(resolved_tenant_id, resolved_queue_name),
             task_json=_json_dumps(task),
@@ -477,9 +482,33 @@ async def enqueue_task_confirmed(
             ttl_seconds=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
             task_key_prefix=f"{task_key('', resolved_tenant_id)}:",
             max_pending=int(settings.TASK_QUEUE_MAX_PENDING_PER_TENANT or 0),
-            tenant_index_key_prefix=f"{redis_key('task', 'tenant')}:",
+            tenant_index_key_prefix=f"{platform_redis_key('task', 'tenant')}:",
         )
     except (RedisError, RuntimeError, ValueError):
+        if resolved_dedupe_key:
+            try:
+                resolved_task_id = _text(await client.get(resolved_dedupe_key))
+            except RedisError:
+                resolved_task_id = ""
+            if resolved_task_id == task["id"]:
+                return EnqueueResult(
+                    outcome=EnqueueOutcome.UNKNOWN,
+                    task=task,
+                    error_code="TASK_QUEUE_CONFIRMATION_REQUIRED",
+                )
+            if resolved_task_id:
+                reconciled = await confirm_or_repair_task(
+                    resolved_task_id,
+                    tenant_id=resolved_tenant_id,
+                    queue_name=resolved_queue_name,
+                )
+                if reconciled.outcome is EnqueueOutcome.ENQUEUED:
+                    return reconciled
+            return EnqueueResult(
+                outcome=EnqueueOutcome.UNKNOWN,
+                task=None,
+                error_code="TASK_QUEUE_CONFIRMATION_REQUIRED",
+            )
         return EnqueueResult(
             outcome=EnqueueOutcome.UNKNOWN,
             task=task,

@@ -329,7 +329,8 @@ def test_enqueue_rejects_when_tenant_pending_limit_is_reached(monkeypatch):
         try:
             await task_queue.enqueue_task("test.limited", tenant_id=10)
         except RuntimeError as exc:
-            assert "Tenant 10 task queue is full" in str(exc)
+            assert str(exc) == "当前任务队列繁忙，请稍后重试。"
+            assert exc.error_code == "TASK_QUEUE_FULL"
         else:
             raise AssertionError("tenant pending limit should reject the second task")
 
@@ -352,7 +353,8 @@ def test_enqueue_rejects_when_tenant_task_quota_is_exceeded(monkeypatch):
         try:
             await task_queue.enqueue_task("test.quota", tenant_id=10)
         except RuntimeError as exc:
-            assert "Tenant 10 task quota exceeded" in str(exc)
+            assert str(exc) == "当前租户的任务额度已用完，请稍后重试或联系管理员。"
+            assert exc.error_code == "TENANT_TASK_QUOTA_EXCEEDED"
         else:
             raise AssertionError("tenant task quota should reject enqueue")
 

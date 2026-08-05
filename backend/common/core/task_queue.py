@@ -18,7 +18,12 @@ from redis.exceptions import RedisError
 from apps.system.crud.tenant_usage import record_tenant_usage_detached
 from common.core.config import settings
 from common.core.event_loop import submit_to_main_loop
-from common.core.redis_client import get_redis_client, redis_key, tenant_redis_key
+from common.core.redis_client import (
+    get_redis_client,
+    platform_redis_key,
+    redis_key,
+    tenant_redis_key,
+)
 from common.core.task_queue_enqueue import (
     DEFAULT_TASK_TENANT_ID,
     EnqueueOutcome,
@@ -59,6 +64,21 @@ class TaskStatus(str, Enum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+
+
+class TaskEnqueueError(RuntimeError):
+    def __init__(self, error_code: str, message: str):
+        self.error_code = error_code
+        super().__init__(message)
+
+
+_TASK_ENQUEUE_ERROR_MESSAGES = {
+    "TENANT_SUBSCRIPTION_SUSPENDED": "当前租户的任务提交已暂停，请联系管理员。",
+    "TENANT_TASK_QUOTA_EXCEEDED": "当前租户的任务额度已用完，请稍后重试或联系管理员。",
+    "TASK_QUEUE_FULL": "当前任务队列繁忙，请稍后重试。",
+}
+_TASK_ENQUEUE_UNKNOWN_MESSAGE = "任务提交结果暂时无法确认，请稍后查询任务状态。"
+_TASK_ENQUEUE_REJECTED_MESSAGE = "任务提交失败，请稍后重试。"
 
 
 TaskHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
@@ -103,7 +123,7 @@ def _processing_key(queue_name: str | None = None) -> str:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把后端基础能力的主要流程跑起来，一步步调用需要的处理。
     """
-    return redis_key("task", "processing", queue_name or settings.TASK_QUEUE_NAME)
+    return platform_redis_key("task", "processing", queue_name or settings.TASK_QUEUE_NAME)
 
 
 def _record_task_usage(tenant_id: int | str | None, metric: str, *, success: bool | None = None) -> None:
@@ -285,15 +305,17 @@ async def enqueue_task(
         return result.task
     if result.error_code == "TASK_HANDLER_NOT_REGISTERED":
         raise ValueError(f"Unknown task handler: {name}")
-    if result.error_code == "TENANT_SUBSCRIPTION_SUSPENDED":
-        raise RuntimeError("Task enqueue is suspended by SaaS administrator.")
-    if result.error_code == "TENANT_TASK_QUOTA_EXCEEDED":
-        raise RuntimeError(f"Tenant {_normalize_tenant_id(tenant_id)} task quota exceeded.")
-    if result.error_code == "TASK_QUEUE_FULL":
-        raise RuntimeError(f"Tenant {_normalize_tenant_id(tenant_id)} task queue is full.")
+    error_code = result.error_code or (
+        "TASK_QUEUE_CONFIRMATION_REQUIRED"
+        if result.outcome is EnqueueOutcome.UNKNOWN
+        else "TASK_QUEUE_REJECTED"
+    )
     if result.outcome is EnqueueOutcome.UNKNOWN:
-        raise RuntimeError("Task enqueue result is unknown; confirmation is required.")
-    raise RuntimeError(f"Task enqueue rejected: {result.error_code or 'UNKNOWN'}")
+        raise TaskEnqueueError(error_code, _TASK_ENQUEUE_UNKNOWN_MESSAGE)
+    raise TaskEnqueueError(
+        error_code,
+        _TASK_ENQUEUE_ERROR_MESSAGES.get(error_code, _TASK_ENQUEUE_REJECTED_MESSAGE),
+    )
 
 
 async def _enqueue_task_and_log(
