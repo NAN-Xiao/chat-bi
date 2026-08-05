@@ -512,6 +512,192 @@ def test_execute_adapter_passes_roi_controls_to_modern_callable(monkeypatch) -> 
     }
 
 
+def test_permission_version_change_returns_latest_snapshot_for_revalidation(monkeypatch) -> None:
+    from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+
+    stale = PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+        permission_version="before",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="b" * 64,
+    )
+    latest = PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+        permission_version="after",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="b" * 64,
+    )
+    monkeypatch.setattr(
+        sql_engine_executor.PermissionScopeService,
+        "build_snapshot",
+        lambda **_kwargs: latest,
+    )
+
+    assert sql_engine_executor.revalidate_permission_version(
+        session=SimpleNamespace(),
+        current_user=SimpleNamespace(id=7, tenant_id=2),
+        datasource=SimpleNamespace(id=9),
+        snapshot=stale,
+    ) == latest
+
+
+def test_permission_snapshot_rebuild_failure_returns_chinese_denial(monkeypatch) -> None:
+    from apps.datasource.crud.permission_errors import SqlPermissionScopeError
+    from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+
+    monkeypatch.setattr(
+        sql_engine_executor.PermissionScopeService,
+        "build_snapshot",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("authority unavailable")),
+    )
+
+    with pytest.raises(SqlPermissionScopeError, match="权限已发生变化，请重新提交查询。"):
+        sql_engine_executor.revalidate_permission_version(
+            session=SimpleNamespace(),
+            current_user=SimpleNamespace(id=7, tenant_id=2),
+            datasource=SimpleNamespace(id=9),
+            snapshot=PermissionScopeSnapshot(
+                tenant_id=2,
+                user_id=7,
+                datasource_id=9,
+                permission_version="before",
+                schema_hash="a" * 64,
+                allowed_object_keys=frozenset(),
+                denied_object_keys=frozenset(),
+                row_constraints_hash="b" * 64,
+            ),
+        )
+
+
+def test_execution_rebuilds_and_revalidates_once_after_permission_version_change(
+    monkeypatch,
+) -> None:
+    from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+
+    stale = PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+        permission_version="before",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="b" * 64,
+    )
+    latest = PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+        permission_version="after",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="b" * 64,
+    )
+    snapshots: list[PermissionScopeSnapshot] = []
+    driver_calls: list[str] = []
+    datasource = SimpleNamespace(id=9, type="pg")
+    current_user = SimpleNamespace(id=7, tenant_id=2)
+
+    def prepare(**kwargs):
+        snapshots.append(kwargs["permission_snapshot"])
+        return kwargs["sql"], {"events"}
+
+    monkeypatch.setattr(sql_engine_executor, "prepare_query_sql", prepare)
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "revalidate_permission_version",
+        lambda **_kwargs: latest,
+    )
+    monkeypatch.setattr(sql_engine_executor, "_copy_datasource_for_query", lambda value: value)
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_execute_after_validation",
+        lambda **kwargs: driver_calls.append(kwargs["sql"]) or {"data": []},
+    )
+
+    sql_engine_executor.execute_user_query_or_raise(
+        session=SimpleNamespace(),
+        current_user=current_user,
+        datasource=datasource,
+        sql="SELECT 1",
+        datasource_access_checked=True,
+        permission_snapshot=stale,
+    )
+
+    assert snapshots == [stale, latest]
+    assert driver_calls == ["SELECT 1"]
+
+
+def test_execution_does_not_call_driver_when_latest_snapshot_fails_validation(
+    monkeypatch,
+) -> None:
+    from apps.datasource.crud.permission_errors import SqlPermissionScopeError
+    from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+
+    stale = PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+        permission_version="before",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="b" * 64,
+    )
+    latest = PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=7,
+        datasource_id=9,
+        permission_version="after",
+        schema_hash="a" * 64,
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="b" * 64,
+    )
+    driver_calls: list[str] = []
+    calls = 0
+
+    def prepare(**_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise SqlPermissionScopeError("SQL 包含无权限字段", rule_type="column")
+        return "SELECT 1", {"events"}
+
+    monkeypatch.setattr(sql_engine_executor, "prepare_query_sql", prepare)
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "revalidate_permission_version",
+        lambda **_kwargs: latest,
+    )
+    monkeypatch.setattr(
+        sql_engine_executor,
+        "_execute_after_validation",
+        lambda **kwargs: driver_calls.append(kwargs["sql"]) or {"data": []},
+    )
+
+    with pytest.raises(SqlPermissionScopeError, match="权限已发生变化，请重新提交查询。"):
+        sql_engine_executor.execute_user_query_or_raise(
+            session=SimpleNamespace(),
+            current_user=SimpleNamespace(id=7, tenant_id=2),
+            datasource=SimpleNamespace(id=9, type="pg"),
+            sql="SELECT 1",
+            datasource_access_checked=True,
+            permission_snapshot=stale,
+        )
+
+    assert driver_calls == []
+
+
 def test_execute_adapter_passes_all_roi_controls_to_kwargs_callable(
     monkeypatch,
 ) -> None:

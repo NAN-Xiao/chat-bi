@@ -7,7 +7,7 @@ from typing import Any
 
 import sqlglot
 from sqlglot import exp
-from sqlalchemy import and_
+from sqlalchemy import and_, select
 
 from apps.datasource.crud.permission import (
     get_column_permission_scope,
@@ -16,10 +16,25 @@ from apps.datasource.crud.permission import (
     is_normal_user,
 )
 from apps.datasource.crud.permission_errors import SqlPermissionScopeError
+from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+from apps.datasource.crud.semantic_object_key import (
+    DeclaredObjectPath,
+    SemanticObjectKey,
+    canonical_object_key,
+)
+from apps.datasource.crud.semantic_object_resolution import (
+    ObjectResolutionStatus,
+    resolve_table_key,
+)
+from apps.datasource.crud.metadata_permission_authority import (
+    load_optional_tracking_authority,
+    semantic_event_key,
+)
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
+from apps.system.models.tenant import TenantTrackingFieldModel
 from apps.db.db import get_sqlglot_dialect
 from common.core.deps import CurrentUser, SessionDep
-from common.sql_json_paths import extract_json_accesses, json_paths_intersect
+from common.sql_json_paths import extract_json_accesses, json_paths_intersect, normalize_json_path
 
 
 def normalize_identifier(value: str | None) -> str:
@@ -79,6 +94,419 @@ def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
     return tables
 
 
+def validate_sql_object_scope(
+        *,
+        session: SessionDep,
+        datasource: CoreDatasource,
+        sql: str,
+        snapshot: PermissionScopeSnapshot,
+) -> tuple[list[exp.Expression], dict[int, str]]:
+    """Resolve SQL table references to catalog keys and enforce one snapshot."""
+    statements = parse_sql_statements(sql, datasource.type)
+    resolved: dict[int, str] = {}
+    resolved_keys: dict[int, SemanticObjectKey] = {}
+    for statement in statements:
+        cte_names = {
+            normalize_identifier(cte.alias_or_name)
+            for cte in statement.find_all(exp.CTE)
+            if cte.alias_or_name
+        }
+        for table in statement.find_all(exp.Table):
+            table_name = normalize_identifier(table.name)
+            if not table_name:
+                raise SqlPermissionScopeError("SQL 表对象声明不完整", rule_type="table")
+            if (
+                table_name in cte_names
+                and not normalize_identifier(table.db)
+                and not normalize_identifier(table.catalog)
+            ):
+                continue
+            result = resolve_table_key(
+                session,
+                datasource_id=int(datasource.id),
+                declared=DeclaredObjectPath(
+                    object_type="TABLE",
+                    catalog=str(table.catalog) if table.catalog else None,
+                    schema=str(table.db) if table.db else None,
+                    table=str(table.name),
+                ),
+            )
+            if result.status is not ObjectResolutionStatus.RESOLVED or result.key is None:
+                raise SqlPermissionScopeError(
+                    result.message or "SQL 表对象无法解析",
+                    rule_type="table",
+                )
+            object_key = canonical_object_key(result.key)
+            if (
+                object_key not in snapshot.allowed_object_keys
+                or object_key in snapshot.denied_object_keys
+            ):
+                raise SqlPermissionScopeError("SQL 包含无权限表", rule_type="table")
+            resolved[id(table)] = object_key
+            resolved_keys[id(table)] = result.key
+    if not resolved:
+        raise SqlPermissionScopeError("SQL 解析失败，无法确认查询表范围", rule_type="table")
+    _validate_snapshot_columns(
+        session=session,
+        datasource=datasource,
+        statements=statements,
+        table_keys=resolved_keys,
+        snapshot=snapshot,
+    )
+    return statements, resolved
+
+
+def _snapshot_table_fields(
+        session: SessionDep,
+        datasource_id: int,
+        key: SemanticObjectKey,
+) -> tuple[CoreTable, dict[str, CoreField]]:
+    table = session.execute(
+        select(CoreTable).where(
+            CoreTable.ds_id == int(datasource_id),
+            CoreTable.checked == True,
+            CoreTable.catalog_key == str(key.catalog or ""),
+            CoreTable.schema_key == str(key.schema or ""),
+            CoreTable.table_key == str(key.table or ""),
+        )
+    ).scalars().one_or_none()
+    if table is None:
+        raise SqlPermissionScopeError("SQL 表对象无法解析", rule_type="table")
+    fields = session.execute(
+        select(CoreField).where(
+            CoreField.ds_id == int(datasource_id),
+            CoreField.table_id == int(table.id),
+            CoreField.checked == True,
+        )
+    ).scalars().all()
+    return table, {normalize_identifier(field.field_key): field for field in fields}
+
+
+def _snapshot_source_aliases(
+        select_expr: exp.Select,
+        table_keys: dict[int, SemanticObjectKey],
+) -> dict[str, SemanticObjectKey]:
+    aliases: dict[str, SemanticObjectKey] = {}
+    sources: list[exp.Expression] = []
+    from_expr = select_expr.args.get("from_")
+    if from_expr and from_expr.this is not None:
+        sources.append(from_expr.this)
+    for join in select_expr.args.get("joins") or []:
+        if join.this is not None:
+            sources.append(join.this)
+    for source in sources:
+        if isinstance(source, exp.Table):
+            key = table_keys.get(id(source))
+        elif isinstance(source, exp.Subquery):
+            nested_keys = {
+                table_keys[id(table)]
+                for table in source.find_all(exp.Table)
+                if id(table) in table_keys
+            }
+            key = next(iter(nested_keys)) if len(nested_keys) == 1 else None
+        else:
+            continue
+        if key is None:
+            continue
+        aliases[normalize_identifier(source.alias_or_name or source.name)] = key
+        aliases[normalize_identifier(source.name)] = key
+    return aliases
+
+
+def _snapshot_field_key(key: SemanticObjectKey, field_name: str) -> str:
+    return canonical_object_key(
+        SemanticObjectKey(
+            object_type="FIELD",
+            tenant_id=key.tenant_id,
+            datasource_id=key.datasource_id,
+            catalog=key.catalog,
+            schema=key.schema,
+            table=key.table,
+            field=field_name,
+        )
+    )
+
+
+def _snapshot_json_key(key: SemanticObjectKey, field_name: str, json_path: str) -> str:
+    return canonical_object_key(
+        SemanticObjectKey(
+            object_type="JSON_PATH",
+            tenant_id=key.tenant_id,
+            datasource_id=key.datasource_id,
+            catalog=key.catalog,
+            schema=key.schema,
+            table=key.table,
+            field=field_name,
+            json_path=json_path,
+        )
+    )
+
+
+def _resolve_snapshot_column_tables(
+        column: exp.Column,
+        aliases: dict[str, SemanticObjectKey],
+        fields_by_table: dict[str, dict[str, CoreField]],
+) -> set[str]:
+    table_alias = normalize_identifier(column.table)
+    if table_alias:
+        key = aliases.get(table_alias)
+        return {canonical_object_key(key)} if key is not None else set()
+    field_name = normalize_identifier(column.name)
+    return {
+        table_key
+        for table_key, fields in fields_by_table.items()
+        if field_name in fields
+    }
+
+
+def _validate_snapshot_columns(
+        *,
+        session: SessionDep,
+        datasource: CoreDatasource,
+        statements: list[exp.Expression],
+        table_keys: dict[int, SemanticObjectKey],
+        snapshot: PermissionScopeSnapshot,
+) -> None:
+    table_records: dict[str, CoreTable] = {}
+    fields_by_table: dict[str, dict[str, CoreField]] = {}
+    keys_by_hash: dict[str, SemanticObjectKey] = {}
+    for key in set(table_keys.values()):
+        table_hash = canonical_object_key(key)
+        table, fields = _snapshot_table_fields(session, int(datasource.id), key)
+        table_records[table_hash] = table
+        fields_by_table[table_hash] = fields
+        keys_by_hash[table_hash] = key
+
+    for statement in statements:
+        for select_expr in statement.find_all(exp.Select):
+            aliases = _snapshot_source_aliases(select_expr, table_keys)
+            source_hashes = {
+                canonical_object_key(key)
+                for key in aliases.values()
+            }
+            if not source_hashes:
+                continue
+            output_aliases = _select_output_aliases(select_expr)
+            json_accesses = extract_json_accesses(
+                select_expr,
+                dialect=get_sqlglot_dialect(datasource.type) or "mysql",
+                current_select_only=True,
+            )
+            for star in select_expr.find_all(exp.Star):
+                if not _is_in_current_select_scope(star, select_expr):
+                    continue
+                if isinstance(star.parent, exp.Count):
+                    continue
+                star_hashes = source_hashes
+                if isinstance(star.parent, exp.Column) and star.parent.table:
+                    key = aliases.get(normalize_identifier(star.parent.table))
+                    star_hashes = {canonical_object_key(key)} if key is not None else set()
+                for table_hash in star_hashes:
+                    key = keys_by_hash[table_hash]
+                    for field_name in fields_by_table[table_hash]:
+                        field_key = _snapshot_field_key(key, field_name)
+                        if (
+                            field_key not in snapshot.allowed_object_keys
+                            or field_key in snapshot.denied_object_keys
+                        ):
+                            raise SqlPermissionScopeError(
+                                "SQL 使用了 SELECT *，无法安全应用字段权限；请显式选择授权字段",
+                                rule_type="column",
+                            )
+            for column in select_expr.find_all(exp.Column):
+                if not _is_in_current_select_scope(column, select_expr):
+                    continue
+                if isinstance(column.this, exp.Star):
+                    continue
+                if not column.table and normalize_identifier(column.name) in output_aliases:
+                    continue
+                candidates = _resolve_snapshot_column_tables(column, aliases, fields_by_table)
+                if not candidates:
+                    continue
+                if len(candidates) != 1:
+                    raise SqlPermissionScopeError("SQL 字段无法确定所属表", rule_type="column")
+                table_hash = next(iter(candidates))
+                field_name = normalize_identifier(column.name)
+                field_key = _snapshot_field_key(keys_by_hash[table_hash], field_name)
+                if (
+                    field_key not in snapshot.allowed_object_keys
+                    or field_key in snapshot.denied_object_keys
+                ):
+                    raise SqlPermissionScopeError(
+                        f"SQL 包含无权限字段：{column.sql()}",
+                        fields={column.sql()},
+                        rule_type="column",
+                    )
+            _validate_snapshot_static_json_accesses(
+                session=session,
+                aliases=aliases,
+                fields_by_table=fields_by_table,
+                table_records=table_records,
+                keys_by_hash=keys_by_hash,
+                snapshot=snapshot,
+                json_accesses=json_accesses,
+            )
+
+
+def _validate_snapshot_static_json_accesses(
+        *,
+        session: SessionDep,
+        aliases: dict[str, SemanticObjectKey],
+        fields_by_table: dict[str, dict[str, CoreField]],
+        table_records: dict[str, CoreTable],
+        keys_by_hash: dict[str, SemanticObjectKey],
+        snapshot: PermissionScopeSnapshot,
+        json_accesses: Any,
+) -> None:
+    denied_paths: dict[tuple[str, str], set[str]] = {}
+    for table_hash, table in table_records.items():
+        rows = session.execute(
+            select(
+                TenantTrackingFieldModel.source_field,
+                TenantTrackingFieldModel.json_path,
+            ).where(
+                TenantTrackingFieldModel.tenant_id == snapshot.tenant_id,
+                TenantTrackingFieldModel.datasource_id == snapshot.datasource_id,
+                TenantTrackingFieldModel.table_name == table.table_name,
+                TenantTrackingFieldModel.json_path.is_not(None),
+            )
+        ).all()
+        for source_field, json_path in rows:
+            field_name = normalize_identifier(source_field)
+            path = normalize_json_path(json_path)
+            if not path or field_name not in fields_by_table[table_hash]:
+                continue
+            json_key = _snapshot_json_key(keys_by_hash[table_hash], field_name, path)
+            if json_key in snapshot.denied_object_keys:
+                denied_paths.setdefault((table_hash, field_name), set()).add(path)
+
+    for access in json_accesses.accesses:
+        field_name = normalize_identifier(access.source_field)
+        alias = normalize_identifier(access.table_alias)
+        if alias:
+            key = aliases.get(alias)
+            candidates = {canonical_object_key(key)} if key is not None else set()
+        else:
+            candidates = {
+                table_hash
+                for table_hash, fields in fields_by_table.items()
+                if field_name in fields
+            }
+        if len(candidates) != 1:
+            if candidates:
+                raise SqlPermissionScopeError("JSON 字段无法确定所属表", rule_type="json_path")
+            continue
+        table_hash = next(iter(candidates))
+        if any(
+                json_paths_intersect(access.json_path, denied_path)
+                for denied_path in denied_paths.get((table_hash, field_name), set())
+        ):
+            raise SqlPermissionScopeError("SQL 包含无权限 JSON 路径", rule_type="json_path")
+    for issue in json_accesses.issues:
+        field_name = normalize_identifier(issue.source_field)
+        alias = normalize_identifier(issue.table_alias)
+        if alias:
+            key = aliases.get(alias)
+            candidates = {canonical_object_key(key)} if key is not None else set()
+        else:
+            candidates = {
+                table_hash
+                for table_hash, fields in fields_by_table.items()
+                if field_name in fields
+            }
+        if any(denied_paths.get((table_hash, field_name)) for table_hash in candidates):
+            raise SqlPermissionScopeError(
+                "SQL 包含动态 JSON 路径，无法安全应用字段权限",
+                rule_type="json_path",
+            )
+
+
+def compile_event_constraints(
+        *,
+        session: SessionDep,
+        datasource: CoreDatasource,
+        sql: str,
+        snapshot: PermissionScopeSnapshot,
+) -> str:
+    """Inject denied-event filters only when a single-table rewrite is safe."""
+    authority = load_optional_tracking_authority(
+        session,
+        tenant_id=snapshot.tenant_id,
+        datasource_id=snapshot.datasource_id,
+    )
+    if authority is None:
+        return sql
+    denied_events = sorted(
+        event.name
+        for event in authority.events
+        if canonical_object_key(
+            semantic_event_key(
+                authority,
+                tenant_id=snapshot.tenant_id,
+                datasource_id=snapshot.datasource_id,
+                event=event,
+            )
+        ) in snapshot.denied_object_keys
+    )
+    if not denied_events:
+        return sql
+
+    statements = parse_sql_statements(sql, datasource.type)
+    if len(statements) != 1:
+        raise SqlPermissionScopeError("SQL 包含多个语句，无法安全应用事件权限", rule_type="event")
+    statement = statements[0]
+    selects = list(statement.find_all(exp.Select))
+    if len(selects) != 1 or any(statement.find_all(exp.Subquery)) or any(statement.find_all(exp.CTE)):
+        raise SqlPermissionScopeError("SQL 查询结构无法安全应用事件权限", rule_type="event")
+    select_expr = selects[0]
+    if (
+            select_expr.args.get("joins")
+            or select_expr.args.get("group")
+            or select_expr.args.get("having")
+            or any(select_expr.find_all(exp.AggFunc))
+    ):
+        raise SqlPermissionScopeError("SQL 查询结构无法安全应用事件权限", rule_type="event")
+    from_expr = select_expr.args.get("from_")
+    source = from_expr.this if from_expr is not None else None
+    if not isinstance(source, exp.Table):
+        raise SqlPermissionScopeError("SQL 查询结构无法安全应用事件权限", rule_type="event")
+    resolved = resolve_table_key(
+        session,
+        datasource_id=int(datasource.id),
+        declared=DeclaredObjectPath(
+            object_type="TABLE",
+            catalog=str(source.catalog) if source.catalog else None,
+            schema=str(source.db) if source.db else None,
+            table=str(source.name),
+        ),
+    )
+    if resolved.status is not ObjectResolutionStatus.RESOLVED or resolved.key is None:
+        raise SqlPermissionScopeError("SQL 表对象无法解析", rule_type="event")
+    if (
+            resolved.key.catalog != authority.table.catalog
+            or resolved.key.schema != authority.table.schema
+            or resolved.key.table != authority.table.table
+    ):
+        return sql
+    where_expr = select_expr.args.get("where")
+    if where_expr is not None and any(
+            normalize_identifier(column.name) == authority.event_name_field
+            for column in where_expr.find_all(exp.Column)
+    ):
+        raise SqlPermissionScopeError("SQL 包含动态事件谓词，无法安全应用事件权限", rule_type="event")
+    table_alias = normalize_identifier(source.alias_or_name)
+    field = exp.column(authority.event_name_field, table=table_alias or None)
+    denied_filter = exp.Not(
+        this=exp.In(
+            this=field,
+            expressions=[exp.Literal.string(event_name) for event_name in denied_events],
+        )
+    )
+    if where_expr is None:
+        select_expr.set("where", exp.Where(this=denied_filter))
+    else:
+        where_expr.set("this", exp.and_(where_expr.this, denied_filter))
+    return statement.sql(dialect=get_sqlglot_dialect(datasource.type))
 def build_permission_scope(
         session: SessionDep,
         current_user: CurrentUser,

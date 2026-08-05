@@ -24,16 +24,23 @@ from apps.datasource.crud.permission_errors import (
     audit_permission_denied,
     looks_like_permission_scope_error,
 )
+from apps.datasource.crud.permission_scope import (
+    PermissionScopeService,
+    PermissionScopeSnapshot,
+    PermissionScopeUnavailableError,
+)
 from apps.datasource.crud.sql_permission import (
     RowPermissionRelation,
     analyze_row_permission_relation,
     apply_row_permission_filters,
+    compile_event_constraints,
     extract_physical_tables,
     normalize_identifier,
     parse_condition_expression,
     parse_sql_statements,
     validate_sql_columns,
     validate_sql_scope,
+    validate_sql_object_scope,
     validate_sql_table_scope,
 )
 from apps.datasource.models.datasource import CoreDatasource
@@ -58,6 +65,7 @@ from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil
 
 USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
+PERMISSION_CHANGED_MESSAGE = "权限已发生变化，请重新提交查询。"
 
 
 def looks_like_data_unavailable_error(message: str) -> bool:
@@ -529,6 +537,7 @@ def prepare_query_sql(
         validate_columns: bool = True,
         apply_user_permission_scope: bool = True,
         row_permission_policy: str = "rewrite",
+        permission_snapshot: PermissionScopeSnapshot | None = None,
 ) -> tuple[str, set[str]]:
     """
     是什么：prepare_query_sql 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -538,6 +547,31 @@ def prepare_query_sql(
     is_safe, error_reason = check_sql_read(sql, datasource)
     if not is_safe:
         raise ValueError(f"SQL can only contain read operations: {error_reason}")
+
+    if permission_snapshot is not None:
+        validate_sql_object_scope(
+            session=session,
+            datasource=datasource,
+            sql=sql,
+            snapshot=permission_snapshot,
+        )
+        rewritten_for_events = compile_event_constraints(
+            session=session,
+            datasource=datasource,
+            sql=sql,
+            snapshot=permission_snapshot,
+        )
+        if rewritten_for_events != sql:
+            is_safe, error_reason = check_sql_read(rewritten_for_events, datasource)
+            if not is_safe:
+                raise ValueError(f"SQL can only contain read operations: {error_reason}")
+            validate_sql_object_scope(
+                session=session,
+                datasource=datasource,
+                sql=rewritten_for_events,
+                snapshot=permission_snapshot,
+            )
+            sql = rewritten_for_events
 
     if validate_columns:
         _statements, actual_tables, _permission_scope = validate_sql_scope(
@@ -598,8 +632,40 @@ def prepare_query_sql(
                 apply_user_permission_scope=apply_user_permission_scope,
             )
             _validate_allowed_tables(rewritten_tables, allowed_tables)
+            if permission_snapshot is not None:
+                validate_sql_object_scope(
+                    session=session,
+                    datasource=datasource,
+                    sql=executed_sql,
+                    snapshot=permission_snapshot,
+                )
+                compile_event_constraints(
+                    session=session,
+                    datasource=datasource,
+                    sql=executed_sql,
+                    snapshot=permission_snapshot,
+                )
 
     return executed_sql, actual_tables
+
+
+def revalidate_permission_version(
+        *,
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource: CoreDatasource,
+        snapshot: PermissionScopeSnapshot,
+) -> PermissionScopeSnapshot:
+    try:
+        latest = PermissionScopeService.build_snapshot(
+            session=session,
+            current_user=current_user,
+            tenant_id=int(getattr(current_user, "tenant_id")),
+            datasource_id=int(datasource.id),
+        )
+    except Exception as exc:
+        raise SqlPermissionScopeError(PERMISSION_CHANGED_MESSAGE, rule_type="permission") from exc
+    return latest
 
 
 def validate_user_query_sql_or_raise(
@@ -652,6 +718,7 @@ def execute_user_query_or_raise(
         close_system_transaction_before_query: bool = False,
         datasource_access_checked: bool = False,
         row_permission_policy: str = "rewrite",
+        permission_snapshot: PermissionScopeSnapshot | None = None,
 ) -> QueryExecutionResult:
     """
     是什么：execute_user_query_or_raise 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -680,7 +747,37 @@ def execute_user_query_or_raise(
         validate_columns=validate_columns,
         apply_user_permission_scope=True,
         row_permission_policy=row_permission_policy,
+        permission_snapshot=permission_snapshot,
     )
+    if permission_snapshot is not None:
+        latest_snapshot = revalidate_permission_version(
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            snapshot=permission_snapshot,
+        )
+        if latest_snapshot.permission_version != permission_snapshot.permission_version:
+            try:
+                executed_sql, tables = prepare_query_sql(
+                    session=session,
+                    current_user=current_user,
+                    datasource=datasource,
+                    sql=sql,
+                    allowed_tables=allowed_tables,
+                    apply_row_permissions=(
+                        apply_row_permissions
+                        and (row_permission_policy == "deny_on_overlap" or not datasource_access_checked)
+                    ),
+                    validate_columns=validate_columns,
+                    apply_user_permission_scope=True,
+                    row_permission_policy=row_permission_policy,
+                    permission_snapshot=latest_snapshot,
+                )
+            except Exception as exc:
+                raise SqlPermissionScopeError(
+                    PERMISSION_CHANGED_MESSAGE,
+                    rule_type="permission",
+                ) from exc
     datasource_for_query = _copy_datasource_for_query(datasource)
     if close_system_transaction_before_query:
         try:
@@ -797,6 +894,7 @@ def execute_user_query(
         include_execution_meta: bool = False,
         datasource_access_checked: bool = False,
         row_permission_policy: str = "rewrite",
+        permission_snapshot: PermissionScopeSnapshot | None = None,
 ) -> dict[str, Any]:
     """
     是什么：execute_user_query 是一个可以复用的小步骤，负责数据源相关的一件事。
@@ -832,6 +930,7 @@ def execute_user_query(
             close_system_transaction_before_query=close_system_transaction_before_query,
             datasource_access_checked=datasource_access_checked,
             row_permission_policy=row_permission_policy,
+            permission_snapshot=permission_snapshot,
         )
         return SqlEngineResult.from_query_execution(query_result).to_legacy_dict(
             include_execution_meta=include_execution_meta
