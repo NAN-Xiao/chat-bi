@@ -49,7 +49,8 @@ assert.match(
 assert.match(source, /resizeObserver\.observe\(containerRef\.value, \{ box: 'border-box' \}\)/)
 assert.match(
   source,
-  /resizeObserver\.observe\(dashboardFilterControlsRef\.value, \{ box: 'border-box' \}\)/
+  /if \(!isTabDashboardSurface\.value && dashboardFilterControlsRef\.value\)[\s\S]*resizeObserver\.observe\(dashboardFilterControlsRef\.value, \{ box: 'border-box' \}\)/,
+  '工具栏只能作为主画布的兼容观察源，Tab 必须 root-only'
 )
 assert.doesNotMatch(source, /resizeObserver\.observe\(chartShowAreaRef\.value/)
 
@@ -58,14 +59,26 @@ const observerEnd = source.indexOf('resizeObserver.observe(containerRef.value', 
 assert.ok(observerStart >= 0 && observerEnd > observerStart, '需要统一的稳定边界 ResizeObserver')
 const observerCallback = source.slice(observerStart, observerEnd)
 assert.match(observerCallback, /measureCanonicalFrame\(\)/)
+assert.match(
+  observerCallback,
+  /entry\.target === containerRef\.value[\s\S]*!isTabDashboardSurface\.value && entry\.target === dashboardFilterControlsRef\.value/
+)
 assert.doesNotMatch(
   observerCallback,
   /scheduleRenderChart/,
   '尺寸回调只能更新策略尺寸，图表 resize 由 ChartComponent 独占'
 )
 
-assert.match(source, /const insightFrameStructureKey = computed/)
+assert.match(source, /const mainInsightFrameStructureKey = computed/)
 assert.match(source, /nextTick\(measureCanonicalFrame\)/)
+assert.match(source, /const tabInsightControlsVariant = computed/)
+assert.match(source, /const tabInsightControlsReserve = computed/)
+assert.match(style, /&\.dashboard-layout-surface-tab\s*\{[\s\S]*--tab-insight-controls-reserve: 0px/)
+assert.match(
+  style,
+  /\.dashboard-filter-controls--combined\s*\{[\s\S]*flex-wrap:\s*nowrap/
+)
+assert.doesNotMatch(source, /sizeX\s*=|sizeY\s*=/)
 assert.match(style, /--insight-frame-compact-padding-inline:\s*16px/)
 assert.match(style, /--insight-frame-compact-padding-block:\s*14px/)
 assert.match(style, /--insight-frame-compact-header-height:\s*34px/)

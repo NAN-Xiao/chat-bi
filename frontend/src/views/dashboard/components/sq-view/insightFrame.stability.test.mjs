@@ -5,6 +5,17 @@ import {
   resolveCanonicalInsightFrame,
   sameInsightFrame,
 } from './insightFrame.ts'
+import {
+  resolveTabInsightControlsReserve,
+  resolveTabInsightControlsVariant,
+} from './tabInsightLayout.ts'
+
+assert.deepEqual(
+  ['none', 'pivot', 'date', 'combined'].map(resolveTabInsightControlsReserve),
+  [0, 30, 36, 36],
+  'Tab 工具栏必须使用固定 reserve，不读取实时子节点高度'
+)
+assert.equal(resolveTabInsightControlsVariant({ pivot: true, date: true }), 'combined')
 
 assert.equal(parseCssPixel('16px'), 16)
 assert.equal(parseCssPixel(' -0.5px '), -0.5)
