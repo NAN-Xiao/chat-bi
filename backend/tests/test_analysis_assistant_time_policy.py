@@ -68,6 +68,41 @@ def test_sql_example_does_not_override_default_window() -> None:
 
 
 @pytest.mark.parametrize(
+    ("question", "expected_kind", "expected_start", "expected_end", "expected_window_days"),
+    [
+        ("实时收入", "current_day", date(2026, 7, 26), date(2026, 7, 26), 1),
+        ("今天实时收入", "current_day", date(2026, 7, 26), date(2026, 7, 26), 1),
+        ("昨天实时收入", "yesterday", date(2026, 7, 25), date(2026, 7, 25), 1),
+        ("最近14天实时收入", "relative_days", date(2026, 7, 13), date(2026, 7, 26), 14),
+        ("本月实时收入", "month", date(2026, 7, 1), date(2026, 7, 26), None),
+        (
+            "2026-07-01 到 2026-07-10 实时收入",
+            "absolute",
+            date(2026, 7, 1),
+            date(2026, 7, 10),
+            None,
+        ),
+    ],
+)
+def test_realtime_time_scope_uses_anchor_day_without_overriding_explicit_ranges(
+    question: str,
+    expected_kind: str,
+    expected_start: date,
+    expected_end: date,
+    expected_window_days: int | None,
+) -> None:
+    intent = parse_analysis_time_intent(question, [])
+    resolution = _resolve(question)
+
+    assert intent.kind == expected_kind
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.USER
+    assert resolution.policy.start_date == expected_start
+    assert resolution.policy.end_date == expected_end
+    assert resolution.policy.window_days == expected_window_days
+
+
+@pytest.mark.parametrize(
     ("question", "expected_days"),
     [
         ("近7日收入", 7),

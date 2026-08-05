@@ -7,6 +7,8 @@ from datetime import date, timedelta
 from enum import StrEnum
 from typing import Literal
 
+from apps.chat.service.chat_date_filter import question_date_scope
+
 DEFAULT_WINDOW_DAYS = 14
 MAX_ANALYSIS_WINDOW_DAYS = 366
 MAX_SKILL_WINDOW_DAYS = MAX_ANALYSIS_WINDOW_DAYS
@@ -54,7 +56,14 @@ class AnalysisTimeAnchor:
 @dataclass(frozen=True)
 class AnalysisTimeIntent:
     kind: Literal[
-        "none", "absolute", "relative_days", "day_open", "month", "yesterday", "invalid"
+        "none",
+        "absolute",
+        "relative_days",
+        "day_open",
+        "month",
+        "yesterday",
+        "current_day",
+        "invalid",
     ]
     source: AnalysisTimeSource | None = None
     start_date: date | None = None
@@ -239,6 +248,8 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
             day_of_month=int(day_only.group(1)),
             start_inclusive=marker not in {"之后", "以后"},
         )
+    if question_date_scope(text) == "current_day":
+        return AnalysisTimeIntent(kind="current_day", source=AnalysisTimeSource.USER)
     for previous in reversed(history):
         inherited = parse_analysis_time_intent(previous, [])
         if inherited.kind not in {"none", "invalid"}:
@@ -362,6 +373,18 @@ def resolve_analysis_time_policy(
             True,
             anchor,
             "用户指定昨天",
+        )
+    elif intent.kind == "current_day":
+        policy = AnalysisTimePolicy(
+            AnalysisTimeSource.USER,
+            1,
+            anchor_date,
+            anchor_date,
+            anchor_date,
+            True,
+            True,
+            anchor,
+            "用户指定当前业务日",
         )
     elif intent.kind == "month":
         start = anchor_date.replace(day=1)
