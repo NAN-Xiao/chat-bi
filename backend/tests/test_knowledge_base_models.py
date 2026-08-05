@@ -172,3 +172,25 @@ def test_models_entrypoint_registers_lifecycle_metadata() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "knowledge_base_version" in result.stdout
+
+
+def test_projection_models_can_share_lifecycle_metadata() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from apps.knowledge_base.object_projection_models import "
+            "SemanticObjectReference; "
+            "from apps.knowledge_base.retrieval_models import KnowledgeBaseChunk; "
+            "from sqlmodel import SQLModel; "
+            "print([table.name for table in SQLModel.metadata.sorted_tables])",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "knowledge_base_chunk" in result.stdout
+    assert "semantic_object_reference" in result.stdout
