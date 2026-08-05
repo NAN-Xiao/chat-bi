@@ -215,6 +215,17 @@ def test_stack_status_delegates_worker_validation_to_worker_script():
     ) in body
 
 
+def test_stack_passes_the_same_queue_to_backend_and_worker():
+    content = STACK_SCRIPT.read_text(encoding="utf-8")
+    backend_body = _function_body(content, "Start-Backend")
+    worker_body = _function_body(content, "Start-Workers")
+
+    assert 'QueueName = $QueueName' in backend_body
+    assert '-QueueName $QueueName' in worker_body
+    assert 'QueueName = "default"' not in backend_body
+    assert '-QueueName default' not in worker_body
+
+
 def test_worker_status_rejects_mismatched_managed_queue():
     content = WORKER_SCRIPT.read_text(encoding="utf-8")
     body = _function_body(content, "Show-Status")

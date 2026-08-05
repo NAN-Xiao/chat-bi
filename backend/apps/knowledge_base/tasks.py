@@ -12,12 +12,18 @@ from xml.etree import ElementTree as ET
 from sqlmodel import Session
 
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
+from apps.knowledge_base.reconciliation import reconcile_publish_jobs
 from apps.knowledge_base.repository import (
     KnowledgeBusinessError,
     KnowledgeMigrationStateRepository,
 )
+from apps.knowledge_base.storage_probe import record_storage_probe_receipt
 from common.core.db import engine
-from common.core.task_queue import current_task_tenant_id, task_handler
+from common.core.task_queue import (
+    current_task_context,
+    current_task_tenant_id,
+    task_handler,
+)
 from common.utils.file_utils import AppFileUtils
 
 
@@ -177,4 +183,36 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
             "id": record_id,
             "tenant_id": tenant_id,
             "status": record.status.value if hasattr(record.status, "value") else record.status,
+        }
+
+
+@task_handler("knowledge_base.reconcile_publish_jobs")
+async def reconcile_knowledge_publish_jobs(payload: dict[str, Any]) -> dict[str, Any]:
+    with Session(engine) as session:
+        return await reconcile_publish_jobs(
+            session,
+            limit=int(payload.get("limit") or 100),
+        )
+
+
+@task_handler("knowledge_base.storage_probe")
+def verify_knowledge_storage_probe(payload: dict[str, Any]) -> dict[str, Any]:
+    context = current_task_context() or {}
+    worker_id = str(context.get("worker") or "")
+    queue_name = str(context.get("queue") or "")
+    if not worker_id or not queue_name:
+        raise ValueError("共享文件存储校验缺少 Worker 身份或队列信息。")
+    generation = int(payload["generation"])
+    with Session(engine) as session:
+        receipt = record_storage_probe_receipt(
+            session,
+            generation=generation,
+            worker_id=worker_id,
+            queue_name=queue_name,
+        )
+        return {
+            "generation": generation,
+            "worker_id": worker_id,
+            "queue_name": queue_name,
+            "content_hash": receipt.content_hash,
         }
