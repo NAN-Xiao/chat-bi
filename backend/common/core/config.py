@@ -2,9 +2,9 @@
 脚本说明：这个脚本放后端基础能力相关的代码，把具体功能拆成清楚的函数和类供其他地方使用。
 """
 import secrets
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import urllib.parse
 from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     AnyUrl,
@@ -169,6 +169,8 @@ class Settings(BaseSettings):
     TASK_QUEUE_MAX_PENDING_PER_TENANT: int = 0
     TASK_QUEUE_MAX_PROCESSING_PER_TENANT: int = 0
     TASK_WORKER_CONCURRENCY: int = 4
+    KNOWLEDGE_MANAGEMENT_V2_ENABLED: bool = False
+    KNOWLEDGE_RUNTIME_CONTEXT_ENABLED: bool = False
 
     LOG_LEVEL: str = "INFO"  # 日志级别：DEBUG、INFO、WARNING、ERROR。
     LOG_DIR: str = "logs"
@@ -322,6 +324,8 @@ class Settings(BaseSettings):
                      'TENANT_RATE_LIMIT_ENABLED',
                      'TENANT_USAGE_METERING_ENABLED',
                      'TENANT_USAGE_QUOTA_ENABLED',
+                     'KNOWLEDGE_MANAGEMENT_V2_ENABLED',
+                     'KNOWLEDGE_RUNTIME_CONTEXT_ENABLED',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:
