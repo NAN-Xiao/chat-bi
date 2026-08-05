@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { getChartInstance } from '@/views/chat/component/index.ts'
+import { isChartValidationError } from '@/views/chat/component/chartValidation.ts'
 import {
   buildChartLayoutContext,
   type ChartDensity,
@@ -50,6 +52,7 @@ const params = withDefaults(
 const emit = defineEmits<{
   (event: 'render-ready'): void
 }>()
+const { t, te } = useI18n()
 
 const chartId = computed(() => {
   return 'chart-component-' + params.id
@@ -105,6 +108,7 @@ const chartRenderHostRef = ref<HTMLElement>()
 const activeLayerRef = ref<HTMLElement>()
 const stagingLayerRef = ref<HTMLElement>()
 const showInitialLoading = ref(true)
+const chartValidationErrorCode = ref<string>()
 const chartSize = ref({ width: 0, height: 0 })
 const previousDensity = ref<ChartDensity>()
 let resizeObserver: ResizeObserver | undefined
@@ -115,6 +119,14 @@ let rerenderAfterStaging = false
 let pendingRenderRetry = 0
 const maxRenderRetries = 2
 const destroyedChartInstances = new WeakSet<BaseChart>()
+
+const chartValidationMessage = computed(() => {
+  if (!chartValidationErrorCode.value) {
+    return ''
+  }
+  const key = `chat.chart_validation.${chartValidationErrorCode.value}`
+  return te(key) ? t(key) : t('chat.chart_validation.invalid_data')
+})
 
 const currentLayoutContext = computed(() => {
   const context = buildChartLayoutContext({
@@ -253,6 +265,14 @@ function cleanupStagedChart(instance: BaseChart | undefined, layer: HTMLElement 
   }
 }
 
+function clearActiveChart() {
+  cancelPendingRenderReady()
+  destroyChartInstance(chartInstance)
+  chartInstance = undefined
+  activeLayerRef.value?.remove()
+  activeLayerRef.value = undefined
+}
+
 function commitStagedChart(nextInstance: BaseChart, stagingLayer: HTMLElement, token: number) {
   if (token !== renderToken) {
     cleanupStagedChart(nextInstance, stagingLayer)
@@ -287,11 +307,17 @@ function handleAtomicRenderError(
     drainPendingRender()
     return
   }
-  console.warn('[ChartComponent] chart render failed, retrying if possible', error)
   if (rerenderAfterStaging) {
     drainPendingRender()
     return
   }
+  if (isChartValidationError(error)) {
+    clearActiveChart()
+    chartValidationErrorCode.value = error.code
+    showInitialLoading.value = false
+    return
+  }
+  console.warn('[ChartComponent] chart render failed, retrying if possible', error)
   if (retry < maxRenderRetries) {
     scheduleRenderChart(160, retry + 1)
   }
@@ -306,6 +332,10 @@ function renderAtomicChart(retry = 0) {
   const host = chartRenderHostRef.value
   if (!host) {
     return
+  }
+  chartValidationErrorCode.value = undefined
+  if (!activeLayerRef.value) {
+    showInitialLoading.value = true
   }
   const token = ++renderToken
   const stagingLayer = document.createElement('div')
@@ -369,6 +399,7 @@ function destroyChart(invalidate = true) {
   activeLayerRef.value?.remove()
   activeLayerRef.value = undefined
   chartRenderHostRef.value?.replaceChildren()
+  chartValidationErrorCode.value = undefined
   showInitialLoading.value = true
 }
 
@@ -473,6 +504,13 @@ function handleVisibilityChange() {
 <template>
   <div :id="chartId" ref="chartContainerRef" class="chart-container">
     <div
+      v-if="chartValidationErrorCode"
+      class="chart-component-validation-error"
+      role="alert"
+    >
+      {{ chartValidationMessage }}
+    </div>
+    <div
       v-if="showInitialLoading && params.surface !== 'dashboard'"
       class="chart-component-loading"
       aria-label="loading"
@@ -517,6 +555,22 @@ function handleVisibilityChange() {
   position: relative;
   width: 100%;
   z-index: 1;
+}
+
+.chart-component-validation-error {
+  align-items: center;
+  color: #8c3f3f;
+  display: flex;
+  font-size: 14px;
+  height: 100%;
+  inset: 0;
+  justify-content: center;
+  line-height: 22px;
+  padding: 24px;
+  position: absolute;
+  text-align: center;
+  width: 100%;
+  z-index: 2;
 }
 
 .chart-component-loading-ring {

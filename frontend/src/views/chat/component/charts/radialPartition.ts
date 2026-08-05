@@ -1,3 +1,5 @@
+import { ChartValidationError } from '@/views/chat/component/chartValidation.ts'
+
 export const RADIAL_PERCENTAGE_FIELD = 'shuzhi_radial_percentage'
 
 export type RadialPartitionValidationCode =
@@ -10,7 +12,7 @@ export type RadialPartitionValidationCode =
   | 'zero_total'
   | 'too_many_categories'
 
-export class RadialPartitionValidationError extends Error {
+export class RadialPartitionValidationError extends ChartValidationError {
   constructor(public readonly code: RadialPartitionValidationCode) {
     super(code)
     this.name = 'RadialPartitionValidationError'

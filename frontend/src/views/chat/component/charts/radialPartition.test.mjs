@@ -3,9 +3,16 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import ts from 'typescript'
 
-const source = readFileSync('src/views/chat/component/charts/radialPartition.ts', 'utf8')
+const compilerOptions = { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }
+const validationSource = readFileSync('src/views/chat/component/chartValidation.ts', 'utf8')
+const validationCompiled = ts.transpileModule(validationSource, { compilerOptions }).outputText
+const validationModuleUrl = `data:text/javascript;base64,${Buffer.from(validationCompiled).toString('base64')}`
+const source = readFileSync('src/views/chat/component/charts/radialPartition.ts', 'utf8').replace(
+  '@/views/chat/component/chartValidation.ts',
+  validationModuleUrl
+)
 const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  compilerOptions,
 }).outputText
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`
 const {

@@ -1783,6 +1783,17 @@
       "sankey": "Sankey",
       "treemap": "Treemap"
     },
+    "chart_validation": {
+      "missing_category_field": "Select a category field for this chart",
+      "missing_value_field": "Select a value field for this chart",
+      "empty_category": "Category names cannot be empty",
+      "duplicate_category": "Category names must be unique",
+      "invalid_value": "The value field contains non-numeric data",
+      "negative_value": "Values cannot be negative",
+      "zero_total": "The value total must be greater than zero",
+      "too_many_categories": "Use no more than 12 categories",
+      "invalid_data": "The data does not meet this chart's requirements"
+    },
     "hide_label": "Hide Label",
     "show_label": "Show Label",
     "insight_by": "By {0}",

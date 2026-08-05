@@ -1784,6 +1784,17 @@
       "sankey": "桑基图",
       "treemap": "矩形树图"
     },
+    "chart_validation": {
+      "missing_category_field": "缺少分类字段，请重新选择分类字段",
+      "missing_value_field": "缺少数值字段，请重新选择数值字段",
+      "empty_category": "分类名称不能为空，请检查图表数据",
+      "duplicate_category": "分类名称必须唯一，请调整查询结果",
+      "invalid_value": "数值字段包含非数字内容，请检查图表数据",
+      "negative_value": "数值不能为负数，请检查图表数据",
+      "zero_total": "数值合计必须大于零，请检查图表数据",
+      "too_many_categories": "分类数量不能超过 12 个，请缩小查询范围",
+      "invalid_data": "图表数据不符合当前图表要求"
+    },
     "hide_label": "隐藏标签",
     "show_label": "显示标签",
     "insight_by": "按 {0}",

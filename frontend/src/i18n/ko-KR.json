@@ -1751,6 +1751,17 @@
       "sankey": "샌키 차트",
       "treemap": "트리맵"
     },
+    "chart_validation": {
+      "missing_category_field": "이 차트의 분류 필드를 선택하세요",
+      "missing_value_field": "이 차트의 값 필드를 선택하세요",
+      "empty_category": "분류 이름은 비워 둘 수 없습니다",
+      "duplicate_category": "분류 이름은 고유해야 합니다",
+      "invalid_value": "값 필드에 숫자가 아닌 데이터가 있습니다",
+      "negative_value": "값은 음수일 수 없습니다",
+      "zero_total": "값의 합계는 0보다 커야 합니다",
+      "too_many_categories": "분류는 최대 12개까지 사용할 수 있습니다",
+      "invalid_data": "데이터가 현재 차트 요구사항을 충족하지 않습니다"
+    },
     "hide_label": "라벨 숨기기",
     "show_label": "라벨 표시",
     "insight_by": "{0} 기준",

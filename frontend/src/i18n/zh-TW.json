@@ -1783,6 +1783,17 @@
       "sankey": "桑基圖",
       "treemap": "矩形樹圖"
     },
+    "chart_validation": {
+      "missing_category_field": "缺少分類欄位，請重新選擇分類欄位",
+      "missing_value_field": "缺少數值欄位，請重新選擇數值欄位",
+      "empty_category": "分類名稱不能為空，請檢查圖表資料",
+      "duplicate_category": "分類名稱必須唯一，請調整查詢結果",
+      "invalid_value": "數值欄位包含非數字內容，請檢查圖表資料",
+      "negative_value": "數值不能為負數，請檢查圖表資料",
+      "zero_total": "數值合計必須大於零，請檢查圖表資料",
+      "too_many_categories": "分類數量不能超過 12 個，請縮小查詢範圍",
+      "invalid_data": "圖表資料不符合目前圖表要求"
+    },
     "hide_label": "隱藏標籤",
     "show_label": "顯示標籤",
     "insight_by": "按 {0}",
