@@ -12,6 +12,7 @@ const expression = {
 }
 const tokenSql = `select * from orders
 where stat_date between {{dashboard_start_date}} and {{dashboard_end_date}}`
+const startOnlySql = 'select * from orders where stat_date >= {{dashboard_start_date}}'
 const endOnlySql = 'select * from orders where stat_date <= {{dashboard_end_date}}'
 
 const v2 = normalizeDashboardChartConfig({
@@ -110,6 +111,18 @@ const endOnly = normalizeDashboardChartConfig({
   pivot: { enabled: false },
 })
 assert.equal(endOnly.dateFilter.parameterType, 'date')
+
+const startOnly = normalizeDashboardChartConfig({
+  sql: startOnlySql,
+  configVersion: 2,
+  dateFilter: {
+    enabled: true,
+    parameterType: 'date',
+    expression,
+  },
+  pivot: { enabled: false },
+})
+assert.equal(startOnly.dateFilter.parameterType, 'date')
 
 assert.throws(
   () => normalizeDashboardChartConfig({
