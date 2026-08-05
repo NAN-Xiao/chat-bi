@@ -53,7 +53,8 @@ def test_skill_requires_date_field_and_parameter_contract() -> None:
     prompt = module.SKILL["prompt"]
     assert "必须等于 SQL 中实际参数化字段" in prompt
     assert "没有日期 token 时不能返回普通 `date_filter`" in prompt
-    assert "默认实时查询不套用历史日期 pivot" in prompt
+    assert "默认实时查询不套用历史日期 pivot" not in prompt
+    assert "不是使用日期 token 或返回 `date_filter` 的前置条件" in prompt
     assert "不得静默回退" in prompt
 
 
