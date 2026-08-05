@@ -13,6 +13,11 @@ from apps.datasource.crud.permission import can_access_table, current_tenant_id,
     get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
     has_datasource_access, is_normal_user
 from apps.datasource.crud.binding import datasource_bound_to_tenant
+from apps.datasource.crud.semantic_object_key import (
+    normalize_discovered_identifier,
+    normalized_table_identity,
+    physical_schema_hash,
+)
 from apps.datasource.crud.sql_engine import execute_user_query_or_raise
 from apps.datasource.embedding.utils import embedding_payload_is_current
 from apps.datasource.embedding.table_embedding import calc_table_embedding
@@ -435,50 +440,95 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源相关的信息改成最新状态，并保存这些变化。
     """
+    try:
+        configuration = json.loads(aes_decrypt(ds.configuration) or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        configuration = {}
+
     id_list = []
+    incomplete_reasons: set[str] = set()
     for item in tables:
-        statement = select(CoreTable).where(and_(CoreTable.ds_id == ds.id, CoreTable.table_name == item.table_name))
+        identity = normalized_table_identity(
+            datasource_type=ds.type,
+            configuration=configuration,
+            table_name=item.table_name,
+            catalog_name=item.catalog_name,
+            schema_name=item.schema_name,
+        )
+        if not identity.complete and identity.incomplete_reason:
+            incomplete_reasons.add(identity.incomplete_reason)
+        statement = select(CoreTable).where(
+            and_(
+                CoreTable.ds_id == ds.id,
+                CoreTable.catalog_key == identity.catalog_key,
+                CoreTable.schema_key == identity.schema_key,
+                CoreTable.table_key == identity.table_key,
+            )
+        )
         record = session.exec(statement).first()
-        # 更新已存在的表，仅更新表注释。
         if record is not None:
             item.id = record.id
             id_list.append(record.id)
-
+            record.table_name = identity.table_name
             record.table_comment = item.table_comment
+            record.catalog_name = identity.catalog_name
+            record.schema_name = identity.schema_name
+            record.catalog_key = identity.catalog_key
+            record.schema_key = identity.schema_key
+            record.table_key = identity.table_key
             session.add(record)
-            session.commit()
+            table = record
         else:
-            # 保存新表
-            table = CoreTable(ds_id=ds.id, checked=True, table_name=item.table_name, table_comment=item.table_comment,
-                              custom_comment="")
+            table = CoreTable(
+                ds_id=ds.id,
+                checked=True,
+                table_name=identity.table_name,
+                table_comment=item.table_comment,
+                custom_comment="",
+                catalog_name=identity.catalog_name,
+                schema_name=identity.schema_name,
+                catalog_key=identity.catalog_key,
+                schema_key=identity.schema_key,
+                table_key=identity.table_key,
+            )
             session.add(table)
             session.flush()
             session.refresh(table)
             item.id = table.id
             id_list.append(table.id)
-            session.commit()
 
-        # 同步字段
-        fields = getFieldsByDs(session, ds, item.table_name)
-        sync_fields(session, ds, item, fields)
+        fields = getFieldsByDs(session, ds, identity.table_name)
+        sync_fields(session, ds, table, fields, commit=False)
 
     if len(id_list) > 0:
-        session.query(CoreTable).filter(and_(CoreTable.ds_id == ds.id, CoreTable.id.not_in(id_list))).delete(
-            synchronize_session=False)
         session.query(CoreField).filter(and_(CoreField.ds_id == ds.id, CoreField.table_id.not_in(id_list))).delete(
             synchronize_session=False)
-        session.commit()
+        session.query(CoreTable).filter(and_(CoreTable.ds_id == ds.id, CoreTable.id.not_in(id_list))).delete(
+            synchronize_session=False)
     else:  # 删除该数据源下的全部表和字段
-        session.query(CoreTable).filter(CoreTable.ds_id == ds.id).delete(synchronize_session=False)
         session.query(CoreField).filter(CoreField.ds_id == ds.id).delete(synchronize_session=False)
-        session.commit()
+        session.query(CoreTable).filter(CoreTable.ds_id == ds.id).delete(synchronize_session=False)
 
-    # 执行表向量化
+    _update_physical_schema_state(
+        session,
+        ds,
+        complete=not incomplete_reasons,
+        incomplete_reason=",".join(sorted(incomplete_reasons)) or None,
+    )
+    session.commit()
+
     run_save_table_embeddings(id_list, tenant_id=ds.tenant_id)
     run_save_ds_embeddings([ds.id], tenant_id=ds.tenant_id)
 
 
-def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, fields: List[ColumnSchema]):
+def sync_fields(
+        session: SessionDep,
+        ds: CoreDatasource,
+        table: CoreTable,
+        fields: List[ColumnSchema],
+        *,
+        commit: bool = True,
+):
     """
     是什么：sync_fields 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -486,33 +536,67 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
     """
     id_list = []
     for index, item in enumerate(fields):
+        field_key = normalize_discovered_identifier(item.fieldName, dialect=ds.type)
         statement = select(CoreField).where(
-            and_(CoreField.table_id == table.id, CoreField.field_name == item.fieldName))
+            and_(CoreField.table_id == table.id, CoreField.field_key == field_key))
         record = session.exec(statement).first()
         if record is not None:
             item.id = record.id
             id_list.append(record.id)
 
+            record.field_name = item.fieldName
+            record.field_key = field_key
             record.field_comment = item.fieldComment
             record.field_index = index
             record.field_type = item.fieldType
             session.add(record)
-            session.commit()
         else:
             field = CoreField(ds_id=ds.id, table_id=table.id, checked=True, field_name=item.fieldName,
                               field_type=item.fieldType, field_comment=item.fieldComment,
-                              custom_comment="", field_index=index)
+                              custom_comment="", field_index=index, field_key=field_key)
             session.add(field)
             session.flush()
             session.refresh(field)
             item.id = field.id
             id_list.append(field.id)
-            session.commit()
 
     if len(id_list) > 0:
         session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.id.not_in(id_list))).delete(
             synchronize_session=False)
+    else:
+        session.query(CoreField).filter(CoreField.table_id == table.id).delete(synchronize_session=False)
+
+    if commit:
+        _update_physical_schema_state(
+            session,
+            ds,
+            complete=bool(ds.catalog_complete),
+            incomplete_reason=ds.catalog_incomplete_reason,
+        )
         session.commit()
+
+
+def _update_physical_schema_state(
+        session: SessionDep,
+        ds: CoreDatasource,
+        *,
+        complete: bool,
+        incomplete_reason: str | None,
+) -> None:
+    session.flush()
+    tables = session.exec(
+        select(CoreTable).where(CoreTable.ds_id == ds.id)
+    ).all()
+    table_ids = [int(table.id) for table in tables]
+    fields = (
+        session.exec(select(CoreField).where(CoreField.table_id.in_(table_ids))).all()
+        if table_ids
+        else []
+    )
+    ds.catalog_complete = complete
+    ds.catalog_incomplete_reason = None if complete else incomplete_reason
+    ds.physical_schema_hash = physical_schema_hash(tables, fields) if complete else None
+    session.add(ds)
 
 
 def update_table_and_fields(

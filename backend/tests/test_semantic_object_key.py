@@ -6,12 +6,19 @@ import importlib.util
 import inspect
 from io import StringIO
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
+from apps.datasource.crud.semantic_object_key import (
+    SemanticObjectKey,
+    canonical_object_key,
+    normalize_catalog_identifier,
+    normalized_table_identity,
+    physical_schema_hash,
+)
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 
 MIGRATION_FILENAME = "155_semantic_permission_epoch.py"
@@ -164,3 +171,79 @@ def test_catalog_downgrade_removes_new_contracts() -> None:
     for column in ("table_key", "schema_key", "catalog_key", "schema_name", "catalog_name"):
         assert f"DROP COLUMN {column}" in sql
     assert "DROP COLUMN field_key" in sql
+
+
+def test_same_table_name_in_two_schemas_has_distinct_keys() -> None:
+    left = SemanticObjectKey(
+        object_type="TABLE",
+        tenant_id=2,
+        datasource_id=9,
+        schema="public",
+        table="orders",
+    )
+    right = SemanticObjectKey(
+        object_type="TABLE",
+        tenant_id=2,
+        datasource_id=9,
+        schema="archive",
+        table="orders",
+    )
+
+    assert canonical_object_key(left) != canonical_object_key(right)
+
+
+def test_identifier_normalization_follows_dialect_quoting_rules() -> None:
+    assert normalize_catalog_identifier("Orders", dialect="postgres") == "orders"
+    assert normalize_catalog_identifier('"Orders"', dialect="postgres") == "Orders"
+    assert normalize_catalog_identifier("orders", dialect="oracle") == "ORDERS"
+    assert normalize_catalog_identifier("`Orders`", dialect="mysql") == "orders"
+
+
+def test_physical_schema_hash_is_order_stable_and_type_sensitive() -> None:
+    table = SimpleNamespace(
+        id=1,
+        catalog_key="",
+        schema_key="public",
+        table_key="orders",
+    )
+    amount = SimpleNamespace(table_id=1, field_key="amount", field_type="numeric")
+    created = SimpleNamespace(table_id=1, field_key="created_at", field_type="timestamp")
+
+    first = physical_schema_hash([table], [amount, created])
+    reordered = physical_schema_hash([table], [created, amount])
+    changed = physical_schema_hash(
+        [table],
+        [SimpleNamespace(table_id=1, field_key="amount", field_type="text"), created],
+    )
+
+    assert first == reordered
+    assert len(first) == 64
+    assert changed != first
+
+
+def test_catalog_identity_uses_configured_postgres_schema() -> None:
+    identity = normalized_table_identity(
+        datasource_type="pg",
+        configuration={"database": "app", "dbSchema": "analytics"},
+        table_name="Orders",
+    )
+
+    assert identity.catalog_name is None
+    assert identity.schema_name == "analytics"
+    assert identity.catalog_key == ""
+    assert identity.schema_key == "analytics"
+    assert identity.table_key == "Orders"
+    assert identity.complete is True
+
+
+def test_catalog_identity_does_not_invent_required_schema() -> None:
+    identity = normalized_table_identity(
+        datasource_type="oracle",
+        configuration={"database": "app", "dbSchema": ""},
+        table_name="ORDERS",
+    )
+
+    assert identity.schema_name is None
+    assert identity.schema_key == ""
+    assert identity.complete is False
+    assert identity.incomplete_reason == "CATALOG_SCHEMA_REQUIRED"
