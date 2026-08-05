@@ -416,6 +416,7 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'table', value: 'table' },
   { label: 'metric', value: 'metric' },
   { label: 'column', value: 'column' },
+  { label: 'grouped_column', value: 'grouped_column' },
   { label: 'bar', value: 'bar' },
   { label: 'line', value: 'line' },
   { label: 'area', value: 'area' },
@@ -5602,7 +5603,7 @@ function closeDrawer() {
             </el-select>
           </el-form-item>
           <el-form-item
-            v-if="form.y.length > 1 && !effectiveSeriesField && ['column', 'bar', 'line', 'area'].includes(form.chartType)"
+            v-if="form.y.length > 1 && !effectiveSeriesField && ['column', 'grouped_column', 'bar', 'line', 'area'].includes(form.chartType)"
             :label="t('dashboard.sql_editor_metric_group')"
           >
             <el-input v-model="form.multiQuotaName" @keydown.stop @keyup.stop />

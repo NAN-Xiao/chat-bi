@@ -1772,6 +1772,7 @@
       "table": "明細表",
       "bar": "橫條圖",
       "column": "柱狀圖",
+      "grouped_column": "分組柱狀圖",
       "line": "折線圖",
       "area": "堆疊面積圖",
       "pie": "圓餅圖",

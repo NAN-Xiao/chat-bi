@@ -47,7 +47,14 @@ const TOP_RANKED_REGULAR_MIN_WIDTH = 640
 const TOP_RANKED_COMPACT_MIN_WIDTH = 500
 const TOP_RANKED_MAX_STATS = 4
 const DAY_MS = 24 * 60 * 60 * 1000
-const TOP_RICH_SUMMARY_TYPES = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'funnel'])
+const TOP_RICH_SUMMARY_TYPES = new Set<ChartTypes>([
+  'bar',
+  'column',
+  'grouped_column',
+  'heatmap',
+  'scatter',
+  'funnel',
+])
 const INSIGHT_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
 function isValidInsightDate(value: string) {
