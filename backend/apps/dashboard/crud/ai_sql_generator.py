@@ -1532,7 +1532,7 @@ def _dashboard_sql_system_prompt() -> str:
         "    period_offset\n"
         "LIMIT <limit_size>;\n"
         "只能输出单个 JSON 对象："
-        '{"success":true,"sql":"SELECT ...","tables":["..."],"chart_type":"table|line|bar|column|pie|area|metric|scatter|heatmap|funnel|sankey|treemap","brief":"图表标题","intent":"一句话用户意图","message":"","advice":"","issues":[],"suggestions":[]}。'
+        '{"success":true,"sql":"SELECT ...","tables":["..."],"chart_type":"table|line|bar|column|grouped_column|pie|area|metric|scatter|heatmap|funnel|sankey|treemap","brief":"图表标题","intent":"一句话用户意图","message":"","advice":"","issues":[],"suggestions":[]}。'
     )
 
 
