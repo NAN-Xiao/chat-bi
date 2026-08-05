@@ -396,6 +396,37 @@ def test_realtime_payment_conflict_sql_is_rejected(monkeypatch) -> None:
     assert "event_realtime" in violation.message
 
 
+def test_explicit_historical_realtime_query_keeps_history_table(monkeypatch) -> None:
+    rows, name_to_id = _fixture_rows()
+    monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime", "user"},
+    )
+
+    question = "昨天实时付费趋势"
+    skill_text, skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=6,
+        tenant_id=XIUXIAN_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=question,
+    )
+
+    assert 282 in _selected_ids(skill_logs, name_to_id)
+    assert (
+        _data_skill_sql_validation_violation(
+            question,
+            "SELECT e.dt, COUNT(*) FROM event e "
+            "WHERE e.dt = 20260804 GROUP BY e.dt",
+            skill_text,
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize("datasource, expected_visible", [(6, True), (3, False), (1, False)])
 def test_private_skill_280_is_visible_only_to_owner_on_datasource_6(
     monkeypatch, datasource: int, expected_visible: bool

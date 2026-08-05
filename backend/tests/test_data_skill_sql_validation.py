@@ -44,6 +44,28 @@ def test_generic_current_phrases_do_not_activate_realtime_rule(question: str) ->
     assert llm._data_skill_sql_validation_violation(question, sql, data_skill) is None
 
 
+def test_realtime_rule_only_forces_realtime_table_for_current_day_scope() -> None:
+    rule = json.loads(platform_skill.SQL_VALIDATION_RULE)
+    data_skill = _data_skill(rule)
+
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "实时收入",
+            "SELECT SUM(amount) FROM event",
+            data_skill,
+        )
+        is not None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "昨天实时收入",
+            "SELECT SUM(amount) FROM event",
+            data_skill,
+        )
+        is None
+    )
+
+
 def test_required_items_are_returned_as_structured_violation() -> None:
     data_skill = _data_skill(
         {"match": "其它问题", "required_sql_contains": ["ignored_table"]},

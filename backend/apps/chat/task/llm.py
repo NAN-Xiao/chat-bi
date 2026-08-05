@@ -34,6 +34,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
     normalize_chat_date_filter_for_question,
+    question_date_scope,
     rewrite_chat_date_filter_literals,
     render_chat_date_filter_sql,
 )
@@ -266,6 +267,18 @@ def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
     return any(term in text for term in terms)
 
 
+def _rule_matches_question_date_scope(rule: dict[str, Any], question: str) -> bool:
+    """仅在问题日期范围命中规则声明时启用该规则。"""
+    scopes = {
+        value.strip().lower()
+        for value in _normalize_rule_terms(rule.get("when_question_date_scopes"))
+        if value.strip()
+    }
+    if not scopes:
+        return True
+    return question_date_scope(question) in scopes
+
+
 def _rule_matches_sql_scope(
     rule: dict[str, Any],
     sql_text: str,
@@ -378,6 +391,8 @@ def _data_skill_sql_validation_violation(
     sql_lower = sql_text.lower()
     for rule_index, rule in enumerate(_extract_data_skill_sql_validation_rules(data_skill)):
         if not _rule_matches_question(rule, question):
+            continue
+        if not _rule_matches_question_date_scope(rule, question):
             continue
         if _rule_allowed_by_question(rule, question):
             continue
