@@ -158,3 +158,7 @@ worker 任务队列
 - 不向普通用户开放任意任务投递能力；业务接口应只投递白名单任务。
 - 任务 payload 不保存敏感明文密钥。
 - 现有字段同步任务只传 `table_id`，worker 从系统库读取数据源配置，不把数据源密码写入 Redis payload。
+- 任务队列平台作用域键切换发布前，必须先停止 API 新入队并使用旧版本 worker 排空旧的
+  `${REDIS_KEY_PREFIX}:task:queue:<queue>` 和 `${REDIS_KEY_PREFIX}:task:processing:<queue>`；随后同时升级
+  API 与 worker，并核对二者只使用 `${REDIS_KEY_PREFIX}:platform:task:*`。无法排空的任务必须通过对应
+  业务入口显式重新入队；运行时不得对旧键做静默双读、双写或回退。
