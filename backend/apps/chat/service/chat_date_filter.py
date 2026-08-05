@@ -25,7 +25,8 @@ _EXPLICIT_PAST_DAYS_PATTERN = re.compile(
 )
 _EXPLICIT_CURRENT_DAY_PATTERN = re.compile(r"(?:今天|今日|当天)")
 _REALTIME_PATTERN = re.compile(r"实时")
-_EXPLICIT_YESTERDAY_PATTERN = re.compile(r"(?:昨天|昨日|前天)")
+_EXPLICIT_YESTERDAY_PATTERN = re.compile(r"(?:昨天|昨日)")
+_EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN = re.compile(r"前天")
 _EXPLICIT_ABSOLUTE_DATE_PATTERN = re.compile(
     r"(?<!\d)\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日?)(?!\d)"
 )
@@ -44,6 +45,7 @@ def question_date_scope(question: str | None) -> QuestionDateScope:
     has_explicit_other = bool(
         _EXPLICIT_PAST_DAYS_PATTERN.search(text)
         or _EXPLICIT_YESTERDAY_PATTERN.search(text)
+        or _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN.search(text)
         or _EXPLICIT_ABSOLUTE_DATE_PATTERN.search(text)
     )
     if has_explicit_other:
@@ -60,12 +62,17 @@ def _explicit_question_date_expression(question: str | None) -> dict[str, Any] |
     distinct_days = {int(value) for value in matches}
     has_current_day = bool(_EXPLICIT_CURRENT_DAY_PATTERN.search(question_text))
     has_yesterday = bool(_EXPLICIT_YESTERDAY_PATTERN.search(question_text))
+    has_day_before_yesterday = bool(
+        _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN.search(question_text)
+    )
     has_absolute_date = bool(_EXPLICIT_ABSOLUTE_DATE_PATTERN.search(question_text))
     if has_absolute_date:
         return None
-    if len(distinct_days) > 1 or (distinct_days and (has_current_day or has_yesterday)):
+    if len(distinct_days) > 1 or (
+        distinct_days and (has_current_day or has_yesterday or has_day_before_yesterday)
+    ):
         return None
-    if has_current_day and has_yesterday:
+    if sum((has_current_day, has_yesterday, has_day_before_yesterday)) > 1:
         return None
     if distinct_days:
         days = distinct_days.pop()
@@ -83,6 +90,13 @@ def _explicit_question_date_expression(question: str | None) -> dict[str, Any] |
         }
     if has_yesterday:
         return {"version": 1, "mode": "preset", "preset": "yesterday"}
+    if has_day_before_yesterday:
+        return {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "dynamic", "unit": "day", "offset": -2},
+            "end": {"mode": "dynamic", "unit": "day", "offset": -2},
+        }
     if has_current_day or question_date_scope(question_text) == "current_day":
         return {"version": 1, "mode": "preset", "preset": "today"}
     return None

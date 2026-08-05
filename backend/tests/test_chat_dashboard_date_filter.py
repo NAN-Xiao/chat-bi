@@ -180,6 +180,22 @@ def test_normalize_prefers_yesterday_over_realtime_default():
     }
 
 
+def test_normalize_prefers_day_before_yesterday_over_realtime_default():
+    pivot = normalize_chat_date_filter_for_question(
+        "前天实时收入",
+        DATE_FILTER,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot["date_expression"] == {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "dynamic", "unit": "day", "offset": -2},
+        "end": {"mode": "dynamic", "unit": "day", "offset": -2},
+    }
+
+
 def test_normalize_preserves_explicit_absolute_date_over_realtime_default():
     absolute_filter = {
         **DATE_FILTER,
