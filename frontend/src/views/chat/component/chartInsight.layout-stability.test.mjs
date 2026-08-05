@@ -97,14 +97,25 @@ assert.equal(
   '真实高度跨出迟滞下界后应允许 compact 切换为 mini'
 )
 
-const hiddenByWidth = resolveInsightDisplay({
+const compactAtHardFloor = resolveInsightDisplay({
   ...trend,
-  width: 439,
-  height: 400,
+  width: 300,
+  height: 250,
   previousLayout: 'top',
-  previousDensity: 'mini',
 })
-assert.equal(hiddenByWidth.show, false, '宽度低于可读下界时应隐藏摘要')
+assert.equal(compactAtHardFloor.show, true, '达到硬下界时应显示摘要')
+assert.equal(compactAtHardFloor.density, 'basic', '达到硬下界时应使用 basic 摘要')
+
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 299, height: 250 }).show,
+  false,
+  '宽度低于硬下界时应隐藏摘要'
+)
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 300, height: 249 }).show,
+  false,
+  '高度低于硬下界时应隐藏摘要'
+)
 
 const restoredAfterWidth = resolveInsightDisplay({
   ...trend,

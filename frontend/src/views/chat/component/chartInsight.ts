@@ -448,17 +448,6 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
-    const topSummaryTooSmall = width < TOP_BASIC_MAX_WIDTH || height < TOP_BASIC_MAX_HEIGHT
-    if (topSummaryTooSmall) {
-      return {
-        show: false,
-        layout,
-        density: 'basic',
-        maxStats: 0,
-        featuredSide: false,
-      }
-    }
-
     // TOP 分支的密度历史迟滞与 side 分支一致。真实外部 resize 在 430px mini↔compact
     // 等边界附近反复接近时，必须保持当前档位直到越过退出阈值，避免摘要布局频繁切换。
     const wasBasic = params.previousDensity === 'basic'
