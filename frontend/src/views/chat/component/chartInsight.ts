@@ -77,6 +77,20 @@ function axisValues(axes?: Array<ChartAxis>) {
   return (axes || []).map((axis) => axis.value).filter(Boolean)
 }
 
+function hasManySeriesGroups(
+  data: Array<ChartData> | undefined,
+  seriesAxis: ChartAxis | undefined
+) {
+  if (!seriesAxis) return false
+  const groups = new Set(
+    (Array.isArray(data) ? data : [])
+      .map((row) => row?.[seriesAxis.value])
+      .filter((value) => !isBlankValue(value))
+      .map(String)
+  )
+  return groups.size >= 6
+}
+
 export function buildInsightLayoutStateKey(params: {
   viewId?: string | number | null
   chartType: ChartTypes
@@ -92,6 +106,28 @@ export function buildInsightLayoutStateKey(params: {
     axisValues(params.x),
     axisValues(params.y),
     axisValues(params.series),
+  ])
+}
+
+export function buildInsightDataStructureKey(params: {
+  chartType: ChartTypes
+  data?: Array<ChartData>
+  x?: Array<ChartAxis>
+  y?: Array<ChartAxis>
+  series?: Array<ChartAxis>
+  dashboard?: boolean
+}) {
+  const rows = Array.isArray(params.data) ? params.data : []
+  const seriesAxis = params.series?.[0]
+  const trendGranularityRelevant =
+    params.dashboard === true &&
+    ['line', 'area'].includes(params.chartType) &&
+    axisValues(params.y).length === 1 &&
+    axisValues(params.series).length === 0
+  return JSON.stringify([
+    rows.length > 0,
+    seriesAxis ? hasManySeriesGroups(rows, seriesAxis) : null,
+    trendGranularityRelevant ? detectTrendAxisGranularity(rows, params.x?.[0]) : null,
   ])
 }
 
@@ -339,18 +375,8 @@ export function resolveInsightLayout(params: {
     return 'side'
   }
 
-  const seriesAxis = params.series?.[0]
-  const data = Array.isArray(params.data) ? params.data : []
-  if (seriesAxis) {
-    const groups = new Set(
-      data
-        .map((row) => row?.[seriesAxis.value])
-        .filter((value) => value !== undefined && value !== null && value !== '')
-        .map(String)
-    )
-    if (groups.size >= 6) {
-      return 'side'
-    }
+  if (hasManySeriesGroups(params.data, params.series?.[0])) {
+    return 'side'
   }
 
   const yValues = axisValues(params.y)
