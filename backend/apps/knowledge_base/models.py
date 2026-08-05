@@ -178,3 +178,9 @@ class KnowledgeBaseItem(BaseModel):
     create_time: Optional[datetime] = None
     update_time: Optional[datetime] = None
     can_manage: bool = False
+
+
+# Keep the Alembic metadata entrypoint complete while model responsibilities stay split.
+import apps.knowledge_base.audit_models  # noqa: E402, F401
+import apps.knowledge_base.object_projection_models  # noqa: E402, F401
+import apps.knowledge_base.retrieval_models  # noqa: E402, F401

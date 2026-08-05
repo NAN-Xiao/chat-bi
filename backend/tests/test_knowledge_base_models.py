@@ -179,9 +179,7 @@ def test_projection_models_can_share_lifecycle_metadata() -> None:
         [
             sys.executable,
             "-c",
-            "from apps.knowledge_base.object_projection_models import "
-            "SemanticObjectReference; "
-            "from apps.knowledge_base.retrieval_models import KnowledgeBaseChunk; "
+            "from apps.knowledge_base.models import KnowledgeBase; "
             "from sqlmodel import SQLModel; "
             "print([table.name for table in SQLModel.metadata.sorted_tables])",
         ],
