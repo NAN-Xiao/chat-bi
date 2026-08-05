@@ -143,6 +143,9 @@ def test_normalize_uses_today_for_explicit_current_day_question():
         ("昨天实时收入", "explicit_other"),
         ("最近14天实时收入", "explicit_other"),
         ("2026-08-01实时收入", "explicit_other"),
+        ("本月实时收入", "explicit_other"),
+        ("近两周实时收入", "explicit_other"),
+        ("最近一个月实时收入", "explicit_other"),
         ("每日收入趋势", "unspecified"),
     ],
 )
@@ -215,6 +218,26 @@ def test_normalize_preserves_explicit_absolute_date_over_realtime_default():
     )
 
     assert pivot == {"enabled": False, **absolute_filter}
+
+
+def test_normalize_preserves_explicit_current_month_over_realtime_default():
+    month_filter = {
+        **DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "preset",
+            "preset": "current_month",
+        },
+    }
+
+    pivot = normalize_chat_date_filter_for_question(
+        "本月实时收入",
+        month_filter,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot == {"enabled": False, **month_filter}
 
 
 def test_normalize_rejects_metric_for_realtime_hourly_question():

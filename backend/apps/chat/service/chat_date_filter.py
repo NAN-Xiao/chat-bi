@@ -30,6 +30,11 @@ _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN = re.compile(r"前天")
 _EXPLICIT_ABSOLUTE_DATE_PATTERN = re.compile(
     r"(?<!\d)\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日?)(?!\d)"
 )
+_EXPLICIT_NAMED_PERIOD_PATTERN = re.compile(r"本月")
+_EXPLICIT_RELATIVE_PERIOD_PATTERN = re.compile(
+    r"(?:(?:最近|近)\s*(?:两|[1-9]\d{0,3})\s*(?:个\s*)?周|"
+    r"(?:最近|近)\s*(?:一|1)\s*个?月)"
+)
 _DEFAULT_DATE_EXPRESSION = {"version": 1, "mode": "preset", "preset": "past_7_days"}
 
 QuestionDateScope = Literal["current_day", "explicit_other", "unspecified"]
@@ -47,6 +52,8 @@ def question_date_scope(question: str | None) -> QuestionDateScope:
         or _EXPLICIT_YESTERDAY_PATTERN.search(text)
         or _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN.search(text)
         or _EXPLICIT_ABSOLUTE_DATE_PATTERN.search(text)
+        or _EXPLICIT_NAMED_PERIOD_PATTERN.search(text)
+        or _EXPLICIT_RELATIVE_PERIOD_PATTERN.search(text)
     )
     if has_explicit_other:
         return "explicit_other"

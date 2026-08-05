@@ -64,6 +64,14 @@ def test_realtime_rule_only_forces_realtime_table_for_current_day_scope() -> Non
         )
         is None
     )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "本月实时收入",
+            "SELECT SUM(amount) FROM event",
+            data_skill,
+        )
+        is None
+    )
 
 
 def test_required_items_are_returned_as_structured_violation() -> None:
