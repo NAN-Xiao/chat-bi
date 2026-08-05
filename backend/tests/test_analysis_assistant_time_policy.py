@@ -82,6 +82,7 @@ def test_sql_example_does_not_override_default_window() -> None:
             1,
         ),
         ("最近14天实时收入", "relative_days", date(2026, 7, 13), date(2026, 7, 26), 14),
+        ("过去7天实时收入", "relative_days", date(2026, 7, 20), date(2026, 7, 26), 7),
         ("本月实时收入", "month", date(2026, 7, 1), date(2026, 7, 26), None),
         (
             "2026-08-01实时收入",
@@ -122,6 +123,7 @@ def test_realtime_time_scope_uses_anchor_day_without_overriding_explicit_ranges(
     [
         ("近7日收入", 7),
         ("最近 7 天收入", 7),
+        ("过去7天收入", 7),
         ("最近一个月收入", 30),
     ],
 )

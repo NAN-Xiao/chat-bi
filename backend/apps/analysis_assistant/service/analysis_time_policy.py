@@ -31,7 +31,7 @@ _DAY_ONLY_RE = re.compile(
 )
 _YEAR_MONTH_RE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月")
 _MONTH_RE = re.compile(r"(\d{1,2})\s*月")
-_RELATIVE_DAYS_RE = re.compile(r"(?:最近|近)\s*(-?\d+)\s*(?:个)?[天日]")
+_RELATIVE_DAYS_RE = re.compile(r"(?:最近|近|过去)\s*(-?\d+)\s*(?:个)?[天日]")
 _RELATIVE_WEEKS_RE = re.compile(r"(?:最近|近)\s*(两|-?\d+)\s*(?:个)?周")
 _RECENT_MONTH_RE = re.compile(r"(?:最近|近)\s*(?:一|1)\s*个?月")
 _INVALID_DATE_WARNING = "用户指定的日期无效，无法确定时间策略。"
