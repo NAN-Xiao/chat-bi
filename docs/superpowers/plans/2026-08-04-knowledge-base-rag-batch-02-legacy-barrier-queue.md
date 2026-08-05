@@ -195,8 +195,8 @@ def test_legacy_save_does_not_store_file_or_schedule_after_barrier(client, uploa
     set_phase(session, "CUTOVER_BARRIER")
     response = client.post("/knowledge-base/save", files={"file": upload_file}, data=legacy_form())
     assert response.status_code == 409
-    assert response.json()["code"] == "KNOWLEDGE_LEGACY_WRITE_DISABLED"
-    assert response.json()["message"] == "知识库已升级，请刷新页面后重新操作。"
+    assert response.json()["code"] == "KNOWLEDGE_UPGRADE_IN_PROGRESS"
+    assert response.json()["message"] == "知识库升级中，请稍后重试。"
     assert uploaded_files() == []
 
 
@@ -258,9 +258,9 @@ git commit -m "fix: 阻止切换屏障后的旧知识写回"
 
 ```python
 async def test_unknown_enqueue_keeps_job_queuing_and_reconciles_same_task(session):
-    job = make_publish_job(session, status="QUEUING", redis_task_id="task-1")
+    job = make_publish_job(session, status="QUEUING", task_id="task-1")
     await reconcile_publish_jobs(session)
-    assert reload(job).redis_task_id == "task-1"
+    assert reload(job).task_id == "task-1"
     assert reload(job).status in {"QUEUING", "QUEUED", "RUNNING"}
 
 
