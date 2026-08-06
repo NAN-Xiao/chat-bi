@@ -1,0 +1,106 @@
+"""Publish API boundary; queue/job creation is completed by the publish task."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from sqlmodel import select
+
+from apps.knowledge_base.api._helpers import (
+    record_tenant_id,
+    resolve_record,
+    serialize_error,
+    unexpected_error,
+    v2_write_error,
+)
+from apps.knowledge_base.cutover import get_capabilities
+from apps.knowledge_base.errors import KnowledgeBusinessError
+from apps.knowledge_base.lifecycle_models import KnowledgePublishJob
+from apps.knowledge_base.permissions import KnowledgePermissionService
+from common.core.deps import CurrentUser, SessionDep
+
+router = APIRouter(
+    tags=["KnowledgeBase"],
+    prefix="/knowledge-base",
+    include_in_schema=False,
+)
+
+
+class PublishRequest(BaseModel):
+    version_id: int
+    revision: int = Field(ge=1)
+    content_hash: str
+
+
+def _job_response(job: KnowledgePublishJob) -> dict[str, Any]:
+    return {
+        "id": int(job.id),
+        "knowledge_base_id": int(job.knowledge_base_id),
+        "version_id": int(job.version_id),
+        "revision": int(job.revision),
+        "content_hash": job.content_hash,
+        "status": job.status,
+        "task_id": job.task_id,
+        "stage": job.stage,
+        "error_code": job.error_code,
+        "error_message": job.error_message,
+        "heartbeat_at": job.heartbeat_at,
+        "deadline_at": job.deadline_at,
+    }
+
+
+@router.post("/{id}/publish")
+async def publish_knowledge(
+    id: int,
+    body: PublishRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    _ = body
+    capabilities = get_capabilities(session)
+    blocked = v2_write_error(capabilities)
+    if blocked is not None:
+        return serialize_error(blocked)
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        record_tenant_id(record, current_user)
+        KnowledgePermissionService().require_manage(current_user, record)
+        # The database job is the authority; its creation is deliberately kept
+        # in the publish task so this route cannot enqueue a partial snapshot.
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_PUBLISH_NOT_READY",
+            message="知识发布能力尚未启用，请稍后重试。",
+            status_code=503,
+            error_type="UNAVAILABLE",
+            suggestion="请确认发布任务和索引 Worker 已就绪。",
+        )
+    except KnowledgeBusinessError as error:
+        return serialize_error(error)
+    except Exception:
+        return unexpected_error()
+
+
+@router.get("/{id}/publish-job")
+async def get_publish_job(
+    id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        tenant_id = record_tenant_id(record, current_user)
+        job = session.exec(
+            select(KnowledgePublishJob)
+            .where(
+                KnowledgePublishJob.knowledge_base_id == id,
+                KnowledgePublishJob.tenant_id == tenant_id,
+            )
+            .order_by(KnowledgePublishJob.update_time.desc(), KnowledgePublishJob.id.desc())
+        ).first()
+        return _job_response(job) if job is not None else None
+    except KnowledgeBusinessError as error:
+        return serialize_error(error)
+    except Exception:
+        return unexpected_error()

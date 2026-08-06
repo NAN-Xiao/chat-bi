@@ -186,8 +186,7 @@ async def _save_upload(file: UploadFile) -> tuple[str, str, str]:
     return file_id, file.filename or file_id, file_ext
 
 
-@router.get("/list", response_model=list[KnowledgeBaseItem])
-async def list_knowledge_base(
+async def list_legacy_knowledge_base(
     session: SessionDep,
     current_user: CurrentUser,
     visibility_scope: Optional[str] = Query(None),
@@ -320,8 +319,7 @@ async def save_knowledge_base(
     return _serialize_record(current_user, record)
 
 
-@router.delete("/{id}")
-async def delete_knowledge_base(session: SessionDep, current_user: CurrentUser, id: int):
+async def delete_legacy_knowledge_base(session: SessionDep, current_user: CurrentUser, id: int):
     """
     是什么：delete_knowledge_base 是一个接口入口，负责接住后端业务相关请求。
     谁调用：前端或外部系统调用对应接口时，FastAPI 会把请求交给它。
@@ -335,3 +333,9 @@ async def delete_knowledge_base(session: SessionDep, current_user: CurrentUser, 
     AppFileUtils.delete_file(record.file_id)
     session.delete(record)
     return {"id": id}
+
+
+# Keep the callable names used by the legacy tests and integrations while the
+# phase-aware management router owns the public path registrations.
+list_knowledge_base = list_legacy_knowledge_base
+delete_knowledge_base = delete_legacy_knowledge_base
