@@ -19,8 +19,11 @@ const warnings = computed(() => {
     <details>
       <summary>已使用知识库（{{ citations.length }}）</summary>
       <div class="citation-list">
-        <div v-for="item in citations" :key="`${item.knowledge_base_id}-${item.chunk_id}`" class="citation-item">
-          <span>知识库 #{{ item.knowledge_base_id }} · 片段 #{{ item.chunk_id }}</span>
+        <div v-for="(item, index) in citations" :key="`${item.knowledge_base_id}-${item.version_id}-${index}`" class="citation-item">
+          <span>
+            知识库<span v-if="item.knowledge_base_id"> #{{ item.knowledge_base_id }}</span>
+            <span v-if="item.version_id"> · 版本 {{ item.version_id }}</span>
+          </span>
           <span v-if="item.section_path" class="section-path">{{ item.section_path }}</span>
           <span v-if="item.score !== undefined" class="score">相似度 {{ Number(item.score).toFixed(3) }}</span>
         </div>
