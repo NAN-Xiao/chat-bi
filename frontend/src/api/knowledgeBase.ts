@@ -72,6 +72,18 @@ export interface KnowledgePublishJob {
   error_message?: string | null
 }
 
+export interface KnowledgeRetrievalPreviewResult {
+  context?: string
+  citations?: Array<{
+    knowledge_base_id?: number | string | null
+    section_path?: string | null
+    score?: number | null
+    visibility_scope?: KnowledgeBaseScope | null
+  }>
+  warnings?: Array<{ message?: string } | string>
+  latency_ms?: number
+}
+
 export interface KnowledgeBaseSavePayload {
   id?: number | string | null
   name: string
@@ -166,5 +178,5 @@ export const knowledgeBaseApi = {
     surface?: string
     top_k?: number
     max_context_chars?: number
-  }) => request.post('/knowledge-base/retrieval-preview', payload),
+  }) => request.post<KnowledgeRetrievalPreviewResult>('/knowledge-base/retrieval-preview', payload),
 }

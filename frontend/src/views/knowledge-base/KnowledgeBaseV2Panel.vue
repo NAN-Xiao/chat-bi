@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Download, Plus, Refresh, Upload } from '@element-plus/icons-vue'
+import { Download, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
 import {
@@ -12,6 +12,7 @@ import {
 } from '@/api/knowledgeBase'
 import KnowledgePayloadEditor from './KnowledgePayloadEditor.vue'
 import { knowledgeActionState } from './knowledgeEditorState'
+import KnowledgeRetrievalPreview from './KnowledgeRetrievalPreview.vue'
 
 const userStore = useUserStore()
 const items = ref<KnowledgeBaseItem[]>([])
@@ -30,6 +31,7 @@ const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUB
 const pendingFile = ref<File | null>(null)
 const publishJob = ref<KnowledgePublishJob | null>(null)
 const draftConflict = ref(false)
+const retrievalPreviewVisible = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
 const isPlatformAdmin = computed(
@@ -276,6 +278,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <el-option label="平台公共知识" value="PLATFORM_PUBLIC" />
         </el-select>
         <el-button :icon="Refresh" @click="loadItems">刷新</el-button>
+        <el-button :icon="Search" @click="retrievalPreviewVisible = true">检索预览</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
       </div>
     </div>
@@ -351,6 +354,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
         <div v-if="publishJob" class="publish-status">发布任务：{{ publishJob.status }}{{ publishJob.stage ? ` · ${publishJob.stage}` : '' }}</div>
       </div>
     </el-drawer>
+    <KnowledgeRetrievalPreview v-model="retrievalPreviewVisible" />
   </div>
 </template>
 
