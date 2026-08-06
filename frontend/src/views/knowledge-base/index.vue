@@ -5,9 +5,19 @@ import { cloneDeep } from 'lodash-es'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
 import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { knowledgeBaseApi, type KnowledgeBaseItem, type KnowledgeBaseScope } from '@/api/knowledgeBase'
+import {
+  knowledgeBaseApi,
+  type KnowledgeBaseItem,
+  type KnowledgeBaseScope,
+} from '@/api/knowledgeBase'
 import { formatTimestamp } from '@/utils/date'
 import KnowledgeBaseV2Panel from './KnowledgeBaseV2Panel.vue'
+import {
+  isKnowledgeV2Mode,
+  knowledgePageNotice,
+  resolveKnowledgePageMode,
+  type KnowledgePageMode,
+} from './knowledgePageMode'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
@@ -28,8 +38,16 @@ const loading = ref(false)
 const saving = ref(false)
 const uploadFileName = ref('')
 const pendingFile = ref<File | null>(null)
-const v2Enabled = ref(false)
+const pageMode = ref<KnowledgePageMode>('LEGACY')
+const capabilitiesLoading = ref(true)
 let refreshTimer: ReturnType<typeof window.setTimeout> | null = null
+
+const pageNotice = computed(() => {
+  if (pageMode.value === 'UPGRADING' || pageMode.value === 'MAINTENANCE') {
+    return knowledgePageNotice(pageMode.value)
+  }
+  return null
+})
 
 const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
@@ -247,12 +265,15 @@ function openDetail(row: KnowledgeBaseItem) {
 }
 
 async function loadCapabilities() {
+  capabilitiesLoading.value = true
   try {
-    const capabilities = await knowledgeBaseApi.capabilities()
-    v2Enabled.value = capabilities.management_mode === 'V2' && capabilities.v2_write_enabled
+    const result = await knowledgeBaseApi.capabilities()
+    pageMode.value = resolveKnowledgePageMode(result)
   } catch (error) {
     console.warn('Failed to load knowledge base capabilities', error)
-    v2Enabled.value = false
+    pageMode.value = 'LEGACY'
+  } finally {
+    capabilitiesLoading.value = false
   }
 }
 
@@ -260,12 +281,15 @@ watch(
   defaultScope,
   () => {
     clearRefreshTimer()
-    loadCards()
+    if (!capabilitiesLoading.value && pageMode.value === 'LEGACY') loadCards()
   },
   { immediate: true }
 )
 
-onMounted(loadCapabilities)
+onMounted(async () => {
+  await loadCapabilities()
+  if (pageMode.value === 'LEGACY') await loadCards()
+})
 
 onBeforeUnmount(() => {
   clearRefreshTimer()
@@ -273,7 +297,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="!v2Enabled" class="knowledge-base-page">
+  <el-skeleton v-if="capabilitiesLoading" animated class="knowledge-page-loading" />
+  <div v-else-if="pageMode === 'LEGACY'" class="knowledge-base-page">
     <div class="page-header">
       <div class="page-title">{{ pageTitle }}</div>
       <div class="page-actions">
@@ -496,7 +521,15 @@ onBeforeUnmount(() => {
       </el-form>
     </el-drawer>
   </div>
-  <KnowledgeBaseV2Panel v-else />
+  <KnowledgeBaseV2Panel v-else-if="isKnowledgeV2Mode(pageMode)" />
+  <section v-else class="knowledge-mode-notice" aria-live="polite">
+    <div class="knowledge-mode-notice__icon">!</div>
+    <h2>{{ pageNotice ? t(pageNotice.titleKey) : t('knowledge_base.mode_maintenance_title') }}</h2>
+    <p>{{ pageNotice ? t(pageNotice.descriptionKey) : t('knowledge_base.mode_maintenance_description') }}</p>
+    <el-button :loading="capabilitiesLoading" @click="loadCapabilities">
+      {{ t('common.refresh') }}
+    </el-button>
+  </section>
 </template>
 
 <style lang="less" scoped>
@@ -798,6 +831,48 @@ onBeforeUnmount(() => {
       -webkit-line-clamp: 2;
     }
   }
+}
+
+.knowledge-page-loading {
+  min-height: 240px;
+  padding: 24px;
+}
+
+.knowledge-mode-notice {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  min-height: 360px;
+  padding: 32px;
+  color: var(--workspace-text-primary, #1f2329);
+  text-align: center;
+}
+
+.knowledge-mode-notice__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #f3c36b;
+  border-radius: 50%;
+  color: #a15c00;
+  background: #fff8e6;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.knowledge-mode-notice h2 {
+  margin: 18px 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.knowledge-mode-notice p {
+  max-width: 480px;
+  margin: 0 0 20px;
+  color: #667085;
+  font-size: 13px;
+  line-height: 20px;
 }
 </style>
 

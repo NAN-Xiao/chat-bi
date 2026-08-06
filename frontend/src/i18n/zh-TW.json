@@ -2104,6 +2104,10 @@
     "updated_at": "更新時間",
     "workspace_knowledge_base": "工作空間知識庫",
     "saas_knowledge_base": "SaaS 知識庫",
-    "delete_confirm": "是否刪除知識庫：{msg}？"
+    "delete_confirm": "是否刪除知識庫：{msg}？",
+    "mode_upgrading_title": "知識庫升級中",
+    "mode_upgrading_description": "知識庫升級完成前暫時不能編輯內容，請稍後重新整理頁面。現有知識仍可繼續使用。",
+    "mode_maintenance_title": "知識庫維護中",
+    "mode_maintenance_description": "知識庫正在維護，目前暫時不能編輯內容。請稍後重新整理頁面再試。"
   }
 }

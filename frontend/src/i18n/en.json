@@ -2104,6 +2104,10 @@
     "updated_at": "Updated at",
     "workspace_knowledge_base": "Workspace Knowledge Base",
     "saas_knowledge_base": "SaaS Knowledge Base",
-    "delete_confirm": "Delete knowledge base: {msg}?"
+    "delete_confirm": "Delete knowledge base: {msg}?",
+    "mode_upgrading_title": "Knowledge base upgrade in progress",
+    "mode_upgrading_description": "Editing is temporarily unavailable while the knowledge base is upgraded. Refresh later; existing knowledge remains available.",
+    "mode_maintenance_title": "Knowledge base maintenance",
+    "mode_maintenance_description": "Editing is temporarily unavailable while the knowledge base is being maintained. Refresh and try again later."
   }
 }
