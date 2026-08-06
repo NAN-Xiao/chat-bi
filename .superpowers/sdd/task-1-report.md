@@ -85,3 +85,15 @@ The nested CTE regression failed with `1 failed, 22 passed`: the validator used 
 - A nested CTE can reuse an alias without leaking its object identity into an outer select.
 
 Final focused output: `33 passed, 235 warnings in 8.13s`.
+
+## Unqualified Table Fix
+
+### Red
+
+The SQLite regression `select amount from orders` failed because local select resolution discarded every table without a catalog or schema.
+
+### Green
+
+Local select resolution now excludes only unqualified names that are visible CTEs. It retains legitimate unqualified physical tables for dialects such as SQLite.
+
+Final focused output: `34 passed, 235 warnings in 6.62s`.

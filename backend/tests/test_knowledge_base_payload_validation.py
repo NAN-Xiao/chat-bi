@@ -310,6 +310,33 @@ def test_business_field_resolution_uses_local_select_alias_scope() -> None:
     assert report.valid
 
 
+def test_business_field_resolution_keeps_unqualified_sqlite_table() -> None:
+    payload = BusinessKnowledgePayload(
+        knowledge_type="BUSINESS",
+        term="金额",
+        definition="订单金额",
+        related_objects=[
+            {"object_type": "FIELD", "table": "orders", "field": "amount"}
+        ],
+        examples=[
+            {
+                "name": "金额",
+                "question": "订单金额",
+                "sql": "select amount from orders",
+                "dialect": "sqlite",
+            }
+        ],
+    )
+    context = validation_context(
+        dialect="sqlite",
+        tables={"orders": {"amount"}},
+    )
+
+    report = validate_payload(payload, context=context)
+
+    assert report.valid
+
+
 def test_related_field_uses_full_catalog_identity() -> None:
     payload = BusinessKnowledgePayload(
         knowledge_type="BUSINESS",

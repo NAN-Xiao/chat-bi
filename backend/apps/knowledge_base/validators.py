@@ -443,12 +443,13 @@ def _select_table_entries(select: exp.Select | None) -> list[tuple[SemanticObjec
     for join in select.args.get("joins") or []:
         if isinstance(join, exp.Join) and join.this is not None:
             sources.append(join.this)
+    visible_ctes = _visible_cte_names(select)
     entries: list[tuple[SemanticObjectReferenceInput, str]] = []
     for source in sources:
         if not isinstance(source, exp.Table):
             continue
         name = str(source.name or "").strip()
-        if not name or (not source.db and not source.catalog):
+        if not name or (not source.db and not source.catalog and _key(name) in visible_ctes):
             continue
         reference = SemanticObjectReferenceInput(
             object_type="TABLE",
@@ -458,6 +459,18 @@ def _select_table_entries(select: exp.Select | None) -> list[tuple[SemanticObjec
         )
         entries.append((reference, _key(source.alias_or_name)))
     return entries
+
+
+def _visible_cte_names(select: exp.Select) -> set[str]:
+    names: set[str] = set()
+    current: exp.Expression | None = select
+    while current is not None:
+        if isinstance(current, exp.Select):
+            with_clause = current.args.get("with_")
+            if isinstance(with_clause, exp.With):
+                names.update(_key(cte.alias_or_name) for cte in with_clause.expressions)
+        current = current.parent
+    return names
 
 
 def _resolve_column_table(
