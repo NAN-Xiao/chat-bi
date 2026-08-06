@@ -23,6 +23,7 @@ from apps.knowledge_base.api.knowledge_base import (
     ALLOWED_EXTENSIONS,
     KNOWLEDGE_FILE_MAX_BYTES,
 )
+from apps.knowledge_base.chunking import parse_and_normalize_version
 from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
@@ -230,6 +231,9 @@ async def replace_draft_source_file(
             )
         )
         payload = KnowledgePayloadAdapter.validate_python(version.payload)
+        if payload.knowledge_type == "DOCUMENT":
+            parsed = parse_and_normalize_version(staged_path, file_ext=extension)
+            payload = payload.model_copy(update={"markdown": parsed.normalized_content})
         saved = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).save_draft(
             tenant_id=tenant_id,
             knowledge_base_id=id,

@@ -168,6 +168,14 @@ async def create_knowledge_base(
     if blocked is not None:
         return serialize_error(blocked)
     try:
+        clean_name = body.name.strip()
+        if not clean_name:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_NAME_REQUIRED",
+                message="知识库名称不能为空。",
+                status_code=422,
+                error_type="VALIDATION",
+            )
         scope = KnowledgeBaseVisibilityScopeEnum(body.visibility_scope)
         tenant_id = record_tenant_id(
             KnowledgeBase(
@@ -180,7 +188,7 @@ async def create_knowledge_base(
             tenant_id=tenant_id,
             create_by=int(current_user.id),
             update_by=int(current_user.id),
-            name=body.name.strip(),
+            name=clean_name,
             description=body.description.strip() or None,
             visibility_scope=scope,
             active=True,

@@ -133,6 +133,7 @@ async function saveDraft() {
         revision: draft.value.revision,
         file: pendingFile.value,
       })
+      payload.value = cloneDeep(draft.value.payload)
       pendingFile.value = null
     }
     draft.value = await knowledgeBaseApi.saveDraft(selected.value.id, {
