@@ -44,6 +44,7 @@ import {
   type FormulaToken,
 } from '@/views/dashboard/common/formulaMetricUtils.ts'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
+import KnowledgeCitationList from '@/views/chat/answer/KnowledgeCitationList.vue'
 import type {
   ChartAxis,
   ChartForecastConfig,
@@ -285,6 +286,7 @@ const builderAgentAdvice = reactive({
   suggestions: [] as string[],
   raw: '',
 })
+const builderKnowledgeSnapshot = ref<Record<string, any>>({})
 
 const preview = reactive({
   fields: [] as string[],
@@ -1432,6 +1434,7 @@ function clearBuilderAgentAdvice() {
   builderAgentAdvice.issues = []
   builderAgentAdvice.suggestions = []
   builderAgentAdvice.raw = ''
+  builderKnowledgeSnapshot.value = {}
 }
 
 function builderAgentAdviceForSave() {
@@ -2595,6 +2598,10 @@ function showLocalBuilderAgentAdvice() {
 }
 
 function updateBuilderAgentAdviceFromResult(result: any, fallbackMessage = '') {
+  builderKnowledgeSnapshot.value = result?.context_snapshot || {
+    knowledge_citations: Array.isArray(result?.knowledge_citations) ? result.knowledge_citations : [],
+    retrieval_warnings: Array.isArray(result?.retrieval_warnings) ? result.retrieval_warnings : [],
+  }
   const localAdvice = collectLocalBuilderConfigIssues()
   setBuilderAgentAdvice({
     severity: result?.success === false || localAdvice.issues.length ? 'warning' : 'info',
@@ -5837,6 +5844,7 @@ function closeDrawer() {
           <li v-for="item in builderAgentAdvice.suggestions" :key="item">{{ item }}</li>
         </ul>
       </div>
+      <KnowledgeCitationList :snapshot="builderKnowledgeSnapshot" />
       <div v-if="!builderAgentAdvice.intent && !builderAgentAdvice.message && !builderAgentAdvice.advice && !builderAgentAdvice.issues.length && !builderAgentAdvice.suggestions.length" class="builder-empty">
         暂无建议
       </div>
