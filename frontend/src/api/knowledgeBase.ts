@@ -171,7 +171,14 @@ export const knowledgeBaseApi = {
   rollback: (id: number | string, version_id: number) =>
     request.post<KnowledgeBaseVersion>(`/knowledge-base/${id}/rollback`, { version_id }),
   workspaceEnabled: (id: number | string, enabled: boolean, reason?: string) =>
-    request.put(`/knowledge-base/${id}/workspace-enabled`, { enabled, reason }),
+    request.put<{ knowledge_base_id: number | string; tenant_id: number | string; enabled: boolean; reason?: string | null }>(
+      `/knowledge-base/${id}/workspace-enabled`,
+      { enabled, reason }
+    ),
+  workspaceEnabledState: (id: number | string) =>
+    request.get<{ knowledge_base_id: number | string; tenant_id: number | string; enabled: boolean; reason?: string | null }>(
+      `/knowledge-base/${id}/workspace-enabled`
+    ),
   retrievalPreview: (payload: {
     datasource_id: number
     query: string

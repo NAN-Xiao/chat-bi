@@ -28,6 +28,8 @@ from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
+from apps.knowledge_base.permissions import KnowledgePermissionService
+from apps.knowledge_base.retrieval_models import KnowledgeBaseWorkspaceOverride
 from apps.knowledge_base.schemas import KnowledgePayloadAdapter
 from apps.knowledge_base.version_repository import (
     KnowledgeVersionRepository,
@@ -67,6 +69,37 @@ class RollbackRequest(BaseModel):
 class WorkspaceEnabledRequest(BaseModel):
     enabled: bool
     reason: str | None = None
+
+
+@router.get("/{id}/workspace-enabled")
+async def get_workspace_enabled(
+    id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    capabilities = get_capabilities(session)
+    blocked = v2_write_error(capabilities)
+    if blocked is not None:
+        return serialize_error(blocked)
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        workspace_tenant_id = KnowledgePermissionService().require_workspace_override(current_user, record)
+        override = session.exec(
+            select(KnowledgeBaseWorkspaceOverride).where(
+                KnowledgeBaseWorkspaceOverride.tenant_id == int(workspace_tenant_id),
+                KnowledgeBaseWorkspaceOverride.knowledge_base_id == int(id),
+            )
+        ).first()
+        return {
+            "knowledge_base_id": id,
+            "tenant_id": workspace_tenant_id,
+            "enabled": bool(override.enabled) if override is not None else True,
+            "reason": override.reason if override is not None else None,
+        }
+    except KnowledgeBusinessError as error:
+        return serialize_error(error)
+    except Exception:
+        return unexpected_error()
 
 
 def _payload(value: dict[str, Any]):

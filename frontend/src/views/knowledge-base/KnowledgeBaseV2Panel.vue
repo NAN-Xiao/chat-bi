@@ -32,6 +32,8 @@ const pendingFile = ref<File | null>(null)
 const publishJob = ref<KnowledgePublishJob | null>(null)
 const draftConflict = ref(false)
 const retrievalPreviewVisible = ref(false)
+const workspaceOverride = ref<{ enabled: boolean; reason?: string | null } | null>(null)
+const overrideLoading = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
 const isPlatformAdmin = computed(
@@ -57,6 +59,15 @@ const actionState = computed(() => knowledgeActionState({
 const editorBusy = computed(() => !actionState.value.save && (
   publishing.value || ['QUEUED', 'RUNNING', 'PENDING_CONFIRMATION'].includes(publishJob.value?.status || '')
 ))
+const canToggleWorkspaceKnowledge = computed(
+  () => selected.value?.visibility_scope === 'PLATFORM_PUBLIC' && userStore.isTenantAdminUser
+)
+const workspaceKnowledgeEnabled = computed({
+  get: () => workspaceOverride.value?.enabled !== false,
+  set: (value: boolean) => {
+    if (workspaceOverride.value) workspaceOverride.value.enabled = value
+  },
+})
 
 function knowledgeTypeText(type?: string | null) {
   if (type === 'BUSINESS') return '业务术语与 SQL'
@@ -125,7 +136,16 @@ async function openEditor(item: KnowledgeBaseItem) {
   pendingFile.value = null
   publishJob.value = null
   draftConflict.value = false
+  workspaceOverride.value = null
   await loadVersions()
+  if (canToggleWorkspaceKnowledge.value && selected.value) {
+    try {
+      workspaceOverride.value = await knowledgeBaseApi.workspaceEnabledState(selected.value.id)
+    } catch (error) {
+      console.error(error)
+      workspaceOverride.value = { enabled: true, reason: null }
+    }
+  }
 }
 
 async function loadVersions() {
@@ -239,6 +259,22 @@ function pollPublishJob() {
 async function refreshDraftAfterConflict() {
   await loadVersions()
   ElMessage.success('已刷新最新草稿，请确认内容后继续编辑。')
+}
+
+async function updateWorkspaceKnowledgeEnabled(enabled: boolean) {
+  if (!selected.value || !canToggleWorkspaceKnowledge.value) return
+  const previous = !enabled
+  overrideLoading.value = true
+  try {
+    const result = await knowledgeBaseApi.workspaceEnabled(selected.value.id, enabled)
+    workspaceOverride.value = result
+    ElMessage.success(enabled ? '已启用当前工作空间使用' : '已停用当前工作空间使用')
+  } catch (error) {
+    console.error(error)
+    workspaceKnowledgeEnabled.value = previous
+  } finally {
+    overrideLoading.value = false
+  }
 }
 
 function selectFile(file: any) {
@@ -357,6 +393,15 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <div v-if="selected" class="editor-layout">
         <div class="editor-toolbar">
           <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
+          <span v-if="canToggleWorkspaceKnowledge" class="workspace-override">
+            当前工作空间使用
+            <el-switch
+              v-model="workspaceKnowledgeEnabled"
+              size="small"
+              :loading="overrideLoading"
+              @change="updateWorkspaceKnowledgeEnabled"
+            />
+          </span>
           <span class="version-status">草稿状态：{{ draftStatus }}</span>
           <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
         </div>
@@ -407,6 +452,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .editor-toolbar, .editor-actions, .history-row { display: flex; align-items: center; gap: 8px; }
 .editor-layout { padding: 0 2px 24px; }
 .editor-toolbar { margin-bottom: 16px; flex-wrap: wrap; color: #667085; font-size: 12px; }
+.workspace-override { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
 .version-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pending-file { margin-left: 8px; color: #1570ef; font-size: 12px; }
 .validation-panel { margin-top: 14px; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
