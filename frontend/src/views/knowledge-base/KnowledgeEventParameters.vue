@@ -7,6 +7,7 @@ interface EventParameter {
   data_type: string
   required?: boolean
   description?: string
+  value_mappings?: Record<string, string>
 }
 const props = withDefaults(defineProps<{ modelValue?: EventParameter[] }>(), { modelValue: () => [] })
 const emit = defineEmits<{ 'update:modelValue': [value: EventParameter[]] }>()
@@ -29,6 +30,17 @@ function add() {
 function remove(index: number) {
   emit('update:modelValue', props.modelValue.filter((_, itemIndex) => itemIndex !== index))
 }
+function mappingText(item: EventParameter) {
+  try { return JSON.stringify(item.value_mappings || {}) } catch { return '{}' }
+}
+function updateMappings(index: number, value: string) {
+  try {
+    const parsed = JSON.parse(value)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) update(index, 'value_mappings', parsed)
+  } catch {
+    // Keep the current mapping until the JSON is valid.
+  }
+}
 </script>
 
 <template>
@@ -42,6 +54,7 @@ function remove(index: number) {
       </el-select>
       <el-switch :model-value="!!item.required" inline-prompt active-text="必填" inactive-text="可选" @update:model-value="update(index, 'required', $event)" />
       <el-input :model-value="item.description || ''" placeholder="参数说明" @update:model-value="update(index, 'description', $event)" />
+      <el-input :model-value="mappingText(item)" placeholder="值映射 JSON" @update:model-value="updateMappings(index, $event)" />
       <el-button text :icon="Delete" aria-label="删除" @click="remove(index)" />
     </div>
     <el-button text type="primary" :icon="Plus" @click="add">添加参数</el-button>
@@ -53,7 +66,7 @@ function remove(index: number) {
 .editor-label { margin-bottom: 8px; color: #475467; font-size: 13px; font-weight: 500; }
 .parameter-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 110px 72px 1.4fr 28px;
+  grid-template-columns: 1fr 1fr 110px 72px 1.2fr 1.2fr 28px;
   gap: 6px;
   align-items: center;
   margin-bottom: 8px;

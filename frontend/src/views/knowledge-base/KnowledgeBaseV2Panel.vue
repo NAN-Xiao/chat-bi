@@ -16,6 +16,10 @@ import KnowledgePayloadEditor from './KnowledgePayloadEditor.vue'
 import { knowledgeActionState } from './knowledgeEditorState'
 import KnowledgeRetrievalPreview from './KnowledgeRetrievalPreview.vue'
 import KnowledgeApplicabilityTag from './KnowledgeApplicabilityTag.vue'
+import {
+  defaultKnowledgePayload,
+  type KnowledgePayload,
+} from './knowledgePayloadTypes'
 
 const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
@@ -28,7 +32,7 @@ const createVisible = ref(false)
 const selected = ref<KnowledgeBaseItem | null>(null)
 const versions = ref<KnowledgeBaseVersion[]>([])
 const draft = ref<KnowledgeBaseVersion | null>(null)
-const payload = ref<Record<string, any>>({})
+const payload = ref<KnowledgePayload>(defaultKnowledgePayload('DOCUMENT'))
 const keyword = ref('')
 const scopeFilter = ref<'' | KnowledgeBaseScope>('')
 const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope })
@@ -89,11 +93,11 @@ function processStatusText(status?: string | null) {
   return '待处理'
 }
 
-function defaultPayload(type?: string | null) {
-  if (type === 'BUSINESS') return { knowledge_type: 'BUSINESS', term: '', aliases: [], definition: '', formula: '', constraints: [], related_objects: [], examples: [] }
-  if (type === 'EVENT') return { knowledge_type: 'EVENT', event_name: '', display_name: '', aliases: [], description: '', table_name: '', event_name_field: '', event_time_field: '', parameters: [] }
-  if (type === 'JSON_FIELD') return { knowledge_type: 'JSON_FIELD', schema_name: '', table_name: '', source_field: '', json_path: '$.', field_name: '', display_name: '', data_type: 'string', expression: '', aliases: [], description: '', value_mappings: {} }
-  return { knowledge_type: 'DOCUMENT', markdown: '', tags: [], datasource_neutral: false, object_references: [] }
+function defaultPayload(type?: string | null): KnowledgePayload {
+  const supported = type === 'BUSINESS' || type === 'EVENT' || type === 'JSON_FIELD'
+    ? type
+    : 'DOCUMENT'
+  return defaultKnowledgePayload(supported)
 }
 
 async function loadItems() {
@@ -206,7 +210,7 @@ async function loadVersions() {
     )
     versions.value = await knowledgeBaseApi.versions(selected.value.id)
   }
-  if (draft.value) payload.value = cloneDeep(draft.value.payload)
+  if (draft.value) payload.value = cloneDeep(draft.value.payload) as KnowledgePayload
   else payload.value = defaultPayload(selected.value.knowledge_type)
 }
 
@@ -220,7 +224,7 @@ async function saveDraft() {
         revision: draft.value.revision,
         file: pendingFile.value,
       })
-      payload.value = cloneDeep(draft.value.payload)
+      payload.value = cloneDeep(draft.value.payload) as KnowledgePayload
       pendingFile.value = null
     }
     draft.value = await knowledgeBaseApi.saveDraft(selected.value.id, {
