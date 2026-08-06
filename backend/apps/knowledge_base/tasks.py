@@ -11,6 +11,7 @@ from xml.etree import ElementTree as ET
 
 from sqlmodel import Session
 
+from apps.knowledge_base.backfill import run_backfill_v2
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
 from apps.knowledge_base.publisher import KnowledgePublisher
 from apps.knowledge_base.reconciliation import reconcile_publish_jobs
@@ -185,6 +186,19 @@ def process_knowledge_base_document(payload: dict[str, Any]) -> dict[str, Any]:
             "tenant_id": tenant_id,
             "status": record.status.value if hasattr(record.status, "value") else record.status,
         }
+
+
+@task_handler("knowledge_base.backfill_v2")
+def backfill_knowledge_base_v2(payload: dict[str, Any]) -> dict[str, Any]:
+    """Run one registered, resumable legacy-to-V2 backfill task."""
+    with Session(engine) as session:
+        report = run_backfill_v2(
+            session,
+            page_size=int(payload.get("page_size") or 100),
+            restart_scan=bool(payload.get("restart_scan", False)),
+            max_pages=int(payload["max_pages"]) if payload.get("max_pages") else None,
+        )
+        return report.as_dict()
 
 
 @task_handler("knowledge_base.reconcile_publish_jobs")

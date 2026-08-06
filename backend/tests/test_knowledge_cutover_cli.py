@@ -90,6 +90,18 @@ def test_mutation_requires_expected_phase_confirmation(capsys) -> None:
     assert payload["message"].endswith("--confirm-phase LEGACY_OPEN。")
 
 
+def test_backfill_requires_explicit_legacy_phase_confirmation(capsys) -> None:
+    result = main(
+        ["backfill"],
+        service_factory=_factory(_report(True)),
+        session_factory=_Session,
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 2
+    assert payload["code"] == "KNOWLEDGE_CUTOVER_ARGUMENT_INVALID"
+
+
 def test_enter_barrier_accepts_explicit_worker_and_phase(capsys) -> None:
     captured = {}
 

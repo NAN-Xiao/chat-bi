@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.exc import ProgrammingError
 from sqlmodel import Session
 
+from apps.knowledge_base.backfill import run_backfill_v2
 from apps.knowledge_base.cutover_service import (
     KnowledgeCutoverError,
     KnowledgeCutoverService,
@@ -23,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="知识库 V2 迁移状态检查与切换")
     parser.add_argument(
         "action",
-        choices=("status", "verify", "enter-barrier", "activate-v2", "return-legacy"),
+        choices=("status", "backfill", "verify", "enter-barrier", "activate-v2", "return-legacy"),
     )
     parser.add_argument(
         "--worker",
@@ -42,6 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("LEGACY_OPEN", "CUTOVER_BARRIER"),
         help="变更命令必须显式确认预期数据库阶段",
     )
+    parser.add_argument("--page-size", type=int, default=100, help="回填分页大小")
+    parser.add_argument("--max-pages", type=int, default=None, help="最多处理页数")
+    parser.add_argument("--restart-scan", action="store_true", help="从头重扫旧知识来源")
     return parser
 
 
@@ -61,6 +65,30 @@ def main(
 
     factory = session_factory or (lambda: Session(engine))
     with factory() as session:
+        if args.action == "backfill":
+            try:
+                report = run_backfill_v2(
+                    session,
+                    page_size=max(1, int(args.page_size)),
+                    restart_scan=bool(args.restart_scan),
+                    max_pages=args.max_pages,
+                )
+            except ProgrammingError:
+                session.rollback()
+                _print_error(
+                    "KNOWLEDGE_MIGRATION_SCHEMA_MISSING",
+                    "数据库尚未执行知识库 V2 结构迁移，请先核对 Alembic 版本并完成备份。",
+                )
+                return 2
+            except Exception:
+                session.rollback()
+                _print_error(
+                    "KNOWLEDGE_BACKFILL_FAILED",
+                    "知识库回填失败，请查看服务端日志并确认当前仍处于 LEGACY_OPEN 阶段。",
+                )
+                return 1
+            print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
+            return 0
         service = service_factory(
             session,
             active_consumers=consumers,
@@ -102,6 +130,7 @@ def _parse_worker(value: str) -> tuple[str, str]:
 
 def _require_confirmation(action: str, confirm_phase: str | None) -> None:
     expected = {
+        "backfill": "LEGACY_OPEN",
         "enter-barrier": "LEGACY_OPEN",
         "activate-v2": "CUTOVER_BARRIER",
         "return-legacy": "CUTOVER_BARRIER",

@@ -36,6 +36,7 @@
 
 ```powershell
 backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py status --worker "<worker-id>@<queue-name>"
+backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py backfill --confirm-phase LEGACY_OPEN
 backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py verify --worker "<worker-id>@<queue-name>" --compatible-builds-confirmed
 backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py enter-barrier --worker "<worker-id>@<queue-name>" --compatible-builds-confirmed --confirm-phase LEGACY_OPEN
 backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py activate-v2 --worker "<worker-id>@<queue-name>" --compatible-builds-confirmed --confirm-phase CUTOVER_BARRIER
