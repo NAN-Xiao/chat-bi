@@ -48,6 +48,23 @@ def test_datasource_neutral_document_rejects_sql() -> None:
     assert report.errors[0].code == "KNOWLEDGE_DOCUMENT_NOT_NEUTRAL"
 
 
+def test_datasource_neutral_document_rejects_bare_table_name_from_qualified_catalog() -> None:
+    payload = DocumentPayload(
+        knowledge_type="DOCUMENT",
+        markdown="orders 是订单明细表。",
+        datasource_neutral=True,
+    )
+
+    scoped_report = validate_payload(
+        payload,
+        context=validation_context(tables={"public.orders": {"id"}}),
+    )
+    unscoped_report = validate_payload(payload, context=ValidationContext())
+
+    assert scoped_report.errors[0].code == "KNOWLEDGE_DOCUMENT_NOT_NEUTRAL"
+    assert unscoped_report.valid
+
+
 def test_document_requires_non_empty_markdown() -> None:
     report = validate_payload(DocumentPayload(knowledge_type="DOCUMENT", markdown=" \n\t"), context=validation_context())
     assert report.errors[0].code == "KNOWLEDGE_DOCUMENT_MARKDOWN_REQUIRED"
@@ -63,11 +80,75 @@ def test_business_sql_must_be_one_read_only_statement() -> None:
     assert validate_payload(payload, context=validation_context()).errors[0].code == "KNOWLEDGE_SQL_NOT_READ_ONLY"
 
 
+def test_business_sql_rejects_select_into_and_for_update() -> None:
+    for sql in (
+        "select * into archive from public.orders",
+        "select * from public.orders for update",
+    ):
+        payload = BusinessKnowledgePayload(
+            knowledge_type="BUSINESS",
+            term="收入",
+            definition="订单金额之和",
+            examples=[{"name": "错误", "question": "收入", "sql": sql}],
+        )
+
+        report = validate_payload(payload, context=validation_context())
+
+        assert report.errors[0].code == "KNOWLEDGE_SQL_NOT_READ_ONLY"
+
+
 def test_business_sql_objects_must_be_explicitly_declared() -> None:
     payload = BusinessKnowledgePayload(knowledge_type="BUSINESS", term="收入", definition="订单金额之和", related_objects=[{"object_type": "TABLE", "table": "orders"}], examples=[{"name": "错误", "question": "收入", "sql": "select amount from payments"}])
     assert validate_payload(payload, context=validation_context()).errors[0].code == "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED"
 
 
+def test_business_related_objects_require_complete_catalog_identity() -> None:
+    payload = BusinessKnowledgePayload(
+        knowledge_type="BUSINESS",
+        term="收入",
+        definition="订单金额之和",
+        related_objects=[{"object_type": "TABLE", "table": "orders", "schema": "public"}],
+        examples=[
+            {
+                "name": "收入",
+                "question": "收入是多少",
+                "sql": "select amount from analytics.public.orders",
+            }
+        ],
+    )
+    context = validation_context(tables={"analytics.public.orders": {"amount"}})
+
+    report = validate_payload(payload, context=context)
+
+    assert report.errors[0].code == "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE"
+
+
+def test_business_related_objects_and_sql_do_not_cross_match_same_table_in_other_schema() -> None:
+    payload = BusinessKnowledgePayload(
+        knowledge_type="BUSINESS",
+        term="收入",
+        definition="订单金额之和",
+        related_objects=[
+            {"object_type": "TABLE", "catalog": "analytics", "schema": "archive", "table": "orders"}
+        ],
+        examples=[
+            {
+                "name": "收入",
+                "question": "收入是多少",
+                "sql": "select amount from analytics.public.orders",
+            }
+        ],
+    )
+    context = validation_context(
+        tables={
+            "analytics.public.orders": {"amount"},
+            "analytics.archive.orders": {"amount"},
+        }
+    )
+
+    report = validate_payload(payload, context=context)
+
+    assert report.errors[-1].code == "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED"
 def test_event_name_is_unique_across_workspace_tracking_specification() -> None:
     payload = KnowledgePayloadAdapter.validate_python({"knowledge_type": "EVENT", "event_name": "purchase", "table_name": "orders", "event_name_field": "event_name"})
     assert validate_payload(payload, context=validation_context(event_names={"purchase"})).errors[0].code == "KNOWLEDGE_EVENT_NAME_DUPLICATE"

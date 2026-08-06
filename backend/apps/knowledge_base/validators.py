@@ -26,6 +26,13 @@ _WRITE_EXPRESSIONS = (exp.Alter, exp.Command, exp.Create, exp.Delete, exp.Drop, 
 
 
 @dataclass(frozen=True)
+class _CatalogTable:
+    catalog: str | None
+    schema: str | None
+    table: str
+
+
+@dataclass(frozen=True)
 class ValidationContext:
     """Authoritative catalog and tracking values for one validation request."""
 
@@ -83,9 +90,10 @@ def _validate_business(payload: BusinessKnowledgePayload, context: ValidationCon
     has_example = any(item.question.strip() and item.sql.strip() for item in payload.examples)
     if not has_definition and not has_example:
         _error(errors, "KNOWLEDGE_BUSINESS_CONTENT_REQUIRED", None, "业务知识必须填写术语和定义，或至少提供一条问题与 SQL 示例。", "请补充业务定义或完整 SQL 示例。")
+    valid_declarations = _validate_related_objects(payload.related_objects, context, errors)
     used: set[int] = set()
     for index, item in enumerate(payload.examples):
-        _validate_sql(item, payload.related_objects, context, errors, f"examples[{index}].sql", used)
+        _validate_sql(item, payload.related_objects, context, errors, f"examples[{index}].sql", used, valid_declarations)
     for index, reference in enumerate(payload.related_objects):
         if reference.object_type == "TABLE" and index not in used:
             warnings.append(ValidationIssue(code="KNOWLEDGE_RELATED_OBJECT_UNUSED", message="声明的关联对象未被 SQL 示例使用。", field_path=f"related_objects[{index}]", error_type="WARNING", suggestion="确认该对象确有业务用途，或删除无用声明。"))
@@ -140,12 +148,56 @@ def _validate_table_fields(context: ValidationContext, schema: str | None, table
                 _error(errors, field_code, path, "当前数据源目录中不存在指定字段。", "请重新选择已同步的字段。")
 
 
-def _validate_sql(example: BusinessSqlExample, declarations: list[SemanticObjectReferenceInput], context: ValidationContext, errors: list[ValidationIssue], field_path: str, used: set[int] | None = None) -> None:
+def _validate_related_objects(
+    declarations: list[SemanticObjectReferenceInput],
+    context: ValidationContext,
+    errors: list[ValidationIssue],
+) -> set[int]:
+    valid: set[int] = set()
+    for index, declaration in enumerate(declarations):
+        field_path = f"related_objects[{index}]"
+        if declaration.object_type != "TABLE":
+            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "SQL 关联对象必须声明完整的物理表身份。", "请声明 Catalog、Schema 和表名。")
+            continue
+        if not context.tables:
+            _error(errors, "KNOWLEDGE_RELATED_OBJECT_CONTEXT_REQUIRED", field_path, "当前校验上下文缺少物理对象目录。", "请在已绑定数据源的工作空间中校验该知识。")
+            continue
+        candidates = [item for item in _catalog_tables(context) if _key(item.table) == _key(declaration.table)]
+        if not candidates:
+            _error(errors, "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND", field_path, "关联对象不在当前数据源目录中。", "请重新选择已同步的物理表。")
+            continue
+        if any(
+            (candidate.catalog and not _key(declaration.catalog))
+            or (candidate.schema and not _key(declaration.schema))
+            for candidate in candidates
+        ):
+            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "关联对象必须声明目录中的完整 Catalog、Schema 和表名。", "请补齐 Catalog、Schema 和表名。")
+            continue
+        if not any(_catalog_table_matches(candidate, declaration) for candidate in candidates):
+            _error(errors, "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND", field_path, "关联对象不在当前数据源目录中。", "请重新选择已同步的完整对象。")
+            continue
+        valid.add(index)
+    return valid
+
+
+def _validate_sql(
+    example: BusinessSqlExample,
+    declarations: list[SemanticObjectReferenceInput],
+    context: ValidationContext,
+    errors: list[ValidationIssue],
+    field_path: str,
+    used: set[int] | None = None,
+    valid_declarations: set[int] | None = None,
+) -> None:
     statement = _read_only_statement(example.sql, example.dialect or context.dialect)
     if statement is None:
         _error(errors, "KNOWLEDGE_SQL_NOT_READ_ONLY", field_path, "SQL 示例必须是一条可解析的只读查询。", "请改为单条 SELECT 或 WITH 查询。")
         return
-    declared = [(index, item) for index, item in enumerate(declarations) if item.table]
+    declared = [
+        (index, item)
+        for index, item in enumerate(declarations)
+        if item.table and (valid_declarations is None or index in valid_declarations)
+    ]
     for table in _tables(statement):
         matched = [index for index, item in declared if _table_matches(table, item)]
         if not matched:
@@ -176,6 +228,8 @@ def _read_only_statement(sql: str, dialect: str) -> exp.Expression | None:
         return None
     if len(statements) != 1 or not isinstance(statements[0], (exp.Select, exp.Union, exp.Intersect, exp.Except)):
         return None
+    if statements[0].args.get("into") or statements[0].args.get("locks"):
+        return None
     return None if any(isinstance(node, _WRITE_EXPRESSIONS) for node in statements[0].walk()) else statements[0]
 
 
@@ -193,8 +247,32 @@ def _table_matches(reference: SemanticObjectReferenceInput, declaration: Semanti
     return _key(reference.table) == _key(declaration.table) and _key(reference.catalog) == _key(declaration.catalog) and _key(reference.schema) == _key(declaration.schema)
 
 
+def _catalog_tables(context: ValidationContext) -> list[_CatalogTable]:
+    tables: list[_CatalogTable] = []
+    for raw_table in context.tables:
+        parts = [part.strip() for part in str(raw_table).split(".") if part.strip()]
+        if not parts:
+            continue
+        catalog = parts[-3] if len(parts) >= 3 else None
+        schema = parts[-2] if len(parts) >= 2 else None
+        tables.append(_CatalogTable(catalog=catalog, schema=schema, table=parts[-1]))
+    return tables
+
+
+def _catalog_table_matches(candidate: _CatalogTable, declaration: SemanticObjectReferenceInput) -> bool:
+    return (
+        _key(candidate.catalog) == _key(declaration.catalog)
+        and _key(candidate.schema) == _key(declaration.schema)
+        and _key(candidate.table) == _key(declaration.table)
+    )
+
+
 def _document_tables(markdown: str, context: ValidationContext) -> set[str]:
-    return {str(table).strip() for table in context.tables if str(table).strip() and re.search(rf"(?<![A-Za-z0-9_]){re.escape(str(table).strip())}(?![A-Za-z0-9_])", markdown)}
+    return {
+        table.table
+        for table in _catalog_tables(context)
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(table.table)}(?![A-Za-z0-9_])", markdown)
+    }
 
 
 def _key(value: object) -> str:
