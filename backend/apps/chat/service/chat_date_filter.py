@@ -36,6 +36,18 @@ _EXPLICIT_RELATIVE_PERIOD_PATTERN = re.compile(
     r"(?:(?:最近|近)\s*(?:两|[1-9]\d{0,3})\s*(?:个\s*)?周|"
     r"(?:最近|近)\s*(?:一|1)\s*个?月)"
 )
+_EXPLICIT_REALTIME_SCALAR_TERMS = (
+    "总额",
+    "总的",
+    "合计",
+    "汇总",
+    "总计",
+    "单值",
+    "指标卡",
+    "截至当前",
+    "截至目前",
+    "当前累计",
+)
 _DEFAULT_DATE_EXPRESSION = {"version": 1, "mode": "preset", "preset": "past_7_days"}
 
 QuestionDateScope = Literal["current_day", "explicit_other", "unspecified"]
@@ -115,11 +127,19 @@ def _explicit_question_date_expression(question: str | None) -> dict[str, Any] |
 
 
 def _question_requires_date_filter(question: str | None, chart_type: str) -> bool:
-    if _REALTIME_PATTERN.search(str(question or "")):
-        return True
     if str(chart_type or "").strip().lower() == "metric":
         return False
+    if _REALTIME_PATTERN.search(str(question or "")):
+        return True
     return question_date_scope(question) != "unspecified"
+
+
+def _question_explicitly_requests_realtime_scalar(question: str | None) -> bool:
+    """识别用户明确要求实时汇总值的通用表达，不绑定具体业务指标。"""
+    text = str(question or "")
+    return bool(_REALTIME_PATTERN.search(text)) and any(
+        term in text for term in _EXPLICIT_REALTIME_SCALAR_TERMS
+    )
 
 
 def normalize_chat_date_filter_for_question(
@@ -133,6 +153,7 @@ def normalize_chat_date_filter_for_question(
     if (
         _REALTIME_PATTERN.search(question_text)
         and str(chart_type or "").strip().lower() == "metric"
+        and not _question_explicitly_requests_realtime_scalar(question_text)
     ):
         raise ChatDateFilterConfigurationError("realtime_requires_hourly_time_series")
 

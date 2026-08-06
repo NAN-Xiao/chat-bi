@@ -165,6 +165,9 @@ template:
         <rule priority="high">
           当 SQL 使用时间范围筛选的非 metric 图表时，必须返回 date_filter。即使最终 SELECT 不输出日期列，只要 SQL 使用看板日期 token 进行时间范围筛选（例如按分类维度汇总最近 N 天），都必须返回 date_filter。SQL 日期边界必须使用与 date_parameter_type 一致的看板日期 token；date_filter 必须包含 time_field、date_parameter_type 和 date_expression。用户未指定日期范围时，date_expression 必须为 {{"version":1,"mode":"preset","preset":"past_7_days"}}。用户明确指定“最近/近/过去 N 天”时，N 是正整数，必须保留该范围：N=7/30/90 时分别使用 past_7_days/past_30_days/past_90_days；其他 N 必须使用 {{"version":1,"mode":"range","start":{{"mode":"dynamic","unit":"day","offset":-N}},"end":{{"mode":"dynamic","unit":"day","offset":-1}}}}，表示截至昨天的 N 个完整自然日，例如最近14天的 start.offset 为 -14、end.offset 为 -1。固定 metric 图表不得返回 date_filter，也不得使用看板日期 token。只有 SQL 完全不使用日期范围筛选和看板日期 token 的无时间范围图表，才不得返回 date_filter。date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。
         </rule>
+        <rule priority="high">
+          实时粒度规则：问题包含“实时”且未明确要求总额、总的、合计、汇总、总计、单值、指标卡、截至当前、截至目前或当前累计时，必须生成按时间字段分组的小时级非 metric 时间序列，chart-type 使用 line/area/column 等带维度图表，并返回完整 date_filter；不得把实时问题生成单行 SUM/COUNT 的 metric。只有用户明确要求上述汇总语义时，才允许生成单行 metric，且不得返回 date_filter。
+        </rule>
         <rule>
           如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、分组柱状图(grouped_column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、环形图(donut)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/grouped_column/bar/line/area/pie/donut/funnel/heatmap/scatter/sankey/treemap 中的一个
           图表类型选择原则推荐：核心单值指标用 metric，单条趋势曲线 over time 用 line，多个可比较的率/比例/均值等非可累加趋势指标用 line，多条可累加贡献趋势（有分类 series 或多指标 multi-quota）用 area，分类对比用 column/bar，明确的同组并排系列比较用 grouped_column，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table

@@ -83,6 +83,7 @@ _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
 _PREPARE_DATE_FILTER_CONFIGURATION_PATTERN = re.compile(
     r"日期参数配置无效\s*[：:]\s*(?:"
     r"missing_parameters|database_current_date|metric_chart|"
+    r"realtime_requires_hourly_time_series|"
     r"missing_date_filter|invalid_date_filter|missing_time_field|"
     r"invalid_parameter_type|mixed_parameter_families|parameter_type_mismatch|"
     r"incomplete_parameters|missing_date_expression"
@@ -355,6 +356,11 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
                 "LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。"
             ),
         ]
+        if "realtime_requires_hourly_time_series" in context.error_message:
+            payload["repair_requirements"].append(
+                "用户请求实时数据但上一版返回了 metric；除非问题明确要求总额、合计、单值、指标卡或当前累计，"
+                "必须返回按时间字段分组的非 metric 小时序列，并提供完整 date_filter。"
+            )
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
     return (
         "上一版 SQL 未通过校验或执行，请根据下方修复上下文重写完整 SQL JSON。\n"
