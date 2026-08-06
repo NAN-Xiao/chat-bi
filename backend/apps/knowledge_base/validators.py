@@ -78,11 +78,21 @@ def _validate_document(payload: DocumentPayload, context: ValidationContext, err
         _error(errors, "KNOWLEDGE_DOCUMENT_NOT_NEUTRAL", "datasource_neutral", "数据源无关文档不能包含 SQL 或确定性物理对象引用。", "请取消数据源无关标记，并声明引用对象。")
         return
     if not payload.datasource_neutral:
-        declared = {_key(item.table) for item in payload.object_references if item.table}
+        valid_declarations = _validate_related_objects(
+            payload.object_references,
+            context,
+            errors,
+            field_prefix="object_references",
+        )
+        declared = {
+            _key(item.table)
+            for index, item in enumerate(payload.object_references)
+            if item.table and index in valid_declarations
+        }
         if any(_key(item) not in declared for item in _document_tables(payload.markdown, context)):
             _error(errors, "KNOWLEDGE_DOCUMENT_OBJECT_NOT_DECLARED", "object_references", "文档中的物理对象必须显式声明。", "请声明文档引用的物理对象。")
         for index, sql in enumerate(blocks):
-            _validate_sql(BusinessSqlExample(name=f"document-{index}", question="", sql=sql), payload.object_references, context, errors, f"markdown.sql_blocks[{index}]")
+            _validate_sql(BusinessSqlExample(name=f"document-{index}", question="", sql=sql), payload.object_references, context, errors, f"markdown.sql_blocks[{index}]", valid_declarations=valid_declarations)
 
 
 def _validate_business(payload: BusinessKnowledgePayload, context: ValidationContext, errors: list[ValidationIssue], warnings: list[ValidationIssue]) -> None:
@@ -152,12 +162,14 @@ def _validate_related_objects(
     declarations: list[SemanticObjectReferenceInput],
     context: ValidationContext,
     errors: list[ValidationIssue],
+    *,
+    field_prefix: str = "related_objects",
 ) -> set[int]:
     valid: set[int] = set()
     for index, declaration in enumerate(declarations):
-        field_path = f"related_objects[{index}]"
-        if declaration.object_type != "TABLE":
-            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "SQL 关联对象必须声明完整的物理表身份。", "请声明 Catalog、Schema 和表名。")
+        field_path = f"{field_prefix}[{index}]"
+        if declaration.object_type not in {"TABLE", "FIELD", "JSON_PATH"} or not declaration.table:
+            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "关联对象必须声明完整的物理表身份。", "请声明 Catalog、Schema 和表名。")
             continue
         if not context.tables:
             _error(errors, "KNOWLEDGE_RELATED_OBJECT_CONTEXT_REQUIRED", field_path, "当前校验上下文缺少物理对象目录。", "请在已绑定数据源的工作空间中校验该知识。")
@@ -175,6 +187,17 @@ def _validate_related_objects(
             continue
         if not any(_catalog_table_matches(candidate, declaration) for candidate in candidates):
             _error(errors, "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND", field_path, "关联对象不在当前数据源目录中。", "请重新选择已同步的完整对象。")
+            continue
+        if declaration.object_type in {"FIELD", "JSON_PATH"}:
+            if not declaration.field:
+                _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "字段对象必须声明宿主字段。", "请补齐字段名。")
+                continue
+            fields = _fields_for_declaration(context, declaration)
+            if fields is None or _key(declaration.field) not in fields:
+                _error(errors, "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND", field_path, "关联字段不在当前数据源目录中。", "请重新选择已同步的字段。")
+                continue
+        if declaration.object_type == "JSON_PATH" and not normalize_json_path(declaration.json_path):
+            _error(errors, "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE", field_path, "JSON Path 对象必须声明静态合法路径。", "请补齐 JSON Path。")
             continue
         valid.add(index)
     return valid
@@ -217,7 +240,25 @@ def _validate_json_expression(payload: JsonFieldKnowledgePayload, json_path: str
     extraction = extract_json_accesses(statements[0], dialect=context.dialect)
     expected = [item for item in extraction.accesses if _key(item.source_field) == _key(payload.source_field) and item.json_path == json_path]
     unexpected = [item for item in extraction.accesses if _key(item.source_field) != _key(payload.source_field) or item.json_path != json_path]
-    if extraction.issues or not expected or unexpected:
+    columns = list(statements[0].find_all(exp.Column))
+    has_only_host_column = (
+        len(columns) == 1
+        and _key(columns[0].name) == _key(payload.source_field)
+        and not columns[0].table
+    )
+    has_disallowed_function = any(
+        isinstance(node, exp.Func) and not _is_json_expression_function(node)
+        for node in statements[0].walk()
+    )
+    if (
+        extraction.issues
+        or not expected
+        or unexpected
+        or any(statements[0].find_all(exp.Subquery))
+        or any(statements[0].find_all(exp.Table))
+        or not has_only_host_column
+        or has_disallowed_function
+    ):
         _error(errors, "KNOWLEDGE_JSON_EXPRESSION_INVALID", "expression", "JSON 表达式必须引用声明的宿主字段和静态 JSON Path。", "请使用当前方言的静态 JSON 提取表达式。")
 
 
@@ -228,9 +269,9 @@ def _read_only_statement(sql: str, dialect: str) -> exp.Expression | None:
         return None
     if len(statements) != 1 or not isinstance(statements[0], (exp.Select, exp.Union, exp.Intersect, exp.Except)):
         return None
-    if statements[0].args.get("into") or statements[0].args.get("locks"):
+    if any(isinstance(node, (*_WRITE_EXPRESSIONS, exp.Into, exp.Lock)) for node in statements[0].walk()):
         return None
-    return None if any(isinstance(node, _WRITE_EXPRESSIONS) for node in statements[0].walk()) else statements[0]
+    return statements[0]
 
 
 def _tables(statement: exp.Expression) -> list[SemanticObjectReferenceInput]:
@@ -267,12 +308,38 @@ def _catalog_table_matches(candidate: _CatalogTable, declaration: SemanticObject
     )
 
 
+def _fields_for_declaration(
+    context: ValidationContext,
+    declaration: SemanticObjectReferenceInput,
+) -> frozenset[str] | None:
+    for raw_table, raw_fields in context.tables.items():
+        parts = [part.strip() for part in str(raw_table).split(".") if part.strip()]
+        if not parts:
+            continue
+        candidate = _CatalogTable(
+            catalog=parts[-3] if len(parts) >= 3 else None,
+            schema=parts[-2] if len(parts) >= 2 else None,
+            table=parts[-1],
+        )
+        if _catalog_table_matches(candidate, declaration):
+            return frozenset(_key(field) for field in raw_fields)
+    return None
+
+
 def _document_tables(markdown: str, context: ValidationContext) -> set[str]:
     return {
         table.table
         for table in _catalog_tables(context)
         if re.search(rf"(?<![A-Za-z0-9_]){re.escape(table.table)}(?![A-Za-z0-9_])", markdown)
     }
+
+
+def _is_json_expression_function(node: exp.Func) -> bool:
+    if isinstance(node, exp.Cast):
+        return True
+    if type(node).__name__.upper().startswith("JSON"):
+        return True
+    return isinstance(node, exp.Anonymous) and str(node.name or "").upper().startswith("JSON")
 
 
 def _key(value: object) -> str:

@@ -7,7 +7,11 @@ from apps.knowledge_base.schemas import (
     JsonFieldKnowledgePayload,
     KnowledgePayloadAdapter,
 )
-from apps.knowledge_base.validators import ValidationContext, validate_payload
+from apps.knowledge_base.validators import (
+    ValidationContext,
+    _read_only_statement,
+    validate_payload,
+)
 
 
 def validation_context(**overrides: object) -> ValidationContext:
@@ -75,6 +79,35 @@ def test_datasource_bound_document_requires_declared_physical_object() -> None:
     assert report.errors[0].code == "KNOWLEDGE_DOCUMENT_OBJECT_NOT_DECLARED"
 
 
+def test_datasource_bound_document_validates_declared_object_against_catalog() -> None:
+    context = validation_context(tables={"analytics.public.orders": {"id"}})
+    incomplete = DocumentPayload(
+        knowledge_type="DOCUMENT",
+        markdown="orders 是订单明细表。",
+        datasource_neutral=False,
+        object_references=[{"object_type": "TABLE", "table": "orders"}],
+    )
+    ghost = DocumentPayload(
+        knowledge_type="DOCUMENT",
+        markdown="通用说明。",
+        datasource_neutral=False,
+        object_references=[
+            {
+                "object_type": "TABLE",
+                "catalog": "ghost",
+                "schema": "public",
+                "table": "orders",
+            }
+        ],
+    )
+
+    incomplete_codes = {issue.code for issue in validate_payload(incomplete, context=context).errors}
+    ghost_codes = {issue.code for issue in validate_payload(ghost, context=context).errors}
+
+    assert "KNOWLEDGE_RELATED_OBJECT_INCOMPLETE" in incomplete_codes
+    assert "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND" in ghost_codes
+
+
 def test_business_sql_must_be_one_read_only_statement() -> None:
     payload = BusinessKnowledgePayload(knowledge_type="BUSINESS", term="收入", definition="订单金额之和", examples=[{"name": "错误", "question": "收入", "sql": "select 1; delete from orders"}])
     assert validate_payload(payload, context=validation_context()).errors[0].code == "KNOWLEDGE_SQL_NOT_READ_ONLY"
@@ -95,6 +128,17 @@ def test_business_sql_rejects_select_into_and_for_update() -> None:
         report = validate_payload(payload, context=validation_context())
 
         assert report.errors[0].code == "KNOWLEDGE_SQL_NOT_READ_ONLY"
+
+
+def test_read_only_sql_rejects_into_and_lock_anywhere_in_ast() -> None:
+    assert _read_only_statement(
+        "with staged as (select * into archive from public.orders) select * from staged",
+        "postgres",
+    ) is None
+    assert _read_only_statement(
+        "(select * from public.orders for update) union all select * from public.orders",
+        "postgres",
+    ) is None
 
 
 def test_business_sql_objects_must_be_explicitly_declared() -> None:
@@ -149,6 +193,35 @@ def test_business_related_objects_and_sql_do_not_cross_match_same_table_in_other
     report = validate_payload(payload, context=context)
 
     assert report.errors[-1].code == "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED"
+
+
+def test_related_field_uses_full_catalog_identity() -> None:
+    payload = BusinessKnowledgePayload(
+        knowledge_type="BUSINESS",
+        term="收入",
+        definition="订单金额之和",
+        related_objects=[
+            {
+                "object_type": "FIELD",
+                "catalog": "warehouse",
+                "schema": "public",
+                "table": "orders",
+                "field": "amount",
+            }
+        ],
+    )
+    context = validation_context(
+        tables={
+            "analytics.public.orders": {"amount"},
+            "warehouse.public.orders": {"id"},
+        }
+    )
+
+    report = validate_payload(payload, context=context)
+
+    assert report.errors[0].code == "KNOWLEDGE_RELATED_OBJECT_NOT_FOUND"
+
+
 def test_event_name_is_unique_across_workspace_tracking_specification() -> None:
     payload = KnowledgePayloadAdapter.validate_python({"knowledge_type": "EVENT", "event_name": "purchase", "table_name": "orders", "event_name_field": "event_name"})
     assert validate_payload(payload, context=validation_context(event_names={"purchase"})).errors[0].code == "KNOWLEDGE_EVENT_NAME_DUPLICATE"
@@ -157,6 +230,26 @@ def test_event_name_is_unique_across_workspace_tracking_specification() -> None:
 def test_json_payload_rejects_dynamic_path_and_mismatched_expression() -> None:
     payload = JsonFieldKnowledgePayload(knowledge_type="JSON_FIELD", table_name="orders", source_field="payload", json_path="$.amount", field_name="amount", data_type="number", expression="JSON_VALUE(payload, other_path)")
     assert validate_payload(payload, context=validation_context(dialect="postgres")).errors[0].code == "KNOWLEDGE_JSON_EXPRESSION_INVALID"
+
+
+def test_json_payload_rejects_random_function_subquery_and_foreign_table() -> None:
+    for expression in (
+        "JSON_VALUE(payload, '$.amount') + RANDOM()",
+        "JSON_VALUE((SELECT payload FROM secret), '$.amount')",
+    ):
+        payload = JsonFieldKnowledgePayload(
+            knowledge_type="JSON_FIELD",
+            table_name="orders",
+            source_field="payload",
+            json_path="$.amount",
+            field_name="amount",
+            data_type="number",
+            expression=expression,
+        )
+
+        report = validate_payload(payload, context=validation_context())
+
+        assert report.errors[-1].code == "KNOWLEDGE_JSON_EXPRESSION_INVALID"
 
 
 def test_json_payload_requires_existing_host_field_and_valid_type() -> None:
