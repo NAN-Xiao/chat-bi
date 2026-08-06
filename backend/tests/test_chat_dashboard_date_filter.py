@@ -256,6 +256,18 @@ def test_normalize_rejects_metric_for_realtime_hourly_question():
         )
 
 
+def test_normalize_allows_metric_for_explicit_realtime_scalar_question():
+    assert (
+        normalize_chat_date_filter_for_question(
+            "实时收入总额",
+            None,
+            "SELECT SUM(amount) FROM event_realtime",
+            "metric",
+        )
+        is None
+    )
+
+
 def test_normalize_rejects_missing_date_filter_for_explicit_today_time_series():
     with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
         normalize_chat_date_filter_for_question(
@@ -635,3 +647,5 @@ def test_chat_sql_template_requires_date_filter_contract():
 
     assert '"date_filter"' in source
     assert '"past_7_days"' in source
+    assert "实时粒度规则" in source
+    assert "不得把实时问题生成单行 SUM/COUNT 的 metric" in source

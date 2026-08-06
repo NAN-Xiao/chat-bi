@@ -93,6 +93,10 @@ def test_public_models_preserve_structured_violation() -> None:
             SingleMessageError("日期参数配置无效：metric_chart"),
             SqlRepairReason.DATE_FILTER_CONFIGURATION,
         ),
+        (
+            SingleMessageError("日期参数配置无效：realtime_requires_hourly_time_series"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
         *[
             (
                 SingleMessageError(f"日期参数配置无效：{code}"),
@@ -467,6 +471,22 @@ def test_build_date_filter_repair_message_contains_explicit_contract() -> None:
     assert "metric" in message
     assert "date_filter" in message
     assert "CURDATE" in message
+
+
+def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        dialect="mysql",
+        failed_sql="SELECT SUM(amount) FROM event_realtime",
+        error_message="日期参数配置无效：realtime_requires_hourly_time_series",
+        violation=None,
+        attempt=0,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "按时间字段分组的非 metric 小时序列" in message
+    assert "完整 date_filter" in message
 
 def test_regenerate_sql_after_error_streaming_reasoning_uses_structured_context(
     monkeypatch: pytest.MonkeyPatch,

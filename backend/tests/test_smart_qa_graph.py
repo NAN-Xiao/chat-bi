@@ -659,6 +659,26 @@ def test_prepare_sql_response_format_error_repairs_then_revalidates(
                 "chart_type": "metric",
             },
         ),
+        (
+            "realtime_requires_hourly_time_series",
+            {
+                "sql": "SELECT SUM(amount) FROM event_realtime",
+                "chart_type": "metric",
+            },
+            {
+                "sql": (
+                    "SELECT hour_label, SUM(amount) FROM event_realtime "
+                    "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} "
+                    "GROUP BY hour_label"
+                ),
+                "chart_type": "line",
+                "date_filter": {
+                    "time_field": "dt",
+                    "date_parameter_type": "yyyymmdd_number",
+                    "date_expression": {"version": 1, "mode": "preset", "preset": "today"},
+                },
+            },
+        ),
     ],
 )
 def test_prepare_sql_date_filter_error_repairs_then_revalidates(
