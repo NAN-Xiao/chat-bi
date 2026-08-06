@@ -72,15 +72,15 @@ const errorResponseMessage = (data: any) => {
 const statusErrorMessage = (status?: number) => {
   switch (status) {
     case 400:
-      return 'Invalid request parameters'
+      return '请求参数不正确，请检查后重试'
     case 401:
-      return 'Unauthorized, please login again'
+      return '登录状态已失效，请重新登录'
     case 403:
-      return 'Access denied'
+      return '没有访问权限'
     case 404:
-      return 'Resource not found'
+      return '请求资源不存在'
     case 500:
-      return 'Server error'
+      return '服务异常，请稍后重试'
     case 502:
       return '服务网关异常（502），请稍后重试或联系管理员'
     case 503:
@@ -88,11 +88,11 @@ const statusErrorMessage = (status?: number) => {
     case 504:
       return '服务响应超时（504），请稍后重试'
     default:
-      return status ? `Server responded with error: ${status}` : ''
+      return status ? '服务请求失败，请稍后重试' : ''
   }
 }
 
-export const formatRequestErrorMessage = (error: any, fallback = 'Request error') => {
+export const formatRequestErrorMessage = (error: any, fallback = '请求失败，请稍后重试') => {
   if (!error) return fallback
   if (axios.isAxiosError(error)) {
     const responseMessage = error.response?.data ? errorResponseMessage(error.response.data) : ''
