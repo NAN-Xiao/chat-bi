@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
+import KnowledgeCitationList from '@/views/chat/answer/KnowledgeCitationList.vue'
 import type {
   ChartAxis,
   ChartForecastConfig,
@@ -1415,6 +1416,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 </section>
               </template>
               <MdComponent v-else :message="message.content || (message.loading ? '正在思考...' : '')" />
+              <KnowledgeCitationList :snapshot="message.agentContextSnapshot" />
               <div v-if="canUseMessageActions(message)" class="message-actions">
                 <button
                   class="message-action-btn"

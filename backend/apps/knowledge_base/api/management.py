@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from uuid import uuid4
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from sqlmodel import select
@@ -26,7 +29,11 @@ from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.audit import new_request_id, write_retrieval_audit
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
-from apps.knowledge_base.models import KnowledgeBase
+from apps.knowledge_base.models import (
+    KnowledgeBase,
+    KnowledgeBaseStatusEnum,
+    KnowledgeBaseVisibilityScopeEnum,
+)
 from apps.knowledge_base.permissions import KnowledgePermissionService
 from apps.knowledge_base.retrieval import KnowledgeRetrievalService
 from apps.knowledge_base.version_repository import KnowledgeVersionRepository
@@ -46,6 +53,12 @@ class RetrievalPreviewRequest(BaseModel):
     surface: str = Field(default="RETRIEVAL_PREVIEW", max_length=64)
     top_k: int | None = Field(default=None, ge=1, le=20)
     max_context_chars: int | None = Field(default=None, ge=100, le=50000)
+
+
+class CreateKnowledgeBaseRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=4000)
+    visibility_scope: KnowledgeBaseVisibilityScopeEnum = KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC
 
 
 @router.post("/retrieval-preview")
@@ -140,6 +153,53 @@ async def knowledge_capabilities(session: SessionDep, current_user: CurrentUser)
         "v2_write_enabled": capabilities.v2_write_enabled,
         "runtime_context_enabled": capabilities.runtime_context_enabled,
     }
+
+
+@router.post("/create")
+async def create_knowledge_base(
+    body: CreateKnowledgeBaseRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    capabilities = get_capabilities(session)
+    from apps.knowledge_base.api._helpers import v2_write_error
+
+    blocked = v2_write_error(capabilities)
+    if blocked is not None:
+        return serialize_error(blocked)
+    try:
+        scope = KnowledgeBaseVisibilityScopeEnum(body.visibility_scope)
+        tenant_id = record_tenant_id(
+            KnowledgeBase(
+                tenant_id=int(current_tenant_id(current_user) or 0),
+                visibility_scope=scope,
+            ),
+            current_user,
+        )
+        record = KnowledgeBase(
+            tenant_id=tenant_id,
+            create_by=int(current_user.id),
+            update_by=int(current_user.id),
+            name=body.name.strip(),
+            description=body.description.strip() or None,
+            visibility_scope=scope,
+            active=True,
+            status=KnowledgeBaseStatusEnum.PENDING,
+            stable_key=f"kb-{uuid4().hex}",
+            create_time=datetime.utcnow(),
+            update_time=datetime.utcnow(),
+        )
+        KnowledgePermissionService().require_manage(current_user, record)
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        return serialize_record(record, can_manage=True)
+    except KnowledgeBusinessError as error:
+        session.rollback()
+        return serialize_error(error)
+    except Exception:
+        session.rollback()
+        return unexpected_error()
 
 
 @router.get("/list")

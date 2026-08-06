@@ -2,6 +2,7 @@
 import { type ChatMessage } from '@/api/chat.ts'
 import { computed, onMounted, ref, watch } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
+import KnowledgeCitationList from './KnowledgeCitationList.vue'
 import icon_up_outlined from '@/assets/svg/icon_up_outlined.svg'
 import icon_down_outlined from '@/assets/svg/icon_down_outlined.svg'
 import { useI18n } from 'vue-i18n'
@@ -120,6 +121,7 @@ onMounted(() => {
       <el-button v-if="thinkingActive" style="min-width: unset" type="primary" link loading />
       <slot name="tool"></slot>
       <slot name="footer"></slot>
+      <KnowledgeCitationList :snapshot="message.record?.agent_context_snapshot" />
     </div>
   </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
@@ -7,6 +7,7 @@ import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { knowledgeBaseApi, type KnowledgeBaseItem, type KnowledgeBaseScope } from '@/api/knowledgeBase'
 import { formatTimestamp } from '@/utils/date'
+import KnowledgeBaseV2Panel from './KnowledgeBaseV2Panel.vue'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
@@ -27,6 +28,7 @@ const loading = ref(false)
 const saving = ref(false)
 const uploadFileName = ref('')
 const pendingFile = ref<File | null>(null)
+const v2Enabled = ref(false)
 let refreshTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const isPlatformAdmin = computed(
@@ -244,6 +246,16 @@ function openDetail(row: KnowledgeBaseItem) {
   detailVisible.value = true
 }
 
+async function loadCapabilities() {
+  try {
+    const capabilities = await knowledgeBaseApi.capabilities()
+    v2Enabled.value = capabilities.management_mode === 'V2' && capabilities.v2_write_enabled
+  } catch (error) {
+    console.warn('Failed to load knowledge base capabilities', error)
+    v2Enabled.value = false
+  }
+}
+
 watch(
   defaultScope,
   () => {
@@ -253,13 +265,15 @@ watch(
   { immediate: true }
 )
 
+onMounted(loadCapabilities)
+
 onBeforeUnmount(() => {
   clearRefreshTimer()
 })
 </script>
 
 <template>
-  <div class="knowledge-base-page">
+  <div v-if="!v2Enabled" class="knowledge-base-page">
     <div class="page-header">
       <div class="page-title">{{ pageTitle }}</div>
       <div class="page-actions">
@@ -482,6 +496,7 @@ onBeforeUnmount(() => {
       </el-form>
     </el-drawer>
   </div>
+  <KnowledgeBaseV2Panel v-else />
 </template>
 
 <style lang="less" scoped>

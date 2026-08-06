@@ -43,6 +43,12 @@ def test_capabilities_route_is_registered_before_dynamic_id_route():
     assert paths.index("/knowledge-base/capabilities") < paths.index("/knowledge-base/{id}")
 
 
+def test_v2_create_route_is_registered_before_dynamic_id_route():
+    paths = [route.path for route in management.router.routes]
+    assert "/knowledge-base/create" in paths
+    assert paths.index("/knowledge-base/create") < paths.index("/knowledge-base/{id}")
+
+
 def test_capabilities_response_is_database_phase_authoritative():
     result = asyncio.run(
         management.knowledge_capabilities(
