@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 from sqlmodel import select
 
+from apps.datasource.crud.permission_scope import (
+    PermissionScopeService,
+    PermissionScopeUnavailableError,
+)
 from apps.knowledge_base.api._helpers import (
     record_tenant_id,
     resolve_record,
@@ -22,7 +27,9 @@ from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
 from apps.knowledge_base.models import KnowledgeBase
 from apps.knowledge_base.permissions import KnowledgePermissionService
+from apps.knowledge_base.retrieval import KnowledgeRetrievalService
 from apps.knowledge_base.version_repository import KnowledgeVersionRepository
+from apps.system.schemas.access_context import current_tenant_id
 from common.core.deps import CurrentUser, SessionDep
 
 router = APIRouter(
@@ -30,6 +37,82 @@ router = APIRouter(
     prefix="/knowledge-base",
     include_in_schema=False,
 )
+
+
+class RetrievalPreviewRequest(BaseModel):
+    datasource_id: int
+    query: str = Field(min_length=1, max_length=4000)
+    surface: str = Field(default="RETRIEVAL_PREVIEW", max_length=64)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    max_context_chars: int | None = Field(default=None, ge=100, le=50000)
+
+
+@router.post("/retrieval-preview")
+async def retrieval_preview(
+    body: RetrievalPreviewRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    tenant_id = current_tenant_id(current_user)
+    if tenant_id is None:
+        return serialize_error(
+            KnowledgeBusinessError(
+                code="KNOWLEDGE_PERMISSION_CONTEXT_INVALID",
+                message="当前工作空间上下文无效，请重新进入工作空间。",
+                status_code=400,
+                error_type="VALIDATION",
+            )
+        )
+    try:
+        snapshot = PermissionScopeService.build_snapshot(
+            session=session,
+            current_user=current_user,
+            tenant_id=int(tenant_id),
+            datasource_id=int(body.datasource_id),
+        )
+        result = KnowledgeRetrievalService().search(
+            session=session,
+            tenant_id=int(tenant_id),
+            datasource_id=int(body.datasource_id),
+            surface=body.surface,
+            query=body.query,
+            permission_snapshot=snapshot,
+            top_k=body.top_k,
+            max_context_chars=body.max_context_chars,
+        )
+        return {
+            "query_hash": result.query_hash,
+            "model_signature": result.model_signature,
+            "context": result.context,
+            "citations": [
+                {
+                    "chunk_id": item.chunk_id,
+                    "knowledge_base_id": item.knowledge_base_id,
+                    "version_id": item.version_id,
+                    "section_path": item.section_path,
+                    "score": item.score,
+                    "content": item.content,
+                    "visibility_scope": item.visibility_scope,
+                }
+                for item in result.citations
+            ],
+            "warnings": list(result.warnings),
+            "failure_type": result.failure_type,
+            "latency_ms": result.latency_ms,
+        }
+    except PermissionScopeUnavailableError as exc:
+        return serialize_error(
+            KnowledgeBusinessError(
+                code="KNOWLEDGE_PERMISSION_CONTEXT_INVALID",
+                message=str(exc) or "权限上下文不可用，请刷新后重试。",
+                status_code=409,
+                error_type="CONFLICT",
+            )
+        )
+    except KnowledgeBusinessError as error:
+        return serialize_error(error)
+    except Exception:
+        return unexpected_error()
 
 
 @router.get("/capabilities")
