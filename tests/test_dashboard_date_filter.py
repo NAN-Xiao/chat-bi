@@ -453,6 +453,28 @@ def test_independent_date_filter_renders_yyyymmdd_without_pivot():
     assert "20260531" in result.sql
 
 
+def test_independent_date_filter_accepts_today_custom_range_from_dashboard_refresh():
+    result = prepare_dashboard_date_filter(
+        "select dt from orders where dt = {{dashboard_end_yyyymmdd}}",
+        ds_type="mysql",
+        pivot={"enabled": False},
+        date_filter=DashboardDateFilterRequest(
+            parameter_type="yyyymmdd_number",
+            expression={"version": 1, "mode": "preset", "preset": "today"},
+            custom_start="2026-07-28",
+            custom_end="2026-07-28",
+        ),
+        require_time_field=False,
+        today=date(2026, 7, 28),
+    )
+
+    assert result.capability["status"] == "available"
+    assert result.capability["parameterMode"] == "end_only"
+    assert result.capability["expression"] is None
+    assert result.start == result.end == "2026-07-28"
+    assert "dt = 20260728" in result.sql
+
+
 def test_independent_date_filter_rejects_partial_custom_range():
     result = prepare_dashboard_date_filter(
         "select dt from orders where dt between {{dashboard_start_yyyymmdd}} "

@@ -401,7 +401,8 @@ def prepare_dashboard_date_filter(
         reason = "invalid_date_expression" if expression is not None else "invalid_date_range"
         return _unconfigured(source_sql, physical_tables, reason)
 
-    if expression is None and (start > end or start > default_end or end > default_end):
+    maximum_end = business_today if date_filter is not None else default_end
+    if expression is None and (start > end or start > maximum_end or end > maximum_end):
         return _unconfigured(source_sql, physical_tables, "invalid_date_range")
 
     start_text = start.isoformat()
