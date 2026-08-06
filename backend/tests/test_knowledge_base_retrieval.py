@@ -92,3 +92,36 @@ def test_permission_context_mismatch_fails_without_model_call():
     )
     assert result.failure_type == "PERMISSION_CONTEXT_MISMATCH"
     assert result.citations == ()
+
+
+def test_retrieval_evaluates_missing_datasource_applicability(monkeypatch):
+    service = KnowledgeRetrievalService(embedding_model=_EmbeddingModel())
+    candidate = SimpleNamespace(id=1, version_id=11, applicability_status=None)
+    row = SimpleNamespace(
+        id=1,
+        knowledge_base_id=20,
+        version_id=11,
+        section_path="收入",
+        content="allowed content",
+        visibility_scope="ADMIN_PUBLIC",
+        embedding=[1.0, 0.0],
+        embedding_signature="signature",
+    )
+    monkeypatch.setattr(service, "_load_candidate_metadata", lambda *_args, **_kwargs: [candidate])
+    monkeypatch.setattr(
+        service,
+        "_evaluate_applicability",
+        lambda *_args, **_kwargs: SimpleNamespace(eligible=True),
+    )
+    monkeypatch.setattr(service, "_load_candidate_references", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(service, "_load_allowed_chunks", lambda *_args, **_kwargs: [row])
+    monkeypatch.setattr("apps.knowledge_base.retrieval.embedding_payload_signature", lambda *_args: "signature")
+    result = service.search(
+        session=SimpleNamespace(),
+        tenant_id=2,
+        datasource_id=10,
+        surface="SMART_QA",
+        query="收入",
+        permission_snapshot=_snapshot(),
+    )
+    assert [item.chunk_id for item in result.citations] == [1]

@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseVisibilityScopeEnum
 from apps.knowledge_base.object_projection_models import SemanticObjectReference
+from apps.knowledge_base.object_projection_models import SemanticObjectResolution
 from apps.knowledge_base.object_resolution import (
     ResolvedObjectReference,
     resolve_references_for_context,
@@ -186,6 +187,14 @@ class KnowledgeApplicabilityService:
             },
         )
         self._persist(session, result)
+        self._persist_resolutions(
+            session,
+            references=references,
+            resolved=resolved,
+            tenant_id=int(tenant_id),
+            datasource_id=int(datasource_id),
+            physical_schema_hash=current_hash,
+        )
         return result
 
     @staticmethod
@@ -274,4 +283,52 @@ class KnowledgeApplicabilityService:
         existing.report = result.report or {"warnings": list(result.warnings)}
         existing.checked_at = now
         session.add(existing)
+        session.flush()
+
+    @staticmethod
+    def _persist_resolutions(
+        session: Session,
+        *,
+        references: Iterable[Any],
+        resolved: Iterable[ResolvedObjectReference],
+        tenant_id: int,
+        datasource_id: int,
+        physical_schema_hash: str,
+    ) -> None:
+        """Persist resolution status per consuming datasource and schema epoch."""
+        if not hasattr(session, "add") or not hasattr(session, "exec"):
+            return
+        reference_rows = {
+            (str(row.declared_key), str(getattr(row.source_kind, "value", row.source_kind))): row
+            for row in references
+            if getattr(row, "id", None) is not None
+        }
+        for item in resolved:
+            key = (
+                str(item.declared_key),
+                str(getattr(item.reference.source_kind, "value", item.reference.source_kind)),
+            )
+            reference = reference_rows.get(key)
+            if reference is None:
+                continue
+            row = session.exec(
+                select(SemanticObjectResolution).where(
+                    SemanticObjectResolution.reference_id == int(reference.id),
+                    SemanticObjectResolution.tenant_id == int(tenant_id),
+                    SemanticObjectResolution.datasource_id == int(datasource_id),
+                    SemanticObjectResolution.physical_schema_hash == physical_schema_hash,
+                )
+            ).first()
+            if row is None:
+                row = SemanticObjectResolution(
+                    reference_id=int(reference.id),
+                    tenant_id=int(tenant_id),
+                    datasource_id=int(datasource_id),
+                    physical_schema_hash=physical_schema_hash,
+                )
+            row.status = item.status
+            row.canonical_key = item.canonical_key
+            row.report = dict(item.report or {})
+            row.checked_at = item.checked_at or datetime.utcnow()
+            session.add(row)
         session.flush()

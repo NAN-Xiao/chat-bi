@@ -108,6 +108,16 @@ class KnowledgeRetrievalService:
             )
             eligible_ids: list[int] = []
             for candidate in candidates:
+                if hasattr(candidate, "applicability_status") and candidate.applicability_status is None:
+                    applicability = self._evaluate_applicability(
+                        session,
+                        tenant_id=int(tenant_id),
+                        datasource_id=int(datasource_id),
+                        version_id=int(candidate.version_id),
+                        physical_schema_hash=permission_snapshot.schema_hash,
+                    )
+                    if not applicability.eligible:
+                        continue
                 references = self._load_candidate_references(
                     session,
                     chunk_id=int(candidate.id),
@@ -189,6 +199,7 @@ class KnowledgeRetrievalService:
                 KnowledgeBaseChunk.tenant_id,
                 KnowledgeBaseChunk.visibility_scope,
                 KnowledgeBaseChunk.embedding_signature,
+                KnowledgeBaseApplicability.status.label("applicability_status"),
             )
             .join(
                 KnowledgeBaseVersion,
@@ -221,20 +232,44 @@ class KnowledgeRetrievalService:
                     and_(KnowledgeBase.visibility_scope == scope, KnowledgeBaseChunk.tenant_id == KnowledgeBase.tenant_id),
                     and_(KnowledgeBase.visibility_scope != scope, KnowledgeBaseChunk.tenant_id == int(tenant_id)),
                 ),
-                KnowledgeBaseApplicability.status == KnowledgeApplicabilityStatus.VALID.value,
-                KnowledgeBaseApplicability.tenant_id == int(tenant_id),
-                KnowledgeBaseApplicability.datasource_id == int(datasource_id),
-                KnowledgeBaseApplicability.physical_schema_hash == schema_hash,
             )
-            .join(
+            .outerjoin(
                 KnowledgeBaseApplicability,
                 and_(
                     KnowledgeBaseApplicability.version_id == KnowledgeBaseVersion.id,
                     KnowledgeBaseApplicability.knowledge_base_id == KnowledgeBaseVersion.knowledge_base_id,
+                    KnowledgeBaseApplicability.tenant_id == int(tenant_id),
+                    KnowledgeBaseApplicability.datasource_id == int(datasource_id),
+                    KnowledgeBaseApplicability.physical_schema_hash == schema_hash,
                 ),
+            )
+            .where(
+                or_(
+                    KnowledgeBaseApplicability.id.is_(None),
+                    KnowledgeBaseApplicability.status == KnowledgeApplicabilityStatus.VALID.value,
+                )
             )
         )
         return session.exec(statement).all()
+
+    @staticmethod
+    def _evaluate_applicability(
+        session: Session,
+        *,
+        tenant_id: int,
+        datasource_id: int,
+        version_id: int,
+        physical_schema_hash: str,
+    ):
+        from apps.knowledge_base.applicability import KnowledgeApplicabilityService
+
+        return KnowledgeApplicabilityService().evaluate(
+            session=session,
+            tenant_id=int(tenant_id),
+            datasource_id=int(datasource_id),
+            version_id=int(version_id),
+            physical_schema_hash=str(physical_schema_hash),
+        )
 
     @staticmethod
     def _load_candidate_references(session: Session, *, chunk_id: int, version_id: int) -> list[Any]:
