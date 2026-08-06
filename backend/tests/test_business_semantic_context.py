@@ -1,0 +1,130 @@
+"""Tests for the permission-first semantic context contract."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+from apps.datasource.crud import semantic_context
+from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
+from apps.knowledge_base.retrieval import KnowledgeCitation, KnowledgeRetrievalResult
+
+
+class _Session:
+    def get(self, model, identifier):
+        return SimpleNamespace(id=identifier, type="postgresql", type_name="PostgreSQL")
+
+
+def _snapshot() -> PermissionScopeSnapshot:
+    return PermissionScopeSnapshot(
+        tenant_id=2,
+        user_id=8,
+        datasource_id=10,
+        permission_version="permission-1",
+        schema_hash="schema-1",
+        allowed_object_keys=frozenset(),
+        denied_object_keys=frozenset(),
+        row_constraints_hash="rows-1",
+    )
+
+
+class _Retrieval:
+    def __init__(self, trace):
+        self.trace = trace
+
+    def search(self, **kwargs):
+        self.trace.append("retrieval")
+        return KnowledgeRetrievalResult(
+            query_hash="query-1",
+            model_signature="embedding-1",
+            citations=(
+                KnowledgeCitation(
+                    chunk_id=7,
+                    knowledge_base_id=20,
+                    version_id=21,
+                    section_path="收入",
+                    score=0.9,
+                    content="只读参考内容",
+                    visibility_scope="ADMIN_PUBLIC",
+                ),
+            ),
+            context='<retrieved-knowledge priority="reference-only">只读参考内容</retrieved-knowledge>',
+        )
+
+
+def test_semantic_context_orders_authority_and_retrieval(monkeypatch):
+    trace = []
+    monkeypatch.setattr(semantic_context, "has_datasource_access", lambda *args, **kwargs: True)
+
+    monkeypatch.setattr(
+        semantic_context.PermissionScopeService,
+        "build_snapshot",
+        lambda **kwargs: trace.append("permission") or _snapshot(),
+    )
+    monkeypatch.setattr(
+        semantic_context,
+        "eligible_data_skill_ids",
+        lambda *args, **kwargs: trace.append("eligible_skills") or frozenset({31}),
+    )
+
+    def skills(*args, **kwargs):
+        trace.append("find_data_skills")
+        kwargs["selection_metadata"].update(
+            selected_skill_ids=(31,), selection_mode="AUTOMATIC", source_hashes=("skill-1",)
+        )
+        return "<Data-Skills>口径</Data-Skills>", ["口径"], 3
+
+    monkeypatch.setattr(semantic_context, "find_data_skills", skills)
+    monkeypatch.setattr(
+        semantic_context,
+        "_default_schema_loader",
+        lambda **kwargs: trace.append("schema") or ("schema", ["event"]),
+    )
+    monkeypatch.setattr(
+        semantic_context,
+        "find_tracking_prompt_context",
+        lambda *args, **kwargs: trace.append("structured") or ("tracking", []),
+    )
+    result = semantic_context.BusinessSemanticContextService.build(
+        session=_Session(),
+        current_user=SimpleNamespace(id=8, tenant_id=2),
+        tenant_id=2,
+        datasource_id=10,
+        question="收入",
+        retrieval_service=_Retrieval(trace),
+        audit_writer=lambda **kwargs: trace.append("audit"),
+    )
+
+    assert trace == ["permission", "eligible_skills", "find_data_skills", "schema", "structured", "retrieval", "audit"]
+    assert result.semantic.knowledge_citations[0].chunk_id == 7
+    assert result.semantic.context_hash
+    assert result.semantic.snapshot_metadata()["knowledge_citations"][0]["chunk_id"] == "7"
+
+
+def test_context_hash_changes_with_permission_or_knowledge_snapshot(monkeypatch):
+    monkeypatch.setattr(semantic_context, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(semantic_context.PermissionScopeService, "build_snapshot", lambda **kwargs: _snapshot())
+    monkeypatch.setattr(semantic_context, "eligible_data_skill_ids", lambda *args, **kwargs: frozenset())
+    monkeypatch.setattr(
+        semantic_context,
+        "find_data_skills",
+        lambda *args, **kwargs: ("", [], None),
+    )
+    monkeypatch.setattr(semantic_context, "_default_schema_loader", lambda **kwargs: ("schema", []))
+    monkeypatch.setattr(semantic_context, "find_tracking_prompt_context", lambda *args, **kwargs: ("", []))
+    base = semantic_context.BusinessSemanticContextService.build(
+        session=_Session(),
+        current_user=SimpleNamespace(id=8, tenant_id=2),
+        tenant_id=2,
+        datasource_id=10,
+        question="收入",
+    )
+    changed = PermissionScopeSnapshot(**{**_snapshot().__dict__, "permission_version": "permission-2"})
+    with_snapshot = semantic_context.BusinessSemanticContextService.build(
+        session=_Session(),
+        current_user=SimpleNamespace(id=8, tenant_id=2),
+        tenant_id=2,
+        datasource_id=10,
+        question="收入",
+        permission_snapshot=changed,
+    )
+    assert with_snapshot.semantic.context_hash != base.semantic.context_hash

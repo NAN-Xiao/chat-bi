@@ -4,13 +4,16 @@
 import json
 import re
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import text as sql_text
 from sqlmodel import Session
 
 from apps.ai_model.embedding import EmbeddingModelCache
-from apps.chat.curd.custom_prompt_embedding import embedding_vector_from_json, skill_definition_signature
+from apps.chat.curd.custom_prompt_embedding import (
+    embedding_vector_from_json,
+    skill_definition_signature,
+)
 from apps.datasource.embedding.utils import cosine_similarity
 from apps.external_mcp.crud import get_bound_external_mcp_id_for_tenant
 from apps.system.schemas.access_context import require_tenant_id
@@ -48,7 +51,7 @@ class CustomPromptVisibilityScopeEnum(str, Enum):
     USER_PRIVATE = "USER_PRIVATE"
 
 
-def _normalize_prompt_id(prompt_id: Optional[int | str]) -> Optional[int]:
+def _normalize_prompt_id(prompt_id: int | str | None) -> int | None:
     """
     是什么：_normalize_prompt_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -63,7 +66,7 @@ def _normalize_prompt_id(prompt_id: Optional[int | str]) -> Optional[int]:
 
 
 def _normalize_target_scope(
-        target_scope: Optional[CustomPromptTargetScopeEnum | str],
+        target_scope: CustomPromptTargetScopeEnum | str | None,
 ) -> CustomPromptTargetScopeEnum:
     """
     是什么：_normalize_target_scope 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -78,7 +81,7 @@ def _normalize_target_scope(
         return CustomPromptTargetScopeEnum.SMART_QA
 
 
-def _xml_text(value: Optional[str]) -> str:
+def _xml_text(value: str | None) -> str:
     """
     是什么：_xml_text 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -110,7 +113,7 @@ def _datasource_id_values(value) -> list[str]:
     return [str(value)]
 
 
-def _row_matches_datasource(row, datasource: Optional[int]) -> bool:
+def _row_matches_datasource(row, datasource: int | None) -> bool:
     """
     是什么：_row_matches_datasource 用当前项目判断一条提示词或 Skill 是否可用于本次上下文。
     谁调用：运行时查找自定义 Agent 和 Data Skills 时调用。
@@ -736,16 +739,16 @@ def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | Non
 
 def find_custom_prompts(
         session: Session,
-        custom_prompt_type: Optional[CustomPromptTypeEnum] = None,
-        datasource: Optional[int] = None,
-        target_scope: Optional[CustomPromptTargetScopeEnum | str] = CustomPromptTargetScopeEnum.SMART_QA,
-        prompt_id: Optional[int | str] = None,
-        current_user_id: Optional[int | str] = None,
+        custom_prompt_type: CustomPromptTypeEnum | None = None,
+        datasource: int | None = None,
+        target_scope: CustomPromptTargetScopeEnum | str | None = CustomPromptTargetScopeEnum.SMART_QA,
+        prompt_id: int | str | None = None,
+        current_user_id: int | str | None = None,
         can_manage_all: bool = False,
-        tenant_id: Optional[int | str] = None,
+        tenant_id: int | str | None = None,
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
-) -> tuple[str, list[str], Optional[int]]:
+) -> tuple[str, list[str], int | None]:
     """
     是什么：find_custom_prompts 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -807,7 +810,7 @@ def find_custom_prompts(
     ).mappings().all()
 
     agent_list: list[dict[str, str]] = []
-    ai_model_id: Optional[int] = None
+    ai_model_id: int | None = None
     for row in rows:
         visibility_scope = row.get("visibility_scope") or CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value
         if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
@@ -852,18 +855,20 @@ def find_custom_prompts(
 
 def find_data_skills(
         session: Session,
-        datasource: Optional[int] = None,
-        target_scope: Optional[CustomPromptTargetScopeEnum | str] = CustomPromptTargetScopeEnum.SMART_QA,
-        skill_id: Optional[int | str] = None,
-        current_user_id: Optional[int | str] = None,
+        datasource: int | None = None,
+        target_scope: CustomPromptTargetScopeEnum | str | None = CustomPromptTargetScopeEnum.SMART_QA,
+        skill_id: int | str | None = None,
+        current_user_id: int | str | None = None,
         can_manage_all: bool = False,
-        tenant_id: Optional[int | str] = None,
-        question: Optional[str] = None,
+        tenant_id: int | str | None = None,
+        question: str | None = None,
         include_all_target_scopes: bool = False,
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
         current_user: Any | None = None,
-) -> tuple[str, list[str], Optional[int]]:
+        eligible_skill_ids: set[int] | frozenset[int] | None = None,
+        selection_metadata: dict[str, Any] | None = None,
+) -> tuple[str, list[str], int | None]:
     """
     是什么：find_data_skills 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -935,10 +940,13 @@ def find_data_skills(
     ).mappings().all()
 
     skill_rows: list[dict[str, Any]] = []
-    ai_model_id: Optional[int] = None
+    ai_model_id: int | None = None
     bound_external_mcp_id: int | None | object = object()
     authorized_datasource_tables: set[str] | None = None
     for row in rows:
+        row_id = _normalize_prompt_id(row.get("id"))
+        if eligible_skill_ids is not None and row_id not in eligible_skill_ids:
+            continue
         if _is_split_legacy_data_skill(row):
             continue
 
@@ -1007,8 +1015,32 @@ def find_data_skills(
         )
 
     if not skill_rows:
+        if normalized_skill_id is not None and eligible_skill_ids is not None:
+            from apps.knowledge_base.errors import KnowledgeBusinessError
+
+            raise KnowledgeBusinessError(
+                code="DATA_SKILL_NOT_AVAILABLE",
+                message="当前数据源或权限下无法使用所选 Data Skill。",
+                status_code=403,
+                error_type="PERMISSION",
+                suggestion="请选择当前工作空间可用的 Data Skill，或联系管理员检查对象权限。",
+            )
         return "", [], None
     ai_model_id = next((skill.get("ai_model_id") for skill in skill_rows if skill.get("ai_model_id")), ai_model_id)
+
+    if selection_metadata is not None:
+        selection_metadata.clear()
+        selection_metadata.update(
+            {
+                "selected_skill_ids": tuple(int(skill["id"]) for skill in skill_rows if skill.get("id")),
+                "selection_mode": "EXPLICIT" if normalized_skill_id is not None else "AUTOMATIC",
+                "source_hashes": tuple(
+                    str(skill.get("embedding_signature") or "")
+                    for skill in skill_rows
+                    if skill.get("id")
+                ),
+            }
+        )
 
     content_parts = [
         "<Data-Skills>",

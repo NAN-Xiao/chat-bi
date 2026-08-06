@@ -3,15 +3,19 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import hashlib
 import json
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import HTTPException
 
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_data_skills
 from apps.datasource.crud.permission import has_datasource_access
+from apps.datasource.crud.semantic_context import (
+    BusinessSemanticContext,
+    BusinessSemanticContextService,
+)
 from apps.datasource.crud.sql_engine_executor import (
     QueryExecutionResult,
     SqlEngineResult,
@@ -30,6 +34,7 @@ from apps.datasource.crud.sql_engine_executor import (
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import get_sqlglot_dialect
 from apps.system.crud.tracking_config import find_tracking_prompt_context
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 
 
@@ -44,7 +49,9 @@ def get_ai_table_schema(*args, **kwargs):
     """
     是什么：延迟导入 AI schema 构建函数，避免 SQL Engine 与 datasource CRUD 循环导入。
     """
-    from apps.datasource.crud.datasource import get_ai_table_schema as _get_ai_table_schema
+    from apps.datasource.crud.datasource import (
+        get_ai_table_schema as _get_ai_table_schema,
+    )
 
     return _get_ai_table_schema(*args, **kwargs)
 
@@ -69,9 +76,12 @@ class BusinessSqlContext:
     tracking_summary: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     business_context_hash: str | None = None
+    semantic: BusinessSemanticContext | None = None
 
     @property
     def semantic_context(self) -> str:
+        if self.semantic is not None:
+            return self.semantic.semantic_text
         return "\n\n".join(
             part.strip()
             for part in (self.tracking_config, self.data_skill)
@@ -79,7 +89,7 @@ class BusinessSqlContext:
         )
 
     def snapshot_metadata(self) -> dict[str, Any]:
-        return {
+        metadata = {
             "context_hash": self.business_context_hash,
             "tenant_id": str(self.tenant_id) if self.tenant_id is not None else None,
             "datasource_id": str(self.datasource_id),
@@ -93,6 +103,22 @@ class BusinessSqlContext:
             "data_skill_list_sha256": _stable_digest(self.data_skill_list),
             "data_skill_model_id": str(self.skill_model_id) if self.skill_model_id is not None else None,
         }
+        if self.semantic is not None:
+            metadata["business_semantic_context"] = self.semantic.snapshot_metadata()
+            metadata["permission_version"] = self.semantic.permission_snapshot.permission_version
+            metadata["schema_hash"] = self.semantic.permission_snapshot.schema_hash
+            metadata["knowledge_version_hash"] = self.semantic.knowledge_version_hash
+            metadata["knowledge_citations"] = [
+                {
+                    "chunk_id": str(item.chunk_id),
+                    "knowledge_base_id": str(item.knowledge_base_id),
+                    "version_id": str(item.version_id),
+                    "section_path": item.section_path,
+                }
+                for item in self.semantic.knowledge_citations
+            ]
+            metadata["retrieval_warnings"] = list(self.semantic.warnings)
+        return metadata
 
 
 class BusinessSqlContextService:
@@ -128,6 +154,45 @@ class BusinessSqlContextService:
             raise HTTPException(status_code=403, detail=f"当前用户无权访问项目 {datasource_id}")
         datasource_type = getattr(datasource, "type", None) or getattr(datasource, "type_name", None)
         sql_dialect = get_sqlglot_dialect(datasource_type)
+
+        if settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED:
+            from apps.datasource.crud.semantic_context import SemanticBuildResult
+
+            result: SemanticBuildResult = BusinessSemanticContextService.build(
+                session=session,
+                current_user=current_user,
+                tenant_id=int(tenant_id) if tenant_id is not None else int(getattr(current_user, "tenant_id", 0) or 0),
+                datasource_id=int(datasource_id),
+                question=question,
+                surface=str(target_scope.value if isinstance(target_scope, CustomPromptTargetScopeEnum) else target_scope),
+                target_scope=target_scope,
+                data_skill_id=data_skill_id,
+                include_all_target_scopes=include_all_target_scopes,
+                embedding=embedding,
+                table_list=table_list,
+                can_manage_all=can_manage_all,
+                can_manage_public=can_manage_public,
+                can_manage_platform_public=can_manage_platform_public,
+                datasource=datasource,
+            )
+            return BusinessSqlContext(
+                tenant_id=int(tenant_id) if tenant_id is not None else None,
+                datasource_id=int(datasource_id),
+                target_scope=target_scope.value if isinstance(target_scope, CustomPromptTargetScopeEnum) else str(target_scope),
+                datasource=result.datasource,
+                datasource_type=result.datasource_type,
+                sql_dialect=result.sql_dialect,
+                schema=result.schema,
+                allowed_tables=result.allowed_tables,
+                data_skill=result.data_skill,
+                data_skill_list=result.data_skill_list,
+                skill_model_id=result.skill_model_id,
+                tracking_config=result.semantic.tracking_config,
+                tracking_summary=result.semantic.tracking_summary,
+                warnings=result.semantic.warnings,
+                business_context_hash=result.semantic.context_hash,
+                semantic=result.semantic,
+            )
 
         data_skill, skill_list, skill_model_id = find_data_skills(
             session,
