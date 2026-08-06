@@ -35,6 +35,7 @@ def standardized_content(payload: KnowledgePayload, *, scope: str = "") -> str:
     kind = data.get("knowledge_type")
     if kind == "DOCUMENT":
         lines.extend(["# 文档", data.get("markdown", "")])
+        lines.append(f"数据源无关: {str(bool(data.get('datasource_neutral', True))).lower()}")
         if data.get("tags"):
             lines.append("标签: " + ", ".join(data["tags"]))
         if data.get("object_references"):
@@ -52,6 +53,7 @@ def standardized_content(payload: KnowledgePayload, *, scope: str = "") -> str:
             lines.extend([
                 f"## SQL 示例 {index}: {example.get('name', '')}",
                 f"问题: {example.get('question', '')}",
+                f"方言: {example.get('dialect', '')}",
                 "```sql",
                 example.get("sql", ""),
                 "```",
@@ -81,10 +83,13 @@ def standardized_content(payload: KnowledgePayload, *, scope: str = "") -> str:
             f"JSON Path: {data.get('json_path', '')}",
             f"字段: {data.get('field_name', '')}",
             f"类型: {data.get('data_type', '')}",
+            f"显示名称: {data.get('display_name', '')}",
             f"表达式: {data.get('expression', '')}",
             f"说明: {data.get('description', '')}",
             f"别名: {', '.join(data.get('aliases', []))}",
         ])
+        if data.get("value_mappings"):
+            lines.append("值映射: " + _stable_json(data["value_mappings"]))
     return normalize_markdown("\n".join(line for line in lines if line is not None))
 
 

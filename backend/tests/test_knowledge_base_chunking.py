@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 from apps.knowledge_base.chunking import chunk_knowledge, parse_and_normalize_version
+from apps.knowledge_base.normalizers import standardized_content
 from apps.knowledge_base.schemas import (
     BusinessKnowledgePayload,
     DocumentPayload,
@@ -75,3 +77,47 @@ def test_chunk_overlap_and_validation_are_bounded():
     assert all(len(chunk.content) <= 50 for chunk in chunks)
     assert [chunk.chunk_index for chunk in chunks] == list(range(len(chunks)))
 
+
+def test_fenced_sql_comments_are_not_treated_as_headings():
+    payload = DocumentPayload(
+        knowledge_type="DOCUMENT",
+        markdown="# 收入\n\n```sql\nselect 1\n# keep this SQL comment\n```\n\n正文",
+    )
+    parsed = parse_and_normalize_version(payload=payload)
+    assert sum("# keep this SQL comment" in content for _, content in parsed.sections) == 1
+    assert all(path != "keep this SQL comment" for path, _ in parsed.sections)
+
+
+def test_structured_content_hash_inputs_are_visible_in_standard_text():
+    payload = JsonFieldKnowledgePayload(
+        knowledge_type="JSON_FIELD",
+        table_name="orders",
+        source_field="properties",
+        json_path="$.channel",
+        field_name="channel",
+        display_name="渠道",
+        data_type="string",
+        expression="json_extract(properties, '$.channel')",
+        value_mappings={"1": "广告"},
+    )
+    content = standardized_content(payload)
+    assert "显示名称: 渠道" in content
+    assert "值映射" in content
+
+
+def test_docx_heading_and_hidden_run_are_normalized(tmp_path: Path):
+    source = tmp_path / "knowledge.docx"
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+        '<w:r><w:t>标题</w:t></w:r></w:p>'
+        '<w:p><w:r><w:t>公开</w:t></w:r><w:r><w:rPr><w:vanish/></w:rPr>'
+        '<w:t>隐藏</w:t></w:r></w:p></w:body></w:document>'
+    ).encode()
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("word/document.xml", document)
+    parsed = parse_and_normalize_version(source)
+    assert "# 标题" in parsed.normalized_content
+    assert "公开" in parsed.normalized_content
+    assert "隐藏" not in parsed.normalized_content

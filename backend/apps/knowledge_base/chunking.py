@@ -12,6 +12,7 @@ from xml.etree import ElementTree as ET
 
 from apps.knowledge_base.normalizers import normalize_markdown, standardized_content
 from apps.knowledge_base.schemas import KnowledgePayload
+from common.core.config import settings
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
@@ -71,10 +72,12 @@ def chunk_knowledge(
     source: str | Path | None = None,
     file_ext: str | None = None,
     scope: str = "",
-    chunk_size: int = 1200,
-    overlap: int = 150,
+    chunk_size: int | None = None,
+    overlap: int | None = None,
 ) -> list[KnowledgeChunkDraft]:
     """Produce stable chunks, preserving section paths and bounded overlap."""
+    chunk_size = int(settings.KNOWLEDGE_CHUNK_SIZE if chunk_size is None else chunk_size)
+    overlap = int(settings.KNOWLEDGE_CHUNK_OVERLAP if overlap is None else overlap)
     if chunk_size <= 0:
         raise ValueError("切片长度必须大于 0。")
     if overlap < 0 or overlap >= chunk_size:
@@ -101,7 +104,7 @@ def chunk_knowledge(
 
 
 def _decode_markdown(path: Path) -> str:
-    data = path.read_bytes()
+    data = _read_limited_file(path)
     for encoding in ("utf-8-sig", "utf-8"):
         try:
             return data.decode(encoding)
@@ -111,26 +114,61 @@ def _decode_markdown(path: Path) -> str:
 
 
 def _decode_docx(path: Path) -> str:
+    _ensure_file_size(path)
     with zipfile.ZipFile(path) as archive:
-        xml = archive.read("word/document.xml")
+        info = archive.getinfo("word/document.xml")
+        max_bytes = int(settings.KNOWLEDGE_FILE_MAX_BYTES)
+        if info.file_size > max_bytes:
+            raise ValueError("文档解压后的内容超过允许大小。")
+        if info.compress_size <= 0 or info.file_size / info.compress_size > int(settings.KNOWLEDGE_DOCX_MAX_COMPRESSION_RATIO):
+            raise ValueError("文档压缩比例异常，已拒绝解析。")
+        if sum(item.file_size for item in archive.infolist()) > max_bytes:
+            raise ValueError("文档解压后的内容超过允许大小。")
+        xml = archive.read(info)
     root = ET.fromstring(xml)
     paragraphs: list[str] = []
     for paragraph in root.iter():
         if _local_name(paragraph.tag) != "p":
             continue
+        style = next(
+            (
+                str(node.attrib.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val") or "")
+                for node in paragraph.iter()
+                if _local_name(node.tag) == "pStyle"
+            ),
+            "",
+        )
         parts: list[str] = []
-        for node in paragraph.iter():
-            name = _local_name(node.tag)
-            if name == "t":
-                parts.append(node.text or "")
-            elif name == "tab":
-                parts.append("\t")
-            elif name in {"br", "cr"}:
-                parts.append("\n")
+        for run in paragraph.iter():
+            if _local_name(run.tag) != "r":
+                continue
+            if any(_local_name(node.tag) == "vanish" for node in run.iter()):
+                continue
+            for node in run.iter():
+                name = _local_name(node.tag)
+                if name == "t":
+                    parts.append(node.text or "")
+                elif name == "tab":
+                    parts.append("\t")
+                elif name in {"br", "cr"}:
+                    parts.append("\n")
         value = "".join(parts).strip()
         if value:
+            heading_match = re.search(r"heading([1-6])", style, re.IGNORECASE)
+            if heading_match:
+                value = "#" * int(heading_match.group(1)) + " " + value
             paragraphs.append(value)
     return "\n".join(paragraphs)
+
+
+def _ensure_file_size(path: Path) -> None:
+    if path.stat().st_size > int(settings.KNOWLEDGE_FILE_MAX_BYTES):
+        raise ValueError("知识源文件超过允许大小。")
+
+
+def _read_limited_file(path: Path) -> bytes:
+    _ensure_file_size(path)
+    return path.read_bytes()
 
 
 def _local_name(tag: str) -> str:
@@ -142,15 +180,17 @@ def _split_sections(content: str) -> Iterable[tuple[str, str]]:
     heading_stack: list[str] = []
     section_lines: list[str] = []
     section_path = "正文"
+    fenced = False
 
     def flush() -> tuple[str, str] | None:
         text = normalize_markdown("\n".join(section_lines))
-        if not text:
+        body = normalize_markdown("\n".join(section_lines[1:])) if section_lines and _HEADING.match(section_lines[0]) else text
+        if not text or (section_lines and _HEADING.match(section_lines[0]) and not body):
             return None
         return section_path, text
 
     for line in lines:
-        match = _HEADING.match(line)
+        match = None if fenced else _HEADING.match(line)
         if match:
             previous = flush()
             if previous:
@@ -162,6 +202,8 @@ def _split_sections(content: str) -> Iterable[tuple[str, str]]:
             section_lines = [line]
         else:
             section_lines.append(line)
+        if re.match(r"^\s*(```|~~~)", line):
+            fenced = not fenced
     previous = flush()
     if previous:
         yield previous
@@ -175,6 +217,9 @@ def _bounded_chunks(text: str, *, chunk_size: int, overlap: int) -> Iterable[str
     length = len(text)
     while start < length:
         end = min(length, start + chunk_size)
+        protected = _protected_range_at(text, end)
+        if protected is not None and protected[1] > end:
+            end = protected[1]
         if end < length:
             boundary = max(text.rfind("\n", start, end), text.rfind(" ", start, end))
             if boundary > start + chunk_size // 2:
@@ -185,7 +230,30 @@ def _bounded_chunks(text: str, *, chunk_size: int, overlap: int) -> Iterable[str
         if end >= length:
             return
         next_start = max(start + 1, end - overlap)
+        protected_start = _protected_range_at(text, next_start)
+        if protected_start is not None:
+            next_start = (
+                protected_start[1]
+                if protected_start[0] <= start
+                else protected_start[0]
+            )
+        if next_start <= start:
+            next_start = end
         start = next_start
+
+
+def _protected_range_at(text: str, position: int) -> tuple[int, int] | None:
+    """Return the full fenced-code span containing a character position."""
+    fence = re.compile(r"^\s*(```|~~~)", re.MULTILINE)
+    matches = list(fence.finditer(text))
+    if len(matches) < 2:
+        return None
+    for index in range(0, len(matches) - 1, 2):
+        start = matches[index].start()
+        end = matches[index + 1].end()
+        if start <= position < end:
+            return start, end
+    return None
 
 
 def _estimate_tokens(text: str) -> int:
