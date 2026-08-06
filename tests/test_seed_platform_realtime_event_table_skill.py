@@ -115,6 +115,18 @@ def test_skill_is_platform_public_and_keeps_business_semantics_out() -> None:
         assert business_token not in prompt
 
 
+def test_skill_defines_realtime_as_hourly_with_explicit_date_priority() -> None:
+    prompt = module.SKILL["prompt"]
+    rule = json.loads(module.SQL_VALIDATION_RULE)
+
+    assert "实时收入" in prompt
+    assert "今天按小时收入" in prompt
+    assert "昨天实时收入" in prompt
+    assert "昨天按小时收入" in prompt
+    assert "明确日期或时间范围优先" in prompt
+    assert rule["when_question_date_scopes"] == ["current_day"]
+
+
 def test_skill_forbids_silent_fallback_and_requires_current_schema() -> None:
     prompt = module.SKILL["prompt"]
     assert "<!-- platform-foundation-skill:realtime-event-table-selection:v1 -->" in prompt

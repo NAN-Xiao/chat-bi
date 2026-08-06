@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.chat.service import chat_date_filter as chat_date_filter_service
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
     normalize_chat_date_filter_for_question,
@@ -132,6 +133,127 @@ def test_normalize_uses_today_for_explicit_current_day_question():
         "date_parameter_type": "yyyymmdd_number",
         "date_expression": {"version": 1, "mode": "preset", "preset": "today"},
     }
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("实时收入", "current_day"),
+        ("今天实时收入", "current_day"),
+        ("当前小时收入", "current_day"),
+        ("当前分钟收入", "current_day"),
+        ("当前整点收入", "current_day"),
+        ("昨天实时收入", "explicit_other"),
+        ("最近14天实时收入", "explicit_other"),
+        ("2026-08-01实时收入", "explicit_other"),
+        ("本月实时收入", "explicit_other"),
+        ("近两周实时收入", "explicit_other"),
+        ("最近一个月实时收入", "explicit_other"),
+        ("每日收入趋势", "unspecified"),
+    ],
+)
+def test_question_date_scope_prefers_explicit_date_over_realtime(question, expected):
+    assert chat_date_filter_service.question_date_scope(question) == expected
+
+
+def test_normalize_uses_today_when_realtime_omits_date():
+    pivot = normalize_chat_date_filter_for_question(
+        "实时收入",
+        DATE_FILTER,
+        REALTIME_DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot["date_expression"] == {
+        "version": 1,
+        "mode": "preset",
+        "preset": "today",
+    }
+
+
+def test_normalize_prefers_yesterday_over_realtime_default():
+    pivot = normalize_chat_date_filter_for_question(
+        "昨天实时收入",
+        DATE_FILTER,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot["date_expression"] == {
+        "version": 1,
+        "mode": "preset",
+        "preset": "yesterday",
+    }
+
+
+def test_normalize_prefers_day_before_yesterday_over_realtime_default():
+    pivot = normalize_chat_date_filter_for_question(
+        "前天实时收入",
+        DATE_FILTER,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot["date_expression"] == {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "dynamic", "unit": "day", "offset": -2},
+        "end": {"mode": "dynamic", "unit": "day", "offset": -2},
+    }
+
+
+def test_normalize_preserves_explicit_absolute_date_over_realtime_default():
+    absolute_filter = {
+        **DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-08-01"},
+            "end": {"mode": "static", "date": "2026-08-01"},
+        },
+    }
+
+    pivot = normalize_chat_date_filter_for_question(
+        "2026-08-01实时收入",
+        absolute_filter,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot == {"enabled": False, **absolute_filter}
+
+
+def test_normalize_preserves_explicit_current_month_over_realtime_default():
+    month_filter = {
+        **DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "preset",
+            "preset": "current_month",
+        },
+    }
+
+    pivot = normalize_chat_date_filter_for_question(
+        "本月实时收入",
+        month_filter,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot == {"enabled": False, **month_filter}
+
+
+def test_normalize_rejects_metric_for_realtime_hourly_question():
+    with pytest.raises(
+        ChatDateFilterConfigurationError,
+        match="realtime_requires_hourly_time_series",
+    ):
+        normalize_chat_date_filter_for_question(
+            "实时收入",
+            None,
+            "SELECT SUM(amount) FROM event_realtime",
+            "metric",
+        )
 
 
 def test_normalize_rejects_missing_date_filter_for_explicit_today_time_series():
