@@ -69,7 +69,7 @@ def test_v2_write_block_returns_chinese_upgrade_error():
     assert error.status_code == 409
 
 
-def test_publish_route_returns_safe_unavailable_contract_when_worker_not_ready(monkeypatch):
+def test_publish_route_returns_database_job_snapshot(monkeypatch):
     monkeypatch.setattr(
         publish,
         "get_capabilities",
@@ -88,19 +88,39 @@ def test_publish_route_returns_safe_unavailable_contract_when_worker_not_ready(m
             visibility_scope="PLATFORM_PUBLIC",
         ),
     )
+    monkeypatch.setattr(
+        publish,
+        "prepare_publish_job",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            id=20,
+            knowledge_base_id=10,
+            version_id=12,
+            revision=1,
+            content_hash="a" * 64,
+            status="QUEUING",
+            task_id=None,
+            stage=None,
+            error_code=None,
+            error_message=None,
+            heartbeat_at=None,
+            deadline_at=None,
+        ),
+    )
+    monkeypatch.setattr(publish.KnowledgePermissionService, "require_manage", lambda *_args: None)
+    class _CommitSession:
+        def commit(self):
+            return None
+
     response = asyncio.run(
         publish.publish_knowledge(
             id=10,
             body=publish.PublishRequest(version_id=12, revision=1, content_hash="a" * 64),
-            session=object(),
+            session=_CommitSession(),
             current_user=SimpleNamespace(id=1, system_role="system_admin", tenant_id=None),
         )
     )
-    assert response.status_code == 503
-    assert response.body.decode("utf-8") == (
-        '{"code":"KNOWLEDGE_PUBLISH_NOT_READY","message":"知识发布能力尚未启用，请稍后重试。",'
-        '"field_path":null,"error_type":"UNAVAILABLE","suggestion":"请确认发布任务和索引 Worker 已就绪。"}'
-    )
+    assert response["id"] == 20
+    assert response["status"] == "QUEUING"
 
 
 def test_legacy_save_route_remains_registered():

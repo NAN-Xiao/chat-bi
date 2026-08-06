@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
 from sqlmodel import select
 
@@ -15,13 +19,22 @@ from apps.knowledge_base.api._helpers import (
     unexpected_error,
     v2_write_error,
 )
+from apps.knowledge_base.api.knowledge_base import (
+    ALLOWED_EXTENSIONS,
+    KNOWLEDGE_FILE_MAX_BYTES,
+)
 from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
 from apps.knowledge_base.schemas import KnowledgePayloadAdapter
-from apps.knowledge_base.version_repository import KnowledgeVersionRepository
+from apps.knowledge_base.version_repository import (
+    KnowledgeVersionRepository,
+    SourceFileRef,
+)
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
+from common.utils.file_utils import AppFileUtils
 
 router = APIRouter(
     tags=["KnowledgeBase"],
@@ -92,7 +105,6 @@ def _version_response(version: KnowledgeBaseVersion) -> dict[str, Any]:
         "normalized_content": version.normalized_content,
         "validation_report": version.validation_report,
         "content_hash": version.content_hash,
-        "file_id": version.file_id,
         "file_name": version.file_name,
         "file_ext": version.file_ext,
         "parser_version": version.parser_version,
@@ -163,6 +175,86 @@ async def save_draft(
         return serialize_error(error)
     except Exception:
         session.rollback()
+        return unexpected_error()
+
+
+@router.post("/{id}/draft/file")
+async def replace_draft_source_file(
+    id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+    version_id: int = Form(...),
+    revision: int = Form(...),
+    file: UploadFile = File(...),
+):
+    """Stage a source file before the draft CAS; old version files stay intact."""
+    capabilities = get_capabilities(session)
+    blocked = v2_write_error(capabilities)
+    if blocked is not None:
+        return serialize_error(blocked)
+    staged_file_id: str | None = None
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        tenant_id = record_tenant_id(record, current_user)
+        version = session.exec(
+            select(KnowledgeBaseVersion).where(
+                KnowledgeBaseVersion.id == version_id,
+                KnowledgeBaseVersion.knowledge_base_id == id,
+                KnowledgeBaseVersion.tenant_id == tenant_id,
+            )
+        ).first()
+        if version is None:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_VERSION_NOT_FOUND",
+                message="知识版本不存在。",
+                status_code=404,
+                error_type="NOT_FOUND",
+            )
+        try:
+            extension = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
+        except Exception as exc:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_SOURCE_FILE_INVALID",
+                message="源文件格式不支持。",
+                status_code=422,
+                error_type="VALIDATION",
+                suggestion="请上传 Markdown 或 Word 文档。",
+            ) from exc
+        staged_file_id = f".knowledge-stage-{uuid.uuid4().hex}{extension}"
+        staged_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, staged_file_id)
+        staged_path.parent.mkdir(parents=True, exist_ok=True)
+        staged_path.write_bytes(
+            await AppFileUtils.read_upload_limited(
+                file,
+                limit_file_size=KNOWLEDGE_FILE_MAX_BYTES,
+            )
+        )
+        payload = KnowledgePayloadAdapter.validate_python(version.payload)
+        saved = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).save_draft(
+            tenant_id=tenant_id,
+            knowledge_base_id=id,
+            draft_version_id=version_id,
+            revision=revision,
+            payload=payload,
+            actor_id=int(current_user.id),
+            current_user=current_user,
+            source_file=SourceFileRef(
+                file_id=staged_file_id,
+                file_name=Path(file.filename or staged_file_id).name,
+                file_ext=extension,
+            ),
+        )
+        session.commit()
+        return _version_response(saved)
+    except KnowledgeBusinessError as error:
+        session.rollback()
+        if staged_file_id:
+            AppFileUtils.delete_file(staged_file_id)
+        return serialize_error(error)
+    except Exception:
+        session.rollback()
+        if staged_file_id:
+            AppFileUtils.delete_file(staged_file_id)
         return unexpected_error()
 
 
@@ -249,6 +341,52 @@ async def get_version(
                 error_type="NOT_FOUND",
             )
         return _version_response(version)
+    except KnowledgeBusinessError as error:
+        return serialize_error(error)
+    except Exception:
+        return unexpected_error()
+
+
+@router.get("/{id}/versions/{version_id}/download")
+async def download_version_source(
+    id: int,
+    version_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        tenant_id = record_tenant_id(record, current_user)
+        version = session.exec(
+            select(KnowledgeBaseVersion).where(
+                KnowledgeBaseVersion.id == version_id,
+                KnowledgeBaseVersion.knowledge_base_id == id,
+                KnowledgeBaseVersion.tenant_id == tenant_id,
+            )
+        ).first()
+        if version is None or not version.file_id:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_SOURCE_FILE_NOT_FOUND",
+                message="知识源文件不存在。",
+                status_code=404,
+                error_type="NOT_FOUND",
+            )
+        file_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, version.file_id)
+        if not file_path.is_file():
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_SOURCE_FILE_NOT_FOUND",
+                message="知识源文件不存在。",
+                status_code=404,
+                error_type="NOT_FOUND",
+            )
+        file_name = Path(version.file_name or version.file_id).name
+        return FileResponse(
+            path=file_path,
+            filename=file_name,
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}"
+            },
+        )
     except KnowledgeBusinessError as error:
         return serialize_error(error)
     except Exception:

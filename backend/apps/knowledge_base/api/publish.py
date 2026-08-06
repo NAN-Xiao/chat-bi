@@ -19,6 +19,7 @@ from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgePublishJob
 from apps.knowledge_base.permissions import KnowledgePermissionService
+from apps.knowledge_base.publish_jobs import prepare_publish_job
 from common.core.deps import CurrentUser, SessionDep
 
 router = APIRouter(
@@ -58,27 +59,30 @@ async def publish_knowledge(
     session: SessionDep,
     current_user: CurrentUser,
 ):
-    _ = body
     capabilities = get_capabilities(session)
     blocked = v2_write_error(capabilities)
     if blocked is not None:
         return serialize_error(blocked)
     try:
         record = resolve_record(session, knowledge_base_id=id, user=current_user)
-        record_tenant_id(record, current_user)
+        tenant_id = record_tenant_id(record, current_user)
         KnowledgePermissionService().require_manage(current_user, record)
-        # The database job is the authority; its creation is deliberately kept
-        # in the publish task so this route cannot enqueue a partial snapshot.
-        raise KnowledgeBusinessError(
-            code="KNOWLEDGE_PUBLISH_NOT_READY",
-            message="知识发布能力尚未启用，请稍后重试。",
-            status_code=503,
-            error_type="UNAVAILABLE",
-            suggestion="请确认发布任务和索引 Worker 已就绪。",
+        job = prepare_publish_job(
+            session,
+            tenant_id=tenant_id,
+            knowledge_base_id=id,
+            version_id=body.version_id,
+            revision=body.revision,
+            content_hash=body.content_hash,
+            actor_id=int(current_user.id),
         )
+        session.commit()
+        return _job_response(job)
     except KnowledgeBusinessError as error:
+        session.rollback()
         return serialize_error(error)
     except Exception:
+        session.rollback()
         return unexpected_error()
 
 

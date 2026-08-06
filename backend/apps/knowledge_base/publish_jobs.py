@@ -7,12 +7,14 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, or_, update
 from sqlmodel import Session, select
 
+from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import (
     ACTIVE_PUBLISH_JOB_STATUSES,
     KnowledgeBaseVersion,
     KnowledgePublishJob,
 )
 from apps.knowledge_base.models import KnowledgeBase
+from common.core.config import settings
 
 PUBLISH_CONFIRMATION_FAILED_CODE = "KNOWLEDGE_PUBLISH_CONFIRMATION_TIMEOUT"
 PUBLISH_CONFIRMATION_FAILED_MESSAGE = "发布任务无法确认，已停止本次发布。"
@@ -21,6 +23,110 @@ PUBLISH_TASK_FAILED_MESSAGE = "发布任务执行失败，已停止本次发布�
 PUBLISH_TASK_STATE_MISMATCH_CODE = "KNOWLEDGE_PUBLISH_TASK_STATE_MISMATCH"
 PUBLISH_TASK_STATE_MISMATCH_MESSAGE = "发布任务状态异常，已停止本次发布。"
 PUBLISH_ENQUEUE_REJECTED_MESSAGE = "发布任务提交失败，已停止本次发布。"
+
+
+def prepare_publish_job(
+    session: Session,
+    *,
+    tenant_id: int,
+    knowledge_base_id: int,
+    version_id: int,
+    revision: int,
+    content_hash: str,
+    actor_id: int | None,
+    now: datetime | None = None,
+) -> KnowledgePublishJob:
+    """Claim one immutable draft snapshot and create an idempotent DB job."""
+    current_time = now or datetime.now()
+    record = session.exec(
+        select(KnowledgeBase)
+        .where(
+            KnowledgeBase.id == knowledge_base_id,
+            KnowledgeBase.tenant_id == tenant_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).first()
+    if record is None:
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_NOT_FOUND",
+            message="知识不存在或已被删除。",
+            status_code=404,
+            error_type="NOT_FOUND",
+        )
+    version = session.exec(
+        select(KnowledgeBaseVersion)
+        .where(
+            KnowledgeBaseVersion.id == version_id,
+            KnowledgeBaseVersion.knowledge_base_id == knowledge_base_id,
+            KnowledgeBaseVersion.tenant_id == tenant_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).first()
+    if version is None:
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_VERSION_NOT_FOUND",
+            message="知识版本不存在。",
+            status_code=404,
+            error_type="NOT_FOUND",
+        )
+
+    existing = session.exec(
+        select(KnowledgePublishJob)
+        .where(
+            KnowledgePublishJob.knowledge_base_id == knowledge_base_id,
+            KnowledgePublishJob.tenant_id == tenant_id,
+            KnowledgePublishJob.version_id == version_id,
+            KnowledgePublishJob.revision == revision,
+            KnowledgePublishJob.content_hash == content_hash,
+            KnowledgePublishJob.status.in_(ACTIVE_PUBLISH_JOB_STATUSES),
+        )
+        .with_for_update()
+    ).first()
+    if existing is not None:
+        return existing
+    if record.publishing_version_id is not None:
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_PUBLISHING",
+            message="该知识正在发布中，请稍后再试。",
+            status_code=409,
+            error_type="CONFLICT",
+        )
+    if record.draft_version_id != version_id:
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_DRAFT_CONFLICT",
+            message="该知识已被其他用户更新，请刷新后重新编辑。",
+            status_code=409,
+            error_type="CONFLICT",
+        )
+    status = version.status.value if hasattr(version.status, "value") else str(version.status)
+    if status != "READY_TO_PUBLISH" or int(version.revision) != int(revision) or version.content_hash != content_hash:
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_VERSION_NOT_READY",
+            message="知识尚未通过最新校验，请重新校验后发布。",
+            status_code=409,
+            error_type="CONFLICT",
+        )
+
+    job = KnowledgePublishJob(
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+        version_id=version_id,
+        revision=revision,
+        content_hash=content_hash,
+        status="QUEUING",
+        create_by=actor_id,
+        create_time=current_time,
+        update_time=current_time,
+        heartbeat_at=current_time,
+        deadline_at=current_time + timedelta(seconds=max(1, int(settings.KNOWLEDGE_PUBLISH_TIMEOUT_SECONDS))),
+    )
+    session.add(job)
+    version.status = "PUBLISHING"
+    record.publishing_version_id = version_id
+    session.flush()
+    return job
 
 
 def list_due_publish_job_ids(
