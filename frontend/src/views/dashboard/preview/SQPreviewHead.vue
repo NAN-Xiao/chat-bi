@@ -4,6 +4,7 @@ import { ChatLineSquare, Close, RefreshRight } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import cloneDeep from 'lodash/cloneDeep'
 import { analysisAssistantApi, type AnalysisAssistantMessage } from '@/api/analysisAssistant'
 import { useUserStore } from '@/stores/user'
 import { parseSseChunk } from '@/utils/sse'
@@ -51,10 +52,10 @@ const edit = async () => {
   editLoading.value = true
   primeCanvasRouteHandoff({
     sourceKey,
-    dashboardInfo: props.dashboardInfo,
-    canvasDataResult: props.componentData,
-    canvasStyleResult: props.canvasStyleData,
-    canvasViewInfoPreview: props.canvasViewInfo,
+    dashboardInfo: cloneDeep(props.dashboardInfo),
+    canvasDataResult: cloneDeep(props.componentData),
+    canvasStyleResult: cloneDeep(props.canvasStyleData),
+    canvasViewInfoPreview: cloneDeep(props.canvasViewInfo),
   })
 
   try {

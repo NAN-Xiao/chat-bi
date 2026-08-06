@@ -50,6 +50,11 @@ try {
 
   clearCanvasRouteHandoff()
   primeCanvasRouteHandoff(platformPayload)
+  assert.equal(
+    consumeCanvasRouteHandoff(null),
+    null,
+    '路由参数尚未同步时不能提前清空交接数据'
+  )
   assert.deepEqual(
     consumeCanvasRouteHandoff(platformPayload.sourceKey),
     platformPayload,
@@ -102,8 +107,13 @@ assert.doesNotMatch(
 )
 assert.match(
   previewHeadSource,
-  /canvasStyleResult:\s*props\.canvasStyleData/,
-  '交接必须保留完整画布样式，不能只传图表数据'
+  /canvasStyleResult:\s*cloneDeep\(props\.canvasStyleData\)/,
+  '交接必须复制完整画布样式，不能只传图表数据或保留响应式引用'
+)
+assert.match(
+  previewHeadSource,
+  /canvasDataResult:\s*cloneDeep\(props\.componentData\)[\s\S]*?canvasViewInfoPreview:\s*cloneDeep\(props\.canvasViewInfo\)/,
+  '路由交接必须冻结当前组件和图表结果，避免预览页卸载后清空编辑画布'
 )
 assert.match(
   editorSource,
@@ -117,8 +127,23 @@ assert.match(
 )
 assert.match(
   editorSource,
+  /syncRouteState\(\)[\s\S]*?consumeCanvasRouteHandoff\(sourceKey\)[\s\S]*?applyCanvasRouteHandoff/,
+  '首帧路由参数尚未就绪时，编辑页必须在同步真实来源键后补消费交接数据'
+)
+assert.match(
+  editorSource,
   /prefetchedRouteSourceKey === sourceKey[\s\S]*?dataInitState\.value = true/,
   '权威数据后台加载时必须保持已交接画布可见，不能重新关闭公共就绪门'
+)
+assert.match(
+  editorSource,
+  /if \(keepPrefetchedCanvasVisible\) \{[\s\S]*?shouldRefreshPrefetchedCharts\(\)[\s\S]*?return\n\s*\}/,
+  '已交接看板必须跳过资源重载，仅为没有结果的图表安排刷新'
+)
+assert.match(
+  editorSource,
+  /prefetchedPendingOnly \|\| shouldRefreshPrefetchedChart\(entry\.viewInfo\)/,
+  '交接看板刷新队列不能再次查询已有结果的图表'
 )
 
 console.log('Dashboard canvas route handoff tests passed')

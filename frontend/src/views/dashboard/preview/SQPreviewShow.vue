@@ -45,7 +45,7 @@ import {
   dashboardCacheRefreshDisposition,
   nextDashboardChartRetryDelayMs,
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
-  shouldRetryDashboardChartFailure,
+  shouldKeepDashboardChartPending,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
 import {
   applyDashboardDateFilterCapability,
@@ -746,7 +746,14 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
             permissionDeniedCharts.mark(entry)
             applyChartResult(viewInfo, result)
           } else {
-            if (shouldRetryDashboardChartFailure(result, hasDashboardChartRows(viewInfo))) {
+            if (
+              shouldKeepDashboardChartPending(
+                result,
+                hasDashboardChartRows(viewInfo),
+                chartRefreshRetryCount,
+                CHART_TRANSIENT_MAX_RETRIES
+              )
+            ) {
               keepChartSnapshotOrLoading(viewInfo)
               transientPendingCount += 1
             } else {
@@ -770,7 +777,14 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
           const failureResult = dashboardChartFailureResultFromError(error)
-          if (shouldRetryDashboardChartFailure(failureResult, hasDashboardChartRows(viewInfo))) {
+          if (
+            shouldKeepDashboardChartPending(
+              failureResult,
+              hasDashboardChartRows(viewInfo),
+              chartRefreshRetryCount,
+              CHART_TRANSIENT_MAX_RETRIES
+            )
+          ) {
             keepChartSnapshotOrLoading(viewInfo)
             transientPendingCount += 1
           } else {

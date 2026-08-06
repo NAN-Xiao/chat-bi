@@ -32,9 +32,10 @@ import {
   createPermissionDeniedChartRegistry,
   dashboardChartFailureResultFromError,
   dashboardCacheRefreshDisposition,
+  classifyDashboardChartFailure,
   nextDashboardChartRetryDelayMs,
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
-  shouldRetryDashboardChartFailure,
+  shouldKeepDashboardChartPending,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
 import {
   applyDashboardDateFilterCapability,
@@ -49,7 +50,10 @@ import {
   type OrdinaryDashboardMode,
 } from '@/views/dashboard/utils/dashboardRouteMode'
 import { createRouteLoadLifecycle } from '@/views/dashboard/editor/routeLoadLifecycle'
-import { consumeCanvasRouteHandoff } from '@/views/dashboard/editor/canvasRouteHandoff'
+import {
+  consumeCanvasRouteHandoff,
+  type CanvasRouteHandoffPayload,
+} from '@/views/dashboard/editor/canvasRouteHandoff'
 import {
   hasDashboardChartRows,
   hasDashboardChartSnapshot,
@@ -75,16 +79,23 @@ const initialRouteSourceKey = initialPlatformTemplateId
   ? getPlatformTemplateCanvasSourceKey(initialPlatformTemplateId)
   : getDashboardCanvasSourceKey(initialResourceId)
 const initialCanvasRouteHandoff = consumeCanvasRouteHandoff(initialRouteSourceKey)
-if (initialCanvasRouteHandoff) {
+
+function applyCanvasRouteHandoff(
+  handoff: CanvasRouteHandoffPayload,
+  platformTemplateId?: string | null
+) {
   dashboardStore.setDashboardInfo({
-    ...initialCanvasRouteHandoff.dashboardInfo,
-    ...(initialPlatformTemplateId ? { canEdit: true, canShare: false } : {}),
+    ...handoff.dashboardInfo,
+    ...(platformTemplateId ? { canEdit: true, canShare: false } : {}),
   })
-  dashboardStore.setCanvasStyleData(initialCanvasRouteHandoff.canvasStyleResult || {})
-  dashboardStore.setComponentData(initialCanvasRouteHandoff.canvasDataResult || [])
-  dashboardStore.setCanvasViewInfo(initialCanvasRouteHandoff.canvasViewInfoPreview || {})
-  dashboardStore.setCanvasEditingSourceKey(initialCanvasRouteHandoff.sourceKey)
+  dashboardStore.setCanvasStyleData(handoff.canvasStyleResult || {})
+  dashboardStore.setComponentData(handoff.canvasDataResult || [])
+  dashboardStore.setCanvasViewInfo(handoff.canvasViewInfoPreview || {})
+  dashboardStore.setCanvasEditingSourceKey(handoff.sourceKey)
   dashboardStore.markCanvasSaved()
+}
+if (initialCanvasRouteHandoff) {
+  applyCanvasRouteHandoff(initialCanvasRouteHandoff, initialPlatformTemplateId)
 }
 
 const dataInitState = ref(false)
@@ -105,6 +116,7 @@ const state = reactive({
 const dashboardEditorInnerRef = ref(null)
 let canvasStateReady = Boolean(initialCanvasRouteHandoff)
 let prefetchedRouteSourceKey = initialCanvasRouteHandoff?.sourceKey || null
+let prefetchedCanvasHandoffActive = false
 let applyingCanvasState = false
 let suppressCanvasStateChange = 0
 let draftSaveTimer: number | null = null
@@ -114,7 +126,7 @@ let chartRefreshController: AbortController | null = null
 let chartRefreshRetryCount = 0
 
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
-const CHART_DATABASE_REFRESH_CONCURRENCY = 4
+const CHART_DATABASE_REFRESH_CONCURRENCY = 2
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 160
 const CHART_TRANSIENT_MAX_RETRIES = 3
 const permissionDeniedCharts = createPermissionDeniedChartRegistry()
@@ -341,6 +353,32 @@ function prepareEditorChartState(viewInfo: any) {
   prepareDashboardChartRefreshState(viewInfo, 'waiting')
 }
 
+function shouldRefreshPrefetchedChart(viewInfo: any) {
+  if (!viewInfo || isExternalSnapshotChart(viewInfo)) {
+    return false
+  }
+  if (isMixedChart(viewInfo)) {
+    return !hasDashboardChartSnapshot(viewInfo) && canRefreshMixedChart(viewInfo)
+  }
+  if (!viewInfo.datasource || !viewInfo.sql?.trim()) {
+    return false
+  }
+  if (
+    viewInfo.status === 'failed' &&
+    viewInfo.error_type !== 'dashboard_cache_miss' &&
+    classifyDashboardChartFailure(viewInfo) === 'terminal'
+  ) {
+    return false
+  }
+  return !hasDashboardChartSnapshot(viewInfo)
+}
+
+function shouldRefreshPrefetchedCharts() {
+  return collectDashboardCharts(componentData.value).some((entry) =>
+    shouldRefreshPrefetchedChart(entry.viewInfo)
+  )
+}
+
 function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {
   if (!viewInfo) {
     return
@@ -462,6 +500,8 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
 }
 
 async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
+  const prefetchedPendingOnly = prefetchedCanvasHandoffActive
+  prefetchedCanvasHandoffActive = false
   const chartEntries = collectDashboardCharts(componentData.value)
     .filter(
       (entry) =>
@@ -472,7 +512,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
             : !isExternalSnapshotChart(entry.viewInfo) &&
               entry.viewInfo?.datasource &&
               entry.viewInfo?.sql?.trim()
-        )
+        ) && (!prefetchedPendingOnly || shouldRefreshPrefetchedChart(entry.viewInfo))
     )
     .flatMap((entry) => {
       const requestVersion = beginDashboardChartRequest(entry.viewInfo, 'background')
@@ -614,7 +654,14 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
               permissionDeniedCharts.mark(entry)
               applyChartResult(viewInfo, result)
             } else {
-              if (shouldRetryDashboardChartFailure(result, hasDashboardChartRows(viewInfo))) {
+              if (
+                shouldKeepDashboardChartPending(
+                  result,
+                  hasDashboardChartRows(viewInfo),
+                  chartRefreshRetryCount,
+                  CHART_TRANSIENT_MAX_RETRIES
+                )
+              ) {
                 keepChartSnapshotOrLoading(viewInfo)
                 transientPendingCount += 1
               } else {
@@ -640,7 +687,14 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         ) {
           withAutoChartUpdate(() => {
             const failureResult = dashboardChartFailureResultFromError(error)
-            if (shouldRetryDashboardChartFailure(failureResult, hasDashboardChartRows(viewInfo))) {
+            if (
+              shouldKeepDashboardChartPending(
+                failureResult,
+                hasDashboardChartRows(viewInfo),
+                chartRefreshRetryCount,
+                CHART_TRANSIENT_MAX_RETRIES
+              )
+            ) {
               keepChartSnapshotOrLoading(viewInfo)
               transientPendingCount += 1
             } else {
@@ -734,6 +788,7 @@ const loadCanvasFromRoute = async () => {
   permissionDeniedCharts.reset()
   chartRefreshRetryCount = 0
   canvasStateReady = false
+  prefetchedCanvasHandoffActive = false
   syncRouteState()
 
   const sourceKey =
@@ -742,6 +797,15 @@ const loadCanvasFromRoute = async () => {
       : state.opt === 'create'
       ? getCreateCanvasSourceKey(state.datasource, state.routerPid)
       : getDashboardCanvasSourceKey(state.resourceId)
+  if (sourceKey && prefetchedRouteSourceKey !== sourceKey) {
+    const routeHandoff = consumeCanvasRouteHandoff(sourceKey)
+    if (routeHandoff) {
+      applyCanvasRouteHandoff(routeHandoff, state.platformTemplateId)
+      prefetchedRouteSourceKey = routeHandoff.sourceKey
+      dataInitState.value = true
+      canvasStateReady = true
+    }
+  }
   if (sourceKey && !canUseCanvasDraft(sourceKey)) {
     clearDashboardCanvasDraft(sourceKey)
   }
@@ -764,6 +828,16 @@ const loadCanvasFromRoute = async () => {
     dataInitState.value = false
   }
   try {
+    if (keepPrefetchedCanvasVisible) {
+      dataInitState.value = true
+      canvasStateReady = true
+      routeStateApplied = true
+      if (shouldRefreshPrefetchedCharts()) {
+        prefetchedCanvasHandoffActive = true
+        scheduleEditorChartRefresh(loadVersion)
+      }
+      return
+    }
     if (!state.platformTemplateId) {
       await datasourceContext.loadDatasources()
       if (!routeLoadLifecycle.isCurrent(loadVersion)) return

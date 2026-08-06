@@ -181,13 +181,13 @@ for (const relativePath of ['../preview/SQPreviewShow.vue', '../editor/index.vue
   )
   assert.match(
     consumerSource,
-    /shouldRetryDashboardChartFailure\(result, hasDashboardChartRows\(viewInfo\)\)/,
-    `${relativePath} 瞬时失败重试必须按行数据判定，空快照图表也要保留静默重试`
+    /shouldKeepDashboardChartPending\([\s\S]*?result,[\s\S]*?hasDashboardChartRows\(viewInfo\),[\s\S]*?chartRefreshRetryCount,[\s\S]*?CHART_TRANSIENT_MAX_RETRIES/,
+    `${relativePath} 瞬时失败必须按行数据和重试上限判定，不能无限保留 loading`
   )
   assert.match(
     consumerSource,
-    /shouldRetryDashboardChartFailure\(failureResult, hasDashboardChartRows\(viewInfo\)\)/,
-    `${relativePath} 请求异常重试必须按行数据判定，空快照图表也要保留静默重试`
+    /shouldKeepDashboardChartPending\([\s\S]*?failureResult,[\s\S]*?hasDashboardChartRows\(viewInfo\),[\s\S]*?chartRefreshRetryCount,[\s\S]*?CHART_TRANSIENT_MAX_RETRIES/,
+    `${relativePath} 请求异常必须在重试耗尽后结束 loading 并展示失败`
   )
 }
 

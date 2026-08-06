@@ -13,9 +13,12 @@ export const primeCanvasRouteHandoff = (payload: CanvasRouteHandoffPayload) => {
 }
 
 export const consumeCanvasRouteHandoff = (sourceKey: string | null | undefined) => {
+  if (!sourceKey) {
+    return null
+  }
   const handoff = pendingHandoff
   pendingHandoff = null
-  if (!handoff || !sourceKey || handoff.sourceKey !== sourceKey) {
+  if (!handoff || handoff.sourceKey !== sourceKey) {
     return null
   }
   return handoff

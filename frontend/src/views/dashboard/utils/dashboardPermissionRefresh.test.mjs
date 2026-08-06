@@ -7,6 +7,7 @@ const {
   nextDashboardChartRetryDelayMs,
   resolveDashboardChartRenderState,
   isPermissionDeniedRefreshResult,
+  shouldKeepDashboardChartPending,
   shouldRetryDashboardChartFailure,
 } = await import('./dashboardPermissionRefresh.ts')
 
@@ -44,6 +45,14 @@ assert.equal(
   '缓存未命中仍应查询数据库'
 )
 assert.equal(
+  dashboardCacheRefreshDisposition(
+    { status: 'failed', error_type: 'dashboard_date_filter_unconfigured' },
+    false
+  ),
+  'failed',
+  '日期参数配置错误不能被当成缓存未命中再次执行 SQL'
+)
+assert.equal(
   dashboardCacheRefreshDisposition({ status: 'success', data: [] }, false),
   'refresh_database',
   '缓存没有可用快照时仍应查询数据库'
@@ -73,6 +82,26 @@ assert.equal(
   shouldRetryDashboardChartFailure({ status: 'success' }, false),
   false,
   '成功结果不能进入失败重试'
+)
+assert.equal(
+  shouldKeepDashboardChartPending(
+    { status: 'failed', error_type: 'dashboard_query_busy' },
+    false,
+    2,
+    3
+  ),
+  true,
+  '未达到重试上限时应保持局部 loading 并继续重试'
+)
+assert.equal(
+  shouldKeepDashboardChartPending(
+    { status: 'failed', error_type: 'dashboard_query_busy' },
+    false,
+    3,
+    3
+  ),
+  false,
+  '达到重试上限后必须结束 loading 并展示失败结果'
 )
 
 assert.equal(
