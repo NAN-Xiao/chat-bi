@@ -2052,10 +2052,7 @@ def _dashboard_limit_clause(ds_type: str | None) -> str:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    ds_key = _normalize_datasource_type(ds_type)
-    if ds_key in {"oracle", "dm", "sqlserver", "sql server", "sql_server"}:
-        return ""
-    return "\nLIMIT 1000"
+    return ""
 
 
 def _build_dashboard_pivot_sql(sql: str, datasource: CoreDatasource, pivot: Any | None) -> str:
