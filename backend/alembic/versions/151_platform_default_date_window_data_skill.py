@@ -6,7 +6,6 @@ import sqlalchemy as sa
 
 from alembic import op
 
-
 revision = "151platformdefaultdate"
 down_revision = "150dashboarddatefilteraudit"
 branch_labels = None
@@ -27,7 +26,7 @@ DATE_SECTION = f"""{DATE_SECTION_MARKER}
 
 
 def upgrade() -> None:
-    result = op.get_bind().execute(
+    result = _execute(
         sa.text(
             """
             UPDATE custom_prompt
@@ -46,19 +45,19 @@ def upgrade() -> None:
               AND position(:skill_marker in COALESCE(prompt, '')) > 0
             """
         ),
-        {
+        params={
             "date_marker": DATE_SECTION_MARKER,
             "date_section": DATE_SECTION,
             "name": SKILL_NAME,
             "skill_marker": SKILL_MARKER,
         },
     )
-    if result.rowcount not in (0, 1):
+    if result is not None and result.rowcount not in (0, 1):
         raise RuntimeError(f"平台基础日期 Skill 更新数量异常: {result.rowcount}")
 
 
 def downgrade() -> None:
-    op.get_bind().execute(
+    _execute(
         sa.text(
             """
             UPDATE custom_prompt
@@ -75,5 +74,25 @@ def downgrade() -> None:
               AND position(:date_marker in COALESCE(prompt, '')) > 0
             """
         ),
-        {"date_marker": DATE_SECTION_MARKER, "name": SKILL_NAME},
+        params={"date_marker": DATE_SECTION_MARKER, "name": SKILL_NAME},
     )
+
+
+def _execute(statement: sa.TextClause, *, params: dict[str, str]):
+    if _offline_mode():
+        bound = statement.bindparams(
+            *(
+                sa.bindparam(name, value=value, literal_execute=True)
+                for name, value in params.items()
+            )
+        )
+        op.execute(bound)
+        return None
+    return op.get_bind().execute(statement, params)
+
+
+def _offline_mode() -> bool:
+    try:
+        return bool(op.get_context().as_sql)
+    except (AttributeError, NameError):
+        return False

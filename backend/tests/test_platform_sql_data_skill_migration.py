@@ -52,6 +52,22 @@ def test_default_date_window_followup_migration_keeps_dashboard_template_tokens(
     assert "{{dashboard_end_yyyymmdd}}" in migration.DATE_SECTION
 
 
+def test_default_date_window_followup_supports_offline_sql(monkeypatch) -> None:
+    migration = _load_migration("151_platform_default_date_window_data_skill.py")
+    statements = []
+    monkeypatch.setattr(
+        migration.op,
+        "get_context",
+        lambda: type("Context", (), {"as_sql": True})(),
+    )
+    monkeypatch.setattr(migration.op, "execute", statements.append)
+
+    migration.upgrade()
+
+    assert len(statements) == 1
+    assert "POSTCOMPILE_date_section" in str(statements[0])
+
+
 def test_followup_migration_refreshes_existing_platform_skill() -> None:
     original = _load_migration()
     followup = _load_migration("147_refresh_platform_sql_grouping_data_skill.py")
@@ -134,3 +150,19 @@ def test_alias_quoting_followup_migration_appends_section_idempotently() -> None
     assert params["alias_marker"] == migration.ALIAS_SECTION_MARKER
     assert params["alias_section"] == migration.ALIAS_SECTION
     assert params["skill_marker"] == migration.SKILL_MARKER
+
+
+def test_alias_quoting_followup_supports_offline_sql(monkeypatch) -> None:
+    migration = _load_migration("152_platform_sql_alias_quoting_data_skill.py")
+    statements = []
+    monkeypatch.setattr(
+        migration.op,
+        "get_context",
+        lambda: type("Context", (), {"as_sql": True})(),
+    )
+    monkeypatch.setattr(migration.op, "execute", statements.append)
+
+    migration.upgrade()
+
+    assert len(statements) == 1
+    assert "POSTCOMPILE_alias_section" in str(statements[0])

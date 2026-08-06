@@ -30,10 +30,15 @@
 
 在共享环境执行以下命令前，记录执行人、时间、版本、备份路径和回滚窗口：
 
+先从部署清单取得全部活动发布 Worker 的 `worker-id` 和队列名。以下命令中的
+`<worker-id>@<queue-name>` 必须覆盖全部活动发布 Worker，可重复传入 `--worker`；
+`--compatible-builds-confirmed` 只能在 API 和 Worker 版本清单核对完成后使用：
+
 ```powershell
-backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py verify
-backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py enter-barrier
-backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py activate-v2
+backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py status --worker "<worker-id>@<queue-name>"
+backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py verify --worker "<worker-id>@<queue-name>" --compatible-builds-confirmed
+backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py enter-barrier --worker "<worker-id>@<queue-name>" --compatible-builds-confirmed --confirm-phase LEGACY_OPEN
+backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py activate-v2 --worker "<worker-id>@<queue-name>" --compatible-builds-confirmed --confirm-phase CUTOVER_BARRIER
 ```
 
 验收结果：
@@ -41,6 +46,7 @@ backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py activ
 - `verify` 必须返回 `ready_for_cutover=true`、零不一致、零待处理索引/投影任务，并确认兼容版本完整。
 - `enter-barrier` 后新旧写入均返回中文提示“知识库升级中，请稍后重试。”，不得继续写入。
 - `activate-v2` 后数据库 phase 为 `V2_ACTIVE`，旧 `/knowledge-base/save` 返回 HTTP 410 和中文提示“知识库已升级，请刷新页面后重新操作。”。
+- `enter-barrier` 失败且数据库仍为 `CUTOVER_BARRIER` 时，可在确认未执行 `activate-v2` 后运行 `return-legacy --confirm-phase CUTOVER_BARRIER`；`V2_ACTIVE` 不允许通过该命令恢复旧写。
 
 任一步骤失败都停止切换，不执行强制覆盖或重复激活。
 
