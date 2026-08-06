@@ -89,6 +89,7 @@ from apps.system.crud.user import (
 )
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 from common.core.redis_client import datasource_redis_key, get_redis_client
 from common.core.tenant_rate_limiter import (
@@ -834,6 +835,41 @@ def _report_interpretation_preflight(
     if not target.has_visible_data:
         return _no_data_stream_response()
     return None
+
+
+def _report_retrieval_query(request: AnalysisAssistantRequest) -> str:
+    """Build a retrieval query from report metadata without embedding visible rows."""
+    context = str(request.context or "").strip()
+    selected: dict[str, Any] = {}
+    try:
+        parsed = json.loads(context)
+    except (TypeError, ValueError):
+        parsed = None
+    if isinstance(parsed, dict):
+        allowed_keys = {
+            "title",
+            "purpose",
+            "chart_type",
+            "chartType",
+            "fields",
+            "metrics",
+            "dimensions",
+            "x",
+            "series",
+            "y",
+            "axis",
+        }
+        selected = {key: parsed[key] for key in allowed_keys if key in parsed}
+    return "\n".join(
+        item
+        for item in (
+            request.messages[-1].content.strip() if request.messages else "",
+            "报表元数据：" + json.dumps(selected, ensure_ascii=False, default=str)
+            if selected
+            else "",
+        )
+        if item
+    )[:8000]
 
 
 def _conversation_detail(
@@ -2113,6 +2149,7 @@ def _stream_report_interpretation(
     request: AnalysisAssistantRequest,
     current_user: CurrentUser,
     data_skill: str = "",
+    context_snapshot: dict[str, Any] | None = None,
 ):
     """
     是什么：_stream_report_interpretation 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -2121,6 +2158,8 @@ def _stream_report_interpretation(
     """
     success = False
     try:
+        if context_snapshot is not None:
+            yield _sse({"type": "context_snapshot", "snapshot": context_snapshot})
         if data_skill.strip():
             yield _trace("已应用当前工作空间数据字典/Data Skills，正在生成报表解读。")
         else:
@@ -4569,19 +4608,42 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         )
     except (HTTPException, RuntimeError):
         return _permission_denied_stream_response()
-    data_skill = _collect_data_skill_context(
-        session,
-        datasource.id,
-        request.data_skill_id,
-        current_user,
-        request.messages[-1].content.strip(),
-        CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
-        include_all_target_scopes=True,
-    )
-    tracking_context = _collect_tracking_context(session, current_user, datasource.id)
-    semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
+    context_snapshot = None
+    if settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED:
+        business_context = BusinessSqlContextService.build(
+            session=session,
+            current_user=current_user,
+            tenant_id=_current_tenant_id(current_user),
+            datasource_id=int(datasource.id),
+            question=_report_retrieval_query(request),
+            target_scope=CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
+            data_skill_id=request.data_skill_id,
+            include_all_target_scopes=False,
+            embedding=False,
+        )
+        semantic_context = business_context.semantic_context
+        data_skill = business_context.data_skill
+        context_snapshot = business_context.snapshot_metadata()
+    else:
+        data_skill = _collect_data_skill_context(
+            session,
+            datasource.id,
+            request.data_skill_id,
+            current_user,
+            request.messages[-1].content.strip(),
+            CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
+            include_all_target_scopes=True,
+        )
+        tracking_context = _collect_tracking_context(session, current_user, datasource.id)
+        semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
     llm, _llm_config = await _create_llm(None)
     return StreamingResponse(
-        _stream_report_interpretation(llm, request, current_user, semantic_context),
+        _stream_report_interpretation(
+            llm,
+            request,
+            current_user,
+            semantic_context,
+            context_snapshot=context_snapshot,
+        ),
         media_type="text/event-stream",
     )
