@@ -1,5 +1,10 @@
 import { dashboardApi } from '@/api/dashboard.ts'
 import { externalMcpApi } from '@/api/externalMcp.ts'
+import {
+  buildDashboardDateFilterRequestForView,
+  canShowDashboardDateFilter,
+  getOrCreateDashboardDateFilterState,
+} from '@/views/dashboard/utils/dashboardDateFilter.ts'
 
 type ChartDataSourceType = 'sql' | 'external_mcp'
 
@@ -338,10 +343,17 @@ export function mergeMixedChartResults(
 
 function chartSqlPayload(viewInfo: any) {
   const sourceSql = viewInfo?.sourceConfig?.sql || {}
+  const dateFilterState = canShowDashboardDateFilter(viewInfo?.dateFilterCapability)
+    ? getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
+    : null
   return {
     datasource: sourceSql.datasource || viewInfo.datasource,
     sql: (sourceSql.sql || viewInfo.sql || '').trim(),
     pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+    date_filter: buildDashboardDateFilterRequestForView(
+      viewInfo,
+      dateFilterState?.appliedRange
+    ),
   }
 }
 
