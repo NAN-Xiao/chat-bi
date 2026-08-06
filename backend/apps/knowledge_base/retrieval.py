@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,6 +32,9 @@ from apps.knowledge_base.retrieval_models import (
     KnowledgeBaseWorkspaceOverride,
 )
 from common.core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,8 @@ class KnowledgeRetrievalService:
         permission_snapshot: PermissionScopeSnapshot,
         top_k: int | None = None,
         max_context_chars: int | None = None,
+        request_id: str | None = None,
+        user_id: int | None = None,
     ) -> KnowledgeRetrievalResult:
         started = datetime.utcnow()
         query_text = str(query or "").strip()
@@ -116,7 +122,7 @@ class KnowledgeRetrievalService:
             if not eligible_ids:
                 warnings.append("当前权限和数据源下没有可用的知识内容。")
                 result = self._result(query_hash, None, (), warnings=tuple(warnings), failure_type="NO_ELIGIBLE_KNOWLEDGE")
-                self._audit(surface, permission_snapshot, result, started)
+                self._audit(surface, permission_snapshot, result, started, request_id=request_id, user_id=user_id)
                 return result
             rows = self._load_allowed_chunks(session, eligible_ids)
             model = self.embedding_model or EmbeddingModelCache.get_model()
@@ -158,7 +164,7 @@ class KnowledgeRetrievalService:
                 warnings=tuple(warnings),
                 latency_ms=int((datetime.utcnow() - started).total_seconds() * 1000),
             )
-            self._audit(surface, permission_snapshot, result, started)
+            self._audit(surface, permission_snapshot, result, started, request_id=request_id, user_id=user_id)
             return result
         except Exception as exc:
             result = self._result(
@@ -169,7 +175,7 @@ class KnowledgeRetrievalService:
                 failure_type=type(exc).__name__,
                 latency_ms=int((datetime.utcnow() - started).total_seconds() * 1000),
             )
-            self._audit(surface, permission_snapshot, result, started)
+            self._audit(surface, permission_snapshot, result, started, request_id=request_id, user_id=user_id)
             return result
 
     @staticmethod
@@ -330,14 +336,23 @@ class KnowledgeRetrievalService:
         snapshot: PermissionScopeSnapshot,
         result: KnowledgeRetrievalResult,
         started: datetime,
+        *,
+        request_id: str | None = None,
+        user_id: int | None = None,
     ) -> None:
         if self.audit_writer is not None:
-            self.audit_writer(
-                surface=surface,
-                snapshot=snapshot,
-                result=result,
-                started=started,
-            )
+            try:
+                self.audit_writer(
+                    surface=surface,
+                    snapshot=snapshot,
+                    result=result,
+                    started=started,
+                    request_id=request_id,
+                    user_id=user_id,
+                )
+            except Exception:
+                # Auditing is diagnostic metadata and must not change retrieval behavior.
+                logger.warning("Knowledge retrieval audit write failed", exc_info=True)
 
 
 def _vector(value: Any) -> list[float] | None:

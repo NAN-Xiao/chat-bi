@@ -23,6 +23,7 @@ from apps.knowledge_base.api.knowledge_base import (
     list_legacy_knowledge_base,
 )
 from apps.knowledge_base.cutover import get_capabilities
+from apps.knowledge_base.audit import new_request_id, write_retrieval_audit
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
 from apps.knowledge_base.models import KnowledgeBase
@@ -70,7 +71,18 @@ async def retrieval_preview(
             tenant_id=int(tenant_id),
             datasource_id=int(body.datasource_id),
         )
-        result = KnowledgeRetrievalService().search(
+        request_id = new_request_id()
+        retrieval = KnowledgeRetrievalService(
+            audit_writer=lambda **kwargs: write_retrieval_audit(
+                session=session,
+                request_id=request_id,
+                surface=body.surface,
+                snapshot=snapshot,
+                result=kwargs["result"],
+                user_id=getattr(current_user, "id", None),
+            )
+        )
+        result = retrieval.search(
             session=session,
             tenant_id=int(tenant_id),
             datasource_id=int(body.datasource_id),
@@ -79,6 +91,8 @@ async def retrieval_preview(
             permission_snapshot=snapshot,
             top_k=body.top_k,
             max_context_chars=body.max_context_chars,
+            request_id=request_id,
+            user_id=getattr(current_user, "id", None),
         )
         return {
             "query_hash": result.query_hash,

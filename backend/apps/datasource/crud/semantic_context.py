@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,9 +20,17 @@ from apps.datasource.crud.permission_scope import (
 )
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import get_sqlglot_dialect
+from apps.knowledge_base.audit import (
+    new_request_id,
+    write_retrieval_audit,
+    write_semantic_context_audit,
+)
 from apps.knowledge_base.retrieval import KnowledgeCitation, KnowledgeRetrievalService
 from apps.system.crud.tracking_config import find_tracking_prompt_context
 from common.core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -104,6 +113,7 @@ class BusinessSemanticContextService:
         tracking_loader: Callable[..., tuple[str, list[str]]] | None = None,
         retrieval_service: KnowledgeRetrievalService | None = None,
         audit_writer: Callable[..., Any] | None = None,
+        request_id: str | None = None,
     ) -> SemanticBuildResult:
         datasource = datasource or session.get(CoreDatasource, int(datasource_id))
         if datasource is None:
@@ -177,8 +187,18 @@ class BusinessSemanticContextService:
         knowledge_context = ""
         citations: list[KnowledgeCitation] = []
         knowledge_version_hash: str | None = None
+        request_id = request_id or new_request_id()
         if retrieval_service is None and settings.KNOWLEDGE_RETRIEVAL_ENABLED:
-            retrieval_service = KnowledgeRetrievalService()
+            retrieval_service = KnowledgeRetrievalService(
+                audit_writer=lambda **kwargs: write_retrieval_audit(
+                    session=session,
+                    request_id=request_id,
+                    surface=str(surface),
+                    snapshot=snapshot,
+                    result=kwargs["result"],
+                    user_id=getattr(current_user, "id", None),
+                )
+            )
         if retrieval_service is not None:
             retrieval = retrieval_service.search(
                 session=session,
@@ -187,6 +207,8 @@ class BusinessSemanticContextService:
                 surface=str(surface),
                 query=_retrieval_query(question, surface, schema, allowed_tables, skill_list),
                 permission_snapshot=snapshot,
+                request_id=request_id,
+                user_id=getattr(current_user, "id", None),
             )
             knowledge_context = retrieval.context
             citations = list(retrieval.citations)
@@ -234,12 +256,27 @@ class BusinessSemanticContextService:
                 "surface": str(surface),
             }
         )
-        if audit_writer is not None:
-            audit_writer(
-                surface=str(surface),
-                snapshot=snapshot,
-                semantic=semantic,
-            )
+        context_audit = audit_writer
+        if context_audit is None and settings.KNOWLEDGE_RETRIEVAL_ENABLED:
+            def context_audit_writer(**kwargs):
+                write_semantic_context_audit(
+                    session=session,
+                    request_id=request_id,
+                    surface=str(surface),
+                    semantic=kwargs["semantic"],
+                )
+
+            context_audit = context_audit_writer
+        if context_audit is not None:
+            try:
+                context_audit(
+                    surface=str(surface),
+                    snapshot=snapshot,
+                    semantic=semantic,
+                )
+            except Exception:
+                # Audit persistence is best effort; it cannot invalidate a usable context.
+                logger.warning("Semantic context audit write failed", exc_info=True)
         return SemanticBuildResult(
             semantic=semantic,
             datasource=datasource,
