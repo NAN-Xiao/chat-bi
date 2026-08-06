@@ -29,6 +29,8 @@ from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.audit import new_request_id, write_retrieval_audit
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
+from apps.knowledge_base.lifecycle_models import KnowledgeVersionStatus
+from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.models import (
     KnowledgeBase,
     KnowledgeBaseStatusEnum,
@@ -36,6 +38,7 @@ from apps.knowledge_base.models import (
 )
 from apps.knowledge_base.permissions import KnowledgePermissionService
 from apps.knowledge_base.retrieval import KnowledgeRetrievalService
+from apps.knowledge_base.retrieval_models import KnowledgeApplicabilityStatus, KnowledgeBaseApplicability
 from apps.knowledge_base.version_repository import KnowledgeVersionRepository
 from apps.system.schemas.access_context import current_tenant_id
 from common.core.deps import CurrentUser, SessionDep
@@ -59,6 +62,43 @@ class CreateKnowledgeBaseRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str = Field(default="", max_length=4000)
     visibility_scope: KnowledgeBaseVisibilityScopeEnum = KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC
+
+
+def _applicability_response(*, knowledge_base_id: int, datasource_id: int, schema_hash: str, row=None, version_id: int | None = None):
+    status = getattr(row, "status", None) if row is not None else KnowledgeApplicabilityStatus.STALE.value
+    status = getattr(status, "value", status) or KnowledgeApplicabilityStatus.STALE.value
+    report = getattr(row, "report", None) if row is not None else None
+    report = report if isinstance(report, dict) else {}
+    reference_statuses = report.get("reference_statuses")
+    if not isinstance(reference_statuses, list):
+        reference_statuses = []
+    resolved_count = sum(1 for item in reference_statuses if isinstance(item, dict) and item.get("status") == "RESOLVED")
+    warnings = report.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+    if not warnings:
+        warnings = {
+            KnowledgeApplicabilityStatus.INVALID.value: ["存在未解析、歧义或被当前工作空间停用的对象引用。"],
+            KnowledgeApplicabilityStatus.STALE.value: ["当前数据源尚未完成适用性检查。"],
+            KnowledgeApplicabilityStatus.ERROR.value: ["适用性检查失败，当前知识暂不可确认是否适用。"],
+        }.get(status, [])
+    return {
+        "knowledge_base_id": int(knowledge_base_id),
+        "version_id": int(version_id) if version_id is not None else None,
+        "datasource_id": int(datasource_id),
+        "status": status,
+        "status_text": {
+            KnowledgeApplicabilityStatus.VALID.value: "可用",
+            KnowledgeApplicabilityStatus.INVALID.value: "不适用",
+            KnowledgeApplicabilityStatus.STALE.value: "待检查",
+            KnowledgeApplicabilityStatus.ERROR.value: "检查失败",
+        }.get(status, "待检查"),
+        "schema_hash_prefix": str(schema_hash or "")[:12] or None,
+        "reference_count": len(reference_statuses),
+        "resolved_count": resolved_count,
+        "warnings": [str(item) for item in warnings if str(item).strip()][:10],
+        "checked_at": getattr(row, "checked_at", None) if row is not None else None,
+    }
 
 
 @router.post("/retrieval-preview")
@@ -153,6 +193,76 @@ async def knowledge_capabilities(session: SessionDep, current_user: CurrentUser)
         "v2_write_enabled": capabilities.v2_write_enabled,
         "runtime_context_enabled": capabilities.runtime_context_enabled,
     }
+
+
+@router.get("/{id}/applicability")
+async def knowledge_applicability(
+    id: int,
+    datasource_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    """Return the last applicability result for the active workspace datasource."""
+    try:
+        tenant_id = current_tenant_id(current_user)
+        if tenant_id is None:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_PERMISSION_CONTEXT_INVALID",
+                message="当前未进入工作空间，无法检查知识适用性。",
+                status_code=400,
+                error_type="VALIDATION",
+            )
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        version_id = int(record.current_version_id) if record.current_version_id else None
+        snapshot = PermissionScopeService.build_snapshot(
+            session=session,
+            current_user=current_user,
+            tenant_id=int(tenant_id),
+            datasource_id=int(datasource_id),
+        )
+        if version_id is None:
+            return _applicability_response(
+                knowledge_base_id=id,
+                datasource_id=int(datasource_id),
+                schema_hash=snapshot.schema_hash,
+            )
+        version = session.get(KnowledgeBaseVersion, version_id)
+        if version is None or version.status != KnowledgeVersionStatus.PUBLISHED.value:
+            return _applicability_response(
+                knowledge_base_id=id,
+                datasource_id=int(datasource_id),
+                schema_hash=snapshot.schema_hash,
+                version_id=version_id,
+            )
+        row = session.exec(
+            select(KnowledgeBaseApplicability).where(
+                KnowledgeBaseApplicability.knowledge_base_id == int(id),
+                KnowledgeBaseApplicability.version_id == int(version_id),
+                KnowledgeBaseApplicability.tenant_id == int(tenant_id),
+                KnowledgeBaseApplicability.datasource_id == int(datasource_id),
+                KnowledgeBaseApplicability.physical_schema_hash == snapshot.schema_hash,
+            )
+        ).first()
+        return _applicability_response(
+            knowledge_base_id=id,
+            datasource_id=int(datasource_id),
+            schema_hash=snapshot.schema_hash,
+            row=row,
+            version_id=version_id,
+        )
+    except PermissionScopeUnavailableError as exc:
+        return serialize_error(
+            KnowledgeBusinessError(
+                code="KNOWLEDGE_PERMISSION_CONTEXT_INVALID",
+                message=str(exc) or "当前数据源权限上下文不可用，请刷新后重试。",
+                status_code=409,
+                error_type="CONFLICT",
+            )
+        )
+    except KnowledgeBusinessError as error:
+        return serialize_error(error)
+    except Exception:
+        return unexpected_error()
 
 
 @router.post("/create")

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Download, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
@@ -9,12 +9,16 @@ import {
   type KnowledgeBaseScope,
   type KnowledgeBaseVersion,
   type KnowledgePublishJob,
+  type KnowledgeApplicabilityState,
 } from '@/api/knowledgeBase'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import KnowledgePayloadEditor from './KnowledgePayloadEditor.vue'
 import { knowledgeActionState } from './knowledgeEditorState'
 import KnowledgeRetrievalPreview from './KnowledgeRetrievalPreview.vue'
+import KnowledgeApplicabilityTag from './KnowledgeApplicabilityTag.vue'
 
 const userStore = useUserStore()
+const datasourceContext = useDatasourceContextStore()
 const items = ref<KnowledgeBaseItem[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -34,6 +38,8 @@ const draftConflict = ref(false)
 const retrievalPreviewVisible = ref(false)
 const workspaceOverride = ref<{ enabled: boolean; reason?: string | null } | null>(null)
 const overrideLoading = ref(false)
+const applicability = ref<KnowledgeApplicabilityState | null>(null)
+const applicabilityLoading = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
 const isPlatformAdmin = computed(
@@ -145,6 +151,37 @@ async function openEditor(item: KnowledgeBaseItem) {
       console.error(error)
       workspaceOverride.value = { enabled: true, reason: null }
     }
+  }
+  await loadApplicability()
+}
+
+async function loadApplicability() {
+  applicability.value = null
+  if (!selected.value || selected.value.visibility_scope !== 'PLATFORM_PUBLIC') return
+  if (!datasourceContext.initialized) await datasourceContext.loadDatasources()
+  if (!datasourceContext.datasourceId) return
+  applicabilityLoading.value = true
+  try {
+    applicability.value = await knowledgeBaseApi.applicability(
+      selected.value.id,
+      Number(datasourceContext.datasourceId),
+    )
+  } catch (error) {
+    console.error(error)
+    applicability.value = {
+      knowledge_base_id: selected.value.id,
+      version_id: selected.value.current_version_id,
+      datasource_id: datasourceContext.datasourceId,
+      status: 'ERROR',
+      status_text: '检查失败',
+      schema_hash_prefix: null,
+      reference_count: 0,
+      resolved_count: 0,
+      warnings: ['当前数据源适用性状态读取失败，请稍后重试。'],
+      checked_at: null,
+    }
+  } finally {
+    applicabilityLoading.value = false
   }
 }
 
@@ -307,10 +344,14 @@ function closeEditor() {
   editorVisible.value = false
   if (publishTimer) window.clearInterval(publishTimer)
   publishTimer = null
+  applicability.value = null
   loadItems()
 }
 
 onMounted(loadItems)
+watch(() => datasourceContext.datasourceId, () => {
+  if (editorVisible.value && selected.value?.visibility_scope === 'PLATFORM_PUBLIC') loadApplicability()
+})
 onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 </script>
 
@@ -393,6 +434,12 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <div v-if="selected" class="editor-layout">
         <div class="editor-toolbar">
           <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
+          <KnowledgeApplicabilityTag
+            v-if="selected.visibility_scope === 'PLATFORM_PUBLIC'"
+            :state="applicability"
+            :loading="applicabilityLoading"
+            :datasource-available="Boolean(datasourceContext.datasourceId)"
+          />
           <span v-if="canToggleWorkspaceKnowledge" class="workspace-override">
             当前工作空间使用
             <el-switch

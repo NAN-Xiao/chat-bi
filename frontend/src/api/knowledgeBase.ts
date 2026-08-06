@@ -72,6 +72,19 @@ export interface KnowledgePublishJob {
   error_message?: string | null
 }
 
+export interface KnowledgeApplicabilityState {
+  knowledge_base_id: number | string
+  version_id?: number | string | null
+  datasource_id: number | string
+  status: 'VALID' | 'INVALID' | 'STALE' | 'ERROR'
+  status_text: '可用' | '不适用' | '待检查' | '检查失败'
+  schema_hash_prefix?: string | null
+  reference_count: number
+  resolved_count: number
+  warnings: string[]
+  checked_at?: string | null
+}
+
 export interface KnowledgeRetrievalPreviewResult {
   context?: string
   citations?: Array<{
@@ -179,6 +192,10 @@ export const knowledgeBaseApi = {
     request.get<{ knowledge_base_id: number | string; tenant_id: number | string; enabled: boolean; reason?: string | null }>(
       `/knowledge-base/${id}/workspace-enabled`
     ),
+  applicability: (id: number | string, datasourceId: number | string) =>
+    request.get<KnowledgeApplicabilityState>(`/knowledge-base/${id}/applicability`, {
+      params: { datasource_id: datasourceId },
+    }),
   retrievalPreview: (payload: {
     datasource_id: number
     query: string
