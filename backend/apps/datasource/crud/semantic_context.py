@@ -26,6 +26,7 @@ from apps.knowledge_base.audit import (
     write_semantic_context_audit,
 )
 from apps.knowledge_base.retrieval import KnowledgeCitation, KnowledgeRetrievalService
+from apps.knowledge_base.structured_context import StructuredKnowledgeContextService
 from apps.system.crud.tracking_config import find_tracking_prompt_context
 from common.core.config import settings
 
@@ -48,6 +49,7 @@ class BusinessSemanticContext:
     skill_selection_hash: str | None = None
     tracking_config: str = ""
     tracking_summary: list[str] = field(default_factory=list)
+    structured_context: str = ""
     knowledge_context: str = ""
     knowledge_citations: list[KnowledgeCitation] = field(default_factory=list)
     knowledge_version_hash: str | None = None
@@ -58,7 +60,7 @@ class BusinessSemanticContext:
     def semantic_text(self) -> str:
         return "\n\n".join(
             part.strip()
-            for part in (self.tracking_config, self.skill_text, self.knowledge_context)
+            for part in (self.tracking_config, self.skill_text, self.structured_context, self.knowledge_context)
             if part and part.strip()
         )
 
@@ -77,6 +79,7 @@ class BusinessSemanticContext:
                 for item in self.selected_skills
             ],
             "knowledge_version_hash": self.knowledge_version_hash,
+            "structured_context_hash": _digest(self.structured_context),
             "knowledge_citations": [
                 _citation_summary(item) for item in self.knowledge_citations
             ],
@@ -111,6 +114,7 @@ class BusinessSemanticContextService:
         allowed_tables: list[str] | None = None,
         schema_loader: Callable[..., tuple[str, list[str]]] | None = None,
         tracking_loader: Callable[..., tuple[str, list[str]]] | None = None,
+        structured_loader: Callable[..., Any] | None = None,
         retrieval_service: KnowledgeRetrievalService | None = None,
         audit_writer: Callable[..., Any] | None = None,
         request_id: str | None = None,
@@ -184,6 +188,18 @@ class BusinessSemanticContextService:
             if isinstance(item, str) and item.startswith("schema校验: ")
         ]
 
+        structured_context = ""
+        if settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED:
+            loader = structured_loader or StructuredKnowledgeContextService().load
+            structured = loader(
+                session=session,
+                tenant_id=int(tenant_id),
+                datasource_id=int(datasource_id),
+                permission_snapshot=snapshot,
+            )
+            structured_context = str(getattr(structured, "text", "") or "")
+            warnings.extend(str(item) for item in (getattr(structured, "warnings", ()) or ()))
+
         knowledge_context = ""
         citations: list[KnowledgeCitation] = []
         knowledge_version_hash: str | None = None
@@ -240,6 +256,7 @@ class BusinessSemanticContextService:
             skill_selection_hash=skill_selection_hash,
             tracking_config=tracking_config or "",
             tracking_summary=list(tracking_summary or []),
+            structured_context=structured_context,
             knowledge_context=knowledge_context,
             knowledge_citations=citations,
             knowledge_version_hash=knowledge_version_hash,
@@ -250,6 +267,7 @@ class BusinessSemanticContextService:
                 "permission_version": snapshot.permission_version,
                 "schema_hash": snapshot.schema_hash,
                 "skill_selection_hash": skill_selection_hash,
+                "structured_context_hash": _digest(structured_context),
                 "knowledge_version_hash": knowledge_version_hash,
                 "citation_ids": [item.chunk_id for item in citations],
                 "datasource_id": int(datasource_id),
