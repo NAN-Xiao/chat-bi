@@ -174,6 +174,12 @@ class Settings(BaseSettings):
     KNOWLEDGE_PUBLISH_TIMEOUT_SECONDS: int = 900
     KNOWLEDGE_PUBLISH_QUEUE_TIMEOUT_SECONDS: int = 60
     KNOWLEDGE_PUBLISH_RECONCILE_INTERVAL_SECONDS: int = 60
+    KNOWLEDGE_RETRIEVAL_ENABLED: bool = False
+    KNOWLEDGE_RETRIEVAL_TOP_K: int = 5
+    KNOWLEDGE_RETRIEVAL_MAX_CONTEXT_CHARS: int = 12000
+    KNOWLEDGE_RETRIEVAL_MIN_SCORE: float = 0.40
+    KNOWLEDGE_CHUNK_SIZE: int = 1200
+    KNOWLEDGE_CHUNK_OVERLAP: int = 150
 
     LOG_LEVEL: str = "INFO"  # 日志级别：DEBUG、INFO、WARNING、ERROR。
     LOG_DIR: str = "logs"
@@ -329,6 +335,7 @@ class Settings(BaseSettings):
                      'TENANT_USAGE_QUOTA_ENABLED',
                      'KNOWLEDGE_MANAGEMENT_V2_ENABLED',
                      'KNOWLEDGE_RUNTIME_CONTEXT_ENABLED',
+                     'KNOWLEDGE_RETRIEVAL_ENABLED',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:
