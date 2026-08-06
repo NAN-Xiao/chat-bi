@@ -398,23 +398,66 @@ def _validate_declared_sql_objects(
 
 
 def _sql_field_accesses(statement: exp.Expression) -> list[tuple[SemanticObjectReferenceInput, str]]:
-    entries = _table_entries(statement)
     accesses: list[tuple[SemanticObjectReferenceInput, str]] = []
     for column in statement.find_all(exp.Column):
-        table = _resolve_column_table(str(column.table or ""), entries)
+        table = _resolve_column_table(
+            str(column.table or ""),
+            _select_table_entries(_nearest_select(column)),
+        )
         if table is not None and column.name:
             accesses.append((table, str(column.name)))
     return accesses
 
 
 def _sql_json_accesses(statement: exp.Expression, dialect: str) -> list[tuple[SemanticObjectReferenceInput, str, str]]:
-    entries = _table_entries(statement)
     accesses: list[tuple[SemanticObjectReferenceInput, str, str]] = []
-    for access in extract_json_accesses(statement, dialect=dialect).accesses:
-        table = _resolve_column_table(access.table_alias, entries)
-        if table is not None:
-            accesses.append((table, access.source_field, access.json_path))
+    for select in statement.find_all(exp.Select):
+        entries = _select_table_entries(select)
+        for access in extract_json_accesses(
+            select,
+            dialect=dialect,
+            current_select_only=True,
+        ).accesses:
+            table = _resolve_column_table(access.table_alias, entries)
+            if table is not None:
+                accesses.append((table, access.source_field, access.json_path))
     return accesses
+
+
+def _nearest_select(node: exp.Expression) -> exp.Select | None:
+    current: exp.Expression | None = node.parent
+    while current is not None:
+        if isinstance(current, exp.Select):
+            return current
+        current = current.parent
+    return None
+
+
+def _select_table_entries(select: exp.Select | None) -> list[tuple[SemanticObjectReferenceInput, str]]:
+    if select is None:
+        return []
+    sources: list[exp.Expression] = []
+    from_clause = select.args.get("from_")
+    if isinstance(from_clause, exp.From) and from_clause.this is not None:
+        sources.append(from_clause.this)
+    for join in select.args.get("joins") or []:
+        if isinstance(join, exp.Join) and join.this is not None:
+            sources.append(join.this)
+    entries: list[tuple[SemanticObjectReferenceInput, str]] = []
+    for source in sources:
+        if not isinstance(source, exp.Table):
+            continue
+        name = str(source.name or "").strip()
+        if not name or (not source.db and not source.catalog):
+            continue
+        reference = SemanticObjectReferenceInput(
+            object_type="TABLE",
+            catalog=str(source.catalog or "").strip() or None,
+            schema=str(source.db or "").strip() or None,
+            table=name,
+        )
+        entries.append((reference, _key(source.alias_or_name)))
+    return entries
 
 
 def _resolve_column_table(

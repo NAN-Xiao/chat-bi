@@ -267,6 +267,49 @@ def test_business_field_and_json_path_declarations_must_match_sql_ast_objects() 
     assert json_report.errors[-1].code == "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED"
 
 
+def test_business_field_resolution_uses_local_select_alias_scope() -> None:
+    payload = BusinessKnowledgePayload(
+        knowledge_type="BUSINESS",
+        term="敏感字段",
+        definition="字段范围校验",
+        related_objects=[
+            {
+                "object_type": "FIELD",
+                "catalog": "analytics",
+                "schema": "public",
+                "table": "orders",
+                "field": "secret",
+            },
+            {
+                "object_type": "TABLE",
+                "catalog": "analytics",
+                "schema": "public",
+                "table": "users",
+            },
+        ],
+        examples=[
+            {
+                "name": "作用域",
+                "question": "读取用户标识",
+                "sql": (
+                    "with c as (select o.secret from analytics.public.orders o) "
+                    "select o.id from analytics.public.users o"
+                ),
+            }
+        ],
+    )
+    context = validation_context(
+        tables={
+            "analytics.public.orders": {"id", "secret"},
+            "analytics.public.users": {"id"},
+        }
+    )
+
+    report = validate_payload(payload, context=context)
+
+    assert report.valid
+
+
 def test_related_field_uses_full_catalog_identity() -> None:
     payload = BusinessKnowledgePayload(
         knowledge_type="BUSINESS",

@@ -71,3 +71,17 @@ Initial payload validation result: `2 failed, 20 passed`.
 - JSON expression functions now use an explicit dialect-aware whitelist of extraction nodes/functions; an unknown `JSON_EVIL` wrapper is rejected.
 
 Final focused output: `32 passed, 235 warnings in 7.15s`.
+
+## Local Alias Scope Fix
+
+### Red
+
+The nested CTE regression failed with `1 failed, 22 passed`: the validator used one global alias table, so an inner `orders o` and outer `users o` could resolve to the same physical table.
+
+### Green
+
+- FIELD and JSON_PATH AST access resolution now finds the nearest `SELECT` for each column/access.
+- Each select builds aliases only from its direct `FROM` and `JOIN` physical tables.
+- A nested CTE can reuse an alias without leaking its object identity into an outer select.
+
+Final focused output: `33 passed, 235 warnings in 8.13s`.
