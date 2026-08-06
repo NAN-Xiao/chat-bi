@@ -100,6 +100,33 @@ def test_remaining_dashboard_repair_does_not_require_optional_realtime_view() ->
     assert missing_required_views(set(REMAINING_VIEW_SQL)) == []
 
 
+def test_realtime_sql_builders_do_not_apply_fixed_utc8_offset() -> None:
+    from datetime import date
+
+    from repair_flam_first_zombie_realtime_dashboard import (
+        build_hourly_pay_base_sql,
+        build_online_sql,
+    )
+
+    for sql in (build_online_sql(date(2026, 8, 4)), build_hourly_pay_base_sql(date(2026, 8, 4))):
+        assert "INTERVAL 8 HOUR" not in sql
+        assert "DATE_ADD(FROM_UNIXTIME" not in sql
+        assert "FROM_UNIXTIME(e.time / 1000)" in sql
+
+
+def test_realtime_repair_loads_only_current_skill_sql_components() -> None:
+    from repair_flam_first_zombie_realtime_dashboard import (
+        EXPECTED_VIEW_IDS,
+        OPTIONAL_VIEW_IDS,
+    )
+
+    assert EXPECTED_VIEW_IDS == {
+        "4fc570b4be7d406c9f648d9088f760bb",
+        "2149b7abbc6c4cd7ad6f52379e69b15a",
+    }
+    assert OPTIONAL_VIEW_IDS == {"e3fe7e4819e64b71b76d9329a3023359"}
+
+
 @pytest.mark.parametrize(
     ("legacy_sql", "apply", "expects_lock"),
     [

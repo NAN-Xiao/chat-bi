@@ -307,7 +307,7 @@ FIELDS = [
     {
         "table_name": "event",
         "field_name": "time",
-        "field_comment": "事件发生毫秒时间戳。实时看板需要 DATE_ADD(FROM_UNIXTIME(time/1000), INTERVAL 8 HOUR) 转业务时间。",
+        "field_comment": "事件发生毫秒时间戳。按小时统计使用 FROM_UNIXTIME(time/1000)。",
         "field_role": "event_time",
         "semantic_type": "timestamp_ms",
         "extra_properties": {"encoding": "epoch_milliseconds"},
@@ -1082,7 +1082,7 @@ def apply_chart_builder_expressions() -> None:
             item["expression"] = _dt_date_expr(table_name)
             continue
         if table_name == "event" and field_name == "time":
-            item["expression"] = "DATE_ADD(FROM_UNIXTIME(`event`.`time` / 1000), INTERVAL 8 HOUR)"
+            item["expression"] = "FROM_UNIXTIME(`event`.`time` / 1000)"
             continue
         if table_name == "event" and field_name == "adinfo":
             item["expression"] = (

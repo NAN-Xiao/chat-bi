@@ -80,14 +80,33 @@ def test_realtime_payment_components_use_realtime_event_table(view_id: str) -> N
     assert "ServerPayLog" in sql
 
 
-def test_realtime_payment_components_keep_explicit_utc8_business_date() -> None:
+def test_realtime_payment_components_do_not_apply_fixed_utc8_offset() -> None:
     blocks = _seed_dashboard_sql()
 
     for view_id in REALTIME_CURRENT_DATE_VIEW_IDS:
         sql = blocks[view_id]
         assert "{{dashboard_start_yyyymmdd}}" not in sql
         assert "{{dashboard_end_yyyymmdd}}" not in sql
-        assert "DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)" in sql
+        assert "INTERVAL 8 HOUR" not in sql
+        assert "DATE_ADD(FROM_UNIXTIME" not in sql
+        assert "FROM_UNIXTIME(e.time / 1000)" in sql
+
+
+def test_realtime_tracking_time_field_does_not_apply_fixed_utc8_offset() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    tracking.apply_chart_builder_expressions()
+    time_fields = [
+        item
+        for item in tracking.FIELDS
+        if item["table_name"] == "event" and item["field_name"] == "time"
+    ]
+
+    assert len(time_fields) == 1
+    time_field = time_fields[0]
+    assert "INTERVAL 8 HOUR" not in time_field["field_comment"]
+    assert "INTERVAL 8 HOUR" not in time_field["expression"]
+    assert "FROM_UNIXTIME(`event`.`time` / 1000)" in time_field["expression"]
 
 
 def test_metric_components_use_fixed_example_date_without_dashboard_tokens() -> None:

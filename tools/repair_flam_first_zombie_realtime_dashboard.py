@@ -42,9 +42,11 @@ SQL_BLOCK_PATTERN = re.compile(
 )
 
 EXPECTED_VIEW_IDS = {
-    "e3fe7e4819e64b71b76d9329a3023359",
     "4fc570b4be7d406c9f648d9088f760bb",
     "2149b7abbc6c4cd7ad6f52379e69b15a",
+}
+OPTIONAL_VIEW_IDS = {
+    "e3fe7e4819e64b71b76d9329a3023359",
 }
 
 PROD_ID = 110000038
@@ -201,15 +203,15 @@ def load_latest_pay_business_date(conf: Any) -> date | None:
         WITH latest_dt AS (
             SELECT e.dt
             FROM `event` e
-            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL {LOOKBACK_DAYS} DAY), '%Y%m%d') AS SIGNED)
-                           AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL {LOOKBACK_DAYS} DAY), '%Y%m%d') AS SIGNED)
+                           AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
               AND e.prod = {PROD_ID}
               AND e.event = '{TRANSACTION_EVENT}'
             GROUP BY e.dt
             ORDER BY e.dt DESC
             LIMIT 1
         )
-        SELECT DATE(MAX(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))) AS biz_date,
+        SELECT DATE(MAX(FROM_UNIXTIME(e.time / 1000))) AS biz_date,
                COUNT(*) AS rows_in_latest_dt
         FROM `event` e
         JOIN latest_dt ld ON e.dt = ld.dt
@@ -232,8 +234,8 @@ def load_latest_ccu_business_date(conf: Any) -> date | None:
         WITH latest_dt AS (
             SELECT e.dt
             FROM `event` e
-            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL {LOOKBACK_DAYS} DAY), '%Y%m%d') AS SIGNED)
-                           AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL {LOOKBACK_DAYS} DAY), '%Y%m%d') AS SIGNED)
+                           AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
               AND e.prod = {PROD_ID}
               AND e.event = 'CCU'
               AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
@@ -241,7 +243,7 @@ def load_latest_ccu_business_date(conf: Any) -> date | None:
             ORDER BY e.dt DESC
             LIMIT 1
         )
-        SELECT DATE(MAX(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))) AS biz_date,
+        SELECT DATE(MAX(FROM_UNIXTIME(e.time / 1000))) AS biz_date,
                COUNT(*) AS rows_in_latest_dt
         FROM `event` e
         JOIN latest_dt ld ON e.dt = ld.dt
@@ -306,17 +308,17 @@ def build_online_sql(biz_date: date) -> str:
     end_dt = yyyymmdd(biz_date)
     biz_date_text = biz_date.isoformat()
     return f"""
-SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS time_label,
+SELECT DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS time_label,
        MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
 FROM `event` e
 WHERE e.dt BETWEEN {start_dt} AND {end_dt}
-  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= '{biz_date_text}'
-  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
+  AND FROM_UNIXTIME(e.time / 1000) >= '{biz_date_text}'
+  AND FROM_UNIXTIME(e.time / 1000) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
   AND e.event = 'CCU'
   AND e.prod = {PROD_ID}
   AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
-GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), time_label
-ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
+GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000)), time_label
+ORDER BY HOUR(FROM_UNIXTIME(e.time / 1000))
 LIMIT 24
 """.strip()
 
@@ -326,13 +328,13 @@ def build_hourly_pay_base_sql(biz_date: date) -> str:
     end_dt = yyyymmdd(biz_date)
     biz_date_text = biz_date.isoformat()
     return f"""
-SELECT HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)) AS hour_index,
-       DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS hour_label,
+SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_index,
+       DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
        COUNT(*) AS pay_count
 FROM `event` e
 WHERE e.dt BETWEEN {start_dt} AND {end_dt}
-  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= '{biz_date_text}'
-  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
+  AND FROM_UNIXTIME(e.time / 1000) >= '{biz_date_text}'
+  AND FROM_UNIXTIME(e.time / 1000) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
   AND e.event = '{TRANSACTION_EVENT}'
   AND e.prod = {PROD_ID}
 GROUP BY hour_index, hour_label
@@ -408,6 +410,8 @@ def repair_dashboard(system_conn: Any, conf: Any, sql_blocks: dict[str, str]) ->
             view = canvas_view_info.get(view_id)
             original_view = original_canvas_view_info.get(view_id)
             if not isinstance(view, dict) or not isinstance(original_view, dict):
+                if view_id in OPTIONAL_VIEW_IDS:
+                    continue
                 raise RuntimeError(f"View not found in dashboard {DASHBOARD_ID}: {view_id}")
             fields, rows = run_chart_sql(conf, sql)
             chart = view.setdefault("chart", {})
@@ -507,16 +511,16 @@ def verify_data_side(conf: Any) -> None:
             SELECT NOW() AS now_time,
                    CURDATE() AS cur_date,
                    UTC_TIMESTAMP() AS utc_time,
-                   DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR) AS business_time
+                   UTC_TIMESTAMP() AS business_time
         """,
         "ccu_availability": """
             SELECT COUNT(*) AS ccu_rows,
                    SUM(JSON_EXTRACT(e.personal, '$.ed_ccu') IS NOT NULL) AS rows_with_ed_ccu
             FROM `event` e
-            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-                           AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
-              AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))
-              AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d %H:00:00')
+            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+                           AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
+              AND FROM_UNIXTIME(e.time / 1000) >= DATE(UTC_TIMESTAMP())
+              AND FROM_UNIXTIME(e.time / 1000) < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')
               AND e.event = 'CCU'
         """,
     }

@@ -146,19 +146,19 @@ DATA_SKILLS: list[dict[str, str]] = [
 - 适用于 `event`、`user` 两张表中的日期过滤、实时看板、实时付费、在线人数、小时趋势等问题。
 
 ## 字段口径
-- `time` 是毫秒时间戳。业务时间表达式使用：
-  `DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)`
+- `time` 是毫秒时间戳。小时维度直接使用：
+  `FROM_UNIXTIME(e.time / 1000)`
 - `dt` 是业务日期分区，格式为 `YYYYMMDD` 数字。
-- 对实时查询，为避免跨 UTC/业务日边界漏数，`dt` 至少应覆盖业务今天及前一业务日：
-  `e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)`
+- 对实时查询，为避免跨日期分区边界漏数，`dt` 至少应覆盖当前日期及前一日期：
+  `e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)`
 - 业务今天的时间窗口使用：
-  `DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))`
+  `FROM_UNIXTIME(e.time / 1000) >= DATE(UTC_TIMESTAMP())`
   且
-  `DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d %H:00:00')`
+  `FROM_UNIXTIME(e.time / 1000) < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')`
 
 ## 实时看板 SQL 规则
-- 实时小时维度应基于事件业务时间取小时：
-  `DATE_FORMAT(DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%Y-%m-%d %H:00:00'), '%H:00')`
+- 实时小时维度应基于事件时间取小时：
+  `DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00')`
 - flam ADS/MySQL 返回中文 SELECT 别名时可能变成 `??`，持久看板 SQL 字段必须使用 ASCII 别名：
   `time_label`、`hour_label`、`online_users`、`pay_count`、`cumulative_pay_count`；图表配置用中文 `name` 展示、英文 `value` 绑定字段。
 - ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板用 `tools/repair_flam_first_zombie_realtime_dashboard.py` 先探测最近可用业务日，再把 SQL 固化为常量 `dt`/业务日期窗口。
@@ -180,8 +180,8 @@ DATA_SKILLS: list[dict[str, str]] = [
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
+                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
       AND e.event = 'CCU'
       AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
@@ -189,15 +189,15 @@ WITH latest_dt AS (
     ORDER BY e.dt DESC
     LIMIT 1
 )
-SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS time_label,
+SELECT DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS time_label,
        MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
 FROM `event` e
 JOIN latest_dt ld ON e.dt = ld.dt
 WHERE e.prod = 110000038
   AND e.event = 'CCU'
   AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
-GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), time_label
-ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
+GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000)), time_label
+ORDER BY HOUR(FROM_UNIXTIME(e.time / 1000))
 LIMIT 24
 ```
 
@@ -206,22 +206,22 @@ LIMIT 24
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
+                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
       AND e.event = 'ServerPayLog'
     GROUP BY e.dt
     ORDER BY e.dt DESC
     LIMIT 1
 )
-SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS hour_label,
+SELECT DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
        COUNT(*) AS pay_count
 FROM `event` e
 JOIN latest_dt ld ON e.dt = ld.dt
 WHERE e.prod = 110000038
   AND e.event = 'ServerPayLog'
-GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), hour_label
-ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
+GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000)), hour_label
+ORDER BY HOUR(FROM_UNIXTIME(e.time / 1000))
 LIMIT 24
 ```
 
@@ -230,8 +230,8 @@ LIMIT 24
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
+                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
       AND e.event = 'ServerPayLog'
     GROUP BY e.dt
@@ -239,8 +239,8 @@ WITH latest_dt AS (
     LIMIT 1
 ),
 hourly AS (
-    SELECT HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)) AS hour_index,
-           DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS hour_label,
+    SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_index,
+           DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
            COUNT(*) AS pay_count
     FROM `event` e
     JOIN latest_dt ld ON e.dt = ld.dt
@@ -952,7 +952,7 @@ _DASHBOARD_END_DATE_SQL = (
 _DASHBOARD_START_DATE_SQL = (
     "STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d')"
 )
-_REALTIME_BUSINESS_DATE_SQL = "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))"
+_REALTIME_BUSINESS_DATE_SQL = "DATE(UTC_TIMESTAMP())"
 _METRIC_EXAMPLE_BUSINESS_DATE_SQL = "STR_TO_DATE('20260730', '%Y%m%d')"
 _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     r"\b(?:CURDATE|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|"
@@ -982,10 +982,6 @@ def _tokenize_dashboard_sql_current_date(prompt: str) -> str:
                     f"DATE_SUB({_DASHBOARD_START_DATE_SQL}, INTERVAL 30 DAY)",
                 )
         elif view_id in _DASHBOARD_REALTIME_DATE_VIEW_IDS:
-            sql = sql.replace(
-                "FROM_UNIXTIME(e.time / 1000)",
-                "DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)",
-            )
             sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_REALTIME_BUSINESS_DATE_SQL, sql)
         else:
             raise ValueError(f"Flam 看板 SQL 存在未分类的数据库当前日期函数: {view_id}")
