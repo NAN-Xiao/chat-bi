@@ -401,3 +401,80 @@ def fail_publish_job_after_enqueue_rejection(
         error_message=PUBLISH_ENQUEUE_REJECTED_MESSAGE,
         now=now,
     )
+
+
+def finalize_publish_job(
+    session: Session,
+    *,
+    job_id: int,
+    now: datetime | None = None,
+) -> bool:
+    """Atomically switch the current version after all derived artifacts are ready."""
+    resolved_now = now or datetime.utcnow()
+    job = session.exec(
+        select(KnowledgePublishJob)
+        .where(KnowledgePublishJob.id == int(job_id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).first()
+    if job is None or job.status != "RUNNING":
+        return False
+    version = session.exec(
+        select(KnowledgeBaseVersion)
+        .where(
+            KnowledgeBaseVersion.id == job.version_id,
+            KnowledgeBaseVersion.knowledge_base_id == job.knowledge_base_id,
+            KnowledgeBaseVersion.tenant_id == job.tenant_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).first()
+    record = session.exec(
+        select(KnowledgeBase)
+        .where(
+            KnowledgeBase.id == job.knowledge_base_id,
+            KnowledgeBase.tenant_id == job.tenant_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).first()
+    if version is None or record is None:
+        return False
+    if (
+        record.publishing_version_id != version.id
+        or version.revision != job.revision
+        or version.content_hash != job.content_hash
+        or str(getattr(version.index_status, "value", version.index_status)) != "READY"
+        or str(version.status) not in {"PUBLISHING", "KnowledgeVersionStatus.PUBLISHING"}
+    ):
+        return False
+    if record.current_version_id and record.current_version_id != version.id:
+        old = session.exec(
+            select(KnowledgeBaseVersion)
+            .where(
+                KnowledgeBaseVersion.id == record.current_version_id,
+                KnowledgeBaseVersion.knowledge_base_id == record.knowledge_base_id,
+                KnowledgeBaseVersion.tenant_id == record.tenant_id,
+            )
+            .with_for_update()
+        ).first()
+        if old is not None:
+            old.status = "SUPERSEDED"
+            session.add(old)
+    version.status = "PUBLISHED"
+    version.index_status = "READY"
+    version.publish_by = job.create_by
+    version.publish_time = resolved_now
+    version.error_message = None
+    record.current_version_id = version.id
+    record.draft_version_id = None
+    record.publishing_version_id = None
+    record.publish_by = job.create_by
+    record.publish_time = resolved_now
+    job.status = "SUCCEEDED"
+    job.error_code = None
+    job.error_message = None
+    job.update_time = resolved_now
+    session.add_all((version, record, job))
+    session.flush()
+    return True

@@ -12,6 +12,7 @@ from xml.etree import ElementTree as ET
 from sqlmodel import Session
 
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
+from apps.knowledge_base.publisher import KnowledgePublisher
 from apps.knowledge_base.reconciliation import reconcile_publish_jobs
 from apps.knowledge_base.repository import (
     KnowledgeBusinessError,
@@ -216,3 +217,13 @@ def verify_knowledge_storage_probe(payload: dict[str, Any]) -> dict[str, Any]:
             "queue_name": queue_name,
             "content_hash": receipt.content_hash,
         }
+
+
+@task_handler("knowledge_base.publish_version")
+def publish_knowledge_base_version(payload: dict[str, Any]) -> dict[str, Any]:
+    """Run one registered, tenant-scoped knowledge publication job."""
+    job_id = int(payload["job_id"])
+    context = current_task_context() or {}
+    task_id = str(context.get("id") or payload.get("task_id") or "") or None
+    with Session(engine) as session:
+        return KnowledgePublisher(session).publish_version(job_id, task_id=task_id)
