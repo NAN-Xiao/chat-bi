@@ -11,6 +11,7 @@ import {
   type KnowledgePublishJob,
 } from '@/api/knowledgeBase'
 import KnowledgePayloadEditor from './KnowledgePayloadEditor.vue'
+import { knowledgeActionState } from './knowledgeEditorState'
 
 const userStore = useUserStore()
 const items = ref<KnowledgeBaseItem[]>([])
@@ -28,6 +29,7 @@ const scopeFilter = ref<'' | KnowledgeBaseScope>('')
 const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope })
 const pendingFile = ref<File | null>(null)
 const publishJob = ref<KnowledgePublishJob | null>(null)
+const draftConflict = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
 const isPlatformAdmin = computed(
@@ -43,6 +45,16 @@ const editorTitle = computed(() => selected.value ? `编辑知识库：${selecte
 const draftStatus = computed(() => draft.value?.status || '无草稿')
 const validationErrors = computed(() => draft.value?.validation_report?.errors || [])
 const validationWarnings = computed(() => draft.value?.validation_report?.warnings || [])
+const actionState = computed(() => knowledgeActionState({
+  status: draft.value?.status,
+  canManage: canEdit.value,
+  hasDraft: Boolean(draft.value),
+  publishing: publishing.value,
+  publishJobStatus: publishJob.value?.status,
+}))
+const editorBusy = computed(() => !actionState.value.save && (
+  publishing.value || ['QUEUED', 'RUNNING', 'PENDING_CONFIRMATION'].includes(publishJob.value?.status || '')
+))
 
 function defaultPayload(type?: string | null) {
   if (type === 'BUSINESS') return { knowledge_type: 'BUSINESS', term: '', aliases: [], definition: '', formula: '', constraints: [], related_objects: [], examples: [] }
@@ -96,11 +108,13 @@ async function openEditor(item: KnowledgeBaseItem) {
   editorVisible.value = true
   pendingFile.value = null
   publishJob.value = null
+  draftConflict.value = false
   await loadVersions()
 }
 
 async function loadVersions() {
   if (!selected.value) return
+  draftConflict.value = false
   versions.value = await knowledgeBaseApi.versions(selected.value.id)
   draft.value = versions.value.find((version) =>
     ['DRAFT', 'VALIDATING', 'VALIDATION_FAILED', 'READY_TO_PUBLISH', 'PUBLISH_FAILED'].includes(version.status)
@@ -124,7 +138,7 @@ async function loadVersions() {
 }
 
 async function saveDraft() {
-  if (!selected.value || !draft.value || !canEdit.value) return
+  if (!selected.value || !draft.value || !actionState.value.save) return false
   try {
     saving.value = true
     if (pendingFile.value) {
@@ -142,8 +156,14 @@ async function saveDraft() {
       content: payload.value,
     })
     ElMessage.success('草稿已保存')
+    draftConflict.value = false
+    return true
   } catch (error: any) {
-    if (error?.response?.status === 409) ElMessage.error('草稿已被其他人更新，请刷新版本后重试。')
+    if (error?.response?.status === 409) {
+      draftConflict.value = true
+      ElMessage.error('草稿已被其他人更新，请刷新版本后重试。')
+      return false
+    }
     throw error
   } finally {
     saving.value = false
@@ -151,10 +171,10 @@ async function saveDraft() {
 }
 
 async function validateDraft() {
-  if (!selected.value || !draft.value) return
+  if (!selected.value || !draft.value || !actionState.value.validate) return
   try {
     saving.value = true
-    if (draft.value.payload !== payload.value) await saveDraft()
+    if (draft.value.payload !== payload.value && !(await saveDraft())) return
     draft.value = await knowledgeBaseApi.validateDraft(selected.value.id, {
       version_id: draft.value.id,
       revision: draft.value.revision,
@@ -169,7 +189,7 @@ async function validateDraft() {
 }
 
 async function publishDraft() {
-  if (!selected.value || !draft.value || draft.value.status !== 'READY_TO_PUBLISH') return
+  if (!selected.value || !draft.value || !actionState.value.publish) return
   try {
     publishing.value = true
     publishJob.value = await knowledgeBaseApi.publish(selected.value.id, {
@@ -198,6 +218,11 @@ function pollPublishJob() {
       )
     }
   }, 3000)
+}
+
+async function refreshDraftAfterConflict() {
+  await loadVersions()
+  ElMessage.success('已刷新最新草稿，请确认内容后继续编辑。')
 }
 
 function selectFile(file: any) {
@@ -297,8 +322,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <span class="version-status">草稿状态：{{ draftStatus }}</span>
           <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
         </div>
-        <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit" />
-        <el-upload :disabled="!canEdit" :auto-upload="false" :show-file-list="false" accept=".md,.markdown,.docx" :before-upload="selectFile">
+        <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit || editorBusy" />
+        <el-upload :disabled="!canEdit || editorBusy" :auto-upload="false" :show-file-list="false" accept=".md,.markdown,.docx" :before-upload="selectFile">
           <el-button :icon="Upload">替换源文件</el-button>
         </el-upload>
         <span v-if="pendingFile" class="pending-file">待上传：{{ pendingFile.name }}</span>
@@ -308,11 +333,15 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
         <div v-if="validationWarnings.length" class="validation-panel is-warning">
           <div v-for="(issue, index) in validationWarnings" :key="index">{{ issue.field_path || '内容' }}：{{ issue.message }}</div>
         </div>
+        <div v-if="draftConflict" class="validation-panel is-conflict">
+          草稿已被其他人更新，当前编辑内容已保留。刷新后将载入最新版本。
+          <el-button text type="warning" @click="refreshDraftAfterConflict">刷新最新版本</el-button>
+        </div>
         <div class="editor-actions">
           <el-button :icon="Download" :disabled="!draft?.file_name" @click="draft && downloadVersion(draft)">下载当前源文件</el-button>
-          <el-button :loading="saving" :disabled="!canEdit || !draft" @click="saveDraft">保存草稿</el-button>
-          <el-button :loading="saving" :disabled="!canEdit || !draft" @click="validateDraft">校验</el-button>
-          <el-button type="primary" :loading="publishing" :disabled="draft?.status !== 'READY_TO_PUBLISH'" @click="publishDraft">发布</el-button>
+          <el-button :loading="saving" :disabled="!actionState.save" @click="saveDraft">保存草稿</el-button>
+          <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
+          <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
         </div>
         <div class="history-title">版本历史</div>
         <div v-for="version in versions" :key="version.id" class="history-row">
@@ -349,6 +378,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .validation-panel { margin-top: 14px; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
 .validation-panel.is-error { color: #b42318; background: #fff1f3; }
 .validation-panel.is-warning { color: #9a6700; background: #fff8e6; }
+.validation-panel.is-conflict { display: flex; align-items: center; gap: 8px; color: #9a6700; background: #fff8e6; }
 .editor-actions { justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
 .history-title { margin-top: 24px; padding-bottom: 8px; border-bottom: 1px solid #eaecf0; color: #344054; font-size: 13px; font-weight: 600; }
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
