@@ -281,14 +281,46 @@ SCENARIOS = (
     (
         3,
         FLAM_TENANT_ID,
+        "按小时统计今天的付费金额",
+        {225, 282},
+        """
+        SELECT DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00') AS hour_label,
+               SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00')
+        ORDER BY hour_label
+        """,
+    ),
+    (
+        3,
+        FLAM_TENANT_ID,
+        "实时付费金额",
+        {225, 282},
+        """
+        SELECT DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00') AS hour_label,
+               SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00')
+        ORDER BY hour_label
+        """,
+    ),
+    (
+        3,
+        FLAM_TENANT_ID,
         "今天实时付费趋势",
         {225, 282},
         """
-        SELECT e.dt, HOUR(FROM_UNIXTIME(e.event_time / 1000 + 28800)) AS hour_no,
+        SELECT e.dt, DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
                SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')) AS DECIMAL(18, 4))) AS pay_amount
         FROM event_realtime e
         WHERE e.event = 'ServerPayLog' AND e.dt = 20260727
-        GROUP BY e.dt, HOUR(FROM_UNIXTIME(e.event_time / 1000 + 28800))
+        GROUP BY e.dt, DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00')
         """,
     ),
     (
@@ -394,6 +426,84 @@ def test_realtime_payment_conflict_sql_is_rejected(monkeypatch) -> None:
     )
     assert violation is not None
     assert "event_realtime" in violation.message
+
+
+def test_realtime_payment_amount_rejects_scalar_but_explicit_total_keeps_metric(monkeypatch) -> None:
+    rows, name_to_id = _fixture_rows()
+    monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime", "user"},
+    )
+    scalar_sql = """
+        SELECT ROUND(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))), 2) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+    """
+    hourly_sql = """
+        SELECT DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00') AS hour_label,
+               SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00')
+        ORDER BY hour_label
+    """
+
+    question = "实时付费金额"
+    skill_text, skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=question,
+    )
+
+    assert {225, 282}.issubset(_selected_ids(skill_logs, name_to_id))
+    violation = _data_skill_sql_validation_violation(question, scalar_sql, skill_text)
+    assert violation is not None
+    assert "按小时返回时间序列" in violation.message
+    assert _data_skill_sql_validation_violation(question, hourly_sql, skill_text) is None
+
+    total_question = "实时付费金额总额"
+    total_skill_text, total_skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=total_question,
+    )
+
+    assert 225 in _selected_ids(total_skill_logs, name_to_id)
+    assert _data_skill_sql_validation_violation(total_question, scalar_sql, total_skill_text) is None
+
+
+def test_flam_realtime_payment_skill_does_not_leak_to_datasource_6(monkeypatch) -> None:
+    rows, name_to_id = _fixture_rows()
+    monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime", "user"},
+    )
+
+    skill_text, skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=6,
+        tenant_id=XIUXIAN_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question="实时付费金额",
+    )
+
+    assert 225 not in _selected_ids(skill_logs, name_to_id)
+    assert "flam 实时数据时区与日期口径" not in skill_text
 
 
 def test_explicit_historical_realtime_query_keeps_history_table(monkeypatch) -> None:

@@ -134,11 +134,23 @@ DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "flam 实时数据时区与日期口径",
         "description": (
-            "flam / first_zombie 今天实时付费趋势、按小时付费、实时日期、"
+            "flam / first_zombie 实时付费金额、今天实时付费趋势、按小时付费、实时日期、"
             "dt 分区与实时看板 SQL 生成规则。"
         ),
         "prompt": """<!-- dashboard-refresh-policy:{"auto_refresh":true,"snapshot_max_age_hours":3} -->
 <!-- data-skill-source:flam:first-zombie:timezone-realtime -->
+<!-- data-skill-sql-validation:[
+{
+  "match":["实时付费","实时充值","实时收入","按小时","每小时","小时趋势"],
+  "allow_when":["总额","总的","合计","汇总","总计","单值","指标卡","截至当前","截至目前","当前累计"],
+  "when_sql_patterns":["\\\\bevent_realtime\\\\b"],
+  "required_sql_patterns":[
+    "\\\\bGROUP\\\\s+BY\\\\b",
+    "DATE_FORMAT[\\\\s\\\\S]{0,80}FROM_UNIXTIME[\\\\s\\\\S]{0,80}time[\\\\s\\\\S]{0,80}1000"
+  ],
+  "message":"flam 实时付费金额默认按小时返回时间序列：使用 event_realtime.time 生成小时维度并 GROUP BY。只有用户明确要求总额、截至当前累计、合计、汇总或指标卡时，才返回单行 metric。"
+}
+] -->
 # flam 实时数据时区与日期口径
 
 ## 适用范围
@@ -159,6 +171,8 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## 实时看板 SQL 规则
 - 实时小时维度应基于事件时间取小时：
   `DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00')`
+- “实时付费金额”“实时充值金额”“实时收入”在未明确要求总额、截至当前累计、合计、汇总或指标卡时，默认表示今天按小时的金额趋势；即使问题没有写“趋势”，也不得生成单行 `SUM(...)` 的 `metric` 图。
+- 用户明确要求实时付费总额、截至当前累计、合计、汇总、单值或指标卡时，才返回单行聚合；“累计趋势”仍保留小时维度并计算累计值。
 - flam ADS/MySQL 返回中文 SELECT 别名时可能变成 `??`，持久看板 SQL 字段必须使用 ASCII 别名：
   `time_label`、`hour_label`、`online_users`、`pay_count`、`cumulative_pay_count`；图表配置用中文 `name` 展示、英文 `value` 绑定字段。
 - ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板用 `tools/repair_flam_first_zombie_realtime_dashboard.py` 先探测最近可用业务日，再把 SQL 固化为常量 `dt`/业务日期窗口。

@@ -158,6 +158,18 @@ def test_realtime_skill_description_has_payment_retrieval_anchor() -> None:
     import seed_flam_first_zombie_data_skills as seed
 
     assert "今天实时付费趋势" in seed.DATA_SKILLS[0]["description"]
+    assert "实时付费金额" in seed.DATA_SKILLS[0]["description"]
+
+
+def test_realtime_payment_skill_defaults_to_hourly_series_unless_total_is_explicit() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    prompt = seed.DATA_SKILLS[0]["prompt"]
+
+    assert '"match":["实时付费","实时充值","实时收入","按小时","每小时","小时趋势"]' in prompt
+    assert '"allow_when":["总额","总的","合计","汇总","总计","单值","指标卡","截至当前","截至目前","当前累计"]' in prompt
+    assert "实时付费金额默认按小时返回时间序列" in prompt
+    assert '"required_sql_patterns"' in prompt
 
 
 def test_platform_data_skills_do_not_expose_explicit_timezone_guidance() -> None:
