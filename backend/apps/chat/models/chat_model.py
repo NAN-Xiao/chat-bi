@@ -298,6 +298,7 @@ class AiModelQuestion(BaseModel):
     custom_prompt_id: Optional[int] = None
     tracking_config: str = ""
     data_skill: str = ""
+    knowledge_context: str = ""
     data_skill_id: Optional[int] = None
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
@@ -352,6 +353,9 @@ class AiModelQuestion(BaseModel):
             templates['data_skill'] = _base_template['generate_data_skill_info'].format(
                 data_skill=self.data_skill)
 
+        if self.knowledge_context:
+            templates['knowledge_context'] = self.knowledge_context
+
         return templates
 
     def sql_user_question(self, current_time: str, change_title: bool):
@@ -388,7 +392,7 @@ class AiModelQuestion(BaseModel):
         """
         semantic_context = "\n\n".join(
             item.strip()
-            for item in (self.tracking_config, self.data_skill)
+            for item in (self.tracking_config, self.data_skill, self.knowledge_context)
             if item and item.strip()
         )
         return get_chart_template()['user'].format(lang=self.lang, sql=self.sql, question=self.question, rule=self.rule,
@@ -402,7 +406,7 @@ class AiModelQuestion(BaseModel):
         """
         semantic_context = "\n\n".join(
             item.strip()
-            for item in (self.tracking_config, self.data_skill)
+            for item in (self.tracking_config, self.data_skill, self.knowledge_context)
             if item and item.strip()
         )
         return get_analysis_template()['system'].format(lang=self.lang, terminologies="",
@@ -426,7 +430,7 @@ class AiModelQuestion(BaseModel):
         """
         semantic_context = "\n\n".join(
             item.strip()
-            for item in (self.tracking_config, self.data_skill)
+            for item in (self.tracking_config, self.data_skill, self.knowledge_context)
             if item and item.strip()
         )
         return get_predict_template()['system'].format(lang=self.lang, custom_prompt=self.custom_prompt,

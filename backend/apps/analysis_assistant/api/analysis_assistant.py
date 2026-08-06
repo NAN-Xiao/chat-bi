@@ -4267,7 +4267,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
     )
     data_skill = business_context.data_skill
     tracking_context = business_context.tracking_config
-    semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
+    semantic_context = business_context.semantic_context
     llm, llm_config = await _create_llm(custom_agent_model_id)
     time_resolution = await _resolve_chat_time_policy(
         session=session,

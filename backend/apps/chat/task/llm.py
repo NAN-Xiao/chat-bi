@@ -1339,6 +1339,9 @@ class LLMService:
         if _system_templates.get('data_skill'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['data_skill']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的数据 Skill，我会优先参考其中的业务口径与查询范式。'))
+        if _system_templates.get('knowledge_context'):
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['knowledge_context']))
+            self.sql_message.append(AIPromptMessage(content='我已确认知识库内容仅作为当前数据源和权限范围内的只读参考。'))
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             last_rounds = get_last_conversation_rounds(last_sql_messages, rounds=count_limit)
 
@@ -1606,6 +1609,17 @@ class LLMService:
         self.table_name_list = list(self.business_sql_context.allowed_tables)
         self.chat_question.data_skill = self.business_sql_context.data_skill
         self.chat_question.tracking_config = self.business_sql_context.tracking_config
+        semantic = self.business_sql_context.semantic
+        self.chat_question.knowledge_context = (
+            "\n\n".join(
+                part.strip()
+                for part in (
+                    getattr(semantic, "structured_context", "") if semantic is not None else "",
+                    getattr(semantic, "knowledge_context", "") if semantic is not None else "",
+                )
+                if part and part.strip()
+            )
+        )
         return self.business_sql_context
 
     def choose_table_schema(self, _session: Session):
