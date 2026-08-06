@@ -78,6 +78,24 @@ def _field_key(field: str) -> str:
     )
 
 
+def _table_key_in_schema(schema: str) -> str:
+    return canonical_object_key(
+        SemanticObjectKey(
+            object_type="TABLE", tenant_id=2, datasource_id=9,
+            catalog="", schema=schema, table="events",
+        )
+    )
+
+
+def _field_key_in_schema(schema: str, field: str) -> str:
+    return canonical_object_key(
+        SemanticObjectKey(
+            object_type="FIELD", tenant_id=2, datasource_id=9,
+            catalog="", schema=schema, table="events", field=field,
+        )
+    )
+
+
 def _json_path_key(field: str, json_path: str) -> str:
     return canonical_object_key(
         SemanticObjectKey(
@@ -331,6 +349,39 @@ def test_snapshot_scope_does_not_treat_source_column_as_output_alias(tmp_path) -
                 snapshot=_snapshot(
                     allowed={_table_key(), _field_key("event_name")},
                     denied={_field_key("payload")},
+                ),
+            )
+
+
+def test_snapshot_scope_binds_schema_qualified_column_to_matching_table(tmp_path) -> None:
+    from apps.datasource.crud.permission_errors import SqlPermissionScopeError
+    from apps.datasource.crud.sql_permission import validate_sql_object_scope
+
+    with metadata_permission_session(tmp_path / "snapshot-schema-column.db") as session:
+        session.execute(text(
+            "INSERT INTO core_table (id, ds_id, checked, table_name, catalog_key, schema_key, table_key) "
+            "VALUES (92, 9, 1, 'events', '', 'archive', 'events')"
+        ))
+        session.execute(text(
+            "INSERT INTO core_field (id, ds_id, table_id, checked, field_name, field_key) "
+            "VALUES (903, 9, 92, 1, 'payload', 'payload')"
+        ))
+        session.commit()
+        datasource = session.get(CoreDatasource, 9)
+        assert datasource is not None
+
+        with pytest.raises(SqlPermissionScopeError, match="无权限字段"):
+            validate_sql_object_scope(
+                session=session,
+                datasource=datasource,
+                sql="SELECT public.events.payload FROM public.events JOIN archive.events ON 1 = 1",
+                snapshot=_snapshot(
+                    allowed={
+                        _table_key_in_schema("public"),
+                        _table_key_in_schema("archive"),
+                        _field_key_in_schema("archive", "payload"),
+                    },
+                    denied={_field_key_in_schema("public", "payload")},
                 ),
             )
 
