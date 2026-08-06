@@ -268,7 +268,8 @@ def test_dashboard_sql_preview_skips_date_parameter_gate_for_unbound_datasource(
                 "select dt, value from orders where dt between "
                 "{{dashboard_start_date}} and {{dashboard_end_date}}"
             ),
-            pivot={"time_field": "", "date_parameter_type": "date"},
+            pivot={"time_field": ""},
+            date_filter={"parameter_type": "date"},
             force_refresh=True,
         ),
     )

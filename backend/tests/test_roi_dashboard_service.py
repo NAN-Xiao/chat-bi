@@ -75,7 +75,8 @@ def session() -> Session:
             "id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, name TEXT NOT NULL, "
             "description TEXT, type TEXT, type_name TEXT, configuration TEXT, "
             "create_time DATETIME, create_by BIGINT, status TEXT, num TEXT, "
-            "table_relation TEXT, embedding TEXT, recommended_config BIGINT)"
+            "table_relation TEXT, embedding TEXT, recommended_config BIGINT, "
+            "catalog_complete BOOLEAN, catalog_incomplete_reason TEXT, physical_schema_hash TEXT)"
         ),
         (
             "CREATE TABLE core_datasource_user ("

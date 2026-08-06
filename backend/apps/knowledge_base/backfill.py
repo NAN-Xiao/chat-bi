@@ -17,7 +17,9 @@ from apps.knowledge_base.lifecycle_models import (
 )
 from apps.knowledge_base.models import KnowledgeBase
 from apps.knowledge_base.normalizers import content_hash_for_payload, normalize_markdown
+from apps.knowledge_base.object_projection_models import SemanticObjectReference
 from apps.knowledge_base.repository import KnowledgeMigrationStateRepository
+from apps.knowledge_base.retrieval_models import KnowledgeBaseChunk
 from apps.knowledge_base.schemas import DocumentPayload
 
 MIGRATION_VERSION = "legacy-knowledge-v1"
@@ -40,6 +42,31 @@ class BackfillReport:
             "archived": self.archived,
             "remaining": self.remaining,
             "cursor": self.cursor,
+        }
+
+
+@dataclass(frozen=True)
+class LegacyV2ParityReport:
+    """Redacted dual-read comparison suitable for cutover gates and logs."""
+
+    scanned: int = 0
+    remaining: int = 0
+    mismatch_count: int = 0
+    mismatch_ids: tuple[int, ...] = ()
+    mismatch_hashes: dict[int, dict[str, str]] | None = None
+
+    @property
+    def ready_for_cutover(self) -> bool:
+        return self.remaining == 0 and max(self.mismatch_count, len(self.mismatch_ids)) == 0
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "scanned": self.scanned,
+            "remaining": self.remaining,
+            "mismatch_count": max(self.mismatch_count, len(self.mismatch_ids)),
+            "mismatch_ids": list(self.mismatch_ids),
+            "mismatch_hashes": dict(self.mismatch_hashes or {}),
+            "ready_for_cutover": self.ready_for_cutover,
         }
 
 
@@ -163,6 +190,84 @@ def catch_up_changed_sources(session: Session, *, page_size: int = 100) -> Backf
     return run_backfill_v2(session, page_size=page_size, restart_scan=True)
 
 
+def verify_legacy_v2_parity(
+    session: Session,
+    *,
+    mismatch_limit: int = 50,
+) -> LegacyV2ParityReport:
+    """Compare legacy pointers with indexed V2 state without logging content."""
+    records = session.exec(
+        select(KnowledgeBase).where(KnowledgeBase.archived.is_(False)).order_by(KnowledgeBase.id)
+    ).all()
+    mismatches: list[int] = []
+    mismatch_hashes: dict[int, dict[str, str]] = {}
+    mismatch_count = 0
+    remaining = 0
+    for record in records:
+        pointer = record.current_version_id if _is_ready_record(record) else record.draft_version_id
+        if pointer is None:
+            remaining += 1
+            continue
+        version = session.get(KnowledgeBaseVersion, int(pointer))
+        expected_fingerprint = legacy_source_fingerprint(record)
+        actual_fingerprint = _migration_fingerprint(version) if version is not None else None
+        expected_hash = content_hash_for_payload(
+            DocumentPayload(knowledge_type="DOCUMENT", markdown=str(record.content or ""))
+        )
+        actual_hash = str(getattr(version, "content_hash", "") or "") if version is not None else ""
+        valid = version is not None and int(version.knowledge_base_id) == int(record.id)
+        if _is_ready_record(record):
+            valid = valid and _value(version.status) == "PUBLISHED" and _value(version.index_status) == "READY"
+            if valid:
+                try:
+                    chunk_count = int(
+                        session.exec(
+                            select(KnowledgeBaseChunk.id).where(
+                                KnowledgeBaseChunk.version_id == int(version.id)
+                            )
+                        ).count()
+                    )
+                except AttributeError:
+                    chunk_count = len(
+                        session.exec(
+                            select(KnowledgeBaseChunk).where(
+                                KnowledgeBaseChunk.version_id == int(version.id)
+                            )
+                        ).all()
+                    )
+                valid = valid and chunk_count > 0
+                references = session.exec(
+                    select(SemanticObjectReference).where(
+                        SemanticObjectReference.version_id == int(version.id)
+                    )
+                ).all()
+                valid = valid and all(
+                    _value(reference.resolution_status)
+                    in {"RESOLVED", "UNRESOLVED", "AMBIGUOUS", "STALE"}
+                    for reference in references
+                )
+        else:
+            valid = valid and _value(version.status) in {"DRAFT", "VALIDATION_FAILED", "PUBLISH_FAILED"}
+        valid = valid and actual_fingerprint == expected_fingerprint and actual_hash == expected_hash
+        if not valid:
+            mismatch_count += 1
+            if len(mismatches) < max(1, int(mismatch_limit)):
+                mismatches.append(int(record.id))
+                mismatch_hashes[int(record.id)] = {
+                    "expected_source": expected_fingerprint,
+                    "actual_source": str(actual_fingerprint or ""),
+                    "expected_payload": expected_hash,
+                    "actual_payload": actual_hash,
+                }
+    return LegacyV2ParityReport(
+        scanned=len(records),
+        remaining=remaining,
+        mismatch_count=mismatch_count,
+        mismatch_ids=tuple(mismatches),
+        mismatch_hashes=mismatch_hashes,
+    )
+
+
 def _build_version(record: Any, fingerprint: str, versions: list[Any]) -> KnowledgeBaseVersion:
     markdown = normalize_markdown(str(getattr(record, "content", "") or ""))
     payload = DocumentPayload(knowledge_type="DOCUMENT", markdown=markdown).model_dump(
@@ -224,3 +329,7 @@ def _is_active_draft(version: Any) -> bool:
 
 def _iso(value: Any) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)
+
+
+def _value(value: Any) -> str:
+    return str(getattr(value, "value", value) or "")

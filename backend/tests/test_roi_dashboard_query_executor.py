@@ -50,14 +50,16 @@ def session() -> Session:
             text(
                 "CREATE TABLE core_table ("
                 "id BIGINT PRIMARY KEY, ds_id BIGINT, checked BOOLEAN, "
-                "table_name TEXT, table_comment TEXT, custom_comment TEXT, embedding TEXT)"
+                "table_name TEXT, table_comment TEXT, custom_comment TEXT, embedding TEXT, "
+                "catalog_name TEXT, schema_name TEXT, catalog_key TEXT, schema_key TEXT, table_key TEXT)"
             )
         )
         connection.execute(
             text(
                 "CREATE TABLE core_field ("
                 "id BIGINT PRIMARY KEY, ds_id BIGINT, table_id BIGINT, checked BOOLEAN, "
-                "field_name TEXT, field_type TEXT, field_comment TEXT, custom_comment TEXT, field_index BIGINT)"
+                "field_name TEXT, field_type TEXT, field_comment TEXT, custom_comment TEXT, "
+                "field_index BIGINT, field_key TEXT)"
             )
         )
         connection.execute(

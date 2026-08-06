@@ -11,6 +11,8 @@ from xml.etree import ElementTree as ET
 
 from sqlmodel import Session
 
+from apps.chat.curd.skill_object_projection import rebuild_all_skill_object_projections
+from apps.chat.curd.skill_object_references import SKILL_PROJECTOR_VERSION
 from apps.knowledge_base.backfill import run_backfill_v2
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
 from apps.knowledge_base.publisher import KnowledgePublisher
@@ -199,6 +201,33 @@ def backfill_knowledge_base_v2(payload: dict[str, Any]) -> dict[str, Any]:
             max_pages=int(payload["max_pages"]) if payload.get("max_pages") else None,
         )
         return report.as_dict()
+
+
+@task_handler("knowledge_base.project_data_skill_objects")
+def project_data_skill_objects(payload: dict[str, Any]) -> dict[str, Any]:
+    """Rebuild a bounded batch of existing Data Skill object projections."""
+    with Session(engine) as session:
+        reports = rebuild_all_skill_object_projections(
+            session,
+            projector_version=str(payload.get("projector_version") or SKILL_PROJECTOR_VERSION),
+            limit=int(payload.get("limit") or 500),
+            after_skill_id=int(payload.get("after_skill_id") or 0),
+        )
+        next_cursor = max((item.skill_id for item in reports), default=None)
+        return {
+            "scanned": len(reports),
+            "ready": sum(item.status == "READY" for item in reports),
+            "failed": sum(item.status == "FAILED" for item in reports),
+            "deleted": sum(item.status == "DELETED" for item in reports),
+            "next_cursor": next_cursor,
+            "reports": [item.as_dict() for item in reports],
+        }
+
+
+@task_handler("data_skill.rebuild_object_projections")
+def rebuild_data_skill_object_projections(payload: dict[str, Any]) -> dict[str, Any]:
+    """Compatibility task name used by the migration runbook."""
+    return project_data_skill_objects(payload)
 
 
 @task_handler("knowledge_base.reconcile_publish_jobs")

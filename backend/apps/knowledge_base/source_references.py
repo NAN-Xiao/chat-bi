@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
+from apps.knowledge_base.backfill import LegacyV2ParityReport
+from apps.knowledge_base.backfill import (
+    verify_legacy_v2_parity as _verify_legacy_v2_parity,
+)
 from apps.knowledge_base.object_references import ProjectedObjectReference
 from apps.knowledge_base.object_resolution import resolve_references_for_context
 from apps.system.crud.tracking_config import get_tracking_config
@@ -48,6 +52,16 @@ class TrackingStructuredRecords:
     events: tuple[StructuredEventRecord, ...] = ()
     json_fields: tuple[StructuredJsonFieldRecord, ...] = ()
     warnings: tuple[str, ...] = ()
+
+
+def verify_legacy_v2_source_parity(session: Any, *, mismatch_limit: int = 50) -> LegacyV2ParityReport:
+    """Expose the cutover dual-read check beside the source adapters."""
+    return _verify_legacy_v2_parity(session, mismatch_limit=mismatch_limit)
+
+
+def verify_legacy_v2_parity(session: Any, *, mismatch_limit: int = 50) -> LegacyV2ParityReport:
+    """Compatibility name for callers that keep parity checks with source adapters."""
+    return verify_legacy_v2_source_parity(session, mismatch_limit=mismatch_limit)
 
 
 def load_tracking_structured_records(

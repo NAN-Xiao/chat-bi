@@ -24,7 +24,7 @@
 **Files:**
 - Create: `backend/apps/knowledge_base/backfill.py`
 - Modify: `backend/apps/knowledge_base/tasks.py`
-- Modify: `backend/common/core/task_registry.py`
+- Reuse: `backend/common/core/task_registry.py`
 - Test: `backend/tests/test_knowledge_base_backfill.py`
 
 **Interfaces:**
@@ -70,22 +70,22 @@ Expected: PASS for restart, duplicate task, content change, file change, legacy 
 - [ ] **Step 5: Commit legacy backfill**
 
 ```powershell
-git add backend/apps/knowledge_base/backfill.py backend/apps/knowledge_base/tasks.py backend/common/core/task_registry.py backend/tests/test_knowledge_base_backfill.py
+git add backend/apps/knowledge_base/backfill.py backend/apps/knowledge_base/tasks.py backend/tests/test_knowledge_base_backfill.py
 git commit -m "feat: 增加可续跑的旧知识幂等回填"
 ```
 
 ### Task 2: Data Skill Object Projection Rebuild
 
 **Files:**
-- Create: `backend/apps/chat/curd/skill_object_references.py`
-- Create: `backend/apps/chat/task/data_skill_object_projection.py`
+- Create: `backend/apps/chat/curd/skill_object_projection.py`
+- Reuse: `backend/apps/chat/curd/skill_object_references.py`
 - Modify: `backend/apps/chat/curd/custom_prompt_manage.py`
-- Modify: `backend/common/core/task_registry.py`
-- Test: `backend/tests/test_data_skill_object_projection.py`
+- Reuse: `backend/common/core/task_registry.py`
+- Test: `backend/tests/test_skill_object_projection.py`
 
 **Interfaces:**
 - Consumes: current `custom_prompt.type=DATA_SKILL`, Skill SQL/rules, canonical object projector, and task registry.
-- Produces: `skill_projection_source_hash()`, `rebuild_skill_object_projection()`, and task `data_skill.rebuild_object_projections`.
+- Produces: `skill_source_hash()`, `rebuild_skill_object_projection()`, and tasks `data_skill.rebuild_object_projections` / `knowledge_base.project_data_skill_objects`.
 
 - [ ] **Step 1: Write zero-reference, stale-hash, update, and delete tests**
 
@@ -105,7 +105,7 @@ def test_skill_update_marks_old_projection_stale_without_changing_selection_fiel
 
 - [ ] **Step 2: Run and confirm projection state is absent**
 
-Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_data_skill_object_projection.py -q`
+Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_skill_object_projection.py -q`
 
 Expected: FAIL because Skill object projections are not built.
 
@@ -115,14 +115,14 @@ Hash only fields that can alter object dependencies, including SQL/rules/require
 
 - [ ] **Step 4: Run Skill projection and existing Skill regressions**
 
-Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_data_skill_object_projection.py backend/tests/test_custom_prompt_datasource_scope.py backend/tests/test_data_skill_conflict_regressions.py -q`
+Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_skill_object_projection.py backend/tests/test_custom_prompt_datasource_scope.py backend/tests/test_data_skill_conflict_regressions.py -q`
 
 Expected: PASS; original scope, owner, override, foundation, and selection data are unchanged.
 
 - [ ] **Step 5: Commit Skill projection rebuild**
 
 ```powershell
-git add backend/apps/chat/curd/skill_object_references.py backend/apps/chat/task/data_skill_object_projection.py backend/apps/chat/curd/custom_prompt_manage.py backend/common/core/task_registry.py backend/tests/test_data_skill_object_projection.py
+git add backend/apps/chat/curd/skill_object_projection.py backend/apps/chat/curd/skill_object_references.py backend/apps/knowledge_base/tasks.py backend/apps/chat/curd/custom_prompt_manage.py backend/tests/test_skill_object_projection.py
 git commit -m "feat: 补建 Data Skill 对象安全投影"
 ```
 
@@ -130,7 +130,7 @@ git commit -m "feat: 补建 Data Skill 对象安全投影"
 
 **Files:**
 - Modify: `backend/apps/knowledge_base/backfill.py`
-- Create: `backend/apps/knowledge_base/source_references.py`
+- Modify: `backend/apps/knowledge_base/source_references.py`
 - Test: `backend/tests/test_knowledge_base_backfill.py`
 - Test: `backend/tests/test_knowledge_base_source_references.py`
 

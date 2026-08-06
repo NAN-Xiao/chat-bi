@@ -13,7 +13,10 @@ from apps.chat.curd.custom_prompt import (
     CustomPromptTypeEnum,
     CustomPromptVisibilityScopeEnum,
 )
-from apps.chat.curd.custom_prompt_embedding import embedding_vector_from_json, skill_definition_signature
+from apps.chat.curd.custom_prompt_embedding import (
+    embedding_vector_from_json,
+    skill_definition_signature,
+)
 from apps.chat.models.custom_prompt_model import (
     CustomPrompt,
     CustomPromptInfo,
@@ -25,6 +28,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_model import AiModelDetail
 from apps.system.schemas.access_context import require_tenant_id
+from common.core.config import settings
 from common.core.deps import SessionDep
 from common.utils.embedding_threads import run_save_custom_prompt_skill_embeddings
 
@@ -558,6 +562,22 @@ def _mark_skill_embedding_stale_if_needed(row: CustomPrompt, prompt_type: Custom
     return True
 
 
+def _refresh_skill_object_projection_if_enabled(session: SessionDep, row: CustomPrompt) -> None:
+    """Refresh the optional V2 projection without changing the legacy write path."""
+    if _normalize_type(row.type) != CustomPromptTypeEnum.DATA_SKILL:
+        return
+    if not settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED:
+        return
+    from apps.chat.curd.skill_object_projection import rebuild_skill_object_projection
+    from apps.chat.curd.skill_object_references import skill_source_hash
+
+    rebuild_skill_object_projection(
+        session,
+        int(row.id),
+        source_hash=skill_source_hash(row),
+    )
+
+
 def _private_visibility_condition(current_user_id: Optional[int]):
     """
     是什么：_private_visibility_condition 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -1079,6 +1099,7 @@ def create_custom_prompt(
         session.add(row)
         session.flush()
         _schedule_skill_embedding_after_commit(session, int(row.id), int(resolved_tenant_id))
+    _refresh_skill_object_projection_if_enabled(session, row)
     return int(row.id)
 
 
@@ -1184,6 +1205,7 @@ def update_custom_prompt(
     session.flush()
     if should_refresh_embedding:
         _schedule_skill_embedding_after_commit(session, int(row.id), int(resolved_tenant_id))
+    _refresh_skill_object_projection_if_enabled(session, row)
     return int(row.id)
 
 

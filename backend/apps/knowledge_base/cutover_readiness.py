@@ -16,6 +16,7 @@ from apps.chat.curd.skill_object_references import (
     skill_source_hash,
 )
 from apps.chat.models.custom_prompt_model import CustomPrompt
+from apps.knowledge_base.backfill import verify_legacy_v2_parity
 from apps.knowledge_base.lifecycle_models import (
     ACTIVE_PUBLISH_JOB_STATUSES,
     KnowledgeBaseVersion,
@@ -23,10 +24,8 @@ from apps.knowledge_base.lifecycle_models import (
     KnowledgePublishJob,
 )
 from apps.knowledge_base.models import KnowledgeBase
-from apps.knowledge_base.normalizers import content_hash_for_payload
 from apps.knowledge_base.object_projection_models import DataSkillObjectProjection
 from apps.knowledge_base.repository import KnowledgeMigrationStateRepository
-from apps.knowledge_base.schemas import DocumentPayload
 from apps.knowledge_base.storage_probe import publishing_workers_ready
 
 
@@ -67,7 +66,9 @@ def collect_cutover_readiness(
     migration = KnowledgeMigrationStateRepository.get(session)
     phase = _value(migration.phase)
 
-    legacy_remaining, mismatch_ids = _legacy_parity(session)
+    parity = verify_legacy_v2_parity(session)
+    legacy_remaining = parity.remaining
+    mismatch_ids = list(parity.mismatch_ids)
     pending_index_count = _pending_index_count(session)
     pending_projection_count = _pending_projection_count(session)
     active_publish_job_count = _active_publish_job_count(session)
@@ -86,8 +87,8 @@ def collect_cutover_readiness(
         failures.append("数据库已经进入 V2_ACTIVE。")
     if legacy_remaining:
         failures.append(f"仍有 {legacy_remaining} 条旧知识未完成 V2 回填。")
-    if mismatch_ids:
-        failures.append(f"旧知识与 V2 版本存在 {len(mismatch_ids)} 条不一致。")
+    if parity.mismatch_count:
+        failures.append(f"旧知识与 V2 版本存在 {parity.mismatch_count} 条不一致。")
     if pending_index_count:
         failures.append(f"仍有 {pending_index_count} 个当前版本索引未就绪。")
     if pending_projection_count:
@@ -109,7 +110,7 @@ def collect_cutover_readiness(
         revision=int(migration.revision or 0),
         ready_for_cutover=ready,
         legacy_backfill_remaining=legacy_remaining,
-        parity_mismatch_count=len(mismatch_ids),
+        parity_mismatch_count=parity.mismatch_count,
         mismatch_ids=tuple(mismatch_ids[:50]),
         pending_index_count=pending_index_count,
         pending_projection_count=pending_projection_count,
@@ -121,40 +122,6 @@ def collect_cutover_readiness(
         code="READY" if ready else "KNOWLEDGE_CUTOVER_NOT_READY",
         message="知识库已满足切换条件。" if ready else " ".join(failures),
     )
-
-
-def _legacy_parity(session: Session) -> tuple[int, list[int]]:
-    records = session.exec(
-        select(KnowledgeBase).where(KnowledgeBase.archived.is_(False))
-    ).all()
-    remaining = 0
-    mismatch_ids: list[int] = []
-    for record in records:
-        if record.current_version_id is None and record.draft_version_id is None:
-            remaining += 1
-            continue
-        if (
-            _value(record.status) != "READY"
-            or not str(record.content or "").strip()
-            or _value(record.knowledge_type) not in {"", "DOCUMENT"}
-        ):
-            continue
-        if record.current_version_id is None:
-            remaining += 1
-            continue
-        version = session.get(KnowledgeBaseVersion, int(record.current_version_id))
-        if version is None or int(version.knowledge_base_id) != int(record.id):
-            mismatch_ids.append(int(record.id))
-            continue
-        expected_hash = content_hash_for_payload(
-            DocumentPayload(knowledge_type="DOCUMENT", markdown=str(record.content))
-        )
-        if (
-            _value(version.status) != "PUBLISHED"
-            or str(version.content_hash or "") != expected_hash
-        ):
-            mismatch_ids.append(int(record.id))
-    return remaining, mismatch_ids
 
 
 def _pending_index_count(session: Session) -> int:

@@ -41,6 +41,17 @@ def _catalog_engine(tmp_path):
             "field_type TEXT, field_comment TEXT, custom_comment TEXT, field_index BIGINT, "
             "field_key TEXT NOT NULL, UNIQUE (table_id, field_key))"
         )
+        connection.exec_driver_sql(
+            "CREATE TABLE semantic_scope_epoch ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, scope_type TEXT NOT NULL, "
+            "tenant_id BIGINT NOT NULL, datasource_id BIGINT, subject_id BIGINT, "
+            "epoch BIGINT NOT NULL DEFAULT 0, update_time DATETIME)"
+        )
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX uq_semantic_scope_epoch_scope "
+            "ON semantic_scope_epoch (scope_type, tenant_id, "
+            "COALESCE(datasource_id, 0), COALESCE(subject_id, 0))"
+        )
         connection.execute(
             text(
                 "INSERT INTO core_datasource "

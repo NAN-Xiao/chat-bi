@@ -26,7 +26,7 @@
 - Modify: `backend/apps/chat/curd/custom_prompt.py`
 - Modify: `backend/apps/chat/curd/skill_object_references.py`
 - Test: `backend/tests/test_data_skill_context_integration.py`
-- Test: `backend/tests/test_data_skill_object_projection.py`
+- Test: `backend/tests/test_skill_object_projection.py`
 
 **Interfaces:**
 - Consumes: `data_skill_object_projection`, object resolution, and `PermissionScopeSnapshot`.
@@ -55,7 +55,7 @@ def test_ready_zero_reference_skill_remains_candidate(session, neutral_skill, sn
 
 - [ ] **Step 2: Run and confirm the selector cannot accept eligibility**
 
-Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_data_skill_context_integration.py backend/tests/test_data_skill_object_projection.py -q`
+Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_data_skill_context_integration.py backend/tests/test_skill_object_projection.py -q`
 
 Expected: FAIL because `eligible_skill_ids` is not accepted or enforced.
 
@@ -67,14 +67,14 @@ Filter rows by `eligible_skill_ids` before reading `prompt`, parsing required ta
 
 - [ ] **Step 4: Run the full Skill selection regression**
 
-Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_data_skill_context_integration.py backend/tests/test_data_skill_object_projection.py backend/tests/test_custom_prompt_datasource_scope.py backend/tests/test_data_skill_conflict_regressions.py -q`
+Run: `backend\.venv\Scripts\python.exe -m pytest backend/tests/test_data_skill_context_integration.py backend/tests/test_skill_object_projection.py backend/tests/test_custom_prompt_datasource_scope.py backend/tests/test_data_skill_conflict_regressions.py -q`
 
 Expected: PASS for explicit, automatic, personal/workspace/platform, foundation, overrides, and at-most-12 behavior.
 
 - [ ] **Step 5: Commit eligible Skill filtering**
 
 ```powershell
-git add backend/apps/chat/curd/custom_prompt.py backend/apps/chat/curd/skill_object_references.py backend/tests/test_data_skill_context_integration.py backend/tests/test_data_skill_object_projection.py
+git add backend/apps/chat/curd/custom_prompt.py backend/apps/chat/curd/skill_object_references.py backend/apps/chat/curd/skill_object_projection.py backend/tests/test_data_skill_context_integration.py backend/tests/test_skill_object_projection.py
 git commit -m "feat: 按对象权限收窄 Data Skill 候选"
 ```
 

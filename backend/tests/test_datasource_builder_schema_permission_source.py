@@ -2,7 +2,9 @@ from pathlib import Path
 
 
 def test_builder_schema_list_apis_use_datasource_permission_without_admin_gate():
-    source = Path("backend/apps/datasource/api/datasource.py").read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parents[1] / "apps/datasource/api/datasource.py").read_text(
+        encoding="utf-8"
+    )
 
     table_section = source[
         source.index('@router.post("/tableList/{id}"'):

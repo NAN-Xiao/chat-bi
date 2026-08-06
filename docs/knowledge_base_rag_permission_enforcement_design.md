@@ -265,13 +265,13 @@ backend/apps/datasource/crud/permission_scope_repository.py
 backend/apps/knowledge_base/object_references.py
 backend/apps/knowledge_base/object_resolution.py
 backend/apps/chat/curd/skill_object_references.py
-backend/apps/chat/task/data_skill_object_projection.py
+backend/apps/chat/curd/skill_object_projection.py
 backend/alembic/versions/154_knowledge_base_retrieval_projection.py
 backend/alembic/versions/155_semantic_permission_epoch.py
 backend/tests/test_semantic_object_key.py
 backend/tests/test_semantic_object_reference.py
 backend/tests/test_semantic_object_resolution.py
-backend/tests/test_data_skill_object_projection.py
+backend/tests/test_skill_object_projection.py
 backend/tests/test_event_permission_enforcement.py
 ```
 
