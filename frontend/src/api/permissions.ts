@@ -1,6 +1,6 @@
 import { request } from '@/utils/request'
 
-export type PermissionType = 'row' | 'column' | 'table'
+export type PermissionType = 'row' | 'column' | 'table' | 'schema' | 'event' | 'event_property'
 
 export type PermissionDatasourceOption = {
   id: number | string

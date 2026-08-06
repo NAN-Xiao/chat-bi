@@ -54,15 +54,21 @@ export const fieldOptionsToPermissionEntries = (
 export const permissionRulesToSaveEntries = (
   entries: PermissionRuleSaveEntry[]
 ): PermissionRuleSaveEntry[] =>
-  entries.map((entry) => ({
-    ...entry,
-    permissions:
-      entry.type === 'column'
-        ? (entry.permissions || []).filter((item) => item.enable === false)
-        : [],
-    permission_list: [],
-    expression_tree: entry.type === 'row' ? entry.expression_tree || {} : {},
-  }))
+  entries.map((entry) => {
+    const isMetadata = ['schema', 'event', 'event_property'].includes(String(entry.type))
+    const { table_id: _tableId, ...withoutTableId } = entry
+    return {
+      ...(isMetadata ? withoutTableId : entry),
+      permissions:
+        entry.type === 'column'
+          ? (entry.permissions || []).filter((item) => item.enable === false)
+          : isMetadata
+            ? entry.permissions || []
+            : [],
+      permission_list: [],
+      expression_tree: entry.type === 'row' ? entry.expression_tree || {} : {},
+    }
+  })
 
 export const sortPermissionEntriesRestrictedFirst = (
   entries: PermissionFieldEntry[]

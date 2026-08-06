@@ -11,6 +11,10 @@ import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
 import Card from './Card.vue'
 import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import SelectPermission from './SelectPermission.vue'
+import MetadataPermissionEditor, {
+  type MetadataPermissionTarget,
+  type MetadataPermissionType,
+} from './MetadataPermissionEditor.vue'
 import AuthTree from './auth-tree/RowAuth.vue'
 import {
   getList,
@@ -76,6 +80,9 @@ const dsListOptions = ref<any[]>([])
 const ROW_PERMISSION_TYPE = 1
 const COLUMN_PERMISSION_TYPE = 0
 const TABLE_PERMISSION_TYPE = 2
+const SCHEMA_PERMISSION_TYPE = 3
+const EVENT_PERMISSION_TYPE = 4
+const EVENT_PROPERTY_PERMISSION_TYPE = 5
 const isGlobalPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
 )
@@ -163,12 +170,36 @@ const userTypeList = [
     name: t('permission.table_permission'),
     value: TABLE_PERMISSION_TYPE,
   },
+  {
+    name: 'Schema 权限',
+    value: SCHEMA_PERMISSION_TYPE,
+  },
+  {
+    name: '事件权限',
+    value: EVENT_PERMISSION_TYPE,
+  },
+  {
+    name: '事件属性权限',
+    value: EVENT_PROPERTY_PERMISSION_TYPE,
+  },
 ]
 const ruleType = ref(COLUMN_PERMISSION_TYPE)
 const permissionTypeLabel = (type: string) => {
   if (type === 'row') return t('permission.row_permission')
   if (type === 'table') return t('permission.table_permission')
+  if (type === 'schema') return 'Schema 权限'
+  if (type === 'event') return '事件权限'
+  if (type === 'event_property') return '事件属性权限'
   return t('permission.column_permission')
+}
+const metadataPermissionVisible = ref(false)
+const metadataPermissionType = ref<MetadataPermissionType>('schema')
+const metadataEditingId = ref<number | string | null>(null)
+const metadataInitialTarget = ref<MetadataPermissionTarget | null>(null)
+const metadataTypeFromValue = (value: number): MetadataPermissionType => {
+  if (value === EVENT_PERMISSION_TYPE) return 'event'
+  if (value === EVENT_PROPERTY_PERMISSION_TYPE) return 'event_property'
+  return 'schema'
 }
 const handleAddPermission = (val: any) => {
   ruleType.value = val
@@ -177,6 +208,11 @@ const handleAddPermission = (val: any) => {
     handleRowPermission(null)
   } else if (val === TABLE_PERMISSION_TYPE) {
     handleTablePermission(null)
+  } else if ([SCHEMA_PERMISSION_TYPE, EVENT_PERMISSION_TYPE, EVENT_PROPERTY_PERMISSION_TYPE].includes(val)) {
+    metadataEditingId.value = null
+    metadataInitialTarget.value = null
+    metadataPermissionType.value = metadataTypeFromValue(val)
+    metadataPermissionVisible.value = true
   } else {
     handleColumnPermission(null)
   }
@@ -437,10 +473,42 @@ const editForm = (row: any) => {
   } else if (row.type === 'table') {
     ruleType.value = TABLE_PERMISSION_TYPE
     handleTablePermission(row)
+  } else if (['schema', 'event', 'event_property'].includes(row.type)) {
+    metadataEditingId.value = row.id
+    metadataPermissionType.value = row.type
+    metadataInitialTarget.value = {
+      ...(row.permissions?.[0] || {}),
+      ...(row.target || {}),
+      ds_id: row.ds_id,
+    } as MetadataPermissionTarget
+    metadataPermissionVisible.value = true
   } else {
     ruleType.value = COLUMN_PERMISSION_TYPE
     handleColumnPermission(row)
   }
+}
+const saveMetadataPermission = (value: {
+  type: MetadataPermissionType
+  ds_id: number | string
+  ds_name: string
+  target: MetadataPermissionTarget
+  name: string
+}) => {
+  const entry = {
+    id: metadataEditingId.value || +new Date(),
+    type: value.type,
+    name: value.name,
+    ds_id: value.ds_id,
+    ds_name: value.ds_name,
+    table_id: null,
+    table_name: value.name,
+    permissions: [value.target],
+    permission_list: [value.target],
+  }
+  const index = currentPermission.permissions.findIndex((item: any) => item.id === metadataEditingId.value)
+  if (index >= 0) currentPermission.permissions[index] = entry
+  else currentPermission.permissions.push(entry)
+  metadataPermissionVisible.value = false
 }
 const handleEditRule = (row: any) => {
   if (!canEditRuleGroup(row)) {
@@ -1061,6 +1129,12 @@ const columnRules = {
         </div>
       </template>
     </el-drawer>
+    <MetadataPermissionEditor
+      v-model="metadataPermissionVisible"
+      :permission-type="metadataPermissionType"
+      :initial-target="metadataInitialTarget"
+      @save="saveMetadataPermission"
+    />
   </div>
 </template>
 
