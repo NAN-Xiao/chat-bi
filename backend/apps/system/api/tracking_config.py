@@ -9,7 +9,10 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlmodel import select
 
-from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
+from apps.datasource.crud.binding import (
+    get_bound_datasource_id_for_tenant,
+    list_bound_tenant_ids_for_datasource,
+)
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.tracking_config import (
@@ -33,6 +36,7 @@ from apps.system.schemas.tenant_schema import (
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import CurrentTenant, CurrentUser, SessionDep
+from apps.system.schemas.access_context import is_global_platform_context
 from common.observability.api_timing import log_api_timing
 from common.utils.file_utils import AppFileUtils
 
@@ -175,12 +179,25 @@ async def current_tracking_config(
 async def current_tracking_event_catalog(
     session: SessionDep,
     current_tenant: CurrentTenant,
+    current_user: CurrentUser,
+    datasource_id: int | None = None,
 ):
     """
     是什么：给图表 SQL 构建器返回当前工作空间的业务事件选择目录。
     """
-    _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
-    config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+    tenant_id = int(current_tenant.id)
+    if datasource_id is not None:
+        bound_tenant_ids = list_bound_tenant_ids_for_datasource(session, int(datasource_id))
+        if is_global_platform_context(current_user):
+            if len(bound_tenant_ids) != 1:
+                raise HTTPException(status_code=409, detail="所选数据源未绑定唯一工作空间，无法读取事件目录。")
+            tenant_id = int(bound_tenant_ids[0])
+        elif int(get_bound_datasource_id_for_tenant(session, tenant_id) or 0) != int(datasource_id):
+            raise HTTPException(status_code=409, detail="所选数据源不是当前工作空间绑定的数据源。")
+    _physical_schema, _datasource_type, resolved_datasource_id = _workspace_physical_schema(session, tenant_id)
+    if datasource_id is not None and int(resolved_datasource_id or 0) != int(datasource_id):
+        raise HTTPException(status_code=409, detail="数据源绑定关系已变化，请刷新后重试。")
+    config = get_tracking_config(session, tenant_id, resolved_datasource_id, include_legacy=False)
     return build_tracking_event_catalog(config)
 
 

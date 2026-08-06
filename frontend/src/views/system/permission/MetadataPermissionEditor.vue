@@ -64,11 +64,18 @@ function handleSchemaChange(schemaKey: string) {
 
 async function loadTargets() {
   if (!datasource.value) return
-  if (props.permissionType === 'schema') {
-    tableOptions.value = await getPermissionDatasourceTables(datasource.value.id, props.permissionType)
-  } else {
-    const catalog = await trackingConfigApi.eventCatalog()
-    eventGroups.value = catalog?.groups || []
+  try {
+    if (props.permissionType === 'schema') {
+      tableOptions.value = await getPermissionDatasourceTables(datasource.value.id, props.permissionType)
+    } else {
+      const catalog = await trackingConfigApi.eventCatalog(datasource.value.id)
+      eventGroups.value = catalog?.groups || []
+    }
+  } catch (error) {
+    console.error(error)
+    tableOptions.value = []
+    eventGroups.value = []
+    ElMessage.error('无法读取所选数据源的权限对象，请确认数据源绑定后重试。')
   }
 }
 
@@ -79,6 +86,10 @@ async function loadOptions() {
     datasourceOptions.value = await getPermissionDatasources(props.permissionType)
     datasource.value = datasourceOptions.value.find((item) => String(item.id) === String((props.initialTarget as any)?.ds_id)) || datasourceOptions.value[0] || null
     await loadTargets()
+  } catch (error) {
+    console.error(error)
+    datasourceOptions.value = []
+    ElMessage.error('无法读取可用数据源，请刷新后重试。')
   } finally {
     loading.value = false
   }

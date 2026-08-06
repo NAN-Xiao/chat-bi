@@ -22,7 +22,10 @@ export const modelApi = {
 
 export const trackingConfigApi = {
   get: () => request.get('/system/tracking-config'),
-  eventCatalog: () => request.get('/system/tracking-config/event-catalog'),
+  eventCatalog: (datasourceId?: number | string) =>
+    request.get('/system/tracking-config/event-catalog', {
+      params: datasourceId ? { datasource_id: datasourceId } : undefined,
+    }),
   update: (data: any) => request.put('/system/tracking-config', data),
   downloadTemplate: () => request.download('/system/tracking-config/template'),
   exportExcel: () => request.download('/system/tracking-config/export'),
