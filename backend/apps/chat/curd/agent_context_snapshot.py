@@ -7,7 +7,6 @@ import hashlib
 from datetime import datetime
 from typing import Any
 
-
 AGENT_CONTEXT_SNAPSHOT_VERSION = 1
 
 
@@ -81,4 +80,6 @@ def build_agent_context_snapshot(
     }
     if business_context:
         snapshot["business_context"] = business_context
+        snapshot["knowledge_citations"] = list(business_context.get("knowledge_citations") or [])
+        snapshot["retrieval_warnings"] = list(business_context.get("retrieval_warnings") or [])
     return snapshot

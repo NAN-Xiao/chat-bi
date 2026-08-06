@@ -637,11 +637,11 @@ def _event_values_exist_in_datasource(
     ds = getattr(service, "ds", None)
     values = {str(value) for value in event_values if str(value).strip()}
     if ds is None or not values:
-        return {value: None for value in values}
+        return dict.fromkeys(values)
 
     configured_values = _configured_event_values_for_service(service)
     configured_hits = values.intersection(configured_values)
-    result: dict[str, bool | None] = {value: True for value in configured_hits}
+    result: dict[str, bool | None] = dict.fromkeys(configured_hits, True)
     values_to_probe = values.difference(configured_hits)
     if not values_to_probe:
         return result
@@ -1455,7 +1455,12 @@ def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
 
         with _session_scope() as session:
             ds_id = service.ds.id if isinstance(service.ds, CoreDatasource) else None
-            service.load_data_skills(session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
+            if settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED and isinstance(service.ds, CoreDatasource):
+                # Build once before prompt initialization so SQL generation and repair
+                # reuse the same permission/Skill/RAG snapshot.
+                service.load_business_sql_context(session, CustomPromptTargetScopeEnum.SMART_QA)
+            else:
+                service.load_data_skills(session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
             service.filter_custom_prompts(session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
             service.save_agent_context_snapshot(session, CustomPromptTargetScopeEnum.SMART_QA)
             service.load_tracking_config(session)
