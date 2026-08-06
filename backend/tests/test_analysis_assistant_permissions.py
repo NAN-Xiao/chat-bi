@@ -34,6 +34,16 @@ class _FakeSession:
         return None
 
 
+class _SemanticContextStub(SimpleNamespace):
+    @property
+    def semantic_context(self) -> str:
+        return "\n\n".join(
+            item.strip()
+            for item in (self.tracking_config, self.data_skill)
+            if item and item.strip()
+        )
+
+
 def _user() -> UserInfoDTO:
     return UserInfoDTO(
         id=1001,
@@ -192,7 +202,7 @@ def test_chat_builds_business_sql_context_before_streaming(monkeypatch: pytest.M
         type_name="PostgreSQL",
         configuration="{}",
     )
-    class _BusinessContext(SimpleNamespace):
+    class _BusinessContext(_SemanticContextStub):
         def snapshot_metadata(self):
             return {
                 "context_hash": "ctx",
@@ -293,7 +303,7 @@ def test_chat_deduplicates_real_unresolved_time_policy_trace_after_snapshot(
         configuration="{}",
     )
 
-    class _BusinessContext(SimpleNamespace):
+    class _BusinessContext(_SemanticContextStub):
         def snapshot_metadata(self):
             return {
                 "context_hash": "ctx",
@@ -702,7 +712,7 @@ def _mock_time_safe_chat_runtime(
         configuration="{}",
     )
 
-    class _BusinessContext(SimpleNamespace):
+    class _BusinessContext(_SemanticContextStub):
         def snapshot_metadata(self):
             return {
                 "context_hash": "ctx",

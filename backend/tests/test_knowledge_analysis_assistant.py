@@ -48,7 +48,13 @@ def test_report_interpretation_uses_business_context_when_runtime_enabled(monkey
     monkeypatch.setattr(analysis_api, "_report_interpretation_preflight", lambda *args, **kwargs: None)
     monkeypatch.setattr(analysis_api, "_tenant_rate_limit_response", lambda *args, **kwargs: _none_async())
     monkeypatch.setattr(analysis_api, "_get_report_interpretation_datasource", lambda *args, **kwargs: datasource)
-    monkeypatch.setattr(analysis_api.BusinessSqlContextService, "build", staticmethod(lambda **kwargs: business_context))
+    build_calls = []
+
+    def build_context(**kwargs):
+        build_calls.append(kwargs)
+        return business_context
+
+    monkeypatch.setattr(analysis_api.BusinessSqlContextService, "build", staticmethod(build_context))
     monkeypatch.setattr(analysis_api, "_create_llm", lambda *args, **kwargs: _llm_pair())
     monkeypatch.setattr(analysis_api, "record_tenant_usage_detached", lambda **kwargs: None)
     monkeypatch.setattr(analysis_api, "_current_tenant_id", lambda user: 2)
@@ -64,8 +70,16 @@ def test_report_interpretation_uses_business_context_when_runtime_enabled(monkey
     body = asyncio.run(_collect_body(response))
 
     assert '"type":"context_snapshot"' in body
+    assert '"type":"context_warning"' in body
+    assert '"type":"knowledge_citations"' in body
     assert '"chunk_id":"7"' in body
     assert '999' not in analysis_api._report_retrieval_query(request)
+    assert len(build_calls) == 1
+    assert (
+        build_calls[0]["target_scope"]
+        == analysis_api.CustomPromptTargetScopeEnum.REPORT_INTERPRETATION
+    )
+    assert build_calls[0]["include_all_target_scopes"] is False
 
 
 async def _none_async():

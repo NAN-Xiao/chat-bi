@@ -45,6 +45,7 @@ from apps.analysis_assistant.service.analysis_time_sql import (
     enforce_analysis_time_sql,
     sql_references_time_bearing_table,
 )
+from apps.analysis_assistant.service.semantic_context import AnalysisSemanticContextAdapter
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
@@ -2160,6 +2161,17 @@ def _stream_report_interpretation(
     try:
         if context_snapshot is not None:
             yield _sse({"type": "context_snapshot", "snapshot": context_snapshot})
+            warnings = (
+                context_snapshot.get("retrieval_warnings")
+                or context_snapshot.get("warnings")
+                or []
+            )
+            for warning in warnings:
+                if str(warning).strip():
+                    yield _sse({"type": "context_warning", "content": str(warning)})
+            citations = context_snapshot.get("knowledge_citations") or []
+            if citations:
+                yield _sse({"type": "knowledge_citations", "citations": citations})
         if data_skill.strip():
             yield _trace("已应用当前工作空间数据字典/Data Skills，正在生成报表解读。")
         else:
@@ -4610,7 +4622,7 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         return _permission_denied_stream_response()
     context_snapshot = None
     if settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED:
-        business_context = BusinessSqlContextService.build(
+        analysis_context = AnalysisSemanticContextAdapter.build(
             session=session,
             current_user=current_user,
             tenant_id=_current_tenant_id(current_user),
@@ -4618,12 +4630,11 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
             question=_report_retrieval_query(request),
             target_scope=CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
             data_skill_id=request.data_skill_id,
-            include_all_target_scopes=False,
-            embedding=False,
+            context_service=BusinessSqlContextService.build,
         )
-        semantic_context = business_context.semantic_context
-        data_skill = business_context.data_skill
-        context_snapshot = business_context.snapshot_metadata()
+        data_skill = analysis_context.business_context.data_skill
+        context_snapshot = analysis_context.snapshot
+        semantic_context = analysis_context.prompt_text
     else:
         data_skill = _collect_data_skill_context(
             session,
