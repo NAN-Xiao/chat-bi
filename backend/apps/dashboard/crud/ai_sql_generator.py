@@ -17,6 +17,7 @@ import orjson
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
+
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
 from apps.dashboard.crud.dashboard_date_filter import (
@@ -42,6 +43,7 @@ from apps.system.crud.user import (
     is_system_admin,
 )
 from apps.system.schemas.access_context import require_current_tenant_id
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 from common.sql_json_paths import extract_sql_json_field_pairs, normalize_json_path
 from common.utils.utils import AppLogUtil, extract_nested_json
@@ -72,6 +74,7 @@ class DashboardManualChartGraphState(TypedDict, total=False):
     data_skill: str
     tracking_config: str
     event_scope: dict[str, Any]
+    workspace_tracking_config: Any
     skill_model_id: int | None
     normalized_config: dict[str, Any]
     formula_ir: dict[str, Any]
@@ -1727,6 +1730,18 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         workspace_tracking_config,
         datasource_id=int(request.datasource),
     )
+    result = {
+        "datasource": seed_datasource,
+        "tenant_id": tenant_id,
+        "workspace_tracking_config": workspace_tracking_config,
+        "event_scope": event_scope,
+        "graph_trace": _append_trace(state, "collect_context"),
+        "last_node": "collect_context",
+    }
+    if settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED:
+        result["datasource"] = seed_datasource
+        return result
+
     business_context = BusinessSqlContextService.build(
         session=session,
         current_user=current_user,
@@ -1741,15 +1756,8 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
         can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
     )
-    if event_scope["status"] == "active":
-        event_scope = _dashboard_event_scope(
-            workspace_tracking_config,
-            datasource_id=int(request.datasource),
-            allowed_tables=business_context.allowed_tables,
-        )
     return {
-        "datasource": business_context.datasource,
-        "tenant_id": tenant_id,
+        **result,
         "business_sql_context": business_context,
         "schema": business_context.schema,
         "sql_dialect": business_context.sql_dialect,
@@ -1757,10 +1765,88 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         "allowed_fields_by_table": _allowed_fields_by_table_from_schema(business_context.schema),
         "data_skill": business_context.data_skill,
         "tracking_config": business_context.tracking_config,
-        "event_scope": event_scope,
+        "event_scope": (
+            _dashboard_event_scope(
+                workspace_tracking_config,
+                datasource_id=int(request.datasource),
+                allowed_tables=business_context.allowed_tables,
+            )
+            if event_scope["status"] == "active"
+            else event_scope
+        ),
         "skill_model_id": business_context.skill_model_id,
-        "graph_trace": _append_trace(state, "collect_context"),
-        "last_node": "collect_context",
+    }
+
+
+def _dashboard_normalized_retrieval_query(
+    request: DashboardAiSqlGenerateRequest,
+    normalized_config: dict[str, Any],
+) -> str:
+    return "\n".join(
+        item
+        for item in (
+            f"用户意图：{(request.intent or '').strip()}",
+            f"图表标题：{(request.title or '').strip()}",
+            f"图表类型：{(request.chart_type or '').strip()}",
+            "归一化配置：" + _safe_json(
+                {
+                    "time": normalized_config.get("time") or {},
+                    "metrics": normalized_config.get("metrics") or [],
+                    "formula_metrics": normalized_config.get("formula_metrics") or [],
+                    "groups": normalized_config.get("groups") or [],
+                    "filters": normalized_config.get("filters") or {},
+                    "selected_fields": normalized_config.get("selected_fields") or [],
+                }
+            ),
+        )
+        if item
+    )
+
+
+def _node_build_business_sql_context(state: DashboardManualChartGraphState) -> dict[str, Any]:
+    if state.get("business_sql_context") is not None:
+        return {
+            "graph_trace": _append_trace(state, "build_business_sql_context"),
+            "last_node": "build_business_sql_context",
+        }
+    session = state["session"]
+    current_user = state["current_user"]
+    request = state["request"]
+    event_scope = state.get("event_scope") or {}
+    context = BusinessSqlContextService.build(
+        session=session,
+        current_user=current_user,
+        tenant_id=int(state["tenant_id"]),
+        datasource_id=int(request.datasource),
+        question=_dashboard_normalized_retrieval_query(request, state.get("normalized_config") or {}),
+        target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+        data_skill_id=request.data_skill_id,
+        embedding=False,
+        table_list=event_scope.get("table_list"),
+        can_manage_all=is_system_admin(current_user),
+        can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
+        can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
+    )
+    workspace_tracking_config = state.get("workspace_tracking_config")
+    if event_scope.get("status") == "active" and workspace_tracking_config is not None:
+        event_scope = _dashboard_event_scope(
+            workspace_tracking_config,
+            datasource_id=int(request.datasource),
+            allowed_tables=context.allowed_tables,
+        )
+    return {
+        "business_sql_context": context,
+        "datasource": context.datasource,
+        "schema": context.schema,
+        "sql_dialect": context.sql_dialect,
+        "allowed_tables": context.allowed_tables,
+        "allowed_fields_by_table": _allowed_fields_by_table_from_schema(context.schema),
+        "data_skill": context.data_skill,
+        "tracking_config": context.tracking_config,
+        "event_scope": event_scope,
+        "skill_model_id": context.skill_model_id,
+        "graph_trace": _append_trace(state, "build_business_sql_context"),
+        "last_node": "build_business_sql_context",
     }
 
 
@@ -1932,6 +2018,21 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         message="Agent 没有返回可用结果。",
         advice="请补充生成意图或检查配置后重试。",
     )
+    semantic = getattr(state.get("business_sql_context"), "semantic", None)
+    if semantic is not None:
+        response.knowledge_citations = [
+            {
+                "chunk_id": str(item.chunk_id),
+                "knowledge_base_id": str(item.knowledge_base_id),
+                "version_id": str(item.version_id),
+                "section_path": item.section_path,
+                "score": round(float(item.score), 6),
+                "visibility_scope": item.visibility_scope,
+            }
+            for item in semantic.knowledge_citations
+        ]
+        response.knowledge_version_hash = semantic.knowledge_version_hash
+        response.retrieval_warnings = list(semantic.warnings)
     return {
         "response": response,
         "graph_trace": _append_trace(state, "finalize_response"),
@@ -1943,6 +2044,7 @@ def _build_manual_chart_graph():
     graph = StateGraph(DashboardManualChartGraphState)
     graph.add_node("collect_context", _timed_node("collect_context", _node_collect_context))
     graph.add_node("normalize_manual_config", _timed_node("normalize_manual_config", _node_normalize_manual_config))
+    graph.add_node("build_business_sql_context", _timed_node("build_business_sql_context", _node_build_business_sql_context))
     graph.add_node("build_formula_ir", _timed_node("build_formula_ir", _node_build_formula_ir))
     graph.add_node("deterministic_validate", _timed_node("deterministic_validate", _node_deterministic_validate))
     graph.add_node("build_sql_plan", _timed_node("build_sql_plan", _node_build_sql_plan))
@@ -1952,7 +2054,8 @@ def _build_manual_chart_graph():
     graph.add_node("finalize_response", _timed_node("finalize_response", _node_finalize_response))
     graph.set_entry_point("collect_context")
     graph.add_edge("collect_context", "normalize_manual_config")
-    graph.add_edge("normalize_manual_config", "build_formula_ir")
+    graph.add_edge("normalize_manual_config", "build_business_sql_context")
+    graph.add_edge("build_business_sql_context", "build_formula_ir")
     graph.add_edge("build_formula_ir", "deterministic_validate")
     graph.add_conditional_edges("deterministic_validate", _route_after_deterministic_validate)
     graph.add_edge("build_sql_plan", "generate_sql")

@@ -473,6 +473,9 @@ class DashboardAiSqlGenerateResponse(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
     raw: str = ''
+    knowledge_citations: List[Dict[str, Any]] = Field(default_factory=list)
+    knowledge_version_hash: Optional[str] = None
+    retrieval_warnings: List[str] = Field(default_factory=list)
 
 
 class DashboardDefaultRequest(BaseModel):
