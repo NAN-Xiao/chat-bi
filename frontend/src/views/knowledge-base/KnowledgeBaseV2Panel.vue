@@ -58,6 +58,20 @@ const editorBusy = computed(() => !actionState.value.save && (
   publishing.value || ['QUEUED', 'RUNNING', 'PENDING_CONFIRMATION'].includes(publishJob.value?.status || '')
 ))
 
+function knowledgeTypeText(type?: string | null) {
+  if (type === 'BUSINESS') return '业务术语与 SQL'
+  if (type === 'EVENT') return '事件参数'
+  if (type === 'JSON_FIELD') return 'JSON 字段'
+  return '普通文档'
+}
+
+function processStatusText(status?: string | null) {
+  if (status === 'READY') return '已完成'
+  if (status === 'PROCESSING') return '处理中'
+  if (status === 'FAILED') return '处理失败'
+  return '待处理'
+}
+
 function defaultPayload(type?: string | null) {
   if (type === 'BUSINESS') return { knowledge_type: 'BUSINESS', term: '', aliases: [], definition: '', formula: '', constraints: [], related_objects: [], examples: [] }
   if (type === 'EVENT') return { knowledge_type: 'EVENT', event_name: '', display_name: '', aliases: [], description: '', table_name: '', event_name_field: '', event_time_field: '', parameters: [] }
@@ -283,23 +297,44 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       </div>
     </div>
 
-    <div v-loading="loading" class="knowledge-v2-list">
-      <div v-if="!visibleItems.length" class="empty-state">暂无知识库</div>
-      <article v-for="item in visibleItems" :key="item.id" class="knowledge-v2-card" @click="openEditor(item)">
-        <div class="card-title-row">
-          <span class="card-title">{{ item.name }}</span>
-          <el-tag size="small" :type="item.visibility_scope === 'PLATFORM_PUBLIC' ? 'warning' : 'primary'">
-            {{ item.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}
+    <el-table
+      v-loading="loading"
+      :data="visibleItems"
+      row-key="id"
+      class="knowledge-v2-table"
+      @row-click="openEditor"
+    >
+      <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip />
+      <el-table-column label="知识类型" width="150">
+        <template #default="{ row }">{{ knowledgeTypeText(row.knowledge_type) }}</template>
+      </el-table-column>
+      <el-table-column label="知识范围" width="150">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.visibility_scope === 'PLATFORM_PUBLIC' ? 'warning' : 'primary'">
+            {{ row.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}
           </el-tag>
-        </div>
-        <div class="card-description">{{ item.description || '未填写描述' }}</div>
-        <div class="card-meta">
-          <span>{{ item.knowledge_type || '未分类' }}</span>
-          <span>{{ item.current_version_id ? `当前版本 #${item.current_version_id}` : '尚未发布' }}</span>
-          <el-tag v-if="item.publishing_version_id" size="small" type="warning">发布中</el-tag>
-        </div>
-      </article>
-    </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="处理状态" width="110">
+        <template #default="{ row }">{{ processStatusText(row.status) }}</template>
+      </el-table-column>
+      <el-table-column label="发布版本" width="130">
+        <template #default="{ row }">
+          <el-tag v-if="row.publishing_version_id" size="small" type="warning">发布中</el-tag>
+          <span v-else-if="row.current_version_id">版本 #{{ row.current_version_id }}</span>
+          <span v-else class="muted-text">尚未发布</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="更新时间" width="170">
+        <template #default="{ row }">{{ row.update_time || '-' }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="90" fixed="right">
+        <template #default="{ row }">
+          <el-button text type="primary" @click.stop="openEditor(row)">编辑</el-button>
+        </template>
+      </el-table-column>
+      <template #empty><span class="empty-state">暂无知识库</span></template>
+    </el-table>
 
     <el-dialog v-model="createVisible" title="新建知识库" width="480px" destroy-on-close>
       <el-form label-position="top" @submit.prevent>
@@ -366,15 +401,10 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .panel-actions { display: flex; align-items: center; gap: 8px; }
 .panel-actions .el-input { width: 220px; }
 .panel-actions .el-select { width: 150px; }
-.knowledge-v2-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; min-height: 120px; }
-.empty-state { grid-column: 1 / -1; display: grid; place-items: center; min-height: 120px; border: 1px solid #dee0e3; border-radius: 8px; color: #8f959e; }
-.knowledge-v2-card { min-height: 142px; padding: 16px; border: 1px solid #dee0e3; border-radius: 8px; background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
-.knowledge-v2-card:hover { border-color: #7b9ff5; box-shadow: 0 6px 16px rgba(16, 24, 40, .08); }
-.card-title-row, .card-meta, .editor-toolbar, .editor-actions, .history-row { display: flex; align-items: center; gap: 8px; }
-.card-title-row { justify-content: space-between; }
-.card-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
-.card-description { min-height: 40px; margin-top: 12px; color: #475467; font-size: 13px; line-height: 20px; }
-.card-meta { margin-top: 10px; color: #667085; font-size: 12px; flex-wrap: wrap; }
+.knowledge-v2-table { min-height: 160px; }
+.empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
+.muted-text { color: #98a2b3; }
+.editor-toolbar, .editor-actions, .history-row { display: flex; align-items: center; gap: 8px; }
 .editor-layout { padding: 0 2px 24px; }
 .editor-toolbar { margin-bottom: 16px; flex-wrap: wrap; color: #667085; font-size: 12px; }
 .version-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
