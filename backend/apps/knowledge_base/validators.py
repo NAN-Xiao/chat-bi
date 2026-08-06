@@ -38,6 +38,7 @@ class ValidationContext:
 
     dialect: str = "postgres"
     tables: Mapping[str, Iterable[str]] = field(default_factory=dict)
+    json_paths: Mapping[str, Iterable[str]] = field(default_factory=dict)
     event_names: Iterable[str] = field(default_factory=tuple)
 
     def table_fields(self, *, schema: str | None, table: str) -> frozenset[str] | None:
@@ -74,7 +75,7 @@ def _validate_document(payload: DocumentPayload, context: ValidationContext, err
         _error(errors, "KNOWLEDGE_DOCUMENT_MARKDOWN_REQUIRED", "markdown", "知识文档正文不能为空。", "请填写或重新解析文档正文。")
         return
     blocks = _SQL_BLOCK.findall(payload.markdown)
-    if payload.datasource_neutral and (blocks or payload.object_references or _document_tables(payload.markdown, context)):
+    if payload.datasource_neutral and (blocks or payload.object_references or _document_has_physical_identifier(payload.markdown, context)):
         _error(errors, "KNOWLEDGE_DOCUMENT_NOT_NEUTRAL", "datasource_neutral", "数据源无关文档不能包含 SQL 或确定性物理对象引用。", "请取消数据源无关标记，并声明引用对象。")
         return
     if not payload.datasource_neutral:
@@ -227,6 +228,7 @@ def _validate_sql(
             _error(errors, "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED", field_path, "SQL 示例引用的物理对象必须显式声明。", "请在关联对象中声明 SQL 使用的表、Schema 或 Catalog。")
         elif used is not None:
             used.update(matched)
+    _validate_declared_sql_objects(statement, declared, example.dialect or context.dialect, errors, field_path, used)
 
 
 def _validate_json_expression(payload: JsonFieldKnowledgePayload, json_path: str, context: ValidationContext, errors: list[ValidationIssue]) -> None:
@@ -247,7 +249,7 @@ def _validate_json_expression(payload: JsonFieldKnowledgePayload, json_path: str
         and not columns[0].table
     )
     has_disallowed_function = any(
-        isinstance(node, exp.Func) and not _is_json_expression_function(node)
+        isinstance(node, exp.Func) and not _is_json_expression_function(node, context.dialect)
         for node in statements[0].walk()
     )
     if (
@@ -275,12 +277,17 @@ def _read_only_statement(sql: str, dialect: str) -> exp.Expression | None:
 
 
 def _tables(statement: exp.Expression) -> list[SemanticObjectReferenceInput]:
+    return [reference for reference, _ in _table_entries(statement)]
+
+
+def _table_entries(statement: exp.Expression) -> list[tuple[SemanticObjectReferenceInput, str]]:
     ctes = {_key(item.alias_or_name) for item in statement.find_all(exp.CTE)}
-    result: list[SemanticObjectReferenceInput] = []
+    result: list[tuple[SemanticObjectReferenceInput, str]] = []
     for item in statement.find_all(exp.Table):
         name = str(item.name or "").strip()
         if name and (item.db or item.catalog or _key(name) not in ctes):
-            result.append(SemanticObjectReferenceInput(object_type="TABLE", catalog=str(item.catalog or "").strip() or None, schema=str(item.db or "").strip() or None, table=name))
+            reference = SemanticObjectReferenceInput(object_type="TABLE", catalog=str(item.catalog or "").strip() or None, schema=str(item.db or "").strip() or None, table=name)
+            result.append((reference, _key(item.alias_or_name)))
     return result
 
 
@@ -334,12 +341,107 @@ def _document_tables(markdown: str, context: ValidationContext) -> set[str]:
     }
 
 
-def _is_json_expression_function(node: exp.Func) -> bool:
+def _document_has_physical_identifier(markdown: str, context: ValidationContext) -> bool:
+    identifiers = {table.table for table in _catalog_tables(context)}
+    identifiers.update(
+        str(field).strip()
+        for fields in context.tables.values()
+        for field in fields
+        if str(field).strip()
+    )
+    identifiers.update(
+        str(json_path).strip()
+        for paths in context.json_paths.values()
+        for json_path in paths
+        if str(json_path).strip()
+    )
+    identifiers.update(str(event_name).strip() for event_name in context.event_names if str(event_name).strip())
+    normalized_markdown = markdown.casefold()
+    return any(
+        re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(identifier.casefold())}(?![A-Za-z0-9_])",
+            normalized_markdown,
+        )
+        for identifier in identifiers
+    )
+
+
+def _validate_declared_sql_objects(
+    statement: exp.Expression,
+    declarations: list[tuple[int, SemanticObjectReferenceInput]],
+    dialect: str,
+    errors: list[ValidationIssue],
+    field_path: str,
+    used: set[int] | None,
+) -> None:
+    field_accesses = _sql_field_accesses(statement)
+    json_accesses = _sql_json_accesses(statement, dialect)
+    for index, declaration in declarations:
+        if declaration.object_type == "FIELD":
+            matches = any(
+                _table_matches(table, declaration) and _key(field) == _key(declaration.field)
+                for table, field in field_accesses
+            )
+        elif declaration.object_type == "JSON_PATH":
+            matches = any(
+                _table_matches(table, declaration)
+                and _key(field) == _key(declaration.field)
+                and json_path == normalize_json_path(declaration.json_path)
+                for table, field, json_path in json_accesses
+            )
+        else:
+            continue
+        if not matches:
+            _error(errors, "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED", field_path, "SQL 示例未使用声明的字段或 JSON Path 对象。", "请让声明对象与 SQL 实际访问的对象一致。")
+        elif used is not None:
+            used.add(index)
+
+
+def _sql_field_accesses(statement: exp.Expression) -> list[tuple[SemanticObjectReferenceInput, str]]:
+    entries = _table_entries(statement)
+    accesses: list[tuple[SemanticObjectReferenceInput, str]] = []
+    for column in statement.find_all(exp.Column):
+        table = _resolve_column_table(str(column.table or ""), entries)
+        if table is not None and column.name:
+            accesses.append((table, str(column.name)))
+    return accesses
+
+
+def _sql_json_accesses(statement: exp.Expression, dialect: str) -> list[tuple[SemanticObjectReferenceInput, str, str]]:
+    entries = _table_entries(statement)
+    accesses: list[tuple[SemanticObjectReferenceInput, str, str]] = []
+    for access in extract_json_accesses(statement, dialect=dialect).accesses:
+        table = _resolve_column_table(access.table_alias, entries)
+        if table is not None:
+            accesses.append((table, access.source_field, access.json_path))
+    return accesses
+
+
+def _resolve_column_table(
+    qualifier: str,
+    entries: list[tuple[SemanticObjectReferenceInput, str]],
+) -> SemanticObjectReferenceInput | None:
+    if not qualifier and len(entries) == 1:
+        return entries[0][0]
+    for reference, alias in entries:
+        if _key(qualifier) in {_key(reference.table), alias}:
+            return reference
+    return None
+
+
+def _is_json_expression_function(node: exp.Func, dialect: str) -> bool:
     if isinstance(node, exp.Cast):
         return True
-    if type(node).__name__.upper().startswith("JSON"):
+    if type(node).__name__ in {"JSONExtract", "JSONExtractScalar", "JSONBExtract", "JSONBExtractScalar"}:
         return True
-    return isinstance(node, exp.Anonymous) and str(node.name or "").upper().startswith("JSON")
+    if not isinstance(node, exp.Anonymous):
+        return False
+    names_by_dialect = {
+        "postgres": {"JSON_VALUE", "JSON_EXTRACT", "JSON_EXTRACT_SCALAR", "JSONB_EXTRACT_PATH", "JSONB_EXTRACT_PATH_TEXT"},
+        "mysql": {"JSON_VALUE", "JSON_EXTRACT", "JSON_UNQUOTE"},
+        "clickhouse": {"JSON_VALUE", "JSONEXTRACT", "JSONEXTRACTSTRING", "JSONEXTRACTRAW"},
+    }
+    return str(node.name or "").upper() in names_by_dialect.get(_key(dialect), set())
 
 
 def _key(value: object) -> str:

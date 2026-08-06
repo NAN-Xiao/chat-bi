@@ -69,6 +69,23 @@ def test_datasource_neutral_document_rejects_bare_table_name_from_qualified_cata
     assert unscoped_report.valid
 
 
+def test_datasource_neutral_document_detects_catalog_identifiers_case_insensitively() -> None:
+    payload = DocumentPayload(
+        knowledge_type="DOCUMENT",
+        markdown="orders 的 amount 位于 $.meta.code，事件为 purchase。",
+        datasource_neutral=True,
+    )
+    context = validation_context(
+        tables={"Analytics.Public.Orders": {"Amount", "payload"}},
+        event_names={"PURCHASE"},
+        json_paths={"Analytics.Public.Orders.payload": {"$.Meta.Code"}},
+    )
+
+    report = validate_payload(payload, context=context)
+
+    assert report.errors[0].code == "KNOWLEDGE_DOCUMENT_NOT_NEUTRAL"
+
+
 def test_document_requires_non_empty_markdown() -> None:
     report = validate_payload(DocumentPayload(knowledge_type="DOCUMENT", markdown=" \n\t"), context=validation_context())
     assert report.errors[0].code == "KNOWLEDGE_DOCUMENT_MARKDOWN_REQUIRED"
@@ -195,6 +212,61 @@ def test_business_related_objects_and_sql_do_not_cross_match_same_table_in_other
     assert report.errors[-1].code == "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED"
 
 
+def test_business_field_and_json_path_declarations_must_match_sql_ast_objects() -> None:
+    context = validation_context(
+        tables={"analytics.public.orders": {"id", "amount", "payload"}}
+    )
+    field_payload = BusinessKnowledgePayload(
+        knowledge_type="BUSINESS",
+        term="收入",
+        definition="订单金额之和",
+        related_objects=[
+            {
+                "object_type": "FIELD",
+                "catalog": "analytics",
+                "schema": "public",
+                "table": "orders",
+                "field": "amount",
+            }
+        ],
+        examples=[
+            {
+                "name": "错误字段",
+                "question": "收入",
+                "sql": "select id from analytics.public.orders",
+            }
+        ],
+    )
+    json_payload = BusinessKnowledgePayload(
+        knowledge_type="BUSINESS",
+        term="收入",
+        definition="订单金额之和",
+        related_objects=[
+            {
+                "object_type": "JSON_PATH",
+                "catalog": "analytics",
+                "schema": "public",
+                "table": "orders",
+                "field": "payload",
+                "json_path": "$.amount",
+            }
+        ],
+        examples=[
+            {
+                "name": "错误路径",
+                "question": "收入",
+                "sql": "select JSON_VALUE(payload, '$.other') from analytics.public.orders",
+            }
+        ],
+    )
+
+    field_report = validate_payload(field_payload, context=context)
+    json_report = validate_payload(json_payload, context=context)
+
+    assert field_report.errors[-1].code == "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED"
+    assert json_report.errors[-1].code == "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED"
+
+
 def test_related_field_uses_full_catalog_identity() -> None:
     payload = BusinessKnowledgePayload(
         knowledge_type="BUSINESS",
@@ -250,6 +322,22 @@ def test_json_payload_rejects_random_function_subquery_and_foreign_table() -> No
         report = validate_payload(payload, context=validation_context())
 
         assert report.errors[-1].code == "KNOWLEDGE_JSON_EXPRESSION_INVALID"
+
+
+def test_json_payload_rejects_unknown_json_prefixed_function() -> None:
+    payload = JsonFieldKnowledgePayload(
+        knowledge_type="JSON_FIELD",
+        table_name="orders",
+        source_field="payload",
+        json_path="$.amount",
+        field_name="amount",
+        data_type="number",
+        expression="JSON_EVIL(JSON_VALUE(payload, '$.amount'))",
+    )
+
+    report = validate_payload(payload, context=validation_context())
+
+    assert report.errors[-1].code == "KNOWLEDGE_JSON_EXPRESSION_INVALID"
 
 
 def test_json_payload_requires_existing_host_field_and_valid_type() -> None:

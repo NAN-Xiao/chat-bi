@@ -54,3 +54,20 @@ Initial result: `3 failed, 15 passed`.
 - FIELD and JSON_PATH declarations resolve their host fields through the same full Catalog/Schema/Table identity, avoiding cross-catalog fallback.
 
 Final focused output: `29 passed, 235 warnings in 6.76s`.
+
+## Final Important Fix
+
+### Red
+
+Initial payload validation result: `2 failed, 20 passed`.
+
+- FIELD and JSON_PATH declarations were checked only against the catalog, not against the SQL AST objects actually used by an example.
+- Datasource-neutral document scanning did not accept case-insensitive field, JSON Path, or event identifiers from the current catalog context.
+
+### Green
+
+- BUSINESS SQL now compares valid FIELD declarations with resolved SQL table/column accesses and JSON_PATH declarations with resolved static JSON accesses. TABLE declarations retain their table-level behavior.
+- Datasource-neutral documents perform case-insensitive boundary matching for current catalog table names, fields, configured JSON Paths, and workspace event names. An empty context still contributes no inferred identifier.
+- JSON expression functions now use an explicit dialect-aware whitelist of extraction nodes/functions; an unknown `JSON_EVIL` wrapper is rejected.
+
+Final focused output: `32 passed, 235 warnings in 7.15s`.
