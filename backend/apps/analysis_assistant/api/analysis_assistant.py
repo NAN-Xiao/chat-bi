@@ -4620,7 +4620,7 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         )
     except (HTTPException, RuntimeError):
         return _permission_denied_stream_response()
-    context_snapshot = None
+    business_context_snapshot = None
     if settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED:
         analysis_context = AnalysisSemanticContextAdapter.build(
             session=session,
@@ -4633,7 +4633,7 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
             context_service=BusinessSqlContextService.build,
         )
         data_skill = analysis_context.business_context.data_skill
-        context_snapshot = analysis_context.snapshot
+        business_context_snapshot = analysis_context.snapshot
         semantic_context = analysis_context.prompt_text
     else:
         data_skill = _collect_data_skill_context(
@@ -4647,7 +4647,20 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         )
         tracking_context = _collect_tracking_context(session, current_user, datasource.id)
         semantic_context = _merge_semantic_contexts(tracking_context, data_skill)
-    llm, _llm_config = await _create_llm(None)
+    llm, llm_config = await _create_llm(None)
+    context_snapshot = None
+    if business_context_snapshot is not None:
+        context_snapshot = build_agent_context_snapshot(
+            surface="report_interpretation",
+            datasource_id=datasource.id,
+            datasource_name=datasource.name,
+            data_skill_id=request.data_skill_id,
+            data_skill_text=semantic_context,
+            ai_model_id=llm_config.model_id,
+            ai_model_name=llm_config.model_name,
+            target_scope=CustomPromptTargetScopeEnum.REPORT_INTERPRETATION.value,
+            business_context=business_context_snapshot,
+        )
     return StreamingResponse(
         _stream_report_interpretation(
             llm,

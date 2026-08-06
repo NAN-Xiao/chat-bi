@@ -83,10 +83,32 @@ def test_dashboard_response_exposes_safe_knowledge_citations():
         knowledge_version_hash="version-1",
         warnings=["检索告警"],
     )
-    context = SimpleNamespace(semantic=semantic)
-    result = ai_sql_generator._node_finalize_response({"business_sql_context": context, "graph_trace": []})["response"]
+    context = SimpleNamespace(
+        semantic=semantic,
+        semantic_context="tracking\n\nskill\n\nknowledge",
+        datasource_id=10,
+        snapshot_metadata=lambda: {
+            "permission_version": "permission-1",
+            "schema_hash": "schema-1",
+            "selected_skills": [{"id": "7", "selection_mode": "AUTOMATIC"}],
+            "knowledge_version_hash": "version-1",
+            "knowledge_citations": [{"knowledge_base_id": "20", "version_id": "21"}],
+            "warnings": ["检索告警"],
+        },
+    )
+    result = ai_sql_generator._node_finalize_response(
+        {
+            "business_sql_context": context,
+            "request": DashboardAiSqlGenerateRequest(datasource=10, data_skill_id=7),
+            "datasource": SimpleNamespace(id=10, name="业务库"),
+            "graph_trace": [],
+        }
+    )["response"]
 
     assert result.knowledge_citations[0]["chunk_id"] == "7"
     assert result.knowledge_version_hash == "version-1"
     assert result.retrieval_warnings == ["检索告警"]
     assert "content" not in result.knowledge_citations[0]
+    assert result.context_snapshot["surface"] == "dashboard_ai_sql"
+    assert result.context_snapshot["business_context"]["permission_version"] == "permission-1"
+    assert result.context_snapshot["business_context"]["selected_skills"]

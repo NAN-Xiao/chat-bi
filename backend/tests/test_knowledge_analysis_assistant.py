@@ -72,6 +72,7 @@ def test_report_interpretation_uses_business_context_when_runtime_enabled(monkey
     assert '"type":"context_snapshot"' in body
     assert '"type":"context_warning"' in body
     assert '"type":"knowledge_citations"' in body
+    assert '"business_context"' in body
     assert '"chunk_id":"7"' in body
     assert '999' not in analysis_api._report_retrieval_query(request)
     assert len(build_calls) == 1

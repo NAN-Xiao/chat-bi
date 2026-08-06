@@ -7,7 +7,9 @@ import hashlib
 from datetime import datetime
 from typing import Any
 
-AGENT_CONTEXT_SNAPSHOT_VERSION = 1
+from apps.chat.curd.context_snapshot_sanitizer import sanitize_business_context_snapshot
+
+AGENT_CONTEXT_SNAPSHOT_VERSION = 2
 
 
 def _text_digest(value: str | None) -> str | None:
@@ -79,7 +81,19 @@ def build_agent_context_snapshot(
         },
     }
     if business_context:
-        snapshot["business_context"] = business_context
-        snapshot["knowledge_citations"] = list(business_context.get("knowledge_citations") or [])
-        snapshot["retrieval_warnings"] = list(business_context.get("retrieval_warnings") or [])
+        safe_business_context = sanitize_business_context_snapshot(business_context)
+        snapshot["business_context"] = safe_business_context
+        snapshot["knowledge_citations"] = list(
+            safe_business_context.get("knowledge_citations") or []
+        )
+        snapshot["retrieval_warnings"] = list(
+            safe_business_context.get("retrieval_warnings") or []
+        )
     return snapshot
+
+
+__all__ = [
+    "AGENT_CONTEXT_SNAPSHOT_VERSION",
+    "build_agent_context_snapshot",
+    "sanitize_business_context_snapshot",
+]

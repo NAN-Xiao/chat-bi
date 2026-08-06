@@ -104,9 +104,11 @@ class BusinessSqlContext:
             "data_skill_model_id": str(self.skill_model_id) if self.skill_model_id is not None else None,
         }
         if self.semantic is not None:
-            metadata["business_semantic_context"] = self.semantic.snapshot_metadata()
+            semantic_metadata = self.semantic.snapshot_metadata()
+            metadata["business_semantic_context"] = semantic_metadata
             metadata["permission_version"] = self.semantic.permission_snapshot.permission_version
             metadata["schema_hash"] = self.semantic.permission_snapshot.schema_hash
+            metadata["selected_skills"] = list(semantic_metadata["selected_skills"])
             metadata["knowledge_version_hash"] = self.semantic.knowledge_version_hash
             metadata["knowledge_citations"] = [
                 {
@@ -118,6 +120,7 @@ class BusinessSqlContext:
                 for item in self.semantic.knowledge_citations
             ]
             metadata["retrieval_warnings"] = list(self.semantic.warnings)
+            metadata["warnings"] = list(self.semantic.warnings)
         return metadata
 
 

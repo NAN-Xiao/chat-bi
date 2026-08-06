@@ -19,6 +19,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
+from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
 from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
@@ -2018,7 +2019,8 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         message="Agent 没有返回可用结果。",
         advice="请补充生成意图或检查配置后重试。",
     )
-    semantic = getattr(state.get("business_sql_context"), "semantic", None)
+    business_context = state.get("business_sql_context")
+    semantic = getattr(business_context, "semantic", None)
     if semantic is not None:
         response.knowledge_citations = [
             {
@@ -2033,6 +2035,18 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         ]
         response.knowledge_version_hash = semantic.knowledge_version_hash
         response.retrieval_warnings = list(semantic.warnings)
+        request = state.get("request")
+        datasource = state.get("datasource")
+        response.context_snapshot = build_agent_context_snapshot(
+            surface="dashboard_ai_sql",
+            datasource_id=getattr(datasource, "id", None)
+            or getattr(business_context, "datasource_id", None),
+            datasource_name=getattr(datasource, "name", None),
+            data_skill_id=getattr(request, "data_skill_id", None),
+            data_skill_text=business_context.semantic_context,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA.value,
+            business_context=business_context.snapshot_metadata(),
+        )
     return {
         "response": response,
         "graph_trace": _append_trace(state, "finalize_response"),
