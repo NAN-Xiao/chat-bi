@@ -349,6 +349,11 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
                 "{{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}。"
             ),
             (
+                "问题要求趋势、走势、变化或按日/周/月/小时时间序列但未明确时间窗口时，必须默认使用最近七天，"
+                "date_expression 使用 {\"version\":1,\"mode\":\"preset\",\"preset\":\"past_7_days\"}；"
+                "不得省略日期过滤，也不得改为查询全历史。"
+            ),
+            (
                 "metric 图表不得返回 date_filter，也不得使用看板日期 token；保留用户要求的固定时间语义。"
             ),
             (

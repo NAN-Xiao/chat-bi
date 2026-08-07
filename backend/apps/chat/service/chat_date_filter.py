@@ -26,6 +26,11 @@ _EXPLICIT_PAST_DAYS_PATTERN = re.compile(
 _EXPLICIT_CURRENT_DAY_PATTERN = re.compile(r"(?:今天|今日|当天)")
 _EXPLICIT_CURRENT_TIME_BUCKET_PATTERN = re.compile(r"当前\s*(?:小时|分钟|整点)")
 _REALTIME_PATTERN = re.compile(r"实时")
+_TIME_SERIES_PATTERN = re.compile(
+    r"(?:趋势|走势|变化|每日|每天|逐日|按天|按日|每周|按周|每月|按月|"
+    r"每小时|按小时|逐小时|daily|weekly|monthly|hourly|trend|over\s+time)",
+    re.IGNORECASE,
+)
 _EXPLICIT_YESTERDAY_PATTERN = re.compile(r"(?:昨天|昨日)")
 _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN = re.compile(r"前天")
 _EXPLICIT_ABSOLUTE_DATE_PATTERN = re.compile(
@@ -131,6 +136,8 @@ def _question_requires_date_filter(question: str | None, chart_type: str) -> boo
         return False
     if _REALTIME_PATTERN.search(str(question or "")):
         return True
+    if _TIME_SERIES_PATTERN.search(str(question or "")):
+        return True
     return question_date_scope(question) != "unspecified"
 
 
@@ -148,7 +155,7 @@ def normalize_chat_date_filter_for_question(
     sql: str,
     chart_type: str,
 ) -> dict[str, Any] | None:
-    """将聊天日期配置对齐到用户明确范围或未指定时的过去七天默认值。"""
+    """校验时间序列的日期配置，未指定窗口时使用过去七天。"""
     question_text = str(question or "")
     if (
         _REALTIME_PATTERN.search(question_text)

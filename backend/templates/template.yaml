@@ -166,6 +166,9 @@ template:
           当 SQL 使用时间范围筛选的非 metric 图表时，必须返回 date_filter。即使最终 SELECT 不输出日期列，只要 SQL 使用看板日期 token 进行时间范围筛选（例如按分类维度汇总最近 N 天），都必须返回 date_filter。SQL 日期边界必须使用与 date_parameter_type 一致的看板日期 token；date_filter 必须包含 time_field、date_parameter_type 和 date_expression。用户未指定日期范围时，date_expression 必须为 {{"version":1,"mode":"preset","preset":"past_7_days"}}。用户明确指定“最近/近/过去 N 天”时，N 是正整数，必须保留该范围：N=7/30/90 时分别使用 past_7_days/past_30_days/past_90_days；其他 N 必须使用 {{"version":1,"mode":"range","start":{{"mode":"dynamic","unit":"day","offset":-N}},"end":{{"mode":"dynamic","unit":"day","offset":-1}}}}，表示截至昨天的 N 个完整自然日，例如最近14天的 start.offset 为 -14、end.offset 为 -1。固定 metric 图表不得返回 date_filter，也不得使用看板日期 token。只有 SQL 完全不使用日期范围筛选和看板日期 token 的无时间范围图表，才不得返回 date_filter。date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。
         </rule>
         <rule priority="high">
+          时间序列强制日期规则：问题包含“趋势、走势、变化、每日、每天、按天、按日、每周、按周、每月、按月、每小时、按小时”等时间序列表达时，即使用户没有明确给出时间窗口，也必须生成完整 date_filter，并使用最近七天（past_7_days）作为默认日期范围。SQL 必须使用 {{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}；不得因为用户没有说“最近七天”就省略日期条件或查询全历史。明确的日期范围优先于默认七天。固定 metric 图表不适用本规则。
+        </rule>
+        <rule priority="high">
           实时粒度规则：问题包含“实时”且未明确要求总额、总的、合计、汇总、总计、单值、指标卡、截至当前、截至目前或当前累计时，必须生成按时间字段分组的小时级非 metric 时间序列，chart-type 使用 line/area/column 等带维度图表，并返回完整 date_filter；不得把实时问题生成单行 SUM/COUNT 的 metric。只有用户明确要求上述汇总语义时，才允许生成单行 metric，且不得返回 date_filter。
         </rule>
         <rule>

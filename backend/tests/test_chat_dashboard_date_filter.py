@@ -303,13 +303,23 @@ def test_normalize_allows_missing_date_filter_for_explicit_today_metric():
     )
 
 
-def test_normalize_allows_missing_date_filter_when_question_has_no_explicit_range():
+def test_normalize_rejects_missing_date_filter_for_unspecified_time_series():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
+        normalize_chat_date_filter_for_question(
+            "各投放渠道每日新增用户趋势如何？",
+            None,
+            "SELECT dt, channel, COUNT(*) FROM event GROUP BY dt, channel",
+            "area",
+        )
+
+
+def test_normalize_keeps_unspecified_non_time_series_without_date_filter():
     assert (
         normalize_chat_date_filter_for_question(
-            "每日付费金额趋势",
+            "各投放渠道新增用户总量",
             None,
-            "SELECT dt, SUM(amount) FROM event GROUP BY dt",
-            "line",
+            "SELECT channel, COUNT(*) FROM event GROUP BY channel",
+            "column",
         )
         is None
     )

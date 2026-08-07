@@ -471,6 +471,8 @@ def test_build_date_filter_repair_message_contains_explicit_contract() -> None:
     assert "metric" in message
     assert "date_filter" in message
     assert "CURDATE" in message
+    assert "不得省略日期过滤" in message
+    assert "past_7_days" in message
 
 
 def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
