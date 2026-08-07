@@ -51,11 +51,36 @@ class FakeSqlAlchemySession:
             return self.result
         return None
 
+    def connection(self):
+        return FakeSqlAlchemyConnection(self)
+
     def rollback(self) -> None:
         return None
 
     def close(self) -> None:
         return None
+
+
+class FakeSqlAlchemyConnection:
+    def __init__(self, session: FakeSqlAlchemySession) -> None:
+        self.session = session
+
+    def exec_driver_sql(self, sql: str):
+        self.session.statements.append((sql, None))
+        return self.session.result
+
+
+def test_raw_sql_execution_preserves_colon_literals(monkeypatch) -> None:
+    session = FakeSqlAlchemySession(FakeResult([(1,)]))
+    monkeypatch.setattr(db_module, "get_session", lambda *_args, **_kwargs: session)
+
+    result = db_module._unsafe_exec_sql_after_validation(
+        SimpleNamespace(type="mysql", configuration="{}"),
+        "SELECT CONCAT('12', ':00') AS value",
+    )
+
+    assert result["data"] == [{"value": 1}]
+    assert ("SELECT CONCAT('12', ':00') AS value", None) in session.statements
 
 
 def test_low_level_default_still_limits_rows_but_explicit_none_fetches_all(
