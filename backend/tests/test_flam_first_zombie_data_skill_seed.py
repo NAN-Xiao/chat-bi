@@ -69,6 +69,19 @@ def test_dashboard_sql_directory_matches_current_recommended_dashboards() -> Non
     assert OLD_DASHBOARD_VIEW_IDS.isdisjoint(blocks)
 
 
+def test_hero_dashboard_skills_use_static_json_paths() -> None:
+    blocks = _seed_dashboard_sql()
+
+    for view_id in (
+        "59a8dfd8d6e341988edfbf1666872aae",
+        "344c936b561f44f6bc29cc2663f3f651",
+    ):
+        sql = blocks[view_id]
+        assert "CONCAT('$.ed_myTeamHeroList['" not in sql
+        assert "$.ed_myTeamHeroList[0].heroId" in sql
+        assert "$.ed_myTeamHeroList[9].heroId" in sql
+
+
 @pytest.mark.parametrize("view_id", [
     "4fc570b4be7d406c9f648d9088f760bb",
     "2149b7abbc6c4cd7ad6f52379e69b15a",

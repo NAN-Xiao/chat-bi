@@ -4,6 +4,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from apps.knowledge_base.object_sql import extract_sql_object_paths
+
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS_DIR = ROOT / "tools"
 if str(TOOLS_DIR) not in sys.path:
@@ -88,6 +90,16 @@ def test_expedition_power_is_world_march_only_and_labeled_consistently() -> None
     assert view.title == "出征平均战力"
     assert view.fields == ("出征平均战力", "日环比", "周同比")
     assert view.y_axis == ("出征平均战力", "日环比", "周同比")
+
+
+def test_hero_expedition_sql_uses_static_json_paths() -> None:
+    import flam_first_zombie_remaining_dashboard_sql as remaining
+
+    for sql in (remaining.SQL_HERO_EXPEDITION_COUNT, remaining.SQL_HERO_WIN_RATE):
+        assert "CONCAT('$.ed_myTeamHeroList['" not in sql
+        assert "$.ed_myTeamHeroList[0].heroId" in sql
+        assert "$.ed_myTeamHeroList[9].heroId" in sql
+        extract_sql_object_paths([sql], dialect="mysql")
 
 
 def test_festival_payment_rate_title_does_not_claim_retention() -> None:

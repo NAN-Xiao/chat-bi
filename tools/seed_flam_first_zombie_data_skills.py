@@ -930,6 +930,9 @@ _DASHBOARD_TOKEN_DATE_VIEW_IDS = {
     "839ce2cab673467ab22fe508bf822d61",
     "f0793fb6af7845c8be2b39e2d7ea523f",
     "97337c8b63544de89f26d2719cc45e75",
+    # 英雄数组 SQL 来自代码目录的静态 JSON Path 实现，日期仍由看板上下文注入。
+    "59a8dfd8d6e341988edfbf1666872aae",
+    "344c936b561f44f6bc29cc2663f3f651",
 }
 _DASHBOARD_REALTIME_DATE_VIEW_IDS = {
     "4fc570b4be7d406c9f648d9088f760bb",

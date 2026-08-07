@@ -97,9 +97,15 @@ _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
 - 动态边界必须直接写入每个大表别名自己的 `WHERE` 或 `JOIN ON` 分区条件，禁止先生成单行 `bounds` CTE 后再通过 `JOIN` / `CROSS JOIN` 引用。
 
 ```sql
+SELECT
+    e.dt,
+    COUNT(*) AS event_count
+FROM `event` e
 WHERE e.dt BETWEEN
     {{dashboard_start_yyyymmdd}}
     AND {{dashboard_end_yyyymmdd}}
+GROUP BY e.dt
+ORDER BY e.dt
 ```
 
 - 后续每个读取 `event`、`user` 等大表的 CTE 都必须在自身的 `WHERE` 或 `JOIN ON` 中直接限制对应别名的原始整数 `dt` 分区字段。

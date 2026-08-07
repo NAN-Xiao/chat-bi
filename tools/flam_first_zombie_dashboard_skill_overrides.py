@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-
+from typing import Any
 
 OVERRIDES_PATH = Path(__file__).with_name(
     "flam_first_zombie_dashboard_skill_overrides.json"
@@ -49,12 +49,32 @@ def _view_pattern(view_id: str) -> re.Pattern[str]:
     )
 
 
+def _canonical_sql_overrides() -> dict[str, str]:
+    """返回代码目录中已验证的静态 JSON Path 看板 SQL。"""
+
+    # 延迟导入，避免种子模块加载时引入不必要的看板依赖。
+    from flam_first_zombie_remaining_dashboard_sql import REMAINING_VIEW_SQL
+
+    return {
+        view_id: REMAINING_VIEW_SQL[view_id].sql.strip()
+        for view_id in (
+            "59a8dfd8d6e341988edfbf1666872aae",
+            "344c936b561f44f6bc29cc2663f3f651",
+        )
+    }
+
+
 def apply_dashboard_skill_overrides(
     skills: Sequence[Mapping[str, str]],
 ) -> list[dict[str, str]]:
     """返回与当前 Flam 推荐看板目录一致的 Skill 定义。"""
 
     config = _load_overrides()
+    sql_overrides = {
+        str(view_id): str(sql)
+        for view_id, sql in config["sql_overrides"].items()
+    }
+    sql_overrides.update(_canonical_sql_overrides())
     result = [dict(skill) for skill in skills]
     prompts = {index: str(skill.get("prompt") or "") for index, skill in enumerate(result)}
     marker_to_index = {
@@ -74,7 +94,7 @@ def apply_dashboard_skill_overrides(
         str(view_id): str(owner)
         for view_id, owner in config["new_view_owners"].items()
     }
-    for view_id, sql in config["sql_overrides"].items():
+    for view_id, sql in sql_overrides.items():
         view_id = str(view_id)
         pattern = _view_pattern(view_id)
         matches = [
@@ -86,7 +106,7 @@ def apply_dashboard_skill_overrides(
         if len(matches) == 1:
             index, _match = matches[0]
             prompts[index] = pattern.sub(
-                lambda _current: replacement,
+                lambda _current, value=replacement: value,
                 prompts[index],
                 count=1,
             )
@@ -118,7 +138,7 @@ def apply_dashboard_skill_overrides(
         )
     if remove_ids.intersection(blocks):
         raise ValueError("Flam 已下线推荐看板 SQL 块仍然存在")
-    for view_id, sql in config["sql_overrides"].items():
+    for view_id, sql in sql_overrides.items():
         if blocks.get(str(view_id)) != str(sql).strip():
             raise ValueError(f"Flam 推荐看板 SQL 覆盖失败: {view_id}")
     return result

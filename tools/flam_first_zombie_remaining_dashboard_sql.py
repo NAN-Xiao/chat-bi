@@ -13,6 +13,7 @@ from flam_first_zombie_dashboard_sql import (
     PROD_ID,
 )
 from flam_first_zombie_date_sql import complete_business_date_expr, complete_business_dt_expr
+from flam_first_zombie_hero_json_sql import hero_slot_select_list, hero_slot_union
 
 
 @dataclass(frozen=True)
@@ -183,24 +184,28 @@ LIMIT 1000;
 """.strip()
 
 SQL_HERO_EXPEDITION_COUNT = f"""
+WITH march_source AS (
+    SELECT
+        e.dt,
+{hero_slot_select_list()}
+    FROM `event` e
+    WHERE {_dt_between("e", 6)}
+      AND e.event = 'WorldMarch'
+      AND e.prod = {PROD_ID}
+),
+heroes AS (
+{hero_slot_union(source_name="march_source", dimensions=("dt",))}
+)
 SELECT
-    STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
-    JSON_UNQUOTE(JSON_EXTRACT(e.personal, CONCAT('$.ed_myTeamHeroList[', n.n, '].heroId'))) AS `英雄ID`,
+    STR_TO_DATE(CAST(h.dt AS CHAR), '%Y%m%d') AS `日期`,
+    h.hero_id AS `英雄ID`,
     COUNT(*) AS `出征次数`
-FROM `event` e
-JOIN (
-    SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
-    UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
-) n
-  ON JSON_EXTRACT(e.personal, CONCAT('$.ed_myTeamHeroList[', n.n, '].heroId')) IS NOT NULL
-WHERE {_dt_between("e", 6)}
-  AND e.event = 'WorldMarch'
-  AND e.prod = {PROD_ID}
+FROM heroes h
 GROUP BY
-    e.dt,
-    `英雄ID`
+    h.dt,
+    h.hero_id
 ORDER BY
-    e.dt,
+    h.dt,
     `出征次数` DESC
 LIMIT 1000;
 """.strip()
@@ -259,27 +264,24 @@ WITH bounds AS (
         {_date_expr(6)} AS start_dt,
         {_date_expr()} AS end_dt
 ),
-march_heroes AS (
-    SELECT DISTINCT
+march_source AS (
+    SELECT
         e.uid,
         JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId')) AS march_id,
-        JSON_UNQUOTE(
-            JSON_EXTRACT(
-                e.personal,
-                CONCAT('$.ed_myTeamHeroList[', n.n, '].heroId')
-            )
-        ) AS hero_id
+{hero_slot_select_list()}
     FROM `event` e
     JOIN bounds b ON TRUE
-    JOIN (
-        SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
-        UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
-    ) n
-      ON JSON_EXTRACT(e.personal, CONCAT('$.ed_myTeamHeroList[', n.n, ']')) IS NOT NULL
     WHERE e.dt BETWEEN b.start_dt AND b.end_dt
       AND e.prod = {PROD_ID}
       AND e.event = 'WorldMarch'
       AND JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_marchId')) IS NOT NULL
+),
+march_hero_slots AS (
+{hero_slot_union(source_name="march_source", dimensions=("uid", "march_id"))}
+),
+march_heroes AS (
+    SELECT DISTINCT uid, march_id, hero_id
+    FROM march_hero_slots
 ),
 march_results AS (
     SELECT

@@ -17,7 +17,7 @@ TOOLS_DIR = ROOT / "tools"
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
-import seed_xiuxian_data_skills as seed  # noqa: E402
+import seed_xiuxian_data_skills as seed  # noqa: E402, I001
 
 
 REALTIME_CURRENT_DATE_VIEWS = {
@@ -165,6 +165,18 @@ def test_xiuxian_date_skill_documents_complete_date_filter_contract() -> None:
     assert '"date_parameter_type":"yyyymmdd_number"' in prompt
     assert '"date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}' in prompt
     assert '"start":"{{dashboard_start_yyyymmdd}}"' not in prompt
+
+
+def test_xiuxian_date_skill_uses_complete_bounded_sql_examples() -> None:
+    from apps.knowledge_base.object_sql import extract_sql_object_paths
+
+    prompt = _date_skill()["prompt"]
+    sql_blocks = re.findall(r"```sql\s*\n(.*?)```", prompt, flags=re.DOTALL)
+
+    assert len(sql_blocks) >= 2
+    for sql in sql_blocks:
+        assert "{{dashboard_start_yyyymmdd}}" in sql or "{{dashboard_end_yyyymmdd}}" in sql
+        extract_sql_object_paths([sql], dialect="mysql")
 
 
 def test_xiuxian_skills_do_not_embed_platform_dashboard_date_contract() -> None:
