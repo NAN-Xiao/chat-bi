@@ -232,6 +232,35 @@ def test_dashboard_prompt_for_mysql_forbids_full_outer_join() -> None:
     assert "条件聚合" in prompt
 
 
+def test_dashboard_prompt_for_mysql_forbids_unsigned_casts() -> None:
+    """
+    是什么：MySQL 数据源下手动图表 SQL 生成提示词要明确禁止 UNSIGNED 类型转换。
+    """
+    prompt = ai_sql_generator._dashboard_config_prompt(
+        DashboardAiSqlGenerateRequest(
+            datasource=1,
+            intent="看最近 7 天每日新增用户",
+            chart_type="line",
+            context={
+                "time": {"field": {"table": "event", "field": "dt"}, "grain": "day", "range": "7d"},
+                "metrics": [{"alias": "新增用户数"}],
+                "groups": [],
+                "filters": {},
+                "selectedFields": [],
+            },
+        ),
+        datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
+        data_skill="",
+        tracking_config="",
+        sql_dialect="mysql",
+    )
+
+    assert "UNSIGNED" in prompt
+    assert "SIGNED" in prompt
+    assert "DECIMAL" in prompt
+    assert "不能使用 CAST(... AS UNSIGNED)" in prompt
+
+
 def test_dashboard_prompt_requires_tracking_event_prefilter_for_multiple_event_metrics() -> None:
     """
     是什么：多个事件类指标共用事件名字段时，提示词要要求先用 WHERE IN 收窄扫描范围。
@@ -1187,6 +1216,23 @@ def test_validate_sql_node_rejects_current_date_function_and_missing_date_tokens
 
     assert result.success is False
     assert "看板日期参数" in result.message
+
+
+def test_validate_sql_node_rejects_mysql_unsigned_cast() -> None:
+    response = ai_sql_generator.DashboardAiSqlGenerateResponse(
+        success=True,
+        sql="SELECT CAST(DATE_FORMAT(NOW(), '%Y%m%d') AS UNSIGNED) AS dt",
+    )
+
+    result = ai_sql_generator._node_validate_sql({
+        "response": response,
+        "sql_dialect": "mysql",
+        "graph_trace": [],
+    })["response"]
+
+    assert result.success is False
+    assert "UNSIGNED" in result.message or any("UNSIGNED" in issue for issue in (result.issues or []))
+    assert "SIGNED" in result.advice
 
 
 def test_metric_chart_does_not_require_dashboard_date_parameters() -> None:

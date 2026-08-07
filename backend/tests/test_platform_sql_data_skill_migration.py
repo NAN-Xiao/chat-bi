@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 from apps.chat.task import llm
 
 
@@ -264,6 +266,41 @@ def test_hourly_zero_fill_followup_uses_generic_dimension_rule() -> None:
     assert "当天 `00:00` 到该最大事件时间所在小时" in migration.ZERO_FILL_SECTION
     assert "对当前数据源 Schema 配置的事实 `time` 字段取 `MAX`" in migration.ZERO_FILL_SECTION
     assert "不得使用 `CURRENT_DATE`" in migration.ZERO_FILL_SECTION
+
+
+def test_mysql_unsigned_compatibility_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    migration = _load_migration("155_platform_mysql_unsigned_compatibility_data_skill.py")
+
+    assert migration.down_revision == "154platformhourlyzerofill"
+    assert "platform-foundation-skill:mysql-unsigned-compat:v1" in migration.ZERO_FILL_SECTION
+    assert "CAST(... AS UNSIGNED)" in migration.ZERO_FILL_SECTION
+    assert "SIGNED" in migration.ZERO_FILL_SECTION
+    assert "DECIMAL" in migration.ZERO_FILL_SECTION
+    assert "JSON 数值字段" in migration.ZERO_FILL_SECTION
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert "embedding = NULL" in statement
+    assert "embedding_signature = NULL" in statement
+    assert "unsigned_marker" in params
+    assert params["section"] == migration.ZERO_FILL_SECTION
 
 
 def test_date_function_commas_do_not_trigger_dimension_scaffold_rule() -> None:
