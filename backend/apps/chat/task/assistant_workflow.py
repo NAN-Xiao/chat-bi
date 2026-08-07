@@ -334,15 +334,14 @@ def format_workflow_error(
     if include_db_error_types and isinstance(error, AppDBConnectionError):
         traceback.print_exc()
         return orjson.dumps({
-            "message": str(error),
+            "message": "数据源连接失败，请检查数据源配置或稍后重试；如问题持续，请联系管理员。",
             "type": "db-connection-err",
         }).decode()
 
     if include_db_error_types and isinstance(error, AppDBError):
         traceback.print_exc()
         return orjson.dumps({
-            "message": "Execute SQL Failed",
-            "traceback": str(error),
+            "message": "数据查询执行失败，请稍后重试；如问题持续，请联系管理员。",
             "type": "exec-sql-err",
         }).decode()
 

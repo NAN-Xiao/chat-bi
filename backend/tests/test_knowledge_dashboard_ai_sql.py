@@ -2,10 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
+
+from fastapi import HTTPException
+import pytest
 
 from apps.dashboard.crud import ai_sql_generator
 from apps.dashboard.models.dashboard_model import DashboardAiSqlGenerateRequest
+
+
+def test_dashboard_sql_generation_preserves_http_errors(monkeypatch):
+    request = DashboardAiSqlGenerateRequest(datasource=10)
+
+    class _Graph:
+        async def ainvoke(self, _state):
+            raise HTTPException(status_code=403, detail="当前用户无权访问项目 10")
+
+    monkeypatch.setattr(ai_sql_generator, "MANUAL_CHART_GRAPH", _Graph())
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            ai_sql_generator.generate_dashboard_ai_sql(
+                session=SimpleNamespace(),
+                current_user=SimpleNamespace(id=8),
+                request=request,
+            )
+        )
+
+    assert error.value.status_code == 403
+    assert error.value.detail == "当前用户无权访问项目 10"
 
 
 def test_dashboard_context_is_built_after_normalization(monkeypatch):

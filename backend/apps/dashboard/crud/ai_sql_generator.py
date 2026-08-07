@@ -2101,6 +2101,8 @@ async def generate_dashboard_ai_sql(
             "request": request,
             "graph_trace": [],
         })
+    except HTTPException:
+        raise
     except Exception as exc:
         AppLogUtil.error(f"Dashboard manual chart graph failed: {exc}")
         raise HTTPException(
