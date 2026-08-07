@@ -832,7 +832,10 @@ def _unsafe_exec_sql_after_validation(
             # application placeholders resolved before reaching this adapter.
             # Use the driver's raw execution path so SQLAlchemy does not scan
             # literal colons such as CONCAT(..., ':00') as bind parameters.
-            with session.connection().exec_driver_sql(sql) as result:
+            with session.connection().exec_driver_sql(
+                    sql,
+                    execution_options={"no_parameters": True},
+            ) as result:
                 try:
                     columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
                     res = _limited_fetchmany(result, max_result_rows)
