@@ -113,8 +113,17 @@ def test_publish_route_returns_database_job_snapshot(monkeypatch):
         ),
     )
     monkeypatch.setattr(publish.KnowledgePermissionService, "require_manage", lambda *_args: None)
+    async def reconcile(*_args, **_kwargs):
+        assert _kwargs.get("job_id") == 20
+        return {"queued": 1}
+
+    monkeypatch.setattr(publish, "reconcile_publish_jobs", reconcile)
+
     class _CommitSession:
         def commit(self):
+            return None
+
+        def refresh(self, _value):
             return None
 
     response = asyncio.run(

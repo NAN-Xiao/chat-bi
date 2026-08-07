@@ -166,6 +166,7 @@ export const knowledgeBaseApi = {
       version_id: number
       revision: number
       content_hash: string
+      datasource_id?: number | null
       context?: Record<string, any>
     }
   ) => request.post<KnowledgeBaseVersion>(`/knowledge-base/${id}/draft/validate`, payload),

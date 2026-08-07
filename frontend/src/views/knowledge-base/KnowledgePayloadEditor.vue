@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { cloneDeep } from 'lodash-es'
+import { computed } from 'vue'
 import BusinessKnowledgeEditor from './editors/BusinessKnowledgeEditor.vue'
 import DocumentEditor from './editors/DocumentEditor.vue'
 import EventKnowledgeEditor from './editors/EventKnowledgeEditor.vue'
@@ -20,7 +19,10 @@ const props = withDefaults(
   { readonly: false }
 )
 const emit = defineEmits<{ 'update:modelValue': [value: KnowledgePayload] }>()
-const local = ref<KnowledgePayload>(cloneDeep(props.modelValue))
+const local = computed<KnowledgePayload>({
+  get: () => props.modelValue || defaultKnowledgePayload('DOCUMENT'),
+  set: (value) => emit('update:modelValue', serializeKnowledgeDraft(value)),
+})
 const type = computed(() => local.value.knowledge_type)
 const documentPayload = computed(() => local.value as DocumentPayload)
 const businessPayload = computed(() => local.value as BusinessKnowledgePayload)
@@ -32,13 +34,6 @@ const typeOptions = [
   { label: '事件与事件参数', value: 'EVENT' },
   { label: 'JSON 字段与路径', value: 'JSON_FIELD' },
 ]
-
-watch(
-  () => props.modelValue,
-  (value) => { local.value = cloneDeep(value || defaultKnowledgePayload('DOCUMENT')) },
-  { deep: true, immediate: true }
-)
-watch(local, (value) => emit('update:modelValue', serializeKnowledgeDraft(value)), { deep: true })
 
 function updateType(value: KnowledgePayload['knowledge_type']) {
   local.value = defaultKnowledgePayload(value)

@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+import logging
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
-from sqlmodel import Session
+from sqlalchemy import delete
+from sqlmodel import Session, select
 
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.datasource.embedding.utils import (
@@ -37,6 +38,9 @@ from apps.knowledge_base.retrieval_models import KnowledgeBaseChunk
 from apps.knowledge_base.schemas import KnowledgePayloadAdapter
 from common.core.config import settings
 from common.utils.file_utils import AppFileUtils
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,7 +76,7 @@ class KnowledgePublisher:
         job, version, record = self._claim(job_id, task_id=task_id)
         try:
             payload = KnowledgePayloadAdapter.validate_python(version.payload)
-            chunks = self._chunk(payload, version)
+            chunks = self._chunk(payload, version, job_id=int(job.id))
             references = project_version_references(
                 payload,
                 ReferenceProjectionContext(
@@ -88,6 +92,7 @@ class KnowledgePublisher:
                 payload=payload,
                 references=references,
                 artifact=artifact,
+                job_id=int(job.id),
             )
             if not finalize_publish_job(self.session, job_id=int(job.id), now=datetime.utcnow()):
                 raise KnowledgeBusinessError(
@@ -100,6 +105,7 @@ class KnowledgePublisher:
             return {"job_id": int(job.id), "version_id": int(version.id), "status": "SUCCEEDED"}
         except Exception as exc:
             self.session.rollback()
+            logger.exception("Knowledge publication failed: job_id=%s", job_id)
             self._fail(job_id, exc)
             return {
                 "job_id": int(job_id),
@@ -179,8 +185,8 @@ class KnowledgePublisher:
             )
         return job, version, record
 
-    def _chunk(self, payload: Any, version: Any) -> list[KnowledgeChunkDraft]:
-        self._set_stage(version_id=int(version.id), stage="CHUNK")
+    def _chunk(self, payload: Any, version: Any, *, job_id: int) -> list[KnowledgeChunkDraft]:
+        self._set_stage(job_id=job_id, stage="CHUNK")
         if getattr(version, "file_id", None):
             path = Path(AppFileUtils.get_file_path(version.file_id))
             if path.is_file():
@@ -197,7 +203,7 @@ class KnowledgePublisher:
         )
 
     def _embed(self, job: Any, version: Any, chunks: list[KnowledgeChunkDraft]) -> PublishedArtifact:
-        self._set_stage(version_id=int(version.id), stage="EMBED")
+        self._set_stage(job_id=int(job.id), stage="EMBED")
         model = self.embedding_model or EmbeddingModelCache.get_model()
         texts = [chunk.content for chunk in chunks]
         if not texts:
@@ -233,8 +239,9 @@ class KnowledgePublisher:
         payload: Any,
         references: list[Any],
         artifact: PublishedArtifact,
+        job_id: int,
     ) -> None:
-        self._set_stage(version_id=int(version.id), stage="FINALIZE")
+        self._set_stage(job_id=job_id, stage="FINALIZE")
         self.session.exec(
             delete(SemanticObjectReference).where(
                 SemanticObjectReference.owner_type == "KNOWLEDGE_VERSION",
@@ -331,9 +338,9 @@ class KnowledgePublisher:
         self.session.add(row)
         self.session.commit()
 
-    def _set_stage(self, *, version_id: int, stage: str) -> None:
+    def _set_stage(self, *, job_id: int, stage: str) -> None:
         job = self.session.exec(
-            select(KnowledgePublishJob).where(KnowledgePublishJob.version_id == int(version_id))
+            select(KnowledgePublishJob).where(KnowledgePublishJob.id == int(job_id))
         ).first()
         if job is not None:
             self._heartbeat(int(job.id), stage=stage)

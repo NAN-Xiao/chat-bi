@@ -262,6 +262,7 @@ def verify_knowledge_storage_probe(payload: dict[str, Any]) -> dict[str, Any]:
         }
 
 
+@task_handler("knowledge_base.publish")
 @task_handler("knowledge_base.publish_version")
 def publish_knowledge_base_version(payload: dict[str, Any]) -> dict[str, Any]:
     """Run one registered, tenant-scoped knowledge publication job."""

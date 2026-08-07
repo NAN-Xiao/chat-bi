@@ -17,6 +17,15 @@ def normalize_payload(payload: KnowledgePayload) -> dict[str, Any]:
     normalized = payload.model_dump(mode="json", by_alias=True, exclude_none=True)
     if normalized.get("knowledge_type") == "DOCUMENT":
         normalized["markdown"] = normalize_markdown(normalized.get("markdown", ""))
+        normalized["object_references"] = [
+            {key: value for key, value in item.items() if not isinstance(value, str) or value.strip()}
+            for item in normalized.get("object_references", [])
+        ]
+    elif normalized.get("knowledge_type") == "BUSINESS":
+        normalized["related_objects"] = [
+            {key: value for key, value in item.items() if not isinstance(value, str) or value.strip()}
+            for item in normalized.get("related_objects", [])
+        ]
     return normalized
 
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Download, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import { Download, FolderDelete, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
 import {
@@ -57,6 +57,8 @@ const visibleItems = computed(() => {
 const canEdit = computed(() => !!selected.value?.can_manage)
 const editorTitle = computed(() => selected.value ? `编辑知识库：${selected.value.name}` : '编辑知识库')
 const draftStatus = computed(() => draft.value?.status || '无草稿')
+const currentVersion = computed(() => versions.value.find((version) => version.status === 'PUBLISHED') || null)
+const displayedVersion = computed(() => draft.value || currentVersion.value)
 const validationErrors = computed(() => draft.value?.validation_report?.errors || [])
 const validationWarnings = computed(() => draft.value?.validation_report?.warnings || [])
 const actionState = computed(() => knowledgeActionState({
@@ -196,22 +198,38 @@ async function loadVersions() {
   draft.value = versions.value.find((version) =>
     ['DRAFT', 'VALIDATING', 'VALIDATION_FAILED', 'READY_TO_PUBLISH', 'PUBLISH_FAILED'].includes(version.status)
   ) || null
-  if (!draft.value) {
-    const current = versions.value.find((version) => version.status === 'PUBLISHED')
-    if (current && canEdit.value) {
-      draft.value = await knowledgeBaseApi.rollback(selected.value.id, current.id)
-      versions.value = await knowledgeBaseApi.versions(selected.value.id)
-    }
-  }
-  if (!draft.value && canEdit.value) {
-    draft.value = await knowledgeBaseApi.createDraft(
-      selected.value.id,
-      defaultPayload(selected.value.knowledge_type)
-    )
-    versions.value = await knowledgeBaseApi.versions(selected.value.id)
-  }
   if (draft.value) payload.value = cloneDeep(draft.value.payload) as KnowledgePayload
+  else if (currentVersion.value) payload.value = cloneDeep(currentVersion.value.payload) as KnowledgePayload
   else payload.value = defaultPayload(selected.value.knowledge_type)
+}
+
+async function createEditingDraft() {
+  if (!selected.value || !canEdit.value || draft.value) return
+  const current = currentVersion.value
+  draft.value = current
+    ? await knowledgeBaseApi.rollback(selected.value.id, current.id)
+    : await knowledgeBaseApi.createDraft(selected.value.id, defaultPayload(selected.value.knowledge_type))
+  await loadVersions()
+  ElMessage.success('编辑草稿已创建')
+}
+
+async function rollbackVersion(version: KnowledgeBaseVersion) {
+  if (!selected.value || !canEdit.value || draft.value) return
+  draft.value = await knowledgeBaseApi.rollback(selected.value.id, version.id)
+  await loadVersions()
+  ElMessage.success(`已基于版本 ${version.version_number} 创建回滚草稿`)
+}
+
+async function archiveKnowledge(row: KnowledgeBaseItem) {
+  await ElMessageBox.confirm(
+    `归档后“${row.name}”将不再参与检索，但历史版本仍会保留。`,
+    '归档知识库',
+    { confirmButtonText: '归档', cancelButtonText: '取消', type: 'warning' }
+  )
+  await knowledgeBaseApi.delete(row.id)
+  if (selected.value?.id === row.id) editorVisible.value = false
+  await loadItems()
+  ElMessage.success('知识库已归档')
 }
 
 async function saveDraft() {
@@ -256,6 +274,7 @@ async function validateDraft() {
       version_id: draft.value.id,
       revision: draft.value.revision,
       content_hash: draft.value.content_hash || '',
+      datasource_id: datasourceContext.datasourceId ? Number(datasourceContext.datasourceId) : null,
       context: {},
     })
     if (draft.value.validation_report?.valid) ElMessage.success('校验通过，可以发布')
@@ -402,16 +421,17 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <el-table-column label="发布版本" width="130">
         <template #default="{ row }">
           <el-tag v-if="row.publishing_version_id" size="small" type="warning">发布中</el-tag>
-          <span v-else-if="row.current_version_id">版本 #{{ row.current_version_id }}</span>
+          <el-tag v-else-if="row.current_version_id" size="small" type="success">已发布</el-tag>
           <span v-else class="muted-text">尚未发布</span>
         </template>
       </el-table-column>
       <el-table-column label="更新时间" width="170">
         <template #default="{ row }">{{ row.update_time || '-' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="90" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button text type="primary" @click.stop="openEditor(row)">编辑</el-button>
+          <el-button v-if="row.can_manage" text type="danger" :icon="FolderDelete" @click.stop="archiveKnowledge(row)">归档</el-button>
         </template>
       </el-table-column>
       <template #empty><span class="empty-state">暂无知识库</span></template>
@@ -456,8 +476,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <span class="version-status">草稿状态：{{ draftStatus }}</span>
           <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
         </div>
-        <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit || editorBusy" />
-        <el-upload :disabled="!canEdit || editorBusy" :auto-upload="false" :show-file-list="false" accept=".md,.markdown,.docx" :before-upload="selectFile">
+        <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit || !draft || editorBusy" />
+        <el-upload :disabled="!canEdit || editorBusy" :auto-upload="false" :show-file-list="false" accept=".md,.markdown,.docx" :on-change="selectFile">
           <el-button :icon="Upload">替换源文件</el-button>
         </el-upload>
         <span v-if="pendingFile" class="pending-file">待上传：{{ pendingFile.name }}</span>
@@ -472,7 +492,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <el-button text type="warning" @click="refreshDraftAfterConflict">刷新最新版本</el-button>
         </div>
         <div class="editor-actions">
-          <el-button :icon="Download" :disabled="!draft?.file_name" @click="draft && downloadVersion(draft)">下载当前源文件</el-button>
+          <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>
+          <el-button :icon="Download" :disabled="!displayedVersion?.file_name" @click="displayedVersion && downloadVersion(displayedVersion)">下载当前源文件</el-button>
           <el-button :loading="saving" :disabled="!actionState.save" @click="saveDraft">保存草稿</el-button>
           <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
           <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
@@ -480,7 +501,15 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
         <div class="history-title">版本历史</div>
         <div v-for="version in versions" :key="version.id" class="history-row">
           <span>版本 {{ version.version_number }} · {{ version.status }}</span>
-          <el-button text @click="downloadVersion(version)" :disabled="!version.file_name">下载</el-button>
+          <div class="history-actions">
+            <el-button
+              v-if="canEdit && !draft && ['PUBLISHED', 'SUPERSEDED'].includes(version.status)"
+              text
+              type="primary"
+              @click="rollbackVersion(version)"
+            >回滚为草稿</el-button>
+            <el-button text @click="downloadVersion(version)" :disabled="!version.file_name">下载</el-button>
+          </div>
         </div>
         <div v-if="publishJob" class="publish-status">发布任务：{{ publishJob.status }}{{ publishJob.stage ? ` · ${publishJob.stage}` : '' }}</div>
       </div>
@@ -500,7 +529,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .knowledge-v2-table { min-height: 160px; }
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }
-.editor-toolbar, .editor-actions, .history-row { display: flex; align-items: center; gap: 8px; }
+.editor-toolbar, .editor-actions, .history-row, .history-actions { display: flex; align-items: center; gap: 8px; }
 .editor-layout { padding: 0 2px 24px; }
 .editor-toolbar { margin-bottom: 16px; flex-wrap: wrap; color: #667085; font-size: 12px; }
 .workspace-override { display: inline-flex; align-items: center; gap: 6px; color: #475467; }

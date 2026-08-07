@@ -312,14 +312,36 @@ def _assert_ast_subset_of_explicit(
     *,
     field_path: str,
 ) -> None:
-    explicit_keys = {item.declared_key for item in explicit}
+    explicit_values = tuple(explicit)
     for reference in ast:
-        if reference.declared_key not in explicit_keys:
+        if not any(_explicit_covers_ast(item, reference) for item in explicit_values):
             raise ObjectReferenceValidationError(
                 code="KNOWLEDGE_UNDECLARED_OBJECT_REFERENCE",
                 message="SQL 实际引用的对象未在知识声明中登记。",
                 field_path=field_path,
             )
+
+
+def _explicit_covers_ast(
+    explicit: ProjectedObjectReference,
+    ast: ProjectedObjectReference,
+) -> bool:
+    if explicit.declared_key == ast.declared_key:
+        return True
+    explicit_path = explicit.declared_path
+    ast_path = ast.declared_path
+    same_table = (
+        _identifier(explicit_path.catalog) == _identifier(ast_path.catalog)
+        and _identifier(explicit_path.schema) == _identifier(ast_path.schema)
+        and _identifier(explicit_path.table) == _identifier(ast_path.table)
+    )
+    if not same_table:
+        return False
+    if explicit_path.object_type == "TABLE":
+        return ast_path.object_type in {"TABLE", "FIELD", "JSON_PATH"}
+    if explicit_path.object_type in {"FIELD", "JSON_PATH"}:
+        return ast_path.object_type == "TABLE"
+    return False
 
 
 def _project(path: DeclaredObjectPath, context: ReferenceProjectionContext, source_kind: str) -> ProjectedObjectReference:

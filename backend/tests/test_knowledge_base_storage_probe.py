@@ -272,5 +272,6 @@ def test_publish_recovery_tasks_are_registered() -> None:
     register_builtin_tasks()
 
     names = registered_task_names()
+    assert "knowledge_base.publish" in names
     assert "knowledge_base.reconcile_publish_jobs" in names
     assert "knowledge_base.storage_probe" in names

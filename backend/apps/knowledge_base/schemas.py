@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
 
@@ -22,6 +22,23 @@ class SemanticObjectReferenceInput(BaseModel):
     json_path: str | None = None
     event_name: str | None = None
     event_property_key: str | None = None
+
+    @field_validator(
+        "catalog",
+        "schema_name",
+        "table",
+        "field",
+        "json_path",
+        "event_name",
+        "event_property_key",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_identifier(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
 
     @property
     def schema(self) -> str | None:

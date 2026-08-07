@@ -311,11 +311,12 @@ async def reconcile_publish_jobs(
     now: datetime | None = None,
     queue_name: str | None = None,
     limit: int = 100,
+    job_id: int | None = None,
 ) -> dict[str, Any]:
     resolved_now = now or datetime.utcnow()
     resolved_queue = queue_name or settings.TASK_QUEUE_NAME
     summary = _new_summary()
-    job_ids = list_due_publish_job_ids(
+    job_ids = [int(job_id)] if job_id is not None else list_due_publish_job_ids(
         session,
         now=resolved_now,
         queue_timeout_seconds=settings.KNOWLEDGE_PUBLISH_QUEUE_TIMEOUT_SECONDS,

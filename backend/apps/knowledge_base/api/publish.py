@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter
@@ -20,7 +21,11 @@ from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgePublishJob
 from apps.knowledge_base.permissions import KnowledgePermissionService
 from apps.knowledge_base.publish_jobs import prepare_publish_job
+from apps.knowledge_base.reconciliation import reconcile_publish_jobs
 from common.core.deps import CurrentUser, SessionDep
+
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     tags=["KnowledgeBase"],
@@ -77,6 +82,13 @@ async def publish_knowledge(
             actor_id=int(current_user.id),
         )
         session.commit()
+        try:
+            await reconcile_publish_jobs(session, job_id=int(job.id), limit=1)
+        except Exception:
+            # The DB job is durable; the periodic reconciler can retry queue confirmation.
+            session.rollback()
+            logger.exception("Knowledge publish queue confirmation failed: job_id=%s", job.id)
+        session.refresh(job)
         return _job_response(job)
     except KnowledgeBusinessError as error:
         session.rollback()

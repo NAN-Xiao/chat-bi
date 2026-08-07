@@ -453,7 +453,7 @@ def finalize_publish_job(
             select(KnowledgeBaseVersion)
             .where(
                 KnowledgeBaseVersion.id == record.current_version_id,
-                KnowledgeBaseVersion.knowledge_base_id == record.knowledge_base_id,
+                KnowledgeBaseVersion.knowledge_base_id == record.id,
                 KnowledgeBaseVersion.tenant_id == record.tenant_id,
             )
             .with_for_update()

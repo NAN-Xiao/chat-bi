@@ -20,7 +20,7 @@ from apps.knowledge_base.lifecycle_models import (
     KnowledgeVersionStatus,
 )
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseVisibilityScopeEnum
-from apps.knowledge_base.publish_jobs import prepare_publish_job
+from apps.knowledge_base.publish_jobs import finalize_publish_job, prepare_publish_job
 
 
 class _Result:
@@ -109,6 +109,70 @@ def test_publish_rejects_a_different_active_job():
     with pytest.raises(KnowledgeBusinessError) as caught:
         _prepare(session)
     assert caught.value.code == "KNOWLEDGE_PUBLISHING"
+
+
+def test_finalize_second_version_supersedes_current_version():
+    job = KnowledgePublishJob(
+        id=99,
+        tenant_id=7,
+        knowledge_base_id=11,
+        version_id=13,
+        revision=1,
+        content_hash="b" * 64,
+        status="RUNNING",
+    )
+    current = KnowledgeBaseVersion(
+        id=12,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=1,
+        revision=1,
+        status=KnowledgeVersionStatus.PUBLISHED,
+        content_hash="a" * 64,
+        payload={"knowledge_type": "DOCUMENT", "markdown": "旧版本"},
+    )
+    target = KnowledgeBaseVersion(
+        id=13,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=2,
+        revision=1,
+        status=KnowledgeVersionStatus.PUBLISHING,
+        index_status="READY",
+        content_hash="b" * 64,
+        payload={"knowledge_type": "DOCUMENT", "markdown": "新版本"},
+    )
+    record = KnowledgeBase(
+        id=11,
+        tenant_id=7,
+        name="收入知识",
+        visibility_scope=KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC,
+        current_version_id=12,
+        publishing_version_id=13,
+        draft_version_id=13,
+    )
+
+    class _FinalizeSession:
+        def __init__(self):
+            self.results = iter((job, target, record, current))
+
+        def exec(self, _statement):
+            return _Result(next(self.results))
+
+        def add(self, _value):
+            return None
+
+        def add_all(self, _values):
+            return None
+
+        def flush(self):
+            return None
+
+    assert finalize_publish_job(_FinalizeSession(), job_id=99)
+    assert current.status == "SUPERSEDED"
+    assert target.status == "PUBLISHED"
+    assert record.current_version_id == 13
+    assert record.publishing_version_id is None
 
 
 def test_download_uses_version_binding_and_does_not_expose_storage_id(monkeypatch, tmp_path: Path):

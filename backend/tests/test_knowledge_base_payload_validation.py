@@ -430,3 +430,26 @@ def test_normalization_hash_ignores_document_line_endings_and_json_key_order() -
     right = DocumentPayload(knowledge_type="DOCUMENT", markdown="标题\n\n正文\n", tags=["说明", "通用"])
     assert normalize_payload(left)["markdown"] == "标题\n\n正文\n"
     assert content_hash_for_payload(left) == content_hash_for_payload(right)
+
+
+def test_object_reference_normalizes_blank_optional_identifiers() -> None:
+    payload = KnowledgePayloadAdapter.validate_python(
+        {
+            "knowledge_type": "DOCUMENT",
+            "markdown": "正文",
+            "datasource_neutral": False,
+            "object_references": [
+                {
+                    "object_type": "TABLE",
+                    "schema": " public ",
+                    "table": " orders ",
+                    "field": " ",
+                }
+            ],
+        }
+    )
+
+    reference = payload.object_references[0]
+    assert reference.schema == "public"
+    assert reference.table == "orders"
+    assert reference.field is None
