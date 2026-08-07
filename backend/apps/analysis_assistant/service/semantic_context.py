@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum
-from apps.datasource.crud.sql_engine import BusinessSqlContext, BusinessSqlContextService
+from apps.datasource.crud.sql_engine import (
+    BusinessSqlContext,
+    BusinessSqlContextService,
+)
 
 
 @dataclass(frozen=True)

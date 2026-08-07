@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 
 from apps.dashboard.crud import ai_sql_generator
 from apps.dashboard.models.dashboard_model import DashboardAiSqlGenerateRequest

@@ -45,7 +45,9 @@ from apps.analysis_assistant.service.analysis_time_sql import (
     enforce_analysis_time_sql,
     sql_references_time_bearing_table,
 )
-from apps.analysis_assistant.service.semantic_context import AnalysisSemanticContextAdapter
+from apps.analysis_assistant.service.semantic_context import (
+    AnalysisSemanticContextAdapter,
+)
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,

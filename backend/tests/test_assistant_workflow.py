@@ -15,7 +15,12 @@ from apps.chat.task.assistant_workflow import (
     format_workflow_error,
     run_assistant_workflow,
 )
-from common.error import AppDBConnectionError, AppDBError, DataUnavailableError, SingleMessageError
+from common.error import (
+    AppDBConnectionError,
+    AppDBError,
+    DataUnavailableError,
+    SingleMessageError,
+)
 from common.user_facing_errors import DATA_UNAVAILABLE_ERROR_TYPE
 
 

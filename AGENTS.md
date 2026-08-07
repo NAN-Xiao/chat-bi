@@ -137,3 +137,118 @@ Scope: entire repository.
 - Semantic-layer seed scripts must be idempotent and datasource-scoped. They should associate records with the intended `oid` and datasource IDs instead of relying on global hidden assumptions.
 - Datasource-scoped Data Skills, recommended questions, and test questions must not leak into other datasources. When a semantic record is specific to one datasource, store and retrieve it only under that datasource's allowed context.
 - When adding or correcting business口径 for the SLG BI mock project, update `tools/seed_slg_bi_training.py` and rerun it so every assistant surface that uses the same datasource can share the same Data Skills.
+
+<!-- BEGIN TRELLIS CODEX WORKFLOW -->
+## Mandatory Trellis And Codex Workflow
+
+Trellis is mandatory for this repository. Do not treat Trellis as optional, cosmetic, or validation-only.
+
+### Trellis Effectiveness Self-Check
+
+At the start of a Codex session, or before the first non-trivial code edit, verify that Trellis is actually active rather than merely installed.
+
+Run or inspect:
+
+```bash
+python ./.trellis/scripts/get_context.py --mode packages
+python ./.trellis/scripts/task.py current --source
+python scripts/check_trellis_codex_effective.py --repo .   # if this script is present
+```
+
+If the current prompt contains a `<workflow-state>` block, obey it. If no `<workflow-state>` block appears in a Trellis project, treat that as a hook/injection warning and explicitly check the Codex hook setup before proceeding with major work.
+
+Required signs of an effective Codex + Trellis setup:
+
+- `.trellis/` exists with `workflow.md`, `scripts/task.py`, `scripts/get_context.py`, and `spec/`.
+- `AGENTS.md` contains this mandatory workflow section.
+- `.agents/skills/` contains `trellis-start`, `trellis-before-dev`, `trellis-check`, and `trellis-update-spec`.
+- `.codex/hooks.json` wires `UserPromptSubmit` to `.codex/hooks/inject-workflow-state.py`.
+- `.codex/config.toml` keeps `AGENTS.md` as a project instruction source.
+- The user has enabled Codex hooks at user level and approved project hooks via `/hooks` when the Codex client requires it.
+- There is an active Trellis task for implementation work, or the assistant creates/starts one before editing.
+
+If any required sign is missing, say so clearly and repair it or give the exact user action needed. Do not pretend Trellis is active just because the `.trellis` directory exists.
+
+For every non-trivial implementation, refactor, product architecture change, bug fix, frontend behavior change, backend API change, database migration, or documentation decision that affects future behavior:
+
+1. Check the current Trellis task:
+   ```bash
+   python ./.trellis/scripts/task.py current --source
+   ```
+2. If no active task exists, create or start one before editing files.
+3. In Codex inline mode, load/use `trellis-before-dev` before writing code.
+4. Keep the active task's PRD, notes, implementation log, and check log aligned with the real scope.
+5. Add affected implementation and verification files into Trellis context when the local workflow supports it.
+6. After implementation, load/use `trellis-check`, run the relevant tests/builds, and record results.
+7. Update `.trellis/spec/` when a bug, validation gap, or repeatable convention should persist.
+8. Do not report completion until the active Trellis task has enough context for a future resumed session to continue without guessing.
+
+Trellis may be skipped only when the user explicitly says to skip Trellis.
+
+### Codex Operating Rules
+
+- Prefer inline implementation unless this repository explicitly opts into Trellis sub-agent dispatch.
+- Do not spawn Trellis implementation/check sub-agents unless the project workflow says to do so.
+- If no Trellis breadcrumb is injected, manually read `trellis-start` or `.agents/skills/trellis-start/SKILL.md` once before routing the task.
+- Read code and specs before changing behavior.
+- Do not revert user changes unless explicitly requested.
+- Keep edits scoped to the user request and the affected modules.
+- If the repository is not a git repository, state that commit steps cannot be performed instead of pretending to commit.
+
+### Required Failure Capture
+
+If a bug reaches the user, or if validation missed a user-visible issue:
+
+1. Fix the root cause.
+2. Add a concise entry to the active Trellis task explaining root cause, fix, and verification.
+3. If reusable, add the lesson to `.trellis/spec/`.
+
+Common mandatory captures:
+
+- A passing build is not enough for frontend work.
+- Restart and verify the actual running frontend/backend after code changes.
+- Browser-triggered downloads must be tested through the real click path.
+- Frontend authenticated calls should prefer same-origin `/api/...` through the dev proxy.
+- Nullable database fields must be scanned safely before JSON responses.
+- Migrations and seed repair logic must not delete administrator-created data unless explicitly requested.
+
+### Frontend Quality Gate
+
+For user-visible frontend changes:
+
+- Run the frontend build/type-check.
+- Restart or verify the dev server serving the page.
+- Use browser-level verification for the changed path.
+- For layout changes, check representative desktop and mobile viewports.
+- Verify page-level horizontal overflow is absent.
+- Check top navigation/action overflow on desktop.
+- Save screenshots for each affected primary page and inspect them manually.
+- Do not mark a UI task done after checking only the exact widget changed.
+
+For management consoles:
+
+- Prefer readable cards or dense but clear tables.
+- Do not squeeze status/action columns into vertical text.
+- Keep pagination visually attached to the list it controls.
+- Do not default-render long AI reports or logs in the first viewport.
+
+### Backend Quality Gate
+
+For backend changes:
+
+- Run Go tests or the relevant backend test command.
+- Restart or verify the actual process listening on the expected port.
+- Call the exact API endpoint directly before testing the frontend button.
+- Preserve audit/history records.
+- Avoid destructive migration or seed repair logic unless the user explicitly requested data cleanup.
+- Add regression tests for bugs caused by migrations, permissions, or lifecycle state.
+
+### Documentation Discipline
+
+When product or architecture decisions change:
+
+- Update the stable planning documents used by the project.
+- Update AI-facing API/reference documents when API routes, auth, permissions, response models, or workflows change.
+- Keep filenames stable.
+- Prefer explicit lifecycle states and concrete examples.
+<!-- END TRELLIS CODEX WORKFLOW -->

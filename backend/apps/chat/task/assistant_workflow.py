@@ -16,7 +16,12 @@ from sqlmodel import Session
 
 from apps.chat.task.assistant_output import emit, sse
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
-from common.error import AppDBConnectionError, AppDBError, DataUnavailableError, SingleMessageError
+from common.error import (
+    AppDBConnectionError,
+    AppDBError,
+    DataUnavailableError,
+    SingleMessageError,
+)
 from common.user_facing_errors import (
     DATA_UNAVAILABLE_ERROR_TYPE,
     classify_error,

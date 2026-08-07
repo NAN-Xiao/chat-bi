@@ -6,7 +6,10 @@ from types import SimpleNamespace
 
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
 from apps.knowledge_base.object_references import ProjectedObjectReference
-from apps.knowledge_base.object_resolution import _resolve_table_row, resolve_references_for_context
+from apps.knowledge_base.object_resolution import (
+    _resolve_table_row,
+    resolve_references_for_context,
+)
 
 
 def test_platform_reference_resolves_independently_per_datasource() -> None:
