@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -23,6 +24,8 @@ from apps.chat.curd.skill_object_references import (
 )
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
+from apps.datasource.models.datasource import CoreDatasource
+from apps.db.db import get_sqlglot_dialect
 from apps.knowledge_base.object_projection_models import (
     DataSkillObjectProjection,
     DataSkillProjectionStatus,
@@ -69,6 +72,7 @@ def rebuild_skill_object_projection(
     *,
     projector_version: str = SKILL_PROJECTOR_VERSION,
     source_hash: str | None = None,
+    sql_dialects: Iterable[str] | None = None,
 ) -> SkillProjectionReport:
     """Rebuild one Skill projection atomically and idempotently."""
     skill = session.get(CustomPrompt, int(skill_id))
@@ -84,7 +88,8 @@ def rebuild_skill_object_projection(
     error_code: str | None = None
     references: list[ProjectedObjectReference] = []
     try:
-        references = project_skill_references(skill)
+        resolved_dialects = tuple(sql_dialects or _skill_sql_dialects(session, skill))
+        references = project_skill_references(skill, dialects=resolved_dialects)
     except SqlObjectExtractionError as exc:
         status = DataSkillProjectionStatus.FAILED.value
         error_code = str(exc.code or SKILL_PROJECTION_ERROR)
@@ -153,15 +158,27 @@ def rebuild_all_skill_object_projections(
     return reports
 
 
-def project_skill_references(skill: Any) -> list[ProjectedObjectReference]:
+def project_skill_references(
+    skill: Any,
+    *,
+    dialects: Iterable[str] = (),
+) -> list[ProjectedObjectReference]:
     """Extract declared tables/fields/JSON paths from a Skill's existing text."""
     prompt = str(getattr(skill, "prompt", "") or "")
+    sql_blocks = _SQL_BLOCK.findall(prompt)
+    resolved_dialects = tuple(dict.fromkeys(str(item).strip() for item in dialects if str(item).strip()))
+    if sql_blocks and not resolved_dialects:
+        raise SqlObjectExtractionError(
+            "DATA_SKILL_DATASOURCE_SCOPE_INVALID",
+            "包含 SQL 的 Data Skill 必须配置适用数据源。",
+        )
     references: list[ProjectedObjectReference] = []
     for table_name in _required_tables(prompt):
         references.append(_projected(DeclaredObjectPath(**_table_path(table_name)), "SKILL_RULE"))
-    for sql in _SQL_BLOCK.findall(prompt):
-        for path in extract_sql_object_paths([sql], dialect="postgres"):
-            references.append(_projected(path, "SQL_AST"))
+    for sql in sql_blocks:
+        for dialect in resolved_dialects:
+            for path in extract_sql_object_paths([sql], dialect=dialect):
+                references.append(_projected(path, "SQL_AST"))
     result: list[ProjectedObjectReference] = []
     seen: set[tuple[str, str, str]] = set()
     for reference in references:
@@ -170,6 +187,41 @@ def project_skill_references(skill: Any) -> list[ProjectedObjectReference]:
             seen.add(key)
             result.append(reference)
     return result
+
+
+def _skill_sql_dialects(session: Session, skill: Any) -> tuple[str, ...]:
+    if not bool(getattr(skill, "specific_ds", False)):
+        return ()
+    datasource_ids = tuple(
+        dict.fromkeys(int(value) for value in (getattr(skill, "datasource_ids", None) or []))
+    )
+    if not datasource_ids:
+        raise SqlObjectExtractionError(
+            "DATA_SKILL_DATASOURCE_SCOPE_INVALID",
+            "Data Skill 已限制数据源，但未配置适用数据源。",
+        )
+    rows = session.exec(
+        select(CoreDatasource.id, CoreDatasource.type).where(CoreDatasource.id.in_(datasource_ids))
+    ).all()
+    datasource_types = {int(row[0]): str(row[1] or "") for row in rows}
+    if set(datasource_ids) != set(datasource_types):
+        raise SqlObjectExtractionError(
+            "DATA_SKILL_DATASOURCE_MISSING",
+            "Data Skill 绑定的数据源不存在或已不可用。",
+        )
+    dialects = tuple(
+        dict.fromkeys(
+            dialect
+            for datasource_id in datasource_ids
+            if (dialect := get_sqlglot_dialect(datasource_types[datasource_id]))
+        )
+    )
+    if not dialects:
+        raise SqlObjectExtractionError(
+            "DATA_SKILL_DIALECT_UNSUPPORTED",
+            "Data Skill 绑定的数据源方言暂不支持对象投影。",
+        )
+    return dialects
 
 
 def _projected(path: DeclaredObjectPath, source_kind: str) -> ProjectedObjectReference:

@@ -8,6 +8,7 @@ from sqlmodel import Session, SQLModel, select
 
 from apps.chat.curd.skill_object_projection import (
     SKILL_PROJECTION_ERROR,
+    _skill_sql_dialects,
     project_skill_references,
     rebuild_skill_object_projection,
 )
@@ -21,6 +22,22 @@ from apps.knowledge_base.object_projection_models import (
 from apps.knowledge_base.object_sql import SqlObjectExtractionError
 
 
+class _Rows:
+    def __init__(self, rows) -> None:
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+
+class _DialectSession:
+    def __init__(self, rows) -> None:
+        self.rows = rows
+
+    def exec(self, _statement):
+        return _Rows(self.rows)
+
+
 def test_required_tables_and_sql_ast_are_projected_without_changing_skill_selection() -> None:
     skill = SimpleNamespace(
         prompt=(
@@ -31,7 +48,7 @@ def test_required_tables_and_sql_ast_are_projected_without_changing_skill_select
         )
     )
 
-    references = project_skill_references(skill)
+    references = project_skill_references(skill, dialects=("postgres",))
 
     assert {(item.object_type, item.table_name, item.source_kind) for item in references} >= {
         ("TABLE", "event", "SKILL_RULE"),
@@ -45,9 +62,46 @@ def test_skill_without_object_declarations_is_ready_with_zero_references() -> No
     assert project_skill_references(SimpleNamespace(prompt="只描述业务口径，不包含 SQL。")) == []
 
 
+def test_unbound_skill_with_sql_is_rejected_without_dialect_fallback() -> None:
+    with pytest.raises(SqlObjectExtractionError) as error:
+        project_skill_references(SimpleNamespace(prompt="```sql\nSELECT * FROM orders\n```"))
+
+    assert error.value.code == "DATA_SKILL_DATASOURCE_SCOPE_INVALID"
+
+
+def test_skill_sql_uses_bound_datasource_dialect() -> None:
+    skill = SimpleNamespace(
+        prompt="```sql\nSELECT DATE_FORMAT(created_at, '%Y-%m-%d') FROM `orders`\n```"
+    )
+
+    references = project_skill_references(skill, dialects=("mysql",))
+
+    assert any(item.object_type == "TABLE" and item.table_name == "orders" for item in references)
+
+
+def test_bound_skill_dialects_are_loaded_and_deduplicated() -> None:
+    skill = SimpleNamespace(specific_ds=True, datasource_ids=[3, 6])
+
+    dialects = _skill_sql_dialects(_DialectSession([(3, "mysql"), (6, "mysql")]), skill)
+
+    assert dialects == ("mysql",)
+
+
+def test_bound_skill_rejects_missing_datasource() -> None:
+    skill = SimpleNamespace(specific_ds=True, datasource_ids=[3, 6])
+
+    with pytest.raises(SqlObjectExtractionError) as error:
+        _skill_sql_dialects(_DialectSession([(3, "mysql")]), skill)
+
+    assert error.value.code == "DATA_SKILL_DATASOURCE_MISSING"
+
+
 def test_invalid_sql_returns_the_existing_safe_parser_error() -> None:
     with pytest.raises(SqlObjectExtractionError) as error:
-        project_skill_references(SimpleNamespace(prompt="```sql\nSELECT FROM\n```"))
+        project_skill_references(
+            SimpleNamespace(prompt="```sql\nSELECT FROM\n```"),
+            dialects=("postgres",),
+        )
 
     assert error.value.code == "KNOWLEDGE_SQL_PARSE_FAILED"
     assert SKILL_PROJECTION_ERROR in "DATA_SKILL_OBJECT_PROJECTION_FAILED"
@@ -89,8 +143,8 @@ def test_projection_rebuild_is_idempotent_and_delete_cleans_derived_rows() -> No
             session.add(skill)
             session.commit()
 
-            first = rebuild_skill_object_projection(session, 1)
-            second = rebuild_skill_object_projection(session, 1)
+            first = rebuild_skill_object_projection(session, 1, sql_dialects=("postgres",))
+            second = rebuild_skill_object_projection(session, 1, sql_dialects=("postgres",))
             session.commit()
 
             projection = session.exec(select(DataSkillObjectProjection)).one()
@@ -104,7 +158,7 @@ def test_projection_rebuild_is_idempotent_and_delete_cleans_derived_rows() -> No
             skill.prompt = "```sql\nSELECT FROM\n```"
             session.add(skill)
             session.flush()
-            failed = rebuild_skill_object_projection(session, 1)
+            failed = rebuild_skill_object_projection(session, 1, sql_dialects=("postgres",))
             session.commit()
             projection = session.exec(select(DataSkillObjectProjection)).one()
             assert failed.status == projection.status == "FAILED"
@@ -114,7 +168,7 @@ def test_projection_rebuild_is_idempotent_and_delete_cleans_derived_rows() -> No
 
             session.delete(skill)
             session.flush()
-            deleted = rebuild_skill_object_projection(session, 1)
+            deleted = rebuild_skill_object_projection(session, 1, sql_dialects=("postgres",))
             session.commit()
 
             assert deleted.status == "DELETED"

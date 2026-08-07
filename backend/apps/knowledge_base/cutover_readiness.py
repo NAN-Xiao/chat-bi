@@ -187,7 +187,7 @@ def _overdue_publish_job_count(session: Session, now: datetime) -> int:
 
 
 def _count(session: Session, statement: Any) -> int:
-    return int(session.exec(statement).one() or 0)
+    return int(session.scalar(statement) or 0)
 
 
 def _value(value: Any) -> str:
