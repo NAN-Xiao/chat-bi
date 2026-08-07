@@ -125,3 +125,17 @@ def test_retrieval_evaluates_missing_datasource_applicability(monkeypatch):
         permission_snapshot=_snapshot(),
     )
     assert [item.chunk_id for item in result.citations] == [1]
+
+
+def test_load_allowed_chunks_uses_sqlmodel_scalar_select():
+    class _Result:
+        def all(self):
+            return [SimpleNamespace(id=1)]
+
+    class _Session:
+        def exec(self, statement):
+            assert statement.__class__.__name__ == "SelectOfScalar"
+            return _Result()
+
+    rows = KnowledgeRetrievalService._load_allowed_chunks(_Session(), [1])
+    assert [item.id for item in rows] == [1]

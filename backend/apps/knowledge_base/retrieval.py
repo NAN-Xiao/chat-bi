@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, exists, or_, select
-from sqlmodel import Session
+from sqlalchemy import and_, exists, or_
+from sqlmodel import Session, select
 
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
@@ -177,6 +177,12 @@ class KnowledgeRetrievalService:
             self._audit(surface, permission_snapshot, result, started, request_id=request_id, user_id=user_id)
             return result
         except Exception as exc:
+            logger.exception(
+                "Knowledge retrieval failed: tenant_id=%s datasource_id=%s surface=%s",
+                tenant_id,
+                datasource_id,
+                surface,
+            )
             result = self._result(
                 query_hash,
                 None,
