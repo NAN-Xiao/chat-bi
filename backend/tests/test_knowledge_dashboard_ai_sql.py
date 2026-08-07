@@ -17,6 +17,7 @@ def test_dashboard_context_is_built_after_normalization(monkeypatch):
         context={"metrics": [{"field": "orders.amount", "aggregation": "sum"}]},
     )
     trace = []
+    build_calls = []
 
     monkeypatch.setattr(ai_sql_generator.settings, "KNOWLEDGE_RUNTIME_CONTEXT_ENABLED", True)
     monkeypatch.setattr(ai_sql_generator, "require_current_tenant_id", lambda _user: 2)
@@ -38,6 +39,7 @@ def test_dashboard_context_is_built_after_normalization(monkeypatch):
             return datasource
 
     def build(**kwargs):
+        build_calls.append(kwargs)
         trace.append(kwargs["question"])
         return SimpleNamespace(
             datasource=datasource,
@@ -66,6 +68,7 @@ def test_dashboard_context_is_built_after_normalization(monkeypatch):
     assert trace
     assert "收入趋势" in trace[0]
     assert "orders.amount" in trace[0]
+    assert build_calls[0]["surface"] == "dashboard_ai_sql"
     assert built["allowed_tables"] == ["orders"]
 
 

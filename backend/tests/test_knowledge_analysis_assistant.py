@@ -81,6 +81,7 @@ def test_report_interpretation_uses_business_context_when_runtime_enabled(monkey
         == analysis_api.CustomPromptTargetScopeEnum.REPORT_INTERPRETATION
     )
     assert build_calls[0]["include_all_target_scopes"] is False
+    assert build_calls[0]["surface"] == "report_interpretation"
 
 
 async def _none_async():

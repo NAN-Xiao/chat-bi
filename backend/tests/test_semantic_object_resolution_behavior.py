@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
 from apps.knowledge_base.object_references import ProjectedObjectReference
-from apps.knowledge_base.object_resolution import resolve_references_for_context
+from apps.knowledge_base.object_resolution import _resolve_table_row, resolve_references_for_context
 
 
 def test_platform_reference_resolves_independently_per_datasource() -> None:
@@ -41,3 +43,33 @@ def test_missing_catalog_is_not_implicitly_eligible() -> None:
     )
     assert result[0].status == "UNRESOLVED"
     assert result[0].canonical_key
+
+
+def test_table_row_query_returns_core_table_model() -> None:
+    class _Result:
+        def all(self):
+            return [
+                SimpleNamespace(
+                    id=7,
+                    catalog_key="",
+                    schema_key="public",
+                    table_key="orders",
+                )
+            ]
+
+    class _Session:
+        def exec(self, statement):
+            assert statement.__class__.__name__ == "SelectOfScalar"
+            return _Result()
+
+    key, row = _resolve_table_row(
+        _Session(),
+        datasource_id=10,
+        path=DeclaredObjectPath(object_type="FIELD", schema="public", table="orders", field="amount"),
+        dialect="postgresql",
+    )
+
+    assert row.id == 7
+    assert key.catalog == ""
+    assert key.schema == "public"
+    assert key.table == "orders"

@@ -138,6 +138,7 @@ class BusinessSqlContextService:
         datasource_id: int,
         question: str | None = None,
         target_scope: CustomPromptTargetScopeEnum | str = CustomPromptTargetScopeEnum.SMART_QA,
+        surface: str | None = None,
         data_skill_id: int | str | None = None,
         include_all_target_scopes: bool = False,
         embedding: bool = True,
@@ -167,7 +168,10 @@ class BusinessSqlContextService:
                 tenant_id=int(tenant_id) if tenant_id is not None else int(getattr(current_user, "tenant_id", 0) or 0),
                 datasource_id=int(datasource_id),
                 question=question,
-                surface=str(target_scope.value if isinstance(target_scope, CustomPromptTargetScopeEnum) else target_scope),
+                surface=str(
+                    surface
+                    or (target_scope.value if isinstance(target_scope, CustomPromptTargetScopeEnum) else target_scope)
+                ),
                 target_scope=target_scope,
                 data_skill_id=data_skill_id,
                 include_all_target_scopes=include_all_target_scopes,

@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from apps.datasource.crud.semantic_object_key import (
     DeclaredObjectPath,

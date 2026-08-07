@@ -348,8 +348,8 @@ def format_workflow_error(
 
     traceback.print_exc()
     return orjson.dumps({
-        "message": str(error),
-        "traceback": traceback.format_exc(limit=1),
+        "message": "处理请求时发生异常，请稍后重试；如问题持续，请联系管理员。",
+        "type": "unexpected",
     }).decode()
 
 

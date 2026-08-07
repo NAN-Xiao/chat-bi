@@ -7,8 +7,7 @@ import json
 from collections.abc import Collection
 from typing import Any
 
-from sqlalchemy import select
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.knowledge_base.object_projection_models import (

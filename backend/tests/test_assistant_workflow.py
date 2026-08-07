@@ -216,6 +216,24 @@ def test_format_workflow_error_keeps_sql_exec_detail() -> None:
     assert payload["traceback"] == "database timeout"
 
 
+def test_format_workflow_error_hides_unexpected_internal_detail() -> None:
+    """未知异常只返回中文提示，内部堆栈仅保留在服务端日志。"""
+    service = FakeWorkflowService()
+
+    payload = json.loads(
+        format_workflow_error(
+            AttributeError("datasource_id"),
+            service=service,
+            log_prefix=CONFIG.log_prefix,
+        )
+    )
+
+    assert payload == {
+        "message": "处理请求时发生异常，请稍后重试；如问题持续，请联系管理员。",
+        "type": "unexpected",
+    }
+
+
 def test_format_workflow_error_data_unavailable_is_business_payload() -> None:
     """
     是什么：缺表/缺字段/缺埋点属于业务提示，不应携带 traceback。

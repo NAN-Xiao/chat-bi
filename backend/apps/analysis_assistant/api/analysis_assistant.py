@@ -4270,6 +4270,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         datasource_id=int(datasource.id),
         question=question,
         target_scope=target_scope,
+        surface="analysis_assistant",
         data_skill_id=request.data_skill_id,
         include_all_target_scopes=False,
         embedding=False,

@@ -40,6 +40,11 @@ class AnalysisSemanticContextAdapter:
             datasource_id=datasource_id,
             question=question,
             target_scope=target_scope,
+            surface=(
+                "report_interpretation"
+                if target_scope == CustomPromptTargetScopeEnum.REPORT_INTERPRETATION
+                else "analysis_assistant"
+            ),
             data_skill_id=data_skill_id,
             include_all_target_scopes=False,
             embedding=False,

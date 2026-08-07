@@ -1821,6 +1821,7 @@ def _node_build_business_sql_context(state: DashboardManualChartGraphState) -> d
         datasource_id=int(request.datasource),
         question=_dashboard_normalized_retrieval_query(request, state.get("normalized_config") or {}),
         target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+        surface="dashboard_ai_sql",
         data_skill_id=request.data_skill_id,
         embedding=False,
         table_list=event_scope.get("table_list"),
@@ -2102,7 +2103,10 @@ async def generate_dashboard_ai_sql(
         })
     except Exception as exc:
         AppLogUtil.error(f"Dashboard manual chart graph failed: {exc}")
-        raise HTTPException(status_code=500, detail=f"AI 生成 SQL 失败：{exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail="AI 生成 SQL 失败，请稍后重试；如问题持续，请联系管理员。",
+        ) from exc
 
     trace = final_state.get("graph_trace") or []
     AppLogUtil.info(f"Dashboard manual chart graph trace: {trace}")
