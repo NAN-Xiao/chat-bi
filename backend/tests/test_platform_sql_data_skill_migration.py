@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+from apps.chat.task import llm
+
 
 def _load_migration(filename: str = "146_platform_sql_grouping_data_skill.py"):
     module_path = (
@@ -134,3 +136,116 @@ def test_alias_quoting_followup_migration_appends_section_idempotently() -> None
     assert params["alias_marker"] == migration.ALIAS_SECTION_MARKER
     assert params["alias_section"] == migration.ALIAS_SECTION
     assert params["skill_marker"] == migration.SKILL_MARKER
+
+
+def test_daily_zero_fill_followup_contains_enforceable_platform_rule() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+
+    assert migration.down_revision == "152platformsqlaliasquote"
+    assert "platform-foundation-skill:daily-zero-fill:v1" in migration.ZERO_FILL_SECTION
+    assert "dashboard_start_yyyymmdd" in migration.ZERO_FILL_SECTION
+    assert "dashboard_end_yyyymmdd" in migration.ZERO_FILL_SECTION
+    assert "CROSS JOIN" in migration.ZERO_FILL_SECTION
+    assert "LEFT JOIN" in migration.ZERO_FILL_SECTION
+    assert "COALESCE(指标, 0)" in migration.ZERO_FILL_SECTION
+    assert migration.ZERO_FILL_VALIDATION_RULES[1]["when_sql_patterns"] == [r"\bgroup\s+by\b[^;]*,"]
+
+
+def test_daily_zero_fill_platform_rule_rejects_fact_only_grouping_sql() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+    sql = """
+        SELECT e.dt AS `日期`,
+               COALESCE(NULLIF(e.channel, ''), '未知') AS `渠道`,
+               COUNT(DISTINCT e.uid) AS `新增用户数`
+        FROM event e
+        WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        GROUP BY e.dt, COALESCE(NULLIF(e.channel, ''), '未知')
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "最近14天各投放渠道每日新增用户趋势如何？",
+        sql,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "连续日期序列" in violation.message
+
+
+def test_daily_zero_fill_platform_rule_requires_date_dimension_scaffold() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+    sql_without_dimension_scaffold = """
+        WITH calendar AS (
+            SELECT DATE_ADD(
+                STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                INTERVAL day_offset DAY
+            ) AS dt
+            FROM day_offsets
+        ), metrics AS (
+            SELECT dt, channel, COUNT(DISTINCT uid) AS value
+            FROM event
+            GROUP BY dt, channel
+        )
+        SELECT c.dt, COALESCE(m.value, 0) AS value
+        FROM calendar c
+        LEFT JOIN metrics m ON m.dt = c.dt
+        WHERE c.dt <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "最近14天各投放渠道每日新增用户趋势如何？",
+        sql_without_dimension_scaffold,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "CROSS JOIN" in violation.message
+
+
+def test_daily_zero_fill_platform_rule_accepts_complete_scaffold() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+    sql = """
+        WITH calendar AS (
+            SELECT DATE_ADD(
+                STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                INTERVAL day_offset DAY
+            ) AS dt
+            FROM day_offsets
+        ), dimensions AS (
+            SELECT DISTINCT channel FROM event
+        ), metrics AS (
+            SELECT dt, channel, COUNT(DISTINCT uid) AS value
+            FROM event
+            GROUP BY dt, channel
+        )
+        SELECT c.dt, d.channel, COALESCE(m.value, 0) AS value
+        FROM calendar c
+        CROSS JOIN dimensions d
+        LEFT JOIN metrics m ON m.dt = c.dt AND m.channel = d.channel
+        WHERE c.dt <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')
+    """
+
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "最近14天各投放渠道每日新增用户趋势如何？",
+            sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "最近14天各投放渠道每日新增用户趋势如何？",
+            sql.replace("COALESCE(m.value, 0)", 'COALESCE(m."value", 0)'),
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "最近14天各渠道累计新增用户数",
+            "SELECT channel, COUNT(*) FROM event GROUP BY channel",
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
