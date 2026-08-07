@@ -17,6 +17,8 @@ from typing import Any, List, Optional, Union, Dict, Iterator
 
 import orjson
 import requests
+import sqlglot
+from sqlglot import exp
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -287,12 +289,15 @@ def _rule_matches_sql_scope(
     """仅在 SQL 命中规则声明的适用片段或正则时启用该规则。"""
     contains = _normalize_rule_terms(rule.get("when_sql_contains"))
     patterns = _normalize_rule_terms(rule.get("when_sql_patterns"))
-    if not contains and not patterns:
-        return True
-    return any(text.lower() in sql_lower for text in contains) or any(
-        _sql_pattern_matches(pattern_text, sql_text, sql_lower)
-        for pattern_text in patterns
-    )
+    if contains or patterns:
+        if not (
+            any(text.lower() in sql_lower for text in contains)
+            or any(_sql_pattern_matches(pattern_text, sql_text, sql_lower) for pattern_text in patterns)
+        ):
+            return False
+    if rule.get("when_sql_has_non_time_group_by") and not _sql_has_non_time_group_by(sql_text):
+        return False
+    return True
 
 
 def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bool:
@@ -305,6 +310,56 @@ def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bo
         return re.search(pattern_text, sql_text, re.IGNORECASE | re.DOTALL) is not None
     except re.error:
         return pattern_text.lower() in sql_lower
+
+
+_TIME_GROUP_EXPRESSION_PATTERN = re.compile(
+    r"(?:^|[^a-z0-9])(?:date|datetime|timestamp|time|dt|day|hour|minute|month|week|year|"
+    r"date_format|str_to_date|from_unixtime|date_add|date_sub|timestampadd|"
+    r"generate_series|to_char|extract)(?:$|[^a-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def _parse_sql_statements_for_validation(sql_text: str) -> list[exp.Expression]:
+    """替换看板 token，并以常见方言依次解析校验 SQL。"""
+    normalized_sql = re.sub(r"\{\{[^{}]+\}\}", "0", sql_text)
+    for dialect in ("mysql", "postgres", None):
+        try:
+            return sqlglot.parse(normalized_sql, read=dialect)
+        except Exception:
+            continue
+    return []
+
+
+def _sql_has_non_time_group_by(sql_text: str) -> bool:
+    """判断 SQL 是否按时间字段之外的任意维度分组。"""
+    statements = _parse_sql_statements_for_validation(sql_text)
+
+    for statement in statements:
+        for select in statement.find_all(exp.Select):
+            group = select.args.get("group")
+            if group is None or len(group.expressions) < 2:
+                continue
+            if any(
+                not _TIME_GROUP_EXPRESSION_PATTERN.search(
+                    expression.sql(dialect="mysql", normalize=True)
+                )
+                for expression in group.expressions
+            ):
+                return True
+    return False
+
+
+def _sql_outer_select_has_cross_join(sql_text: str) -> bool:
+    """仅检查最终查询块，避免把时间序列 CTE 内的 CROSS JOIN 当成维度骨架。"""
+    for statement in _parse_sql_statements_for_validation(sql_text):
+        outer_select = statement if isinstance(statement, exp.Select) else statement.find(exp.Select)
+        if outer_select is None:
+            continue
+        for join in outer_select.args.get("joins") or []:
+            if str(join.args.get("kind") or "").upper() == "CROSS":
+                return True
+    return False
 
 
 def _required_sql_violations(
@@ -325,12 +380,14 @@ def _required_sql_violations(
             if text.lower() not in sql_lower and text not in missing_contains:
                 missing_contains.append(text)
 
-    missing_patterns = tuple(
+    missing_patterns = [
         pattern_text
         for pattern_text in _normalize_rule_terms(rule.get("required_sql_patterns"))
         if not _sql_pattern_matches(pattern_text, sql_text, sql_lower)
-    )
-    return tuple(missing_contains), missing_patterns
+    ]
+    if rule.get("required_outer_select_cross_join") and not _sql_outer_select_has_cross_join(sql_text):
+        missing_patterns.append("outer SELECT CROSS JOIN")
+    return tuple(missing_contains), tuple(missing_patterns)
 
 
 def _sql_select_segments(sql_text: str) -> list[str]:

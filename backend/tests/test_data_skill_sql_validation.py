@@ -206,6 +206,57 @@ def test_sql_scope_patterns_limit_validation_to_matching_tables() -> None:
     assert violation.matched_forbidden_patterns == (history_table_pattern,)
 
 
+def test_structured_group_scope_distinguishes_time_fields_from_dimensions() -> None:
+    data_skill = _data_skill(
+        {
+            "match": "每小时",
+            "when_sql_has_non_time_group_by": True,
+            "required_outer_select_cross_join": True,
+        }
+    )
+    time_only_sql = """
+        SELECT biz_date, HOUR(event_time), COUNT(*)
+        FROM events
+        GROUP BY biz_date, HOUR(event_time)
+    """
+    grouped_sql = """
+        SELECT biz_date, HOUR(event_time), region_code, COUNT(*)
+        FROM events
+        GROUP BY biz_date, HOUR(event_time), region_code
+    """
+
+    assert llm._data_skill_sql_validation_violation("每小时趋势", time_only_sql, data_skill) is None
+    violation = llm._data_skill_sql_validation_violation("每小时各地区趋势", grouped_sql, data_skill)
+    assert violation is not None
+    assert violation.missing_required_patterns == ("outer SELECT CROSS JOIN",)
+
+
+def test_outer_cross_join_requirement_ignores_cross_join_inside_cte() -> None:
+    data_skill = _data_skill(
+        {
+            "when_sql_has_non_time_group_by": True,
+            "required_outer_select_cross_join": True,
+        }
+    )
+    sql = """
+        WITH date_series AS (
+            SELECT DATE_ADD(p.start_date, INTERVAL n DAY) AS dt
+            FROM params p CROSS JOIN numbers n
+        ), metrics AS (
+            SELECT dt, region_code, COUNT(*) AS value
+            FROM events
+            GROUP BY dt, region_code
+        )
+        SELECT d.dt, m.region_code, COALESCE(m.value, 0)
+        FROM date_series d
+        LEFT JOIN metrics m ON m.dt = d.dt
+    """
+
+    violation = llm._data_skill_sql_validation_violation("每日各地区趋势", sql, data_skill)
+    assert violation is not None
+    assert violation.missing_required_patterns == ("outer SELECT CROSS JOIN",)
+
+
 def test_invalid_regular_expression_falls_back_to_case_insensitive_contains() -> None:
     data_skill = _data_skill(
         {
