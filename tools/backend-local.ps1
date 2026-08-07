@@ -12,6 +12,9 @@ param(
     [string]$CorsOrigins = "",
     [switch]$StartMcp,
     [int]$McpPort = 8001,
+    [switch]$EnableKnowledgeManagementV2,
+    [switch]$EnableKnowledgeRuntimeContext,
+    [switch]$EnableKnowledgeRetrieval,
     [switch]$ForcePortStop
 )
 
@@ -192,6 +195,9 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:LLM_REQUEST_TIMEOUT = "120"
     $env:LLM_TASK_MAX_WAIT_SECONDS = "900"
     $env:LLM_MAX_RETRIES = "1"
+    $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($EnableKnowledgeManagementV2) { "true" } else { "false" }
+    $env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED = if ($EnableKnowledgeRuntimeContext) { "true" } else { "false" }
+    $env:KNOWLEDGE_RETRIEVAL_ENABLED = if ($EnableKnowledgeRetrieval) { "true" } else { "false" }
 
     $env:CACHE_TYPE = $ResolvedCacheType
     if ($ResolvedCacheType -eq "redis") {

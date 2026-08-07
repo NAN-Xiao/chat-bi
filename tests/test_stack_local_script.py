@@ -53,6 +53,7 @@ def test_stack_status_does_not_require_optional_e_drive():
             "-SkipDatabase",
             "-SkipRedis",
             "-SkipNginx",
+            "-SkipWorker",
     )
 
     assert result.returncode == 0, (result.stdout or "") + (result.stderr or "")
@@ -196,6 +197,27 @@ def test_local_process_environment_pins_llm_timeout_contract(
     assert '$env:LLM_MAX_RETRIES = "1"' in body
 
 
+@pytest.mark.parametrize(
+    ("script", "environment_function"),
+    [
+        (BACKEND_SCRIPT, "Set-BackendEnvironment"),
+        (WORKER_SCRIPT, "Set-WorkerEnvironment"),
+    ],
+)
+def test_local_process_environment_exposes_knowledge_rollout_switches(
+    script: Path, environment_function: str
+):
+    content = script.read_text(encoding="utf-8")
+    body = _function_body(content, environment_function)
+
+    assert "$EnableKnowledgeManagementV2" in content
+    assert "$EnableKnowledgeRuntimeContext" in content
+    assert "$EnableKnowledgeRetrieval" in content
+    assert "$env:KNOWLEDGE_MANAGEMENT_V2_ENABLED" in body
+    assert "$env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED" in body
+    assert "$env:KNOWLEDGE_RETRIEVAL_ENABLED" in body
+
+
 def test_stack_requires_worker_when_redis_is_unreachable():
     content = STACK_SCRIPT.read_text(encoding="utf-8")
     body = _function_body(content, "Start-Workers")
@@ -221,9 +243,25 @@ def test_stack_passes_the_same_queue_to_backend_and_worker():
     worker_body = _function_body(content, "Start-Workers")
 
     assert 'QueueName = $QueueName' in backend_body
-    assert '-QueueName $QueueName' in worker_body
+    assert 'QueueName = $QueueName' in worker_body
     assert 'QueueName = "default"' not in backend_body
     assert '-QueueName default' not in worker_body
+
+
+def test_stack_propagates_knowledge_rollout_switches_to_backend_and_worker():
+    content = STACK_SCRIPT.read_text(encoding="utf-8")
+    backend_body = _function_body(content, "Start-Backend")
+    worker_body = _function_body(content, "Start-Workers")
+
+    for option in (
+        "EnableKnowledgeManagementV2",
+        "EnableKnowledgeRuntimeContext",
+        "EnableKnowledgeRetrieval",
+    ):
+        assert f"if (${option})" in backend_body
+        assert f"$backendParams.{option} = $true" in backend_body
+        assert f"if (${option})" in worker_body
+        assert f"$workerParams.{option} = $true" in worker_body
 
 
 def test_worker_status_rejects_mismatched_managed_queue():

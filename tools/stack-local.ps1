@@ -20,6 +20,9 @@ param(
     [int]$Workers = 1,
     [string]$QueueName = "",
     [switch]$StartMcp,
+    [switch]$EnableKnowledgeManagementV2,
+    [switch]$EnableKnowledgeRuntimeContext,
+    [switch]$EnableKnowledgeRetrieval,
     [switch]$SkipDatabase,
     [switch]$SkipRedis,
     [switch]$SkipNginx
@@ -314,6 +317,15 @@ function Start-Backend {
     if ($StartMcp) {
         $backendParams.StartMcp = $true
     }
+    if ($EnableKnowledgeManagementV2) {
+        $backendParams.EnableKnowledgeManagementV2 = $true
+    }
+    if ($EnableKnowledgeRuntimeContext) {
+        $backendParams.EnableKnowledgeRuntimeContext = $true
+    }
+    if ($EnableKnowledgeRetrieval) {
+        $backendParams.EnableKnowledgeRetrieval = $true
+    }
     & $backendScript @backendParams
 }
 
@@ -341,7 +353,23 @@ function Start-Workers {
     if (-not (Test-TcpPort -HostName $RedisHost -Port $RedisPort)) {
         throw "Task worker requires Redis on ${RedisHost}:$RedisPort, but it is not reachable."
     }
-    & $workerScript -Action start -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort -QueueName $QueueName
+    $workerParams = @{
+        Action = "start"
+        Workers = $Workers
+        RedisHost = $RedisHost
+        RedisPort = $RedisPort
+        QueueName = $QueueName
+    }
+    if ($EnableKnowledgeManagementV2) {
+        $workerParams.EnableKnowledgeManagementV2 = $true
+    }
+    if ($EnableKnowledgeRuntimeContext) {
+        $workerParams.EnableKnowledgeRuntimeContext = $true
+    }
+    if ($EnableKnowledgeRetrieval) {
+        $workerParams.EnableKnowledgeRetrieval = $true
+    }
+    & $workerScript @workerParams
 }
 
 function Stop-Workers {
