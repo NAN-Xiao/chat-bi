@@ -29,7 +29,7 @@ class _Session:
         self.commits = 0
         self.added = []
 
-    def exec(self, _statement):
+    def scalars(self, _statement):
         return _Result(self.row)
 
     def add(self, row) -> None:

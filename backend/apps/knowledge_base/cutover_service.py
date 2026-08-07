@@ -102,7 +102,7 @@ class KnowledgeCutoverService:
         )
 
     def _lock_state(self) -> KnowledgeMigrationState:
-        return self.session.exec(
+        return self.session.scalars(
             select(KnowledgeMigrationState)
             .where(KnowledgeMigrationState.id == 1)
             .with_for_update()
