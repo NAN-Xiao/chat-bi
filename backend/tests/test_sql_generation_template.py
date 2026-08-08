@@ -49,6 +49,21 @@ def test_first_generation_prompt_requires_date_filter_for_filtered_category_summ
     assert "past_7_days" in rules
 
 
+def test_first_generation_prompt_requires_complete_time_scaffold_and_zero_fill() -> None:
+    rules = AiModelQuestion(
+        engine="MySQL 8.0",
+        db_schema="【DB_ID】 test\n【Schema】",
+    ).sql_sys_question("mysql")["rules"]
+
+    assert "必须先生成覆盖起止边界的独立时间骨架" in rules
+    assert "时间骨架 CROSS JOIN 分类集合" in rules
+    assert "LEFT JOIN 回填" in rules
+    assert "COALESCE(聚合指标, 0)" in rules
+    assert "WITH RECURSIVE" in rules
+    assert "显式声明列别名" in rules
+    assert "不要把 date_series、calendar、numbers 等查询块名称当成物理表" in rules
+
+
 def test_mysql_prompt_requires_backticks_for_chinese_output_aliases() -> None:
     rules = AiModelQuestion(
         engine="MySQL 8.0",

@@ -12,7 +12,7 @@ from typing import Any
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.errors import ParseError
+from sqlglot.errors import ParseError, TokenError
 
 from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
@@ -60,6 +60,12 @@ _GENERIC_PARSE_ERROR_PATTERN = re.compile(r"\bparse\s+error\b", re.IGNORECASE)
 _EXPLICIT_SQL_PARSE_ERROR_PATTERN = re.compile(r"\bsql\s+parse\s+error\b", re.IGNORECASE)
 _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
     re.compile(r"missing column aliases in recursive\s+with\s+query", re.IGNORECASE),
+    re.compile(r"\b(?:unknown|unsupported|not supported|does not support)\b.{0,80}\bunsigned\b", re.IGNORECASE),
+    re.compile(r"\bunsigned\b.{0,80}\b(?:unknown|unsupported|not supported|does not support)\b", re.IGNORECASE),
+    re.compile(r"\billegal pattern component\s*:\s*[vx]\b", re.IGNORECASE),
+    re.compile(r"\b(?:column|field)\b.{0,80}\bambiguous\b", re.IGNORECASE),
+    re.compile(r"\berror tokeniz(?:ing|er)\b", re.IGNORECASE),
+    re.compile(r"\bmissing\s+\S+\s+from\b", re.IGNORECASE),
     re.compile(r"\bsql\s+parse\s+error\b", re.IGNORECASE),
     re.compile(r"\b(?:sql|query|database)\s+syntax\s+error\b", re.IGNORECASE),
     re.compile(r"\bsyntax error\s+(?:at|near|in|for)\b", re.IGNORECASE),
@@ -87,7 +93,7 @@ _PREPARE_DATE_FILTER_CONFIGURATION_PATTERN = re.compile(
     r"realtime_requires_hourly_time_series|"
     r"missing_date_filter|invalid_date_filter|missing_time_field|"
     r"invalid_parameter_type|mixed_parameter_families|parameter_type_mismatch|"
-    r"incomplete_parameters|missing_date_expression"
+    r"incomplete_parameters|missing_date_expression|invalid_date_expression"
     r")",
     re.IGNORECASE,
 )
@@ -205,7 +211,7 @@ def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
         return SqlRepairReason.DATE_FILTER_CONFIGURATION
     if any(isinstance(item, DataSkillSqlValidationError) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATA_SKILL_VALIDATION
-    if any(isinstance(item, ParseError) for item in _walk_error_chain(error)):
+    if any(isinstance(item, (ParseError, TokenError)) for item in _walk_error_chain(error)):
         return SqlRepairReason.SQL_PARSE
     if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
@@ -266,6 +272,135 @@ def validate_mysql_date_format_grouping(sql: str) -> None:
                     "MySQL/AnalyticDB 的非聚合 DATE_FORMAT 投影必须以完全相同的表达式出现在 "
                     "GROUP BY 中，或其依赖的原始字段必须直接分组；不得仅按另一个不同的日期表达式分组。"
                 )
+
+
+def _normalized_sql_for_structure_validation(sql: str) -> str:
+    return re.sub(r"\{\{[^{}]+\}\}", "0", str(sql or ""))
+
+
+def _nearest_select(expression: exp.Expression) -> exp.Select | None:
+    parent = expression.parent
+    while parent is not None and not isinstance(parent, exp.Select):
+        parent = parent.parent
+    return parent if isinstance(parent, exp.Select) else None
+
+
+def _select_output_names(expression: exp.Expression | None) -> set[str]:
+    if isinstance(expression, exp.Select):
+        select = expression
+    else:
+        select = expression.find(exp.Select) if expression is not None else None
+    if select is None:
+        return set()
+    return {
+        str(name or "").strip('"\x60[]').lower()
+        for name in select.named_selects
+        if str(name or "").strip() not in {"", "*"}
+    }
+
+
+def _source_output_names(
+    source: exp.Expression | None,
+    cte_outputs: dict[str, set[str]],
+) -> set[str]:
+    if isinstance(source, exp.Table):
+        return cte_outputs.get(str(source.name or "").strip('"\x60[]').lower(), set())
+    if isinstance(source, exp.Subquery):
+        return _select_output_names(source.this)
+    return set()
+
+
+def _ambiguous_unqualified_columns(statement: exp.Expression) -> set[str]:
+    cte_outputs = {
+        str(cte.alias_or_name or "").strip('"\x60[]').lower(): _select_output_names(cte.this)
+        for cte in statement.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    ambiguous: set[str] = set()
+    for select in statement.find_all(exp.Select):
+        from_clause = select.args.get("from_")
+        sources = (
+            [from_clause.this]
+            if from_clause is not None and from_clause.this is not None
+            else []
+        )
+        sources.extend(
+            join.this
+            for join in select.args.get("joins") or []
+            if join.this is not None
+        )
+        counts: dict[str, int] = {}
+        for source in sources:
+            for name in _source_output_names(source, cte_outputs):
+                counts[name] = counts.get(name, 0) + 1
+        duplicate_names = {name for name, count in counts.items() if count > 1}
+        if not duplicate_names:
+            continue
+        for column in select.find_all(exp.Column):
+            if _nearest_select(column) is not select or column.table:
+                continue
+            name = str(column.name or "").strip('"\x60[]').lower()
+            if name in duplicate_names:
+                ambiguous.add(str(column.name or ""))
+    return ambiguous
+
+
+def validate_mysql_compatible_sql(sql: str) -> None:
+    """在执行前拦截 AnalyticDB/MySQL 兼容源中可确定的方言和结构错误。"""
+    source_sql = str(sql or "")
+    tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(source_sql)
+    has_unsigned_cast = any(
+        token.text.lower() == "unsigned"
+        and index > 0
+        and tokens[index - 1].text.lower() in {"as", ","}
+        for index, token in enumerate(tokens)
+    )
+    if has_unsigned_cast:
+        raise SqlStructureValidationError(
+            "MySQL/AnalyticDB 兼容数据源不支持 UNSIGNED 类型转换；请使用 SIGNED、DECIMAL "
+            "或移除不必要的转换。"
+        )
+
+    statements = sqlglot.parse(_normalized_sql_for_structure_validation(source_sql), read="mysql")
+    for statement in statements:
+        for cte in statement.find_all(exp.CTE):
+            alias = str(cte.alias_or_name or "").strip('"\x60[]').lower()
+            if not alias:
+                continue
+            self_referencing = any(
+                str(table.name or "").strip('"\x60[]').lower() == alias
+                and not table.db
+                and not table.catalog
+                for table in cte.this.find_all(exp.Table)
+            )
+            if not self_referencing:
+                continue
+            with_clause = cte.parent if isinstance(cte.parent, exp.With) else None
+            alias_expression = cte.args.get("alias")
+            columns = alias_expression.args.get("columns") if alias_expression is not None else None
+            if with_clause is None or not with_clause.args.get("recursive") or not columns:
+                raise SqlStructureValidationError(
+                    "自引用 CTE 必须使用 WITH RECURSIVE，并在 CTE 名后显式声明列别名；"
+                    "也可改用非递归日期/数字序列。"
+                )
+
+        if any(
+            literal.is_string
+            and re.search(r"%(?:v|x)", str(literal.this), re.IGNORECASE)
+            for literal in statement.find_all(exp.Literal)
+        ):
+            raise SqlStructureValidationError(
+                "MySQL/AnalyticDB 兼容数据源不能假定支持 %v 或 %x 周格式；"
+                "请使用已验证的周起止日期表达式，不要把 YEARWEEK 再按该格式反解析。"
+            )
+
+        ambiguous_columns = _ambiguous_unqualified_columns(statement)
+        if ambiguous_columns:
+            names = "、".join(sorted(ambiguous_columns))
+            raise SqlStructureValidationError(
+                f"JOIN 来源存在同名输出列（{names}），最终 SELECT、GROUP BY、ORDER BY "
+                "和连接条件必须使用来源别名限定字段。"
+            )
 
 
 def _candidate_sqlstates(error: Any) -> set[str]:
@@ -363,25 +498,46 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
                 "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、"
                 "LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。"
             ),
+            (
+                "日期表达式必须严格使用受支持的版本化结构：version=1；preset 只能是 "
+                "yesterday、today、previous_week、current_week、previous_month、current_month、"
+                "past_7_days、recent_7_days、past_30_days、recent_30_days、past_90_days 或 all_time；"
+                "本月使用 current_month，不要使用 this_month。"
+            ),
         ]
         if "realtime_requires_hourly_time_series" in context.error_message:
             payload["repair_requirements"].append(
                 "用户请求实时数据但上一版返回了 metric；除非问题明确要求总额、合计、单值、指标卡或当前累计，"
                 "必须返回按时间字段分组的非 metric 小时序列，并提供完整 date_filter。"
             )
+    if context.reason is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT:
+        dialect_text = f"{context.dialect} {context.error_message}".lower()
+        payload["repair_requirements"] = [
+            "当前 SQL 必须在目标数据源方言下可解析并执行；只返回修复后的完整 SQL JSON。",
+            "MySQL/AnalyticDB 兼容数据源禁止 CAST(... AS UNSIGNED) 和 AS UNSIGNED，改用 SIGNED、DECIMAL 或不转换。",
+            "日期序列优先使用目标方言支持的非递归序列；若使用自引用 CTE，必须写 WITH RECURSIVE cte(col1, ...) AS (...)。",
+            "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
+            "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
+        ]
+        if "recursive" in dialect_text or "date_series" in dialect_text:
+            payload["repair_requirements"].append(
+                "完整日期补零必须保留日期骨架，并对日期与维度做 CROSS JOIN，再 LEFT JOIN 聚合结果并 COALESCE 数值；"
+                "不得把日期 CTE 当作物理表。"
+            )
+    if (
+        context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
+        and any(term in context.error_message for term in ("连续日期", "补齐", "日期序列", "补零"))
+    ):
+        payload["repair_requirements"] = [
+            "必须先生成覆盖完整起止边界的日期序列；有维度时先构造日期与维度的 CROSS JOIN 骨架。",
+            "事实聚合结果使用 LEFT JOIN 回填到骨架，并对数值指标使用 COALESCE(..., 0)，不能只返回事实表中有数据的日期。",
+            "优先使用非递归日期序列；如果使用递归 CTE，必须显式写 WITH RECURSIVE cte(col1, ...) AS (...)。",
+        ]
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
-    date_contract_guidance = ""
-    if context.reason is SqlRepairReason.DASHBOARD_DATE_CONTRACT:
-        date_contract_guidance = (
-            "固定语义 metric 不得返回 date_filter；可变时间图表必须让 SQL 使用与 "
-            "date_parameter_type 匹配的看板日期 token，并让 time_field 对应实际过滤字段；"
-            "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW 或同类当前时间函数。\n"
-        )
     return (
         "上一版 SQL 未通过校验或执行，请根据下方修复上下文重写完整 SQL JSON。\n"
         "只修复上下文指出的问题，继续遵守当前数据源、权限和 Data Skills 约束，"
         "不得编造表、字段或业务口径。\n"
-        f"{date_contract_guidance}"
         "请仅返回完整 SQL JSON，不要返回解释、Markdown 或局部 SQL。\n"
         f"```json\n{serialized}\n```"
     )

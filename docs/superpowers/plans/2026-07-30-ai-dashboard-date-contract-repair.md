@@ -28,19 +28,19 @@
 
 **Interfaces:**
 - Consumes: `ChatDateFilterConfigurationError(reason: str)`、`SqlRepairContext`、现有 `repair_sql -> prepare_sql` 环路。
-- Produces: `SqlRepairReason.DASHBOARD_DATE_CONTRACT`，最多沿用 `SQL_REPAIR_MAX_ATTEMPTS=2` 次重试。
+- Produces: `SqlRepairReason.DATE_FILTER_CONFIGURATION`，最多沿用 `SQL_REPAIR_MAX_ATTEMPTS=2` 次重试。
 
 - [x] **Step 1: 写错误分类与修复消息失败测试**
 
 ```python
 def test_prepare_error_classifies_dashboard_date_contract() -> None:
     error = ChatDateFilterConfigurationError("missing_parameters")
-    assert classify_prepare_sql_error(error) == SqlRepairReason.DASHBOARD_DATE_CONTRACT
+    assert classify_prepare_sql_error(error) == SqlRepairReason.DATE_FILTER_CONFIGURATION
 
 
 def test_dashboard_date_contract_repair_message_requires_consistent_json() -> None:
     context = SqlRepairContext(
-        reason=SqlRepairReason.DASHBOARD_DATE_CONTRACT,
+        reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
         dialect="mysql",
         failed_sql='{"chart-type":"line","date_filter":{}}',
         error_message="missing_parameters",
@@ -57,18 +57,18 @@ def test_dashboard_date_contract_repair_message_requires_consistent_json() -> No
 
 Run: `cd backend; ./.venv/Scripts/python.exe -m pytest tests/test_sql_repair.py -k "dashboard_date_contract" -q`
 
-Expected: FAIL，错误指向 `DASHBOARD_DATE_CONTRACT` 不存在或错误未被分类。
+Expected: FAIL，错误指向 `DATE_FILTER_CONFIGURATION` 不存在或错误未被分类。
 
 - [x] **Step 3: 最小实现类型分类与专用修复指令**
 
 ```python
 class SqlRepairReason(str, Enum):
-    DASHBOARD_DATE_CONTRACT = "dashboard_date_contract"
+    DATE_FILTER_CONFIGURATION = "date_filter_configuration"
 
 
 def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
     if any(isinstance(item, ChatDateFilterConfigurationError) for item in _walk_error_chain(error)):
-        return SqlRepairReason.DASHBOARD_DATE_CONTRACT
+        return SqlRepairReason.DATE_FILTER_CONFIGURATION
     # 保留现有分支
 
 
@@ -83,7 +83,7 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         "violation": asdict(context.violation) if context.violation is not None else None,
     }
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
-    if context.reason is SqlRepairReason.DASHBOARD_DATE_CONTRACT:
+    if context.reason is SqlRepairReason.DATE_FILTER_CONFIGURATION:
         guidance = (
             "固定语义 metric 不得返回 date_filter；可变时间图表必须让 SQL 使用与 "
             "date_parameter_type 匹配的看板日期 token，并让 time_field 对应实际过滤字段；"
@@ -111,7 +111,7 @@ def test_prepare_sql_date_contract_error_queues_repair(monkeypatch):
     )
     update = smart_qa_graph._prepare_sql(_state(service))
     assert update["sql_repair_pending"] is True
-    assert update["sql_repair_context"].reason is SqlRepairReason.DASHBOARD_DATE_CONTRACT
+    assert update["sql_repair_context"].reason is SqlRepairReason.DATE_FILTER_CONFIGURATION
 ```
 
 - [x] **Step 5: 运行图测试并确认当前直接抛错**
@@ -126,7 +126,7 @@ Expected: FAIL，`_prepare_sql` 未接受新的重试原因。
 if reason not in {
     SqlRepairReason.SQL_RESPONSE_FORMAT,
     SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
-    SqlRepairReason.DASHBOARD_DATE_CONTRACT,
+    SqlRepairReason.DATE_FILTER_CONFIGURATION,
 }:
     raise
 ```

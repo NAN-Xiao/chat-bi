@@ -593,7 +593,7 @@ def test_prepare_sql_date_contract_error_repairs_then_revalidates(
         ),
     )
 
-    assert service.repair_contexts[0].reason.value == "dashboard_date_contract"
+    assert service.repair_contexts[0].reason.value == "date_filter_configuration"
     assert service.saved_sql == [repaired_sql]
     assert not any(event["type"] == "error" for event in _events(chunks))
 
