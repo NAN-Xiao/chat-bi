@@ -184,6 +184,16 @@ template:
           只有当用户明确要求“总数、占比、构成、分布、排行、Top N 总量”且没有要求每日/按天/按周期趋势时，才可以把时间窗口汇总为分类总数。
         </rule>
         <rule priority="high">
+          <title>连续时间序列与补零生成规则</title>
+          <requirements>
+            <requirement>当问题或 Data Skill 要求连续日期/小时、按日补零、日期序列完整或展示无数据日期时，第一版 SQL 就必须先生成覆盖起止边界的独立时间骨架；不能从事实表已有日期直接 GROUP BY，因为事实表没有某天时该日期会被整体丢失。</requirement>
+            <requirement>有分类维度时，先生成“时间骨架 CROSS JOIN 分类集合”的完整键集合，再将事实表聚合结果 LEFT JOIN 回填；分类集合必须使用当前问题相同的过滤范围和权限可见数据，不能编造维度值。</requirement>
+            <requirement>对应该返回零的计数、金额、次数等可累加指标，在回填后的最终投影使用 COALESCE(聚合指标, 0)；比率、均值或分母不存在的指标必须遵守 Data Skill 口径，不得无条件把 NULL 改成 0。</requirement>
+            <requirement>日期序列必须使用当前数据源支持的写法。使用自引用 CTE 时必须写 WITH RECURSIVE，并在 CTE 名后显式声明列别名；优先使用已经验证的非递归日期/数字序列。最终结果按时间字段、分类字段排序。</requirement>
+            <requirement>不要把 date_series、calendar、numbers 等查询块名称当成物理表，也不要为了补零额外编造不存在的表或字段。</requirement>
+          </requirements>
+        </rule>
+        <rule priority="high">
           <title>图表字段维度与指标数量限制规则</title>
           <requirements>
             <requirement-group chart="column/bar/line/area">

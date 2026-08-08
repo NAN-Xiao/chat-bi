@@ -54,6 +54,7 @@ from apps.chat.task.sql_repair import (
     DataSkillSqlViolation,
     SqlRepairContext,
     build_sql_repair_message,
+    validate_mysql_compatible_sql,
     validate_mysql_date_format_grouping,
 )
 from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
@@ -2340,6 +2341,7 @@ class LLMService:
             "doris",
             "starrocks",
         }:
+            validate_mysql_compatible_sql(sql)
             validate_mysql_date_format_grouping(sql)
 
         violation = _data_skill_sql_validation_violation(

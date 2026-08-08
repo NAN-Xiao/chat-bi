@@ -85,8 +85,10 @@ def question_date_scope(question: str | None) -> QuestionDateScope:
 
 
 def _explicit_question_date_expression(question: str | None) -> dict[str, Any] | None:
-    """将问题中明确的最近 N 天转换为截至昨天的动态看板日期表达式。"""
+    """将问题中明确的时间范围转换为平台支持的版本化日期表达式。"""
     question_text = str(question or "")
+    if _EXPLICIT_NAMED_PERIOD_PATTERN.search(question_text):
+        return {"version": 1, "mode": "preset", "preset": "current_month"}
     matches = _EXPLICIT_PAST_DAYS_PATTERN.findall(question_text)
     distinct_days = {int(value) for value in matches}
     has_current_day = bool(_EXPLICIT_CURRENT_DAY_PATTERN.search(question_text))

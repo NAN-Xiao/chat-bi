@@ -1750,6 +1750,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         dynamic_subsql_prefix,
         looks_like_data_skill_schema_unavailable_error,
     )
+    from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
     from common.error import SingleMessageError
 
     service = state["service"]
@@ -1804,6 +1805,13 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 state,
                 error=semantic_error,
                 reason=reason,
+                failed_sql=full_sql_text,
+            )
+        except ChatDateFilterConfigurationError as date_contract_error:
+            return _queue_sql_repair(
+                state,
+                error=date_contract_error,
+                reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
                 failed_sql=full_sql_text,
             )
         except SingleMessageError as response_error:

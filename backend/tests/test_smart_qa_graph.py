@@ -552,6 +552,52 @@ def test_data_skill_violation_repairs_with_structured_context(monkeypatch: pytes
     assert service.saved_sql == [repaired_sql]
 
 
+def test_prepare_sql_date_contract_error_repairs_then_revalidates(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_sql = "SELECT dt, COUNT(*) FROM event GROUP BY dt"
+    repaired_sql = (
+        "SELECT dt, COUNT(*) FROM event "
+        "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} "
+        "GROUP BY dt"
+    )
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql, ["event"]))
+    service.repair_answers = [_sql_answer(repaired_sql, ["event"])]
+
+    def check_sql(*, session, res, operate):
+        assert session is not None
+        assert operate == OperationEnum.GENERATE_SQL
+        payload = json.loads(res)
+        if payload["sql"] == invalid_sql:
+            raise llm.ChatDateFilterConfigurationError("missing_parameters")
+        return payload["sql"], payload.get("tables")
+
+    service.check_sql = check_sql
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"event"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table event(dt integer)", ["event"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert service.repair_contexts[0].reason.value == "date_filter_configuration"
+    assert service.saved_sql == [repaired_sql]
+    assert not any(event["type"] == "error" for event in _events(chunks))
+
+
 def test_prepare_sql_response_format_error_repairs_then_revalidates(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:

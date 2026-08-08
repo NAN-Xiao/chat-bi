@@ -243,6 +243,30 @@ def test_normalize_preserves_explicit_current_month_over_realtime_default():
     assert pivot == {"enabled": False, **month_filter}
 
 
+def test_normalize_enforces_current_month_from_explicit_question() -> None:
+    invalid_model_filter = {
+        **DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "preset",
+            "preset": "this_month",
+        },
+    }
+
+    pivot = normalize_chat_date_filter_for_question(
+        "本月收入与上月同期相比变化多少？",
+        invalid_model_filter,
+        DATE_TEMPLATE_SQL,
+        "line",
+    )
+
+    assert pivot["date_expression"] == {
+        "version": 1,
+        "mode": "preset",
+        "preset": "current_month",
+    }
+
+
 def test_normalize_rejects_metric_for_realtime_hourly_question():
     with pytest.raises(
         ChatDateFilterConfigurationError,

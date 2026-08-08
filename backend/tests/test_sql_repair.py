@@ -8,8 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import HumanMessage
-from sqlglot.errors import ParseError
+from sqlglot.errors import ParseError, TokenError
 
+from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
 from apps.chat.task import llm
 from apps.chat.task.sql_repair import (
     SQL_REPAIR_MAX_ATTEMPTS,
@@ -23,6 +24,7 @@ from apps.chat.task.sql_repair import (
     classify_prepare_sql_error,
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
+    validate_mysql_compatible_sql,
     validate_mysql_date_format_grouping,
 )
 from common.error import (
@@ -80,6 +82,7 @@ def test_public_models_preserve_structured_violation() -> None:
         (SingleMessageError("Empty SQL text"), SqlRepairReason.SQL_RESPONSE_FORMAT),
         (SingleMessageError("Parse SQL Error: invalid token"), SqlRepairReason.SQL_PARSE),
         (ParseError("Expected TYPE"), SqlRepairReason.SQL_PARSE),
+        (TokenError("Missing quote"), SqlRepairReason.SQL_PARSE),
         (DataSkillSqlValidationError(_violation()), SqlRepairReason.DATA_SKILL_VALIDATION),
         (
             SingleMessageError("日期参数配置无效：missing_parameters"),
@@ -111,8 +114,13 @@ def test_public_models_preserve_structured_violation() -> None:
                 "parameter_type_mismatch",
                 "incomplete_parameters",
                 "missing_date_expression",
+                "invalid_date_expression",
             )
         ],
+        (
+            ChatDateFilterConfigurationError("missing_parameters"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
     ],
 )
 def test_prepare_error_classification(error: Exception, expected: SqlRepairReason) -> None:
@@ -489,6 +497,45 @@ def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
 
     assert "按时间字段分组的非 metric 小时序列" in message
     assert "完整 date_filter" in message
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CAST(dt AS UNSIGNED) FROM event",
+        "WITH RECURSIVE days AS "
+        "(SELECT 1 UNION ALL SELECT day_value + 1 FROM days) SELECT * FROM days",
+        "SELECT DATE_FORMAT(dt, '%v') FROM event",
+    ],
+)
+def test_mysql_compatible_sql_rejects_known_adb_incompatibilities(sql: str) -> None:
+    with pytest.raises(SqlStructureValidationError):
+        validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_requires_recursive_cte_column_aliases() -> None:
+    validate_mysql_compatible_sql(
+        "WITH RECURSIVE days(day_value) AS "
+        "(SELECT 1 UNION ALL SELECT day_value + 1 FROM days) "
+        "SELECT day_value FROM days"
+    )
+
+
+def test_mysql_compatible_sql_ignores_unsigned_inside_literal_or_comment() -> None:
+    validate_mysql_compatible_sql(
+        "SELECT 'CAST(value AS UNSIGNED)' AS example_text "
+        "FROM event /* AS UNSIGNED is documentation */"
+    )
+
+
+def test_mysql_compatible_sql_rejects_ambiguous_duplicate_cte_outputs() -> None:
+    sql = (
+        "WITH left_metrics AS (SELECT 1 AS 渠道), "
+        "right_metrics AS (SELECT 2 AS 渠道) "
+        "SELECT 渠道 FROM left_metrics l JOIN right_metrics r ON 1 = 1"
+    )
+    with pytest.raises(SqlStructureValidationError, match="同名输出列"):
+        validate_mysql_compatible_sql(sql)
 
 def test_regenerate_sql_after_error_streaming_reasoning_uses_structured_context(
     monkeypatch: pytest.MonkeyPatch,
