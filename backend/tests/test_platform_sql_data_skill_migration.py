@@ -303,6 +303,43 @@ def test_mysql_unsigned_compatibility_followup_updates_platform_skill(monkeypatc
     assert params["section"] == migration.ZERO_FILL_SECTION
 
 
+def test_recursive_cte_week_compatibility_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    migration = _load_migration("156_platform_recursive_cte_week_interval_data_skill.py")
+
+    assert migration.down_revision == "155platformmysqlunsignedcompat"
+    assert "platform-foundation-skill:recursive-cte-week-compat:v1" in migration.SECTION
+    assert "每个 CTE 都必须写完整列清单" in migration.SECTION
+    assert "INTERVAL <列或表达式> WEEK" in migration.SECTION
+    assert "INTERVAL (week_offset * 7) DAY" in migration.SECTION
+    assert migration.VALIDATION_RULES[0]["forbidden_sql_patterns"]
+
+    assert llm._data_skill_sql_validation_violation(
+        "最近8周趋势",
+        "SELECT DATE_SUB(dt, INTERVAL 1 WEEK) AS week_start FROM events",
+        migration.SECTION,
+    ) is None
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert params["section"] == migration.SECTION
+
+
 def test_date_function_commas_do_not_trigger_dimension_scaffold_rule() -> None:
     migration = _load_migration("154_platform_hourly_zero_fill_data_skill.py")
     sql = """

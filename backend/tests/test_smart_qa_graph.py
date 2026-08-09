@@ -908,6 +908,23 @@ def test_execute_sql_dialect_error_repairs_then_executes_again(monkeypatch: pyte
     assert not any(event["type"] == "error" for event in _events(chunks))
 
 
+def test_date_dimension_cross_join_inside_scaffold_cte_is_accepted() -> None:
+    data_skill = """
+    <!-- data-skill-sql-validation: [{"match":["每日"],"when_sql_has_non_time_group_by":true,
+    "required_outer_select_cross_join":true,"message":"需要日期维度骨架"}] -->
+    """
+    sql = """
+    WITH date_spine(dt) AS (SELECT 1), dimensions(value) AS (SELECT 'a'),
+    scaffold(dt, value) AS (
+        SELECT d.dt, x.value FROM date_spine d CROSS JOIN dimensions x
+    ), metrics(dt, value, amount) AS (SELECT 1, 'a', 2)
+    SELECT s.dt, s.value, COALESCE(m.amount, 0) AS amount
+    FROM scaffold s LEFT JOIN metrics m ON m.dt = s.dt AND m.value = s.value
+    """
+
+    assert llm._data_skill_sql_validation_violation("每日各分类趋势", sql, data_skill) is None
+
+
 def test_same_failure_fingerprint_is_not_repaired_twice(monkeypatch: pytest.MonkeyPatch) -> None:
     invalid_sql = "SELECT CAST(value, AS DECIMAL(18, 4)) FROM orders"
     service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql))

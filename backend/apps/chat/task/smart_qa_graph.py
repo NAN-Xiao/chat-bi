@@ -68,6 +68,7 @@ from apps.chat.task.sql_repair import (
     classify_prepare_sql_error,
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
+    validate_sql_for_datasource,
 )
 from apps.datasource.crud.permission_errors import (
     audit_permission_denied,
@@ -2157,6 +2158,7 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
             local_operation=True,
         )
         try:
+            validate_sql_for_datasource(real_execute_sql, getattr(service.ds, "type", None))
             result = service.execute_sql(
                 session=session,
                 sql=real_execute_sql,

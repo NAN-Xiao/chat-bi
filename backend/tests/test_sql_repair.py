@@ -25,6 +25,7 @@ from apps.chat.task.sql_repair import (
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
     validate_mysql_compatible_sql,
+    validate_sql_for_datasource,
     validate_mysql_date_format_grouping,
 )
 from common.error import (
@@ -518,6 +519,67 @@ def test_mysql_compatible_sql_requires_recursive_cte_column_aliases() -> None:
         "WITH RECURSIVE days(day_value) AS "
         "(SELECT 1 UNION ALL SELECT day_value + 1 FROM days) "
         "SELECT day_value FROM days"
+    )
+
+
+def test_mysql_compatible_sql_requires_column_lists_for_all_recursive_with_ctes() -> None:
+    sql = (
+        "WITH RECURSIVE seq(n) AS (SELECT 1 AS n UNION ALL SELECT n + 1 AS n FROM seq), "
+        "metrics AS (SELECT 1 AS value) SELECT * FROM seq CROSS JOIN metrics"
+    )
+    with pytest.raises(SqlStructureValidationError, match="每个 CTE"):
+        validate_mysql_compatible_sql(sql)
+
+    validate_mysql_compatible_sql(
+        "WITH RECURSIVE seq(n) AS (SELECT 1 AS n UNION ALL SELECT n + 1 AS n FROM seq), "
+        "metrics(value) AS (SELECT 1 AS value) SELECT * FROM seq CROSS JOIN metrics"
+    )
+
+
+def test_mysql_compatible_sql_rejects_dynamic_week_interval_but_allows_day_interval() -> None:
+    with pytest.raises(SqlStructureValidationError, match="INTERVAL <列或表达式> WEEK"):
+        validate_mysql_compatible_sql(
+            "WITH offsets(n) AS (SELECT 1) "
+            "SELECT DATE_SUB(CAST('2026-08-01' AS DATE), INTERVAL offsets.n WEEK) "
+            "FROM offsets"
+        )
+    validate_mysql_compatible_sql(
+        "WITH offsets(n) AS (SELECT 1) "
+        "SELECT DATE_SUB(CAST('2026-08-01' AS DATE), INTERVAL (offsets.n * 7) DAY) "
+        "FROM offsets"
+    )
+
+
+def test_mysql_compatible_sql_converts_tokenizer_internal_errors_to_repairable_errors() -> None:
+    with pytest.raises(SqlStructureValidationError, match="结构解析"):
+        validate_mysql_compatible_sql(
+            "WITH RECURSIVE days(日期) AS ("
+            "SELECT STR_TO_DATE('2026-08-01', '%Y%m%d') "
+            "UNION ALL SELECT DATE_ADD(日期，INTERVAL 1 DAY) FROM days) "
+            "SELECT 日期 FROM days"
+        )
+
+
+def test_validate_sql_for_datasource_uses_mysql_rules() -> None:
+    with pytest.raises(SqlStructureValidationError):
+        validate_sql_for_datasource(
+            "SELECT DATE_SUB(CAST('2026-08-01' AS DATE), INTERVAL n WEEK) FROM offsets",
+            "mysql",
+        )
+    validate_sql_for_datasource("SELECT 1", "postgresql")
+
+
+def test_execute_sql_error_classifier_accepts_structure_validation_errors() -> None:
+    assert (
+        classify_execute_sql_error(SqlStructureValidationError("INTERVAL <列或表达式> WEEK"))
+        is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+    )
+
+
+def test_execute_sql_error_classifier_accepts_adb_dynamic_week_message() -> None:
+    assert (
+        classify_execute_sql_error(Exception("not support : INTERVAL w.offset_week WEEK"))
+        is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
     )
 
 

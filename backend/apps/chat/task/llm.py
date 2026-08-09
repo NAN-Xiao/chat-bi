@@ -53,9 +53,9 @@ from apps.chat.task.sql_repair import (
     DataSkillSqlValidationError,
     DataSkillSqlViolation,
     SqlRepairContext,
+    SqlStructureValidationError,
     build_sql_repair_message,
-    validate_mysql_compatible_sql,
-    validate_mysql_date_format_grouping,
+    validate_sql_for_datasource,
 )
 from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
 from apps.datasource.crud.permission_errors import (
@@ -352,13 +352,37 @@ def _sql_has_non_time_group_by(sql_text: str) -> bool:
 
 
 def _sql_outer_select_has_cross_join(sql_text: str) -> bool:
-    """仅检查最终查询块，避免把时间序列 CTE 内的 CROSS JOIN 当成维度骨架。"""
+    """检查最终查询使用的日期/小时维度骨架是否包含 CROSS JOIN。"""
     for statement in _parse_sql_statements_for_validation(sql_text):
         outer_select = statement if isinstance(statement, exp.Select) else statement.find(exp.Select)
         if outer_select is None:
             continue
         for join in outer_select.args.get("joins") or []:
             if str(join.args.get("kind") or "").upper() == "CROSS":
+                return True
+
+        from_clause = outer_select.args.get("from_")
+        outer_sources = []
+        if from_clause is not None and from_clause.this is not None:
+            outer_sources.append(from_clause.this)
+        outer_sources.extend(
+            join.this for join in outer_select.args.get("joins") or [] if join.this is not None
+        )
+        consumed_ctes = {
+            str(source.name or "").strip('"\x60[]').lower()
+            for source in outer_sources
+            if isinstance(source, exp.Table)
+        }
+        for cte in statement.find_all(exp.CTE):
+            if str(cte.alias_or_name or "").strip('"\x60[]').lower() not in consumed_ctes:
+                continue
+            cte_select = cte.this.find(exp.Select)
+            if cte_select is None or len(cte_select.named_selects) < 2:
+                continue
+            if any(
+                str(join.args.get("kind") or "").upper() == "CROSS"
+                for join in cte_select.args.get("joins") or []
+            ):
                 return True
     return False
 
@@ -2336,13 +2360,7 @@ class LLMService:
             trigger_log_error(session, log)
             raise SingleMessageError(f"日期参数配置无效：{error}") from error
 
-        if str(getattr(getattr(self, "ds", None), "type", "") or "").strip().lower() in {
-            "mysql",
-            "doris",
-            "starrocks",
-        }:
-            validate_mysql_compatible_sql(sql)
-            validate_mysql_date_format_grouping(sql)
+        validate_sql_for_datasource(sql, getattr(getattr(self, "ds", None), "type", None))
 
         violation = _data_skill_sql_validation_violation(
             self.chat_question.question or "",
@@ -2560,6 +2578,7 @@ class LLMService:
         做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
+        validate_sql_for_datasource(sql, getattr(self.ds, "type", None))
         try:
             if isinstance(self.ds, CoreDatasource):
                 return execute_user_analysis_query_or_raise(
@@ -2578,7 +2597,7 @@ class LLMService:
                 origin_column=True,
             ).result
         except Exception as error:
-            if isinstance(error, ParseSQLResultError):
+            if isinstance(error, (ParseSQLResultError, SqlStructureValidationError)):
                 raise
             traceback_text = traceback.format_exc(limit=1, chain=True)
             raise AppDBError(traceback_text) from error

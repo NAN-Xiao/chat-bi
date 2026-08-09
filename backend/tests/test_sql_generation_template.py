@@ -13,6 +13,36 @@ def test_multi_table_rule_restricts_aliases_to_current_query_block() -> None:
     assert "不得引用子查询内部的表别名" in rule
 
 
+def test_first_generation_rule_requires_complete_and_unique_aliases() -> None:
+    rule = get_base_template()["template"]["sql"]["multi_table_condition"]
+
+    assert "每个FROM/JOIN来源都必须使用唯一且不重复的来源别名" in rule
+    assert "必须使用AS声明明确、稳定且在该输出列表中唯一的列别名" in rule
+    assert "同一SELECT输出列表不得产生重复列名或重复列别名" in rule
+    assert "如果同名列都要输出，必须分别声明不同的输出别名" in rule
+    assert "不得在同一查询块的WHERE或JOIN ON中引用该SELECT刚定义的输出别名" in rule
+
+
+def test_first_generation_rule_requires_recursive_cte_column_contract() -> None:
+    rule = get_base_template()["template"]["sql"]["multi_table_condition"]
+
+    assert "仅当当前数据源明确支持自引用CTE时才可生成递归CTE" in rule
+    assert "必须在CTE名称后声明完整列名清单" in rule
+    assert "锚点分支与递归分支的投影数量、顺序和逐列别名一致" in rule
+
+
+def test_alias_integrity_rule_is_in_first_generation_prompt() -> None:
+    rules = AiModelQuestion(
+        engine="MySQL 8.0",
+        db_schema="【DB_ID】 test\n【Schema】",
+    ).sql_sys_question("mysql")["rules"]
+
+    assert "查询块与输出别名完整性规则" in rules
+    assert "每个FROM/JOIN来源都必须使用唯一且不重复的来源别名" in rules
+    assert "同一SELECT输出列表不得产生重复列名或重复列别名" in rules
+    assert "必须在CTE名称后声明完整列名清单" in rules
+
+
 def test_mysql_first_generation_prompt_requires_matching_date_group_expression() -> None:
     rules = AiModelQuestion(
         engine="MySQL 8.0",

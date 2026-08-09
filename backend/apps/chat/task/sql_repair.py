@@ -60,6 +60,8 @@ _GENERIC_PARSE_ERROR_PATTERN = re.compile(r"\bparse\s+error\b", re.IGNORECASE)
 _EXPLICIT_SQL_PARSE_ERROR_PATTERN = re.compile(r"\bsql\s+parse\s+error\b", re.IGNORECASE)
 _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
     re.compile(r"missing column aliases in recursive\s+with\s+query", re.IGNORECASE),
+    re.compile(r"\bnot\s+support\b.{0,100}\binterval\b", re.IGNORECASE),
+    re.compile(r"\b(?:unsupported|not supported|does not support)\b.{0,100}\bweek\b", re.IGNORECASE),
     re.compile(r"\b(?:unknown|unsupported|not supported|does not support)\b.{0,80}\bunsigned\b", re.IGNORECASE),
     re.compile(r"\bunsigned\b.{0,80}\b(?:unknown|unsupported|not supported|does not support)\b", re.IGNORECASE),
     re.compile(r"\billegal pattern component\s*:\s*[vx]\b", re.IGNORECASE),
@@ -348,21 +350,47 @@ def _ambiguous_unqualified_columns(statement: exp.Expression) -> set[str]:
 def validate_mysql_compatible_sql(sql: str) -> None:
     """在执行前拦截 AnalyticDB/MySQL 兼容源中可确定的方言和结构错误。"""
     source_sql = str(sql or "")
-    tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(source_sql)
-    has_unsigned_cast = any(
-        token.text.lower() == "unsigned"
-        and index > 0
-        and tokens[index - 1].text.lower() in {"as", ","}
-        for index, token in enumerate(tokens)
-    )
-    if has_unsigned_cast:
-        raise SqlStructureValidationError(
-            "MySQL/AnalyticDB 兼容数据源不支持 UNSIGNED 类型转换；请使用 SIGNED、DECIMAL "
-            "或移除不必要的转换。"
+    try:
+        tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(source_sql)
+        has_unsigned_cast = any(
+            token.text.lower() == "unsigned"
+            and index > 0
+            and tokens[index - 1].text.lower() in {"as", ","}
+            for index, token in enumerate(tokens)
         )
+        if has_unsigned_cast:
+            raise SqlStructureValidationError(
+                "MySQL/AnalyticDB 兼容数据源不支持 UNSIGNED 类型转换；请使用 SIGNED、DECIMAL "
+                "或移除不必要的转换。"
+            )
 
-    statements = sqlglot.parse(_normalized_sql_for_structure_validation(source_sql), read="mysql")
+        statements = sqlglot.parse(_normalized_sql_for_structure_validation(source_sql), read="mysql")
+    except SqlStructureValidationError:
+        raise
+    except (ParseError, TokenError, AttributeError) as error:
+        raise SqlStructureValidationError(
+            "SQL 未通过 MySQL/AnalyticDB 结构解析；请检查标点、引号、函数参数和查询块别名，"
+            "并只返回修复后的完整 SQL。"
+        ) from error
+
     for statement in statements:
+        for with_clause in statement.find_all(exp.With):
+            if not with_clause.args.get("recursive"):
+                continue
+            missing_column_lists = []
+            for cte in with_clause.expressions:
+                alias_expression = cte.args.get("alias")
+                columns = alias_expression.args.get("columns") if alias_expression is not None else None
+                if not columns:
+                    missing_column_lists.append(str(cte.alias_or_name or ""))
+            if missing_column_lists:
+                names = "、".join(name for name in missing_column_lists if name)
+                raise SqlStructureValidationError(
+                    "AnalyticDB 的 WITH RECURSIVE 要求同一个 WITH 中每个 CTE 都在名称后"
+                    f"显式声明完整列清单；缺少列清单的 CTE：{names or '未知'}。"
+                    "优先改用已验证的非递归日期、小时或数字序列。"
+                )
+
         for cte in statement.find_all(exp.CTE):
             alias = str(cte.alias_or_name or "").strip('"\x60[]').lower()
             if not alias:
@@ -384,6 +412,18 @@ def validate_mysql_compatible_sql(sql: str) -> None:
                     "也可改用非递归日期/数字序列。"
                 )
 
+        for date_expression in statement.find_all((exp.DateAdd, exp.DateSub)):
+            unit = str(getattr(date_expression.args.get("unit"), "this", "") or "").upper()
+            interval_value = date_expression.args.get("expression")
+            while isinstance(interval_value, exp.Paren):
+                interval_value = interval_value.this
+            if unit == "WEEK" and not isinstance(interval_value, exp.Literal):
+                raise SqlStructureValidationError(
+                    "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；"
+                    "请改用已验证的动态 DAY 间隔，例如 INTERVAL (week_offset * 7) DAY，"
+                    "或使用固定周边界。"
+                )
+
         if any(
             literal.is_string
             and re.search(r"%(?:v|x)", str(literal.this), re.IGNORECASE)
@@ -401,6 +441,14 @@ def validate_mysql_compatible_sql(sql: str) -> None:
                 f"JOIN 来源存在同名输出列（{names}），最终 SELECT、GROUP BY、ORDER BY "
                 "和连接条件必须使用来源别名限定字段。"
             )
+
+
+def validate_sql_for_datasource(sql: str, datasource_type: Any) -> None:
+    """对生成、模板渲染和最终执行 SQL 使用同一套数据源方言校验。"""
+    if str(datasource_type or "").strip().lower() not in {"mysql", "doris", "starrocks"}:
+        return
+    validate_mysql_compatible_sql(sql)
+    validate_mysql_date_format_grouping(sql)
 
 
 def _candidate_sqlstates(error: Any) -> set[str]:
@@ -430,6 +478,8 @@ def _candidate_errnos(error: Any) -> set[int]:
 
 
 def classify_execute_sql_error(error: Exception) -> SqlRepairReason | None:
+    if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
     excluded_types = (DataUnavailableError, AppDBConnectionError, TimeoutError, PermissionError)
     if any(isinstance(item, excluded_types) for item in _walk_error_chain(error)):
         return None
@@ -515,7 +565,8 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         payload["repair_requirements"] = [
             "当前 SQL 必须在目标数据源方言下可解析并执行；只返回修复后的完整 SQL JSON。",
             "MySQL/AnalyticDB 兼容数据源禁止 CAST(... AS UNSIGNED) 和 AS UNSIGNED，改用 SIGNED、DECIMAL 或不转换。",
-            "日期序列优先使用目标方言支持的非递归序列；若使用自引用 CTE，必须写 WITH RECURSIVE cte(col1, ...) AS (...)。",
+            "日期序列优先使用目标方言支持的非递归序列；如果使用 WITH RECURSIVE，同一个 WITH 中每个 CTE 都必须写完整列清单 cte(col1, ...)。",
+            "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；改用固定周边界或 INTERVAL (week_offset * 7) DAY。",
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
@@ -531,7 +582,16 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         payload["repair_requirements"] = [
             "必须先生成覆盖完整起止边界的日期序列；有维度时先构造日期与维度的 CROSS JOIN 骨架。",
             "事实聚合结果使用 LEFT JOIN 回填到骨架，并对数值指标使用 COALESCE(..., 0)，不能只返回事实表中有数据的日期。",
-            "优先使用非递归日期序列；如果使用递归 CTE，必须显式写 WITH RECURSIVE cte(col1, ...) AS (...)。",
+            "优先使用非递归日期序列；如果使用 WITH RECURSIVE，同一个 WITH 中每个 CTE 都必须显式写完整列清单。",
+        ]
+    if (
+        context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
+        and any(term in context.error_message for term in ("实时", "小时"))
+    ):
+        payload["repair_requirements"] = [
+            "实时小时趋势必须在看板起止日期范围内从当前事实 time 字段取 MAX(time)，并以该事件所在小时作为连续小时序列上界。",
+            "小时序列必须从 00:00 开始；有其他分组维度时先构造小时序列 CROSS JOIN 维度集合，再 LEFT JOIN 小时聚合结果。",
+            "小时序列和小时聚合必须使用相同日期范围，数值指标使用 COALESCE(..., 0)，不得使用 NOW、CURRENT_DATE 或固定 00-23 全日序列替代事实最大时间。",
         ]
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
     return (
