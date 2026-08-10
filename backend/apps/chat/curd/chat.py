@@ -11,6 +11,7 @@ import orjson
 import sqlparse
 from sqlalchemy import and_, select, update
 from sqlalchemy import desc, func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import aliased
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
@@ -32,6 +33,8 @@ from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
+from apps.system.crud.tenant import SAMPLE_TENANT_NAME
+from apps.system.models.tenant import TenantModel
 from apps.system.crud.tenant_usage import record_tenant_usage_detached, token_total
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
 from apps.system.crud.tracking_config import find_tracking_prompt_context
@@ -64,6 +67,20 @@ def _current_tenant_id(current_user: CurrentUser | None) -> int:
     做了什么：把用户上下文里的租户 ID 取出来，方便后面做权限和数据隔离。
     """
     return require_current_tenant_id(current_user)
+
+
+def _is_sample_workspace(session: SessionDep, current_user: CurrentUser | None) -> bool:
+    """
+    是什么：_is_sample_workspace 判断当前请求是否处于平台提供的示例工作空间。
+    谁调用：历史聊天结果读取时调用。
+    做了什么：从当前租户记录判断示例空间，避免异步任务用户对象缺少 tenant_name 时漏判。
+    """
+    tenant_id = getattr(current_user, "tenant_id", None)
+    try:
+        tenant = session.get(TenantModel, int(tenant_id)) if tenant_id is not None else None
+    except (TypeError, ValueError, SQLAlchemyError):
+        tenant = None
+    return bool(tenant and str(getattr(tenant, "name", None) or "").strip() == SAMPLE_TENANT_NAME)
 
 
 def _same_tenant(row, current_user: CurrentUser | None) -> bool:
@@ -461,7 +478,7 @@ def _record_allowed_by_current_permissions(session: SessionDep, current_user: Cu
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    if not is_normal_user(current_user):
+    if not is_normal_user(current_user) or _is_sample_workspace(session, current_user):
         return True
 
     datasource_id = _row_value(row, "datasource")
@@ -498,7 +515,7 @@ def _record_requires_live_data_for_current_permissions(session: SessionDep, curr
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    if not is_normal_user(current_user):
+    if not is_normal_user(current_user) or _is_sample_workspace(session, current_user):
         return False
     datasource_id = _row_value(row, "datasource")
     sql = _row_value(row, "sql")
