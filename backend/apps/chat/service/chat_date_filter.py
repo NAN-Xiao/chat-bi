@@ -275,6 +275,8 @@ def render_chat_date_filter_sql(
 ) -> str:
     """在聊天执行前将受控日期 token 渲染为数据源可执行的字面量。"""
     if pivot is None:
+        if has_dashboard_date_filter_parameters(sql):
+            raise ChatDateFilterConfigurationError("date_filter_render_incomplete")
         return sql
     prepared = prepare_dashboard_date_filter(
         sql,
@@ -285,4 +287,6 @@ def render_chat_date_filter_sql(
     if prepared.capability.get("status") != "available":
         reason = str(prepared.capability.get("reason") or "date_filter_unavailable")
         raise ChatDateFilterConfigurationError(reason)
+    if has_dashboard_date_filter_parameters(prepared.sql):
+        raise ChatDateFilterConfigurationError("date_filter_render_incomplete")
     return prepared.sql

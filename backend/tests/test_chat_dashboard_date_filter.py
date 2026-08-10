@@ -504,6 +504,15 @@ def test_llm_service_renders_date_template_only_for_execution():
     assert "BETWEEN" in execution_sql
 
 
+def test_llm_service_rejects_unrendered_date_template():
+    service = object.__new__(LLMService)
+    service.ds = SimpleNamespace(type="mysql")
+    service.chat_date_pivot = None
+
+    with pytest.raises(ChatDateFilterConfigurationError, match="date_filter_render_incomplete"):
+        service.render_chat_sql_for_execution(DATE_TEMPLATE_SQL)
+
+
 def test_check_sql_keeps_date_template_and_date_filter_pivot():
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
