@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import sys
 from pathlib import Path
@@ -130,6 +131,38 @@ STALE_SKILL_MARKERS = (
     "<!-- data-skill-source:flam:first-zombie:revenue-voice-root-cause -->",
 )
 
+REALTIME_VALIDATION_RULES = [
+    {
+        "match": ["实时付费趋势", "实时充值趋势", "实时收入趋势", "按小时", "每小时", "逐小时", "小时趋势", "当前小时", "当前整点"],
+        "when_sql_patterns": [r"\bevent_realtime\b"],
+        "required_sql_patterns": [
+            r"\bGROUP\s+BY\b",
+            r"(?:DATE_FORMAT|HOUR)[\s\S]{0,80}FROM_UNIXTIME[\s\S]{0,80}time[\s\S]{0,80}1000",
+        ],
+        "message": "flam 明确按小时或小时趋势的实时查询必须使用 event_realtime.time 生成小时维度并 GROUP BY；仅包含实时但按渠道、国家、平台等非时间维度统计的查询不适用此规则。",
+    },
+    {
+        "match": ["实时"],
+        "when_sql_patterns": [r"\bevent_realtime\b"],
+        "forbidden_sql_patterns": [r"\b(?:CURDATE|CURRENT_DATE|NOW|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|GETDATE|GETUTCDATE|UTC_TIMESTAMP)\b"],
+        "message": "flam 实时查询必须使用当前请求的受控业务日期范围；禁止在 event_realtime SQL 中使用数据库当前日期/时间函数。",
+    },
+    {
+        "match": ["渠道"],
+        "when_sql_patterns": [r"\bevent_realtime\b", "ServerPayLog"],
+        "required_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}adinfo[\s\S]{0,80}\$\.(?:mediaSource|campaignName)"],
+        "forbidden_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}personal[\s\S]{0,80}\$\.[^'\"]*channel"],
+        "message": "flam 实时付费渠道必须从 ServerPayLog.adinfo 的 mediaSource 读取，缺失时回退 campaignName；不得从 personal 猜测渠道字段。",
+    },
+    {
+        "match": ["国家"],
+        "when_sql_patterns": [r"\bevent_realtime\b", "ServerPayLog"],
+        "required_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}userinfo[\s\S]{0,80}\$\.country"],
+        "forbidden_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}personal[\s\S]{0,80}\$\.country"],
+        "message": "flam 实时付费国家必须从 ServerPayLog.userinfo.country 读取；不得从 personal 猜测国家字段。",
+    },
+]
+
 DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "flam 实时数据时区与日期口径",
@@ -137,20 +170,9 @@ DATA_SKILLS: list[dict[str, str]] = [
             "flam / first_zombie 实时付费金额、今天实时付费趋势、按小时付费、实时日期、"
             "dt 分区与实时看板 SQL 生成规则。"
         ),
-        "prompt": """<!-- dashboard-refresh-policy:{"auto_refresh":true,"snapshot_max_age_hours":3} -->
+        "prompt": f"""<!-- dashboard-refresh-policy:{{"auto_refresh":true,"snapshot_max_age_hours":3}} -->
 <!-- data-skill-source:flam:first-zombie:timezone-realtime -->
-<!-- data-skill-sql-validation:[
-{
-  "match":["实时付费","实时充值","实时收入","按小时","每小时","小时趋势"],
-  "allow_when":["总额","总的","合计","汇总","总计","单值","指标卡","截至当前","截至目前","当前累计"],
-  "when_sql_patterns":["\\\\bevent_realtime\\\\b"],
-  "required_sql_patterns":[
-    "\\\\bGROUP\\\\s+BY\\\\b",
-    "DATE_FORMAT[\\\\s\\\\S]{0,80}FROM_UNIXTIME[\\\\s\\\\S]{0,80}time[\\\\s\\\\S]{0,80}1000"
-  ],
-  "message":"flam 实时付费金额默认按小时返回时间序列：使用 event_realtime.time 生成小时维度并 GROUP BY。只有用户明确要求总额、截至当前累计、合计、汇总或指标卡时，才返回单行 metric。"
-}
-] -->
+<!-- data-skill-sql-validation:{json.dumps(REALTIME_VALIDATION_RULES, ensure_ascii=False, separators=(',', ':'))} -->
 # flam 实时数据时区与日期口径
 
 ## 适用范围
@@ -171,8 +193,13 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## 实时看板 SQL 规则
 - 实时小时维度应基于事件时间取小时：
   `DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00')`
-- “实时付费金额”“实时充值金额”“实时收入”在未明确要求总额、截至当前累计、合计、汇总或指标卡时，默认表示今天按小时的金额趋势；即使问题没有写“趋势”，也不得生成单行 `SUM(...)` 的 `metric` 图。
-- 用户明确要求实时付费总额、截至当前累计、合计、汇总、单值或指标卡时，才返回单行聚合；“累计趋势”仍保留小时维度并计算累计值。
+- “实时”只决定使用当前业务日的实时数据范围和 `event_realtime` 表，不单独决定结果粒度。
+- 用户明确要求按小时、每小时、逐小时、小时趋势、当前小时或当前整点时，才生成小时序列并按 `event_realtime.time` 聚合。
+- 用户明确要求按渠道、国家、平台等非时间维度统计实时付费时，只按用户指定维度聚合，不得额外加入小时维度。
+- `event_realtime` 已配置 `adinfo` 与 `userinfo`：付费渠道取 `adinfo.mediaSource`，缺失时取 `adinfo.campaignName`；国家取 `userinfo.country`。不得从 `personal.ed_channel`、`personal.payChannel` 或 `personal.country` 猜测维度。
+- 用户只问实时付费情况、实时付费金额、金额是多少、总额、合计、汇总、单值或指标卡，且未指定时间粒度和其他维度时，返回当前实时范围的单行聚合；不得因为出现“实时”就添加小时字段或 `GROUP BY`。
+- “累计趋势”仍保留小时维度并计算累计值；“按渠道/国家/平台”等问题只保留用户指定的业务维度。
+- 非递归小时骨架输出标签时，使用 `CONCAT(LPAD(CAST(hour_index AS CHAR), 2, '0'), ':00')`；不要把格式字符串误写进 `FROM_UNIXTIME` 的括号内。
 - flam ADS/MySQL 返回中文 SELECT 别名时可能变成 `??`，持久看板 SQL 字段必须使用 ASCII 别名：
   `time_label`、`hour_label`、`online_users`、`pay_count`、`cumulative_pay_count`；图表配置用中文 `name` 展示、英文 `value` 绑定字段。
 - ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板用 `tools/repair_flam_first_zombie_realtime_dashboard.py` 先探测最近可用业务日，再把 SQL 固化为常量 `dt`/业务日期窗口。
@@ -184,6 +211,7 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## 禁止事项
 - 不要在 flam 实时问题里直接用 `CURDATE()` / `NOW()` 作为业务日口径。
 - 实时查询应遵循本 Data Skill 的日期规则。
+- 实时 SQL 的日期边界必须使用当前请求注入的受控日期参数或已确定的业务日期字面量；不得使用 `CURDATE()`、`NOW()`、`UTC_TIMESTAMP()` 或其它数据库当前时间函数。
 - 不要把该日期规则套用到其他数据源。
 
 ## 实时看板持久 SQL

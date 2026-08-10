@@ -267,13 +267,13 @@ def test_normalize_enforces_current_month_from_explicit_question() -> None:
     }
 
 
-def test_normalize_rejects_metric_for_realtime_hourly_question():
+def test_normalize_rejects_metric_for_explicit_realtime_time_series_question():
     with pytest.raises(
         ChatDateFilterConfigurationError,
         match="realtime_requires_hourly_time_series",
     ):
         normalize_chat_date_filter_for_question(
-            "实时收入",
+            "实时收入趋势",
             None,
             "SELECT SUM(amount) FROM event_realtime",
             "metric",
@@ -283,10 +283,23 @@ def test_normalize_rejects_metric_for_realtime_hourly_question():
 def test_normalize_allows_metric_for_explicit_realtime_scalar_question():
     assert (
         normalize_chat_date_filter_for_question(
-            "实时收入总额",
+            "实时收入",
             None,
             "SELECT SUM(amount) FROM event_realtime",
             "metric",
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("question", ["统计今天的实时付费情况", "按渠道统计今天的实时付费"])
+def test_normalize_allows_realtime_non_time_series_without_date_filter(question):
+    assert (
+        normalize_chat_date_filter_for_question(
+            question,
+            None,
+            "SELECT channel, SUM(amount) FROM event_realtime GROUP BY channel",
+            "column",
         )
         is None
     )
