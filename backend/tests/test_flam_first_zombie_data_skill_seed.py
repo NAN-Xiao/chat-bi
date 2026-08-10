@@ -230,6 +230,24 @@ def test_data_skill_seed_documents_verified_transaction_and_cohort_rules() -> No
     assert "CCU.personal.ed_ccu" in content
 
 
+def test_channel_window_cumulative_payment_uses_transaction_events() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    payment_skill = next(
+        skill for skill in seed.DATA_SKILLS if skill["name"] == "flam 付费与 LTV 口径"
+    )
+    assert "channel_window_cumulative_payment" in payment_skill["prompt"]
+    assert "各/按渠道累计付费收入和付费人数" in payment_skill["prompt"]
+
+    sql = _seed_dashboard_sql()["89d495c3733a441799b032cd7407df01"]
+    assert "FROM `event` e" in sql
+    assert "e.event = 'ServerPayLog'" in sql
+    assert "e.personal" in sql
+    assert "COUNT(DISTINCT e.uid)" in sql
+    assert "paytotal" not in sql
+    assert "FROM `user`" not in sql
+
+
 def test_new_user_skill_routes_current_day_to_realtime_table() -> None:
     import seed_flam_first_zombie_data_skills as seed
 

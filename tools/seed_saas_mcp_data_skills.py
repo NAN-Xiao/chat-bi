@@ -32,7 +32,7 @@ DATA_SKILLS: list[dict[str, str]] = [
   "intent": ["ChatMon 过滤项", "告警过滤项", "舆情风险分类", "有哪些风险分类", "有哪些告警优先级"],
   "match": {
     "block_keywords_any": ["收入", "营收", "付费", "充值", "DAU", "活跃", "留存", "LTV", "ARPU", "ARPPU"],
-    "keywords_any": ["过滤项", "风险分类", "风险子类", "优先级", "告警来源", "filter options"]
+    "keywords_any": ["告警", "舆情", "ChatMon", "chatmon", "alert", "alerts."]
   },
   "sources": [
     {
@@ -88,7 +88,7 @@ DATA_SKILLS: list[dict[str, str]] = [
   "intent": ["告警数量", "舆情数量", "风险反馈数量", "bug 反馈数量", "用户反馈趋势", "ChatMon 告警趋势"],
   "match": {
     "block_keywords_any": ["收入", "营收", "付费", "充值", "DAU", "活跃", "留存", "LTV", "ARPU", "ARPPU"],
-    "keywords_any": ["告警", "舆情", "反馈", "风险", "bug", "Bug", "吐槽", "趋势", "数量", "ChatMon", "chatmon"]
+    "keywords_any": ["告警", "舆情", "风险反馈", "用户反馈", "bug反馈", "Bug反馈", "ChatMon", "chatmon"]
   },
   "parameters": {
     "days": {
@@ -190,7 +190,7 @@ DATA_SKILLS: list[dict[str, str]] = [
   "intent": ["告警明细", "舆情明细", "风险反馈明细", "搜索告警", "查看用户反馈明细", "ChatMon 告警列表"],
   "match": {
     "block_keywords_any": ["收入", "营收", "付费", "充值", "DAU", "活跃", "留存", "LTV", "ARPU", "ARPPU"],
-    "keywords_any": ["明细", "列表", "搜索", "查看", "告警ID", "alert_id", "search"]
+    "keywords_any": ["告警", "舆情", "风险反馈", "用户反馈", "ChatMon", "chatmon", "告警ID", "alert_id", "alert-"]
   },
   "parameters": {
     "days": {
@@ -306,7 +306,7 @@ DATA_SKILLS: list[dict[str, str]] = [
   "intent": ["告警证据", "查看证据消息", "告警原文", "聊天证据", "alerts.get_evidence"],
   "match": {
     "block_keywords_any": ["收入", "营收", "付费", "充值", "DAU", "活跃", "留存", "LTV", "ARPU", "ARPPU"],
-    "keywords_any": ["证据", "原文", "消息", "evidence", "告警ID", "alert_id"]
+    "keywords_any": ["告警", "舆情", "ChatMon", "chatmon", "告警ID", "alert_id", "alert-"]
   },
   "parameters": {
     "alert_id": {

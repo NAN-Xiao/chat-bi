@@ -393,8 +393,15 @@ LIMIT 24
         "description": "flam / first_zombie 日付费、累计付费、ARPU/ARPPU、付费率、首付、近 7 日累充和新增 cohort LTV SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:payment-ltv -->
 <!-- data-skill-sql-validation:[
-{{
-  "match":["ltv","LTV","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","次日LTV","次日 LTV","2日LTV","2 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
+ {{
+   "name":"channel_window_cumulative_payment",
+   "match":["各付费渠道累计付费收入和付费人数","各渠道累计付费收入和付费人数","按渠道统计累计付费收入","按渠道统计累计付费人数","渠道累计付费收入","渠道累计付费人数"],
+   "required_sql_patterns":["\\\\bevent\\\\b","ServerPayLog","personal","\\\\.money","COUNT\\\\s*\\\\(\\\\s*DISTINCT[\\\\s\\\\S]{{0,120}}\\\\buid\\\\b"],
+   "forbidden_sql_patterns":["\\\\buser\\\\b","paytotal"],
+   "message":"flam 按渠道查询窗口累计付费收入和付费人数时，必须在所选 dt 窗口内汇总 event.ServerPayLog；收入取 personal.money，人数按 uid 全窗口去重。user.pay.paytotal 只适用于明确要求当前/生命周期累计快照的其他口径。"
+ }},
+ {{
+   "match":["ltv","LTV","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","次日LTV","次日 LTV","2日LTV","2 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
   "forbidden_sql_patterns":[
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+1\\\\s+DAY[\\\\s\\\\S]{{0,160}}d1_dt",
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+2\\\\s+DAY[\\\\s\\\\S]{{0,160}}d2_dt",
@@ -436,6 +443,7 @@ LIMIT 24
 - `user.pay.paytotal` 是用户截至该 `dt` 的累计付费快照，可用于累计付费金额、累计付费用户、当前等级段累计人均付费等快照指标。
 - 历史日充值金额直接汇总 `event='ServerPayLog'` 的 `personal.money`；不要按日汇总 `paytotal`，也不要用支付流程事件筛人后再推导交易金额。
 - 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；非 `metric` 时间图必须以 `{{{{dashboard_start_yyyymmdd}}}}` 至 `{{{{dashboard_end_yyyymmdd}}}}` 限定窗口并返回同范围的 `date_filter`，不扫描大视图取得最大分区。
+- “各/按渠道累计付费收入和付费人数”表示所选日期窗口内的交易累计：使用 `event` 中的 `ServerPayLog`，渠道取交易行 `adinfo.mediaSource`，缺失时回退 `adinfo.campaignName`，收入汇总 `personal.money`，付费人数对窗口内 `uid` 全窗口去重；必须使用 `{{{{dashboard_start_yyyymmdd}}}}` 与 `{{{{dashboard_end_yyyymmdd}}}}`。只有问题明确要求当前/生命周期累计快照时，才使用 `user.pay.paytotal`。
 - 用户明确查询今天、今日、当天的实时付费非 `metric` 时间图时，使用 `event_realtime`，SQL 的 `dt` 条件保存成对的 `{{{{dashboard_start_yyyymmdd}}}}` 和 `{{{{dashboard_end_yyyymmdd}}}}`，并返回 `{{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{{"version":1,"mode":"preset","preset":"today"}}}}`；不得把实际 `yyyyMMdd` 固化到可保存、复制的图表 SQL 中。
 - 只有结果需要按渠道/系统等维度拆分时才解析交易事件行的 `adinfo` / `deviceinfo` JSON；国家拆分统一使用活跃事件和 `ServerPayLog` 事件各自行的 `userinfo.country`，不使用 `currentinfo.country`。
 - 日充值次数使用 `ServerPayLog.personal.orderId` 去重；日充值用户数使用同日 `ServerPayLog.uid` 去重。
