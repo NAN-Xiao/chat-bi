@@ -3829,6 +3829,9 @@ defineExpose({
 .chart-loading-ring {
   width: 56px;
   height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  flex: 0 0 56px;
   border: 5px solid #eef1f5;
   border-top-color: var(--ed-color-primary, #2f6bff);
   border-radius: 50%;
@@ -3837,8 +3840,37 @@ defineExpose({
   &.small {
     width: 14px;
     height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    flex-basis: 14px;
     border-width: 2px;
   }
+}
+
+.chart-base-container.insight-density-mini .chart-loading-info {
+  gap: 8px;
+}
+
+.chart-base-container.insight-density-mini .chart-loading-ring:not(.small) {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  flex-basis: 36px;
+  border-width: 3px;
+}
+
+.chart-base-container.insight-density-basic .chart-loading-info {
+  gap: 6px;
+}
+
+.chart-base-container.insight-density-basic .chart-loading-ring:not(.small) {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  flex-basis: 28px;
+  border-width: 3px;
 }
 
 .chart-loading-text {

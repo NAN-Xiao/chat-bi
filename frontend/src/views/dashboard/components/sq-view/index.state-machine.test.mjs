@@ -164,6 +164,16 @@ assert.doesNotMatch(
   /chartRef\.value\?\.destroyChart\(\)[\s\S]*?chartRef\.value\?\.renderChart\(\)/,
   '看板外层不得先清空可见图表再调用异步重绘'
 )
+assert.match(
+  source,
+  /\.chart-loading-ring \{[\s\S]*?min-width: 56px;[\s\S]*?min-height: 56px;[\s\S]*?flex: 0 0 56px;/,
+  '完整加载圆环必须固定尺寸，不能在紧凑卡片的 flex 布局中被压扁'
+)
+assert.match(
+  source,
+  /\.chart-base-container\.insight-density-basic \.chart-loading-ring:not\(\.small\) \{[\s\S]*?width: 28px;[\s\S]*?height: 28px;[\s\S]*?flex-basis: 28px;/,
+  'basic 密度卡片必须使用适配小高度的加载圆环'
+)
 
 const staleRecoveryMatch = source.match(
   /async function recoverStaleLoadingState\(\) \{([\s\S]*?)\r?\n\}/
