@@ -16,6 +16,7 @@ from apps.chat.models.chat_model import OperationEnum
 from apps.chat.task.llm import LLMService
 from apps.chat.task import smart_qa_graph
 from apps.chat.curd import chat as chat_crud
+from apps.system.crud.tenant import SAMPLE_TENANT_NAME
 from common.error import SingleMessageError
 
 
@@ -379,6 +380,65 @@ def test_check_sql_rejects_explicit_today_time_series_without_date_filter(monkey
     with pytest.raises(SingleMessageError, match="missing_date_filter"):
         service.check_sql(
             session=object(),
+            res=__import__("json").dumps(response),
+            operate=OperationEnum.GENERATE_SQL,
+        )
+
+
+def test_check_sql_skips_invalid_date_filter_for_sample_workspace(monkeypatch):
+    monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
+    service = object.__new__(LLMService)
+    service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.current_user = SimpleNamespace(tenant_id=1)
+    service.ds = SimpleNamespace(type="mysql")
+    service.chat_question = SimpleNamespace(question="趋势", data_skill="")
+    service.chat_date_pivot = {"enabled": False, **DATE_FILTER}
+    response = {
+        "success": True,
+        "sql": "SELECT channel, COUNT(*) FROM event GROUP BY channel",
+        "tables": ["event"],
+        "chart-type": "line",
+        "date_filter": DATE_FILTER,
+    }
+
+    class SampleWorkspaceSession:
+        def get(self, _model, _tenant_id):
+            return SimpleNamespace(name=SAMPLE_TENANT_NAME)
+
+    sql, tables = service.check_sql(
+        session=SampleWorkspaceSession(),
+        res=__import__("json").dumps(response),
+        operate=OperationEnum.GENERATE_SQL,
+    )
+
+    assert sql == response["sql"]
+    assert tables == response["tables"]
+    assert service.chat_date_pivot is None
+
+
+def test_check_sql_keeps_invalid_date_filter_for_regular_workspace(monkeypatch):
+    monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
+    service = object.__new__(LLMService)
+    service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.current_user = SimpleNamespace(tenant_id=2)
+    service.ds = SimpleNamespace(type="mysql")
+    service.chat_question = SimpleNamespace(question="趋势", data_skill="")
+    service.chat_date_pivot = None
+    response = {
+        "success": True,
+        "sql": "SELECT channel, COUNT(*) FROM event GROUP BY channel",
+        "tables": ["event"],
+        "chart-type": "line",
+        "date_filter": DATE_FILTER,
+    }
+
+    class RegularWorkspaceSession:
+        def get(self, _model, _tenant_id):
+            return SimpleNamespace(name="普通工作空间")
+
+    with pytest.raises(SingleMessageError, match="missing_parameters"):
+        service.check_sql(
+            session=RegularWorkspaceSession(),
             res=__import__("json").dumps(response),
             operate=OperationEnum.GENERATE_SQL,
         )

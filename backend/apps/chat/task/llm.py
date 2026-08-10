@@ -77,7 +77,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
-from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, is_sample_workspace, normalize_tenant_role
 from apps.system.crud.tracking_config import find_tracking_prompt_context
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
@@ -2348,17 +2348,24 @@ class LLMService:
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
 
-        sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
+        original_sql = sql
+        rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
         try:
             self.chat_date_pivot = normalize_chat_date_filter_for_question(
                 self.chat_question.question,
                 data.get("date_filter"),
-                sql,
+                rewritten_sql,
                 data.get("chart-type") or data.get("chart_type") or "",
             )
         except ChatDateFilterConfigurationError as error:
-            trigger_log_error(session, log)
-            raise SingleMessageError(f"日期参数配置无效：{error}") from error
+            if is_sample_workspace(session, getattr(self, "current_user", None)):
+                self.chat_date_pivot = None
+                sql = original_sql
+            else:
+                trigger_log_error(session, log)
+                raise SingleMessageError(f"日期参数配置无效：{error}") from error
+        else:
+            sql = rewritten_sql
 
         validate_sql_for_datasource(sql, getattr(getattr(self, "ds", None), "type", None))
 

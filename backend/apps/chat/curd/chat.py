@@ -11,7 +11,6 @@ import orjson
 import sqlparse
 from sqlalchemy import and_, select, update
 from sqlalchemy import desc, func
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import aliased
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
@@ -33,8 +32,7 @@ from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
-from apps.system.crud.tenant import SAMPLE_TENANT_NAME
-from apps.system.models.tenant import TenantModel
+from apps.system.crud.tenant import is_sample_workspace
 from apps.system.crud.tenant_usage import record_tenant_usage_detached, token_total
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
 from apps.system.crud.tracking_config import find_tracking_prompt_context
@@ -70,17 +68,8 @@ def _current_tenant_id(current_user: CurrentUser | None) -> int:
 
 
 def _is_sample_workspace(session: SessionDep, current_user: CurrentUser | None) -> bool:
-    """
-    是什么：_is_sample_workspace 判断当前请求是否处于平台提供的示例工作空间。
-    谁调用：历史聊天结果读取时调用。
-    做了什么：从当前租户记录判断示例空间，避免异步任务用户对象缺少 tenant_name 时漏判。
-    """
-    tenant_id = getattr(current_user, "tenant_id", None)
-    try:
-        tenant = session.get(TenantModel, int(tenant_id)) if tenant_id is not None else None
-    except (TypeError, ValueError, SQLAlchemyError):
-        tenant = None
-    return bool(tenant and str(getattr(tenant, "name", None) or "").strip() == SAMPLE_TENANT_NAME)
+    """保留聊天模块内部调用约定，统一委托给租户层判定。"""
+    return is_sample_workspace(session, current_user)
 
 
 def _same_tenant(row, current_user: CurrentUser | None) -> bool:
