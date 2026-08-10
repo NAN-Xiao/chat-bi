@@ -240,7 +240,7 @@
                     :current-chat="currentChat"
                     :current-chat-id="currentChatId"
                     :record-id="message.record?.id"
-                    :loading="isTyping"
+                    :loading="message.isTyping"
                     :defer-data-loading="true"
                     :message="message"
                     :reasoning-name="['sql_answer', 'chart_answer']"
@@ -342,7 +342,7 @@
                     :chat-list="chatList"
                     :current-chat="currentChat"
                     :current-chat-id="currentChatId"
-                    :loading="isTyping"
+                    :loading="message.isTyping"
                     :message="message"
                     @finish="onAnalysisAnswerFinish"
                     @error="onAnalysisAnswerError"
@@ -368,7 +368,7 @@
                     :current-chat="currentChat"
                     :current-chat-id="currentChatId"
                     :record-id="message.record?.id"
-                    :loading="isTyping"
+                    :loading="message.isTyping"
                     :message="message"
                     @scroll-bottom="scrollToBottom"
                     @finish="onPredictAnswerFinish"
@@ -530,6 +530,7 @@ import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { workspaceContextState } from '@/utils/workspaceContext'
 import { createChatLoadScheduler } from './answer/chatLoadScheduler'
 import { isRestorableAnswerRecord, shouldMarkChatTypingOnRestore } from './answer/taskRestore'
+import { shouldMarkRecordTyping } from './chatTypingState'
 import {
   POST_ANSWER_ACTION_RETRY_DELAY_MS,
   isPostAnswerActionPending,
@@ -623,11 +624,12 @@ function isUnfinishedAnswerRecord(record?: ChatRecord) {
   return isRestorableAnswerRecord(record, recordIndex === currentChat.value.records.length - 1)
 }
 function isRecordTyping(record?: ChatRecord, index = -1) {
-  return (
-    index === currentChat.value.records.length - 1 &&
-    isTyping.value &&
-    isUnfinishedAnswerRecord(record)
-  )
+  return shouldMarkRecordTyping({
+    recordIndex: index,
+    lastRecordIndex: currentChat.value.records.length - 1,
+    isTyping: isTyping.value,
+    isUnfinished: isUnfinishedAnswerRecord(record),
+  })
 }
 type RenderedChatMessage = ChatMessage & { renderKey: string }
 const computedMessages = computed<Array<RenderedChatMessage>>(() => {
