@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
 from apps.knowledge_base.object_references import ProjectedObjectReference
+from apps.knowledge_base.object_projection_models import SemanticObjectReference
 from apps.knowledge_base.object_resolution import (
     _resolve_table_row,
     resolve_references_for_context,
@@ -46,6 +47,35 @@ def test_missing_catalog_is_not_implicitly_eligible() -> None:
     )
     assert result[0].status == "UNRESOLVED"
     assert result[0].canonical_key
+
+
+def test_persisted_reference_row_is_resolved_like_projected_reference() -> None:
+    reference = SemanticObjectReference(
+        id=1,
+        tenant_id=1,
+        owner_type="KNOWLEDGE_VERSION",
+        owner_id=7,
+        knowledge_base_id=9,
+        version_id=7,
+        object_type="TABLE",
+        schema_name="public",
+        table_name="orders",
+        declared_key="a" * 64,
+        source_kind="EXPLICIT",
+    )
+    result = resolve_references_for_context(
+        [reference],
+        tenant_id=2,
+        datasource_id=10,
+        schema_hash="a" * 64,
+        catalog={
+            "TABLE": [DeclaredObjectPath(object_type="TABLE", schema="public", table="orders")]
+        },
+    )
+
+    assert result[0].status == "RESOLVED"
+    assert result[0].reference.schema_name == "public"
+    assert result[0].reference.table_name == "orders"
 
 
 def test_table_row_query_returns_core_table_model() -> None:

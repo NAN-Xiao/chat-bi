@@ -51,7 +51,7 @@ ResolverCallback = Callable[[DeclaredObjectPath, int, int], SemanticObjectKey | 
 
 
 def resolve_references_for_context(
-    references: Iterable[ProjectedObjectReference],
+    references: Iterable[ProjectedObjectReference | object],
     *,
     tenant_id: int,
     datasource_id: int,
@@ -73,7 +73,8 @@ def resolve_references_for_context(
     if not current_hash:
         raise ValueError("当前数据源缺少物理 Schema 指纹。")
     output: list[ResolvedObjectReference] = []
-    for reference in references:
+    for raw_reference in references:
+        reference = _projected_reference(raw_reference)
         path = reference.declared_path
         key: SemanticObjectKey | None = None
         report: dict[str, Any] = {}
@@ -119,6 +120,36 @@ def resolve_references_for_context(
             )
         )
     return output
+
+
+def _projected_reference(reference: ProjectedObjectReference | object) -> ProjectedObjectReference:
+    if isinstance(reference, ProjectedObjectReference):
+        return reference
+    object_type = str(getattr(getattr(reference, "object_type", None), "value", getattr(reference, "object_type", "")))
+    source_kind = str(getattr(getattr(reference, "source_kind", None), "value", getattr(reference, "source_kind", "")))
+    return ProjectedObjectReference(
+        object_type=object_type,
+        declared_path=DeclaredObjectPath(
+            object_type=object_type,
+            catalog=getattr(reference, "catalog_name", None),
+            schema=getattr(reference, "schema_name", None),
+            table=getattr(reference, "table_name", None),
+            field=getattr(reference, "field_name", None),
+            json_path=getattr(reference, "json_path", None),
+            event_name=getattr(reference, "event_name", None),
+            event_property_key=getattr(reference, "event_property_key", None),
+        ),
+        declared_key=str(getattr(reference, "declared_key", "")),
+        source_kind=source_kind,
+        datasource_id=getattr(reference, "datasource_id", None),
+        resolution_status=str(
+            getattr(
+                getattr(reference, "resolution_status", None),
+                "value",
+                getattr(reference, "resolution_status", "UNRESOLVED"),
+            )
+        ),
+    )
 
 
 def _resolve_with_session(

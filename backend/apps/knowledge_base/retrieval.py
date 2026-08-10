@@ -306,15 +306,11 @@ class KnowledgeRetrievalService:
         for reference in references:
             if reference.datasource_id is not None and int(reference.datasource_id) != int(snapshot.datasource_id):
                 return False
-            resolution = session.exec(
-                select(SemanticObjectResolution).where(
-                    SemanticObjectResolution.reference_id == int(reference.id),
-                    SemanticObjectResolution.tenant_id == int(snapshot.tenant_id),
-                    SemanticObjectResolution.datasource_id == int(snapshot.datasource_id),
-                    SemanticObjectResolution.physical_schema_hash == snapshot.schema_hash,
-                    SemanticObjectResolution.status == "RESOLVED",
-                )
-            ).first()
+            resolution = KnowledgeRetrievalService._load_reference_resolution(
+                session,
+                reference=reference,
+                snapshot=snapshot,
+            )
             if resolution is None or not resolution.canonical_key:
                 return False
             if resolution.canonical_key not in snapshot.allowed_object_keys:
@@ -322,6 +318,47 @@ class KnowledgeRetrievalService:
             if resolution.canonical_key in snapshot.denied_object_keys:
                 return False
         return True
+
+    @staticmethod
+    def _load_reference_resolution(
+        session: Session,
+        *,
+        reference: Any,
+        snapshot: PermissionScopeSnapshot,
+    ) -> Any | None:
+        resolution = session.exec(
+            select(SemanticObjectResolution).where(
+                SemanticObjectResolution.reference_id == int(reference.id),
+                SemanticObjectResolution.tenant_id == int(snapshot.tenant_id),
+                SemanticObjectResolution.datasource_id == int(snapshot.datasource_id),
+                SemanticObjectResolution.physical_schema_hash == snapshot.schema_hash,
+                SemanticObjectResolution.status == "RESOLVED",
+            )
+        ).first()
+        if resolution is not None or getattr(reference, "owner_type", None) != "KNOWLEDGE_CHUNK":
+            return resolution
+        if getattr(reference, "version_id", None) is None:
+            return None
+        version_reference = session.exec(
+            select(SemanticObjectReference).where(
+                SemanticObjectReference.owner_type == "KNOWLEDGE_VERSION",
+                SemanticObjectReference.version_id == int(reference.version_id),
+                SemanticObjectReference.tenant_id == int(reference.tenant_id),
+                SemanticObjectReference.declared_key == str(reference.declared_key),
+                SemanticObjectReference.source_kind == reference.source_kind,
+            )
+        ).first()
+        if version_reference is None or version_reference.id is None:
+            return None
+        return session.exec(
+            select(SemanticObjectResolution).where(
+                SemanticObjectResolution.reference_id == int(version_reference.id),
+                SemanticObjectResolution.tenant_id == int(snapshot.tenant_id),
+                SemanticObjectResolution.datasource_id == int(snapshot.datasource_id),
+                SemanticObjectResolution.physical_schema_hash == snapshot.schema_hash,
+                SemanticObjectResolution.status == "RESOLVED",
+            )
+        ).first()
 
     @staticmethod
     def _load_allowed_chunks(session: Session, ids: list[int]) -> list[Any]:

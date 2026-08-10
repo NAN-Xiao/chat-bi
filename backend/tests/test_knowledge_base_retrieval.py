@@ -139,3 +139,39 @@ def test_load_allowed_chunks_uses_sqlmodel_scalar_select():
 
     rows = KnowledgeRetrievalService._load_allowed_chunks(_Session(), [1])
     assert [item.id for item in rows] == [1]
+
+
+def test_chunk_reference_inherits_version_resolution_for_existing_versions():
+    class _Result:
+        def __init__(self, value):
+            self.value = value
+
+        def first(self):
+            return self.value
+
+    class _Session:
+        def __init__(self):
+            self.calls = 0
+
+        def exec(self, statement):
+            self.calls += 1
+            if self.calls == 1:
+                return _Result(None)
+            if self.calls == 2:
+                return _Result(SimpleNamespace(id=9))
+            return _Result(SimpleNamespace(canonical_key="allowed-key"))
+
+    reference = SimpleNamespace(
+        id=17,
+        owner_type="KNOWLEDGE_CHUNK",
+        version_id=11,
+        tenant_id=2,
+        declared_key="declared",
+        source_kind="EXPLICIT",
+        datasource_id=None,
+    )
+    assert KnowledgeRetrievalService._references_allowed(
+        _Session(),
+        [reference],
+        snapshot=_snapshot(),
+    )

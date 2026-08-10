@@ -214,7 +214,7 @@ class KnowledgeApplicabilityService:
     def _load_references(session: Session, version_id: int) -> Iterable[Any]:
         return session.exec(
             select(SemanticObjectReference).where(
-                SemanticObjectReference.owner_type == "KNOWLEDGE_VERSION",
+                SemanticObjectReference.owner_type.in_(("KNOWLEDGE_VERSION", "KNOWLEDGE_CHUNK")),
                 SemanticObjectReference.version_id == int(version_id),
             )
         ).all()
