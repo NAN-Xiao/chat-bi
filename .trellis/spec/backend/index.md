@@ -20,7 +20,6 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 | [Project Runtime](./project-runtime.md) | Actual commands, runtime checks, and data safety gates | Project-specific |
-| [Knowledge Base RAG](./knowledge-base-rag.md) | Reference resolution, permission filtering, audit, and cutover gates | Project-specific |
 
 ---
 
