@@ -18,7 +18,7 @@
 - 同一会话内严格串行，浏览器执行通道最多 4 个，两个空间不得混跑。
 - 不修改推荐看板、Data Skill、数据源、权限、业务数据或业务代码。
 - 所有运行产物写入 `.codex-runtime`，不纳入 Git 提交。
-- 完成率、有效回答率、业务数据返回率和图表成功率必须分别报告。
+- 只有同一次题目尝试完整生成 SQL 且当前 AI 看板实际展示图表才算成功；必须单独报告未生成图表问题。
 
 ---
 
@@ -132,7 +132,7 @@ Expected: 40 个会话均可独立重放。
 
 Run: 打开 flam 的有效普通推荐看板，从题目夹具选择对应会话首题，通过 AI 看板输入框提交并等待终态。
 
-Expected: 页面空间为 flam、数据源为 `3`、问题文本与记录一致，得到成功、能力边界或明确产品错误之一，不停留在“思考中”。
+Expected: 页面空间为 flam、数据源为 `3`、问题文本与记录一致，得到终态；是否成功必须按“同一次完整 SQL + 当前页面展示图表”规则判定，不停留在“思考中”。
 
 - [ ] **Step 2: 关闭 flam 请求并切换修仙空间**
 
@@ -155,6 +155,7 @@ Expected: 数据库记录的 `tenant_id`、问题和浏览器当前空间一致�
 **Files:**
 - Create: `.codex-runtime/flam-ai-dashboard-100-attempts-2026-07-28.jsonl`
 - Create: `.codex-runtime/flam-ai-dashboard-100-results-2026-07-28.json`
+- Create: `.codex-runtime/flam-ai-dashboard-chart-not-generated-2026-07-28.json`
 - Read: `.codex-runtime/flam-ai-dashboard-100-questions-2026-07-28.json`
 
 **Interfaces:**
@@ -167,15 +168,19 @@ Expected: 数据库记录的 `tenant_id`、问题和浏览器当前空间一致�
 
 - [ ] **Step 2: 运行 20 个主题会话**
 
-每次提交后记录 `workspace`、`dashboard_id`、`datasource_id`、`question_id`、`session`、`question`、`record_id`、`started_at`、`finished_at`、`finish`、`error` 和页面答案摘要。
+每次提交后记录 `workspace`、`dashboard_id`、`datasource_id`、`question_id`、`session`、`question`、`attempt_id`、`record_id`、`started_at`、`finished_at`、`finish`、`has_complete_sql`、`has_sql_answer`、`has_chart_answer`、`chart_rendered`、`chart_not_generated`、`chart_not_generated_reason`、`screenshot_path`、`status`、`error` 和页面答案摘要。
 
 Expected: 100 个不同问题均至少有一次提交尝试，且没有“运营总览”来源。
 
 - [ ] **Step 3: 同步数据库结果信号**
 
-只读查询 `chat_record` 与 `chat_log`，为每题补充 `has_sql_answer`、`has_chart_answer`、`has_analysis`、耗时和 token 用量；不得仅依据抽屉历史判断。
+只读查询 `chat_record` 与 `chat_log`，为每题补充 `has_sql_answer`、`has_chart_answer`、`has_analysis`、完整 SQL 信号、耗时和 token 用量；图表是否展示必须回到当前浏览器页面核对 DOM/截图，不能仅依据 `chat_record.chart` 或抽屉历史判断。
 
-- [ ] **Step 4: 检查未完成任务和运行健康**
+- [ ] **Step 4: 按验收规则判定单题成功**
+
+只有同一 `question_id`、`attempt_id`、`record_id` 同时满足 `finish=true`、`has_complete_sql=true`、`has_sql_answer=true`、`has_chart_answer=true` 和 `chart_rendered=true` 才写入 `status=success`。`has_sql_answer=true` 但 `has_chart_answer=false` 或 `chart_rendered=false` 的题目必须写入 `.codex-runtime/<workspace>-ai-dashboard-chart-not-generated-2026-07-28.json`，并记录具体原因。
+
+- [ ] **Step 5: 检查未完成任务和运行健康**
 
 若存在 `finish=false`、网络错误或连续任务失败，暂停新提交，检查 Worker、Redis、API 日志并保存当前进度，不把基础设施故障判为 SQL 或业务失败。
 
@@ -184,6 +189,7 @@ Expected: 100 个不同问题均至少有一次提交尝试，且没有“运营
 **Files:**
 - Create: `.codex-runtime/xiuxian-ai-dashboard-100-attempts-2026-07-28.jsonl`
 - Create: `.codex-runtime/xiuxian-ai-dashboard-100-results-2026-07-28.json`
+- Create: `.codex-runtime/xiuxian-ai-dashboard-chart-not-generated-2026-07-28.json`
 - Read: `.codex-runtime/xiuxian-ai-dashboard-100-questions-2026-07-28.json`
 
 **Interfaces:**
@@ -196,35 +202,53 @@ Expected: 所有通道当前空间为修仙、数据源为 `6`，页面不存在
 
 - [ ] **Step 2: 运行 20 个修仙主题会话**
 
-使用与 Task 4 相同的串行会话和最多 4 通道策略，保存每次提交的完整审计字段。
+使用与 Task 4 相同的串行会话和最多 4 通道策略，保存每次提交的完整审计字段；字段必须包含完整 SQL、图表生成、图表实际展示和未生成图表原因。
 
 Expected: 100 个不同问题均至少有一次提交尝试。
 
 - [ ] **Step 3: 同步数据库结果信号**
 
-只读查询当前修仙 `tenant_id` 下的 `chat_record` 与 `chat_log`，补充 SQL、图表、分析、耗时和 token 信号。
+只读查询当前修仙 `tenant_id` 下的 `chat_record` 与 `chat_log`，补充完整 SQL、图表生成、图表展示、分析、耗时和 token 信号；图表展示仍以当前浏览器 DOM/截图为准。
 
-- [ ] **Step 4: 检查跨空间隔离和未完成任务**
+- [ ] **Step 4: 按验收规则判定单题成功**
 
-Expected: 修仙结果不存在 flam 数据源 ID、看板 ID 或回答内容；所有未完成项进入 Task 6 复测列表。
+只有同一 `question_id`、`attempt_id`、`record_id` 同时满足 `finish=true`、`has_complete_sql=true`、`has_sql_answer=true`、`has_chart_answer=true` 和 `chart_rendered=true` 才写入 `status=success`。完整 SQL 但没有生成或展示图表的题目必须写入修仙空间的未生成图表清单。
+
+- [ ] **Step 5: 检查跨空间隔离和未完成任务**
+
+Expected: 修仙结果不存在 flam 数据源 ID、看板 ID 或回答内容；所有未完成、SQL 完整但无图表、图表未展示和其他失败项进入 Task 6 复测列表。
 
 ### Task 6: 失败复测、分类和最终报告
 
 **Files:**
 - Create: `.codex-runtime/ai-dashboard-retests-2026-07-28.jsonl`
+- Modify: `.codex-runtime/flam-ai-dashboard-chart-not-generated-2026-07-28.json`
+- Modify: `.codex-runtime/xiuxian-ai-dashboard-chart-not-generated-2026-07-28.json`
 - Create: `.codex-runtime/flam-ai-dashboard-100-test-results-2026-07-28.md`
 - Create: `.codex-runtime/xiuxian-ai-dashboard-100-test-results-2026-07-28.md`
 - Create: `.codex-runtime/ai-dashboard-200-test-summary-2026-07-28.md`
 - Modify: `.codex-runtime/flam-ai-dashboard-100-results-2026-07-28.json`
 - Modify: `.codex-runtime/xiuxian-ai-dashboard-100-results-2026-07-28.json`
+- Read: `tools/validate_ai_dashboard_test_results.py`
 
 **Interfaces:**
 - Consumes: 两个空间的题目、尝试、结果和推荐入口盘点。
 - Produces: 最终逐题分类、复测证据、空间报告和 200 题汇总。
 
+验收器命令：
+
+```powershell
+python tools/validate_ai_dashboard_test_results.py `
+  --input .codex-runtime/flam-ai-dashboard-100-results-2026-07-28.json `
+  --output .codex-runtime/flam-ai-dashboard-100-results-validated-2026-07-28.json `
+  --chart-failures .codex-runtime/flam-ai-dashboard-chart-not-generated-2026-07-28.json
+```
+
+对 `xiuxian` 结果执行同样命令。验收器不会合并不同 attempt 的信号；只有 `finish`、`has_complete_sql`、`has_sql_answer`、`has_chart_answer` 和 `chart_rendered` 全部为 JSON `true` 才输出 `status=success`。
+
 - [ ] **Step 1: 生成复测清单**
 
-选择 `finish=false`、`sql_error`、`chart_error`、`runtime_error` 以及上下文不完整的题目。能力边界保留原结果，除非证据显示是临时工具不可用。
+选择 `finish=false`、`sql_not_generated`、`chart_not_generated`、`sql_error`、`chart_error`、`runtime_error` 以及上下文不完整的题目。能力边界保留原结果，除非证据显示是临时工具不可用。首次有完整 SQL 但没有图表的题目不能从失败清单中排除。
 
 - [ ] **Step 2: 在独立会话复测失败项**
 
@@ -232,7 +256,7 @@ Expected: 修仙结果不存在 flam 数据源 ID、看板 ID 或回答内容；
 
 - [ ] **Step 3: 形成最终分类**
 
-按 `data_chart_success`、`data_text_success`、`text_success`、`capability_boundary`、`sql_error`、`chart_error`、`runtime_error`、`running_or_orphaned` 分类。每题必须恰好有一个最终类别。
+按 `success`、`chart_not_generated`、`sql_not_generated`、`capability_boundary`、`sql_error`、`chart_error`、`runtime_error`、`running_or_orphaned` 分类。只有 `success` 计入成功；`data_text_success`、`text_success`、仅有数据或仅任务完成均不得作为成功类别。每题必须恰好有一个最终类别。
 
 - [ ] **Step 4: 验证结果完整性**
 
@@ -245,6 +269,8 @@ if($f.Count -ne 100 -or $x.Count -ne 100){throw '结果数量不是各100条'}
 if((@($f.id | Sort-Object -Unique)).Count -ne 100 -or (@($x.id | Sort-Object -Unique)).Count -ne 100){throw '结果ID不唯一'}
 if(@($f | Where-Object {$_.status -eq 'running_or_orphaned'}).Count -gt 0){Write-Warning 'flam仍有未结束任务'}
 if(@($x | Where-Object {$_.status -eq 'running_or_orphaned'}).Count -gt 0){Write-Warning '修仙仍有未结束任务'}
+if(@($f | Where-Object {$_.has_sql_answer -eq $true -and ($_.has_chart_answer -ne $true -or $_.chart_rendered -ne $true)}).Count -gt 0){Write-Warning 'flam存在未生成或未展示图表的问题'}
+if(@($x | Where-Object {$_.has_sql_answer -eq $true -and ($_.has_chart_answer -ne $true -or $_.chart_rendered -ne $true)}).Count -gt 0){Write-Warning '修仙存在未生成或未展示图表的问题'}
 'result integrity checks passed'
 ```
 
@@ -252,6 +278,6 @@ Expected: 两个结果文件各 100 条、ID 唯一；未结束任务为 0，或
 
 - [ ] **Step 5: 生成三份报告并完成最终核对**
 
-报告分别列出问题数、终态完成数、有效回答数、业务数据返回数、图表成功数、能力边界和各错误类型；逐项链接题目、结果、复测及入口盘点文件。
+报告分别列出问题数、`status=success` 数、首次成功数、复测成功数、完整 SQL 数、图表生成数、图表实际展示数、未生成图表数、能力边界和各错误类型；逐项链接题目、结果、复测、未生成图表清单及入口盘点文件。
 
-Expected: 汇总总数严格等于 200，各分类相加与空间问题数一致，不使用“全部成功”概括只有运行终态的记录。
+Expected: 汇总总数严格等于 200，各分类相加与空间问题数一致；`status=success` 必须同时满足完整 SQL 和图表展示，不使用“全部成功”概括只有运行终态、SQL、数据或文本回答的记录。
