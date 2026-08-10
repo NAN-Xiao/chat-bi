@@ -2,5 +2,10 @@
 sibing = "sibing"
 [default.extend-identifiers]
 maintain_column_froms = "maintain_column_froms"
+PayBuyRetBenifit = "PayBuyRetBenifit"
+hero_star_starup = "hero_star_starup"
+yoy = "yoy"
 [files]
-extend-exclude = ["frontend/public", "backend/alembic/versions"]
+extend-exclude = ["frontend/public", "backend/alembic/versions", "outputs"]
+[default]
+extend-ignore-re = ["api_key=[A-Za-z0-9_-]+"]

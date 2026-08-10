@@ -1,0 +1,28 @@
+{
+  "id": "knowledge-rag-pr-typos",
+  "name": "knowledge-rag-pr-typos",
+  "title": "修复 PR Typos 扫描范围",
+  "description": "排除 outputs 原始与生成产物，恢复 PR 拼写检查；保留 Gitee 同步基础设施问题说明。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "dongjinchao",
+  "assignee": "dongjinchao",
+  "createdAt": "2026-08-10",
+  "completedAt": null,
+  "branch": "codex/knowledge-base-rag",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "pr_url": "https://github.com/NAN-Xiao/chat-bi/pull/4"
+  }
+}
