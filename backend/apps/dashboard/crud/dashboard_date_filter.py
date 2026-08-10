@@ -293,6 +293,12 @@ def has_dashboard_date_filter_parameters(sql: str) -> bool:
     return bool(active_tokens)
 
 
+def has_unresolved_dashboard_date_parameters(sql: str) -> bool:
+    """判断 SQL 是否仍包含未渲染的日期 token，包括字符串字面量中的 token。"""
+    text = str(sql or "")
+    return has_dashboard_date_filter_parameters(text) or any(token in text for token in _ALL_TOKENS)
+
+
 def dashboard_date_parameter_tokens(parameter_type: str) -> tuple[str, str] | None:
     """返回指定日期参数类型的起止 token。"""
     return _PARAMETER_TOKENS.get(parameter_type)

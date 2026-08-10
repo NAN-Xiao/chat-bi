@@ -387,6 +387,33 @@ def _time_scaffold_cte_names(statement: exp.Expression) -> set[str]:
     return names
 
 
+def _is_recursive_time_scaffold(cte: exp.CTE) -> bool:
+    """识别 MySQL/AnalyticDB 中应优先使用非递归实现的时间骨架。"""
+    alias = str(cte.alias_or_name or "").strip('"\x60[]').lower()
+    if not alias:
+        return False
+    known_names = {
+        "calendar",
+        "date_series",
+        "date_seq",
+        "dates",
+        "day_series",
+        "hour_series",
+        "hours",
+        "time_series",
+        "week_series",
+        "weeks",
+        "month_series",
+        "months",
+        "spine",
+    }
+    if alias in known_names:
+        return True
+    if not any(marker in alias for marker in ("date", "day", "hour", "week", "month", "time", "series", "spine")):
+        return False
+    return any(isinstance(node, (exp.DateAdd, exp.DateSub, exp.TimeToStr)) for node in cte.this.walk())
+
+
 def _has_range_predicate(expression: exp.Expression | None) -> bool:
     if expression is None:
         return False
@@ -464,6 +491,11 @@ def validate_mysql_compatible_sql(sql: str) -> None:
             )
             if not self_referencing:
                 continue
+            if _is_recursive_time_scaffold(cte):
+                raise SqlStructureValidationError(
+                    "MySQL/AnalyticDB 日期时间骨架默认禁止 WITH RECURSIVE；"
+                    "请改用非递归数字序列、日期维表或其他已验证的时间骨架。"
+                )
             with_clause = cte.parent if isinstance(cte.parent, exp.With) else None
             alias_expression = cte.args.get("alias")
             columns = alias_expression.args.get("columns") if alias_expression is not None else None
@@ -632,13 +664,24 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         payload["repair_requirements"] = [
             "当前 SQL 必须在目标数据源方言下可解析并执行；只返回修复后的完整 SQL JSON。",
             "MySQL/AnalyticDB 兼容数据源禁止 CAST(... AS UNSIGNED) 和 AS UNSIGNED，改用 SIGNED、DECIMAL 或不转换。",
-            "日期序列优先使用目标方言支持的非递归序列；只有自引用 CTE 才使用 WITH RECURSIVE，并在该 CTE 名后写完整列清单 cte(col1, ...)，普通 CTE 不需要虚构列清单。",
+            "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE；日期序列优先使用目标方言支持的非递归序列。只有能力元数据明确声明且已有执行样例验证支持递归时才可例外使用，并在自引用 CTE 名后写完整列清单 cte(col1, ...)。",
             "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；改用固定周边界或 INTERVAL (week_offset * 7) DAY。",
             "时间骨架不得直接按范围 JOIN 物理事实表；先按明确日期范围过滤事实表并按目标粒度聚合，再 LEFT JOIN 时间骨架。",
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
-        if "recursive" in dialect_text or "date_series" in dialect_text:
+        recursive_alias_error = (
+            "missing column aliases in recursive with query" in dialect_text
+            or "missing column alias in recursive with query" in dialect_text
+            or ("recursive with query" in dialect_text and "alias" in dialect_text)
+            or "日期时间骨架默认禁止 with recursive" in dialect_text
+        )
+        if recursive_alias_error:
+            payload["repair_requirements"].extend([
+                "目标数据源已经明确拒绝上一版递归 CTE；本次修复禁止使用 WITH RECURSIVE、递归自引用 CTE 或仅补充 CTE 列别名后重试。",
+                "日期、小时或周序列必须改用非递归数字序列、日期维表或当前数据源已验证的其他时间骨架；保留完整起止边界和补零结构。",
+            ])
+        elif "recursive" in dialect_text or "date_series" in dialect_text:
             payload["repair_requirements"].append(
                 "完整日期补零必须保留日期骨架，并对日期与维度做 CROSS JOIN，再 LEFT JOIN 聚合结果并 COALESCE 数值；"
                 "不得把日期 CTE 当作物理表。"

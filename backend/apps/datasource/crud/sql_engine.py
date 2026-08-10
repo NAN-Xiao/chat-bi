@@ -15,6 +15,7 @@ from apps.datasource.crud.permission import has_datasource_access
 from apps.datasource.crud.sql_engine_executor import (
     QueryExecutionResult,
     SqlEngineResult,
+    UnresolvedDashboardDateParametersError,
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
     execute_user_query,
@@ -201,6 +202,7 @@ __all__ = [
     "BusinessSqlContextService",
     "QueryExecutionResult",
     "SqlEngineResult",
+    "UnresolvedDashboardDateParametersError",
     "execute_external_user_query_or_raise",
     "execute_user_analysis_query_or_raise",
     "execute_user_query",

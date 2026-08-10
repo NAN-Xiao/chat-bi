@@ -26,8 +26,8 @@ def test_first_generation_rule_requires_complete_and_unique_aliases() -> None:
 def test_first_generation_rule_requires_recursive_cte_column_contract() -> None:
     rule = get_base_template()["template"]["sql"]["multi_table_condition"]
 
-    assert "仅当当前数据源明确支持自引用CTE时才可生成递归CTE" in rule
-    assert "需要在CTE名称后声明完整列名清单" in rule
+    assert "MySQL/AnalyticDB 兼容数据源默认禁止生成 WITH RECURSIVE" in rule
+    assert "当前数据源能力元数据明确声明且已有执行样例验证支持递归 CTE" in rule
     assert "只有自引用 CTE" in rule
     assert "锚点分支与递归分支的投影数量、顺序和逐列别名一致" in rule
 
@@ -41,7 +41,7 @@ def test_alias_integrity_rule_is_in_first_generation_prompt() -> None:
     assert "查询块与输出别名完整性规则" in rules
     assert "每个FROM/JOIN来源都必须使用唯一且不重复的来源别名" in rules
     assert "同一SELECT输出列表不得产生重复列名或重复列别名" in rules
-    assert "需要在CTE名称后声明完整列名清单" in rules
+    assert "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE" in rules
 
 
 def test_mysql_first_generation_prompt_requires_matching_date_group_expression() -> None:
@@ -90,7 +90,7 @@ def test_first_generation_prompt_requires_complete_time_scaffold_and_zero_fill()
     assert "时间骨架 CROSS JOIN 分类集合" in rules
     assert "LEFT JOIN 回填" in rules
     assert "COALESCE(聚合指标, 0)" in rules
-    assert "WITH RECURSIVE" in rules
+    assert "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE" in rules
     assert "只有自引用 CTE 需要" in rules
     assert "不得把物理事实表直接按日期、小时或周范围 JOIN 到时间骨架" in rules
     assert "不要把 date_series、calendar、numbers 等查询块名称当成物理表" in rules

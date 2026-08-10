@@ -58,7 +58,8 @@ template:
           <requirement>CTE、子查询和最终SELECT中的聚合、CASE、函数、算术或日期表达式必须使用AS声明明确、稳定且在该输出列表中唯一的列别名；下游查询只能引用上游明确输出的列名或列别名</requirement>
           <requirement>同一SELECT输出列表不得产生重复列名或重复列别名。JOIN来源包含同名列时，当前查询块中的字段引用必须限定来源别名；如果同名列都要输出，必须分别声明不同的输出别名</requirement>
           <requirement>不得在同一查询块的WHERE或JOIN ON中引用该SELECT刚定义的输出别名；应使用来源字段或完整表达式。只有外层查询或目标方言明确支持的GROUP BY、HAVING、ORDER BY位置才可引用输出别名</requirement>
-          <requirement>仅当当前数据源明确支持自引用CTE时才可生成递归CTE；此时只有自引用 CTE 需要在CTE名称后声明完整列名清单，并让锚点分支与递归分支的投影数量、顺序和逐列别名一致</requirement>
+          <requirement>MySQL/AnalyticDB 兼容数据源默认禁止生成 WITH RECURSIVE；只有当前数据源能力元数据明确声明且已有执行样例验证支持递归 CTE 时才可例外使用，并让锚点分支与递归分支的投影数量、顺序和逐列别名一致</requirement>
+          <requirement>对允许递归 CTE 的其他方言，只有自引用 CTE 需要在 CTE 名称后声明完整列名清单；普通 CTE 不得虚构列清单</requirement>
         </requirements>
         <enforcement>
           <action>生成SQL后逐个SELECT查询块检查来源别名是否唯一、字段限定所用别名是否在当前查询块可见</action>
@@ -193,7 +194,7 @@ template:
             <requirement>当问题或 Data Skill 要求连续日期/小时、按日补零、日期序列完整或展示无数据日期时，第一版 SQL 就必须先生成覆盖起止边界的独立时间骨架；不能从事实表已有日期直接 GROUP BY，因为事实表没有某天时该日期会被整体丢失。</requirement>
             <requirement>有分类维度时，先生成“时间骨架 CROSS JOIN 分类集合”的完整键集合，再将事实表聚合结果 LEFT JOIN 回填；分类集合必须使用当前问题相同的过滤范围和权限可见数据，不能编造维度值。</requirement>
             <requirement>对应该返回零的计数、金额、次数等可累加指标，在回填后的最终投影使用 COALESCE(聚合指标, 0)；比率、均值或分母不存在的指标必须遵守 Data Skill 口径，不得无条件把 NULL 改成 0。</requirement>
-            <requirement>日期序列必须使用当前数据源支持的写法，优先使用已经验证的非递归日期/数字序列。若当前数据源明确支持递归 CTE，必须写 WITH RECURSIVE，且只有自引用 CTE 需要在名称后显式声明完整列清单；普通 CTE 不要虚构列清单。</requirement>
+            <requirement>日期序列必须使用当前数据源支持的写法，优先使用已经验证的非递归日期/数字序列。MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE；只有能力元数据明确声明且已有执行样例验证支持递归 CTE 时才可例外使用。对允许递归的方言，只有自引用 CTE 需要在名称后显式声明完整列清单，普通 CTE 不要虚构列清单。</requirement>
             <requirement>事实明细表必须先在独立 CTE 中使用明确的日期/分区范围过滤，并按目标时间粒度完成聚合；不得把物理事实表直接按日期、小时或周范围 JOIN 到时间骨架，避免明细重复匹配和查询超时。</requirement>
             <requirement>AnalyticDB 不支持 INTERVAL &lt;列或表达式&gt; WEEK；周序列必须使用固定周边界，或将周偏移转换为已验证的动态 DAY 偏移（例如 INTERVAL (week_offset * 7) DAY），不得生成动态 WEEK interval。</requirement>
             <requirement>不要把 date_series、calendar、numbers 等查询块名称当成物理表，也不要为了补零额外编造不存在的表或字段。</requirement>

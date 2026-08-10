@@ -48,6 +48,80 @@ class CustomPromptVisibilityScopeEnum(str, Enum):
     USER_PRIVATE = "USER_PRIVATE"
 
 
+_DASHBOARD_DATE_FILTER_SKILL_MARKERS = (
+    "<!-- platform-foundation-skill:sql-date-grouping:v1 -->",
+    "<!-- data-skill-source:platform:realtime-event-table-selection -->",
+    "<!-- data-skill-source:platform:date-field-usage-contract -->",
+)
+_DASHBOARD_DATE_FILTER_SKILL_NAMES = {
+    "平台通用 Data Skill：时间字段、观察窗口与日期边界",
+    "平台通用 SQL 日期与分组规范",
+}
+
+
+def _excluded_tenant_id_values(value: Any) -> set[int]:
+    """将 Skill 的租户排除配置规范化为可比较的整数集合。"""
+    if value in (None, "", []):
+        return set()
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            value = [value]
+    if not isinstance(value, (list, tuple, set)):
+        value = [value]
+    result: set[int] = set()
+    for item in value:
+        try:
+            result.add(int(item))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _platform_skill_excluded_for_tenant(row: Any, tenant_id: int | str | None) -> bool:
+    """判断平台公共 Skill 是否明确排除了当前租户。"""
+    if row.get("visibility_scope") != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+        return False
+    if tenant_id in (None, ""):
+        return False
+    try:
+        normalized_tenant_id = int(tenant_id)
+    except (TypeError, ValueError):
+        return False
+    return normalized_tenant_id in _excluded_tenant_id_values(row.get("excluded_tenant_ids"))
+
+
+def is_dashboard_date_filter_excluded(session: Session, tenant_id: int | str | None) -> bool:
+    """读取看板日期能力的 Skill 配置，供生成和执行阶段使用同一判定。"""
+    if tenant_id in (None, ""):
+        return False
+    rows = session.execute(
+        sql_text(
+            """
+            SELECT name, prompt, visibility_scope, excluded_tenant_ids
+            FROM custom_prompt
+            WHERE type = :skill_type
+              AND visibility_scope = :platform_scope
+              AND COALESCE(active, false) = true
+            """
+        ),
+        {
+            "skill_type": CustomPromptTypeEnum.DATA_SKILL.value,
+            "platform_scope": CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value,
+        },
+    ).mappings().all()
+    for row in rows:
+        prompt = row.get("prompt") or ""
+        if (
+            row.get("name") in _DASHBOARD_DATE_FILTER_SKILL_NAMES
+            or any(marker in prompt for marker in _DASHBOARD_DATE_FILTER_SKILL_MARKERS)
+        ):
+            if _platform_skill_excluded_for_tenant(row, tenant_id):
+                return True
+    return False
+
+
 def _normalize_prompt_id(prompt_id: Optional[int | str]) -> Optional[int]:
     """
     是什么：_normalize_prompt_id 是一个可以复用的小步骤，负责聊天问数据和 Agent相关的一件事。
@@ -899,7 +973,8 @@ def find_data_skills(
         sql_text(
             f"""
             SELECT id, tenant_id, name, description, prompt, embedding, embedding_signature,
-                   specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
+                   specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope,
+                   excluded_tenant_ids
             FROM custom_prompt
             WHERE 1 = 1
               AND type = :custom_prompt_type
@@ -946,6 +1021,8 @@ def find_data_skills(
         if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
             if current_user_id is None or str(row.get("create_by")) != str(current_user_id):
                 continue
+        if _platform_skill_excluded_for_tenant(row, params["tenant_id"]):
+            continue
 
         prompt = row.get("prompt")
         if not prompt:

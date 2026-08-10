@@ -179,6 +179,23 @@ def test_execute_error_accepts_explicit_syntax_or_dialect_text(message: str) -> 
     assert classify_execute_sql_error(wrapped) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
 
 
+def test_recursive_alias_error_requires_non_recursive_repair() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="mysql",
+        failed_sql="WITH RECURSIVE date_series(dt) AS (...) SELECT * FROM date_series",
+        error_message="missing column aliases in recursive WITH query",
+        violation=None,
+        attempt=1,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "禁止使用 WITH RECURSIVE" in message
+    assert "仅补充 CTE 列别名后重试" in message
+    assert "非递归数字序列" in message
+
+
 def test_execute_error_accepts_analyticdb_group_by_expression_text() -> None:
     wrapped = AppDBError("query failed")
     wrapped.__cause__ = _MysqlError(
@@ -521,6 +538,16 @@ def test_mysql_compatible_sql_requires_recursive_cte_column_aliases() -> None:
         "(SELECT 1 UNION ALL SELECT day_value + 1 FROM days) "
         "SELECT day_value FROM days"
     )
+
+
+def test_mysql_compatible_sql_rejects_recursive_date_time_scaffolds() -> None:
+    with pytest.raises(SqlStructureValidationError, match="日期时间骨架默认禁止"):
+        validate_mysql_compatible_sql(
+            "WITH RECURSIVE date_seq(dt, date_value) AS "
+            "(SELECT 1, DATE '2026-08-01' UNION ALL "
+            "SELECT dt + 1, DATE_ADD(date_value, INTERVAL 1 DAY) FROM date_seq) "
+            "SELECT * FROM date_seq"
+        )
 
 
 def test_mysql_compatible_sql_allows_non_recursive_ctes_in_recursive_with() -> None:
