@@ -40,3 +40,10 @@ Read only chunk-level resolution and reject a chunk immediately when that row do
 
 #### Correct
 Inherit the matching version-level resolution when the chunk row is absent, then continue enforcing workspace, datasource, schema, and object permissions.
+
+### Common Mistake: Deduplicating Persisted Resolution Rows
+
+- `declared_key + source_kind` is a logical projection key, not a database row identity.
+- A published version can have one version-level reference and multiple chunk-level references with the same key; every reference needs its own `semantic_object_resolution` row.
+- Persist the resolved result to all matching reference IDs, while evaluating the resolver once per logical key to avoid redundant catalog queries.
+- Regression coverage must assert that duplicate version/chunk references all receive the same canonical key.

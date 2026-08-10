@@ -1,0 +1,28 @@
+{
+  "id": "knowledge-rag-pr-review",
+  "name": "knowledge-rag-pr-review",
+  "title": "知识库 RAG 发布审查与 PR",
+  "description": "完整审查知识库与 RAG 功能分支差异，核对主工作区冲突并创建中文 PR。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "dongjinchao",
+  "assignee": "dongjinchao",
+  "createdAt": "2026-08-10",
+  "completedAt": null,
+  "branch": "codex/knowledge-base-rag",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "review_result": "无未处理 P0/P1，已修复重复引用解析持久化缺陷"
+  }
+}
