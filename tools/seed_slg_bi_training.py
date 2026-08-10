@@ -310,7 +310,7 @@ SQL 口径：
 - 未指定日期时，观察窗口锚定 `fact_sessions` 最大业务日期 `max(session_start::date)`，默认输出最近 30 天，即 `max_date - 29` 到 `max_date`。
 - 输出趋势必须用 `generate_series` 补齐连续日期；无活跃或无付费日期返回 0。
 - DAU、PDAU 是人数快照/去重人数，按周/月透视默认平均，不要跨日求和成人次，除非用户明确要求累计人次。
-- 若要按渠道拆解，DAU 可关联 `dim_player` 或使用 `fact_sessions.channel/bi_channel_name/bi_channel_group`；PDAU 可用 `fact_payments` 的同名渠道字段或关联 `dim_player`，但同一个查询内维度口径要一致。
+- 若要按渠道拆解，DAU 可关联 `dim_player` 或使用 `fact_sessions.channel/bi_channel_name/bi_channel_group`；付费收入、付费人数和 ARPPU 必须通过 `player_id` 关联 `dim_player.channel`，`fact_payments` 不提供渠道字段；同一个查询内维度口径要一致。
 - 图表默认使用折线图：x 轴为日期，y 轴为 DAU 和 PDAU 两条指标线。
 
 推荐输出：

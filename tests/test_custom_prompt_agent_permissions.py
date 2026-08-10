@@ -16,6 +16,7 @@ from apps.chat.curd.custom_prompt import (
     CustomPromptVisibilityScopeEnum,
     find_custom_prompts,
     find_data_skills,
+    is_dashboard_date_filter_excluded,
 )
 from apps.chat.curd.custom_prompt_embedding import skill_definition_signature
 from apps.chat.curd import custom_prompt as custom_prompt_runtime
@@ -106,7 +107,8 @@ def _engine():
                 embedding TEXT,
                 embedding_signature VARCHAR(128),
                 specific_ds BOOLEAN,
-                datasource_ids TEXT
+                datasource_ids TEXT,
+                excluded_tenant_ids TEXT
             )
             """
         ))
@@ -566,6 +568,98 @@ def test_data_skills_auto_match_all_active_skills_when_no_skill_is_selected():
         assert any("Retention Skill" in log for log in logs)
         assert any("My Skill" in log for log in logs)
         assert platform_id and revenue_id and retention_id and personal_id
+
+
+@pytest.mark.parametrize(
+    ("excluded_tenant_ids", "tenant_id", "expected_visible"),
+    [
+        (None, 7473600346187632640, True),
+        ("[]", 7473600346187632640, True),
+        ("[123]", 7473600346187632640, True),
+        ("[7473600346187632640]", 7473600346187632640, False),
+    ],
+)
+def test_platform_skill_tenant_exclusion_is_opt_in(
+    excluded_tenant_ids,
+    tenant_id,
+    expected_visible,
+):
+    engine = _engine()
+    with Session(engine) as session:
+        session.execute(
+            text(
+                """
+                INSERT INTO custom_prompt
+                    (tenant_id, type, name, description, target_scope, active, visible,
+                     create_by, visibility_scope, prompt, specific_ds, datasource_ids,
+                     excluded_tenant_ids)
+                VALUES
+                    (1, 'DATA_SKILL', '平台日期能力', '', 'ALL', 1, 1,
+                     1, 'PLATFORM_PUBLIC',
+                     '<!-- platform-foundation-skill:sql-date-grouping:v1 -->\nUse dashboard dates.',
+                     0, '[]', :excluded_tenant_ids)
+                """
+            ),
+            {"excluded_tenant_ids": excluded_tenant_ids},
+        )
+        session.commit()
+
+        skill_text, _logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            current_user_id=3,
+            tenant_id=tenant_id,
+        )
+
+        assert ("平台日期能力" in skill_text) is expected_visible
+
+
+def test_dashboard_date_filter_exclusion_uses_the_same_skill_configuration():
+    engine = _engine()
+    with Session(engine) as session:
+        session.execute(
+            text(
+                """
+                INSERT INTO custom_prompt
+                    (tenant_id, type, name, target_scope, active, visible,
+                     create_by, visibility_scope, prompt, specific_ds, datasource_ids,
+                     excluded_tenant_ids)
+                VALUES
+                    (1, 'DATA_SKILL', '平台日期能力', 'ALL', 1, 1, 1,
+                     'PLATFORM_PUBLIC',
+                     '<!-- data-skill-source:platform:date-field-usage-contract -->',
+                     0, '[]', '[7473600346187632640]')
+                """
+            )
+        )
+        session.commit()
+
+        assert is_dashboard_date_filter_excluded(session, 7473600346187632640)
+        assert not is_dashboard_date_filter_excluded(session, 10)
+
+
+def test_unrelated_platform_skill_does_not_enable_dashboard_date_exclusion():
+    engine = _engine()
+    with Session(engine) as session:
+        session.execute(
+            text(
+                """
+                INSERT INTO custom_prompt
+                    (tenant_id, type, name, target_scope, active, visible,
+                     create_by, visibility_scope, prompt, specific_ds, datasource_ids,
+                     excluded_tenant_ids)
+                VALUES
+                    (1, 'DATA_SKILL', '平台通用 Data Skill：预测、成熟样本与置信表达',
+                     'ANALYSIS_ASSISTANT', 1, 1, 1, 'PLATFORM_PUBLIC',
+                     '<!-- data-skill-source:platform-generic -->', 0, '[]',
+                     '[7473600346187632640]')
+                """
+            )
+        )
+        session.commit()
+
+        assert not is_dashboard_date_filter_excluded(session, 7473600346187632640)
 
 
 def test_data_skill_runtime_hides_split_legacy_semantic_skills_after_combining():
