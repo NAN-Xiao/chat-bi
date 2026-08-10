@@ -334,6 +334,35 @@ def test_recursive_cte_week_compatibility_followup_updates_platform_skill(monkey
     monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
     migration.upgrade()
 
+
+def test_time_scaffold_performance_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    migration = _load_migration("157_platform_time_scaffold_performance_data_skill.py")
+
+    assert migration.down_revision == "156platformrecursivecteweek"
+    assert "platform-foundation-skill:time-scaffold-performance:v1" in migration.SECTION
+    assert "事实明细表必须先" in migration.SECTION
+    assert "不得把物理事实表直接按日期、小时或周范围 JOIN 到时间骨架" in migration.SECTION
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert params["section_marker"] == migration.SECTION_MARKER
+
     assert len(bind.executions) == 1
     statement, params = bind.executions[0]
     assert "UPDATE custom_prompt" in statement

@@ -347,6 +347,84 @@ def _ambiguous_unqualified_columns(statement: exp.Expression) -> set[str]:
     return ambiguous
 
 
+def _time_scaffold_cte_names(statement: exp.Expression) -> set[str]:
+    """识别用于日期/小时/周骨架的 CTE，供事实表连接粒度校验使用。"""
+    known_names = {
+        "calendar",
+        "date_series",
+        "dates",
+        "day_series",
+        "hour_series",
+        "hours",
+        "time_series",
+        "week_series",
+        "weeks",
+        "month_series",
+        "months",
+        "spine",
+    }
+    names: set[str] = set()
+    for cte in statement.find_all(exp.CTE):
+        name = str(cte.alias_or_name or "").strip('"\x60[]').lower()
+        if not name:
+            continue
+        if name in known_names:
+            names.add(name)
+            continue
+        select = cte.this.find(exp.Select)
+        if select is None:
+            continue
+        has_time_expression = any(
+            isinstance(node, (exp.DateAdd, exp.DateSub, exp.TimeToStr))
+            for node in select.walk()
+        )
+        has_cross_join = any(
+            str(join.args.get("kind") or "").upper() == "CROSS"
+            for join in select.args.get("joins") or []
+        )
+        if has_time_expression and has_cross_join:
+            names.add(name)
+    return names
+
+
+def _has_range_predicate(expression: exp.Expression | None) -> bool:
+    if expression is None:
+        return False
+    return any(
+        expression.find(predicate) is not None
+        for predicate in (exp.GT, exp.GTE, exp.LT, exp.LTE, exp.Between)
+    )
+
+
+def _raw_fact_scaffold_joins(statement: exp.Expression) -> bool:
+    """禁止物理事实表直接按范围连接时间骨架，避免明细重复匹配和超时。"""
+    scaffold_names = _time_scaffold_cte_names(statement)
+    if not scaffold_names:
+        return False
+    cte_names = {
+        str(cte.alias_or_name or "").strip('"\x60[]').lower()
+        for cte in statement.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    for select in statement.find_all(exp.Select):
+        from_clause = select.args.get("from_")
+        raw_sources = []
+        if from_clause is not None and isinstance(from_clause.this, exp.Table):
+            source_name = str(from_clause.this.name or "").strip('"\x60[]').lower()
+            if source_name and source_name not in cte_names:
+                raw_sources.append(from_clause.this)
+        for join in select.args.get("joins") or []:
+            target = join.this
+            if not isinstance(target, exp.Table):
+                continue
+            target_name = str(target.name or "").strip('"\x60[]').lower()
+            if target_name not in scaffold_names or not _has_range_predicate(join.args.get("on")):
+                continue
+            if raw_sources:
+                return True
+    return False
+
+
 def validate_mysql_compatible_sql(sql: str) -> None:
     """在执行前拦截 AnalyticDB/MySQL 兼容源中可确定的方言和结构错误。"""
     source_sql = str(sql or "")
@@ -374,23 +452,6 @@ def validate_mysql_compatible_sql(sql: str) -> None:
         ) from error
 
     for statement in statements:
-        for with_clause in statement.find_all(exp.With):
-            if not with_clause.args.get("recursive"):
-                continue
-            missing_column_lists = []
-            for cte in with_clause.expressions:
-                alias_expression = cte.args.get("alias")
-                columns = alias_expression.args.get("columns") if alias_expression is not None else None
-                if not columns:
-                    missing_column_lists.append(str(cte.alias_or_name or ""))
-            if missing_column_lists:
-                names = "、".join(name for name in missing_column_lists if name)
-                raise SqlStructureValidationError(
-                    "AnalyticDB 的 WITH RECURSIVE 要求同一个 WITH 中每个 CTE 都在名称后"
-                    f"显式声明完整列清单；缺少列清单的 CTE：{names or '未知'}。"
-                    "优先改用已验证的非递归日期、小时或数字序列。"
-                )
-
         for cte in statement.find_all(exp.CTE):
             alias = str(cte.alias_or_name or "").strip('"\x60[]').lower()
             if not alias:
@@ -411,6 +472,12 @@ def validate_mysql_compatible_sql(sql: str) -> None:
                     "自引用 CTE 必须使用 WITH RECURSIVE，并在 CTE 名后显式声明列别名；"
                     "也可改用非递归日期/数字序列。"
                 )
+
+        if _raw_fact_scaffold_joins(statement):
+            raise SqlStructureValidationError(
+                "时间骨架不得直接按范围 JOIN 物理事实表；请先在事实 CTE 中使用明确日期范围过滤，"
+                "按目标时间粒度聚合后，再将聚合结果 LEFT JOIN 到日期/小时/周骨架。"
+            )
 
         for date_expression in statement.find_all((exp.DateAdd, exp.DateSub)):
             unit = str(getattr(date_expression.args.get("unit"), "this", "") or "").upper()
@@ -565,8 +632,9 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         payload["repair_requirements"] = [
             "当前 SQL 必须在目标数据源方言下可解析并执行；只返回修复后的完整 SQL JSON。",
             "MySQL/AnalyticDB 兼容数据源禁止 CAST(... AS UNSIGNED) 和 AS UNSIGNED，改用 SIGNED、DECIMAL 或不转换。",
-            "日期序列优先使用目标方言支持的非递归序列；如果使用 WITH RECURSIVE，同一个 WITH 中每个 CTE 都必须写完整列清单 cte(col1, ...)。",
+            "日期序列优先使用目标方言支持的非递归序列；只有自引用 CTE 才使用 WITH RECURSIVE，并在该 CTE 名后写完整列清单 cte(col1, ...)，普通 CTE 不需要虚构列清单。",
             "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；改用固定周边界或 INTERVAL (week_offset * 7) DAY。",
+            "时间骨架不得直接按范围 JOIN 物理事实表；先按明确日期范围过滤事实表并按目标粒度聚合，再 LEFT JOIN 时间骨架。",
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
@@ -582,7 +650,8 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         payload["repair_requirements"] = [
             "必须先生成覆盖完整起止边界的日期序列；有维度时先构造日期与维度的 CROSS JOIN 骨架。",
             "事实聚合结果使用 LEFT JOIN 回填到骨架，并对数值指标使用 COALESCE(..., 0)，不能只返回事实表中有数据的日期。",
-            "优先使用非递归日期序列；如果使用 WITH RECURSIVE，同一个 WITH 中每个 CTE 都必须显式写完整列清单。",
+            "优先使用非递归日期序列；只有自引用 CTE 才使用 WITH RECURSIVE，并为该 CTE 写完整列清单，普通 CTE 保持普通别名即可。",
+            "事实表必须先在自己的 CTE 中按日期范围过滤并按目标粒度聚合，不得直接按范围 JOIN 日期/小时/周骨架。",
         ]
     if (
         context.reason is SqlRepairReason.DATA_SKILL_VALIDATION

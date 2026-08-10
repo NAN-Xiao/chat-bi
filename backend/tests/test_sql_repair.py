@@ -522,18 +522,59 @@ def test_mysql_compatible_sql_requires_recursive_cte_column_aliases() -> None:
     )
 
 
-def test_mysql_compatible_sql_requires_column_lists_for_all_recursive_with_ctes() -> None:
+def test_mysql_compatible_sql_allows_non_recursive_ctes_in_recursive_with() -> None:
     sql = (
         "WITH RECURSIVE seq(n) AS (SELECT 1 AS n UNION ALL SELECT n + 1 AS n FROM seq), "
         "metrics AS (SELECT 1 AS value) SELECT * FROM seq CROSS JOIN metrics"
     )
-    with pytest.raises(SqlStructureValidationError, match="每个 CTE"):
-        validate_mysql_compatible_sql(sql)
+    validate_mysql_compatible_sql(sql)
 
     validate_mysql_compatible_sql(
         "WITH RECURSIVE seq(n) AS (SELECT 1 AS n UNION ALL SELECT n + 1 AS n FROM seq), "
         "metrics(value) AS (SELECT 1 AS value) SELECT * FROM seq CROSS JOIN metrics"
     )
+
+
+def test_mysql_compatible_sql_rejects_raw_fact_range_join_to_time_scaffold() -> None:
+    sql = """
+    WITH params AS (
+        SELECT CAST('2026-08-01' AS DATE) AS start_date,
+               CAST('2026-08-08' AS DATE) AS end_date
+    ),
+    week_offsets AS (
+        SELECT 0 AS offset_week UNION ALL SELECT 1
+    ),
+    calendar AS (
+        SELECT DATE_ADD(p.start_date, INTERVAL w.offset_week * 7 DAY) AS week_start
+        FROM params p CROSS JOIN week_offsets w
+    )
+    SELECT c.week_start, COUNT(*) AS event_count
+    FROM event e
+    JOIN calendar c
+      ON e.dt >= c.week_start
+     AND e.dt < DATE_ADD(c.week_start, INTERVAL 7 DAY)
+    GROUP BY c.week_start
+    """
+    with pytest.raises(SqlStructureValidationError, match="时间骨架"):
+        validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_allows_aggregated_cte_range_join_to_time_scaffold() -> None:
+    sql = """
+    WITH calendar AS (
+        SELECT CAST('2026-08-01' AS DATE) AS week_start
+    ),
+    metrics AS (
+        SELECT CAST('2026-08-03' AS DATE) AS metric_date, 1 AS value
+    )
+    SELECT c.week_start, COALESCE(SUM(m.value), 0) AS value
+    FROM metrics m
+    JOIN calendar c
+      ON m.metric_date >= c.week_start
+     AND m.metric_date < DATE_ADD(c.week_start, INTERVAL 7 DAY)
+    GROUP BY c.week_start
+    """
+    validate_mysql_compatible_sql(sql)
 
 
 def test_mysql_compatible_sql_rejects_dynamic_week_interval_but_allows_day_interval() -> None:
