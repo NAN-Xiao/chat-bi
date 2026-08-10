@@ -136,19 +136,21 @@ def _explicit_question_date_expression(question: str | None) -> dict[str, Any] |
 def _question_requires_date_filter(question: str | None, chart_type: str) -> bool:
     if str(chart_type or "").strip().lower() == "metric":
         return False
-    if _REALTIME_PATTERN.search(str(question or "")):
-        return True
     if _TIME_SERIES_PATTERN.search(str(question or "")):
         return True
-    return question_date_scope(question) != "unspecified"
+    return False
 
 
 def _question_explicitly_requests_realtime_scalar(question: str | None) -> bool:
     """识别用户明确要求实时汇总值的通用表达，不绑定具体业务指标。"""
     text = str(question or "")
-    return bool(_REALTIME_PATTERN.search(text)) and any(
-        term in text for term in _EXPLICIT_REALTIME_SCALAR_TERMS
-    )
+    if not _REALTIME_PATTERN.search(text):
+        return False
+    if _TIME_SERIES_PATTERN.search(text):
+        return False
+    if any(term in text for term in _EXPLICIT_REALTIME_SCALAR_TERMS):
+        return True
+    return not re.search(r"(?:按|各|每)\s*[\u4e00-\u9fffA-Za-z]", text)
 
 
 def normalize_chat_date_filter_for_question(
@@ -160,9 +162,8 @@ def normalize_chat_date_filter_for_question(
     """校验时间序列的日期配置，未指定窗口时使用过去七天。"""
     question_text = str(question or "")
     if (
-        _REALTIME_PATTERN.search(question_text)
-        and str(chart_type or "").strip().lower() == "metric"
-        and not _question_explicitly_requests_realtime_scalar(question_text)
+        str(chart_type or "").strip().lower() == "metric"
+        and _TIME_SERIES_PATTERN.search(question_text)
     ):
         raise ChatDateFilterConfigurationError("realtime_requires_hourly_time_series")
 

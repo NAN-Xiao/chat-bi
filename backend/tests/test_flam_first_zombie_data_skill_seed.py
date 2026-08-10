@@ -161,15 +161,20 @@ def test_realtime_skill_description_has_payment_retrieval_anchor() -> None:
     assert "实时付费金额" in seed.DATA_SKILLS[0]["description"]
 
 
-def test_realtime_payment_skill_defaults_to_hourly_series_unless_total_is_explicit() -> None:
+def test_realtime_payment_skill_only_requires_hourly_series_for_explicit_hour_intent() -> None:
     import seed_flam_first_zombie_data_skills as seed
 
     prompt = seed.DATA_SKILLS[0]["prompt"]
 
-    assert '"match":["实时付费","实时充值","实时收入","按小时","每小时","小时趋势"]' in prompt
-    assert '"allow_when":["总额","总的","合计","汇总","总计","单值","指标卡","截至当前","截至目前","当前累计"]' in prompt
-    assert "实时付费金额默认按小时返回时间序列" in prompt
+    assert '"match":["实时付费趋势","实时充值趋势","实时收入趋势","按小时","每小时","逐小时","小时趋势","当前小时","当前整点"]' in prompt
+    assert '"match":["实时付费","实时充值","实时收入"' not in prompt
+    assert "“实时”只决定使用当前业务日的实时数据范围和 `event_realtime` 表" in prompt
+    assert "只按用户指定维度聚合，不得额外加入小时维度" in prompt
     assert '"required_sql_patterns"' in prompt
+    assert "禁止在 event_realtime SQL 中使用数据库当前日期/时间函数" in prompt
+    assert "付费渠道取 `adinfo.mediaSource`" in prompt
+    assert "国家取 `userinfo.country`" in prompt
+    assert "CONCAT(LPAD(CAST(hour_index AS CHAR), 2, '0'), ':00')" in prompt
 
 
 def test_platform_data_skills_do_not_expose_explicit_timezone_guidance() -> None:

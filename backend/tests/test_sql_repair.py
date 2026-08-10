@@ -496,7 +496,8 @@ def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
 
     message = build_sql_repair_message(context)
 
-    assert "按时间字段分组的非 metric 小时序列" in message
+    assert "用户明确要求按小时或时间趋势" in message
+    assert "按 event_realtime.time 分组的非 metric 小时序列" in message
     assert "完整 date_filter" in message
 
 

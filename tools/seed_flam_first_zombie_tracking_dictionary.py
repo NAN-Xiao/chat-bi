@@ -1029,7 +1029,15 @@ FIELDS.extend(
     ]
 )
 
-_REALTIME_EVENT_BASE_FIELD_NAMES = {"uid", "event", "time", "dt", "personal"}
+_REALTIME_EVENT_FIELD_NAMES = {
+    "uid",
+    "event",
+    "time",
+    "dt",
+    "personal",
+    "adinfo",
+    "userinfo.country",
+}
 FIELDS.extend(
     {
         **item,
@@ -1037,7 +1045,7 @@ FIELDS.extend(
         "field_comment": f"实时表字段。{item['field_comment']}",
     }
     for item in list(FIELDS)
-    if item["table_name"] == "event" and item["field_name"] in _REALTIME_EVENT_BASE_FIELD_NAMES
+    if item["table_name"] == "event" and item["field_name"] in _REALTIME_EVENT_FIELD_NAMES
 )
 FIELDS.append(
     {

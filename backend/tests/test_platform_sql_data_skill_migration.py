@@ -539,3 +539,68 @@ def test_realtime_hourly_non_time_dimension_requires_cross_join() -> None:
 
     assert violation is not None
     assert "时间之外的分组维度" in violation.message
+
+
+def test_realtime_hourly_scope_followup_separates_freshness_from_hour_grain() -> None:
+    migration = _load_migration("158_platform_realtime_hourly_intent_scope.py")
+    hourly_migration = _load_migration("155_platform_mysql_unsigned_compatibility_data_skill.py")
+    updated_skill = hourly_migration.ZERO_FILL_SECTION.replace(
+        migration.OLD_HOURLY_MATCH,
+        migration.NEW_HOURLY_MATCH,
+    ).replace(
+        migration.OLD_HOURLY_GUIDANCE,
+        migration.NEW_HOURLY_GUIDANCE,
+    )
+    dimension_sql = """
+        SELECT channel, COUNT(*) AS value
+        FROM event_realtime
+        GROUP BY channel
+    """
+    incomplete_hourly_sql = """
+        SELECT HOUR(event_time) AS hour_index, COUNT(*) AS value
+        FROM event_realtime
+        GROUP BY HOUR(event_time)
+    """
+
+    assert migration.down_revision == "157platformtimescaffoldperf"
+    assert "\"实时\"" not in migration.NEW_HOURLY_MATCH
+    assert "\"实时趋势\"" in migration.NEW_HOURLY_MATCH
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "按渠道统计实时订单",
+            dimension_sql,
+            updated_skill,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "实时订单按小时趋势",
+            incomplete_hourly_sql,
+            updated_skill,
+        )
+        is not None
+    )
+
+
+def test_realtime_sql_shape_followup_rejects_database_clock_and_recursive_hours() -> None:
+    migration = _load_migration("159_platform_realtime_sql_shape.py")
+
+    assert migration.down_revision == "158platformrealtimehourlyscope"
+    assert "platform-foundation-skill:realtime-sql-shape:v1" in migration.SECTION
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天实时付费金额",
+            "SELECT SUM(amount) FROM event_realtime WHERE dt = YEAR(UTC_TIMESTAMP())",
+            migration.SECTION,
+        )
+        is not None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "实时付费按小时趋势",
+            "WITH RECURSIVE hours(h) AS (SELECT 0 UNION ALL SELECT h + 1 FROM hours) SELECT h FROM hours JOIN event_realtime e ON 1=1",
+            migration.SECTION,
+        )
+        is not None
+    )

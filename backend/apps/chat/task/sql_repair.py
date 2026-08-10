@@ -624,8 +624,8 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         ]
         if "realtime_requires_hourly_time_series" in context.error_message:
             payload["repair_requirements"].append(
-                "用户请求实时数据但上一版返回了 metric；除非问题明确要求总额、合计、单值、指标卡或当前累计，"
-                "必须返回按时间字段分组的非 metric 小时序列，并提供完整 date_filter。"
+                "用户明确要求按小时或时间趋势但上一版返回了 metric；必须返回按 event_realtime.time "
+                "分组的非 metric 小时序列，并提供完整 date_filter。"
             )
     if context.reason is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT:
         dialect_text = f"{context.dialect} {context.error_message}".lower()

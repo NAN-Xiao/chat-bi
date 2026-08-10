@@ -428,7 +428,7 @@ def test_realtime_payment_conflict_sql_is_rejected(monkeypatch) -> None:
     assert "event_realtime" in violation.message
 
 
-def test_realtime_payment_amount_rejects_scalar_but_explicit_total_keeps_metric(monkeypatch) -> None:
+def test_realtime_payment_grain_follows_explicit_dimension_or_hour_intent(monkeypatch) -> None:
     rows, name_to_id = _fixture_rows()
     monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
     monkeypatch.setattr(
@@ -453,6 +453,18 @@ def test_realtime_payment_amount_rejects_scalar_but_explicit_total_keeps_metric(
         GROUP BY DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00')
         ORDER BY hour_label
     """
+    channel_sql = """
+        SELECT COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.mediaSource')), ''),
+                        NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.campaignName')), ''), '未知') AS channel,
+               COUNT(*) AS pay_count
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.mediaSource')), ''),
+                          NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.campaignName')), ''), '未知')
+    """
+    invalid_channel_sql = channel_sql.replace("t.adinfo", "t.personal")
 
     question = "实时付费金额"
     skill_text, skill_logs, _model = find_data_skills(
@@ -465,10 +477,37 @@ def test_realtime_payment_amount_rejects_scalar_but_explicit_total_keeps_metric(
     )
 
     assert {225, 282}.issubset(_selected_ids(skill_logs, name_to_id))
-    violation = _data_skill_sql_validation_violation(question, scalar_sql, skill_text)
+    assert _data_skill_sql_validation_violation(question, scalar_sql, skill_text) is None
+
+    channel_question = "按渠道统计实时付费"
+    channel_skill_text, channel_skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=channel_question,
+    )
+
+    assert {225, 282}.issubset(_selected_ids(channel_skill_logs, name_to_id))
+    assert _data_skill_sql_validation_violation(channel_question, channel_sql, channel_skill_text) is None
+    assert _data_skill_sql_validation_violation(channel_question, invalid_channel_sql, channel_skill_text) is not None
+
+    hourly_question = "实时付费金额按小时趋势"
+    hourly_skill_text, hourly_skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=hourly_question,
+    )
+
+    assert {225, 282}.issubset(_selected_ids(hourly_skill_logs, name_to_id))
+    violation = _data_skill_sql_validation_violation(hourly_question, scalar_sql, hourly_skill_text)
     assert violation is not None
-    assert "按小时返回时间序列" in violation.message
-    assert _data_skill_sql_validation_violation(question, hourly_sql, skill_text) is None
+    assert "明确按小时或小时趋势" in violation.message
+    assert _data_skill_sql_validation_violation(hourly_question, hourly_sql, hourly_skill_text) is None
 
     total_question = "实时付费金额总额"
     total_skill_text, total_skill_logs, _model = find_data_skills(
