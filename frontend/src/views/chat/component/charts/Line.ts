@@ -114,7 +114,7 @@ export class Line extends BaseG2Chart {
       },
       scale: {
         x: {
-          nice: forecastData.length ? false : true,
+          type: 'band',
         },
         y: {
           nice: true,

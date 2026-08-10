@@ -138,7 +138,7 @@ export class Area extends BaseG2Chart {
       },
       scale: {
         x: {
-          nice: forecastData.length ? false : true,
+          type: 'band',
         },
         y: {
           nice: true,

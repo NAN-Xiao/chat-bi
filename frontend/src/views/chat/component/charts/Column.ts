@@ -148,7 +148,7 @@ export class Column extends BaseG2Chart {
       },
       scale: {
         x: {
-          nice: true,
+          type: 'band',
         },
         y: {
           nice: true,

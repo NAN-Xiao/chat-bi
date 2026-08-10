@@ -30,6 +30,7 @@ assert.equal(formatCategoryAxisLabel(null), '')
 assert.equal(formatCategoryAxisLabel(undefined), '')
 
 const chartFiles = ['Line.ts', 'Area.ts', 'Column.ts', 'Bar.ts', 'Scatter.ts', 'Heatmap.ts']
+const categoryAxisChartFiles = ['Line.ts', 'Area.ts', 'Column.ts', 'Bar.ts', 'Heatmap.ts']
 for (const file of chartFiles) {
   const source = readFileSync(`src/views/chat/component/charts/${file}`, 'utf8')
   assert.match(
@@ -42,6 +43,13 @@ for (const file of chartFiles) {
     /axis:\s*\{[\s\S]*?x:\s*\{[\s\S]*?labelFormatter:\s*formatCategoryAxisLabel/,
     `${file} 的横轴必须使用共享日期格式`
   )
+  if (categoryAxisChartFiles.includes(file)) {
+    assert.match(
+      source,
+      /scale:\s*\{[\s\S]*?x:\s*\{[\s\S]*?type:\s*['\"]band['\"]/,
+      `${file} 的分类横轴必须使用 band scale，避免数值维度生成小数刻度`
+    )
+  }
 }
 
 assert.match(

@@ -126,7 +126,7 @@ export class Bar extends BaseG2Chart {
       },
       scale: {
         x: {
-          nice: true,
+          type: 'band',
         },
         y: {
           nice: true,

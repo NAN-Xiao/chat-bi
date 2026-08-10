@@ -601,7 +601,7 @@ export function buildMixedUnitComboOptions(
     },
     scale: {
       x: {
-        nice: true,
+        type: 'band',
       },
     },
     interaction: {
