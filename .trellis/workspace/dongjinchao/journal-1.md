@@ -26,3 +26,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: 默认开启知识库 V2 管理
+
+**Date**: 2026-08-11
+**Task**: 默认开启知识库 V2 管理
+**Branch**: `release/release_2.0.0`
+
+### Summary
+
+知识库 V2 管理改为默认开启，保留显式关闭回滚入口，并完成配置、脚本、测试与文档同步。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2602b387` | (see git log) |
+
+### Status
+
+[OK] **Completed**
