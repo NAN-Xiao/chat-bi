@@ -1,8 +1,8 @@
 """Seed activity detail events and create the SLG BI Mock activity dashboard.
 
 Targets:
-- BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
-- App system database: core SHUZHI_DB_* settings from the repo .env
+- The SLG BI Mock datasource currently bound to the activity dashboard workspace.
+- App system database: core SHUZHI_DB_* settings from the repo .env.
 
 The dataset remains event/detail-level. Activity metrics are computed from
 fact_events, fact_sessions, and fact_payments at query time. No aggregate
@@ -19,30 +19,22 @@ from pathlib import Path
 from typing import Any
 
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, execute_values
 
 from core_system_db import core_system_db_config
+from slg_bi_datasource import resolve_slg_bi_datasource_context
 from zoneinfo import ZoneInfo
 
 
 TZ = ZoneInfo("Asia/Shanghai")
 
-BI_DB = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "dbname": "slg_bi_mock",
-    "user": "postgres",
-    "password": "111111",
-}
 SYSTEM_DB = core_system_db_config()
 
 DASHBOARD_ID = "f3c72d29399b4936b4e8c4c934348859"
-DATASOURCE_ID = 1
 UPDATE_BY = "7471612174524223488"
 BACKUP_DIR = Path(".codex-runtime/backups")
-
-START_DAY = date(2026, 5, 25)
-END_DAY = date(2026, 6, 23)
+ACTIVITY_WINDOW_DAYS = 30
+INSERT_BATCH_SIZE = 500
 
 ACTIVITY_TYPES = [
     ("newbie", "新手活动", Decimal("0.62"), 1.16),
@@ -115,7 +107,7 @@ def load_physical_columns(conn: Any) -> dict[str, list[dict[str, Any]]]:
     return by_table
 
 
-def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
+def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any, datasource_id: int) -> None:
     physical_by_table = load_physical_columns(bi_conn)
     added: list[str] = []
     updated = 0
@@ -128,7 +120,7 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
                 WHERE ds_id = %s
                 ORDER BY id
                 """,
-                (DATASOURCE_ID,),
+                (datasource_id,),
             )
             tables = [dict(row) for row in cur.fetchall()]
             for table in tables:
@@ -141,7 +133,7 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
                     FROM public.core_field
                     WHERE ds_id = %s AND table_id = %s
                     """,
-                    (DATASOURCE_ID, table["id"]),
+                    (datasource_id, table["id"]),
                 )
                 existing_by_name = {row["field_name"]: row["id"] for row in cur.fetchall()}
                 for index, field in enumerate(physical_fields):
@@ -169,7 +161,7 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
                                 (%s, %s, true, %s, %s, %s, %s, %s)
                             """,
                             (
-                                DATASOURCE_ID,
+                                datasource_id,
                                 table["id"],
                                 field["field_name"],
                                 field["field_type"],
@@ -207,13 +199,20 @@ def seed_event_dictionary(conn: Any) -> None:
     conn.commit()
 
 
-def cleanup(conn: Any) -> None:
+def resolve_activity_window(conn: Any) -> tuple[date, date]:
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM public.fact_events WHERE event_uid LIKE 'activity_mock_%'")
-    conn.commit()
+        cur.execute("SELECT max(session_start::date) FROM public.fact_sessions")
+        end_day = cur.fetchone()[0]
+    if end_day is None:
+        raise RuntimeError("Cannot seed activity data without fact_sessions business dates")
+    return end_day - timedelta(days=ACTIVITY_WINDOW_DAYS - 1), end_day
 
 
-def load_session_candidates(conn: Any) -> dict[date, list[dict[str, Any]]]:
+def load_session_candidates(
+    conn: Any,
+    start_day: date,
+    end_day: date,
+) -> dict[date, list[dict[str, Any]]]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
@@ -228,7 +227,7 @@ def load_session_candidates(conn: Any) -> dict[date, list[dict[str, Any]]]:
             WHERE s.session_start::date BETWEEN %s AND %s
             ORDER BY s.session_start, s.session_id
             """,
-            (START_DAY, END_DAY),
+            (start_day, end_day),
         )
         rows = [dict(row) for row in cur.fetchall()]
     by_day: dict[date, list[dict[str, Any]]] = {}
@@ -255,7 +254,6 @@ def event_time_for(session: dict[str, Any], rng: random.Random) -> datetime:
 def build_activity_events(by_day: dict[date, list[dict[str, Any]]]) -> list[tuple]:
     rng = random.Random(20260624)
     event_rows: list[tuple] = []
-    event_no = 1
 
     for current_day in sorted(by_day):
         sessions = by_day[current_day]
@@ -272,8 +270,10 @@ def build_activity_events(by_day: dict[date, list[dict[str, Any]]]) -> list[tupl
                 stage = max(3, min(9, 3 + session["player_level"] // 10 + rng.randint(0, 1)))
                 activity_id = f"{activity_key}_{current_day:%Y%m}"
                 for seq_offset in range(participation_count):
-                    event_uid = f"activity_mock_evt_{event_no:08d}"
-                    event_no += 1
+                    event_uid = (
+                        f"activity_mock_{current_day:%Y%m%d}_{activity_key}_"
+                        f"{session['session_id']}_{seq_offset + 1}"
+                    )
                     event_time = event_time_for(session, rng) + timedelta(minutes=seq_offset * 3)
                     attrs = {
                         "activity_id": activity_id,
@@ -284,8 +284,8 @@ def build_activity_events(by_day: dict[date, list[dict[str, Any]]]) -> list[tupl
                     event_rows.append(
                         (
                             event_uid,
-                            f"activity_mock_cli_{event_no:08d}",
-                            f"activity_mock_trace_{session['session_id']}_{seq_offset + 1}",
+                            f"activity_mock_cli_{current_day:%Y%m%d}_{session['session_id']}_{activity_key}_{seq_offset + 1}",
+                            f"activity_mock_trace_{current_day:%Y%m%d}_{session['session_id']}_{activity_key}_{seq_offset + 1}",
                             event_time,
                             event_time,
                             event_time + timedelta(milliseconds=320),
@@ -331,9 +331,12 @@ def build_activity_events(by_day: dict[date, list[dict[str, Any]]]) -> list[tupl
 
 
 def insert_activity_events(conn: Any, event_rows: list[tuple]) -> None:
-    with conn.cursor() as cur:
-        cur.executemany(
-            """
+    for offset in range(0, len(event_rows), INSERT_BATCH_SIZE):
+        batch = event_rows[offset:offset + INSERT_BATCH_SIZE]
+        with conn.cursor() as cur:
+            execute_values(
+                cur,
+                """
             INSERT INTO public.fact_events (
                 event_uid, client_event_id, trace_id, event_time, client_time, server_receive_time, ingest_time,
                 event_date, player_id, account_id, role_id, device_id, server_id, session_id, event_name,
@@ -342,11 +345,13 @@ def insert_activity_events(conn: Any, event_rows: list[tuple]) -> None:
                 language, device_model, os_version, device_tier, network_type, event_source,
                 sequence_in_session, attributes, activity_id, activity_type, activity_stage,
                 activity_participation_count
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ) VALUES %s
+            ON CONFLICT (event_uid) DO NOTHING
             """,
-            event_rows,
-        )
-    conn.commit()
+                batch,
+                page_size=INSERT_BATCH_SIZE,
+            )
+        conn.commit()
     print(f"seeded activity events={len(event_rows)}")
 
 
@@ -624,7 +629,10 @@ def run_chart_sql(conn: Any, chart_info: dict[str, Any]) -> tuple[list[str], lis
     return fields, [normalize_row(dict(row)) for row in rows]
 
 
-def build_dashboard_payload(bi_conn: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def build_dashboard_payload(
+    bi_conn: Any,
+    datasource_id: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     component_data: list[dict[str, Any]] = []
     canvas_view_info: dict[str, Any] = {}
     for chart_info in CHARTS:
@@ -654,7 +662,7 @@ def build_dashboard_payload(bi_conn: Any) -> tuple[list[dict[str, Any]], dict[st
         canvas_view_info[chart_info["id"]] = {
             "id": chart_info["id"],
             "sql": chart_info["sql"].strip(),
-            "datasource": DATASOURCE_ID,
+            "datasource": datasource_id,
             "data": {"fields": fields, "data": rows},
             "chart": {
                 "type": chart_info["type"],
@@ -685,7 +693,12 @@ def backup_dashboard_row(row: dict[str, Any]) -> Path:
     return backup_path
 
 
-def update_dashboard(system_conn: Any, component_data: list[dict[str, Any]], canvas_view_info: dict[str, Any]) -> None:
+def update_dashboard(
+    system_conn: Any,
+    component_data: list[dict[str, Any]],
+    canvas_view_info: dict[str, Any],
+    datasource_id: int,
+) -> None:
     with system_conn:
         with system_conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
@@ -701,8 +714,10 @@ def update_dashboard(system_conn: Any, component_data: list[dict[str, Any]], can
             dashboard = cur.fetchone()
             if not dashboard:
                 raise RuntimeError(f"Activity dashboard does not exist: {DASHBOARD_ID}")
-            if dashboard["datasource"] != DATASOURCE_ID:
-                raise RuntimeError(f"Activity dashboard datasource={dashboard['datasource']}, expected {DATASOURCE_ID}")
+            if dashboard["datasource"] != datasource_id:
+                raise RuntimeError(
+                    f"Activity dashboard datasource={dashboard['datasource']}, expected {datasource_id}"
+                )
             backup_path = backup_dashboard_row(dict(dashboard))
             cur.execute(
                 """
@@ -768,23 +783,30 @@ def verify(system_conn: Any, bi_conn: Any) -> None:
             print(json.dumps(normalize_row(dict(row)), ensure_ascii=False))
 
 
-def seed_bi_data(conn: Any) -> None:
+def seed_bi_data(conn: Any, start_day: date, end_day: date) -> None:
     ensure_activity_columns(conn)
     seed_event_dictionary(conn)
-    cleanup(conn)
-    by_day = load_session_candidates(conn)
+    by_day = load_session_candidates(conn, start_day, end_day)
+    if not by_day:
+        raise RuntimeError(f"No sessions found in activity window {start_day}..{end_day}")
     event_rows = build_activity_events(by_day)
     insert_activity_events(conn, event_rows)
 
 
 def main() -> None:
-    bi_conn = psycopg2.connect(**BI_DB)
     system_conn = psycopg2.connect(**SYSTEM_DB)
+    context = resolve_slg_bi_datasource_context(system_conn, DASHBOARD_ID)
+    bi_conn = psycopg2.connect(**context.connection)
     try:
-        seed_bi_data(bi_conn)
-        sync_datasource_field_metadata(system_conn, bi_conn)
-        component_data, canvas_view_info = build_dashboard_payload(bi_conn)
-        update_dashboard(system_conn, component_data, canvas_view_info)
+        start_day, end_day = resolve_activity_window(bi_conn)
+        print(
+            f"activity_window={start_day}..{end_day} "
+            f"tenant_id={context.tenant_id} datasource_id={context.datasource_id}"
+        )
+        seed_bi_data(bi_conn, start_day, end_day)
+        sync_datasource_field_metadata(system_conn, bi_conn, context.datasource_id)
+        component_data, canvas_view_info = build_dashboard_payload(bi_conn, context.datasource_id)
+        update_dashboard(system_conn, component_data, canvas_view_info, context.datasource_id)
         verify(system_conn, bi_conn)
     finally:
         bi_conn.close()

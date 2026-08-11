@@ -300,8 +300,9 @@ ORDER BY d.cohort_date;
 - 按渠道、区服、国家、平台拆解 DAU/PDAU 或付费活跃率。
 
 必须使用的明细表：
-- DAU/活跃用户使用 `fact_sessions`，按 `session_start::date` 或 `event_date` 统计 `count(distinct player_id)`。
+- DAU/活跃用户使用 `fact_sessions`，只能按 `session_start::date` 统计 `count(distinct player_id)`；`fact_sessions` 不存在 `event_date` 字段。
 - PDAU 默认解释为 Paying Daily Active Users / 当日付费用户数，使用 `fact_payments`，过滤 `payment_status='success' AND net_revenue_usd > 0` 后按 `event_date` 统计 `count(distinct player_id)`。
+- PostgreSQL 的 `event_date` 或 `session_start::date` 范围使用 `date_parameter_type=date`，SQL 必须直接写 `BETWEEN {{dashboard_start_date}} AND {{dashboard_end_date}}`；token 不能加引号，也不能搭配 `{{dashboard_start_yyyymmdd}}`/`{{dashboard_end_yyyymmdd}}`。
 - 如果用户要求“付费活跃率”，分子使用 PDAU，分母使用同日 DAU。
 - 不要使用 `fact_events` 事件人数替代 DAU/PDAU；`fact_events` 只适合事件 PV/UV、埋点排查和特定事件触发人数。
 - 如果用户在同一问题里额外指定某个埋点事件，例如 `spaceship_upgrade_complete`，可以在同一 SQL 中用 `fact_events` 统计该事件的触发用户数；但 DAU 仍必须来自 `fact_sessions`，PDAU 仍必须来自 `fact_payments`。
@@ -310,7 +311,7 @@ SQL 口径：
 - 未指定日期时，观察窗口锚定 `fact_sessions` 最大业务日期 `max(session_start::date)`，默认输出最近 30 天，即 `max_date - 29` 到 `max_date`。
 - 输出趋势必须用 `generate_series` 补齐连续日期；无活跃或无付费日期返回 0。
 - DAU、PDAU 是人数快照/去重人数，按周/月透视默认平均，不要跨日求和成人次，除非用户明确要求累计人次。
-- 若要按渠道拆解，DAU 可关联 `dim_player` 或使用 `fact_sessions.channel/bi_channel_name/bi_channel_group`；付费收入、付费人数和 ARPPU 必须通过 `player_id` 关联 `dim_player.channel`，`fact_payments` 不提供渠道字段；同一个查询内维度口径要一致。
+- 若要按渠道拆解，DAU 可关联 `dim_player` 或使用 `fact_sessions.channel/bi_channel_name/bi_channel_group`。PDAU、付费收入、付费人数和 ARPPU 可按语义使用 `fact_payments.payment_source_channel`、标准渠道名 `fact_payments.bi_channel_name` 或渠道分组 `fact_payments.bi_channel_group`；`fact_payments` 不存在裸 `channel` 字段。若问题要求与玩家安装渠道保持同一维度口径，则通过 `player_id` 关联 `dim_player.channel`，同一个查询内不得混用渠道定义。
 - 图表默认使用折线图：x 轴为日期，y 轴为 DAU 和 PDAU 两条指标线。
 
 推荐输出：
@@ -390,6 +391,7 @@ ORDER BY d.event_date;
 SQL 口径：
 - 正式收入默认 `sum(net_revenue_usd)`，必须过滤 `payment_status='success' AND net_revenue_usd > 0`。
 - `amount_usd` 是订单原始金额/标价，不可当正式收入。
+- PostgreSQL 的 `fact_payments.event_date` 范围使用 `date_parameter_type=date`，SQL 必须直接写 `event_date BETWEEN {{dashboard_start_date}} AND {{dashboard_end_date}}`；token 不能加引号，也不能改用 `TO_DATE('{{dashboard_start_yyyymmdd}}', 'YYYYMMDD')`。
 - 付费用户为成功净收入订单的 `count(distinct player_id)`；订单明细保留 `order_id` 粒度。
 - 分析“某一天/某批新增用户的后续付费情况”时，目标 cohort 使用 `dim_player.install_date` 锁定，生命周期使用 `fact_payments.lifecycle_day`，收入使用 `net_revenue_usd`。
 - 首付用户优先用 `is_first_pay=true`，或用玩家最早成功支付日推导。
@@ -399,7 +401,8 @@ SQL 口径：
 - 指标卡：`cohort_users`, `cumulative_payers`, `total_revenue`, `payer_rate_pct`, `ltv`, `arppu`。
 - 生命周期趋势：`lifecycle_day`, `daily_payers`, `daily_revenue`, `cumulative_payers`, `cumulative_revenue`, `cumulative_payer_rate_pct`, `ltv`。
 - 商品结构：`product_type`, `product_name`, `orders`, `payers`, `revenue`, `revenue_share_pct`, `arppu`。
-- 渠道/国家收入贡献：`channel`, `country`, `payers`, `revenue`, `revenue_share_pct`, `arppu`；图表的主 y 轴必须使用 `revenue` 或 `revenue_share_pct`，不要用 `payers` 代表收入贡献。
+- 渠道/国家收入贡献：渠道默认使用 `fact_payments.bi_channel_name AS channel`，原始归因来源使用 `payment_source_channel`，渠道分组使用 `bi_channel_group`；输出 `channel`, `country`, `payers`, `revenue`, `revenue_share_pct`, `arppu`。禁止生成不存在的 `fact_payments.channel`。图表的主 y 轴必须使用 `revenue` 或 `revenue_share_pct`，不要用 `payers` 代表收入贡献。
+- 收入占比必须先在 CTE 中按渠道聚合出 `revenue`，外层再计算 `round(revenue * 100.0 / nullif(sum(revenue) over (), 0), 2)`；禁止生成 PostgreSQL 不支持的 `sum(sum(net_revenue_usd) over ())`。
 - 图表：每日付费节奏可用柱/线；累计收入、累计付费率、LTV 用折线；商品/渠道收入占比可用饼图但只能表达单一收入占比指标；若同时比较收入、人数、ARPPU，优先用表格或柱图。
 
 图表指标语义：

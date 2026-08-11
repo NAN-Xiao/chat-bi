@@ -70,6 +70,8 @@ DASHBOARD_SKILLS: list[dict[str, str]] = [
 ## 表与口径
 - 新增 cohort 与投放成本来自 `dim_player.install_date`、`channel`、`campaign`、`bi_channel_name`、`bi_channel_group`、`acquisition_network`、`acquisition_cost_usd`、`acquisition_cost_cny`。
 - 收入回收来自 `fact_payments`，默认过滤 `payment_status='success' AND net_revenue_usd > 0`。
+- 付费表的标准渠道名使用 `fact_payments.bi_channel_name`，原始归因来源使用 `payment_source_channel`，渠道分组使用 `bi_channel_group`；`fact_payments` 不存在 `channel` 字段。
+- 渠道收入占比必须先在 CTE 中按渠道聚合出 `revenue`，外层再计算 `round(revenue * 100.0 / nullif(sum(revenue) over (), 0), 2)`；禁止生成 PostgreSQL 不支持的 `sum(sum(net_revenue_usd) over ())`。
 - ROI = 指定窗口内净收入 / 同 cohort 买量成本；必须说明币种，默认用 USD：`net_revenue_usd / acquisition_cost_usd`。
 - 单用户买量成本 = `sum(acquisition_cost_usd) / count(distinct player_id)`；不要用活跃人数当新增买量分母。
 - 若用户问 D7/D30 ROI，必须用生命周期窗口 `fact_payments.lifecycle_day <= 7/30`，且只统计已成熟 cohort。
@@ -242,6 +244,7 @@ ORDER BY dt;
 ## 表与口径
 - 支付事实使用 `fact_payments`，默认过滤 `payment_status='success' AND net_revenue_usd > 0`。
 - 收入使用 `net_revenue_usd`，不要把 `amount_usd` 当正式收入。
+- PostgreSQL 的 `event_date` 范围使用 `date_parameter_type=date`，SQL 必须直接写 `event_date BETWEEN {{{{dashboard_start_date}}}} AND {{{{dashboard_end_date}}}}`；token 不能加引号，也不能改用 `TO_DATE('{{{{dashboard_start_yyyymmdd}}}}', 'YYYYMMDD')`。
 - 充值次数用 `count(distinct order_id)`，充值用户数用 `count(distinct player_id)`。
 - 近 7 日累充排名按玩家聚合 `sum(net_revenue_usd)` 后排序。
 - 7 日 LTV 使用 `dim_player.install_date` 建 cohort，并统计 `fact_payments.lifecycle_day BETWEEN 0 AND 7` 的净收入 / cohort 用户数；只统计已成熟 cohort。
@@ -267,6 +270,8 @@ ORDER BY dt;
 ## 表与口径
 - 礼包购买使用 `fact_payments`，默认过滤 `payment_status='success' AND net_revenue_usd > 0`。
 - 礼包字段优先用 `gift_package_type`、`gift_package_group`、`gift_purchase_stage`；商品详情可关联 `dim_product.product_id`。
+- PostgreSQL 的 `event_date` 范围使用 `date_parameter_type=date`，SQL 必须直接写 `event_date BETWEEN {{{{dashboard_start_date}}}} AND {{{{dashboard_end_date}}}}`；token 不能加引号，也不能改用 `TO_DATE('{{{{dashboard_start_yyyymmdd}}}}', 'YYYYMMDD')`。
+- `gift_purchase_stage` 的合法值是 `首购`、`复购`，不能使用 `newbie`。新手礼包通过 `gift_package_type` 判断，当前合法值包括 `新手礼包`、`新手成长礼包`、`渠道新手礼包`；月卡类型包括 `普通月卡`、`超级月卡`、`月卡`，不能使用 `first_pay` 或 `monthly_card`。
 - 新手礼包复购率：先定位购买新手礼包的玩家，再看指定窗口内是否再次成功净收入支付；分母是购买新手礼包玩家数。
 - 月卡 30 日留存：先定位购买月卡的玩家，再用购买后第 30 天或窗口内 `fact_sessions` 活跃判断留存；需要说明精确日或滚动窗口。
 - 商品/礼包结构只展示成功净收入订单，失败和退款单独分析。
@@ -291,7 +296,8 @@ ORDER BY dt;
 ## 表与口径
 - 活动参与使用 `fact_events` 的 `activity_id`、`activity_type`、`activity_stage`、`activity_participation_count`。
 - 参与人数 = `count(distinct player_id)`；参与次数 = `count(*)` 或 `sum(activity_participation_count)`，需按字段含义明确。
-- 活动参与率分母应是同窗口活跃用户，来自 `fact_sessions`；不要用全量注册玩家当默认分母。
+- 活动参与率分母应是同窗口活跃用户，来自 `fact_sessions.session_start::date`；`fact_sessions` 不存在 `event_date`，不要用全量注册玩家当默认分母。
+- PostgreSQL 的 `event_date` 或 `session_start::date` 范围使用 `date_parameter_type=date`，SQL 必须直接写 `BETWEEN {{{{dashboard_start_date}}}} AND {{{{dashboard_end_date}}}}`；token 不能加引号，也不能搭配 `{{{{dashboard_start_yyyymmdd}}}}`/`{{{{dashboard_end_yyyymmdd}}}}`。
 - 活动后 7 日留存：先定位参与活动的玩家和参与日期，再用后续 `fact_sessions` 判断活跃。
 - 活动后 7 日付费留存：先定位参与活动的玩家，再用后续 7 天成功净收入支付 `fact_payments` 判断。
 - 这套规则只用于活动分析；不要用 `activity_type/activity_stage` 分析新手教程通过率。
