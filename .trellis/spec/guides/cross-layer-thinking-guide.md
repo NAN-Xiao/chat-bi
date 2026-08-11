@@ -123,6 +123,29 @@ After implementation:
 
 ---
 
+## Deployment Version Alignment
+
+An API contract can be correct in source and still fail when the deployed
+frontend and backend come from different release lines.
+
+### Checklist: Before Verifying Or Deploying A Cross-Layer API Change
+
+- [ ] Confirm frontend and backend artifacts target the same release branch
+- [ ] Confirm the CI branch parameter and checkout `BranchSpec` select that branch
+- [ ] Record the built commit and compare it with the commit containing the API change
+- [ ] Call the capability or contract endpoint on the actual deployed API
+- [ ] Treat `404`, `405`, `5xx`, malformed responses, and transport errors as errors,
+      never as permission, legacy mode, empty data, or another valid product state
+- [ ] Test the final application router, not only the feature-local router
+
+**Real-world example**: A release 2.0 knowledge-base frontend called
+`GET /knowledge-base/capabilities` while Jenkins still built release 1.0. The
+old backend returned `405`, and a catch-all frontend fallback hid the mismatch
+behind the legacy empty page. The durable fix was to preserve the unavailable
+state, add final-router regression coverage, and verify CI branch alignment.
+
+---
+
 ## Cross-Platform Template Consistency
 
 In Trellis, command templates (e.g., `record-session.md`) exist in **multiple platforms** with identical or near-identical content. This is a cross-layer boundary.

@@ -49,3 +49,70 @@ An HTTP 401 can still prove that the API process is listening; unexpected connec
 - Call the exact backend endpoint directly before testing a frontend workflow that depends on it.
 - Test authenticated routes with a real local auth flow or an explicitly prepared test token; do not treat an unauthenticated error as proof that the route's business behavior works.
 - Preserve audit/history records and response error shapes when changing lifecycle, permission, migration, or task behavior.
+
+## Scenario: Frontend And Backend Release Alignment
+
+### 1. Scope / Trigger
+
+- Trigger: a frontend release adds or changes an API capability probe, route, response field, or mode-selection contract.
+- The frontend and backend deployed for one environment must come from the same target release line. A successful build of another branch does not validate the requested release.
+
+### 2. Signatures
+
+- Knowledge management capability probe: `GET /api/v1/knowledge-base/capabilities`.
+- Knowledge management list: `GET /api/v1/knowledge-base/list`.
+- The final application router in `backend/apps/api.py`, not only a feature-local router, must register both methods and paths.
+
+### 3. Contracts
+
+- The capability response contains `phase`, `management_mode`, `legacy_write_enabled`, `v2_write_enabled`, and `runtime_context_enabled`.
+- `management_mode` is one of `LEGACY`, `UPGRADING`, `V2`, or `MAINTENANCE`.
+- The frontend may render the legacy management surface only when the capability response explicitly contains `management_mode: "LEGACY"`.
+- HTTP errors, malformed responses, and transport failures are capability-unavailable states. They must remain visible errors and must not be converted to `LEGACY` or an empty list.
+- Before deployment, verify that the CI branch parameter and checkout `BranchSpec` select the same target release as the frontend and backend artifacts.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Capability returns `200` with a valid mode | Render the matching management state |
+| Capability returns `404`, `405`, `5xx`, or a transport error | Show capability unavailable with retry; do not load legacy cards |
+| Capability payload has a missing or unknown mode | Treat it as capability unavailable |
+| List returns `200` with `[]` | Show the real empty state |
+| List returns an HTTP or transport error | Show list error with retry; do not show the empty state |
+| CI checkout branch differs from the requested release | Stop release verification and correct the pipeline selection before deployment |
+
+### 5. Good/Base/Bad Cases
+
+- Good: release 2.0 frontend and backend are built from the release 2.0 branch, both routes return the expected contracts, and the V2 page loads.
+- Base: the backend explicitly returns `LEGACY`; the frontend renders the legacy management page without synthesizing that mode locally.
+- Bad: a release 2.0 frontend is deployed with a release 1.0 backend, receives `405` from the capability probe, and silently displays the legacy empty state.
+
+### 6. Tests Required
+
+- Backend route regression: inspect the final `apps.api.api_router` and assert `GET` is registered for both `/knowledge-base/capabilities` and `/knowledge-base/list`.
+- Frontend mode regression: assert valid modes map exactly, while null, unknown, and failed capability loads resolve to the explicit unavailable state.
+- Frontend list regression: assert an empty success and a failed request render different states and that the failed request exposes retry.
+- Deployment verification: record the requested branch, CI checkout branch/commit, running image identifier, and direct capability endpoint result.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+try {
+  return await loadCapabilities()
+} catch {
+  return { management_mode: 'LEGACY' }
+}
+```
+
+#### Correct
+
+```ts
+try {
+  return resolveKnowledgePageMode(await loadCapabilities())
+} catch {
+  return 'CAPABILITIES_UNAVAILABLE'
+}
+```

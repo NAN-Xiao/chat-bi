@@ -1,3 +1,4 @@
 {"file":".trellis/spec/backend/knowledge-base-rag.md","reason":"复核检索权限边界、版本引用继承和审计兼容性。"}
 {"file":".trellis/spec/frontend/project-runtime.md","reason":"复核构建、浏览器路径、桌面/移动端和溢出检查结果。"}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"复核 failure_type 与引用元数据在各边界未丢失。"}
+{"file":".trellis/spec/backend/project-runtime.md","reason":"复核最终应用路由、前后端发布版本一致性和 capability 错误状态契约。"}

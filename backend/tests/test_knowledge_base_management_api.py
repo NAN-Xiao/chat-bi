@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from apps import api as apps_api
 from apps.knowledge_base.api import knowledge_base, management, publish
 from apps.knowledge_base.api._helpers import v2_write_error
 from apps.knowledge_base.cutover import KnowledgeCapabilities
@@ -47,6 +48,15 @@ def test_v2_create_route_is_registered_before_dynamic_id_route():
     paths = [route.path for route in management.router.routes]
     assert "/knowledge-base/create" in paths
     assert paths.index("/knowledge-base/create") < paths.index("/knowledge-base/{id}")
+
+
+def test_management_read_routes_are_mounted_on_application_api_router():
+    methods_by_path: dict[str, set[str]] = {}
+    for route in apps_api.api_router.routes:
+        methods_by_path.setdefault(route.path, set()).update(route.methods or set())
+
+    assert "GET" in methods_by_path["/knowledge-base/capabilities"]
+    assert "GET" in methods_by_path["/knowledge-base/list"]
 
 
 def test_capabilities_response_is_database_phase_authoritative():
