@@ -163,6 +163,17 @@ REALTIME_VALIDATION_RULES = [
     },
 ]
 
+ACTIVE_DATE_WINDOW_VALIDATION_RULES = [
+    {
+        "match": ["DAU", "WAU", "MAU", "活跃用户", "活跃趋势"],
+        "forbidden_sql_patterns": [
+            r"\bMAX\s*\(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)?`?dt`?\s*\)",
+            r"\bDISTINCT\s+(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)?`?dt`?",
+        ],
+        "message": "flam 历史 DAU/WAU/MAU 必须使用调用方提供的固定日期窗口；禁止通过 MAX(dt) 或 DISTINCT dt 动态探测最新分区，以避免 ADS 大表扫描。请改用显式 dt 范围。",
+    },
+]
+
 DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "flam 实时数据时区与日期口径",
@@ -339,6 +350,16 @@ LIMIT 24
         "name": "flam 历史看板日期窗口口径",
         "description": "flam / first_zombie 离线历史看板的日期窗口、ADS 性能和成熟 cohort 规则。",
         "prompt": """<!-- data-skill-source:flam:first-zombie:historical-date-window -->
+<!-- data-skill-sql-validation:[
+  {
+    "match":["DAU","WAU","MAU","活跃用户","活跃趋势"],
+    "forbidden_sql_patterns":[
+      "\\\\bMAX\\\\s*\\\\(\\\\s*(?:[A-Za-z_][A-Za-z0-9_]*\\\\s*\\\\.\\\\s*)?`?dt`?\\\\s*\\\\)",
+      "\\\\bDISTINCT\\\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\\\s*\\\\.\\\\s*)?`?dt`?"
+    ],
+    "message":"flam 历史 DAU/WAU/MAU 必须使用调用方提供的固定日期窗口；禁止通过 MAX(dt) 或 DISTINCT dt 动态探测最新分区，以避免 ADS 大表扫描。请改用显式 dt 范围。"
+  }
+] -->
 # flam 历史看板日期窗口口径
 
 ## 适用范围
@@ -363,6 +384,7 @@ LIMIT 24
         "name": "flam 活跃用户口径",
         "description": "flam / first_zombie DAU/WAU/MAU、活跃生命周期、渠道/系统活跃和周登录天数 SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:active-users -->
+<!-- data-skill-sql-validation:{json.dumps(ACTIVE_DATE_WINDOW_VALIDATION_RULES, ensure_ascii=False, separators=(',', ':'))} -->
 # flam 活跃用户口径
 
 ## 适用范围
