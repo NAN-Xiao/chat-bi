@@ -719,7 +719,13 @@
           <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
         </template>
       </el-table-column>
-      <el-table-column fixed="right" label="操作" width="150">
+      <el-table-column
+        fixed="right"
+        label="操作"
+        width="150"
+        align="center"
+        header-align="center"
+      >
         <template #default="scope">
           <div class="trial-application-actions">
             <el-button
@@ -1909,12 +1915,6 @@ onMounted(() => {
     font-weight: 600;
   }
 
-  .trial-application-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-
   .shuzhi-table_user {
     width: 100%;
     max-height: calc(100vh - 156px);
@@ -2030,6 +2030,24 @@ onMounted(() => {
     justify-content: end;
     align-items: center;
     margin-top: 16px;
+  }
+}
+
+.trial-application-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+
+  :deep(.ed-button) {
+    min-width: auto;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  :deep(.ed-button + .ed-button) {
+    margin-left: 0;
   }
 }
 
