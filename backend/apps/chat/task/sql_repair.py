@@ -15,6 +15,7 @@ from sqlglot import exp
 from sqlglot.errors import ParseError, TokenError
 
 from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
+from apps.datasource.crud.permission_errors import SqlSchemaScopeError
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 from common.user_facing_errors import (
     DATA_UNAVAILABLE_ERROR_TYPE,
@@ -216,6 +217,8 @@ def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
     if any(isinstance(item, (ParseError, TokenError)) for item in _walk_error_chain(error)):
         return SqlRepairReason.SQL_PARSE
     if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+    if any(isinstance(item, SqlSchemaScopeError) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
 
     message = _error_chain_message(error)
@@ -670,6 +673,11 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
+        if "当前 schema 中不存在" in dialect_text or "无法解析的字段" in dialect_text:
+            payload["repair_requirements"].extend([
+                "上一版 SQL 引用了当前 Schema 中不存在或无法解析的表/字段；必须根据当前 Schema 和 Data Skill 重新生成完整 SQL。",
+                "只能使用当前 Schema 明确提供的表和字段；不得把无效字段静默替换为第一个字段、无关字段或仅名称相似的字段。",
+            ])
         recursive_alias_error = (
             "missing column aliases in recursive with query" in dialect_text
             or "missing column alias in recursive with query" in dialect_text

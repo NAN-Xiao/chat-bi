@@ -14,7 +14,10 @@ from apps.chat.models.chat_model import ChatFinishStep, OperationEnum
 from apps.chat.task import llm
 from apps.chat.task import smart_qa_graph as graph
 from apps.chat.task.sql_repair import SqlRepairReason, SqlStructureValidationError
-from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_ERROR_TYPE,
+    SqlSchemaScopeError,
+)
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 
 
@@ -502,6 +505,51 @@ def test_prepare_sql_parse_error_repairs_then_revalidates(monkeypatch: pytest.Mo
     sql_events = [event["content"] for event in events if event["type"] == "sql"]
     assert len(sql_events) == 1
     assert "CAST(value AS DECIMAL(18, 4))" in sql_events[0]
+
+
+def test_schema_field_error_repairs_instead_of_returning_permission_denied(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_sql = "SELECT p.player_id, MAX(p.channel) FROM fact_payments p GROUP BY p.player_id"
+    repaired_sql = (
+        "SELECT p.player_id, MAX(p.payment_source_channel) "
+        "FROM fact_payments p GROUP BY p.player_id"
+    )
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql, ["fact_payments"]))
+    service.repair_answers = [_sql_answer(repaired_sql, ["fact_payments"])]
+    calls: list[str] = []
+
+    def validate(**kwargs):
+        calls.append(kwargs["sql"])
+        if kwargs["sql"] == invalid_sql:
+            raise SqlSchemaScopeError(
+                "SQL 引用了当前 Schema 中不存在或无法解析的字段：p.channel",
+                fields={"p.channel"},
+            )
+        return kwargs["sql"], {"fact_payments"}
+
+    monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: (
+            "table fact_payments(player_id, payment_source_channel)",
+            ["fact_payments"],
+        ),
+    )
+
+    events = _events(list(graph.run_smart_qa_graph(
+        service,
+        in_chat=True,
+        stream=True,
+        finish_step=ChatFinishStep.GENERATE_CHART,
+    )))
+
+    assert calls == [invalid_sql, repaired_sql]
+    assert service.saved_sql == [repaired_sql]
+    assert service.executed[0]["sql"] == repaired_sql
+    assert service.repair_contexts[0].reason is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+    assert not any(event.get("error_type") == PERMISSION_DENIED_ERROR_TYPE for event in events)
 
 
 def test_data_skill_violation_repairs_with_structured_context(monkeypatch: pytest.MonkeyPatch) -> None:

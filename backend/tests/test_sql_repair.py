@@ -28,6 +28,7 @@ from apps.chat.task.sql_repair import (
     validate_sql_for_datasource,
     validate_mysql_date_format_grouping,
 )
+from apps.datasource.crud.permission_errors import SqlSchemaScopeError
 from common.error import (
     AppDBConnectionError,
     AppDBError,
@@ -131,6 +132,26 @@ def test_prepare_error_classification(error: Exception, expected: SqlRepairReaso
 def test_prepare_error_classification_rejects_unknown_errors() -> None:
     assert classify_prepare_sql_error(SingleMessageError("模型服务暂时不可用")) is None
     assert classify_prepare_sql_error(ValueError("unexpected response")) is None
+
+
+def test_prepare_schema_scope_error_is_repairable() -> None:
+    error = SqlSchemaScopeError(
+        "SQL 引用了当前 Schema 中不存在或无法解析的字段：p.channel",
+        fields={"p.channel"},
+    )
+
+    assert classify_prepare_sql_error(error) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+    message = build_sql_repair_message(SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="postgresql",
+        failed_sql="SELECT MAX(p.channel) FROM fact_payments p",
+        error_message=str(error),
+        violation=None,
+        attempt=1,
+    ))
+    assert "当前 Schema 明确提供的表和字段" in message
+    assert "无关字段" in message
 
 
 @pytest.mark.parametrize(

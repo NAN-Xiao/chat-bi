@@ -25,6 +25,8 @@ from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_DISPLAY_MESSAGE,
     PERMISSION_DENIED_RESULT_MESSAGE,
+    SqlPermissionScopeError,
+    SqlSchemaScopeError,
 )
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable, TableObj
@@ -2108,6 +2110,81 @@ def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
             assert "amount" in str(exc)
         else:
             raise AssertionError("hidden column query should be rejected")
+
+
+def test_sql_permission_scope_classifies_unknown_field_as_schema_error(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError, match="不存在或无法解析") as exc_info:
+            validate_sql_scope(session, current_user, ds, "select channel from orders")
+
+    assert exc_info.value.fields == ("channel",)
+
+
+def test_sql_permission_scope_treats_unchecked_field_as_denied(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.execute(text("UPDATE core_field SET checked = 0 WHERE field_name = 'amount'"))
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlPermissionScopeError, match="无权限字段") as exc_info:
+            validate_sql_scope(session, current_user, ds, "select amount from orders")
+
+    assert exc_info.value.fields == ("amount",)
+
+
+def test_sql_permission_scope_prioritizes_denied_field_over_unknown_field(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlPermissionScopeError, match="无权限字段") as exc_info:
+            validate_sql_scope(session, current_user, ds, "select amount, channel from orders")
+
+    assert exc_info.value.fields == ("amount",)
+
+
+def test_sql_permission_scope_distinguishes_unknown_and_denied_tables(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_table_deny_for_payments(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError, match="不存在的表"):
+            validate_sql_scope(session, current_user, ds, "select order_id from missing_orders")
+        with pytest.raises(SqlPermissionScopeError, match="无权限表"):
+            validate_sql_scope(session, current_user, ds, "select payment_id from payments")
 
 
 def test_sql_permission_scope_allows_cte_and_output_alias_columns(monkeypatch):

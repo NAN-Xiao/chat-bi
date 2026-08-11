@@ -293,6 +293,7 @@ def _external_table_scope(datasource: AssistantOutDsSchema) -> dict[str, dict[st
             # 外部数据源没有系统库里的完整字段全集。只要配置了表，就禁止 SELECT *，
             # 防止底层真实表新增或隐藏字段被顺带带出。
             "denied_fields": {"*"},
+            "unknown_fields_are_denied": True,
         }
         scope[table_name] = entry
         scope[normalize_identifier(f"app_dynamic_temp_table_{getattr(table, 'name', '')}")] = entry

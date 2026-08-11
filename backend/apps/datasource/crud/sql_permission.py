@@ -15,7 +15,7 @@ from apps.datasource.crud.permission import (
     get_user_scoped_table_ids,
     is_normal_user,
 )
-from apps.datasource.crud.permission_errors import SqlPermissionScopeError
+from apps.datasource.crud.permission_errors import SqlPermissionScopeError, SqlSchemaScopeError
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from apps.db.db import get_sqlglot_dialect
 from common.core.deps import CurrentUser, SessionDep
@@ -99,7 +99,7 @@ def build_permission_scope(
     fields_by_table: dict[int, list[CoreField]] = {}
     if table_ids:
         fields = session.query(CoreField).filter(
-            and_(CoreField.table_id.in_(table_ids), CoreField.checked == True)
+            CoreField.table_id.in_(table_ids)
         ).all()
         for field in fields:
             fields_by_table.setdefault(int(field.table_id), []).append(field)
@@ -132,8 +132,9 @@ def build_permission_scope(
     for table in tables:
         if scoped_table_ids is not None and int(table.id) not in scoped_table_ids:
             continue
-        table_fields = fields_by_table.get(int(table.id), [])
-        all_field_names = {normalize_identifier(field.field_name) for field in table_fields}
+        all_table_fields = fields_by_table.get(int(table.id), [])
+        table_fields = [field for field in all_table_fields if field.checked]
+        all_field_names = {normalize_identifier(field.field_name) for field in all_table_fields}
         if user_permissions_apply:
             column_scope = get_column_permission_scope(
                 session=session,
@@ -149,6 +150,7 @@ def build_permission_scope(
         scope[normalize_identifier(table.table_name)] = {
             "table": table,
             "fields": allowed_field_names,
+            "known_fields": all_field_names,
             "denied_fields": all_field_names - allowed_field_names,
             "denied_json_paths": column_scope.denied_json_paths if column_scope else {},
         }
@@ -260,55 +262,81 @@ def selected_cte_aliases(
     return aliases
 
 
-def _column_can_resolve(
+class _ColumnResolution(str, Enum):
+    ALLOWED = "allowed"
+    DENIED = "denied"
+    UNKNOWN = "unknown"
+
+
+def _column_resolution(
         column_name: str,
         column_table: str,
         selected_aliases: dict[str, str],
         permission_scope: dict[str, dict[str, Any]],
         output_aliases: set[str] | None = None,
         cte_aliases: dict[str, set[str]] | None = None,
-) -> bool:
+) -> _ColumnResolution:
     """
-    是什么：_column_can_resolve 是一个可以复用的小步骤，负责数据源相关的一件事。
+    是什么：判断字段是已授权、受限，还是当前 Schema 中不存在。
     谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
+    做了什么：保留权限拒绝与 Schema 修复之间的明确边界。
     """
     normalized_column = normalize_identifier(column_name)
     normalized_table = normalize_identifier(column_table)
     cte_aliases = cte_aliases or {}
     if not normalized_column:
-        return True
+        return _ColumnResolution.ALLOWED
     if normalized_column in (output_aliases or set()):
-        return True
+        return _ColumnResolution.ALLOWED
 
     if normalized_table:
         cte_fields = cte_aliases.get(normalized_table)
         if cte_fields is not None:
-            return not cte_fields or normalized_column in cte_fields
+            return (
+                _ColumnResolution.ALLOWED
+                if not cte_fields or normalized_column in cte_fields
+                else _ColumnResolution.UNKNOWN
+            )
         physical_table = selected_aliases.get(normalized_table)
         if physical_table is None:
-            return True
-        allowed_fields = permission_scope.get(physical_table, {}).get("fields", set())
-        return normalized_column in allowed_fields
+            return _ColumnResolution.UNKNOWN
+        table_scope = permission_scope.get(physical_table, {})
+        if normalized_column in table_scope.get("fields", set()):
+            return _ColumnResolution.ALLOWED
+        if normalized_column in table_scope.get("denied_fields", set()):
+            return _ColumnResolution.DENIED
+        if table_scope.get("unknown_fields_are_denied"):
+            return _ColumnResolution.DENIED
+        return _ColumnResolution.UNKNOWN
 
     selected_tables = set(selected_aliases.values())
     if not selected_tables:
-        return True
+        return _ColumnResolution.ALLOWED
     if any(
             normalized_column in permission_scope.get(table_name, {}).get("denied_fields", set())
             for table_name in selected_tables
     ):
-        return False
+        return _ColumnResolution.DENIED
+    if any(
+            permission_scope.get(table_name, {}).get("unknown_fields_are_denied")
+            for table_name in selected_tables
+    ):
+        known_in_selected_scope = any(
+            normalized_column in permission_scope.get(table_name, {}).get("fields", set())
+            for table_name in selected_tables
+        )
+        if not known_in_selected_scope:
+            return _ColumnResolution.DENIED
     candidate_tables = [
         table_name
         for table_name in selected_tables
         if normalized_column in permission_scope.get(table_name, {}).get("fields", set())
     ]
     if len(candidate_tables) == 1:
-        return True
+        return _ColumnResolution.ALLOWED
     if any(not fields or normalized_column in fields for fields in cte_aliases.values()):
-        return True
-    return False
+        return _ColumnResolution.ALLOWED
+    return _ColumnResolution.UNKNOWN
 
 
 def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> set[str]:
@@ -378,6 +406,7 @@ def validate_sql_columns(
         return
 
     denied_columns: set[str] = set()
+    unknown_columns: set[str] = set()
     denied_json_paths: set[str] = set()
     star_tables: set[str] = set()
     for statement in statements:
@@ -440,15 +469,18 @@ def validate_sql_columns(
                 if isinstance(column.this, exp.Star):
                     continue
                 if id(column) in consumed_column_ids:
-                    if not _column_can_resolve(
+                    resolution = _column_resolution(
                             column.name,
                             column.table,
                             selected_aliases,
                             permission_scope,
                             output_aliases,
                             cte_aliases,
-                    ):
+                    )
+                    if resolution is _ColumnResolution.DENIED:
                         denied_columns.add(column.sql())
+                    elif resolution is _ColumnResolution.UNKNOWN:
+                        unknown_columns.add(column.sql())
                     continue
                 normalized_column = normalize_identifier(column.name)
                 normalized_table = normalize_identifier(column.table)
@@ -461,15 +493,18 @@ def validate_sql_columns(
                     denied_columns.add(column.sql())
                     denied_json_paths.add("$")
                     continue
-                if not _column_can_resolve(
+                resolution = _column_resolution(
                         column.name,
                         column.table,
                         selected_aliases,
                         permission_scope,
                         output_aliases,
                         cte_aliases,
-                ):
+                )
+                if resolution is _ColumnResolution.DENIED:
                     denied_columns.add(column.sql())
+                elif resolution is _ColumnResolution.UNKNOWN:
+                    unknown_columns.add(column.sql())
 
     restricted_star_tables = {
         table_name
@@ -492,6 +527,40 @@ def validate_sql_columns(
             json_paths=denied_json_paths,
             rule_type="json_path" if denied_json_paths else "column",
         )
+    if unknown_columns:
+        raise SqlSchemaScopeError(
+            f"SQL 引用了当前 Schema 中不存在或无法解析的字段：{', '.join(sorted(unknown_columns))}",
+            fields=unknown_columns,
+        )
+
+
+def _raise_for_unavailable_tables(
+        session: SessionDep,
+        datasource: CoreDatasource,
+        unavailable_tables: set[str],
+        *,
+        unknown_tables_are_denied: bool = False,
+) -> None:
+    if not unavailable_tables:
+        return
+    known_tables = {
+        normalize_identifier(table_name)
+        for (table_name,) in session.query(CoreTable.table_name).filter(
+            CoreTable.ds_id == datasource.id
+        ).all()
+    }
+    denied_tables = unavailable_tables & known_tables
+    if denied_tables or unknown_tables_are_denied:
+        denied_tables = unavailable_tables if unknown_tables_are_denied else denied_tables
+        raise SqlPermissionScopeError(
+            f"SQL 包含无权限表：{', '.join(sorted(denied_tables))}",
+            tables=denied_tables,
+            rule_type="table",
+        )
+    raise SqlSchemaScopeError(
+        f"SQL 引用了当前 Schema 中不存在的表：{', '.join(sorted(unavailable_tables))}",
+        tables=unavailable_tables,
+    )
 
 
 def validate_sql_scope(
@@ -521,8 +590,7 @@ def validate_sql_scope(
         enforce_for_scope_admin=enforce_for_scope_admin,
     )
     unauthorized_tables = actual_tables - set(permission_scope.keys())
-    if unauthorized_tables:
-        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
+    _raise_for_unavailable_tables(session, datasource, unauthorized_tables)
 
     validate_sql_columns(
         statements,
@@ -563,11 +631,12 @@ def validate_sql_table_scope(
         enforce_for_scope_admin=enforce_for_scope_admin,
     )
     unauthorized_tables = actual_tables - set(permission_scope.keys())
-    if unauthorized_tables:
-        raise SqlPermissionScopeError(
-            f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}",
-            rule_type="table",
-        )
+    _raise_for_unavailable_tables(
+        session,
+        datasource,
+        unauthorized_tables,
+        unknown_tables_are_denied=True,
+    )
     return actual_tables
 
 

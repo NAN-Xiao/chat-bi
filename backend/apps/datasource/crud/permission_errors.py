@@ -4,6 +4,7 @@
 import json
 from typing import Any
 
+from common.error import SingleMessageError
 from common.user_facing_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_DISPLAY_MESSAGE,
@@ -22,12 +23,29 @@ class SqlPermissionScopeError(ValueError):
             *,
             fields: list[str] | set[str] | tuple[str, ...] | None = None,
             json_paths: list[str] | set[str] | tuple[str, ...] | None = None,
+            tables: list[str] | set[str] | tuple[str, ...] | None = None,
             rule_type: str | None = None,
     ) -> None:
         super().__init__(message)
         self.fields = tuple(sorted({str(item) for item in fields or []}))
         self.json_paths = tuple(sorted({str(item) for item in json_paths or []}))
+        self.tables = tuple(sorted({str(item) for item in tables or []}))
         self.rule_type = rule_type
+
+
+class SqlSchemaScopeError(SingleMessageError):
+    """SQL 引用了当前数据源 Schema 中不存在的表或字段。"""
+
+    def __init__(
+            self,
+            message: str,
+            *,
+            fields: list[str] | set[str] | tuple[str, ...] | None = None,
+            tables: list[str] | set[str] | tuple[str, ...] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.fields = tuple(sorted({str(item) for item in fields or []}))
+        self.tables = tuple(sorted({str(item) for item in tables or []}))
 
 
 def looks_like_permission_scope_error(message: str) -> bool:

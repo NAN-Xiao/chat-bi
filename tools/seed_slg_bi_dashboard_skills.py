@@ -247,12 +247,14 @@ ORDER BY dt;
 - PostgreSQL 的 `event_date` 范围使用 `date_parameter_type=date`，SQL 必须直接写 `event_date BETWEEN {{{{dashboard_start_date}}}} AND {{{{dashboard_end_date}}}}`；token 不能加引号，也不能改用 `TO_DATE('{{{{dashboard_start_yyyymmdd}}}}', 'YYYYMMDD')`。
 - 充值次数用 `count(distinct order_id)`，充值用户数用 `count(distinct player_id)`。
 - 近 7 日累充排名按玩家聚合 `sum(net_revenue_usd)` 后排序。
+- 付费来源渠道使用 `fact_payments.payment_source_channel`，标准渠道名使用 `fact_payments.bi_channel_name`，渠道分组使用 `fact_payments.bi_channel_group`；`fact_payments` 不存在裸 `channel` 字段。
+- 只有用户明确要求玩家安装渠道时，才通过 `player_id` 关联 `dim_player.channel`；不得把安装渠道静默当作付费来源渠道。
 - 7 日 LTV 使用 `dim_player.install_date` 建 cohort，并统计 `fact_payments.lifecycle_day BETWEEN 0 AND 7` 的净收入 / cohort 用户数；只统计已成熟 cohort。
 - 首次购买优先用 `is_first_pay = true` 或 `pay_sequence = 1`。
 
 ## 推荐输出
 - 日趋势：`stat_date`, `orders`, `pay_users`, `net_revenue_usd`, `pay_rate_pct`, `arpu`, `arppu`。
-- 累充排名：`rank_no`, `player_id`, `total_revenue_usd`, `orders`，图表用表格。
+- 累充排名：`rank_no`, `player_id`, `total_revenue_usd`, `orders`, `payment_source_channel`，图表用表格。
 - LTV：`cohort_date`, `cohort_users`, `lifecycle_day`, `cumulative_revenue_usd`, `ltv_usd`，图表用折线。
 """,
     },
