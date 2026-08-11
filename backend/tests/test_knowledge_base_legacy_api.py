@@ -97,14 +97,24 @@ def _install_api_dependencies(monkeypatch, calls: dict[str, int]) -> None:
     )
 
 
-def test_knowledge_v2_feature_flags_default_to_disabled() -> None:
+def test_knowledge_v2_management_defaults_enabled_and_runtime_disabled() -> None:
+    settings = Settings(
+        _env_file=None,
+        SECRET_KEY="test-secret",
+    )
+
+    assert settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED is True
+    assert settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED is False
+
+
+def test_knowledge_v2_management_accepts_explicit_disable(monkeypatch) -> None:
+    monkeypatch.setenv("KNOWLEDGE_MANAGEMENT_V2_ENABLED", "false")
     settings = Settings(
         _env_file=None,
         SECRET_KEY="test-secret",
     )
 
     assert settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED is False
-    assert settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED is False
 
 
 @pytest.mark.parametrize(

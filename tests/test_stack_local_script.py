@@ -211,11 +211,16 @@ def test_local_process_environment_exposes_knowledge_rollout_switches(
     body = _function_body(content, environment_function)
 
     assert "$EnableKnowledgeManagementV2" in content
+    assert "$DisableKnowledgeManagementV2" in content
     assert "$EnableKnowledgeRuntimeContext" in content
     assert "$EnableKnowledgeRetrieval" in content
     assert "$env:KNOWLEDGE_MANAGEMENT_V2_ENABLED" in body
     assert "$env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED" in body
     assert "$env:KNOWLEDGE_RETRIEVAL_ENABLED" in body
+    assert (
+        'if ($DisableKnowledgeManagementV2) { "false" } else { "true" }'
+        in body
+    )
 
 
 def test_stack_requires_worker_when_redis_is_unreachable():
@@ -262,6 +267,21 @@ def test_stack_propagates_knowledge_rollout_switches_to_backend_and_worker():
         assert f"$backendParams.{option} = $true" in backend_body
         assert f"if (${option})" in worker_body
         assert f"$workerParams.{option} = $true" in worker_body
+
+    assert "if ($DisableKnowledgeManagementV2)" in backend_body
+    assert "$backendParams.DisableKnowledgeManagementV2 = $true" in backend_body
+    assert "if ($DisableKnowledgeManagementV2)" in worker_body
+    assert "$workerParams.DisableKnowledgeManagementV2 = $true" in worker_body
+
+
+@pytest.mark.parametrize("script", [STACK_SCRIPT, BACKEND_SCRIPT, WORKER_SCRIPT])
+def test_local_scripts_reject_conflicting_knowledge_management_switches(
+    script: Path,
+):
+    content = script.read_text(encoding="utf-8")
+
+    assert "$EnableKnowledgeManagementV2 -and $DisableKnowledgeManagementV2" in content
+    assert "cannot be enabled and disabled at the same time" in content
 
 
 def test_worker_status_rejects_mismatched_managed_queue():

@@ -37,6 +37,66 @@ An HTTP 401 can still prove that the API process is listening; unexpected connec
 - Verify `LLM_REQUEST_TIMEOUT=120`, `LLM_TASK_MAX_WAIT_SECONDS=900`, and `LLM_MAX_RETRIES=1` after startup or restart.
 - Keep `MCP_ENABLED=false` for ordinary local backend and MCP startup unless MCP access controls are the subject of the test.
 
+## Scenario: Knowledge Management V2 Default
+
+### 1. Scope / Trigger
+
+- Trigger: starting an API, MCP, or Worker that evaluates the knowledge-base management capability.
+- Knowledge management is available by default after the database reaches `V2_ACTIVE`; runtime context and retrieval remain separately controlled.
+
+### 2. Signatures
+
+- Environment: `KNOWLEDGE_MANAGEMENT_V2_ENABLED=true|false`.
+- Local rollback switch: `-DisableKnowledgeManagementV2` on `tools/stack-local.ps1`, `tools/backend-local.ps1`, and `tools/worker-local.ps1`.
+- Compatibility switch: `-EnableKnowledgeManagementV2` remains accepted, but is not required for the default path.
+
+### 3. Contracts
+
+- `Settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED` defaults to `True` when the environment key is absent.
+- An explicit environment value of `false` overrides the Python default.
+- Local scripts set API and Worker management flags to `true` unless `-DisableKnowledgeManagementV2` is passed.
+- `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED` and `KNOWLEDGE_RETRIEVAL_ENABLED` continue to default to `false`.
+- The database phase remains authoritative: `CUTOVER_BARRIER` is maintenance regardless of flags, while `V2_ACTIVE + management=true` returns management mode `V2`.
+
+### 4. Validation & Error Matrix
+
+| Input | Required behavior |
+| --- | --- |
+| No management option or environment override | Management V2 enabled |
+| `-EnableKnowledgeManagementV2` | Management V2 enabled |
+| `-DisableKnowledgeManagementV2` | API and Worker management V2 disabled |
+| Enable and disable switches together | Stop with an explicit conflict error |
+| Direct process with `KNOWLEDGE_MANAGEMENT_V2_ENABLED=false` | Management V2 disabled |
+| Runtime/retrieval switches omitted | Runtime context and retrieval disabled |
+
+### 5. Good/Base/Bad Cases
+
+- Good: the default stack starts API and Worker with management V2 enabled and capability returns `V2` in the `V2_ACTIVE` phase.
+- Base: an operator passes the disable switch during rollback; both API and Worker return maintenance behavior without changing the database phase.
+- Bad: API defaults to management enabled while Worker is forced to disabled, or a local script silently writes `false` merely because the legacy enable switch was omitted.
+
+### 6. Tests Required
+
+- Settings test: assert the missing environment key resolves to `True` and explicit `false` resolves to `False`.
+- Script contract test: assert backend and Worker environment functions default to `true` and the disable switch produces `false`.
+- Stack propagation test: assert the disable switch is forwarded to both API and Worker scripts.
+- Conflict test: assert every local script rejects simultaneous enable and disable switches.
+- Capability test: assert `V2_ACTIVE` resolves to `V2` by default and to maintenance when explicitly disabled.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```powershell
+$env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($EnableKnowledgeManagementV2) { "true" } else { "false" }
+```
+
+#### Correct
+
+```powershell
+$env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($DisableKnowledgeManagementV2) { "false" } else { "true" }
+```
+
 ## Data Safety
 
 - Run or confirm a PostgreSQL backup before risky schema or data changes with `tools/postgres-backup-local.ps1`.

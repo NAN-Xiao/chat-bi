@@ -21,6 +21,7 @@ param(
     [string]$QueueName = "",
     [switch]$StartMcp,
     [switch]$EnableKnowledgeManagementV2,
+    [switch]$DisableKnowledgeManagementV2,
     [switch]$EnableKnowledgeRuntimeContext,
     [switch]$EnableKnowledgeRetrieval,
     [switch]$SkipDatabase,
@@ -29,6 +30,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($EnableKnowledgeManagementV2 -and $DisableKnowledgeManagementV2) {
+    throw "Knowledge management V2 cannot be enabled and disabled at the same time."
+}
 
 $appSystemDbHost = "10.1.5.28"
 $appSystemDbPort = 5432
@@ -320,6 +325,9 @@ function Start-Backend {
     if ($EnableKnowledgeManagementV2) {
         $backendParams.EnableKnowledgeManagementV2 = $true
     }
+    if ($DisableKnowledgeManagementV2) {
+        $backendParams.DisableKnowledgeManagementV2 = $true
+    }
     if ($EnableKnowledgeRuntimeContext) {
         $backendParams.EnableKnowledgeRuntimeContext = $true
     }
@@ -362,6 +370,9 @@ function Start-Workers {
     }
     if ($EnableKnowledgeManagementV2) {
         $workerParams.EnableKnowledgeManagementV2 = $true
+    }
+    if ($DisableKnowledgeManagementV2) {
+        $workerParams.DisableKnowledgeManagementV2 = $true
     }
     if ($EnableKnowledgeRuntimeContext) {
         $workerParams.EnableKnowledgeRuntimeContext = $true

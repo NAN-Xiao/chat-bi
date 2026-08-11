@@ -6,11 +6,16 @@ param(
     [int]$RedisPort = 6379,
     [string]$QueueName = "",
     [switch]$EnableKnowledgeManagementV2,
+    [switch]$DisableKnowledgeManagementV2,
     [switch]$EnableKnowledgeRuntimeContext,
     [switch]$EnableKnowledgeRetrieval
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($EnableKnowledgeManagementV2 -and $DisableKnowledgeManagementV2) {
+    throw "Knowledge management V2 cannot be enabled and disabled at the same time."
+}
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $workspaceRoot "backend"
@@ -66,7 +71,7 @@ function Set-WorkerEnvironment {
     $env:LLM_REQUEST_TIMEOUT = "120"
     $env:LLM_TASK_MAX_WAIT_SECONDS = "900"
     $env:LLM_MAX_RETRIES = "1"
-    $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($EnableKnowledgeManagementV2) { "true" } else { "false" }
+    $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($DisableKnowledgeManagementV2) { "false" } else { "true" }
     $env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED = if ($EnableKnowledgeRuntimeContext) { "true" } else { "false" }
     $env:KNOWLEDGE_RETRIEVAL_ENABLED = if ($EnableKnowledgeRetrieval) { "true" } else { "false" }
 

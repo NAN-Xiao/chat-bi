@@ -1309,9 +1309,11 @@ KNOWLEDGE_PUBLISH_RECONCILE_INTERVAL_SECONDS=60
 新增配置：
 
 ```text
-KNOWLEDGE_MANAGEMENT_V2_ENABLED=false
+KNOWLEDGE_MANAGEMENT_V2_ENABLED=true
 KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=false
 ```
+
+当前 release 默认开放 V2 管理能力；部署环境可显式设置 `KNOWLEDGE_MANAGEMENT_V2_ENABLED=false` 进入维护态，本地脚本使用 `-DisableKnowledgeManagementV2`。运行时上下文与检索仍独立灰度，默认保持关闭。
 
 发布顺序：先执行纯 DDL，再滚动部署兼容版本，使所有 API、旧解析 Worker 和可能执行旧 BackgroundTask 的实例都识别迁移 phase 并在每次写回时参与数据库屏障；确认不存在旧 build 实例后，才在 `LEGACY_OPEN` 下运行幂等回填、增量追平和双读校验。切换时以数据库状态行锁进入 `CUTOVER_BARRIER`，暂时拒绝新旧写并让旧任务排空或失败关闭，完成最终增量和索引校验后原子切换 `V2_ACTIVE`，随后开放 V2 管理页面，最后灰度统一知识上下文。Skills 始终使用当前选择路径；关闭知识运行开关时回到现有 tracking/语义路径，不删除新知识数据。
 
@@ -1575,7 +1577,7 @@ npm run build
 
 - 四类 payload、草稿、校验、版本列表、差异、回滚和归档；发布接口先完成数据库作业认领，不接入 AI 运行时。
 - 实现中文并发提示、已有草稿时拒绝回滚和不可变发布版本下载。
-- 验收：管理 API 状态机完整，延迟约束和乐观锁测试通过，`KNOWLEDGE_MANAGEMENT_V2_ENABLED` 仍保持关闭。
+- 验收：管理 API 状态机完整，延迟约束和乐观锁测试通过。该批次最初保持管理开关关闭；当前 release 已将 `KNOWLEDGE_MANAGEMENT_V2_ENABLED` 默认改为开启，并保留显式关闭回滚入口。
 
 ### 批次五：发布流水线、对象投影和 RAG
 
