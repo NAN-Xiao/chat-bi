@@ -47,3 +47,9 @@ Inherit the matching version-level resolution when the chunk row is absent, then
 - A published version can have one version-level reference and multiple chunk-level references with the same key; every reference needs its own `semantic_object_resolution` row.
 - Persist the resolved result to all matching reference IDs, while evaluating the resolver once per logical key to avoid redundant catalog queries.
 - Regression coverage must assert that duplicate version/chunk references all receive the same canonical key.
+
+### Common Mistake: Sorting Citation Dictionaries Directly
+
+- A retrieval can legitimately return multiple citations from one published version. Python dictionaries are not orderable, so `sorted(dict_generator)` raises `TypeError` as soon as more than one citation is present.
+- Build the redacted citation identity snapshot first, then sort with an explicit tuple key such as `knowledge_base_id + version_id + chunk_id` before hashing.
+- The version hash must be stable when citation order changes, and the regression test must contain at least two citations so a single-hit test cannot hide the failure.

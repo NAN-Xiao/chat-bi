@@ -66,7 +66,7 @@ def test_semantic_context_orders_authority_and_retrieval(monkeypatch):
         lambda *args, **kwargs: trace.append("eligible_skills") or frozenset({31}),
     )
 
-    def skills(*args, **kwargs):
+    def skills(*_args, **kwargs):
         trace.append("find_data_skills")
         kwargs["selection_metadata"].update(
             selected_skill_ids=(31,), selection_mode="AUTOMATIC", source_hashes=("skill-1",)
@@ -128,3 +128,31 @@ def test_context_hash_changes_with_permission_or_knowledge_snapshot(monkeypatch)
         permission_snapshot=changed,
     )
     assert with_snapshot.semantic.context_hash != base.semantic.context_hash
+
+
+def test_knowledge_version_hash_is_stable_for_multiple_citations():
+    citations = [
+        KnowledgeCitation(
+            chunk_id=9,
+            knowledge_base_id=20,
+            version_id=21,
+            section_path="注意事项",
+            score=0.8,
+            content="第二个切片",
+            visibility_scope="ADMIN_PUBLIC",
+        ),
+        KnowledgeCitation(
+            chunk_id=7,
+            knowledge_base_id=20,
+            version_id=21,
+            section_path="核心说明",
+            score=0.9,
+            content="第一个切片",
+            visibility_scope="ADMIN_PUBLIC",
+        ),
+    ]
+
+    version_hash = semantic_context._knowledge_version_hash(citations)
+
+    assert version_hash
+    assert version_hash == semantic_context._knowledge_version_hash(list(reversed(citations)))

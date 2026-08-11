@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Download, FolderDelete, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import {
+  ArrowDown,
+  Download,
+  FolderDelete,
+  Plus,
+  Refresh,
+  Search,
+  Upload,
+} from '@element-plus/icons-vue'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
 import {
@@ -16,6 +24,10 @@ import KnowledgePayloadEditor from './KnowledgePayloadEditor.vue'
 import { knowledgeActionState } from './knowledgeEditorState'
 import KnowledgeRetrievalPreview from './KnowledgeRetrievalPreview.vue'
 import KnowledgeApplicabilityTag from './KnowledgeApplicabilityTag.vue'
+import {
+  downloadKnowledgeMarkdownTemplate,
+  knowledgeMarkdownTemplates,
+} from './knowledgeMarkdownTemplates'
 import {
   defaultKnowledgePayload,
   type KnowledgePayload,
@@ -363,6 +375,11 @@ async function downloadVersion(version: KnowledgeBaseVersion) {
   URL.revokeObjectURL(url)
 }
 
+function downloadMarkdownTemplate(command: string | number | object) {
+  const template = knowledgeMarkdownTemplates.find(({ id }) => id === command)
+  if (template) downloadKnowledgeMarkdownTemplate(template)
+}
+
 function closeEditor() {
   editorVisible.value = false
   if (publishTimer) window.clearInterval(publishTimer)
@@ -393,6 +410,23 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
         </el-select>
         <el-button :icon="Refresh" @click="loadItems">刷新</el-button>
         <el-button :icon="Search" @click="retrievalPreviewVisible = true">检索预览</el-button>
+        <el-dropdown class="template-download" trigger="click" @command="downloadMarkdownTemplate">
+          <el-button :icon="Download">
+            下载 Markdown 模板
+            <el-icon class="template-download-arrow"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="template in knowledgeMarkdownTemplates"
+                :key="template.id"
+                :command="template.id"
+              >
+                {{ template.label }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
       </div>
     </div>
@@ -523,9 +557,11 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .panel-title { font-size: 16px; font-weight: 600; line-height: 24px; }
 .panel-subtitle { margin-top: 4px; color: #667085; font-size: 13px; line-height: 20px; }
-.panel-actions { display: flex; align-items: center; gap: 8px; }
+.panel-actions { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .panel-actions .el-input { width: 220px; }
 .panel-actions .el-select { width: 150px; }
+.template-download { max-width: 100%; }
+.template-download-arrow { margin-left: 6px; }
 .knowledge-v2-table { min-height: 160px; }
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }
@@ -544,5 +580,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
 .publish-status { margin-top: 12px; color: #1570ef; font-size: 12px; }
 @media (max-width: 980px) { .panel-header { flex-direction: column; } .panel-actions { width: 100%; flex-wrap: wrap; } }
-@media (max-width: 680px) { .panel-actions .el-input, .panel-actions .el-select { width: 100%; } }
+@media (max-width: 680px) {
+  .panel-actions .el-input, .panel-actions .el-select, .template-download { width: 100%; }
+  .template-download :deep(.ed-button) { width: 100%; height: auto; min-height: 32px; white-space: normal; }
+}
 </style>

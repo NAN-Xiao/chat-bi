@@ -30,7 +30,6 @@ from apps.knowledge_base.structured_context import StructuredKnowledgeContextSer
 from apps.system.crud.tracking_config import find_tracking_prompt_context
 from common.core.config import settings
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -359,14 +358,22 @@ def _citation_summary(citation: KnowledgeCitation) -> dict[str, Any]:
 def _knowledge_version_hash(citations: list[KnowledgeCitation]) -> str | None:
     if not citations:
         return None
+    snapshot = [
+        {
+            "knowledge_base_id": int(item.knowledge_base_id),
+            "version_id": int(item.version_id),
+            "chunk_id": int(item.chunk_id),
+        }
+        for item in citations
+    ]
     return _digest(
         sorted(
-            {
-                "knowledge_base_id": int(item.knowledge_base_id),
-                "version_id": int(item.version_id),
-                "chunk_id": int(item.chunk_id),
-            }
-            for item in citations
+            snapshot,
+            key=lambda item: (
+                item["knowledge_base_id"],
+                item["version_id"],
+                item["chunk_id"],
+            ),
         )
     )
 
