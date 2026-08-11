@@ -37,6 +37,7 @@ const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
 const items = ref<KnowledgeBaseItem[]>([])
 const loading = ref(false)
+const listError = ref(false)
 const saving = ref(false)
 const publishing = ref(false)
 const editorVisible = ref(false)
@@ -60,6 +61,9 @@ let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
 const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
+const canCreateKnowledge = computed(
+  () => isPlatformAdmin.value || userStore.isTenantAdminUser
 )
 const visibleItems = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -121,9 +125,10 @@ async function loadItems() {
       visibility_scope: scopeFilter.value || undefined,
       keyword: keyword.value || undefined,
     })
+    listError.value = false
   } catch (error) {
     console.error(error)
-    items.value = []
+    listError.value = true
   } finally {
     loading.value = false
   }
@@ -427,11 +432,23 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
+        <el-button v-if="canCreateKnowledge" type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
       </div>
     </div>
 
+    <el-alert
+      v-if="listError"
+      class="list-error"
+      type="error"
+      :closable="false"
+      title="知识库列表加载失败，请重试。"
+    >
+      <template #default>
+        <el-button text type="primary" :loading="loading" @click="loadItems">重试</el-button>
+      </template>
+    </el-alert>
     <el-table
+      v-else
       v-loading="loading"
       :data="visibleItems"
       row-key="id"
@@ -464,7 +481,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button text type="primary" @click.stop="openEditor(row)">编辑</el-button>
+          <el-button text type="primary" @click.stop="openEditor(row)">{{ row.can_manage ? '编辑' : '查看' }}</el-button>
           <el-button v-if="row.can_manage" text type="danger" :icon="FolderDelete" @click.stop="archiveKnowledge(row)">归档</el-button>
         </template>
       </el-table-column>
@@ -563,6 +580,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .template-download { max-width: 100%; }
 .template-download-arrow { margin-left: 6px; }
 .knowledge-v2-table { min-height: 160px; }
+.list-error { margin-bottom: 12px; }
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }
 .editor-toolbar, .editor-actions, .history-row, .history-actions { display: flex; align-items: center; gap: 8px; }

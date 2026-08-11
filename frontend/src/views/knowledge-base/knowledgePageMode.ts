@@ -1,6 +1,6 @@
 import type { KnowledgeBaseCapabilities } from '@/api/knowledgeBase'
 
-export type KnowledgePageMode = KnowledgeBaseCapabilities['management_mode']
+export type KnowledgePageMode = KnowledgeBaseCapabilities['management_mode'] | 'CAPABILITIES_UNAVAILABLE'
 
 export interface KnowledgePageNotice {
   titleKey: string
@@ -18,7 +18,7 @@ export function resolveKnowledgePageMode(
   const mode = capabilities?.management_mode
   if (mode === 'V2' && capabilities?.v2_write_enabled === false) return 'MAINTENANCE'
   if (mode === 'UPGRADING' || mode === 'V2' || mode === 'MAINTENANCE') return mode
-  return 'LEGACY'
+  return mode === 'LEGACY' ? 'LEGACY' : 'CAPABILITIES_UNAVAILABLE'
 }
 
 export function isKnowledgeV2Mode(mode: KnowledgePageMode): mode is 'V2' {
@@ -26,6 +26,13 @@ export function isKnowledgeV2Mode(mode: KnowledgePageMode): mode is 'V2' {
 }
 
 export function knowledgePageNotice(mode: Exclude<KnowledgePageMode, 'LEGACY' | 'V2'>): KnowledgePageNotice {
+  if (mode === 'CAPABILITIES_UNAVAILABLE') {
+    return {
+      titleKey: 'knowledge_base.mode_capabilities_unavailable_title',
+      descriptionKey: 'knowledge_base.mode_capabilities_unavailable_description',
+      readonly: true,
+    }
+  }
   if (mode === 'UPGRADING') {
     return {
       titleKey: 'knowledge_base.mode_upgrading_title',

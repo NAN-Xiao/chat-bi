@@ -22,6 +22,7 @@ _BUSINESS_CONTEXT_SAFE_FIELDS = frozenset(
         "permission_version",
         "schema_hash",
         "knowledge_version_hash",
+        "retrieval_failure_type",
         "analysis_time_policy",
         "warnings",
     }
@@ -34,6 +35,7 @@ _SEMANTIC_CONTEXT_SAFE_FIELDS = frozenset(
         "skill_selection_hash",
         "knowledge_version_hash",
         "structured_context_hash",
+        "retrieval_failure_type",
     }
 )
 _CITATION_SAFE_FIELDS = frozenset(
@@ -45,6 +47,7 @@ _CITATION_SAFE_FIELDS = frozenset(
         "version_id",
         "version_number",
         "section_path",
+        "source_file_name",
         "score",
         "visibility_scope",
     }

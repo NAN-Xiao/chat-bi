@@ -33,7 +33,13 @@ def _snapshot():
 def test_retrieval_filters_before_loading_chunk_content(monkeypatch):
     service = KnowledgeRetrievalService(embedding_model=_EmbeddingModel())
     candidates = [
-        SimpleNamespace(id=1, version_id=11),
+        SimpleNamespace(
+            id=1,
+            version_id=11,
+            knowledge_base_name="指标口径库",
+            version_number=3,
+            source_file_name="metrics.md",
+        ),
         SimpleNamespace(id=2, version_id=11),
     ]
     rows = {
@@ -77,6 +83,9 @@ def test_retrieval_filters_before_loading_chunk_content(monkeypatch):
     )
     assert loaded_ids == [1]
     assert [item.chunk_id for item in result.citations] == [1]
+    assert result.citations[0].knowledge_base_name == "指标口径库"
+    assert result.citations[0].version_number == 3
+    assert result.citations[0].source_file_name == "metrics.md"
     assert "forbidden content" not in result.context
 
 

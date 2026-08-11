@@ -19,9 +19,6 @@ import {
   type KnowledgePageMode,
 } from './knowledgePageMode'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
-import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
-import IconOpeDelete from '@/assets/svg/icon_delete.svg'
-import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 
 const { t } = useI18n()
@@ -40,6 +37,7 @@ const uploadFileName = ref('')
 const pendingFile = ref<File | null>(null)
 const pageMode = ref<KnowledgePageMode>('LEGACY')
 const capabilitiesLoading = ref(true)
+const listError = ref(false)
 let refreshTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const pageNotice = computed(() => {
@@ -55,6 +53,10 @@ const isPlatformAdmin = computed(
 const defaultScope = computed<KnowledgeBaseScope>(() => {
   return isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
 })
+const canCreateKnowledge = computed(
+  () => isPlatformAdmin.value || userStore.isTenantAdminUser
+)
+const scopeFilter = ref<'ALL' | KnowledgeBaseScope>('ALL')
 const pageTitle = computed(() => t('knowledge_base.admin_title'))
 const scopeLabel = computed(() => sourceText({ visibility_scope: defaultScope.value }))
 
@@ -88,6 +90,10 @@ const filteredCards = computed(() => {
       (item.file_name || '').toLowerCase().includes(value)
     )
   })
+})
+const visibleCards = computed(() => {
+  if (scopeFilter.value === 'ALL') return filteredCards.value
+  return filteredCards.value.filter((item) => item.visibility_scope === scopeFilter.value)
 })
 
 function sourceText(row: Pick<KnowledgeBaseItem, 'visibility_scope'> | null) {
@@ -143,13 +149,23 @@ function scheduleStatusRefresh() {
 async function loadCards() {
   loading.value = true
   try {
-    cardList.value = await knowledgeBaseApi.list({ visibility_scope: defaultScope.value })
+    const scopes: KnowledgeBaseScope[] = isPlatformAdmin.value
+      ? ['PLATFORM_PUBLIC']
+      : ['PLATFORM_PUBLIC', 'ADMIN_PUBLIC']
+    const groups = await Promise.all(
+      scopes.map((visibility_scope) => knowledgeBaseApi.list({ visibility_scope }))
+    )
+    const records = groups.flat()
+    cardList.value = Array.from(
+      new Map(records.map((item) => [String(item.id), item])).values()
+    )
+    listError.value = false
   } catch (error) {
     console.error(error)
-    cardList.value = []
+    listError.value = true
   } finally {
     loading.value = false
-    scheduleStatusRefresh()
+    if (!listError.value) scheduleStatusRefresh()
   }
 }
 
@@ -167,6 +183,7 @@ function openCreateCard() {
 }
 
 function openEditCard(row: KnowledgeBaseItem) {
+  if (!row.can_manage) return
   form.value = {
     id: row.id,
     name: row.name,
@@ -259,6 +276,10 @@ function deleteCard(row: KnowledgeBaseItem) {
   })
 }
 
+function handleRowCommand(row: KnowledgeBaseItem, command: string | number | object) {
+  if (command === 'delete') deleteCard(row)
+}
+
 function openDetail(row: KnowledgeBaseItem) {
   selectedCard.value = cloneDeep(row)
   detailVisible.value = true
@@ -271,7 +292,7 @@ async function loadCapabilities() {
     pageMode.value = resolveKnowledgePageMode(result)
   } catch (error) {
     console.warn('Failed to load knowledge base capabilities', error)
-    pageMode.value = 'LEGACY'
+    pageMode.value = 'CAPABILITIES_UNAVAILABLE'
   } finally {
     capabilitiesLoading.value = false
   }
@@ -309,10 +330,12 @@ onBeforeUnmount(() => {
           :prefix-icon="Search"
           :placeholder="t('dashboard.search')"
         />
-        <div class="scope-chip" :class="sourceClass({ visibility_scope: defaultScope })">
-          {{ scopeLabel }}
-        </div>
-        <el-button type="primary" @click="openCreateCard">
+        <el-radio-group v-model="scopeFilter" class="scope-tabs" size="small">
+          <el-radio-button value="ALL">全部知识</el-radio-button>
+          <el-radio-button value="PLATFORM_PUBLIC">平台知识</el-radio-button>
+          <el-radio-button value="ADMIN_PUBLIC">工作空间知识</el-radio-button>
+        </el-radio-group>
+        <el-button v-if="canCreateKnowledge" type="primary" @click="openCreateCard">
           <template #icon>
             <icon_add_outlined />
           </template>
@@ -323,77 +346,67 @@ onBeforeUnmount(() => {
 
     <section v-loading="loading" class="knowledge-section">
       <div class="knowledge-content">
-        <div v-if="!filteredCards.length" class="knowledge-empty">
-          {{ t('knowledge_base.no_knowledge_base') }}
+        <div v-if="listError" class="knowledge-empty knowledge-error" aria-live="polite">
+          <div>{{ t('knowledge_base.list_load_failed') }}</div>
+          <el-button text type="primary" :loading="loading" @click="loadCards">{{ t('common.refresh') }}</el-button>
         </div>
-        <div v-else class="card-content">
-          <article
-            v-for="card in filteredCards"
-            :key="card.id"
-            class="knowledge-card"
-            :class="sourceClass(card)"
-            @click="openDetail(card)"
-          >
-            <div class="card-head">
-              <div class="title-block">
-                <el-icon class="card-icon" size="30">
-                  <icon_form_outlined />
-                </el-icon>
-                <div class="title-text">
-                  <div class="title-row">
-                    <span class="name ellipsis" :title="card.name">{{ card.name }}</span>
-                    <span class="source-pill">{{ sourceText(card) }}</span>
-                  </div>
-                  <div class="meta-row">
-                    <span>{{ statusText(card) }}</span>
-                    <span class="process-status" :class="processStatusClass(card)">
-                      {{ processStatusText(card) }}
-                    </span>
-                    <span>{{ formatCardTime(card.update_time) }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="card-actions" @click.stop>
-                <el-popover
-                  trigger="click"
-                  :teleported="true"
-                  popper-class="popover-card_knowledge"
-                  placement="bottom-end"
-                >
-                  <template #reference>
-                    <button type="button" class="more" aria-label="more actions">
-                      <icon_more_outlined />
-                    </button>
-                  </template>
-                  <div class="content">
-                    <div class="item" @click.stop="openEditCard(card)">
-                      <el-icon size="16">
-                        <IconOpeEdit />
-                      </el-icon>
-                      {{ t('datasource.edit') }}
-                    </div>
-                    <div class="item" @click.stop="deleteCard(card)">
-                      <el-icon size="16">
-                        <IconOpeDelete />
-                      </el-icon>
-                      {{ t('dashboard.delete') }}
-                    </div>
-                  </div>
-                </el-popover>
-              </div>
-            </div>
-
-            <div
-              class="description"
-              :title="card.description || t('knowledge_base.empty_description')"
-            >
-              {{ card.description || t('knowledge_base.empty_description') }}
-            </div>
-            <div class="content-preview" :title="card.file_name || card.content || ''">
-              {{ card.file_name || card.content || '-' }}
-            </div>
-          </article>
+        <div v-else-if="!visibleCards.length" class="knowledge-empty">
+          <div>{{ t('knowledge_base.no_knowledge_base') }}</div>
+          <el-button v-if="canCreateKnowledge" type="primary" plain @click="openCreateCard">
+            {{ t('knowledge_base.add_knowledge_base') }}
+          </el-button>
         </div>
+        <el-table
+          v-else
+          :data="visibleCards"
+          row-key="id"
+          class="knowledge-list-table"
+          @row-click="openDetail"
+        >
+          <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip />
+          <el-table-column label="范围" width="150">
+            <template #default="{ row }">
+              <el-tag size="small" :class="sourceClass(row)" :type="row.visibility_scope === 'PLATFORM_PUBLIC' ? 'warning' : 'primary'">
+                {{ sourceText(row) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="130">
+            <template #default="{ row }">
+              <span>{{ statusText(row) }}</span>
+              <span class="table-status" :class="processStatusClass(row)">{{ processStatusText(row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="源文件" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.file_name || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="更新时间" width="170">
+            <template #default="{ row }">{{ formatCardTime(row.update_time) }}</template>
+          </el-table-column>
+          <el-table-column label="权限" width="110">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.can_manage ? 'success' : 'info'">
+                {{ row.can_manage ? '可管理' : '只读' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <el-button text type="primary" @click.stop="row.can_manage ? openEditCard(row) : openDetail(row)">
+                {{ row.can_manage ? '编辑' : '查看' }}
+              </el-button>
+              <el-dropdown v-if="row.can_manage" trigger="click" @command="handleRowCommand(row, $event)">
+                <el-button text :icon="icon_more_outlined" aria-label="更多操作" />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="delete">{{ t('dashboard.delete') }}</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </template>
+          </el-table-column>
+          <template #empty><span class="empty-state">{{ t('knowledge_base.no_knowledge_base') }}</span></template>
+        </el-table>
       </div>
     </section>
 
@@ -482,50 +495,40 @@ onBeforeUnmount(() => {
       size="640px"
       modal-class="knowledge-base-drawer"
     >
-      <el-form label-width="180px" label-position="top" class="form-content_error" @submit.prevent>
-        <el-form-item :label="t('knowledge_base.name')">
-          <div class="detail-content">{{ selectedCard?.name || '-' }}</div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.source')">
-          <div class="detail-content">{{ sourceText(selectedCard) }}</div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.status')">
-          <div class="detail-content">{{ statusText(selectedCard) }}</div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.process_status')">
-          <div class="detail-content">
-            {{ processStatusText(selectedCard) }}
-            <span v-if="selectedCard?.error_message" class="detail-error">
-              {{ selectedCard.error_message }}
-            </span>
+      <el-tabs type="border-card" class="detail-tabs">
+        <el-tab-pane label="概览">
+          <div class="detail-grid">
+            <div><span>名称</span><strong>{{ selectedCard?.name || '-' }}</strong></div>
+            <div><span>范围</span><strong>{{ sourceText(selectedCard) }}</strong></div>
+            <div><span>状态</span><strong>{{ statusText(selectedCard) }}</strong></div>
+            <div><span>处理状态</span><strong>{{ processStatusText(selectedCard) }}</strong></div>
+            <div><span>权限</span><strong>{{ selectedCard?.can_manage ? '可管理' : '只读' }}</strong></div>
+            <div><span>更新时间</span><strong>{{ formatCardTime(selectedCard?.update_time) }}</strong></div>
           </div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.selected_file')">
-          <div class="detail-content">{{ selectedCard?.file_name || '-' }}</div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.description')">
-          <div class="detail-content">
-            {{ selectedCard?.description || t('knowledge_base.empty_description') }}
+          <el-alert
+            v-if="selectedCard?.error_message"
+            class="detail-error-alert"
+            type="error"
+            :closable="false"
+            :title="selectedCard.error_message"
+          />
+          <div class="detail-description">
+            <span>描述</span>
+            <p>{{ selectedCard?.description || t('knowledge_base.empty_description') }}</p>
           </div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.updated_at')">
-          <div class="detail-content">
-            {{
-              formatCardTime(selectedCard?.update_time)
-            }}
-          </div>
-        </el-form-item>
-        <el-form-item :label="t('knowledge_base.document_content')">
+        </el-tab-pane>
+        <el-tab-pane label="源文档">
+          <div class="detail-file">{{ selectedCard?.file_name || '-' }}</div>
           <div class="detail-content pre-wrap">{{ selectedCard?.content || '-' }}</div>
-        </el-form-item>
-      </el-form>
+        </el-tab-pane>
+      </el-tabs>
     </el-drawer>
   </div>
   <KnowledgeBaseV2Panel v-else-if="isKnowledgeV2Mode(pageMode)" />
   <section v-else class="knowledge-mode-notice" aria-live="polite">
     <div class="knowledge-mode-notice__icon">!</div>
-    <h2>{{ pageNotice ? t(pageNotice.titleKey) : t('knowledge_base.mode_maintenance_title') }}</h2>
-    <p>{{ pageNotice ? t(pageNotice.descriptionKey) : t('knowledge_base.mode_maintenance_description') }}</p>
+    <h2>{{ pageNotice ? t(pageNotice.titleKey) : t('knowledge_base.mode_capabilities_unavailable_title') }}</h2>
+    <p>{{ pageNotice ? t(pageNotice.descriptionKey) : t('knowledge_base.mode_capabilities_unavailable_description') }}</p>
     <el-button :loading="capabilitiesLoading" @click="loadCapabilities">
       {{ t('common.refresh') }}
     </el-button>
@@ -545,6 +548,7 @@ onBeforeUnmount(() => {
     gap: 16px;
     margin-bottom: 16px;
     min-height: 34px;
+    min-width: 0;
   }
 
   .page-title {
@@ -561,7 +565,7 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: flex-end;
     gap: 12px;
-    min-width: 360px;
+    min-width: 0;
   }
 
   .knowledge-search {
@@ -608,6 +612,8 @@ onBeforeUnmount(() => {
 
   .knowledge-content {
     min-height: 96px;
+    min-width: 0;
+    overflow-x: auto;
   }
 
   .knowledge-empty {
@@ -621,6 +627,28 @@ onBeforeUnmount(() => {
     border: 1px solid #dee0e3;
     border-radius: 8px;
     background: #fff;
+  }
+
+  .knowledge-error {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .scope-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .knowledge-list-table {
+    cursor: pointer;
+    min-width: 720px;
+  }
+
+  .table-status {
+    display: block;
+    margin-top: 2px;
+    color: #667085;
+    font-size: 12px;
   }
 
   .card-content {
@@ -831,6 +859,46 @@ onBeforeUnmount(() => {
       -webkit-line-clamp: 2;
     }
   }
+
+  @media (max-width: 980px) {
+    .page-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .page-actions {
+      min-width: 0;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .knowledge-search {
+      width: min(100%, 280px);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page-actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .knowledge-search,
+    .scope-tabs,
+    .page-actions > .el-button {
+      width: 100%;
+    }
+
+    .scope-tabs {
+      display: flex;
+      flex-wrap: wrap;
+
+      :deep(.el-radio-button) {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+    }
+  }
 }
 
 .knowledge-page-loading {
@@ -895,6 +963,70 @@ onBeforeUnmount(() => {
 
   .pre-wrap {
     white-space: pre-wrap;
+  }
+
+  .detail-tabs {
+    border: 0;
+    box-shadow: none;
+
+    .el-tabs__content {
+      padding: 18px 4px 0;
+    }
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+
+    > div {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    span,
+    .detail-description span {
+      color: #667085;
+      font-size: 12px;
+    }
+
+    strong {
+      overflow: hidden;
+      color: #1f2329;
+      font-size: 13px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .detail-description {
+    margin-top: 22px;
+
+    span {
+      color: #667085;
+      font-size: 12px;
+    }
+
+    p {
+      margin: 6px 0 0;
+      color: #344054;
+      font-size: 13px;
+      line-height: 20px;
+      white-space: pre-wrap;
+    }
+  }
+
+  .detail-file {
+    margin-bottom: 12px;
+    color: #344054;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .detail-error-alert {
+    margin-top: 18px;
   }
 
   .detail-error {

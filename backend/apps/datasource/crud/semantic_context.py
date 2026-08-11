@@ -52,6 +52,7 @@ class BusinessSemanticContext:
     knowledge_context: str = ""
     knowledge_citations: list[KnowledgeCitation] = field(default_factory=list)
     knowledge_version_hash: str | None = None
+    retrieval_failure_type: str | None = None
     warnings: list[str] = field(default_factory=list)
     context_hash: str | None = None
 
@@ -78,6 +79,7 @@ class BusinessSemanticContext:
                 for item in self.selected_skills
             ],
             "knowledge_version_hash": self.knowledge_version_hash,
+            "retrieval_failure_type": self.retrieval_failure_type,
             "structured_context_hash": _digest(self.structured_context),
             "knowledge_citations": [
                 _citation_summary(item) for item in self.knowledge_citations
@@ -202,6 +204,7 @@ class BusinessSemanticContextService:
         knowledge_context = ""
         citations: list[KnowledgeCitation] = []
         knowledge_version_hash: str | None = None
+        retrieval_failure_type: str | None = None
         request_id = request_id or new_request_id()
         if retrieval_service is None and settings.KNOWLEDGE_RETRIEVAL_ENABLED:
             retrieval_service = KnowledgeRetrievalService(
@@ -227,6 +230,7 @@ class BusinessSemanticContextService:
             )
             knowledge_context = retrieval.context
             citations = list(retrieval.citations)
+            retrieval_failure_type = retrieval.failure_type
             warnings.extend(retrieval.warnings)
             knowledge_version_hash = _knowledge_version_hash(citations)
 
@@ -259,6 +263,7 @@ class BusinessSemanticContextService:
             knowledge_context=knowledge_context,
             knowledge_citations=citations,
             knowledge_version_hash=knowledge_version_hash,
+            retrieval_failure_type=retrieval_failure_type,
             warnings=warnings,
         )
         semantic.context_hash = _digest(
@@ -268,6 +273,7 @@ class BusinessSemanticContextService:
                 "skill_selection_hash": skill_selection_hash,
                 "structured_context_hash": _digest(structured_context),
                 "knowledge_version_hash": knowledge_version_hash,
+                "retrieval_failure_type": retrieval_failure_type,
                 "citation_ids": [item.chunk_id for item in citations],
                 "datasource_id": int(datasource_id),
                 "surface": str(surface),
@@ -348,8 +354,11 @@ def _citation_summary(citation: KnowledgeCitation) -> dict[str, Any]:
     return {
         "chunk_id": str(citation.chunk_id),
         "knowledge_base_id": str(citation.knowledge_base_id),
+        "knowledge_base_name": citation.knowledge_base_name,
         "version_id": str(citation.version_id),
+        "version_number": citation.version_number,
         "section_path": citation.section_path,
+        "source_file_name": citation.source_file_name,
         "score": round(float(citation.score), 6),
         "visibility_scope": citation.visibility_scope,
     }

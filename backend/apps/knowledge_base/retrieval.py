@@ -46,6 +46,9 @@ class KnowledgeCitation:
     score: float
     content: str
     visibility_scope: str
+    knowledge_base_name: str | None = None
+    version_number: int | None = None
+    source_file_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,11 @@ class KnowledgeRetrievalService:
                 self._audit(surface, permission_snapshot, result, started, request_id=request_id, user_id=user_id)
                 return result
             rows = self._load_allowed_chunks(session, eligible_ids)
+            candidate_by_id = {
+                int(getattr(candidate, "id")): candidate
+                for candidate in candidates
+                if getattr(candidate, "id", None) is not None
+            }
             model = self.embedding_model or EmbeddingModelCache.get_model()
             model_identity = embedding_model_identity(model)
             query_vector = model.embed_query(query_text)
@@ -155,6 +163,9 @@ class KnowledgeRetrievalService:
                         score=float(cosine_similarity(query_vector, vector)),
                         content=row.content,
                         visibility_scope=_scope_value(row.visibility_scope),
+                        knowledge_base_name=getattr(candidate_by_id.get(int(row.id)), "knowledge_base_name", None),
+                        version_number=_optional_int(getattr(candidate_by_id.get(int(row.id)), "version_number", None)),
+                        source_file_name=getattr(candidate_by_id.get(int(row.id)), "source_file_name", None),
                     )
                 )
             min_score = float(settings.KNOWLEDGE_RETRIEVAL_MIN_SCORE)
@@ -205,6 +216,9 @@ class KnowledgeRetrievalService:
                 KnowledgeBaseChunk.tenant_id,
                 KnowledgeBaseChunk.visibility_scope,
                 KnowledgeBaseChunk.embedding_signature,
+                KnowledgeBase.name.label("knowledge_base_name"),
+                KnowledgeBaseVersion.version_number.label("version_number"),
+                KnowledgeBaseVersion.file_name.label("source_file_name"),
                 KnowledgeBaseApplicability.status.label("applicability_status"),
             )
             .join(
@@ -444,3 +458,12 @@ def _vector(value: Any) -> list[float] | None:
 
 def _scope_value(value: Any) -> str:
     return str(getattr(value, "value", value) or "")
+
+
+def _optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

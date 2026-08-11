@@ -45,9 +45,13 @@ class _Retrieval:
                     score=0.9,
                     content="只读参考内容",
                     visibility_scope="ADMIN_PUBLIC",
+                    knowledge_base_name="指标口径库",
+                    version_number=3,
+                    source_file_name="metrics.md",
                 ),
             ),
             context='<retrieved-knowledge priority="reference-only">只读参考内容</retrieved-knowledge>',
+            failure_type="NO_ELIGIBLE_KNOWLEDGE",
         )
 
 
@@ -96,8 +100,14 @@ def test_semantic_context_orders_authority_and_retrieval(monkeypatch):
 
     assert trace == ["permission", "eligible_skills", "find_data_skills", "schema", "structured", "retrieval", "audit"]
     assert result.semantic.knowledge_citations[0].chunk_id == 7
+    assert result.semantic.retrieval_failure_type == "NO_ELIGIBLE_KNOWLEDGE"
     assert result.semantic.context_hash
-    assert result.semantic.snapshot_metadata()["knowledge_citations"][0]["chunk_id"] == "7"
+    snapshot = result.semantic.snapshot_metadata()
+    assert snapshot["retrieval_failure_type"] == "NO_ELIGIBLE_KNOWLEDGE"
+    assert snapshot["knowledge_citations"][0]["knowledge_base_name"] == "指标口径库"
+    assert snapshot["knowledge_citations"][0]["version_number"] == 3
+    assert snapshot["knowledge_citations"][0]["source_file_name"] == "metrics.md"
+    assert "content" not in snapshot["knowledge_citations"][0]
 
 
 def test_context_hash_changes_with_permission_or_knowledge_snapshot(monkeypatch):

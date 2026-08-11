@@ -10,7 +10,7 @@ const props = defineProps<{
   allMessages?: ChatMessage[]
 }>()
 const { t } = useI18n()
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 
 function clickAnalysis() {
   console.info('analysis_record_id: ' + props.message?.record?.analysis_record_id)

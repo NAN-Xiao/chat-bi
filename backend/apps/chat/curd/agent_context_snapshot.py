@@ -89,6 +89,9 @@ def build_agent_context_snapshot(
         snapshot["retrieval_warnings"] = list(
             safe_business_context.get("retrieval_warnings") or []
         )
+        snapshot["retrieval_failure_type"] = safe_business_context.get(
+            "retrieval_failure_type"
+        )
     return snapshot
 
 

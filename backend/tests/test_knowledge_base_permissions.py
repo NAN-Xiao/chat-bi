@@ -46,6 +46,19 @@ def test_global_platform_admin_manages_platform_scope_but_not_workspace_scope():
     assert caught.value.code == "KNOWLEDGE_NOT_FOUND"
 
 
+def test_workspace_member_can_read_but_not_manage_platform_knowledge():
+    service = KnowledgePermissionService()
+    platform_record = _record(
+        tenant_id=1,
+        scope=KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC,
+    )
+    member = _user(tenant_id=7, role="member")
+    service.require_read(member, platform_record)
+    with pytest.raises(KnowledgeBusinessError) as caught:
+        service.require_manage(member, platform_record)
+    assert caught.value.code == "KNOWLEDGE_FORBIDDEN"
+
+
 def test_workspace_admin_can_override_platform_knowledge_for_current_workspace():
     service = KnowledgePermissionService()
     tenant_admin = _user(tenant_id=7, role="admin")

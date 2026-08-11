@@ -8,7 +8,8 @@ test('page mode is resolved only from the server capability', () => {
   assert.equal(resolveKnowledgePageMode({ management_mode: 'MAINTENANCE' }), 'MAINTENANCE')
   assert.equal(resolveKnowledgePageMode({ management_mode: 'UPGRADING' }), 'UPGRADING')
   assert.equal(resolveKnowledgePageMode({ management_mode: 'LEGACY' }), 'LEGACY')
-  assert.equal(resolveKnowledgePageMode(undefined), 'LEGACY')
+  assert.equal(resolveKnowledgePageMode(undefined), 'CAPABILITIES_UNAVAILABLE')
+  assert.notEqual(resolveKnowledgePageMode(undefined), 'LEGACY')
 })
 
 test('upgrading and maintenance notices are read-only', () => {

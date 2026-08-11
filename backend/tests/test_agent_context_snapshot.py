@@ -24,6 +24,7 @@ def test_surface_snapshot_keeps_security_metadata_without_prompt_bodies(surface:
             "schema_hash": "schema-1",
             "selected_skills": [{"id": "7", "selection_mode": "AUTOMATIC"}],
             "knowledge_version_hash": "knowledge-1",
+            "retrieval_failure_type": "NO_ELIGIBLE_KNOWLEDGE",
             "knowledge_citations": [
                 {"knowledge_base_id": "20", "version_id": "21", "content": "机密正文"}
             ],
@@ -38,8 +39,10 @@ def test_surface_snapshot_keeps_security_metadata_without_prompt_bodies(surface:
     assert snapshot["version"] == 2
     assert business["permission_version"] == "permission-1"
     assert business["schema_hash"] == "schema-1"
+    assert business["retrieval_failure_type"] == "NO_ELIGIBLE_KNOWLEDGE"
     assert business["selected_skills"] == [{"id": "7", "selection_mode": "AUTOMATIC"}]
     assert business["knowledge_citations"] == [{"knowledge_base_id": "20", "version_id": "21"}]
+    assert snapshot["retrieval_failure_type"] == "NO_ELIGIBLE_KNOWLEDGE"
     assert business["warnings"] == ["检索告警"]
     serialized = json.dumps(snapshot, ensure_ascii=False)
     assert "机密知识正文" not in serialized

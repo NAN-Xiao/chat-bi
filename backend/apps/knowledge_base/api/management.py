@@ -155,8 +155,11 @@ async def retrieval_preview(
                 {
                     "chunk_id": item.chunk_id,
                     "knowledge_base_id": item.knowledge_base_id,
+                    "knowledge_base_name": item.knowledge_base_name,
                     "version_id": item.version_id,
+                    "version_number": item.version_number,
                     "section_path": item.section_path,
+                    "source_file_name": item.source_file_name,
                     "score": item.score,
                     "content": item.content,
                     "visibility_scope": item.visibility_scope,

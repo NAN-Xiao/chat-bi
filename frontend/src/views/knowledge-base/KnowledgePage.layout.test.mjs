@@ -21,3 +21,17 @@ test('existing Skills and knowledge routes remain available', () => {
   assert.match(routerSource, /path:\s*'data-skills'/)
   assert.match(routerSource, /path:\s*'knowledge-base'/)
 })
+
+test('knowledge page keeps capability and list failures separate from legacy and empty states', () => {
+  assert.match(pageSource, /pageMode\.value = 'CAPABILITIES_UNAVAILABLE'/)
+  assert.match(pageSource, /listError\.value = true/)
+  assert.match(pageSource, /v-if="listError"/)
+  assert.match(pageSource, /v-else-if="!visibleCards\.length"/)
+  assert.doesNotMatch(pageSource, /catch[\s\S]{0,180}pageMode\.value = 'LEGACY'/)
+})
+
+test('knowledge page exposes platform knowledge as read-only to non-managers', () => {
+  assert.match(pageSource, /\['PLATFORM_PUBLIC', 'ADMIN_PUBLIC'\]/)
+  assert.match(pageSource, /v-if="canCreateKnowledge"/)
+  assert.match(pageSource, /if \(!row\.can_manage\) return/)
+})

@@ -88,12 +88,17 @@ export interface KnowledgeApplicabilityState {
 export interface KnowledgeRetrievalPreviewResult {
   context?: string
   citations?: Array<{
+    knowledge_base_name?: string | null
     knowledge_base_id?: number | string | null
+    version_number?: number | null
     section_path?: string | null
+    source_file_name?: string | null
     score?: number | null
+    content?: string | null
     visibility_scope?: KnowledgeBaseScope | null
   }>
   warnings?: Array<{ message?: string } | string>
+  failure_type?: string | null
   latency_ms?: number
 }
 

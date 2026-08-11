@@ -73,7 +73,7 @@ def load_tracking_structured_records(
     resolver: Callable[..., list[Any]] | None = None,
 ) -> TrackingStructuredRecords:
     """Project tracking config into immutable records without writing source rows."""
-    config = get_tracking_config(session, int(tenant_id), int(datasource_id), include_legacy=True)
+    config = get_tracking_config(session, int(tenant_id), int(datasource_id))
     if not getattr(config, "enabled", True):
         return TrackingStructuredRecords()
     if permission_snapshot is not None and int(permission_snapshot.datasource_id) != int(datasource_id):
