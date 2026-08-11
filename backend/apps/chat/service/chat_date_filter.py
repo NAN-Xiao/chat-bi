@@ -9,6 +9,7 @@ from typing import Any, Literal
 from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
     has_dashboard_date_filter_parameters,
+    has_unresolved_dashboard_date_parameters,
     prepare_dashboard_date_filter,
     validate_dashboard_date_parameter_sql,
 )
@@ -60,6 +61,23 @@ QuestionDateScope = Literal["current_day", "explicit_other", "unspecified"]
 
 class ChatDateFilterConfigurationError(ValueError):
     """聊天 SQL 的日期模板配置不完整或不一致。"""
+
+
+DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE = """
+当前工作空间未启用看板日期参数能力。生成 SQL 时必须遵守以下运行时约束：
+1. 不得返回 date_filter 字段。
+2. 不得使用任何 {{dashboard_start_*}}、{{dashboard_end_*}} 或其他 dashboard 日期占位符。
+3. 用户明确要求时间范围或连续日期时，使用当前数据源业务日期字段和已加载 Data Skill 中定义的可执行日期边界；可以从事实数据的最大业务日期推导范围，或使用可执行的日期字面量。
+4. 不得把未解析的日期占位符交给 SQL 执行器；如果当前数据源无法表达用户要求，应明确说明缺少可执行的日期口径。
+""".strip()
+
+
+def ensure_chat_date_filter_allowed(enabled: bool, payload: Any, sql: str) -> None:
+    """拒绝未启用看板日期能力的租户使用日期配置或占位符。"""
+    if enabled:
+        return
+    if payload not in (None, {}) or has_unresolved_dashboard_date_parameters(sql):
+        raise ChatDateFilterConfigurationError("dashboard_date_filter_disabled")
 
 
 def question_date_scope(question: str | None) -> QuestionDateScope:
@@ -235,7 +253,7 @@ def rewrite_chat_date_filter_literals(payload: Any, sql: str) -> str:
 
 def normalize_chat_date_filter(payload: Any, sql: str, chart_type: str) -> dict[str, Any] | None:
     """校验聊天 SQL 响应中的日期配置，并转换为看板 pivot。"""
-    has_tokens = has_dashboard_date_filter_parameters(sql)
+    has_tokens = has_unresolved_dashboard_date_parameters(sql)
     if payload in (None, {}):
         if has_tokens:
             raise ChatDateFilterConfigurationError("missing_date_filter")
@@ -275,7 +293,7 @@ def render_chat_date_filter_sql(
 ) -> str:
     """在聊天执行前将受控日期 token 渲染为数据源可执行的字面量。"""
     if pivot is None:
-        if has_dashboard_date_filter_parameters(sql):
+        if has_unresolved_dashboard_date_parameters(sql):
             raise ChatDateFilterConfigurationError("date_filter_render_incomplete")
         return sql
     prepared = prepare_dashboard_date_filter(
@@ -287,6 +305,6 @@ def render_chat_date_filter_sql(
     if prepared.capability.get("status") != "available":
         reason = str(prepared.capability.get("reason") or "date_filter_unavailable")
         raise ChatDateFilterConfigurationError(reason)
-    if has_dashboard_date_filter_parameters(prepared.sql):
+    if has_unresolved_dashboard_date_parameters(prepared.sql):
         raise ChatDateFilterConfigurationError("date_filter_render_incomplete")
     return prepared.sql

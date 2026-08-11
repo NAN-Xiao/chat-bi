@@ -35,6 +35,8 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     trigger_log_error, save_agent_context_snapshot
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
+    DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE,
+    ensure_chat_date_filter_allowed,
     normalize_chat_date_filter_for_question,
     question_date_scope,
     rewrite_chat_date_filter_literals,
@@ -46,6 +48,7 @@ from apps.chat.curd.custom_prompt import (
     CustomPromptTypeEnum,
     find_custom_prompts,
     find_data_skills,
+    is_dashboard_date_filter_excluded,
 )
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog, OperationEnum, \
     ChatFinishStep, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
@@ -67,6 +70,7 @@ from apps.datasource.crud.permission import get_row_permission_filters, has_data
 from apps.datasource.crud.sql_engine import (
     BusinessSqlContext,
     BusinessSqlContextService,
+    UnresolvedDashboardDateParametersError,
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
     user_data_unavailable_message,
@@ -77,7 +81,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
-from apps.system.crud.tenant import TENANT_ADMIN_ROLES, is_sample_workspace, normalize_tenant_role
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.tracking_config import find_tracking_prompt_context
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
@@ -1252,6 +1256,7 @@ class LLMService:
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
         tenant_id = require_current_tenant_id(current_user)
+        self.dashboard_date_filter_enabled = not is_dashboard_date_filter_excluded(session, tenant_id)
         if chat.create_by != current_user.id or int(chat.tenant_id) != tenant_id:
             raise SingleMessageError(f"Chat with id {chat_id} not Owned by the current user")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
@@ -1436,6 +1441,11 @@ class LLMService:
         if _system_templates.get('data_skill'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['data_skill']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的数据 Skill，我会优先参考其中的业务口径与查询范式。'))
+        if not self.dashboard_date_filter_enabled:
+            self.sql_message.append(HumanPromptMessage(content=DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE))
+            self.sql_message.append(
+                AIPromptMessage(content='我已确认当前工作空间不使用看板日期参数；我会只生成可执行日期条件，不返回 date_filter。')
+            )
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             last_rounds = get_last_conversation_rounds(last_sql_messages, rounds=count_limit)
 
@@ -2351,21 +2361,27 @@ class LLMService:
         original_sql = sql
         rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
         try:
-            self.chat_date_pivot = normalize_chat_date_filter_for_question(
-                self.chat_question.question,
-                data.get("date_filter"),
-                rewritten_sql,
-                data.get("chart-type") or data.get("chart_type") or "",
-            )
+            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), original_sql)
+            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), rewritten_sql)
         except ChatDateFilterConfigurationError as error:
-            if is_sample_workspace(session, getattr(self, "current_user", None)):
-                self.chat_date_pivot = None
-                sql = original_sql
-            else:
+            trigger_log_error(session, log)
+            raise SingleMessageError("当前工作空间未启用看板日期参数，SQL 不得包含日期占位符或 date_filter") from error
+        if not self.dashboard_date_filter_enabled:
+            self.chat_date_pivot = None
+            sql = original_sql
+        else:
+            try:
+                self.chat_date_pivot = normalize_chat_date_filter_for_question(
+                    self.chat_question.question,
+                    data.get("date_filter"),
+                    rewritten_sql,
+                    data.get("chart-type") or data.get("chart_type") or "",
+                )
+            except ChatDateFilterConfigurationError as error:
                 trigger_log_error(session, log)
                 raise SingleMessageError(f"日期参数配置无效：{error}") from error
-        else:
-            sql = rewritten_sql
+            else:
+                sql = rewritten_sql
 
         validate_sql_for_datasource(sql, getattr(getattr(self, "ds", None), "type", None))
 
@@ -2604,6 +2620,10 @@ class LLMService:
                 origin_column=True,
             ).result
         except Exception as error:
+            if isinstance(error, UnresolvedDashboardDateParametersError):
+                raise SingleMessageError(
+                    "日期占位符未解析，已阻止执行 SQL。请重新生成不包含未解析日期参数的查询。"
+                ) from error
             if isinstance(error, (ParseSQLResultError, SqlStructureValidationError)):
                 raise
             traceback_text = traceback.format_exc(limit=1, chain=True)

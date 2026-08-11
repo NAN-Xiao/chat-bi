@@ -277,6 +277,39 @@ def test_date_field_skill_parameterizes_partition_roles_without_policy_prerequis
     assert "不是使用日期 token 或返回 `date_filter` 的前置条件" in prompt
 
 
+def test_flam_active_skill_rejects_dynamic_latest_partition_scan() -> None:
+    question = "截至数据最新一天，DAU、WAU和MAU分别是多少，并计算DAU占WAU及MAU的比例。"
+    skills = {
+        skill["name"]: skill["prompt"]
+        for skill in flam_seed.DATA_SKILLS
+        if skill["name"] in {"flam 历史看板日期窗口口径", "flam 活跃用户口径"}
+    }
+    dynamic_sql = """
+    WITH bounds AS (
+        SELECT MAX(`dt`) AS max_dt
+        FROM `event`
+        WHERE `prod` = 110000038
+    )
+    SELECT COUNT(DISTINCT e.uid) AS DAU
+    FROM `event` e
+    CROSS JOIN bounds b
+    WHERE e.dt = b.max_dt AND e.event = 'UserActive'
+    """
+    fixed_sql = """
+    SELECT COUNT(DISTINCT e.uid) AS DAU
+    FROM `event` e
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+      AND e.prod = 110000038
+      AND e.event = 'UserActive'
+    """
+
+    for skill_text in skills.values():
+        violation = _data_skill_sql_validation_violation(question, dynamic_sql, skill_text)
+        assert violation is not None
+        assert "MAX(dt)" in violation.message
+        assert _data_skill_sql_validation_violation(question, fixed_sql, skill_text) is None
+
+
 SCENARIOS = (
     (
         3,

@@ -53,7 +53,11 @@ SKILL = {
 ## 日期范围参数契约
 
 - `date_filter.time_field` 必须等于 SQL 中实际参数化字段，并且该字段必须已配置为 `range_filter`、`partition_date` 或 `realtime_partition`；不得返回展示字段、cohort 字段、JSON 路径字段或事件时间戳作为替代。
-- 数字格式 `yyyymmdd_number` 必须使用成对的 `{{dashboard_start_yyyymmdd}}` 和 `{{dashboard_end_yyyymmdd}}` token，并保持字段类型一致。
+- `date` 必须使用成对的 `{{dashboard_start_date}}` 和 `{{dashboard_end_date}}` token。
+- `yyyymmdd_number` 与 `yyyymmdd_text` 必须使用成对的 `{{dashboard_start_yyyymmdd}}` 和 `{{dashboard_end_yyyymmdd}}` token；两者由 `date_parameter_type` 区分，不能混用字段类型。
+- `timestamp` 必须使用 `{{dashboard_start_timestamp}}` 和 `{{dashboard_end_exclusive_timestamp}}` token。
+- 所有看板日期 token 都必须作为 SQL 表达式原样出现，不能放在单引号、双引号、标识符或注释中。执行阶段会按 `date_parameter_type` 自动注入安全的数字或 SQL 字面量，SQL 不得自行给 token 加引号。
+- PostgreSQL `date` 字段优先直接写 `event_date BETWEEN {{dashboard_start_date}} AND {{dashboard_end_date}}` 并声明 `date_parameter_type=date`。如果当前字段元数据明确要求 `yyyymmdd_text`，日期转换应写成 `TO_DATE({{dashboard_start_yyyymmdd}}, 'YYYYMMDD')`，禁止写成 `TO_DATE('{{dashboard_start_yyyymmdd}}', 'YYYYMMDD')`。
 - 文本格式 `yyyymmdd_text`、`date`、`timestamp` 必须遵循当前数据源字段元数据；不同格式不能混用，也不能仅通过字符串改写掩盖类型不匹配。
 - 没有日期 token 时不能返回普通 `date_filter`；需要日期范围时应先补齐当前配置允许的参数化字段。
 - 一个查询存在多个日期字段时，必须依据字段角色和问题语义明确选择；不得自动选择第一列、相似名称字段或未授权字段。

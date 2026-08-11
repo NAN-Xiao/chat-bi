@@ -48,6 +48,7 @@ class CustomPrompt(SQLModel, table=True):
     embedding_signature: Optional[str] = Field(default=None, sa_column=Column(String(128), nullable=True))
     specific_ds: Optional[bool] = Field(default=False, sa_column=Column(Boolean, default=False))
     datasource_ids: Optional[list[int]] = Field(default=[], sa_column=Column(JSONB))
+    excluded_tenant_ids: Optional[list[int]] = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
 
 class CustomPromptUserPreference(SQLModel, table=True):
