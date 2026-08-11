@@ -2109,6 +2109,9 @@
     "mode_upgrading_title": "知识库正在升级",
     "mode_upgrading_description": "知识库升级完成前暂时不能编辑内容，请稍后刷新页面。原有知识仍可继续使用。",
     "mode_maintenance_title": "知识库维护中",
-    "mode_maintenance_description": "知识库正在维护，当前暂时不能编辑内容。请稍后刷新页面重试。"
+    "mode_maintenance_description": "知识库正在维护，当前暂时不能编辑内容。请稍后刷新页面重试。",
+    "mode_capabilities_unavailable_title": "知识库状态暂不可用",
+    "mode_capabilities_unavailable_description": "无法确认当前知识库管理能力，暂不加载管理页面。请刷新后重试。",
+    "list_load_failed": "知识库列表加载失败，请重试。"
   }
 }

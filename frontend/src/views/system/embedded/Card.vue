@@ -27,7 +27,7 @@ const props = withDefaults(
     logo: '',
   }
 )
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 const { t } = useI18n()
 const emits = defineEmits(['edit', 'del', 'embedded'])
 const appearanceStore = useAppearanceStoreWithOut()

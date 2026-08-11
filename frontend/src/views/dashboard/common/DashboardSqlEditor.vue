@@ -2601,6 +2601,7 @@ function updateBuilderAgentAdviceFromResult(result: any, fallbackMessage = '') {
   builderKnowledgeSnapshot.value = result?.context_snapshot || {
     knowledge_citations: Array.isArray(result?.knowledge_citations) ? result.knowledge_citations : [],
     retrieval_warnings: Array.isArray(result?.retrieval_warnings) ? result.retrieval_warnings : [],
+    retrieval_failure_type: result?.retrieval_failure_type || null,
   }
   const localAdvice = collectLocalBuilderConfigIssues()
   setBuilderAgentAdvice({

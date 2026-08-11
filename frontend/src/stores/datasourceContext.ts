@@ -56,11 +56,6 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       return `datasource.current.${userStore.getUid || 'default'}.${userStore.getTenantId || 'default'}`
     },
 
-    legacyCacheKey() {
-      const userStore = useUserStore()
-      return `analysisAssistant.datasource.${userStore.getUid || 'default'}`
-    },
-
     async loadDatasources(force = false) {
       const userStore = useUserStore()
       const requestTenantId = userStore.getTenantId || 'default'
@@ -83,15 +78,17 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
         }
         this.datasources = Array.isArray(res) ? res : []
         const tenantScopedCachedId = wsCache.get(this.cacheKey())
-        const legacyCachedId = userStore.getTenantId ? undefined : wsCache.get(this.legacyCacheKey())
-        const cachedId = Number(tenantScopedCachedId || legacyCachedId)
+        const cachedId = tenantScopedCachedId === undefined || tenantScopedCachedId === null
+          ? undefined
+          : Number(tenantScopedCachedId)
         const currentDatasource = this.datasourceId
           ? this.datasources.find((item) => Number(item.id) === Number(this.datasourceId))
           : undefined
         const datasource =
           currentDatasource ||
-          this.datasources.find((item) => Number(item.id) === cachedId) ||
-          this.datasources[0]
+          (cachedId === undefined
+            ? undefined
+            : this.datasources.find((item) => Number(item.id) === cachedId))
         if (datasource) {
           this.setDatasource(
             Number(datasource.id),
@@ -144,7 +141,6 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       this.canManageProject = canManageProject
       if (persist && id) {
         wsCache.set(this.cacheKey(), id)
-        wsCache.delete(this.legacyCacheKey())
       }
     },
 
@@ -191,7 +187,6 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       this.initialized = false
       if (persist) {
         wsCache.delete(this.cacheKey())
-        wsCache.delete(this.legacyCacheKey())
       }
     },
   },

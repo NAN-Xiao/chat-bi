@@ -2108,6 +2108,9 @@
     "mode_upgrading_title": "知識庫升級中",
     "mode_upgrading_description": "知識庫升級完成前暫時不能編輯內容，請稍後重新整理頁面。現有知識仍可繼續使用。",
     "mode_maintenance_title": "知識庫維護中",
-    "mode_maintenance_description": "知識庫正在維護，目前暫時不能編輯內容。請稍後重新整理頁面再試。"
+    "mode_maintenance_description": "知識庫正在維護，目前暫時不能編輯內容。請稍後重新整理頁面再試。",
+    "mode_capabilities_unavailable_title": "知識庫狀態暫不可用",
+    "mode_capabilities_unavailable_description": "無法確認目前的知識庫管理能力，暫不載入管理頁面。請重新整理後再試。",
+    "list_load_failed": "知識庫列表載入失敗，請重試。"
   }
 }

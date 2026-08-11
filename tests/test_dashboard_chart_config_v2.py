@@ -1,8 +1,8 @@
-"""看板日期筛选 V2 配置和迁移期 V1 读取器测试。"""
+"""看板日期筛选 V2 配置和旧结构拒绝测试。"""
 
 from __future__ import annotations
 
-from apps.dashboard.crud.dashboard_date_filter_legacy import (
+from apps.dashboard.crud.dashboard_date_filter import (
     resolve_dashboard_chart_date_filter,
 )
 
@@ -30,7 +30,6 @@ def test_v2_date_filter_is_independent_from_disabled_pivot() -> None:
             },
             "pivot": {"enabled": False},
         },
-        allow_legacy=True,
     )
 
     assert result.status == "v2"
@@ -40,7 +39,7 @@ def test_v2_date_filter_is_independent_from_disabled_pivot() -> None:
     assert result.date_filter.expression["preset"] == "past_7_days"
 
 
-def test_complete_v1_is_deterministically_read_but_not_persisted() -> None:
+def test_complete_v1_requires_explicit_migration() -> None:
     result = resolve_dashboard_chart_date_filter(
         {
             "sql": RANGE_SQL,
@@ -54,18 +53,6 @@ def test_complete_v1_is_deterministically_read_but_not_persisted() -> None:
                 },
             },
         },
-        allow_legacy=True,
-    )
-
-    assert result.status == "legacy"
-    assert result.date_filter is not None
-    assert result.date_filter.parameter_type == "yyyymmdd_number"
-
-
-def test_incomplete_v1_requires_explicit_migration() -> None:
-    result = resolve_dashboard_chart_date_filter(
-        {"sql": RANGE_SQL, "pivot": {"enabled": False}},
-        allow_legacy=True,
     )
 
     assert result.status == "migration_required"
@@ -73,7 +60,17 @@ def test_incomplete_v1_requires_explicit_migration() -> None:
     assert result.date_filter is None
 
 
-def test_v1_reader_rejects_parameter_family_mismatch() -> None:
+def test_incomplete_v1_requires_explicit_migration() -> None:
+    result = resolve_dashboard_chart_date_filter(
+        {"sql": RANGE_SQL, "pivot": {"enabled": False}},
+    )
+
+    assert result.status == "migration_required"
+    assert result.error_type == "dashboard_date_filter_migration_required"
+    assert result.date_filter is None
+
+
+def test_v1_is_not_validated_by_the_runtime_reader() -> None:
     result = resolve_dashboard_chart_date_filter(
         {
             "sql": RANGE_SQL,
@@ -86,24 +83,22 @@ def test_v1_reader_rejects_parameter_family_mismatch() -> None:
                 },
             },
         },
-        allow_legacy=True,
     )
 
-    assert result.status == "invalid"
-    assert result.error_type == "dashboard_date_filter_invalid_template"
+    assert result.status == "migration_required"
+    assert result.error_type == "dashboard_date_filter_migration_required"
 
 
 def test_sql_without_date_tokens_has_no_date_filter_capability() -> None:
     result = resolve_dashboard_chart_date_filter(
         {"configVersion": 2, "sql": "select * from orders", "pivot": {"enabled": False}},
-        allow_legacy=True,
     )
 
     assert result.status == "none"
     assert result.date_filter is None
 
 
-def test_v1_reader_can_be_disabled_without_silent_fallback() -> None:
+def test_v1_reader_is_removed_without_silent_fallback() -> None:
     result = resolve_dashboard_chart_date_filter(
         {
             "sql": RANGE_SQL,
@@ -116,7 +111,6 @@ def test_v1_reader_can_be_disabled_without_silent_fallback() -> None:
                 },
             },
         },
-        allow_legacy=False,
     )
 
     assert result.status == "migration_required"

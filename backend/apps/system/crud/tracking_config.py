@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, or_
+from sqlalchemy import delete
 from sqlmodel import Session, select
 
 from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
@@ -618,14 +618,6 @@ def _datasource_filter(model: Any, datasource_id: int | None):
     return model.datasource_id == int(datasource_id)
 
 
-def _datasource_read_filter(model: Any, datasource_id: int | None, include_legacy: bool):
-    if datasource_id is None:
-        return model.datasource_id.is_(None)
-    if include_legacy:
-        return or_(model.datasource_id == int(datasource_id), model.datasource_id.is_(None))
-    return model.datasource_id == int(datasource_id)
-
-
 def _tracking_scope_statements(
     tenant_id: int,
     datasource_id: int | None,
@@ -654,8 +646,6 @@ def get_tracking_config(
     session: Session,
     tenant_id: int,
     datasource_id: int | None = None,
-    *,
-    include_legacy: bool = True,
 ) -> TenantTrackingConfigDTO:
     """
     是什么：get_tracking_config 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -666,21 +656,16 @@ def get_tracking_config(
         select(TenantTrackingConfigModel)
         .where(
             TenantTrackingConfigModel.tenant_id == int(tenant_id),
-            _datasource_read_filter(TenantTrackingConfigModel, datasource_id, include_legacy),
+            _datasource_filter(TenantTrackingConfigModel, datasource_id),
         )
-        .order_by(TenantTrackingConfigModel.datasource_id.is_(None), TenantTrackingConfigModel.id)
+        .order_by(TenantTrackingConfigModel.id)
     )
     config = session.exec(statement).first()
-    read_legacy = (
-        include_legacy
-        and datasource_id is not None
-        and (config is None or getattr(config, "datasource_id", None) is None)
-    )
     tables = session.exec(
         select(TenantTrackingTableModel)
         .where(
             TenantTrackingTableModel.tenant_id == int(tenant_id),
-            _datasource_read_filter(TenantTrackingTableModel, datasource_id, read_legacy),
+            _datasource_filter(TenantTrackingTableModel, datasource_id),
         )
         .order_by(TenantTrackingTableModel.table_name, TenantTrackingTableModel.id)
     ).all()
@@ -688,7 +673,7 @@ def get_tracking_config(
         select(TenantTrackingFieldModel)
         .where(
             TenantTrackingFieldModel.tenant_id == int(tenant_id),
-            _datasource_read_filter(TenantTrackingFieldModel, datasource_id, read_legacy),
+            _datasource_filter(TenantTrackingFieldModel, datasource_id),
         )
         .order_by(
             TenantTrackingFieldModel.table_name,
@@ -700,7 +685,7 @@ def get_tracking_config(
         select(TenantTrackingEventGroupModel)
         .where(
             TenantTrackingEventGroupModel.tenant_id == int(tenant_id),
-            _datasource_read_filter(TenantTrackingEventGroupModel, datasource_id, read_legacy),
+            _datasource_filter(TenantTrackingEventGroupModel, datasource_id),
         )
         .order_by(
             TenantTrackingEventGroupModel.sort_order,
@@ -712,8 +697,6 @@ def get_tracking_config(
     dto.tables = [_table_dto(row) for row in tables]
     dto.fields = [_field_dto(row) for row in fields]
     dto.event_groups = [_event_group_dto(row) for row in event_groups]
-    if dto.datasource_id is None and datasource_id is not None and (config is None or include_legacy):
-        dto.datasource_id = int(datasource_id)
     return dto
 
 
@@ -881,7 +864,7 @@ def save_tracking_config(
         datasource_id=int(datasource_id) if datasource_id is not None else None,
     )
     session.commit()
-    return get_tracking_config(session, int(tenant_id), datasource_id, include_legacy=False)
+    return get_tracking_config(session, int(tenant_id), datasource_id)
 
 
 def _format_json_for_prompt(value: Any) -> str:
@@ -1275,7 +1258,6 @@ def find_tracking_prompt_context(
     tenant_id: int | None,
     datasource_id: int | None = None,
     *,
-    include_legacy: bool = False,
     datasource_type: str | None = None,
     question: str | None = None,
     data_skill_text: str | None = None,
@@ -1287,7 +1269,7 @@ def find_tracking_prompt_context(
     """
     if tenant_id is None:
         return "", []
-    config = get_tracking_config(session, int(tenant_id), datasource_id, include_legacy=include_legacy)
+    config = get_tracking_config(session, int(tenant_id), datasource_id)
     validation_warnings: list[str] = []
     if datasource_id is not None:
         physical_schema = datasource_physical_schema(session, int(datasource_id))

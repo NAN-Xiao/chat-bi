@@ -1346,7 +1346,7 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
     assert result["allowed_tables"] == ["event"]
     assert result["event_scope"]["status"] == "active"
     assert result["event_scope"]["default_event_table"] == "event"
-    assert tracking_calls == [{"include_legacy": False}]
+    assert tracking_calls == [{}]
 
 
 def test_timed_graph_node_logs_sync_node_elapsed(monkeypatch: pytest.MonkeyPatch) -> None:

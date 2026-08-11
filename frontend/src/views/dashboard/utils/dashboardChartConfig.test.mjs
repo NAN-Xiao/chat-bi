@@ -25,8 +25,6 @@ const v2 = normalizeDashboardChartConfig({
   pivot: {
     enabled: true,
     time_field: 'stat_date',
-    date_parameter_type: 'date',
-    date_expression: expression,
   },
 })
 assert.equal(v2.configVersion, 2)
@@ -60,45 +58,6 @@ assert.deepEqual(pivotDisabled.dateFilter, {
   expression,
 })
 
-const legacy = normalizeDashboardChartConfig({
-  sql: tokenSql,
-  pivot: {
-    enabled: true,
-    time_field: 'stat_date',
-    date_parameter_type: 'date',
-    date_expression: expression,
-  },
-})
-assert.equal(legacy.configVersion, 2)
-assert.deepEqual(legacy.dateFilter, {
-  enabled: true,
-  parameterType: 'date',
-  expression,
-})
-assert.deepEqual(legacy.pivot, {
-  enabled: true,
-  time_field: 'stat_date',
-})
-
-const legacyPivotDisabled = normalizeDashboardChartConfig({
-  sql: tokenSql,
-  pivot: {
-    enabled: false,
-    time_field: 'stat_date',
-    date_parameter_type: 'date',
-    date_expression: expression,
-  },
-})
-assert.deepEqual(legacyPivotDisabled.dateFilter, {
-  enabled: true,
-  parameterType: 'date',
-  expression,
-})
-assert.deepEqual(legacyPivotDisabled.pivot, {
-  enabled: false,
-  time_field: 'stat_date',
-})
-
 const endOnly = normalizeDashboardChartConfig({
   sql: endOnlySql,
   configVersion: 2,
@@ -127,7 +86,12 @@ for (const pivot of [
   { enabled: true, date_parameter_type: 'timestamp', date_expression: expression },
 ]) {
   assert.throws(
-    () => normalizeDashboardChartConfig({ sql: tokenSql, pivot }),
+    () => normalizeDashboardChartConfig({ sql: tokenSql, configVersion: 2, pivot }),
     (error) => error?.message === DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED
   )
 }
+
+assert.throws(
+  () => normalizeDashboardChartConfig({ sql: tokenSql, configVersion: 1, pivot: { enabled: true } }),
+  (error) => error?.message === DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED
+)

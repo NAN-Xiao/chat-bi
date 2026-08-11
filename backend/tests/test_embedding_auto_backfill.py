@@ -307,7 +307,7 @@ def test_ai_table_schema_uses_workspace_dictionary_without_cached_field_fallback
     assert tables == ["user"]
     assert tracking_config_calls
     assert tracking_config_calls[0][0][2] == 2
-    assert tracking_config_calls[0][1]["include_legacy"] is False
+    assert tracking_config_calls[0][1] == {}
     assert "workspace data dictionary" in schema
     assert "(pay.pay2:number" in schema
     assert "expression=NULLIF((\"user\".\"pay\"::jsonb ->> 'pay2'), '')::numeric" in schema

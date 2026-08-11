@@ -62,19 +62,6 @@ function normalizeDateFilter(value: unknown, sql: string): DashboardDateFilterCo
   }
 }
 
-function legacyDateFilter(pivot: Record<string, unknown>, sql: string): DashboardDateFilterConfig {
-  const parameterType = pivot.date_parameter_type
-  const expression = pivot.date_expression
-  if (!isParameterType(parameterType) || !isRecord(expression) || !hasMatchingTokens(sql, parameterType)) {
-    return migrationRequired()
-  }
-  return {
-    enabled: true,
-    parameterType,
-    expression: { ...expression },
-  }
-}
-
 export function buildDashboardDateFilterConfig(
   sql: string,
   parameterType: unknown,
@@ -87,19 +74,18 @@ export function buildDashboardDateFilterConfig(
 
 export function normalizeDashboardPivot(pivot: unknown): Record<string, unknown> {
   if (!isRecord(pivot)) return { enabled: false }
-  const {
-    date_parameter_type: _dateParameterType,
-    date_expression: _dateExpression,
-    ...nextPivot
-  } = pivot
-  void _dateParameterType
-  void _dateExpression
-  return nextPivot
+  if ('date_parameter_type' in pivot || 'date_expression' in pivot) {
+    return migrationRequired()
+  }
+  return { ...pivot }
 }
 
 export function normalizeDashboardChartConfig(input: Record<string, any>): DashboardChartConfig {
   const sql = String(input.sql || '')
   const pivot = isRecord(input.pivot) ? input.pivot : {}
+  if (input.configVersion !== 2) {
+    return migrationRequired()
+  }
   const next: DashboardChartConfig = {
     ...input,
     configVersion: 2,
@@ -111,11 +97,10 @@ export function normalizeDashboardChartConfig(input: Record<string, any>): Dashb
     return next
   }
 
-  if (input.configVersion === 2 || input.dateFilter !== undefined) {
+  if (input.dateFilter !== undefined) {
     next.dateFilter = normalizeDateFilter(input.dateFilter, sql)
     return next
   }
 
-  next.dateFilter = legacyDateFilter(pivot, sql)
-  return next
+  return migrationRequired()
 }

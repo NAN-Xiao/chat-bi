@@ -27,7 +27,7 @@ defineProps({
 // const emits = defineEmits(['btnSelectChange'])
 
 const { t } = useI18n()
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 
 const keywords = ref('')
 const activeStep = ref(0)

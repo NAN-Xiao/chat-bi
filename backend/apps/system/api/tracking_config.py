@@ -159,7 +159,7 @@ async def current_tracking_config(
     config = None
     try:
         _physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
-        config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+        config = get_tracking_config(session, int(current_tenant.id), datasource_id)
         status = "success"
         return config
     finally:
@@ -197,7 +197,7 @@ async def current_tracking_event_catalog(
     _physical_schema, _datasource_type, resolved_datasource_id = _workspace_physical_schema(session, tenant_id)
     if datasource_id is not None and int(resolved_datasource_id or 0) != int(datasource_id):
         raise HTTPException(status_code=409, detail="数据源绑定关系已变化，请刷新后重试。")
-    config = get_tracking_config(session, tenant_id, resolved_datasource_id, include_legacy=False)
+    config = get_tracking_config(session, tenant_id, resolved_datasource_id)
     return build_tracking_event_catalog(config)
 
 
@@ -249,7 +249,7 @@ async def download_tracking_config_template(
     """
     _require_workspace_admin(current_user, current_tenant)
     physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
-    config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+    config = get_tracking_config(session, int(current_tenant.id), datasource_id)
     result = await asyncio.to_thread(
         tracking_config_excel,
         config,
@@ -277,7 +277,7 @@ async def export_current_tracking_config(
     """
     _require_workspace_admin(current_user, current_tenant)
     physical_schema, _datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
-    config = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+    config = get_tracking_config(session, int(current_tenant.id), datasource_id)
     result = await asyncio.to_thread(
         tracking_config_excel,
         config,
@@ -308,7 +308,7 @@ async def import_tracking_config_excel(
     AppFileUtils.validate_extension(file.filename, {".xlsx", ".xls"})
     content = await AppFileUtils.read_upload_limited(file)
     physical_schema, datasource_type, datasource_id = _workspace_physical_schema(session, int(current_tenant.id))
-    existing = get_tracking_config(session, int(current_tenant.id), datasource_id, include_legacy=False)
+    existing = get_tracking_config(session, int(current_tenant.id), datasource_id)
     try:
         parsed = await asyncio.to_thread(
             parse_tracking_excel,

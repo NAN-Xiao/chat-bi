@@ -38,8 +38,8 @@ from apps.dashboard.models.dashboard_model import (
 from apps.dashboard.crud.dashboard_date_filter import (
     has_dashboard_date_filter_parameters,
     prepare_dashboard_date_filter,
+    resolve_dashboard_chart_date_filter,
 )
-from apps.dashboard.crud.dashboard_date_filter_legacy import resolve_dashboard_chart_date_filter
 from apps.roi_dashboard.service import list_roi_workspace_config_rows
 from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_external_mcp_id_for_tenant
 from apps.datasource.crud.permission import (
@@ -1108,8 +1108,8 @@ def validate_dashboard_report_target(
     if not _can_view_dashboard_resource(session, current_user, record):
         raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
 
-    # 保留前端入参兼容性，实际权限仅以服务端保存的图表执行数据源为准。
-    _ = datasource_id
+    if datasource_id is None:
+        raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
 
     requested_component_ids = {
         str(component_id).strip()
@@ -1123,13 +1123,14 @@ def validate_dashboard_report_target(
         raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
 
     canvas_view_info = _parse_canvas_view_info(record.canvas_view_info)
-    fallback_datasource = _effective_dashboard_datasource(record)
     for component_id in requested_component_ids:
         view_info = canvas_view_info.get(component_id)
         if not isinstance(view_info, dict):
             raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
         try:
-            chart_datasource = _chart_datasource(record, view_info, fallback_datasource)
+            chart_datasource = _chart_datasource(view_info)
+            if chart_datasource != int(datasource_id):
+                raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
             resolve_chart_execution_datasource(session, current_user, chart_datasource)
         except HTTPException as exc:
             if exc.status_code in {403, 404}:
@@ -1644,15 +1645,13 @@ def _dashboard_tree_nodes(
     return nodes
 
 
-def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: int | None = None) -> int | None:
+def _chart_datasource(item: dict) -> int | None:
     """
     是什么：_chart_datasource 是一个可以复用的小步骤，负责仪表盘相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     item_datasource = _normalize_datasource_id(item.get('datasource'))
-    if item_datasource is None:
-        item_datasource = fallback_datasource if fallback_datasource is not None else record.datasource
     if item_datasource is not None:
         item['datasource'] = item_datasource
     return item_datasource
@@ -1993,10 +1992,7 @@ def _prepare_dashboard_chart_item_query(
             date_filter=None,
             date_filter_capability={"status": "unsupported", "reason": "non_sql_chart"},
         )
-    resolution = resolve_dashboard_chart_date_filter(
-        item,
-        allow_legacy=bool(settings.DASHBOARD_DATE_FILTER_V1_READ_ENABLED),
-    )
+    resolution = resolve_dashboard_chart_date_filter(item)
     if resolution.error_type:
         return PreparedDashboardChartQuery(
             source_sql=str(item.get("sql") or ""),
@@ -3050,11 +3046,10 @@ def _materialize_dashboard_template_canvas_view_info(
     是什么：把工作空间看板复制为平台模板时，固化一份源看板图表结果快照。
     """
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
-    effective_datasource = _effective_dashboard_datasource(source)
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
-        item_datasource = _chart_datasource(source, item, effective_datasource)
+        item_datasource = _chart_datasource(item)
         sql = item.get("sql")
         if sql is not None and str(sql).strip() and item_datasource is not None:
             permission_failure, _permissions_apply = _dashboard_chart_permission_audit(
@@ -4011,7 +4006,7 @@ def _dashboard_payload(
             _mark_dashboard_chart_snapshot_ready(item)
             continue
         else:
-            item_datasource = _chart_datasource(record, item, effective_datasource)
+            item_datasource = _chart_datasource(item)
         if item.get('sql') is not None:
             try:
                 item_datasource = resolve_chart_execution_datasource(

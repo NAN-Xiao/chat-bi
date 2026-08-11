@@ -1499,25 +1499,6 @@ def _tenant_context_from_membership(
     )
 
 
-def _fallback_user_tenant_context(session: Session, user) -> TenantContext | None:
-    """
-    是什么：_fallback_user_tenant_context 是一个可以复用的小步骤，负责系统管理相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    memberships = list_user_tenant_memberships(session, int(user.id))
-    if not memberships:
-        return None
-
-    non_sample_memberships = [
-        (tenant, membership)
-        for tenant, membership in memberships
-        if tenant.name != SAMPLE_TENANT_NAME
-    ]
-    tenant, membership = (non_sample_memberships or memberships)[0]
-    return _tenant_context_from_membership(session, tenant, membership)
-
-
 def resolve_current_tenant(
     session: Session,
     user,
@@ -1535,15 +1516,9 @@ def resolve_current_tenant(
 
     ensure_default_tenant(session)
     user_is_platform_admin = _user_is_platform_admin(user)
-    if requested_tenant_id == DEFAULT_TENANT_ID and not user_is_platform_admin:
-        requested_tenant_id = None
-    if requested_tenant_id:
+    if requested_tenant_id is not None:
         tenant = session.get(TenantModel, requested_tenant_id)
         if not tenant or getattr(tenant, "status", 1) == TENANT_STATUS_DELETED:
-            if not user_is_platform_admin:
-                fallback = _fallback_user_tenant_context(session, user)
-                if fallback is not None:
-                    return fallback
             raise PermissionError("Tenant is disabled or does not exist")
         if user_is_platform_admin and platform_workspace_delegate:
             ensure_tenant_public_id(session, tenant)
@@ -1554,9 +1529,6 @@ def resolve_current_tenant(
                 role=TENANT_ROLE_OWNER,
             )
         if not user_is_platform_admin and int(getattr(tenant, "status", 0) or 0) != 1:
-            fallback = _fallback_user_tenant_context(session, user)
-            if fallback is not None:
-                return fallback
             raise PermissionError("Tenant is disabled or does not exist")
         if user_is_platform_admin or user_belongs_to_tenant(session, int(user.id), requested_tenant_id):
             membership = session.exec(
@@ -1573,9 +1545,6 @@ def resolve_current_tenant(
                 name=tenant.name,
                 role=normalize_tenant_role(membership.role if membership else TENANT_ROLE_OWNER),
             )
-        fallback = _fallback_user_tenant_context(session, user)
-        if fallback is not None:
-            return fallback
         raise PermissionError("User does not belong to tenant")
 
     if user_is_platform_admin and not platform_workspace_delegate:
@@ -1587,19 +1556,7 @@ def resolve_current_tenant(
             role=TENANT_ROLE_OWNER,
         )
 
-    fallback = _fallback_user_tenant_context(session, user)
-    if fallback is None:
-        if user_is_platform_admin:
-            tenant = ensure_default_tenant(session)
-            return TenantContext(
-                id=int(tenant.id),
-                public_id=getattr(tenant, "public_id", None),
-                name=tenant.name,
-                role=TENANT_ROLE_OWNER,
-            )
-        return None
-
-    return fallback
+    return None
 
 
 def attach_tenant_context(user, tenant: TenantContext | None, *, platform_workspace_delegate: bool = False):

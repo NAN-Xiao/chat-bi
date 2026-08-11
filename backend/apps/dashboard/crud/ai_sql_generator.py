@@ -1725,7 +1725,6 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
         session,
         tenant_id,
         int(request.datasource),
-        include_legacy=False,
     )
     event_scope = _dashboard_event_scope(
         workspace_tracking_config,
@@ -2027,8 +2026,11 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
             {
                 "chunk_id": str(item.chunk_id),
                 "knowledge_base_id": str(item.knowledge_base_id),
+                "knowledge_base_name": getattr(item, "knowledge_base_name", None),
                 "version_id": str(item.version_id),
+                "version_number": getattr(item, "version_number", None),
                 "section_path": item.section_path,
+                "source_file_name": getattr(item, "source_file_name", None),
                 "score": round(float(item.score), 6),
                 "visibility_scope": item.visibility_scope,
             }
@@ -2036,6 +2038,7 @@ def _node_finalize_response(state: DashboardManualChartGraphState) -> dict[str, 
         ]
         response.knowledge_version_hash = semantic.knowledge_version_hash
         response.retrieval_warnings = list(semantic.warnings)
+        response.retrieval_failure_type = getattr(semantic, "retrieval_failure_type", None)
         request = state.get("request")
         datasource = state.get("datasource")
         response.context_snapshot = build_agent_context_snapshot(

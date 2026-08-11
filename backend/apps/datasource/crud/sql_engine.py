@@ -110,12 +110,16 @@ class BusinessSqlContext:
             metadata["schema_hash"] = self.semantic.permission_snapshot.schema_hash
             metadata["selected_skills"] = list(semantic_metadata["selected_skills"])
             metadata["knowledge_version_hash"] = self.semantic.knowledge_version_hash
+            metadata["retrieval_failure_type"] = self.semantic.retrieval_failure_type
             metadata["knowledge_citations"] = [
                 {
                     "chunk_id": str(item.chunk_id),
                     "knowledge_base_id": str(item.knowledge_base_id),
+                    "knowledge_base_name": item.knowledge_base_name,
                     "version_id": str(item.version_id),
+                    "version_number": item.version_number,
                     "section_path": item.section_path,
+                    "source_file_name": item.source_file_name,
                 }
                 for item in self.semantic.knowledge_citations
             ]

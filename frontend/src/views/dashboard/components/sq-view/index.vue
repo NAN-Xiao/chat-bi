@@ -438,15 +438,12 @@ const dateExpressionPickerEnabled = computed(
 const configuredDashboardDateExpression = computed(() =>
   normalizeDashboardDateExpression(
     props.viewInfo?.dateFilter?.expression
-      ?? props.viewInfo?.pivot?.date_expression
   )
   || (hasSqlDashboardSource.value ? defaultDashboardDateExpression() : null)
 )
 const configuredDashboardDateExpressionKey = computed(() =>
   JSON.stringify(
-    props.viewInfo?.dateFilter?.expression
-      ?? props.viewInfo?.pivot?.date_expression
-      ?? null
+    props.viewInfo?.dateFilter?.expression ?? null
   )
 )
 const dashboardDateExpression = ref<DashboardDateExpression | null>(
@@ -1323,7 +1320,6 @@ function getPivotPayload() {
     range: pivotRangeEnabled.value ? pivotState.range : 'source',
     custom_start: pivotRangeEnabled.value ? pivotState.customStart : '',
     custom_end: pivotRangeEnabled.value ? pivotState.customEnd : '',
-    date_parameter_type: props.viewInfo?.pivot?.date_parameter_type,
     aggregation: defaultPivotAggregation(),
   }
 }

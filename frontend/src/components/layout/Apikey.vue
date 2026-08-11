@@ -50,7 +50,7 @@ const statusHandler = (row: any) => {
     loadGridData()
   })
 }
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 
 const copyCode = (row: any, key: any = 'secret_key') => {
   copy(row[key])

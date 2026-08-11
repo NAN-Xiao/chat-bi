@@ -31,8 +31,8 @@ assert.match(
 assert.match(source, /<DashboardDateExpressionPicker/)
 assert.match(
   source,
-  /normalizeDashboardDateExpression\([\s\S]*props\.viewInfo\?\.dateFilter\?\.expression[\s\S]*props\.viewInfo\?\.pivot\?\.date_expression[\s\S]*\|\|\s*\(hasSqlDashboardSource\.value\s*\?\s*defaultDashboardDateExpression\(\)/,
-  'SQL 图表缺少历史表达式时应使用共享的默认过去七天'
+  /normalizeDashboardDateExpression\([\s\S]*props\.viewInfo\?\.dateFilter\?\.expression[\s\S]*\|\|\s*\(hasSqlDashboardSource\.value\s*\?\s*defaultDashboardDateExpression\(\)/,
+  'SQL 图表缺少当前表达式时应使用共享的默认过去七天'
 )
 assert.doesNotMatch(source, /preset:\s*['"]past_30_days['"]/, '展示层不得保留过去 30 天默认值')
 assert.match(source, /<DashboardDateExpressionPicker[\s\S]*variant="roi"/)
@@ -78,7 +78,7 @@ assert.equal(
 )
 assert.match(source, /pivotOverride\?:/)
 assert.match(source, /buildDashboardDateFilterRequestForView/)
-assert.match(source, /date_parameter_type:\s*props\.viewInfo\?\.pivot\?\.date_parameter_type/)
+assert.doesNotMatch(source, /date_parameter_type:\s*props\.viewInfo\?\.pivot\?\.date_parameter_type/)
 assert.match(source, /v-if="pivotRangeEnabled\s*&&\s*!showDashboardDateFilter"/)
 assert.doesNotMatch(source, /dateFilterCapability\.value\?\.defaultStart,[\s\S]{0,180}resetDashboardDateFilterState/)
 assert.match(source, /const dateFilterState = ref\(/)

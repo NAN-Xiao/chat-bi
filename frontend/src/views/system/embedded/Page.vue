@@ -299,7 +299,7 @@ const handleCurrentChange = (val: number) => {
   pageInfo.currentPage = val
   search()
 }
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 
 const copyCode = (row: any, key: any = 'app_secret') => {
   copy(row[key])

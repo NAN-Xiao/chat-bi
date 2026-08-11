@@ -8,6 +8,11 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from apps.datasource.crud.sql_permission import extract_physical_tables, parse_sql_statements
+from apps.dashboard.models.dashboard_chart_config import (
+    DashboardChartConfigResolution,
+    DashboardDateFilterConfig,
+    DashboardDateFilterRequest,
+)
 from common.core.config import settings
 
 
@@ -57,6 +62,96 @@ class DashboardDateFilterPreparation:
     end: str | None
     physical_tables: set[str]
     capability: dict[str, Any]
+
+
+MIGRATION_REQUIRED_ERROR = "dashboard_date_filter_migration_required"
+INVALID_TEMPLATE_ERROR = "dashboard_date_filter_invalid_template"
+
+
+def _date_filter_resolution(
+    status: str,
+    date_filter: DashboardDateFilterRequest | None = None,
+    *,
+    error_type: str = "",
+    reason: str = "",
+) -> DashboardChartConfigResolution:
+    return DashboardChartConfigResolution(
+        status=status,  # type: ignore[arg-type]
+        date_filter=date_filter,
+        error_type=error_type,
+        reason=reason,
+    )
+
+
+def _valid_date_expression(expression: Any) -> bool:
+    try:
+        resolve_dashboard_date_expression(expression, today=date(2026, 1, 1))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _request_from_current_date_filter(sql: str, raw_filter: Any) -> DashboardChartConfigResolution:
+    try:
+        config = DashboardDateFilterConfig.model_validate(raw_filter)
+    except Exception:
+        return _date_filter_resolution(
+            "invalid",
+            error_type=INVALID_TEMPLATE_ERROR,
+            reason="invalid_v2_date_filter",
+        )
+    if config.enabled is not True or not _valid_date_expression(config.expression):
+        return _date_filter_resolution(
+            "invalid",
+            error_type=INVALID_TEMPLATE_ERROR,
+            reason="disabled_or_invalid_v2_date_filter",
+        )
+    parameter_error = validate_dashboard_date_parameter_sql(sql, config.parameter_type)
+    if parameter_error:
+        return _date_filter_resolution(
+            "invalid",
+            error_type=INVALID_TEMPLATE_ERROR,
+            reason=parameter_error,
+        )
+    return _date_filter_resolution(
+        "v2",
+        DashboardDateFilterRequest(
+            parameter_type=config.parameter_type,
+            expression=config.expression,
+        ),
+    )
+
+
+def resolve_dashboard_chart_date_filter(
+    view_info: dict[str, Any] | None,
+) -> DashboardChartConfigResolution:
+    """解析当前 V2 图表日期配置；旧结构必须先完成离线迁移。"""
+    if not isinstance(view_info, dict):
+        return _date_filter_resolution("none")
+    sql = str(view_info.get("sql") or "")
+    has_tokens = has_dashboard_date_filter_parameters(sql)
+    raw_filter = view_info.get("dateFilter")
+    if view_info.get("configVersion") == 2:
+        if raw_filter is None:
+            return _date_filter_resolution(
+                "migration_required" if has_tokens else "none",
+                error_type=MIGRATION_REQUIRED_ERROR if has_tokens else "",
+                reason="missing_v2_date_filter" if has_tokens else "",
+            )
+        return _request_from_current_date_filter(sql, raw_filter)
+    if raw_filter is not None:
+        return _date_filter_resolution(
+            "invalid",
+            error_type=INVALID_TEMPLATE_ERROR,
+            reason="date_filter_requires_config_version_2",
+        )
+    if has_tokens:
+        return _date_filter_resolution(
+            "migration_required",
+            error_type=MIGRATION_REQUIRED_ERROR,
+            reason="legacy_date_filter_requires_migration",
+        )
+    return _date_filter_resolution("none")
 
 
 def default_dashboard_date_range(*, today: date | None = None) -> tuple[date, date]:
@@ -348,19 +443,17 @@ def prepare_dashboard_date_filter(
             capability={"status": "realtime", "reason": "realtime_table"},
         )
 
-    # 旧调用方仍可直接传入 pivot 日期配置；服务层会先将画布 V1/V2 配置解析为 date_filter。
-    uses_legacy_pivot = date_filter is None
-    if uses_legacy_pivot and _pivot_value(pivot, "range_enabled", True) is False:
+    if active_tokens and date_filter is None:
+        return _unconfigured(source_sql, physical_tables, "missing_date_filter")
+
+    if date_filter is None and _pivot_value(pivot, "range_enabled", True) is False:
         return _unconfigured(source_sql, physical_tables, "range_disabled")
 
     if require_time_field and not str(_pivot_value(pivot, "time_field", "") or "").strip():
         return _unconfigured(source_sql, physical_tables, "missing_time_field")
 
     parameter_type = str(
-        _date_filter_value(date_filter, "parameter_type", "")
-        if date_filter is not None
-        else _pivot_value(pivot, "date_parameter_type", "")
-        or ""
+        _date_filter_value(date_filter, "parameter_type", "") if date_filter is not None else ""
     ).strip()
     parameter_error = validate_dashboard_date_parameter_sql(
         source_sql,
@@ -383,11 +476,7 @@ def prepare_dashboard_date_filter(
         and str(custom_start or "").strip()
         and str(custom_end or "").strip()
     )
-    expression = None if has_custom_override else (
-        _date_filter_value(date_filter, "expression", None)
-        if date_filter is not None
-        else _pivot_value(pivot, "date_expression", None)
-    )
+    expression = None if has_custom_override else _date_filter_value(date_filter, "expression", None)
     try:
         if has_custom_override:
             start, end = _parse_date_value(custom_start), _parse_date_value(custom_end)

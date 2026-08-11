@@ -63,7 +63,7 @@ const props = withDefaults(
   }
 )
 
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 const loading = ref<boolean>(false)
 const { t } = useI18n()
 const addViewRef = ref(null)

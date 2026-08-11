@@ -2108,6 +2108,9 @@
     "mode_upgrading_title": "Knowledge base upgrade in progress",
     "mode_upgrading_description": "Editing is temporarily unavailable while the knowledge base is upgraded. Refresh later; existing knowledge remains available.",
     "mode_maintenance_title": "Knowledge base maintenance",
-    "mode_maintenance_description": "Editing is temporarily unavailable while the knowledge base is being maintained. Refresh and try again later."
+    "mode_maintenance_description": "Editing is temporarily unavailable while the knowledge base is being maintained. Refresh and try again later.",
+    "mode_capabilities_unavailable_title": "Knowledge base status unavailable",
+    "mode_capabilities_unavailable_description": "The current knowledge base management capability could not be confirmed. Refresh and try again.",
+    "list_load_failed": "The knowledge base list could not be loaded. Please retry."
   }
 }

@@ -794,7 +794,7 @@ import { useClipboard } from '@vueuse/core'
 import { useUserStore } from '@/stores/user'
 import { idsEqual, normalizeIdString, toIdStringList, uniqueIdStrings } from '@/utils/id'
 
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 const userStore = useUserStore()
 
 const { t } = useI18n()

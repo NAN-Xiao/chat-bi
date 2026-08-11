@@ -105,19 +105,6 @@ export function cloneDashboardDateExpression(
   return JSON.parse(JSON.stringify(value)) as DashboardDateExpression
 }
 
-export function buildDashboardDateExpressionPivot(
-  pivot: Record<string, unknown> | null | undefined,
-  expression: DashboardDateExpression
-): Record<string, unknown> {
-  return {
-    ...(pivot && typeof pivot === 'object' ? pivot : {}),
-    range: 'source',
-    custom_start: '',
-    custom_end: '',
-    date_expression: cloneDashboardDateExpression(expression),
-  }
-}
-
 export function normalizeDashboardDateExpression(
   value: unknown
 ): DashboardDateExpression | null {

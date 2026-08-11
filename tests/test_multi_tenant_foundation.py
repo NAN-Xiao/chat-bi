@@ -442,7 +442,7 @@ def test_sample_workspace_is_created_once():
         assert second.id == first.id
 
 
-def test_new_regular_user_defaults_to_sample_workspace_membership():
+def test_new_regular_user_requires_explicit_sample_workspace_context():
     engine = _engine()
     with Session(engine) as session:
         membership = ensure_user_sample_workspace_membership(session, _user(100))
@@ -451,9 +451,7 @@ def test_new_regular_user_defaults_to_sample_workspace_membership():
         assert membership is not None
         assert membership.role == TENANT_ROLE_MEMBER
         assert membership.is_primary is True
-        assert tenant is not None
-        assert tenant.name == SAMPLE_TENANT_NAME
-        assert tenant.role == TENANT_ROLE_MEMBER
+        assert tenant is None
 
 
 def test_sample_workspace_role_follows_saas_role():
@@ -466,46 +464,41 @@ def test_sample_workspace_role_follows_saas_role():
         assert admin_membership.role == "admin"
 
 
-def test_user_without_membership_has_no_current_tenant():
+def test_user_without_requested_tenant_has_no_current_tenant():
     engine = _engine()
     with Session(engine) as session:
         ensure_user_sample_workspace_membership(session, _user(100))
         tenant = resolve_current_tenant(session, _user(100))
 
-        assert tenant is not None
-        assert tenant.name == SAMPLE_TENANT_NAME
+        assert tenant is None
         assert not user_belongs_to_tenant(session, 100, DEFAULT_TENANT_ID)
 
 
-def test_regular_user_default_tenant_header_does_not_create_membership():
+def test_regular_user_default_tenant_header_requires_membership():
     engine = _engine()
     with Session(engine) as session:
         ensure_user_sample_workspace_membership(session, _user(100))
-        tenant = resolve_current_tenant(
-            session,
-            _user(100),
-            requested_tenant_id=DEFAULT_TENANT_ID,
-        )
-
-        assert tenant is not None
-        assert tenant.name == SAMPLE_TENANT_NAME
+        with pytest.raises(PermissionError, match="does not belong to tenant"):
+            resolve_current_tenant(
+                session,
+                _user(100),
+                requested_tenant_id=DEFAULT_TENANT_ID,
+            )
         assert not user_belongs_to_tenant(session, 100, DEFAULT_TENANT_ID)
 
 
-def test_user_falls_back_from_unavailable_requested_tenant_to_sample_workspace():
+def test_user_cannot_fall_back_from_unavailable_requested_tenant():
     engine = _engine()
     with Session(engine) as session:
         session.add(TenantModel(id=200, name="Tenant B", status=0, plan="default"))
         session.flush()
         ensure_user_sample_workspace_membership(session, _user(100))
 
-        tenant = resolve_current_tenant(session, _user(100), requested_tenant_id=200)
-
-        assert tenant is not None
-        assert tenant.name == SAMPLE_TENANT_NAME
+        with pytest.raises(PermissionError, match="disabled or does not exist"):
+            resolve_current_tenant(session, _user(100), requested_tenant_id=200)
 
 
-def test_user_falls_back_from_unavailable_requested_tenant_to_other_workspace_first():
+def test_user_cannot_fall_back_from_unavailable_requested_tenant_to_other_workspace():
     engine = _engine()
     with Session(engine) as session:
         session.add(TenantModel(id=200, name="Tenant B", status=0, plan="default"))
@@ -515,13 +508,11 @@ def test_user_falls_back_from_unavailable_requested_tenant_to_other_workspace_fi
         assign_user_to_tenant(session, 100, tenant_id=200, role=TENANT_ROLE_ADMIN, is_primary=True)
         assign_user_to_tenant(session, 100, tenant_id=300, role=TENANT_ROLE_MEMBER, is_primary=False)
 
-        tenant = resolve_current_tenant(session, _user(100), requested_tenant_id=200)
-
-        assert tenant.id == 300
-        assert tenant.role == TENANT_ROLE_MEMBER
+        with pytest.raises(PermissionError, match="disabled or does not exist"):
+            resolve_current_tenant(session, _user(100), requested_tenant_id=200)
 
 
-def test_user_falls_back_when_requested_tenant_membership_was_removed():
+def test_user_cannot_fall_back_when_requested_tenant_membership_is_missing():
     engine = _engine()
     with Session(engine) as session:
         session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
@@ -529,10 +520,8 @@ def test_user_falls_back_when_requested_tenant_membership_was_removed():
         session.flush()
         assign_user_to_tenant(session, 100, tenant_id=300, role=TENANT_ROLE_ADMIN, is_primary=True)
 
-        tenant = resolve_current_tenant(session, _user(100), requested_tenant_id=200)
-
-        assert tenant.id == 300
-        assert tenant.role == TENANT_ROLE_ADMIN
+        with pytest.raises(PermissionError, match="does not belong to tenant"):
+            resolve_current_tenant(session, _user(100), requested_tenant_id=200)
 
 
 def test_user_can_resolve_requested_tenant_when_member():

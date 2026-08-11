@@ -1144,7 +1144,7 @@ def _dictionary_schema_from_workspace(
     if tenant_id is None or ds is None or not has_datasource_access(session, current_user, ds.id):
         return "", [], False
 
-    tracking_config = get_tracking_config(session, int(tenant_id), int(ds.id), include_legacy=False)
+    tracking_config = get_tracking_config(session, int(tenant_id), int(ds.id))
     tracking_configured = bool(
         getattr(tracking_config, "tables", None)
         or getattr(tracking_config, "fields", None)

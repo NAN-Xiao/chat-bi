@@ -42,7 +42,7 @@ interface AgentForm {
 
 const drawerMainRef = ref()
 const { t } = useI18n()
-const { copy } = useClipboard({ legacy: true })
+const { copy } = useClipboard()
 const userStore = useUserStore()
 const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
