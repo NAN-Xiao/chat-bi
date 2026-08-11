@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"验证前端生产构建、Blob 下载生命周期和窄屏操作区质量门禁。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"验证模板数据与下载逻辑集中维护且无重复实现。"}

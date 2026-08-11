@@ -27,6 +27,7 @@ npm run test:permission-json-fields
 
 - After a user-visible change, restart or verify the frontend process serving the page and confirm `http://127.0.0.1:5173/` returns HTTP 200.
 - Exercise the changed workflow through the browser, including the real click path for downloads, navigation, authentication, or API-backed actions.
+- For Blob-backed browser downloads, remove the temporary anchor after its click but defer `URL.revokeObjectURL(...)` until a later task. Revoking the URL in the click call stack can race the browser's download handoff.
 - Check representative desktop and mobile viewports for every affected primary page.
 - Confirm page-level horizontal overflow is absent:
 

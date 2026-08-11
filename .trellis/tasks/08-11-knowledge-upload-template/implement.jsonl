@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"遵循前端生产构建、真实下载路径和窄屏布局质量门禁。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"将四类模板数据和下载逻辑集中到独立模块，避免页面内重复实现。"}
