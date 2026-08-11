@@ -393,19 +393,6 @@
       </el-main>
       <el-footer v-if="showChatFooter" class="chat-footer">
         <div class="input-wrapper" @click="clickInput">
-          <div v-if="computedMessages.length > 0 && currentChat.datasource" class="quick_question">
-            <quick-question
-              ref="quickQuestionRef"
-              :datasource-id="currentChat.datasource"
-              :current-chat="currentChat"
-              :record-id="computedMessages[0].record?.id"
-              :disabled="chatInteractionDisabled"
-              :first-chat="true"
-              @quick-ask="quickAsk"
-              @stop="onChatStop"
-              @loading-over="loadingOver"
-            ></quick-question>
-          </div>
           <el-input
             ref="inputRef"
             v-model="inputMessage"
@@ -420,56 +407,74 @@
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
 
-          <AgentSelector
-            v-if="isCompletePage"
-            v-model="selectedCustomPromptId"
-            class="agent-select"
-            :disabled="chatInteractionDisabled"
-            :datasource-id="currentAgentDatasourceId"
-            :datasource-name="currentAgentDatasourceName"
-            target-scope="SMART_QA"
-            create-type="GENERATE_SQL"
-            :custom-prompt-types="['GENERATE_SQL']"
-          />
+          <div class="input-actions">
+            <div v-if="computedMessages.length > 0 && currentChat.datasource" class="quick_question">
+              <quick-question
+                ref="quickQuestionRef"
+                :datasource-id="currentChat.datasource"
+                :current-chat="currentChat"
+                :record-id="computedMessages[0].record?.id"
+                :disabled="chatInteractionDisabled"
+                :first-chat="true"
+                @quick-ask="quickAsk"
+                @stop="onChatStop"
+                @loading-over="loadingOver"
+              ></quick-question>
+            </div>
 
-          <DataSkillSelector
-            v-if="isCompletePage"
-            v-model="selectedDataSkillId"
-            class="skill-select"
-            :disabled="chatInteractionDisabled"
-            :datasource-id="currentAgentDatasourceId"
-            :datasource-name="currentAgentDatasourceName"
-            target-scope="SMART_QA"
-          />
+            <AgentSelector
+              v-if="isCompletePage"
+              v-model="selectedCustomPromptId"
+              class="agent-select"
+              :disabled="chatInteractionDisabled"
+              :datasource-id="currentAgentDatasourceId"
+              :datasource-name="currentAgentDatasourceName"
+              target-scope="SMART_QA"
+              create-type="GENERATE_SQL"
+              :custom-prompt-types="['GENERATE_SQL']"
+            />
 
-          <el-tooltip
-            v-if="hasActiveGeneration"
-            effect="dark"
-            :content="t('permission.stop_replying')"
-            placement="top"
-          >
-            <el-button
-              circle
-              type="primary"
-              class="input-icon stop-icon"
-              :aria-label="t('permission.stop_replying')"
-              @click.stop="stopGenerating"
-            >
-              <span class="stop-square"></span>
-            </el-button>
-          </el-tooltip>
-          <el-button
-            v-else
-            circle
-            type="primary"
-            class="input-icon"
-            :disabled="workspaceContextSwitching || !inputMessage.trim()"
-            @click.stop="($event: any) => sendMessage(undefined, $event)"
-          >
-            <el-icon size="16">
-              <icon_send_filled />
-            </el-icon>
-          </el-button>
+            <DataSkillSelector
+              v-if="isCompletePage"
+              v-model="selectedDataSkillId"
+              class="skill-select"
+              :disabled="chatInteractionDisabled"
+              :datasource-id="currentAgentDatasourceId"
+              :datasource-name="currentAgentDatasourceName"
+              target-scope="SMART_QA"
+            />
+
+            <div v-if="hasActiveGeneration" class="input-submit">
+              <el-tooltip
+                effect="dark"
+                :content="t('permission.stop_replying')"
+                placement="top"
+              >
+                <el-button
+                  circle
+                  type="primary"
+                  class="input-icon stop-icon"
+                  :aria-label="t('permission.stop_replying')"
+                  @click.stop="stopGenerating"
+                >
+                  <span class="stop-square"></span>
+                </el-button>
+              </el-tooltip>
+            </div>
+            <div v-else class="input-submit">
+              <el-button
+                circle
+                type="primary"
+                class="input-icon"
+                :disabled="workspaceContextSwitching || !inputMessage.trim()"
+                @click.stop="($event: any) => sendMessage(undefined, $event)"
+              >
+                <el-icon size="16">
+                  <icon_send_filled />
+                </el-icon>
+              </el-button>
+            </div>
+          </div>
         </div>
       </el-footer>
     </el-container>
@@ -1844,28 +1849,66 @@ onBeforeUnmount(() => {
       position: relative;
       max-width: 800px;
 
-      .quick_question {
-        min-width: 100px;
+      .input-actions {
         position: absolute;
-        margin-left: 1px;
-        margin-top: 1px;
         left: 0;
-        bottom: 0;
-        padding-bottom: 12px;
-        padding-left: 12px;
+        right: 0;
+        bottom: 12px;
+        height: 36px;
         z-index: 10;
-        background: transparent;
-        line-height: 22px;
-        font-size: 14px;
-        font-weight: 400;
-        border-top-right-radius: 16px;
-        border-top-left-radius: 16px;
-        color: var(--workspace-text-secondary, var(--theme-text-secondary));
-        display: flex;
-        align-items: center;
+        pointer-events: none;
 
-        .name {
-          color: var(--workspace-text-primary, var(--theme-text-primary));
+        .quick_question {
+          min-width: 100px;
+          position: absolute;
+          top: 50%;
+          left: 0;
+          margin-left: 1px;
+          padding-left: 12px;
+          transform: translateY(-50%);
+          line-height: 22px;
+          font-size: 14px;
+          font-weight: 400;
+          color: var(--workspace-text-secondary, var(--theme-text-secondary));
+          display: flex;
+          align-items: center;
+          pointer-events: auto;
+
+          .name {
+            color: var(--workspace-text-primary, var(--theme-text-primary));
+          }
+        }
+
+        .agent-select {
+          position: absolute;
+          top: 50%;
+          left: 12px;
+          transform: translateY(-50%);
+          pointer-events: auto;
+        }
+
+        .skill-select {
+          position: absolute;
+          top: 50%;
+          left: 138px;
+          transform: translateY(-50%);
+          pointer-events: auto;
+        }
+
+        .input-submit {
+          position: absolute;
+          top: 0;
+          right: 12px;
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: auto;
+        }
+
+        .input-icon {
+          position: static;
         }
       }
 
@@ -1898,9 +1941,6 @@ onBeforeUnmount(() => {
 
       .input-icon {
         min-width: unset;
-        position: absolute;
-        bottom: 12px;
-        right: 12px;
         width: 36px;
         height: 36px;
         box-shadow: 0 8px 18px rgba(47, 107, 255, 0.22);
@@ -1943,11 +1983,7 @@ onBeforeUnmount(() => {
       }
 
       .agent-select {
-        position: absolute;
-        left: 12px;
-        bottom: 12px;
         width: 116px;
-        z-index: 2;
 
         :deep(.ed-select__wrapper) {
           min-height: 28px;
@@ -1964,11 +2000,7 @@ onBeforeUnmount(() => {
       }
 
       .skill-select {
-        position: absolute;
-        left: 138px;
-        bottom: 12px;
         width: 116px;
-        z-index: 2;
       }
     }
   }
