@@ -30,6 +30,17 @@ test('普通切换调用点不再重复加载数据源或发送 changing/changed
   }
 })
 
+test('工作空间切换成功提示使用较短的展示时长', () => {
+  for (const name of ['ProjectSelector.vue', 'Person.vue']) {
+    const source = callsiteSources.find(([callsiteName]) => callsiteName === name)[1]
+    assert.match(
+      source,
+      /ElMessage\.success\(\{[\s\S]*?message: t\('common\.switch_success'\),[\s\S]*?duration: 1500,[\s\S]*?\}\)/,
+      `${name} should close the workspace switch success message after 1500ms`
+    )
+  }
+})
+
 test('退出最后一个工作空间也由 User Store 统一处理', () => {
   assert.match(userSource, /async clearActiveTenant\(\): Promise<void>/)
   const myWorkspaces = callsiteSources.find(([name]) => name === 'MyWorkspaces.vue')[1]
