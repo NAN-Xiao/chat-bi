@@ -51,3 +51,4 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 - Keep management views scannable: readable cards or dense tables, visible status/action columns, and pagination attached to the list it controls.
 - Avoid rendering long AI reports or logs in the first viewport of management consoles.
 - Verify that labels, buttons, and dynamic content fit their containers at both desktop and mobile widths.
+- In the top-navigation workspace management shell, keep the desktop workspace sidebar at `240px`, but collapse it to a `64px` icon rail at `680px` and below. Hide sidebar labels/header and reduce content padding so management pages retain a usable mobile content width and the root document stays within `clientWidth + 2`.

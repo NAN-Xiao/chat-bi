@@ -28,13 +28,15 @@ class KnowledgePermissionService:
         if is_platform_workspace_delegate(user):
             return current_tenant_id(user) == tenant_id
         if self.is_global_platform_admin(user):
-            return False
+            return True
         return (
             current_tenant_id(user) == tenant_id
             and normalize_tenant_role(getattr(user, "tenant_role", None)) in TENANT_ADMIN_ROLES
         )
 
     def can_read_workspace(self, user: Any | None, tenant_id: int) -> bool:
+        if self.is_global_platform_admin(user):
+            return True
         return current_tenant_id(user) == tenant_id
 
     def require_manage(self, user: Any | None, record: KnowledgeBase) -> None:
@@ -42,6 +44,8 @@ class KnowledgePermissionService:
         if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
             if not self.is_global_platform_admin(user) or int(record.tenant_id) != DEFAULT_TENANT_ID:
                 raise self._forbidden()
+            return
+        if self.is_global_platform_admin(user):
             return
         if int(record.tenant_id) != int(current_tenant_id(user) or -1):
             raise self._not_found()

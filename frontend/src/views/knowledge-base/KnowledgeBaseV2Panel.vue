@@ -20,6 +20,7 @@ import {
   type KnowledgeApplicabilityState,
 } from '@/api/knowledgeBase'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { tenantApi, type TenantInfo } from '@/api/tenant'
 import KnowledgePayloadEditor from './KnowledgePayloadEditor.vue'
 import { knowledgeActionState } from './knowledgeEditorState'
 import KnowledgeRetrievalPreview from './KnowledgeRetrievalPreview.vue'
@@ -35,6 +36,9 @@ import {
 
 const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
+const isPlatformAdmin = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
 const items = ref<KnowledgeBaseItem[]>([])
 const loading = ref(false)
 const listError = ref(false)
@@ -47,8 +51,10 @@ const versions = ref<KnowledgeBaseVersion[]>([])
 const draft = ref<KnowledgeBaseVersion | null>(null)
 const payload = ref<KnowledgePayload>(defaultKnowledgePayload('DOCUMENT'))
 const keyword = ref('')
-const scopeFilter = ref<'' | KnowledgeBaseScope>('')
-const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope })
+const scopeFilter = ref<KnowledgeBaseScope>(isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
+const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
+const workspaces = ref<TenantInfo[]>([])
+const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope, tenant_id: '' as string | number })
 const pendingFile = ref<File | null>(null)
 const publishJob = ref<KnowledgePublishJob | null>(null)
 const draftConflict = ref(false)
@@ -59,11 +65,10 @@ const applicability = ref<KnowledgeApplicabilityState | null>(null)
 const applicabilityLoading = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
-const isPlatformAdmin = computed(
-  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
-)
 const canCreateKnowledge = computed(
-  () => isPlatformAdmin.value || userStore.isTenantAdminUser
+  () => isPlatformAdmin.value
+    ? scopeFilter.value === 'PLATFORM_PUBLIC' || Boolean(workspaceFilter.value)
+    : userStore.isTenantAdminUser && scopeFilter.value === 'ADMIN_PUBLIC'
 )
 const visibleItems = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -71,7 +76,10 @@ const visibleItems = computed(() => {
   return items.value.filter((item) => `${item.name} ${item.description || ''}`.toLowerCase().includes(text))
 })
 const canEdit = computed(() => !!selected.value?.can_manage)
-const editorTitle = computed(() => selected.value ? `编辑知识库：${selected.value.name}` : '编辑知识库')
+const editorTitle = computed(() => {
+  if (!selected.value) return '知识库详情'
+  return `${selected.value.can_manage ? '编辑' : '查看'}知识库：${selected.value.name}`
+})
 const draftStatus = computed(() => draft.value?.status || '无草稿')
 const currentVersion = computed(() => versions.value.find((version) => version.status === 'PUBLISHED') || null)
 const displayedVersion = computed(() => draft.value || currentVersion.value)
@@ -90,6 +98,18 @@ const editorBusy = computed(() => !actionState.value.save && (
 const canToggleWorkspaceKnowledge = computed(
   () => selected.value?.visibility_scope === 'PLATFORM_PUBLIC' && userStore.isTenantAdminUser
 )
+const workspaceFilterVisible = computed(() => scopeFilter.value === 'ADMIN_PUBLIC')
+const workspaceFilterDisabled = computed(() => !isPlatformAdmin.value)
+const workspaceOptions = computed<TenantInfo[]>(() => {
+  if (isPlatformAdmin.value) return workspaces.value
+  if (!userStore.getTenantId) return []
+  return [{
+    id: userStore.getTenantId,
+    name: userStore.getTenantName || userStore.getTenantId,
+    role: userStore.getTenantRole || 'member',
+  }]
+})
+const selectedWorkspace = computed(() => workspaceOptions.value.find((item) => String(item.id) === String(workspaceFilter.value)))
 const workspaceKnowledgeEnabled = computed({
   get: () => workspaceOverride.value?.enabled !== false,
   set: (value: boolean) => {
@@ -121,10 +141,16 @@ function defaultPayload(type?: string | null): KnowledgePayload {
 async function loadItems() {
   loading.value = true
   try {
-    items.value = await knowledgeBaseApi.list({
-      visibility_scope: scopeFilter.value || undefined,
-      keyword: keyword.value || undefined,
-    })
+    const base = { keyword: keyword.value || undefined }
+    if (scopeFilter.value === 'ADMIN_PUBLIC' && !workspaceFilter.value) {
+      items.value = []
+    } else {
+      items.value = await knowledgeBaseApi.list({
+        ...base,
+        visibility_scope: scopeFilter.value,
+        tenant_id: scopeFilter.value === 'ADMIN_PUBLIC' ? workspaceFilter.value : undefined,
+      })
+    }
     listError.value = false
   } catch (error) {
     console.error(error)
@@ -138,7 +164,8 @@ function openCreate() {
   createForm.value = {
     name: '',
     description: '',
-    visibility_scope: isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC',
+    visibility_scope: scopeFilter.value,
+    tenant_id: scopeFilter.value === 'ADMIN_PUBLIC' ? selectedWorkspace.value?.id || '' : '',
   }
   createVisible.value = true
 }
@@ -148,9 +175,19 @@ async function createKnowledge() {
     ElMessage.warning('请输入知识库名称')
     return
   }
+  if (createForm.value.visibility_scope === 'ADMIN_PUBLIC' && isPlatformAdmin.value && !createForm.value.tenant_id) {
+    ElMessage.warning('请选择工作空间')
+    return
+  }
   try {
     saving.value = true
-    const item = await knowledgeBaseApi.create({ ...createForm.value, name: createForm.value.name.trim() })
+    const item = await knowledgeBaseApi.create({
+      ...createForm.value,
+      name: createForm.value.name.trim(),
+      tenant_id: createForm.value.visibility_scope === 'ADMIN_PUBLIC'
+        ? createForm.value.tenant_id
+        : undefined,
+    })
     createVisible.value = false
     await loadItems()
     await openEditor(item)
@@ -393,7 +430,23 @@ function closeEditor() {
   loadItems()
 }
 
-onMounted(loadItems)
+onMounted(async () => {
+  if (isPlatformAdmin.value) {
+    workspaces.value = (await tenantApi.adminList()).filter(
+      (workspace) => !workspace.is_system_default && Number(workspace.status ?? 1) === 1
+    )
+  }
+  await loadItems()
+})
+watch([scopeFilter, workspaceFilter], () => {
+  if (editorVisible.value) {
+    editorVisible.value = false
+    if (publishTimer) window.clearInterval(publishTimer)
+    publishTimer = null
+    applicability.value = null
+  }
+  loadItems()
+})
 watch(() => datasourceContext.datasourceId, () => {
   if (editorVisible.value && selected.value?.visibility_scope === 'PLATFORM_PUBLIC') loadApplicability()
 })
@@ -403,36 +456,64 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 <template>
   <div class="knowledge-v2-panel">
     <div class="panel-header">
-      <div>
+      <div class="panel-heading">
         <div class="panel-title">知识库管理</div>
         <div class="panel-subtitle">统一维护业务术语、SQL 示例、事件参数、JSON 路径和文档知识</div>
       </div>
       <div class="panel-actions">
-        <el-input v-model="keyword" clearable placeholder="搜索知识库" @keyup.enter="loadItems" />
-        <el-select v-model="scopeFilter" clearable placeholder="全部范围" @change="loadItems">
-          <el-option label="工作空间知识" value="ADMIN_PUBLIC" />
-          <el-option label="平台公共知识" value="PLATFORM_PUBLIC" />
-        </el-select>
-        <el-button :icon="Refresh" @click="loadItems">刷新</el-button>
-        <el-button :icon="Search" @click="retrievalPreviewVisible = true">检索预览</el-button>
-        <el-dropdown class="template-download" trigger="click" @command="downloadMarkdownTemplate">
-          <el-button :icon="Download">
-            下载 Markdown 模板
-            <el-icon class="template-download-arrow"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item
-                v-for="template in knowledgeMarkdownTemplates"
-                :key="template.id"
-                :command="template.id"
-              >
-                {{ template.label }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-button v-if="canCreateKnowledge" type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
+        <div class="panel-filters">
+          <el-input
+            v-model="keyword"
+            class="knowledge-filter-input"
+            clearable
+            placeholder="搜索知识库"
+            @keyup.enter="loadItems"
+          />
+          <el-select
+            v-model="scopeFilter"
+            class="knowledge-filter-scope"
+            placeholder="选择知识库范围"
+          >
+            <el-option label="平台知识库" value="PLATFORM_PUBLIC" />
+            <el-option label="工作空间知识库" value="ADMIN_PUBLIC" />
+          </el-select>
+          <el-select
+            v-if="workspaceFilterVisible"
+            v-model="workspaceFilter"
+            class="knowledge-filter-workspace"
+            :disabled="workspaceFilterDisabled"
+            placeholder="选择工作空间"
+          >
+            <el-option
+              v-for="workspace in workspaceOptions"
+              :key="workspace.id"
+              :label="workspace.name"
+              :value="String(workspace.id)"
+            />
+          </el-select>
+        </div>
+        <div class="panel-buttons">
+          <el-button :icon="Refresh" @click="loadItems">刷新</el-button>
+          <el-button :icon="Search" @click="retrievalPreviewVisible = true">检索预览</el-button>
+          <el-dropdown class="template-download" trigger="click" @command="downloadMarkdownTemplate">
+            <el-button :icon="Download">
+              下载 Markdown 模板
+              <el-icon class="template-download-arrow"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="template in knowledgeMarkdownTemplates"
+                  :key="template.id"
+                  :command="template.id"
+                >
+                  {{ template.label }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button v-if="canCreateKnowledge" type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
+        </div>
       </div>
     </div>
 
@@ -498,6 +579,11 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <el-option v-if="isPlatformAdmin" label="平台公共知识" value="PLATFORM_PUBLIC" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="createForm.visibility_scope === 'ADMIN_PUBLIC'" label="工作空间" required>
+          <el-select v-model="createForm.tenant_id" :disabled="workspaceFilterDisabled" placeholder="请选择工作空间">
+            <el-option v-for="workspace in workspaceOptions" :key="workspace.id" :label="workspace.name" :value="workspace.id" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
@@ -559,7 +645,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
               type="primary"
               @click="rollbackVersion(version)"
             >回滚为草稿</el-button>
-            <el-button text @click="downloadVersion(version)" :disabled="!version.file_name">下载</el-button>
+            <el-button text :disabled="!version.file_name" @click="downloadVersion(version)">下载</el-button>
           </div>
         </div>
         <div v-if="publishJob" class="publish-status">发布任务：{{ publishJob.status }}{{ publishJob.stage ? ` · ${publishJob.stage}` : '' }}</div>
@@ -571,12 +657,18 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 
 <style scoped lang="less">
 .knowledge-v2-panel { height: 100%; padding: 0 0 24px; color: #1f2329; }
-.panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.panel-heading { flex: 0 1 380px; min-width: 260px; }
 .panel-title { font-size: 16px; font-weight: 600; line-height: 24px; }
 .panel-subtitle { margin-top: 4px; color: #667085; font-size: 13px; line-height: 20px; }
-.panel-actions { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-.panel-actions .el-input { width: 220px; }
-.panel-actions .el-select { width: 150px; }
+.panel-actions { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 16px; padding: 8px; border: 1px solid #e4e7ed; border-radius: 8px; background: #f7f8fa; }
+.panel-filters, .panel-buttons { display: flex; align-items: center; gap: 8px; }
+.panel-filters { flex: 0 1 auto; min-width: 0; }
+.knowledge-filter-input { width: 220px; flex: 0 0 220px; }
+.knowledge-filter-scope { width: 150px; flex: 0 0 150px; }
+.knowledge-filter-workspace { width: 180px; flex: 0 0 180px; }
+.panel-buttons { flex: 0 0 auto; }
+.panel-buttons :deep(.ed-button + .ed-button) { margin-left: 0; }
 .template-download { max-width: 100%; }
 .template-download-arrow { margin-left: 6px; }
 .knowledge-v2-table { min-height: 160px; }
@@ -597,9 +689,17 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .history-title { margin-top: 24px; padding-bottom: 8px; border-bottom: 1px solid #eaecf0; color: #344054; font-size: 13px; font-weight: 600; }
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
 .publish-status { margin-top: 12px; color: #1570ef; font-size: 12px; }
-@media (max-width: 980px) { .panel-header { flex-direction: column; } .panel-actions { width: 100%; flex-wrap: wrap; } }
+@media (max-width: 1440px) {
+  .panel-header { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .panel-heading { flex-basis: auto; min-width: 0; }
+  .panel-actions { width: 100%; justify-content: space-between; }
+}
 @media (max-width: 680px) {
-  .panel-actions .el-input, .panel-actions .el-select, .template-download { width: 100%; }
+  .panel-actions, .panel-filters, .panel-buttons { width: 100%; }
+  .panel-filters { flex-direction: column; }
+  .knowledge-filter-input, .knowledge-filter-scope, .knowledge-filter-workspace { width: 100%; flex-basis: auto; }
+  .panel-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .panel-buttons :deep(.ed-button), .template-download { width: 100%; min-height: 32px; margin-left: 0; }
   .template-download :deep(.ed-button) { width: 100%; height: auto; min-height: 32px; white-space: normal; }
 }
 </style>

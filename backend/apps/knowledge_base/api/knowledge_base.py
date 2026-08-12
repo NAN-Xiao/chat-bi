@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -19,6 +18,7 @@ from fastapi import (
 from sqlalchemy import desc, or_
 from sqlmodel import select
 
+from apps.knowledge_base.api._helpers import validate_workspace_tenant
 from apps.knowledge_base.models import (
     KnowledgeBase,
     KnowledgeBaseItem,
@@ -33,7 +33,10 @@ from apps.system.crud.tenant import (
     normalize_tenant_role,
 )
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
-from apps.system.schemas.access_context import require_current_tenant_id
+from apps.system.schemas.access_context import (
+    current_tenant_id,
+    require_current_tenant_id,
+)
 from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 from common.core.task_queue import enqueue_task
@@ -55,7 +58,7 @@ def _now() -> datetime:
     return datetime.now()
 
 
-def _parse_scope(value: Optional[str]) -> KnowledgeBaseVisibilityScopeEnum:
+def _parse_scope(value: str | None) -> KnowledgeBaseVisibilityScopeEnum:
     """
     是什么：_parse_scope 是一个可以复用的小步骤，负责后端业务相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
@@ -83,7 +86,7 @@ def _can_manage_workspace_public(current_user: CurrentUser) -> bool:
     做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     if _is_global_platform_admin(current_user):
-        return False
+        return True
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
     return is_platform_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
 
@@ -97,6 +100,17 @@ def _scope_tenant_id(current_user: CurrentUser, scope: KnowledgeBaseVisibilitySc
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         return DEFAULT_TENANT_ID
     return require_current_tenant_id(current_user)
+
+
+def _requested_tenant_id(current_user: CurrentUser, tenant_id: int | None) -> int:
+    if tenant_id is not None:
+        requested = int(tenant_id)
+        if _is_global_platform_admin(current_user) or current_tenant_id(current_user) == requested:
+            return requested
+        raise HTTPException(status_code=403, detail="Cannot access another workspace knowledge base")
+    if _is_global_platform_admin(current_user):
+        raise HTTPException(status_code=400, detail="Please select a workspace")
+    return _scope_tenant_id(current_user, KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC)
 
 
 def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibilityScopeEnum) -> None:
@@ -121,6 +135,11 @@ def _require_record_manage(current_user: CurrentUser, record: KnowledgeBase) -> 
     做了什么：检查后端业务里的数据、权限或配置是否合法，不对就及时拦住。
     """
     scope = _parse_scope(record.visibility_scope)
+    if _is_global_platform_admin(current_user):
+        if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC and int(record.tenant_id) != DEFAULT_TENANT_ID:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+        _require_scope_manage(current_user, scope)
+        return
     if int(record.tenant_id) != _scope_tenant_id(current_user, scope):
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     _require_scope_manage(current_user, scope)
@@ -189,8 +208,9 @@ async def _save_upload(file: UploadFile) -> tuple[str, str, str]:
 async def list_legacy_knowledge_base(
     session: SessionDep,
     current_user: CurrentUser,
-    visibility_scope: Optional[str] = Query(None),
-    keyword: Optional[str] = Query(None),
+    visibility_scope: str | None = Query(None),
+    keyword: str | None = Query(None),
+    tenant_id: int | None = Query(None, ge=1),
 ):
     """
     是什么：list_knowledge_base 是一个接口入口，负责接住后端业务相关请求。
@@ -198,9 +218,18 @@ async def list_legacy_knowledge_base(
     做了什么：把后端业务需要的数据找出来，整理成后面好用的样子。
     """
     scope = _parse_scope(visibility_scope)
+    if tenant_id is not None and scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
+        raise HTTPException(status_code=400, detail="Platform knowledge base does not accept workspace selection")
+    target_tenant_id = (
+        DEFAULT_TENANT_ID
+        if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC
+        else _requested_tenant_id(current_user, tenant_id)
+    )
+    if scope == KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC:
+        validate_workspace_tenant(session, target_tenant_id)
     filters = [
         KnowledgeBase.visibility_scope == scope.value,
-        KnowledgeBase.tenant_id == _scope_tenant_id(current_user, scope),
+        KnowledgeBase.tenant_id == target_tenant_id,
     ]
 
     value = (keyword or "").strip()
@@ -228,12 +257,13 @@ async def save_knowledge_base(
     session: SessionDep,
     current_user: CurrentUser,
     background_tasks: BackgroundTasks,
-    id: Optional[int] = Form(None),
+    id: int | None = Form(None),
     name: str = Form(...),
     description: str = Form(""),
     active: bool = Form(True),
     visibility_scope: str = Form(KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value),
-    file: Optional[UploadFile] = File(None),
+    file: UploadFile | None = File(None),
+    tenant_id: int | None = Form(None),
 ):
     """
     是什么：save_knowledge_base 是一个接口入口，负责接住后端业务相关请求。
@@ -245,6 +275,8 @@ async def save_knowledge_base(
         raise HTTPException(status_code=400, detail="Knowledge base name is required")
 
     requested_scope = _parse_scope(visibility_scope)
+    if requested_scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC and tenant_id is not None:
+        raise HTTPException(status_code=400, detail="Platform knowledge base does not accept workspace selection")
     now = _now()
     should_process = file is not None
 
@@ -259,8 +291,15 @@ async def save_knowledge_base(
         if file is None:
             raise HTTPException(status_code=400, detail="Knowledge base file is required")
         scope = requested_scope
+        target_tenant_id = (
+            DEFAULT_TENANT_ID
+            if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC
+            else _requested_tenant_id(current_user, tenant_id)
+        )
+        if scope == KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC:
+            validate_workspace_tenant(session, target_tenant_id)
         record = KnowledgeBase(
-            tenant_id=_scope_tenant_id(current_user, scope),
+            tenant_id=target_tenant_id,
             create_by=int(current_user.id),
             name=clean_name,
             description=description.strip(),

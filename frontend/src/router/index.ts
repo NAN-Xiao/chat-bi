@@ -514,7 +514,6 @@ export const routes = [
           iconActive: 'knowledge',
           iconDeActive: 'noKnowledge',
           tenantBusiness: true,
-          tenantAdminOnly: true,
           platformOperation: true,
         },
       },

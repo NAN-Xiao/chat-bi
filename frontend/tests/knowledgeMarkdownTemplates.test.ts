@@ -121,7 +121,7 @@ test('下载函数使用所选模板的 UTF-8 Markdown 内容和文件名', asyn
   }
 })
 
-test('知识库管理页通过可换行操作区接入模板下拉入口', async () => {
+test('知识库管理页通过分组工具栏接入模板下拉入口', async () => {
   const source = await readFile(
     new URL('../src/views/knowledge-base/KnowledgeBaseV2Panel.vue', import.meta.url),
     'utf8'
@@ -138,16 +138,45 @@ test('知识库管理页通过可换行操作区接入模板下拉入口', async
   assert.match(panelActionsRule, /min-width:\s*0/)
   assert.match(panelActionsRule, /justify-content:\s*flex-end/)
   assert.match(panelActionsRule, /flex-wrap:\s*wrap/)
+  assert.match(source, /<div class="panel-filters">[\s\S]*class="knowledge-filter-input"[\s\S]*搜索知识库[\s\S]*class="knowledge-filter-scope"[\s\S]*平台知识库[\s\S]*工作空间知识库[\s\S]*class="knowledge-filter-workspace"[\s\S]*选择工作空间[\s\S]*<\/div>/)
+  assert.match(source, /const workspaceFilterDisabled = computed\(\(\) => !isPlatformAdmin\.value\)/)
+  assert.match(source, /:disabled="workspaceFilterDisabled"/)
+  assert.match(source, /<div class="panel-buttons">[\s\S]*刷新[\s\S]*检索预览[\s\S]*下载 Markdown 模板[\s\S]*新建知识库[\s\S]*<\/div>/)
+  assert.match(source, /\.knowledge-filter-input \{ width: 220px; flex: 0 0 220px; \}/)
+  assert.match(source, /\.knowledge-filter-scope \{ width: 150px; flex: 0 0 150px; \}/)
   assert.match(
     source,
-    /@media \(max-width: 980px\)[^{]*\{[^}]*\.panel-header \{ flex-direction: column; \}[^}]*\.panel-actions \{ width: 100%; flex-wrap: wrap; \}/s
+    /@media \(max-width: 1440px\)[^{]*\{[^}]*\.panel-header \{ align-items: flex-start; flex-direction: column; gap: 14px; \}[^}]*\.panel-heading \{ flex-basis: auto; min-width: 0; \}[^}]*\.panel-actions \{ width: 100%; justify-content: space-between; \}/s
   )
   assert.match(
     source,
-    /@media \(max-width: 680px\)[\s\S]*\.panel-actions \.el-input, \.panel-actions \.el-select, \.template-download \{ width: 100%; \}/
+    /@media \(max-width: 680px\)[\s\S]*\.knowledge-filter-input, \.knowledge-filter-scope, \.knowledge-filter-workspace \{ width: 100%; flex-basis: auto; \}/
   )
+  assert.match(source, /\.panel-buttons \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); align-items: stretch; \}/)
   assert.match(
     source,
     /\.template-download :deep\(\.ed-button\) \{ width: 100%; height: auto; min-height: 32px; white-space: normal; \}/
   )
+})
+
+test('知识库管理使用双下拉并向普通成员开放只读入口', async () => {
+  const [v2Source, legacySource, routerSource] = await Promise.all([
+    readFile(new URL('../src/views/knowledge-base/KnowledgeBaseV2Panel.vue', import.meta.url), 'utf8'),
+    readFile(new URL('../src/views/knowledge-base/index.vue', import.meta.url), 'utf8'),
+    readFile(new URL('../src/router/index.ts', import.meta.url), 'utf8'),
+  ])
+
+  for (const source of [v2Source, legacySource]) {
+    assert.match(source, /平台知识库/)
+    assert.match(source, /工作空间知识库/)
+    assert.match(source, /workspaceFilterDisabled/)
+    assert.match(source, /userStore\.isTenantAdminUser/)
+  }
+  assert.match(v2Source, /row\.can_manage \? '编辑' : '查看'/)
+  assert.match(legacySource, /row\.can_manage \? '可管理' : '只读'/)
+  const routeStart = routerSource.indexOf("path: 'knowledge-base'")
+  const knowledgeRoute = routeStart >= 0 ? routerSource.slice(routeStart, routeStart + 500) : ''
+  assert.match(knowledgeRoute, /tenantBusiness:\s*true/)
+  assert.match(knowledgeRoute, /platformOperation:\s*true/)
+  assert.doesNotMatch(knowledgeRoute, /tenantAdminOnly:\s*true/)
 })

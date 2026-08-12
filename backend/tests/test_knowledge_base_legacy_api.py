@@ -77,6 +77,7 @@ def _install_api_dependencies(monkeypatch, calls: dict[str, int]) -> None:
     monkeypatch.setattr(legacy_api, "_require_scope_manage", lambda *_args: None)
     monkeypatch.setattr(legacy_api, "_require_record_manage", lambda *_args: None)
     monkeypatch.setattr(legacy_api, "_scope_tenant_id", lambda *_args: 7)
+    monkeypatch.setattr(legacy_api, "validate_workspace_tenant", lambda _session, tenant_id: tenant_id)
     monkeypatch.setattr(legacy_api, "_serialize_record", lambda _user, record: record)
     monkeypatch.setattr(legacy_api, "register_builtin_tasks", lambda: None)
 
@@ -154,6 +155,7 @@ def test_legacy_save_rejects_before_file_or_task_side_effects(
                 active=True,
                 visibility_scope=KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value,
                 file=upload,
+                tenant_id=None,
             )
         )
 
@@ -196,6 +198,7 @@ def test_legacy_save_rechecks_phase_before_enqueue(monkeypatch) -> None:
                 active=True,
                 visibility_scope=KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value,
                 file=UploadFile(filename="legacy.md", file=BytesIO(b"content")),
+                tenant_id=None,
             )
         )
 
@@ -239,6 +242,7 @@ def test_legacy_open_keeps_queue_to_background_task_fallback(monkeypatch) -> Non
             active=True,
             visibility_scope=KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value,
             file=UploadFile(filename="legacy.md", file=BytesIO(b"content")),
+            tenant_id=None,
         )
     )
 

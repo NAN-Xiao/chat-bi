@@ -1120,5 +1120,67 @@ onMounted(() => {
       background: #94a3b8;
     }
   }
+
+  @media (max-width: 680px) {
+    &.system-layout-top-nav {
+      .top-nav-shell {
+        gap: 6px;
+        padding: 0 8px;
+      }
+
+      .top-nav-brand {
+        flex-basis: 40px;
+        min-width: 40px;
+        max-width: 40px;
+        margin-left: 0;
+
+        span {
+          display: none;
+        }
+      }
+
+      .top-nav-brand-divider {
+        display: none;
+      }
+
+      :deep(.workspace-selector) {
+        min-width: 104px;
+        max-width: 124px;
+      }
+
+      .right-main {
+        .workspace-admin-sidebar {
+          flex-basis: 64px;
+          width: 64px;
+          min-width: 64px;
+          padding: 14px 10px;
+        }
+
+        .workspace-admin-sidebar-head {
+          display: none;
+        }
+
+        .workspace-admin-sidebar :deep(.ed-menu-item),
+        .workspace-admin-sidebar :deep(.ed-sub-menu__title) {
+          justify-content: center;
+          padding: 0 !important;
+        }
+
+        .workspace-admin-sidebar :deep(.menu-line-icon-wrapper) {
+          flex-basis: 18px;
+          margin-right: 0 !important;
+        }
+
+        .workspace-admin-sidebar :deep(.menu-title-text),
+        .workspace-admin-sidebar :deep(.ed-sub-menu__icon-arrow) {
+          display: none;
+        }
+
+        .workspace-admin-content .content-main {
+          padding: 14px 12px;
+        }
+      }
+    }
+  }
 }
 </style>

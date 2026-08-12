@@ -19,18 +19,21 @@ from apps.knowledge_base.api._helpers import (
     serialize_error,
     serialize_record,
     unexpected_error,
+    validate_workspace_tenant,
     visible_tenant_ids,
 )
 from apps.knowledge_base.api.knowledge_base import (
     delete_legacy_knowledge_base,
     list_legacy_knowledge_base,
 )
-from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.audit import new_request_id, write_retrieval_audit
+from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
+from apps.knowledge_base.lifecycle_models import (
+    KnowledgeBaseVersion,
+    KnowledgeVersionStatus,
+)
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
-from apps.knowledge_base.lifecycle_models import KnowledgeVersionStatus
-from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.models import (
     KnowledgeBase,
     KnowledgeBaseStatusEnum,
@@ -38,8 +41,12 @@ from apps.knowledge_base.models import (
 )
 from apps.knowledge_base.permissions import KnowledgePermissionService
 from apps.knowledge_base.retrieval import KnowledgeRetrievalService
-from apps.knowledge_base.retrieval_models import KnowledgeApplicabilityStatus, KnowledgeBaseApplicability
+from apps.knowledge_base.retrieval_models import (
+    KnowledgeApplicabilityStatus,
+    KnowledgeBaseApplicability,
+)
 from apps.knowledge_base.version_repository import KnowledgeVersionRepository
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.schemas.access_context import current_tenant_id
 from common.core.deps import CurrentUser, SessionDep
 
@@ -62,6 +69,7 @@ class CreateKnowledgeBaseRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str = Field(default="", max_length=4000)
     visibility_scope: KnowledgeBaseVisibilityScopeEnum = KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC
+    tenant_id: int | None = Field(default=None, ge=1)
 
 
 def _applicability_response(*, knowledge_base_id: int, datasource_id: int, schema_hash: str, row=None, version_id: int | None = None):
@@ -290,15 +298,31 @@ async def create_knowledge_base(
                 error_type="VALIDATION",
             )
         scope = KnowledgeBaseVisibilityScopeEnum(body.visibility_scope)
-        tenant_id = record_tenant_id(
-            KnowledgeBase(
-                tenant_id=int(current_tenant_id(current_user) or 0),
-                visibility_scope=scope,
-            ),
-            current_user,
-        )
+        if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC and body.tenant_id is not None:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_WORKSPACE_NOT_APPLICABLE",
+                message="平台知识库不能指定工作空间。",
+                status_code=400,
+                error_type="VALIDATION",
+            )
+        if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
+            target_tenant_id = DEFAULT_TENANT_ID
+        else:
+            if (
+                KnowledgePermissionService().is_global_platform_admin(current_user)
+                and body.tenant_id is None
+            ):
+                raise KnowledgeBusinessError(
+                    code="KNOWLEDGE_WORKSPACE_REQUIRED",
+                    message="请选择要管理的工作空间。",
+                    status_code=400,
+                    error_type="VALIDATION",
+                )
+            target_tenant_id = int(body.tenant_id or current_tenant_id(current_user) or 0)
+            visible_tenant_ids(current_user, target_tenant_id)
+            target_tenant_id = validate_workspace_tenant(session, target_tenant_id)
         record = KnowledgeBase(
-            tenant_id=tenant_id,
+            tenant_id=target_tenant_id,
             create_by=int(current_user.id),
             update_by=int(current_user.id),
             name=clean_name,
@@ -329,6 +353,7 @@ async def list_knowledge_base(
     current_user: CurrentUser,
     visibility_scope: str | None = None,
     keyword: str | None = None,
+    tenant_id: int | None = None,
 ):
     capabilities = get_capabilities(session)
     if capabilities.phase.value != "V2_ACTIVE":
@@ -337,10 +362,33 @@ async def list_knowledge_base(
             current_user=current_user,
             visibility_scope=visibility_scope,
             keyword=keyword,
+            tenant_id=tenant_id,
         )
     try:
+        if tenant_id is not None and visibility_scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_WORKSPACE_NOT_APPLICABLE",
+                message="平台知识库不能指定工作空间。",
+                status_code=400,
+                error_type="VALIDATION",
+            )
+        permission = KnowledgePermissionService()
+        if (
+            visibility_scope == KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value
+            and permission.is_global_platform_admin(current_user)
+            and tenant_id is None
+        ):
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_WORKSPACE_REQUIRED",
+                message="请选择要管理的工作空间。",
+                status_code=400,
+                error_type="VALIDATION",
+            )
+        tenant_ids = visible_tenant_ids(current_user, tenant_id)
+        if tenant_id is not None:
+            validate_workspace_tenant(session, int(tenant_id))
         filters = [
-            KnowledgeBase.tenant_id.in_(visible_tenant_ids(current_user)),
+            KnowledgeBase.tenant_id.in_(tenant_ids),
             KnowledgeBase.archived.is_(False),
         ]
         if visibility_scope:
@@ -357,7 +405,6 @@ async def list_knowledge_base(
             .where(*filters)
             .order_by(KnowledgeBase.update_time.desc(), KnowledgeBase.id.desc())
         ).all()
-        permission = KnowledgePermissionService()
         result = []
         for row in rows:
             try:

@@ -8,6 +8,7 @@ const directory = dirname(fileURLToPath(import.meta.url))
 const pageSource = readFileSync(join(directory, 'index.vue'), 'utf8')
 const routerSource = readFileSync(join(directory, '../../router/index.ts'), 'utf8')
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
+const layoutSource = readFileSync(join(directory, '../../components/layout/LayoutDsl.vue'), 'utf8')
 
 test('knowledge page keeps the four editors split behind one orchestration layer', () => {
   assert.match(pageSource, /KnowledgeBaseV2Panel/)
@@ -31,7 +32,15 @@ test('knowledge page keeps capability and list failures separate from legacy and
 })
 
 test('knowledge page exposes platform knowledge as read-only to non-managers', () => {
-  assert.match(pageSource, /\['PLATFORM_PUBLIC', 'ADMIN_PUBLIC'\]/)
+  assert.match(pageSource, /<el-option label="平台知识库" value="PLATFORM_PUBLIC"/)
+  assert.match(pageSource, /<el-option label="工作空间知识库" value="ADMIN_PUBLIC"/)
   assert.match(pageSource, /v-if="canCreateKnowledge"/)
   assert.match(pageSource, /if \(!row\.can_manage\) return/)
+})
+
+test('workspace management keeps a usable content width on mobile', () => {
+  assert.match(layoutSource, /@media \(max-width: 680px\)/)
+  assert.match(layoutSource, /\.workspace-admin-sidebar \{[\s\S]*?flex-basis: 64px/)
+  assert.match(layoutSource, /\.workspace-admin-sidebar :deep\(\.menu-title-text\)[\s\S]*?display: none/)
+  assert.match(layoutSource, /\.workspace-admin-content \.content-main \{[\s\S]*?padding: 14px 12px/)
 })

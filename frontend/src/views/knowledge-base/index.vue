@@ -5,6 +5,7 @@ import { cloneDeep } from 'lodash-es'
 import { Search, UploadFilled } from '@element-plus/icons-vue'
 import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { tenantApi, type TenantInfo } from '@/api/tenant'
 import {
   knowledgeBaseApi,
   type KnowledgeBaseItem,
@@ -51,20 +52,37 @@ const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
 )
 const defaultScope = computed<KnowledgeBaseScope>(() => {
-  return isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
+  return scopeFilter.value
 })
 const canCreateKnowledge = computed(
-  () => isPlatformAdmin.value || userStore.isTenantAdminUser
+  () => isPlatformAdmin.value
+    ? scopeFilter.value === 'PLATFORM_PUBLIC' || Boolean(workspaceFilter.value)
+    : userStore.isTenantAdminUser && scopeFilter.value === 'ADMIN_PUBLIC'
 )
-const scopeFilter = ref<'ALL' | KnowledgeBaseScope>('ALL')
+const scopeFilter = ref<KnowledgeBaseScope>(isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
+const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
+const workspaces = ref<TenantInfo[]>([])
 const pageTitle = computed(() => t('knowledge_base.admin_title'))
 const scopeLabel = computed(() => sourceText({ visibility_scope: defaultScope.value }))
+const workspaceFilterVisible = computed(() => scopeFilter.value === 'ADMIN_PUBLIC')
+const workspaceFilterDisabled = computed(() => !isPlatformAdmin.value)
+const workspaceOptions = computed<TenantInfo[]>(() => {
+  if (isPlatformAdmin.value) return workspaces.value
+  if (!userStore.getTenantId) return []
+  return [{
+    id: userStore.getTenantId,
+    name: userStore.getTenantName || userStore.getTenantId,
+    role: userStore.getTenantRole || 'member',
+  }]
+})
 
 const defaultForm = {
   id: null as number | string | null,
   name: '',
   description: '',
   active: true,
+  visibility_scope: scopeFilter.value,
+  tenant_id: workspaceFilter.value,
 }
 
 const form = ref(cloneDeep(defaultForm))
@@ -91,10 +109,7 @@ const filteredCards = computed(() => {
     )
   })
 })
-const visibleCards = computed(() => {
-  if (scopeFilter.value === 'ALL') return filteredCards.value
-  return filteredCards.value.filter((item) => item.visibility_scope === scopeFilter.value)
-})
+const visibleCards = computed(() => filteredCards.value)
 
 function sourceText(row: Pick<KnowledgeBaseItem, 'visibility_scope'> | null) {
   if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('knowledge_base.saas_knowledge_base')
@@ -149,16 +164,12 @@ function scheduleStatusRefresh() {
 async function loadCards() {
   loading.value = true
   try {
-    const scopes: KnowledgeBaseScope[] = isPlatformAdmin.value
-      ? ['PLATFORM_PUBLIC']
-      : ['PLATFORM_PUBLIC', 'ADMIN_PUBLIC']
-    const groups = await Promise.all(
-      scopes.map((visibility_scope) => knowledgeBaseApi.list({ visibility_scope }))
-    )
-    const records = groups.flat()
-    cardList.value = Array.from(
-      new Map(records.map((item) => [String(item.id), item])).values()
-    )
+    cardList.value = scopeFilter.value === 'ADMIN_PUBLIC' && !workspaceFilter.value
+      ? []
+      : await knowledgeBaseApi.list({
+          visibility_scope: scopeFilter.value,
+          tenant_id: scopeFilter.value === 'ADMIN_PUBLIC' ? workspaceFilter.value : undefined,
+        })
     listError.value = false
   } catch (error) {
     console.error(error)
@@ -170,7 +181,11 @@ async function loadCards() {
 }
 
 function resetForm() {
-  form.value = cloneDeep(defaultForm)
+  form.value = {
+    ...cloneDeep(defaultForm),
+    visibility_scope: scopeFilter.value,
+    tenant_id: scopeFilter.value === 'ADMIN_PUBLIC' ? workspaceFilter.value : '',
+  }
   uploadFileName.value = ''
   pendingFile.value = null
   formRef.value?.clearValidate?.()
@@ -189,6 +204,8 @@ function openEditCard(row: KnowledgeBaseItem) {
     name: row.name,
     description: row.description || '',
     active: row.active,
+    visibility_scope: row.visibility_scope,
+    tenant_id: String(row.tenant_id),
   }
   drawerTitle.value = t('knowledge_base.edit_knowledge_base')
   uploadFileName.value = row.file_name || ''
@@ -248,7 +265,8 @@ function saveCard() {
         name: form.value.name.trim(),
         description: form.value.description.trim(),
         active: form.value.active,
-        visibility_scope: defaultScope.value,
+        visibility_scope: form.value.visibility_scope,
+        tenant_id: form.value.visibility_scope === 'ADMIN_PUBLIC' ? form.value.tenant_id : undefined,
         file: pendingFile.value,
       })
       ElMessage.success(t('common.save_success'))
@@ -298,18 +316,19 @@ async function loadCapabilities() {
   }
 }
 
-watch(
-  defaultScope,
-  () => {
-    clearRefreshTimer()
-    if (!capabilitiesLoading.value && pageMode.value === 'LEGACY') loadCards()
-  },
-  { immediate: true }
-)
-
 onMounted(async () => {
+  if (isPlatformAdmin.value) {
+    workspaces.value = (await tenantApi.adminList()).filter(
+      (workspace) => !workspace.is_system_default && Number(workspace.status ?? 1) === 1
+    )
+  }
   await loadCapabilities()
   if (pageMode.value === 'LEGACY') await loadCards()
+})
+
+watch([scopeFilter, workspaceFilter], () => {
+  clearRefreshTimer()
+  if (!capabilitiesLoading.value && pageMode.value === 'LEGACY') loadCards()
 })
 
 onBeforeUnmount(() => {
@@ -330,11 +349,19 @@ onBeforeUnmount(() => {
           :prefix-icon="Search"
           :placeholder="t('dashboard.search')"
         />
-        <el-radio-group v-model="scopeFilter" class="scope-tabs" size="small">
-          <el-radio-button value="ALL">全部知识</el-radio-button>
-          <el-radio-button value="PLATFORM_PUBLIC">平台知识</el-radio-button>
-          <el-radio-button value="ADMIN_PUBLIC">工作空间知识</el-radio-button>
-        </el-radio-group>
+        <el-select v-model="scopeFilter" class="knowledge-scope-filter" placeholder="选择知识库范围">
+          <el-option label="平台知识库" value="PLATFORM_PUBLIC" />
+          <el-option label="工作空间知识库" value="ADMIN_PUBLIC" />
+        </el-select>
+        <el-select
+          v-if="workspaceFilterVisible"
+          v-model="workspaceFilter"
+          class="workspace-filter"
+          :disabled="workspaceFilterDisabled"
+          placeholder="选择工作空间"
+        >
+          <el-option v-for="workspace in workspaceOptions" :key="workspace.id" :label="workspace.name" :value="String(workspace.id)" />
+        </el-select>
         <el-button v-if="canCreateKnowledge" type="primary" @click="openCreateCard">
           <template #icon>
             <icon_add_outlined />
@@ -634,9 +661,12 @@ onBeforeUnmount(() => {
     gap: 8px;
   }
 
-  .scope-tabs {
-    max-width: 100%;
-    overflow-x: auto;
+  .knowledge-scope-filter {
+    width: 170px;
+  }
+
+  .workspace-filter {
+    width: 200px;
   }
 
   .knowledge-list-table {
@@ -884,19 +914,10 @@ onBeforeUnmount(() => {
     }
 
     .knowledge-search,
-    .scope-tabs,
+    .knowledge-scope-filter,
+    .workspace-filter,
     .page-actions > .el-button {
       width: 100%;
-    }
-
-    .scope-tabs {
-      display: flex;
-      flex-wrap: wrap;
-
-      :deep(.el-radio-button) {
-        flex: 1 1 100%;
-        min-width: 0;
-      }
     }
   }
 }

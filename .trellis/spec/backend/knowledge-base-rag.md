@@ -53,3 +53,47 @@ Inherit the matching version-level resolution when the chunk row is absent, then
 - A retrieval can legitimately return multiple citations from one published version. Python dictionaries are not orderable, so `sorted(dict_generator)` raises `TypeError` as soon as more than one citation is present.
 - Build the redacted citation identity snapshot first, then sort with an explicit tuple key such as `knowledge_base_id + version_id + chunk_id` before hashing.
 - The version hash must be stable when citation order changes, and the regression test must contain at least two citations so a single-hit test cannot hide the failure.
+
+## Scenario: SaaS Knowledge Management Workspace Boundary
+
+### 1. Scope / Trigger
+- Applies when the SaaS knowledge-management UI or API reads or writes platform-public knowledge and workspace knowledge from one management surface.
+
+### 2. Signatures
+- `GET /api/v1/knowledge-base/list?visibility_scope=PLATFORM_PUBLIC|ADMIN_PUBLIC&tenant_id=<workspace-id>`
+- `POST /api/v1/knowledge-base/create` JSON may include `tenant_id` for `ADMIN_PUBLIC`.
+- `POST /api/v1/knowledge-base/save` form data may include `tenant_id` for new `ADMIN_PUBLIC` records.
+- Detail, draft, validation, publication, rollback, download, and archive routes resolve the persisted record and retain its tenant boundary.
+
+### 3. Contracts
+- `PLATFORM_PUBLIC` always maps to `DEFAULT_TENANT_ID`; callers must omit `tenant_id`.
+- A global platform admin may pass an active, non-default workspace `tenant_id` and manage that workspace's knowledge.
+- A workspace owner/admin may read platform knowledge, manage only the authenticated current workspace, and cannot select another workspace.
+- A workspace member may read platform and current-workspace knowledge but cannot create, edit, publish, roll back, or archive.
+- The backend filters by the authorized `tenant_id`; the frontend must not fetch all workspace records and hide unauthorized rows locally.
+
+### 4. Validation & Error Matrix
+- Platform scope with `tenant_id` -> HTTP 400.
+- Global platform admin requests workspace scope without `tenant_id` -> HTTP 400 and require an explicit workspace selection.
+- Workspace scope with missing/deactivated/default-platform tenant -> HTTP 404.
+- Non-platform user requests another workspace `tenant_id` -> HTTP 403.
+- Missing current workspace for a workspace-scoped request -> existing explicit tenant-context error.
+- Write operation without `can_manage` permission -> HTTP 403; never substitute platform-admin or similarly named workspace context.
+
+### 5. Good/Base/Bad Cases
+- Good: platform admin selects workspace A; list/create operations carry A's `tenant_id`, while later lifecycle operations use the persisted record tenant.
+- Base: workspace admin uses a disabled workspace selector fixed to the authenticated current workspace and receives editable rows there.
+- Bad: a member changes the query string to workspace B; the API returns 403 instead of an empty list or cross-tenant data.
+
+### 6. Tests Required
+- Permission tests cover platform admin, workspace admin, and member for both platform and workspace scopes.
+- API tests assert `tenant_id` filtering, cross-workspace 403, invalid/default workspace 404, and platform-scope-with-tenant 400.
+- Frontend contract tests assert both scope options, the fixed non-platform workspace selector, and role-gated create/edit/archive controls.
+- Browser tests use real authenticated accounts to verify the three-role matrix and at least two platform-admin workspace selections.
+
+### 7. Wrong vs Correct
+#### Wrong
+Fetch all workspace knowledge for a platform administrator, filter it in Vue, and reuse the current tenant for create or lifecycle calls.
+
+#### Correct
+Send the selected authorized `tenant_id` to the list/create API, enforce it on the backend, and use the persisted knowledge record's tenant for subsequent lifecycle operations.

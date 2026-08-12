@@ -108,6 +108,7 @@ export interface KnowledgeBaseSavePayload {
   description?: string
   active: boolean
   visibility_scope: KnowledgeBaseScope
+  tenant_id?: number | string | null
   file?: File | null
 }
 
@@ -115,6 +116,7 @@ export interface KnowledgeBaseCreatePayload {
   name: string
   description?: string
   visibility_scope: KnowledgeBaseScope
+  tenant_id?: number | string | null
 }
 
 const buildFormData = (payload: KnowledgeBaseSavePayload) => {
@@ -124,13 +126,14 @@ const buildFormData = (payload: KnowledgeBaseSavePayload) => {
   formData.append('description', payload.description || '')
   formData.append('active', String(payload.active))
   formData.append('visibility_scope', payload.visibility_scope)
+  if (payload.tenant_id) formData.append('tenant_id', String(payload.tenant_id))
   if (payload.file) formData.append('file', payload.file)
   return formData
 }
 
 export const knowledgeBaseApi = {
   capabilities: () => request.get<KnowledgeBaseCapabilities>('/knowledge-base/capabilities'),
-  list: (params?: { visibility_scope?: KnowledgeBaseScope; keyword?: string }) =>
+  list: (params?: { visibility_scope?: KnowledgeBaseScope; keyword?: string; tenant_id?: number | string }) =>
     request.get<KnowledgeBaseItem[]>('/knowledge-base/list', { params }),
   detail: (id: number | string) => request.get<KnowledgeBaseItem>(`/knowledge-base/${id}`),
   create: (payload: KnowledgeBaseCreatePayload) =>

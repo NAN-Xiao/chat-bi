@@ -16,6 +16,8 @@ from apps.knowledge_base.models import (
 )
 from apps.knowledge_base.permissions import KnowledgePermissionService
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
+from apps.system.models.tenant import TenantModel
 from apps.system.schemas.access_context import current_tenant_id
 
 
@@ -70,8 +72,40 @@ def v2_write_error(capabilities: KnowledgeCapabilities) -> KnowledgeBusinessErro
     )
 
 
-def visible_tenant_ids(user: Any | None) -> tuple[int, ...]:
+def validate_workspace_tenant(session: Session, tenant_id: int) -> int:
+    if int(tenant_id) == DEFAULT_TENANT_ID:
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_WORKSPACE_INVALID",
+            message="目标工作空间不存在或已停用。",
+            status_code=404,
+            error_type="NOT_FOUND",
+        )
+    tenant = session.get(TenantModel, int(tenant_id))
+    if tenant is None or int(getattr(tenant, "status", 0) or 0) != 1:
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_WORKSPACE_INVALID",
+            message="目标工作空间不存在或已停用。",
+            status_code=404,
+            error_type="NOT_FOUND",
+        )
+    return int(tenant.id)
+
+
+def visible_tenant_ids(user: Any | None, tenant_id: int | None = None) -> tuple[int, ...]:
+    if tenant_id is not None:
+        if is_platform_admin(user) and not is_platform_workspace_delegate(user):
+            return (int(tenant_id),)
+        if current_tenant_id(user) == int(tenant_id):
+            return (int(tenant_id),)
+        raise KnowledgeBusinessError(
+            code="KNOWLEDGE_WORKSPACE_FORBIDDEN",
+            message="不能访问其他工作空间的知识库。",
+            status_code=403,
+            error_type="FORBIDDEN",
+        )
     tenant_id = current_tenant_id(user)
+    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
+        return (DEFAULT_TENANT_ID,)
     if tenant_id is None:
         return (DEFAULT_TENANT_ID,)
     if tenant_id == DEFAULT_TENANT_ID:
@@ -84,15 +118,12 @@ def resolve_record(
     *,
     knowledge_base_id: int,
     user: Any | None,
+    tenant_id: int | None = None,
 ) -> KnowledgeBase:
-    rows = session.exec(
-        select(KnowledgeBase)
-        .where(
-            KnowledgeBase.id == knowledge_base_id,
-            KnowledgeBase.tenant_id.in_(visible_tenant_ids(user)),
-        )
-        .order_by(KnowledgeBase.tenant_id.desc())
-    ).all()
+    statement = select(KnowledgeBase).where(KnowledgeBase.id == knowledge_base_id)
+    if not (is_platform_admin(user) and not is_platform_workspace_delegate(user) and tenant_id is None):
+        statement = statement.where(KnowledgeBase.tenant_id.in_(visible_tenant_ids(user, tenant_id)))
+    rows = session.exec(statement.order_by(KnowledgeBase.tenant_id.desc())).all()
     if not rows:
         raise KnowledgeBusinessError(
             code="KNOWLEDGE_NOT_FOUND",
@@ -119,6 +150,8 @@ def record_tenant_id(record: KnowledgeBase, user: Any | None) -> int:
     scope = KnowledgeBaseVisibilityScopeEnum(record.visibility_scope)
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         return DEFAULT_TENANT_ID
+    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
+        return int(record.tenant_id)
     tenant_id = current_tenant_id(user)
     if tenant_id is None or int(record.tenant_id) != tenant_id:
         raise KnowledgeBusinessError(

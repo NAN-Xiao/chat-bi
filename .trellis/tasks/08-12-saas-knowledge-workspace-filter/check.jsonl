@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/knowledge-base-rag.md","reason":"SaaS knowledge management now has explicit tenant_id request, authorization, validation, and role-boundary contracts."}
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"Workspace management shell needs a 64px mobile icon rail to keep knowledge management usable without root overflow."}
