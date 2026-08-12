@@ -170,8 +170,7 @@ const restoreBusinessTenant = async () => {
 }
 
 const exitPlatformWorkspaceDelegate = async () => {
-  await userStore.exitPlatformWorkspaceDelegate()
-  router.push(PLATFORM_ADMIN_HOME)
+  await router.push(PLATFORM_ADMIN_HOME)
 }
 
 const toProjectList = async () => {
@@ -194,7 +193,7 @@ const isPlatformSaasAdminShell = computed(
 const useTopNavigationShell = computed(() => !isPlatformSaasAdminShell.value)
 const showTopWorkspaceAdminSidebar = computed(() => useTopNavigationShell.value && showSysmenu.value)
 const workspaceScopedViewKey = computed(() =>
-  showTopWorkspaceAdminSidebar.value
+  showSysmenu.value
     ? `workspace-admin:${workspaceAdminViewVersion.value}:${route.path}`
     : route.path
 )

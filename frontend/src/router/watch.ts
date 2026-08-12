@@ -6,7 +6,6 @@ import { generateDynamicRouters } from './dynamic'
 import { toLoginPage } from '@/utils/utils'
 import {
   applyPlatformWorkspaceDelegateRouteQuery,
-  clearPlatformWorkspaceDelegateContext,
   isPlatformWorkspaceDelegateSession,
 } from '@/utils/platformWorkspaceDelegate'
 import {
@@ -63,6 +62,7 @@ const isDefaultDashboardRoute = (path: string) =>
 const restoreBusinessTenantAfterWorkspaceAdmin = async (to: any, from: any) => {
   if (!from?.path?.startsWith('/system') || to?.path?.startsWith('/system')) return
   if (!isTenantChatBIRoute(to.path)) return
+  if (isPlatformWorkspaceDelegateSession()) return
   const rememberedTenant = getRememberedBusinessTenant()
   if (!rememberedTenant?.id) return
   const tenantId = String(rememberedTenant.id)
@@ -83,6 +83,9 @@ export const watchRouter = (router: Router) => {
       (to.path === platformAdminHome || to.path === platformTenantManagementPath) &&
       isPlatformWorkspaceDelegateSession() &&
       to.query?.platform_workspace_delegate !== '1'
+    if (shouldEnterDelegate) {
+      clearRememberedBusinessTenant()
+    }
     if (to.path.startsWith('/login') && token && userStore.getUid) {
       const redirect = Array.isArray(to?.query?.redirect)
         ? to.query.redirect[0]
@@ -106,9 +109,10 @@ export const watchRouter = (router: Router) => {
     if (shouldEnterDelegate || shouldExitDelegate) {
       try {
         if (shouldExitDelegate) {
-          clearPlatformWorkspaceDelegateContext()
+          await userStore.exitPlatformWorkspaceDelegate()
+        } else {
+          await userStore.info()
         }
-        await userStore.info()
         if (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate) {
           try {
             await userStore.loadTenants(true)
