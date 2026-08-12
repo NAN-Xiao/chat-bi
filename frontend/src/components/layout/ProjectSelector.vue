@@ -89,7 +89,7 @@ const handleWorkspaceChange = async (tenant: TenantInfo) => {
     emit('selectProject', null)
     ElMessage.success({
       message: t('common.switch_success'),
-      duration: 1500,
+      duration: 700,
     })
     popoverRef.value?.hide?.()
   } finally {

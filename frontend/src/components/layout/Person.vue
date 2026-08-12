@@ -167,7 +167,7 @@ const enterTenantAdmin = async (tenant?: TenantInfo) => {
       dashboardStore.canvasDataInit()
       ElMessage.success({
         message: t('common.switch_success'),
-        duration: 1500,
+        duration: 700,
       })
     }
     popoverRef.value?.hide?.()

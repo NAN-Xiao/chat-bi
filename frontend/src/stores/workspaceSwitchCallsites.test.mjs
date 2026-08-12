@@ -35,8 +35,8 @@ test('工作空间切换成功提示使用较短的展示时长', () => {
     const source = callsiteSources.find(([callsiteName]) => callsiteName === name)[1]
     assert.match(
       source,
-      /ElMessage\.success\(\{[\s\S]*?message: t\('common\.switch_success'\),[\s\S]*?duration: 1500,[\s\S]*?\}\)/,
-      `${name} should close the workspace switch success message after 1500ms`
+      /ElMessage\.success\(\{[\s\S]*?message: t\('common\.switch_success'\),[\s\S]*?duration: 700,[\s\S]*?\}\)/,
+      `${name} should close the workspace switch success message after 700ms`
     )
   }
 })
