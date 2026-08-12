@@ -380,7 +380,8 @@ SQL_REPAIR_PROMPT = """你是 PostgreSQL 查询修正器。请根据执行错误
 
 JSON 格式：
 {
-  "sql": "修正后的只读 SQL"
+  "sql": "修正后的只读 SQL",
+  "time_fields": [{"table": "物理表名", "alias": "SQL别名（同表多次扫描时必填）", "field": "物理时间字段", "start_offset_days": 0, "end_offset_days": 0}]
 }
 
 修正规则：
@@ -389,7 +390,10 @@ JSON 格式：
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
 - 后端提供的时间策略是最终约束，不得重新解释或扩大。
-- 修正后的 SQL 必须保留后端给出的具体日期常量形式的具体起止日期和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。若随后“时间扫描声明”中的 time_fields 声明了 alias 及 start_offset_days/end_offset_days，必须按声明保留对应扫描的静态窗口；不得把观察窗口改回用户窗口，也不得新增未声明的时间扫描。
+- 修正后的 SQL 必须保留后端给出的具体日期常量形式的具体起止日期和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 必须同时返回修正后 SQL 对应的完整时间扫描声明 time_fields。每个物理时间表扫描都必须有且只有一条匹配声明；同一物理表多次扫描时，每条声明必须填写该扫描在整条 SQL 内唯一的真实 alias。普通扫描的 start_offset_days/end_offset_days 均为 0；生命周期或观察窗口必须使用用户问题或 Data Skill 明确要求的偏移。不得遗漏、虚构、声明 SQL 中不存在的扫描，或新增未声明的时间扫描。
+- 不得新增未声明的时间扫描。
+- SQL、alias、时间字段或扫描窗口发生变化时，必须同步修正 time_fields；不得沿用已经与 SQL 不一致的旧声明。
 - 没有适用时间字段的维表不得虚构时间过滤。
 - 保持原分析目的和时间范围，不要扩大或缩小口径。
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
@@ -3879,7 +3883,7 @@ def _repair_sql(
     data_skill: str = "",
     *,
     time_resolution: AnalysisTimeResolution,
-) -> str:
+) -> dict[str, Any]:
     """
     是什么：_repair_sql 是一个可以复用的小步骤，负责分析助手相关的一件事。
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
@@ -3919,9 +3923,73 @@ def _repair_sql(
     try:
         data = _extract_json_object(text)
         repaired_sql = str(data.get("sql") or "")
+        repaired_time_fields = data.get(
+            "time_fields",
+            raw_query.get("time_fields") or [],
+        )
     except Exception:
         repaired_sql = text
-    return _normalise_sql(repaired_sql)
+        repaired_time_fields = raw_query.get("time_fields") or []
+    return {
+        "sql": _normalise_sql(repaired_sql),
+        "time_fields": repaired_time_fields,
+    }
+
+
+def _repaired_query_parts(
+    repaired: object,
+    *,
+    fallback_time_fields: object,
+) -> tuple[str, object]:
+    """兼容测试/旧调用返回的纯 SQL，同时让新修复结果携带扫描声明。"""
+    if isinstance(repaired, dict):
+        sql = str(repaired.get("sql") or "")
+        time_fields = (
+            repaired.get("time_fields")
+            if "time_fields" in repaired
+            else fallback_time_fields
+        )
+        return _normalise_sql(sql), time_fields
+    return _normalise_sql(str(repaired or "")), fallback_time_fields
+
+
+def _prepare_repaired_query_sql(
+    *,
+    repaired: object,
+    fallback_time_fields: object,
+    llm,
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    allowed_tables: list[str],
+    time_resolution: AnalysisTimeResolution,
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
+    dialect: str | None,
+) -> tuple[str, list[dict[str, Any]]]:
+    """把修复后的 SQL 与扫描声明作为一个不可分割的合同重新校验。"""
+    repaired_sql, repaired_time_fields = _repaired_query_parts(
+        repaired,
+        fallback_time_fields=fallback_time_fields,
+    )
+    declared = _analysis_time_declared_fields(
+        repaired_time_fields,
+        time_resolution=time_resolution,
+        schema_time_fields=schema_time_fields,
+    )
+    prepared = _prepare_sql_for_execution(
+        llm,
+        session,
+        current_user,
+        datasource,
+        repaired_sql,
+        allowed_tables,
+        time_resolution=time_resolution,
+        schema_time_fields=schema_time_fields,
+        declared_time_fields=declared,
+        dialect=dialect,
+        allow_time_rewrite=True,
+    )
+    return prepared, declared
 
 
 def _prepare_time_safe_query_sql(
@@ -3945,14 +4013,15 @@ def _prepare_time_safe_query_sql(
 ) -> str:
     """严格校验失败后只允许一次定向修复，再做唯一目标 AST 补齐。"""
     raw_declared = raw_query.get("time_fields")
-    declared = _analysis_time_declared_fields(
-        [] if raw_declared is None else raw_declared,
-        time_resolution=time_resolution,
-        schema_time_fields=schema_time_fields,
-    )
-    raw_query["time_fields"] = declared
+    fallback_time_fields = [] if raw_declared is None else raw_declared
     raw_sql = str(raw_query.get("sql") or "")
     try:
+        declared = _analysis_time_declared_fields(
+            fallback_time_fields,
+            time_resolution=time_resolution,
+            schema_time_fields=schema_time_fields,
+        )
+        raw_query["time_fields"] = declared
         return _prepare_sql_for_execution(
             llm,
             session,
@@ -3981,19 +4050,20 @@ def _prepare_time_safe_query_sql(
             data_skill,
             time_resolution=time_resolution,
         )
-        return _prepare_sql_for_execution(
-            llm,
-            session,
-            current_user,
-            datasource,
-            repaired,
-            allowed_tables,
+        prepared, repaired_declared = _prepare_repaired_query_sql(
+            repaired=repaired,
+            fallback_time_fields=fallback_time_fields,
+            llm=llm,
+            session=session,
+            current_user=current_user,
+            datasource=datasource,
+            allowed_tables=allowed_tables,
             time_resolution=time_resolution,
             schema_time_fields=schema_time_fields,
-            declared_time_fields=declared,
             dialect=dialect,
-            allow_time_rewrite=True,
         )
+        raw_query["time_fields"] = repaired_declared
+        return prepared
 
 
 def _summarise_block(
@@ -4254,6 +4324,23 @@ def _build_plan(
 
     queries = _executable_plan_queries(plan)
     if not queries:
+        retry = _llm_text(
+            llm,
+            messages
+            + [
+                AIMessage(content=text),
+                HumanMessage(
+                    content=(
+                        "上一次 JSON 缺少可执行 queries。请在不改变后端时间策略、"
+                        "权限和 Data Skill 口径的前提下，重新返回一个合法 JSON 对象，"
+                        "至少包含一个结构完整且只读的 queries 数据块。"
+                    )
+                ),
+            ],
+        )
+        plan = _extract_json_object(retry)
+        queries = _executable_plan_queries(plan)
+    if not queries:
         raise ValueError("模型没有生成可执行的数据召回计划")
     plan["queries"] = queries[:MAX_ANALYSIS_QUERIES]
     return plan
@@ -4314,6 +4401,23 @@ def _build_forecast_plan(
         plan = _extract_json_object(retry)
 
     queries = _executable_plan_queries(plan)
+    if not queries:
+        retry = _llm_text(
+            llm,
+            messages
+            + [
+                AIMessage(content=text),
+                HumanMessage(
+                    content=(
+                        "上一次 JSON 缺少可执行 queries。请在不改变后端时间策略、"
+                        "权限和 Data Skill 口径的前提下，重新返回一个合法 JSON 对象，"
+                        "至少包含一个结构完整且只读的 queries 数据块。"
+                    )
+                ),
+            ],
+        )
+        plan = _extract_json_object(retry)
+        queries = _executable_plan_queries(plan)
     if not queries:
         raise ValueError("模型没有生成可执行的预测数据召回计划")
     plan["queries"] = queries[:MAX_FORECAST_QUERIES]
@@ -4564,7 +4668,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         if looks_like_permission_scope_error(str(first_error)):
                             raise first_error
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
-                        repaired_sql = _repair_sql(
+                        repaired = _repair_sql(
                             llm,
                             question,
                             raw_query,
@@ -4578,19 +4682,19 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             data_skill,
                             time_resolution=time_resolution,
                         )
-                        sql = _prepare_sql_for_execution(
-                            llm,
-                            session,
-                            current_user,
-                            datasource,
-                            repaired_sql,
-                            allowed_tables,
+                        sql, repaired_declared = _prepare_repaired_query_sql(
+                            repaired=repaired,
+                            fallback_time_fields=raw_query.get("time_fields") or [],
+                            llm=llm,
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            allowed_tables=allowed_tables,
                             time_resolution=time_resolution,
                             schema_time_fields=schema_time_fields,
-                            declared_time_fields=raw_query.get("time_fields") or [],
                             dialect=dialect,
-                            allow_time_rewrite=True,
                         )
+                        raw_query["time_fields"] = repaired_declared
                         block["sql"] = sql
                         raw_query["sql"] = sql
                         result = execute_user_analysis_query_or_raise(
@@ -4604,7 +4708,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
-                        repaired_sql = _repair_sql(
+                        repaired = _repair_sql(
                             llm,
                             question,
                             raw_query,
@@ -4618,19 +4722,19 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             data_skill,
                             time_resolution=time_resolution,
                         )
-                        sql = _prepare_sql_for_execution(
-                            llm,
-                            session,
-                            current_user,
-                            datasource,
-                            repaired_sql,
-                            allowed_tables,
+                        sql, repaired_declared = _prepare_repaired_query_sql(
+                            repaired=repaired,
+                            fallback_time_fields=raw_query.get("time_fields") or [],
+                            llm=llm,
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            allowed_tables=allowed_tables,
                             time_resolution=time_resolution,
                             schema_time_fields=schema_time_fields,
-                            declared_time_fields=raw_query.get("time_fields") or [],
                             dialect=dialect,
-                            allow_time_rewrite=True,
                         )
+                        raw_query["time_fields"] = repaired_declared
                         block["sql"] = sql
                         raw_query["sql"] = sql
                         result = execute_user_analysis_query_or_raise(
