@@ -2103,6 +2103,7 @@
     "inactive": "停用",
     "updated_at": "更新時間",
     "workspace_knowledge_base": "工作空間知識庫",
+    "platform_knowledge_base": "平台知識庫",
     "saas_knowledge_base": "SaaS 知識庫",
     "delete_confirm": "是否刪除知識庫：{msg}？",
     "mode_upgrading_title": "知識庫升級中",

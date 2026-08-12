@@ -37,6 +37,7 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 
 - For desktop top bars, also verify the navigation/action container has no hidden overflow by comparing its `scrollWidth` and `clientWidth`.
 - Save and inspect screenshots for affected primary pages when validating layout or other user-visible changes.
+- When a requirement changes a management navigation hierarchy, browser verification must cover the parent menu's expanded state, every expected child label, each child's target route, and the page state selected by that route. Testing an equivalent in-page filter does not prove that the requested sidebar hierarchy exists.
 
 ## Data And Rendering Rules
 
@@ -51,4 +52,5 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 - Keep management views scannable: readable cards or dense tables, visible status/action columns, and pagination attached to the list it controls.
 - Avoid rendering long AI reports or logs in the first viewport of management consoles.
 - Verify that labels, buttons, and dynamic content fit their containers at both desktop and mobile widths.
+- Keep route metadata and page state synchronized when the same scope can be selected from both a sidebar child route and an in-page control. A child menu must not appear active while the page loads a different scope.
 - In the top-navigation workspace management shell, keep the desktop workspace sidebar at `240px`, but collapse it to a `64px` icon rail at `680px` and below. Hide sidebar labels/header and reduce content padding so management pages retain a usable mobile content width and the root document stays within `clientWidth + 2`.

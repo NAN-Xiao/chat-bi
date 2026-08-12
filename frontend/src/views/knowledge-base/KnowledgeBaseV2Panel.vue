@@ -33,6 +33,7 @@ import {
   defaultKnowledgePayload,
   type KnowledgePayload,
 } from './knowledgePayloadTypes'
+import { useKnowledgeScopeNavigation } from './knowledgeScopeNavigation'
 
 const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
@@ -51,7 +52,7 @@ const versions = ref<KnowledgeBaseVersion[]>([])
 const draft = ref<KnowledgeBaseVersion | null>(null)
 const payload = ref<KnowledgePayload>(defaultKnowledgePayload('DOCUMENT'))
 const keyword = ref('')
-const scopeFilter = ref<KnowledgeBaseScope>(isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
+const scopeFilter = useKnowledgeScopeNavigation()
 const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
 const workspaces = ref<TenantInfo[]>([])
 const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope, tenant_id: '' as string | number })

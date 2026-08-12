@@ -160,10 +160,11 @@ test('知识库管理页通过分组工具栏接入模板下拉入口', async ()
 })
 
 test('知识库管理使用双下拉并向普通成员开放只读入口', async () => {
-  const [v2Source, legacySource, routerSource] = await Promise.all([
+  const [v2Source, legacySource, routerSource, scopeNavigationSource] = await Promise.all([
     readFile(new URL('../src/views/knowledge-base/KnowledgeBaseV2Panel.vue', import.meta.url), 'utf8'),
     readFile(new URL('../src/views/knowledge-base/index.vue', import.meta.url), 'utf8'),
     readFile(new URL('../src/router/index.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/views/knowledge-base/knowledgeScopeNavigation.ts', import.meta.url), 'utf8'),
   ])
 
   for (const source of [v2Source, legacySource]) {
@@ -175,8 +176,15 @@ test('知识库管理使用双下拉并向普通成员开放只读入口', async
   assert.match(v2Source, /row\.can_manage \? '编辑' : '查看'/)
   assert.match(legacySource, /row\.can_manage \? '可管理' : '只读'/)
   const routeStart = routerSource.indexOf("path: 'knowledge-base'")
-  const knowledgeRoute = routeStart >= 0 ? routerSource.slice(routeStart, routeStart + 500) : ''
+  const routeEnd = routeStart >= 0 ? routerSource.indexOf("path: 'prompt'", routeStart) : -1
+  const knowledgeRoute = routeStart >= 0 && routeEnd > routeStart
+    ? routerSource.slice(routeStart, routeEnd)
+    : ''
   assert.match(knowledgeRoute, /tenantBusiness:\s*true/)
   assert.match(knowledgeRoute, /platformOperation:\s*true/)
   assert.doesNotMatch(knowledgeRoute, /tenantAdminOnly:\s*true/)
+  assert.match(knowledgeRoute, /path:\s*'platform'/)
+  assert.match(knowledgeRoute, /path:\s*'workspace'/)
+  assert.match(scopeNavigationSource, /system-platform-knowledge-base/)
+  assert.match(scopeNavigationSource, /system-workspace-knowledge-base/)
 })

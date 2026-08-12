@@ -2104,6 +2104,7 @@
     "inactive": "停用",
     "updated_at": "更新时间",
     "workspace_knowledge_base": "工作空间知识库",
+    "platform_knowledge_base": "平台知识库",
     "saas_knowledge_base": "SaaS 知识库",
     "delete_confirm": "是否删除知识库：{msg}？",
     "mode_upgrading_title": "知识库正在升级",

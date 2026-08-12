@@ -7,6 +7,7 @@ import test from 'node:test'
 const directory = dirname(fileURLToPath(import.meta.url))
 const pageSource = readFileSync(join(directory, 'index.vue'), 'utf8')
 const routerSource = readFileSync(join(directory, '../../router/index.ts'), 'utf8')
+const menuItemSource = readFileSync(join(directory, '../../components/layout/MenuItem.vue'), 'utf8')
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
 const layoutSource = readFileSync(join(directory, '../../components/layout/LayoutDsl.vue'), 'utf8')
 
@@ -18,9 +19,15 @@ test('knowledge page keeps the four editors split behind one orchestration layer
   assert.match(editorSource, /JsonFieldKnowledgeEditor/)
 })
 
-test('existing Skills and knowledge routes remain available', () => {
+test('knowledge management expands to platform and workspace child menus', () => {
   assert.match(routerSource, /path:\s*'data-skills'/)
   assert.match(routerSource, /path:\s*'knowledge-base'/)
+  assert.match(routerSource, /redirect:\s*'\/system\/knowledge-base\/platform'/)
+  assert.match(routerSource, /path:\s*'platform'[\s\S]*title:\s*t\('knowledge_base\.platform_knowledge_base'\)/)
+  assert.match(routerSource, /path:\s*'workspace'[\s\S]*title:\s*t\('knowledge_base\.workspace_knowledge_base'\)/)
+  assert.match(menuItemSource, /if \(children\?\.length\)/)
+  assert.match(menuItemSource, /ElSubMenu/)
+  assert.match(menuItemSource, /children\.map/)
 })
 
 test('knowledge page keeps capability and list failures separate from legacy and empty states', () => {

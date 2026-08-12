@@ -2103,6 +2103,7 @@
     "inactive": "Disabled",
     "updated_at": "Updated at",
     "workspace_knowledge_base": "Workspace Knowledge Base",
+    "platform_knowledge_base": "Platform Knowledge Base",
     "saas_knowledge_base": "SaaS Knowledge Base",
     "delete_confirm": "Delete knowledge base: {msg}?",
     "mode_upgrading_title": "Knowledge base upgrade in progress",

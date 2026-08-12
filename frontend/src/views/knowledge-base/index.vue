@@ -19,6 +19,7 @@ import {
   resolveKnowledgePageMode,
   type KnowledgePageMode,
 } from './knowledgePageMode'
+import { useKnowledgeScopeNavigation } from './knowledgeScopeNavigation'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 
@@ -51,6 +52,7 @@ const pageNotice = computed(() => {
 const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
 )
+const scopeFilter = useKnowledgeScopeNavigation()
 const defaultScope = computed<KnowledgeBaseScope>(() => {
   return scopeFilter.value
 })
@@ -59,7 +61,6 @@ const canCreateKnowledge = computed(
     ? scopeFilter.value === 'PLATFORM_PUBLIC' || Boolean(workspaceFilter.value)
     : userStore.isTenantAdminUser && scopeFilter.value === 'ADMIN_PUBLIC'
 )
-const scopeFilter = ref<KnowledgeBaseScope>(isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
 const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
 const workspaces = ref<TenantInfo[]>([])
 const pageTitle = computed(() => t('knowledge_base.admin_title'))
