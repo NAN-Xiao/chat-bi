@@ -262,6 +262,34 @@ def selected_cte_aliases(
     return aliases
 
 
+def selected_derived_aliases(select_expr: exp.Select) -> dict[str, set[str]]:
+    """Return explicitly declared columns for table functions and derived sources."""
+    aliases: dict[str, set[str]] = {}
+    sources = []
+    from_expr = select_expr.args.get("from_")
+    if from_expr and from_expr.this is not None:
+        sources.append(from_expr.this)
+    for join in select_expr.args.get("joins") or []:
+        if join.this is not None:
+            sources.append(join.this)
+
+    for source in sources:
+        if isinstance(source, exp.Table) and normalize_identifier(source.name):
+            continue
+        alias = source.args.get("alias")
+        if not isinstance(alias, exp.TableAlias):
+            continue
+        alias_name = normalize_identifier(source.alias_or_name)
+        columns = {
+            normalize_identifier(column.name)
+            for column in alias.args.get("columns") or []
+            if normalize_identifier(column.name)
+        }
+        if alias_name and columns:
+            aliases[alias_name] = columns
+    return aliases
+
+
 class _ColumnResolution(str, Enum):
     ALLOWED = "allowed"
     DENIED = "denied"
@@ -275,6 +303,7 @@ def _column_resolution(
         permission_scope: dict[str, dict[str, Any]],
         output_aliases: set[str] | None = None,
         cte_aliases: dict[str, set[str]] | None = None,
+        derived_aliases: dict[str, set[str]] | None = None,
 ) -> _ColumnResolution:
     """
     是什么：判断字段是已授权、受限，还是当前 Schema 中不存在。
@@ -284,12 +313,20 @@ def _column_resolution(
     normalized_column = normalize_identifier(column_name)
     normalized_table = normalize_identifier(column_table)
     cte_aliases = cte_aliases or {}
+    derived_aliases = derived_aliases or {}
     if not normalized_column:
         return _ColumnResolution.ALLOWED
     if normalized_column in (output_aliases or set()):
         return _ColumnResolution.ALLOWED
 
     if normalized_table:
+        derived_fields = derived_aliases.get(normalized_table)
+        if derived_fields is not None:
+            return (
+                _ColumnResolution.ALLOWED
+                if normalized_column in derived_fields
+                else _ColumnResolution.UNKNOWN
+            )
         cte_fields = cte_aliases.get(normalized_table)
         if cte_fields is not None:
             return (
@@ -336,6 +373,64 @@ def _column_resolution(
         return _ColumnResolution.ALLOWED
     if any(not fields or normalized_column in fields for fields in cte_aliases.values()):
         return _ColumnResolution.ALLOWED
+    return _ColumnResolution.UNKNOWN
+
+
+def _select_scope(
+        select_expr: exp.Select,
+        cte_names: set[str],
+        cte_columns: dict[str, set[str]],
+) -> tuple[dict[str, str], dict[str, set[str]], dict[str, set[str]]]:
+    return (
+        selected_table_aliases(select_expr, cte_names),
+        selected_cte_aliases(select_expr, cte_columns),
+        selected_derived_aliases(select_expr),
+    )
+
+
+def _outer_selects(select_expr: exp.Select):
+    parent = select_expr.parent
+    while parent is not None:
+        if isinstance(parent, exp.Select):
+            yield parent
+        parent = parent.parent
+
+
+def _resolve_correlated_column(
+        column: exp.Column,
+        select_expr: exp.Select,
+        cte_names: set[str],
+        cte_columns: dict[str, set[str]],
+        permission_scope: dict[str, dict[str, Any]],
+) -> _ColumnResolution:
+    """Resolve a qualified column against the nearest enclosing SELECT scope."""
+    qualifier = normalize_identifier(column.table)
+    if not qualifier:
+        return _ColumnResolution.UNKNOWN
+
+    local_aliases = _select_scope(select_expr, cte_names, cte_columns)
+    if any(qualifier in aliases for aliases in local_aliases):
+        return _ColumnResolution.UNKNOWN
+
+    for outer_select in _outer_selects(select_expr):
+        selected_aliases, cte_aliases, derived_aliases = _select_scope(
+            outer_select,
+            cte_names,
+            cte_columns,
+        )
+        if not any(
+                qualifier in aliases
+                for aliases in (selected_aliases, cte_aliases, derived_aliases)
+        ):
+            continue
+        return _column_resolution(
+            column.name,
+            column.table,
+            selected_aliases,
+            permission_scope,
+            cte_aliases=cte_aliases,
+            derived_aliases=derived_aliases,
+        )
     return _ColumnResolution.UNKNOWN
 
 
@@ -417,9 +512,12 @@ def validate_sql_columns(
         }
         cte_columns = cte_output_columns(statement)
         for select_expr in statement.find_all(exp.Select):
-            selected_aliases = selected_table_aliases(select_expr, cte_names)
+            selected_aliases, cte_aliases, derived_aliases = _select_scope(
+                select_expr,
+                cte_names,
+                cte_columns,
+            )
             output_aliases = _select_output_aliases(select_expr)
-            cte_aliases = selected_cte_aliases(select_expr, cte_columns)
             json_extraction = extract_json_accesses(
                 select_expr,
                 dialect=dialect or "mysql",
@@ -476,7 +574,16 @@ def validate_sql_columns(
                             permission_scope,
                             output_aliases,
                             cte_aliases,
+                            derived_aliases,
                     )
+                    if resolution is _ColumnResolution.UNKNOWN:
+                        resolution = _resolve_correlated_column(
+                            column,
+                            select_expr,
+                            cte_names,
+                            cte_columns,
+                            permission_scope,
+                        )
                     if resolution is _ColumnResolution.DENIED:
                         denied_columns.add(column.sql())
                     elif resolution is _ColumnResolution.UNKNOWN:
@@ -500,7 +607,16 @@ def validate_sql_columns(
                         permission_scope,
                         output_aliases,
                         cte_aliases,
+                        derived_aliases,
                 )
+                if resolution is _ColumnResolution.UNKNOWN:
+                    resolution = _resolve_correlated_column(
+                        column,
+                        select_expr,
+                        cte_names,
+                        cte_columns,
+                        permission_scope,
+                    )
                 if resolution is _ColumnResolution.DENIED:
                     denied_columns.add(column.sql())
                 elif resolution is _ColumnResolution.UNKNOWN:
