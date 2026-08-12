@@ -74,6 +74,7 @@ class AnalysisTimeIntent:
         "yesterday",
         "day_before_yesterday",
         "current_day",
+        "latest_day",
         "invalid",
     ]
     source: AnalysisTimeSource | None = None
@@ -236,7 +237,7 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
             window_days=30,
         )
     if _LATEST_DAY_RE.search(text):
-        return AnalysisTimeIntent(kind="current_day", source=AnalysisTimeSource.USER)
+        return AnalysisTimeIntent(kind="latest_day", source=AnalysisTimeSource.USER)
     if "昨天" in text or "昨日" in text:
         return AnalysisTimeIntent(kind="yesterday", source=AnalysisTimeSource.USER)
     if "前天" in text:
@@ -455,6 +456,18 @@ def resolve_analysis_time_policy(
             True,
             anchor,
             "用户指定当前业务日",
+        )
+    elif intent.kind == "latest_day":
+        policy = AnalysisTimePolicy(
+            AnalysisTimeSource.USER,
+            1,
+            anchor_date,
+            anchor_date,
+            anchor_date,
+            True,
+            True,
+            anchor,
+            "用户指定最新业务日",
         )
     elif intent.kind == "month":
         start = anchor_date.replace(day=1)

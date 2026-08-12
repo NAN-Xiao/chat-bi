@@ -70,7 +70,7 @@ def test_sql_example_does_not_override_default_window() -> None:
 @pytest.mark.parametrize(
     ("question", "expected_kind", "expected_start", "expected_end", "expected_window_days"),
     [
-        ("数据最新一天的英雄等级分布", "current_day", date(2026, 7, 26), date(2026, 7, 26), 1),
+        ("数据最新一天的英雄等级分布", "latest_day", date(2026, 7, 26), date(2026, 7, 26), 1),
         ("实时收入", "current_day", date(2026, 7, 26), date(2026, 7, 26), 1),
         ("今天实时收入", "current_day", date(2026, 7, 26), date(2026, 7, 26), 1),
         ("昨天实时收入", "yesterday", date(2026, 7, 25), date(2026, 7, 25), 1),
