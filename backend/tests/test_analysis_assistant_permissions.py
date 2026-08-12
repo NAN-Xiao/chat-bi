@@ -346,6 +346,11 @@ def test_chat_deduplicates_real_unresolved_time_policy_trace_after_snapshot(
         "build",
         staticmethod(lambda **_kwargs: business_context),
     )
+    monkeypatch.setattr(
+        analysis_api,
+        "_collect_data_skill_context",
+        lambda *_args, **_kwargs: "",
+    )
     monkeypatch.setattr(analysis_api, "_create_llm", _fake_create_llm)
     monkeypatch.setattr(
         analysis_api,
@@ -801,6 +806,71 @@ def _mock_time_safe_chat_runtime(
             analysis_api.AnalysisAssistantMessage(role="user", content="分析收入")
         ],
     )
+
+
+def test_chat_matches_and_applies_data_skill_for_every_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queries = [
+        {"id": "q1", "title": "收入趋势", "purpose": "查看每日变化", "sql": "SELECT draft_1"},
+        {"id": "q2", "title": "渠道结构", "purpose": "比较渠道贡献", "sql": "SELECT draft_2"},
+        {"id": "q3", "title": "订单分布", "purpose": "查看订单区间", "sql": "SELECT draft_3"},
+    ]
+    request = _mock_time_safe_chat_runtime(monkeypatch, queries)
+    matched_questions: list[str] = []
+    generated_calls: list[tuple[str, str]] = []
+    prepared_skills: list[str] = []
+    semantic_skills: list[str] = []
+    summary_skills: list[str] = []
+
+    def match_skill(_session, _datasource_id, _skill_id, _user, question, *_args, **_kwargs):
+        matched_questions.append(question)
+        return f"skill:{len(matched_questions)}"
+
+    def generate_query(_llm, _question, raw_query, *_args, **kwargs):
+        skill = kwargs.get("data_skill") or _args[-1]
+        generated_calls.append((raw_query["id"], skill))
+        return {"sql": f"SELECT generated_{raw_query['id']}", "time_fields": []}
+
+    def prepare_query(**kwargs):
+        prepared_skills.append(kwargs["data_skill"])
+        return kwargs["raw_query"]["sql"]
+
+    def validate_semantics(_query, _result, data_skill=""):
+        semantic_skills.append(data_skill)
+        return None
+
+    def summarise(_llm, _question, _block, _custom_agent="", data_skill="", **_kwargs):
+        summary_skills.append(data_skill)
+        return "数据块摘要"
+
+    monkeypatch.setattr(analysis_api, "_collect_data_skill_context", match_skill)
+    monkeypatch.setattr(analysis_api, "_generate_query_sql_with_skill", generate_query)
+    monkeypatch.setattr(analysis_api, "_prepare_time_safe_query_sql", prepare_query)
+    monkeypatch.setattr(analysis_api, "_semantic_validation_error", validate_semantics)
+    monkeypatch.setattr(analysis_api, "_summarise_block", summarise)
+    monkeypatch.setattr(
+        analysis_api,
+        "execute_user_analysis_query_or_raise",
+        lambda **_kwargs: SimpleNamespace(
+            result={"fields": ["value"], "data": [{"value": 1}]}
+        ),
+    )
+
+    response = asyncio.run(analysis_api.chat(request, _user(), _FakeSession()))
+    payload = b"".join(asyncio.run(_collect_stream_body(response))).decode()
+
+    assert len(matched_questions) == 3
+    for query, matched_question in zip(queries, matched_questions, strict=True):
+        assert "分析收入" in matched_question
+        assert query["title"] in matched_question
+        assert query["purpose"] in matched_question
+    assert generated_calls == [("q1", "skill:1"), ("q2", "skill:2"), ("q3", "skill:3")]
+    assert prepared_skills == ["skill:1", "skill:2", "skill:3"]
+    assert semantic_skills == ["skill:1", "skill:2", "skill:3"]
+    assert summary_skills == ["skill:1", "skill:2", "skill:3"]
+    assert payload.count("已按当前数据块匹配的 Data Skill 生成查询。") == 3
+    assert '"status":"failed"' not in payload
 
 
 def test_chat_time_policy_failure_is_non_blocking_for_other_queries(
