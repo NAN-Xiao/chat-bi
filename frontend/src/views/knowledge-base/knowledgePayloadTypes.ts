@@ -1,6 +1,15 @@
+export interface DocumentBlock {
+  id: string
+  title: string
+  markdown: string
+  enabled: boolean
+  block_revision: number
+}
+
 export interface DocumentPayload {
   knowledge_type: 'DOCUMENT'
-  markdown: string
+  blocks: DocumentBlock[]
+  structure_revision: number
   tags: string[]
   datasource_neutral: boolean
   object_references: KnowledgeObjectReference[]
@@ -77,6 +86,46 @@ export type KnowledgePayload =
   | EventKnowledgePayload
   | JsonFieldKnowledgePayload
 
+function documentBlockId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().replaceAll('-', '')
+  }
+  return `block-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+export function createDocumentBlock(title = '', markdown = ''): DocumentBlock {
+  return {
+    id: documentBlockId(),
+    title,
+    markdown,
+    enabled: true,
+    block_revision: 1,
+  }
+}
+
+export function normalizeDocumentPayload(value: Record<string, any> | DocumentPayload): DocumentPayload {
+  const rawBlocks = Array.isArray(value?.blocks) ? value.blocks : null
+  const blocks = rawBlocks
+    ? rawBlocks.map((block: any) => ({
+        id: String(block?.id || documentBlockId()),
+        title: String(block?.title || ''),
+        markdown: String(block?.markdown || ''),
+        enabled: block?.enabled !== false,
+        block_revision: Math.max(1, Number(block?.block_revision) || 1),
+      }))
+    : [createDocumentBlock('正文', String((value as Record<string, any>)?.markdown || ''))]
+  return {
+    knowledge_type: 'DOCUMENT',
+    blocks: blocks.length ? blocks : [createDocumentBlock()],
+    structure_revision: Math.max(1, Number(value?.structure_revision) || 1),
+    tags: Array.isArray(value?.tags) ? value.tags.map(String) : [],
+    datasource_neutral: value?.datasource_neutral !== false,
+    object_references: Array.isArray(value?.object_references)
+      ? value.object_references.map((item: any) => ({ ...item }))
+      : [],
+  }
+}
+
 export function defaultKnowledgePayload(type: KnowledgePayload['knowledge_type']): KnowledgePayload {
   if (type === 'BUSINESS') {
     return {
@@ -121,7 +170,8 @@ export function defaultKnowledgePayload(type: KnowledgePayload['knowledge_type']
   }
   return {
     knowledge_type: 'DOCUMENT',
-    markdown: '',
+    blocks: [createDocumentBlock()],
+    structure_revision: 1,
     tags: [],
     datasource_neutral: false,
     object_references: [],
@@ -153,9 +203,8 @@ export function serializeKnowledgeDraft(payload: KnowledgePayload): KnowledgePay
     }
   }
   return {
-    ...payload,
-    tags: [...(payload.tags || [])],
-    object_references: (payload.object_references || []).map((item) => ({ ...item })),
+    ...normalizeDocumentPayload(payload),
+    blocks: normalizeDocumentPayload(payload).blocks.map((block) => ({ ...block })),
   }
 }
 

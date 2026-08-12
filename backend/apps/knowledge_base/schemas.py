@@ -1,8 +1,18 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+import hashlib
+import re
+import uuid
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
 
@@ -57,12 +67,116 @@ class SemanticObjectReferenceInput(BaseModel):
         )
 
 
+class DocumentBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    title: str = Field(default="", max_length=255)
+    markdown: str = ""
+    enabled: bool = True
+    block_revision: int = Field(default=1, ge=1)
+
+    @field_validator("id", "title", mode="before")
+    @classmethod
+    def normalize_text(cls, value: object) -> str:
+        return str(value or "").strip()
+
+
 class DocumentPayload(BaseModel):
     knowledge_type: Literal["DOCUMENT"]
-    markdown: str
+    blocks: list[DocumentBlock]
+    structure_revision: int = Field(default=1, ge=1)
     tags: list[str] = Field(default_factory=list)
     datasource_neutral: bool = True
     object_references: list[SemanticObjectReferenceInput] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_markdown(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or value.get("blocks") is not None:
+            return value
+        markdown = str(value.get("markdown") or "")
+        migrated = dict(value)
+        migrated.pop("markdown", None)
+        normalized_markdown = _normalize_legacy_markdown(markdown)
+        seed = hashlib.sha256(normalized_markdown.encode("utf-8")).hexdigest()[:24]
+        migrated["blocks"] = [{
+            "id": f"legacy-{seed}",
+            "title": "正文",
+            "markdown": markdown,
+            "enabled": True,
+            "block_revision": 1,
+        }]
+        migrated.setdefault("structure_revision", 1)
+        return migrated
+
+    @property
+    def markdown(self) -> str:
+        return document_markdown(self)
+
+
+_DOCUMENT_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+
+
+def new_document_block(*, title: str = "", markdown: str = "") -> dict[str, Any]:
+    return {
+        "id": uuid.uuid4().hex,
+        "title": title.strip(),
+        "markdown": markdown,
+        "enabled": True,
+        "block_revision": 1,
+    }
+
+
+def _normalize_legacy_markdown(value: str) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = "\n".join(line.rstrip(" \t") for line in text.split("\n"))
+    return f"{text.rstrip()}\n" if text.strip() else ""
+
+
+def document_blocks_from_markdown(markdown: str, *, legacy: bool = False) -> list[dict[str, Any]]:
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    sections: list[tuple[str, list[str]]] = []
+    title = "正文"
+    lines: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        match = None if fenced else _DOCUMENT_HEADING.match(line)
+        if match:
+            if lines and any(item.strip() for item in lines):
+                sections.append((title, lines))
+            title = match.group(2).strip() or "正文"
+            lines = []
+        else:
+            lines.append(line)
+        if re.match(r"^\s*(```|~~~)", line):
+            fenced = not fenced
+    if lines and any(item.strip() for item in lines):
+        sections.append((title, lines))
+    if not sections:
+        sections = [("正文", text.splitlines())]
+    result: list[dict[str, Any]] = []
+    for index, (section_title, section_lines) in enumerate(sections):
+        body = "\n".join(section_lines).strip()
+        seed = f"{index}\0{section_title}\0{body}".encode()
+        block_id = f"legacy-{hashlib.sha256(seed).hexdigest()[:24]}" if legacy else uuid.uuid4().hex
+        result.append({
+            "id": block_id,
+            "title": section_title,
+            "markdown": body,
+            "enabled": True,
+            "block_revision": 1,
+        })
+    return result
+
+
+def document_markdown(payload: DocumentPayload, *, enabled_only: bool = True) -> str:
+    sections: list[str] = []
+    for block in payload.blocks:
+        if enabled_only and not block.enabled:
+            continue
+        title = block.title.strip() or "正文"
+        body = block.markdown.strip()
+        sections.append(body if title == "正文" else f"# {title}\n\n{body}".rstrip())
+    return "\n\n".join(sections)
 
 
 class BusinessSqlExample(BaseModel):

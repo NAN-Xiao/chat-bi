@@ -88,7 +88,8 @@ def test_datasource_neutral_document_detects_catalog_identifiers_case_insensitiv
 
 def test_document_requires_non_empty_markdown() -> None:
     report = validate_payload(DocumentPayload(knowledge_type="DOCUMENT", markdown=" \n\t"), context=validation_context())
-    assert report.errors[0].code == "KNOWLEDGE_DOCUMENT_MARKDOWN_REQUIRED"
+    assert report.errors[0].code == "KNOWLEDGE_DOCUMENT_BLOCK_MARKDOWN_REQUIRED"
+    assert report.errors[0].field_path == "blocks[0].markdown"
 
 
 def test_datasource_bound_document_requires_declared_physical_object() -> None:
@@ -428,7 +429,7 @@ def test_event_and_json_payloads_reject_empty_required_physical_fields() -> None
 def test_normalization_hash_ignores_document_line_endings_and_json_key_order() -> None:
     left = DocumentPayload(knowledge_type="DOCUMENT", markdown="标题  \r\n\r\n正文\r\n", tags=["说明", "通用"])
     right = DocumentPayload(knowledge_type="DOCUMENT", markdown="标题\n\n正文\n", tags=["说明", "通用"])
-    assert normalize_payload(left)["markdown"] == "标题\n\n正文\n"
+    assert normalize_payload(left)["blocks"][0]["markdown"] == "标题\n\n正文\n"
     assert content_hash_for_payload(left) == content_hash_for_payload(right)
 
 

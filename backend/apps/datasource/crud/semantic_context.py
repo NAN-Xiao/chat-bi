@@ -358,6 +358,7 @@ def _citation_summary(citation: KnowledgeCitation) -> dict[str, Any]:
         "version_id": str(citation.version_id),
         "version_number": citation.version_number,
         "section_path": citation.section_path,
+        "source_block_id": citation.source_block_id,
         "source_file_name": citation.source_file_name,
         "score": round(float(citation.score), 6),
         "visibility_scope": citation.visibility_scope,

@@ -92,6 +92,7 @@ export interface KnowledgeRetrievalPreviewResult {
     knowledge_base_id?: number | string | null
     version_number?: number | null
     section_path?: string | null
+    source_block_id?: string | null
     source_file_name?: string | null
     score?: number | null
     content?: string | null
@@ -100,6 +101,14 @@ export interface KnowledgeRetrievalPreviewResult {
   warnings?: Array<{ message?: string } | string>
   failure_type?: string | null
   latency_ms?: number
+}
+
+export interface KnowledgeConflictDetails {
+  conflict_type?: 'BLOCK' | 'BLOCK_DELETED' | 'STRUCTURE'
+  block_id?: string
+  structure_revision?: number
+  server_block?: Record<string, any>
+  server_payload?: Record<string, any>
 }
 
 export interface KnowledgeBaseSavePayload {
@@ -117,6 +126,7 @@ export interface KnowledgeBaseCreatePayload {
   description?: string
   visibility_scope: KnowledgeBaseScope
   tenant_id?: number | string | null
+  knowledge_type: KnowledgeType
 }
 
 const buildFormData = (payload: KnowledgeBaseSavePayload) => {
@@ -156,6 +166,25 @@ export const knowledgeBaseApi = {
       revision: payload.revision,
       payload: payload.content,
     }),
+  saveDocumentBlock: (
+    id: number | string,
+    blockId: string,
+    payload: {
+      version_id: number
+      block_revision: number
+      title: string
+      markdown: string
+      enabled: boolean
+    }
+  ) => request.patch<KnowledgeBaseVersion>(`/knowledge-base/${id}/draft/blocks/${blockId}`, payload),
+  saveDocumentStructure: (
+    id: number | string,
+    payload: { version_id: number; structure_revision: number; content: Record<string, any> }
+  ) => request.patch<KnowledgeBaseVersion>(`/knowledge-base/${id}/draft/structure`, {
+    version_id: payload.version_id,
+    structure_revision: payload.structure_revision,
+    payload: payload.content,
+  }),
   replaceDraftFile: (
     id: number | string,
     payload: { version_id: number; revision: number; file: File }

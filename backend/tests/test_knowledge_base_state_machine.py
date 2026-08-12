@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -10,7 +11,8 @@ from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgeVersionStatus
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
 from apps.knowledge_base.models import KnowledgeBaseVisibilityScopeEnum
-from apps.knowledge_base.schemas import DocumentPayload
+from apps.knowledge_base.schemas import DocumentBlock, DocumentPayload
+from apps.knowledge_base.version_repository import KnowledgeVersionRepository
 
 
 def _user(tenant_id: int = 7, role: str = "admin"):
@@ -36,6 +38,7 @@ class _FakeRepo:
         )
         self.versions = {}
         self.overrides = {}
+        self.audits = []
         self.next_id = 100
 
     def get_knowledge_base(self, *, tenant_id, knowledge_base_id):
@@ -104,6 +107,19 @@ class _FakeRepo:
         version.validation_report = None
         return version
 
+    def update_locked_draft(self, *, version, payload, normalized_content, content_hash, **kwargs):
+        version.revision += 1
+        version.status = KnowledgeVersionStatus.DRAFT
+        version.payload = payload
+        version.normalized_content = normalized_content
+        version.content_hash = content_hash
+        version.validation_report = None
+        return version
+
+    def add_document_block_audit(self, **kwargs):
+        self.audits.append(kwargs)
+        return SimpleNamespace(**kwargs)
+
     def mark_validating_if_revision_matches(self, *, version_id, expected_revision, content_hash, **kwargs):
         version = self.versions.get(version_id)
         if version is None or version.revision != expected_revision or version.content_hash != content_hash or version.status not in {
@@ -169,7 +185,270 @@ def test_concurrent_saves_use_revision_cas_and_keep_first_payload():
         )
     assert caught.value.code == "KNOWLEDGE_DRAFT_CONFLICT"
     assert caught.value.message == "该知识已被其他用户更新，请刷新后重新编辑。"
-    assert repo.versions[draft.id].payload["markdown"] == "第一次保存\n"
+    assert repo.versions[draft.id].payload["blocks"][0]["markdown"] == "第一次保存\n"
+
+
+def _multi_block_payload() -> DocumentPayload:
+    return DocumentPayload(
+        knowledge_type="DOCUMENT",
+        blocks=[
+            DocumentBlock(id="block-a", title="A", markdown="A0"),
+            DocumentBlock(id="block-b", title="B", markdown="B0"),
+        ],
+        structure_revision=1,
+    )
+
+
+def test_different_document_blocks_can_save_from_the_same_initial_snapshot():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7,
+        knowledge_base_id=11,
+        payload=_multi_block_payload(),
+        actor_id=1,
+        current_user=_user(),
+    )
+
+    service.save_document_block(
+        tenant_id=7,
+        knowledge_base_id=11,
+        draft_version_id=draft.id,
+        block_id="block-a",
+        block_revision=1,
+        title="A",
+        markdown="A1",
+        enabled=True,
+        actor_id=1,
+        current_user=_user(),
+    )
+    saved = service.save_document_block(
+        tenant_id=7,
+        knowledge_base_id=11,
+        draft_version_id=draft.id,
+        block_id="block-b",
+        block_revision=1,
+        title="B",
+        markdown="B1",
+        enabled=True,
+        actor_id=2,
+        current_user=_user(),
+    )
+
+    assert saved.revision == 3
+    blocks = {item["id"]: item for item in saved.payload["blocks"]}
+    assert blocks["block-a"]["markdown"] == "A1\n"
+    assert blocks["block-b"]["markdown"] == "B1\n"
+    assert blocks["block-a"]["block_revision"] == 2
+    assert blocks["block-b"]["block_revision"] == 2
+    assert len(repo.audits) == 2
+    assert repo.audits[0]["operation_types"] == ["UPDATE_BLOCK"]
+    assert repo.audits[0]["block_ids"] == ["block-a"]
+    assert repo.audits[1]["block_ids"] == ["block-b"]
+
+
+def test_same_document_block_returns_server_snapshot_on_conflict():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7, knowledge_base_id=11, payload=_multi_block_payload(), actor_id=1, current_user=_user()
+    )
+    service.save_document_block(
+        tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+        block_id="block-a", block_revision=1, title="A", markdown="server",
+        enabled=True, actor_id=1, current_user=_user(),
+    )
+
+    with pytest.raises(KnowledgeBusinessError) as caught:
+        service.save_document_block(
+            tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+            block_id="block-a", block_revision=1, title="A", markdown="local",
+            enabled=True, actor_id=2, current_user=_user(),
+        )
+
+    assert caught.value.code == "KNOWLEDGE_DOCUMENT_BLOCK_CONFLICT"
+    assert caught.value.details["conflict_type"] == "BLOCK"
+    assert caught.value.details["server_block"]["markdown"] == "server\n"
+
+
+def test_document_structure_conflict_returns_latest_payload():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7, knowledge_base_id=11, payload=_multi_block_payload(), actor_id=1, current_user=_user()
+    )
+    first = _multi_block_payload().model_copy(update={
+        "blocks": list(reversed(_multi_block_payload().blocks)),
+    })
+    service.save_document_structure(
+        tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+        structure_revision=1, payload=first, actor_id=1, current_user=_user(),
+    )
+
+    with pytest.raises(KnowledgeBusinessError) as caught:
+        service.save_document_structure(
+            tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+            structure_revision=1, payload=_multi_block_payload(), actor_id=2, current_user=_user(),
+        )
+
+    assert caught.value.code == "KNOWLEDGE_DOCUMENT_STRUCTURE_CONFLICT"
+    assert caught.value.details["structure_revision"] == 2
+    assert [item["id"] for item in caught.value.details["server_payload"]["blocks"]] == ["block-b", "block-a"]
+
+
+def test_saving_a_deleted_document_block_preserves_conflict_context():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7, knowledge_base_id=11, payload=_multi_block_payload(), actor_id=1, current_user=_user()
+    )
+    remaining = _multi_block_payload().model_copy(update={"blocks": [_multi_block_payload().blocks[0]]})
+    service.save_document_structure(
+        tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+        structure_revision=1, payload=remaining, actor_id=1, current_user=_user(),
+    )
+
+    with pytest.raises(KnowledgeBusinessError) as caught:
+        service.save_document_block(
+            tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+            block_id="block-b", block_revision=1, title="B", markdown="local",
+            enabled=True, actor_id=2, current_user=_user(),
+        )
+
+    assert caught.value.code == "KNOWLEDGE_DOCUMENT_BLOCK_DELETED"
+    assert caught.value.details["conflict_type"] == "BLOCK_DELETED"
+
+
+def test_structure_save_preserves_hidden_metadata_and_normalizes_new_block_revision():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7,
+        knowledge_base_id=11,
+        payload=DocumentPayload(
+            knowledge_type="DOCUMENT",
+            blocks=[DocumentBlock(id="block-a", title="A", markdown="one")],
+            structure_revision=1,
+            tags=["hidden"],
+            datasource_neutral=False,
+            object_references=[{"object_type": "TABLE", "schema": "public", "table": "orders"}],
+        ),
+        actor_id=1,
+        current_user=_user(),
+    )
+    submitted = DocumentPayload(
+        knowledge_type="DOCUMENT",
+        blocks=[
+            DocumentBlock(id="block-a", title="stale", markdown="stale", block_revision=99),
+            DocumentBlock(id="block-new", title="New", markdown="new", block_revision=99),
+        ],
+        structure_revision=1,
+        tags=[],
+        datasource_neutral=True,
+        object_references=[],
+    )
+    saved = service.save_document_structure(
+        tenant_id=7,
+        knowledge_base_id=11,
+        draft_version_id=draft.id,
+        structure_revision=1,
+        payload=submitted,
+        actor_id=1,
+        current_user=_user(),
+    )
+    assert saved.payload["tags"] == ["hidden"]
+    assert saved.payload["datasource_neutral"] is False
+    assert saved.payload["object_references"] == [{"object_type": "TABLE", "schema": "public", "table": "orders"}]
+    blocks = {item["id"]: item for item in saved.payload["blocks"]}
+    assert blocks["block-a"]["title"] == "A"
+    assert blocks["block-a"]["block_revision"] == 1
+    assert blocks["block-new"]["block_revision"] == 1
+    assert repo.audits[-1]["operation_types"] == ["ADD_BLOCK"]
+    assert repo.audits[-1]["added_block_ids"] == ["block-new"]
+
+
+def test_document_block_audit_records_disable_and_structure_delete():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7, knowledge_base_id=11, payload=_multi_block_payload(), actor_id=1, current_user=_user()
+    )
+    service.save_document_block(
+        tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+        block_id="block-a", block_revision=1, title="A", markdown="A0",
+        enabled=False, actor_id=9, current_user=_user(),
+    )
+    structure = _multi_block_payload().model_copy(update={
+        "blocks": [_multi_block_payload().blocks[1]],
+    })
+    service.save_document_structure(
+        tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+        structure_revision=1, payload=structure, actor_id=9, current_user=_user(),
+    )
+
+    assert repo.audits[0]["operation_types"] == ["DISABLE_BLOCK"]
+    assert repo.audits[0]["actor_id"] == 9
+    assert repo.audits[1]["operation_types"] == ["DELETE_BLOCK"]
+    assert repo.audits[1]["deleted_block_ids"] == ["block-a"]
+
+
+def test_document_structure_audit_records_reordered_block_ids():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7, knowledge_base_id=11, payload=_multi_block_payload(), actor_id=1, current_user=_user()
+    )
+    reordered = _multi_block_payload().model_copy(update={
+        "blocks": list(reversed(_multi_block_payload().blocks)),
+    })
+    service.save_document_structure(
+        tenant_id=7, knowledge_base_id=11, draft_version_id=draft.id,
+        structure_revision=1, payload=reordered, actor_id=9, current_user=_user(),
+    )
+
+    assert repo.audits[0]["operation_types"] == ["REORDER_BLOCKS"]
+    assert repo.audits[0]["reordered_block_ids"] == ["block-b", "block-a"]
+
+
+def test_document_block_audit_persists_redacted_transaction_scoped_detail():
+    class _AuditSession:
+        def __init__(self):
+            self.added = []
+            self.flushes = 0
+
+        def add(self, value):
+            self.added.append(value)
+
+        def flush(self):
+            self.flushes += 1
+
+    session = _AuditSession()
+    audit = KnowledgeVersionRepository(session).add_document_block_audit(
+        record=SimpleNamespace(id=11, tenant_id=7, name="Revenue rules"),
+        version=SimpleNamespace(id=100, version_number=3, revision=5),
+        actor_id=9,
+        operation_types=["UPDATE_BLOCK", "DISABLE_BLOCK"],
+        block_ids=["block-a"],
+    )
+
+    assert session.added == [audit]
+    assert session.flushes == 1
+    assert audit.tenant_id == 7
+    assert audit.user_id == 9
+    assert audit.resource_id == "11"
+    assert audit.resource_name == "Revenue rules"
+    detail = json.loads(audit.operation_detail)
+    assert detail == {
+        "added_block_ids": [],
+        "block_ids": ["block-a"],
+        "deleted_block_ids": [],
+        "document_id": 11,
+        "operation_types": ["UPDATE_BLOCK", "DISABLE_BLOCK"],
+        "reordered_block_ids": [],
+        "version_id": 100,
+        "version_number": 3,
+        "version_revision": 5,
+    }
 
 
 def test_validation_transitions_to_ready_to_publish():

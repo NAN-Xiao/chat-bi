@@ -28,16 +28,6 @@ const documentPayload = computed(() => local.value as DocumentPayload)
 const businessPayload = computed(() => local.value as BusinessKnowledgePayload)
 const eventPayload = computed(() => local.value as EventKnowledgePayload)
 const jsonFieldPayload = computed(() => local.value as JsonFieldKnowledgePayload)
-const typeOptions = [
-  { label: '普通文档', value: 'DOCUMENT' },
-  { label: '业务知识（术语 + SQL 示例）', value: 'BUSINESS' },
-  { label: '事件与事件参数', value: 'EVENT' },
-  { label: 'JSON 字段与路径', value: 'JSON_FIELD' },
-]
-
-function updateType(value: KnowledgePayload['knowledge_type']) {
-  local.value = defaultKnowledgePayload(value)
-}
 
 function updatePayload(value: KnowledgePayload) {
   local.value = value
@@ -46,14 +36,6 @@ function updatePayload(value: KnowledgePayload) {
 
 <template>
   <div class="payload-editor">
-    <el-form label-position="top" :disabled="readonly" @submit.prevent>
-      <el-form-item label="知识类型">
-        <el-select :model-value="type" @update:model-value="updateType">
-          <el-option v-for="item in typeOptions" :key="item.value" v-bind="item" />
-        </el-select>
-      </el-form-item>
-    </el-form>
-
     <DocumentEditor
       v-if="type === 'DOCUMENT'"
       :model-value="documentPayload"
@@ -83,5 +65,4 @@ function updatePayload(value: KnowledgePayload) {
 
 <style scoped lang="less">
 .payload-editor { width: 100%; }
-.payload-editor :deep(.el-select) { width: 100%; }
 </style>

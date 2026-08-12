@@ -6,6 +6,7 @@ in ``lifecycle_service.py`` so route handlers do not need to know SQL details.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -21,6 +22,7 @@ from apps.knowledge_base.lifecycle_models import (
 )
 from apps.knowledge_base.models import KnowledgeBase
 from apps.knowledge_base.retrieval_models import KnowledgeBaseWorkspaceOverride
+from common.audit.models.log_model import OperationStatus, OperationType, SystemLog
 
 
 @dataclass(frozen=True)
@@ -204,6 +206,66 @@ class KnowledgeVersionRepository:
             version_id=version_id,
             for_update=False,
         )
+
+    def update_locked_draft(
+        self,
+        *,
+        version: KnowledgeBaseVersion,
+        payload: dict[str, Any],
+        normalized_content: str,
+        content_hash: str,
+        actor_id: int | None,
+    ) -> KnowledgeBaseVersion:
+        """Persist a payload already protected by the knowledge/version row locks."""
+        version.payload = payload
+        version.normalized_content = normalized_content
+        version.content_hash = content_hash
+        version.revision = int(version.revision) + 1
+        version.status = KnowledgeVersionStatus.DRAFT
+        version.validation_report = None
+        version.error_message = None
+        self.session.add(version)
+        self.session.flush()
+        return version
+
+    def add_document_block_audit(
+        self,
+        *,
+        record: KnowledgeBase,
+        version: KnowledgeBaseVersion,
+        actor_id: int | None,
+        operation_types: list[str],
+        block_ids: list[str],
+        added_block_ids: list[str] | None = None,
+        deleted_block_ids: list[str] | None = None,
+        reordered_block_ids: list[str] | None = None,
+    ) -> SystemLog:
+        """Write a block mutation audit in the same transaction as the draft."""
+        detail = {
+            "document_id": int(record.id),
+            "version_id": int(version.id),
+            "version_number": int(version.version_number),
+            "version_revision": int(version.revision),
+            "operation_types": operation_types,
+            "block_ids": block_ids,
+            "added_block_ids": added_block_ids or [],
+            "deleted_block_ids": deleted_block_ids or [],
+            "reordered_block_ids": reordered_block_ids or [],
+        }
+        audit = SystemLog(
+            tenant_id=int(record.tenant_id),
+            operation_type=OperationType.UPDATE.value,
+            operation_detail=json.dumps(detail, ensure_ascii=False, sort_keys=True),
+            user_id=actor_id,
+            operation_status=OperationStatus.SUCCESS.value,
+            module="knowledge_base",
+            resource_id=str(record.id),
+            resource_name=getattr(record, "name", None),
+            create_time=datetime.now(),
+        )
+        self.session.add(audit)
+        self.session.flush()
+        return audit
 
     def set_validation_state_if_revision_matches(
         self,

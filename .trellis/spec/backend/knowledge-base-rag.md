@@ -104,3 +104,39 @@ Fetch all workspace knowledge for a platform administrator, filter it in Vue, an
 
 #### Correct
 Send the selected authorized `tenant_id` to the list/create API, enforce it on the backend, and use the persisted knowledge record's tenant for subsequent lifecycle operations.
+
+## Scenario: Multi-Block Knowledge Documents
+
+### 1. Scope / Trigger
+- Applies to `DOCUMENT` draft editing, validation, publication, chunk projection, retrieval citations, file replacement, and legacy Markdown reads.
+
+### 2. Signatures
+- A document payload stores ordered `blocks[]` plus `structure_revision`; each block stores stable `id`, `title`, `markdown`, `enabled`, and `block_revision`.
+- Block content updates compare `block_revision`; add, delete, copy, reorder, and document metadata updates compare `structure_revision`.
+- Published chunks may store nullable `source_block_id`; legacy chunks remain valid with `NULL`.
+
+### 3. Contracts
+- One management-list row remains one independently versioned document. Blocks share the document's tenant, permission, draft, validation, publication, and rollback boundary.
+- Concurrent edits to different blocks may both save. A stale edit to the same block returns HTTP 409 with the server block snapshot and preserves local content in the client.
+- A stale structure operation returns HTTP 409 with the latest server payload. Structure persistence must merge server-owned content for existing block IDs so a stale full block array cannot overwrite a concurrent block edit.
+- Structure requests must not overwrite document metadata hidden from the block editor. Existing block content and revisions come from the locked server payload, and every newly submitted block starts at server-owned `block_revision=1`.
+- Legacy `{markdown: ...}` payloads normalize to one deterministic `正文` block. The stable ID seed uses normalized Markdown so line-ending differences do not change the payload hash.
+- New writes persist only `blocks`; do not silently dual-write `markdown`.
+- Publication chunks enabled blocks independently and carries `source_block_id` through retrieval citations, preview responses, and semantic context snapshots.
+- Successful block and structure writes add a tenant-scoped operation audit in the same database transaction. The audit identifies the document, version number and revision, actor, operation types, and affected stable block IDs without storing block content.
+
+### 4. Validation & Error Matrix
+- No blocks -> validation error at `blocks`.
+- All blocks disabled -> validation error at `blocks`.
+- Empty title -> validation error at `blocks[index].title`.
+- Empty enabled body -> validation error at `blocks[index].markdown`.
+- Stale block revision -> `KNOWLEDGE_DOCUMENT_BLOCK_CONFLICT` with `details.server_block`.
+- Block deleted concurrently -> `KNOWLEDGE_DOCUMENT_BLOCK_DELETED` with latest structure context.
+- Stale structure revision -> `KNOWLEDGE_DOCUMENT_STRUCTURE_CONFLICT` with `details.server_payload`.
+
+### 5. Tests Required
+- Cover different-block concurrent success, same-block conflict, structure conflict, and deleted-block conflict.
+- Cover audit classification for block edits, enable/disable, add/delete, and reorder operations.
+- Cover deterministic legacy normalization across line endings.
+- Cover chunk `source_block_id` persistence and citation serialization.
+- Frontend checks cover add, copy, reorder, enable/disable, delete, conflict comparison, local retry, and desktop/mobile horizontal overflow.

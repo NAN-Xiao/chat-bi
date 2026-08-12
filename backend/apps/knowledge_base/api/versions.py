@@ -28,9 +28,14 @@ from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
+from apps.knowledge_base.normalizers import normalize_payload
 from apps.knowledge_base.permissions import KnowledgePermissionService
 from apps.knowledge_base.retrieval_models import KnowledgeBaseWorkspaceOverride
-from apps.knowledge_base.schemas import KnowledgePayloadAdapter
+from apps.knowledge_base.schemas import (
+    DocumentPayload,
+    KnowledgePayloadAdapter,
+    document_blocks_from_markdown,
+)
 from apps.knowledge_base.version_repository import (
     KnowledgeVersionRepository,
     SourceFileRef,
@@ -53,6 +58,20 @@ class DraftPayloadRequest(BaseModel):
 class SaveDraftRequest(DraftPayloadRequest):
     version_id: int
     revision: int = Field(ge=1)
+
+
+class SaveDocumentBlockRequest(BaseModel):
+    version_id: int
+    block_revision: int = Field(ge=1)
+    title: str = Field(max_length=255)
+    markdown: str = ""
+    enabled: bool = True
+
+
+class SaveDocumentStructureRequest(BaseModel):
+    version_id: int
+    structure_revision: int = Field(ge=1)
+    payload: dict[str, Any]
 
 
 class ValidateDraftRequest(BaseModel):
@@ -128,6 +147,11 @@ def _context(value: dict[str, Any]):
 
 
 def _version_response(version: KnowledgeBaseVersion) -> dict[str, Any]:
+    raw_payload = version.payload
+    try:
+        raw_payload = normalize_payload(KnowledgePayloadAdapter.validate_python(raw_payload))
+    except (ValidationError, ValueError, TypeError):
+        pass
     return {
         "id": int(version.id),
         "knowledge_base_id": int(version.knowledge_base_id),
@@ -136,7 +160,7 @@ def _version_response(version: KnowledgeBaseVersion) -> dict[str, Any]:
         "revision": int(version.revision),
         "status": getattr(version.status, "value", version.status),
         "index_status": getattr(version.index_status, "value", version.index_status),
-        "payload": version.payload,
+        "payload": raw_payload,
         "normalized_content": version.normalized_content,
         "validation_report": version.validation_report,
         "content_hash": version.content_hash,
@@ -213,6 +237,84 @@ async def save_draft(
         return unexpected_error()
 
 
+@router.patch("/{id}/draft/blocks/{block_id}")
+async def save_document_block(
+    id: int,
+    block_id: str,
+    body: SaveDocumentBlockRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    capabilities = get_capabilities(session)
+    blocked = v2_write_error(capabilities)
+    if blocked is not None:
+        return serialize_error(blocked)
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        tenant_id = record_tenant_id(record, current_user)
+        version = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).save_document_block(
+            tenant_id=tenant_id,
+            knowledge_base_id=id,
+            draft_version_id=body.version_id,
+            block_id=block_id,
+            block_revision=body.block_revision,
+            title=body.title,
+            markdown=body.markdown,
+            enabled=body.enabled,
+            actor_id=int(current_user.id),
+            current_user=current_user,
+        )
+        session.commit()
+        return _version_response(version)
+    except KnowledgeBusinessError as error:
+        session.rollback()
+        return serialize_error(error)
+    except Exception:
+        session.rollback()
+        return unexpected_error()
+
+
+@router.patch("/{id}/draft/structure")
+async def save_document_structure(
+    id: int,
+    body: SaveDocumentStructureRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    capabilities = get_capabilities(session)
+    blocked = v2_write_error(capabilities)
+    if blocked is not None:
+        return serialize_error(blocked)
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        tenant_id = record_tenant_id(record, current_user)
+        parsed = _payload(body.payload)
+        if not isinstance(parsed, DocumentPayload):
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_DOCUMENT_OPERATION_UNSUPPORTED",
+                message="只有普通文档支持知识块编辑。",
+                status_code=422,
+                error_type="VALIDATION",
+            )
+        version = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).save_document_structure(
+            tenant_id=tenant_id,
+            knowledge_base_id=id,
+            draft_version_id=body.version_id,
+            structure_revision=body.structure_revision,
+            payload=parsed,
+            actor_id=int(current_user.id),
+            current_user=current_user,
+        )
+        session.commit()
+        return _version_response(version)
+    except KnowledgeBusinessError as error:
+        session.rollback()
+        return serialize_error(error)
+    except Exception:
+        session.rollback()
+        return unexpected_error()
+
+
 @router.post("/{id}/draft/file")
 async def replace_draft_source_file(
     id: int,
@@ -267,7 +369,10 @@ async def replace_draft_source_file(
         payload = KnowledgePayloadAdapter.validate_python(version.payload)
         if payload.knowledge_type == "DOCUMENT":
             parsed = parse_and_normalize_version(staged_path, file_ext=extension)
-            payload = payload.model_copy(update={"markdown": parsed.normalized_content})
+            payload = payload.model_copy(update={
+                "blocks": document_blocks_from_markdown(parsed.normalized_content),
+                "structure_revision": payload.structure_revision + 1,
+            })
         saved = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).save_draft(
             tenant_id=tenant_id,
             knowledge_base_id=id,
@@ -312,7 +417,9 @@ async def validate_draft(
         tenant_id = record_tenant_id(record, current_user)
         validation_context = _context(body.context)
         if body.datasource_id is not None:
-            from apps.datasource.crud.permission_scope import PermissionScopeUnavailableError
+            from apps.datasource.crud.permission_scope import (
+                PermissionScopeUnavailableError,
+            )
             from apps.knowledge_base.validation_context import build_validation_context
 
             try:

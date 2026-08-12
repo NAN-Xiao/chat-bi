@@ -51,7 +51,7 @@ def test_ready_legacy_row_maps_to_published_pending_index() -> None:
     assert version.file_id == "file-7"
     assert version.parser_version == MIGRATION_VERSION
     assert _migration_fingerprint(version) == "f" * 64
-    assert version.payload["markdown"] == "# Revenue\n"
+    assert version.payload["blocks"][0]["markdown"] == "# Revenue\n"
 
 
 def test_unready_legacy_row_maps_to_editable_draft() -> None:

@@ -45,6 +45,7 @@ class KnowledgeCitation:
     score: float
     content: str
     visibility_scope: str
+    source_block_id: str | None = None
     knowledge_base_name: str | None = None
     version_number: int | None = None
     source_file_name: str | None = None
@@ -171,6 +172,7 @@ class KnowledgeRetrievalService:
                         knowledge_base_id=int(row.knowledge_base_id),
                         version_id=int(row.version_id),
                         section_path=row.section_path,
+                        source_block_id=getattr(row, "source_block_id", None),
                         score=float(cosine_similarity(query_vector, vector)),
                         content=row.content,
                         visibility_scope=_scope_value(row.visibility_scope),

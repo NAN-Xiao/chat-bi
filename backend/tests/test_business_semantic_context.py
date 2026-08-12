@@ -47,6 +47,7 @@ class _Retrieval:
                     visibility_scope="ADMIN_PUBLIC",
                     knowledge_base_name="指标口径库",
                     version_number=3,
+                    source_block_id="block-revenue",
                     source_file_name="metrics.md",
                 ),
             ),
@@ -106,6 +107,7 @@ def test_semantic_context_orders_authority_and_retrieval(monkeypatch):
     assert snapshot["retrieval_failure_type"] == "NO_ELIGIBLE_KNOWLEDGE"
     assert snapshot["knowledge_citations"][0]["knowledge_base_name"] == "指标口径库"
     assert snapshot["knowledge_citations"][0]["version_number"] == 3
+    assert snapshot["knowledge_citations"][0]["source_block_id"] == "block-revenue"
     assert snapshot["knowledge_citations"][0]["source_file_name"] == "metrics.md"
     assert "content" not in snapshot["knowledge_citations"][0]
 

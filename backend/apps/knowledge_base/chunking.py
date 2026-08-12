@@ -11,7 +11,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from apps.knowledge_base.normalizers import normalize_markdown, standardized_content
-from apps.knowledge_base.schemas import KnowledgePayload
+from apps.knowledge_base.schemas import DocumentPayload, KnowledgePayload
 from common.core.config import settings
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
@@ -31,6 +31,7 @@ class KnowledgeChunkDraft:
     content: str
     content_hash: str
     token_count: int
+    source_block_id: str | None = None
 
 
 def parse_and_normalize_version(
@@ -82,6 +83,22 @@ def chunk_knowledge(
         raise ValueError("切片长度必须大于 0。")
     if overlap < 0 or overlap >= chunk_size:
         raise ValueError("切片重叠长度必须小于切片长度。")
+    if isinstance(payload, DocumentPayload):
+        result: list[KnowledgeChunkDraft] = []
+        for block in payload.blocks:
+            if not block.enabled:
+                continue
+            section_text = normalize_markdown(f"# {block.title or '正文'}\n\n{block.markdown}")
+            for content in _bounded_chunks(section_text, chunk_size=chunk_size, overlap=overlap):
+                result.append(KnowledgeChunkDraft(
+                    chunk_index=len(result),
+                    section_path=block.title or "正文",
+                    content=content,
+                    content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                    token_count=_estimate_tokens(content),
+                    source_block_id=block.id,
+                ))
+        return result
     parsed = parse_and_normalize_version(
         source,
         payload=payload,
@@ -98,6 +115,7 @@ def chunk_knowledge(
                     content=content,
                     content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
                     token_count=_estimate_tokens(content),
+                    source_block_id=None,
                 )
             )
     return result

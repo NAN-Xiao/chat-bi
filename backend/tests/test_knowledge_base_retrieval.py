@@ -48,6 +48,7 @@ def test_retrieval_filters_before_loading_chunk_content(monkeypatch):
             knowledge_base_id=20,
             version_id=11,
             section_path="收入",
+            source_block_id="block-revenue",
             content="allowed content",
             visibility_scope="ADMIN_PUBLIC",
             embedding=[1.0, 0.0],
@@ -86,6 +87,7 @@ def test_retrieval_filters_before_loading_chunk_content(monkeypatch):
     assert result.citations[0].knowledge_base_name == "指标口径库"
     assert result.citations[0].version_number == 3
     assert result.citations[0].source_file_name == "metrics.md"
+    assert result.citations[0].source_block_id == "block-revenue"
     assert "forbidden content" not in result.context
 
 

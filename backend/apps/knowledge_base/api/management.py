@@ -70,6 +70,7 @@ class CreateKnowledgeBaseRequest(BaseModel):
     description: str = Field(default="", max_length=4000)
     visibility_scope: KnowledgeBaseVisibilityScopeEnum = KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC
     tenant_id: int | None = Field(default=None, ge=1)
+    knowledge_type: str = "DOCUMENT"
 
 
 def _applicability_response(*, knowledge_base_id: int, datasource_id: int, schema_hash: str, row=None, version_id: int | None = None):
@@ -167,6 +168,7 @@ async def retrieval_preview(
                     "version_id": item.version_id,
                     "version_number": item.version_number,
                     "section_path": item.section_path,
+                    "source_block_id": item.source_block_id,
                     "source_file_name": item.source_file_name,
                     "score": item.score,
                     "content": item.content,
@@ -298,6 +300,15 @@ async def create_knowledge_base(
                 error_type="VALIDATION",
             )
         scope = KnowledgeBaseVisibilityScopeEnum(body.visibility_scope)
+        knowledge_type = str(body.knowledge_type or "").strip().upper()
+        if knowledge_type not in {"DOCUMENT", "BUSINESS", "EVENT", "JSON_FIELD"}:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_TYPE_INVALID",
+                message="知识类型不受支持。",
+                status_code=422,
+                field_path="knowledge_type",
+                error_type="VALIDATION",
+            )
         if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC and body.tenant_id is not None:
             raise KnowledgeBusinessError(
                 code="KNOWLEDGE_WORKSPACE_NOT_APPLICABLE",
@@ -331,6 +342,7 @@ async def create_knowledge_base(
             active=True,
             status=KnowledgeBaseStatusEnum.PENDING,
             stable_key=f"kb-{uuid4().hex}",
+            knowledge_type=knowledge_type,
             create_time=datetime.utcnow(),
             update_time=datetime.utcnow(),
         )

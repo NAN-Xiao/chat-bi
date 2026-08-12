@@ -30,6 +30,7 @@ def serialize_error(error: KnowledgeBusinessError) -> JSONResponse:
             "field_path": error.field_path,
             "error_type": error.error_type,
             "suggestion": error.suggestion,
+            "details": error.details,
         },
     )
 

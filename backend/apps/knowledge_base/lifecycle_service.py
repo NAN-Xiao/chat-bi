@@ -7,9 +7,18 @@ from typing import Any, Protocol
 
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgeVersionStatus
-from apps.knowledge_base.normalizers import content_hash_for_payload, normalize_payload
+from apps.knowledge_base.normalizers import (
+    content_hash_for_payload,
+    normalize_markdown,
+    normalize_payload,
+)
 from apps.knowledge_base.permissions import KnowledgePermissionService
-from apps.knowledge_base.schemas import KnowledgePayload, KnowledgePayloadAdapter
+from apps.knowledge_base.schemas import (
+    DocumentBlock,
+    DocumentPayload,
+    KnowledgePayload,
+    KnowledgePayloadAdapter,
+)
 from apps.knowledge_base.validators import ValidationContext, validate_payload
 from apps.knowledge_base.version_repository import SourceFileRef
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
@@ -22,6 +31,8 @@ class LifecycleRepository(Protocol):
     def get_active_draft(self, *, tenant_id: int, knowledge_base_id: int, for_update: bool = False): ...
     def add_draft(self, **kwargs): ...
     def save_draft_if_revision_matches(self, **kwargs): ...
+    def update_locked_draft(self, **kwargs): ...
+    def add_document_block_audit(self, **kwargs): ...
     def mark_validating_if_revision_matches(self, **kwargs): ...
     def set_validation_state_if_revision_matches(self, **kwargs): ...
     def upsert_workspace_override(self, **kwargs): ...
@@ -106,6 +117,178 @@ class KnowledgeLifecycleService:
             raise self._draft_conflict()
         record.draft_version_id = draft_version_id
         record.update_by = actor_id
+        return saved
+
+    def save_document_block(
+        self,
+        *,
+        tenant_id: int,
+        knowledge_base_id: int,
+        draft_version_id: int,
+        block_id: str,
+        block_revision: int,
+        title: str,
+        markdown: str,
+        enabled: bool,
+        actor_id: int | None,
+        current_user: Any | None = None,
+    ):
+        record, version, payload = self._lock_document_draft(
+            tenant_id=tenant_id,
+            knowledge_base_id=knowledge_base_id,
+            draft_version_id=draft_version_id,
+            current_user=current_user,
+        )
+        block_index = next(
+            (index for index, block in enumerate(payload.blocks) if block.id == block_id),
+            None,
+        )
+        if block_index is None:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_DOCUMENT_BLOCK_DELETED",
+                message="该知识块已被其他用户删除，本地内容已保留。",
+                status_code=409,
+                error_type="CONFLICT",
+                suggestion="复制本地内容，刷新后新建知识块再保存。",
+                details={
+                    "conflict_type": "BLOCK_DELETED",
+                    "block_id": block_id,
+                    "structure_revision": payload.structure_revision,
+                    "server_payload": normalize_payload(payload),
+                },
+            )
+        server_block = payload.blocks[block_index]
+        if server_block.block_revision != block_revision:
+            raise self._block_conflict(payload, server_block)
+        blocks = list(payload.blocks)
+        updated_block = DocumentBlock(
+            id=server_block.id,
+            title=title,
+            markdown=markdown,
+            enabled=enabled,
+            block_revision=server_block.block_revision + 1,
+        )
+        blocks[block_index] = updated_block
+        updated = payload.model_copy(update={"blocks": blocks})
+        saved = self._persist_locked_document(
+            record=record,
+            version=version,
+            payload=updated,
+            actor_id=actor_id,
+        )
+        operation_types: list[str] = []
+        if (
+            updated_block.title != server_block.title
+            or normalize_markdown(updated_block.markdown)
+            != normalize_markdown(server_block.markdown)
+        ):
+            operation_types.append("UPDATE_BLOCK")
+        if updated_block.enabled != server_block.enabled:
+            operation_types.append(
+                "ENABLE_BLOCK" if updated_block.enabled else "DISABLE_BLOCK"
+            )
+        self.repository.add_document_block_audit(
+            record=record,
+            version=saved,
+            actor_id=actor_id,
+            operation_types=operation_types or ["UPDATE_BLOCK"],
+            block_ids=[block_id],
+        )
+        return saved
+
+    def save_document_structure(
+        self,
+        *,
+        tenant_id: int,
+        knowledge_base_id: int,
+        draft_version_id: int,
+        structure_revision: int,
+        payload: DocumentPayload,
+        actor_id: int | None,
+        current_user: Any | None = None,
+    ):
+        record, version, server_payload = self._lock_document_draft(
+            tenant_id=tenant_id,
+            knowledge_base_id=knowledge_base_id,
+            draft_version_id=draft_version_id,
+            current_user=current_user,
+        )
+        if server_payload.structure_revision != structure_revision:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_DOCUMENT_STRUCTURE_CONFLICT",
+                message="知识块结构已被其他用户更新，本地修改已保留。",
+                status_code=409,
+                error_type="CONFLICT",
+                suggestion="比较最新结构后重新执行新增、删除或排序。",
+                details={
+                    "conflict_type": "STRUCTURE",
+                    "structure_revision": server_payload.structure_revision,
+                    "server_payload": normalize_payload(server_payload),
+                },
+            )
+        if not payload.blocks:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_DOCUMENT_BLOCK_REQUIRED",
+                message="知识文档至少需要保留一个知识块。",
+                status_code=422,
+                field_path="blocks",
+                error_type="VALIDATION",
+            )
+        server_by_id = {block.id: block for block in server_payload.blocks}
+        seen: set[str] = set()
+        merged_blocks: list[DocumentBlock] = []
+        for submitted in payload.blocks:
+            if submitted.id in seen:
+                raise KnowledgeBusinessError(
+                    code="KNOWLEDGE_DOCUMENT_BLOCK_ID_DUPLICATE",
+                    message="知识块标识重复，请刷新后重试。",
+                    status_code=422,
+                    field_path="blocks",
+                    error_type="VALIDATION",
+                )
+            seen.add(submitted.id)
+            server_block = server_by_id.get(submitted.id)
+            merged_blocks.append(
+                server_block
+                if server_block is not None
+                else submitted.model_copy(update={"block_revision": 1})
+            )
+        server_ids = [block.id for block in server_payload.blocks]
+        submitted_ids = [block.id for block in merged_blocks]
+        server_id_set = set(server_ids)
+        submitted_id_set = set(submitted_ids)
+        added_ids = [block_id for block_id in submitted_ids if block_id not in server_id_set]
+        deleted_ids = [block_id for block_id in server_ids if block_id not in submitted_id_set]
+        old_common = [block_id for block_id in server_ids if block_id in submitted_id_set]
+        new_common = [block_id for block_id in submitted_ids if block_id in server_id_set]
+        reordered_ids = new_common if old_common != new_common else []
+        updated = server_payload.model_copy(update={
+            "blocks": merged_blocks,
+            "structure_revision": server_payload.structure_revision + 1,
+        })
+        saved = self._persist_locked_document(
+            record=record,
+            version=version,
+            payload=updated,
+            actor_id=actor_id,
+        )
+        operation_types = []
+        if added_ids:
+            operation_types.append("ADD_BLOCK")
+        if deleted_ids:
+            operation_types.append("DELETE_BLOCK")
+        if reordered_ids:
+            operation_types.append("REORDER_BLOCKS")
+        self.repository.add_document_block_audit(
+            record=record,
+            version=saved,
+            actor_id=actor_id,
+            operation_types=operation_types or ["UPDATE_STRUCTURE"],
+            block_ids=list(dict.fromkeys(added_ids + deleted_ids + reordered_ids)),
+            added_block_ids=added_ids,
+            deleted_block_ids=deleted_ids,
+            reordered_block_ids=reordered_ids,
+        )
         return saved
 
     def validate_draft(
@@ -308,6 +491,65 @@ class KnowledgeLifecycleService:
         if version is None:
             raise self._not_found()
         return version
+
+    def _lock_document_draft(
+        self,
+        *,
+        tenant_id: int,
+        knowledge_base_id: int,
+        draft_version_id: int,
+        current_user: Any | None,
+    ) -> tuple[Any, Any, DocumentPayload]:
+        record = self.repository.lock_knowledge_base(
+            tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
+        )
+        self.permissions.require_manage(current_user, record)
+        version = self._load_version(tenant_id, knowledge_base_id, draft_version_id)
+        self._assert_editable(record, version, draft_version_id)
+        parsed = KnowledgePayloadAdapter.validate_python(getattr(version, "payload", {}))
+        if not isinstance(parsed, DocumentPayload):
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_DOCUMENT_OPERATION_UNSUPPORTED",
+                message="只有普通文档支持知识块编辑。",
+                status_code=422,
+                error_type="VALIDATION",
+            )
+        return record, version, parsed
+
+    def _persist_locked_document(
+        self,
+        *,
+        record: Any,
+        version: Any,
+        payload: DocumentPayload,
+        actor_id: int | None,
+    ):
+        saved = self.repository.update_locked_draft(
+            version=version,
+            payload=normalize_payload(payload),
+            normalized_content=_normalized_content(payload),
+            content_hash=content_hash_for_payload(payload),
+            actor_id=actor_id,
+        )
+        record.draft_version_id = int(version.id)
+        record.update_by = actor_id
+        return saved
+
+    @staticmethod
+    def _block_conflict(payload: DocumentPayload, block: DocumentBlock) -> KnowledgeBusinessError:
+        return KnowledgeBusinessError(
+            code="KNOWLEDGE_DOCUMENT_BLOCK_CONFLICT",
+            message="该知识块已被其他用户更新，本地内容已保留。",
+            status_code=409,
+            error_type="CONFLICT",
+            suggestion="比较服务端与本地内容后，选择载入服务端或基于最新版本重试。",
+            details={
+                "conflict_type": "BLOCK",
+                "block_id": block.id,
+                "structure_revision": payload.structure_revision,
+                "server_block": block.model_dump(mode="json"),
+            },
+        )
 
     def _assert_editable(self, record: Any, version: Any, version_id: int) -> None:
         if getattr(record, "draft_version_id", None) != version_id:

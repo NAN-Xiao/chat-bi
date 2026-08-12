@@ -7,7 +7,6 @@ import {
   Plus,
   Refresh,
   Search,
-  Upload,
 } from '@element-plus/icons-vue'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
@@ -18,6 +17,7 @@ import {
   type KnowledgeBaseVersion,
   type KnowledgePublishJob,
   type KnowledgeApplicabilityState,
+  type KnowledgeConflictDetails,
 } from '@/api/knowledgeBase'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { tenantApi, type TenantInfo } from '@/api/tenant'
@@ -31,6 +31,10 @@ import {
 } from './knowledgeMarkdownTemplates'
 import {
   defaultKnowledgePayload,
+  createDocumentBlock,
+  normalizeDocumentPayload,
+  type DocumentBlock,
+  type DocumentPayload,
   type KnowledgePayload,
 } from './knowledgePayloadTypes'
 import { useKnowledgeScopeNavigation } from './knowledgeScopeNavigation'
@@ -55,10 +59,15 @@ const keyword = ref('')
 const scopeFilter = useKnowledgeScopeNavigation()
 const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
 const workspaces = ref<TenantInfo[]>([])
-const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope, tenant_id: '' as string | number })
-const pendingFile = ref<File | null>(null)
+const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope, tenant_id: '' as string | number, knowledge_type: 'DOCUMENT' as KnowledgePayload['knowledge_type'] })
 const publishJob = ref<KnowledgePublishJob | null>(null)
 const draftConflict = ref(false)
+const documentConflict = ref<{
+  type: string
+  localBlock?: DocumentBlock
+  serverBlock?: DocumentBlock
+  details: KnowledgeConflictDetails
+} | null>(null)
 const retrievalPreviewVisible = ref(false)
 const workspaceOverride = ref<{ enabled: boolean; reason?: string | null } | null>(null)
 const overrideLoading = ref(false)
@@ -83,7 +92,6 @@ const editorTitle = computed(() => {
 })
 const draftStatus = computed(() => draft.value?.status || '无草稿')
 const currentVersion = computed(() => versions.value.find((version) => version.status === 'PUBLISHED') || null)
-const displayedVersion = computed(() => draft.value || currentVersion.value)
 const validationErrors = computed(() => draft.value?.validation_report?.errors || [])
 const validationWarnings = computed(() => draft.value?.validation_report?.warnings || [])
 const actionState = computed(() => knowledgeActionState({
@@ -167,6 +175,7 @@ function openCreate() {
     description: '',
     visibility_scope: scopeFilter.value,
     tenant_id: scopeFilter.value === 'ADMIN_PUBLIC' ? selectedWorkspace.value?.id || '' : '',
+    knowledge_type: 'DOCUMENT',
   }
   createVisible.value = true
 }
@@ -200,7 +209,6 @@ async function createKnowledge() {
 async function openEditor(item: KnowledgeBaseItem) {
   selected.value = await knowledgeBaseApi.detail(item.id)
   editorVisible.value = true
-  pendingFile.value = null
   publishJob.value = null
   draftConflict.value = false
   workspaceOverride.value = null
@@ -253,9 +261,97 @@ async function loadVersions() {
   draft.value = versions.value.find((version) =>
     ['DRAFT', 'VALIDATING', 'VALIDATION_FAILED', 'READY_TO_PUBLISH', 'PUBLISH_FAILED'].includes(version.status)
   ) || null
-  if (draft.value) payload.value = cloneDeep(draft.value.payload) as KnowledgePayload
-  else if (currentVersion.value) payload.value = cloneDeep(currentVersion.value.payload) as KnowledgePayload
+  if (draft.value) payload.value = normalizeLoadedPayload(draft.value.payload)
+  else if (currentVersion.value) payload.value = normalizeLoadedPayload(currentVersion.value.payload)
   else payload.value = defaultPayload(selected.value.knowledge_type)
+}
+
+function normalizeLoadedPayload(value: Record<string, any>): KnowledgePayload {
+  if (value?.knowledge_type === 'DOCUMENT') return normalizeDocumentPayload(value)
+  return cloneDeep(value) as KnowledgePayload
+}
+
+function documentBlockChanged(local: DocumentBlock, server: DocumentBlock) {
+  return local.title !== server.title
+    || local.markdown !== server.markdown
+    || local.enabled !== server.enabled
+}
+
+function documentStructureChanged(local: DocumentPayload, server: DocumentPayload) {
+  return local.blocks.map((block) => block.id).join('\u0000') !== server.blocks.map((block) => block.id).join('\u0000')
+    || local.datasource_neutral !== server.datasource_neutral
+    || JSON.stringify(local.tags) !== JSON.stringify(server.tags)
+    || JSON.stringify(local.object_references) !== JSON.stringify(server.object_references)
+}
+
+function captureDocumentConflict(error: any, localBlock?: DocumentBlock) {
+  const details = (error?.response?.data?.details || {}) as KnowledgeConflictDetails
+  documentConflict.value = {
+    type: details.conflict_type || 'STRUCTURE',
+    localBlock: localBlock ? cloneDeep(localBlock) : undefined,
+    serverBlock: details.server_block
+      ? cloneDeep(details.server_block) as DocumentBlock
+      : undefined,
+    details,
+  }
+  draftConflict.value = true
+}
+
+function restoreDeletedConflictBlock() {
+  if (!draft.value || payload.value.knowledge_type !== 'DOCUMENT' || !documentConflict.value?.localBlock) return
+  const serverPayload = normalizeDocumentPayload(documentConflict.value.details.server_payload || draft.value.payload)
+  const localBlock = documentConflict.value.localBlock
+  const restored = createDocumentBlock(localBlock.title, localBlock.markdown)
+  restored.enabled = localBlock.enabled
+  draft.value = { ...draft.value, payload: serverPayload }
+  payload.value = { ...serverPayload, blocks: [...serverPayload.blocks, restored] }
+  documentConflict.value = null
+  draftConflict.value = false
+  ElMessage.info('本地内容已恢复为新知识块，请保存草稿。')
+}
+
+async function saveDocumentDraft(localPayload: DocumentPayload) {
+  if (!selected.value || !draft.value) return false
+  const serverPayload = normalizeDocumentPayload(draft.value.payload)
+  const serverById = new Map(serverPayload.blocks.map((block) => [block.id, block]))
+  for (const localBlock of localPayload.blocks) {
+    const serverBlock = serverById.get(localBlock.id)
+    if (!serverBlock || !documentBlockChanged(localBlock, serverBlock)) continue
+    try {
+      draft.value = await knowledgeBaseApi.saveDocumentBlock(selected.value.id, localBlock.id, {
+        version_id: draft.value.id,
+        block_revision: serverBlock.block_revision,
+        title: localBlock.title,
+        markdown: localBlock.markdown,
+        enabled: localBlock.enabled,
+      })
+    } catch (error: any) {
+      if (error?.response?.status === 409) {
+        captureDocumentConflict(error, localBlock)
+        return false
+      }
+      throw error
+    }
+  }
+  const latestServer = normalizeDocumentPayload(draft.value.payload)
+  if (documentStructureChanged(localPayload, latestServer)) {
+    try {
+      draft.value = await knowledgeBaseApi.saveDocumentStructure(selected.value.id, {
+        version_id: draft.value.id,
+        structure_revision: serverPayload.structure_revision,
+        content: localPayload,
+      })
+    } catch (error: any) {
+      if (error?.response?.status === 409) {
+        captureDocumentConflict(error)
+        return false
+      }
+      throw error
+    }
+  }
+  payload.value = normalizeDocumentPayload(draft.value.payload)
+  documentConflict.value = null
+  return true
 }
 
 async function createEditingDraft() {
@@ -291,20 +387,14 @@ async function saveDraft() {
   if (!selected.value || !draft.value || !actionState.value.save) return false
   try {
     saving.value = true
-    if (pendingFile.value) {
-      draft.value = await knowledgeBaseApi.replaceDraftFile(selected.value.id, {
-        version_id: draft.value.id,
-        revision: draft.value.revision,
-        file: pendingFile.value,
-      })
-      payload.value = cloneDeep(draft.value.payload) as KnowledgePayload
-      pendingFile.value = null
-    }
-    draft.value = await knowledgeBaseApi.saveDraft(selected.value.id, {
-      version_id: draft.value.id,
-      revision: draft.value.revision,
-      content: payload.value,
-    })
+    const saved = payload.value.knowledge_type === 'DOCUMENT'
+      ? await saveDocumentDraft(cloneDeep(payload.value))
+      : Boolean(draft.value = await knowledgeBaseApi.saveDraft(selected.value.id, {
+          version_id: draft.value.id,
+          revision: draft.value.revision,
+          content: payload.value,
+        }))
+    if (!saved) return false
     ElMessage.success('草稿已保存')
     draftConflict.value = false
     return true
@@ -373,7 +463,50 @@ function pollPublishJob() {
 
 async function refreshDraftAfterConflict() {
   await loadVersions()
+  documentConflict.value = null
   ElMessage.success('已刷新最新草稿，请确认内容后继续编辑。')
+}
+
+function loadServerConflictBlock() {
+  if (!documentConflict.value?.serverBlock || payload.value.knowledge_type !== 'DOCUMENT') return
+  const serverBlock = documentConflict.value.serverBlock
+  payload.value = {
+    ...payload.value,
+    blocks: payload.value.blocks.map((block) => block.id === serverBlock.id ? cloneDeep(serverBlock) : block),
+  }
+  documentConflict.value = null
+  draftConflict.value = false
+}
+
+async function retryLocalConflictBlock() {
+  if (!selected.value || !draft.value || !documentConflict.value?.localBlock || !documentConflict.value.serverBlock) return
+  const localBlock = cloneDeep(documentConflict.value.localBlock)
+  const serverBlock = documentConflict.value.serverBlock
+  saving.value = true
+  try {
+    draft.value = await knowledgeBaseApi.saveDocumentBlock(selected.value.id, localBlock.id, {
+      version_id: draft.value.id,
+      block_revision: serverBlock.block_revision,
+      title: localBlock.title,
+      markdown: localBlock.markdown,
+      enabled: localBlock.enabled,
+    })
+    const savedBlock = normalizeDocumentPayload(draft.value.payload).blocks.find((block) => block.id === localBlock.id)
+    if (payload.value.knowledge_type === 'DOCUMENT' && savedBlock) {
+      payload.value = {
+        ...payload.value,
+        blocks: payload.value.blocks.map((block) => block.id === savedBlock.id ? savedBlock : block),
+      }
+    }
+    documentConflict.value = null
+    draftConflict.value = false
+    ElMessage.success('本地知识块已基于最新版本保存')
+  } catch (error: any) {
+    if (error?.response?.status === 409) captureDocumentConflict(error, localBlock)
+    else throw error
+  } finally {
+    saving.value = false
+  }
 }
 
 async function updateWorkspaceKnowledgeEnabled(enabled: boolean) {
@@ -390,21 +523,6 @@ async function updateWorkspaceKnowledgeEnabled(enabled: boolean) {
   } finally {
     overrideLoading.value = false
   }
-}
-
-function selectFile(file: any) {
-  const raw = file?.raw || file
-  if (!raw) return false
-  if (!/\.(md|markdown|docx)$/i.test(raw.name || '')) {
-    ElMessage.warning('仅支持 Markdown 或 Word 文档')
-    return false
-  }
-  if (raw.size > 50 * 1024 * 1024) {
-    ElMessage.warning('文件不能超过 50 MB')
-    return false
-  }
-  pendingFile.value = raw
-  return false
 }
 
 async function downloadVersion(version: KnowledgeBaseVersion) {
@@ -574,6 +692,14 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="名称" required><el-input v-model="createForm.name" maxlength="255" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="createForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" /></el-form-item>
+        <el-form-item label="知识类型" required>
+          <el-select v-model="createForm.knowledge_type">
+            <el-option label="普通文档" value="DOCUMENT" />
+            <el-option label="业务术语与 SQL" value="BUSINESS" />
+            <el-option label="事件参数" value="EVENT" />
+            <el-option label="JSON 字段" value="JSON_FIELD" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="知识范围">
           <el-select v-model="createForm.visibility_scope" :disabled="!isPlatformAdmin">
             <el-option label="工作空间知识" value="ADMIN_PUBLIC" />
@@ -592,7 +718,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       </template>
     </el-dialog>
 
-    <el-drawer v-model="editorVisible" :title="editorTitle" size="760px" destroy-on-close :before-close="closeEditor">
+    <el-drawer v-model="editorVisible" class="knowledge-editor-drawer" :title="editorTitle" size="760px" destroy-on-close :before-close="closeEditor">
       <div v-if="selected" class="editor-layout">
         <div class="editor-toolbar">
           <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
@@ -615,10 +741,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
         </div>
         <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit || !draft || editorBusy" />
-        <el-upload :disabled="!canEdit || editorBusy" :auto-upload="false" :show-file-list="false" accept=".md,.markdown,.docx" :on-change="selectFile">
-          <el-button :icon="Upload">替换源文件</el-button>
-        </el-upload>
-        <span v-if="pendingFile" class="pending-file">待上传：{{ pendingFile.name }}</span>
         <div v-if="validationErrors.length" class="validation-panel is-error">
           <div v-for="(issue, index) in validationErrors" :key="index">{{ issue.field_path || '内容' }}：{{ issue.message }}</div>
         </div>
@@ -626,12 +748,31 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <div v-for="(issue, index) in validationWarnings" :key="index">{{ issue.field_path || '内容' }}：{{ issue.message }}</div>
         </div>
         <div v-if="draftConflict" class="validation-panel is-conflict">
-          草稿已被其他人更新，当前编辑内容已保留。刷新后将载入最新版本。
-          <el-button text type="warning" @click="refreshDraftAfterConflict">刷新最新版本</el-button>
+          <template v-if="documentConflict?.type === 'BLOCK' && documentConflict.localBlock && documentConflict.serverBlock">
+            <div class="conflict-title">同一知识块已被其他用户修改，本地内容仍保留在页面中。</div>
+            <div class="conflict-compare">
+              <div>
+                <strong>本地：{{ documentConflict.localBlock.title || '未命名知识块' }}</strong>
+                <p>{{ documentConflict.localBlock.markdown || '（空正文）' }}</p>
+              </div>
+              <div>
+                <strong>服务端：{{ documentConflict.serverBlock.title || '未命名知识块' }}</strong>
+                <p>{{ documentConflict.serverBlock.markdown || '（空正文）' }}</p>
+              </div>
+            </div>
+            <div class="conflict-actions">
+              <el-button @click="loadServerConflictBlock">载入服务端</el-button>
+              <el-button type="warning" :loading="saving" @click="retryLocalConflictBlock">使用本地内容重试</el-button>
+            </div>
+          </template>
+          <template v-else>
+            <span>{{ documentConflict?.type === 'BLOCK_DELETED' ? '该知识块已被其他用户删除，本地内容仍保留。' : '知识块结构已被其他用户更新，本地修改仍保留。' }}</span>
+            <el-button v-if="documentConflict?.type === 'BLOCK_DELETED'" type="warning" @click="restoreDeletedConflictBlock">恢复为新知识块</el-button>
+            <el-button text type="warning" @click="refreshDraftAfterConflict">刷新最新结构</el-button>
+          </template>
         </div>
         <div class="editor-actions">
           <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>
-          <el-button :icon="Download" :disabled="!displayedVersion?.file_name" @click="displayedVersion && downloadVersion(displayedVersion)">下载当前源文件</el-button>
           <el-button :loading="saving" :disabled="!actionState.save" @click="saveDraft">保存草稿</el-button>
           <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
           <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
@@ -681,11 +822,15 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .editor-toolbar { margin-bottom: 16px; flex-wrap: wrap; color: #667085; font-size: 12px; }
 .workspace-override { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
 .version-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pending-file { margin-left: 8px; color: #1570ef; font-size: 12px; }
 .validation-panel { margin-top: 14px; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
 .validation-panel.is-error { color: #b42318; background: #fff1f3; }
 .validation-panel.is-warning { color: #9a6700; background: #fff8e6; }
-.validation-panel.is-conflict { display: flex; align-items: center; gap: 8px; color: #9a6700; background: #fff8e6; }
+.validation-panel.is-conflict { color: #9a6700; background: #fff8e6; }
+.conflict-title { font-weight: 600; }
+.conflict-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.conflict-compare > div { min-width: 0; padding: 8px; border: 1px solid #f5c451; border-radius: 6px; background: #fff; }
+.conflict-compare p { max-height: 100px; margin: 6px 0 0; overflow: auto; color: #475467; white-space: pre-wrap; overflow-wrap: anywhere; }
+.conflict-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .editor-actions { justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
 .history-title { margin-top: 24px; padding-bottom: 8px; border-bottom: 1px solid #eaecf0; color: #344054; font-size: 13px; font-weight: 600; }
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
@@ -696,11 +841,15 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
   .panel-actions { width: 100%; justify-content: space-between; }
 }
 @media (max-width: 680px) {
+  :global(.knowledge-editor-drawer) { width: 100% !important; max-width: 100%; }
   .panel-actions, .panel-filters, .panel-buttons { width: 100%; }
   .panel-filters { flex-direction: column; }
   .knowledge-filter-input, .knowledge-filter-scope, .knowledge-filter-workspace { width: 100%; flex-basis: auto; }
   .panel-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
   .panel-buttons :deep(.ed-button), .template-download { width: 100%; min-height: 32px; margin-left: 0; }
   .template-download :deep(.ed-button) { width: 100%; height: auto; min-height: 32px; white-space: normal; }
+  .conflict-compare { grid-template-columns: minmax(0, 1fr); }
+  .conflict-actions { align-items: stretch; flex-direction: column; }
+  .conflict-actions :deep(.ed-button) { width: 100%; margin-left: 0; }
 }
 </style>

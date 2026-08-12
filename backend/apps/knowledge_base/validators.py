@@ -71,11 +71,21 @@ def validate_payload(payload: KnowledgePayload, *, context: ValidationContext | 
 
 
 def _validate_document(payload: DocumentPayload, context: ValidationContext, errors: list[ValidationIssue]) -> None:
-    if not payload.markdown.strip():
-        _error(errors, "KNOWLEDGE_DOCUMENT_MARKDOWN_REQUIRED", "markdown", "知识文档正文不能为空。", "请填写或重新解析文档正文。")
+    if not payload.blocks:
+        _error(errors, "KNOWLEDGE_DOCUMENT_BLOCK_REQUIRED", "blocks", "知识文档至少需要一个知识块。", "请新增知识块后重新校验。")
         return
-    blocks = _SQL_BLOCK.findall(payload.markdown)
-    if payload.datasource_neutral and (blocks or payload.object_references or _document_has_physical_identifier(payload.markdown, context)):
+    enabled = [block for block in payload.blocks if block.enabled]
+    if not enabled:
+        _error(errors, "KNOWLEDGE_DOCUMENT_ENABLED_BLOCK_REQUIRED", "blocks", "至少需要启用一个知识块。", "请启用一个有效知识块后重新校验。")
+        return
+    for index, block in enumerate(payload.blocks):
+        if not block.title.strip():
+            _error(errors, "KNOWLEDGE_DOCUMENT_BLOCK_TITLE_REQUIRED", f"blocks[{index}].title", "知识块标题不能为空。", "请填写知识块标题。")
+        if block.enabled and not block.markdown.strip():
+            _error(errors, "KNOWLEDGE_DOCUMENT_BLOCK_MARKDOWN_REQUIRED", f"blocks[{index}].markdown", "已启用知识块的正文不能为空。", "请填写正文或停用该知识块。")
+    markdown = payload.markdown
+    sql_blocks = _SQL_BLOCK.findall(markdown)
+    if payload.datasource_neutral and (sql_blocks or payload.object_references or _document_has_physical_identifier(markdown, context)):
         _error(errors, "KNOWLEDGE_DOCUMENT_NOT_NEUTRAL", "datasource_neutral", "数据源无关文档不能包含 SQL 或确定性物理对象引用。", "请取消数据源无关标记，并声明引用对象。")
         return
     if not payload.datasource_neutral:
@@ -90,9 +100,9 @@ def _validate_document(payload: DocumentPayload, context: ValidationContext, err
             for index, item in enumerate(payload.object_references)
             if item.table and index in valid_declarations
         }
-        if any(_key(item) not in declared for item in _document_tables(payload.markdown, context)):
+        if any(_key(item) not in declared for item in _document_tables(markdown, context)):
             _error(errors, "KNOWLEDGE_DOCUMENT_OBJECT_NOT_DECLARED", "object_references", "文档中的物理对象必须显式声明。", "请声明文档引用的物理对象。")
-        for index, sql in enumerate(blocks):
+        for index, sql in enumerate(sql_blocks):
             _validate_sql(BusinessSqlExample(name=f"document-{index}", question="", sql=sql), payload.object_references, context, errors, f"markdown.sql_blocks[{index}]", valid_declarations=valid_declarations)
 
 

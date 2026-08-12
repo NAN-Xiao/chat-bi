@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +38,6 @@ from apps.knowledge_base.retrieval_models import KnowledgeBaseChunk
 from apps.knowledge_base.schemas import KnowledgePayloadAdapter
 from common.core.config import settings
 from common.utils.file_utils import AppFileUtils
-
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +186,12 @@ class KnowledgePublisher:
 
     def _chunk(self, payload: Any, version: Any, *, job_id: int) -> list[KnowledgeChunkDraft]:
         self._set_stage(job_id=job_id, stage="CHUNK")
+        if getattr(payload, "knowledge_type", None) == "DOCUMENT":
+            return self.chunker(
+                payload=payload,
+                chunk_size=settings.KNOWLEDGE_CHUNK_SIZE,
+                overlap=settings.KNOWLEDGE_CHUNK_OVERLAP,
+            )
         if getattr(version, "file_id", None):
             path = Path(AppFileUtils.get_file_path(version.file_id))
             if path.is_file():
@@ -262,6 +267,7 @@ class KnowledgePublisher:
                 visibility_scope=_scope_value(record.visibility_scope),
                 chunk_index=int(chunk.chunk_index),
                 section_path=chunk.section_path,
+                source_block_id=chunk.source_block_id,
                 content=chunk.content,
                 token_count=chunk.token_count,
                 content_hash=chunk.content_hash,

@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/knowledge-base-rag.md","reason":"核对多块文档 payload、块级并发、发布切片溯源和检索引用契约。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"复核 payload 从存储、服务、API 到前端和检索消费者的完整传递。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"执行前端构建、移动端布局和浏览器验收门禁。"}
+{"file":".trellis/tasks/08-12-knowledge-document-multi-block-editing/check.md","reason":"读取审查发现、修复内容、验证结果和环境阻塞。"}

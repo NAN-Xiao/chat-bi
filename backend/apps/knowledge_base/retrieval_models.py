@@ -103,6 +103,9 @@ class KnowledgeBaseChunk(SQLModel, table=True):
     section_path: str | None = Field(
         default=None, sa_column=Column(Text, nullable=True)
     )
+    source_block_id: str | None = Field(
+        default=None, sa_column=Column(String(64), nullable=True)
+    )
     content: str = Field(sa_column=Column(Text, nullable=False))
     token_count: int | None = Field(
         default=None, sa_column=Column(Integer, nullable=True)

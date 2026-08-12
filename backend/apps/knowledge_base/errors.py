@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+from typing import Any
+
 from apps.knowledge_base.schemas import ValidationIssue
 
 
 class KnowledgeBusinessError(Exception):
     """Expected management error that can be returned without leaking internals."""
 
-    def __init__(self, *, code: str, message: str, status_code: int = 400, field_path: str | None = None, error_type: str = "VALIDATION", suggestion: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        status_code: int = 400,
+        field_path: str | None = None,
+        error_type: str = "VALIDATION",
+        suggestion: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -14,6 +26,7 @@ class KnowledgeBusinessError(Exception):
         self.field_path = field_path
         self.error_type = error_type
         self.suggestion = suggestion
+        self.details = details
 
     def as_validation_issue(self) -> ValidationIssue:
         return ValidationIssue(code=self.code, message=self.message, field_path=self.field_path, error_type="ERROR", suggestion=self.suggestion)
