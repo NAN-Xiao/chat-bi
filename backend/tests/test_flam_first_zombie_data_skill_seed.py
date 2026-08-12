@@ -260,6 +260,20 @@ def test_new_user_skill_routes_current_day_to_realtime_table() -> None:
     assert "完整历史日和留存 cohort 使用 `event`" in prompt
 
 
+def test_new_user_retention_skill_uses_dt_partitions_and_mature_lifecycle_days() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    skill = next(item for item in seed.DATA_SKILLS if item["name"] == "flam 新增与留存 cohort 口径")
+    prompt = skill["prompt"]
+
+    assert '`{"table":"event","field":"dt"}`' in prompt
+    assert "`UserRegister`" in prompt
+    assert "`UserActive`" in prompt
+    assert "注册 `dt` 加 1/3/7 个自然日后的 `active.dt`" in prompt
+    assert "不得直接对数字分区写 `cohort.dt + 1/+3/+7`" in prompt
+    assert "不能把未成熟样本记为 0" in prompt
+
+
 def test_flam_generic_default_date_ranges_defer_to_platform_rule() -> None:
     import seed_flam_first_zombie_data_skills as seed
 

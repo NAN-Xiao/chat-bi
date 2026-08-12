@@ -621,6 +621,48 @@ def _expected_comparison(
     return None
 
 
+def _is_inner_join_predicate(node: exp.Expression, binding: _Binding) -> bool:
+    """判断谓词是否是当前扫描所在 SELECT 的强制 INNER JOIN 条件。"""
+    ancestor = node.parent
+    while ancestor is not None and ancestor is not binding.select:
+        if isinstance(ancestor, exp.Join):
+            if ancestor.args.get("on") is None:
+                return False
+            side = str(ancestor.args.get("side") or "").upper()
+            kind = str(ancestor.args.get("kind") or "").upper()
+            return side == "" and kind in {"", "INNER"}
+        ancestor = ancestor.parent
+    return False
+
+
+def _is_lifecycle_inner_join_predicate(
+    node: exp.Expression,
+    binding: _Binding,
+    bindings: list[_Binding],
+) -> bool:
+    if not _is_inner_join_predicate(node, binding):
+        return False
+    return any(
+        candidate is not binding
+        and candidate.select is binding.select
+        and _contains_binding_column(node, candidate, bindings)
+        for candidate in bindings
+    )
+
+
+def _is_select_projection_calculation(
+    node: exp.Expression, binding: _Binding
+) -> bool:
+    """判断派生时间比较是否只用于当前 SELECT 的结果计算。"""
+    projection = node
+    while projection.parent is not None and projection.parent is not binding.select:
+        projection = projection.parent
+    return (
+        projection.parent is binding.select
+        and projection in binding.select.expressions
+    )
+
+
 def _comparison_coverage(
     node: exp.Expression,
     binding: _Binding,
@@ -631,26 +673,41 @@ def _comparison_coverage(
     right_contains = _contains_binding_column(node.expression, binding, bindings)
     if not left_contains and not right_contains:
         return None
+
+    left_direct = _is_direct_binding_column(node.this, binding, bindings)
+    right_direct = _is_direct_binding_column(node.expression, binding, bindings)
+    if not left_direct and not right_direct:
+        # 留存等指标会在 SELECT/CASE 中比较 DATEDIFF、DATE_ADD 等派生时间值。
+        # 只有结果计算或 INNER JOIN 生命周期关联不决定物理扫描范围；
+        # WHERE/HAVING 等过滤语境中的派生时间条件仍必须失败关闭。
+        if _is_select_projection_calculation(
+            node, binding
+        ) or _is_lifecycle_inner_join_predicate(node, binding, bindings):
+            return None
+        return _Coverage(invalid=True)
     if (
-        left_contains == right_contains
+        left_direct == right_direct
         or not _is_mandatory_where_predicate(node, binding)
     ):
         return _Coverage(invalid=True)
 
-    if left_contains:
-        if not _is_direct_binding_column(node.this, binding, bindings):
-            return _Coverage(invalid=True)
+    if left_direct:
         comparison_type = type(node)
         boundary = node.expression
     else:
-        if not _is_direct_binding_column(node.expression, binding, bindings):
-            return _Coverage(invalid=True)
         comparison_type = _reverse_comparison_type(node)
         boundary = node.this
     if comparison_type is None:
         return _Coverage(invalid=True)
+    boundary_value = _static_boundary_value(boundary, binding)
+    if boundary_value is None and _is_lifecycle_inner_join_predicate(
+        node, binding, bindings
+    ):
+        # 表间生命周期关联（例如 active.dt = cohort.dt + N）不是范围条件。
+        # 当前扫描仍会在后续 coverage 检查中要求独立的固定上下界。
+        return None
     expected = _expected_comparison(
-        comparison_type, _static_boundary_value(boundary, binding), policy, binding
+        comparison_type, boundary_value, policy, binding
     )
     if expected is None:
         return _Coverage(invalid=True)
