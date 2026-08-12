@@ -1,6 +1,7 @@
 import { BaseChart, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import { Chart, type G2Spec } from '@antv/g2'
 import { chartTheme } from '@/views/chat/component/charts/theme.ts'
+import { bindFloatingTooltipDismissal } from '@/views/chat/component/floatingTooltipLifecycle.ts'
 
 const TOOLTIP_MOUNT_SELECTOR = 'body'
 const TOOLTIP_MARKER_OPTIONS = {
@@ -54,6 +55,8 @@ function withFloatingTooltip(options: G2Spec): G2Spec {
 
 export abstract class BaseG2Chart extends BaseChart {
   chart: Chart
+  private removeTooltipDismissalListeners?: () => void
+  private destroyed = false
 
   constructor(mountTarget: ChartMountTarget, name: string) {
     super(mountTarget, name)
@@ -64,14 +67,37 @@ export abstract class BaseG2Chart extends BaseChart {
     })
 
     this.chart.theme(chartTheme)
+
+    const mountElement =
+      typeof mountTarget === 'string' ? document.getElementById(mountTarget) : mountTarget
+    if (mountElement) {
+      this.removeTooltipDismissalListeners = bindFloatingTooltipDismissal({
+        mount: mountElement,
+        hide: () => this.hideTooltip(),
+      })
+    }
   }
 
   render() {
+    this.hideTooltip()
     this.chart?.options(withFloatingTooltip(this.chart.options() as G2Spec))
     return this.chart?.render()
   }
 
+  private hideTooltip() {
+    if (!this.destroyed) {
+      this.chart?.emit('tooltip:hide', { nativeEvent: false })
+    }
+  }
+
   destroy() {
+    if (this.destroyed) {
+      return
+    }
+    this.hideTooltip()
+    this.removeTooltipDismissalListeners?.()
+    this.removeTooltipDismissalListeners = undefined
+    this.destroyed = true
     this.chart?.destroy()
   }
 }
