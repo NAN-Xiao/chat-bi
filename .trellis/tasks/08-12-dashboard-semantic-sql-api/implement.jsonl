@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/knowledge-base-rag.md", "reason": "知识召回、权限边界、citation 与版本快照契约"}
+{"file": ".trellis/spec/backend/project-runtime.md", "reason": "后端 Ruff、mypy、pytest 质量门禁"}

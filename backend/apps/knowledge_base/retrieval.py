@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
@@ -33,7 +33,6 @@ from apps.knowledge_base.retrieval_models import (
 )
 from common.core.config import settings
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -60,6 +59,18 @@ class KnowledgeRetrievalResult:
     warnings: tuple[str, ...] = ()
     failure_type: str | None = None
     latency_ms: int | None = None
+
+
+def _knowledge_context_wrapper(citation: KnowledgeCitation) -> tuple[str, str]:
+    return (
+        f'<retrieved-knowledge priority="reference-only" id="{citation.chunk_id}">',
+        "</retrieved-knowledge>",
+    )
+
+
+def _knowledge_context_item(citation: KnowledgeCitation) -> str:
+    prefix, suffix = _knowledge_context_wrapper(citation)
+    return f"{prefix}{citation.content}{suffix}"
 
 
 class KnowledgeRetrievalService:
@@ -139,7 +150,7 @@ class KnowledgeRetrievalService:
                 return result
             rows = self._load_allowed_chunks(session, eligible_ids)
             candidate_by_id = {
-                int(getattr(candidate, "id")): candidate
+                int(candidate.id): candidate
                 for candidate in candidates
                 if getattr(candidate, "id", None) is not None
             }
@@ -389,13 +400,20 @@ class KnowledgeRetrievalService:
         selected: list[KnowledgeCitation] = []
         used = 0
         for citation in citations[:top_k]:
-            item = f"[{citation.knowledge_base_id}:{citation.chunk_id}] {citation.content}\n"
-            if selected and used + len(item) > max_chars:
+            item = _knowledge_context_item(citation)
+            separator_size = 1 if selected else 0
+            if used + separator_size + len(item) <= max_chars:
+                selected.append(citation)
+                used += separator_size + len(item)
+                continue
+            if selected:
                 break
-            if not selected and len(item) > max_chars:
-                item = item[:max_chars]
-            selected.append(citation)
-            used += len(item)
+            prefix, suffix = _knowledge_context_wrapper(citation)
+            content_budget = max_chars - len(prefix) - len(suffix)
+            if content_budget < 0:
+                break
+            selected.append(replace(citation, content=citation.content[:content_budget]))
+            break
         return selected
 
     @staticmethod
@@ -408,10 +426,7 @@ class KnowledgeRetrievalService:
         failure_type: str | None = None,
         latency_ms: int | None = None,
     ) -> KnowledgeRetrievalResult:
-        context = "\n".join(
-            f"<retrieved-knowledge priority=\"reference-only\" id=\"{item.chunk_id}\">{item.content}</retrieved-knowledge>"
-            for item in citations
-        )
+        context = "\n".join(_knowledge_context_item(item) for item in citations)
         return KnowledgeRetrievalResult(
             query_hash=query_hash,
             model_signature=model_signature,
@@ -421,7 +436,6 @@ class KnowledgeRetrievalService:
             failure_type=failure_type,
             latency_ms=latency_ms,
         )
-
     def _audit(
         self,
         surface: str,

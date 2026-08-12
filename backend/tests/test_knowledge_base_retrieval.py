@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from apps.datasource.crud.permission_scope import PermissionScopeSnapshot
-from apps.knowledge_base.retrieval import KnowledgeRetrievalService
+from apps.knowledge_base.retrieval import KnowledgeCitation, KnowledgeRetrievalService
 
 
 class _EmbeddingModel:
@@ -101,6 +101,33 @@ def test_permission_context_mismatch_fails_without_model_call():
     )
     assert result.failure_type == "PERMISSION_CONTEXT_MISMATCH"
     assert result.citations == ()
+
+
+def test_retrieval_bounds_first_long_citation_without_breaking_context_tags():
+    citation = KnowledgeCitation(
+        chunk_id=7,
+        knowledge_base_id=20,
+        version_id=21,
+        section_path="收入",
+        score=0.9,
+        content="统计口径" * 100,
+        visibility_scope="ADMIN_PUBLIC",
+    )
+
+    bounded = KnowledgeRetrievalService._bound_context(
+        [citation],
+        top_k=1,
+        max_chars=160,
+    )
+    result = KnowledgeRetrievalService._result("query-1", "embedding-1", tuple(bounded))
+
+    assert len(result.context) <= 160
+    assert result.context.startswith(
+        '<retrieved-knowledge priority="reference-only" id="7">'
+    )
+    assert result.context.endswith("</retrieved-knowledge>")
+    assert result.citations[0].content in result.context
+    assert result.citations[0].content != citation.content
 
 
 def test_retrieval_evaluates_missing_datasource_applicability(monkeypatch):

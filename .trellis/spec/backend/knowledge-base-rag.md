@@ -54,6 +54,13 @@ Inherit the matching version-level resolution when the chunk row is absent, then
 - Build the redacted citation identity snapshot first, then sort with an explicit tuple key such as `knowledge_base_id + version_id + chunk_id` before hashing.
 - The version hash must be stable when citation order changes, and the regression test must contain at least two citations so a single-hit test cannot hide the failure.
 
+### Common Mistake: Re-truncating Retrieved Knowledge After Retrieval
+
+- `KNOWLEDGE_RETRIEVAL_MAX_CONTEXT_CHARS` must bound the final serialized `<retrieved-knowledge>` context, including wrapper tags and separators.
+- If the first eligible chunk is too long, truncate the citation content in the retrieval snapshot itself before building `KnowledgeRetrievalResult`; do not truncate only a temporary counter string and then serialize the original body.
+- Assistant surfaces must pass the bounded `knowledge_context` through unchanged. Re-truncating it in a Prompt builder can break XML tags and make the Prompt body disagree with citations and the knowledge version snapshot.
+- Context snapshots must hash Data Skill content from the dedicated Skill field, not from a flattened semantic string that also contains tracking, structured, or retrieved knowledge.
+
 ## Scenario: SaaS Knowledge Management Workspace Boundary
 
 ### 1. Scope / Trigger
