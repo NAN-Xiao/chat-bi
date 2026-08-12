@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
@@ -76,6 +76,8 @@ class _Binding:
     alias: str
     qualifier: exp.Identifier
     select: exp.Select
+    start_offset_days: int = 0
+    end_offset_days: int = 0
 
     @property
     def field(self) -> str:
@@ -89,8 +91,18 @@ class _Coverage:
     invalid: bool = False
 
 
+@dataclass(frozen=True)
+class _DeclaredField:
+    table_key: tuple[str, ...]
+    field: str
+    alias: str | None = None
+    start_offset_days: int = 0
+    end_offset_days: int = 0
+
+
 _ORDERED_COMPARISONS = (exp.GT, exp.GTE, exp.LT, exp.LTE)
 _TIME_COMPARISONS = (*_ORDERED_COMPARISONS, exp.EQ, exp.NEQ)
+MAX_ANALYSIS_SCAN_WINDOW_OFFSET_DAYS = 3660
 
 
 def _table_key(table: exp.Table) -> tuple[str, ...]:
@@ -189,10 +201,10 @@ def _matching_schema_entry(
 
 def _declared_fields(
     declared_time_fields: object, dialect: str | None
-) -> list[tuple[tuple[str, ...], str]]:
+) -> list[_DeclaredField]:
     if not isinstance(declared_time_fields, list):
         raise AnalysisTimeSqlError()
-    declared: list[tuple[tuple[str, ...], str]] = []
+    declared: list[_DeclaredField] = []
     for item in declared_time_fields:
         if not isinstance(item, dict):
             raise AnalysisTimeSqlError()
@@ -204,46 +216,93 @@ def _declared_fields(
         field = raw_field.strip()
         if not field:
             raise AnalysisTimeSqlError()
-        pair = (key, field)
-        if pair not in declared:
-            declared.append(pair)
+        raw_alias = item.get("alias")
+        if raw_alias is not None and (
+            not isinstance(raw_alias, str) or not raw_alias.strip()
+        ):
+            raise AnalysisTimeSqlError()
+        alias = raw_alias.strip().casefold() if isinstance(raw_alias, str) else None
+        has_start_offset = "start_offset_days" in item
+        has_end_offset = "end_offset_days" in item
+        if has_start_offset != has_end_offset:
+            raise AnalysisTimeSqlError()
+        start_offset = item.get("start_offset_days", 0)
+        end_offset = item.get("end_offset_days", 0)
+        if (
+            isinstance(start_offset, bool)
+            or isinstance(end_offset, bool)
+            or not isinstance(start_offset, int)
+            or not isinstance(end_offset, int)
+            or abs(start_offset) > MAX_ANALYSIS_SCAN_WINDOW_OFFSET_DAYS
+            or abs(end_offset) > MAX_ANALYSIS_SCAN_WINDOW_OFFSET_DAYS
+            or (start_offset != 0 or end_offset != 0) and alias is None
+        ):
+            raise AnalysisTimeSqlError()
+        value = _DeclaredField(
+            table_key=key,
+            field=field,
+            alias=alias,
+            start_offset_days=start_offset,
+            end_offset_days=end_offset,
+        )
+        if value not in declared:
+            declared.append(value)
     return declared
 
 
-def _select_field(
-    table_key: tuple[str, ...],
-    schema_entry: _SchemaEntry,
-    declared: list[tuple[tuple[str, ...], str]],
-) -> TimeFieldBinding:
-    matching_declared = [
-        field
-        for declared_key, field in declared
-        if (
-            declared_key == table_key
-            or (
-                len(table_key) == 1
-                and (
-                    declared_key == schema_entry.key
-                    or declared_key == (table_key[-1],)
-                )
-            )
+def _declared_key_matches_scan(
+    declared_key: tuple[str, ...], scan: _Scan
+) -> bool:
+    return declared_key == scan.table_key or (
+        len(scan.table_key) == 1
+        and (
+            declared_key == scan.schema_entry.key
+            or declared_key == (scan.table_key[-1],)
         )
+    )
+
+
+def _select_scan_declaration(
+    scan: _Scan,
+    declared: list[_DeclaredField],
+) -> tuple[TimeFieldBinding, _DeclaredField]:
+    table_declarations = [
+        item
+        for item in declared
+        if (
+            _declared_key_matches_scan(item.table_key, scan)
+            and (item.alias is None or item.alias == scan.alias)
+        )
+    ]
+    alias_declarations = [item for item in table_declarations if item.alias is not None]
+    matching_declared = alias_declarations or [
+        item for item in table_declarations if item.alias is None
     ]
     exact = [
         field
-        for field in schema_entry.fields
+        for field in scan.schema_entry.fields
         if (
-            field.field in matching_declared
+            any(field.field == item.field for item in matching_declared)
             if field.quoted
             else any(
-                field.field.casefold() == declared_field.casefold()
-                for declared_field in matching_declared
+                field.field.casefold() == item.field.casefold()
+                for item in matching_declared
             )
         )
     ]
-    if len(exact) == 1:
-        return exact[0]
-    raise AnalysisTimeSqlError()
+    windows = {
+        (item.start_offset_days, item.end_offset_days)
+        for item in matching_declared
+    }
+    if len(exact) != 1 or len(windows) != 1:
+        raise AnalysisTimeSqlError()
+    declaration = matching_declared[0]
+    if any(
+        item.field.casefold() != declaration.field.casefold()
+        for item in matching_declared
+    ):
+        raise AnalysisTimeSqlError()
+    return exact[0], declaration
 
 
 def _time_bearing_scans(
@@ -320,10 +379,10 @@ def _relevant_declared_fields_without_time_scans(
     declared_time_fields: object,
     query_keys: list[tuple[str, ...]],
     dialect: str | None,
-) -> list[tuple[tuple[str, ...], str]]:
+) -> list[_DeclaredField]:
     if not isinstance(declared_time_fields, list):
         return []
-    declared: list[tuple[tuple[str, ...], str]] = []
+    declared: list[_DeclaredField] = []
     for item in declared_time_fields:
         if not isinstance(item, dict):
             continue
@@ -340,9 +399,9 @@ def _relevant_declared_fields_without_time_scans(
         if not isinstance(raw_field, str) or not raw_field.strip():
             raise AnalysisTimeSqlError()
         field = raw_field.strip()
-        pair = (key, field)
-        if pair not in declared:
-            declared.append(pair)
+        value = _DeclaredField(table_key=key, field=field)
+        if value not in declared:
+            declared.append(value)
     return declared
 
 
@@ -353,25 +412,45 @@ def _declared_field_matches_binding(field: str, binding: _Binding) -> bool:
 
 
 def _validate_declared_scan_bindings(
-    declared: list[tuple[tuple[str, ...], str]],
+    declared: list[_DeclaredField],
     query_keys: list[tuple[str, ...]],
     bindings: list[_Binding],
 ) -> None:
-    for declared_key, field in declared:
-        matching_keys = _matching_query_keys(declared_key, query_keys)
+    for item in declared:
+        matching_keys = _matching_query_keys(item.table_key, query_keys)
         if not matching_keys:
-            continue
-        for query_key in set(matching_keys):
-            matching_bindings = [
-                binding
-                for binding in bindings
-                if binding.table_key == query_key
-            ]
-            if not matching_bindings or any(
-                not _declared_field_matches_binding(field, binding)
-                for binding in matching_bindings
-            ):
+            if item.alias is not None:
                 raise AnalysisTimeSqlError()
+            continue
+        matching_bindings = [
+            binding
+            for binding in bindings
+            if binding.table_key in set(matching_keys)
+            and (item.alias is None or binding.alias == item.alias)
+        ]
+        if item.alias is not None and len(matching_bindings) != 1:
+            raise AnalysisTimeSqlError()
+        if not matching_bindings or any(
+            not _declared_field_matches_binding(item.field, binding)
+            for binding in matching_bindings
+        ):
+            raise AnalysisTimeSqlError()
+
+
+def _validate_scan_window_contract(bindings: list[_Binding]) -> None:
+    offset_bindings = [
+        binding
+        for binding in bindings
+        if binding.start_offset_days != 0 or binding.end_offset_days != 0
+    ]
+    if not offset_bindings:
+        return
+    if (
+        len(bindings) < 2
+        or not any(binding.start_offset_days == 0 for binding in bindings)
+        or not any(binding.end_offset_days == 0 for binding in bindings)
+    ):
+        raise AnalysisTimeSqlError()
 
 
 def _resolve_bindings(
@@ -391,17 +470,22 @@ def _resolve_bindings(
             dialect,
         )
     )
-    bindings = [
-        _Binding(
-            table_key=scan.table_key,
-            time_field=_select_field(scan.table_key, scan.schema_entry, declared),
-            alias=scan.alias,
-            qualifier=scan.qualifier,
-            select=scan.select,
+    bindings: list[_Binding] = []
+    for scan in scans:
+        time_field, declaration = _select_scan_declaration(scan, declared)
+        bindings.append(
+            _Binding(
+                table_key=scan.table_key,
+                time_field=time_field,
+                alias=scan.alias,
+                qualifier=scan.qualifier,
+                select=scan.select,
+                start_offset_days=declaration.start_offset_days,
+                end_offset_days=declaration.end_offset_days,
+            )
         )
-        for scan in scans
-    ]
     _validate_declared_scan_bindings(declared, query_keys, bindings)
+    _validate_scan_window_contract(bindings)
     return bindings
 
 
@@ -540,16 +624,23 @@ def _effective_bounds(
     binding: _Binding,
     policy: AnalysisTimePolicy,
 ) -> tuple[type[exp.Expression], date, type[exp.Expression], date]:
+    try:
+        logical_start = policy.start_date + timedelta(days=binding.start_offset_days)
+        logical_end = policy.end_date + timedelta(days=binding.end_offset_days)
+    except OverflowError as exc:
+        raise AnalysisTimeSqlError() from exc
+    if logical_start > logical_end:
+        raise AnalysisTimeSqlError()
     if binding.time_field.encoding in {
         "native_timestamp",
         "epoch_seconds",
         "epoch_milliseconds",
     }:
-        start = policy.start_date + timedelta(days=not policy.start_inclusive)
-        return exp.GTE, start, exp.LT, policy.end_date + timedelta(days=1)
+        start = logical_start + timedelta(days=not policy.start_inclusive)
+        return exp.GTE, start, exp.LT, logical_end + timedelta(days=1)
     lower_type = exp.GTE if policy.start_inclusive else exp.GT
     upper_type = exp.LTE if policy.end_inclusive else exp.LT
-    return lower_type, policy.start_date, upper_type, policy.end_date
+    return lower_type, logical_start, upper_type, logical_end
 
 
 def _boundary_value(binding: _Binding, value: date) -> str:
@@ -711,7 +802,10 @@ def _comparison_coverage(
     )
     if expected is None:
         return _Coverage(invalid=True)
-    return _Coverage(has_lower=expected[0], has_upper=expected[1])
+    return _Coverage(
+        has_lower=expected[0],
+        has_upper=expected[1],
+    )
 
 
 def _between_coverage(
@@ -723,18 +817,29 @@ def _between_coverage(
     contains = _contains_binding_column(node.this, binding, bindings)
     if not contains:
         return None
-    valid = (
+    direct_and_mandatory = (
         _is_direct_binding_column(node.this, binding, bindings)
         and _is_mandatory_where_predicate(node, binding)
         and not node.args.get("symmetric")
-        and _effective_bounds(binding, policy)[0] is exp.GTE
-        and _effective_bounds(binding, policy)[2] is exp.LTE
-        and _static_boundary_value(node.args["low"], binding)
-        == _boundary_value(binding, _effective_bounds(binding, policy)[1])
-        and _static_boundary_value(node.args["high"], binding)
-        == _boundary_value(binding, _effective_bounds(binding, policy)[3])
     )
-    return _Coverage(has_lower=valid, has_upper=valid, invalid=not valid)
+    low = _static_boundary_value(node.args["low"], binding)
+    high = _static_boundary_value(node.args["high"], binding)
+    lower_type, lower_date, upper_type, upper_date = _effective_bounds(binding, policy)
+    exact_lower = (
+        direct_and_mandatory
+        and lower_type is exp.GTE
+        and low == _boundary_value(binding, lower_date)
+    )
+    exact_upper = (
+        direct_and_mandatory
+        and upper_type is exp.LTE
+        and high == _boundary_value(binding, upper_date)
+    )
+    return _Coverage(
+        has_lower=exact_lower,
+        has_upper=exact_upper,
+        invalid=not (exact_lower and exact_upper),
+    )
 
 
 def _binding_coverage(
@@ -757,7 +862,11 @@ def _binding_coverage(
             has_lower = has_lower or coverage.has_lower
             has_upper = has_upper or coverage.has_upper
             invalid = invalid or coverage.invalid
-    return _Coverage(has_lower=has_lower, has_upper=has_upper, invalid=invalid)
+    return _Coverage(
+        has_lower=has_lower,
+        has_upper=has_upper,
+        invalid=invalid,
+    )
 
 
 def _boundary_literal(
@@ -821,7 +930,7 @@ def enforce_analysis_time_sql(
     sql: str,
     *,
     policy: AnalysisTimePolicy,
-    declared_time_fields: list[dict[str, str]],
+    declared_time_fields: list[dict[str, Any]],
     schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
     dialect: str | None,
     allow_rewrite: bool,
