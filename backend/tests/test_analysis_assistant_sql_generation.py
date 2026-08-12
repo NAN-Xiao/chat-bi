@@ -867,6 +867,513 @@ def test_time_sql_rejects_dynamic_dt_boundary_in_retention_query() -> None:
         )
 
 
+def test_time_sql_accepts_static_cohort_and_observation_subwindows() -> None:
+    sql = """
+        WITH cohort AS (
+            SELECT r.uid, r.`dt` AS cohort_dt
+            FROM `event` r
+            WHERE r.event = 'UserRegister'
+              AND r.`dt` BETWEEN 20260701 AND 20260710
+        ), active AS (
+            SELECT a.uid, a.`dt` AS active_dt
+            FROM `event` a
+            WHERE a.event = 'UserActive'
+              AND a.`dt` BETWEEN 20260702 AND 20260717
+        )
+        SELECT c.cohort_dt, COUNT(DISTINCT a.uid) AS d7_users
+        FROM cohort c
+        LEFT JOIN active a ON a.uid = c.uid
+        GROUP BY c.cohort_dt
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 7, 10),
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 10),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    prepared = enforce_analysis_time_sql(
+        sql,
+        policy=policy,
+        declared_time_fields=[
+            {
+                "table": "event",
+                "alias": "r",
+                "field": "dt",
+                "start_offset_days": 0,
+                "end_offset_days": 0,
+            },
+            {
+                "table": "event",
+                "alias": "a",
+                "field": "dt",
+                "start_offset_days": 1,
+                "end_offset_days": 7,
+            },
+        ],
+        schema_time_fields={
+            "event": (
+                TimeFieldBinding(
+                    field="dt",
+                    data_type="bigint",
+                    encoding="yyyymmdd_integer",
+                    quoted=True,
+                ),
+            )
+        },
+        dialect="mysql",
+        allow_rewrite=False,
+    )
+
+    assert "20260701" in prepared
+    assert "20260710" in prepared
+    assert "20260702" in prepared
+    assert "20260717" in prepared
+
+
+def test_time_sql_rejects_scan_window_with_unknown_alias() -> None:
+    sql = """
+        WITH cohort AS (
+            SELECT r.uid FROM `event` r
+            WHERE r.`dt` BETWEEN 20260701 AND 20260710
+        ), active AS (
+            SELECT a.uid FROM `event` a
+            WHERE a.`dt` BETWEEN 20260702 AND 20260717
+        )
+        SELECT COUNT(*) FROM cohort JOIN active USING (uid)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 7, 10),
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 10),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[
+                {
+                    "table": "event",
+                    "alias": "r",
+                    "field": "dt",
+                    "start_offset_days": 0,
+                    "end_offset_days": 0,
+                },
+                {
+                    "table": "event",
+                    "alias": "missing",
+                    "field": "dt",
+                    "start_offset_days": 1,
+                    "end_offset_days": 7,
+                },
+            ],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="dt",
+                        data_type="bigint",
+                        encoding="yyyymmdd_integer",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_rejects_offset_windows_without_full_policy_coverage() -> None:
+    sql = """
+        WITH first_scan AS (
+            SELECT r.uid FROM `event` r
+            WHERE r.`dt` BETWEEN 20260702 AND 20260717
+        ), second_scan AS (
+            SELECT a.uid FROM `event` a
+            WHERE a.`dt` BETWEEN 20260702 AND 20260717
+        )
+        SELECT COUNT(*) FROM first_scan JOIN second_scan USING (uid)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 7, 10),
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 10),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[
+                {
+                    "table": "event",
+                    "alias": alias,
+                    "field": "dt",
+                    "start_offset_days": 1,
+                    "end_offset_days": 7,
+                }
+                for alias in ("r", "a")
+            ],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="dt",
+                        data_type="bigint",
+                        encoding="yyyymmdd_integer",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_accepts_mature_cohort_and_observation_windows() -> None:
+    sql = """
+        WITH cohort AS (
+            SELECT r.uid FROM `event` r
+            WHERE r.`dt` BETWEEN 20260701 AND 20260703
+        ), active AS (
+            SELECT a.uid FROM `event` a
+            WHERE a.`dt` BETWEEN 20260702 AND 20260710
+        )
+        SELECT COUNT(*) FROM cohort JOIN active USING (uid)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 7, 10),
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 10),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    prepared = enforce_analysis_time_sql(
+        sql,
+        policy=policy,
+        declared_time_fields=[
+            {
+                "table": "event",
+                "alias": "r",
+                "field": "dt",
+                "start_offset_days": 0,
+                "end_offset_days": -7,
+            },
+            {
+                "table": "event",
+                "alias": "a",
+                "field": "dt",
+                "start_offset_days": 1,
+                "end_offset_days": 0,
+            },
+        ],
+        schema_time_fields={
+            "event": (
+                TimeFieldBinding(
+                    field="dt",
+                    data_type="bigint",
+                    encoding="yyyymmdd_integer",
+                    quoted=True,
+                ),
+            )
+        },
+        dialect="mysql",
+        allow_rewrite=False,
+    )
+
+    assert "20260701" in prepared
+    assert "20260703" in prepared
+    assert "20260702" in prepared
+    assert "20260710" in prepared
+
+
+def test_time_sql_rejects_dynamic_boundary_for_declared_scan_window() -> None:
+    sql = """
+        WITH cohort AS (
+            SELECT r.uid FROM `event` r
+            WHERE r.`dt` BETWEEN 20260701 AND 20260710
+        ), active AS (
+            SELECT a.uid FROM `event` a
+            WHERE a.`dt` >= 20260702
+              AND a.`dt` <= (SELECT MAX(`dt`) FROM `event`)
+        )
+        SELECT COUNT(*) FROM cohort JOIN active USING (uid)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 7, 10),
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 10),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[
+                {
+                    "table": "event",
+                    "alias": "r",
+                    "field": "dt",
+                    "start_offset_days": 0,
+                    "end_offset_days": 0,
+                },
+                {
+                    "table": "event",
+                    "alias": "a",
+                    "field": "dt",
+                    "start_offset_days": 1,
+                    "end_offset_days": 7,
+                },
+            ],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="dt",
+                        data_type="bigint",
+                        encoding="yyyymmdd_integer",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_rejects_static_subwindows_without_full_policy_coverage() -> None:
+    sql = """
+        WITH first_scan AS (
+            SELECT r.uid FROM `event` r
+            WHERE r.`dt` BETWEEN 20260729 AND 20260804
+        ), second_scan AS (
+            SELECT a.uid FROM `event` a
+            WHERE a.`dt` BETWEEN 20260730 AND 20260810
+        )
+        SELECT COUNT(*) FROM first_scan JOIN second_scan USING (uid)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 8, 11),
+        start_date=date(2026, 7, 28),
+        end_date=date(2026, 8, 11),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[{"table": "event", "field": "dt"}],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="dt",
+                        data_type="bigint",
+                        encoding="yyyymmdd_integer",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_rejects_extra_subwindow_on_single_scan() -> None:
+    sql = """
+        SELECT r.uid FROM `event` r
+        WHERE r.`dt` BETWEEN 20260728 AND 20260811
+          AND r.`dt` >= 20260801
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 8, 11),
+        start_date=date(2026, 7, 28),
+        end_date=date(2026, 8, 11),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[{"table": "event", "field": "dt"}],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="dt",
+                        data_type="bigint",
+                        encoding="yyyymmdd_integer",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_rejects_static_subwindow_outside_policy() -> None:
+    sql = """
+        WITH cohort AS (
+            SELECT r.uid FROM `event` r
+            WHERE r.`dt` BETWEEN 20260727 AND 20260804
+        ), active AS (
+            SELECT a.uid FROM `event` a
+            WHERE a.`dt` BETWEEN 20260729 AND 20260811
+        )
+        SELECT COUNT(*) FROM cohort JOIN active USING (uid)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 8, 11),
+        start_date=date(2026, 7, 28),
+        end_date=date(2026, 8, 11),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[{"table": "event", "field": "dt"}],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="dt",
+                        data_type="bigint",
+                        encoding="yyyymmdd_integer",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_rejects_disconnected_static_subwindows() -> None:
+    sql = """
+        WITH cohort AS (
+            SELECT r.uid FROM `event` r
+            WHERE r.`dt` BETWEEN 20260728 AND 20260730
+        ), active AS (
+            SELECT a.uid FROM `event` a
+            WHERE a.`dt` BETWEEN 20260808 AND 20260811
+        )
+        SELECT COUNT(*) FROM cohort JOIN active USING (uid)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 8, 11),
+        start_date=date(2026, 7, 28),
+        end_date=date(2026, 8, 11),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[{"table": "event", "field": "dt"}],
+            schema_time_fields={
+                "event": (
+                    TimeFieldBinding(
+                        field="dt",
+                        data_type="bigint",
+                        encoding="yyyymmdd_integer",
+                        quoted=True,
+                    ),
+                )
+            },
+            dialect="mysql",
+            allow_rewrite=False,
+        )
+
+
+def test_time_sql_rejects_subwindows_across_distinct_physical_tables() -> None:
+    sql = """
+        WITH cohort AS (
+            SELECT p.player_id FROM dim_player p
+            WHERE p.install_date BETWEEN DATE '2026-07-28' AND DATE '2026-08-04'
+        ), active AS (
+            SELECT s.player_id FROM fact_sessions s
+            WHERE s.session_date BETWEEN DATE '2026-07-29' AND DATE '2026-08-11'
+        )
+        SELECT COUNT(*) FROM cohort JOIN active USING (player_id)
+    """
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 8, 11),
+        start_date=date(2026, 7, 28),
+        end_date=date(2026, 8, 11),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("dim_player", "install_date"),
+        description="用户指定时间范围",
+    )
+
+    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
+        enforce_analysis_time_sql(
+            sql,
+            policy=policy,
+            declared_time_fields=[
+                {"table": "dim_player", "field": "install_date"},
+                {"table": "fact_sessions", "field": "session_date"},
+            ],
+            schema_time_fields={
+                "dim_player": ("install_date",),
+                "fact_sessions": ("session_date",),
+            },
+            dialect="postgres",
+            allow_rewrite=False,
+        )
+
+
 def test_time_sql_ignores_derived_retention_day_comparisons_in_select_case() -> None:
     sql = """
         SELECT r.uid,
@@ -1162,7 +1669,10 @@ def test_all_sql_generation_prompts_require_backend_resolved_time_policy() -> No
         assert "后端提供的时间策略是最终约束，不得重新解释或扩大" in prompt
         assert "具体日期常量" in prompt
         assert "不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds" in prompt
-        assert '每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}' in prompt
+        assert '普通扫描使用 {"table":"物理表名","field":"物理时间字段"}' in prompt
+        assert "真实 SQL alias" in prompt
+        assert "start_offset_days/end_offset_days" in prompt
+        assert "只有用户问题或 Data Skill 明确要求该观察窗口时才允许使用" in prompt
         assert "图表标题、分析说明和最终结论必须说明实际使用的时间范围" in prompt
         assert "WITH bounds AS (SELECT MAX" not in prompt
 
@@ -1175,7 +1685,8 @@ def test_sql_repair_prompt_only_requires_preserving_backend_time_bounds() -> Non
     assert "后端提供的时间策略是最终约束，不得重新解释或扩大" in prompt
     assert "具体起止日期和包含关系" in prompt
     assert "不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds" in prompt
-    assert "time_fields" not in prompt
+    assert "时间扫描声明" in prompt
+    assert "不得新增未声明的时间扫描" in prompt
     assert "图表标题、分析说明和最终结论" not in prompt
 
 
@@ -1440,6 +1951,46 @@ def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
     assert "2026-07-26" in prompt
 
 
+def test_sql_repair_receives_declared_scan_windows() -> None:
+    class CaptureLLM:
+        def __init__(self) -> None:
+            self.messages = []
+
+        def invoke(self, messages):
+            self.messages = messages
+            return SimpleNamespace(content='{"sql":"SELECT 1"}')
+
+    llm = CaptureLLM()
+    analysis_api._repair_sql(
+        llm,
+        question="分析指定日期新增用户的 D7",
+        raw_query={
+            "title": "新增用户 D7",
+            "purpose": "计算生命周期指标",
+            "time_fields": [
+                {
+                    "table": "event",
+                    "alias": "active",
+                    "field": "dt",
+                    "start_offset_days": 1,
+                    "end_offset_days": 7,
+                }
+            ],
+        },
+        failed_sql="SELECT broken",
+        error=AnalysisTimeSqlError(),
+        schema="",
+        sample_data="",
+        time_resolution=_resolved_time(),
+    )
+
+    prompt = llm.messages[-1].content
+    assert "时间扫描声明" in prompt
+    assert '"alias":"active"' in prompt
+    assert '"start_offset_days":1' in prompt
+    assert '"end_offset_days":7' in prompt
+
+
 def test_data_skill_block_requires_exact_business_identifiers() -> None:
     block = analysis_api._data_skill_block(
         "新增用户必须使用事件值 `UserRegister`，不得使用 `Register`。"
@@ -1663,3 +2214,152 @@ def test_prepare_sql_rejects_malformed_declared_time_fields_before_validation(
         )
 
     assert validate_calls == []
+
+
+def test_analysis_policy_anchor_rejects_event_time_for_historical_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        analysis_api,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"event"}),
+    )
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 8, 11),
+        start_date=date(2026, 7, 28),
+        end_date=date(2026, 8, 11),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+    resolution = AnalysisTimeResolution(policy=policy, status="resolved")
+    fields = {
+        "event": (
+            TimeFieldBinding("dt", "bigint", "yyyymmdd_integer", True),
+            TimeFieldBinding("time", "bigint", "epoch_milliseconds", True),
+        )
+    }
+
+    with pytest.raises(AnalysisTimeSqlError):
+        analysis_api._prepare_sql_for_execution(
+            object(),
+            object(),
+            object(),
+            SimpleNamespace(type="mysql"),
+            "SELECT uid FROM event WHERE time >= UNIX_TIMESTAMP('2026-07-28') * 1000 AND time < UNIX_TIMESTAMP('2026-08-12') * 1000",
+            ["event"],
+            time_resolution=resolution,
+            schema_time_fields=fields,
+            declared_time_fields=[{"table": "event", "field": "time"}],
+            dialect="mysql",
+        )
+
+
+def test_analysis_policy_anchor_keeps_repaired_declaration_on_raw_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[dict[str, str]]] = []
+
+    def fake_prepare(*_args, declared_time_fields, **_kwargs):
+        calls.append(declared_time_fields)
+        if len(calls) == 1:
+            raise AnalysisTimeSqlError()
+        return "SELECT uid FROM event WHERE dt BETWEEN 20260728 AND 20260811"
+
+    monkeypatch.setattr(analysis_api, "_prepare_sql_for_execution", fake_prepare)
+    monkeypatch.setattr(
+        analysis_api,
+        "_repair_sql",
+        lambda *_args, **_kwargs: "SELECT uid FROM event WHERE dt BETWEEN 20260728 AND 20260811",
+    )
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 8, 11),
+        start_date=date(2026, 7, 28),
+        end_date=date(2026, 8, 11),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+    raw_query = {
+        "sql": "SELECT uid FROM event WHERE time >= 0",
+        "time_fields": [{"table": "event", "field": "time"}],
+    }
+
+    analysis_api._prepare_time_safe_query_sql(
+        llm=object(),
+        session=object(),
+        current_user=object(),
+        datasource=SimpleNamespace(type="mysql"),
+        raw_query=raw_query,
+        question="分析历史新增",
+        schema="",
+        sample_data="",
+        data_profile="",
+        custom_agent="",
+        tracking_context="",
+        data_skill="",
+        allowed_tables=["event"],
+        time_resolution=AnalysisTimeResolution(policy=policy, status="resolved"),
+        schema_time_fields={
+            "event": (
+                TimeFieldBinding("dt", "bigint", "yyyymmdd_integer", True),
+                TimeFieldBinding("time", "bigint", "epoch_milliseconds", True),
+            )
+        },
+        dialect="mysql",
+    )
+
+    assert calls == [
+        [{"table": "event", "field": "dt"}],
+        [{"table": "event", "field": "dt"}],
+    ]
+    assert raw_query["time_fields"] == [{"table": "event", "field": "dt"}]
+
+
+def test_analysis_policy_anchor_preserves_declared_scan_window_metadata() -> None:
+    policy = AnalysisTimePolicy(
+        source=AnalysisTimeSource.USER,
+        window_days=None,
+        anchor_date=date(2026, 7, 10),
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 10),
+        start_inclusive=True,
+        end_inclusive=True,
+        anchor=AnalysisTimeAnchor("event", "dt"),
+        description="用户指定时间范围",
+    )
+
+    declared = analysis_api._analysis_time_declared_fields(
+        [
+            {
+                "table": "event",
+                "alias": "active",
+                "field": "time",
+                "start_offset_days": 1,
+                "end_offset_days": 7,
+            }
+        ],
+        time_resolution=AnalysisTimeResolution(policy=policy, status="resolved"),
+        schema_time_fields={
+            "event": (
+                TimeFieldBinding("dt", "bigint", "yyyymmdd_integer", True),
+                TimeFieldBinding("time", "bigint", "epoch_milliseconds", True),
+            )
+        },
+    )
+
+    assert declared == [
+        {
+            "table": "event",
+            "alias": "active",
+            "field": "dt",
+            "start_offset_days": 1,
+            "end_offset_days": 7,
+        }
+    ]

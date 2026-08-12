@@ -40,6 +40,7 @@ from apps.analysis_assistant.service.analysis_time_policy import (
     resolve_analysis_time_policy,
 )
 from apps.analysis_assistant.service.analysis_time_sql import (
+    MAX_ANALYSIS_SCAN_WINDOW_OFFSET_DAYS,
     AnalysisTimeSqlError,
     TimeFieldBinding,
     enforce_analysis_time_sql,
@@ -289,7 +290,7 @@ JSON 格式：
       "x": "结果集中作为维度或时间轴的字段别名",
       "y": "结果集中作为指标的字段别名",
       "series": "可选，结果集中作为分组系列的字段别名",
-      "time_fields": [{"table": "物理表名", "field": "物理时间字段"}]
+      "time_fields": [{"table": "物理表名", "alias": "SQL别名（同表多次扫描时必填）", "field": "物理时间字段", "start_offset_days": 0, "end_offset_days": 0}]
     }
   ]
 }
@@ -304,7 +305,7 @@ JSON 格式：
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
 - 后端提供的时间策略是最终约束，不得重新解释或扩大。
 - 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
-- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
+- 每个 query 必须返回 time_fields 数组。普通扫描使用 {"table":"物理表名","field":"物理时间字段"}，表示严格使用后端给出的用户时间范围。同一物理表需要多个生命周期/观察窗口时，必须为每次扫描填写整条 SQL 内唯一的真实 SQL alias，并明确填写整数 start_offset_days/end_offset_days（相对用户起止日期的偏移）；只有用户问题或 Data Skill 明确要求该观察窗口时才允许使用，偏移绝对值不得超过 3660 天，不得用动态 MAX、bounds CTE 或未声明的额外扫描绕过策略。无适用时间字段时返回空数组，不得虚构字段。
 - 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - ORDER BY、GROUP BY、HAVING 中引用的字段必须来自当前查询可见字段；ORDER BY 使用的别名必须在最终 SELECT 列表中真实输出。
@@ -340,7 +341,7 @@ JSON 格式：
       "x": "结果集中作为时间、序列点或维度的字段别名",
       "y": "结果集中作为预测值或核心指标的字段别名",
       "series": "可选，结果集中作为分组系列的字段别名",
-      "time_fields": [{"table": "物理表名", "field": "物理时间字段"}]
+      "time_fields": [{"table": "物理表名", "alias": "SQL别名（同表多次扫描时必填）", "field": "物理时间字段", "start_offset_days": 0, "end_offset_days": 0}]
     }
   ]
 }
@@ -358,7 +359,7 @@ JSON 格式：
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
 - 后端提供的时间策略是最终约束，不得重新解释或扩大。
 - 所有适用的数据块必须使用给出的具体日期常量和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
-- 每个 query 必须返回 time_fields 数组，元素格式为 {"table":"物理表名","field":"物理时间字段"}；无适用时间字段时返回空数组，不得虚构字段。
+- 每个 query 必须返回 time_fields 数组。普通扫描使用 {"table":"物理表名","field":"物理时间字段"}，表示严格使用后端给出的用户时间范围。同一物理表需要多个生命周期/观察窗口时，必须为每次扫描填写整条 SQL 内唯一的真实 SQL alias，并明确填写整数 start_offset_days/end_offset_days（相对用户起止日期的偏移）；只有用户问题或 Data Skill 明确要求该观察窗口时才允许使用，偏移绝对值不得超过 3660 天，不得用动态 MAX、bounds CTE 或未声明的额外扫描绕过策略。无适用时间字段时返回空数组，不得虚构字段。
 - 图表标题、分析说明和最终结论必须说明实际使用的时间范围。
 - x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - 预测必须尽量基于明细事实表在查询时计算，不要假设存在 agg/kpi/snapshot 表。
@@ -388,7 +389,7 @@ JSON 格式：
 - 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
 - 聚合函数或窗口函数不得出现在同一查询层级的 WHERE；需要按 MAX/MIN/COUNT 等聚合结果筛选时，必须先在 CTE 或标量子查询中计算边界值，再由外层查询引用。
 - 后端提供的时间策略是最终约束，不得重新解释或扩大。
-- 修正后的 SQL 必须保留后端给出的具体日期常量形式的具体起止日期和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。
+- 修正后的 SQL 必须保留后端给出的具体日期常量形式的具体起止日期和包含关系；不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 计算边界。若随后“时间扫描声明”中的 time_fields 声明了 alias 及 start_offset_days/end_offset_days，必须按声明保留对应扫描的静态窗口；不得把观察窗口改回用户窗口，也不得新增未声明的时间扫描。
 - 没有适用时间字段的维表不得虚构时间过滤。
 - 保持原分析目的和时间范围，不要扩大或缩小口径。
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
@@ -1822,18 +1823,26 @@ def _prepare_sql_for_execution(
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：把分析助手里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    declared = _validated_declared_time_fields(declared_time_fields)
+    declared = _analysis_time_declared_fields(
+        declared_time_fields,
+        time_resolution=time_resolution,
+        schema_time_fields=schema_time_fields,
+    )
+    effective_schema_time_fields = _analysis_policy_time_fields(
+        schema_time_fields,
+        time_resolution=time_resolution,
+    )
     sql = _normalise_sql(raw_sql)
     if time_resolution.policy is not None:
         sql = enforce_analysis_time_sql(
             sql,
             policy=time_resolution.policy,
             declared_time_fields=declared,
-            schema_time_fields=schema_time_fields,
+            schema_time_fields=effective_schema_time_fields,
             dialect=dialect,
             allow_rewrite=allow_time_rewrite,
         )
-    elif sql_references_time_bearing_table(sql, schema_time_fields, dialect):
+    elif sql_references_time_bearing_table(sql, effective_schema_time_fields, dialect):
         raise AnalysisTimeSqlError()
     prepared_sql, _tables = validate_user_query_sql_or_raise(
         session=session,
@@ -1845,11 +1854,11 @@ def _prepare_sql_for_execution(
     return _normalise_sql(prepared_sql)
 
 
-def _validated_declared_time_fields(value: object) -> list[dict[str, str]]:
+def _validated_declared_time_fields(value: object) -> list[dict[str, Any]]:
     """校验模型声明结构，避免畸形元数据绕过或破坏时间校验。"""
     if not isinstance(value, list):
         raise AnalysisTimeSqlError()
-    declared: list[dict[str, str]] = []
+    declared: list[dict[str, Any]] = []
     for item in value:
         if not isinstance(item, dict):
             raise AnalysisTimeSqlError()
@@ -1859,8 +1868,121 @@ def _validated_declared_time_fields(value: object) -> list[dict[str, str]]:
             raise AnalysisTimeSqlError()
         if not isinstance(field, str):
             raise AnalysisTimeSqlError()
-        declared.append({"table": table.strip(), "field": field.strip()})
+        item_value: dict[str, Any] = {
+            "table": table.strip(),
+            "field": field.strip(),
+        }
+        if "alias" in item:
+            alias = item.get("alias")
+            if not isinstance(alias, str) or not alias.strip():
+                raise AnalysisTimeSqlError()
+            item_value["alias"] = alias.strip()
+        has_start_offset = "start_offset_days" in item
+        has_end_offset = "end_offset_days" in item
+        if has_start_offset != has_end_offset:
+            raise AnalysisTimeSqlError()
+        if has_start_offset:
+            start_offset = item.get("start_offset_days")
+            end_offset = item.get("end_offset_days")
+            if (
+                isinstance(start_offset, bool)
+                or isinstance(end_offset, bool)
+                or not isinstance(start_offset, int)
+                or not isinstance(end_offset, int)
+                or abs(start_offset) > MAX_ANALYSIS_SCAN_WINDOW_OFFSET_DAYS
+                or abs(end_offset) > MAX_ANALYSIS_SCAN_WINDOW_OFFSET_DAYS
+            ):
+                raise AnalysisTimeSqlError()
+            if (
+                (start_offset != 0 or end_offset != 0)
+                and "alias" not in item_value
+            ):
+                raise AnalysisTimeSqlError()
+            item_value["start_offset_days"] = start_offset
+            item_value["end_offset_days"] = end_offset
+        declared.append(item_value)
     return declared
+
+
+def _analysis_table_matches(left: str, right: str) -> bool:
+    left_parts = tuple(
+        part.casefold()
+        for part in _normalize_analysis_table_name(left).split(".")
+        if part
+    )
+    right_parts = tuple(
+        part.casefold()
+        for part in _normalize_analysis_table_name(right).split(".")
+        if part
+    )
+    if not left_parts or not right_parts:
+        return False
+    return left_parts == right_parts or (
+        len(left_parts) == 1 or len(right_parts) == 1
+    ) and left_parts[-1] == right_parts[-1]
+
+
+def _analysis_policy_time_fields(
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
+    *,
+    time_resolution: AnalysisTimeResolution,
+) -> dict[str, tuple[TimeFieldBinding | str, ...]]:
+    """主时间锚点所在表只能用该字段裁剪，避免历史查询改用事件时间。"""
+    policy = time_resolution.policy
+    anchor = policy.anchor if policy is not None else None
+    if anchor is None:
+        return schema_time_fields
+
+    effective: dict[str, tuple[TimeFieldBinding | str, ...]] = {}
+    matched_anchor_table = False
+    for table, fields in schema_time_fields.items():
+        if not _analysis_table_matches(table, anchor.table):
+            effective[table] = fields
+            continue
+        matched_anchor_table = True
+        anchor_fields = tuple(
+            field
+            for field in fields
+            if (
+                field.field if isinstance(field, TimeFieldBinding) else str(field)
+            ).casefold()
+            == anchor.field.casefold()
+        )
+        if len(anchor_fields) != 1:
+            raise AnalysisTimeSqlError()
+        effective[table] = anchor_fields
+    if not matched_anchor_table:
+        raise AnalysisTimeSqlError()
+    return effective
+
+
+def _analysis_time_declared_fields(
+    value: object,
+    *,
+    time_resolution: AnalysisTimeResolution,
+    schema_time_fields: dict[str, tuple[TimeFieldBinding | str, ...]],
+) -> list[dict[str, Any]]:
+    """让模型声明服从已确认的主时间锚点，并保留其它物理表声明。"""
+    declared = _validated_declared_time_fields(value)
+    policy = time_resolution.policy
+    anchor = policy.anchor if policy is not None else None
+    if anchor is None:
+        return declared
+
+    _analysis_policy_time_fields(
+        schema_time_fields,
+        time_resolution=time_resolution,
+    )
+    normalized: list[dict[str, Any]] = []
+    for item in declared:
+        if _analysis_table_matches(item["table"], anchor.table):
+            corrected = dict(item)
+            corrected["field"] = anchor.field
+        else:
+            corrected = item
+        if corrected not in normalized:
+            normalized.append(corrected)
+    return normalized
 
 
 def _collect_custom_agent_context(
@@ -2579,19 +2701,30 @@ async def _resolve_chat_time_policy(
     history = user_messages[-6:-1]
     intent = parse_analysis_time_intent(question, history)
     skill_days, warnings = parse_data_skill_time_directive(business_context.data_skill)
-    if not intent.requires_anchor:
-        return resolve_analysis_time_policy(
-            intent,
-            skill_window_days=skill_days,
-            anchor=None,
-            anchor_date=None,
-            warnings=warnings,
-        )
-
     candidates = _schema_time_field_candidates(
         business_context.schema,
         business_context.allowed_tables,
     )
+    if not intent.requires_anchor:
+        try:
+            fixed_range_anchor = await asyncio.to_thread(
+                _select_analysis_time_anchor,
+                llm,
+                question,
+                semantic_context,
+                candidates,
+            )
+        except Exception:
+            fixed_range_anchor = None
+        return resolve_analysis_time_policy(
+            intent,
+            skill_window_days=skill_days,
+            anchor=fixed_range_anchor,
+            anchor_date=None,
+            require_anchor=bool(candidates),
+            warnings=warnings,
+        )
+
     try:
         anchor = await asyncio.to_thread(
             _select_analysis_time_anchor,
@@ -3762,6 +3895,7 @@ def _repair_sql(
         f"用户问题：{question}\n"
         f"数据块标题：{raw_query.get('title')}\n"
         f"分析目的：{raw_query.get('purpose')}\n"
+        f"时间扫描声明：{orjson.dumps(raw_query.get('time_fields') or []).decode()}\n"
         f"原始 SQL：\n{failed_sql}\n\n"
         f"执行错误：\n{str(error)[:3000]}\n\n"
         f"{_time_policy_context(time_resolution)}"
@@ -3811,9 +3945,12 @@ def _prepare_time_safe_query_sql(
 ) -> str:
     """严格校验失败后只允许一次定向修复，再做唯一目标 AST 补齐。"""
     raw_declared = raw_query.get("time_fields")
-    declared = _validated_declared_time_fields(
-        [] if raw_declared is None else raw_declared
+    declared = _analysis_time_declared_fields(
+        [] if raw_declared is None else raw_declared,
+        time_resolution=time_resolution,
+        schema_time_fields=schema_time_fields,
     )
+    raw_query["time_fields"] = declared
     raw_sql = str(raw_query.get("sql") or "")
     try:
         return _prepare_sql_for_execution(
