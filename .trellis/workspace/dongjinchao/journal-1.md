@@ -47,3 +47,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: AI看板 Skills 与知识库 RAG 联合调用
+
+**Date**: 2026-08-12
+**Task**: AI看板 Skills 与知识库 RAG 联合调用
+**Branch**: `release/release_2.0.0`
+
+### Summary
+
+在既有 dashboard/ai_sql_generate 调用链中保留 find_data_skills 和 tracking 注入，新增独立 knowledge_context；统一 RAG 最终序列化限长并隔离 Data Skill 快照来源。74 项后端回归测试、Ruff、py_compile 与 diff 检查通过；mypy 因复用虚拟环境损坏阻塞；临时 API 启动及未认证鉴权边界验证通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d9408538` | (see git log) |
+
+### Status
+
+[OK] **Completed**
