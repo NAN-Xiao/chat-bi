@@ -2545,6 +2545,16 @@ defineExpose({
       <div class="title">
         {{ viewInfo.chart.title }}
       </div>
+      <el-tooltip
+        v-if="chartLoading && hasRenderedChartData"
+        effect="dark"
+        :content="chartLoadingText"
+        placement="top"
+      >
+        <span class="chart-refresh-status" role="status" :aria-label="chartLoadingText">
+          <span class="chart-loading-ring small" aria-hidden="true"></span>
+        </span>
+      </el-tooltip>
       <div v-if="showPosition === 'multiplexing'" class="buttons-bar">
         <div class="chart-select-container">
           <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
@@ -2858,10 +2868,6 @@ defineExpose({
         class="chart-content-row"
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
-        <div v-if="chartLoading" class="chart-refresh-overlay">
-          <span class="chart-loading-ring small" aria-hidden="true"></span>
-          <span>{{ chartLoadingText }}</span>
-        </div>
         <ChartInsightHeader
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
           :compact="compactInsightHeader"
@@ -3722,26 +3728,13 @@ defineExpose({
   }
 }
 
-.chart-refresh-overlay {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 3;
-  display: inline-flex;
+.chart-refresh-status {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: calc(100% - 16px);
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--workspace-border-soft, rgba(31, 35, 41, 0.08));
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 20px rgba(31, 35, 41, 0.08);
-  color: var(--workspace-text-secondary, #66758f);
-  font-size: 12px;
-  line-height: 28px;
-  white-space: nowrap;
-  pointer-events: none;
+  justify-content: center;
 }
 
 .chart-empty-info {
