@@ -40,6 +40,7 @@ _RELATIVE_DAYS_RE = re.compile(
 )
 _RELATIVE_WEEKS_RE = re.compile(r"(?:最近|近)\s*(两|-?\d+)\s*(?:个)?周")
 _RECENT_MONTH_RE = re.compile(r"(?:最近|近)\s*(?:一|1)\s*个?月")
+_LATEST_DAY_RE = re.compile(r"(?:数据|业务)?\s*最新(?:的)?\s*(?:一天|一日|1天|1日)|最新业务日")
 _INVALID_DATE_WARNING = "用户指定的日期无效，无法确定时间策略。"
 _INVALID_WINDOW_WARNING = "用户指定的时间窗口无效，无法确定时间策略。"
 _DESCENDING_RANGE_WARNING = "用户指定的时间范围倒序，无法确定时间策略。"
@@ -234,6 +235,8 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
             source=AnalysisTimeSource.USER,
             window_days=30,
         )
+    if _LATEST_DAY_RE.search(text):
+        return AnalysisTimeIntent(kind="current_day", source=AnalysisTimeSource.USER)
     if "昨天" in text or "昨日" in text:
         return AnalysisTimeIntent(kind="yesterday", source=AnalysisTimeSource.USER)
     if "前天" in text:
