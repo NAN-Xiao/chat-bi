@@ -1107,6 +1107,14 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return data
 
 
+def _extract_plan_json_object(text: str) -> dict[str, Any]:
+    """只接受完整计划对象，避免畸形外层 JSON 被降级成内部 query。"""
+    plan = _extract_json_object(text)
+    if "queries" not in plan:
+        raise ValueError("模型没有返回完整分析计划")
+    return plan
+
+
 def _normalise_sql(sql: str) -> str:
     """
     是什么：_normalise_sql 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -1878,9 +1886,10 @@ def _validated_declared_time_fields(value: object) -> list[dict[str, Any]]:
         }
         if "alias" in item:
             alias = item.get("alias")
-            if not isinstance(alias, str) or not alias.strip():
+            if alias is not None and not isinstance(alias, str):
                 raise AnalysisTimeSqlError()
-            item_value["alias"] = alias.strip()
+            if isinstance(alias, str) and alias.strip():
+                item_value["alias"] = alias.strip()
         has_start_offset = "start_offset_days" in item
         has_end_offset = "end_offset_days" in item
         if has_start_offset != has_end_offset:
@@ -4312,7 +4321,7 @@ def _build_plan(
     try:
         plan = _extract_json_object(text)
     except Exception:
-        retry = _llm_text(
+        text = _llm_text(
             llm,
             messages
             + [
@@ -4320,11 +4329,14 @@ def _build_plan(
                 HumanMessage(content="上一次输出无法解析。请严格只返回一个合法 JSON 对象，字段和格式必须符合要求。"),
             ],
         )
-        plan = _extract_json_object(retry)
+        try:
+            plan = _extract_plan_json_object(text)
+        except Exception as error:
+            raise ValueError("模型没有返回合法的完整分析计划") from error
 
     queries = _executable_plan_queries(plan)
     if not queries:
-        retry = _llm_text(
+        text = _llm_text(
             llm,
             messages
             + [
@@ -4338,7 +4350,23 @@ def _build_plan(
                 ),
             ],
         )
-        plan = _extract_json_object(retry)
+        try:
+            plan = _extract_plan_json_object(text)
+        except Exception:
+            text = _llm_text(
+                llm,
+                messages
+                + [
+                    AIMessage(content=text),
+                    HumanMessage(
+                        content=(
+                            "上一次完整计划仍无法解析。请只修正 JSON 转义和顶层结构，"
+                            "严格保留 intro、steps、queries 以及每个 query 的现有业务口径。"
+                        )
+                    ),
+                ],
+            )
+            plan = _extract_plan_json_object(text)
         queries = _executable_plan_queries(plan)
     if not queries:
         raise ValueError("模型没有生成可执行的数据召回计划")
@@ -4390,7 +4418,7 @@ def _build_forecast_plan(
     try:
         plan = _extract_json_object(text)
     except Exception:
-        retry = _llm_text(
+        text = _llm_text(
             llm,
             messages
             + [
@@ -4398,11 +4426,14 @@ def _build_forecast_plan(
                 HumanMessage(content="上一次输出无法解析。请严格只返回一个合法 JSON 对象，字段和格式必须符合要求。"),
             ],
         )
-        plan = _extract_json_object(retry)
+        try:
+            plan = _extract_plan_json_object(text)
+        except Exception as error:
+            raise ValueError("模型没有返回合法的完整预测计划") from error
 
     queries = _executable_plan_queries(plan)
     if not queries:
-        retry = _llm_text(
+        text = _llm_text(
             llm,
             messages
             + [
@@ -4416,7 +4447,23 @@ def _build_forecast_plan(
                 ),
             ],
         )
-        plan = _extract_json_object(retry)
+        try:
+            plan = _extract_plan_json_object(text)
+        except Exception:
+            text = _llm_text(
+                llm,
+                messages
+                + [
+                    AIMessage(content=text),
+                    HumanMessage(
+                        content=(
+                            "上一次完整预测计划仍无法解析。请只修正 JSON 转义和顶层结构，"
+                            "严格保留 intro、steps、queries 以及每个 query 的现有业务口径。"
+                        )
+                    ),
+                ],
+            )
+            plan = _extract_plan_json_object(text)
         queries = _executable_plan_queries(plan)
     if not queries:
         raise ValueError("模型没有生成可执行的预测数据召回计划")
