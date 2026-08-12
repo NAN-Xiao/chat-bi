@@ -169,6 +169,24 @@ def test_current_explicit_time_overrides_history_complete_intent() -> None:
 
 
 @pytest.mark.parametrize(
+    "question",
+    [
+        "从7月28日到现在，新增用户留存有什么变化？",
+        "从 7 月 28 日至今分析新增用户留存",
+        "从2026年7月28日到目前分析新增用户留存",
+    ],
+)
+def test_open_range_to_present_uses_the_business_date_anchor(question: str) -> None:
+    resolution = _resolve(question, anchor_date=date(2026, 8, 11))
+
+    assert resolution.policy is not None
+    assert resolution.policy.source is AnalysisTimeSource.USER
+    assert resolution.policy.start_date == date(2026, 7, 28)
+    assert resolution.policy.end_date == date(2026, 8, 11)
+    assert resolution.policy.start_inclusive is True
+
+
+@pytest.mark.parametrize(
     ("question", "expected_boundary", "inclusive", "expected_trace_start"),
     [
         ("分析14日之后的数据", date(2026, 7, 14), False, "2026-07-15"),

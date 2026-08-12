@@ -26,6 +26,10 @@ _FULL_OPEN_RE = re.compile(
     r"(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})[日号]\s*"
     r"(之后|以后|起|开始|及以后)"
 )
+_FULL_TO_PRESENT_RE = re.compile(
+    r"(?:从\s*)?(?:(\d{4})\s*年)?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]\s*"
+    r"(?:到|至)\s*(?:现在|目前|当前|至今|今)"
+)
 _DAY_ONLY_RE = re.compile(
     r"(?:从\s*)?(\d{1,2})\s*[日号]\s*(之后|以后|起|开始|及以后)"
 )
@@ -231,6 +235,17 @@ def parse_analysis_time_intent(question: str, history: list[str]) -> AnalysisTim
         )
     if "本月" in text:
         return AnalysisTimeIntent(kind="month", source=AnalysisTimeSource.USER)
+    full_to_present = _FULL_TO_PRESENT_RE.search(text)
+    if full_to_present:
+        explicit_year = int(full_to_present.group(1)) if full_to_present.group(1) else None
+        return AnalysisTimeIntent(
+            kind="day_open",
+            source=AnalysisTimeSource.USER,
+            year=explicit_year,
+            month=int(full_to_present.group(2)),
+            day_of_month=int(full_to_present.group(3)),
+            start_inclusive=True,
+        )
     full_open = _FULL_OPEN_RE.search(text)
     if full_open:
         explicit_year = int(full_open.group(1)) if full_open.group(1) else None
