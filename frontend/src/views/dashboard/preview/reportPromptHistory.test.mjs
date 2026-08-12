@@ -234,6 +234,12 @@ for (const component of componentSources) {
 
 assert.match(
   componentSources[0].source,
+  /<Teleport to="body">\s*<div\s+v-if="reportPromptVisible"[\s\S]*?class="dashboard-report-popover"[\s\S]*?<\/div>\s*<\/Teleport>/,
+  '整张看板解读浮层应挂载到 body，避免被图表卡片 hover 层叠上下文遮挡'
+)
+
+assert.match(
+  componentSources[0].source,
   /targetScope:\s*'dashboard'/,
   '整张看板解读历史应使用 dashboard 目标作用域'
 )

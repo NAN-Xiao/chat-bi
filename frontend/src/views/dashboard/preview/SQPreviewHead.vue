@@ -647,6 +647,8 @@ onBeforeUnmount(() => {
         {{ t('dashboard.edit') }}
       </el-button>
     </div>
+  </div>
+  <Teleport to="body">
     <div
       v-if="reportPromptVisible"
       ref="reportPanelRef"
@@ -770,7 +772,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style lang="less">
