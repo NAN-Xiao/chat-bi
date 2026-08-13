@@ -68,3 +68,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: 工作空间绑定 ROI 项目 ID
+
+**Date**: 2026-08-13
+**Task**: 工作空间绑定 ROI 项目 ID
+**Branch**: `release/release_2.0.0`
+
+### Summary
+
+在 SaaS 工作空间创建和编辑中新增必填 ROI 项目 ID，完成独立字段持久化、迁移、API 返回、默认工作空间保护、事务回滚测试和前端表单校验。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `44482cc0` | (see git log) |
+
+### Status
+
+[OK] **Completed**
