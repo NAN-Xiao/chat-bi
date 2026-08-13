@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Protocol
 
 from apps.knowledge_base.errors import KnowledgeBusinessError
@@ -29,6 +30,7 @@ class LifecycleRepository(Protocol):
     def lock_knowledge_base(self, *, tenant_id: int, knowledge_base_id: int): ...
     def get_version(self, *, tenant_id: int, knowledge_base_id: int, version_id: int, for_update: bool = False): ...
     def get_active_draft(self, *, tenant_id: int, knowledge_base_id: int, for_update: bool = False): ...
+    def get_latest_archived_published_version(self, *, tenant_id: int, knowledge_base_id: int, for_update: bool = False): ...
     def add_draft(self, **kwargs): ...
     def save_draft_if_revision_matches(self, **kwargs): ...
     def update_locked_draft(self, **kwargs): ...
@@ -70,6 +72,7 @@ class KnowledgeLifecycleService:
             tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
         )
         self.permissions.require_manage(current_user, record)
+        self._assert_not_archived(record)
         active = self.repository.get_active_draft(
             tenant_id=tenant_id, knowledge_base_id=knowledge_base_id, for_update=True
         )
@@ -371,6 +374,7 @@ class KnowledgeLifecycleService:
             tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
         )
         self.permissions.require_manage(current_user, record)
+        self._assert_not_archived(record)
         active = self.repository.get_active_draft(
             tenant_id=tenant_id, knowledge_base_id=knowledge_base_id, for_update=True
         )
@@ -452,6 +456,71 @@ class KnowledgeLifecycleService:
         record.update_by = actor_id
         return record
 
+    def restore(
+        self,
+        *,
+        tenant_id: int,
+        knowledge_base_id: int,
+        actor_id: int | None,
+        current_user: Any | None = None,
+    ):
+        record = self.repository.lock_knowledge_base(
+            tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
+        )
+        self.permissions.require_manage(current_user, record)
+        if not bool(getattr(record, "archived", False)):
+            return record
+        version = self.repository.get_latest_archived_published_version(
+            tenant_id=tenant_id,
+            knowledge_base_id=knowledge_base_id,
+            for_update=True,
+        )
+        if version is None:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_RESTORE_VERSION_NOT_FOUND",
+                message="未找到可恢复的已发布版本。",
+                status_code=409,
+                error_type="CONFLICT",
+                suggestion="请确认该知识库曾成功发布后再恢复。",
+            )
+        version.status = KnowledgeVersionStatus.PUBLISHED
+        record.current_version_id = int(version.id)
+        record.draft_version_id = None
+        record.publishing_version_id = None
+        record.archived = False
+        record.active = False
+        record.publish_time = getattr(version, "publish_time", None)
+        record.update_by = actor_id
+        record.update_time = datetime.now()
+        return record
+
+    def set_active(
+        self,
+        *,
+        tenant_id: int,
+        knowledge_base_id: int,
+        active: bool,
+        actor_id: int | None,
+        current_user: Any | None = None,
+    ):
+        record = self.repository.lock_knowledge_base(
+            tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
+        )
+        self.permissions.require_manage(current_user, record)
+        self._assert_not_archived(record)
+        if active and getattr(record, "current_version_id", None) is None:
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_ACTIVE_VERSION_REQUIRED",
+                message="知识库尚无已发布版本，不能启用。",
+                status_code=409,
+                error_type="CONFLICT",
+                suggestion="请先完成知识发布后再启用。",
+            )
+        record.active = bool(active)
+        record.update_by = actor_id
+        record.update_time = datetime.now()
+        return record
+
     def set_workspace_enabled(
         self,
         *,
@@ -465,6 +534,7 @@ class KnowledgeLifecycleService:
         record = self.repository.lock_knowledge_base(
             tenant_id=DEFAULT_TENANT_ID, knowledge_base_id=knowledge_base_id
         )
+        self._assert_not_archived(record)
         authorized_tenant_id = self.permissions.require_workspace_override(current_user, record)
         if int(authorized_tenant_id) != int(workspace_tenant_id):
             raise KnowledgeBusinessError(
@@ -552,6 +622,7 @@ class KnowledgeLifecycleService:
         )
 
     def _assert_editable(self, record: Any, version: Any, version_id: int) -> None:
+        self._assert_not_archived(record)
         if getattr(record, "draft_version_id", None) != version_id:
             raise self._draft_conflict()
         current_status = _status(version)
@@ -568,6 +639,16 @@ class KnowledgeLifecycleService:
             raise KnowledgeBusinessError(
                 code="KNOWLEDGE_VERSION_NOT_EDITABLE",
                 message="当前版本不可编辑，请刷新后重试。",
+                status_code=409,
+                error_type="CONFLICT",
+            )
+
+    @staticmethod
+    def _assert_not_archived(record: Any) -> None:
+        if bool(getattr(record, "archived", False)):
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_ARCHIVED_READ_ONLY",
+                message="归档知识库为只读，请先恢复后再修改。",
                 status_code=409,
                 error_type="CONFLICT",
             )

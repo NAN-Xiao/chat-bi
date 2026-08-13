@@ -57,6 +57,7 @@ export interface KnowledgeBaseVersion {
   file_name?: string | null
   file_ext?: string | null
   parser_version?: string | null
+  publish_time?: string | null
 }
 
 export interface KnowledgePublishJob {
@@ -143,7 +144,7 @@ const buildFormData = (payload: KnowledgeBaseSavePayload) => {
 
 export const knowledgeBaseApi = {
   capabilities: () => request.get<KnowledgeBaseCapabilities>('/knowledge-base/capabilities'),
-  list: (params?: { visibility_scope?: KnowledgeBaseScope; keyword?: string; tenant_id?: number | string }) =>
+  list: (params?: { visibility_scope?: KnowledgeBaseScope; keyword?: string; tenant_id?: number | string; archived?: boolean }) =>
     request.get<KnowledgeBaseItem[]>('/knowledge-base/list', { params }),
   detail: (id: number | string) => request.get<KnowledgeBaseItem>(`/knowledge-base/${id}`),
   create: (payload: KnowledgeBaseCreatePayload) =>
@@ -155,6 +156,10 @@ export const knowledgeBaseApi = {
       },
     }),
   delete: (id: number | string) => request.delete(`/knowledge-base/${id}`),
+  restore: (id: number | string) =>
+    request.post<KnowledgeBaseItem>(`/knowledge-base/${id}/restore`),
+  setActive: (id: number | string, active: boolean) =>
+    request.put<KnowledgeBaseItem>(`/knowledge-base/${id}/active`, { active }),
   createDraft: (id: number | string, payload: Record<string, any>) =>
     request.post<KnowledgeBaseVersion>(`/knowledge-base/${id}/draft`, { payload }),
   saveDraft: (

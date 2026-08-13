@@ -6,6 +6,7 @@ import {
   FolderDelete,
   Plus,
   Refresh,
+  RefreshLeft,
   Search,
   UploadFilled,
 } from '@element-plus/icons-vue'
@@ -52,6 +53,7 @@ const listError = ref(false)
 const saving = ref(false)
 const sourceUploading = ref(false)
 const publishing = ref(false)
+const rowActionBusy = ref<Record<string, 'download' | 'restore' | 'active'>>({})
 const editorVisible = ref(false)
 const createVisible = ref(false)
 const createSourceFile = ref<File | null>(null)
@@ -60,6 +62,7 @@ const versions = ref<KnowledgeBaseVersion[]>([])
 const draft = ref<KnowledgeBaseVersion | null>(null)
 const payload = ref<KnowledgePayload>(defaultKnowledgePayload('DOCUMENT'))
 const keyword = ref('')
+const archiveFilter = ref<'current' | 'archived'>('current')
 const scopeFilter = useKnowledgeScopeNavigation()
 const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
 const workspaces = ref<TenantInfo[]>([])
@@ -79,23 +82,27 @@ const applicability = ref<KnowledgeApplicabilityState | null>(null)
 const applicabilityLoading = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
+const isArchivedView = computed(() => archiveFilter.value === 'archived')
 const canCreateKnowledge = computed(
-  () => isPlatformAdmin.value
+  () => !isArchivedView.value && (isPlatformAdmin.value
     ? scopeFilter.value === 'PLATFORM_PUBLIC' || Boolean(workspaceFilter.value)
-    : userStore.isTenantAdminUser && scopeFilter.value === 'ADMIN_PUBLIC'
+    : userStore.isTenantAdminUser && scopeFilter.value === 'ADMIN_PUBLIC')
 )
 const visibleItems = computed(() => {
   const text = keyword.value.trim().toLowerCase()
   if (!text) return items.value
   return items.value.filter((item) => `${item.name} ${item.description || ''}`.toLowerCase().includes(text))
 })
-const canEdit = computed(() => !!selected.value?.can_manage)
+const canEdit = computed(() => !!selected.value?.can_manage && !selected.value.archived)
 const editorTitle = computed(() => {
   if (!selected.value) return '知识库详情'
-  return `${selected.value.can_manage ? '编辑' : '查看'}知识库：${selected.value.name}`
+  return `${canEdit.value ? '编辑' : '查看'}知识库：${selected.value.name}`
 })
 const draftStatus = computed(() => draft.value?.status || '无草稿')
 const currentVersion = computed(() => versions.value.find((version) => version.status === 'PUBLISHED') || null)
+const archivedPublishedVersion = computed(() => versions.value.find(
+  (version) => version.status === 'ARCHIVED' && Boolean(version.publish_time)
+) || null)
 const validationErrors = computed(() => draft.value?.validation_report?.errors || [])
 const validationWarnings = computed(() => draft.value?.validation_report?.warnings || [])
 const actionState = computed(() => knowledgeActionState({
@@ -109,7 +116,9 @@ const editorBusy = computed(() => !actionState.value.save && (
   publishing.value || ['QUEUED', 'RUNNING', 'PENDING_CONFIRMATION'].includes(publishJob.value?.status || '')
 ))
 const canToggleWorkspaceKnowledge = computed(
-  () => selected.value?.visibility_scope === 'PLATFORM_PUBLIC' && userStore.isTenantAdminUser
+  () => !selected.value?.archived
+    && selected.value?.visibility_scope === 'PLATFORM_PUBLIC'
+    && userStore.isTenantAdminUser
 )
 const workspaceFilterVisible = computed(() => scopeFilter.value === 'ADMIN_PUBLIC')
 const workspaceFilterDisabled = computed(() => !isPlatformAdmin.value)
@@ -161,6 +170,7 @@ async function loadItems() {
         ...base,
         visibility_scope: scopeFilter.value,
         tenant_id: scopeFilter.value === 'ADMIN_PUBLIC' ? workspaceFilter.value : undefined,
+        archived: isArchivedView.value,
       })
     }
     listError.value = false
@@ -245,7 +255,7 @@ async function openEditor(item: KnowledgeBaseItem) {
       workspaceOverride.value = { enabled: true, reason: null }
     }
   }
-  await loadApplicability()
+  if (!selected.value.archived) await loadApplicability()
 }
 
 async function loadApplicability() {
@@ -287,6 +297,7 @@ async function loadVersions() {
   ) || null
   if (draft.value) payload.value = normalizeLoadedPayload(draft.value.payload)
   else if (currentVersion.value) payload.value = normalizeLoadedPayload(currentVersion.value.payload)
+  else if (archivedPublishedVersion.value) payload.value = normalizeLoadedPayload(archivedPublishedVersion.value.payload)
   else payload.value = defaultPayload(selected.value.knowledge_type)
 }
 
@@ -407,6 +418,40 @@ async function archiveKnowledge(row: KnowledgeBaseItem) {
   ElMessage.success('知识库已归档')
 }
 
+async function restoreKnowledge(row: KnowledgeBaseItem) {
+  if (!row.can_manage || rowBusyState(row)) return
+  await ElMessageBox.confirm(
+    `恢复后“${row.name}”仍为停用状态，需要另行启用后才会参与检索。`,
+    '恢复知识库',
+    { confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning' }
+  )
+  setRowBusy(row, 'restore')
+  try {
+    await knowledgeBaseApi.restore(row.id)
+    if (selected.value?.id === row.id) editorVisible.value = false
+    await loadItems()
+    ElMessage.success('知识库已恢复并保持停用')
+  } finally {
+    setRowBusy(row)
+  }
+}
+
+async function updateKnowledgeActive(row: KnowledgeBaseItem, active: boolean) {
+  if (!row.can_manage || row.archived || rowBusyState(row)) return
+  setRowBusy(row, 'active')
+  try {
+    const updated = await knowledgeBaseApi.setActive(row.id, active)
+    row.active = updated.active
+    if (selected.value?.id === row.id) selected.value.active = updated.active
+    ElMessage.success(active ? '知识库已启用并参与检索' : '知识库已停用')
+  } catch (error) {
+    row.active = !active
+    throw error
+  } finally {
+    setRowBusy(row)
+  }
+}
+
 async function saveDraft() {
   if (!selected.value || !draft.value || !actionState.value.save) return false
   try {
@@ -437,6 +482,16 @@ async function saveDraft() {
 function isSupportedSourceFile(file: File) {
   const name = file.name.toLowerCase()
   return ['.md', '.markdown', '.docx', '.xlsx'].some((suffix) => name.endsWith(suffix))
+}
+
+function rowBusyState(row: KnowledgeBaseItem) {
+  return rowActionBusy.value[String(row.id)]
+}
+
+function setRowBusy(row: KnowledgeBaseItem, action?: 'download' | 'restore' | 'active') {
+  const key = String(row.id)
+  if (action) rowActionBusy.value[key] = action
+  else delete rowActionBusy.value[key]
 }
 
 async function replaceDraftSource(file: File) {
@@ -584,15 +639,52 @@ async function updateWorkspaceKnowledgeEnabled(enabled: boolean) {
   }
 }
 
-async function downloadVersion(version: KnowledgeBaseVersion) {
-  if (!selected.value) return
-  const blob = await knowledgeBaseApi.download(selected.value.id, version.id)
+function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = version.file_name || `knowledge-${version.version_number}`
-  anchor.click()
-  URL.revokeObjectURL(url)
+  anchor.download = fileName
+  anchor.hidden = true
+  try {
+    document.body.appendChild(anchor)
+    anchor.click()
+  } finally {
+    anchor.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+}
+
+async function downloadVersion(version: KnowledgeBaseVersion) {
+  if (!selected.value) return
+  const blob = await knowledgeBaseApi.download(selected.value.id, version.id)
+  downloadBlob(blob, version.file_name || `knowledge-${version.version_number}`)
+}
+
+async function downloadRowSource(row: KnowledgeBaseItem) {
+  if (rowBusyState(row)) return
+  setRowBusy(row, 'download')
+  try {
+    let sourceVersion: KnowledgeBaseVersion | null = null
+    if (row.archived) {
+      const rowVersions = await knowledgeBaseApi.versions(row.id)
+      sourceVersion = rowVersions.find(
+        (version) => version.status === 'ARCHIVED' && Boolean(version.publish_time)
+      ) || null
+    } else if (row.draft_version_id != null) {
+      sourceVersion = await knowledgeBaseApi.version(row.id, row.draft_version_id)
+    }
+    if (!sourceVersion?.file_name && row.current_version_id != null && !row.archived) {
+      sourceVersion = await knowledgeBaseApi.version(row.id, row.current_version_id)
+    }
+    if (!sourceVersion?.file_name) {
+      ElMessage.warning('该知识库暂无可下载的源文件')
+      return
+    }
+    const blob = await knowledgeBaseApi.download(row.id, sourceVersion.id)
+    downloadBlob(blob, sourceVersion.file_name)
+  } finally {
+    setRowBusy(row)
+  }
 }
 
 function downloadMarkdownTemplate(command: string | number | object) {
@@ -616,7 +708,7 @@ onMounted(async () => {
   }
   await loadItems()
 })
-watch([scopeFilter, workspaceFilter], () => {
+watch([scopeFilter, workspaceFilter, archiveFilter], () => {
   if (editorVisible.value) {
     editorVisible.value = false
     if (publishTimer) window.clearInterval(publishTimer)
@@ -626,7 +718,7 @@ watch([scopeFilter, workspaceFilter], () => {
   loadItems()
 })
 watch(() => datasourceContext.datasourceId, () => {
-  if (editorVisible.value && selected.value?.visibility_scope === 'PLATFORM_PUBLIC') loadApplicability()
+  if (editorVisible.value && !selected.value?.archived && selected.value?.visibility_scope === 'PLATFORM_PUBLIC') loadApplicability()
 })
 onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 </script>
@@ -640,6 +732,10 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       </div>
       <div class="panel-actions">
         <div class="panel-filters">
+          <el-radio-group v-model="archiveFilter" class="knowledge-archive-filter">
+            <el-radio-button value="current">当前知识</el-radio-button>
+            <el-radio-button value="archived">已归档</el-radio-button>
+          </el-radio-group>
           <el-input
             v-model="keyword"
             class="knowledge-filter-input"
@@ -672,8 +768,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
         </div>
         <div class="panel-buttons">
           <el-button :icon="Refresh" @click="loadItems">刷新</el-button>
-          <el-button :icon="Search" @click="retrievalPreviewVisible = true">检索预览</el-button>
-          <el-dropdown class="template-download" trigger="click" @command="downloadMarkdownTemplate">
+          <el-button v-if="!isArchivedView" :icon="Search" @click="retrievalPreviewVisible = true">检索预览</el-button>
+          <el-dropdown v-if="!isArchivedView" class="template-download" trigger="click" @command="downloadMarkdownTemplate">
             <el-button :icon="Download">
               下载 Markdown 模板
               <el-icon class="template-download-arrow"><ArrowDown /></el-icon>
@@ -730,7 +826,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       </el-table-column>
       <el-table-column label="发布版本" width="130">
         <template #default="{ row }">
-          <el-tag v-if="row.publishing_version_id" size="small" type="warning">发布中</el-tag>
+          <el-tag v-if="row.archived" size="small" type="info">已归档</el-tag>
+          <el-tag v-else-if="row.publishing_version_id" size="small" type="warning">发布中</el-tag>
           <el-tag v-else-if="row.current_version_id" size="small" type="success">已发布</el-tag>
           <span v-else class="muted-text">尚未发布</span>
         </template>
@@ -738,10 +835,34 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <el-table-column label="更新时间" width="170">
         <template #default="{ row }">{{ row.update_time || '-' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button text type="primary" @click.stop="openEditor(row)">{{ row.can_manage ? '编辑' : '查看' }}</el-button>
-          <el-button v-if="row.can_manage" text type="danger" :icon="FolderDelete" @click.stop="archiveKnowledge(row)">归档</el-button>
+          <div class="row-actions">
+            <el-button text type="primary" :disabled="Boolean(rowBusyState(row))" @click.stop="openEditor(row)">{{ row.archived || !row.can_manage ? '查看' : '编辑' }}</el-button>
+            <el-button
+              text
+              type="primary"
+              :icon="Download"
+              :loading="rowBusyState(row) === 'download'"
+              aria-label="下载源文件"
+              title="下载源文件"
+              @click.stop="downloadRowSource(row)"
+            >下载</el-button>
+            <el-button v-if="row.archived && row.can_manage" text type="primary" :icon="RefreshLeft" :loading="rowBusyState(row) === 'restore'" @click.stop="restoreKnowledge(row)">恢复</el-button>
+            <el-button v-else-if="row.can_manage" text type="danger" :icon="FolderDelete" :disabled="Boolean(rowBusyState(row))" @click.stop="archiveKnowledge(row)">归档</el-button>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column v-if="!isArchivedView" label="参与检索" width="110">
+        <template #default="{ row }">
+          <el-switch
+            v-if="row.can_manage"
+            v-model="row.active"
+            :disabled="!row.current_version_id || Boolean(rowBusyState(row))"
+            :loading="rowBusyState(row) === 'active'"
+            @change="updateKnowledgeActive(row, Boolean($event))"
+          />
+          <span v-else>{{ row.active ? '已启用' : '已停用' }}</span>
         </template>
       </el-table-column>
       <template #empty><span class="empty-state">暂无知识库</span></template>
@@ -794,8 +915,18 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <div v-if="selected" class="editor-layout">
         <div class="editor-toolbar">
           <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
+          <el-tag v-if="selected.archived" type="info">已归档，只读</el-tag>
+          <span v-else class="knowledge-active-toggle">
+            参与检索
+            <el-switch
+              v-model="selected.active"
+              :disabled="!selected.can_manage || !selected.current_version_id || Boolean(rowBusyState(selected))"
+              :loading="rowBusyState(selected) === 'active'"
+              @change="updateKnowledgeActive(selected, Boolean($event))"
+            />
+          </span>
           <KnowledgeApplicabilityTag
-            v-if="selected.visibility_scope === 'PLATFORM_PUBLIC'"
+            v-if="!selected.archived && selected.visibility_scope === 'PLATFORM_PUBLIC'"
             :state="applicability"
             :loading="applicabilityLoading"
             :datasource-available="Boolean(datasourceContext.datasourceId)"
@@ -809,7 +940,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
               @change="updateWorkspaceKnowledgeEnabled"
             />
           </span>
-          <span class="version-status">草稿状态：{{ draftStatus }}</span>
+          <span v-if="!selected.archived" class="version-status">草稿状态：{{ draftStatus }}</span>
           <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
         </div>
         <div v-if="canEdit && draft && payload.knowledge_type === 'DOCUMENT'" class="source-upload-row">
@@ -860,7 +991,10 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <el-button text type="warning" @click="refreshDraftAfterConflict">刷新最新结构</el-button>
           </template>
         </div>
-        <div class="editor-actions">
+        <div v-if="selected.archived && selected.can_manage" class="editor-actions">
+          <el-button type="primary" :icon="RefreshLeft" :loading="rowBusyState(selected) === 'restore'" @click="restoreKnowledge(selected)">恢复知识库</el-button>
+        </div>
+        <div v-else-if="!selected.archived" class="editor-actions">
           <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>
           <el-button :loading="saving" :disabled="!actionState.save" @click="saveDraft">保存草稿</el-button>
           <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
@@ -898,11 +1032,14 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .knowledge-filter-input { width: 220px; flex: 0 0 220px; }
 .knowledge-filter-scope { width: 150px; flex: 0 0 150px; }
 .knowledge-filter-workspace { width: 180px; flex: 0 0 180px; }
+.knowledge-archive-filter { flex: 0 0 auto; }
 .panel-buttons { flex: 0 0 auto; }
 .panel-buttons :deep(.ed-button + .ed-button) { margin-left: 0; }
 .template-download { max-width: 100%; }
 .template-download-arrow { margin-left: 6px; }
 .knowledge-v2-table { min-height: 160px; }
+.row-actions { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+.row-actions :deep(.ed-button + .ed-button) { margin-left: 0; }
 .list-error { margin-bottom: 12px; }
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }
@@ -916,6 +1053,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .source-upload-inner small { grid-column: 2; color: #667085; }
 .selected-source-file { margin-top: 8px; color: #475467; font-size: 12px; overflow-wrap: anywhere; }
 .workspace-override { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
+.knowledge-active-toggle { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
 .version-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .validation-panel { margin-top: 14px; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
 .validation-panel.is-error { color: #b42318; background: #fff1f3; }
@@ -939,7 +1077,9 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
   :global(.knowledge-editor-drawer) { width: 100% !important; max-width: 100%; }
   .panel-actions, .panel-filters, .panel-buttons { width: 100%; }
   .panel-filters { flex-direction: column; }
-  .knowledge-filter-input, .knowledge-filter-scope, .knowledge-filter-workspace { width: 100%; flex-basis: auto; }
+  .knowledge-filter-input, .knowledge-filter-scope, .knowledge-filter-workspace, .knowledge-archive-filter { width: 100%; flex-basis: auto; }
+  .knowledge-archive-filter :deep(.ed-radio-button) { flex: 1 1 0; }
+  .knowledge-archive-filter :deep(.ed-radio-button__inner) { width: 100%; }
   .panel-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
   .panel-buttons :deep(.ed-button), .template-download { width: 100%; min-height: 32px; margin-left: 0; }
   .template-download :deep(.ed-button) { width: 100%; height: auto; min-height: 32px; white-space: normal; }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -65,6 +66,20 @@ class _FakeRepo:
                 KnowledgeVersionStatus.PUBLISH_FAILED,
             }),
             None,
+        )
+
+    def get_latest_archived_published_version(self, *, tenant_id, knowledge_base_id, for_update=False):
+        candidates = [
+            item for item in self.versions.values()
+            if item.tenant_id == tenant_id
+            and item.knowledge_base_id == knowledge_base_id
+            and item.status == KnowledgeVersionStatus.ARCHIVED
+            and getattr(item, "publish_time", None) is not None
+        ]
+        return max(
+            candidates,
+            key=lambda item: (item.publish_time, item.version_number),
+            default=None,
         )
 
     def add_draft(self, *, record, payload, normalized_content, content_hash, actor_id, source_file=None, status=KnowledgeVersionStatus.DRAFT):
@@ -572,6 +587,130 @@ def test_archiving_published_item_also_closes_a_normal_draft():
     assert archived.archived is True
     assert draft.status == KnowledgeVersionStatus.ARCHIVED
     assert archived.draft_version_id is None
+
+
+def test_restore_uses_latest_previously_published_version_and_stays_inactive():
+    repo = _FakeRepo()
+    service = _service(repo)
+    older = SimpleNamespace(
+        id=1000,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=1,
+        status=KnowledgeVersionStatus.ARCHIVED,
+        publish_time=datetime.now() - timedelta(days=2),
+    )
+    latest = SimpleNamespace(
+        id=1001,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=2,
+        status=KnowledgeVersionStatus.ARCHIVED,
+        publish_time=datetime.now() - timedelta(days=1),
+    )
+    discarded_draft = SimpleNamespace(
+        id=1002,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=3,
+        status=KnowledgeVersionStatus.ARCHIVED,
+        publish_time=None,
+    )
+    repo.versions = {item.id: item for item in (older, latest, discarded_draft)}
+    repo.record.archived = True
+    repo.record.active = False
+    repo.record.current_version_id = None
+    repo.record.draft_version_id = None
+
+    restored = service.restore(
+        tenant_id=7,
+        knowledge_base_id=11,
+        actor_id=9,
+        current_user=_user(),
+    )
+
+    assert restored.archived is False
+    assert restored.active is False
+    assert restored.current_version_id == latest.id
+    assert restored.draft_version_id is None
+    assert restored.publishing_version_id is None
+    assert restored.update_by == 9
+    assert latest.status == KnowledgeVersionStatus.PUBLISHED
+    assert older.status == KnowledgeVersionStatus.ARCHIVED
+    assert discarded_draft.status == KnowledgeVersionStatus.ARCHIVED
+
+
+def test_restore_without_previously_published_version_is_explicit_conflict():
+    repo = _FakeRepo()
+    repo.record.archived = True
+    service = _service(repo)
+
+    with pytest.raises(KnowledgeBusinessError) as caught:
+        service.restore(
+            tenant_id=7,
+            knowledge_base_id=11,
+            actor_id=9,
+            current_user=_user(),
+        )
+
+    assert caught.value.code == "KNOWLEDGE_RESTORE_VERSION_NOT_FOUND"
+    assert caught.value.status_code == 409
+
+
+def test_restore_is_idempotent_for_current_record():
+    repo = _FakeRepo()
+    repo.record.current_version_id = 77
+    result = _service(repo).restore(
+        tenant_id=7,
+        knowledge_base_id=11,
+        actor_id=9,
+        current_user=_user(),
+    )
+    assert result is repo.record
+    assert result.current_version_id == 77
+
+
+def test_restored_knowledge_requires_explicit_activation():
+    repo = _FakeRepo()
+    repo.record.current_version_id = 77
+    repo.record.active = False
+
+    activated = _service(repo).set_active(
+        tenant_id=7,
+        knowledge_base_id=11,
+        active=True,
+        actor_id=9,
+        current_user=_user(),
+    )
+
+    assert activated.active is True
+    assert activated.update_by == 9
+
+
+def test_unpublished_or_archived_knowledge_cannot_be_enabled():
+    repo = _FakeRepo()
+    service = _service(repo)
+    with pytest.raises(KnowledgeBusinessError) as unpublished:
+        service.set_active(
+            tenant_id=7,
+            knowledge_base_id=11,
+            active=True,
+            actor_id=9,
+            current_user=_user(),
+        )
+    assert unpublished.value.code == "KNOWLEDGE_ACTIVE_VERSION_REQUIRED"
+
+    repo.record.archived = True
+    repo.record.current_version_id = 77
+    with pytest.raises(KnowledgeBusinessError) as archived:
+        service.set_active(
+            tenant_id=7,
+            knowledge_base_id=11,
+            active=True,
+            actor_id=9,
+            current_user=_user(),
+        )
+    assert archived.value.code == "KNOWLEDGE_ARCHIVED_READ_ONLY"
 
 
 def test_workspace_override_is_tenant_context_bound():

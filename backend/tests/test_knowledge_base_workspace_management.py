@@ -61,6 +61,128 @@ def _response_json(response: JSONResponse) -> dict:
     return json.loads(response.body.decode("utf-8"))
 
 
+class _Rows:
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+
+    def all(self):
+        return self.rows
+
+
+class _ListSession(_Session):
+    def __init__(self):
+        super().__init__()
+        self.statements = []
+
+    def exec(self, statement):
+        self.statements.append(statement)
+        return _Rows()
+
+
+def test_list_defaults_to_current_and_supports_explicit_archived_filter(monkeypatch):
+    monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
+    current_session = _ListSession()
+    archived_session = _ListSession()
+    user = _user(system_role="system_admin")
+
+    assert asyncio.run(management.list_knowledge_base(
+        session=current_session,
+        current_user=user,
+        visibility_scope="PLATFORM_PUBLIC",
+    )) == []
+    assert asyncio.run(management.list_knowledge_base(
+        session=archived_session,
+        current_user=user,
+        visibility_scope="PLATFORM_PUBLIC",
+        archived=True,
+    )) == []
+
+    assert "knowledge_base.archived IS false" in str(current_session.statements[0])
+    assert "knowledge_base.archived IS true" in str(archived_session.statements[0])
+
+
+def test_restore_route_returns_inactive_restored_record(monkeypatch):
+    monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
+    record = SimpleNamespace(
+        id=44,
+        tenant_id=7,
+        name="Archived knowledge",
+        description=None,
+        visibility_scope="ADMIN_PUBLIC",
+        active=False,
+        status="READY",
+        file_id=None,
+        file_name=None,
+        file_ext=None,
+        error_message=None,
+        create_time=None,
+        update_time=None,
+        archived=False,
+        knowledge_type="DOCUMENT",
+        stable_key="kb-44",
+        draft_version_id=None,
+        current_version_id=88,
+        publishing_version_id=None,
+    )
+    monkeypatch.setattr(management, "resolve_record", lambda *_args, **_kwargs: record)
+
+    class _Service:
+        def __init__(self, _repository):
+            pass
+
+        def restore(self, **kwargs):
+            assert kwargs["tenant_id"] == 7
+            assert kwargs["knowledge_base_id"] == 44
+            return record
+
+    monkeypatch.setattr(management, "KnowledgeLifecycleService", _Service)
+    session = _Session()
+    response = asyncio.run(management.restore_knowledge_base(
+        id=44,
+        session=session,
+        current_user=_user(tenant_id=7, role="admin"),
+    ))
+
+    assert response["archived"] is False
+    assert response["active"] is False
+    assert response["current_version_id"] == 88
+    assert session.commits == 1
+
+
+def test_active_route_explicitly_enables_current_knowledge(monkeypatch):
+    monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
+    record = SimpleNamespace(
+        id=44, tenant_id=7, name="Restored knowledge", description=None,
+        visibility_scope="ADMIN_PUBLIC", active=False, status="READY",
+        file_id=None, file_name=None, file_ext=None, error_message=None,
+        create_time=None, update_time=None, archived=False,
+        knowledge_type="DOCUMENT", stable_key="kb-44", draft_version_id=None,
+        current_version_id=88, publishing_version_id=None,
+    )
+    monkeypatch.setattr(management, "resolve_record", lambda *_args, **_kwargs: record)
+
+    class _Service:
+        def __init__(self, _repository):
+            pass
+
+        def set_active(self, **kwargs):
+            assert kwargs["active"] is True
+            record.active = True
+            return record
+
+    monkeypatch.setattr(management, "KnowledgeLifecycleService", _Service)
+    session = _Session()
+    response = asyncio.run(management.set_knowledge_base_active(
+        id=44,
+        body=management.SetKnowledgeBaseActiveRequest(active=True),
+        session=session,
+        current_user=_user(tenant_id=7, role="admin"),
+    ))
+
+    assert response["active"] is True
+    assert session.commits == 1
+
+
 def test_workspace_admin_can_create_only_current_workspace_knowledge(monkeypatch):
     monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
     session = _Session(active_tenant_id=7)

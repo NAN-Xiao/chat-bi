@@ -52,6 +52,21 @@ test('workspace knowledge creation reuses the top workspace filter', () => {
   assert.match(panelSource, /tenant_id: createForm\.value\.visibility_scope === 'ADMIN_PUBLIC'\s*\n\s*\? workspaceFilter\.value\s*\n\s*: undefined/)
 })
 
+test('knowledge management exposes archived records as read-only and restorable', () => {
+  assert.match(panelSource, /const archiveFilter = ref<'current' \| 'archived'>\('current'\)/)
+  assert.match(panelSource, /archived: isArchivedView\.value/)
+  assert.match(panelSource, /<el-radio-button value="current">当前知识<\/el-radio-button>/)
+  assert.match(panelSource, /<el-radio-button value="archived">已归档<\/el-radio-button>/)
+  assert.match(panelSource, /const canEdit = computed\(\(\) => !!selected\.value\?\.can_manage && !selected\.value\.archived\)/)
+  assert.match(panelSource, /version\.status === 'ARCHIVED' && Boolean\(version\.publish_time\)/)
+  assert.match(panelSource, /knowledgeBaseApi\.restore\(row\.id\)/)
+  assert.match(panelSource, /恢复知识库/)
+  assert.match(panelSource, /v-if="!isArchivedView" :icon="Search"/)
+  assert.match(panelSource, /knowledgeBaseApi\.setActive\(row\.id, active\)/)
+  assert.match(panelSource, /label="参与检索"/)
+  assert.match(panelSource, /:disabled="!row\.current_version_id/)
+})
+
 test('workspace management keeps a usable content width on mobile', () => {
   assert.match(layoutSource, /@media \(max-width: 680px\)/)
   assert.match(layoutSource, /\.workspace-admin-sidebar \{[\s\S]*?flex-basis: 64px/)

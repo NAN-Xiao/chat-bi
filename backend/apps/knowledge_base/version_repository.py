@@ -107,6 +107,28 @@ class KnowledgeVersionRepository:
             statement.execution_options(populate_existing=True)
         ).first()
 
+    def get_latest_archived_published_version(
+        self, *, tenant_id: int, knowledge_base_id: int, for_update: bool = False
+    ) -> KnowledgeBaseVersion | None:
+        statement = (
+            select(KnowledgeBaseVersion)
+            .where(
+                KnowledgeBaseVersion.knowledge_base_id == knowledge_base_id,
+                KnowledgeBaseVersion.tenant_id == tenant_id,
+                KnowledgeBaseVersion.status == KnowledgeVersionStatus.ARCHIVED.value,
+                KnowledgeBaseVersion.publish_time.is_not(None),
+            )
+            .order_by(
+                KnowledgeBaseVersion.publish_time.desc(),
+                KnowledgeBaseVersion.version_number.desc(),
+            )
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return self.session.exec(
+            statement.execution_options(populate_existing=True)
+        ).first()
+
     def next_version_number(self, *, knowledge_base_id: int) -> int:
         current = self.session.exec(
             select(func.max(KnowledgeBaseVersion.version_number)).where(

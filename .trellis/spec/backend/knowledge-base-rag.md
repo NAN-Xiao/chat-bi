@@ -105,6 +105,57 @@ Fetch all workspace knowledge for a platform administrator, filter it in Vue, an
 #### Correct
 Send the selected authorized `tenant_id` to the list/create API, enforce it on the backend, and use the persisted knowledge record's tenant for subsequent lifecycle operations.
 
+## Scenario: Archived Knowledge Restoration
+
+### 1. Scope / Trigger
+- Applies when a previously published V2 knowledge base is archived, inspected,
+  restored, or explicitly re-enabled for retrieval.
+
+### 2. Signatures
+- `GET /knowledge-base/list?archived=false|true&visibility_scope=...&tenant_id=...`
+- `POST /knowledge-base/{id}/restore`
+- `PUT /knowledge-base/{id}/active` with `{ "active": boolean }`
+
+### 3. Contracts
+- Management lists default to `archived=false`; archive views must request `archived=true` and retain the normal workspace and permission filters.
+- Archived records, version history, and retained source files remain readable, but lifecycle mutations are rejected until restoration.
+- Restore selects the newest `ARCHIVED` version with a non-null `publish_time`; a discarded unpublished draft must never become the restored current version.
+- Restore changes that version to `PUBLISHED`, sets `current_version_id`, clears draft/publishing pointers, and sets `archived=false` while keeping `active=false`.
+- Retrieval continues requiring both `archived=false` and `active=true`, so restoration alone never re-enables knowledge.
+- Managers must explicitly call the active endpoint after restore; archived or
+  unpublished knowledge cannot be enabled.
+
+### 4. Validation & Error Matrix
+- Archived lifecycle mutation before restore -> `409 KNOWLEDGE_ARCHIVED_READ_ONLY`.
+- Restore without an archived published version -> `409 KNOWLEDGE_RESTORE_VERSION_NOT_FOUND`.
+- Enable without `current_version_id` -> `409 KNOWLEDGE_ACTIVE_VERSION_REQUIRED`.
+- Cross-workspace or unauthorized access -> existing permission-boundary 403/404 response.
+
+### 5. Good/Base/Bad Cases
+- Good: restore chooses the newest previously published version, remains
+  inactive, then an authorized manager explicitly enables it.
+- Base: archive list/detail/history are read-only and downloadable without
+  changing lifecycle state.
+- Bad: restore an archived draft with no `publish_time`, or silently set
+  `active=true` as part of restore.
+
+### 6. Tests Required
+- State-machine tests cover successful inactive restoration, discarded archived drafts, idempotent restore, and missing published history.
+- API tests assert the default/current archive filter, explicit archived
+  filtering, route registration, tenant-scoped restoration, and activation.
+- Frontend tests assert read-only archived details, retained history/download
+  access, manager-only restoration, and disabled activation without a current
+  published version.
+
+### 7. Wrong vs Correct
+#### Wrong
+Set `archived=false` and `active=true` directly, or choose the highest version
+number even when it is only a discarded draft.
+
+#### Correct
+Restore the newest archived version with a real `publish_time`, keep the record
+inactive, and require the separate active endpoint before retrieval can use it.
+
 ## Scenario: Multi-Block Knowledge Documents
 
 ### 1. Scope / Trigger
