@@ -53,7 +53,7 @@ const listError = ref(false)
 const saving = ref(false)
 const sourceUploading = ref(false)
 const publishing = ref(false)
-const rowActionBusy = ref<Record<string, 'download' | 'restore' | 'active'>>({})
+const rowActionBusy = ref<Record<string, 'upload' | 'download' | 'restore' | 'active'>>({})
 const editorVisible = ref(false)
 const createVisible = ref(false)
 const createSourceFile = ref<File | null>(null)
@@ -488,10 +488,54 @@ function rowBusyState(row: KnowledgeBaseItem) {
   return rowActionBusy.value[String(row.id)]
 }
 
-function setRowBusy(row: KnowledgeBaseItem, action?: 'download' | 'restore' | 'active') {
+function setRowBusy(row: KnowledgeBaseItem, action?: 'upload' | 'download' | 'restore' | 'active') {
   const key = String(row.id)
   if (action) rowActionBusy.value[key] = action
   else delete rowActionBusy.value[key]
+}
+
+async function uploadRowSource(row: KnowledgeBaseItem, file: File) {
+  if (!row.can_manage || row.knowledge_type !== 'DOCUMENT' || rowBusyState(row)) return
+  if (!isSupportedSourceFile(file)) {
+    ElMessage.warning('仅支持 .md、.markdown、.docx、.xlsx 文件')
+    return
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    ElMessage.warning('源文件不能超过 50 MB')
+    return
+  }
+
+  setRowBusy(row, 'upload')
+  try {
+    let rowDraft: KnowledgeBaseVersion | null = null
+    if (row.draft_version_id != null) {
+      rowDraft = await knowledgeBaseApi.version(row.id, row.draft_version_id)
+    }
+    if (!rowDraft) {
+      rowDraft = row.current_version_id != null
+        ? await knowledgeBaseApi.rollback(row.id, row.current_version_id)
+        : await knowledgeBaseApi.createDraft(row.id, defaultPayload('DOCUMENT'))
+    }
+    await knowledgeBaseApi.replaceDraftFile(row.id, {
+      version_id: rowDraft.id,
+      revision: rowDraft.revision,
+      file,
+    })
+    await loadItems()
+    ElMessage.success('源文件已上传并保存为草稿，请编辑、校验后发布')
+  } finally {
+    setRowBusy(row)
+  }
+}
+
+function rowSourceChangeHandler(row: KnowledgeBaseItem): NonNullable<UploadProps['onChange']> {
+  return (uploadFile: UploadFile) => {
+    if (uploadFile.raw) {
+      void uploadRowSource(row, uploadFile.raw as UploadRawFile).catch((error) => {
+        console.error(error)
+      })
+    }
+  }
 }
 
 async function replaceDraftSource(file: File) {
@@ -839,11 +883,35 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
         <template #default="{ row }">
           <div class="row-actions">
             <el-button text type="primary" :disabled="Boolean(rowBusyState(row))" @click.stop="openEditor(row)">{{ row.archived || !row.can_manage ? '查看' : '编辑' }}</el-button>
+            <span
+              v-if="!row.archived && row.can_manage && row.knowledge_type === 'DOCUMENT'"
+              class="row-source-upload"
+              @click.stop
+            >
+              <el-upload
+                action="#"
+                :auto-upload="false"
+                :show-file-list="false"
+                accept=".md,.markdown,.docx,.xlsx"
+                :disabled="Boolean(rowBusyState(row))"
+                :on-change="rowSourceChangeHandler(row)"
+              >
+                <el-button
+                  text
+                  type="primary"
+                  :icon="UploadFilled"
+                  :loading="rowBusyState(row) === 'upload'"
+                  aria-label="上传源文件"
+                  title="上传源文件"
+                >上传</el-button>
+              </el-upload>
+            </span>
             <el-button
               text
               type="primary"
               :icon="Download"
               :loading="rowBusyState(row) === 'download'"
+              :disabled="rowBusyState(row) === 'upload'"
               aria-label="下载源文件"
               title="下载源文件"
               @click.stop="downloadRowSource(row)"
@@ -1040,6 +1108,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .knowledge-v2-table { min-height: 160px; }
 .row-actions { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
 .row-actions :deep(.ed-button + .ed-button) { margin-left: 0; }
+.row-source-upload { display: inline-flex; }
 .list-error { margin-bottom: 12px; }
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }

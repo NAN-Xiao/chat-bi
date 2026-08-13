@@ -6,9 +6,11 @@
   - 15 passed。
 - `node --test src/views/knowledge-base/KnowledgeSourceUpload.test.mjs src/views/knowledge-base/KnowledgePage.layout.test.mjs`
   - 8 passed。
+- `node --test src/views/knowledge-base/KnowledgeBaseV2Panel.row-actions.test.mjs src/views/knowledge-base/KnowledgeSourceUpload.test.mjs`
+  - 8 passed，覆盖操作顺序、显式版本选择、上传拒绝消费和 Blob 清理。
 - `npm run build`
   - `vue-tsc -b` 与 Vite production build 通过；仅有项目既有的 bundle/dynamic import 警告。
-- 本工作区前端在 `0.0.0.0:5174` 启动并返回 HTTP 200，浏览器控制台无错误。
+- 本工作区前端在 `0.0.0.0:5190` 启动并返回 HTTP 200；进程命令行确认来自 `D:/AIWork3/chat-bi_ver/frontend`。
 - `git diff --check` 通过。
 
 ## 扩大检查
@@ -18,6 +20,5 @@
 
 ## 运行环境说明
 
-- `5173/8000/8001` 当前属于另一个工作区 `D:/AIWork3/chat-bi`，为避免停止用户进程未强制重启。
-- 本工作区 Worker 已恢复在隔离队列 `local-DONGJINCHAO-chat-bi_ver`；本工作区前端改在 `5174` 验证。
-- 浏览器已能加载本工作区页面，但当前登录账号访问系统知识库路由会被权限路由重定向到看板，未完成真实弹窗点击截图。
+- 本工作区前端按用户确认使用 `5190`；未操作 `5173`。
+- 应用内浏览器访问知识库路由时无登录态，被重定向到登录页，因此未完成真实上传/下载按钮点击；接口回归、前端源码契约测试和构建均已通过。
