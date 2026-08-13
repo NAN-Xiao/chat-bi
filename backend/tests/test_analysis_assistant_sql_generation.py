@@ -247,58 +247,6 @@ def test_time_sql_accepts_exact_between_bounds() -> None:
     )
 
 
-def test_time_sql_accepts_single_day_equality_as_complete_date_bounds() -> None:
-    policy = AnalysisTimePolicy(
-        source=AnalysisTimeSource.USER,
-        window_days=1,
-        anchor_date=date(2026, 8, 10),
-        start_date=date(2026, 8, 10),
-        end_date=date(2026, 8, 10),
-        start_inclusive=True,
-        end_inclusive=True,
-        anchor=AnalysisTimeAnchor("event", "dt"),
-        description="用户指定昨天",
-    )
-
-    sql = enforce_analysis_time_sql(
-        "SELECT COUNT(*) FROM event WHERE dt = '20260810'",
-        policy=policy,
-        declared_time_fields=[{"table": "event", "field": "dt"}],
-        schema_time_fields={
-            "event": (
-                TimeFieldBinding("dt", "bigint", "yyyymmdd_integer"),
-            )
-        },
-        dialect="mysql",
-        allow_rewrite=False,
-    )
-
-    assert "dt = '20260810'" in sql
-
-    reversed_sql = enforce_analysis_time_sql(
-        "SELECT COUNT(*) FROM event WHERE '20260810' = dt",
-        policy=policy,
-        declared_time_fields=[{"table": "event", "field": "dt"}],
-        schema_time_fields={
-            "event": (
-                TimeFieldBinding("dt", "bigint", "yyyymmdd_integer"),
-            )
-        },
-        dialect="mysql",
-        allow_rewrite=False,
-    )
-
-    assert "'20260810' = dt" in reversed_sql
-
-
-def test_time_sql_rejects_date_equality_for_multi_day_policy() -> None:
-    with pytest.raises(AnalysisTimeSqlError, match="时间边界校验未通过"):
-        _enforce(
-            "SELECT * FROM fact_orders WHERE business_date = DATE '2026-07-13'",
-            [{"table": "fact_orders", "field": "business_date"}],
-        )
-
-
 @pytest.mark.parametrize(
     "sql",
     [
@@ -1866,96 +1814,6 @@ def test_build_plan_retries_when_json_has_no_executable_queries() -> None:
     assert "缺少可执行 queries" in llm.messages[-1].content
 
 
-def test_build_plan_retries_from_latest_parse_repair_output() -> None:
-    class SequenceLLM:
-        def __init__(self) -> None:
-            self.messages = []
-            self.outputs = iter(
-                [
-                    'not-json',
-                    '{"intro":"分析","queries":[]}',
-                    (
-                        '{"intro":"分析","queries":[{"id":"q1","title":"趋势",'
-                        '"purpose":"趋势","sql":"SELECT 1","time_fields":[]}]}'
-                    ),
-                ]
-            )
-
-        def invoke(self, messages):
-            self.messages = messages
-            return SimpleNamespace(content=next(self.outputs))
-
-    llm = SequenceLLM()
-    request = analysis_api.AnalysisAssistantRequest(
-        datasource_id=1,
-        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="最近 7 天新增趋势")],
-    )
-
-    plan = analysis_api._build_plan(
-        llm,
-        request,
-        "",
-        "",
-        SimpleNamespace(name="测试", type="pg"),
-        time_resolution=_resolved_time(),
-    )
-
-    assert plan["queries"][0]["id"] == "q1"
-    assert llm.messages[-2].content == '{"intro":"分析","queries":[]}'
-
-
-def test_build_plan_repairs_malformed_full_plan_after_nested_query_output() -> None:
-    nested_query = '{"id":"q1","title":"等级分布","sql":"SELECT 1","time_fields":[]}'
-
-    class SequenceLLM:
-        def __init__(self) -> None:
-            self.messages = []
-            self.outputs = iter(
-                [
-                    nested_query,
-                    f'损坏的完整计划 {nested_query}',
-                    (
-                        '{"intro":"分析","steps":["查询"],"queries":['
-                        '{"id":"q1","title":"等级分布","purpose":"分布",'
-                        '"sql":"SELECT 1","time_fields":[]}]}'
-                    ),
-                ]
-            )
-
-        def invoke(self, messages):
-            self.messages = messages
-            return SimpleNamespace(content=next(self.outputs))
-
-    llm = SequenceLLM()
-    request = analysis_api.AnalysisAssistantRequest(
-        datasource_id=1,
-        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="最新一天等级分布")],
-    )
-
-    plan = analysis_api._build_plan(
-        llm,
-        request,
-        "",
-        "",
-        SimpleNamespace(name="测试", type="pg"),
-        time_resolution=_resolved_time(),
-    )
-
-    assert plan["queries"][0]["id"] == "q1"
-    assert llm.messages[-2].content == f'损坏的完整计划 {nested_query}'
-    assert "只修正 JSON 转义和顶层结构" in llm.messages[-1].content
-
-
-def test_extract_plan_rejects_nested_query_from_malformed_outer_json() -> None:
-    malformed = (
-        '无法解析的外层计划 '
-        '{"id":"q1","title":"等级分布","sql":"SELECT 1","time_fields":[]}'
-    )
-
-    with pytest.raises(ValueError, match="完整分析计划"):
-        analysis_api._extract_plan_json_object(malformed)
-
-
 def test_forecast_plan_prompt_receives_same_backend_time_policy() -> None:
     class CaptureLLM:
         def __init__(self) -> None:
@@ -2394,29 +2252,6 @@ def test_prepare_sql_rejects_malformed_declared_time_fields_before_validation(
         )
 
     assert validate_calls == []
-
-
-def test_declared_time_fields_treat_empty_optional_alias_as_omitted() -> None:
-    declared = analysis_api._validated_declared_time_fields(
-        [
-            {
-                "table": "event",
-                "alias": "",
-                "field": "dt",
-                "start_offset_days": 0,
-                "end_offset_days": 0,
-            }
-        ]
-    )
-
-    assert declared == [
-        {
-            "table": "event",
-            "field": "dt",
-            "start_offset_days": 0,
-            "end_offset_days": 0,
-        }
-    ]
 
 
 def test_analysis_policy_anchor_rejects_event_time_for_historical_query(

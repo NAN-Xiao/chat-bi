@@ -612,7 +612,6 @@ def _reverse_comparison_type(
     node: exp.Expression,
 ) -> type[exp.Expression] | None:
     reverse: dict[type[exp.Expression], type[exp.Expression]] = {
-        exp.EQ: exp.EQ,
         exp.GT: exp.LT,
         exp.GTE: exp.LTE,
         exp.LT: exp.GT,
@@ -706,14 +705,6 @@ def _expected_comparison(
     binding: _Binding,
 ) -> tuple[bool, bool] | None:
     lower_type, lower_date, upper_type, upper_date = _effective_bounds(binding, policy)
-    if (
-        comparison_type is exp.EQ
-        and lower_type is exp.GTE
-        and upper_type is exp.LTE
-        and lower_date == upper_date
-        and value == _boundary_value(binding, lower_date)
-    ):
-        return True, True
     if comparison_type is lower_type and value == _boundary_value(binding, lower_date):
         return True, False
     if comparison_type is upper_type and value == _boundary_value(binding, upper_date):
