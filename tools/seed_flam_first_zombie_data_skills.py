@@ -321,7 +321,6 @@ LIMIT 24
 ## 表与字段
 - 今天、当天、今日、实时、当前小时、当前分钟、当前整点统计新增用户时，必须使用 `event_realtime` 表的注册事件 `UserRegister`；不得静默改查 `event`。
 - 完整历史日和留存 cohort 使用 `event` 表的注册事件 `UserRegister`；已与 `user.userinfo.regdate = user.dt` 的注册日 cohort 按日核对一致，但事件表扫描更轻。
-- 分析助手查询完整历史日和留存 cohort 时，两个 `event` 扫描都必须用 `dt` 作为固定业务分区边界，并在 `time_fields` 中声明 `{{"table":"event","field":"dt"}}`；`time` 仅用于小时/分钟粒度的展示或计算，不能替代历史扫描的 `dt` 分区裁剪。
 - 需要读取 `pay.pay1/pay7`、当前等级等快照字段时，再按 `uid + 注册日 dt` 回连 `user` 用户日表。
 - `dt` 是业务日期分区，格式为 `YYYYMMDD` 数字。
 - 注册日期取 `JSON_UNQUOTE(JSON_EXTRACT(userinfo, '$.regdate'))`，格式为 `YYYYMMDD` 字符串。
@@ -332,7 +331,6 @@ LIMIT 24
 - 新增用户分母：目标表中 `event='UserRegister'` 的注册日 cohort，按 `uid` 去重；未完成当天使用 `event_realtime`，完整历史日使用 `event`。新增趋势、渠道新增、系统新增不要为了取注册日去扫描 `user` 快照 JSON。
 - D1 留存分子：先固定注册事件 cohort，再在该 cohort 的精确次日 `UserActive` 中查同一 `uid`；不能只读取注册当天，也不要跨多日 `MAX(remain1)`。
 - 默认只展示已成熟 cohort：近月看板以当前日前一完整分区为成熟截止，D1 默认窗口排除最近 1 天，D7 默认窗口排除最近 7 天，避免把未成熟 cohort 当 0%。
-- 同时计算 D1/D3/D7 时，注册 cohort 与活跃观察扫描分别使用固定 `dt` 区间；D1/D3/D7 的分子必须分别匹配注册 `dt` 加 1/3/7 个自然日后的 `active.dt`，使用 `STR_TO_DATE` + `DATE_ADD` 后再格式化回 `YYYYMMDD`，不得直接对数字分区写 `cohort.dt + 1/+3/+7`。注册日期尚未达到对应成熟日时，该留存率返回 `NULL`，不能把未成熟样本记为 0。
 - 用户问“最近 N 天新增用户留存/滞留情况”且未指定 D3/D7 时，默认按 D1 精确日留存理解；cohort 窗口应取最近 N 个已成熟注册日。例如系统日期为 2026-06-30 时，“最近三天新增用户留存”应统计注册日 2026-06-26、2026-06-27、2026-06-28，对应活跃观察日 2026-06-27、2026-06-28、2026-06-29；不要把 2026-06-29 注册 cohort 纳入 D1 留存分母。
 - flam ADS 对 `MAX(user.dt)` / `MAX(event.dt)` 这类大视图聚合较慢；非 `metric` 历史时序图必须以 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整 `dt` 分区窗口，并显式过滤 `prod = 110000038`。
 - 非 `metric` 历史时序图的 SQL 必须返回完整 `date_filter`：`{{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{{"version":1,"mode":"preset","preset":"past_7_days"}}}}`；SQL 的日期条件使用 `{{dashboard_start_yyyymmdd}}` 与 `{{dashboard_end_yyyymmdd}}`。用户指定范围时，`date_expression` 必须按用户范围生成。`metric` 图表不得返回 `date_filter` 或看板日期 token。
