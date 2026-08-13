@@ -128,3 +128,58 @@ def test_slg_metadata_sync_maintains_full_keys_hash_and_epoch(
     assert source.index("refresh_physical_schema_hash_cursor") < source.index(
         "bump_semantic_scope_epoch_cursor"
     )
+    assert "DATASOURCE_ID" not in source
+
+
+def test_activity_metadata_sync_uses_resolved_datasource_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_tool("seed_slg_bi_activity_dashboard")
+    calls: list[tuple[str, object]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, statement, parameters):
+            calls.append((str(statement), parameters))
+
+        def fetchone(self):
+            return {"tenant_id": 12}
+
+        def fetchall(self):
+            return []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def cursor(self, **_kwargs):
+            return FakeCursor()
+
+    refreshed: list[int] = []
+    bumped: list[dict[str, object]] = []
+    monkeypatch.setattr(module, "load_physical_columns", lambda _connection: {})
+    monkeypatch.setattr(
+        module,
+        "refresh_physical_schema_hash_cursor",
+        lambda _cursor, *, datasource_id: refreshed.append(datasource_id),
+    )
+    monkeypatch.setattr(
+        module,
+        "bump_semantic_scope_epoch_cursor",
+        lambda _cursor, **kwargs: bumped.append(kwargs),
+    )
+
+    module.sync_datasource_field_metadata(FakeConnection(), object(), datasource_id=37)
+
+    assert calls[0][1] == (37,)
+    assert calls[1][1] == (37,)
+    assert refreshed == [37]
+    assert bumped == [{"scope_type": "SCHEMA", "tenant_id": 12, "datasource_id": 37}]

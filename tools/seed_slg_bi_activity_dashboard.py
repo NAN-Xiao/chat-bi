@@ -17,16 +17,14 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-
-import psycopg2
-from psycopg2.extras import RealDictCursor, execute_values
-
-from catalog_metadata_sql import refresh_physical_schema_hash_cursor
-from core_system_db import core_system_db_config
-from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor
-from slg_bi_datasource import resolve_slg_bi_datasource_context
 from zoneinfo import ZoneInfo
 
+import psycopg2
+from catalog_metadata_sql import refresh_physical_schema_hash_cursor
+from core_system_db import core_system_db_config
+from psycopg2.extras import RealDictCursor, execute_values
+from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor
+from slg_bi_datasource import resolve_slg_bi_datasource_context
 
 TZ = ZoneInfo("Asia/Shanghai")
 
@@ -125,11 +123,11 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any, datasource_id
                 ORDER BY binding.id
                 LIMIT 1
                 """,
-                (DATASOURCE_ID,),
+                (datasource_id,),
             )
             datasource = cur.fetchone()
             if datasource is None:
-                raise RuntimeError(f"数据源不存在：{DATASOURCE_ID}")
+                raise RuntimeError(f"数据源不存在：{datasource_id}")
             tenant_id = int(datasource["tenant_id"])
             cur.execute(
                 """
@@ -212,12 +210,12 @@ def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any, datasource_id
                             ),
                         )
                         added.append(f"{table['table_name']}.{field['field_name']}")
-            refresh_physical_schema_hash_cursor(cur, datasource_id=DATASOURCE_ID)
+            refresh_physical_schema_hash_cursor(cur, datasource_id=datasource_id)
             bump_semantic_scope_epoch_cursor(
                 cur,
                 scope_type="SCHEMA",
                 tenant_id=tenant_id,
-                datasource_id=DATASOURCE_ID,
+                datasource_id=datasource_id,
             )
     print(f"synced metadata updated={updated} added={len(added)}")
     for item in added:
