@@ -133,3 +133,34 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: 调整知识库生命周期操作位置
+
+**Date**: 2026-08-13
+**Task**: 调整知识库生命周期操作位置
+**Branch**: `release/release_2.0.0`
+
+### Summary
+
+将保存草稿、校验和发布提升到知识库级头部，保留生命周期状态逻辑并补充响应式布局回归。
+
+### Main Changes
+
+- 知识库生命周期动作移至知识库级头部
+- 补充移动端两列动作布局与布局回归测试
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c51e549f` | (see git log) |
+
+### Testing
+
+- [OK] 知识库布局测试 8/8 通过
+- [OK] 前端生产构建通过
+
+### Status
+
+[OK] **Completed**
