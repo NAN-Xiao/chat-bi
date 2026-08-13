@@ -3331,6 +3331,11 @@ def _active_dashboard_filter():
     )
 
 
+def _legacy_my_dashboard_filter():
+    """旧数据没有 my 树位置时，只把未发布为推荐看板的记录视为个人看板。"""
+    return or_(CoreDashboard.is_default == 0, CoreDashboard.is_default.is_(None))
+
+
 def _normalize_recommended_dashboard_name(name: str | None) -> str:
     return (name or "").strip().lower()
 
@@ -3826,7 +3831,7 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
         CoreDashboard.tenant_id == _current_tenant_id(current_user),
     ]
     if not my_tree_has_positions:
-        filters.append(or_(CoreDashboard.is_default == 0, CoreDashboard.node_type == "leaf"))
+        filters.append(_legacy_my_dashboard_filter())
     datasource_id = _normalize_datasource_id(dashboard.datasource)
     bound_external_mcp_id = get_bound_external_mcp_id_for_tenant(session, _current_tenant_id(current_user))
     external_mcp_filter = and_(
