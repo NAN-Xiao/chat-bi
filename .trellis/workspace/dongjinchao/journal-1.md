@@ -89,3 +89,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: 完善知识库归档查看与恢复
+
+**Date**: 2026-08-13
+**Task**: 完善知识库归档查看与恢复
+**Branch**: `release/release_2.0.0`
+
+### Summary
+
+为知识库管理补充已归档列表、只读历史查看、恢复和显式启停闭环，并完成后端、前端与运行验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6efd3f3c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
