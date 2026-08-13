@@ -46,6 +46,7 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 - Bind chart libraries to the component-owned DOM ref. Do not globally query chart IDs because duplicate source records can be rendered in dialogs, previews, and dashboards at the same time.
 - Do not silently substitute a first column or another field when an explicit chart field is missing or invalid. Clear the invalid configuration or show an actionable validation state.
 - Keep the Smart Q&A analysis/prediction actions and theme infrastructure compatible while their current product switches remain disabled.
+- Pure platform administrators do not have a current workspace datasource context. Platform-management flows must skip optional workspace datasource loading or applicability checks before performing their core management action. Workspace delegates and tenant users keep the datasource-scoped behavior. Add a regression assertion that the platform-admin guard executes before any datasource request, so a workspace-side `403` cannot interrupt platform knowledge editing or source upload.
 
 ## UI Quality
 

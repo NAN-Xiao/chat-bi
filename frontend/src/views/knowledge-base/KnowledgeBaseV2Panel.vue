@@ -216,6 +216,7 @@ async function createKnowledge() {
     ElMessage.warning('请选择工作空间')
     return
   }
+  const sourceFile = createSourceFile.value
   try {
     saving.value = true
     const item = await knowledgeBaseApi.create({
@@ -228,11 +229,12 @@ async function createKnowledge() {
     createVisible.value = false
     await loadItems()
     await openEditor(item)
-    if (createSourceFile.value && selected.value) {
+    if (sourceFile && selected.value) {
       if (!draft.value) {
-        draft.value = await knowledgeBaseApi.createDraft(selected.value.id, defaultPayload('DOCUMENT'))
+        await knowledgeBaseApi.createDraft(selected.value.id, defaultPayload('DOCUMENT'))
+        await loadVersions()
       }
-      await replaceDraftSource(createSourceFile.value)
+      await replaceDraftSource(sourceFile)
       await loadVersions()
     }
   } finally {
@@ -261,6 +263,7 @@ async function openEditor(item: KnowledgeBaseItem) {
 async function loadApplicability() {
   applicability.value = null
   if (!selected.value || selected.value.visibility_scope !== 'PLATFORM_PUBLIC') return
+  if (isPlatformAdmin.value) return
   if (!datasourceContext.initialized) await datasourceContext.loadDatasources()
   if (!datasourceContext.datasourceId) return
   applicabilityLoading.value = true

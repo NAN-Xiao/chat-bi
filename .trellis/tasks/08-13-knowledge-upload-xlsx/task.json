@@ -12,7 +12,7 @@
   "assignee": "dongjinchao",
   "createdAt": "2026-08-13",
   "completedAt": null,
-  "branch": null,
+  "branch": "codex/fix-knowledge-source-upload",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
