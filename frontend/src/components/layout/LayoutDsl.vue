@@ -19,6 +19,7 @@ import { isMobile } from '@/utils/utils'
 import { PLATFORM_ADMIN_HOME } from '@/utils/navigation'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { getInitialTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
+import { ANALYSIS_ASSISTANT_ENABLED } from '@/utils/analysisAssistant'
 import {
   clearRememberedBusinessTenant,
   getRememberedBusinessTenant,
@@ -69,6 +70,7 @@ useEmitt({
 useEmitt({
   name: 'analysis-assistant-toggle',
   callback: (expanded?: boolean) => {
+    if (!ANALYSIS_ASSISTANT_ENABLED) return
     analysisAssistantExpanded.value =
       typeof expanded === 'boolean' ? expanded : !analysisAssistantExpanded.value
   },
@@ -490,7 +492,7 @@ onMounted(() => {
       </div>
     </div>
     <AnalysisAssistantDock
-      v-if="!showSysmenu && !isPhone && (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate)"
+      v-if="ANALYSIS_ASSISTANT_ENABLED && !showSysmenu && !isPhone && (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate)"
       v-model:expanded="analysisAssistantExpanded"
     />
   </div>
