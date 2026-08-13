@@ -2363,6 +2363,102 @@ def test_sql_permission_scope_allows_values_cte_alias_columns(monkeypatch):
     assert tables == {"orders"}
 
 
+def test_sql_permission_scope_allows_nested_derived_table_and_union_columns(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9, ds_type="mysql"))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        _statements, tables, _scope = validate_sql_scope(
+            session,
+            current_user,
+            ds,
+            """
+            WITH combined AS (
+                SELECT src.order_id, SUM(src.metric) AS metric
+                FROM (
+                    SELECT derived.order_id, derived.metric
+                    FROM (
+                        SELECT o.*, o.order_id + 1 AS metric
+                        FROM orders o
+                    ) derived
+                    UNION ALL
+                    SELECT p.payment_id AS order_id, p.payment_id AS metric
+                    FROM payments p
+                ) src
+                GROUP BY src.order_id
+            )
+            SELECT order_id, metric
+            FROM combined
+            """,
+        )
+
+    assert tables == {"orders", "payments"}
+
+
+def test_sql_permission_scope_rejects_unknown_nested_derived_column(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9, ds_type="mysql"))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError) as exc_info:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                SELECT derived.missing_metric
+                FROM (
+                    SELECT o.*
+                    FROM orders o
+                ) derived
+                """,
+            )
+
+    assert exc_info.value.fields == ("derived.missing_metric",)
+
+
+def test_sql_permission_scope_denies_hidden_column_selected_by_derived_star(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9, ds_type="mysql"))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlPermissionScopeError, match=r"SELECT \*"):
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                SELECT derived.order_id
+                FROM (
+                    SELECT o.*
+                    FROM orders o
+                ) derived
+                """,
+            )
+
+
 def test_sql_permission_scope_allows_correlated_cte_and_table_function_columns(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)

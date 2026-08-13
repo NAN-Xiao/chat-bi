@@ -184,7 +184,10 @@ def selected_table_aliases(select_expr: exp.Select, cte_names: set[str] | None =
     return aliases
 
 
-def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
+def cte_output_columns(
+        statement: exp.Expression,
+        permission_scope: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, set[str]]:
     """
     是什么：cte_output_columns 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -195,18 +198,17 @@ def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
         cte_name = normalize_identifier(cte.alias_or_name)
         if not cte_name:
             continue
-        columns: set[str] = set()
-        cte_selects = list(cte.this.find_all(exp.Select))
-        cte_selects.sort(key=lambda item: 0 if any(expr.alias for expr in item.expressions) else 1)
-        for cte_select in cte_selects:
-            for item in cte_select.expressions:
-                column_name = normalize_identifier(item.alias_or_name)
-                if column_name and column_name != "*":
-                    columns.add(column_name)
-            if not columns:
-                columns.update(_values_source_columns(cte_select))
-            if columns:
-                break
+        alias = cte.args.get("alias")
+        declared_columns = {
+            normalize_identifier(column.name)
+            for column in (alias.args.get("columns") if isinstance(alias, exp.TableAlias) else []) or []
+            if normalize_identifier(column.name)
+        }
+        columns = declared_columns or _query_output_columns(
+            cte.this,
+            permission_scope or {},
+            cte_columns,
+        )
         cte_columns[cte_name] = columns
     return cte_columns
 
@@ -262,8 +264,95 @@ def selected_cte_aliases(
     return aliases
 
 
-def selected_derived_aliases(select_expr: exp.Select) -> dict[str, set[str]]:
-    """Return explicitly declared columns for table functions and derived sources."""
+def _source_alias_columns(
+        qualifier: str,
+        selected_aliases: dict[str, str],
+        cte_aliases: dict[str, set[str]],
+        derived_aliases: dict[str, set[str]],
+        permission_scope: dict[str, dict[str, Any]],
+) -> set[str]:
+    normalized_qualifier = normalize_identifier(qualifier)
+    if normalized_qualifier in derived_aliases:
+        return set(derived_aliases[normalized_qualifier])
+    if normalized_qualifier in cte_aliases:
+        return set(cte_aliases[normalized_qualifier])
+    physical_table = selected_aliases.get(normalized_qualifier)
+    if physical_table is None:
+        return set()
+    return set(permission_scope.get(physical_table, {}).get("fields", set()))
+
+
+def _query_output_columns(
+        query: exp.Expression,
+        permission_scope: dict[str, dict[str, Any]],
+        cte_columns: dict[str, set[str]],
+        active_query_ids: set[int] | None = None,
+) -> set[str]:
+    """Infer the named columns exposed by a CTE or derived query."""
+    active_query_ids = set(active_query_ids or set())
+    if id(query) in active_query_ids:
+        return set()
+    active_query_ids.add(id(query))
+
+    if isinstance(query, exp.Subquery):
+        return _query_output_columns(query.this, permission_scope, cte_columns, active_query_ids)
+    if isinstance(query, exp.SetOperation):
+        return _query_output_columns(query.left, permission_scope, cte_columns, active_query_ids)
+    if not isinstance(query, exp.Select):
+        select_expr = query.find(exp.Select)
+        return (
+            _query_output_columns(select_expr, permission_scope, cte_columns, active_query_ids)
+            if select_expr is not None
+            else set()
+        )
+
+    cte_names = set(cte_columns)
+    selected_aliases = selected_table_aliases(query, cte_names)
+    cte_aliases = selected_cte_aliases(query, cte_columns)
+    derived_aliases = selected_derived_aliases(
+        query,
+        permission_scope,
+        cte_columns,
+        active_query_ids,
+    )
+    columns: set[str] = set()
+    for item in query.expressions:
+        star = item if isinstance(item, exp.Star) else item.this if isinstance(item, exp.Column) else None
+        if isinstance(star, exp.Star):
+            qualifier = item.table if isinstance(item, exp.Column) else ""
+            if qualifier:
+                columns.update(_source_alias_columns(
+                    qualifier,
+                    selected_aliases,
+                    cte_aliases,
+                    derived_aliases,
+                    permission_scope,
+                ))
+            else:
+                for source_alias in set(selected_aliases) | set(cte_aliases) | set(derived_aliases):
+                    columns.update(_source_alias_columns(
+                        source_alias,
+                        selected_aliases,
+                        cte_aliases,
+                        derived_aliases,
+                        permission_scope,
+                    ))
+            continue
+        column_name = normalize_identifier(item.alias_or_name)
+        if column_name and column_name != "*":
+            columns.add(column_name)
+    if not columns:
+        columns.update(_values_source_columns(query))
+    return columns
+
+
+def selected_derived_aliases(
+        select_expr: exp.Select,
+        permission_scope: dict[str, dict[str, Any]] | None = None,
+        cte_columns: dict[str, set[str]] | None = None,
+        active_query_ids: set[int] | None = None,
+) -> dict[str, set[str]]:
+    """Return columns exposed by derived queries and explicitly aliased table functions."""
     aliases: dict[str, set[str]] = {}
     sources = []
     from_expr = select_expr.args.get("from_")
@@ -280,11 +369,19 @@ def selected_derived_aliases(select_expr: exp.Select) -> dict[str, set[str]]:
         if not isinstance(alias, exp.TableAlias):
             continue
         alias_name = normalize_identifier(source.alias_or_name)
-        columns = {
+        declared_columns = {
             normalize_identifier(column.name)
             for column in alias.args.get("columns") or []
             if normalize_identifier(column.name)
         }
+        columns = declared_columns
+        if not columns and isinstance(source, exp.Subquery):
+            columns = _query_output_columns(
+                source.this,
+                permission_scope or {},
+                cte_columns or {},
+                active_query_ids,
+            )
         if alias_name and columns:
             aliases[alias_name] = columns
     return aliases
@@ -380,11 +477,12 @@ def _select_scope(
         select_expr: exp.Select,
         cte_names: set[str],
         cte_columns: dict[str, set[str]],
+        permission_scope: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[dict[str, str], dict[str, set[str]], dict[str, set[str]]]:
     return (
         selected_table_aliases(select_expr, cte_names),
         selected_cte_aliases(select_expr, cte_columns),
-        selected_derived_aliases(select_expr),
+        selected_derived_aliases(select_expr, permission_scope, cte_columns),
     )
 
 
@@ -408,7 +506,7 @@ def _resolve_correlated_column(
     if not qualifier:
         return _ColumnResolution.UNKNOWN
 
-    local_aliases = _select_scope(select_expr, cte_names, cte_columns)
+    local_aliases = _select_scope(select_expr, cte_names, cte_columns, permission_scope)
     if any(qualifier in aliases for aliases in local_aliases):
         return _ColumnResolution.UNKNOWN
 
@@ -417,6 +515,7 @@ def _resolve_correlated_column(
             outer_select,
             cte_names,
             cte_columns,
+            permission_scope,
         )
         if not any(
                 qualifier in aliases
@@ -510,12 +609,13 @@ def validate_sql_columns(
             for cte in statement.find_all(exp.CTE)
             if cte.alias_or_name
         }
-        cte_columns = cte_output_columns(statement)
+        cte_columns = cte_output_columns(statement, permission_scope)
         for select_expr in statement.find_all(exp.Select):
             selected_aliases, cte_aliases, derived_aliases = _select_scope(
                 select_expr,
                 cte_names,
                 cte_columns,
+                permission_scope,
             )
             output_aliases = _select_output_aliases(select_expr)
             json_extraction = extract_json_accesses(
