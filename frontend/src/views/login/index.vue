@@ -914,7 +914,7 @@ const handleFeishuCallback = async () => {
   feishuLoading.value = true
   try {
     const res: any = await AuthApi.feishuCallback({ code, state })
-    userStore.setToken(res.access_token)
+    userStore.startAuthenticatedSession(res.access_token)
     if (res.platform_info) {
       userStore.setPlatformInfo(res.platform_info)
     }

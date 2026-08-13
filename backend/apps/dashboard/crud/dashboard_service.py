@@ -1955,25 +1955,6 @@ def _dashboard_date_filter_result(
     return result
 
 
-def _dashboard_has_explicit_date_range(pivot: Any | None, date_filter: Any | None = None) -> bool:
-    if date_filter is not None:
-        if isinstance(date_filter, dict):
-            expression = date_filter.get("expression")
-            custom_start = date_filter.get("custom_start", "")
-            custom_end = date_filter.get("custom_end", "")
-        else:
-            expression = getattr(date_filter, "expression", None)
-            custom_start = getattr(date_filter, "custom_start", "")
-            custom_end = getattr(date_filter, "custom_end", "")
-        return expression is not None or bool(str(custom_start or "").strip() and str(custom_end or "").strip())
-    return _dashboard_pivot_value(pivot, "date_expression", None) is not None or bool(
-        str(_dashboard_pivot_value(pivot, "date_parameter_type", "") or "").strip()
-        and str(_dashboard_pivot_value(pivot, "range", "") or "").strip().lower() == "custom"
-        and str(_dashboard_pivot_value(pivot, "custom_start", "") or "").strip()
-        and str(_dashboard_pivot_value(pivot, "custom_end", "") or "").strip()
-    )
-
-
 def _prepare_dashboard_chart_item_query(
         datasource: CoreDatasource,
         item: dict[str, Any],
@@ -2067,10 +2048,7 @@ def _dashboard_limit_clause(ds_type: str | None) -> str:
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    ds_key = _normalize_datasource_type(ds_type)
-    if ds_key in {"oracle", "dm", "sqlserver", "sql server", "sql_server"}:
-        return ""
-    return "\nLIMIT 1000"
+    return ""
 
 
 def _build_dashboard_pivot_sql(sql: str, datasource: CoreDatasource, pivot: Any | None) -> str:
@@ -4054,18 +4032,6 @@ def _dashboard_payload(
                 )
                 continue
             if (
-                prepared_query.date_filter_capability.get("status") == "realtime"
-                and _dashboard_has_explicit_date_range(item.get("pivot"), prepared_query.date_filter)
-            ):
-                _apply_dashboard_chart_result(
-                    item,
-                    _failed_chart_result(
-                        "实时图表不支持自定义日期范围",
-                        "dashboard_date_filter_realtime",
-                    ),
-                )
-                continue
-            if (
                 prepared_query.date_filter_capability.get("status") == "unconfigured"
                 and has_dashboard_date_filter_parameters(item['sql'])
             ):
@@ -5349,14 +5315,6 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         ),
     )
     date_filter_capability = prepared_query.date_filter_capability
-    if (
-        date_filter_capability.get("status") == "realtime"
-        and _dashboard_has_explicit_date_range(request.pivot, request.date_filter)
-    ):
-        return _dashboard_date_filter_result(
-            _failed_chart_result("实时图表不支持自定义日期范围", "dashboard_date_filter_realtime"),
-            date_filter_capability,
-        )
     if (
         date_filter_capability.get("status") == "unconfigured"
         and has_dashboard_date_filter_parameters(normalized_sql)

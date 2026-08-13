@@ -24,7 +24,7 @@ const SIDE_LAYOUT_TYPES = new Set<ChartTypes>(['sankey', 'treemap'])
 const WIDE_SIDE_MIN_WIDTH = 680
 const SIDE_MIN_HEIGHT = 280
 const TINY_MIN_WIDTH = 300
-const TINY_MIN_HEIGHT = 250
+const TINY_MIN_HEIGHT = 200
 const TOP_BASIC_MAX_WIDTH = 440
 const TOP_BASIC_MAX_HEIGHT = 360
 const TOP_MINI_MAX_WIDTH = 560
@@ -33,7 +33,10 @@ const SIDE_MINI_MAX_WIDTH = 760
 const SIDE_MINI_MAX_HEIGHT = 330
 const SIDE_COMPACT_MAX_WIDTH = 900
 const SIDE_COMPACT_MAX_HEIGHT = 390
-const SIDE_DENSITY_HYSTERESIS = 20
+// 真实外部 resize 会在阈值附近带来相邻帧的轻微尺寸回摆。布局与密度历史在此保留迟滞，
+// 其窗口必须大于最大 header 高差（compact↔basic 约 10px），避免一次外部 resize 的回摆
+// 立即反向切换档位，导致摘要布局频繁改变。
+const DENSITY_HYSTERESIS = 20
 const WIDE_TREND_SIDE_MIN_WIDTH = 1100
 const WIDE_TREND_SIDE_MIN_HEIGHT = 260
 const WIDE_TREND_SIDE_MIN_ASPECT_RATIO = 2.2
@@ -44,7 +47,14 @@ const TOP_RANKED_REGULAR_MIN_WIDTH = 640
 const TOP_RANKED_COMPACT_MIN_WIDTH = 500
 const TOP_RANKED_MAX_STATS = 4
 const DAY_MS = 24 * 60 * 60 * 1000
-const TOP_RICH_SUMMARY_TYPES = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'funnel'])
+const TOP_RICH_SUMMARY_TYPES = new Set<ChartTypes>([
+  'bar',
+  'column',
+  'grouped_column',
+  'heatmap',
+  'scatter',
+  'funnel',
+])
 const INSIGHT_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
 function isValidInsightDate(value: string) {
@@ -74,6 +84,20 @@ function axisValues(axes?: Array<ChartAxis>) {
   return (axes || []).map((axis) => axis.value).filter(Boolean)
 }
 
+function hasManySeriesGroups(
+  data: Array<ChartData> | undefined,
+  seriesAxis: ChartAxis | undefined
+) {
+  if (!seriesAxis) return false
+  const groups = new Set(
+    (Array.isArray(data) ? data : [])
+      .map((row) => row?.[seriesAxis.value])
+      .filter((value) => !isBlankValue(value))
+      .map(String)
+  )
+  return groups.size >= 6
+}
+
 export function buildInsightLayoutStateKey(params: {
   viewId?: string | number | null
   chartType: ChartTypes
@@ -92,6 +116,28 @@ export function buildInsightLayoutStateKey(params: {
   ])
 }
 
+export function buildInsightDataStructureKey(params: {
+  chartType: ChartTypes
+  data?: Array<ChartData>
+  x?: Array<ChartAxis>
+  y?: Array<ChartAxis>
+  series?: Array<ChartAxis>
+  dashboard?: boolean
+}) {
+  const rows = Array.isArray(params.data) ? params.data : []
+  const seriesAxis = params.series?.[0]
+  const trendGranularityRelevant =
+    params.dashboard === true &&
+    ['line', 'area'].includes(params.chartType) &&
+    axisValues(params.y).length === 1 &&
+    axisValues(params.series).length === 0
+  return JSON.stringify([
+    rows.length > 0,
+    seriesAxis ? hasManySeriesGroups(rows, seriesAxis) : null,
+    trendGranularityRelevant ? detectTrendAxisGranularity(rows, params.x?.[0]) : null,
+  ])
+}
+
 function clampNumber(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
@@ -102,10 +148,10 @@ function isBelowDensityThreshold(
   previousBelow: boolean | undefined
 ) {
   if (previousBelow === true) {
-    return value < threshold + SIDE_DENSITY_HYSTERESIS
+    return value < threshold + DENSITY_HYSTERESIS
   }
   if (previousBelow === false) {
-    return value < threshold - SIDE_DENSITY_HYSTERESIS
+    return value < threshold - DENSITY_HYSTERESIS
   }
   return value < threshold
 }
@@ -336,18 +382,8 @@ export function resolveInsightLayout(params: {
     return 'side'
   }
 
-  const seriesAxis = params.series?.[0]
-  const data = Array.isArray(params.data) ? params.data : []
-  if (seriesAxis) {
-    const groups = new Set(
-      data
-        .map((row) => row?.[seriesAxis.value])
-        .filter((value) => value !== undefined && value !== null && value !== '')
-        .map(String)
-    )
-    if (groups.size >= 6) {
-      return 'side'
-    }
+  if (hasManySeriesGroups(params.data, params.series?.[0])) {
+    return 'side'
   }
 
   const yValues = axisValues(params.y)
@@ -419,22 +455,38 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
+    // TOP 分支的密度历史迟滞与 side 分支一致。真实外部 resize 在 430px mini↔compact
+    // 等边界附近反复接近时，必须保持当前档位直到越过退出阈值，避免摘要布局频繁切换。
+    const wasBasic = params.previousDensity === 'basic'
+    const wasMiniOrDenser =
+      params.previousDensity === 'basic' || params.previousDensity === 'mini'
+    const belowBasicThreshold =
+      isBelowDensityThreshold(
+        width,
+        TOP_BASIC_MAX_WIDTH,
+        params.previousDensity ? wasBasic : undefined
+      ) ||
+      isBelowDensityThreshold(
+        height,
+        TOP_BASIC_MAX_HEIGHT,
+        params.previousDensity ? wasBasic : undefined
+      )
+
     if (isRichTopSummary && width >= TOP_RANKED_COMPACT_MIN_WIDTH) {
       return {
         show: true,
         layout,
-        density:
-          width >= TOP_RANKED_REGULAR_MIN_WIDTH && height >= TOP_BASIC_MAX_HEIGHT
+        density: belowBasicThreshold
+          ? 'basic'
+          : width >= TOP_RANKED_REGULAR_MIN_WIDTH
             ? 'regular'
-            : height >= TOP_BASIC_MAX_HEIGHT
-              ? 'compact'
-              : 'basic',
+            : 'compact',
         maxStats: TOP_RANKED_MAX_STATS,
         featuredSide: false,
       }
     }
 
-    if (width < TOP_BASIC_MAX_WIDTH || height < TOP_BASIC_MAX_HEIGHT) {
+    if (belowBasicThreshold) {
       return {
         show: true,
         layout,
@@ -444,7 +496,18 @@ export function resolveInsightDisplay(params: {
       }
     }
 
-    if (width < TOP_MINI_MAX_WIDTH || height < TOP_MINI_MAX_HEIGHT) {
+    const belowMiniThreshold =
+      isBelowDensityThreshold(
+        width,
+        TOP_MINI_MAX_WIDTH,
+        params.previousDensity ? wasMiniOrDenser : undefined
+      ) ||
+      isBelowDensityThreshold(
+        height,
+        TOP_MINI_MAX_HEIGHT,
+        params.previousDensity ? wasMiniOrDenser : undefined
+      )
+    if (belowMiniThreshold) {
       return {
         show: true,
         layout,

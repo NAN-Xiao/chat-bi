@@ -14,6 +14,10 @@ import { isMainCanvas } from '@/views/dashboard/utils/canvasUtils.ts'
 import DashboardSqlEditor from '@/views/dashboard/common/DashboardSqlEditor.vue'
 import { ElMessage } from 'element-plus-secondary'
 import { validateSavedCanvasLayout } from '@/views/dashboard/utils/savedCanvasLayout'
+import {
+  DEFAULT_DASHBOARD_LAYOUT_SURFACE,
+  type DashboardLayoutSurface,
+} from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
 
 const { t } = useI18n()
 const sqlEditorPermissionMessage = '当前账号没有 SQL 明细权限，无法编辑图表配置。'
@@ -104,6 +108,10 @@ const props = defineProps({
   platformTemplate: {
     type: Boolean,
     default: false,
+  },
+  dashboardLayoutSurface: {
+    type: String as PropType<DashboardLayoutSurface>,
+    default: DEFAULT_DASHBOARD_LAYOUT_SURFACE,
   },
   resizeStart: {
     type: Function,
@@ -1442,6 +1450,11 @@ function nowItemStyle(item: CanvasItem) {
   }
 }
 
+function componentLayoutProps(item: CanvasItem) {
+  if (item.component !== 'SQView') return {}
+  return { dashboardLayoutSurface: props.dashboardLayoutSurface }
+}
+
 function getList() {
   let returnList = _.sortBy(_.cloneDeep(canvasComponentData.value), 'y')
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -1701,6 +1714,7 @@ defineExpose({
           :ref="'shape_component_' + item.id"
           class="sq-component slot-component"
           :class="{ 'sq-component-hidden': item.component !== 'SQTab' }"
+          v-bind="componentLayoutProps(item)"
           :config-item="item"
           :view-info="canvasViewInfo[item.id]"
           :canvas-view-info="canvasViewInfo"

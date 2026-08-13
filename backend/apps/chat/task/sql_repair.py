@@ -12,8 +12,10 @@ from typing import Any
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.errors import ParseError
+from sqlglot.errors import ParseError, TokenError
 
+from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
+from apps.datasource.crud.permission_errors import SqlSchemaScopeError
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 from common.user_facing_errors import (
     DATA_UNAVAILABLE_ERROR_TYPE,
@@ -59,6 +61,14 @@ _GENERIC_PARSE_ERROR_PATTERN = re.compile(r"\bparse\s+error\b", re.IGNORECASE)
 _EXPLICIT_SQL_PARSE_ERROR_PATTERN = re.compile(r"\bsql\s+parse\s+error\b", re.IGNORECASE)
 _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
     re.compile(r"missing column aliases in recursive\s+with\s+query", re.IGNORECASE),
+    re.compile(r"\bnot\s+support\b.{0,100}\binterval\b", re.IGNORECASE),
+    re.compile(r"\b(?:unsupported|not supported|does not support)\b.{0,100}\bweek\b", re.IGNORECASE),
+    re.compile(r"\b(?:unknown|unsupported|not supported|does not support)\b.{0,80}\bunsigned\b", re.IGNORECASE),
+    re.compile(r"\bunsigned\b.{0,80}\b(?:unknown|unsupported|not supported|does not support)\b", re.IGNORECASE),
+    re.compile(r"\billegal pattern component\s*:\s*[vx]\b", re.IGNORECASE),
+    re.compile(r"\b(?:column|field)\b.{0,80}\bambiguous\b", re.IGNORECASE),
+    re.compile(r"\berror tokeniz(?:ing|er)\b", re.IGNORECASE),
+    re.compile(r"\bmissing\s+\S+\s+from\b", re.IGNORECASE),
     re.compile(r"\bsql\s+parse\s+error\b", re.IGNORECASE),
     re.compile(r"\b(?:sql|query|database)\s+syntax\s+error\b", re.IGNORECASE),
     re.compile(r"\bsyntax error\s+(?:at|near|in|for)\b", re.IGNORECASE),
@@ -83,9 +93,10 @@ _EXECUTE_SYNTAX_OR_DIALECT_PATTERNS = (
 _PREPARE_DATE_FILTER_CONFIGURATION_PATTERN = re.compile(
     r"日期参数配置无效\s*[：:]\s*(?:"
     r"missing_parameters|database_current_date|metric_chart|"
+    r"realtime_requires_hourly_time_series|"
     r"missing_date_filter|invalid_date_filter|missing_time_field|"
     r"invalid_parameter_type|mixed_parameter_families|parameter_type_mismatch|"
-    r"incomplete_parameters|missing_date_expression"
+    r"incomplete_parameters|missing_date_expression|invalid_date_expression"
     r")",
     re.IGNORECASE,
 )
@@ -199,11 +210,15 @@ def sanitize_sql_repair_error(error: Any) -> str:
 
 
 def classify_prepare_sql_error(error: Exception) -> SqlRepairReason | None:
+    if any(isinstance(item, ChatDateFilterConfigurationError) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATE_FILTER_CONFIGURATION
     if any(isinstance(item, DataSkillSqlValidationError) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATA_SKILL_VALIDATION
-    if any(isinstance(item, ParseError) for item in _walk_error_chain(error)):
+    if any(isinstance(item, (ParseError, TokenError)) for item in _walk_error_chain(error)):
         return SqlRepairReason.SQL_PARSE
     if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+    if any(isinstance(item, SqlSchemaScopeError) for item in _walk_error_chain(error)):
         return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
 
     message = _error_chain_message(error)
@@ -264,6 +279,280 @@ def validate_mysql_date_format_grouping(sql: str) -> None:
                 )
 
 
+def _normalized_sql_for_structure_validation(sql: str) -> str:
+    return re.sub(r"\{\{[^{}]+\}\}", "0", str(sql or ""))
+
+
+def _nearest_select(expression: exp.Expression) -> exp.Select | None:
+    parent = expression.parent
+    while parent is not None and not isinstance(parent, exp.Select):
+        parent = parent.parent
+    return parent if isinstance(parent, exp.Select) else None
+
+
+def _select_output_names(expression: exp.Expression | None) -> set[str]:
+    if isinstance(expression, exp.Select):
+        select = expression
+    else:
+        select = expression.find(exp.Select) if expression is not None else None
+    if select is None:
+        return set()
+    return {
+        str(name or "").strip('"\x60[]').lower()
+        for name in select.named_selects
+        if str(name or "").strip() not in {"", "*"}
+    }
+
+
+def _source_output_names(
+    source: exp.Expression | None,
+    cte_outputs: dict[str, set[str]],
+) -> set[str]:
+    if isinstance(source, exp.Table):
+        return cte_outputs.get(str(source.name or "").strip('"\x60[]').lower(), set())
+    if isinstance(source, exp.Subquery):
+        return _select_output_names(source.this)
+    return set()
+
+
+def _ambiguous_unqualified_columns(statement: exp.Expression) -> set[str]:
+    cte_outputs = {
+        str(cte.alias_or_name or "").strip('"\x60[]').lower(): _select_output_names(cte.this)
+        for cte in statement.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    ambiguous: set[str] = set()
+    for select in statement.find_all(exp.Select):
+        from_clause = select.args.get("from_")
+        sources = (
+            [from_clause.this]
+            if from_clause is not None and from_clause.this is not None
+            else []
+        )
+        sources.extend(
+            join.this
+            for join in select.args.get("joins") or []
+            if join.this is not None
+        )
+        counts: dict[str, int] = {}
+        for source in sources:
+            for name in _source_output_names(source, cte_outputs):
+                counts[name] = counts.get(name, 0) + 1
+        duplicate_names = {name for name, count in counts.items() if count > 1}
+        if not duplicate_names:
+            continue
+        for column in select.find_all(exp.Column):
+            if _nearest_select(column) is not select or column.table:
+                continue
+            name = str(column.name or "").strip('"\x60[]').lower()
+            if name in duplicate_names:
+                ambiguous.add(str(column.name or ""))
+    return ambiguous
+
+
+def _time_scaffold_cte_names(statement: exp.Expression) -> set[str]:
+    """识别用于日期/小时/周骨架的 CTE，供事实表连接粒度校验使用。"""
+    known_names = {
+        "calendar",
+        "date_series",
+        "dates",
+        "day_series",
+        "hour_series",
+        "hours",
+        "time_series",
+        "week_series",
+        "weeks",
+        "month_series",
+        "months",
+        "spine",
+    }
+    names: set[str] = set()
+    for cte in statement.find_all(exp.CTE):
+        name = str(cte.alias_or_name or "").strip('"\x60[]').lower()
+        if not name:
+            continue
+        if name in known_names:
+            names.add(name)
+            continue
+        select = cte.this.find(exp.Select)
+        if select is None:
+            continue
+        has_time_expression = any(
+            isinstance(node, (exp.DateAdd, exp.DateSub, exp.TimeToStr))
+            for node in select.walk()
+        )
+        has_cross_join = any(
+            str(join.args.get("kind") or "").upper() == "CROSS"
+            for join in select.args.get("joins") or []
+        )
+        if has_time_expression and has_cross_join:
+            names.add(name)
+    return names
+
+
+def _is_recursive_time_scaffold(cte: exp.CTE) -> bool:
+    """识别 MySQL/AnalyticDB 中应优先使用非递归实现的时间骨架。"""
+    alias = str(cte.alias_or_name or "").strip('"\x60[]').lower()
+    if not alias:
+        return False
+    known_names = {
+        "calendar",
+        "date_series",
+        "date_seq",
+        "dates",
+        "day_series",
+        "hour_series",
+        "hours",
+        "time_series",
+        "week_series",
+        "weeks",
+        "month_series",
+        "months",
+        "spine",
+    }
+    if alias in known_names:
+        return True
+    if not any(marker in alias for marker in ("date", "day", "hour", "week", "month", "time", "series", "spine")):
+        return False
+    return any(isinstance(node, (exp.DateAdd, exp.DateSub, exp.TimeToStr)) for node in cte.this.walk())
+
+
+def _has_range_predicate(expression: exp.Expression | None) -> bool:
+    if expression is None:
+        return False
+    return any(
+        expression.find(predicate) is not None
+        for predicate in (exp.GT, exp.GTE, exp.LT, exp.LTE, exp.Between)
+    )
+
+
+def _raw_fact_scaffold_joins(statement: exp.Expression) -> bool:
+    """禁止物理事实表直接按范围连接时间骨架，避免明细重复匹配和超时。"""
+    scaffold_names = _time_scaffold_cte_names(statement)
+    if not scaffold_names:
+        return False
+    cte_names = {
+        str(cte.alias_or_name or "").strip('"\x60[]').lower()
+        for cte in statement.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    for select in statement.find_all(exp.Select):
+        from_clause = select.args.get("from_")
+        raw_sources = []
+        if from_clause is not None and isinstance(from_clause.this, exp.Table):
+            source_name = str(from_clause.this.name or "").strip('"\x60[]').lower()
+            if source_name and source_name not in cte_names:
+                raw_sources.append(from_clause.this)
+        for join in select.args.get("joins") or []:
+            target = join.this
+            if not isinstance(target, exp.Table):
+                continue
+            target_name = str(target.name or "").strip('"\x60[]').lower()
+            if target_name not in scaffold_names or not _has_range_predicate(join.args.get("on")):
+                continue
+            if raw_sources:
+                return True
+    return False
+
+
+def validate_mysql_compatible_sql(sql: str) -> None:
+    """在执行前拦截 AnalyticDB/MySQL 兼容源中可确定的方言和结构错误。"""
+    source_sql = str(sql or "")
+    try:
+        tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(source_sql)
+        has_unsigned_cast = any(
+            token.text.lower() == "unsigned"
+            and index > 0
+            and tokens[index - 1].text.lower() in {"as", ","}
+            for index, token in enumerate(tokens)
+        )
+        if has_unsigned_cast:
+            raise SqlStructureValidationError(
+                "MySQL/AnalyticDB 兼容数据源不支持 UNSIGNED 类型转换；请使用 SIGNED、DECIMAL "
+                "或移除不必要的转换。"
+            )
+
+        statements = sqlglot.parse(_normalized_sql_for_structure_validation(source_sql), read="mysql")
+    except SqlStructureValidationError:
+        raise
+    except (ParseError, TokenError, AttributeError) as error:
+        raise SqlStructureValidationError(
+            "SQL 未通过 MySQL/AnalyticDB 结构解析；请检查标点、引号、函数参数和查询块别名，"
+            "并只返回修复后的完整 SQL。"
+        ) from error
+
+    for statement in statements:
+        for cte in statement.find_all(exp.CTE):
+            alias = str(cte.alias_or_name or "").strip('"\x60[]').lower()
+            if not alias:
+                continue
+            self_referencing = any(
+                str(table.name or "").strip('"\x60[]').lower() == alias
+                and not table.db
+                and not table.catalog
+                for table in cte.this.find_all(exp.Table)
+            )
+            if not self_referencing:
+                continue
+            if _is_recursive_time_scaffold(cte):
+                raise SqlStructureValidationError(
+                    "MySQL/AnalyticDB 日期时间骨架默认禁止 WITH RECURSIVE；"
+                    "请改用非递归数字序列、日期维表或其他已验证的时间骨架。"
+                )
+            with_clause = cte.parent if isinstance(cte.parent, exp.With) else None
+            alias_expression = cte.args.get("alias")
+            columns = alias_expression.args.get("columns") if alias_expression is not None else None
+            if with_clause is None or not with_clause.args.get("recursive") or not columns:
+                raise SqlStructureValidationError(
+                    "自引用 CTE 必须使用 WITH RECURSIVE，并在 CTE 名后显式声明列别名；"
+                    "也可改用非递归日期/数字序列。"
+                )
+
+        if _raw_fact_scaffold_joins(statement):
+            raise SqlStructureValidationError(
+                "时间骨架不得直接按范围 JOIN 物理事实表；请先在事实 CTE 中使用明确日期范围过滤，"
+                "按目标时间粒度聚合后，再将聚合结果 LEFT JOIN 到日期/小时/周骨架。"
+            )
+
+        for date_expression in statement.find_all((exp.DateAdd, exp.DateSub)):
+            unit = str(getattr(date_expression.args.get("unit"), "this", "") or "").upper()
+            interval_value = date_expression.args.get("expression")
+            while isinstance(interval_value, exp.Paren):
+                interval_value = interval_value.this
+            if unit == "WEEK" and not isinstance(interval_value, exp.Literal):
+                raise SqlStructureValidationError(
+                    "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；"
+                    "请改用已验证的动态 DAY 间隔，例如 INTERVAL (week_offset * 7) DAY，"
+                    "或使用固定周边界。"
+                )
+
+        if any(
+            literal.is_string
+            and re.search(r"%(?:v|x)", str(literal.this), re.IGNORECASE)
+            for literal in statement.find_all(exp.Literal)
+        ):
+            raise SqlStructureValidationError(
+                "MySQL/AnalyticDB 兼容数据源不能假定支持 %v 或 %x 周格式；"
+                "请使用已验证的周起止日期表达式，不要把 YEARWEEK 再按该格式反解析。"
+            )
+
+        ambiguous_columns = _ambiguous_unqualified_columns(statement)
+        if ambiguous_columns:
+            names = "、".join(sorted(ambiguous_columns))
+            raise SqlStructureValidationError(
+                f"JOIN 来源存在同名输出列（{names}），最终 SELECT、GROUP BY、ORDER BY "
+                "和连接条件必须使用来源别名限定字段。"
+            )
+
+
+def validate_sql_for_datasource(sql: str, datasource_type: Any) -> None:
+    """对生成、模板渲染和最终执行 SQL 使用同一套数据源方言校验。"""
+    if str(datasource_type or "").strip().lower() not in {"mysql", "doris", "starrocks"}:
+        return
+    validate_mysql_compatible_sql(sql)
+    validate_mysql_date_format_grouping(sql)
+
+
 def _candidate_sqlstates(error: Any) -> set[str]:
     sqlstates: set[str] = set()
     for item in _walk_error_chain(error):
@@ -291,6 +580,8 @@ def _candidate_errnos(error: Any) -> set[int]:
 
 
 def classify_execute_sql_error(error: Exception) -> SqlRepairReason | None:
+    if any(isinstance(item, SqlStructureValidationError) for item in _walk_error_chain(error)):
+        return SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
     excluded_types = (DataUnavailableError, AppDBConnectionError, TimeoutError, PermissionError)
     if any(isinstance(item, excluded_types) for item in _walk_error_chain(error)):
         return None
@@ -348,12 +639,79 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
                 "{{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}。"
             ),
             (
+                "问题要求趋势、走势、变化或按日/周/月/小时时间序列但未明确时间窗口时，必须默认使用最近七天，"
+                "date_expression 使用 {\"version\":1,\"mode\":\"preset\",\"preset\":\"past_7_days\"}；"
+                "不得省略日期过滤，也不得改为查询全历史。"
+            ),
+            (
                 "metric 图表不得返回 date_filter，也不得使用看板日期 token；保留用户要求的固定时间语义。"
             ),
             (
                 "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、"
                 "LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。"
             ),
+            (
+                "日期表达式必须严格使用受支持的版本化结构：version=1；preset 只能是 "
+                "yesterday、today、previous_week、current_week、previous_month、current_month、"
+                "past_7_days、recent_7_days、past_30_days、recent_30_days、past_90_days 或 all_time；"
+                "本月使用 current_month，不要使用 this_month。"
+            ),
+        ]
+        if "realtime_requires_hourly_time_series" in context.error_message:
+            payload["repair_requirements"].append(
+                "用户明确要求按小时或时间趋势但上一版返回了 metric；必须返回按 event_realtime.time "
+                "分组的非 metric 小时序列，并提供完整 date_filter。"
+            )
+    if context.reason is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT:
+        dialect_text = f"{context.dialect} {context.error_message}".lower()
+        payload["repair_requirements"] = [
+            "当前 SQL 必须在目标数据源方言下可解析并执行；只返回修复后的完整 SQL JSON。",
+            "MySQL/AnalyticDB 兼容数据源禁止 CAST(... AS UNSIGNED) 和 AS UNSIGNED，改用 SIGNED、DECIMAL 或不转换。",
+            "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE；日期序列优先使用目标方言支持的非递归序列。只有能力元数据明确声明且已有执行样例验证支持递归时才可例外使用，并在自引用 CTE 名后写完整列清单 cte(col1, ...)。",
+            "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；改用固定周边界或 INTERVAL (week_offset * 7) DAY。",
+            "时间骨架不得直接按范围 JOIN 物理事实表；先按明确日期范围过滤事实表并按目标粒度聚合，再 LEFT JOIN 时间骨架。",
+            "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
+            "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
+        ]
+        if "当前 schema 中不存在" in dialect_text or "无法解析的字段" in dialect_text:
+            payload["repair_requirements"].extend([
+                "上一版 SQL 引用了当前 Schema 中不存在或无法解析的表/字段；必须根据当前 Schema 和 Data Skill 重新生成完整 SQL。",
+                "只能使用当前 Schema 明确提供的表和字段；不得把无效字段静默替换为第一个字段、无关字段或仅名称相似的字段。",
+            ])
+        recursive_alias_error = (
+            "missing column aliases in recursive with query" in dialect_text
+            or "missing column alias in recursive with query" in dialect_text
+            or ("recursive with query" in dialect_text and "alias" in dialect_text)
+            or "日期时间骨架默认禁止 with recursive" in dialect_text
+        )
+        if recursive_alias_error:
+            payload["repair_requirements"].extend([
+                "目标数据源已经明确拒绝上一版递归 CTE；本次修复禁止使用 WITH RECURSIVE、递归自引用 CTE 或仅补充 CTE 列别名后重试。",
+                "日期、小时或周序列必须改用非递归数字序列、日期维表或当前数据源已验证的其他时间骨架；保留完整起止边界和补零结构。",
+            ])
+        elif "recursive" in dialect_text or "date_series" in dialect_text:
+            payload["repair_requirements"].append(
+                "完整日期补零必须保留日期骨架，并对日期与维度做 CROSS JOIN，再 LEFT JOIN 聚合结果并 COALESCE 数值；"
+                "不得把日期 CTE 当作物理表。"
+            )
+    if (
+        context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
+        and any(term in context.error_message for term in ("连续日期", "补齐", "日期序列", "补零"))
+    ):
+        payload["repair_requirements"] = [
+            "必须先生成覆盖完整起止边界的日期序列；有维度时先构造日期与维度的 CROSS JOIN 骨架。",
+            "事实聚合结果使用 LEFT JOIN 回填到骨架，并对数值指标使用 COALESCE(..., 0)，不能只返回事实表中有数据的日期。",
+            "优先使用非递归日期序列；只有自引用 CTE 才使用 WITH RECURSIVE，并为该 CTE 写完整列清单，普通 CTE 保持普通别名即可。",
+            "事实表必须先在自己的 CTE 中按日期范围过滤并按目标粒度聚合，不得直接按范围 JOIN 日期/小时/周骨架。",
+        ]
+    if (
+        context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
+        and any(term in context.error_message for term in ("实时", "小时"))
+    ):
+        payload["repair_requirements"] = [
+            "实时小时趋势必须在看板起止日期范围内从当前事实 time 字段取 MAX(time)，并以该事件所在小时作为连续小时序列上界。",
+            "小时序列必须从 00:00 开始；有其他分组维度时先构造小时序列 CROSS JOIN 维度集合，再 LEFT JOIN 小时聚合结果。",
+            "小时序列和小时聚合必须使用相同日期范围，数值指标使用 COALESCE(..., 0)，不得使用 NOW、CURRENT_DATE 或固定 00-23 全日序列替代事实最大时间。",
         ]
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
     return (

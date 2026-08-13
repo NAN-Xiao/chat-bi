@@ -70,6 +70,7 @@ def test_tracking_dictionary_keeps_events_without_properties() -> None:
 def test_tracking_dictionary_exposes_realtime_event_table() -> None:
     import seed_flam_first_zombie_tracking_dictionary as tracking
 
+    tracking.apply_chart_builder_expressions()
     table_names = {item["table_name"] for item in tracking.TABLES}
     realtime_fields = {
         item["field_name"]
@@ -83,7 +84,16 @@ def test_tracking_dictionary_exposes_realtime_event_table() -> None:
     }
 
     assert "event_realtime" in table_names
-    assert {"uid", "event", "time", "dt", "prod", "personal"} <= realtime_fields
+    assert {
+        "uid",
+        "event",
+        "time",
+        "dt",
+        "prod",
+        "personal",
+        "adinfo",
+        "userinfo.country",
+    } <= realtime_fields
     assert {
         ("subject_id", "uid"),
         ("event_name", "event"),
@@ -103,6 +113,15 @@ def test_tracking_dictionary_exposes_realtime_event_table() -> None:
         assert fields[(table_name, "time")]["extra_properties"] == {
             "encoding": "epoch_milliseconds"
         }
+
+    realtime_channel = fields[("event_realtime", "adinfo")]
+    assert "$.mediaSource" in realtime_channel["expression"]
+    assert "$.campaignName" in realtime_channel["expression"]
+
+    realtime_country = fields[("event_realtime", "userinfo.country")]
+    assert realtime_country["source_field"] == "userinfo"
+    assert realtime_country["json_path"] == "$.country"
+    assert "`event_realtime`.`userinfo`" in realtime_country["expression"]
 
 
 def test_tracking_dictionary_merges_only_missing_events() -> None:

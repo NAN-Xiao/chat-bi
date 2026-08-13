@@ -282,14 +282,11 @@ import {
   type TenantSearchInfo,
 } from '@/api/tenant'
 import { useUserStore } from '@/stores/user'
-import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
-import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { formatTimestamp } from '@/utils/date'
 
 const { t } = useI18n()
 const userStore = useUserStore()
-const datasourceContext = useDatasourceContextStore()
 const dashboardStore = dashboardStoreWithOut()
 
 const tenantLeavingId = ref('')
@@ -558,31 +555,20 @@ const leaveWorkspace = async (tenant: TenantInfo) => {
     const remaining = await tenantApi.leave(tenantId)
     userStore.tenants = Array.isArray(remaining) ? remaining : []
     if (tenantId === String(userStore.getTenantId || '')) {
+      await userStore.clearActiveTenant()
       const nextTenant = userStore.tenants[0] || null
       if (nextTenant?.id) {
-        emitWorkspaceContextChange({ tenantId: nextTenant.id, phase: 'changing' })
-        await userStore.switchTenant(nextTenant.id)
-        datasourceContext.clear(true)
-        await datasourceContext.loadDatasources(true)
+        const switched = await userStore.switchTenant(nextTenant.id)
+        if (!switched) return
         dashboardStore.canvasDataInit()
-        useEmitt().emitter.emit('datasource-context-change', null)
-        emitWorkspaceContextChange({ tenantId: nextTenant.id, phase: 'changed' })
       } else {
-        emitWorkspaceContextChange({ tenantId: '', phase: 'changing' })
-        userStore.setTenant(null)
-        datasourceContext.clear(true)
         dashboardStore.canvasDataInit()
-        useEmitt().emitter.emit('datasource-context-change', null)
-        emitWorkspaceContextChange({ tenantId: '', phase: 'changed' })
       }
     } else {
       await userStore.loadTenants(true)
     }
     await Promise.all([loadApplications(), loadInvitations()])
     ElMessage.success(t('common.operation_success'))
-  } catch (error) {
-    emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
-    throw error
   } finally {
     tenantLeavingId.value = ''
   }

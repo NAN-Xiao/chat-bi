@@ -66,13 +66,13 @@ assert.match(
 assert.ok(preparePreviewStateMatch, '首次加载需要明确初始化图表等待状态')
 assert.match(
   preparePreviewStateMatch[1],
-  /clearPendingChartData\(viewInfo, 'waiting'\)/,
-  '首次加载的无数据图表必须进入 loading/waiting，由完整加载态接管显示'
+  /prepareDashboardChartRefreshState\(viewInfo, 'waiting'\)/,
+  '首次加载必须保留已有快照，仅让无快照图表进入 loading/waiting'
 )
 assert.ok(prepareDatabaseStateMatch, '数据库后台刷新需要独立的状态准备函数')
 assert.match(
   prepareDatabaseStateMatch[1],
-  /if \(hasUsableChartSnapshot\(viewInfo\)\) \{[\s\S]*?viewInfo\.status = 'success'[\s\S]*?viewInfo\.dataState = 'ready'[\s\S]*?return/,
+  /if \(hasDashboardChartSnapshot\(viewInfo\)\) \{[\s\S]*?viewInfo\.status = 'success'[\s\S]*?viewInfo\.dataState = 'ready'[\s\S]*?return/,
   '已有可用快照时后台刷新必须保留 success/ready，不能清空当前图表'
 )
 assert.ok(refreshChartsMatch, '刷新队列需要存在')

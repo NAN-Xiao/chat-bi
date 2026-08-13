@@ -5,7 +5,12 @@ import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
 import { promptApi } from '@/api/prompt'
 import { modelApi } from '@/api/system'
+import { useUserStore } from '@/stores/user'
 import { cachedRequest, clearRequestCache } from '@/utils/requestDedupe'
+import {
+  getEffectiveWorkspaceTenantId,
+  workspaceContextState,
+} from '@/utils/workspaceContext'
 import icon_ai from '@/assets/svg/icon_ai.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
@@ -40,6 +45,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const userStore = useUserStore()
 
 const popoverVisible = ref(false)
 const keyword = ref('')
@@ -50,6 +56,7 @@ const agentFormRef = ref()
 const agentDialogVisible = ref(false)
 const agentDialogTitle = ref('')
 const savingAgent = ref(false)
+let loadSequence = 0
 
 const defaultAgentForm = {
   id: null as number | string | null,
@@ -180,8 +187,14 @@ const buildListQuery = () => {
   return query ? `?${query}` : ''
 }
 
-const buildAgentsCacheKey = (query: string) =>
-  `${AGENT_SELECTOR_CACHE_PREFIX}${usablePromptTypes.value.join(',')}|${props.targetScope}|${query}`
+const buildAgentsCacheKey = (
+  query: string,
+  uid: string,
+  tenantId: string,
+  datasourceId: number,
+  targetScope: string
+) =>
+  `${AGENT_SELECTOR_CACHE_PREFIX}${uid}|${tenantId}|${datasourceId}|${targetScope}|${usablePromptTypes.value.join(',')}|${query}`
 
 const selectAgent = (value: string | number | null) => {
   emit('update:modelValue', value)
@@ -196,16 +209,42 @@ const loadAiModels = () => {
 }
 
 const loadAgents = async () => {
+  const loadId = ++loadSequence
+  const uid = String(userStore.getUid || '')
+  const tenantId = getEffectiveWorkspaceTenantId()
+  const datasourceId = datasourceIdValue.value
+  const targetScope = props.targetScope
+  if (
+    workspaceContextState.phase !== 'ready' ||
+    !uid ||
+    !tenantId ||
+    !datasourceIdValue.value ||
+    !datasourceId
+  ) {
+    agentList.value = []
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
     const query = buildListQuery()
-    const responses = await cachedRequest(buildAgentsCacheKey(query), () =>
+    const responses = await cachedRequest(buildAgentsCacheKey(query, uid, tenantId, datasourceId, targetScope), () =>
       Promise.all(
         usablePromptTypes.value.map((type) =>
           promptApi.getList(1, 100, type, query).catch(() => ({ data: [] }))
         )
       )
     )
+    if (loadId !== loadSequence) return
+    if (
+      workspaceContextState.phase !== 'ready' ||
+      String(userStore.getUid || '') !== uid ||
+      getEffectiveWorkspaceTenantId() !== tenantId ||
+      datasourceIdValue.value !== datasourceId ||
+      props.targetScope !== targetScope
+    ) {
+      return
+    }
     agentList.value = responses
       .flatMap((res: any) => res?.data || [])
       .filter((row: any) => row?.active === true && matchesTargetScope(row) && isVisibleInPersonalEntry(row))
@@ -218,7 +257,9 @@ const loadAgents = async () => {
       selectAgent(null)
     }
   } finally {
-    loading.value = false
+    if (loadId === loadSequence) {
+      loading.value = false
+    }
   }
 }
 
@@ -297,6 +338,8 @@ watch(
     props.targetScope,
     (props.customPromptTypes || []).join(','),
     keyword.value,
+    workspaceContextState.phase,
+    workspaceContextState.activeTenantId,
   ],
   () => {
     loadAgents()

@@ -164,6 +164,26 @@ assert.doesNotMatch(
   /chartRef\.value\?\.destroyChart\(\)[\s\S]*?chartRef\.value\?\.renderChart\(\)/,
   '看板外层不得先清空可见图表再调用异步重绘'
 )
+assert.match(
+  source,
+  /\.chart-loading-ring \{[\s\S]*?min-width: 56px;[\s\S]*?min-height: 56px;[\s\S]*?flex: 0 0 56px;/,
+  '完整加载圆环必须固定尺寸，不能在紧凑卡片的 flex 布局中被压扁'
+)
+assert.match(
+  source,
+  /\.chart-base-container\.insight-density-basic \.chart-loading-ring:not\(\.small\) \{[\s\S]*?width: 28px;[\s\S]*?height: 28px;[\s\S]*?flex-basis: 28px;/,
+  'basic 密度卡片必须使用适配小高度的加载圆环'
+)
+assert.match(
+  source,
+  /<div class="header-bar">[\s\S]*?v-if="chartLoading && hasRenderedChartData"[\s\S]*?class="chart-refresh-status"/,
+  '有旧数据的后台刷新状态必须显示在标题栏，不能覆盖图例或坐标轴'
+)
+assert.doesNotMatch(
+  source,
+  /class="chart-refresh-overlay"/,
+  '图表绘图区不能继续渲染会覆盖滚动图例分页控件的刷新浮层'
+)
 
 const staleRecoveryMatch = source.match(
   /async function recoverStaleLoadingState\(\) \{([\s\S]*?)\r?\n\}/

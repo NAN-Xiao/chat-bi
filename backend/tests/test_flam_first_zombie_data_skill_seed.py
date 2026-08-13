@@ -93,14 +93,33 @@ def test_realtime_payment_components_use_realtime_event_table(view_id: str) -> N
     assert "ServerPayLog" in sql
 
 
-def test_realtime_payment_components_keep_explicit_utc8_business_date() -> None:
+def test_realtime_payment_components_do_not_apply_fixed_utc8_offset() -> None:
     blocks = _seed_dashboard_sql()
 
     for view_id in REALTIME_CURRENT_DATE_VIEW_IDS:
         sql = blocks[view_id]
         assert "{{dashboard_start_yyyymmdd}}" not in sql
         assert "{{dashboard_end_yyyymmdd}}" not in sql
-        assert "DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR)" in sql
+        assert "INTERVAL 8 HOUR" not in sql
+        assert "DATE_ADD(FROM_UNIXTIME" not in sql
+        assert "FROM_UNIXTIME(e.time / 1000)" in sql
+
+
+def test_realtime_tracking_time_field_does_not_apply_fixed_utc8_offset() -> None:
+    import seed_flam_first_zombie_tracking_dictionary as tracking
+
+    tracking.apply_chart_builder_expressions()
+    time_fields = [
+        item
+        for item in tracking.FIELDS
+        if item["table_name"] == "event" and item["field_name"] == "time"
+    ]
+
+    assert len(time_fields) == 1
+    time_field = time_fields[0]
+    assert "INTERVAL 8 HOUR" not in time_field["field_comment"]
+    assert "INTERVAL 8 HOUR" not in time_field["expression"]
+    assert "FROM_UNIXTIME(`event`.`time` / 1000)" in time_field["expression"]
 
 
 def test_metric_components_use_fixed_example_date_without_dashboard_tokens() -> None:
@@ -152,6 +171,23 @@ def test_realtime_skill_description_has_payment_retrieval_anchor() -> None:
     import seed_flam_first_zombie_data_skills as seed
 
     assert "今天实时付费趋势" in seed.DATA_SKILLS[0]["description"]
+    assert "实时付费金额" in seed.DATA_SKILLS[0]["description"]
+
+
+def test_realtime_payment_skill_only_requires_hourly_series_for_explicit_hour_intent() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    prompt = seed.DATA_SKILLS[0]["prompt"]
+
+    assert '"match":["实时付费趋势","实时充值趋势","实时收入趋势","按小时","每小时","逐小时","小时趋势","当前小时","当前整点"]' in prompt
+    assert '"match":["实时付费","实时充值","实时收入"' not in prompt
+    assert "“实时”只决定使用当前业务日的实时数据范围和 `event_realtime` 表" in prompt
+    assert "只按用户指定维度聚合，不得额外加入小时维度" in prompt
+    assert '"required_sql_patterns"' in prompt
+    assert "禁止在 event_realtime SQL 中使用数据库当前日期/时间函数" in prompt
+    assert "付费渠道取 `adinfo.mediaSource`" in prompt
+    assert "国家取 `userinfo.country`" in prompt
+    assert "CONCAT(LPAD(CAST(hour_index AS CHAR), 2, '0'), ':00')" in prompt
 
 
 def test_platform_data_skills_do_not_expose_explicit_timezone_guidance() -> None:
@@ -205,6 +241,24 @@ def test_data_skill_seed_documents_verified_transaction_and_cohort_rules() -> No
     assert "未成熟 cohort" in content
     assert "待补充字段映射" in content
     assert "CCU.personal.ed_ccu" in content
+
+
+def test_channel_window_cumulative_payment_uses_transaction_events() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    payment_skill = next(
+        skill for skill in seed.DATA_SKILLS if skill["name"] == "flam 付费与 LTV 口径"
+    )
+    assert "channel_window_cumulative_payment" in payment_skill["prompt"]
+    assert "各/按渠道累计付费收入和付费人数" in payment_skill["prompt"]
+
+    sql = _seed_dashboard_sql()["89d495c3733a441799b032cd7407df01"]
+    assert "FROM `event` e" in sql
+    assert "e.event = 'ServerPayLog'" in sql
+    assert "e.personal" in sql
+    assert "COUNT(DISTINCT e.uid)" in sql
+    assert "paytotal" not in sql
+    assert "FROM `user`" not in sql
 
 
 def test_new_user_skill_routes_current_day_to_realtime_table() -> None:
@@ -270,6 +324,26 @@ def test_data_skills_document_complete_date_filter_contract() -> None:
     assert '"date_parameter_type":"yyyymmdd_number"' in prompt
     assert '"date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}' in prompt
     assert '"start":"{{dashboard_start_yyyymmdd}}"' not in prompt
+
+
+def test_payment_ltv_skill_uses_reusable_today_template_for_realtime_time_series() -> None:
+    import seed_flam_first_zombie_data_skills as seed
+
+    prompt = next(
+        skill["prompt"]
+        for skill in seed.DATA_SKILLS
+        if skill["name"] == "flam 付费与 LTV 口径"
+    )
+
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "`event_realtime`" in prompt
+    assert "非 `metric`" in prompt
+    assert '"preset":"today"' in prompt
+    assert re.search(
+        r"(?<!\{)\{dashboard_(?:start|end)_yyyymmdd\}(?!\})",
+        prompt,
+    ) is None
 
 
 def test_data_skill_seed_limits_custom_prompt_lifecycle_to_exact_datasource_scope() -> None:

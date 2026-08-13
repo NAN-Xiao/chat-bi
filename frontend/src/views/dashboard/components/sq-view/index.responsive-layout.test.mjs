@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url'
 const source = readFileSync(fileURLToPath(new URL('./index.vue', import.meta.url)), 'utf8')
 const style = source.slice(source.indexOf('<style scoped'))
 
-assert.match(source, /ref="chartShowAreaRef"[^>]*class="chart-show-area"/)
+assert.match(source, /class="chart-show-area"/)
+assert.doesNotMatch(source, /ref="chartShowAreaRef"/)
+assert.match(source, /ref="dashboardFilterControlsRef"[^>]*class="dashboard-filter-controls"/)
 assert.match(source, /surface="dashboard"/)
 assert.match(source, /:has-outer-title="true"/)
 assert.match(
@@ -16,7 +18,18 @@ assert.match(style, /\.header-bar\s*\{[^}]*flex:\s*0\s+0\s+auto/s)
 assert.match(style, /\.dashboard-filter-controls\s*\{[^}]*flex:\s*0\s+0\s+auto/s)
 assert.match(
   style,
-  /\.chart-show-area\s*\{[^}]*flex:\s*1\s+1\s+auto[^}]*height:\s*auto/s
+  /\.chart-show-area\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*height:\s*auto[^}]*min-width:\s*0[^}]*min-height:\s*0/s,
+  '图表外层必须使用零基准并允许双轴收缩，避免摘要尺寸反推父容器'
+)
+assert.match(
+  style,
+  /\.chart-content-row\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*min-width:\s*0[^}]*min-height:\s*0/s,
+  '顶部和侧边摘要共用的图表行必须使用稳定剩余空间'
+)
+assert.match(
+  style,
+  /:deep\(\.chart-container\)\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*min-width:\s*0[^}]*min-height:\s*0/s,
+  '图表容器不能通过内容宽高反向撑开图表行'
 )
 assert.doesNotMatch(style, /\.chart-show-area\s*\{[^}]*height:\s*calc\(/s)
 assert.doesNotMatch(
@@ -25,36 +38,80 @@ assert.doesNotMatch(
 )
 assert.doesNotMatch(style, /\.chart-loading-info\s*\{[^}]*min-height:\s*140px/s)
 
-const measureFrameMatch = source.match(/function measureFrame\(\) \{([\s\S]*?)\r?\n\}/)
-assert.ok(measureFrameMatch, '需要通过统一函数测量图表可用区域')
+assert.match(source, /const frameSize = ref<InsightFrameSize \| null>\(null\)/)
+assert.match(source, /function measureCanonicalFrame\(\) \{[\s\S]*resolveCanonicalInsightFrame/)
+assert.match(source, /if \(isDashboardSurface\.value && !frameSize\.value\) \{\s*return false\s*\}/)
 assert.match(
-  measureFrameMatch[1],
-  /if \(!el\) \{\s*return false\s*\}/,
-  '图表区域尚未挂载时应明确返回尺寸未变化'
+  source,
+  /if \(measuredFrame \|\| !isDashboardSurface\.value\) \{\s*previousInsightLayout = display\.layout\s*previousInsightDensity = display\.density/,
+  'unmeasured 默认展示不能污染首次有效测量的迟滞历史'
 )
+assert.match(source, /resizeObserver\.observe\(containerRef\.value, \{ box: 'border-box' \}\)/)
 assert.match(
-  measureFrameMatch[1],
-  /if \(nextSize\.width === frameSize\.value\.width && nextSize\.height === frameSize\.value\.height\) \{\s*return false\s*\}/,
-  '宽高未变化时应明确返回 false'
+  source,
+  /if \(!isTabDashboardSurface\.value && dashboardFilterControlsRef\.value\)[\s\S]*resizeObserver\.observe\(dashboardFilterControlsRef\.value, \{ box: 'border-box' \}\)/,
+  '工具栏只能作为主画布的兼容观察源，Tab 必须 root-only'
 )
+assert.doesNotMatch(source, /resizeObserver\.observe\(chartShowAreaRef\.value/)
+
+const observerStart = source.indexOf('resizeObserver = new ResizeObserver')
+const observerEnd = source.indexOf('resizeObserver.observe(containerRef.value', observerStart)
+assert.ok(observerStart >= 0 && observerEnd > observerStart, '需要统一的稳定边界 ResizeObserver')
+const observerCallback = source.slice(observerStart, observerEnd)
+assert.match(observerCallback, /measureCanonicalFrame\(\)/)
 assert.match(
-  measureFrameMatch[1],
-  /frameSize\.value = nextSize\s*return true/,
-  '记录新宽高后应返回 true'
+  observerCallback,
+  /entry\.target === containerRef\.value[\s\S]*!isTabDashboardSurface\.value && entry\.target === dashboardFilterControlsRef\.value/
+)
+assert.doesNotMatch(
+  observerCallback,
+  /scheduleRenderChart/,
+  '尺寸回调只能更新策略尺寸，图表 resize 由 ChartComponent 独占'
 )
 
-const resizeObserverMatch = source.match(
-  /resizeObserver = new ResizeObserver\(\(\) => \{([\s\S]*?)\r?\n\s*\}\)/
-)
-assert.ok(resizeObserverMatch, '卡片需要监听自身图表区域尺寸')
+assert.match(source, /const mainInsightFrameStructureKey = computed/)
+assert.match(source, /nextTick\(measureCanonicalFrame\)/)
+assert.match(source, /const tabInsightControlsVariant = computed/)
+assert.match(source, /const tabInsightControlsReserve = computed/)
+assert.match(style, /&\.dashboard-layout-surface-tab\s*\{[\s\S]*--tab-insight-controls-reserve: 0px/)
 assert.match(
-  resizeObserverMatch[1],
-  /const frameChanged = measureFrame\(\)/,
-  '尺寸监听回调需要保存真实变化结果'
+  style,
+  /\.dashboard-filter-controls--combined\s*\{[\s\S]*flex-wrap:\s*nowrap/
+)
+assert.doesNotMatch(source, /sizeX\s*=|sizeY\s*=/)
+assert.match(style, /--insight-frame-compact-padding-inline:\s*16px/)
+assert.match(style, /--insight-frame-compact-padding-block:\s*14px/)
+assert.match(style, /--insight-frame-compact-header-height:\s*34px/)
+assert.match(style, /--insight-frame-compact-header-gap:\s*10px/)
+assert.match(
+  style,
+  /padding:\s*var\(--insight-frame-compact-padding-block\)\s+var\(--insight-frame-compact-padding-inline\)/
+)
+assert.match(style, /min-height:\s*var\(--insight-frame-compact-header-height\)/)
+assert.match(style, /margin-bottom:\s*var\(--insight-frame-compact-header-gap\)/)
+assert.match(
+  style,
+  /&\.insight-density-mini,\s*&\.insight-density-basic\s*\{[^}]*padding:\s*10px\s+12px\s*!important[^}]*\.header-bar\s*\{[^}]*min-height:\s*28px[^}]*margin-bottom:\s*6px/s,
+  'mini/basic 必须保留原有紧凑外层几何，规范帧只统一策略输入'
 )
 assert.match(
-  resizeObserverMatch[1],
-  /if \(frameChanged && chartType\.value !== 'table'\) scheduleRenderChart\(\)/,
-  '只有真实尺寸变化时才允许销毁并重建非表格图表'
+  style,
+  /&\.insight-density-basic\s*\{[^}]*padding:\s*8px\s+10px\s*!important[^}]*\.header-bar\s*\{[^}]*min-height:\s*24px[^}]*margin-bottom:\s*4px/s,
+  'basic 必须保留最紧凑的原有外层几何'
 )
+assert.match(
+  style,
+  /\.dashboard-filter-controls--combined\s*\{[\s\S]*> \.pivot-toolbar\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*min-width:\s*0/s
+)
+assert.match(
+  style,
+  /\.dashboard-filter-controls--combined\s*\{[^}]*align-self:\s*flex-start[^}]*width:\s*fit-content[^}]*max-width:\s*100%/s,
+  '组合筛选栏应按内容收缩，避免 pivot flex 项把日期控件推到最右侧'
+)
+assert.doesNotMatch(
+  style,
+  /\.pivot-toolbar\s*\{[^}]*margin-bottom:\s*4px/s,
+  'density 不得改变工具栏外层 block contribution'
+)
+assert.match(source, /type !== 'table' && type !== 'metric'/)
 console.log('SQView responsive layout tests passed')

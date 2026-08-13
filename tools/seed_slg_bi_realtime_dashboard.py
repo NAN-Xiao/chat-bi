@@ -513,18 +513,29 @@ WITH obs AS (
                interval '1 minute'
            ) AT TIME ZONE 'Asia/Shanghai' AS bucket_time
     FROM days d
+), minute_online AS (
+    SELECT mb.day_date,
+           mb.bucket_time,
+           count(DISTINCT s.player_id) AS online_users
+    FROM minute_buckets mb
+    LEFT JOIN public.fact_sessions s
+      ON s.session_start <= mb.bucket_time
+     AND s.session_end > mb.bucket_time
+     AND s.session_start::date BETWEEN (SELECT today - 1 FROM obs) AND (SELECT today FROM obs)
+     AND s.session_uid LIKE 'rt_live_mock_%'
+    GROUP BY mb.day_date, mb.bucket_time
+), hourly_online AS (
+    SELECT day_date,
+           date_trunc('hour', bucket_time AT TIME ZONE 'Asia/Shanghai') AS hour_bucket,
+           max(online_users) AS online_users
+    FROM minute_online
+    GROUP BY day_date, date_trunc('hour', bucket_time AT TIME ZONE 'Asia/Shanghai')
 )
-SELECT to_char(bucket_time, 'HH24') || chr(58) || to_char(bucket_time, 'MI') AS "时间",
+SELECT to_char(hour_bucket, 'HH24') || chr(58) || '00' AS "时间",
        to_char(day_date, 'YYYY-MM-DD') AS "日期",
-       count(DISTINCT s.player_id) AS "实时在线人数"
-FROM minute_buckets mb
-LEFT JOIN public.fact_sessions s
-  ON s.session_start <= mb.bucket_time
- AND s.session_end > mb.bucket_time
- AND s.session_start::date BETWEEN (SELECT today - 1 FROM obs) AND (SELECT today FROM obs)
- AND s.session_uid LIKE 'rt_live_mock_%'
-GROUP BY day_date, bucket_time
-ORDER BY day_date, bucket_time
+       online_users AS "实时在线人数"
+FROM hourly_online
+ORDER BY day_date, hour_bucket
 """
 
 HOURLY_PAYMENT_SQL = """

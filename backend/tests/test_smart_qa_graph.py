@@ -14,7 +14,10 @@ from apps.chat.models.chat_model import ChatFinishStep, OperationEnum
 from apps.chat.task import llm
 from apps.chat.task import smart_qa_graph as graph
 from apps.chat.task.sql_repair import SqlRepairReason, SqlStructureValidationError
-from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_ERROR_TYPE,
+    SqlSchemaScopeError,
+)
 from common.error import AppDBConnectionError, DataUnavailableError, SingleMessageError
 
 
@@ -504,6 +507,51 @@ def test_prepare_sql_parse_error_repairs_then_revalidates(monkeypatch: pytest.Mo
     assert "CAST(value AS DECIMAL(18, 4))" in sql_events[0]
 
 
+def test_schema_field_error_repairs_instead_of_returning_permission_denied(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_sql = "SELECT p.player_id, MAX(p.channel) FROM fact_payments p GROUP BY p.player_id"
+    repaired_sql = (
+        "SELECT p.player_id, MAX(p.payment_source_channel) "
+        "FROM fact_payments p GROUP BY p.player_id"
+    )
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql, ["fact_payments"]))
+    service.repair_answers = [_sql_answer(repaired_sql, ["fact_payments"])]
+    calls: list[str] = []
+
+    def validate(**kwargs):
+        calls.append(kwargs["sql"])
+        if kwargs["sql"] == invalid_sql:
+            raise SqlSchemaScopeError(
+                "SQL 引用了当前 Schema 中不存在或无法解析的字段：p.channel",
+                fields={"p.channel"},
+            )
+        return kwargs["sql"], {"fact_payments"}
+
+    monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: (
+            "table fact_payments(player_id, payment_source_channel)",
+            ["fact_payments"],
+        ),
+    )
+
+    events = _events(list(graph.run_smart_qa_graph(
+        service,
+        in_chat=True,
+        stream=True,
+        finish_step=ChatFinishStep.GENERATE_CHART,
+    )))
+
+    assert calls == [invalid_sql, repaired_sql]
+    assert service.saved_sql == [repaired_sql]
+    assert service.executed[0]["sql"] == repaired_sql
+    assert service.repair_contexts[0].reason is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+    assert not any(event.get("error_type") == PERMISSION_DENIED_ERROR_TYPE for event in events)
+
+
 def test_data_skill_violation_repairs_with_structured_context(monkeypatch: pytest.MonkeyPatch) -> None:
     invalid_sql = "SELECT legacy_amount FROM event WHERE event = 'LegacyEvent'"
     repaired_sql = "SELECT SUM(amount) FROM event WHERE event = 'AuthoritativeEvent'"
@@ -550,6 +598,52 @@ def test_data_skill_violation_repairs_with_structured_context(monkeypatch: pytes
 
     assert service.repair_contexts[0].violation == violation
     assert service.saved_sql == [repaired_sql]
+
+
+def test_prepare_sql_date_contract_error_repairs_then_revalidates(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_sql = "SELECT dt, COUNT(*) FROM event GROUP BY dt"
+    repaired_sql = (
+        "SELECT dt, COUNT(*) FROM event "
+        "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} "
+        "GROUP BY dt"
+    )
+    service = FakeSmartQAService(sql_answer=_sql_answer(invalid_sql, ["event"]))
+    service.repair_answers = [_sql_answer(repaired_sql, ["event"])]
+
+    def check_sql(*, session, res, operate):
+        assert session is not None
+        assert operate == OperationEnum.GENERATE_SQL
+        payload = json.loads(res)
+        if payload["sql"] == invalid_sql:
+            raise llm.ChatDateFilterConfigurationError("missing_parameters")
+        return payload["sql"], payload.get("tables")
+
+    service.check_sql = check_sql
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], {"event"}),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_ai_table_schema",
+        lambda **kwargs: ("table event(dt integer)", ["event"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+
+    assert service.repair_contexts[0].reason.value == "date_filter_configuration"
+    assert service.saved_sql == [repaired_sql]
+    assert not any(event["type"] == "error" for event in _events(chunks))
 
 
 def test_prepare_sql_response_format_error_repairs_then_revalidates(
@@ -657,6 +751,26 @@ def test_prepare_sql_response_format_error_repairs_then_revalidates(
             {
                 "sql": "SELECT COUNT(*) FROM event WHERE dt = 20260730",
                 "chart_type": "metric",
+            },
+        ),
+        (
+            "realtime_requires_hourly_time_series",
+            {
+                "sql": "SELECT SUM(amount) FROM event_realtime",
+                "chart_type": "metric",
+            },
+            {
+                "sql": (
+                    "SELECT hour_label, SUM(amount) FROM event_realtime "
+                    "WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} "
+                    "GROUP BY hour_label"
+                ),
+                "chart_type": "line",
+                "date_filter": {
+                    "time_field": "dt",
+                    "date_parameter_type": "yyyymmdd_number",
+                    "date_expression": {"version": 1, "mode": "preset", "preset": "today"},
+                },
             },
         ),
     ],
@@ -840,6 +954,23 @@ def test_execute_sql_dialect_error_repairs_then_executes_again(monkeypatch: pyte
     assert attempts == [invalid_sql, repaired_sql]
     assert service.repair_contexts[0].reason.value == "database_syntax_or_dialect"
     assert not any(event["type"] == "error" for event in _events(chunks))
+
+
+def test_date_dimension_cross_join_inside_scaffold_cte_is_accepted() -> None:
+    data_skill = """
+    <!-- data-skill-sql-validation: [{"match":["每日"],"when_sql_has_non_time_group_by":true,
+    "required_outer_select_cross_join":true,"message":"需要日期维度骨架"}] -->
+    """
+    sql = """
+    WITH date_spine(dt) AS (SELECT 1), dimensions(value) AS (SELECT 'a'),
+    scaffold(dt, value) AS (
+        SELECT d.dt, x.value FROM date_spine d CROSS JOIN dimensions x
+    ), metrics(dt, value, amount) AS (SELECT 1, 'a', 2)
+    SELECT s.dt, s.value, COALESCE(m.amount, 0) AS amount
+    FROM scaffold s LEFT JOIN metrics m ON m.dt = s.dt AND m.value = s.value
+    """
+
+    assert llm._data_skill_sql_validation_violation("每日各分类趋势", sql, data_skill) is None
 
 
 def test_same_failure_fingerprint_is_not_repaired_twice(monkeypatch: pytest.MonkeyPatch) -> None:

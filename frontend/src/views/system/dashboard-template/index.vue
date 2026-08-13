@@ -13,6 +13,10 @@ import HandleMore from '@/views/dashboard/common/HandleMore.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
 import { dashboardApi } from '@/api/dashboard'
+import {
+  prepareDashboardChartRefreshState,
+  reconcileDashboardViewInfo,
+} from '@/views/dashboard/utils/dashboardChartLifecycle'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -138,7 +142,7 @@ const cloneJson = (value: any, fallback: any) => {
   }
 }
 
-const applyTemplatePreviewPayload = (res: any) => {
+const applyTemplatePreviewPayload = (res: any, reconcileViewInfo = false) => {
   preview.dashboardInfo = {
     id: res.id,
     name: res.name,
@@ -164,7 +168,12 @@ const applyTemplatePreviewPayload = (res: any) => {
   }
   preview.componentData = parseJson(res.component_data, [])
   preview.canvasStyleData = parseJson(res.canvas_style_data, {})
-  preview.canvasViewInfo = parseJson(res.canvas_view_info, {})
+  const nextCanvasViewInfo = parseJson(res.canvas_view_info, {})
+  if (reconcileViewInfo) {
+    reconcileDashboardViewInfo(preview.canvasViewInfo, nextCanvasViewInfo)
+  } else {
+    preview.canvasViewInfo = nextCanvasViewInfo
+  }
 }
 
 const syncTemplateListItem = (res: any) => {
@@ -202,10 +211,7 @@ const markPreviewChartsRefreshing = (refreshState = 'loading') => {
   Object.values(preview.canvasViewInfo || {}).forEach((item: any) => {
     if (!item || typeof item !== 'object') return
     if (item.sql === undefined && !item.chart) return
-    item.status = 'loading'
-    item.dataState = 'loading'
-    item.refreshState = refreshState
-    item.loadingProgress = 0
+    prepareDashboardChartRefreshState(item, refreshState === 'waiting' ? 'waiting' : 'loading')
   })
 }
 
@@ -264,9 +270,8 @@ const refreshTemplateCharts = async (
     if (!isActiveTemplateRequest(id, requestSeq)) {
       return
     }
-    applyTemplatePreviewPayload(res)
+    applyTemplatePreviewPayload(res, true)
     syncTemplateListItem(res)
-    previewKey.value += 1
     if (!options.silent) {
       ElMessage.success(t('dashboard.chart_refresh_success'))
     }
@@ -274,8 +279,7 @@ const refreshTemplateCharts = async (
     if (!isActiveTemplateRequest(id, requestSeq)) {
       return
     }
-    preview.canvasViewInfo = previousCanvasViewInfo
-    previewKey.value += 1
+    reconcileDashboardViewInfo(preview.canvasViewInfo, previousCanvasViewInfo)
     if (!options.silent) {
       ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
     }
@@ -478,6 +482,7 @@ onBeforeUnmount(() => {
         <SQPreviewHead
           :dashboard-info="hasPreview ? preview.dashboardInfo : {}"
           :component-data="preview.componentData"
+          :canvas-style-data="preview.canvasStyleData"
           :canvas-view-info="preview.canvasViewInfo"
           platform-template
         />

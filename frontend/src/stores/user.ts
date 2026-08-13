@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 // import { ref } from 'vue'
 import { AuthApi } from '@/api/login'
 import { tenantApi, type TenantInfo } from '@/api/tenant'
+import { formatRequestErrorMessage, type FullRequestConfig } from '@/utils/request'
 import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
@@ -16,6 +17,9 @@ import {
   canManageCurrentWorkspace,
   normalizeWorkspaceRole,
 } from '@/utils/workspacePermission'
+import { workspaceContext, workspaceContextState } from '@/utils/workspaceContext'
+import { clearWorkspaceSelectorCaches } from '@/utils/requestDedupe'
+import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 
 const { wsCache } = useCache()
 
@@ -42,6 +46,61 @@ interface UserState {
   tenantLoading: boolean
   platformInfo: any | null
   [key: string]: string | number | any | null
+}
+
+interface UserInfoDto extends Record<string, unknown> {
+  id?: string | number
+  tenant_id?: string | number
+}
+
+interface WorkspaceStoreSnapshot {
+  tenantId: string
+  tenantPublicId: string
+  tenantName: string
+  tenantRole: string
+  workspaceRole: string
+  hasWorkspace: boolean
+  workspaceStatus: string
+  datasourceId?: number
+}
+
+const captureWorkspaceStoreSnapshot = (
+  user: UserState,
+  datasourceId?: number
+): WorkspaceStoreSnapshot => ({
+  tenantId: user.tenantId,
+  tenantPublicId: user.tenantPublicId,
+  tenantName: user.tenantName,
+  tenantRole: user.tenantRole,
+  workspaceRole: user.workspaceRole,
+  hasWorkspace: user.hasWorkspace,
+  workspaceStatus: user.workspaceStatus,
+  datasourceId,
+})
+
+const restoreWorkspaceStoreSnapshot = (
+  user: UserState,
+  snapshot: WorkspaceStoreSnapshot
+) => {
+  user.tenantId = snapshot.tenantId
+  user.tenantPublicId = snapshot.tenantPublicId
+  user.tenantName = snapshot.tenantName
+  user.tenantRole = snapshot.tenantRole
+  user.workspaceRole = snapshot.workspaceRole
+  user.hasWorkspace = snapshot.hasWorkspace
+  user.workspaceStatus = snapshot.workspaceStatus
+}
+
+const assertUserInfoTenant = (userInfo: UserInfoDto, expectedTenantId: string) => {
+  const responseTenantId = String(userInfo.tenant_id || '')
+  if (responseTenantId !== expectedTenantId) {
+    throw new Error('目标工作空间校验失败，请刷新后重试')
+  }
+}
+
+const emitWorkspaceChanged = (tenantId: string) => {
+  useEmitt().emitter.emit('datasource-context-change', null)
+  emitWorkspaceContextChange({ tenantId, phase: 'changed' })
 }
 
 export const UserStore = defineStore('user', {
@@ -164,7 +223,12 @@ export const UserStore = defineStore('user', {
   actions: {
     async login(formData: { username: string; password: string }) {
       const res: any = await AuthApi.login(formData)
-      this.setToken(res.access_token)
+      this.startAuthenticatedSession(res.access_token)
+    },
+
+    startAuthenticatedSession(token: string) {
+      this.clear()
+      this.setToken(token)
     },
 
     async logout() {
@@ -195,58 +259,54 @@ export const UserStore = defineStore('user', {
       return null
     },
 
-    async info() {
-      const res: any = await AuthApi.info()
-      const res_data = res || {}
-
-      const keys = [
-        'uid',
-        'account',
-        'name',
-        'language',
-        'exp',
-        'time',
-        'origin',
-        'systemRole',
-        'globalRole',
-        'isSystemAdmin',
-        'tenantId',
-        'tenantPublicId',
-        'tenantName',
-        'tenantRole',
-        'workspaceRole',
-        'hasWorkspace',
-        'workspaceStatus',
-      ] as const
-
-      keys.forEach((key) => {
-        const dkey =
-          key === 'uid' ? 'id' : key === 'systemRole' ? 'system_role' : key === 'isSystemAdmin' ? 'isAdmin' : key
-        const tenantKeyMap: Record<string, string> = {
-          tenantId: 'tenant_id',
-          tenantPublicId: 'tenant_public_id',
-          tenantName: 'tenant_name',
-          tenantRole: 'tenant_role',
-          workspaceRole: 'workspace_role',
-          hasWorkspace: 'has_workspace',
-          workspaceStatus: 'workspace_status',
-          globalRole: 'global_role',
-        }
-        const resolvedKey = tenantKeyMap[key] || dkey
-        const rawValue = res_data[resolvedKey]
-        const value = rawValue ?? ''
-        if (key === 'exp' || key === 'time' || key === 'origin') {
-          this[key] = Number(value)
-        } else if (key === 'isSystemAdmin' || key === 'hasWorkspace') {
-          this[key] = Boolean(value)
-        } else {
-          this[key] = String(value)
-        }
-        wsCache.set('user.' + key, value)
+    async requestInfo(config?: FullRequestConfig): Promise<UserInfoDto> {
+      const res = await AuthApi.info(config)
+      return (res || {}) as UserInfoDto
+    },
+    applyInfo(res: UserInfoDto) {
+      const identityValues = {
+        uid: String(res.id ?? ''),
+        account: String(res.account ?? ''),
+        name: String(res.name ?? ''),
+        language: String(res.language ?? ''),
+        exp: Number(res.exp ?? 0),
+        time: Number(res.time ?? 0),
+        origin: Number(res.origin ?? 0),
+        systemRole: String(res.system_role ?? ''),
+        globalRole: String(res.global_role ?? ''),
+        isSystemAdmin: Boolean(res.isAdmin),
+      }
+      Object.assign(this, identityValues)
+      Object.entries(identityValues).forEach(([key, value]) => {
+        wsCache.set(`user.${key}`, value)
       })
 
+      this.tenantId = String(res.tenant_id ?? '')
+      this.tenantPublicId = String(res.tenant_public_id ?? '')
+      this.tenantName = String(res.tenant_name ?? '')
+      this.tenantRole = String(res.tenant_role ?? '')
+      this.workspaceRole = String(res.workspace_role ?? res.tenant_role ?? '')
+      this.hasWorkspace = Boolean(res.has_workspace)
+      this.workspaceStatus = String(res.workspace_status ?? 'workspace_required')
       this.setLanguage(this.language)
       this.platformInfo = wsCache.get('user.platformInfo')
+    },
+    async info() {
+      const delegateSession = isPlatformWorkspaceDelegateSession()
+      const bootstrapping = workspaceContextState.phase === 'bootstrapping'
+      const workspaceMode = delegateSession ? 'none' : bootstrapping ? 'bootstrap' : 'normal'
+      const res = await this.requestInfo({ requestOptions: { workspaceMode } })
+      const serverTenantId = String(res.tenant_id || '')
+
+      if (!delegateSession && (bootstrapping || String(res.workspace_status || '') === 'platform_admin')) {
+        const resolution = workspaceContext.completeBootstrap(serverTenantId)
+        if (resolution.replaced) {
+          ElMessage.warning('当前标签页保存的工作空间已不可用，已切换到可访问的工作空间')
+        }
+      } else if (delegateSession && bootstrapping) {
+        workspaceContext.completeBootstrap(workspaceContextState.activeTenantId)
+      }
+      this.applyInfo(res)
     },
     async loadTenants(force = false): Promise<TenantInfo[]> {
       if (this.tenantLoading) {
@@ -276,45 +336,64 @@ export const UserStore = defineStore('user', {
             : []
           return this.tenants
         }
-        if (this.isSystemAdminUser) {
-          this.setTenant(null)
-        } else if (!this.tenantId && this.tenants.length > 0) {
-          this.setTenant(this.tenants[0])
-        } else if (this.tenantId && !this.tenants.some((tenant) => String(tenant.id) === String(this.tenantId))) {
-          this.setTenant(null)
-        }
         return this.tenants
       } finally {
         this.tenantLoading = false
       }
     },
-    async switchTenant(tenantId: string | number): Promise<void> {
-      const nextTenantId = String(tenantId || '')
-      if (!nextTenantId || nextTenantId === String(this.tenantId || '')) {
-        return
-      }
-      const previousTenant: TenantInfo = {
-        id: this.tenantId,
-        public_id: this.tenantPublicId,
-        name: this.tenantName,
-        role: this.tenantRole,
-      }
-      const targetTenant =
-        this.tenants.find((tenant) => String(tenant.id) === nextTenantId) || ({
-          id: nextTenantId,
-          name: '',
-          role: '',
-        } as TenantInfo)
-      this.setTenant(targetTenant)
+    async switchTenant(tenantId: string | number): Promise<boolean> {
+      const { useDatasourceContextStore } = await import('./datasourceContext')
+      const datasourceContext = useDatasourceContextStore()
+      const previous = captureWorkspaceStoreSnapshot(this, datasourceContext.datasourceId)
+      const transaction = workspaceContext.beginSwitch(String(tenantId || ''))
+      if (!transaction) return false
+
       try {
-        if (this.token || wsCache.get('user.token')) {
-          await this.info()
-          await this.loadTenants(true)
-        }
+        if (!workspaceContext.isCurrentSwitch(transaction)) return false
+        emitWorkspaceContextChange({ tenantId: transaction.targetTenantId, phase: 'changing' })
+        clearWorkspaceSelectorCaches()
+        datasourceContext.clear(false)
+        const userInfo = await this.requestInfo({
+          requestOptions: {
+            workspaceMode: 'switch',
+            customError: true,
+            workspaceTenantId: transaction.targetTenantId,
+            workspaceSwitchId: transaction.switchId,
+          },
+        })
+        assertUserInfoTenant(userInfo, transaction.targetTenantId)
+        if (!workspaceContext.commitSwitch(transaction)) return false
+        this.applyInfo(userInfo)
+        await datasourceContext.loadDatasources(true, {
+          tenantId: transaction.targetTenantId,
+          workspaceSwitchId: transaction.switchId,
+        })
+        if (!workspaceContext.finishSwitch(transaction)) return false
+        emitWorkspaceChanged(transaction.targetTenantId)
+        return true
       } catch (error) {
-        this.setTenant(previousTenant)
-        throw error
+        if (!workspaceContext.isCurrentSwitch(transaction)) return false
+        restoreWorkspaceStoreSnapshot(this, previous)
+        workspaceContext.rollbackSwitch(transaction)
+        try {
+          await datasourceContext.loadDatasources(true)
+          datasourceContext.setDatasourceById(previous.datasourceId, false)
+        } catch (restoreError) {
+          console.warn('Failed to restore datasource after workspace switch', restoreError)
+        }
+        emitWorkspaceChanged(previous.tenantId)
+        ElMessage.error(formatRequestErrorMessage(error, '工作空间切换失败'))
+        return false
       }
+    },
+    async clearActiveTenant(): Promise<void> {
+      const { useDatasourceContextStore } = await import('./datasourceContext')
+      emitWorkspaceContextChange({ tenantId: '', phase: 'changing' })
+      clearWorkspaceSelectorCaches()
+      workspaceContext.clearActiveTenant()
+      this.setTenant(null)
+      useDatasourceContextStore().clear(false)
+      emitWorkspaceChanged('')
     },
     setTenant(tenant: Partial<TenantInfo> | null) {
       const tenantId = tenant?.id ? String(tenant.id) : ''
@@ -334,13 +413,6 @@ export const UserStore = defineStore('user', {
           : tenantId
             ? 'active'
             : 'workspace_required'
-      wsCache.set('user.tenantId', tenantId)
-      wsCache.set('user.tenantPublicId', tenantPublicId)
-      wsCache.set('user.tenantName', tenantName)
-      wsCache.set('user.tenantRole', tenantRole)
-      wsCache.set('user.workspaceRole', tenantRole)
-      wsCache.set('user.hasWorkspace', this.hasWorkspace)
-      wsCache.set('user.workspaceStatus', this.workspaceStatus)
     },
     async enterPlatformWorkspaceDelegate(tenant: PlatformWorkspaceDelegateTenant): Promise<void> {
       if (!setPlatformWorkspaceDelegateContext(tenant)) return
@@ -417,6 +489,8 @@ export const UserStore = defineStore('user', {
     },
     clear() {
       clearPlatformWorkspaceDelegateContext()
+      workspaceContext.clear()
+      clearWorkspaceSelectorCaches()
       const keys: string[] = [
         'token',
         'uid',

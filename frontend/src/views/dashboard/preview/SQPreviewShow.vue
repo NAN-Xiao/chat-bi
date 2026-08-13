@@ -35,12 +35,17 @@ import {
   nextDashboardRefreshDelayMs,
 } from '@/views/dashboard/utils/dashboardRefreshPolicy'
 import {
+  hasDashboardChartRows,
+  hasDashboardChartSnapshot,
+  prepareDashboardChartRefreshState,
+} from '@/views/dashboard/utils/dashboardChartLifecycle'
+import {
   createPermissionDeniedChartRegistry,
   dashboardChartFailureResultFromError,
   dashboardCacheRefreshDisposition,
   nextDashboardChartRetryDelayMs,
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
-  shouldRetryDashboardChartFailure,
+  shouldKeepDashboardChartPending,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
 import {
   applyDashboardDateFilterCapability,
@@ -249,21 +254,12 @@ function collectDashboardCharts(items: any[], entries: Array<{ component: any; v
   return entries
 }
 
-function hasChartSnapshot(viewInfo: any) {
-  const rows = viewInfo?.data?.data
-  return Array.isArray(rows) && rows.length > 0
-}
-
 function hasChartShape(viewInfo: any) {
   return (
-    hasChartSnapshot(viewInfo) ||
+    hasDashboardChartSnapshot(viewInfo) ||
     (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
     (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
   )
-}
-
-function hasUsableChartSnapshot(viewInfo: any) {
-  return hasChartSnapshot(viewInfo)
 }
 
 function isExternalSnapshotChart(viewInfo: any) {
@@ -275,7 +271,10 @@ function hasUsableResultSnapshot(result: any) {
     return false
   }
   const rows = result?.data
-  return Array.isArray(rows) && rows.length > 0
+  return (
+    (Array.isArray(rows) && rows.length > 0) ||
+    (Array.isArray(result?.fields) && result.fields.length > 0)
+  )
 }
 
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
@@ -287,25 +286,6 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   }
   viewInfo.snapshotRefreshedAt = refreshedAt
   viewInfo.data.snapshotRefreshedAt = refreshedAt
-}
-
-function clearPendingChartData(viewInfo: any, refreshState = 'waiting') {
-  if (!viewInfo) {
-    return
-  }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
-  }
-  viewInfo.data.data = []
-  viewInfo.data.fields = []
-  viewInfo.fields = []
-  viewInfo.status = 'loading'
-  viewInfo.message = ''
-  delete viewInfo.error_type
-  delete viewInfo.reason
-  viewInfo.dataState = 'loading'
-  setChartLoadingProgress(viewInfo, 0, true)
-  viewInfo.refreshState = refreshState
 }
 
 function normalizePermissionDeniedChart(viewInfo: any) {
@@ -407,7 +387,7 @@ function applyChartResult(viewInfo: any, result: any) {
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
   const previousDataFields = Array.isArray(viewInfo?.data?.fields) ? [...viewInfo.data.fields] : []
   const previousFields = Array.isArray(viewInfo?.fields) ? [...viewInfo.fields] : []
-  const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+  const hasPreviousRows = hasDashboardChartRows(viewInfo)
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
     viewInfo.data = {}
   }
@@ -416,7 +396,7 @@ function applyChartResult(viewInfo: any, result: any) {
   viewInfo.fields = fields
   viewInfo.status = result?.status || 'success'
   viewInfo.message = result?.message || ''
-  if (viewInfo.status === 'failed' && hasPreviousSnapshot && !isPermissionDeniedResult(result)) {
+  if (viewInfo.status === 'failed' && hasPreviousRows && !isPermissionDeniedResult(result)) {
     viewInfo.data.fields = previousDataFields
     viewInfo.data.data = previousData
     viewInfo.fields = previousFields
@@ -473,7 +453,7 @@ function keepChartSnapshotState(viewInfo: any) {
 }
 
 function keepChartSnapshotOrLoading(viewInfo: any) {
-  if (hasUsableChartSnapshot(viewInfo)) {
+  if (hasDashboardChartSnapshot(viewInfo)) {
     keepChartSnapshotState(viewInfo)
   } else {
     keepChartLoadingState(viewInfo, 'loading')
@@ -484,7 +464,7 @@ function failChartWithoutSnapshot(viewInfo: any, result?: any) {
   if (!viewInfo) {
     return
   }
-  if (hasUsableChartSnapshot(viewInfo)) {
+  if (hasDashboardChartSnapshot(viewInfo)) {
     keepChartSnapshotState(viewInfo)
     return
   }
@@ -520,7 +500,7 @@ function prepareChartDatabaseRefreshState(viewInfo: any) {
   viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
   viewInfo.message = ''
   viewInfo.refreshState = ''
-  if (hasUsableChartSnapshot(viewInfo)) {
+  if (hasDashboardChartSnapshot(viewInfo)) {
     viewInfo.status = 'success'
     viewInfo.dataState = 'ready'
     viewInfo.loadingProgress = 100
@@ -543,13 +523,7 @@ function prepareChartPreviewState(viewInfo: any) {
   if (!canLookupChartCache(viewInfo)) {
     return
   }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
-  }
-  viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
-  viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
-  viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
-  clearPendingChartData(viewInfo, 'waiting')
+  prepareDashboardChartRefreshState(viewInfo, 'waiting')
 }
 
 function chartSqlPayload(viewInfo: any) {
@@ -684,7 +658,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     chartEntries.forEach((entry) => {
       if (
         isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
-        && !hasChartSnapshot(entry.viewInfo)
+        && !hasDashboardChartSnapshot(entry.viewInfo)
       ) {
         keepChartLoadingState(entry.viewInfo, 'waiting')
       }
@@ -772,7 +746,14 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
             permissionDeniedCharts.mark(entry)
             applyChartResult(viewInfo, result)
           } else {
-            if (shouldRetryDashboardChartFailure(result, hasUsableChartSnapshot(viewInfo))) {
+            if (
+              shouldKeepDashboardChartPending(
+                result,
+                hasDashboardChartRows(viewInfo),
+                chartRefreshRetryCount,
+                CHART_TRANSIENT_MAX_RETRIES
+              )
+            ) {
               keepChartSnapshotOrLoading(viewInfo)
               transientPendingCount += 1
             } else {
@@ -796,7 +777,14 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
           const failureResult = dashboardChartFailureResultFromError(error)
-          if (shouldRetryDashboardChartFailure(failureResult, hasUsableChartSnapshot(viewInfo))) {
+          if (
+            shouldKeepDashboardChartPending(
+              failureResult,
+              hasDashboardChartRows(viewInfo),
+              chartRefreshRetryCount,
+              CHART_TRANSIENT_MAX_RETRIES
+            )
+          ) {
             keepChartSnapshotOrLoading(viewInfo)
             transientPendingCount += 1
           } else {
@@ -1078,6 +1066,7 @@ defineExpose({
         <SQPreviewHead
           :dashboard-info="previewShowFlag ? state.dashboardInfo : {}"
           :component-data="state.canvasDataPreview"
+          :canvas-style-data="state.canvasStylePreview"
           :canvas-view-info="state.canvasViewInfoPreview"
           :get-report-context-snapshots="getDashboardReportContextSnapshots"
           @reload="reload"

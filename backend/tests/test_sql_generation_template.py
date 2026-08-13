@@ -13,6 +13,37 @@ def test_multi_table_rule_restricts_aliases_to_current_query_block() -> None:
     assert "不得引用子查询内部的表别名" in rule
 
 
+def test_first_generation_rule_requires_complete_and_unique_aliases() -> None:
+    rule = get_base_template()["template"]["sql"]["multi_table_condition"]
+
+    assert "每个FROM/JOIN来源都必须使用唯一且不重复的来源别名" in rule
+    assert "必须使用AS声明明确、稳定且在该输出列表中唯一的列别名" in rule
+    assert "同一SELECT输出列表不得产生重复列名或重复列别名" in rule
+    assert "如果同名列都要输出，必须分别声明不同的输出别名" in rule
+    assert "不得在同一查询块的WHERE或JOIN ON中引用该SELECT刚定义的输出别名" in rule
+
+
+def test_first_generation_rule_requires_recursive_cte_column_contract() -> None:
+    rule = get_base_template()["template"]["sql"]["multi_table_condition"]
+
+    assert "MySQL/AnalyticDB 兼容数据源默认禁止生成 WITH RECURSIVE" in rule
+    assert "当前数据源能力元数据明确声明且已有执行样例验证支持递归 CTE" in rule
+    assert "只有自引用 CTE" in rule
+    assert "锚点分支与递归分支的投影数量、顺序和逐列别名一致" in rule
+
+
+def test_alias_integrity_rule_is_in_first_generation_prompt() -> None:
+    rules = AiModelQuestion(
+        engine="MySQL 8.0",
+        db_schema="【DB_ID】 test\n【Schema】",
+    ).sql_sys_question("mysql")["rules"]
+
+    assert "查询块与输出别名完整性规则" in rules
+    assert "每个FROM/JOIN来源都必须使用唯一且不重复的来源别名" in rules
+    assert "同一SELECT输出列表不得产生重复列名或重复列别名" in rules
+    assert "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE" in rules
+
+
 def test_mysql_first_generation_prompt_requires_matching_date_group_expression() -> None:
     rules = AiModelQuestion(
         engine="MySQL 8.0",
@@ -45,6 +76,24 @@ def test_first_generation_prompt_requires_date_filter_for_filtered_category_summ
     assert "只有 SQL 完全不使用日期范围筛选和看板日期 token" in rules
     assert "固定 metric 图表不得返回 date_filter，也不得使用看板日期 token" in rules
     assert "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW" in rules
+    assert "即使用户没有明确给出时间窗口，也必须生成完整 date_filter" in rules
+    assert "past_7_days" in rules
+
+
+def test_first_generation_prompt_requires_complete_time_scaffold_and_zero_fill() -> None:
+    rules = AiModelQuestion(
+        engine="MySQL 8.0",
+        db_schema="【DB_ID】 test\n【Schema】",
+    ).sql_sys_question("mysql")["rules"]
+
+    assert "必须先生成覆盖起止边界的独立时间骨架" in rules
+    assert "时间骨架 CROSS JOIN 分类集合" in rules
+    assert "LEFT JOIN 回填" in rules
+    assert "COALESCE(聚合指标, 0)" in rules
+    assert "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE" in rules
+    assert "只有自引用 CTE 需要" in rules
+    assert "不得把物理事实表直接按日期、小时或周范围 JOIN 到时间骨架" in rules
+    assert "不要把 date_series、calendar、numbers 等查询块名称当成物理表" in rules
 
 
 def test_mysql_prompt_requires_backticks_for_chinese_output_aliases() -> None:

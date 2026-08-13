@@ -4,6 +4,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
+from apps.chat.task import llm
+
 
 def _load_migration(filename: str = "146_platform_sql_grouping_data_skill.py"):
     module_path = (
@@ -166,3 +170,469 @@ def test_alias_quoting_followup_supports_offline_sql(monkeypatch) -> None:
 
     assert len(statements) == 1
     assert "POSTCOMPILE_alias_section" in str(statements[0])
+
+
+def test_daily_zero_fill_followup_contains_enforceable_platform_rule() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+
+    assert migration.down_revision == "152platformsqlaliasquote"
+    assert "platform-foundation-skill:daily-zero-fill:v1" in migration.ZERO_FILL_SECTION
+    assert "dashboard_start_yyyymmdd" in migration.ZERO_FILL_SECTION
+    assert "dashboard_end_yyyymmdd" in migration.ZERO_FILL_SECTION
+    assert "CROSS JOIN" in migration.ZERO_FILL_SECTION
+    assert "LEFT JOIN" in migration.ZERO_FILL_SECTION
+    assert "COALESCE(指标, 0)" in migration.ZERO_FILL_SECTION
+    assert migration.ZERO_FILL_VALIDATION_RULES[1]["when_sql_patterns"] == [r"\bgroup\s+by\b[^;]*,"]
+
+
+def test_daily_zero_fill_platform_rule_rejects_fact_only_grouping_sql() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+    sql = """
+        SELECT e.dt AS `日期`,
+               COALESCE(NULLIF(e.channel, ''), '未知') AS `渠道`,
+               COUNT(DISTINCT e.uid) AS `新增用户数`
+        FROM event e
+        WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        GROUP BY e.dt, COALESCE(NULLIF(e.channel, ''), '未知')
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "最近14天各投放渠道每日新增用户趋势如何？",
+        sql,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "连续日期序列" in violation.message
+
+
+def test_daily_zero_fill_platform_rule_requires_date_dimension_scaffold() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+    sql_without_dimension_scaffold = """
+        WITH calendar AS (
+            SELECT DATE_ADD(
+                STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                INTERVAL day_offset DAY
+            ) AS dt
+            FROM day_offsets
+        ), metrics AS (
+            SELECT dt, channel, COUNT(DISTINCT uid) AS value
+            FROM event
+            GROUP BY dt, channel
+        )
+        SELECT c.dt, COALESCE(m.value, 0) AS value
+        FROM calendar c
+        LEFT JOIN metrics m ON m.dt = c.dt
+        WHERE c.dt <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "最近14天各投放渠道每日新增用户趋势如何？",
+        sql_without_dimension_scaffold,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "CROSS JOIN" in violation.message
+
+
+def test_daily_zero_fill_platform_rule_accepts_complete_scaffold() -> None:
+    migration = _load_migration("153_platform_daily_zero_fill_data_skill.py")
+    sql = """
+        WITH calendar AS (
+            SELECT DATE_ADD(
+                STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                INTERVAL day_offset DAY
+            ) AS dt
+            FROM day_offsets
+        ), dimensions AS (
+            SELECT DISTINCT channel FROM event
+        ), metrics AS (
+            SELECT dt, channel, COUNT(DISTINCT uid) AS value
+            FROM event
+            GROUP BY dt, channel
+        )
+        SELECT c.dt, d.channel, COALESCE(m.value, 0) AS value
+        FROM calendar c
+        CROSS JOIN dimensions d
+        LEFT JOIN metrics m ON m.dt = c.dt AND m.channel = d.channel
+        WHERE c.dt <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')
+    """
+
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "最近14天各投放渠道每日新增用户趋势如何？",
+            sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "最近14天各投放渠道每日新增用户趋势如何？",
+            sql.replace("COALESCE(m.value, 0)", 'COALESCE(m."value", 0)'),
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "最近14天各渠道累计新增用户数",
+            "SELECT channel, COUNT(*) FROM event GROUP BY channel",
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+
+
+def test_hourly_zero_fill_followup_uses_generic_dimension_rule() -> None:
+    migration = _load_migration("154_platform_hourly_zero_fill_data_skill.py")
+
+    assert migration.down_revision == "153platformdailyzerofill"
+    assert "platform-foundation-skill:hourly-zero-fill:v1" in migration.ZERO_FILL_SECTION
+    assert migration.ZERO_FILL_VALIDATION_RULES[1]["when_sql_has_non_time_group_by"] is True
+    assert migration.ZERO_FILL_VALIDATION_RULES[3]["when_sql_has_non_time_group_by"] is True
+    assert migration.ZERO_FILL_VALIDATION_RULES[1]["required_outer_select_cross_join"] is True
+    assert migration.ZERO_FILL_VALIDATION_RULES[3]["required_outer_select_cross_join"] is True
+    assert "时间字段之外的任意分组维度" in migration.ZERO_FILL_SECTION
+    assert "当天 `00:00` 到该最大事件时间所在小时" in migration.ZERO_FILL_SECTION
+    assert "对当前数据源 Schema 配置的事实 `time` 字段取 `MAX`" in migration.ZERO_FILL_SECTION
+    assert "不得使用 `CURRENT_DATE`" in migration.ZERO_FILL_SECTION
+
+
+def test_mysql_unsigned_compatibility_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    migration = _load_migration("155_platform_mysql_unsigned_compatibility_data_skill.py")
+
+    assert migration.down_revision == "154platformhourlyzerofill"
+    assert "platform-foundation-skill:mysql-unsigned-compat:v1" in migration.ZERO_FILL_SECTION
+    assert "CAST(... AS UNSIGNED)" in migration.ZERO_FILL_SECTION
+    assert "SIGNED" in migration.ZERO_FILL_SECTION
+    assert "DECIMAL" in migration.ZERO_FILL_SECTION
+    assert "JSON 数值字段" in migration.ZERO_FILL_SECTION
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert "embedding = NULL" in statement
+    assert "embedding_signature = NULL" in statement
+    assert "unsigned_marker" in params
+    assert params["section"] == migration.ZERO_FILL_SECTION
+
+
+def test_recursive_cte_week_compatibility_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    migration = _load_migration("156_platform_recursive_cte_week_interval_data_skill.py")
+
+    assert migration.down_revision == "155platformmysqlunsignedcompat"
+    assert "platform-foundation-skill:recursive-cte-week-compat:v1" in migration.SECTION
+    assert "每个 CTE 都必须写完整列清单" in migration.SECTION
+    assert "INTERVAL <列或表达式> WEEK" in migration.SECTION
+    assert "INTERVAL (week_offset * 7) DAY" in migration.SECTION
+    assert migration.VALIDATION_RULES[0]["forbidden_sql_patterns"]
+
+    assert llm._data_skill_sql_validation_violation(
+        "最近8周趋势",
+        "SELECT DATE_SUB(dt, INTERVAL 1 WEEK) AS week_start FROM events",
+        migration.SECTION,
+    ) is None
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+    migration.upgrade()
+
+
+def test_time_scaffold_performance_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    migration = _load_migration("157_platform_time_scaffold_performance_data_skill.py")
+
+    assert migration.down_revision == "156platformrecursivecteweek"
+    assert "platform-foundation-skill:time-scaffold-performance:v1" in migration.SECTION
+    assert "事实明细表必须先" in migration.SECTION
+    assert "不得把物理事实表直接按日期、小时或周范围 JOIN 到时间骨架" in migration.SECTION
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert params["section_marker"] == migration.SECTION_MARKER
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert params["section"] == migration.SECTION
+
+
+def test_date_function_commas_do_not_trigger_dimension_scaffold_rule() -> None:
+    migration = _load_migration("154_platform_hourly_zero_fill_data_skill.py")
+    sql = """
+        WITH calendar AS (
+            SELECT DATE_ADD(
+                STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                INTERVAL n DAY
+            ) AS dt
+            FROM params CROSS JOIN numbers
+        ), metrics AS (
+            SELECT DATE_FORMAT(e.dt, '%Y-%m-%d') AS dt, COUNT(*) AS value
+            FROM event e
+            GROUP BY DATE_FORMAT(e.dt, '%Y-%m-%d')
+        )
+        SELECT c.dt, COALESCE(m.value, 0) AS value
+        FROM calendar c
+        LEFT JOIN metrics m ON m.dt = c.dt
+        WHERE c.dt <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')
+    """
+
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "最近14天每日新增用户趋势",
+            sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+
+
+def test_any_non_time_dimension_requires_date_dimension_scaffold() -> None:
+    migration = _load_migration("154_platform_hourly_zero_fill_data_skill.py")
+    sql = """
+        WITH calendar AS (
+            SELECT DATE_ADD(
+                STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d'),
+                INTERVAL n DAY
+            ) AS dt
+            FROM numbers
+        ), metrics AS (
+            SELECT e.dt, e.region_code, COUNT(*) AS value
+            FROM event e
+            GROUP BY e.dt, e.region_code
+        )
+        SELECT c.dt, m.region_code, COALESCE(m.value, 0) AS value
+        FROM calendar c
+        LEFT JOIN metrics m ON m.dt = c.dt
+        WHERE c.dt <= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "最近14天每日各地区新增用户趋势",
+        sql,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "时间之外的分组维度" in violation.message
+
+
+def test_realtime_hourly_zero_fill_requires_continuous_hour_series() -> None:
+    migration = _load_migration("154_platform_hourly_zero_fill_data_skill.py")
+    incomplete_sql = """
+        SELECT DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
+               COUNT(*) AS value
+        FROM event_realtime e
+        GROUP BY DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00')
+    """
+    complete_sql = """
+        WITH hour_offsets AS (
+            SELECT 0 AS hour_offset UNION ALL SELECT 1 UNION ALL SELECT 2
+        ), max_event_time AS (
+            SELECT MAX(e.time) AS max_time
+            FROM event_realtime e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        ), hour_series AS (
+            SELECT h.hour_offset AS hour_index
+            FROM hour_offsets h CROSS JOIN max_event_time x
+            WHERE h.hour_offset <= HOUR(FROM_UNIXTIME(x.max_time / 1000))
+        ), hourly_metrics AS (
+            SELECT e.dt,
+                   HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_index,
+                   COUNT(*) AS value
+            FROM event_realtime e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+            GROUP BY e.dt, HOUR(FROM_UNIXTIME(e.time / 1000))
+        )
+        SELECT h.hour_index, COALESCE(m.value, 0) AS value
+        FROM hour_series h
+        LEFT JOIN hourly_metrics m ON m.hour_index = h.hour_index
+    """
+
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天实时每小时新增用户趋势",
+            incomplete_sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is not None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天实时每小时新增用户趋势",
+            complete_sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+    current_clock_sql = complete_sql.replace(
+        "MAX(e.time) AS max_time",
+        "CURRENT_TIMESTAMP AS max_time",
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天实时每小时新增用户趋势",
+            current_clock_sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is not None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "实时新增用户总数",
+            "SELECT COUNT(*) FROM event_realtime",
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "实时累计新增用户趋势",
+            incomplete_sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is not None
+    )
+
+
+def test_realtime_hourly_non_time_dimension_requires_cross_join() -> None:
+    migration = _load_migration("154_platform_hourly_zero_fill_data_skill.py")
+    sql = """
+        WITH max_event_time AS (
+            SELECT MAX(e.time) AS max_time
+            FROM event_realtime e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        ), hour_series AS (
+            SELECT h.hour_offset AS hour_index
+            FROM hour_offsets h CROSS JOIN max_event_time x
+            WHERE h.hour_offset <= HOUR(FROM_UNIXTIME(x.max_time / 1000))
+        ), hourly_metrics AS (
+            SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_index,
+                   e.region_code,
+                   COUNT(*) AS value
+            FROM event_realtime e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+            GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000)), e.region_code
+        )
+        SELECT h.hour_index, m.region_code, COALESCE(m.value, 0) AS value
+        FROM hour_series h
+        LEFT JOIN hourly_metrics m ON m.hour_index = h.hour_index
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "今天每小时各地区新增用户趋势",
+        sql,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "时间之外的分组维度" in violation.message
+
+
+def test_realtime_hourly_scope_followup_separates_freshness_from_hour_grain() -> None:
+    migration = _load_migration("158_platform_realtime_hourly_intent_scope.py")
+    hourly_migration = _load_migration("155_platform_mysql_unsigned_compatibility_data_skill.py")
+    updated_skill = hourly_migration.ZERO_FILL_SECTION.replace(
+        migration.OLD_HOURLY_MATCH,
+        migration.NEW_HOURLY_MATCH,
+    ).replace(
+        migration.OLD_HOURLY_GUIDANCE,
+        migration.NEW_HOURLY_GUIDANCE,
+    )
+    dimension_sql = """
+        SELECT channel, COUNT(*) AS value
+        FROM event_realtime
+        GROUP BY channel
+    """
+    incomplete_hourly_sql = """
+        SELECT HOUR(event_time) AS hour_index, COUNT(*) AS value
+        FROM event_realtime
+        GROUP BY HOUR(event_time)
+    """
+
+    assert migration.down_revision == "157platformtimescaffoldperf"
+    assert "\"实时\"" not in migration.NEW_HOURLY_MATCH
+    assert "\"实时趋势\"" in migration.NEW_HOURLY_MATCH
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "按渠道统计实时订单",
+            dimension_sql,
+            updated_skill,
+        )
+        is None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "实时订单按小时趋势",
+            incomplete_hourly_sql,
+            updated_skill,
+        )
+        is not None
+    )
+
+
+def test_realtime_sql_shape_followup_rejects_database_clock_and_recursive_hours() -> None:
+    migration = _load_migration("159_platform_realtime_sql_shape.py")
+
+    assert migration.down_revision == "158platformrealtimehourlyscope"
+    assert "platform-foundation-skill:realtime-sql-shape:v1" in migration.SECTION
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天实时付费金额",
+            "SELECT SUM(amount) FROM event_realtime WHERE dt = YEAR(UTC_TIMESTAMP())",
+            migration.SECTION,
+        )
+        is not None
+    )
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "实时付费按小时趋势",
+            "WITH RECURSIVE hours(h) AS (SELECT 0 UNION ALL SELECT h + 1 FROM hours) SELECT h FROM hours JOIN event_realtime e ON 1=1",
+            migration.SECTION,
+        )
+        is not None
+    )

@@ -58,11 +58,30 @@ def test_date_parameter_sql_infers_end_only_mode() -> None:
     ) is None
 
 
-def test_date_parameter_sql_rejects_start_only_mode() -> None:
+def test_date_parameter_sql_accepts_start_only_mode() -> None:
     assert validate_dashboard_date_parameter_sql(
         "select * from event where dt >= {{dashboard_start_yyyymmdd}}",
         "yyyymmdd_number",
-    ) == "incomplete_parameters"
+    ) is None
+
+
+@pytest.mark.parametrize("table_name", ["event", "event_realtime"])
+def test_start_only_date_filter_renders_identically_for_all_tables(table_name: str) -> None:
+    pivot = DashboardPivotRequest(time_field="dt")
+    date_filter = DashboardDateFilterRequest(parameter_type="yyyymmdd_number")
+
+    prepared = prepare_dashboard_date_filter(
+        f"select * from `{table_name}` where dt >= {{{{dashboard_start_yyyymmdd}}}}",
+        ds_type="mysql",
+        pivot=pivot,
+        date_filter=date_filter,
+        today=date(2026, 7, 29),
+    )
+
+    assert prepared.capability["status"] == "available"
+    assert prepared.capability["parameterMode"] == "start_only"
+    assert "20260715" in prepared.sql
+    assert "{{dashboard_start_yyyymmdd}}" not in prepared.sql
 
 
 def test_end_only_sql_does_not_need_pivot_date_parameter_mode() -> None:
@@ -82,6 +101,7 @@ def test_end_only_sql_does_not_need_pivot_date_parameter_mode() -> None:
     )
 
     assert prepared.capability["status"] == "available"
+    assert prepared.capability["parameterMode"] == "end_only"
     assert "20260728" in prepared.sql
 
 

@@ -1,4 +1,5 @@
 import { request } from '@/utils/request'
+import type { FullRequestConfig } from '@/utils/request'
 
 type DatasourceFieldListQuery = {
   fieldName?: string
@@ -13,7 +14,8 @@ export const datasourceApi = {
   add: (data: any) => request.post('/datasource/add', data),
   importToDb: (data: any) => request.post('/datasource/importToDb', data),
   list: () => request.get('/datasource/list'),
-  accessibleList: () => request.get('/datasource/accessible/list'),
+  accessibleList: (config?: FullRequestConfig) =>
+    request.get('/datasource/accessible/list', config),
   update: (data: any) => request.post('/datasource/update', data),
   delete: (id: number, name: string) => request.post(`/datasource/delete/${id}/${name}`),
   getTables: (id: number) => request.post(`/datasource/getTables/${id}`),

@@ -25,6 +25,8 @@ from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_DISPLAY_MESSAGE,
     PERMISSION_DENIED_RESULT_MESSAGE,
+    SqlPermissionScopeError,
+    SqlSchemaScopeError,
 )
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable, TableObj
@@ -2132,6 +2134,81 @@ def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
             raise AssertionError("hidden column query should be rejected")
 
 
+def test_sql_permission_scope_classifies_unknown_field_as_schema_error(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError, match="不存在或无法解析") as exc_info:
+            validate_sql_scope(session, current_user, ds, "select channel from orders")
+
+    assert exc_info.value.fields == ("channel",)
+
+
+def test_sql_permission_scope_treats_unchecked_field_as_denied(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.execute(text("UPDATE core_field SET checked = 0 WHERE field_name = 'amount'"))
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlPermissionScopeError, match="无权限字段") as exc_info:
+            validate_sql_scope(session, current_user, ds, "select amount from orders")
+
+    assert exc_info.value.fields == ("amount",)
+
+
+def test_sql_permission_scope_prioritizes_denied_field_over_unknown_field(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlPermissionScopeError, match="无权限字段") as exc_info:
+            validate_sql_scope(session, current_user, ds, "select amount, channel from orders")
+
+    assert exc_info.value.fields == ("amount",)
+
+
+def test_sql_permission_scope_distinguishes_unknown_and_denied_tables(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_table_deny_for_payments(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError, match="不存在的表"):
+            validate_sql_scope(session, current_user, ds, "select order_id from missing_orders")
+        with pytest.raises(SqlPermissionScopeError, match="无权限表"):
+            validate_sql_scope(session, current_user, ds, "select payment_id from payments")
+
+
 def test_sql_permission_scope_allows_cte_and_output_alias_columns(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
@@ -2306,6 +2383,156 @@ def test_sql_permission_scope_allows_values_cte_alias_columns(monkeypatch):
         )
 
     assert tables == {"orders"}
+
+
+def test_sql_permission_scope_allows_correlated_cte_and_table_function_columns(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9, ds_type="postgresql"))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        _statements, tables, _scope = validate_sql_scope(
+            session,
+            current_user,
+            ds,
+            """
+            WITH cohort AS (
+                SELECT order_id AS activity_date, order_id
+                FROM orders
+            ), retained AS (
+                SELECT c.activity_date, c.order_id, gs.day AS retain_day,
+                       EXISTS (
+                           SELECT 1
+                           FROM payments p
+                           WHERE p.payment_id = c.order_id + gs.day
+                       ) AS retained
+                FROM cohort c
+                CROSS JOIN generate_series(0, 7) AS gs(day)
+            )
+            SELECT activity_date, order_id, retain_day, retained
+            FROM retained
+            """,
+        )
+
+    assert tables == {"orders", "payments"}
+
+
+def test_sql_permission_scope_denies_correlated_hidden_physical_column(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlPermissionScopeError, match="无权限字段") as exc_info:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                SELECT o.order_id
+                FROM orders o
+                WHERE EXISTS (
+                    SELECT 1 FROM payments p WHERE p.payment_id = o.amount
+                )
+                """,
+            )
+
+    assert exc_info.value.fields == ("o.amount",)
+
+
+def test_sql_permission_scope_rejects_unknown_correlated_and_table_function_columns(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9, ds_type="postgresql"))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError) as exc_info:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                SELECT o.order_id, gs.missing_day
+                FROM orders o
+                CROSS JOIN generate_series(0, 7) AS gs(day)
+                WHERE EXISTS (
+                    SELECT 1 FROM payments p WHERE p.payment_id = o.missing_id
+                )
+                """,
+            )
+
+    assert exc_info.value.fields == ("gs.missing_day", "o.missing_id")
+
+
+def test_sql_permission_scope_does_not_trust_physical_table_column_aliases(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9, ds_type="postgresql"))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError) as exc_info:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                "SELECT o.made_up FROM orders AS o(made_up)",
+            )
+
+    assert exc_info.value.fields == ("o.made_up",)
+
+
+def test_sql_permission_scope_does_not_resolve_shadowed_alias_from_outer_scope(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(SqlSchemaScopeError) as exc_info:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                SELECT o.order_id
+                FROM orders o
+                WHERE EXISTS (
+                    SELECT 1 FROM payments o WHERE o.order_id = 1
+                )
+                """,
+            )
+
+    assert exc_info.value.fields == ("o.order_id",)
 
 
 def test_analysis_assistant_permission_failure_is_structured_and_sanitized(monkeypatch):

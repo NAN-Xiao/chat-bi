@@ -287,6 +287,7 @@ defineExpose({
             :canvas-id="tabItem.name"
             :readonly-template="readonlyTemplate"
             :platform-template="platformTemplate"
+            dashboard-layout-surface="tab"
             in-tab
           ></SQPreview>
           <DashboardEditor
@@ -302,6 +303,7 @@ defineExpose({
             :show-component-bar="showComponentBar"
             :can-edit-sql="canEditSql"
             :platform-template="platformTemplate"
+            dashboard-layout-surface="tab"
             in-tab
             @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
           >

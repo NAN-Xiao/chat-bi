@@ -32,6 +32,7 @@ from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
+from apps.system.crud.tenant import is_sample_workspace
 from apps.system.crud.tenant_usage import record_tenant_usage_detached, token_total
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
 from apps.system.crud.tracking_config import find_tracking_prompt_context
@@ -64,6 +65,11 @@ def _current_tenant_id(current_user: CurrentUser | None) -> int:
     做了什么：把用户上下文里的租户 ID 取出来，方便后面做权限和数据隔离。
     """
     return require_current_tenant_id(current_user)
+
+
+def _is_sample_workspace(session: SessionDep, current_user: CurrentUser | None) -> bool:
+    """保留聊天模块内部调用约定，统一委托给租户层判定。"""
+    return is_sample_workspace(session, current_user)
 
 
 def _same_tenant(row, current_user: CurrentUser | None) -> bool:
@@ -461,7 +467,7 @@ def _record_allowed_by_current_permissions(session: SessionDep, current_user: Cu
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    if not is_normal_user(current_user):
+    if not is_normal_user(current_user) or _is_sample_workspace(session, current_user):
         return True
 
     datasource_id = _row_value(row, "datasource")
@@ -498,7 +504,7 @@ def _record_requires_live_data_for_current_permissions(session: SessionDep, curr
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把聊天问数据和 Agent里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    if not is_normal_user(current_user):
+    if not is_normal_user(current_user) or _is_sample_workspace(session, current_user):
         return False
     datasource_id = _row_value(row, "datasource")
     sql = _row_value(row, "sql")

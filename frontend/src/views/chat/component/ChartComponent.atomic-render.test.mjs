@@ -30,13 +30,28 @@ assert.match(
 )
 assert.match(
   component,
-  /function scheduleRenderReady\(\) \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?!stagingLayerRef\.value[\s\S]*?!rerenderAfterStaging[\s\S]*?!renderTimer[\s\S]*?emit\('render-ready'\)/,
-  '首帧通知必须等到下一绘制帧确认没有 staging、待合并重绘或调度器'
+  /function hasActiveRenderedLayer\(\) \{[\s\S]*?activeLayerRef\.value[\s\S]*?!stagingLayerRef\.value[\s\S]*?hasRenderedOutput\(activeLayerRef\.value\)/,
+  '首帧通知需要以已提交且已有输出的 active layer 作为完成条件'
 )
 assert.match(
   component,
-  /function scheduleRenderChart\([\s\S]*?cancelPendingRenderReady\(\)/,
-  '任何新重绘请求都必须取消尚未发出的首帧通知'
+  /function scheduleRenderReady\(\) \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?hasActiveRenderedLayer\(\)[\s\S]*?emit\('render-ready'\)/,
+  '首帧通知只要已有可显示 active layer 就必须发出，不能被后续 resize 调度无限饿死'
+)
+assert.doesNotMatch(
+  component,
+  /function scheduleRenderReady\(\) \{[\s\S]*?!renderTimer[\s\S]*?emit\('render-ready'\)/,
+  '首帧 ready 不能等待 renderTimer 清空，否则连续 resize/watch 会让看板完整遮罩持续显示'
+)
+assert.match(
+  component,
+  /function scheduleRenderChart\([\s\S]*?if \(!hasActiveRenderedLayer\(\)\) \{\s*cancelPendingRenderReady\(\)\s*\}/,
+  '有已提交 active layer 时，新重绘请求不能取消尚未发出的首帧通知'
+)
+assert.doesNotMatch(
+  component,
+  /function scheduleRenderChart\(delay = 0, retry = 0, invalidate = false\) \{\s*cancelPendingRenderReady\(\)/,
+  'scheduleRenderChart 不能无条件取消首帧 ready'
 )
 assert.match(
   component,

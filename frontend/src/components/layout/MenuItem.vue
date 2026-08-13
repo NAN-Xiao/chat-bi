@@ -2,13 +2,12 @@
 import { h, defineComponent, onBeforeUnmount, ref } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 import { useRouter, useRoute } from 'vue-router'
-import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
+import { useEmitt } from '@/utils/useEmitt'
 import { useUserStore } from '@/stores/user'
-import { useDatasourceContextStore } from '@/stores/datasourceContext'
-import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
+import { enterCurrentWorkspaceAdmin } from '@/utils/workspaceAdminEntry'
 
 type IconNode = {
   tag: 'path' | 'circle' | 'rect' | 'ellipse' | 'polyline' | 'line'
@@ -212,8 +211,6 @@ const MenuItem = defineComponent({
     const router = useRouter()
     const route = useRoute()
     const userStore = useUserStore()
-    const datasourceContext = useDatasourceContextStore()
-    const dashboardStore = dashboardStoreWithOut()
     const analysisAssistantExpanded = ref(false)
     const emitter = useEmitt().emitter
     const updateAnalysisAssistantExpanded = (expanded: unknown) => {
@@ -243,7 +240,7 @@ const MenuItem = defineComponent({
         return
       }
       if (e.meta?.action === 'workspace-admin-entry') {
-        await enterWorkspaceAdmin(e.tenant)
+        await enterWorkspaceAdmin()
         return
       }
       if (index) {
@@ -251,33 +248,11 @@ const MenuItem = defineComponent({
       }
     }
 
-    const currentBusinessTenant = () => ({
-      id: userStore.getTenantId,
-      public_id: userStore.getTenantPublicId,
-      name: userStore.getTenantName,
-      role: userStore.getTenantRole,
-    })
-
-    const enterWorkspaceAdmin = async (tenant?: any) => {
-      const tenantId = String(tenant?.id || userStore.getTenantId || '')
-      if (!tenantId) return
-      rememberBusinessTenantBeforeAdmin(currentBusinessTenant())
-      try {
-        if (tenantId !== String(userStore.getTenantId || '')) {
-          emitWorkspaceContextChange({ tenantId, phase: 'changing' })
-          await userStore.switchTenant(tenantId)
-          datasourceContext.clear(true)
-          await datasourceContext.loadDatasources(true)
-          dashboardStore.canvasDataInit()
-          useEmitt().emitter.emit('datasource-context-change', null)
-          emitWorkspaceContextChange({ tenantId, phase: 'changed' })
-        }
-        router.push(resolveManagementHome(userStore))
-      } catch (error) {
-        emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
-        throw error
-      }
-    }
+    const enterWorkspaceAdmin = () =>
+      enterCurrentWorkspaceAdmin(userStore, {
+        remember: rememberBusinessTenantBeforeAdmin,
+        navigate: () => router.push(resolveManagementHome(userStore)),
+      })
 
     return () => {
       const { children, hidden, path } = props.menu

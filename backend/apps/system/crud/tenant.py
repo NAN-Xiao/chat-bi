@@ -5,6 +5,7 @@ import json
 
 from pydantic import BaseModel
 from sqlalchemy import column as sa_column, func, inspect, or_, table as sa_table
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, select
 
 from apps.datasource.crud.permission_scope import bump_semantic_scope_epoch
@@ -122,6 +123,16 @@ def normalize_tenant_role(role: str | None) -> str:
     if value in {TENANT_ROLE_OWNER, TENANT_ROLE_ADMIN, TENANT_ROLE_MEMBER}:
         return value
     return TENANT_ROLE_MEMBER
+
+
+def is_sample_workspace(session: Session, current_user) -> bool:
+    """判断当前请求是否处于平台提供的示例工作空间。"""
+    tenant_id = getattr(current_user, "tenant_id", None)
+    try:
+        tenant = session.get(TenantModel, int(tenant_id)) if tenant_id is not None else None
+    except (TypeError, ValueError, SQLAlchemyError):
+        tenant = None
+    return bool(tenant and str(getattr(tenant, "name", None) or "").strip() == SAMPLE_TENANT_NAME)
 
 
 def normalize_application_type(application_type: str | None) -> str:

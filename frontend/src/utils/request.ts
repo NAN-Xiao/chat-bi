@@ -13,33 +13,28 @@ import { getLocale, toLoginPage } from './utils'
 import { useAssistantStore } from '@/stores/assistant'
 import JSONBig from 'json-bigint'
 import {
-  getPlatformWorkspaceDelegateTenantId,
-  isPlatformWorkspaceDelegateSession,
+  assertPlatformWorkspaceDelegateSnapshot,
+  capturePlatformWorkspaceDelegateSnapshot,
+  clearPlatformWorkspaceDelegateContext,
   PLATFORM_WORKSPACE_DELEGATE_HEADER,
 } from '@/utils/platformWorkspaceDelegate'
+import type { PlatformWorkspaceDelegateRequestSnapshot } from '@/utils/platformWorkspaceDelegateCore'
+import { workspaceContext } from '@/utils/workspaceContext'
+import { clearWorkspaceSelectorCaches } from '@/utils/requestDedupe'
+import {
+  isWorkspaceContextStaleError,
+  type WorkspaceRequestMode,
+  type WorkspaceRequestSnapshot,
+} from '@/utils/workspaceContextCore'
 // import { i18n } from '@/i18n'
 // const t = i18n.global.t
 const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
-const TENANT_CONTEXT_HEADERS = {
-  id: 'x-shuzhi-current-tenant-id',
-  publicId: 'x-shuzhi-current-tenant-public-id',
-  name: 'x-shuzhi-current-tenant-name',
-  role: 'x-shuzhi-current-tenant-role',
-  status: 'x-shuzhi-current-workspace-status',
-}
+const TENANT_CONTEXT_HEADER = 'x-shuzhi-current-tenant-id'
 
 const readHeader = (response: AxiosResponse, name: string) => {
   const headers = response.headers || {}
   return String(headers[name] || headers[name.toLowerCase()] || '').trim()
-}
-
-const decodeHeader = (value: string) => {
-  try {
-    return decodeURIComponent(value || '')
-  } catch {
-    return value || ''
-  }
 }
 
 const HTML_ERROR_RESPONSE_PATTERN = /<\s*(?:!doctype|html|head|body|title|center|h[1-6])[\s>]/i
@@ -127,49 +122,6 @@ const showErrorMessage = (message: string) => {
   })
 }
 
-const syncTenantContextFromResponse = (response: AxiosResponse) => {
-  if (assistantStore.getToken) return
-  const tenantId = readHeader(response, TENANT_CONTEXT_HEADERS.id)
-  const workspaceStatus = decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.status))
-  if (!tenantId || workspaceStatus === 'platform_admin') return
-  if (tenantId === String(wsCache.get('user.tenantId') || '')) return
-
-  const tenant = {
-    id: tenantId,
-    public_id: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.publicId)),
-    name: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.name)),
-    role: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.role)),
-  }
-  wsCache.set('user.tenantId', tenant.id)
-  wsCache.set('user.tenantPublicId', tenant.public_id)
-  wsCache.set('user.tenantName', tenant.name)
-  wsCache.set('user.tenantRole', tenant.role)
-  wsCache.set('user.workspaceRole', tenant.role)
-  wsCache.set('user.hasWorkspace', workspaceStatus === 'active' || workspaceStatus === 'platform_workspace_delegate')
-  wsCache.set('user.workspaceStatus', workspaceStatus || 'active')
-
-  import('@/stores/user')
-    .then(({ useUserStore }) => {
-      const userStore = useUserStore()
-      userStore.setTenant(tenant)
-      return Promise.all([
-        import('@/stores/datasourceContext'),
-        import('@/utils/useEmitt'),
-      ])
-    })
-    .then(([{ useDatasourceContextStore }, { useEmitt, emitWorkspaceContextChange }]) => {
-      const datasourceContext = useDatasourceContextStore()
-      datasourceContext.clear(true)
-      return datasourceContext.loadDatasources(true).finally(() => {
-        useEmitt().emitter.emit('datasource-context-change', null)
-        emitWorkspaceContextChange({ tenantId, phase: 'changed' })
-      })
-    })
-    .catch((error) => {
-      console.warn('Failed to sync workspace context from response headers', error)
-    })
-}
-
 const pushAppRoute = async (route: any, fallbackHash: string) => {
   try {
     const { default: router } = await import('@/router')
@@ -178,6 +130,18 @@ const pushAppRoute = async (route: any, fallbackHash: string) => {
     console.warn('Failed to route inside app', error)
     window.location.hash = fallbackHash
   }
+}
+
+const invalidateAuthenticationSession = () => {
+  wsCache.delete('user.token')
+  clearPlatformWorkspaceDelegateContext()
+  workspaceContext.clear()
+  clearWorkspaceSelectorCaches()
+}
+
+const clearUserStore = async () => {
+  const { useUserStore } = await import('@/stores/user')
+  useUserStore().clear()
 }
 // Response data structure
 export interface ApiResponse<T = unknown> {
@@ -194,11 +158,61 @@ export interface RequestOptions {
   rawResponse?: boolean // Return raw Axios response
   customError?: boolean // Custom error handling
   retryCount?: number // Number of retry attempts
+  workspaceMode?: WorkspaceRequestMode
+  workspaceTenantId?: string
+  workspaceSwitchId?: number
 }
 
 // Merged request configuration
 export interface FullRequestConfig extends AxiosRequestConfig {
   requestOptions?: RequestOptions
+  __workspaceSnapshot?: WorkspaceRequestSnapshot
+  __platformDelegateSnapshot?: PlatformWorkspaceDelegateRequestSnapshot
+}
+
+const captureWorkspaceRequest = (
+  options: RequestOptions = {},
+  delegateSnapshot = capturePlatformWorkspaceDelegateSnapshot()
+) => {
+  const workspaceMode =
+    assistantStore.getToken || delegateSnapshot.active
+      ? 'none'
+      : options.workspaceMode || 'normal'
+  return workspaceContext.captureRequest(
+    workspaceMode,
+    options.workspaceTenantId,
+    options.workspaceSwitchId
+  )
+}
+
+const captureWorkspaceRequestConfig = (config: FullRequestConfig): FullRequestConfig => {
+  const delegateSnapshot = capturePlatformWorkspaceDelegateSnapshot()
+  const snapshot = captureWorkspaceRequest(config.requestOptions, delegateSnapshot)
+  const headers: Record<string, any> = { ...(config.headers || {}) }
+  if (delegateSnapshot.active) {
+    headers['X-SHUZHI-TENANT-ID'] = delegateSnapshot.tenantId
+    headers[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
+  } else if (snapshot.tenantId && snapshot.mode !== 'none') {
+    headers['X-SHUZHI-TENANT-ID'] = snapshot.tenantId
+  }
+  return {
+    ...config,
+    headers: headers as AxiosRequestConfig['headers'],
+    __workspaceSnapshot: snapshot,
+    __platformDelegateSnapshot: delegateSnapshot,
+  }
+}
+
+const assertWorkspaceResponseConsumable = (
+  config?: FullRequestConfig,
+  response?: AxiosResponse
+) => {
+  const responseTenantId = response ? readHeader(response, TENANT_CONTEXT_HEADER) : ''
+  assertPlatformWorkspaceDelegateSnapshot(config?.__platformDelegateSnapshot, responseTenantId)
+  workspaceContext.assertConsumable(
+    config?.__workspaceSnapshot,
+    responseTenantId
+  )
 }
 
 // Custom error type
@@ -259,14 +273,6 @@ class HttpService {
         if (token && config.headers) {
           config.headers['X-SHUZHI-TOKEN'] = `Bearer ${token}`
         }
-        const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
-        const tenantId = delegateTenantId || wsCache.get('user.tenantId')
-        if (tenantId && config.headers) {
-          config.headers['X-SHUZHI-TENANT-ID'] = String(tenantId)
-        }
-        if (isPlatformWorkspaceDelegateSession() && config.headers) {
-          config.headers[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
-        }
         if (assistantStore.getToken) {
           const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
           config.headers['X-SHUZHI-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
@@ -317,7 +323,7 @@ class HttpService {
     this.instance.interceptors.response.use(
       (response: AxiosResponse) => {
         // console.log(`[Response] ${response.config.url}`, response.data)
-        syncTenantContextFromResponse(response)
+        assertWorkspaceResponseConsumable(response.config, response)
 
         // Return raw response if configured
         if ((response.config as FullRequestConfig).requestOptions?.rawResponse) {
@@ -338,6 +344,15 @@ class HttpService {
       async (error: AxiosError) => {
         const config = error.config as FullRequestConfig & { __retryCount?: number }
         const requestOptions = config?.requestOptions || {}
+
+        try {
+          assertWorkspaceResponseConsumable(config, error.response)
+        } catch (workspaceError) {
+          return Promise.reject(workspaceError)
+        }
+        if (isWorkspaceContextStaleError(error)) {
+          return Promise.reject(error)
+        }
 
         // Retry logic for specific status codes
         const shouldRetry =
@@ -364,6 +379,7 @@ class HttpService {
   }
 
   private handleError(error: AxiosError) {
+    if (isWorkspaceContextStaleError(error)) return
     let errorMessage = 'Request error'
     const hasUserToken = Boolean(wsCache.get('user.token'))
 
@@ -372,20 +388,29 @@ class HttpService {
       switch (error.response.status) {
         case 401:
           // Redirect to login page if needed
+          invalidateAuthenticationSession()
           if (assistantStore.getAssistant) {
-            wsCache.delete('user.token')
-            pushAppRoute(
-              `/401?title=${encodeURIComponent(errorMessage)}`,
-              `/401?title=${encodeURIComponent(errorMessage)}`
-            )
+            clearUserStore()
+              .catch((clearError) => {
+                console.warn('Failed to clear user session after 401', clearError)
+              })
+              .finally(() => {
+                pushAppRoute(
+                  `/401?title=${encodeURIComponent(errorMessage)}`,
+                  `/401?title=${encodeURIComponent(errorMessage)}`
+                )
+              })
             return
           }
           if (hasUserToken) {
             showErrorMessage(errorMessage)
           }
           setTimeout(() => {
-            wsCache.delete('user.token')
-            import('@/router')
+            clearUserStore()
+              .catch((clearError) => {
+                console.warn('Failed to clear user session after 401', clearError)
+              })
+              .then(() => import('@/router'))
               .then(({ default: router }) => {
                 const currentRoute = router.currentRoute.value
                 return router.push(toLoginPage(currentRoute?.fullPath || ''))
@@ -421,10 +446,15 @@ class HttpService {
 
   // Base request method
   public request<T = any>(config: FullRequestConfig): Promise<T> {
-    return this.instance.request({
-      cancelToken: this.cancelTokenSource.token,
-      ...config,
-    })
+    try {
+      const capturedConfig = captureWorkspaceRequestConfig(config)
+      return this.instance.request({
+        cancelToken: this.cancelTokenSource.token,
+        ...capturedConfig,
+      })
+    } catch (error) {
+      return Promise.reject(error)
+    }
   }
 
   // GET request
@@ -438,6 +468,8 @@ class HttpService {
   }
 
   public async fetchStream(url: string, data?: any, controller?: AbortController): Promise<any> {
+    const delegateSnapshot = capturePlatformWorkspaceDelegateSnapshot()
+    const workspaceSnapshot = captureWorkspaceRequest({}, delegateSnapshot)
     const token = wsCache.get('user.token')
     const heads: any = {
       'Content-Type': 'application/json',
@@ -445,12 +477,11 @@ class HttpService {
     if (token) {
       heads['X-SHUZHI-TOKEN'] = `Bearer ${token}`
     }
-    const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
-    const tenantId = delegateTenantId || wsCache.get('user.tenantId')
+    const tenantId = delegateSnapshot.tenantId || workspaceSnapshot.tenantId
     if (tenantId) {
       heads['X-SHUZHI-TENANT-ID'] = String(tenantId)
     }
-    if (isPlatformWorkspaceDelegateSession()) {
+    if (delegateSnapshot.active) {
       heads[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
     }
     if (assistantStore.getToken) {
@@ -476,12 +507,16 @@ class HttpService {
     }
 
     const real_url = import.meta.env.VITE_API_BASE_URL
-    return fetch(real_url + url, {
+    const response = await fetch(real_url + url, {
       method: 'POST',
       headers: heads,
       body: JSON.stringify(data),
       signal: controller?.signal,
     })
+    const responseTenantId = response.headers.get(TENANT_CONTEXT_HEADER) || ''
+    assertPlatformWorkspaceDelegateSnapshot(delegateSnapshot, responseTenantId)
+    workspaceContext.assertConsumable(workspaceSnapshot, responseTenantId)
+    return response
   }
 
   // PUT request

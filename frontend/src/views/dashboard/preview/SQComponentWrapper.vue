@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount } from 'vue'
+import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount, type PropType } from 'vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import {
   ChatLineSquare,
@@ -48,7 +48,16 @@ import {
   canShowDashboardDateFilter,
   getOrCreateDashboardDateFilterState,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  hasDashboardChartRows,
+  hasDashboardChartSnapshot,
+  prepareDashboardChartRefreshState,
+} from '@/views/dashboard/utils/dashboardChartLifecycle'
 import { resolveDashboardMoveTargetDatasource } from '@/views/dashboard/utils/dashboardOptions.ts'
+import {
+  DEFAULT_DASHBOARD_LAYOUT_SURFACE,
+  type DashboardLayoutSurface,
+} from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
@@ -96,6 +105,10 @@ const props = defineProps({
   frameless: {
     type: Boolean,
     default: false,
+  },
+  dashboardLayoutSurface: {
+    type: String as PropType<DashboardLayoutSurface>,
+    default: DEFAULT_DASHBOARD_LAYOUT_SURFACE,
   },
   readonlyTemplate: {
     type: Boolean,
@@ -203,9 +216,13 @@ const reportDialogTitle = computed(() => reportSubmittedQuestion.value || report
 const reportTargetContext = computed(() =>
   t('dashboard.chart_report_target_context', [reportScopeTitle.value])
 )
-const componentExtraProps = computed(() =>
-  props.configItem?.component === 'SQView' ? { showLabel: chartShowLabel.value } : {}
-)
+const componentExtraProps = computed(() => {
+  if (props.configItem?.component !== 'SQView') return {}
+  return {
+    showLabel: chartShowLabel.value,
+    dashboardLayoutSurface: props.dashboardLayoutSurface,
+  }
+})
 const reportHasConversation = computed(
   () =>
     reportGenerating.value ||
@@ -607,14 +624,9 @@ function getResultFields(result: any) {
   ])
 }
 
-function hasChartSnapshot(viewInfo: any) {
-  const rows = viewInfo?.data?.data
-  return Array.isArray(rows) && rows.length > 0
-}
-
 function hasChartShape(viewInfo: any) {
   return (
-    hasChartSnapshot(viewInfo) ||
+    hasDashboardChartSnapshot(viewInfo) ||
     (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
     (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
   )
@@ -1151,10 +1163,13 @@ async function refreshChartData() {
           ? [...viewInfo.data.fields]
           : []
         const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
-        const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+        const hasPreviousRows = hasDashboardChartRows(viewInfo)
         const hasPreviousShape = hasChartShape(viewInfo)
-        viewInfo.dataState = 'loading'
-        viewInfo.refreshState = 'loading'
+        prepareDashboardChartRefreshState(viewInfo, 'loading')
+        if (hasPreviousRows) {
+          viewInfo.dataState = 'loading'
+          viewInfo.refreshState = 'loading'
+        }
         const result = await previewChartSql(viewInfo, undefined, true)
         applyDashboardDateFilterCapability(viewInfo, result)
         const fields = getResultFields(result)
@@ -1172,13 +1187,15 @@ async function refreshChartData() {
           viewInfo.message = result?.message || ''
         }
         if (viewInfo.status === 'failed') {
-          if (hasPreviousSnapshot || (isDashboardQueryBusy(result) && hasPreviousShape)) {
+          if (hasPreviousRows || (isDashboardQueryBusy(result) && hasPreviousShape)) {
             viewInfo.data.fields = previousDataFields
             viewInfo.data.data = previousData
             viewInfo.fields = previousFields
             viewInfo.status = 'success'
             viewInfo.message = ''
             viewInfo.dataState = 'ready'
+          } else {
+            viewInfo.dataState = 'failed'
           }
           if (isDashboardQueryBusy(result) && hasPreviousShape) {
             viewInfo.refreshState = 'queued'
@@ -1196,7 +1213,7 @@ async function refreshChartData() {
         emitter.emit(`view-render-${viewInfo.id || entry?.component?.id}`)
       } catch (error: any) {
         viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
-        if (hasChartSnapshot(viewInfo)) {
+        if (hasDashboardChartRows(viewInfo)) {
           viewInfo.status = 'success'
           viewInfo.dataState = 'ready'
         } else {

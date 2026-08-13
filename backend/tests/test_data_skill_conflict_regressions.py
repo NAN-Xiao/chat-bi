@@ -22,6 +22,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 import seed_flam_first_zombie_data_skills as flam_seed  # noqa: E402
+import seed_platform_date_field_usage_skill as date_field_seed  # noqa: E402
 import seed_platform_realtime_event_table_skill as realtime_seed  # noqa: E402
 import seed_xiuxian_data_skills as xiuxian_seed  # noqa: E402
 from xiuxian_dashboard_skill_catalog import EXPECTED_VIEW_IDS  # noqa: E402
@@ -255,18 +256,104 @@ def _selected_ids(skill_logs: list[str], name_to_id: dict[str, int]) -> set[int]
     return selected
 
 
+def test_realtime_selection_skill_requires_today_date_template_for_time_series() -> None:
+    prompt = realtime_seed.SKILL["prompt"]
+
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert '"preset":"today"' in prompt
+    assert "非 `metric`" in prompt
+    assert "执行阶段" in prompt
+
+
+def test_date_field_skill_parameterizes_partition_roles_without_policy_prerequisite() -> None:
+    prompt = date_field_seed.SKILL["prompt"]
+
+    assert "`partition_date`" in prompt
+    assert "`realtime_partition`" in prompt
+    assert "{{dashboard_start_yyyymmdd}}" in prompt
+    assert "{{dashboard_end_yyyymmdd}}" in prompt
+    assert "默认实时查询不套用历史日期 pivot" not in prompt
+    assert "不是使用日期 token 或返回 `date_filter` 的前置条件" in prompt
+
+
+def test_flam_active_skill_rejects_dynamic_latest_partition_scan() -> None:
+    question = "截至数据最新一天，DAU、WAU和MAU分别是多少，并计算DAU占WAU及MAU的比例。"
+    skills = {
+        skill["name"]: skill["prompt"]
+        for skill in flam_seed.DATA_SKILLS
+        if skill["name"] in {"flam 历史看板日期窗口口径", "flam 活跃用户口径"}
+    }
+    dynamic_sql = """
+    WITH bounds AS (
+        SELECT MAX(`dt`) AS max_dt
+        FROM `event`
+        WHERE `prod` = 110000038
+    )
+    SELECT COUNT(DISTINCT e.uid) AS DAU
+    FROM `event` e
+    CROSS JOIN bounds b
+    WHERE e.dt = b.max_dt AND e.event = 'UserActive'
+    """
+    fixed_sql = """
+    SELECT COUNT(DISTINCT e.uid) AS DAU
+    FROM `event` e
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+      AND e.prod = 110000038
+      AND e.event = 'UserActive'
+    """
+
+    for skill_text in skills.values():
+        violation = _data_skill_sql_validation_violation(question, dynamic_sql, skill_text)
+        assert violation is not None
+        assert "MAX(dt)" in violation.message
+        assert _data_skill_sql_validation_violation(question, fixed_sql, skill_text) is None
+
+
 SCENARIOS = (
+    (
+        3,
+        FLAM_TENANT_ID,
+        "按小时统计今天的付费金额",
+        {225, 282},
+        """
+        SELECT DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00') AS hour_label,
+               SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00')
+        ORDER BY hour_label
+        """,
+    ),
+    (
+        3,
+        FLAM_TENANT_ID,
+        "实时付费金额",
+        {225, 282},
+        """
+        SELECT DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00') AS hour_label,
+               SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00')
+        ORDER BY hour_label
+        """,
+    ),
     (
         3,
         FLAM_TENANT_ID,
         "今天实时付费趋势",
         {225, 282},
         """
-        SELECT e.dt, HOUR(FROM_UNIXTIME(e.event_time / 1000 + 28800)) AS hour_no,
+        SELECT e.dt, DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
                SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')) AS DECIMAL(18, 4))) AS pay_amount
         FROM event_realtime e
         WHERE e.event = 'ServerPayLog' AND e.dt = 20260727
-        GROUP BY e.dt, HOUR(FROM_UNIXTIME(e.event_time / 1000 + 28800))
+        GROUP BY e.dt, DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00')
         """,
     ),
     (
@@ -372,6 +459,154 @@ def test_realtime_payment_conflict_sql_is_rejected(monkeypatch) -> None:
     )
     assert violation is not None
     assert "event_realtime" in violation.message
+
+
+def test_realtime_payment_grain_follows_explicit_dimension_or_hour_intent(monkeypatch) -> None:
+    rows, name_to_id = _fixture_rows()
+    monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime", "user"},
+    )
+    scalar_sql = """
+        SELECT ROUND(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))), 2) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+    """
+    hourly_sql = """
+        SELECT DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00') AS hour_label,
+               SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(t.personal, '$.money')) AS DECIMAL(38, 10))) AS pay_amount
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY DATE_FORMAT(FROM_UNIXTIME(t.time / 1000), '%H:00')
+        ORDER BY hour_label
+    """
+    channel_sql = """
+        SELECT COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.mediaSource')), ''),
+                        NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.campaignName')), ''), '未知') AS channel,
+               COUNT(*) AS pay_count
+        FROM event_realtime t
+        WHERE t.dt = 20260806
+          AND t.event = 'ServerPayLog'
+          AND t.prod = 110000038
+        GROUP BY COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.mediaSource')), ''),
+                          NULLIF(JSON_UNQUOTE(JSON_EXTRACT(t.adinfo, '$.campaignName')), ''), '未知')
+    """
+    invalid_channel_sql = channel_sql.replace("t.adinfo", "t.personal")
+
+    question = "实时付费金额"
+    skill_text, skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=question,
+    )
+
+    assert {225, 282}.issubset(_selected_ids(skill_logs, name_to_id))
+    assert _data_skill_sql_validation_violation(question, scalar_sql, skill_text) is None
+
+    channel_question = "按渠道统计实时付费"
+    channel_skill_text, channel_skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=channel_question,
+    )
+
+    assert {225, 282}.issubset(_selected_ids(channel_skill_logs, name_to_id))
+    assert _data_skill_sql_validation_violation(channel_question, channel_sql, channel_skill_text) is None
+    assert _data_skill_sql_validation_violation(channel_question, invalid_channel_sql, channel_skill_text) is not None
+
+    hourly_question = "实时付费金额按小时趋势"
+    hourly_skill_text, hourly_skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=hourly_question,
+    )
+
+    assert {225, 282}.issubset(_selected_ids(hourly_skill_logs, name_to_id))
+    violation = _data_skill_sql_validation_violation(hourly_question, scalar_sql, hourly_skill_text)
+    assert violation is not None
+    assert "明确按小时或小时趋势" in violation.message
+    assert _data_skill_sql_validation_violation(hourly_question, hourly_sql, hourly_skill_text) is None
+
+    total_question = "实时付费金额总额"
+    total_skill_text, total_skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=3,
+        tenant_id=FLAM_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=total_question,
+    )
+
+    assert 225 in _selected_ids(total_skill_logs, name_to_id)
+    assert _data_skill_sql_validation_violation(total_question, scalar_sql, total_skill_text) is None
+
+
+def test_flam_realtime_payment_skill_does_not_leak_to_datasource_6(monkeypatch) -> None:
+    rows, name_to_id = _fixture_rows()
+    monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime", "user"},
+    )
+
+    skill_text, skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=6,
+        tenant_id=XIUXIAN_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question="实时付费金额",
+    )
+
+    assert 225 not in _selected_ids(skill_logs, name_to_id)
+    assert "flam 实时数据时区与日期口径" not in skill_text
+
+
+def test_explicit_historical_realtime_query_keeps_history_table(monkeypatch) -> None:
+    rows, name_to_id = _fixture_rows()
+    monkeypatch.setattr(custom_prompt_crud.settings, "EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(
+        custom_prompt_crud,
+        "_authorized_datasource_tables",
+        lambda *_args: {"event", "event_realtime", "user"},
+    )
+
+    question = "昨天实时付费趋势"
+    skill_text, skill_logs, _model = find_data_skills(
+        _QueryAwareFakeSession(rows),
+        datasource=6,
+        tenant_id=XIUXIAN_TENANT_ID,
+        current_user_id=XIUXIAN_OWNER_ID,
+        current_user=SimpleNamespace(id=XIUXIAN_OWNER_ID),
+        question=question,
+    )
+
+    assert 282 in _selected_ids(skill_logs, name_to_id)
+    assert (
+        _data_skill_sql_validation_violation(
+            question,
+            "SELECT e.dt, COUNT(*) FROM event e "
+            "WHERE e.dt = 20260804 GROUP BY e.dt",
+            skill_text,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("datasource, expected_visible", [(6, True), (3, False), (1, False)])

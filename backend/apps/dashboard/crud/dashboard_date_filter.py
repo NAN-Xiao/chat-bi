@@ -388,6 +388,12 @@ def has_dashboard_date_filter_parameters(sql: str) -> bool:
     return bool(active_tokens)
 
 
+def has_unresolved_dashboard_date_parameters(sql: str) -> bool:
+    """判断 SQL 是否仍包含未渲染的日期 token，包括字符串字面量中的 token。"""
+    text = str(sql or "")
+    return has_dashboard_date_filter_parameters(text) or any(token in text for token in _ALL_TOKENS)
+
+
 def dashboard_date_parameter_tokens(parameter_type: str) -> tuple[str, str] | None:
     """返回指定日期参数类型的起止 token。"""
     return _PARAMETER_TOKENS.get(parameter_type)
@@ -410,7 +416,7 @@ def validate_dashboard_date_parameter_sql(
         return "mixed_parameter_families"
     if active_families != {expected_family}:
         return "parameter_type_mismatch"
-    allowed_token_sets = ({tokens[1]}, set(tokens))
+    allowed_token_sets = ({tokens[0]}, {tokens[1]}, set(tokens))
     if active_tokens not in allowed_token_sets:
         return "incomplete_parameters"
     return None
@@ -463,8 +469,12 @@ def prepare_dashboard_date_filter(
         return _unconfigured(source_sql, physical_tables, parameter_error)
     tokens = dashboard_date_parameter_tokens(parameter_type)
     _, active_tokens = _scan_sql_tokens(source_sql)
-    parameter_mode = "end_only" if active_tokens == {tokens[1]} else "range"
-
+    if active_tokens == {tokens[0]}:
+        parameter_mode = "start_only"
+    elif active_tokens == {tokens[1]}:
+        parameter_mode = "end_only"
+    else:
+        parameter_mode = "range"
     business_today = today or datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
     default_start, default_end = default_dashboard_date_range(today=business_today)
     custom_start = _date_filter_value(date_filter, "custom_start", "") if date_filter is not None else _pivot_value(pivot, "custom_start", "")
@@ -495,7 +505,8 @@ def prepare_dashboard_date_filter(
         reason = "invalid_date_expression" if expression is not None else "invalid_date_range"
         return _unconfigured(source_sql, physical_tables, reason)
 
-    if expression is None and (start > end or start > default_end or end > default_end):
+    maximum_end = business_today if date_filter is not None else default_end
+    if expression is None and (start > end or start > maximum_end or end > maximum_end):
         return _unconfigured(source_sql, physical_tables, "invalid_date_range")
 
     start_text = start.isoformat()

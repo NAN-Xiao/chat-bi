@@ -3,10 +3,18 @@ import { datasourceApi } from '@/api/datasource'
 import { useCache } from '@/utils/useCache'
 import { store } from './index'
 import { useUserStore } from './user'
+import { workspaceContext, workspaceContextState } from '@/utils/workspaceContext'
+import { isPlatformWorkspaceDelegateSession } from '@/utils/platformWorkspaceDelegate'
 
 const { wsCache } = useCache()
 let datasourceLoadPromise: Promise<void> | null = null
 let datasourceLoadTenantId = ''
+let datasourceLoadSwitchId: number | undefined
+
+interface DatasourceLoadOptions {
+  tenantId?: string
+  workspaceSwitchId?: number
+}
 
 export interface DatasourceContextItem {
   id?: number | string
@@ -51,18 +59,23 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
   }),
 
   actions: {
-    cacheKey() {
+    cacheKey(tenantId?: string) {
       const userStore = useUserStore()
-      return `datasource.current.${userStore.getUid || 'default'}.${userStore.getTenantId || 'default'}`
+      return `datasource.current.${userStore.getUid || 'default'}.${tenantId || userStore.getTenantId || 'default'}`
     },
 
-    async loadDatasources(force = false) {
+    async loadDatasources(force = false, options?: DatasourceLoadOptions) {
       const userStore = useUserStore()
-      const requestTenantId = userStore.getTenantId || 'default'
+      const requestTenantId = options?.tenantId || userStore.getTenantId || 'default'
       if (this.tenantScopeId && this.tenantScopeId !== requestTenantId) {
         this.clear(false)
       }
-      if (this.loading && datasourceLoadPromise && datasourceLoadTenantId === requestTenantId) {
+      if (
+        this.loading &&
+        datasourceLoadPromise &&
+        datasourceLoadTenantId === requestTenantId &&
+        datasourceLoadSwitchId === options?.workspaceSwitchId
+      ) {
         return datasourceLoadPromise
       }
       if (
@@ -72,12 +85,27 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       }
       this.loading = true
       const loadPromise = (async () => {
-        const res = await datasourceApi.accessibleList()
-        if ((useUserStore().getTenantId || 'default') !== requestTenantId) {
+        const res = await datasourceApi.accessibleList({
+          requestOptions: options?.workspaceSwitchId
+            ? {
+                workspaceMode: 'switch',
+                customError: true,
+                workspaceTenantId: requestTenantId,
+                workspaceSwitchId: options?.workspaceSwitchId,
+              }
+            : undefined,
+        })
+        const switchIsCurrent = options?.workspaceSwitchId
+          ? workspaceContext.isCurrentSwitch(requestTenantId, options.workspaceSwitchId)
+          : isPlatformWorkspaceDelegateSession() ||
+            (workspaceContextState.phase === 'ready' &&
+              workspaceContextState.activeTenantId ===
+                (requestTenantId === 'default' ? '' : requestTenantId))
+        if (!switchIsCurrent || (useUserStore().getTenantId || 'default') !== requestTenantId) {
           return
         }
         this.datasources = Array.isArray(res) ? res : []
-        const tenantScopedCachedId = wsCache.get(this.cacheKey())
+        const tenantScopedCachedId = wsCache.get(this.cacheKey(requestTenantId))
         const cachedId = tenantScopedCachedId === undefined || tenantScopedCachedId === null
           ? undefined
           : Number(tenantScopedCachedId)
@@ -109,12 +137,14 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       })()
       datasourceLoadPromise = loadPromise
       datasourceLoadTenantId = requestTenantId
+      datasourceLoadSwitchId = options?.workspaceSwitchId
       try {
         return await loadPromise
       } finally {
         if (datasourceLoadPromise === loadPromise) {
           datasourceLoadPromise = null
           datasourceLoadTenantId = ''
+          datasourceLoadSwitchId = undefined
           this.loading = false
         }
       }
@@ -173,6 +203,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
     clear(persist = true) {
       datasourceLoadPromise = null
       datasourceLoadTenantId = ''
+      datasourceLoadSwitchId = undefined
       this.datasources = []
       this.datasourceId = undefined
       this.datasourceName = ''

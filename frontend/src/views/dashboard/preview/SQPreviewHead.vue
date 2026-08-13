@@ -4,6 +4,7 @@ import { ChatLineSquare, Close, RefreshRight } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import cloneDeep from 'lodash/cloneDeep'
 import { analysisAssistantApi, type AnalysisAssistantMessage } from '@/api/analysisAssistant'
 import { useUserStore } from '@/stores/user'
 import { parseSseChunk } from '@/utils/sse'
@@ -22,20 +23,59 @@ import {
 import { buildReportInterpretationTarget } from '@/views/dashboard/preview/reportInterpretationTarget'
 import { shouldSubmitReportPromptOnEnter } from '@/views/dashboard/preview/reportPromptKeyboard'
 import { buildOrdinaryDashboardQuery } from '@/views/dashboard/utils/dashboardRouteMode'
+import {
+  getDashboardCanvasSourceKey,
+  getPlatformTemplateCanvasSourceKey,
+} from '@/views/dashboard/utils/canvasDraft'
+import {
+  clearCanvasRouteHandoff,
+  primeCanvasRouteHandoff,
+} from '@/views/dashboard/editor/canvasRouteHandoff'
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
+const editLoading = ref(false)
 
-const edit = () => {
-  router.push({
-    path: '/canvas',
-    query: props.platformTemplate
-      ? { platformTemplateId: props.dashboardInfo.id }
-      : buildOrdinaryDashboardQuery(
-          props.dashboardInfo.id,
-          props.dashboardInfo.dashboardMode
-        ),
+const edit = async () => {
+  const isPlatformTemplate = props.platformTemplate
+  if (editLoading.value) {
+    return
+  }
+  const dashboardId = props.dashboardInfo?.id
+  if (!dashboardId) {
+    return
+  }
+  const sourceKey = isPlatformTemplate
+    ? getPlatformTemplateCanvasSourceKey(dashboardId)
+    : getDashboardCanvasSourceKey(dashboardId)
+  if (!sourceKey) return
+  editLoading.value = true
+  primeCanvasRouteHandoff({
+    sourceKey,
+    dashboardInfo: cloneDeep(props.dashboardInfo),
+    canvasDataResult: cloneDeep(props.componentData),
+    canvasStyleResult: cloneDeep(props.canvasStyleData),
+    canvasViewInfoPreview: cloneDeep(props.canvasViewInfo),
   })
+
+  try {
+    const navigationFailure = await router.push({
+      path: '/canvas',
+      query: isPlatformTemplate
+        ? { platformTemplateId: props.dashboardInfo.id }
+        : buildOrdinaryDashboardQuery(
+            props.dashboardInfo.id,
+            props.dashboardInfo.dashboardMode
+          ),
+    })
+    if (navigationFailure) {
+      clearCanvasRouteHandoff()
+    }
+  } catch {
+    clearCanvasRouteHandoff()
+  } finally {
+    editLoading.value = false
+  }
 }
 const props = defineProps({
   dashboardInfo: {
@@ -47,6 +87,11 @@ const props = defineProps({
     type: Array,
     required: false,
     default: () => [],
+  },
+  canvasStyleData: {
+    type: Object,
+    required: false,
+    default: () => ({}),
   },
   canvasViewInfo: {
     type: Object,
@@ -586,7 +631,14 @@ onBeforeUnmount(() => {
         </template>
         {{ t('dashboard.dashboard_report_interpret') }}
       </el-button>
-      <el-button v-if="canEdit" class="custom-button" type="primary" @click="edit">
+      <el-button
+        v-if="canEdit"
+        class="custom-button"
+        type="primary"
+        :loading="editLoading"
+        :disabled="editLoading"
+        @click="edit"
+      >
         <template #icon>
           <Icon name="icon_edit_outlined">
             <icon_edit_outlined class="svg-icon" />
@@ -595,6 +647,8 @@ onBeforeUnmount(() => {
         {{ t('dashboard.edit') }}
       </el-button>
     </div>
+  </div>
+  <Teleport to="body">
     <div
       v-if="reportPromptVisible"
       ref="reportPanelRef"
@@ -718,7 +772,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style lang="less">

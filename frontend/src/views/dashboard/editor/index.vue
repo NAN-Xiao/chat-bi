@@ -32,9 +32,10 @@ import {
   createPermissionDeniedChartRegistry,
   dashboardChartFailureResultFromError,
   dashboardCacheRefreshDisposition,
+  classifyDashboardChartFailure,
   nextDashboardChartRetryDelayMs,
   isPermissionDeniedRefreshResult as isPermissionDeniedResult,
-  shouldRetryDashboardChartFailure,
+  shouldKeepDashboardChartPending,
 } from '@/views/dashboard/utils/dashboardPermissionRefresh'
 import {
   applyDashboardDateFilterCapability,
@@ -48,6 +49,16 @@ import {
   resolveOrdinaryDashboardMode,
   type OrdinaryDashboardMode,
 } from '@/views/dashboard/utils/dashboardRouteMode'
+import { createRouteLoadLifecycle } from '@/views/dashboard/editor/routeLoadLifecycle'
+import {
+  consumeCanvasRouteHandoff,
+  type CanvasRouteHandoffPayload,
+} from '@/views/dashboard/editor/canvasRouteHandoff'
+import {
+  hasDashboardChartRows,
+  hasDashboardChartSnapshot,
+  prepareDashboardChartRefreshState,
+} from '@/views/dashboard/utils/dashboardChartLifecycle'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -55,28 +66,67 @@ const datasourceContext = useDatasourceContextStore()
 const { dashboardInfo, componentData, canvasStyleData, canvasViewInfo, fullscreenFlag, baseMatrixCount } =
   storeToRefs(dashboardStore)
 
-const dataInitState = ref(true)
+function firstQueryValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value[0] ? String(value[0]) : null
+  }
+  return value ? String(value) : null
+}
+
+const initialPlatformTemplateId = firstQueryValue(router.currentRoute.value.query.platformTemplateId)
+const initialResourceId = firstQueryValue(router.currentRoute.value.query.resourceId)
+const initialRouteSourceKey = initialPlatformTemplateId
+  ? getPlatformTemplateCanvasSourceKey(initialPlatformTemplateId)
+  : getDashboardCanvasSourceKey(initialResourceId)
+const initialCanvasRouteHandoff = consumeCanvasRouteHandoff(initialRouteSourceKey)
+
+function applyCanvasRouteHandoff(
+  handoff: CanvasRouteHandoffPayload,
+  platformTemplateId?: string | null
+) {
+  dashboardStore.setDashboardInfo({
+    ...handoff.dashboardInfo,
+    ...(platformTemplateId ? { canEdit: true, canShare: false } : {}),
+  })
+  dashboardStore.setCanvasStyleData(handoff.canvasStyleResult || {})
+  dashboardStore.setComponentData(handoff.canvasDataResult || [])
+  dashboardStore.setCanvasViewInfo(handoff.canvasViewInfoPreview || {})
+  dashboardStore.setCanvasEditingSourceKey(handoff.sourceKey)
+  dashboardStore.markCanvasSaved()
+}
+if (initialCanvasRouteHandoff) {
+  applyCanvasRouteHandoff(initialCanvasRouteHandoff, initialPlatformTemplateId)
+}
+
+const dataInitState = ref(false)
+if (initialCanvasRouteHandoff) {
+  dataInitState.value = true
+}
 const state = reactive({
   routerPid: null as string | null,
-  resourceId: null as string | null,
-  platformTemplateId: null as string | null,
+  resourceId: initialResourceId,
+  platformTemplateId: initialPlatformTemplateId,
   opt: null as string | null,
   datasource: null as number | string | null | undefined,
-  dashboardMode: 'my' as OrdinaryDashboardMode,
+  dashboardMode: resolveOrdinaryDashboardMode(
+    router.currentRoute.value.query.dashboardMode
+  ) as OrdinaryDashboardMode,
 })
 
 const dashboardEditorInnerRef = ref(null)
-let canvasStateReady = false
+let canvasStateReady = Boolean(initialCanvasRouteHandoff)
+let prefetchedRouteSourceKey = initialCanvasRouteHandoff?.sourceKey || null
+let prefetchedCanvasHandoffActive = false
 let applyingCanvasState = false
 let suppressCanvasStateChange = 0
 let draftSaveTimer: number | null = null
-let routeLoadVersion = 0
+const routeLoadLifecycle = createRouteLoadLifecycle()
 let chartRefreshTimer: number | undefined
 let chartRefreshController: AbortController | null = null
 let chartRefreshRetryCount = 0
 
 const CHART_CACHE_LOOKUP_CONCURRENCY = 6
-const CHART_DATABASE_REFRESH_CONCURRENCY = 4
+const CHART_DATABASE_REFRESH_CONCURRENCY = 2
 const CHART_CACHE_LOOKUP_START_DELAY_MS = 160
 const CHART_TRANSIENT_MAX_RETRIES = 3
 const permissionDeniedCharts = createPermissionDeniedChartRegistry()
@@ -109,13 +159,6 @@ const loadPlatformTemplateResource = (id: string | number) =>
       { platformTemplate: true, includeData: false }
     )
   })
-
-const firstQueryValue = (value: unknown) => {
-  if (Array.isArray(value)) {
-    return value[0] ? String(value[0]) : null
-  }
-  return value ? String(value) : null
-}
 
 function clampChartLoadingProgress(progress: unknown) {
   const numericProgress = Number(progress)
@@ -160,14 +203,9 @@ function isAbortError(error: any) {
   )
 }
 
-function hasChartSnapshot(viewInfo: any) {
-  const rows = viewInfo?.data?.data
-  return Array.isArray(rows) && rows.length > 0
-}
-
 function hasChartShape(viewInfo: any) {
   return (
-    hasChartSnapshot(viewInfo) ||
+    hasDashboardChartSnapshot(viewInfo) ||
     (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
     (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
   )
@@ -202,25 +240,6 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   }
   viewInfo.snapshotRefreshedAt = refreshedAt
   viewInfo.data.snapshotRefreshedAt = refreshedAt
-}
-
-function clearPendingChartData(viewInfo: any, refreshState = 'waiting') {
-  if (!viewInfo) {
-    return
-  }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
-  }
-  viewInfo.data.data = []
-  viewInfo.data.fields = []
-  viewInfo.fields = []
-  viewInfo.status = 'loading'
-  viewInfo.message = ''
-  delete viewInfo.error_type
-  delete viewInfo.reason
-  viewInfo.dataState = 'loading'
-  setChartLoadingProgress(viewInfo, 0, true)
-  viewInfo.refreshState = refreshState
 }
 
 function normalizePermissionDeniedChart(viewInfo: any) {
@@ -331,13 +350,33 @@ function prepareEditorChartState(viewInfo: any) {
   if (!canRefreshChart) {
     return
   }
-  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
-    viewInfo.data = {}
+  prepareDashboardChartRefreshState(viewInfo, 'waiting')
+}
+
+function shouldRefreshPrefetchedChart(viewInfo: any) {
+  if (!viewInfo || isExternalSnapshotChart(viewInfo)) {
+    return false
   }
-  viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
-  viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
-  viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
-  clearPendingChartData(viewInfo, 'waiting')
+  if (isMixedChart(viewInfo)) {
+    return !hasDashboardChartSnapshot(viewInfo) && canRefreshMixedChart(viewInfo)
+  }
+  if (!viewInfo.datasource || !viewInfo.sql?.trim()) {
+    return false
+  }
+  if (
+    viewInfo.status === 'failed' &&
+    viewInfo.error_type !== 'dashboard_cache_miss' &&
+    classifyDashboardChartFailure(viewInfo) === 'terminal'
+  ) {
+    return false
+  }
+  return !hasDashboardChartSnapshot(viewInfo)
+}
+
+function shouldRefreshPrefetchedCharts() {
+  return collectDashboardCharts(componentData.value).some((entry) =>
+    shouldRefreshPrefetchedChart(entry.viewInfo)
+  )
 }
 
 function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {
@@ -382,7 +421,7 @@ function applyChartResult(viewInfo: any, result: any) {
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
   const previousDataFields = Array.isArray(viewInfo?.data?.fields) ? [...viewInfo.data.fields] : []
   const previousFields = Array.isArray(viewInfo?.fields) ? [...viewInfo.fields] : []
-  const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+  const hasPreviousRows = hasDashboardChartRows(viewInfo)
   if (!viewInfo.data || typeof viewInfo.data !== 'object') {
     viewInfo.data = {}
   }
@@ -391,7 +430,7 @@ function applyChartResult(viewInfo: any, result: any) {
   viewInfo.fields = fields
   viewInfo.status = result?.status || 'success'
   viewInfo.message = result?.message || ''
-  if (viewInfo.status === 'failed' && hasPreviousSnapshot && !isPermissionDeniedResult(result)) {
+  if (viewInfo.status === 'failed' && hasPreviousRows && !isPermissionDeniedResult(result)) {
     viewInfo.data.fields = previousDataFields
     viewInfo.data.data = previousData
     viewInfo.fields = previousFields
@@ -453,7 +492,7 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
   chartRefreshController = controller
   chartRefreshTimer = window.setTimeout(() => {
     chartRefreshTimer = undefined
-    if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+    if (!routeLoadLifecycle.isCurrent(loadVersion) || controller.signal.aborted) {
       return
     }
     void refreshEditorCharts(loadVersion, controller)
@@ -461,6 +500,8 @@ function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOO
 }
 
 async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
+  const prefetchedPendingOnly = prefetchedCanvasHandoffActive
+  prefetchedCanvasHandoffActive = false
   const chartEntries = collectDashboardCharts(componentData.value)
     .filter(
       (entry) =>
@@ -471,7 +512,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
             : !isExternalSnapshotChart(entry.viewInfo) &&
               entry.viewInfo?.datasource &&
               entry.viewInfo?.sql?.trim()
-        )
+        ) && (!prefetchedPendingOnly || shouldRefreshPrefetchedChart(entry.viewInfo))
     )
     .flatMap((entry) => {
       const requestVersion = beginDashboardChartRequest(entry.viewInfo, 'background')
@@ -516,7 +557,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       chartEntries.forEach((entry) => {
         if (
           isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)
-          && !hasChartSnapshot(entry.viewInfo)
+          && !hasDashboardChartSnapshot(entry.viewInfo)
         ) {
           keepChartLoadingState(entry.viewInfo, 'waiting')
         }
@@ -526,7 +567,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       const { viewInfo, requestVersion } = entry
       try {
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -534,7 +575,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         }
         const cachedResult = await previewChartSqlCacheOnly(viewInfo, requestConfig)
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -548,7 +589,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           permissionDeniedCharts.mark(entry)
           withAutoChartUpdate(() => applyChartResult(viewInfo, cachedResult))
         } else if (cacheDisposition === 'refresh_database') {
-          if (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo)) {
+          if (isMixedChart(viewInfo) || !hasDashboardChartSnapshot(viewInfo)) {
             databaseRefreshEntries.push(entry)
           }
         } else {
@@ -566,9 +607,9 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           return
         }
         if (
-          loadVersion === routeLoadVersion
+          routeLoadLifecycle.isCurrent(loadVersion)
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
-          && (isMixedChart(viewInfo) || !hasChartSnapshot(viewInfo))
+          && (isMixedChart(viewInfo) || !hasDashboardChartSnapshot(viewInfo))
         ) {
           databaseRefreshEntries.push(entry)
         }
@@ -579,13 +620,13 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     })
 
     const databaseTotal = databaseRefreshEntries.length
-    if (!databaseTotal || loadVersion !== routeLoadVersion || controller.signal.aborted) {
+    if (!databaseTotal || !routeLoadLifecycle.isCurrent(loadVersion) || controller.signal.aborted) {
       return
     }
     withAutoChartUpdate(() => {
       databaseRefreshEntries.forEach((entry) => {
         if (isDashboardChartRequestCurrent(entry.viewInfo, entry.requestVersion)) {
-          keepChartLoadingState(entry.viewInfo, 'loading')
+          prepareDashboardChartRefreshState(entry.viewInfo, 'loading')
         }
       })
     })
@@ -593,7 +634,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       const { viewInfo, requestVersion } = entry
       try {
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -601,7 +642,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         }
         const result = await previewChartSqlFromDatabase(viewInfo, requestConfig)
         if (
-          loadVersion !== routeLoadVersion
+          !routeLoadLifecycle.isCurrent(loadVersion)
           || controller.signal.aborted
           || !isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
@@ -613,7 +654,14 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
               permissionDeniedCharts.mark(entry)
               applyChartResult(viewInfo, result)
             } else {
-              if (shouldRetryDashboardChartFailure(result, hasChartSnapshot(viewInfo))) {
+              if (
+                shouldKeepDashboardChartPending(
+                  result,
+                  hasDashboardChartRows(viewInfo),
+                  chartRefreshRetryCount,
+                  CHART_TRANSIENT_MAX_RETRIES
+                )
+              ) {
                 keepChartSnapshotOrLoading(viewInfo)
                 transientPendingCount += 1
               } else {
@@ -634,17 +682,24 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
           return
         }
         if (
-          loadVersion === routeLoadVersion
+          routeLoadLifecycle.isCurrent(loadVersion)
           && isDashboardChartRequestCurrent(viewInfo, requestVersion)
         ) {
           withAutoChartUpdate(() => {
-          const failureResult = dashboardChartFailureResultFromError(error)
-          if (shouldRetryDashboardChartFailure(failureResult, hasChartSnapshot(viewInfo))) {
-            keepChartSnapshotOrLoading(viewInfo)
-            transientPendingCount += 1
-          } else {
-            applyChartResult(viewInfo, failureResult)
-          }
+            const failureResult = dashboardChartFailureResultFromError(error)
+            if (
+              shouldKeepDashboardChartPending(
+                failureResult,
+                hasDashboardChartRows(viewInfo),
+                chartRefreshRetryCount,
+                CHART_TRANSIENT_MAX_RETRIES
+              )
+            ) {
+              keepChartSnapshotOrLoading(viewInfo)
+              transientPendingCount += 1
+            } else {
+              applyChartResult(viewInfo, failureResult)
+            }
           })
         }
       } finally {
@@ -658,7 +713,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     }
     if (
       transientPendingCount > 0 &&
-      loadVersion === routeLoadVersion &&
+      routeLoadLifecycle.isCurrent(loadVersion) &&
       !controller.signal.aborted &&
       chartRefreshRetryCount < CHART_TRANSIENT_MAX_RETRIES
     ) {
@@ -684,15 +739,23 @@ const syncRouteState = () => {
 const applyLoadedCanvasResource = async (
   resourceId: string | number,
   result: any,
+  loadVersion: number,
   sourceKeyOverride?: string | null
 ) => {
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) {
+    return false
+  }
   if (
     result?.dashboardInfo?.datasource &&
     String(datasourceContext.datasourceId || '') !== String(result.dashboardInfo.datasource)
   ) {
     await datasourceContext.activateDatasourceById(result.dashboardInfo.datasource, false)
   }
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) {
+    return false
+  }
   await pauseCanvasStateWatch(() => {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
     dashboardStore.setDashboardInfo(result?.dashboardInfo)
     dashboardStore.setCanvasStyleData(result?.canvasStyleResult || {})
     dashboardStore.setComponentData(result?.canvasDataResult || [])
@@ -705,20 +768,28 @@ const applyLoadedCanvasResource = async (
       sourceKeyOverride || getDashboardCanvasSourceKey(result?.dashboardInfo?.id || resourceId)
     )
   })
+  return routeLoadLifecycle.isCurrent(loadVersion)
+}
+
+const resetCanvasAfterLoadFailure = async (loadVersion: number) => {
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) return false
+  await pauseCanvasStateWatch(() => {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+    dashboardStore.canvasDataInit()
+  })
+  return routeLoadLifecycle.isCurrent(loadVersion)
 }
 
 const loadCanvasFromRoute = async () => {
-  const loadVersion = ++routeLoadVersion
+  const loadVersion = routeLoadLifecycle.begin()
+  let routeStateApplied = false
   persistCanvasDraft()
   cancelDashboardChartRefresh()
   permissionDeniedCharts.reset()
   chartRefreshRetryCount = 0
   canvasStateReady = false
+  prefetchedCanvasHandoffActive = false
   syncRouteState()
-  if (!state.platformTemplateId) {
-    await datasourceContext.loadDatasources()
-    if (loadVersion !== routeLoadVersion) return
-  }
 
   const sourceKey =
     state.platformTemplateId
@@ -726,6 +797,15 @@ const loadCanvasFromRoute = async () => {
       : state.opt === 'create'
       ? getCreateCanvasSourceKey(state.datasource, state.routerPid)
       : getDashboardCanvasSourceKey(state.resourceId)
+  if (sourceKey && prefetchedRouteSourceKey !== sourceKey) {
+    const routeHandoff = consumeCanvasRouteHandoff(sourceKey)
+    if (routeHandoff) {
+      applyCanvasRouteHandoff(routeHandoff, state.platformTemplateId)
+      prefetchedRouteSourceKey = routeHandoff.sourceKey
+      dataInitState.value = true
+      canvasStateReady = true
+    }
+  }
   if (sourceKey && !canUseCanvasDraft(sourceKey)) {
     clearDashboardCanvasDraft(sourceKey)
   }
@@ -735,25 +815,53 @@ const loadCanvasFromRoute = async () => {
     dashboardStore.canvasEditingSourceKey === sourceKey &&
     dashboardStore.hasUnsavedCanvasChanges
   ) {
+    dataInitState.value = true
     canvasStateReady = true
     return
   }
 
-  dataInitState.value = false
+  const keepPrefetchedCanvasVisible = prefetchedRouteSourceKey === sourceKey
+  prefetchedRouteSourceKey = null
+  if (keepPrefetchedCanvasVisible) {
+    dataInitState.value = true
+  } else {
+    dataInitState.value = false
+  }
   try {
+    if (keepPrefetchedCanvasVisible) {
+      dataInitState.value = true
+      canvasStateReady = true
+      routeStateApplied = true
+      if (shouldRefreshPrefetchedCharts()) {
+        prefetchedCanvasHandoffActive = true
+        scheduleEditorChartRefresh(loadVersion)
+      }
+      return
+    }
+    if (!state.platformTemplateId) {
+      await datasourceContext.loadDatasources()
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+    }
     if (state.platformTemplateId && sourceKey) {
       const templateId = state.platformTemplateId
       const result = await loadPlatformTemplateResource(templateId)
-      if (loadVersion !== routeLoadVersion) return
-      await applyLoadedCanvasResource(templateId, result, sourceKey)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+      if (!result?.dashboardInfo?.id) {
+        routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
+        return
+      }
+      const applied = await applyLoadedCanvasResource(templateId, result, loadVersion, sourceKey)
+      if (!applied) return
       dashboardStore.updateDashboardInfo({
         canEdit: true,
         canShare: false,
       })
       dashboardStore.markCanvasSaved()
+      routeStateApplied = true
     } else if (state.opt === 'create') {
       const createSourceKey = getCreateCanvasSourceKey(state.datasource, state.routerPid)
       await pauseCanvasStateWatch(() => {
+        if (!routeLoadLifecycle.isCurrent(loadVersion)) return
         dashboardStore.canvasDataInit()
         dashboardStore.updateDashboardInfo({
           dataState: 'prepare',
@@ -765,24 +873,37 @@ const loadCanvasFromRoute = async () => {
         })
         dashboardStore.setCanvasEditingSourceKey(createSourceKey)
       })
-      const restored = await restoreCanvasDraft(createSourceKey)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+      const restored = await restoreCanvasDraft(createSourceKey, loadVersion)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
       if (!restored) {
         dashboardStore.markCanvasSaved()
       }
+      routeStateApplied = true
     } else if (state.resourceId && sourceKey) {
       const resourceId = state.resourceId
       const result = await loadCanvasResource(resourceId)
-      if (loadVersion !== routeLoadVersion) return
-      await applyLoadedCanvasResource(resourceId, result)
+      if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+      if (!result?.dashboardInfo?.id) {
+        routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
+        return
+      }
+      const applied = await applyLoadedCanvasResource(resourceId, result, loadVersion)
+      if (!applied) return
       dashboardStore.markCanvasSaved()
       scheduleEditorChartRefresh(loadVersion)
+      routeStateApplied = true
     } else {
-      await pauseCanvasStateWatch(() => {
-        dashboardStore.canvasDataInit()
-      })
+      routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
     }
+  } catch (error) {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
+    if (!isAbortError(error)) {
+      console.error('load_canvas_from_route', error)
+    }
+    routeStateApplied = await resetCanvasAfterLoadFailure(loadVersion)
   } finally {
-    if (loadVersion === routeLoadVersion) {
+    if (routeLoadLifecycle.isCurrent(loadVersion) && routeStateApplied) {
       dataInitState.value = true
       canvasStateReady = true
     }
@@ -814,17 +935,20 @@ const buildDraftDashboardInfo = (draftInfo: any) => {
   }
 }
 
-const restoreCanvasDraft = async (sourceKey: string) => {
+const restoreCanvasDraft = async (sourceKey: string, loadVersion: number) => {
   if (!canUseCanvasDraft(sourceKey)) return false
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) return false
   const draft = loadDashboardCanvasDraft(sourceKey)
   if (!draft) return false
   await pauseCanvasStateWatch(() => {
+    if (!routeLoadLifecycle.isCurrent(loadVersion)) return
     dashboardStore.setDashboardInfo(buildDraftDashboardInfo(draft.dashboardInfo))
     dashboardStore.setCanvasStyleData(cloneDeep(draft.canvasStyleData || {}))
     dashboardStore.setComponentData(cloneDeep(draft.componentData || []))
     dashboardStore.setCanvasViewInfo(cloneDeep(draft.canvasViewInfo || {}))
     dashboardStore.setCanvasEditingSourceKey(sourceKey)
   })
+  if (!routeLoadLifecycle.isCurrent(loadVersion)) return false
   dashboardStore.markCanvasChanged()
   return true
 }
@@ -998,6 +1122,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  routeLoadLifecycle.dispose()
   persistCanvasDraft()
   cancelDashboardChartRefresh()
   if (draftSaveTimer) {
@@ -1027,22 +1152,23 @@ const findPositionX = (width: number) => {
 
 <template>
   <div class="editor-content" :class="{ 'editor-content-fullscreen': fullscreenFlag }">
-    <div class="editor-main">
-      <Toolbar
-        :base-params="baseParams"
-        :find-position-x="findPositionX"
-        @add-components="addComponents"
-      ></Toolbar>
-      <DashboardEditor
-        v-if="dataInitState"
-        ref="dashboardEditorInnerRef"
-        :dashboard-info="dashboardInfo"
-        :canvas-component-data="componentData"
-        :canvas-view-info="canvasViewInfo"
-        :can-edit-sql="dashboardInfo.canEdit !== false"
-        :platform-template="Boolean(state.platformTemplateId)"
-      >
-      </DashboardEditor>
+    <div class="editor-main" :aria-busy="!dataInitState">
+      <template v-if="dataInitState">
+        <Toolbar
+          :base-params="baseParams"
+          :find-position-x="findPositionX"
+          @add-components="addComponents"
+        ></Toolbar>
+        <DashboardEditor
+          ref="dashboardEditorInnerRef"
+          :dashboard-info="dashboardInfo"
+          :canvas-component-data="componentData"
+          :canvas-view-info="canvasViewInfo"
+          :can-edit-sql="dashboardInfo.canEdit !== false"
+          :platform-template="Boolean(state.platformTemplateId)"
+        >
+        </DashboardEditor>
+      </template>
     </div>
   </div>
 </template>

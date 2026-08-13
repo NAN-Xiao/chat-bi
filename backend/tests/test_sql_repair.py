@@ -8,8 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import HumanMessage
-from sqlglot.errors import ParseError
+from sqlglot.errors import ParseError, TokenError
 
+from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
 from apps.chat.task import llm
 from apps.chat.task.sql_repair import (
     SQL_REPAIR_MAX_ATTEMPTS,
@@ -23,8 +24,11 @@ from apps.chat.task.sql_repair import (
     classify_prepare_sql_error,
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
+    validate_mysql_compatible_sql,
+    validate_sql_for_datasource,
     validate_mysql_date_format_grouping,
 )
+from apps.datasource.crud.permission_errors import SqlSchemaScopeError
 from common.error import (
     AppDBConnectionError,
     AppDBError,
@@ -80,6 +84,7 @@ def test_public_models_preserve_structured_violation() -> None:
         (SingleMessageError("Empty SQL text"), SqlRepairReason.SQL_RESPONSE_FORMAT),
         (SingleMessageError("Parse SQL Error: invalid token"), SqlRepairReason.SQL_PARSE),
         (ParseError("Expected TYPE"), SqlRepairReason.SQL_PARSE),
+        (TokenError("Missing quote"), SqlRepairReason.SQL_PARSE),
         (DataSkillSqlValidationError(_violation()), SqlRepairReason.DATA_SKILL_VALIDATION),
         (
             SingleMessageError("日期参数配置无效：missing_parameters"),
@@ -91,6 +96,10 @@ def test_public_models_preserve_structured_violation() -> None:
         ),
         (
             SingleMessageError("日期参数配置无效：metric_chart"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
+        (
+            SingleMessageError("日期参数配置无效：realtime_requires_hourly_time_series"),
             SqlRepairReason.DATE_FILTER_CONFIGURATION,
         ),
         *[
@@ -107,8 +116,13 @@ def test_public_models_preserve_structured_violation() -> None:
                 "parameter_type_mismatch",
                 "incomplete_parameters",
                 "missing_date_expression",
+                "invalid_date_expression",
             )
         ],
+        (
+            ChatDateFilterConfigurationError("missing_parameters"),
+            SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        ),
     ],
 )
 def test_prepare_error_classification(error: Exception, expected: SqlRepairReason) -> None:
@@ -118,6 +132,26 @@ def test_prepare_error_classification(error: Exception, expected: SqlRepairReaso
 def test_prepare_error_classification_rejects_unknown_errors() -> None:
     assert classify_prepare_sql_error(SingleMessageError("模型服务暂时不可用")) is None
     assert classify_prepare_sql_error(ValueError("unexpected response")) is None
+
+
+def test_prepare_schema_scope_error_is_repairable() -> None:
+    error = SqlSchemaScopeError(
+        "SQL 引用了当前 Schema 中不存在或无法解析的字段：p.channel",
+        fields={"p.channel"},
+    )
+
+    assert classify_prepare_sql_error(error) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+    message = build_sql_repair_message(SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="postgresql",
+        failed_sql="SELECT MAX(p.channel) FROM fact_payments p",
+        error_message=str(error),
+        violation=None,
+        attempt=1,
+    ))
+    assert "当前 Schema 明确提供的表和字段" in message
+    assert "无关字段" in message
 
 
 @pytest.mark.parametrize(
@@ -164,6 +198,23 @@ def test_execute_error_accepts_explicit_syntax_or_dialect_text(message: str) -> 
     wrapped.__cause__ = RuntimeError(message)
 
     assert classify_execute_sql_error(wrapped) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+
+def test_recursive_alias_error_requires_non_recursive_repair() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="mysql",
+        failed_sql="WITH RECURSIVE date_series(dt) AS (...) SELECT * FROM date_series",
+        error_message="missing column aliases in recursive WITH query",
+        violation=None,
+        attempt=1,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "禁止使用 WITH RECURSIVE" in message
+    assert "仅补充 CTE 列别名后重试" in message
+    assert "非递归数字序列" in message
 
 
 def test_execute_error_accepts_analyticdb_group_by_expression_text() -> None:
@@ -467,6 +518,176 @@ def test_build_date_filter_repair_message_contains_explicit_contract() -> None:
     assert "metric" in message
     assert "date_filter" in message
     assert "CURDATE" in message
+    assert "不得省略日期过滤" in message
+    assert "past_7_days" in message
+
+
+def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
+        dialect="mysql",
+        failed_sql="SELECT SUM(amount) FROM event_realtime",
+        error_message="日期参数配置无效：realtime_requires_hourly_time_series",
+        violation=None,
+        attempt=0,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "用户明确要求按小时或时间趋势" in message
+    assert "按 event_realtime.time 分组的非 metric 小时序列" in message
+    assert "完整 date_filter" in message
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CAST(dt AS UNSIGNED) FROM event",
+        "WITH RECURSIVE days AS "
+        "(SELECT 1 UNION ALL SELECT day_value + 1 FROM days) SELECT * FROM days",
+        "SELECT DATE_FORMAT(dt, '%v') FROM event",
+    ],
+)
+def test_mysql_compatible_sql_rejects_known_adb_incompatibilities(sql: str) -> None:
+    with pytest.raises(SqlStructureValidationError):
+        validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_requires_recursive_cte_column_aliases() -> None:
+    validate_mysql_compatible_sql(
+        "WITH RECURSIVE days(day_value) AS "
+        "(SELECT 1 UNION ALL SELECT day_value + 1 FROM days) "
+        "SELECT day_value FROM days"
+    )
+
+
+def test_mysql_compatible_sql_rejects_recursive_date_time_scaffolds() -> None:
+    with pytest.raises(SqlStructureValidationError, match="日期时间骨架默认禁止"):
+        validate_mysql_compatible_sql(
+            "WITH RECURSIVE date_seq(dt, date_value) AS "
+            "(SELECT 1, DATE '2026-08-01' UNION ALL "
+            "SELECT dt + 1, DATE_ADD(date_value, INTERVAL 1 DAY) FROM date_seq) "
+            "SELECT * FROM date_seq"
+        )
+
+
+def test_mysql_compatible_sql_allows_non_recursive_ctes_in_recursive_with() -> None:
+    sql = (
+        "WITH RECURSIVE seq(n) AS (SELECT 1 AS n UNION ALL SELECT n + 1 AS n FROM seq), "
+        "metrics AS (SELECT 1 AS value) SELECT * FROM seq CROSS JOIN metrics"
+    )
+    validate_mysql_compatible_sql(sql)
+
+    validate_mysql_compatible_sql(
+        "WITH RECURSIVE seq(n) AS (SELECT 1 AS n UNION ALL SELECT n + 1 AS n FROM seq), "
+        "metrics(value) AS (SELECT 1 AS value) SELECT * FROM seq CROSS JOIN metrics"
+    )
+
+
+def test_mysql_compatible_sql_rejects_raw_fact_range_join_to_time_scaffold() -> None:
+    sql = """
+    WITH params AS (
+        SELECT CAST('2026-08-01' AS DATE) AS start_date,
+               CAST('2026-08-08' AS DATE) AS end_date
+    ),
+    week_offsets AS (
+        SELECT 0 AS offset_week UNION ALL SELECT 1
+    ),
+    calendar AS (
+        SELECT DATE_ADD(p.start_date, INTERVAL w.offset_week * 7 DAY) AS week_start
+        FROM params p CROSS JOIN week_offsets w
+    )
+    SELECT c.week_start, COUNT(*) AS event_count
+    FROM event e
+    JOIN calendar c
+      ON e.dt >= c.week_start
+     AND e.dt < DATE_ADD(c.week_start, INTERVAL 7 DAY)
+    GROUP BY c.week_start
+    """
+    with pytest.raises(SqlStructureValidationError, match="时间骨架"):
+        validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_allows_aggregated_cte_range_join_to_time_scaffold() -> None:
+    sql = """
+    WITH calendar AS (
+        SELECT CAST('2026-08-01' AS DATE) AS week_start
+    ),
+    metrics AS (
+        SELECT CAST('2026-08-03' AS DATE) AS metric_date, 1 AS value
+    )
+    SELECT c.week_start, COALESCE(SUM(m.value), 0) AS value
+    FROM metrics m
+    JOIN calendar c
+      ON m.metric_date >= c.week_start
+     AND m.metric_date < DATE_ADD(c.week_start, INTERVAL 7 DAY)
+    GROUP BY c.week_start
+    """
+    validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_rejects_dynamic_week_interval_but_allows_day_interval() -> None:
+    with pytest.raises(SqlStructureValidationError, match="INTERVAL <列或表达式> WEEK"):
+        validate_mysql_compatible_sql(
+            "WITH offsets(n) AS (SELECT 1) "
+            "SELECT DATE_SUB(CAST('2026-08-01' AS DATE), INTERVAL offsets.n WEEK) "
+            "FROM offsets"
+        )
+    validate_mysql_compatible_sql(
+        "WITH offsets(n) AS (SELECT 1) "
+        "SELECT DATE_SUB(CAST('2026-08-01' AS DATE), INTERVAL (offsets.n * 7) DAY) "
+        "FROM offsets"
+    )
+
+
+def test_mysql_compatible_sql_converts_tokenizer_internal_errors_to_repairable_errors() -> None:
+    with pytest.raises(SqlStructureValidationError, match="结构解析"):
+        validate_mysql_compatible_sql(
+            "WITH RECURSIVE days(日期) AS ("
+            "SELECT STR_TO_DATE('2026-08-01', '%Y%m%d') "
+            "UNION ALL SELECT DATE_ADD(日期，INTERVAL 1 DAY) FROM days) "
+            "SELECT 日期 FROM days"
+        )
+
+
+def test_validate_sql_for_datasource_uses_mysql_rules() -> None:
+    with pytest.raises(SqlStructureValidationError):
+        validate_sql_for_datasource(
+            "SELECT DATE_SUB(CAST('2026-08-01' AS DATE), INTERVAL n WEEK) FROM offsets",
+            "mysql",
+        )
+    validate_sql_for_datasource("SELECT 1", "postgresql")
+
+
+def test_execute_sql_error_classifier_accepts_structure_validation_errors() -> None:
+    assert (
+        classify_execute_sql_error(SqlStructureValidationError("INTERVAL <列或表达式> WEEK"))
+        is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+    )
+
+
+def test_execute_sql_error_classifier_accepts_adb_dynamic_week_message() -> None:
+    assert (
+        classify_execute_sql_error(Exception("not support : INTERVAL w.offset_week WEEK"))
+        is SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+    )
+
+
+def test_mysql_compatible_sql_ignores_unsigned_inside_literal_or_comment() -> None:
+    validate_mysql_compatible_sql(
+        "SELECT 'CAST(value AS UNSIGNED)' AS example_text "
+        "FROM event /* AS UNSIGNED is documentation */"
+    )
+
+
+def test_mysql_compatible_sql_rejects_ambiguous_duplicate_cte_outputs() -> None:
+    sql = (
+        "WITH left_metrics AS (SELECT 1 AS 渠道), "
+        "right_metrics AS (SELECT 2 AS 渠道) "
+        "SELECT 渠道 FROM left_metrics l JOIN right_metrics r ON 1 = 1"
+    )
+    with pytest.raises(SqlStructureValidationError, match="同名输出列"):
+        validate_mysql_compatible_sql(sql)
 
 def test_regenerate_sql_after_error_streaming_reasoning_uses_structured_context(
     monkeypatch: pytest.MonkeyPatch,

@@ -60,6 +60,9 @@ export class Heatmap extends BaseG2Chart {
         },
       },
       scale: {
+        x: {
+          type: 'band',
+        },
         color: {
           range: ['#f7fbff', '#dbe8ff', '#9bbcff', '#4c84ff', '#1d4ed8'],
         },

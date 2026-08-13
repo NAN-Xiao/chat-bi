@@ -97,6 +97,65 @@ assert.equal(
   '真实高度跨出迟滞下界后应允许 compact 切换为 mini'
 )
 
+const compactAtHardFloor = resolveInsightDisplay({
+  ...trend,
+  width: 300,
+  height: 200,
+  previousLayout: 'top',
+})
+assert.equal(compactAtHardFloor.show, true, '达到硬下界时应显示摘要')
+assert.equal(compactAtHardFloor.density, 'basic', '达到硬下界时应使用 basic 摘要')
+
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 299, height: 200 }).show,
+  false,
+  '宽度低于硬下界时应隐藏摘要'
+)
+assert.equal(
+  resolveInsightDisplay({ ...trend, width: 300, height: 199 }).show,
+  false,
+  '高度低于硬下界时应隐藏摘要'
+)
+
+const restoredAfterWidth = resolveInsightDisplay({
+  ...trend,
+  width: 520,
+  height: 400,
+  previousLayout: 'top',
+  previousDensity: 'mini',
+  previousShow: false,
+})
+const freshAtRestoredSize = resolveInsightDisplay({
+  ...trend,
+  width: 520,
+  height: 400,
+  previousLayout: 'top',
+  previousDensity: 'mini',
+})
+assert.equal(restoredAfterWidth.show, true, '恢复宽度后不应再额外要求高度达到 430px')
+assert.deepEqual(
+  restoredAfterWidth,
+  freshAtRestoredSize,
+  '固定布局与密度历史时，显隐结果不能依赖 previousShow 路径'
+)
+
+const topHistory = resolveInsightDisplay({
+  ...trend,
+  width: 1102,
+  height: 270,
+  previousLayout: 'top',
+  previousDensity: 'basic',
+})
+const sideHistory = resolveInsightDisplay({
+  ...trend,
+  width: 1102,
+  height: 270,
+  previousLayout: 'side',
+  previousDensity: 'mini',
+})
+assert.equal(topHistory.layout, 'top', '布局迟滞区允许保留 top 历史')
+assert.equal(sideHistory.layout, 'side', '布局迟滞区允许保留 side 历史')
+
 const stateKey = buildInsightLayoutStateKey({
   viewId: 'chart-a',
   chartType: 'line',

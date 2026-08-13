@@ -77,9 +77,13 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  dashboardLayoutSurface: {
+    type: String as PropType<DashboardLayoutSurface>,
+    default: 'main',
+  },
 })
 
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import {
@@ -87,6 +91,7 @@ import {
   buildInsightColumns,
   detectTrendAxisGranularity,
   resolveInsightDisplay,
+  type InsightDisplayStrategy,
   type InsightDensity,
   type InsightLayout,
 } from '@/views/chat/component/chartInsight.ts'
@@ -134,13 +139,31 @@ import {
   shouldResetDashboardDateFilterState,
   type DashboardDateFilterCapability,
 } from '@/views/dashboard/utils/dashboardDateFilter.ts'
+import {
+  INSIGHT_FRAME_CSS_PROPERTIES,
+  parseCssPixel,
+  resolveCanonicalInsightFrame,
+  sameInsightFrame,
+  type InsightFrameSize,
+} from './insightFrame.ts'
+import {
+  createTabInsightLayoutState,
+  resolveTabInsightControlsReserve,
+  resolveTabInsightControlsVariant,
+  transitionTabInsightLayout,
+  type TabInsightControlsVariant,
+} from './tabInsightLayout.ts'
+import type { DashboardLayoutSurface } from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
 const { t, locale } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
-const chartShowAreaRef = ref<HTMLElement | null>(null)
+const dashboardFilterControlsRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const chartFrameReady = ref(false)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
-const frameSize = ref({ width: 0, height: 0 })
+const frameSize = ref<InsightFrameSize | null>(null)
+const tabInsightLayoutState = ref(createTabInsightLayoutState())
+const tabInsightDisplay = ref<InsightDisplayStrategy | null>(null)
+const reportedFrameMeasurementErrors = new Set<string>()
 let previousInsightLayoutKey: string | undefined
 let previousInsightLayout: InsightLayout | undefined
 let previousInsightDensity: InsightDensity | undefined
@@ -1990,7 +2013,7 @@ function exportTableData() {
 }
 
 const chartTypeList = computed(() => {
-  const _list = []
+  const _list: Array<{ value: ChartTypes; name: string; icon: any }> = []
   const pushChartType = (value: ChartTypes, icon: any) => {
     _list.push({
       value,
@@ -2003,32 +2026,20 @@ const chartTypeList = computed(() => {
       case 'table':
         break
       case 'column':
+      case 'grouped_column':
       case 'bar':
       case 'line':
       case 'area':
-        _list.push({
-          value: 'column',
-          name: t('chat.chart_type.column'),
-          icon: ICON_COLUMN,
-        })
-        _list.push({
-          value: 'bar',
-          name: t('chat.chart_type.bar'),
-          icon: ICON_BAR,
-        })
-        _list.push({
-          value: 'line',
-          name: t('chat.chart_type.line'),
-          icon: ICON_LINE,
-        })
-        _list.push({
-          value: 'area',
-          name: t('chat.chart_type.area'),
-          icon: ICON_LINE,
-        })
+        pushChartType('column', ICON_COLUMN)
+        pushChartType('grouped_column', ICON_COLUMN)
+        pushChartType('bar', ICON_BAR)
+        pushChartType('line', ICON_LINE)
+        pushChartType('area', ICON_LINE)
         break
       case 'pie':
+      case 'donut':
         pushChartType('pie', ICON_PIE)
+        pushChartType('donut', ICON_PIE)
         break
       case 'metric':
         pushChartType('metric', ICON_TABLE)
@@ -2070,6 +2081,7 @@ const chartType = computed<ChartTypes>({
 })
 
 const isDashboardSurface = computed(() => props.showPosition !== 'multiplexing')
+const isTabDashboardSurface = computed(() => props.dashboardLayoutSurface === 'tab')
 const showInsightHeader = computed(() => {
   const type = chartType.value
   return type !== 'table' && type !== 'metric' && displayData.value.length > 0
@@ -2086,7 +2098,7 @@ const chartRenderColumns = computed(() => [
   ...(props.viewInfo.chart.columns || []),
   ...insightColumns.value,
 ])
-const insightDisplay = computed(() => {
+const mainInsightDisplay = computed(() => {
   const layoutStateKey = buildInsightLayoutStateKey({
     viewId: props.viewInfo?.id,
     chartType: chartType.value,
@@ -2100,28 +2112,81 @@ const insightDisplay = computed(() => {
     previousInsightLayout = undefined
     previousInsightDensity = undefined
   }
+  const measuredFrame = frameSize.value
   const display = resolveInsightDisplay({
     chartType: chartType.value,
     data: displayData.value,
     x: renderXAxis.value,
     y: renderYAxis.value,
     series: renderSeries.value,
-    width: frameSize.value.width,
-    height: frameSize.value.height,
+    width: measuredFrame?.width,
+    height: measuredFrame?.height,
     dashboard: isDashboardSurface.value,
     previousLayout: previousInsightLayout,
     previousDensity: previousInsightDensity,
   })
-  previousInsightLayout = display.layout
-  previousInsightDensity = display.density
+  if (measuredFrame || !isDashboardSurface.value) {
+    previousInsightLayout = display.layout
+    previousInsightDensity = display.density
+  }
   return display
 })
+const tabInsightControlsVariant = computed<TabInsightControlsVariant>(() =>
+  resolveTabInsightControlsVariant({
+    pivot: pivotEnabled.value,
+    date:
+      showDashboardDateExpression.value
+      || (showDashboardDateFilter.value && !dateExpressionPickerEnabled.value),
+  })
+)
+const tabInsightControlsReserve = computed(() =>
+  resolveTabInsightControlsReserve(tabInsightControlsVariant.value)
+)
+const tabInsightControlsStyle = computed(() => ({
+  '--tab-insight-controls-reserve': `${tabInsightControlsReserve.value}px`,
+}))
+const tabInsightFallbackDisplay: InsightDisplayStrategy = {
+  show: false,
+  layout: 'top',
+  density: 'compact',
+  maxStats: 0,
+  featuredSide: false,
+}
+const insightDisplay = computed<InsightDisplayStrategy>(() =>
+  isTabDashboardSurface.value
+    ? tabInsightDisplay.value || tabInsightFallbackDisplay
+    : mainInsightDisplay.value
+)
+const insightEnabled = computed(() => props.viewInfo.chart?.insight?.enabled !== false)
 const canShowInsightHeader = computed(() => {
-  if (!showInsightHeader.value) {
+  if (!insightEnabled.value || !showInsightHeader.value) {
+    return false
+  }
+  if (isDashboardSurface.value && !frameSize.value) {
     return false
   }
   return insightDisplay.value.show
 })
+
+function applyTabInsightLayout() {
+  if (!isTabDashboardSurface.value) return
+  const transition = transitionTabInsightLayout(tabInsightLayoutState.value, {
+    frame: frameSize.value,
+    viewId: props.viewInfo?.id,
+    chartType: chartType.value,
+    data: displayData.value,
+    x: renderXAxis.value,
+    y: renderYAxis.value,
+    series: renderSeries.value,
+    insight: props.viewInfo?.chart?.insight,
+    controlsVariant: tabInsightControlsVariant.value,
+  })
+  tabInsightLayoutState.value = transition.state
+  if (transition.processed) {
+    tabInsightDisplay.value = transition.display
+  }
+}
+
 const chartLoading = computed(
   () =>
     refreshing.value ||
@@ -2172,21 +2237,137 @@ const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
 const insightMaxStats = computed(() => insightDisplay.value.maxStats)
 const isFeaturedSideInsight = computed(() => insightDisplay.value.featuredSide === true)
 
-function measureFrame() {
-  const el = chartShowAreaRef.value
-  if (!el) {
+function reportFrameMeasurementError(reason: string) {
+  if (reportedFrameMeasurementErrors.has(reason)) return
+  reportedFrameMeasurementErrors.add(reason)
+  console.error(`[SQView] insight frame measurement failed: ${reason}`)
+}
+
+function requiredCssPixel(style: CSSStyleDeclaration, property: string) {
+  const value = parseCssPixel(style.getPropertyValue(property))
+  if (value === null) reportFrameMeasurementError(`invalid ${property}`)
+  return value
+}
+
+function elementBlockContribution(element: HTMLElement) {
+  const style = window.getComputedStyle(element)
+  const marginStart = parseCssPixel(style.marginBlockStart)
+  const marginEnd = parseCssPixel(style.marginBlockEnd)
+  if (marginStart === null || marginEnd === null) {
+    reportFrameMeasurementError('invalid dashboard filter block margin')
+    return null
+  }
+  return element.getBoundingClientRect().height + marginStart + marginEnd
+}
+
+function measureCanonicalFrame() {
+  const container = containerRef.value
+  if (!container) return false
+
+  const style = window.getComputedStyle(container)
+  const compactPaddingInline = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactPaddingInline
+  )
+  const compactPaddingBlock = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactPaddingBlock
+  )
+  const compactHeaderHeight = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactHeaderHeight
+  )
+  const compactHeaderGap = requiredCssPixel(
+    style,
+    INSIGHT_FRAME_CSS_PROPERTIES.compactHeaderGap
+  )
+  const borderInlineStart = parseCssPixel(style.borderInlineStartWidth)
+  const borderInlineEnd = parseCssPixel(style.borderInlineEndWidth)
+  const borderBlockStart = parseCssPixel(style.borderBlockStartWidth)
+  const borderBlockEnd = parseCssPixel(style.borderBlockEndWidth)
+  const controlsBlock = isTabDashboardSurface.value
+    ? tabInsightControlsReserve.value
+    : dashboardFilterControlsRef.value
+      ? elementBlockContribution(dashboardFilterControlsRef.value)
+      : null
+  const requiredValues = [
+    compactPaddingInline,
+    compactPaddingBlock,
+    compactHeaderHeight,
+    compactHeaderGap,
+    borderInlineStart,
+    borderInlineEnd,
+    borderBlockStart,
+    borderBlockEnd,
+    controlsBlock,
+  ]
+  if (requiredValues.some((value) => value === null)) {
+    reportFrameMeasurementError('incomplete canonical geometry')
     return false
   }
-  const nextSize = {
-    width: Math.round(el.clientWidth),
-    height: Math.round(el.clientHeight),
-  }
-  if (nextSize.width === frameSize.value.width && nextSize.height === frameSize.value.height) {
+
+  const rect = container.getBoundingClientRect()
+  const nextSize = resolveCanonicalInsightFrame({
+    borderBox: { width: rect.width, height: rect.height },
+    borderInline: borderInlineStart! + borderInlineEnd!,
+    borderBlock: borderBlockStart! + borderBlockEnd!,
+    compactPaddingInline: compactPaddingInline!,
+    compactPaddingBlock: compactPaddingBlock!,
+    compactHeaderHeight: compactHeaderHeight!,
+    compactHeaderGap: compactHeaderGap!,
+    controlsBlock: controlsBlock!,
+  })
+  if (!nextSize) {
+    reportFrameMeasurementError('non-positive canonical frame')
     return false
   }
+  if (sameInsightFrame(nextSize, frameSize.value)) return false
   frameSize.value = nextSize
   return true
 }
+
+const mainInsightFrameStructureKey = computed(() =>
+  JSON.stringify([
+    showDashboardDateExpression.value,
+    showDashboardDateFilter.value && !dateExpressionPickerEnabled.value,
+    pivotEnabled.value,
+    locale.value,
+  ])
+)
+
+watch(
+  mainInsightFrameStructureKey,
+  () => {
+    if (!isTabDashboardSurface.value) nextTick(measureCanonicalFrame)
+  },
+  { flush: 'post' }
+)
+
+watch(
+  tabInsightControlsVariant,
+  () => {
+    if (isTabDashboardSurface.value) measureCanonicalFrame()
+  },
+  { flush: 'post' }
+)
+
+watch(
+  () => [
+    isTabDashboardSurface.value,
+    frameSize.value?.width,
+    frameSize.value?.height,
+    props.viewInfo?.id,
+    chartType.value,
+    displayData.value,
+    renderXAxis.value,
+    renderYAxis.value,
+    renderSeries.value,
+    JSON.stringify(props.viewInfo?.chart?.insight || null),
+    tabInsightControlsVariant.value,
+  ],
+  () => applyTabInsightLayout(),
+  { flush: 'post', immediate: true }
+)
 
 function scheduleRenderChart() {
   if (renderTimer) {
@@ -2294,23 +2475,33 @@ function onTypeChange(val: any) {
   })
 }
 
+function startInsightFrameObserver() {
+  measureCanonicalFrame()
+  resizeObserver = new ResizeObserver((entries) => {
+    const ownsEntry = entries.some(
+      (entry) =>
+        entry.target === containerRef.value
+        || (!isTabDashboardSurface.value && entry.target === dashboardFilterControlsRef.value)
+    )
+    if (ownsEntry) measureCanonicalFrame()
+  })
+  if (containerRef.value) {
+    resizeObserver.observe(containerRef.value, { box: 'border-box' })
+  }
+  if (!isTabDashboardSurface.value && dashboardFilterControlsRef.value) {
+    resizeObserver.observe(dashboardFilterControlsRef.value, { box: 'border-box' })
+  }
+}
+
 onMounted(() => {
   // eslint-disable-next-line vue/no-mutating-props
   props.viewInfo.chart['sourceType'] =
     props.viewInfo.chart['sourceType'] ?? props.viewInfo.chart.type
-  nextTick(() => {
-    measureFrame()
-    if (containerRef.value) {
-      resizeObserver = new ResizeObserver(() => {
-        const frameChanged = measureFrame()
-        if (frameChanged && chartType.value !== 'table') scheduleRenderChart()
-      })
-      resizeObserver.observe(containerRef.value)
-      if (chartShowAreaRef.value) {
-        resizeObserver.observe(chartShowAreaRef.value)
-      }
-    }
-  })
+  if (isTabDashboardSurface.value) {
+    startInsightFrameObserver()
+    return
+  }
+  nextTick(startInsightFrameObserver)
 })
 
 onBeforeUnmount(() => {
@@ -2339,12 +2530,27 @@ defineExpose({
   <div
     ref="containerRef"
     class="chart-base-container"
-    :class="`insight-density-${insightDensity}`"
+    :style="tabInsightControlsStyle"
+    :class="[
+      `insight-density-${insightDensity}`,
+      isTabDashboardSurface ? 'dashboard-layout-surface-tab' : '',
+      isTabDashboardSurface ? `tab-controls-${tabInsightControlsVariant}` : '',
+    ]"
   >
     <div class="header-bar">
       <div class="title">
         {{ viewInfo.chart.title }}
       </div>
+      <el-tooltip
+        v-if="chartLoading && hasRenderedChartData"
+        effect="dark"
+        :content="chartLoadingText"
+        placement="top"
+      >
+        <span class="chart-refresh-status" role="status" :aria-label="chartLoadingText">
+          <span class="chart-loading-ring small" aria-hidden="true"></span>
+        </span>
+      </el-tooltip>
       <div v-if="showPosition === 'multiplexing'" class="buttons-bar">
         <div class="chart-select-container">
           <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
@@ -2373,6 +2579,7 @@ defineExpose({
       </div>
     </div>
     <div
+      ref="dashboardFilterControlsRef"
       class="dashboard-filter-controls"
       :class="{
         'dashboard-filter-controls--combined':
@@ -2626,7 +2833,7 @@ defineExpose({
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
       </div>
     </div>
-    <div ref="chartShowAreaRef" class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
+    <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="showFullChartLoading" class="chart-loading-info">
         <div class="chart-loading-ring" aria-hidden="true"></div>
         <div class="chart-loading-text">{{ chartLoadingText }}</div>
@@ -2657,10 +2864,6 @@ defineExpose({
         class="chart-content-row"
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
-        <div v-if="chartLoading" class="chart-refresh-overlay">
-          <span class="chart-loading-ring small" aria-hidden="true"></span>
-          <span>{{ chartLoadingText }}</span>
-        </div>
         <ChartInsightHeader
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
           :compact="compactInsightHeader"
@@ -2740,10 +2943,16 @@ defineExpose({
 
 <style scoped lang="less">
 .chart-base-container {
+  --insight-frame-compact-padding-inline: 16px;
+  --insight-frame-compact-padding-block: 14px;
+  --insight-frame-compact-header-height: 34px;
+  --insight-frame-compact-header-gap: 10px;
+
   width: 100%;
   height: 100%;
   background: #ffffff;
-  padding: 14px 16px !important;
+  padding: var(--insight-frame-compact-padding-block)
+    var(--insight-frame-compact-padding-inline) !important;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -2753,15 +2962,36 @@ defineExpose({
   flex-direction: column;
   min-height: 0;
 
+  &.dashboard-layout-surface-tab {
+    --tab-insight-controls-reserve: 0px;
+
+    .dashboard-filter-controls {
+      flex: 0 0 var(--tab-insight-controls-reserve);
+      block-size: var(--tab-insight-controls-reserve);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .dashboard-filter-controls--combined {
+      flex-wrap: nowrap;
+      margin-block: 0;
+
+      > .pivot-toolbar,
+      > .date-filter-toolbar {
+        margin-block: 0;
+      }
+    }
+  }
+
   div::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
   }
   .header-bar {
     flex: 0 0 auto;
-    min-height: 34px;
+    min-height: var(--insight-frame-compact-header-height);
     display: flex;
-    margin-bottom: 10px;
+    margin-bottom: var(--insight-frame-compact-header-gap);
 
     align-items: center;
     flex-direction: row;
@@ -2961,11 +3191,16 @@ defineExpose({
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
+    align-self: flex-start;
+    width: fit-content;
+    max-width: 100%;
     gap: 0;
     margin: -2px 0 8px;
 
     > .pivot-toolbar {
       order: 0;
+      flex: 1 1 0;
+      min-width: 0;
       margin-top: 0;
       margin-bottom: 0;
     }
@@ -3119,7 +3354,6 @@ defineExpose({
   &.insight-density-mini,
   &.insight-density-basic {
     .pivot-toolbar {
-      margin-bottom: 4px;
       gap: 4px;
 
       .pivot-summary,
@@ -3461,21 +3695,24 @@ defineExpose({
 
 .chart-show-area {
   width: 100%;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   height: auto;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   position: relative;
 
   :deep(.chart-container) {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
   }
 
   .chart-content-row {
     position: relative;
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -3487,26 +3724,13 @@ defineExpose({
   }
 }
 
-.chart-refresh-overlay {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 3;
-  display: inline-flex;
+.chart-refresh-status {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: calc(100% - 16px);
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--workspace-border-soft, rgba(31, 35, 41, 0.08));
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 20px rgba(31, 35, 41, 0.08);
-  color: var(--workspace-text-secondary, #66758f);
-  font-size: 12px;
-  line-height: 28px;
-  white-space: nowrap;
-  pointer-events: none;
+  justify-content: center;
 }
 
 .chart-empty-info {
@@ -3594,6 +3818,9 @@ defineExpose({
 .chart-loading-ring {
   width: 56px;
   height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  flex: 0 0 56px;
   border: 5px solid #eef1f5;
   border-top-color: var(--ed-color-primary, #2f6bff);
   border-radius: 50%;
@@ -3602,8 +3829,37 @@ defineExpose({
   &.small {
     width: 14px;
     height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    flex-basis: 14px;
     border-width: 2px;
   }
+}
+
+.chart-base-container.insight-density-mini .chart-loading-info {
+  gap: 8px;
+}
+
+.chart-base-container.insight-density-mini .chart-loading-ring:not(.small) {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  flex-basis: 36px;
+  border-width: 3px;
+}
+
+.chart-base-container.insight-density-basic .chart-loading-info {
+  gap: 6px;
+}
+
+.chart-base-container.insight-density-basic .chart-loading-ring:not(.small) {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  flex-basis: 28px;
+  border-width: 3px;
 }
 
 .chart-loading-text {

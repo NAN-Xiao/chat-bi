@@ -21,13 +21,28 @@ const beforePreviewSql = body.slice(0, body.indexOf('const result = await previe
 
 assert.match(
   beforePreviewSql,
-  /viewInfo\.dataState = 'loading'/,
-  '批量刷新每个图表前必须先进入 loading，避免等待接口期间把空数组误判成“没有找到数据”'
+  /prepareDashboardChartRefreshState\(viewInfo, 'loading'\)/,
+  '批量刷新前必须复用公共快照保留协议，空快照图表保持空态而不是闪回遮罩'
 )
 assert.match(
   beforePreviewSql,
-  /viewInfo\.refreshState = 'loading'/,
-  '批量刷新每个图表前必须标记 refreshState=loading，让所有看板共用同一套 pending 判断'
+  /if \(hasPreviousRows\) \{\s*viewInfo\.dataState = 'loading'\s*viewInfo\.refreshState = 'loading'\s*\}/,
+  '有行数据的图表刷新期间必须进入 loading 显示刷新角标；空快照图表不得重新进入 loading 造成遮罩闪回'
+)
+assert.match(
+  body,
+  /hasPreviousRows \|\| \(isDashboardQueryBusy\(result\) && hasPreviousShape\)/,
+  '刷新失败只能用真实行数据（或 busy 且有结构）回退，空快照不能吞掉错误信息'
+)
+assert.match(
+  body,
+  /\} else \{\s*viewInfo\.dataState = 'failed'\s*\}/,
+  '失败且没有可回退内容时必须落成 failed，不能停留在 loading 导致遮罩卡住'
+)
+assert.match(
+  body,
+  /catch \(error: any\) \{[\s\S]*?hasDashboardChartRows\(viewInfo\)/,
+  '请求异常时按行数据决定保留旧内容还是显示错误，空快照不能吞掉异常信息'
 )
 assert.match(
   body,

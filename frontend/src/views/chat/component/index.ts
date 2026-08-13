@@ -1,10 +1,12 @@
 import { BaseChart, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import { Bar } from '@/views/chat/component/charts/Bar.ts'
 import { Column } from '@/views/chat/component/charts/Column.ts'
+import { GroupedColumn } from '@/views/chat/component/charts/GroupedColumn.ts'
 import { Line } from '@/views/chat/component/charts/Line.ts'
 import { Area } from '@/views/chat/component/charts/Area.ts'
 import { Table } from '@/views/chat/component/charts/Table.ts'
 import { Pie } from '@/views/chat/component/charts/Pie.ts'
+import { Donut } from '@/views/chat/component/charts/Donut.ts'
 import { Metric } from '@/views/chat/component/charts/Metric.ts'
 import { Funnel } from '@/views/chat/component/charts/Funnel.ts'
 import { Heatmap } from '@/views/chat/component/charts/Heatmap.ts'
@@ -15,10 +17,12 @@ import { Treemap } from '@/views/chat/component/charts/Treemap.ts'
 const CHART_TYPE_MAP: { [key: string]: any } = {
   table: Table,
   column: Column,
+  grouped_column: GroupedColumn,
   bar: Bar,
   line: Line,
   area: Area,
   pie: Pie,
+  donut: Donut,
   metric: Metric,
   funnel: Funnel,
   heatmap: Heatmap,

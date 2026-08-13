@@ -43,6 +43,7 @@ from apps.datasource.crud.sql_permission import (
     validate_sql_object_scope,
     validate_sql_table_scope,
 )
+from apps.dashboard.crud.dashboard_date_filter import has_unresolved_dashboard_date_parameters
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import (
     _unsafe_exec_sql_after_validation,
@@ -66,6 +67,17 @@ from common.utils.utils import AppLogUtil
 
 USER_QUERY_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
 PERMISSION_CHANGED_MESSAGE = "权限已发生变化，请重新提交查询。"
+
+
+class UnresolvedDashboardDateParametersError(ValueError):
+    """SQL 仍含看板日期占位符时，禁止进入真实数据源执行。"""
+
+
+def _ensure_no_unresolved_dashboard_date_parameters(sql: str) -> None:
+    if has_unresolved_dashboard_date_parameters(sql):
+        raise UnresolvedDashboardDateParametersError(
+            "SQL contains unresolved dashboard date parameters"
+        )
 
 
 def looks_like_data_unavailable_error(message: str) -> bool:
@@ -289,6 +301,7 @@ def _external_table_scope(datasource: AssistantOutDsSchema) -> dict[str, dict[st
             # 外部数据源没有系统库里的完整字段全集。只要配置了表，就禁止 SELECT *，
             # 防止底层真实表新增或隐藏字段被顺带带出。
             "denied_fields": {"*"},
+            "unknown_fields_are_denied": True,
         }
         scope[table_name] = entry
         scope[normalize_identifier(f"app_dynamic_temp_table_{getattr(table, 'name', '')}")] = entry
@@ -463,6 +476,7 @@ def _execute_after_validation(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：调用底层 SQL 执行器，并在执行器支持时传递查询超时时间。
     """
+    _ensure_no_unresolved_dashboard_date_parameters(sql)
     try:
         max_result_rows_requested = (
             max_result_rows is not _UNSET_EXECUTION_CONTROL

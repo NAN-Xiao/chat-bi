@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import sys
 from pathlib import Path
@@ -130,15 +131,59 @@ STALE_SKILL_MARKERS = (
     "<!-- data-skill-source:flam:first-zombie:revenue-voice-root-cause -->",
 )
 
+REALTIME_VALIDATION_RULES = [
+    {
+        "match": ["实时付费趋势", "实时充值趋势", "实时收入趋势", "按小时", "每小时", "逐小时", "小时趋势", "当前小时", "当前整点"],
+        "when_sql_patterns": [r"\bevent_realtime\b"],
+        "required_sql_patterns": [
+            r"\bGROUP\s+BY\b",
+            r"(?:DATE_FORMAT|HOUR)[\s\S]{0,80}FROM_UNIXTIME[\s\S]{0,80}time[\s\S]{0,80}1000",
+        ],
+        "message": "flam 明确按小时或小时趋势的实时查询必须使用 event_realtime.time 生成小时维度并 GROUP BY；仅包含实时但按渠道、国家、平台等非时间维度统计的查询不适用此规则。",
+    },
+    {
+        "match": ["实时"],
+        "when_sql_patterns": [r"\bevent_realtime\b"],
+        "forbidden_sql_patterns": [r"\b(?:CURDATE|CURRENT_DATE|NOW|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|GETDATE|GETUTCDATE|UTC_TIMESTAMP)\b"],
+        "message": "flam 实时查询必须使用当前请求的受控业务日期范围；禁止在 event_realtime SQL 中使用数据库当前日期/时间函数。",
+    },
+    {
+        "match": ["渠道"],
+        "when_sql_patterns": [r"\bevent_realtime\b", "ServerPayLog"],
+        "required_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}adinfo[\s\S]{0,80}\$\.(?:mediaSource|campaignName)"],
+        "forbidden_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}personal[\s\S]{0,80}\$\.[^'\"]*channel"],
+        "message": "flam 实时付费渠道必须从 ServerPayLog.adinfo 的 mediaSource 读取，缺失时回退 campaignName；不得从 personal 猜测渠道字段。",
+    },
+    {
+        "match": ["国家"],
+        "when_sql_patterns": [r"\bevent_realtime\b", "ServerPayLog"],
+        "required_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}userinfo[\s\S]{0,80}\$\.country"],
+        "forbidden_sql_patterns": [r"JSON_EXTRACT[\s\S]{0,80}personal[\s\S]{0,80}\$\.country"],
+        "message": "flam 实时付费国家必须从 ServerPayLog.userinfo.country 读取；不得从 personal 猜测国家字段。",
+    },
+]
+
+ACTIVE_DATE_WINDOW_VALIDATION_RULES = [
+    {
+        "match": ["DAU", "WAU", "MAU", "活跃用户", "活跃趋势"],
+        "forbidden_sql_patterns": [
+            r"\bMAX\s*\(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)?`?dt`?\s*\)",
+            r"\bDISTINCT\s+(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)?`?dt`?",
+        ],
+        "message": "flam 历史 DAU/WAU/MAU 必须使用调用方提供的固定日期窗口；禁止通过 MAX(dt) 或 DISTINCT dt 动态探测最新分区，以避免 ADS 大表扫描。请改用显式 dt 范围。",
+    },
+]
+
 DATA_SKILLS: list[dict[str, str]] = [
     {
         "name": "flam 实时数据时区与日期口径",
         "description": (
-            "flam / first_zombie 今天实时付费趋势、按小时付费、实时日期、"
+            "flam / first_zombie 实时付费金额、今天实时付费趋势、按小时付费、实时日期、"
             "dt 分区与实时看板 SQL 生成规则。"
         ),
-        "prompt": """<!-- dashboard-refresh-policy:{"auto_refresh":true,"snapshot_max_age_hours":3} -->
+        "prompt": f"""<!-- dashboard-refresh-policy:{{"auto_refresh":true,"snapshot_max_age_hours":3}} -->
 <!-- data-skill-source:flam:first-zombie:timezone-realtime -->
+<!-- data-skill-sql-validation:{json.dumps(REALTIME_VALIDATION_RULES, ensure_ascii=False, separators=(',', ':'))} -->
 # flam 实时数据时区与日期口径
 
 ## 适用范围
@@ -146,19 +191,26 @@ DATA_SKILLS: list[dict[str, str]] = [
 - 适用于 `event`、`user` 两张表中的日期过滤、实时看板、实时付费、在线人数、小时趋势等问题。
 
 ## 字段口径
-- `time` 是毫秒时间戳。业务时间表达式使用：
-  `DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)`
+- `time` 是毫秒时间戳。小时维度直接使用：
+  `FROM_UNIXTIME(e.time / 1000)`
 - `dt` 是业务日期分区，格式为 `YYYYMMDD` 数字。
-- 对实时查询，为避免跨 UTC/业务日边界漏数，`dt` 至少应覆盖业务今天及前一业务日：
-  `e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)`
+- 对实时查询，为避免跨日期分区边界漏数，`dt` 至少应覆盖当前日期及前一日期：
+  `e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)`
 - 业务今天的时间窗口使用：
-  `DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))`
+  `FROM_UNIXTIME(e.time / 1000) >= DATE(UTC_TIMESTAMP())`
   且
-  `DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y-%m-%d %H:00:00')`
+  `FROM_UNIXTIME(e.time / 1000) < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')`
 
 ## 实时看板 SQL 规则
-- 实时小时维度应基于事件业务时间取小时：
-  `DATE_FORMAT(DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%Y-%m-%d %H:00:00'), '%H:00')`
+- 实时小时维度应基于事件时间取小时：
+  `DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00')`
+- “实时”只决定使用当前业务日的实时数据范围和 `event_realtime` 表，不单独决定结果粒度。
+- 用户明确要求按小时、每小时、逐小时、小时趋势、当前小时或当前整点时，才生成小时序列并按 `event_realtime.time` 聚合。
+- 用户明确要求按渠道、国家、平台等非时间维度统计实时付费时，只按用户指定维度聚合，不得额外加入小时维度。
+- `event_realtime` 已配置 `adinfo` 与 `userinfo`：付费渠道取 `adinfo.mediaSource`，缺失时取 `adinfo.campaignName`；国家取 `userinfo.country`。不得从 `personal.ed_channel`、`personal.payChannel` 或 `personal.country` 猜测维度。
+- 用户只问实时付费情况、实时付费金额、金额是多少、总额、合计、汇总、单值或指标卡，且未指定时间粒度和其他维度时，返回当前实时范围的单行聚合；不得因为出现“实时”就添加小时字段或 `GROUP BY`。
+- “累计趋势”仍保留小时维度并计算累计值；“按渠道/国家/平台”等问题只保留用户指定的业务维度。
+- 非递归小时骨架输出标签时，使用 `CONCAT(LPAD(CAST(hour_index AS CHAR), 2, '0'), ':00')`；不要把格式字符串误写进 `FROM_UNIXTIME` 的括号内。
 - flam ADS/MySQL 返回中文 SELECT 别名时可能变成 `??`，持久看板 SQL 字段必须使用 ASCII 别名：
   `time_label`、`hour_label`、`online_users`、`pay_count`、`cumulative_pay_count`；图表配置用中文 `name` 展示、英文 `value` 绑定字段。
 - ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板用 `tools/repair_flam_first_zombie_realtime_dashboard.py` 先探测最近可用业务日，再把 SQL 固化为常量 `dt`/业务日期窗口。
@@ -170,6 +222,7 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## 禁止事项
 - 不要在 flam 实时问题里直接用 `CURDATE()` / `NOW()` 作为业务日口径。
 - 实时查询应遵循本 Data Skill 的日期规则。
+- 实时 SQL 的日期边界必须使用当前请求注入的受控日期参数或已确定的业务日期字面量；不得使用 `CURDATE()`、`NOW()`、`UTC_TIMESTAMP()` 或其它数据库当前时间函数。
 - 不要把该日期规则套用到其他数据源。
 
 ## 实时看板持久 SQL
@@ -180,8 +233,8 @@ DATA_SKILLS: list[dict[str, str]] = [
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
+                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
       AND e.event = 'CCU'
       AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
@@ -189,15 +242,15 @@ WITH latest_dt AS (
     ORDER BY e.dt DESC
     LIMIT 1
 )
-SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS time_label,
+SELECT DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS time_label,
        MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
 FROM `event` e
 JOIN latest_dt ld ON e.dt = ld.dt
 WHERE e.prod = 110000038
   AND e.event = 'CCU'
   AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
-GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), time_label
-ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
+GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000)), time_label
+ORDER BY HOUR(FROM_UNIXTIME(e.time / 1000))
 LIMIT 24
 ```
 
@@ -206,22 +259,22 @@ LIMIT 24
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
+                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
       AND e.event = 'ServerPayLog'
     GROUP BY e.dt
     ORDER BY e.dt DESC
     LIMIT 1
 )
-SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS hour_label,
+SELECT DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
        COUNT(*) AS pay_count
 FROM `event` e
 JOIN latest_dt ld ON e.dt = ld.dt
 WHERE e.prod = 110000038
   AND e.event = 'ServerPayLog'
-GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), hour_label
-ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
+GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000)), hour_label
+ORDER BY HOUR(FROM_UNIXTIME(e.time / 1000))
 LIMIT 24
 ```
 
@@ -230,8 +283,8 @@ LIMIT 24
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
+                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
       AND e.prod = 110000038
       AND e.event = 'ServerPayLog'
     GROUP BY e.dt
@@ -239,8 +292,8 @@ WITH latest_dt AS (
     LIMIT 1
 ),
 hourly AS (
-    SELECT HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)) AS hour_index,
-           DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS hour_label,
+    SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_index,
+           DATE_FORMAT(FROM_UNIXTIME(e.time / 1000), '%H:00') AS hour_label,
            COUNT(*) AS pay_count
     FROM `event` e
     JOIN latest_dt ld ON e.dt = ld.dt
@@ -297,6 +350,16 @@ LIMIT 24
         "name": "flam 历史看板日期窗口口径",
         "description": "flam / first_zombie 离线历史看板的日期窗口、ADS 性能和成熟 cohort 规则。",
         "prompt": """<!-- data-skill-source:flam:first-zombie:historical-date-window -->
+<!-- data-skill-sql-validation:[
+  {
+    "match":["DAU","WAU","MAU","活跃用户","活跃趋势"],
+    "forbidden_sql_patterns":[
+      "\\\\bMAX\\\\s*\\\\(\\\\s*(?:[A-Za-z_][A-Za-z0-9_]*\\\\s*\\\\.\\\\s*)?`?dt`?\\\\s*\\\\)",
+      "\\\\bDISTINCT\\\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\\\s*\\\\.\\\\s*)?`?dt`?"
+    ],
+    "message":"flam 历史 DAU/WAU/MAU 必须使用调用方提供的固定日期窗口；禁止通过 MAX(dt) 或 DISTINCT dt 动态探测最新分区，以避免 ADS 大表扫描。请改用显式 dt 范围。"
+  }
+] -->
 # flam 历史看板日期窗口口径
 
 ## 适用范围
@@ -321,6 +384,7 @@ LIMIT 24
         "name": "flam 活跃用户口径",
         "description": "flam / first_zombie DAU/WAU/MAU、活跃生命周期、渠道/系统活跃和周登录天数 SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:active-users -->
+<!-- data-skill-sql-validation:{json.dumps(ACTIVE_DATE_WINDOW_VALIDATION_RULES, ensure_ascii=False, separators=(',', ':'))} -->
 # flam 活跃用户口径
 
 ## 适用范围
@@ -351,8 +415,15 @@ LIMIT 24
         "description": "flam / first_zombie 日付费、累计付费、ARPU/ARPPU、付费率、首付、近 7 日累充和新增 cohort LTV SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:payment-ltv -->
 <!-- data-skill-sql-validation:[
-{{
-  "match":["ltv","LTV","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","次日LTV","次日 LTV","2日LTV","2 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
+ {{
+   "name":"channel_window_cumulative_payment",
+   "match":["各付费渠道累计付费收入和付费人数","各渠道累计付费收入和付费人数","按渠道统计累计付费收入","按渠道统计累计付费人数","渠道累计付费收入","渠道累计付费人数"],
+   "required_sql_patterns":["\\\\bevent\\\\b","ServerPayLog","personal","\\\\.money","COUNT\\\\s*\\\\(\\\\s*DISTINCT[\\\\s\\\\S]{{0,120}}\\\\buid\\\\b"],
+   "forbidden_sql_patterns":["\\\\buser\\\\b","paytotal"],
+   "message":"flam 按渠道查询窗口累计付费收入和付费人数时，必须在所选 dt 窗口内汇总 event.ServerPayLog；收入取 personal.money，人数按 uid 全窗口去重。user.pay.paytotal 只适用于明确要求当前/生命周期累计快照的其他口径。"
+ }},
+ {{
+   "match":["ltv","LTV","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","次日LTV","次日 LTV","2日LTV","2 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
   "forbidden_sql_patterns":[
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+1\\\\s+DAY[\\\\s\\\\S]{{0,160}}d1_dt",
     "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+2\\\\s+DAY[\\\\s\\\\S]{{0,160}}d2_dt",
@@ -393,7 +464,9 @@ LIMIT 24
 ## 付费与累计
 - `user.pay.paytotal` 是用户截至该 `dt` 的累计付费快照，可用于累计付费金额、累计付费用户、当前等级段累计人均付费等快照指标。
 - 历史日充值金额直接汇总 `event='ServerPayLog'` 的 `personal.money`；不要按日汇总 `paytotal`，也不要用支付流程事件筛人后再推导交易金额。
-- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；非 `metric` 时间图必须以 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定窗口并返回同范围的 `date_filter`，不扫描大视图取得最大分区。
+- 历史日付费、ARPU/ARPPU、付费概览和渠道付费 SQL 以 `ServerPayLog.personal.money` 为分子，按 `dt` 分区聚合；非 `metric` 时间图必须以 `{{{{dashboard_start_yyyymmdd}}}}` 至 `{{{{dashboard_end_yyyymmdd}}}}` 限定窗口并返回同范围的 `date_filter`，不扫描大视图取得最大分区。
+- “各/按渠道累计付费收入和付费人数”表示所选日期窗口内的交易累计：使用 `event` 中的 `ServerPayLog`，渠道取交易行 `adinfo.mediaSource`，缺失时回退 `adinfo.campaignName`，收入汇总 `personal.money`，付费人数对窗口内 `uid` 全窗口去重；必须使用 `{{{{dashboard_start_yyyymmdd}}}}` 与 `{{{{dashboard_end_yyyymmdd}}}}`。只有问题明确要求当前/生命周期累计快照时，才使用 `user.pay.paytotal`。
+- 用户明确查询今天、今日、当天的实时付费非 `metric` 时间图时，使用 `event_realtime`，SQL 的 `dt` 条件保存成对的 `{{{{dashboard_start_yyyymmdd}}}}` 和 `{{{{dashboard_end_yyyymmdd}}}}`，并返回 `{{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{{"version":1,"mode":"preset","preset":"today"}}}}`；不得把实际 `yyyyMMdd` 固化到可保存、复制的图表 SQL 中。
 - 只有结果需要按渠道/系统等维度拆分时才解析交易事件行的 `adinfo` / `deviceinfo` JSON；国家拆分统一使用活跃事件和 `ServerPayLog` 事件各自行的 `userinfo.country`，不使用 `currentinfo.country`。
 - 日充值次数使用 `ServerPayLog.personal.orderId` 去重；日充值用户数使用同日 `ServerPayLog.uid` 去重。
 - 日新增充值用户数使用 `user.pay.firstpaytime` 转换的首付业务日；不得使用分析窗口内最小付费事件日期。
@@ -954,7 +1027,7 @@ _DASHBOARD_END_DATE_SQL = (
 _DASHBOARD_START_DATE_SQL = (
     "STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d')"
 )
-_REALTIME_BUSINESS_DATE_SQL = "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))"
+_REALTIME_BUSINESS_DATE_SQL = "DATE(UTC_TIMESTAMP())"
 _METRIC_EXAMPLE_BUSINESS_DATE_SQL = "STR_TO_DATE('20260730', '%Y%m%d')"
 _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     r"\b(?:CURDATE|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|"
@@ -984,10 +1057,6 @@ def _tokenize_dashboard_sql_current_date(prompt: str) -> str:
                     f"DATE_SUB({_DASHBOARD_START_DATE_SQL}, INTERVAL 30 DAY)",
                 )
         elif view_id in _DASHBOARD_REALTIME_DATE_VIEW_IDS:
-            sql = sql.replace(
-                "FROM_UNIXTIME(e.time / 1000)",
-                "DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)",
-            )
             sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_REALTIME_BUSINESS_DATE_SQL, sql)
         else:
             raise ValueError(f"Flam 看板 SQL 存在未分类的数据库当前日期函数: {view_id}")

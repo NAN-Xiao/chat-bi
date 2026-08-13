@@ -9,7 +9,11 @@ export type DashboardRefreshResult = {
   recoverable?: unknown
 }
 
-export type DashboardCacheRefreshDisposition = 'permission_denied' | 'refresh_database' | 'ready'
+export type DashboardCacheRefreshDisposition =
+  | 'permission_denied'
+  | 'refresh_database'
+  | 'ready'
+  | 'failed'
 export type DashboardChartRenderState = 'loading' | 'ready' | 'refreshing' | 'stale' | 'failed'
 export type DashboardFailureClass = 'none' | 'terminal' | 'transient'
 
@@ -97,7 +101,10 @@ export function dashboardCacheRefreshDisposition(
   if (isPermissionDeniedRefreshResult(result)) {
     return 'permission_denied'
   }
-  if (result?.status === 'failed' || !hasUsableSnapshot) {
+  if (result?.status === 'failed') {
+    return result?.error_type === 'dashboard_cache_miss' ? 'refresh_database' : 'failed'
+  }
+  if (!hasUsableSnapshot) {
     return 'refresh_database'
   }
   return 'ready'
@@ -108,4 +115,13 @@ export function shouldRetryDashboardChartFailure(
   hasSnapshot: boolean
 ) {
   return classifyDashboardChartFailure(result) === 'transient' && !hasSnapshot
+}
+
+export function shouldKeepDashboardChartPending(
+  result: DashboardRefreshResult,
+  hasSnapshot: boolean,
+  retryCount: number,
+  maxRetries: number
+) {
+  return retryCount < maxRetries && shouldRetryDashboardChartFailure(result, hasSnapshot)
 }

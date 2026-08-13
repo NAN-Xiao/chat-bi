@@ -51,6 +51,7 @@ import type {
   ChartForecastMethod,
   ChartTypes,
 } from '@/views/chat/component/BaseChart.ts'
+import { isRadialPartitionChartType } from '@/views/chat/component/chartTypes.ts'
 import { isAverageAxis, isPercentAxis } from '@/views/chat/component/charts/utils.ts'
 import {
   defaultPivotAggregationForAxes,
@@ -260,6 +261,7 @@ const form = reactive({
   mcpKeyField: '',
   mcpValueField: '',
 })
+const donutSeriesFields = ref<string[]>([])
 const sqlBuilder = reactive({
   activeTab: 'builder',
   timeField: SQL_EDITOR_TIME_FIELD,
@@ -418,10 +420,12 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'table', value: 'table' },
   { label: 'metric', value: 'metric' },
   { label: 'column', value: 'column' },
+  { label: 'grouped_column', value: 'grouped_column' },
   { label: 'bar', value: 'bar' },
   { label: 'line', value: 'line' },
   { label: 'area', value: 'area' },
   { label: 'pie', value: 'pie' },
+  { label: 'donut', value: 'donut' },
   { label: 'funnel', value: 'funnel' },
   { label: 'heatmap', value: 'heatmap' },
   { label: 'scatter', value: 'scatter' },
@@ -717,7 +721,7 @@ const builderMetricOptions = computed(() =>
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
 const seriesFieldOptions = computed(() => {
   const excluded = new Set(form.y)
-  if (form.chartType !== 'pie' && form.x) {
+  if (!isRadialPartitionChartType(form.chartType) && form.x) {
     excluded.add(form.x)
   }
   return toFieldOptions(sourcePreview.fields.filter((field) => !excluded.has(field)))
@@ -768,7 +772,9 @@ const mixedChangedAfterPreview = computed(() => isMixedSource.value && sourceCha
 const previewDisplayFields = computed(() => visiblePreviewFields(preview.fields, preview.data))
 const previewTableFields = computed(() => previewDisplayFields.value.slice(0, 10))
 const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.id || 'new'}-${previewVersion.value}`)
-const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chartType))
+const showXAxis = computed(() =>
+  !['table', 'metric'].includes(form.chartType) && !isRadialPartitionChartType(form.chartType)
+)
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsPivotConfig = computed(() => hasSqlSource.value && !hasMcpSource.value && !['table', 'metric'].includes(form.chartType))
@@ -820,6 +826,9 @@ const chartPreviewYFields = computed(() => {
   }
   if (form.chartType === 'pie') {
     return form.y.slice(0, 1)
+  }
+  if (form.chartType === 'donut') {
+    return form.y.length === 1 ? form.y : []
   }
   return form.y
 })
@@ -2902,13 +2911,16 @@ function normalizeSeriesField(field: string) {
   if (form.y.includes(field)) {
     return ''
   }
-  if (form.chartType !== 'pie' && field === form.x) {
+  if (!isRadialPartitionChartType(form.chartType) && field === form.x) {
     return ''
   }
   return field
 }
 
 function sanitizeSeriesSelection() {
+  if (form.chartType === 'donut') {
+    return
+  }
   const nextSeries = normalizeSeriesField(form.series)
   if (form.series !== nextSeries) {
     form.series = nextSeries
@@ -3992,22 +4004,26 @@ function resetFieldSelections() {
   const fields = sourcePreview.fields
   if (!fields.length) {
     form.columns = []
-    form.x = ''
-    form.y = []
-    form.series = ''
+    if (form.chartType !== 'donut') {
+      form.x = ''
+      form.y = []
+      form.series = ''
+    }
     return
   }
   form.columns = form.columns.filter((field) => fields.includes(field))
-  form.y = form.y.filter((field) => fields.includes(field))
   if (form.columns.length === 0) form.columns = fields.slice(0, 8)
-  if (!fields.includes(form.x)) form.x = fields[0] || ''
-  if (!fields.includes(form.series)) form.series = ''
-  sanitizeSeriesSelection()
-  if (form.y.length === 0) {
-    const numericField = fields.find((field) =>
-      sourcePreview.data.some((row) => typeof row?.[field] === 'number')
-    )
-    form.y = [numericField || fields[Math.min(1, fields.length - 1)] || fields[0]]
+  if (form.chartType !== 'donut') {
+    form.y = form.y.filter((field) => fields.includes(field))
+    if (!fields.includes(form.x)) form.x = fields[0] || ''
+    if (!fields.includes(form.series)) form.series = ''
+    sanitizeSeriesSelection()
+    if (form.y.length === 0) {
+      const numericField = fields.find((field) =>
+        sourcePreview.data.some((row) => typeof row?.[field] === 'number')
+      )
+      form.y = [numericField || fields[Math.min(1, fields.length - 1)] || fields[0]]
+    }
   }
 }
 
@@ -4038,7 +4054,9 @@ function initEditor() {
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
   pruneAutoSeededMetricItemsForFormulaOnlyBuilder()
-  form.series = axisValues(chart.series)[0] || ''
+  const persistedSeries = axisValues(chart.series)
+  donutSeriesFields.value = persistedSeries
+  form.series = persistedSeries[0] || ''
   form.multiQuotaName = t('dashboard.metric_type')
   sourcePreview.fields = fields
   sourcePreview.data = viewInfo.data?.source_data || viewInfo.data?.data || []
@@ -4467,6 +4485,12 @@ function buildChart() {
     return chart
   }
 
+  if (form.chartType === 'donut') {
+    chart.yAxis = toAxes(form.y, { metrics: true })
+    chart.series = toAxes(donutSeriesFields.value)
+    return chart
+  }
+
   if (form.chartType === 'pie') {
     chart.yAxis = toAxes(form.y.slice(0, 1), { metrics: true })
     chart.series = toAxes([effectiveSeriesField.value || form.x].filter(Boolean) as string[])
@@ -4477,6 +4501,41 @@ function buildChart() {
   chart.yAxis = toAxes(form.y, { metrics: true })
   chart.series = toAxes([effectiveSeriesField.value].filter(Boolean) as string[])
   return chart
+}
+
+function donutFieldMappingValidationErrorKey() {
+  if (form.chartType !== 'donut') {
+    return ''
+  }
+  if (form.y.length === 0) {
+    return 'dashboard.sql_editor_donut_value_required'
+  }
+  if (form.y.length !== 1) {
+    return 'dashboard.sql_editor_donut_single_value'
+  }
+  if (!sourcePreview.fields.includes(form.y[0])) {
+    return 'dashboard.sql_editor_donut_value_invalid'
+  }
+  if (donutSeriesFields.value.length === 0) {
+    return 'dashboard.sql_editor_donut_category_required'
+  }
+  if (donutSeriesFields.value.length !== 1) {
+    return 'dashboard.sql_editor_donut_single_category'
+  }
+  const categoryField = donutSeriesFields.value[0]
+  if (!sourcePreview.fields.includes(categoryField) || !normalizeSeriesField(categoryField)) {
+    return 'dashboard.sql_editor_donut_category_invalid'
+  }
+  return ''
+}
+
+function validateDonutFieldMapping() {
+  const errorKey = donutFieldMappingValidationErrorKey()
+  if (!errorKey) {
+    return true
+  }
+  ElMessage.warning(t(errorKey))
+  return false
 }
 
 function validateBeforeApply() {
@@ -4517,6 +4576,9 @@ function validateBeforeApply() {
     ElMessage.warning(mt('mcp_editor_select_tool'))
     return false
   }
+  if (!validateDonutFieldMapping()) {
+    return false
+  }
   if (props.allowStaticApply && !isMaterializedSource.value && !canRunPreview.value) {
     return true
   }
@@ -4554,7 +4616,7 @@ function validateBeforeApply() {
     ElMessage.warning(t('dashboard.sql_editor_select_series'))
     return false
   }
-  if (form.chartType !== 'pie' && !form.x) {
+  if (!isRadialPartitionChartType(form.chartType) && !form.x) {
     ElMessage.warning(t('dashboard.sql_editor_select_x'))
     return false
   }
@@ -4621,6 +4683,9 @@ function writeEditorStateToViewInfo(options: {
   message?: string
 } = {}) {
   if (!props.viewInfo) {
+    return false
+  }
+  if (!validateDonutFieldMapping()) {
     return false
   }
   const strictMcpArguments = options.strictMcpArguments !== false
@@ -4796,6 +4861,18 @@ function applyChange() {
     close: true,
     notify: true,
   })
+}
+
+function handleChartTypeChange(chartType: ChartTypes) {
+  if (chartType === 'donut') {
+    donutSeriesFields.value = form.series ? [form.series] : []
+  }
+}
+
+function handleSeriesFieldChange(series: string) {
+  if (form.chartType === 'donut') {
+    donutSeriesFields.value = series ? [series] : []
+  }
 }
 
 function closeDrawer() {
@@ -5525,7 +5602,7 @@ function closeDrawer() {
             <el-input v-model="form.title" @keydown.stop @keyup.stop />
           </el-form-item>
           <el-form-item :label="t('dashboard.sql_editor_chart_type')">
-            <el-select v-model="form.chartType">
+            <el-select v-model="form.chartType" @change="handleChartTypeChange">
               <el-option
                 v-for="item in chartTypes"
                 :key="item.value"
@@ -5567,7 +5644,7 @@ function closeDrawer() {
             </el-select>
           </el-form-item>
           <el-form-item v-if="showSeries" :label="t('dashboard.sql_editor_series')">
-            <el-select v-model="form.series" filterable clearable>
+            <el-select v-model="form.series" filterable clearable @change="handleSeriesFieldChange">
               <el-option
                 v-for="field in seriesFieldOptions"
                 :key="field.value"
@@ -5610,7 +5687,7 @@ function closeDrawer() {
             </el-select>
           </el-form-item>
           <el-form-item
-            v-if="form.y.length > 1 && !effectiveSeriesField && ['column', 'bar', 'line', 'area'].includes(form.chartType)"
+            v-if="form.y.length > 1 && !effectiveSeriesField && ['column', 'grouped_column', 'bar', 'line', 'area'].includes(form.chartType)"
             :label="t('dashboard.sql_editor_metric_group')"
           >
             <el-input v-model="form.multiQuotaName" @keydown.stop @keyup.stop />
@@ -5782,7 +5859,7 @@ function closeDrawer() {
           :id="chartPreviewId"
           :type="form.chartType"
           :columns="form.chartType === 'table' ? toAxes(previewTableFields) : []"
-          :x="form.chartType !== 'table' && form.chartType !== 'metric' && form.chartType !== 'pie' ? toAxes([form.x]) : []"
+          :x="form.chartType !== 'table' && form.chartType !== 'metric' && !isRadialPartitionChartType(form.chartType) ? toAxes([form.x]) : []"
           :y="toAxes(chartPreviewYFields, { metrics: true })"
           :series="toAxes(chartPreviewSeriesFields)"
           :data="previewDisplayData"

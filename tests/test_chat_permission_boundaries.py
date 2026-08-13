@@ -21,6 +21,7 @@ from apps.datasource.crud.permission_errors import (
     looks_like_permission_scope_error,
     permission_denied_result,
 )
+from apps.system.crud.tenant import SAMPLE_TENANT_NAME
 
 
 @compiles(JSONB, "sqlite")
@@ -317,6 +318,48 @@ def test_chat_cached_data_is_rechecked_against_current_permissions():
     assert result["error_type"] == "permission_denied"
     assert result["message"] == "没有查看权限"
     assert "amount" not in result["message"]
+
+
+def test_sample_workspace_uses_cached_template_result_without_permission_recheck(monkeypatch):
+    current_user = SimpleNamespace(
+        id=2,
+        isAdmin=False,
+        tenant_id=1,
+    )
+    template_sql = """
+    SELECT COUNT(DISTINCT player_id) AS dau
+    FROM fact_sessions
+    WHERE session_start::date >= TO_DATE({{dashboard_start_yyyymmdd}}::text, 'YYYYMMDD')
+      AND session_start::date <= TO_DATE({{dashboard_end_yyyymmdd}}::text, 'YYYYMMDD')
+    """
+
+    class _Result:
+        def __iter__(self):
+            return iter([
+                SimpleNamespace(
+                    datasource=1,
+                    sql=template_sql,
+                    data=json.dumps({"fields": ["DAU"], "data": [{"DAU": 2382}]}),
+                    analysis_record_id=None,
+                    predict_record_id=None,
+                )
+            ])
+
+    class _Session:
+        def get(self, _model, _record_id):
+            return SimpleNamespace(name=SAMPLE_TENANT_NAME)
+
+        def execute(self, _stmt):
+            return _Result()
+
+    def _unexpected_permission_recheck(*_args, **_kwargs):
+        raise AssertionError("示例工作空间历史结果不应重新验证模板 SQL")
+
+    monkeypatch.setattr(chat_crud, "validate_sql_scope", _unexpected_permission_recheck)
+
+    result = chat_crud.get_chart_data_with_user(_Session(), current_user, 1)
+
+    assert result == {"fields": ["DAU"], "data": [{"DAU": 2382}]}
 
 
 def test_chat_cached_data_reexecutes_when_row_permission_applies(monkeypatch):

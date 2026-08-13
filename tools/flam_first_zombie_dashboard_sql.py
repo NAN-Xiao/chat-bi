@@ -486,12 +486,13 @@ SQL_CHANNEL_PAY_USERS = SQL_CHANNEL_PAY_AMOUNT.replace(
 )
 
 SQL_CHANNEL_CUMULATIVE_PAY_RANK = f"""
-SELECT {CHANNEL_EXPR_U} AS `渠道`,
-       ROUND(SUM({_pay_value("u")}), 2) AS `累计付费金额`,
-       COUNT(DISTINCT CASE WHEN {_pay_value("u")} > 0 THEN u.uid END) AS `累计付费用户数`
-FROM `user` u
-WHERE u.dt = {_date_window_start_expr(1)}
-  AND u.prod = {PROD_ID}
+SELECT {CHANNEL_EXPR_E} AS `渠道`,
+       ROUND(SUM(CAST({_json_text("e", "personal", "money")} AS DECIMAL(18,4))), 2) AS `累计付费金额`,
+       COUNT(DISTINCT e.uid) AS `累计付费用户数`
+FROM `event` e
+WHERE {_dt_between("e", 30)}
+  AND e.event = '{TRANSACTION_EVENT}'
+  AND e.prod = {PROD_ID}
 GROUP BY `渠道`
 ORDER BY `累计付费金额` DESC
 LIMIT 20

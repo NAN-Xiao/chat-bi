@@ -112,10 +112,19 @@ assert.match(
   /function handlePageRestore\(\)[\s\S]*?params\.type\s*===\s*['"]table['"][\s\S]*?hasRenderedOutput\(\)[\s\S]*?return[\s\S]*?scheduleRenderChart\(120\)/,
   '页面恢复时，已渲染的 table 图表不得销毁并重建'
 )
+const sqViewResizeObserver = dashboardView.match(
+  /resizeObserver = new ResizeObserver\(\(entries\) => \{([\s\S]*?)\r?\n\s*\}\)\r?\n\s*if \(containerRef\.value\)/
+)
+assert.ok(sqViewResizeObserver, 'SQView 必须保留自身稳定布局测量观察器')
 assert.match(
-  dashboardView,
-  /new ResizeObserver\([\s\S]*?chartType\.value\s*!==\s*['"]table['"][\s\S]*?scheduleRenderChart/,
-  '看板外层尺寸监听不得再次销毁并重建 table 图表'
+  sqViewResizeObserver[1],
+  /measureCanonicalFrame\(\)/,
+  'SQView 尺寸观察器必须测量规范布局帧'
+)
+assert.doesNotMatch(
+  sqViewResizeObserver[1],
+  /scheduleRenderChart\(/,
+  'SQView 尺寸观察器不得调度图表重绘，实际图表 resize 由 ChartComponent 独占'
 )
 
 console.log('ChartComponent resize tests passed')

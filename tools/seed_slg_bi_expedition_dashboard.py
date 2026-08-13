@@ -1,7 +1,7 @@
 """Seed expedition detail rows and create the SLG BI Mock expedition dashboard.
 
 Targets:
-- BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
+- BI tracking database: the datasource currently bound as SLG BI Mock
 - App system database: core SHUZHI_DB_* settings from the repo .env
 
 This keeps the mock data at event/detail level. The new fact_expeditions table
@@ -16,7 +16,9 @@ import csv
 import io
 import json
 import math
+import os
 import random
+import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, time as dt_time, timedelta
@@ -29,7 +31,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from catalog_metadata_sql import refresh_physical_schema_hash_cursor
-from core_system_db import core_system_db_config
+from core_system_db import core_system_db_config, export_postgres_compat_env
 from semantic_scope_epoch_sql import bump_semantic_scope_epoch_cursor
 
 
@@ -46,29 +48,24 @@ b_range = builtins.range
 b_zip = builtins.zip
 b_list = builtins.list
 
-BI_DB = {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "dbname": "slg_bi_mock",
-    "user": "postgres",
-    "password": "111111",
-}
 SYSTEM_DB = core_system_db_config()
+BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
+DEFAULT_LOCAL_SECRET_KEY = "y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s"
 
 DASHBOARD_ID = "f2b49b69927740e8bd4c51f38ecf6f7a"
+RECOMMENDED_DASHBOARD_ID = "c5a92318fe0e4c4481fa6b1357a1baa6"
+DASHBOARD_IDS = (DASHBOARD_ID, RECOMMENDED_DASHBOARD_ID)
 DASHBOARD_NAME = "出征数据"
-TENANT_NAME = "slg_bi_mock"
 DATASOURCE_NAME = "SLG BI Mock"
 EXPEDITION_TABLE_NAME = "fact_expeditions"
 EXPEDITION_TABLE_COMMENT = "出征事实表，一行代表一次玩家出征，记录兵种、将领、队伍战力、出征耗时、结果和剩余士兵等明细。"
-FALLBACK_TENANT_ID = 7473600346187632640
-FALLBACK_DATASOURCE_ID = 1
 FALLBACK_UPDATE_BY = "7471612174524223488"
 BACKUP_DIR = Path(".codex-runtime/backups")
 
-OBSERVED_DAY = date(2026, 6, 26)
-DATA_START_DAY = date(2026, 5, 27)
-DATA_END_DAY = date(2026, 7, 2)
+DATA_END_DAY = date(2026, 8, 4)
+DATA_START_DAY = DATA_END_DAY - timedelta(days=36)
+DATA_PROFILE_OBSERVED_DAY = DATA_END_DAY - timedelta(days=6)
+OBSERVED_DAY = DATA_END_DAY
 EXPEDITION_ID_BASE = 880_000_000_000_000
 INSERT_PAGE_SIZE = 10_000
 
@@ -196,7 +193,7 @@ HERO_PRIORITY = [
 ]
 
 FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
-    date(2026, 6, 17): {
+    DATA_START_DAY + timedelta(days=21): {
         "count": 10452,
         "avg_per": 6.64,
         "avg_troops": 597.24,
@@ -204,7 +201,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 299.63,
         "win_rate": 85.41,
     },
-    date(2026, 6, 18): {
+    DATA_START_DAY + timedelta(days=22): {
         "count": 10164,
         "avg_per": 6.42,
         "avg_troops": 568.50,
@@ -212,7 +209,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 297.87,
         "win_rate": 85.85,
     },
-    date(2026, 6, 19): {
+    DATA_START_DAY + timedelta(days=23): {
         "count": 11620,
         "avg_per": 6.21,
         "avg_troops": 533.02,
@@ -220,7 +217,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 293.57,
         "win_rate": 84.90,
     },
-    date(2026, 6, 20): {
+    DATA_START_DAY + timedelta(days=24): {
         "count": 14180,
         "avg_per": 6.07,
         "avg_troops": 501.49,
@@ -228,7 +225,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 288.14,
         "win_rate": 84.96,
     },
-    date(2026, 6, 21): {
+    DATA_START_DAY + timedelta(days=25): {
         "count": 14241,
         "avg_per": 6.22,
         "avg_troops": 506.07,
@@ -236,7 +233,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 287.90,
         "win_rate": 84.85,
     },
-    date(2026, 6, 22): {
+    DATA_START_DAY + timedelta(days=26): {
         "count": 11650,
         "avg_per": 6.81,
         "avg_troops": 552.20,
@@ -244,7 +241,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 292.42,
         "win_rate": 86.10,
     },
-    date(2026, 6, 23): {
+    DATA_START_DAY + timedelta(days=27): {
         "count": 11101,
         "avg_per": 6.62,
         "avg_troops": 572.37,
@@ -252,7 +249,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 294.33,
         "win_rate": 85.71,
     },
-    date(2026, 6, 24): {
+    DATA_START_DAY + timedelta(days=28): {
         "count": 10839,
         "avg_per": 6.61,
         "avg_troops": 589.68,
@@ -260,7 +257,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 298.41,
         "win_rate": 85.69,
     },
-    date(2026, 6, 25): {
+    DATA_START_DAY + timedelta(days=29): {
         "count": 9978,
         "avg_per": 6.23,
         "avg_troops": 570.86,
@@ -268,7 +265,7 @@ FIXED_DAILY_TARGETS: dict[date, dict[str, float]] = {
         "avg_duration": 295.11,
         "win_rate": 85.56,
     },
-    date(2026, 6, 26): {
+    DATA_START_DAY + timedelta(days=30): {
         "count": 11936,
         "avg_per": 6.39,
         "avg_troops": 579.42,
@@ -291,6 +288,48 @@ def json_value(value: Any) -> Any:
 
 def normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     return {key: json_value(value) for key, value in row.items()}
+
+
+def psycopg2_config_from_datasource_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    field_map = {
+        "host": "host",
+        "port": "port",
+        "database": "dbname",
+        "username": "user",
+        "password": "password",
+    }
+    missing = [source for source in field_map if settings.get(source) in (None, "")]
+    if missing:
+        raise RuntimeError(f"Datasource configuration is missing required fields: {', '.join(missing)}")
+    result = {target: settings[source] for source, target in field_map.items()}
+    result["port"] = int(result["port"])
+    return result
+
+
+def ensure_backend_decryption_env() -> None:
+    os.environ.setdefault("SECRET_KEY", DEFAULT_LOCAL_SECRET_KEY)
+
+
+def resolve_bi_db_config(system_conn: Any, datasource_id: int) -> dict[str, Any]:
+    with system_conn.cursor() as cur:
+        cur.execute(
+            "SELECT type, configuration FROM public.core_datasource WHERE id = %s",
+            (datasource_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise RuntimeError(f"Datasource not found: {datasource_id}")
+    if str(row[0] or "").casefold() not in {"pg", "postgres", "postgresql"}:
+        raise RuntimeError(f"Datasource {datasource_id} is not PostgreSQL: {row[0]}")
+
+    export_postgres_compat_env(SYSTEM_DB)
+    ensure_backend_decryption_env()
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
+    from apps.datasource.utils.utils import aes_decrypt
+
+    settings = json.loads(aes_decrypt(row[1]))
+    return psycopg2_config_from_datasource_settings(settings)
 
 
 def axis(value: str, name: str | None = None, axis_type: str | None = None, multi: bool | None = None) -> dict[str, Any]:
@@ -423,6 +462,20 @@ def dashboard_day_label_sql(field: str) -> str:
     return f"to_char({field}, 'YYYY-MM-DD') || '(' || {weekday_cn_sql(field)} || ')'"
 
 
+def recent_day_pivot_columns_sql(observed_day: date, days: int = 7) -> str:
+    weekday_names = ("一", "二", "三", "四", "五", "六", "日")
+    columns = []
+    for offset in range(days - 1, -1, -1):
+        current_day = observed_day - timedelta(days=offset)
+        label = f"{current_day.isoformat()}({weekday_names[current_day.weekday()]})"
+        columns.append(
+            "round(sum(metric_value) FILTER "
+            f"(WHERE event_date = DATE '{current_day.isoformat()}'), "
+            f"CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS \"{label}\""
+        )
+    return ",\n       ".join(columns)
+
+
 def daily_target(day: date, eligible_count: int) -> dict[str, float]:
     fixed = FIXED_DAILY_TARGETS.get(day)
     if fixed:
@@ -430,7 +483,7 @@ def daily_target(day: date, eligible_count: int) -> dict[str, float]:
 
     phase = math.sin((day - DATA_START_DAY).days / 3.2)
     weekend_boost = 1.22 if day.weekday() in {4, 5} else 1.08 if day.weekday() == 6 else 1.0
-    future_softener = 0.96 if day > OBSERVED_DAY else 1.0
+    future_softener = 0.96 if day > DATA_PROFILE_OBSERVED_DAY else 1.0
     avg_per = (5.72 + 0.34 * phase) * weekend_boost * future_softener
     count = max(2200, int(max(eligible_count, 320) * avg_per))
     return {
@@ -1173,13 +1226,7 @@ metrics AS (
 SELECT troop_type AS "出征士兵兵种",
        metric_name AS "指标",
        round(sum(metric_value), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "阶段汇总",
-       round(sum(metric_value) FILTER (WHERE event_date = DATE '2026-06-20'), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "2026-06-20(六)",
-       round(sum(metric_value) FILTER (WHERE event_date = DATE '2026-06-21'), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "2026-06-21(日)",
-       round(sum(metric_value) FILTER (WHERE event_date = DATE '2026-06-22'), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "2026-06-22(一)",
-       round(sum(metric_value) FILTER (WHERE event_date = DATE '2026-06-23'), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "2026-06-23(二)",
-       round(sum(metric_value) FILTER (WHERE event_date = DATE '2026-06-24'), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "2026-06-24(三)",
-       round(sum(metric_value) FILTER (WHERE event_date = DATE '2026-06-25'), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "2026-06-25(四)",
-       round(sum(metric_value) FILTER (WHERE event_date = DATE '2026-06-26'), CASE WHEN metric_name LIKE '平均%' THEN 2 ELSE 0 END) AS "2026-06-26(五)"
+       {recent_day_pivot_columns_sql(OBSERVED_DAY)}
 FROM metrics
 GROUP BY troop_type, metric_name, metric_sort
 ORDER BY CASE troop_type
@@ -1405,22 +1452,37 @@ def build_dashboard_payload(bi_conn: Any, datasource_id: int) -> tuple[list[dict
 
 def resolve_dashboard_context(system_conn: Any) -> tuple[int, int, str]:
     with system_conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("SELECT id FROM public.sys_tenant WHERE name = %s LIMIT 1", (TENANT_NAME,))
-        tenant = cur.fetchone()
-        tenant_id = int(tenant["id"]) if tenant else FALLBACK_TENANT_ID
+        cur.execute(
+            """
+            SELECT tenant_id
+            FROM public.core_dashboard
+            WHERE id = %s AND delete_flag = 0
+            """,
+            (DASHBOARD_ID,),
+        )
+        dashboard = cur.fetchone()
+        if not dashboard:
+            raise RuntimeError(f"Canonical expedition dashboard not found: {DASHBOARD_ID}")
+        tenant_id = int(dashboard["tenant_id"])
 
         cur.execute(
             """
-            SELECT id
-            FROM public.core_datasource
-            WHERE name = %s AND tenant_id = %s
-            ORDER BY id
+            SELECT datasource.id
+            FROM public.core_datasource_tenant_binding AS binding
+            JOIN public.core_datasource AS datasource
+              ON datasource.id = binding.datasource_id
+            WHERE binding.tenant_id = %s
+              AND datasource.name = %s
             LIMIT 1
             """,
-            (DATASOURCE_NAME, tenant_id),
+            (tenant_id, DATASOURCE_NAME),
         )
         datasource = cur.fetchone()
-        datasource_id = int(datasource["id"]) if datasource else FALLBACK_DATASOURCE_ID
+        if not datasource:
+            raise RuntimeError(
+                f"Tenant {tenant_id} has no current {DATASOURCE_NAME} datasource binding"
+            )
+        datasource_id = int(datasource["id"])
 
         cur.execute(
             """
@@ -1438,9 +1500,9 @@ def resolve_dashboard_context(system_conn: Any) -> tuple[int, int, str]:
     return tenant_id, datasource_id, update_by
 
 
-def backup_dashboard_row(row: dict[str, Any]) -> Path:
+def backup_dashboard_row(row: dict[str, Any], dashboard_id: str) -> Path:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    backup_path = BACKUP_DIR / f"expedition_dashboard_{DASHBOARD_ID}_{int(time.time())}.json"
+    backup_path = BACKUP_DIR / f"expedition_dashboard_{dashboard_id}_{int(time.time())}.json"
     backup_path.write_text(
         json.dumps(normalize_row(dict(row)), ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -1455,6 +1517,8 @@ def upsert_dashboard(
     update_by: str,
     component_data: list[dict[str, Any]],
     canvas_view_info: dict[str, Any],
+    dashboard_id: str = DASHBOARD_ID,
+    insert_if_missing: bool = True,
 ) -> None:
     component_json = json.dumps(component_data, ensure_ascii=False, separators=(",", ":"))
     view_json = json.dumps(canvas_view_info, ensure_ascii=False, separators=(",", ":"))
@@ -1469,50 +1533,31 @@ def upsert_dashboard(
                 WHERE id = %s
                 FOR UPDATE
                 """,
-                (DASHBOARD_ID,),
+                (dashboard_id,),
             )
             dashboard = cur.fetchone()
             if dashboard:
-                backup_path = backup_dashboard_row(dict(dashboard))
+                backup_path = backup_dashboard_row(dict(dashboard), dashboard_id)
                 cur.execute(
                     """
                     UPDATE public.core_dashboard
-                       SET tenant_id = %s,
-                           name = %s,
-                           pid = 'root',
-                           datasource = %s,
-                           org_id = '',
-                           level = 1,
-                           node_type = 'leaf',
-                           type = 'dashboard',
-                           canvas_style_data = '{}',
-                           component_data = %s,
+                       SET component_data = %s,
                            canvas_view_info = %s,
-                           mobile_layout = 0,
-                           status = 1,
-                           self_watermark_status = 0,
-                           is_default = 1,
-                           update_time = %s,
-                           update_by = %s,
-                           source = NULL,
-                           delete_flag = 0,
-                           version = 3,
-                           content_id = '0',
-                           check_version = '1'
+                           update_time = %s
                      WHERE id = %s
                     """,
                     (
-                        tenant_id,
-                        DASHBOARD_NAME,
-                        datasource_id,
                         component_json,
                         view_json,
                         now,
-                        update_by,
-                        DASHBOARD_ID,
+                        dashboard_id,
                     ),
                 )
-                print(f"updated_dashboard rows={cur.rowcount} backup={backup_path}")
+                print(f"updated_dashboard id={dashboard_id} rows={cur.rowcount} backup={backup_path}")
+                return
+
+            if not insert_if_missing:
+                print(f"skipped_missing_dashboard id={dashboard_id}")
                 return
 
             cur.execute(
@@ -1541,7 +1586,7 @@ def upsert_dashboard(
                 )
                 """,
                 (
-                    DASHBOARD_ID,
+                    dashboard_id,
                     tenant_id,
                     DASHBOARD_NAME,
                     datasource_id,
@@ -1554,7 +1599,7 @@ def upsert_dashboard(
                     update_by,
                 ),
             )
-            print(f"inserted_dashboard rows={cur.rowcount} sort={next_sort}")
+            print(f"inserted_dashboard id={dashboard_id} rows={cur.rowcount} sort={next_sort}")
 
 
 def verify(system_conn: Any, bi_conn: Any, datasource_id: int) -> None:
@@ -1575,7 +1620,7 @@ def verify(system_conn: Any, bi_conn: Any, datasource_id: int) -> None:
         )
         print("verify_expeditions=" + json.dumps(normalize_row(dict(cur.fetchone())), ensure_ascii=False))
         cur.execute(
-            """
+            f"""
             SELECT event_date,
                    count(*) AS expeditions,
                    count(DISTINCT player_id) AS players,
@@ -1584,7 +1629,8 @@ def verify(system_conn: Any, bi_conn: Any, datasource_id: int) -> None:
                    round(avg(duration_seconds), 2) AS avg_duration,
                    round(avg(CASE WHEN result = 'win' THEN 1 ELSE 0 END)::numeric * 100, 2) AS win_rate
             FROM public.fact_expeditions
-            WHERE event_date BETWEEN DATE '2026-06-18' AND DATE '2026-06-26'
+            WHERE event_date BETWEEN DATE '{(OBSERVED_DAY - timedelta(days=8)).isoformat()}'
+                                 AND DATE '{OBSERVED_DAY.isoformat()}'
             GROUP BY event_date
             ORDER BY event_date
             """
@@ -1620,22 +1666,26 @@ def verify(system_conn: Any, bi_conn: Any, datasource_id: int) -> None:
                    (SELECT count(*) FROM jsonb_each(canvas_view_info::jsonb)) AS view_count,
                    update_time
             FROM public.core_dashboard
-            WHERE id = %s
+            WHERE id = ANY(%s)
+            ORDER BY id
             """,
-            (DASHBOARD_ID,),
+            (list(DASHBOARD_IDS),),
         )
-        print("verify_dashboard=" + json.dumps(normalize_row(dict(cur.fetchone())), ensure_ascii=False))
+        print("verify_dashboards=")
+        for row in cur.fetchall():
+            print(json.dumps(normalize_row(dict(row)), ensure_ascii=False))
         cur.execute(
             """
-            SELECT value->'chart'->>'title' AS title,
+            SELECT d.id AS dashboard_id,
+                   value->'chart'->>'title' AS title,
                    value->'chart'->>'type' AS chart_type,
                    jsonb_array_length(value->'data'->'data') AS row_count
             FROM public.core_dashboard d,
                  jsonb_each(d.canvas_view_info::jsonb) AS e(key, value)
-            WHERE d.id = %s
-            ORDER BY key
+            WHERE d.id = ANY(%s)
+            ORDER BY d.id, key
             """,
-            (DASHBOARD_ID,),
+            (list(DASHBOARD_IDS),),
         )
         print("verify_charts=")
         for row in cur.fetchall():
@@ -1643,23 +1693,36 @@ def verify(system_conn: Any, bi_conn: Any, datasource_id: int) -> None:
 
 
 def main() -> None:
-    bi_conn = psycopg2.connect(**BI_DB)
     system_conn = psycopg2.connect(**SYSTEM_DB)
     try:
         tenant_id, datasource_id, update_by = resolve_dashboard_context(system_conn)
+        bi_db = resolve_bi_db_config(system_conn, datasource_id)
         print(
             json.dumps(
                 {"tenant_id": tenant_id, "datasource_id": datasource_id, "update_by": update_by},
                 ensure_ascii=False,
             )
         )
-        seed_bi_data(bi_conn)
-        sync_expedition_metadata(system_conn, bi_conn, datasource_id)
-        component_data, canvas_view_info = build_dashboard_payload(bi_conn, datasource_id)
-        upsert_dashboard(system_conn, tenant_id, datasource_id, update_by, component_data, canvas_view_info)
-        verify(system_conn, bi_conn, datasource_id)
+        bi_conn = psycopg2.connect(**bi_db)
+        try:
+            seed_bi_data(bi_conn)
+            sync_expedition_metadata(system_conn, bi_conn, datasource_id)
+            component_data, canvas_view_info = build_dashboard_payload(bi_conn, datasource_id)
+            for index, dashboard_id in enumerate(DASHBOARD_IDS):
+                upsert_dashboard(
+                    system_conn,
+                    tenant_id,
+                    datasource_id,
+                    update_by,
+                    component_data,
+                    canvas_view_info,
+                    dashboard_id=dashboard_id,
+                    insert_if_missing=index == 0,
+                )
+            verify(system_conn, bi_conn, datasource_id)
+        finally:
+            bi_conn.close()
     finally:
-        bi_conn.close()
         system_conn.close()
 
 

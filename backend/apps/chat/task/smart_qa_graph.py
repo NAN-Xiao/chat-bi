@@ -68,6 +68,7 @@ from apps.chat.task.sql_repair import (
     classify_prepare_sql_error,
     sanitize_sql_repair_error,
     sql_repair_fingerprint,
+    validate_sql_for_datasource,
 )
 from apps.datasource.crud.permission_errors import (
     audit_permission_denied,
@@ -1755,6 +1756,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
         dynamic_subsql_prefix,
         looks_like_data_skill_schema_unavailable_error,
     )
+    from apps.chat.service.chat_date_filter import ChatDateFilterConfigurationError
     from common.error import SingleMessageError
 
     service = state["service"]
@@ -1765,6 +1767,9 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     full_sql_text = state["full_sql_text"]
 
     def render_template_for_execution(template_sql: str) -> str:
+        render_sql = getattr(service, "render_chat_sql_for_execution", None)
+        if callable(render_sql):
+            return render_sql(template_sql)
         if getattr(service, "chat_date_pivot", None) is None:
             return template_sql
         return service.render_chat_sql_for_execution(template_sql)
@@ -1809,6 +1814,13 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 state,
                 error=semantic_error,
                 reason=reason,
+                failed_sql=full_sql_text,
+            )
+        except ChatDateFilterConfigurationError as date_contract_error:
+            return _queue_sql_repair(
+                state,
+                error=date_contract_error,
+                reason=SqlRepairReason.DATE_FILTER_CONFIGURATION,
                 failed_sql=full_sql_text,
             )
         except SingleMessageError as response_error:
@@ -1870,6 +1882,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     )
                 else:
                     sql = service.check_save_sql(session=session, res=full_sql_text, operate=sql_operate)
+                    execution_sql = render_template_for_execution(sql)
             else:
                 checked_sql, _actual_tables = validate_user_query_sql_or_raise(
                     session=session,
@@ -2077,7 +2090,9 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 notice=unknown_event_notice,
             )
 
-    real_execute_sql = render_template_for_execution(sql)
+    # Reuse the SQL that already passed permissions and dialect validation. Re-rendering
+    # from mutable service state here can reintroduce dashboard tokens after a repair.
+    real_execute_sql = execution_sql
     execute_scope_sql = real_execute_sql
     execute_allowed_tables = service.table_name_list
 
@@ -2094,7 +2109,7 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 f"{dynamic_subsql_prefix}{origin_table}",
                 subsql,
             )
-        real_execute_sql = assistant_dynamic_sql
+        real_execute_sql = render_template_for_execution(assistant_dynamic_sql)
 
     if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:
         if in_chat:
@@ -2154,6 +2169,7 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
             local_operation=True,
         )
         try:
+            validate_sql_for_datasource(real_execute_sql, getattr(service.ds, "type", None))
             result = service.execute_sql(
                 session=session,
                 sql=real_execute_sql,

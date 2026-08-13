@@ -33,8 +33,9 @@ function hasMatchingTokens(sql: string, parameterType: DashboardDateParameterTyp
   const expectedTokens = dashboardDateParameterTokens[parameterType]
   const isCompleteRange = activeTokens.length === expectedTokens.length
     && expectedTokens.every((token) => activeTokens.includes(token))
-  const isEndOnly = activeTokens.length === 1 && activeTokens[0] === expectedTokens[1]
-  return isCompleteRange || isEndOnly
+  const isSingleBoundary = activeTokens.length === 1
+    && (expectedTokens as readonly string[]).includes(activeTokens[0])
+  return isCompleteRange || isSingleBoundary
 }
 
 function hasControlledDateTokens(sql: string): boolean {

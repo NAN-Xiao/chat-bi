@@ -548,7 +548,8 @@ export function buildMixedUnitComboOptions(
   xAxis: ChartAxis,
   mixedData: MixedUnitChartData,
   showLabel: boolean,
-  responsive: G2ResponsiveStyle = resolveG2ResponsiveStyle(undefined, 'cartesian')
+  responsive: G2ResponsiveStyle = resolveG2ResponsiveStyle(undefined, 'cartesian'),
+  intervalTransform?: G2Spec['transform']
 ): G2Spec {
   const countValueField = mixedData.countValueField
   const percentValueField = mixedData.percentValueField
@@ -600,7 +601,7 @@ export function buildMixedUnitComboOptions(
     },
     scale: {
       x: {
-        nice: true,
+        type: 'band',
       },
     },
     interaction: {
@@ -610,6 +611,7 @@ export function buildMixedUnitComboOptions(
     children: [
       {
         type: 'interval',
+        transform: intervalTransform,
         data: mixedData.countData,
         encode: {
           x: xAxis.value,

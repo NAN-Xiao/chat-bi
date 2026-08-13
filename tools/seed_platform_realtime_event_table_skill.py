@@ -42,6 +42,7 @@ REALTIME_TRIGGER_TERMS = (
 SQL_VALIDATION_RULE = json.dumps(
     {
         "match": list(REALTIME_TRIGGER_TERMS),
+        "when_question_date_scopes": ["current_day"],
         "when_sql_patterns": [EVENT_TABLE_SCOPE_PATTERN],
         "required_sql_patterns": [REALTIME_TABLE_PATTERN],
         "forbidden_sql_patterns": [HISTORY_TABLE_PATTERN],
@@ -73,14 +74,28 @@ SKILL = {
 - 工作空间 Data Skill、事件字典或字段元数据必须已经提供问题所需的事件语义、主体键和指标字段。本 Skill 只决定选表，不定义业务口径。
 - 当前数据源权限、实时 Schema 和工作空间配置优先级高于本 Skill；本 Skill 不得扩大任何数据访问范围。
 
+## “实时”时间语义
+
+- “实时”表示按小时聚合并返回时间序列，不表示单个累计指标或默认多日趋势。
+- 用户未指定日期或时间范围时，“实时收入”解释为“今天按小时收入”。
+- 用户明确指定日期或时间范围时，明确日期或时间范围优先；例如“昨天实时收入”解释为“昨天按小时收入”。
+- 小时字段和聚合表达式必须依据当前数据源 Schema、字段编码和数据库方言生成，不得套用其他数据源示例。
+
 ## 选表规则
 
-- 未完成当日：问题包含“今天”“当天”“今日”“实时”“当前小时”“当前分钟”“当前整点”，或要求今天按分钟、按小时统计时，必须查询 `event_realtime`，并直接限制当前业务日分区。
+- 未完成当日：问题解析后的范围为今天，且包含“今天”“当天”“今日”“实时”“当前小时”“当前分钟”“当前整点”或要求今天按分钟、按小时统计时，必须查询 `event_realtime`。
 - 反例：“当前”“截至目前”“截至当前”单独出现时，不能触发实时选表；必须结合上述明确的当天或实时触发词判断。
 - 完整历史日：问题指定“昨天”“截至昨天”、某个已经结束的日期、完整自然日，或只分析完整历史分区时，查询 `event`。
 - 多日趋势：不包含今天的多日趋势查询使用 `event`。
 - 包含今天的跨日窗口：已完成历史日期读取 `event`，今天读取 `event_realtime`。只有工作空间口径确认两表字段语义一致且允许合并时，才可使用 `UNION ALL`，并在外层统一聚合，避免重复计算。
 - 用户明确指定表名时，仍须验证当前数据源权限、实时 Schema 和工作空间配置。
+
+## 当天日期模板契约
+
+- 当天查询生成非 `metric` 时间序列图时，SQL 必须依据当前 Schema 的日期字段及编码保存成对的 `{{{{dashboard_start_yyyymmdd}}}}` 和 `{{{{dashboard_end_yyyymmdd}}}}` token，不得保存固定 `yyyyMMdd` 日期。
+- 同一响应必须返回完整 `date_filter`，其中 `time_field` 和 `date_parameter_type` 来自当前 Schema，`date_expression` 必须是 `{{"version":1,"mode":"preset","preset":"today"}}`。
+- 实际业务日期只在执行阶段由看板日期参数渲染；保存和复制图表时继续保留 token 与 `preset=today`。
+- 不含“实时”的固定语义 `metric` 图表保持自身日期语义，不返回 `date_filter` 或看板日期 token。
 
 ## 禁止静默回退
 

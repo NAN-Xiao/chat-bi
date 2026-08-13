@@ -17,6 +17,8 @@ from typing import Any, List, Optional, Union, Dict, Iterator
 
 import orjson
 import requests
+import sqlglot
+from sqlglot import exp
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -33,7 +35,10 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     trigger_log_error, save_agent_context_snapshot
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
+    DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE,
+    ensure_chat_date_filter_allowed,
     normalize_chat_date_filter_for_question,
+    question_date_scope,
     rewrite_chat_date_filter_literals,
     render_chat_date_filter_sql,
 )
@@ -43,6 +48,7 @@ from apps.chat.curd.custom_prompt import (
     CustomPromptTypeEnum,
     find_custom_prompts,
     find_data_skills,
+    is_dashboard_date_filter_excluded,
 )
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog, OperationEnum, \
     ChatFinishStep, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
@@ -50,8 +56,9 @@ from apps.chat.task.sql_repair import (
     DataSkillSqlValidationError,
     DataSkillSqlViolation,
     SqlRepairContext,
+    SqlStructureValidationError,
     build_sql_repair_message,
-    validate_mysql_date_format_grouping,
+    validate_sql_for_datasource,
 )
 from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
 from apps.datasource.crud.permission_errors import (
@@ -63,6 +70,7 @@ from apps.datasource.crud.permission import get_row_permission_filters, has_data
 from apps.datasource.crud.sql_engine import (
     BusinessSqlContext,
     BusinessSqlContextService,
+    UnresolvedDashboardDateParametersError,
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
     user_data_unavailable_message,
@@ -266,6 +274,18 @@ def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
     return any(term in text for term in terms)
 
 
+def _rule_matches_question_date_scope(rule: dict[str, Any], question: str) -> bool:
+    """仅在问题日期范围命中规则声明时启用该规则。"""
+    scopes = {
+        value.strip().lower()
+        for value in _normalize_rule_terms(rule.get("when_question_date_scopes"))
+        if value.strip()
+    }
+    if not scopes:
+        return True
+    return question_date_scope(question) in scopes
+
+
 def _rule_matches_sql_scope(
     rule: dict[str, Any],
     sql_text: str,
@@ -274,12 +294,15 @@ def _rule_matches_sql_scope(
     """仅在 SQL 命中规则声明的适用片段或正则时启用该规则。"""
     contains = _normalize_rule_terms(rule.get("when_sql_contains"))
     patterns = _normalize_rule_terms(rule.get("when_sql_patterns"))
-    if not contains and not patterns:
-        return True
-    return any(text.lower() in sql_lower for text in contains) or any(
-        _sql_pattern_matches(pattern_text, sql_text, sql_lower)
-        for pattern_text in patterns
-    )
+    if contains or patterns:
+        if not (
+            any(text.lower() in sql_lower for text in contains)
+            or any(_sql_pattern_matches(pattern_text, sql_text, sql_lower) for pattern_text in patterns)
+        ):
+            return False
+    if rule.get("when_sql_has_non_time_group_by") and not _sql_has_non_time_group_by(sql_text):
+        return False
+    return True
 
 
 def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bool:
@@ -292,6 +315,80 @@ def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bo
         return re.search(pattern_text, sql_text, re.IGNORECASE | re.DOTALL) is not None
     except re.error:
         return pattern_text.lower() in sql_lower
+
+
+_TIME_GROUP_EXPRESSION_PATTERN = re.compile(
+    r"(?:^|[^a-z0-9])(?:date|datetime|timestamp|time|dt|day|hour|minute|month|week|year|"
+    r"date_format|str_to_date|from_unixtime|date_add|date_sub|timestampadd|"
+    r"generate_series|to_char|extract)(?:$|[^a-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def _parse_sql_statements_for_validation(sql_text: str) -> list[exp.Expression]:
+    """替换看板 token，并以常见方言依次解析校验 SQL。"""
+    normalized_sql = re.sub(r"\{\{[^{}]+\}\}", "0", sql_text)
+    for dialect in ("mysql", "postgres", None):
+        try:
+            return sqlglot.parse(normalized_sql, read=dialect)
+        except Exception:
+            continue
+    return []
+
+
+def _sql_has_non_time_group_by(sql_text: str) -> bool:
+    """判断 SQL 是否按时间字段之外的任意维度分组。"""
+    statements = _parse_sql_statements_for_validation(sql_text)
+
+    for statement in statements:
+        for select in statement.find_all(exp.Select):
+            group = select.args.get("group")
+            if group is None or len(group.expressions) < 2:
+                continue
+            if any(
+                not _TIME_GROUP_EXPRESSION_PATTERN.search(
+                    expression.sql(dialect="mysql", normalize=True)
+                )
+                for expression in group.expressions
+            ):
+                return True
+    return False
+
+
+def _sql_outer_select_has_cross_join(sql_text: str) -> bool:
+    """检查最终查询使用的日期/小时维度骨架是否包含 CROSS JOIN。"""
+    for statement in _parse_sql_statements_for_validation(sql_text):
+        outer_select = statement if isinstance(statement, exp.Select) else statement.find(exp.Select)
+        if outer_select is None:
+            continue
+        for join in outer_select.args.get("joins") or []:
+            if str(join.args.get("kind") or "").upper() == "CROSS":
+                return True
+
+        from_clause = outer_select.args.get("from_")
+        outer_sources = []
+        if from_clause is not None and from_clause.this is not None:
+            outer_sources.append(from_clause.this)
+        outer_sources.extend(
+            join.this for join in outer_select.args.get("joins") or [] if join.this is not None
+        )
+        consumed_ctes = {
+            str(source.name or "").strip('"\x60[]').lower()
+            for source in outer_sources
+            if isinstance(source, exp.Table)
+        }
+        for cte in statement.find_all(exp.CTE):
+            if str(cte.alias_or_name or "").strip('"\x60[]').lower() not in consumed_ctes:
+                continue
+            cte_select = cte.this.find(exp.Select)
+            if cte_select is None or len(cte_select.named_selects) < 2:
+                continue
+            if any(
+                str(join.args.get("kind") or "").upper() == "CROSS"
+                for join in cte_select.args.get("joins") or []
+            ):
+                return True
+    return False
 
 
 def _required_sql_violations(
@@ -312,12 +409,14 @@ def _required_sql_violations(
             if text.lower() not in sql_lower and text not in missing_contains:
                 missing_contains.append(text)
 
-    missing_patterns = tuple(
+    missing_patterns = [
         pattern_text
         for pattern_text in _normalize_rule_terms(rule.get("required_sql_patterns"))
         if not _sql_pattern_matches(pattern_text, sql_text, sql_lower)
-    )
-    return tuple(missing_contains), missing_patterns
+    ]
+    if rule.get("required_outer_select_cross_join") and not _sql_outer_select_has_cross_join(sql_text):
+        missing_patterns.append("outer SELECT CROSS JOIN")
+    return tuple(missing_contains), tuple(missing_patterns)
 
 
 def _sql_select_segments(sql_text: str) -> list[str]:
@@ -378,6 +477,8 @@ def _data_skill_sql_validation_violation(
     sql_lower = sql_text.lower()
     for rule_index, rule in enumerate(_extract_data_skill_sql_validation_rules(data_skill)):
         if not _rule_matches_question(rule, question):
+            continue
+        if not _rule_matches_question_date_scope(rule, question):
             continue
         if _rule_allowed_by_question(rule, question):
             continue
@@ -1155,6 +1256,7 @@ class LLMService:
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
         tenant_id = require_current_tenant_id(current_user)
+        self.dashboard_date_filter_enabled = not is_dashboard_date_filter_excluded(session, tenant_id)
         if chat.create_by != current_user.id or int(chat.tenant_id) != tenant_id:
             raise SingleMessageError(f"Chat with id {chat_id} not Owned by the current user")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
@@ -1342,6 +1444,11 @@ class LLMService:
         if _system_templates.get('knowledge_context'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['knowledge_context']))
             self.sql_message.append(AIPromptMessage(content='我已确认知识库内容仅作为当前数据源和权限范围内的只读参考。'))
+        if not self.dashboard_date_filter_enabled:
+            self.sql_message.append(HumanPromptMessage(content=DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE))
+            self.sql_message.append(
+                AIPromptMessage(content='我已确认当前工作空间不使用看板日期参数；我会只生成可执行日期条件，不返回 date_filter。')
+            )
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             last_rounds = get_last_conversation_rounds(last_sql_messages, rounds=count_limit)
 
@@ -2265,24 +2372,32 @@ class LLMService:
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
 
-        sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
+        original_sql = sql
+        rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
         try:
-            self.chat_date_pivot = normalize_chat_date_filter_for_question(
-                self.chat_question.question,
-                data.get("date_filter"),
-                sql,
-                data.get("chart-type") or data.get("chart_type") or "",
-            )
+            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), original_sql)
+            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), rewritten_sql)
         except ChatDateFilterConfigurationError as error:
             trigger_log_error(session, log)
-            raise SingleMessageError(f"日期参数配置无效：{error}") from error
+            raise SingleMessageError("当前工作空间未启用看板日期参数，SQL 不得包含日期占位符或 date_filter") from error
+        if not self.dashboard_date_filter_enabled:
+            self.chat_date_pivot = None
+            sql = original_sql
+        else:
+            try:
+                self.chat_date_pivot = normalize_chat_date_filter_for_question(
+                    self.chat_question.question,
+                    data.get("date_filter"),
+                    rewritten_sql,
+                    data.get("chart-type") or data.get("chart_type") or "",
+                )
+            except ChatDateFilterConfigurationError as error:
+                trigger_log_error(session, log)
+                raise SingleMessageError(f"日期参数配置无效：{error}") from error
+            else:
+                sql = rewritten_sql
 
-        if str(getattr(getattr(self, "ds", None), "type", "") or "").strip().lower() in {
-            "mysql",
-            "doris",
-            "starrocks",
-        }:
-            validate_mysql_date_format_grouping(sql)
+        validate_sql_for_datasource(sql, getattr(getattr(self, "ds", None), "type", None))
 
         violation = _data_skill_sql_validation_violation(
             self.chat_question.question or "",
@@ -2500,6 +2615,7 @@ class LLMService:
         做了什么：把聊天问数据和 Agent的主要流程跑起来，一步步调用需要的处理。
         """
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
+        validate_sql_for_datasource(sql, getattr(self.ds, "type", None))
         try:
             if isinstance(self.ds, CoreDatasource):
                 return execute_user_analysis_query_or_raise(
@@ -2518,7 +2634,11 @@ class LLMService:
                 origin_column=True,
             ).result
         except Exception as error:
-            if isinstance(error, ParseSQLResultError):
+            if isinstance(error, UnresolvedDashboardDateParametersError):
+                raise SingleMessageError(
+                    "日期占位符未解析，已阻止执行 SQL。请重新生成不包含未解析日期参数的查询。"
+                ) from error
+            if isinstance(error, (ParseSQLResultError, SqlStructureValidationError)):
                 raise
             traceback_text = traceback.format_exc(limit=1, chain=True)
             raise AppDBError(traceback_text) from error

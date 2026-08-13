@@ -6,6 +6,7 @@ import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import BusinessNotice from '@/views/chat/BusinessNotice.vue'
 import JSONBig from 'json-bigint'
+import { useI18n } from 'vue-i18n'
 import { parseSseChunk } from '@/utils/sse'
 import {
   hasStoredFinalAnswer,
@@ -26,6 +27,9 @@ import {
   isTaskOwnerChatVisible,
   resolveTaskOwnerChatId,
 } from './chatTaskContext'
+import { resolveSmartQaErrorMessage } from './smartQaErrorMessage'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -201,32 +205,8 @@ function emitFinishOnce(recordId?: number) {
   emits('finish', recordId)
 }
 
-function normalizeTaskError(error?: unknown) {
-  if (typeof error === 'string' && error.trim()) {
-    return error
-  }
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-  if (error && typeof error === 'object') {
-    const data = (error as any).response?.data || error
-    const message =
-      data.detail ||
-      data.message ||
-      data.msg ||
-      data.error ||
-      (typeof data.toString === 'function' && data.toString !== Object.prototype.toString
-        ? data.toString()
-        : '')
-    if (message && String(message).trim() && message !== '[object Object]') {
-      return String(message)
-    }
-  }
-  return '问数任务异常结束，但后端未返回具体错误。请稍后重试。'
-}
-
 function failCurrentRecord(currentRecord: ChatRecord, error?: unknown) {
-  const message = normalizeTaskError(error)
+  const message = resolveSmartQaErrorMessage(error, t)
   updateOwnedRecord(currentRecord, { error: message })
   clearCurrentTask(currentRecord)
   _loading.value = false
@@ -460,10 +440,8 @@ const sendMessage = async () => {
     rememberActiveTask(currentRecord, task.task_id)
     attachGlobalTask(currentRecord, task.task_id)
   } catch (error) {
-    const previousError = currentRecord.error?.trim() ? `${currentRecord.error}\n` : ''
-    updateOwnedRecord(currentRecord, { error: `${previousError}Error:${error}` })
+    failCurrentRecord(currentRecord, error)
     console.error('Error:', error)
-    emits('error')
   } finally {
     _loading.value = false
   }
@@ -682,6 +660,9 @@ async function restoreRecordTask() {
       }
       updateOwnedRecord(record, {
         ...latestRecord,
+        error: latestRecord.error
+          ? resolveSmartQaErrorMessage(latestRecord.error, t)
+          : latestRecord.error,
         task_id: latestRecord.task_id || record.task_id,
       })
       if (latestRecord?.error) {
@@ -690,12 +671,7 @@ async function restoreRecordTask() {
       }
     }
   } catch (error) {
-    updateOwnedRecord(record, {
-      error: `${record.error ? `${record.error}\n` : ''}Error:${error}`,
-    })
-    clearCurrentTask(record)
-    emits('error', record.id)
-    _loading.value = false
+    failCurrentRecord(record, error)
     console.error('Restore active chat task failed:', error)
   } finally {
     restoringTask.value = false

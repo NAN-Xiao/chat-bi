@@ -3,6 +3,10 @@ import CanvasCore from '@/views/dashboard/canvas/CanvasCore.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, type PropType, ref } from 'vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
+import {
+  DEFAULT_DASHBOARD_LAYOUT_SURFACE,
+  type DashboardLayoutSurface,
+} from '@/views/dashboard/utils/dashboardLayoutSurface.ts'
 
 const canvasCoreRef = ref(null)
 const dashboardEditorRef = ref(null)
@@ -63,6 +67,10 @@ const props = defineProps({
   inTab: {
     type: Boolean,
     default: false,
+  },
+  dashboardLayoutSurface: {
+    type: String as PropType<DashboardLayoutSurface>,
+    default: DEFAULT_DASHBOARD_LAYOUT_SURFACE,
   },
   showComponentBar: {
     type: Boolean,
@@ -212,6 +220,7 @@ const emits = defineEmits(['parentAddItemBox'])
       :show-component-bar="showComponentBar"
       :can-edit-sql="canEditSql"
       :platform-template="platformTemplate"
+      :dashboard-layout-surface="dashboardLayoutSurface"
       @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
     ></CanvasCore>
   </div>

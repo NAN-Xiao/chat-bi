@@ -143,6 +143,28 @@ def test_execute_prepared_query_skips_second_row_rewrite(monkeypatch):
     assert result.result["data"] == [{"id": 1}]
 
 
+def test_execute_boundary_rejects_unresolved_dashboard_date_parameters(monkeypatch):
+    called = {"executor": False}
+
+    def fake_low_level_exec(*args, **kwargs):
+        called["executor"] = True
+        return {"fields": ["id"], "data": [{"id": 1}], "sql": "encoded"}
+
+    monkeypatch.setattr(query_executor, "_unsafe_exec_sql_after_validation", fake_low_level_exec)
+
+    with pytest.raises(
+        query_executor.UnresolvedDashboardDateParametersError,
+        match="unresolved dashboard date parameters",
+    ):
+        query_executor._execute_after_validation(
+            ds=_datasource(),
+            sql="select * from orders where dt >= '{{dashboard_start_yyyymmdd}}'",
+            origin_column=False,
+        )
+
+    assert called["executor"] is False
+
+
 def test_execute_user_analysis_query_always_applies_row_permissions(monkeypatch):
     calls = {"row_filters": 0}
     monkeypatch.setattr(query_executor, "has_datasource_access", lambda *args, **kwargs: True)

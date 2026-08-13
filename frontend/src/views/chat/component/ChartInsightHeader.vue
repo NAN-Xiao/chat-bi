@@ -94,10 +94,17 @@ interface ConversionFieldMatch {
   label: string
 }
 
-const structureChartTypes = new Set<ChartTypes>(['pie', 'funnel', 'treemap'])
-const rankedChartTypes = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'sankey'])
+const structureChartTypes = new Set<ChartTypes>(['pie', 'donut', 'funnel', 'treemap'])
+const rankedChartTypes = new Set<ChartTypes>([
+  'bar',
+  'column',
+  'grouped_column',
+  'heatmap',
+  'scatter',
+  'sankey',
+])
 const trendChartTypes = new Set<ChartTypes>(['line', 'area'])
-const conversionSummaryChartTypes = new Set<ChartTypes>(['bar', 'column'])
+const conversionSummaryChartTypes = new Set<ChartTypes>(['bar', 'column', 'grouped_column'])
 const SIDE_FIT_MIN_SCALE = 0.9
 const SIDE_FIT_EPSILON = 1
 
@@ -632,7 +639,11 @@ function categoryLabel(row: ChartData, index: number) {
     return `${yValue} / ${xValue}`
   }
 
-  const axis = props.chartType === 'pie' ? seriesAxis.value || xAxis.value : xAxis.value || seriesAxis.value
+  const axis = props.chartType === 'donut'
+    ? seriesAxis.value
+    : props.chartType === 'pie'
+      ? seriesAxis.value || xAxis.value
+      : xAxis.value || seriesAxis.value
   return axis ? stringifyValue(row[axis.value]) || `${index + 1}` : `${index + 1}`
 }
 
@@ -1921,6 +1932,10 @@ onBeforeUnmount(() => {
       display: none;
     }
 
+    .insight-stat-meta {
+      display: block;
+    }
+
     .configured-trend-layout {
       grid-template-columns: auto minmax(0, 1fr);
       gap: 8px 18px;
@@ -2095,6 +2110,10 @@ onBeforeUnmount(() => {
       display: none;
     }
 
+    .insight-stat-meta {
+      display: block;
+    }
+
     &.side {
       width: 176px;
       height: 100%;
@@ -2240,6 +2259,10 @@ onBeforeUnmount(() => {
     .insight-stat-sub-label,
     .insight-stat-meta {
       display: none;
+    }
+
+    .insight-stat-meta {
+      display: block;
     }
 
     .configured-trend-layout {
