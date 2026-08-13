@@ -110,3 +110,26 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: 合并 release 1.0.0 到 release 2.0.0
+
+**Date**: 2026-08-13
+**Task**: 合并 release 1.0.0 到 release 2.0.0
+**Branch**: `release/release_2.0.0`
+
+### Summary
+
+合并远端最新 release 1.0.0，解决八个冲突；独立复核修复活动看板 seed 动态数据源残留，并补充回归测试与 Trellis 防回归规范。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cbbec0e4bed4116cd450fcbc71e56f826039a61c` | (see git log) |
+| `ac1c25e34b33e894dcec6d7781d86691da33356f` | (see git log) |
+| `bb0178b5` | (see git log) |
+
+### Status
+
+[OK] **Completed**

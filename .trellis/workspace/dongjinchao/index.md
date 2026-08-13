@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
+- **Total Sessions**: 6
 - **Last Active**: 2026-08-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~112 | Active |
+| `journal-1.md` | ~135 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-08-13 | 合并 release 1.0.0 到 release 2.0.0 | `cbbec0e4bed4116cd450fcbc71e56f826039a61c`, `ac1c25e34b33e894dcec6d7781d86691da33356f`, `bb0178b5` | `release/release_2.0.0` |
 | 5 | 2026-08-13 | 完善知识库归档查看与恢复 | `6efd3f3c` | `release/release_2.0.0` |
 | 4 | 2026-08-13 | 工作空间绑定 ROI 项目 ID | `44482cc0` | `release/release_2.0.0` |
 | 3 | 2026-08-12 | AI看板 Skills 与知识库 RAG 联合调用 | `d9408538` | `release/release_2.0.0` |
