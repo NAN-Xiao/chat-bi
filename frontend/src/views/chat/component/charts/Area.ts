@@ -89,7 +89,7 @@ export class Area extends BaseG2Chart {
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data, forecastData }, instance: this })
 
-    const areaLabels = this.showLabel && responsive.showPointLabels
+    const areaLabels = this.showLabel
       ? [
           {
             text: (datum: ChartData) => {

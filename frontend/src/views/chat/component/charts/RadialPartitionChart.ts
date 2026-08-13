@@ -96,7 +96,7 @@ export class RadialPartitionChart extends BaseG2Chart {
         },
       },
       animate: { enter: { type: 'waveIn' } },
-      labels: this.showLabel && responsive.showPointLabels
+      labels: this.showLabel
         ? [
             {
               position: 'spider',

@@ -73,7 +73,7 @@ export class Heatmap extends BaseG2Chart {
           itemLabelFontSize: responsive.legendItemFontSize,
         },
       },
-      labels: this.showLabel && responsive.showPointLabels
+      labels: this.showLabel
         ? [
             {
               text: (datum: any) =>

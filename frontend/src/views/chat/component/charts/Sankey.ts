@@ -51,6 +51,7 @@ export class Sankey extends BaseG2Chart {
         nodeStroke: '#fff',
         nodeLineWidth: 1,
         linkFillOpacity: 0.36,
+        labelText: this.showLabel ? (datum: any) => datum.key : () => '',
         labelFontSize: responsive.structureLabelFontSize,
         labelFill: '#5b6f95',
       },
