@@ -59,7 +59,7 @@ const keyword = ref('')
 const scopeFilter = useKnowledgeScopeNavigation()
 const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
 const workspaces = ref<TenantInfo[]>([])
-const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope, tenant_id: '' as string | number, knowledge_type: 'DOCUMENT' as KnowledgePayload['knowledge_type'] })
+const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope, knowledge_type: 'DOCUMENT' as KnowledgePayload['knowledge_type'] })
 const publishJob = ref<KnowledgePublishJob | null>(null)
 const draftConflict = ref(false)
 const documentConflict = ref<{
@@ -118,7 +118,6 @@ const workspaceOptions = computed<TenantInfo[]>(() => {
     role: userStore.getTenantRole || 'member',
   }]
 })
-const selectedWorkspace = computed(() => workspaceOptions.value.find((item) => String(item.id) === String(workspaceFilter.value)))
 const workspaceKnowledgeEnabled = computed({
   get: () => workspaceOverride.value?.enabled !== false,
   set: (value: boolean) => {
@@ -174,7 +173,6 @@ function openCreate() {
     name: '',
     description: '',
     visibility_scope: scopeFilter.value,
-    tenant_id: scopeFilter.value === 'ADMIN_PUBLIC' ? selectedWorkspace.value?.id || '' : '',
     knowledge_type: 'DOCUMENT',
   }
   createVisible.value = true
@@ -185,7 +183,7 @@ async function createKnowledge() {
     ElMessage.warning('请输入知识库名称')
     return
   }
-  if (createForm.value.visibility_scope === 'ADMIN_PUBLIC' && isPlatformAdmin.value && !createForm.value.tenant_id) {
+  if (createForm.value.visibility_scope === 'ADMIN_PUBLIC' && !workspaceFilter.value) {
     ElMessage.warning('请选择工作空间')
     return
   }
@@ -195,7 +193,7 @@ async function createKnowledge() {
       ...createForm.value,
       name: createForm.value.name.trim(),
       tenant_id: createForm.value.visibility_scope === 'ADMIN_PUBLIC'
-        ? createForm.value.tenant_id
+        ? workspaceFilter.value
         : undefined,
     })
     createVisible.value = false
@@ -704,11 +702,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <el-select v-model="createForm.visibility_scope" :disabled="!isPlatformAdmin">
             <el-option label="工作空间知识" value="ADMIN_PUBLIC" />
             <el-option v-if="isPlatformAdmin" label="平台公共知识" value="PLATFORM_PUBLIC" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="createForm.visibility_scope === 'ADMIN_PUBLIC'" label="工作空间" required>
-          <el-select v-model="createForm.tenant_id" :disabled="workspaceFilterDisabled" placeholder="请选择工作空间">
-            <el-option v-for="workspace in workspaceOptions" :key="workspace.id" :label="workspace.name" :value="workspace.id" />
           </el-select>
         </el-form-item>
       </el-form>

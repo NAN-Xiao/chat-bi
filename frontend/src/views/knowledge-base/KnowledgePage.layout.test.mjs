@@ -6,6 +6,7 @@ import test from 'node:test'
 
 const directory = dirname(fileURLToPath(import.meta.url))
 const pageSource = readFileSync(join(directory, 'index.vue'), 'utf8')
+const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'utf8')
 const routerSource = readFileSync(join(directory, '../../router/index.ts'), 'utf8')
 const menuItemSource = readFileSync(join(directory, '../../components/layout/MenuItem.vue'), 'utf8')
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
@@ -43,6 +44,12 @@ test('knowledge page exposes platform knowledge as read-only to non-managers', (
   assert.match(pageSource, /<el-option label="工作空间知识库" value="ADMIN_PUBLIC"/)
   assert.match(pageSource, /v-if="canCreateKnowledge"/)
   assert.match(pageSource, /if \(!row\.can_manage\) return/)
+})
+
+test('workspace knowledge creation reuses the top workspace filter', () => {
+  assert.doesNotMatch(panelSource, /<el-form-item v-if="createForm\.visibility_scope === 'ADMIN_PUBLIC'" label="工作空间"/)
+  assert.match(panelSource, /createForm\.value\.visibility_scope === 'ADMIN_PUBLIC' && !workspaceFilter\.value/)
+  assert.match(panelSource, /tenant_id: createForm\.value\.visibility_scope === 'ADMIN_PUBLIC'\s*\n\s*\? workspaceFilter\.value\s*\n\s*: undefined/)
 })
 
 test('workspace management keeps a usable content width on mobile', () => {

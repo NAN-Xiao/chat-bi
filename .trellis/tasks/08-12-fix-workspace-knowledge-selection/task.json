@@ -1,9 +1,9 @@
 {
   "id": "fix-workspace-knowledge-selection",
   "name": "fix-workspace-knowledge-selection",
-  "title": "修复工作空间知识库创建缺少工作空间选择",
-  "description": "创建工作空间范围知识库时显示并校验工作空间选择，并正确传递归属上下文。",
-  "status": "planning",
+  "title": "修复工作空间知识库创建重复选择工作空间",
+  "description": "创建工作空间范围知识库时复用页面顶部已选工作空间，并移除弹窗内重复的工作空间选择。",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
