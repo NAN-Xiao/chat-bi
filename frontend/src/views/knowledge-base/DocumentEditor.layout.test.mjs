@@ -34,32 +34,25 @@ test('deleted block conflicts can preserve local content as a new block', () => 
   assert.match(panelSource, /恢复为新知识块/)
 })
 
-test('document editor keeps selection stable across structure operations', () => {
-  assert.match(editorSource, /activeBlockId\.value = block\.id[\s\S]*updateBlocks\(blocks\)/)
-  assert.match(editorSource, /activeBlockId\.value = copy\.id[\s\S]*updateBlocks\(blocks\)/)
-  assert.match(editorSource, /removedBlock\.id === activeBlockId\.value/)
-  assert.match(editorSource, /blocks\[Math\.min\(index, blocks\.length - 1\)\]\?\.id/)
-  assert.match(editorSource, /const \[block\] = blocks\.splice\(index, 1\)[\s\S]*blocks\.splice\(target, 0, block\)[\s\S]*updateBlocks\(blocks\)/)
+test('document editor removes block structure management actions', () => {
+  assert.doesNotMatch(editorSource, /新增知识块|编辑标题|检索状态|上移|下移|复制|删除知识块/)
+  assert.doesNotMatch(editorSource, /addBlock|copyBlock|moveBlock|renameBlock|removeBlock/)
+  assert.doesNotMatch(editorSource, /ArrowDown|ArrowUp|CopyDocument|Delete|EditPen|Plus/)
+  assert.doesNotMatch(editorSource, /class="block-actions"|class="directory-edit"/)
 })
 
-test('document editor edits titles from the directory and keeps detail focused on content', () => {
-  assert.match(editorSource, /class="directory-edit" text :icon="EditPen"[^>]*aria-label="编辑标题"/)
-  assert.match(editorSource, /ElMessageBox\.prompt\('请输入知识块标题', '编辑知识块标题'/)
-  assert.match(editorSource, /updateBlock\(index, \{ title: value\.trim\(\) \}\)/)
+test('document editor keeps the title bar and markdown content', () => {
   assert.doesNotMatch(editorSource, /el-form-item label="标题"/)
   assert.doesNotMatch(editorSource, /el-form-item label="检索状态"/)
-  assert.match(editorSource, /aria-label="检索状态"/)
+  assert.doesNotMatch(editorSource, /<el-switch/)
+  assert.doesNotMatch(editorSource, /updateBlock\(activeBlockIndex, \{ enabled:/)
+  assert.match(editorSource, /class="block-header"/)
+  assert.match(editorSource, /class="block-index">\{\{ activeBlockIndex \+ 1 \}\}/)
+  assert.match(editorSource, /class="block-title">\{\{ activeBlock\.title \|\| '未命名知识块' \}\}/)
   assert.match(editorSource, /el-form-item label="Markdown 正文"/)
   assert.match(editorSource, /class="markdown-editor"/)
+  assert.match(editorSource, /updateBlock\(activeBlockIndex, \{ markdown: \$event \}\)/)
   assert.match(editorSource, /\.markdown-editor :deep\(\.ed-textarea__inner\)[^{]*\{[^}]*box-shadow: none;/)
-})
-
-test('document editor uses compact project-style icon actions', () => {
-  assert.doesNotMatch(editorSource, /<el-button[^>]*\bcircle\b/)
-  assert.match(editorSource, /class="block-action" text :icon="ArrowUp"/)
-  assert.match(editorSource, /class="block-action is-danger" text :icon="Delete"/)
-  assert.match(editorSource, /\.directory-edit, \.block-action \{ width: 28px; height: 28px;/)
-  assert.match(editorSource, /\.block-action\.is-danger:hover \{ color: #f04438; background: #fff1f0;/)
 })
 
 test('document editor keeps the mobile directory horizontally scrollable', () => {
