@@ -2131,50 +2131,6 @@ def test_sql_repair_keeps_data_skill_when_tracking_context_is_large() -> None:
     assert "2026-07-26" in prompt
 
 
-def test_query_sql_generation_receives_the_skill_for_that_data_block() -> None:
-    class CaptureLLM:
-        def __init__(self) -> None:
-            self.messages = []
-
-        def invoke(self, messages):
-            self.messages = messages
-            return SimpleNamespace(
-                content=(
-                    '{"sql":"SELECT business_date AS \\"日期\\", '
-                    'COUNT(*) AS \\"订单数\\" FROM fact_orders '
-                    'WHERE business_date BETWEEN DATE \'2026-07-13\' AND DATE \'2026-07-26\' '
-                    'GROUP BY business_date",'
-                    '"time_fields":[{"table":"fact_orders","field":"business_date"}]}'
-                )
-            )
-
-    llm = CaptureLLM()
-    result = analysis_api._generate_query_sql_with_skill(
-        llm,
-        question="分析收入",
-        raw_query={
-            "id": "q2",
-            "title": "渠道结构",
-            "purpose": "比较渠道贡献",
-            "chart_type": "column",
-            "x": "日期",
-            "y": "订单数",
-            "sql": "SELECT draft",
-            "time_fields": [],
-        },
-        schema="# Table: fact_orders (business_date:date)",
-        sample_data="",
-        data_skill="按渠道统计订单数，优先使用订单明细。",
-        time_resolution=_resolved_time(),
-    )
-
-    prompt = llm.messages[-1].content
-    assert "按渠道统计订单数" in prompt
-    assert '"title":"渠道结构"' in prompt
-    assert result["sql"].lower().startswith("select * from (")
-    assert result["time_fields"] == [{"table": "fact_orders", "field": "business_date"}]
-
-
 def test_sql_repair_receives_declared_scan_windows() -> None:
     class CaptureLLM:
         def __init__(self) -> None:
@@ -2461,54 +2417,6 @@ def test_declared_time_fields_treat_empty_optional_alias_as_omitted() -> None:
             "end_offset_days": 0,
         }
     ]
-
-
-def test_semantic_validation_rejects_constant_label_result_columns() -> None:
-    query = {
-        "title": "最近 7 天新增用户数及环比变化明细",
-        "purpose": "按天展示新增用户数和环比变化率",
-        "chart_type": "table",
-        "x": "_col0",
-        "y": "_col1",
-    }
-    result = {
-        "fields": ["_col0", "_col1", "环比变化率 (%)"],
-        "data": [
-            {"_col0": "日期", "_col1": "新增用户数", "环比变化率 (%)": "-"},
-            {"_col0": "日期", "_col1": "新增用户数", "环比变化率 (%)": "-"},
-        ],
-    }
-
-    error = analysis_api._semantic_validation_error(query, result)
-
-    assert error is not None
-    assert "固定字段标签" in error
-
-
-def test_semantic_validation_rejects_missing_declared_chart_field() -> None:
-    query = {"chart_type": "line", "x": "日期", "y": "新增用户数"}
-    result = {
-        "fields": ["metric_date", "new_users"],
-        "data": [{"metric_date": "2026-08-05", "new_users": 2001}],
-    }
-
-    error = analysis_api._semantic_validation_error(query, result)
-
-    assert error is not None
-    assert "不在 SQL 实际结果字段中" in error
-
-
-def test_semantic_validation_accepts_real_daily_trend_result() -> None:
-    query = {"chart_type": "line", "x": "日期", "y": "新增用户数"}
-    result = {
-        "fields": ["日期", "新增用户数", "环比变化率 (%)"],
-        "data": [
-            {"日期": "2026-08-05", "新增用户数": 2001, "环比变化率 (%)": None},
-            {"日期": "2026-08-06", "新增用户数": 1027, "环比变化率 (%)": -48.68},
-        ],
-    }
-
-    assert analysis_api._semantic_validation_error(query, result) is None
 
 
 def test_analysis_policy_anchor_rejects_event_time_for_historical_query(

@@ -406,30 +406,6 @@ JSON 格式：
 """
 
 
-QUERY_SQL_SKILL_PROMPT = """你是综合分析助手的数据块 SQL 生成器。请针对当前一个数据块，依据本次为它单独匹配到的 Data Skill 重新生成 SQL。
-
-你必须只输出一个合法 JSON 对象，不要输出 Markdown，不要输出额外解释。
-
-JSON 格式：
-{
-  "sql": "重新生成后的只读 SQL",
-  "time_fields": [{"table": "物理表名", "alias": "SQL 别名（同表多次扫描时必填）", "field": "物理时间字段", "start_offset_days": 0, "end_offset_days": 0}]
-}
-
-生成规则：
-- 当前数据块的标题、分析目的、图表类型和 x/y/series 字段合同已经确定，只重新生成这个数据块的 SQL 和 time_fields，不得改变分析目的或扩展为其它数据块。
-- SQL 最终 SELECT 的输出别名必须与当前数据块非空的 x、y、series 完全一致；不得把这些展示名写成字符串常量冒充查询结果。
-- SQL 只能 SELECT 或 WITH，不允许 INSERT/UPDATE/DELETE/DDL。
-- 真实表名和字段名必须来自当前 schema；Data Skill 负责业务口径和查询范式，但不能扩大数据源、Schema 或权限范围。
-- 对于随后“SQL 字段映射”中声明的 JSON 子字段，必须使用其 SQL 表达式；不得把逻辑字段名或其末段名称当作物理列。
-- 后端时间策略是最终约束，必须使用其中的具体日期常量和包含关系，不得改用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds 推导边界。
-- 必须返回与 SQL 每次物理时间表扫描一一对应的完整 time_fields；生命周期或观察窗口偏移只能来自用户问题或当前 Data Skill 的明确要求。
-- 没有适用时间字段的维表不得虚构时间过滤。
-- 不得通过固定标签、虚构常量行、无关字段或任意第一列制造结果。
-- ORDER BY、GROUP BY 和 HAVING 只能引用当前查询层级可见的字段或表达式。
-"""
-
-
 SUMMARY_PROMPT = """你是业务数据分析师。请根据用户问题和查询结果，总结这个数据块。
 
 要求：
@@ -3722,55 +3698,6 @@ def _wide_funnel_validation_error(
     return None
 
 
-def _query_result_shape_error(query: dict[str, Any], fields: list[str], rows: list[dict[str, Any]]) -> str | None:
-    """Reject result shapes that cannot satisfy the query's chart/data contract."""
-    if not rows:
-        return None
-
-    declared_fields = {
-        key: str(query.get(key) or "").strip()
-        for key in ("x", "y", "series")
-        if str(query.get(key) or "").strip()
-    }
-    available = {field.casefold() for field in fields}
-    for key, field in declared_fields.items():
-        if field.casefold() not in available:
-            return (
-                f"查询声明的 {key} 字段 {field} 不在 SQL 实际结果字段中；"
-                "请重新生成该数据块，确保 SELECT 别名与图表字段完全一致。"
-            )
-
-    # A malformed SELECT can return display labels as string literals instead
-    # of business values. Detect this from the query's own contract so the
-    # validation remains datasource- and domain-agnostic.
-    contract_text = " ".join(
-        str(query.get(key) or "").casefold()
-        for key in ("title", "purpose", "x", "y", "series")
-    )
-    constant_label_fields = 0
-    declared_constant_fields = 0
-    declared_field_names = {value.casefold() for value in declared_fields.values()}
-    for field in fields:
-        values = [row.get(field) for row in rows if row.get(field) not in (None, "")]
-        if not values or any(_is_number(value) for value in values):
-            continue
-        distinct = {str(value).strip() for value in values}
-        if (
-            len(distinct) == 1
-            and len(rows) > 1
-            and next(iter(distinct)).casefold() in contract_text
-        ):
-            constant_label_fields += 1
-        if len(rows) > 1 and field.casefold() in declared_field_names and len(distinct) == 1:
-            declared_constant_fields += 1
-    if constant_label_fields >= 2 or declared_constant_fields >= 2:
-        return (
-            "SQL 结果中的多个列只返回了固定字段标签，没有返回实际业务值；"
-            "请按 Data Skill 和当前问题重新生成该数据块的 SELECT 字段、聚合和别名。"
-        )
-    return None
-
-
 def _semantic_validation_error(query: dict[str, Any], result: dict[str, Any], data_skill: str = "") -> str | None:
     """
     是什么：_semantic_validation_error 是一个可以复用的小步骤，负责分析助手相关的一件事。
@@ -3779,10 +3706,6 @@ def _semantic_validation_error(query: dict[str, Any], result: dict[str, Any], da
     """
     rows = result.get("data") or []
     fields = [str(field) for field in result.get("fields") or []]
-
-    shape_error = _query_result_shape_error(query, fields, rows)
-    if shape_error:
-        return shape_error
 
     range_error = _value_range_error(fields, rows)
     if range_error:
@@ -4020,66 +3943,6 @@ def _repair_sql(
         "sql": _normalise_sql(repaired_sql),
         "time_fields": repaired_time_fields,
     }
-
-
-def _generate_query_sql_with_skill(
-    llm,
-    question: str,
-    raw_query: dict[str, Any],
-    schema: str,
-    sample_data: str,
-    data_profile: str = "",
-    custom_agent: str = "",
-    tracking_context: str = "",
-    data_skill: str = "",
-    *,
-    time_resolution: AnalysisTimeResolution,
-) -> dict[str, Any]:
-    """Generate one query with the Data Skill matched specifically for that block."""
-    if not data_skill.strip():
-        return {
-            "sql": str(raw_query.get("sql") or ""),
-            "time_fields": raw_query.get("time_fields") or [],
-        }
-
-    tracking_block = ""
-    if tracking_context.strip():
-        tracking_block = (
-            "工作空间数据字典/埋点方案（补充字段和事件语义；不能覆盖前述 Data Skill 口径）：\n"
-            f"{tracking_context[:12000]}\n\n"
-        )
-    query_contract = {
-        key: raw_query.get(key)
-        for key in ("id", "title", "purpose", "chart_type", "x", "y", "series")
-        if raw_query.get(key) not in (None, "")
-    }
-    prompt = (
-        f"用户问题：{question}\n"
-        f"当前数据块合同：{orjson.dumps(query_contract).decode()}\n"
-        f"计划中的候选 SQL（只作为待校准草稿，不是最终口径）：\n{raw_query.get('sql') or ''}\n\n"
-        f"计划中的候选时间扫描声明：{orjson.dumps(raw_query.get('time_fields') or []).decode()}\n\n"
-        f"{_time_policy_context(time_resolution)}"
-        f"{_data_skill_block(data_skill)}"
-        f"{tracking_block}"
-        f"{_custom_agent_block(custom_agent)}"
-        f"{_sql_generation_semantic_mappings(schema)}"
-        f"数据库 schema：\n{schema[:18000]}\n\n"
-        f"样例数据：\n{sample_data[:6000]}\n\n"
-        f"实际数据画像（只能用于确认真实字段取值与枚举样本，不得据此发明业务口径）：\n{data_profile[:12000]}"
-    )
-    messages = [
-        SystemMessage(content=QUERY_SQL_SKILL_PROMPT),
-        HumanMessage(content=prompt),
-    ]
-    text = _llm_text_with_data_skill_identifier_retry(llm, messages, data_skill)
-    generated = _extract_json_object(text)
-    sql = generated.get("sql")
-    time_fields = generated.get("time_fields")
-    if not isinstance(sql, str) or not sql.strip():
-        raise ValueError("模型没有为当前数据块生成 SQL")
-    if not isinstance(time_fields, list):
-        raise ValueError("模型没有为当前数据块生成完整的时间扫描声明")
-    return {"sql": _normalise_sql(sql), "time_fields": time_fields}
 
 
 def _repaired_query_parts(
@@ -4798,27 +4661,6 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 block_id = str(raw_query.get("id") or f"q{index}")
                 title = str(raw_query.get("title") or f"分析 {index}")
                 purpose = str(raw_query.get("purpose") or "")
-                query_skill_question = (
-                    f"{question}\n\n"
-                    f"当前分析数据块标题：{title}\n"
-                    f"当前分析数据块目的：{purpose}"
-                )
-                # Skill matching is intentionally repeated per query. A plan contains
-                # multiple independent SQL contracts, so one broad plan-level match
-                # must not decide the semantic context for every data block.
-                query_data_skill = _collect_data_skill_context(
-                    session,
-                    datasource.id,
-                    request.data_skill_id,
-                    current_user,
-                    query_skill_question,
-                    target_scope,
-                    include_all_target_scopes=False,
-                )
-                query_semantic_context = _merge_semantic_contexts(
-                    tracking_context,
-                    query_data_skill,
-                )
                 yield _sse(
                     {
                         "type": "progress",
@@ -4827,8 +4669,6 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     }
                 )
                 yield _trace(f"先看「{title}」这个角度。", block_id=block_id)
-                if query_data_skill.strip():
-                    yield _trace("已为当前分析数据块匹配对应的数据 Skill。", block_id=block_id)
 
                 block: dict[str, Any] = {
                     "id": block_id,
@@ -4842,25 +4682,6 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 }
                 try:
                     raw_query["_user_question"] = question
-                    if query_data_skill.strip():
-                        generated_query = _generate_query_sql_with_skill(
-                            llm,
-                            question,
-                            raw_query,
-                            schema,
-                            sample_data,
-                            data_profile,
-                            custom_agent,
-                            tracking_context,
-                            query_data_skill,
-                            time_resolution=time_resolution,
-                        )
-                        raw_query["sql"] = generated_query["sql"]
-                        raw_query["time_fields"] = generated_query["time_fields"]
-                        yield _trace(
-                            "已按当前数据块匹配的 Data Skill 生成查询。",
-                            block_id=block_id,
-                        )
                     sql = _prepare_time_safe_query_sql(
                         llm=llm,
                         session=session,
@@ -4873,7 +4694,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         data_profile=data_profile,
                         custom_agent=custom_agent,
                         tracking_context=tracking_context,
-                        data_skill=query_data_skill,
+                        data_skill=data_skill,
                         allowed_tables=allowed_tables,
                         time_resolution=time_resolution,
                         schema_time_fields=schema_time_fields,
@@ -4905,7 +4726,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             data_profile,
                             custom_agent,
                             tracking_context,
-                            query_data_skill,
+                            data_skill,
                             time_resolution=time_resolution,
                         )
                         sql, repaired_declared = _prepare_repaired_query_sql(
@@ -4931,7 +4752,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             allowed_tables=allowed_tables,
                             origin_column=True,
                         ).result
-                    semantic_error = _semantic_validation_error(raw_query, result, query_semantic_context)
+                    semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
                         repaired = _repair_sql(
@@ -4945,7 +4766,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             data_profile,
                             custom_agent,
                             tracking_context,
-                            query_data_skill,
+                            data_skill,
                             time_resolution=time_resolution,
                         )
                         sql, repaired_declared = _prepare_repaired_query_sql(
@@ -4971,7 +4792,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             allowed_tables=allowed_tables,
                             origin_column=True,
                         ).result
-                        semantic_error = _semantic_validation_error(raw_query, result, query_semantic_context)
+                        semantic_error = _semantic_validation_error(raw_query, result, semantic_context)
                         if semantic_error:
                             raise ValueError(semantic_error)
                     block["fields"] = [str(field) for field in result.get("fields") or []]
@@ -4983,7 +4804,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         question,
                         block,
                         custom_agent,
-                        query_semantic_context,
+                        semantic_context,
                         time_resolution=time_resolution,
                     )
                 except AnalysisTimeSqlError:
