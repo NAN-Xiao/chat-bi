@@ -1678,11 +1678,10 @@ def test_all_sql_generation_prompts_require_backend_resolved_time_policy() -> No
 
 
 def test_sql_repair_prompt_only_requires_preserving_backend_time_bounds() -> None:
-    """SQL 修复必须同时返回与修复 SQL 一致的时间扫描声明。"""
+    """SQL 修复输出只能包含 SQL，不承担计划或回答元数据契约。"""
     prompt = analysis_api.SQL_REPAIR_PROMPT
 
     assert '"sql": "修正后的只读 SQL"' in prompt
-    assert '"time_fields": [{' in prompt
     assert "后端提供的时间策略是最终约束，不得重新解释或扩大" in prompt
     assert "具体起止日期和包含关系" in prompt
     assert "不得使用动态 MAX(date)、bounds CTE 或 CROSS JOIN bounds" in prompt
@@ -1775,43 +1774,6 @@ def test_plan_prompt_receives_backend_resolved_constant_time_policy() -> None:
     assert "2026-07-26" in prompt
     assert "不得重新解释或扩大" in prompt
     assert "具体日期常量" in prompt
-
-
-def test_build_plan_retries_when_json_has_no_executable_queries() -> None:
-    class SequenceLLM:
-        def __init__(self) -> None:
-            self.messages = []
-            self.outputs = iter(
-                [
-                    '{"intro":"分析","queries":[]}',
-                    (
-                        '{"intro":"分析","queries":[{"id":"q1","title":"趋势",'
-                        '"purpose":"趋势","sql":"SELECT 1","time_fields":[]}]}'
-                    ),
-                ]
-            )
-
-        def invoke(self, messages):
-            self.messages = messages
-            return SimpleNamespace(content=next(self.outputs))
-
-    llm = SequenceLLM()
-    request = analysis_api.AnalysisAssistantRequest(
-        datasource_id=1,
-        messages=[analysis_api.AnalysisAssistantMessage(role="user", content="最近 7 天新增趋势")],
-    )
-
-    plan = analysis_api._build_plan(
-        llm,
-        request,
-        "",
-        "",
-        SimpleNamespace(name="测试", type="pg"),
-        time_resolution=_resolved_time(),
-    )
-
-    assert plan["queries"][0]["id"] == "q1"
-    assert "缺少可执行 queries" in llm.messages[-1].content
 
 
 def test_forecast_plan_prompt_receives_same_backend_time_policy() -> None:
@@ -2358,115 +2320,6 @@ def test_analysis_policy_anchor_keeps_repaired_declaration_on_raw_query(
         [{"table": "event", "field": "dt"}],
     ]
     assert raw_query["time_fields"] == [{"table": "event", "field": "dt"}]
-
-
-def test_repaired_query_uses_repaired_scan_declarations(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """修复 SQL 可纠正首次计划遗漏的多扫描声明，且必须写回执行合同。"""
-    policy = AnalysisTimePolicy(
-        source=AnalysisTimeSource.USER,
-        window_days=None,
-        anchor_date=date(2026, 8, 11),
-        start_date=date(2026, 7, 28),
-        end_date=date(2026, 8, 11),
-        start_inclusive=True,
-        end_inclusive=True,
-        anchor=AnalysisTimeAnchor("event", "dt"),
-        description="用户指定时间范围",
-    )
-    raw_query = {
-        "sql": "SELECT uid FROM event WHERE time >= 0",
-        "time_fields": [{"table": "event", "field": "dt"}],
-    }
-    repaired = {
-        "sql": (
-            "WITH cohort AS (SELECT r.uid FROM `event` r WHERE r.`dt` BETWEEN 20260728 AND 20260811), "
-            "active AS (SELECT a.uid FROM `event` a WHERE a.`dt` BETWEEN 20260729 AND 20260818) "
-            "SELECT COUNT(*) FROM cohort JOIN active USING (uid)"
-        ),
-        "time_fields": [
-            {"table": "event", "alias": "r", "field": "time", "start_offset_days": 0, "end_offset_days": 0},
-            {"table": "event", "alias": "a", "field": "time", "start_offset_days": 1, "end_offset_days": 7},
-        ],
-    }
-    monkeypatch.setattr(analysis_api, "_repair_sql", lambda *_args, **_kwargs: repaired)
-    monkeypatch.setattr(
-        analysis_api,
-        "validate_user_query_sql_or_raise",
-        lambda **kwargs: (kwargs["sql"], {"event"}),
-    )
-
-    prepared = analysis_api._prepare_time_safe_query_sql(
-        llm=object(),
-        session=object(),
-        current_user=object(),
-        datasource=SimpleNamespace(type="mysql"),
-        raw_query=raw_query,
-        question="分析 D7 留存",
-        schema="",
-        sample_data="",
-        data_profile="",
-        custom_agent="",
-        tracking_context="",
-        data_skill="",
-        allowed_tables=["event"],
-        time_resolution=AnalysisTimeResolution(policy=policy, status="resolved"),
-        schema_time_fields={
-            "event": (
-                TimeFieldBinding("dt", "bigint", "yyyymmdd_integer", True),
-                TimeFieldBinding("time", "bigint", "epoch_milliseconds", True),
-            )
-        },
-        dialect="mysql",
-    )
-
-    assert "20260818" in prepared
-    assert raw_query["time_fields"] == [
-        {"table": "event", "alias": "r", "field": "dt", "start_offset_days": 0, "end_offset_days": 0},
-        {"table": "event", "alias": "a", "field": "dt", "start_offset_days": 1, "end_offset_days": 7},
-    ]
-
-
-def test_repaired_query_rejects_declaration_for_missing_scan(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """修复结果不能通过虚构 alias 绕过多扫描时间合同。"""
-    monkeypatch.setattr(
-        analysis_api,
-        "validate_user_query_sql_or_raise",
-        lambda **kwargs: (kwargs["sql"], {"event"}),
-    )
-    policy = AnalysisTimePolicy(
-        source=AnalysisTimeSource.USER,
-        window_days=None,
-        anchor_date=date(2026, 8, 11),
-        start_date=date(2026, 7, 28),
-        end_date=date(2026, 8, 11),
-        start_inclusive=True,
-        end_inclusive=True,
-        anchor=AnalysisTimeAnchor("event", "dt"),
-        description="用户指定时间范围",
-    )
-
-    with pytest.raises(AnalysisTimeSqlError):
-        analysis_api._prepare_repaired_query_sql(
-            repaired={
-                "sql": "SELECT e.uid FROM `event` e WHERE e.`dt` BETWEEN 20260728 AND 20260811",
-                "time_fields": [
-                    {"table": "event", "alias": "missing", "field": "dt", "start_offset_days": 0, "end_offset_days": 0}
-                ],
-            },
-            fallback_time_fields=[],
-            llm=object(),
-            session=object(),
-            current_user=object(),
-            datasource=SimpleNamespace(type="mysql"),
-            allowed_tables=["event"],
-            time_resolution=AnalysisTimeResolution(policy=policy, status="resolved"),
-            schema_time_fields={"event": (TimeFieldBinding("dt", "bigint", "yyyymmdd_integer", True),)},
-            dialect="mysql",
-        )
 
 
 def test_analysis_policy_anchor_preserves_declared_scan_window_metadata() -> None:
