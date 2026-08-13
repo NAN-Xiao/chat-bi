@@ -105,6 +105,19 @@ When you've made similar changes to multiple files:
 2. **Search**: Run grep to find any missed
 3. **Consider**: Should this be abstracted?
 
+### Replacing Constants With Runtime Context
+
+When a fixed constant is replaced by a function argument or resolved runtime
+context, search the entire owning module for the old symbol before committing.
+Python compilation does not detect an undefined global inside a function body;
+the stale reference fails only when that path executes.
+
+- [ ] Search for every reference to the removed constant or helper.
+- [ ] Verify queries, cache/hash updates, and downstream calls receive the same
+      runtime value.
+- [ ] Add a regression that calls the changed function and asserts the runtime
+      value reaches each side effect. Source-text presence checks are not enough.
+
 ### Reducers Should Use Exhaustive Structure
 
 When state is derived from action-like values (`action`, `kind`, `status`,
@@ -141,6 +154,8 @@ of that replay model.
 - [ ] Constants defined in one place
 - [ ] Similar patterns follow same structure
 - [ ] Reducer/action transitions live in one reducer or command dispatcher
+- [ ] Removed constants/helpers have no stale references and their replacement
+      runtime path is exercised by a test
 
 ---
 
