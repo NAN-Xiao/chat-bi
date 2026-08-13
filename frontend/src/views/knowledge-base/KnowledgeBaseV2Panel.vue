@@ -984,35 +984,46 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 
     <el-drawer v-model="editorVisible" class="knowledge-editor-drawer" :title="editorTitle" size="760px" destroy-on-close :before-close="closeEditor">
       <div v-if="selected" class="editor-layout">
-        <div class="editor-toolbar">
-          <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
-          <el-tag v-if="selected.archived" type="info">已归档，只读</el-tag>
-          <span v-else class="knowledge-active-toggle">
-            参与检索
-            <el-switch
-              v-model="selected.active"
-              :disabled="!selected.can_manage || !selected.current_version_id || Boolean(rowBusyState(selected))"
-              :loading="rowBusyState(selected) === 'active'"
-              @change="updateKnowledgeActive(selected, Boolean($event))"
+        <div class="knowledge-editor-header">
+          <div class="editor-toolbar">
+            <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
+            <el-tag v-if="selected.archived" type="info">已归档，只读</el-tag>
+            <span v-else class="knowledge-active-toggle">
+              参与检索
+              <el-switch
+                v-model="selected.active"
+                :disabled="!selected.can_manage || !selected.current_version_id || Boolean(rowBusyState(selected))"
+                :loading="rowBusyState(selected) === 'active'"
+                @change="updateKnowledgeActive(selected, Boolean($event))"
+              />
+            </span>
+            <KnowledgeApplicabilityTag
+              v-if="!selected.archived && selected.visibility_scope === 'PLATFORM_PUBLIC'"
+              :state="applicability"
+              :loading="applicabilityLoading"
+              :datasource-available="Boolean(datasourceContext.datasourceId)"
             />
-          </span>
-          <KnowledgeApplicabilityTag
-            v-if="!selected.archived && selected.visibility_scope === 'PLATFORM_PUBLIC'"
-            :state="applicability"
-            :loading="applicabilityLoading"
-            :datasource-available="Boolean(datasourceContext.datasourceId)"
-          />
-          <span v-if="canToggleWorkspaceKnowledge" class="workspace-override">
-            当前工作空间使用
-            <el-switch
-              v-model="workspaceKnowledgeEnabled"
-              size="small"
-              :loading="overrideLoading"
-              @change="updateWorkspaceKnowledgeEnabled"
-            />
-          </span>
-          <span v-if="!selected.archived" class="version-status">草稿状态：{{ draftStatus }}</span>
-          <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
+            <span v-if="canToggleWorkspaceKnowledge" class="workspace-override">
+              当前工作空间使用
+              <el-switch
+                v-model="workspaceKnowledgeEnabled"
+                size="small"
+                :loading="overrideLoading"
+                @change="updateWorkspaceKnowledgeEnabled"
+              />
+            </span>
+            <span v-if="!selected.archived" class="version-status">草稿状态：{{ draftStatus }}</span>
+            <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
+          </div>
+          <div v-if="selected.archived && selected.can_manage" class="knowledge-lifecycle-actions">
+            <el-button type="primary" :icon="RefreshLeft" :loading="rowBusyState(selected) === 'restore'" @click="restoreKnowledge(selected)">恢复知识库</el-button>
+          </div>
+          <div v-else-if="!selected.archived" class="knowledge-lifecycle-actions">
+            <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>
+            <el-button :loading="saving" :disabled="!actionState.save" @click="saveDraft">保存草稿</el-button>
+            <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
+            <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
+          </div>
         </div>
         <div v-if="canEdit && draft && payload.knowledge_type === 'DOCUMENT'" class="source-upload-row">
           <el-upload
@@ -1062,15 +1073,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <el-button text type="warning" @click="refreshDraftAfterConflict">刷新最新结构</el-button>
           </template>
         </div>
-        <div v-if="selected.archived && selected.can_manage" class="editor-actions">
-          <el-button type="primary" :icon="RefreshLeft" :loading="rowBusyState(selected) === 'restore'" @click="restoreKnowledge(selected)">恢复知识库</el-button>
-        </div>
-        <div v-else-if="!selected.archived" class="editor-actions">
-          <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>
-          <el-button :loading="saving" :disabled="!actionState.save" @click="saveDraft">保存草稿</el-button>
-          <el-button :loading="saving" :disabled="!actionState.validate" @click="validateDraft">校验</el-button>
-          <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
-        </div>
         <div class="history-title">版本历史</div>
         <div v-for="version in versions" :key="version.id" class="history-row">
           <span>版本 {{ version.version_number }} · {{ version.status }}</span>
@@ -1115,9 +1117,12 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .list-error { margin-bottom: 12px; }
 .empty-state { display: inline-flex; min-height: 120px; align-items: center; color: #8f959e; }
 .muted-text { color: #98a2b3; }
-.editor-toolbar, .editor-actions, .history-row, .history-actions { display: flex; align-items: center; gap: 8px; }
+.editor-toolbar, .knowledge-lifecycle-actions, .history-row, .history-actions { display: flex; align-items: center; gap: 8px; }
 .editor-layout { padding: 0 2px 24px; }
-.editor-toolbar { margin-bottom: 16px; flex-wrap: wrap; color: #667085; font-size: 12px; }
+.knowledge-editor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 20px; margin-bottom: 16px; padding: 12px; border: 1px solid #e4e7ed; border-radius: 6px; background: #f7f8fa; }
+.editor-toolbar { flex: 1 1 360px; min-width: 0; flex-wrap: wrap; color: #667085; font-size: 12px; }
+.knowledge-lifecycle-actions { flex: 0 0 auto; justify-content: flex-end; flex-wrap: wrap; }
+.knowledge-lifecycle-actions :deep(.ed-button + .ed-button) { margin-left: 0; }
 .source-upload-row { margin-bottom: 16px; }
 .source-upload-row :deep(.ed-upload), .source-upload-row :deep(.ed-upload-dragger), .create-source-upload, .create-source-upload :deep(.ed-upload), .create-source-upload :deep(.ed-upload-dragger) { width: 100%; }
 .source-upload-row :deep(.ed-upload-dragger), .create-source-upload :deep(.ed-upload-dragger) { padding: 14px 16px; border-radius: 6px; }
@@ -1136,7 +1141,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .conflict-compare > div { min-width: 0; padding: 8px; border: 1px solid #f5c451; border-radius: 6px; background: #fff; }
 .conflict-compare p { max-height: 100px; margin: 6px 0 0; overflow: auto; color: #475467; white-space: pre-wrap; overflow-wrap: anywhere; }
 .conflict-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
-.editor-actions { justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
 .history-title { margin-top: 24px; padding-bottom: 8px; border-bottom: 1px solid #eaecf0; color: #344054; font-size: 13px; font-weight: 600; }
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
 .publish-status { margin-top: 12px; color: #1570ef; font-size: 12px; }
@@ -1155,6 +1159,10 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
   .panel-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
   .panel-buttons :deep(.ed-button), .template-download { width: 100%; min-height: 32px; margin-left: 0; }
   .template-download :deep(.ed-button) { width: 100%; height: auto; min-height: 32px; white-space: normal; }
+  .knowledge-editor-header { flex-direction: column; }
+  .editor-toolbar { width: 100%; flex-basis: auto; }
+  .knowledge-lifecycle-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .knowledge-lifecycle-actions :deep(.ed-button) { width: 100%; min-width: 0; margin-left: 0; white-space: normal; }
   .conflict-compare { grid-template-columns: minmax(0, 1fr); }
   .conflict-actions { align-items: stretch; flex-direction: column; }
   .conflict-actions :deep(.ed-button) { width: 100%; margin-left: 0; }

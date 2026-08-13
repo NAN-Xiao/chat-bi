@@ -67,6 +67,30 @@ test('knowledge management exposes archived records as read-only and restorable'
   assert.match(panelSource, /:disabled="!row\.current_version_id/)
 })
 
+test('knowledge lifecycle actions stay in the knowledge-base header before the payload editor', () => {
+  const headerIndex = panelSource.indexOf('<div class="knowledge-editor-header">')
+  const actionIndex = panelSource.indexOf('class="knowledge-lifecycle-actions"', headerIndex)
+  const headerEndIndex = panelSource.indexOf(
+    '</div>\n        <div v-if="canEdit && draft && payload.knowledge_type === \'DOCUMENT\'" class="source-upload-row">',
+    headerIndex,
+  )
+  const editorIndex = panelSource.indexOf('<KnowledgePayloadEditor', headerIndex)
+
+  assert.ok(headerIndex >= 0, 'knowledge-base header should exist')
+  assert.ok(actionIndex > headerIndex, 'lifecycle actions should be grouped inside the header')
+  assert.ok(headerEndIndex > actionIndex, 'lifecycle actions should be inside the header boundary')
+  assert.ok(editorIndex > headerEndIndex, 'the payload editor should appear after the knowledge-base header')
+  assert.equal(panelSource.match(/class="knowledge-lifecycle-actions"/g)?.length, 2)
+  assert.match(panelSource, /v-if="selected\.archived && selected\.can_manage" class="knowledge-lifecycle-actions"/)
+  assert.match(panelSource, /v-else-if="!selected\.archived" class="knowledge-lifecycle-actions"/)
+  assert.match(panelSource, /:loading="saving" :disabled="!actionState\.save" @click="saveDraft">保存草稿/)
+  assert.match(panelSource, /:loading="saving" :disabled="!actionState\.validate" @click="validateDraft">校验/)
+  assert.match(panelSource, /:loading="publishing" :disabled="!actionState\.publish" @click="publishDraft">发布/)
+  assert.match(panelSource, /@media \(max-width: 680px\)[\s\S]*?\.knowledge-editor-header \{ flex-direction: column; \}/)
+  assert.match(panelSource, /\.knowledge-lifecycle-actions \{ display: grid; width: 100%; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+  assert.match(panelSource, /\.knowledge-lifecycle-actions :deep\(\.ed-button\) \{ width: 100%; min-width: 0;/)
+})
+
 test('workspace management keeps a usable content width on mobile', () => {
   assert.match(layoutSource, /@media \(max-width: 680px\)/)
   assert.match(layoutSource, /\.workspace-admin-sidebar \{[\s\S]*?flex-basis: 64px/)
