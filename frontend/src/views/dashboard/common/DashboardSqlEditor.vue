@@ -4109,6 +4109,26 @@ async function loadExecutionDatasources(viewInfo: any) {
     const options = await dashboardApi.execution_datasources()
     executionDatasourceOptions.value = Array.isArray(options) ? options : []
     const savedDatasourceId = normalizeExecutionDatasourceId(viewInfo?.datasource)
+    const legacyDatasourceId = normalizeExecutionDatasourceId(
+      chartSourceConfig(viewInfo)?.sql?.datasource
+    )
+    if (savedDatasourceId && legacyDatasourceId && savedDatasourceId !== legacyDatasourceId) {
+      const savedName = executionDatasourceOptions.value.find((item) => item.id === savedDatasourceId)?.name || savedDatasourceId
+      const legacyName = executionDatasourceOptions.value.find((item) => item.id === legacyDatasourceId)?.name || legacyDatasourceId
+      selectedExecutionDatasourceId.value = null
+      executionDatasourceError.value = `图表执行数据源配置冲突：外层为 ${savedName}，旧配置为 ${legacyName}。请重新选择数据源并预览后保存。`
+      return
+    }
+    if (!savedDatasourceId && legacyDatasourceId) {
+      selectedExecutionDatasourceId.value = null
+      executionDatasourceError.value = '图表只有旧版执行数据源配置，需完成数据源与 Schema 校验后迁移。'
+      return
+    }
+    if (!savedDatasourceId && !legacyDatasourceId && String(viewInfo?.sql || '').trim()) {
+      selectedExecutionDatasourceId.value = null
+      executionDatasourceError.value = '图表未配置执行数据源，请重新选择数据源并预览后保存。'
+      return
+    }
     if (savedDatasourceId && !executionDatasourceOptions.value.some((item) => item.id === savedDatasourceId)) {
       selectedExecutionDatasourceId.value = null
       executionDatasourceError.value = '当前图表选择的数据源已不在此空间可用范围内。'
@@ -4687,7 +4707,12 @@ function writeEditorStateToViewInfo(options: {
   }
   const existingSourceConfig = chartSourceConfig(props.viewInfo)
   const { builder: _legacyBuilder, ...sourceConfigBase } = existingSourceConfig
+  const {
+    datasource: _legacySqlDatasource,
+    ...sourceSqlConfigBase
+  } = existingSourceConfig.sql || {}
   void _legacyBuilder
+  void _legacySqlDatasource
   props.viewInfo.sql = hasSqlSource.value ? form.sql.trim() : null
   const nextData: Record<string, any> = {
     ...(props.viewInfo.data || {}),
@@ -4746,8 +4771,7 @@ function writeEditorStateToViewInfo(options: {
       : null,
     sql: hasSqlSource.value
       ? {
-          ...(existingSourceConfig.sql || {}),
-          datasource: selectedExecutionDatasourceId.value,
+          ...sourceSqlConfigBase,
           sql: form.sql.trim(),
           builder: builderConfigForSave(),
           lastResult: sourceResultForSave('sql'),
@@ -5564,7 +5588,7 @@ function closeDrawer() {
         <el-form-item v-if="hasSqlSource" label="执行数据源">
           <el-select
             v-model="selectedExecutionDatasourceId"
-            :disabled="executionDatasourceOptions.length <= 1"
+            :disabled="executionDatasourceOptions.length <= 1 && !executionDatasourceError"
             @change="handleExecutionDatasourceChange"
           >
             <el-option

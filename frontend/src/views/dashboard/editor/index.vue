@@ -1066,7 +1066,6 @@ const createEmptyViewInfo = (id: string) => ({
     sources: ['sql'],
     primarySource: 'sql',
     sql: {
-      datasource: state.platformTemplateId ? null : state.datasource || datasourceContext.datasourceId,
       sql: '',
     },
     mcp: null,

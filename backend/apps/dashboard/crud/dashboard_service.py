@@ -205,6 +205,94 @@ RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE = "推荐看板中已存在同名看
 RECOMMENDED_DASHBOARD_NAME_UNIQUE_INDEX = "uq_core_dashboard_recommended_name"
 DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "图表数据正在后台刷新"
 DASHBOARD_CHART_NO_PERMISSION_MESSAGE = "没有查看权限"
+DASHBOARD_CHART_DATASOURCE_CONFLICT = "dashboard_chart_datasource_conflict"
+DASHBOARD_CHART_DATASOURCE_LEGACY_ONLY = "dashboard_chart_datasource_legacy_only"
+DASHBOARD_CHART_DATASOURCE_MISSING = "dashboard_chart_datasource_missing"
+DASHBOARD_CHART_DATASOURCE_ROLE_MISSING = "dashboard_chart_datasource_role_missing"
+
+
+class DashboardChartDatasourceConfigError(ValueError):
+    """图表执行数据源配置无法无歧义解析。"""
+
+    def __init__(self, error_type: str, message: str):
+        super().__init__(message)
+        self.error_type = error_type
+        self.message = message
+
+
+def _chart_sql_config(item: dict) -> dict | None:
+    source_config = item.get("sourceConfig")
+    if not isinstance(source_config, dict):
+        source_config = item.get("source_config")
+    if not isinstance(source_config, dict):
+        return None
+    sql_config = source_config.get("sql")
+    return sql_config if isinstance(sql_config, dict) else None
+
+
+def _chart_has_sql_source(item: dict) -> bool:
+    sql_config = _chart_sql_config(item)
+    if sql_config is not None and sql_config.get("sql") is not None:
+        return True
+    if "sql" in item and item.get("sql") is not None:
+        return True
+    sources = item.get("sources")
+    return isinstance(sources, list) and "sql" in sources
+
+
+def _chart_sql_text(item: dict) -> str:
+    sql_config = _chart_sql_config(item) or {}
+    return str(item.get("sql") or sql_config.get("sql") or "").strip()
+
+
+def _resolve_chart_datasource_config(
+        item: dict,
+        *,
+        require: bool = False,
+        normalize_duplicate: bool = False,
+) -> int | None:
+    """只解析外层执行数据源；内层旧字段仅用于去重和冲突诊断。"""
+    outer_datasource = _normalize_datasource_id(item.get("datasource"))
+    sql_config = _chart_sql_config(item)
+    inner_present = isinstance(sql_config, dict) and "datasource" in sql_config
+    inner_datasource = (
+        _normalize_datasource_id(sql_config.get("datasource"))
+        if inner_present
+        else None
+    )
+
+    if outer_datasource is not None and inner_datasource is not None:
+        if outer_datasource != inner_datasource:
+            raise DashboardChartDatasourceConfigError(
+                DASHBOARD_CHART_DATASOURCE_CONFLICT,
+                f"图表执行数据源配置冲突：viewInfo.datasource={outer_datasource}，"
+                f"sourceConfig.sql.datasource={inner_datasource}。请重新选择数据源并预览后保存。",
+            )
+        if normalize_duplicate:
+            sql_config.pop("datasource", None)
+    elif inner_datasource is not None:
+        raise DashboardChartDatasourceConfigError(
+            DASHBOARD_CHART_DATASOURCE_LEGACY_ONLY,
+            "图表只有旧版 sourceConfig.sql.datasource，必须完成数据源与 Schema 校验后迁移。",
+        )
+    elif inner_present and normalize_duplicate:
+        sql_config.pop("datasource", None)
+
+    if outer_datasource is None and require:
+        raise DashboardChartDatasourceConfigError(
+            DASHBOARD_CHART_DATASOURCE_MISSING,
+            "图表未配置执行数据源，请重新选择数据源并预览后保存。",
+        )
+    if outer_datasource is not None:
+        item["datasource"] = outer_datasource
+    return outer_datasource
+
+
+def _datasource_config_http_error(exc: DashboardChartDatasourceConfigError) -> HTTPException:
+    return HTTPException(
+        status_code=409 if exc.error_type == DASHBOARD_CHART_DATASOURCE_CONFLICT else 400,
+        detail={"error_type": exc.error_type, "message": exc.message},
+    )
 DASHBOARD_REFRESH_POLICY_DEFAULT = {
     "auto_refresh": True,
     "snapshot_max_age_hours": 3,
@@ -1123,14 +1211,17 @@ def validate_dashboard_report_target(
         raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
 
     canvas_view_info = _parse_canvas_view_info(record.canvas_view_info)
-    fallback_datasource = _effective_dashboard_datasource(record)
     for component_id in requested_component_ids:
         view_info = canvas_view_info.get(component_id)
         if not isinstance(view_info, dict):
             raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+        if not _chart_has_sql_source(view_info):
+            continue
         try:
-            chart_datasource = _chart_datasource(record, view_info, fallback_datasource)
+            chart_datasource = _resolve_chart_datasource_config(view_info, require=True)
             resolve_chart_execution_datasource(session, current_user, chart_datasource)
+        except DashboardChartDatasourceConfigError as exc:
+            raise _datasource_config_http_error(exc) from exc
         except HTTPException as exc:
             if exc.status_code in {403, 404}:
                 raise HTTPException(
@@ -1268,27 +1359,71 @@ def _clone_dashboard_canvas_payload(
 
 
 def _clone_dashboard_canvas_payload_for_datasource(
+        session: SessionDep,
+        current_user: CurrentUser,
         component_data: str | bytes | None,
         canvas_style_data: str | bytes | None,
         canvas_view_info: str | bytes | None,
-        datasource_id: int | None,
 ) -> tuple[str, str, str]:
-    """
-    是什么：_clone_dashboard_canvas_payload_for_datasource 是一个可以复用的小步骤，负责仪表盘相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
+    """按图表的 bound/roi 角色映射目标数据源，并校验目标 Schema 与权限。"""
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
         component_data,
         canvas_style_data,
         canvas_view_info,
     )
-    if datasource_id is None:
-        return component_data, canvas_style_data, canvas_view_info
+    targets_by_role = {
+        role: datasource_id
+        for datasource_id, role in _configured_chart_execution_datasources(session, current_user)
+    }
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     for item in canvas_view_obj.values():
-        if isinstance(item, dict):
-            item["datasource"] = datasource_id
+        if not isinstance(item, dict) or not _chart_has_sql_source(item):
+            continue
+        sql = _chart_sql_text(item)
+        if not sql:
+            continue
+        role = str(item.get("executionDatasourceRole") or "").strip().lower()
+        if role not in {"bound", "roi"}:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": DASHBOARD_CHART_DATASOURCE_ROLE_MISSING,
+                    "message": "平台模板图表缺少执行数据源角色，请先从来源看板重新发布模板。",
+                },
+            )
+        target_datasource = targets_by_role.get(role)
+        if target_datasource is None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": DASHBOARD_CHART_DATASOURCE_ROLE_MISSING,
+                    "message": f"目标空间未配置 {role} 图表执行数据源。",
+                },
+            )
+        target_datasource = resolve_chart_execution_datasource(
+            session,
+            current_user,
+            target_datasource,
+        )
+        item["datasource"] = target_datasource
+        sql_config = _chart_sql_config(item)
+        if sql_config is not None:
+            sql_config.pop("datasource", None)
+        permission_failure, _permissions_apply = _dashboard_chart_permission_audit(
+            session,
+            current_user,
+            target_datasource,
+            sql,
+            item.get("pivot"),
+        )
+        if permission_failure is not None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": permission_failure.get("error_type") or "dashboard_chart_schema_mismatch",
+                    "message": permission_failure.get("message") or "目标数据源无法执行该图表 SQL。",
+                },
+            )
     return component_data, canvas_style_data, orjson.dumps(canvas_view_obj).decode()
 
 
@@ -1644,18 +1779,21 @@ def _dashboard_tree_nodes(
     return nodes
 
 
-def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: int | None = None) -> int | None:
-    """
-    是什么：_chart_datasource 是一个可以复用的小步骤，负责仪表盘相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    item_datasource = _normalize_datasource_id(item.get('datasource'))
-    if item_datasource is None:
-        item_datasource = fallback_datasource if fallback_datasource is not None else record.datasource
-    if item_datasource is not None:
-        item['datasource'] = item_datasource
-    return item_datasource
+def _chart_datasource(
+        record: CoreDashboard,
+        item: dict,
+        fallback_datasource: int | None = None,
+        *,
+        require: bool = False,
+        normalize_duplicate: bool = False,
+) -> int | None:
+    """返回图表自己的执行数据源，不从看板资产数据源静默补值。"""
+    _ = record, fallback_datasource
+    return _resolve_chart_datasource_config(
+        item,
+        require=require and _chart_has_sql_source(item),
+        normalize_duplicate=normalize_duplicate,
+    )
 
 
 _USER_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
@@ -2983,6 +3121,9 @@ def _prepare_dashboard_template_canvas_view_info(canvas_view_info: str | bytes |
         if not isinstance(item, dict):
             continue
         item["datasource"] = None
+        sql_config = _chart_sql_config(item)
+        if sql_config is not None:
+            sql_config.pop("datasource", None)
         if item.get("sql") is not None or isinstance(item.get("chart"), dict):
             _mark_dashboard_chart_snapshot_ready(item)
             refreshed_at = item.get("snapshotRefreshedAt") or item["data"].get("snapshotRefreshedAt")
@@ -3028,37 +3169,65 @@ def _materialize_dashboard_template_canvas_view_info(
     是什么：把工作空间看板复制为平台模板时，固化一份源看板图表结果快照。
     """
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
-    effective_datasource = _effective_dashboard_datasource(source)
+    configured_roles = dict(_configured_chart_execution_datasources(session, current_user))
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
-        item_datasource = _chart_datasource(source, item, effective_datasource)
-        sql = item.get("sql")
-        if sql is not None and str(sql).strip() and item_datasource is not None:
+        sql = _chart_sql_text(item)
+        if sql:
+            try:
+                item_datasource = _chart_datasource(
+                    source,
+                    item,
+                    require=True,
+                    normalize_duplicate=True,
+                )
+            except DashboardChartDatasourceConfigError as exc:
+                raise _datasource_config_http_error(exc) from exc
+            role = configured_roles.get(item_datasource)
+            if role not in {"bound", "roi"}:
+                raise HTTPException(status_code=403, detail="当前空间未配置该图表执行数据源")
+            item["executionDatasourceRole"] = role
             permission_failure, _permissions_apply = _dashboard_chart_permission_audit(
                 session,
                 current_user,
                 item_datasource,
-                str(sql).strip(),
+                sql,
                 item.get("pivot"),
             )
             if permission_failure is not None:
-                _apply_dashboard_chart_result(item, permission_failure)
-                _mark_dashboard_chart_snapshot_refreshed(item)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error_type": permission_failure.get("error_type") or "dashboard_chart_schema_mismatch",
+                        "message": permission_failure.get("message") or "来源数据源无法执行该图表 SQL。",
+                    },
+                )
             else:
                 data_result = _execute_dashboard_chart_sql(
                     session,
                     current_user,
                     item_datasource,
-                    str(sql).strip(),
+                    sql,
                     item.get("pivot"),
                 )
+                if data_result.get("status") == "failed":
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error_type": data_result.get("error_type") or "dashboard_chart_execution_failed",
+                            "message": data_result.get("message") or "来源数据源执行图表 SQL 失败。",
+                        },
+                    )
                 _apply_dashboard_chart_result(item, data_result)
                 _mark_dashboard_chart_snapshot_refreshed(item, data_result.get("refreshed_at"))
         elif item.get("sql") is not None or isinstance(item.get("chart"), dict):
             _mark_dashboard_chart_snapshot_ready(item)
             _mark_dashboard_chart_snapshot_refreshed(item)
         item["datasource"] = None
+        sql_config = _chart_sql_config(item)
+        if sql_config is not None:
+            sql_config.pop("datasource", None)
     return orjson.dumps(canvas_view_obj).decode()
 
 
@@ -3298,10 +3467,16 @@ def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser,
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
-        item_sql = item.get('sql')
-        if not item_sql:
+        if not _chart_has_sql_source(item):
             continue
-        item_datasource = _normalize_datasource_id(item.get('datasource'))
+        try:
+            item_datasource = _resolve_chart_datasource_config(
+                item,
+                require=True,
+                normalize_duplicate=True,
+            )
+        except DashboardChartDatasourceConfigError as exc:
+            raise _datasource_config_http_error(exc) from exc
         item["datasource"] = resolve_chart_execution_datasource(
             session,
             current_user,
@@ -3993,9 +4168,19 @@ def _dashboard_payload(
                 item["mcp"]["dashboardId"] = record.id
             _mark_dashboard_chart_snapshot_ready(item)
             continue
-        else:
-            item_datasource = _chart_datasource(record, item, effective_datasource)
-        if item.get('sql') is not None:
+        if _chart_has_sql_source(item):
+            try:
+                item_datasource = _chart_datasource(record, item, require=True)
+            except DashboardChartDatasourceConfigError as exc:
+                item["dateFilterCapability"] = {
+                    "status": "unconfigured",
+                    "reason": exc.error_type,
+                }
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result(exc.message, exc.error_type),
+                )
+                continue
             try:
                 item_datasource = resolve_chart_execution_datasource(
                     session,
@@ -5073,10 +5258,11 @@ def _copy_single_platform_template_to_workspace_dashboard(
         return _dashboard_base_response(session, user, existing_dashboard, target_datasource_id)
 
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload_for_datasource(
+        session,
+        user,
         template.component_data,
         template.canvas_style_data,
         template.canvas_view_info,
-        target_datasource_id,
     )
     now = _now()
     operator_id = _asset_operator_id(session, user)

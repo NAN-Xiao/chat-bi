@@ -347,7 +347,7 @@ function chartSqlPayload(viewInfo: any) {
     ? getOrCreateDashboardDateFilterState(viewInfo, viewInfo.dateFilterCapability)
     : null
   return {
-    datasource: sourceSql.datasource || viewInfo.datasource,
+    datasource: viewInfo.datasource,
     sql: (sourceSql.sql || viewInfo.sql || '').trim(),
     pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
     date_filter: buildDashboardDateFilterRequestForView(
@@ -355,6 +355,35 @@ function chartSqlPayload(viewInfo: any) {
       dateFilterState?.appliedRange
     ),
   }
+}
+
+function normalizeDatasourceId(value: any) {
+  const datasourceId = Number(value)
+  return Number.isInteger(datasourceId) && datasourceId > 0 ? datasourceId : null
+}
+
+function mixedChartDatasourceFailure(viewInfo: any) {
+  const outer = normalizeDatasourceId(viewInfo?.datasource)
+  const inner = normalizeDatasourceId(viewInfo?.sourceConfig?.sql?.datasource)
+  if (outer && inner && outer !== inner) {
+    return failedPreviewResult(
+      `图表执行数据源配置冲突：viewInfo.datasource=${outer}，sourceConfig.sql.datasource=${inner}。请重新选择数据源并预览后保存。`,
+      'dashboard_chart_datasource_conflict'
+    )
+  }
+  if (!outer && inner) {
+    return failedPreviewResult(
+      '图表只有旧版 sourceConfig.sql.datasource，必须完成数据源与 Schema 校验后迁移。',
+      'dashboard_chart_datasource_legacy_only'
+    )
+  }
+  if (!outer) {
+    return failedPreviewResult(
+      '图表未配置执行数据源，请重新选择数据源并预览后保存。',
+      'dashboard_chart_datasource_missing'
+    )
+  }
+  return null
 }
 
 function mcpPayload(viewInfo: any) {
@@ -382,6 +411,9 @@ function cachedMcpResult(viewInfo: any) {
 }
 
 export function canRefreshMixedChart(viewInfo: any) {
+  if (mixedChartDatasourceFailure(viewInfo)) {
+    return false
+  }
   const sqlPayload = chartSqlPayload(viewInfo)
   const mcp = mcpPayload(viewInfo)
   return Boolean(isMixedChart(viewInfo) && sqlPayload.datasource && sqlPayload.sql && mcp.external_mcp_server_id && mcp.tool)
@@ -432,6 +464,10 @@ export async function refreshExternalMcpSnapshotData(viewInfo: any, options: Mix
 }
 
 export async function refreshMixedChartData(viewInfo: any, options: MixedRefreshOptions = {}) {
+  const datasourceFailure = mixedChartDatasourceFailure(viewInfo)
+  if (datasourceFailure) {
+    return datasourceFailure
+  }
   const sqlPayload = chartSqlPayload(viewInfo)
   const mcp = mcpPayload(viewInfo)
   const sqlRequest = {
