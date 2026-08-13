@@ -68,6 +68,7 @@ class TenantModel(SnowflakeBase, table=True):
     billing_contact: str | None = Field(default=None, sa_column=Column(String(128), nullable=True))
     billing_email: str | None = Field(default=None, sa_column=Column(String(128), nullable=True))
     subscription_note: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    roi_project_id: str | None = Field(default=None, sa_column=Column(String(128), nullable=True))
     create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
     update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
 

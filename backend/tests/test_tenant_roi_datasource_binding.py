@@ -29,6 +29,7 @@ def make_tenant() -> SimpleNamespace:
         billing_contact=None,
         billing_email=None,
         subscription_note=None,
+        roi_project_id="ROI-11",
         create_time=0,
         update_time=0,
     )
@@ -66,11 +67,51 @@ class FakeTenantSession:
         self.events.append("rollback")
 
 
-def test_tenant_schemas_accept_optional_roi_datasource() -> None:
+def test_tenant_schemas_accept_roi_project_id_text() -> None:
     assert TenantCreator(name="测试").roi_datasource_id is None
     assert TenantEditor(name="测试").roi_datasource_id is None
     assert TenantCreator(name="测试", roi_datasource_id=101).roi_datasource_id == 101
     assert TenantEditor(name="测试", roi_datasource_id="101").roi_datasource_id == 101
+    assert TenantCreator(name="测试", roi_project_id=" 001A ").roi_project_id == "001A"
+    assert TenantEditor(name="测试", roi_project_id="ROI-001").roi_project_id == "ROI-001"
+
+
+@pytest.mark.parametrize("schema_type", [TenantCreator, TenantEditor])
+@pytest.mark.parametrize("roi_project_id", ["", "   ", 123, "x" * 129])
+def test_tenant_schemas_reject_invalid_roi_project_id(schema_type, roi_project_id) -> None:
+    with pytest.raises(ValidationError):
+        schema_type(name="测试", roi_project_id=roi_project_id)
+
+
+def test_add_tenant_requires_roi_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = FakeTenantSession()
+    monkeypatch.setattr(tenant_api, "_require_platform_admin", lambda *_args: None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(tenant_api.add_tenant(session, make_platform_admin(), TenantCreator(name="测试")))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "项目 ID 为必填项"
+    assert session.commit_count == 0
+
+
+def test_edit_tenant_requires_roi_project_id() -> None:
+    session = FakeTenantSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            tenant_api.edit_tenant(
+                session,
+                make_platform_admin(),
+                11,
+                TenantEditor(name="测试"),
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "项目 ID 为必填项"
+    assert session.commit_count == 0
+    assert session.rollback_count == 0
 
 
 @pytest.mark.parametrize("schema_type", [TenantCreator, TenantEditor])
@@ -98,6 +139,7 @@ def test_tenant_dto_contains_roi_datasource() -> None:
 
     assert dto.roi_datasource_id == 101
     assert dto.roi_datasource_name == "ROI 数据源"
+    assert dto.roi_project_id == "ROI-11"
 
 
 def test_tenant_roi_datasource_map_uses_workspace_config_rows(
@@ -149,6 +191,8 @@ def test_tenant_list_and_admin_dto_include_roi_datasource(
     assert listed[0].roi_datasource_name == "ROI 数据源"
     assert admin.roi_datasource_id == 101
     assert admin.roi_datasource_name == "ROI 数据源"
+    assert listed[0].roi_project_id == "ROI-11"
+    assert admin.roi_project_id == "ROI-11"
 
 
 def test_current_tenant_includes_roi_datasource(
@@ -174,6 +218,7 @@ def test_current_tenant_includes_roi_datasource(
 
     assert dto.roi_datasource_id == 101
     assert dto.roi_datasource_name == "ROI 数据源"
+    assert dto.roi_project_id == "ROI-11"
 
 
 def _patch_tenant_return_maps(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,7 +243,12 @@ def test_add_tenant_saves_bindings_and_audit_in_one_commit(
     user = make_platform_admin()
     binding_calls: list[tuple[str, object, bool]] = []
     monkeypatch.setattr(tenant_api, "_resolve_owner_user", lambda *_args: None)
-    monkeypatch.setattr(tenant_api, "create_tenant", lambda *_args, **_kwargs: session.tenant)
+
+    def fake_create_tenant(*_args, **kwargs):
+        session.tenant.roi_project_id = kwargs["roi_project_id"]
+        return session.tenant
+
+    monkeypatch.setattr(tenant_api, "create_tenant", fake_create_tenant)
     monkeypatch.setattr(
         tenant_api,
         "bind_tenant_to_datasource",
@@ -239,6 +289,7 @@ def test_add_tenant_saves_bindings_and_audit_in_one_commit(
                 datasource_id=101,
                 external_mcp_server_id=201,
                 roi_datasource_id=301,
+                roi_project_id="ROI-301",
             ),
         )
     )
@@ -252,6 +303,7 @@ def test_add_tenant_saves_bindings_and_audit_in_one_commit(
     assert session.commit_count == 1
     assert dto.roi_datasource_id == 301
     assert dto.roi_datasource_name == "ROI 数据源"
+    assert dto.roi_project_id == "ROI-301"
 
 
 def test_add_tenant_without_roi_datasource_does_not_create_config_or_invalidate(
@@ -271,7 +323,13 @@ def test_add_tenant_without_roi_datasource_does_not_create_config_or_invalidate(
     )
     _patch_tenant_return_maps(monkeypatch)
 
-    asyncio.run(tenant_api.add_tenant(session, user, TenantCreator(name="测试")))
+    asyncio.run(
+        tenant_api.add_tenant(
+            session,
+            user,
+            TenantCreator(name="测试", roi_project_id="ROI-TEST"),
+        )
+    )
 
     assert roi_calls == []
     assert session.commit_count == 1
@@ -302,7 +360,7 @@ def test_add_tenant_with_explicit_null_roi_only_invalidates_after_commit(
         tenant_api.add_tenant(
             session,
             user,
-            TenantCreator(name="测试", roi_datasource_id=None),
+            TenantCreator(name="测试", roi_datasource_id=None, roi_project_id="ROI-TEST"),
         )
     )
 
@@ -368,6 +426,7 @@ def test_edit_tenant_saves_all_bindings_in_one_commit(
                 datasource_id=101,
                 external_mcp_server_id=201,
                 roi_datasource_id=301,
+                roi_project_id="ROI-301",
             ),
         )
     )
@@ -380,6 +439,7 @@ def test_edit_tenant_saves_all_bindings_in_one_commit(
     assert session.events == ["audit", "commit", "invalidate:11"]
     assert session.commit_count == 1
     assert "roi_datasource_id=301" in audit_remarks[0]
+    assert "roi_project_id=ROI-301" in audit_remarks[0]
     assert dto.roi_datasource_id == 301
 
 
@@ -409,7 +469,12 @@ def test_edit_tenant_distinguishes_omitted_roi_field_from_explicit_null(
 
     omitted_session = FakeTenantSession()
     asyncio.run(
-        tenant_api.edit_tenant(omitted_session, user, 11, TenantEditor(name="测试"))
+        tenant_api.edit_tenant(
+            omitted_session,
+            user,
+            11,
+            TenantEditor(name="测试", roi_project_id="ROI-11"),
+        )
     )
     explicit_null_session = FakeTenantSession()
     asyncio.run(
@@ -417,7 +482,7 @@ def test_edit_tenant_distinguishes_omitted_roi_field_from_explicit_null(
             explicit_null_session,
             user,
             11,
-            TenantEditor(name="测试", roi_datasource_id=None),
+            TenantEditor(name="测试", roi_datasource_id=None, roi_project_id="ROI-11"),
         )
     )
 
@@ -451,7 +516,7 @@ def test_edit_tenant_rolls_back_and_keeps_cache_on_binding_failure(
                 session,
                 user,
                 11,
-                TenantEditor(name="测试", roi_datasource_id=301),
+                TenantEditor(name="测试", roi_datasource_id=301, roi_project_id="ROI-301"),
             )
         )
 
@@ -482,7 +547,7 @@ def test_edit_tenant_rolls_back_and_keeps_cache_when_commit_fails(
                 session,
                 user,
                 11,
-                TenantEditor(name="测试", roi_datasource_id=301),
+                TenantEditor(name="测试", roi_datasource_id=301, roi_project_id="ROI-301"),
             )
         )
 
@@ -544,6 +609,61 @@ def test_edit_tenant_rejects_default_workspace_roi_configuration(
     assert invalidated_tenants == []
 
 
+def test_edit_tenant_preserves_default_workspace_roi_project_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    default_tenant = make_tenant()
+    default_tenant.id = 1
+    default_tenant.public_id = "WS1"
+    default_tenant.roi_project_id = "LEGACY-DEFAULT"
+    session = FakeTenantSession()
+    session.tenant = default_tenant
+    update_values: list[str | None] = []
+
+    def fake_update_tenant(*_args, **kwargs):
+        update_values.append(kwargs["roi_project_id"])
+        return default_tenant
+
+    monkeypatch.setattr(tenant_api, "update_tenant", fake_update_tenant)
+    monkeypatch.setattr(tenant_api, "_write_tenant_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        tenant_api,
+        "_tenant_admin_dto",
+        lambda *_args: TenantDTO(id=1, public_id="WS1", name="默认工作空间"),
+    )
+
+    asyncio.run(
+        tenant_api.edit_tenant(
+            session,
+            make_platform_admin(),
+            1,
+            TenantEditor(name="默认工作空间"),
+        )
+    )
+
+    assert update_values == ["LEGACY-DEFAULT"]
+    assert session.commit_count == 1
+
+
+def test_edit_tenant_rejects_default_workspace_roi_project_id() -> None:
+    session = FakeTenantSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            tenant_api.edit_tenant(
+                session,
+                make_platform_admin(),
+                1,
+                TenantEditor(name="默认工作空间", roi_project_id="ROI-DEFAULT"),
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "默认工作空间不能配置项目 ID"
+    assert session.commit_count == 0
+    assert session.rollback_count == 0
+
+
 @pytest.fixture
 def roi_transaction_engine(tmp_path) -> Engine:
     from tests.permission_scope_fixtures import EPOCH_STATEMENTS
@@ -558,6 +678,7 @@ def roi_transaction_engine(tmp_path) -> Engine:
             plan TEXT, subscription_status TEXT, billing_mode TEXT,
             trial_end_time BIGINT, current_period_end_time BIGINT,
             contract_no TEXT, billing_contact TEXT, billing_email TEXT,
+            roi_project_id TEXT,
             subscription_note TEXT, create_time BIGINT, update_time BIGINT
         )
         """,
@@ -653,8 +774,8 @@ def roi_transaction_engine(tmp_path) -> Engine:
             text(
                 "INSERT INTO sys_tenant ("
                 "id, public_id, name, status, plan, subscription_status, "
-                "billing_mode, create_time, update_time) VALUES "
-                "(11, 'WS11', '原工作空间', 1, 'default', 'active', 'manual', 1, 1)"
+                "billing_mode, roi_project_id, create_time, update_time) VALUES "
+                "(11, 'WS11', '原工作空间', 1, 'default', 'active', 'manual', 'ROI-OLD', 1, 1)"
             )
         )
         connection.execute(
@@ -801,6 +922,7 @@ def _integration_editor() -> TenantEditor:
         datasource_id=101,
         external_mcp_server_id=201,
         roi_datasource_id=101,
+        roi_project_id="ROI-101",
     )
 
 
@@ -823,7 +945,7 @@ def test_edit_tenant_persists_all_bindings_and_audit_in_one_sqlite_transaction(
 
     with Session(roi_transaction_engine) as verification_session:
         tenant_row = verification_session.exec(
-            text("SELECT name, plan FROM sys_tenant WHERE id = 11")
+            text("SELECT name, plan, roi_project_id FROM sys_tenant WHERE id = 11")
         ).one()
         datasource_id = verification_session.exec(
             text(
@@ -850,7 +972,7 @@ def test_edit_tenant_persists_all_bindings_and_audit_in_one_sqlite_transaction(
             )
         ).one()
 
-    assert tuple(tenant_row) == ("已更新工作空间", "enterprise")
+    assert tuple(tenant_row) == ("已更新工作空间", "enterprise", "ROI-101")
     assert int(datasource_id) == 101
     assert int(external_mcp_id) == 201
     assert tuple(roi_row) == (101, 0)
@@ -884,7 +1006,7 @@ def test_edit_tenant_commit_failure_rolls_back_entire_sqlite_transaction(
 
     with Session(roi_transaction_engine) as verification_session:
         tenant_row = verification_session.exec(
-            text("SELECT name, plan FROM sys_tenant WHERE id = 11")
+            text("SELECT name, plan, roi_project_id FROM sys_tenant WHERE id = 11")
         ).one()
         datasource_tenant_id = verification_session.exec(
             text("SELECT tenant_id FROM core_datasource WHERE id = 101")
@@ -902,7 +1024,7 @@ def test_edit_tenant_commit_failure_rolls_back_entire_sqlite_transaction(
             text("SELECT COUNT(*) FROM sys_logs")
         ).one()[0]
 
-    assert tuple(tenant_row) == ("原工作空间", "default")
+    assert tuple(tenant_row) == ("原工作空间", "default", "ROI-OLD")
     assert int(datasource_tenant_id) == 1
     assert int(datasource_binding_count) == 0
     assert int(external_mcp_binding_count) == 0

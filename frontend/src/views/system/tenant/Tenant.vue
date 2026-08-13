@@ -352,6 +352,15 @@
               </el-option>
             </el-select>
           </el-form-item>
+          <el-form-item prop="roi_project_id" :label="t('tenant.roi_project_id')">
+            <el-input
+              v-model="form.roi_project_id"
+              clearable
+              maxlength="128"
+              :disabled="isDefaultTenantForm"
+              :placeholder="t('tenant.roi_project_id_placeholder')"
+            />
+          </el-form-item>
           <el-form-item :label="t('tenant.bound_external_mcp')">
             <el-select
               v-model="form.external_mcp_server_id"
@@ -580,6 +589,7 @@ const defaultForm = {
   subscription_note: '',
   datasource_id: '' as number | string,
   roi_datasource_id: '' as number | string,
+  roi_project_id: '',
   external_mcp_server_id: '' as number | string,
 }
 const form = reactive({ ...defaultForm })
@@ -625,6 +635,21 @@ const rules = computed(() => ({
   subscription_status: [
     { required: true, message: t('tenant.subscription_status_required'), trigger: 'change' },
   ],
+  roi_project_id: isDefaultTenantForm.value
+    ? []
+    : [
+        {
+          required: true,
+          validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+            if (String(value || '').trim()) {
+              callback()
+              return
+            }
+            callback(new Error(t('tenant.roi_project_id_required')))
+          },
+          trigger: ['blur', 'change'],
+        },
+      ],
 }))
 
 const filteredTenants = computed(() => {
@@ -920,6 +945,7 @@ const openDrawer = async (tenant: TenantInfo | null) => {
     subscription_note: tenant?.subscription_note || '',
     datasource_id: normalizeBoundDatasourceId(tenant),
     roi_datasource_id: normalizeRoiDatasourceId(tenant),
+    roi_project_id: tenant?.roi_project_id || '',
     external_mcp_server_id: normalizeBoundExternalMcpId(tenant),
   })
   drawerVisible.value = true
@@ -1045,6 +1071,7 @@ const saveTenant = () => {
           ? {
               datasource_id: form.datasource_id || null,
               roi_datasource_id: form.roi_datasource_id || null,
+              roi_project_id: form.roi_project_id.trim(),
               external_mcp_server_id: form.external_mcp_server_id || null,
             }
           : {}),
@@ -1054,7 +1081,10 @@ const saveTenant = () => {
         await tenantApi.edit(form.id, payload)
         await transferOwnerIfNeeded()
       } else {
-        await tenantApi.add(payload)
+        await tenantApi.add({
+          ...payload,
+          roi_project_id: form.roi_project_id.trim(),
+        })
       }
       ElMessage.success(t('common.save_success'))
       closeDrawer()

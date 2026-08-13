@@ -469,6 +469,7 @@ def create_tenant(
     billing_contact: str | None = None,
     billing_email: str | None = None,
     subscription_note: str | None = None,
+    roi_project_id: str | None = None,
 ) -> TenantModel:
     """
     是什么：create_tenant 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -491,6 +492,7 @@ def create_tenant(
         billing_contact=_clean_optional_text(billing_contact),
         billing_email=_clean_optional_text(billing_email),
         subscription_note=_clean_optional_text(subscription_note),
+        roi_project_id=_clean_optional_text(roi_project_id),
     )
     session.add(tenant)
     session.flush()
@@ -687,6 +689,7 @@ def update_tenant(
     billing_contact: str | None = None,
     billing_email: str | None = None,
     subscription_note: str | None = None,
+    roi_project_id: str | None = None,
 ) -> TenantModel:
     """
     是什么：update_tenant 是一个可以复用的小步骤，负责系统管理相关的一件事。
@@ -706,6 +709,7 @@ def update_tenant(
     tenant.billing_contact = _clean_optional_text(billing_contact)
     tenant.billing_email = _clean_optional_text(billing_email)
     tenant.subscription_note = _clean_optional_text(subscription_note)
+    tenant.roi_project_id = _clean_optional_text(roi_project_id)
     tenant.update_time = get_timestamp()
     session.add(tenant)
     session.flush()

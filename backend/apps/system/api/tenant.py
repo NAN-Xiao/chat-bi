@@ -668,6 +668,7 @@ def _tenant_dto(
         bound_external_mcp_server_name=external_mcp.get("bound_external_mcp_server_name") if show_operations else None,
         roi_datasource_id=roi_datasource.get("roi_datasource_id") if show_operations else None,
         roi_datasource_name=roi_datasource.get("roi_datasource_name") if show_operations else None,
+        roi_project_id=tenant.roi_project_id if show_operations else None,
         admin_count=int(member_stats.get("admin_count") or 0) if show_operations else 0,
         member_count=int(member_stats.get("member_count") or 0) if show_operations else 0,
         join_time=int(join_time or 0),
@@ -1218,6 +1219,7 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
         bound_external_mcp_server_name=external_mcp.get("bound_external_mcp_server_name") if external_mcp else None,
         roi_datasource_id=roi_datasource.get("roi_datasource_id") if roi_datasource else None,
         roi_datasource_name=roi_datasource.get("roi_datasource_name") if roi_datasource else None,
+        roi_project_id=tenant.roi_project_id,
     )
 
 
@@ -3524,6 +3526,8 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
     做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
     _require_platform_admin(current_user)
+    if creator.roi_project_id is None:
+        raise HTTPException(status_code=400, detail="项目 ID 为必填项")
     creator_fields = _model_fields_set(creator)
     roi_field_requested = "roi_datasource_id" in creator_fields
     try:
@@ -3540,6 +3544,7 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
             billing_contact=creator.billing_contact,
             billing_email=creator.billing_email,
             subscription_note=creator.subscription_note,
+            roi_project_id=creator.roi_project_id,
         )
         if owner_user:
             assign_user_to_tenant(
@@ -3593,7 +3598,8 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
             resource_name=tenant.name,
             remark=(
                 f"tenant_id={tenant.id}; plan={tenant.plan}; "
-                f"roi_datasource_id={creator.roi_datasource_id or 'none'}"
+                f"roi_datasource_id={creator.roi_datasource_id or 'none'}; "
+                f"roi_project_id={creator.roi_project_id}"
             ),
         )
         session.commit()
@@ -3625,6 +3631,12 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
     做了什么：把系统管理里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     _require_platform_admin(current_user)
+    is_default_tenant = int(tenant_id) == DEFAULT_TENANT_ID
+    if is_default_tenant:
+        if editor.roi_project_id is not None:
+            raise HTTPException(status_code=400, detail="默认工作空间不能配置项目 ID")
+    elif editor.roi_project_id is None:
+        raise HTTPException(status_code=400, detail="项目 ID 为必填项")
     editor_fields = _model_fields_set(editor)
     roi_audit_value = "unchanged"
     if "roi_datasource_id" in editor_fields:
@@ -3647,6 +3659,11 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
             billing_contact=editor.billing_contact,
             billing_email=editor.billing_email,
             subscription_note=editor.subscription_note,
+            roi_project_id=(
+                getattr(session.get(TenantModel, int(tenant_id)), "roi_project_id", None)
+                if is_default_tenant
+                else editor.roi_project_id
+            ),
         )
         if "datasource_id" in editor_fields:
             bind_tenant_to_datasource(
@@ -3689,7 +3706,8 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
                 f"{editor.datasource_id if 'datasource_id' in editor_fields else 'unchanged'}; "
                 f"external_mcp_server_id="
                 f"{editor.external_mcp_server_id if 'external_mcp_server_id' in editor_fields else 'unchanged'}; "
-                f"roi_datasource_id={roi_audit_value}"
+                f"roi_datasource_id={roi_audit_value}; "
+                f"roi_project_id={editor.roi_project_id if not is_default_tenant else 'unchanged'}"
             ),
         )
         session.commit()

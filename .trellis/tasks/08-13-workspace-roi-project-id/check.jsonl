@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/project-runtime.md","reason":"Backend tests, migration, lint, type-check, runtime, and API verification requirements."}
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"Frontend build, browser, viewport, and overflow verification requirements."}

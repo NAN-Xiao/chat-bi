@@ -22,6 +22,19 @@ def _validate_roi_datasource_id(value: object) -> int | None:
     return datasource_id
 
 
+def _validate_roi_project_id(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("项目 ID 必须为文本")
+    project_id = value.strip()
+    if not project_id:
+        raise ValueError("项目 ID 不能为空")
+    if len(project_id) > 128:
+        raise ValueError("项目 ID 不能超过 128 个字符")
+    return project_id
+
+
 class TenantDTO(BaseModel):
     """
     类说明：TenantDTO 用来描述系统管理的数据格式，让请求入参、返回结果和内部传值更清楚。
@@ -54,6 +67,7 @@ class TenantDTO(BaseModel):
     bound_external_mcp_server_name: Optional[str] = None
     roi_datasource_id: Optional[int] = None
     roi_datasource_name: Optional[str] = None
+    roi_project_id: Optional[str] = None
     admin_count: int = 0
     member_count: int = 0
     join_time: int = 0
@@ -94,11 +108,17 @@ class TenantCreator(BaseModel):
     datasource_id: Optional[int] = None
     external_mcp_server_id: Optional[int] = None
     roi_datasource_id: Optional[int] = None
+    roi_project_id: Optional[str] = None
 
     @field_validator("roi_datasource_id", mode="before")
     @classmethod
     def validate_roi_datasource_id(cls, value: object) -> int | None:
         return _validate_roi_datasource_id(value)
+
+    @field_validator("roi_project_id", mode="before")
+    @classmethod
+    def validate_roi_project_id(cls, value: object) -> str | None:
+        return _validate_roi_project_id(value)
 
 
 class TenantEditor(BaseModel):
@@ -118,11 +138,17 @@ class TenantEditor(BaseModel):
     datasource_id: Optional[int] = None
     external_mcp_server_id: Optional[int] = None
     roi_datasource_id: Optional[int] = None
+    roi_project_id: Optional[str] = None
 
     @field_validator("roi_datasource_id", mode="before")
     @classmethod
     def validate_roi_datasource_id(cls, value: object) -> int | None:
         return _validate_roi_datasource_id(value)
+
+    @field_validator("roi_project_id", mode="before")
+    @classmethod
+    def validate_roi_project_id(cls, value: object) -> str | None:
+        return _validate_roi_project_id(value)
 
 
 class TenantStatus(BaseModel):
