@@ -16,6 +16,11 @@ test('document editor uses a directory with one active block detail', () => {
   assert.doesNotMatch(editorSource, /expandedBlocks/)
 })
 
+test('desktop block directory owns long-list scrolling', () => {
+  assert.match(editorSource, /\.block-workspace \{[^}]*align-items: start;/)
+  assert.match(editorSource, /\.block-directory \{[^}]*max-height: calc\(100vh - 180px\);[^}]*overflow-y: auto;[^}]*overscroll-behavior: contain;/)
+})
+
 test('knowledge editing stays focused on block content', () => {
   assert.doesNotMatch(panelSource, /替换源文件/)
   assert.doesNotMatch(panelSource, /下载当前源文件/)
@@ -57,7 +62,7 @@ test('document editor keeps the title bar and markdown content', () => {
 
 test('document editor keeps the mobile directory horizontally scrollable', () => {
   assert.match(editorSource, /@media \(max-width: 680px\)/)
-  assert.match(editorSource, /\.block-directory \{[\s\S]*?overflow-x: auto/)
+  assert.match(editorSource, /@media \(max-width: 680px\) \{[\s\S]*?\.block-directory \{[^}]*max-height: none;[^}]*overflow-x: auto;[^}]*overflow-y: hidden;/)
   assert.match(panelSource, /class="knowledge-editor-drawer"/)
   assert.match(panelSource, /:global\(\.knowledge-editor-drawer\) \{ width: 100% !important; max-width: 100%; \}/)
 })

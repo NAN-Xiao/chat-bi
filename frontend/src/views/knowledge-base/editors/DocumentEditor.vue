@@ -86,8 +86,8 @@ function updateBlock(index: number, patch: Partial<DocumentBlock>) {
 .block-toolbar, .block-heading, .block-header { display: flex; align-items: center; }
 .block-toolbar { margin-bottom: 12px; }
 .block-heading { gap: 8px; color: #344054; font-size: 14px; font-weight: 600; }
-.block-workspace { display: grid; grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); gap: 12px; margin-bottom: 18px; }
-.block-directory { min-width: 0; padding-right: 12px; border-right: 1px solid #e4e7ec; }
+.block-workspace { display: grid; grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); align-items: start; gap: 12px; margin-bottom: 18px; }
+.block-directory { min-width: 0; max-height: calc(100vh - 180px); overflow-y: auto; overscroll-behavior: contain; padding-right: 12px; border-right: 1px solid #e4e7ec; }
 .directory-item { display: flex; width: 100%; min-width: 0; align-items: center; border-radius: 6px; color: #475467; background: transparent; }
 .directory-item:hover, .directory-item.is-active { color: #175cd3; background: #eff8ff; }
 .directory-item.is-disabled { color: #98a2b3; }
@@ -103,7 +103,7 @@ function updateBlock(index: number, patch: Partial<DocumentBlock>) {
 .markdown-editor :deep(.ed-textarea__inner:hover), .markdown-editor :deep(.ed-textarea__inner:focus) { box-shadow: none; }
 @media (max-width: 680px) {
   .block-workspace { grid-template-columns: minmax(0, 1fr); }
-  .block-directory { display: flex; max-width: 100%; overflow-x: auto; padding: 0 0 8px; border-right: 0; border-bottom: 1px solid #e4e7ec; }
+  .block-directory { display: flex; max-width: 100%; max-height: none; overflow-x: auto; overflow-y: hidden; padding: 0 0 8px; border-right: 0; border-bottom: 1px solid #e4e7ec; }
   .directory-item { flex: 0 0 150px; }
 }
 </style>

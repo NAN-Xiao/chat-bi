@@ -37,6 +37,7 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 
 - For desktop top bars, also verify the navigation/action container has no hidden overflow by comparing its `scrollWidth` and `clientWidth`.
 - Save and inspect screenshots for affected primary pages when validating layout or other user-visible changes.
+- For a two-column directory/detail editor that renders one active detail, the directory must own long-list scrolling on desktop. Browser verification must select an item beyond the initial directory viewport and assert that the directory scroll position changes while the detail remains visible and the outer drawer/page scroll position does not change. At mobile breakpoints, verify that the directory switches to horizontal scrolling and clears its desktop height constraint.
 - When a requirement changes a management navigation hierarchy, browser verification must cover the parent menu's expanded state, every expected child label, each child's target route, and the page state selected by that route. Testing an equivalent in-page filter does not prove that the requested sidebar hierarchy exists.
 
 ## Data And Rendering Rules
