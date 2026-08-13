@@ -124,8 +124,6 @@ def test_realtime_time_scope_uses_anchor_day_without_overriding_explicit_ranges(
         ("近7日收入", 7),
         ("最近 7 天收入", 7),
         ("过去7天收入", 7),
-        ("最近7个完整业务日收入", 7),
-        ("近 7 个完整自然日收入", 7),
         ("最近一个月收入", 30),
     ],
 )
@@ -750,99 +748,6 @@ async def test_time_policy_cache_hit_skips_latest_date_probe(
     assert resolution.policy.anchor_date == date(2026, 7, 26)
     assert client.get_calls == 1
     assert client.set_calls == 0
-
-
-@pytest.mark.anyio
-async def test_explicit_range_selects_time_field_without_latest_date_probe(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    select_calls = 0
-
-    def fake_select(*_args, **_kwargs):
-        nonlocal select_calls
-        select_calls += 1
-        return ANCHOR
-
-    monkeypatch.setattr(analysis_api, "_select_analysis_time_anchor", fake_select)
-    monkeypatch.setattr(
-        analysis_api,
-        "_probe_latest_business_date",
-        lambda **_kwargs: pytest.fail("固定日期不应探测最大业务日期"),
-    )
-
-    resolution = await analysis_api._resolve_chat_time_policy(
-        session=object(),
-        current_user=SimpleNamespace(id=7, tenant_id=9),
-        datasource=SimpleNamespace(id=10, type="postgresql"),
-        business_context=SimpleNamespace(
-            data_skill="",
-            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
-            allowed_tables=["fact_orders"],
-            business_context_hash="context",
-        ),
-        llm=object(),
-        request=SimpleNamespace(
-            messages=[
-                SimpleNamespace(
-                    content="分析 2026-07-01 到 2026-07-10 收入",
-                    role="user",
-                )
-            ]
-        ),
-        semantic_context="",
-    )
-
-    assert resolution.policy is not None
-    assert resolution.policy.anchor == ANCHOR
-    assert resolution.policy.start_date == date(2026, 7, 1)
-    assert resolution.policy.end_date == date(2026, 7, 10)
-    assert select_calls == 1
-
-
-def test_time_policy_prompt_includes_selected_business_anchor() -> None:
-    resolution = _resolve("最近7天收入", anchor_date=date(2026, 7, 26))
-
-    assert resolution.policy is not None
-    assert "主业务时间锚点：fact_orders.business_date" in resolution.policy.prompt_text()
-
-
-@pytest.mark.anyio
-async def test_explicit_range_is_unresolved_when_schema_anchor_selection_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        analysis_api,
-        "_select_analysis_time_anchor",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("未选出锚点")),
-    )
-
-    resolution = await analysis_api._resolve_chat_time_policy(
-        session=object(),
-        current_user=SimpleNamespace(id=7, tenant_id=9),
-        datasource=SimpleNamespace(id=10, type="postgresql"),
-        business_context=SimpleNamespace(
-            data_skill="",
-            schema="# Table: fact_orders\n[\n(business_date:date)\n]",
-            allowed_tables=["fact_orders"],
-            business_context_hash="context",
-        ),
-        llm=object(),
-        request=SimpleNamespace(
-            messages=[
-                SimpleNamespace(
-                    content="分析 2026-07-01 到 2026-07-10 收入",
-                    role="user",
-                )
-            ]
-        ),
-        semantic_context="",
-    )
-
-    assert resolution.status == "unresolved"
-    assert resolution.policy is None
-    assert resolution.warnings == (
-        "无法确认当前数据源的时间锚点，本次仅执行能够确认时间边界的分析块。",
-    )
 
 
 @pytest.mark.anyio

@@ -35,9 +35,7 @@ _DAY_ONLY_RE = re.compile(
 )
 _YEAR_MONTH_RE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月")
 _MONTH_RE = re.compile(r"(\d{1,2})\s*月")
-_RELATIVE_DAYS_RE = re.compile(
-    r"(?:最近|近|过去)\s*(-?\d+)\s*(?:个\s*)?(?:完整\s*)?(?:(?:业务|自然)\s*)?[天日]"
-)
+_RELATIVE_DAYS_RE = re.compile(r"(?:最近|近|过去)\s*(-?\d+)\s*(?:个)?[天日]")
 _RELATIVE_WEEKS_RE = re.compile(r"(?:最近|近)\s*(两|-?\d+)\s*(?:个)?周")
 _RECENT_MONTH_RE = re.compile(r"(?:最近|近)\s*(?:一|1)\s*个?月")
 _INVALID_DATE_WARNING = "用户指定的日期无效，无法确定时间策略。"
@@ -119,14 +117,8 @@ class AnalysisTimePolicy:
     def prompt_text(self) -> str:
         start_op = ">=" if self.start_inclusive else ">"
         end_op = "<=" if self.end_inclusive else "<"
-        anchor_text = (
-            f"主业务时间锚点：{self.anchor.table}.{self.anchor.field}。\n"
-            if self.anchor is not None
-            else ""
-        )
         return (
             f"后端已确定时间策略：{self.description}\n"
-            f"{anchor_text}"
             f"起始边界 {start_op} {self.start_date.isoformat()}；"
             f"结束边界 {end_op} {self.end_date.isoformat()}。"
         )
@@ -352,13 +344,10 @@ def resolve_analysis_time_policy(
     skill_window_days: int | None,
     anchor: AnalysisTimeAnchor | None,
     anchor_date: date | None,
-    require_anchor: bool = False,
     warnings: tuple[str, ...] = (),
 ) -> AnalysisTimeResolution:
     if intent.kind == "invalid":
         return _unresolved(warnings, intent.warning or _INVALID_DATE_WARNING)
-    if require_anchor and anchor is None:
-        return _unresolved(warnings, _MISSING_ANCHOR_WARNING)
     if intent.kind == "absolute" and intent.start_date and intent.end_date:
         if intent.start_date > intent.end_date:
             return _unresolved(warnings, _DESCENDING_RANGE_WARNING)
