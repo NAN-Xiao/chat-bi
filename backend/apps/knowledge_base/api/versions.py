@@ -355,7 +355,7 @@ async def replace_draft_source_file(
                 message="源文件格式不支持。",
                 status_code=422,
                 error_type="VALIDATION",
-                suggestion="请上传 Markdown 或 Word 文档。",
+                suggestion="请上传 Markdown、Word 或 Excel 文档。",
             ) from exc
         staged_file_id = f".knowledge-stage-{uuid.uuid4().hex}{extension}"
         staged_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, staged_file_id)
@@ -394,6 +394,17 @@ async def replace_draft_source_file(
         if staged_file_id:
             AppFileUtils.delete_file(staged_file_id)
         return serialize_error(error)
+    except ValueError as error:
+        session.rollback()
+        if staged_file_id:
+            AppFileUtils.delete_file(staged_file_id)
+        return serialize_error(KnowledgeBusinessError(
+            code="KNOWLEDGE_SOURCE_FILE_PARSE_FAILED",
+            message=str(error) or "源文件解析失败。",
+            status_code=422,
+            error_type="VALIDATION",
+            suggestion="请检查文件内容和格式后重试。",
+        ))
     except Exception:
         session.rollback()
         if staged_file_id:

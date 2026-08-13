@@ -221,12 +221,12 @@ function closeForm() {
 
 function isSupportedKnowledgeFile(file: File) {
   const name = file.name.toLowerCase()
-  return name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.docx')
+  return name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.docx') || name.endsWith('.xlsx')
 }
 
 function setNameFromFile(file: File) {
   if (form.value.name.trim()) return
-  form.value.name = file.name.replace(/\.(md|markdown|docx)$/i, '')
+  form.value.name = file.name.replace(/\.(md|markdown|docx|xlsx)$/i, '')
 }
 
 const beforeKnowledgeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile) => {
@@ -490,7 +490,7 @@ onBeforeUnmount(() => {
               action="#"
               :auto-upload="false"
               :show-file-list="false"
-              accept=".md,.markdown,.docx"
+              accept=".md,.markdown,.docx,.xlsx"
               :on-change="handleKnowledgeFileChange"
             >
               <div class="knowledge-upload-inner">

@@ -14,6 +14,7 @@ from sqlmodel import Session
 from apps.chat.curd.skill_object_projection import rebuild_all_skill_object_projections
 from apps.chat.curd.skill_object_references import SKILL_PROJECTOR_VERSION
 from apps.knowledge_base.backfill import run_backfill_v2
+from apps.knowledge_base.chunking import parse_and_normalize_version
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
 from apps.knowledge_base.publisher import KnowledgePublisher
 from apps.knowledge_base.reconciliation import reconcile_publish_jobs
@@ -111,6 +112,8 @@ def _extract_content(record: KnowledgeBase) -> str:
         content = _decode_markdown(path)
     elif ext == ".docx":
         content = _decode_docx(path)
+    elif ext == ".xlsx":
+        content = parse_and_normalize_version(path, file_ext=ext).normalized_content
     else:
         raise ValueError(f"Unsupported file type: {ext}")
     if not content:

@@ -7,7 +7,9 @@ import {
   Plus,
   Refresh,
   Search,
+  UploadFilled,
 } from '@element-plus/icons-vue'
+import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user'
 import {
@@ -48,9 +50,11 @@ const items = ref<KnowledgeBaseItem[]>([])
 const loading = ref(false)
 const listError = ref(false)
 const saving = ref(false)
+const sourceUploading = ref(false)
 const publishing = ref(false)
 const editorVisible = ref(false)
 const createVisible = ref(false)
+const createSourceFile = ref<File | null>(null)
 const selected = ref<KnowledgeBaseItem | null>(null)
 const versions = ref<KnowledgeBaseVersion[]>([])
 const draft = ref<KnowledgeBaseVersion | null>(null)
@@ -175,7 +179,22 @@ function openCreate() {
     visibility_scope: scopeFilter.value,
     knowledge_type: 'DOCUMENT',
   }
+  createSourceFile.value = null
   createVisible.value = true
+}
+
+const handleCreateSourceChange: UploadProps['onChange'] = (uploadFile: UploadFile) => {
+  const file = uploadFile.raw
+  if (!file) return
+  if (!isSupportedSourceFile(file)) {
+    ElMessage.warning('仅支持 .md、.markdown、.docx、.xlsx 文件')
+    return
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    ElMessage.warning('源文件不能超过 50 MB')
+    return
+  }
+  createSourceFile.value = file
 }
 
 async function createKnowledge() {
@@ -199,6 +218,13 @@ async function createKnowledge() {
     createVisible.value = false
     await loadItems()
     await openEditor(item)
+    if (createSourceFile.value && selected.value) {
+      if (!draft.value) {
+        draft.value = await knowledgeBaseApi.createDraft(selected.value.id, defaultPayload('DOCUMENT'))
+      }
+      await replaceDraftSource(createSourceFile.value)
+      await loadVersions()
+    }
   } finally {
     saving.value = false
   }
@@ -406,6 +432,41 @@ async function saveDraft() {
   } finally {
     saving.value = false
   }
+}
+
+function isSupportedSourceFile(file: File) {
+  const name = file.name.toLowerCase()
+  return ['.md', '.markdown', '.docx', '.xlsx'].some((suffix) => name.endsWith(suffix))
+}
+
+async function replaceDraftSource(file: File) {
+  if (!selected.value || !draft.value || payload.value.knowledge_type !== 'DOCUMENT') return
+  if (!isSupportedSourceFile(file)) {
+    ElMessage.warning('仅支持 .md、.markdown、.docx、.xlsx 文件')
+    return
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    ElMessage.warning('源文件不能超过 50 MB')
+    return
+  }
+  sourceUploading.value = true
+  try {
+    draft.value = await knowledgeBaseApi.replaceDraftFile(selected.value.id, {
+      version_id: draft.value.id,
+      revision: draft.value.revision,
+      file,
+    })
+    payload.value = normalizeDocumentPayload(draft.value.payload)
+    draftConflict.value = false
+    documentConflict.value = null
+    ElMessage.success('源文件已解析并保存为知识块，请校验后发布')
+  } finally {
+    sourceUploading.value = false
+  }
+}
+
+const handleSourceFileChange: UploadProps['onChange'] = (uploadFile: UploadFile) => {
+  if (uploadFile.raw) void replaceDraftSource(uploadFile.raw as UploadRawFile)
 }
 
 async function validateDraft() {
@@ -704,6 +765,24 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <el-option v-if="isPlatformAdmin" label="平台公共知识" value="PLATFORM_PUBLIC" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="createForm.knowledge_type === 'DOCUMENT'" label="文档内容">
+          <el-upload
+            class="create-source-upload"
+            drag
+            action="#"
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".md,.markdown,.docx,.xlsx"
+            :on-change="handleCreateSourceChange"
+          >
+            <div class="source-upload-inner">
+              <el-icon><UploadFilled /></el-icon>
+              <span>拖拽或点击上传源文件</span>
+              <small>支持 Markdown、Word、Excel（最大 50 MB）</small>
+            </div>
+          </el-upload>
+          <div v-if="createSourceFile" class="selected-source-file">已选择：{{ createSourceFile.name }}</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
@@ -732,6 +811,23 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           </span>
           <span class="version-status">草稿状态：{{ draftStatus }}</span>
           <span v-if="draft?.file_name" class="version-file">源文件：{{ draft.file_name }}</span>
+        </div>
+        <div v-if="canEdit && draft && payload.knowledge_type === 'DOCUMENT'" class="source-upload-row">
+          <el-upload
+            drag
+            action="#"
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".md,.markdown,.docx,.xlsx"
+            :disabled="sourceUploading"
+            :on-change="handleSourceFileChange"
+          >
+            <div class="source-upload-inner">
+              <el-icon><UploadFilled /></el-icon>
+              <span>{{ sourceUploading ? '正在解析源文件...' : '拖拽或点击上传源文件' }}</span>
+              <small>支持 Markdown、Word、Excel（.md / .markdown / .docx / .xlsx）</small>
+            </div>
+          </el-upload>
         </div>
         <KnowledgePayloadEditor v-model="payload" :readonly="!canEdit || !draft || editorBusy" />
         <div v-if="validationErrors.length" class="validation-panel is-error">
@@ -813,6 +909,12 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .editor-toolbar, .editor-actions, .history-row, .history-actions { display: flex; align-items: center; gap: 8px; }
 .editor-layout { padding: 0 2px 24px; }
 .editor-toolbar { margin-bottom: 16px; flex-wrap: wrap; color: #667085; font-size: 12px; }
+.source-upload-row { margin-bottom: 16px; }
+.source-upload-row :deep(.ed-upload), .source-upload-row :deep(.ed-upload-dragger), .create-source-upload, .create-source-upload :deep(.ed-upload), .create-source-upload :deep(.ed-upload-dragger) { width: 100%; }
+.source-upload-row :deep(.ed-upload-dragger), .create-source-upload :deep(.ed-upload-dragger) { padding: 14px 16px; border-radius: 6px; }
+.source-upload-inner { display: grid; grid-template-columns: 20px auto; align-items: center; justify-content: center; gap: 2px 8px; color: #344054; }
+.source-upload-inner small { grid-column: 2; color: #667085; }
+.selected-source-file { margin-top: 8px; color: #475467; font-size: 12px; overflow-wrap: anywhere; }
 .workspace-override { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
 .version-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .validation-panel { margin-top: 14px; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }

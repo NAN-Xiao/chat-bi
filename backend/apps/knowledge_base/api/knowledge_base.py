@@ -45,7 +45,7 @@ from common.utils.file_utils import AppFileUtils
 
 router = APIRouter(tags=["KnowledgeBase"], prefix="/knowledge-base", include_in_schema=False)
 
-ALLOWED_EXTENSIONS = {".md", ".markdown", ".docx"}
+ALLOWED_EXTENSIONS = {".md", ".markdown", ".docx", ".xlsx"}
 KNOWLEDGE_FILE_MAX_BYTES = settings.KNOWLEDGE_FILE_MAX_BYTES
 
 

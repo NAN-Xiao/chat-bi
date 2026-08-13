@@ -5,6 +5,9 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import pytest
+from openpyxl import Workbook
+
 from apps.knowledge_base.chunking import chunk_knowledge, parse_and_normalize_version
 from apps.knowledge_base.normalizers import standardized_content
 from apps.knowledge_base.schemas import (
@@ -121,3 +124,35 @@ def test_docx_heading_and_hidden_run_are_normalized(tmp_path: Path):
     assert "# 标题" in parsed.normalized_content
     assert "公开" in parsed.normalized_content
     assert "隐藏" not in parsed.normalized_content
+
+
+def test_xlsx_worksheets_become_document_sections_and_chunks(tmp_path: Path):
+    source = tmp_path / "knowledge.xlsx"
+    workbook = Workbook()
+    first = workbook.active
+    first.title = "指标定义"
+    first.append(["指标", "口径"])
+    first.append(["收入", "订单实付金额"])
+    second = workbook.create_sheet("空表")
+    second.append([None])
+    third = workbook.create_sheet("SQL 示例")
+    third.append(["问题", "SQL"])
+    third.append(["收入是多少", "select sum(amount) from orders"])
+    workbook.save(source)
+
+    parsed = parse_and_normalize_version(source)
+    chunks = chunk_knowledge(source=source, chunk_size=1200, overlap=150)
+
+    assert parsed.source_format == "xlsx"
+    assert [path for path, _ in parsed.sections] == ["指标定义", "SQL 示例"]
+    assert "收入 | 订单实付金额" in parsed.normalized_content
+    assert "select sum(amount) from orders" in parsed.normalized_content
+    assert [chunk.section_path for chunk in chunks] == ["指标定义", "SQL 示例"]
+
+
+def test_invalid_xlsx_is_rejected_with_clear_error(tmp_path: Path):
+    source = tmp_path / "broken.xlsx"
+    source.write_bytes(b"not-an-excel-workbook")
+
+    with pytest.raises(ValueError, match="Excel 文档格式无效或已损坏"):
+        parse_and_normalize_version(source)
