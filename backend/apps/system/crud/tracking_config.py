@@ -29,6 +29,7 @@ from apps.system.schemas.tenant_schema import (
     TenantTrackingFieldDTO,
     TenantTrackingTableDTO,
 )
+from common.sql_json_paths import canonical_json_field_name, normalize_json_path
 from common.utils.snowflake import snowflake
 from common.utils.time import get_timestamp
 
@@ -78,6 +79,29 @@ def _clean_text(value: str | None, max_len: int | None = None) -> str | None:
     if not cleaned:
         return None
     return cleaned[:max_len] if max_len else cleaned
+
+
+def _tracking_field_json_identity(item: Any) -> tuple[str | None, str | None]:
+    source_field = _clean_text(getattr(item, "source_field", None), 255)
+    raw_json_path = _clean_text(getattr(item, "json_path", None), 1000)
+    if not raw_json_path:
+        return source_field, None
+
+    table_name = _clean_text(getattr(item, "table_name", None), 255) or "（空表）"
+    field_name = _clean_text(getattr(item, "field_name", None), 255) or "（空字段）"
+    json_path = normalize_json_path(raw_json_path)
+    if not json_path:
+        raise ValueError(f"{table_name}.{field_name} 配置了无效 JSON 路径 {raw_json_path}。")
+    if not source_field:
+        raise ValueError(f"{table_name}.{field_name} 配置了 JSON 路径但没有来源字段。")
+
+    expected_name = canonical_json_field_name(source_field, json_path)
+    if not expected_name or field_name != expected_name:
+        raise ValueError(
+            f"{table_name}.{field_name} 的生成字段名与来源字段、JSON路径不一致，"
+            f"应为 {expected_name or '有效的规范字段名'}。"
+        )
+    return source_field, json_path
 
 
 def _plain_text(value: Any) -> str:
@@ -732,6 +756,12 @@ def save_tracking_config(
     if requested_event_groups and datasource_id is None:
         raise ValueError("事件分组必须在工作空间已绑定数据源后保存。")
 
+    fields_to_save = list(editor.fields or [])
+    field_json_identities = [
+        _tracking_field_json_identity(item)
+        for item in fields_to_save
+    ]
+
     now = get_timestamp()
     config_statement, event_group_statement = _tracking_scope_statements(
         tenant_id,
@@ -810,7 +840,11 @@ def save_tracking_config(
             _datasource_filter(TenantTrackingFieldModel, datasource_id),
         )
     )
-    for item in editor.fields or []:
+    for item, (source_field, json_path) in zip(
+        fields_to_save,
+        field_json_identities,
+        strict=True,
+    ):
         table_name = _clean_text(item.table_name, 255)
         field_name = _clean_text(item.field_name, 255)
         if not table_name or not field_name:
@@ -828,8 +862,8 @@ def save_tracking_config(
                     _clean_text(item.field_role, 64),
                     _clean_text(item.semantic_type, 64),
                 ),
-                source_field=_clean_text(item.source_field, 255),
-                json_path=_clean_text(item.json_path, 1000),
+                source_field=source_field,
+                json_path=json_path,
                 update_mode=_clean_text(getattr(item, "update_mode", None), 64),
                 category=_clean_text(getattr(item, "category", None), 255),
                 aliases=_json_list(item.aliases),

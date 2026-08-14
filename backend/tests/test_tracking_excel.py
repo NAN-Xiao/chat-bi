@@ -119,6 +119,7 @@ def _json_overview_physical_schema() -> dict[str, PhysicalTableInfo]:
                 PhysicalFieldInfo("event", "varchar", "事件名"),
                 PhysicalFieldInfo("userinfo", "text", "用户信息 JSON"),
                 PhysicalFieldInfo("event_only", "text", "事件独有 JSON"),
+                PhysicalFieldInfo("abtest", "text", "实验分组 JSON"),
             ],
         ),
         "user": PhysicalTableInfo(
@@ -280,6 +281,43 @@ def test_json_field_parsing_sheet_rejects_generated_name_mismatch() -> None:
             physical_schema=_json_overview_physical_schema(),
             datasource_type="mysql",
         )
+
+
+def test_json_field_parsing_sheet_accepts_numeric_object_key_logical_name() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [["event", "abtest", '$["1001"]', "abtest.1001", "1001", "文本", "实验分组"]]
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="postgresql",
+    )
+
+    field = next(item for item in parsed.editor.fields if item.field_name == "abtest.1001")
+    assert field.source_field == "abtest"
+    assert field.json_path == '$["1001"]'
+
+
+def test_json_field_parsing_sheet_distinguishes_numeric_key_from_array_index() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [["event", "abtest", "$[1001]", "abtest[1001]", "", "文本", "数组元素"]]
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="postgresql",
+    )
+
+    field = next(item for item in parsed.editor.fields if item.field_name == "abtest[1001]")
+    assert field.json_path == "$[1001]"
 
 
 def test_json_field_parsing_sheet_rejects_invalid_json_path() -> None:
@@ -1885,6 +1923,47 @@ def test_json_field_parsing_export_preserves_observed_null_type() -> None:
     assert _sheet_rows(output, "JSON字段解析") == [
         ("event", "allianceinfo", "$.power", "allianceinfo.power", None, "空值", None),
     ]
+
+
+def test_numeric_object_key_export_round_trips_with_stable_field_name() -> None:
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        default_event_table="event",
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="abtest.1001",
+                semantic_type="text",
+                source_field="abtest",
+                json_path="$.1001",
+            )
+        ],
+    )
+    physical_schema = {
+        "event": PhysicalTableInfo(
+            "event",
+            fields=[PhysicalFieldInfo("abtest", "text")],
+        )
+    }
+
+    output = tracking_config_excel(config, physical_schema=physical_schema).getvalue()
+
+    assert _sheet_rows(output, "JSON字段解析") == [
+        ("event", "abtest", '$["1001"]', "abtest.1001", None, "文本", None),
+    ]
+    parsed = parse_tracking_excel(
+        output,
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=physical_schema,
+        datasource_type="postgresql",
+    )
+    field = next(item for item in parsed.editor.fields if item.field_name == "abtest.1001")
+    assert field.json_path == '$["1001"]'
 
 
 def test_json_field_parsing_export_keeps_cross_table_source_definitions() -> None:
