@@ -163,11 +163,15 @@ async function removeActiveBlock() {
 .block-workspace {
   display: grid;
   grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+  align-items: start;
   gap: 12px;
   margin-bottom: 18px;
 }
 .block-directory {
   min-width: 0;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 12px;
   border-right: 1px solid #e4e7ec;
 }
@@ -233,7 +237,9 @@ async function removeActiveBlock() {
   .block-directory {
     display: flex;
     max-width: 100%;
+    max-height: none;
     overflow-x: auto;
+    overflow-y: hidden;
     padding: 0 0 8px;
     border-right: 0;
     border-bottom: 1px solid #e4e7ec;
