@@ -400,3 +400,66 @@ viewInfo.datasource
 - 使用 `tools/repair_gig_j2000_lds_dashboard_datasources.py` 的固定空间与看板集合、角色校验、Schema 校验、事务锁、画布与更新时间 CAS、备份及读回校验执行。
 - 写后复扫确认三个空间各有 55 张 `clean` 图表，无 `conflict`、`duplicate`、`legacy_only` 或 `missing`；全库 `duplicate` 从 `354` 降为 `189`，`conflict` 保持为 `0`。
 - 备份位于 `.codex-runtime/dashboard-datasource-backups`，脚本的 `--restore <backup>` 仅在 30 个看板仍等于本次修复结果时允许恢复。
+
+### 修仙与 flam 重复数据源字段清理
+
+空间 `7482727237662281728`（修仙）与 `7477202383789887488`（flam）共 35 个看板、139 张 SQL 图表已完成受控清理：
+
+- 修复前均为内外数据源相同的无歧义重复配置，没有异值冲突；修仙有 64 张，flam 有 75 张。
+- 普通图表保持原执行源：修仙 `6`、flam `3`；ROI 图表保持当前空间 ROI 配置：修仙 `8`、flam `7`。
+- 两空间普通源与 ROI 源均为有效配置，所有目标 SQL 的物理表均被对应数据源的可用 Schema 覆盖。
+- 仅删除重复的 `sourceConfig.sql.datasource`；没有修改 `viewInfo.datasource`、看板资产数据源、SQL、图表配置或已经干净的图表。
+- 使用 `tools/repair_xiuxian_flam_dashboard_datasource_duplicates.py` 的固定空间、画布哈希、重复数量、Schema 校验、事务锁、画布与更新时间 CAS、备份及读回校验执行。
+- 写后复扫确认修仙 72 张、flam 141 张 SQL 图表全部为 `clean`；修仙的数据源分布为 `6=63/8=9`，flam 为 `3=131/7=10`。
+- 全库 `duplicate` 从 `189` 降为 `50`，`conflict` 保持为 `0`；剩余记录不属于本次两个空间。
+- 备份位于 `.codex-runtime/dashboard-datasource-backups`，脚本的 `--restore <backup>` 仅在 35 个看板仍等于本次修复结果时允许恢复。
+
+### gig 推荐看板产品条件修复
+
+空间 `7493272549510352896`（`WSB9NZYM99`，`gig`）的推荐看板产品口径统一为 `prod = 110000036`：
+
+- 处理范围固定为 `is_default=1` 的 10 个叶子看板、55 张 SQL 图表；`is_default=0` 的用户自建看板不在变更范围内。
+- 同步修改每张图表的执行 SQL `viewInfo.sql` 和编辑器 SQL `sourceConfig.sql.sql`，避免编辑器再次保存时恢复旧产品条件。
+- 只替换 `prod` 列与旧常量 `110000047`、`110000038` 的等值条件，保留 `u.prod = e.prod` 等列间关联条件；“英雄养成情况”两份缺失产品条件的 SQL 均显式补充 `prod = 110000036`。
+- 普通图表继续使用空间绑定数据源 `12`，ROI 图表继续使用空间 ROI 数据源 `13`；不修改执行数据源或权限边界，并按各自数据源 Schema 校验执行 SQL 引用表；编辑器 SQL 另行校验 AST 与变更前后引用集合不变，避免把历史编辑草稿误当作执行 SQL。
+- SQL 口径变化后清除旧结果快照并重置刷新时间，防止看板展示旧产品数据；打开看板后按现有刷新流程重新查询。
+- 使用 `tools/repair_gig_recommended_dashboard_product_id.py` 的空间身份、推荐看板集合、SQL 数量、SQL AST、旧常量总数、事务锁、画布与更新时间 CAS、备份和读回校验执行；默认只读，`--apply` 才写入，`--restore <backup>` 可受控恢复。
+- 实际写入前识别并替换两份 SQL 中 `110000047=158`、`110000038=36` 共 194 个旧 `prod` 谓词，并补充 2 个缺失谓词；写后 110 份 SQL 共包含 196 个 `prod = 110000036`，旧谓词、旧结果快照和内层重复数据源均为 0。
+- 写后数据源分布保持为普通图表 `12=50`、ROI 图表 `13=5`；全库数据源复扫仍为 `conflict=0`，排除的用户自建看板画布哈希保持不变。
+- 本次备份为 `.codex-runtime/dashboard-datasource-backups/gig_recommended_dashboard_product_id_1786632490890047500.json`。
+
+### j2000 推荐看板产品条件修复
+
+空间 `7493583991958671360`（`WSCWXDWV48`，`j2000`）的推荐看板产品口径统一为 `prod = 110000034`：
+
+- 处理范围固定为 `is_default=1` 的 10 个叶子看板、55 张 SQL 图表；`is_default=0` 的用户自建看板 `67f3988aa2ce47f4ab33d8586c3b26a5` 明确排除。
+- 同步修改 110 份执行 SQL `viewInfo.sql` 和编辑器 SQL `sourceConfig.sql.sql`；只替换 `prod` 列与旧常量的等值条件，保留列间关联条件和查询粒度。
+- 实际替换 `110000047=158`、`110000038=36` 共 194 个旧 `prod` 谓词，并在“英雄养成情况”的两份 SQL 中补充 2 个缺失谓词；写后共包含 196 个 `prod = 110000034`，旧谓词为 0。
+- 普通图表继续使用空间绑定数据源 `11`（50 张），ROI 图表继续使用空间 ROI 数据源 `15`（5 张）；执行数据源、权限边界、看板资产归属和内层数据源单一来源约束均未改变。
+- SQL 口径变化后清除旧结果快照并重置刷新时间；写后旧快照、`sourceConfig.sql.lastResult` 和内层重复数据源均为 0，打开看板后按现有刷新流程重新查询。
+- 使用 `tools/repair_j2000_recommended_dashboard_product_id.py` 的固定空间入口与共享 AST 修复引擎执行，保留独立事务锁、备份类型和恢复边界；写后幂等预检为 `clean`，全库数据源复扫仍为 `conflict=0`。
+- 本次备份为 `.codex-runtime/dashboard-datasource-backups/j2000_recommended_dashboard_product_id_1786633028005400700.json`。
+
+### lds 推荐看板产品条件修复
+
+空间 `7493272675721154560`（`WS6MEJGDSA`，`lds`）的推荐看板产品口径统一为 `prod = 110000039`：
+
+- 处理范围固定为 `is_default=1` 的 10 个叶子看板、55 张 SQL 图表；`is_default=0` 的用户自建看板 `c338394f0f424eb58a7ba6a9449aff2e` 明确排除。
+- 同步修改 110 份执行 SQL `viewInfo.sql` 和编辑器 SQL `sourceConfig.sql.sql`；只替换 `prod` 列与旧常量的等值条件，保留列间关联条件和查询粒度。
+- 实际替换 `110000047=158`、`110000038=36` 共 194 个旧 `prod` 谓词，并在“英雄养成情况”的两份 SQL 中补充 2 个缺失谓词；写后共包含 196 个 `prod = 110000039`，旧谓词为 0。
+- 普通图表继续使用空间绑定数据源 `10`（50 张），ROI 图表继续使用空间 ROI 数据源 `14`（5 张）；执行数据源、权限边界、看板资产归属和内层数据源单一来源约束均未改变。
+- SQL 口径变化后清除旧结果快照并重置刷新时间；写后旧快照、`sourceConfig.sql.lastResult` 和内层重复数据源均为 0，打开看板后按现有刷新流程重新查询。
+- 使用 `tools/repair_lds_recommended_dashboard_product_id.py` 的固定空间入口与共享 AST 修复引擎执行，保留独立事务锁、备份类型和恢复边界；写后幂等预检为 `clean`，全库数据源复扫仍为 `conflict=0`。
+- 本次备份为 `.codex-runtime/dashboard-datasource-backups/lds_recommended_dashboard_product_id_1786633449632248000.json`。
+
+### unicorn 推荐看板产品条件修复
+
+空间 `7493583885482070016`（`WSWGCD2XXN`，`unicorn`）的推荐看板产品口径统一为 `prod = 110000030`：
+
+- 处理范围固定为 `is_default=1` 的 10 个叶子看板、55 张 SQL 图表；两个 `is_default=0` 的用户自建看板 `6e34c464672743028dba7085949a3011`、`ced94744471e47abbc389a77a7e98a1e` 明确排除，并在事务提交前校验画布哈希。
+- 同步修改 110 份执行 SQL `viewInfo.sql` 和编辑器 SQL `sourceConfig.sql.sql`；只替换 `prod` 列与旧常量的等值条件，保留列间关联条件和查询粒度。
+- 实际替换 `110000047=158`、`110000038=36` 共 194 个旧 `prod` 谓词，并在“英雄养成情况”的两份 SQL 中补充 2 个缺失谓词；写后共包含 196 个 `prod = 110000030`，旧谓词为 0。
+- 普通图表继续使用空间绑定数据源 `9`（50 张），ROI 图表继续使用空间 ROI 数据源 `16`（5 张）；执行数据源、权限边界、看板资产归属和内层数据源单一来源约束均未改变。
+- SQL 口径变化后清除旧结果快照并重置刷新时间；写后旧快照、`sourceConfig.sql.lastResult` 和内层重复数据源均为 0，打开看板后按现有刷新流程重新查询。
+- 使用 `tools/repair_unicorn_recommended_dashboard_product_id.py` 的固定空间入口与共享 AST 修复引擎执行，保留独立事务锁、备份类型和恢复边界；写后幂等预检为 `clean`，全库数据源复扫仍为 `conflict=0`。
+- 本次备份为 `.codex-runtime/dashboard-datasource-backups/unicorn_recommended_dashboard_product_id_1786633988120814700.json`。
