@@ -23,6 +23,18 @@ assert.match(
 )
 assert.doesNotMatch(metricOptions, /eventDetailFieldOptions/, '指标筛选不得混入事件公共物理字段')
 
+const metricFilterRecovery = editor.match(/function recoverMissingMetricFiltersFromSql[\s\S]*?\n\}/)?.[0] || ''
+assert.match(
+  metricFilterRecovery,
+  /metricFilterRecoveryCandidates\([\s\S]*selectableFilterOptions: metricFilterFieldOptions\(item\)/,
+  'SQL 回填指标筛选必须复用当前合法筛选候选，不能把事件标识恢复成普通筛选'
+)
+assert.doesNotMatch(
+  metricFilterRecovery,
+  /const candidates = unique\(\[\s*item\.field/,
+  'SQL 回填不得直接把事件指标字段作为筛选候选'
+)
+
 assert.match(tree, /pickerMode\?: 'property' \| 'filter-property'/, '筛选树需要透传字段选择器模式')
 assert.match(tree, /filterPropertyTabs\?: Array<'all' \| 'event' \| 'user'>/, '筛选树需要透传允许标签')
 assert.match(tree, /:filter-property-tabs="filterPropertyTabs"/, '递归筛选树必须保留允许标签')

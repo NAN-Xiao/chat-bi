@@ -25,6 +25,7 @@ import {
   isSelectableFieldOption,
   isTimeFieldOption,
 } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
+import { metricFilterRecoveryCandidates } from '@/views/dashboard/common/metricFilterRecovery.ts'
 import {
   buildDashboardBuilderMetadataCacheKey,
   buildTrackingEventCatalogFromConfig,
@@ -2093,13 +2094,14 @@ function recoverMissingMetricFiltersFromSql() {
     if (hasEffectiveBuilderFilters(item.filters || [])) {
       return
     }
-    const candidates = unique([
-      item.field,
-      metricMeasureField(item),
-      ...schemaFieldOptions.value
-        .filter((field) => field.table === fieldOptionByValue(item.field)?.table)
-        .map((field) => field.value),
-    ])
+    const metricFieldOption = fieldOptionByValue(item.field)
+    const candidates = metricFilterRecoveryCandidates({
+      metricField: item.field,
+      metricMeasureField: metricMeasureField(item),
+      metricFieldOption,
+      selectableFilterOptions: metricFilterFieldOptions(item),
+      schemaFieldOptions: schemaFieldOptions.value,
+    })
     const restored = candidates
       .map((field) => recoveredFilterFromSql(field))
       .find((filter) => filter && isEffectiveBuilderFilter(filter))
