@@ -6,7 +6,10 @@ import test from 'node:test'
 
 const directory = dirname(fileURLToPath(import.meta.url))
 const pageSource = readFileSync(join(directory, 'index.vue'), 'utf8')
-const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'utf8')
+const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'utf8').replace(
+  /\r\n/g,
+  '\n'
+)
 const routerSource = readFileSync(join(directory, '../../router/index.ts'), 'utf8')
 const menuItemSource = readFileSync(join(directory, '../../components/layout/MenuItem.vue'), 'utf8')
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
@@ -24,8 +27,14 @@ test('knowledge management expands to platform and workspace child menus', () =>
   assert.match(routerSource, /path:\s*'data-skills'/)
   assert.match(routerSource, /path:\s*'knowledge-base'/)
   assert.match(routerSource, /redirect:\s*'\/system\/knowledge-base\/platform'/)
-  assert.match(routerSource, /path:\s*'platform'[\s\S]*title:\s*t\('knowledge_base\.platform_knowledge_base'\)/)
-  assert.match(routerSource, /path:\s*'workspace'[\s\S]*title:\s*t\('knowledge_base\.workspace_knowledge_base'\)/)
+  assert.match(
+    routerSource,
+    /path:\s*'platform'[\s\S]*title:\s*t\('knowledge_base\.platform_knowledge_base'\)/
+  )
+  assert.match(
+    routerSource,
+    /path:\s*'workspace'[\s\S]*title:\s*t\('knowledge_base\.workspace_knowledge_base'\)/
+  )
   assert.match(menuItemSource, /if \(children\?\.length\)/)
   assert.match(menuItemSource, /ElSubMenu/)
   assert.match(menuItemSource, /children\.map/)
@@ -47,9 +56,18 @@ test('knowledge page exposes platform knowledge as read-only to non-managers', (
 })
 
 test('workspace knowledge creation reuses the top workspace filter', () => {
-  assert.doesNotMatch(panelSource, /<el-form-item v-if="createForm\.visibility_scope === 'ADMIN_PUBLIC'" label="工作空间"/)
-  assert.match(panelSource, /createForm\.value\.visibility_scope === 'ADMIN_PUBLIC' && !workspaceFilter\.value/)
-  assert.match(panelSource, /tenant_id: createForm\.value\.visibility_scope === 'ADMIN_PUBLIC'\s*\n\s*\? workspaceFilter\.value\s*\n\s*: undefined/)
+  assert.doesNotMatch(
+    panelSource,
+    /<el-form-item v-if="createForm\.visibility_scope === 'ADMIN_PUBLIC'" label="工作空间"/
+  )
+  assert.match(
+    panelSource,
+    /createForm\.value\.visibility_scope === 'ADMIN_PUBLIC' && !workspaceFilter\.value/
+  )
+  assert.match(
+    panelSource,
+    /tenant_id: createForm\.value\.visibility_scope === 'ADMIN_PUBLIC'\s*\n\s*\? workspaceFilter\.value\s*\n\s*: undefined/
+  )
 })
 
 test('knowledge management exposes archived records as read-only and restorable', () => {
@@ -57,7 +75,10 @@ test('knowledge management exposes archived records as read-only and restorable'
   assert.match(panelSource, /archived: isArchivedView\.value/)
   assert.match(panelSource, /<el-radio-button value="current">当前知识<\/el-radio-button>/)
   assert.match(panelSource, /<el-radio-button value="archived">已归档<\/el-radio-button>/)
-  assert.match(panelSource, /const canEdit = computed\(\(\) => !!selected\.value\?\.can_manage && !selected\.value\.archived\)/)
+  assert.match(
+    panelSource,
+    /const canEdit = computed\(\(\) => !!selected\.value\?\.can_manage && !selected\.value\.archived\)/
+  )
   assert.match(panelSource, /version\.status === 'ARCHIVED' && Boolean\(version\.publish_time\)/)
   assert.match(panelSource, /knowledgeBaseApi\.restore\(row\.id\)/)
   assert.match(panelSource, /恢复知识库/)
@@ -72,28 +93,58 @@ test('knowledge lifecycle actions stay in the knowledge-base header before the p
   const actionIndex = panelSource.indexOf('class="knowledge-lifecycle-actions"', headerIndex)
   const headerEndIndex = panelSource.indexOf(
     '</div>\n        <div v-if="canEdit && draft && payload.knowledge_type === \'DOCUMENT\'" class="source-upload-row">',
-    headerIndex,
+    headerIndex
   )
   const editorIndex = panelSource.indexOf('<KnowledgePayloadEditor', headerIndex)
 
   assert.ok(headerIndex >= 0, 'knowledge-base header should exist')
   assert.ok(actionIndex > headerIndex, 'lifecycle actions should be grouped inside the header')
   assert.ok(headerEndIndex > actionIndex, 'lifecycle actions should be inside the header boundary')
-  assert.ok(editorIndex > headerEndIndex, 'the payload editor should appear after the knowledge-base header')
+  assert.ok(
+    editorIndex > headerEndIndex,
+    'the payload editor should appear after the knowledge-base header'
+  )
   assert.equal(panelSource.match(/class="knowledge-lifecycle-actions"/g)?.length, 2)
-  assert.match(panelSource, /v-if="selected\.archived && selected\.can_manage" class="knowledge-lifecycle-actions"/)
+  assert.match(
+    panelSource,
+    /v-if="selected\.archived && selected\.can_manage" class="knowledge-lifecycle-actions"/
+  )
   assert.match(panelSource, /v-else-if="!selected\.archived" class="knowledge-lifecycle-actions"/)
-  assert.match(panelSource, /:loading="saving" :disabled="!actionState\.save" @click="saveDraft">保存草稿/)
-  assert.match(panelSource, /:loading="saving" :disabled="!actionState\.validate" @click="validateDraft">校验/)
-  assert.match(panelSource, /:loading="publishing" :disabled="!actionState\.publish" @click="publishDraft">发布/)
-  assert.match(panelSource, /@media \(max-width: 680px\)[\s\S]*?\.knowledge-editor-header \{ flex-direction: column; \}/)
-  assert.match(panelSource, /\.knowledge-lifecycle-actions \{ display: grid; width: 100%; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
-  assert.match(panelSource, /\.knowledge-lifecycle-actions :deep\(\.ed-button\) \{ width: 100%; min-width: 0;/)
+  assert.match(
+    panelSource,
+    /:loading="saving" :disabled="!actionState\.save" @click="saveDraft">保存草稿/
+  )
+  assert.match(
+    panelSource,
+    /:loading="saving" :disabled="!actionState\.validate" @click="validateDraft">校验/
+  )
+  assert.match(
+    panelSource,
+    /:loading="publishing" :disabled="!actionState\.publish" @click="publishDraft">发布/
+  )
+  assert.match(
+    panelSource,
+    /@media \(max-width: 680px\)[\s\S]*?\.knowledge-editor-header \{ flex-direction: column; \}/
+  )
+  assert.match(
+    panelSource,
+    /\.knowledge-lifecycle-actions \{ display: grid; width: 100%; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/
+  )
+  assert.match(
+    panelSource,
+    /\.knowledge-lifecycle-actions :deep\(\.ed-button\) \{ width: 100%; min-width: 0;/
+  )
 })
 
 test('workspace management keeps a usable content width on mobile', () => {
   assert.match(layoutSource, /@media \(max-width: 680px\)/)
   assert.match(layoutSource, /\.workspace-admin-sidebar \{[\s\S]*?flex-basis: 64px/)
-  assert.match(layoutSource, /\.workspace-admin-sidebar :deep\(\.menu-title-text\)[\s\S]*?display: none/)
-  assert.match(layoutSource, /\.workspace-admin-content \.content-main \{[\s\S]*?padding: 14px 12px/)
+  assert.match(
+    layoutSource,
+    /\.workspace-admin-sidebar :deep\(\.menu-title-text\)[\s\S]*?display: none/
+  )
+  assert.match(
+    layoutSource,
+    /\.workspace-admin-content \.content-main \{[\s\S]*?padding: 14px 12px/
+  )
 })

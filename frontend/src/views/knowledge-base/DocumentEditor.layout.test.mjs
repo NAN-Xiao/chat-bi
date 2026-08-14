@@ -6,13 +6,25 @@ import test from 'node:test'
 
 const directory = dirname(fileURLToPath(import.meta.url))
 const editorSource = readFileSync(join(directory, 'editors/DocumentEditor.vue'), 'utf8')
+const frameSource = readFileSync(join(directory, 'editors/KnowledgeContentFrame.vue'), 'utf8')
+const structuredEditorNames = [
+  'BusinessKnowledgeEditor.vue',
+  'EventKnowledgeEditor.vue',
+  'JsonFieldKnowledgeEditor.vue',
+]
+const structuredEditorSources = structuredEditorNames.map((name) =>
+  readFileSync(join(directory, 'editors', name), 'utf8')
+)
 const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'utf8')
 
 test('document editor uses a directory with one active block detail', () => {
   assert.match(editorSource, /const activeBlockId = ref\(''\)/)
   assert.match(editorSource, /class="block-directory"/)
   assert.match(editorSource, /v-if="activeBlock && activeBlockIndex >= 0"/)
-  assert.doesNotMatch(editorSource, /v-for="\(block, index\) in modelValue\.blocks"[^>]*class="knowledge-block"/)
+  assert.doesNotMatch(
+    editorSource,
+    /v-for="\(block, index\) in modelValue\.blocks"[^>]*class="knowledge-block"/
+  )
   assert.doesNotMatch(editorSource, /expandedBlocks/)
 })
 
@@ -34,11 +46,48 @@ test('deleted block conflicts can preserve local content as a new block', () => 
   assert.match(panelSource, /恢复为新知识块/)
 })
 
-test('document editor removes block structure management actions', () => {
-  assert.doesNotMatch(editorSource, /新增知识块|编辑标题|检索状态|上移|下移|复制|删除知识块/)
-  assert.doesNotMatch(editorSource, /addBlock|copyBlock|moveBlock|renameBlock|removeBlock/)
-  assert.doesNotMatch(editorSource, /ArrowDown|ArrowUp|CopyDocument|Delete|EditPen|Plus/)
-  assert.doesNotMatch(editorSource, /class="block-actions"|class="directory-edit"/)
+test('all knowledge editors share the document-style content frame', () => {
+  assert.match(editorSource, /import KnowledgeContentFrame from '.\/KnowledgeContentFrame\.vue'/)
+  assert.match(editorSource, /<KnowledgeContentFrame/)
+  for (const source of structuredEditorSources) {
+    assert.match(source, /import KnowledgeContentFrame from '.\/KnowledgeContentFrame\.vue'/)
+    assert.match(source, /<KnowledgeContentFrame/)
+  }
+  assert.match(frameSource, /class="knowledge-content-frame"/)
+  assert.match(frameSource, /class="content-frame-header"/)
+  assert.match(frameSource, /class="content-frame-body"/)
+  assert.match(frameSource, /border: 1px solid #dfe3e8/)
+  assert.doesNotMatch(
+    editorSource,
+    /class="knowledge-block"|class="block-header"|class="block-body"/
+  )
+})
+
+test('structured editors keep their existing editing entry points', () => {
+  const [businessSource, eventSource, jsonSource] = structuredEditorSources
+  assert.match(businessSource, /modelValue\.term/)
+  assert.match(businessSource, /KnowledgeReferenceList/)
+  assert.match(businessSource, /KnowledgeSqlExamples/)
+  assert.match(eventSource, /modelValue\.event_name/)
+  assert.match(eventSource, /KnowledgeEventParameters/)
+  assert.match(jsonSource, /modelValue\.json_path/)
+  assert.match(jsonSource, /modelValue\.expression/)
+  assert.match(jsonSource, /parseMappings/)
+})
+
+test('document editor adds and confirms deletion of draft blocks', () => {
+  assert.match(editorSource, /createDocumentBlock\(nextBlockTitle\(\)\)/)
+  assert.match(editorSource, /updateBlocks\(\[\.\.\.props\.modelValue\.blocks, block\]\)/)
+  assert.match(editorSource, /activeBlockId\.value = block\.id/)
+  assert.match(editorSource, /普通文档至少需要保留一个知识块/)
+  assert.match(editorSource, /await ElMessageBox\.confirm/)
+  assert.match(
+    editorSource,
+    /activeBlockId\.value = blocks\[Math\.min\(removedIndex, blocks\.length - 1\)\]/
+  )
+  assert.match(editorSource, /v-if="!readonly" content="新增知识块"/)
+  assert.match(editorSource, /v-if="!readonly" #actions/)
+  assert.doesNotMatch(editorSource, /copyBlock|moveBlock|renameBlock/)
 })
 
 test('document editor keeps the title bar and markdown content', () => {
@@ -46,18 +95,25 @@ test('document editor keeps the title bar and markdown content', () => {
   assert.doesNotMatch(editorSource, /el-form-item label="检索状态"/)
   assert.doesNotMatch(editorSource, /<el-switch/)
   assert.doesNotMatch(editorSource, /updateBlock\(activeBlockIndex, \{ enabled:/)
-  assert.match(editorSource, /class="block-header"/)
-  assert.match(editorSource, /class="block-index">\{\{ activeBlockIndex \+ 1 \}\}/)
-  assert.match(editorSource, /class="block-title">\{\{ activeBlock\.title \|\| '未命名知识块' \}\}/)
+  assert.match(editorSource, /:index="activeBlockIndex \+ 1"/)
+  assert.match(editorSource, /:title="activeBlock\.title \|\| '未命名知识块'"/)
   assert.match(editorSource, /el-form-item label="Markdown 正文"/)
   assert.match(editorSource, /class="markdown-editor"/)
   assert.match(editorSource, /updateBlock\(activeBlockIndex, \{ markdown: \$event \}\)/)
-  assert.match(editorSource, /\.markdown-editor :deep\(\.ed-textarea__inner\)[^{]*\{[^}]*box-shadow: none;/)
+  assert.match(
+    editorSource,
+    /\.markdown-editor :deep\(\.ed-textarea__inner\)[^{]*\{[^}]*box-shadow: none;/
+  )
+  assert.match(panelSource, /await knowledgeBaseApi\.saveDocumentStructure/)
+  assert.match(panelSource, /captureDocumentConflict\(error\)/)
 })
 
 test('document editor keeps the mobile directory horizontally scrollable', () => {
   assert.match(editorSource, /@media \(max-width: 680px\)/)
   assert.match(editorSource, /\.block-directory \{[\s\S]*?overflow-x: auto/)
   assert.match(panelSource, /class="knowledge-editor-drawer"/)
-  assert.match(panelSource, /:global\(\.knowledge-editor-drawer\) \{ width: 100% !important; max-width: 100%; \}/)
+  assert.match(
+    panelSource,
+    /:global\(\.knowledge-editor-drawer\) \{ width: 100% !important; max-width: 100%; \}/
+  )
 })

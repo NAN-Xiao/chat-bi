@@ -56,3 +56,8 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 - Keep route metadata and page state synchronized when the same scope can be selected from both a sidebar child route and an in-page control. A child menu must not appear active while the page loads a different scope.
 - When a management page already has an explicit, authorized workspace context selector, context-bound create dialogs must reuse that selected workspace instead of maintaining a second workspace selector. Submit the current page context, block submission when it is missing, and add a regression assertion that the dialog does not reintroduce duplicate context state.
 - In the top-navigation workspace management shell, keep the desktop workspace sidebar at `240px`, but collapse it to a `64px` icon rail at `680px` and below. Hide sidebar labels/header and reduce content padding so management pages retain a usable mobile content width and the root document stays within `clientWidth + 2`.
+
+## Knowledge Editor Conventions
+
+- Keep the document-style content shell in the shared `KnowledgeContentFrame.vue` component. DOCUMENT, BUSINESS, EVENT, and JSON_FIELD editors should compose their existing fields inside this frame instead of defining parallel border, title-bar, or body-spacing styles.
+- DOCUMENT block creation and deletion are draft-only mutations. They update the payload owned by the editor, while persistence continues through the existing `saveDocumentStructure` flow so version conflicts remain explicit and server structure is never silently overwritten.

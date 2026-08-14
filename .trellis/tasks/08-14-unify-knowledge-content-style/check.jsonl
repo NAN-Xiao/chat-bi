@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"Defines frontend build, runtime, and browser verification gates for this user-visible editor change."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Requires shared abstractions when the same content shell is used across multiple editors."}
