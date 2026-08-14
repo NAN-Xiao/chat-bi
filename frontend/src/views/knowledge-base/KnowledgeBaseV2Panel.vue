@@ -83,10 +83,12 @@ const applicabilityLoading = ref(false)
 let publishTimer: ReturnType<typeof window.setInterval> | null = null
 
 const isArchivedView = computed(() => archiveFilter.value === 'archived')
-const canCreateKnowledge = computed(
-  () => !isArchivedView.value && (isPlatformAdmin.value
+const canCreateKnowledgeInScope = computed(
+  () => isPlatformAdmin.value
     ? scopeFilter.value === 'PLATFORM_PUBLIC' || Boolean(workspaceFilter.value)
     : userStore.isTenantAdminUser && scopeFilter.value === 'ADMIN_PUBLIC')
+const canCreateKnowledge = computed(
+  () => canCreateKnowledgeInScope.value && !isArchivedView.value
 )
 const visibleItems = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -773,10 +775,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 <template>
   <div class="knowledge-v2-panel">
     <div class="panel-header">
-      <div class="panel-heading">
-        <div class="panel-title">知识库管理</div>
-        <div class="panel-subtitle">统一维护业务术语、SQL 示例、事件参数、JSON 路径和文档知识</div>
-      </div>
       <div class="panel-actions">
         <div class="panel-filters">
           <el-radio-group v-model="archiveFilter" class="knowledge-archive-filter">
@@ -815,9 +813,17 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
         </div>
         <div class="panel-buttons">
           <el-button :icon="Refresh" @click="loadItems">刷新</el-button>
-          <el-button v-if="!isArchivedView" :icon="Search" @click="retrievalPreviewVisible = true">检索预览</el-button>
-          <el-dropdown v-if="!isArchivedView" class="template-download" trigger="click" @command="downloadMarkdownTemplate">
-            <el-button :icon="Download">
+          <span class="panel-action-slot" :class="{ 'is-placeholder': isArchivedView }" :aria-hidden="isArchivedView ? 'true' : undefined">
+            <el-button :icon="Search" :tabindex="isArchivedView ? -1 : undefined" @click="retrievalPreviewVisible = true">检索预览</el-button>
+          </span>
+          <el-dropdown
+            class="template-download panel-action-slot"
+            :class="{ 'is-placeholder': isArchivedView }"
+            :aria-hidden="isArchivedView ? 'true' : undefined"
+            trigger="click"
+            @command="downloadMarkdownTemplate"
+          >
+            <el-button :icon="Download" :tabindex="isArchivedView ? -1 : undefined">
               下载 Markdown 模板
               <el-icon class="template-download-arrow"><ArrowDown /></el-icon>
             </el-button>
@@ -833,7 +839,14 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <el-button v-if="canCreateKnowledge" type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
+          <span
+            v-if="canCreateKnowledgeInScope"
+            class="panel-action-slot"
+            :class="{ 'is-placeholder': !canCreateKnowledge }"
+            :aria-hidden="!canCreateKnowledge ? 'true' : undefined"
+          >
+            <el-button type="primary" :icon="Plus" :tabindex="canCreateKnowledge ? undefined : -1" @click="openCreate">新建知识库</el-button>
+          </span>
         </div>
       </div>
     </div>
@@ -924,15 +937,16 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           </div>
         </template>
       </el-table-column>
-      <el-table-column v-if="!isArchivedView" label="参与检索" width="110">
+      <el-table-column label="参与检索" width="110">
         <template #default="{ row }">
           <el-switch
-            v-if="row.can_manage"
+            v-if="!row.archived && row.can_manage"
             v-model="row.active"
             :disabled="!row.current_version_id || Boolean(rowBusyState(row))"
             :loading="rowBusyState(row) === 'active'"
             @change="updateKnowledgeActive(row, Boolean($event))"
           />
+          <span v-else-if="row.archived" class="muted-text">不可用</span>
           <span v-else>{{ row.active ? '已启用' : '已停用' }}</span>
         </template>
       </el-table-column>
@@ -1095,11 +1109,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 
 <style scoped lang="less">
 .knowledge-v2-panel { height: 100%; padding: 0 0 24px; color: #1f2329; }
-.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
-.panel-heading { flex: 0 1 380px; min-width: 260px; }
-.panel-title { font-size: 16px; font-weight: 600; line-height: 24px; }
-.panel-subtitle { margin-top: 4px; color: #667085; font-size: 13px; line-height: 20px; }
-.panel-actions { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 16px; padding: 8px; border: 1px solid #e4e7ed; border-radius: 8px; background: #f7f8fa; }
+.panel-header { display: flex; width: 100%; margin-bottom: 18px; }
+.panel-actions { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 16px; padding: 8px; border: 1px solid #e4e7ed; border-radius: 8px; background: #f7f8fa; }
 .panel-filters, .panel-buttons { display: flex; align-items: center; gap: 8px; }
 .panel-filters { flex: 0 1 auto; min-width: 0; }
 .knowledge-filter-input { width: 220px; flex: 0 0 220px; }
@@ -1108,6 +1119,8 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .knowledge-archive-filter { flex: 0 0 auto; }
 .panel-buttons { flex: 0 0 auto; }
 .panel-buttons :deep(.ed-button + .ed-button) { margin-left: 0; }
+.panel-action-slot { display: inline-flex; max-width: 100%; }
+.panel-action-slot.is-placeholder { visibility: hidden; pointer-events: none; }
 .template-download { max-width: 100%; }
 .template-download-arrow { margin-left: 6px; }
 .knowledge-v2-table { min-height: 160px; }
@@ -1145,9 +1158,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .history-row { justify-content: space-between; min-height: 36px; border-bottom: 1px solid #f2f4f7; color: #667085; font-size: 12px; }
 .publish-status { margin-top: 12px; color: #1570ef; font-size: 12px; }
 @media (max-width: 1440px) {
-  .panel-header { align-items: flex-start; flex-direction: column; gap: 14px; }
-  .panel-heading { flex-basis: auto; min-width: 0; }
-  .panel-actions { width: 100%; justify-content: space-between; }
+  .panel-actions { justify-content: space-between; }
 }
 @media (max-width: 680px) {
   :global(.knowledge-editor-drawer) { width: 100% !important; max-width: 100%; }

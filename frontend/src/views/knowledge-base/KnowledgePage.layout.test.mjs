@@ -75,6 +75,8 @@ test('knowledge management exposes archived records as read-only and restorable'
   assert.match(panelSource, /archived: isArchivedView\.value/)
   assert.match(panelSource, /<el-radio-button value="current">当前知识<\/el-radio-button>/)
   assert.match(panelSource, /<el-radio-button value="archived">已归档<\/el-radio-button>/)
+  assert.match(panelSource, /const canCreateKnowledgeInScope = computed\(/)
+  assert.match(panelSource, /canCreateKnowledgeInScope\.value && !isArchivedView\.value/)
   assert.match(
     panelSource,
     /const canEdit = computed\(\(\) => !!selected\.value\?\.can_manage && !selected\.value\.archived\)/
@@ -82,27 +84,41 @@ test('knowledge management exposes archived records as read-only and restorable'
   assert.match(panelSource, /version\.status === 'ARCHIVED' && Boolean\(version\.publish_time\)/)
   assert.match(panelSource, /knowledgeBaseApi\.restore\(row\.id\)/)
   assert.match(panelSource, /恢复知识库/)
-  assert.match(panelSource, /v-if="!isArchivedView" :icon="Search"/)
+  assert.match(panelSource, /class="panel-action-slot" :class="\{ 'is-placeholder': isArchivedView \}"/)
+  assert.match(panelSource, /class="template-download panel-action-slot"/)
+  assert.match(panelSource, /v-if="canCreateKnowledgeInScope"/)
+  assert.match(panelSource, /class="panel-action-slot"[\s\S]*?is-placeholder': !canCreateKnowledge/)
   assert.match(panelSource, /knowledgeBaseApi\.setActive\(row\.id, active\)/)
   assert.match(panelSource, /label="参与检索"/)
-  assert.match(panelSource, /:disabled="!row\.current_version_id/)
+  assert.match(panelSource, /v-if="!row\.archived && row\.can_manage"/)
+  assert.match(panelSource, /v-else-if="row\.archived" class="muted-text">不可用/)
+})
+
+test('knowledge archive switching keeps a stable header and table layout', () => {
+  assert.doesNotMatch(panelSource, /class="panel-heading"/)
+  assert.doesNotMatch(panelSource, /class="panel-title"/)
+  assert.doesNotMatch(panelSource, /class="panel-subtitle"/)
+  assert.match(panelSource, /<div class="panel-header">\s*<div class="panel-actions">/)
+  assert.match(panelSource, /<el-table-column label="参与检索" width="110">/)
+  assert.match(panelSource, /\.panel-action-slot\.is-placeholder \{ visibility: hidden; pointer-events: none; \}/)
+  assert.match(panelSource, /\.panel-header \{ display: flex; width: 100%; margin-bottom: 18px; \}/)
 })
 
 test('knowledge lifecycle actions stay in the knowledge-base header before the payload editor', () => {
   const headerIndex = panelSource.indexOf('<div class="knowledge-editor-header">')
   const actionIndex = panelSource.indexOf('class="knowledge-lifecycle-actions"', headerIndex)
-  const headerEndIndex = panelSource.indexOf(
-    '</div>\n        <div v-if="canEdit && draft && payload.knowledge_type === \'DOCUMENT\'" class="source-upload-row">',
+  const sourceUploadIndex = panelSource.indexOf(
+    '<div v-if="canEdit && draft && payload.knowledge_type === \'DOCUMENT\'" class="source-upload-row">',
     headerIndex
   )
   const editorIndex = panelSource.indexOf('<KnowledgePayloadEditor', headerIndex)
 
   assert.ok(headerIndex >= 0, 'knowledge-base header should exist')
   assert.ok(actionIndex > headerIndex, 'lifecycle actions should be grouped inside the header')
-  assert.ok(headerEndIndex > actionIndex, 'lifecycle actions should be inside the header boundary')
+  assert.ok(sourceUploadIndex > actionIndex, 'lifecycle actions should precede source upload content')
   assert.ok(
-    editorIndex > headerEndIndex,
-    'the payload editor should appear after the knowledge-base header'
+    editorIndex > sourceUploadIndex,
+    'the payload editor should appear after source upload content'
   )
   assert.equal(panelSource.match(/class="knowledge-lifecycle-actions"/g)?.length, 2)
   assert.match(
