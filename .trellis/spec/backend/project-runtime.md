@@ -110,6 +110,70 @@ $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($DisableKnowledgeManagementV2) { "fal
 - Test authenticated routes with a real local auth flow or an explicitly prepared test token; do not treat an unauthenticated error as proof that the route's business behavior works.
 - Preserve audit/history records and response error shapes when changing lifecycle, permission, migration, or task behavior.
 
+## Scenario: Reproducible SSR Docker Dependency Build
+
+### 1. Scope / Trigger
+
+- Trigger: changing `g2-ssr` dependencies, the SSR Docker build stage, the Node base image, or the Jenkins Docker image build stage.
+- The SSR dependency layer must remain reproducible and must not wait indefinitely on third-party native binary hosts.
+
+### 2. Signatures
+
+- Dependency manifest: `g2-ssr/package.json`.
+- Required lockfile: `g2-ssr/package-lock.json` with lockfile version 3.
+- Docker install command: `npm_config_build_from_source=true npm ci` with a BuildKit cache mounted at `/root/.npm`.
+- Jenkins stage: `stage('构建 Docker 镜像')` with `timeout(time: 20, unit: 'MINUTES')`.
+
+### 3. Contracts
+
+- Every committed SSR dependency change updates `package.json` and `package-lock.json` together.
+- Docker builds use `npm ci`; do not use `npm install` for the SSR image layer.
+- Native SSR packages compile from source using the development libraries installed in the `ssr-builder` stage. The normal build path must not depend on GitHub Release prebuilt archives.
+- The npm cache is a BuildKit cache only. It is not copied into the runtime image and is not a substitute for the lockfile.
+- The Jenkins timeout is a failure boundary, not a fallback. A timeout must fail the build explicitly.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| `package.json` and lockfile agree | `npm ci --ignore-scripts` succeeds |
+| Lockfile is missing or stale | Build or contract test fails; do not regenerate silently in Docker |
+| Canvas source compilation fails | Docker build fails with the compiler error |
+| npm registry or BuildKit stops making progress | Jenkins terminates the image-build stage within 20 minutes |
+| GitHub Release binary host is unavailable | SSR dependency installation remains on the source-build path |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a cold build resolves the locked registry packages from the npm cache where available, compiles canvas locally, and completes without a GitHub Release download.
+- Base: unchanged dependency inputs reuse the Docker layer cache and skip installation entirely.
+- Bad: `RUN npm install` resolves a new graph and `node-pre-gyp` keeps an established GitHub connection open indefinitely.
+
+### 6. Tests Required
+
+- Assert the SSR Docker section copies `package-lock.json`, mounts `/root/.npm`, sets `npm_config_build_from_source=true`, and runs `npm ci`.
+- Assert the lockfile includes both the direct SSR package graph and the transitive `canvas` package.
+- Assert the Jenkins Docker image stage contains the 20-minute timeout.
+- Run `npm ci --ignore-scripts` with npm 10 to prove manifest and lockfile consistency.
+- When Docker is available, build the `ssr-builder` target to prove the Linux native toolchain remains complete.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dockerfile
+COPY g2-ssr/package.json /app/
+RUN npm install
+```
+
+#### Correct
+
+```dockerfile
+COPY g2-ssr/package.json g2-ssr/package-lock.json /app/
+RUN --mount=type=cache,target=/root/.npm \
+    npm_config_build_from_source=true \
+    npm ci --prefer-offline --no-audit --no-fund
+```
+
 ## Scenario: Frontend And Backend Release Alignment
 
 ### 1. Scope / Trigger

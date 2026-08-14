@@ -11,6 +11,7 @@ learning-docs/
 *-lock.json
 !/backend/uv.lock
 !/frontend/package-lock.json
+!/g2-ssr/package-lock.json
 components.d.ts
 
 # Byte-compiled / optimized / DLL files

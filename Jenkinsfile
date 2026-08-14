@@ -180,6 +180,9 @@ pipeline {
     }
 
     stage('构建 Docker 镜像') {
+      options {
+        timeout(time: 20, unit: 'MINUTES')
+      }
       steps {
         sh '''
           set -eux

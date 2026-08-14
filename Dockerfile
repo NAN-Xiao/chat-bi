@@ -65,9 +65,11 @@ RUN npm config set fund false \
     && npm config set audit false \
     && npm config set progress false
 
-COPY g2-ssr/app.js g2-ssr/package.json /app/
+COPY g2-ssr/app.js g2-ssr/package.json g2-ssr/package-lock.json /app/
 COPY g2-ssr/charts/* /app/charts/
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm_config_build_from_source=true \
+    npm ci --prefer-offline --no-audit --no-fund
 
 # Runtime stage
 FROM ${SHUZHI_RUNTIME_IMAGE}
