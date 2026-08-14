@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from fastapi.responses import JSONResponse
 
 from apps.knowledge_base.api import management
+from apps.knowledge_base.lifecycle_service import KnowledgeRemovalResult
 from apps.knowledge_base.models import KnowledgeBaseVisibilityScopeEnum
 
 
@@ -146,6 +147,51 @@ def test_restore_route_returns_inactive_restored_record(monkeypatch):
     assert response["archived"] is False
     assert response["active"] is False
     assert response["current_version_id"] == 88
+    assert session.commits == 1
+
+
+def test_permanent_delete_route_requires_archived_record_and_reports_file_cleanup(monkeypatch):
+    monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
+    record = SimpleNamespace(
+        id=44,
+        tenant_id=7,
+        name="Archived knowledge",
+        archived=True,
+        visibility_scope="ADMIN_PUBLIC",
+    )
+    monkeypatch.setattr(management, "resolve_record", lambda *_args, **_kwargs: record)
+    monkeypatch.setattr(
+        management,
+        "cleanup_unreferenced_source_files",
+        lambda _session, _file_ids: SimpleNamespace(
+            as_counts=lambda: {"deleted": 1, "missing": 0, "referenced": 0, "failed": 0}
+        ),
+    )
+
+    class _Service:
+        def __init__(self, _repository):
+            pass
+
+        def permanently_delete_archived(self, **kwargs):
+            assert kwargs["tenant_id"] == 7
+            assert kwargs["knowledge_base_id"] == 44
+            return KnowledgeRemovalResult(source_file_ids=("source.md",))
+
+    monkeypatch.setattr(management, "KnowledgeLifecycleService", _Service)
+    session = _Session()
+    response = asyncio.run(
+        management.permanently_delete_knowledge_base(
+            id=44,
+            session=session,
+            current_user=_user(tenant_id=7, role="admin"),
+        )
+    )
+    assert response == {
+        "id": 44,
+        "archived": False,
+        "deleted": True,
+        "file_cleanup": {"deleted": 1, "missing": 0, "referenced": 0, "failed": 0},
+    }
     assert session.commits == 1
 
 

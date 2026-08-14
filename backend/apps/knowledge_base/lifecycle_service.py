@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -38,7 +39,17 @@ class LifecycleRepository(Protocol):
     def mark_validating_if_revision_matches(self, **kwargs): ...
     def set_validation_state_if_revision_matches(self, **kwargs): ...
     def upsert_workspace_override(self, **kwargs): ...
-    def delete_unpublished(self, **kwargs): ...
+    def delete_all(self, **kwargs): ...
+
+
+@dataclass(frozen=True)
+class KnowledgeRemovalResult:
+    archived_record: Any | None = None
+    source_file_ids: tuple[str, ...] = ()
+
+    @property
+    def archived(self) -> bool:
+        return self.archived_record is not None
 
 
 def _status(version: Any) -> str:
@@ -436,16 +447,18 @@ class KnowledgeLifecycleService:
             if _status(active) == KnowledgeVersionStatus.VALIDATING.value:
                 raise self._validating()
             if current_id is None:
-                self.repository.delete_unpublished(record=record)
-                return None
+                return KnowledgeRemovalResult(
+                    source_file_ids=self.repository.delete_all(record=record)
+                )
             # Archiving is an explicit discard boundary for an unpublished draft.
             active.status = KnowledgeVersionStatus.ARCHIVED
             record.draft_version_id = None
         if bool(getattr(record, "archived", False)):
-            return record
+            return KnowledgeRemovalResult(archived_record=record)
         if current_id is None:
-            self.repository.delete_unpublished(record=record)
-            return None
+            return KnowledgeRemovalResult(
+                source_file_ids=self.repository.delete_all(record=record)
+            )
         current = self._load_version(tenant_id, knowledge_base_id, int(current_id))
         current.status = KnowledgeVersionStatus.ARCHIVED
         record.current_version_id = None
@@ -454,7 +467,30 @@ class KnowledgeLifecycleService:
         record.archived = True
         record.active = False
         record.update_by = actor_id
-        return record
+        return KnowledgeRemovalResult(archived_record=record)
+
+    def permanently_delete_archived(
+        self,
+        *,
+        tenant_id: int,
+        knowledge_base_id: int,
+        current_user: Any | None = None,
+    ) -> KnowledgeRemovalResult:
+        record = self.repository.lock_knowledge_base(
+            tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
+        )
+        self.permissions.require_manage(current_user, record)
+        if not bool(getattr(record, "archived", False)):
+            raise KnowledgeBusinessError(
+                code="KNOWLEDGE_PERMANENT_DELETE_REQUIRES_ARCHIVE",
+                message="请先归档知识库，再执行永久删除。",
+                status_code=409,
+                error_type="CONFLICT",
+                suggestion="归档后可在已归档列表中永久删除。",
+            )
+        return KnowledgeRemovalResult(
+            source_file_ids=self.repository.delete_all(record=record)
+        )
 
     def restore(
         self,

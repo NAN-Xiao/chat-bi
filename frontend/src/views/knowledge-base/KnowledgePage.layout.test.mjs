@@ -70,7 +70,7 @@ test('workspace knowledge creation reuses the top workspace filter', () => {
   )
 })
 
-test('knowledge management exposes archived records as read-only and restorable', () => {
+test('knowledge management exposes archived records as restorable or permanently deletable', () => {
   assert.match(panelSource, /const archiveFilter = ref<'current' \| 'archived'>\('current'\)/)
   assert.match(panelSource, /archived: isArchivedView\.value/)
   assert.match(panelSource, /<el-radio-button value="current">当前知识<\/el-radio-button>/)
@@ -88,6 +88,9 @@ test('knowledge management exposes archived records as read-only and restorable'
   assert.match(panelSource, /class="template-download panel-action-slot"/)
   assert.match(panelSource, /v-if="canCreateKnowledgeInScope"/)
   assert.match(panelSource, /class="panel-action-slot"[\s\S]*?is-placeholder': !canCreateKnowledge/)
+  assert.match(panelSource, /knowledgeBaseApi\.permanentDelete\(row\.id\)/)
+  assert.match(panelSource, /永久删除知识库/)
+  assert.match(panelSource, /inputValidator: \(value\) => value === row\.name/)
   assert.match(panelSource, /knowledgeBaseApi\.setActive\(row\.id, active\)/)
   assert.match(panelSource, /label="参与检索"/)
   assert.match(panelSource, /v-if="!row\.archived && row\.can_manage"/)
@@ -125,6 +128,7 @@ test('knowledge lifecycle actions stay in the knowledge-base header before the p
     panelSource,
     /v-if="selected\.archived && selected\.can_manage" class="knowledge-lifecycle-actions"/
   )
+  assert.match(panelSource, /@click="permanentlyDeleteKnowledge\(selected\)">永久删除/)
   assert.match(panelSource, /v-else-if="!selected\.archived" class="knowledge-lifecycle-actions"/)
   assert.match(
     panelSource,

@@ -176,3 +176,69 @@ try {
   return 'CAPABILITIES_UNAVAILABLE'
 }
 ```
+
+## Scenario: Knowledge Base Permanent Deletion And Source Cleanup
+
+### 1. Scope / Trigger
+
+- Trigger: permanently removing archived V2 knowledge bases, deleting never-published knowledge bases, or replacing a draft source file.
+- Archiving remains reversible and retains versions; permanent deletion is the explicit irreversible storage-reclamation boundary.
+
+### 2. Signatures
+
+- Archive or delete never-published knowledge: `DELETE /api/v1/knowledge-base/{id}`.
+- Permanently delete archived knowledge: `DELETE /api/v1/knowledge-base/{id}/permanent`.
+- Removal response: `{ id, archived, deleted, file_cleanup: { deleted, missing, referenced, failed } }`.
+- Source cleanup helper: `cleanup_unreferenced_source_files(session, file_ids)`.
+
+### 3. Contracts
+
+- Permanent deletion requires the existing `require_manage` permission and `knowledge_base.archived = true`.
+- Clear `draft_version_id`, `current_version_id`, and `publishing_version_id` before deleting versions.
+- Delete `knowledge_publish_job` rows before version rows because the publish-job foreign key uses `RESTRICT`.
+- Existing cascades own chunks, applicability rows, source references, semantic object references/resolutions, and workspace overrides.
+- Collect source `file_id` values before database deletion, commit the database transaction, then delete only files with no remaining reference in either `knowledge_base` or `knowledge_base_version`.
+- Missing files count as cleaned. Reference-query or file-system failures retain the file, log the failure, and increment `file_cleanup.failed` without pretending that the committed database deletion rolled back.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Permanent delete targets current knowledge | `409 KNOWLEDGE_PERMANENT_DELETE_REQUIRES_ARCHIVE` |
+| Caller lacks management permission | Existing `KNOWLEDGE_FORBIDDEN` / tenant-safe not-found behavior |
+| Knowledge is publishing or validating during archive | Existing lifecycle conflict; do not delete |
+| Candidate file is still referenced | Retain it and increment `referenced` |
+| Candidate file is already absent | Increment `missing`; do not fail the removal |
+| Reference query or unlink fails after commit | Retain the file, log the error, increment `failed` |
+
+### 5. Good/Base/Bad Cases
+
+- Good: an administrator archives a published knowledge base, confirms permanent deletion, dependent rows cascade away, and only unreferenced source files are removed.
+- Base: two versions share one source file; replacing or deleting one version retains the file until the final database reference disappears.
+- Bad: a route deletes the physical file before commit, bulk-deletes versions before publish jobs, or permanently deletes a current knowledge base without an archived-state check.
+
+### 6. Tests Required
+
+- State-machine test: current knowledge is rejected and archived knowledge returns candidate source file IDs.
+- Repository test: publish-job deletion precedes version deletion and record version pointers are cleared.
+- Cleanup test: unreferenced, referenced, missing, query-failure, and unlink-failure outcomes remain distinct.
+- Upload regression: successful replacement checks the prior `file_id`; parse or revision conflicts clean only the request staging file.
+- API/UI tests: response fields remain aligned, only manageable archived rows expose permanent deletion, and confirmation requires the exact knowledge-base name.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+AppFileUtils.delete_file(version.file_id)
+session.delete(version)
+session.commit()
+```
+
+#### Correct
+
+```python
+candidate_ids = repository.delete_all(record=record)
+session.commit()
+cleanup = cleanup_unreferenced_source_files(session, candidate_ids)
+```

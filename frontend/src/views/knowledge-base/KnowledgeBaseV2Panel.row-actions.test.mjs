@@ -26,6 +26,26 @@ test('row actions render edit, upload, download, and archive in order', () => {
   )
   assert.match(panelSource, /:icon="UploadFilled"[\s\S]*aria-label="上传源文件"/)
   assert.match(panelSource, /:icon="Download"[\s\S]*aria-label="下载源文件"/)
+  assert.match(
+    panelSource,
+    /row\.archived && row\.can_manage[\s\S]*restoreKnowledge\(row\)[\s\S]*permanentlyDeleteKnowledge\(row\)/
+  )
+})
+
+test('permanent delete is limited to archived manageable rows and requires exact-name confirmation', () => {
+  const source = functionSource('permanentlyDeleteKnowledge', 'async function updateKnowledgeActive')
+  assert.match(source, /if \(!row\.archived \|\| !row\.can_manage \|\| rowBusyState\(row\)\) return/)
+  assert.match(source, /ElMessageBox\.prompt/)
+  assert.match(source, /inputValidator: \(value\) => value === row\.name \|\| '知识库名称不匹配'/)
+  assert.match(source, /knowledgeBaseApi\.permanentDelete\(row\.id\)/)
+  assert.match(source, /result\.file_cleanup\.failed > 0/)
+})
+
+test('archive action distinguishes archive from unpublished hard delete cleanup', () => {
+  const source = functionSource('archiveKnowledge', 'async function restoreKnowledge')
+  assert.match(source, /const result = await knowledgeBaseApi\.delete\(row\.id\)/)
+  assert.match(source, /result\.file_cleanup\.failed > 0/)
+  assert.match(source, /result\.archived \? '知识库已归档' : '未发布知识库已删除'/)
 })
 
 test('row upload validates the accepted formats and 50 MB limit', () => {

@@ -18,6 +18,7 @@ from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import (
     ACTIVE_DRAFT_STATUSES,
     KnowledgeBaseVersion,
+    KnowledgePublishJob,
     KnowledgeVersionStatus,
 )
 from apps.knowledge_base.models import KnowledgeBase
@@ -403,7 +404,32 @@ class KnowledgeVersionRepository:
         self.session.flush()
         return override
 
-    def delete_unpublished(self, *, record: KnowledgeBase) -> None:
+    def delete_all(self, *, record: KnowledgeBase) -> tuple[str, ...]:
+        file_ids = {
+            str(file_id)
+            for file_id in self.session.exec(
+                select(KnowledgeBaseVersion.file_id).where(
+                    KnowledgeBaseVersion.knowledge_base_id == record.id,
+                    KnowledgeBaseVersion.tenant_id == record.tenant_id,
+                    KnowledgeBaseVersion.file_id.is_not(None),
+                )
+            ).all()
+            if file_id
+        }
+        if record.file_id:
+            file_ids.add(str(record.file_id))
+
+        record.draft_version_id = None
+        record.current_version_id = None
+        record.publishing_version_id = None
+        self.session.add(record)
+        self.session.flush()
+        self.session.exec(
+            delete(KnowledgePublishJob).where(
+                KnowledgePublishJob.knowledge_base_id == record.id,
+                KnowledgePublishJob.tenant_id == record.tenant_id,
+            )
+        )
         self.session.exec(
             delete(KnowledgeBaseVersion).where(
                 KnowledgeBaseVersion.knowledge_base_id == record.id,
@@ -412,3 +438,4 @@ class KnowledgeVersionRepository:
         )
         self.session.delete(record)
         self.session.flush()
+        return tuple(sorted(file_ids))

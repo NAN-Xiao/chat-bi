@@ -266,3 +266,79 @@ def test_conflicting_source_upload_cleans_only_request_staged_file(monkeypatch, 
     assert response.body.decode("utf-8").startswith('{"code":"KNOWLEDGE_DRAFT_CONFLICT"')
     assert len(deleted) == 1
     assert deleted[0].startswith(".knowledge-stage-")
+
+
+def test_successful_source_upload_reclaims_only_the_previous_file(monkeypatch, tmp_path: Path):
+    version = KnowledgeBaseVersion(
+        id=12,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=1,
+        revision=1,
+        status=KnowledgeVersionStatus.DRAFT,
+        payload={"knowledge_type": "DOCUMENT", "markdown": "旧正文"},
+        file_id="old.md",
+        file_name="old.md",
+        file_ext=".md",
+    )
+    saved = KnowledgeBaseVersion(
+        id=12,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=1,
+        revision=2,
+        status=KnowledgeVersionStatus.DRAFT,
+        payload={"knowledge_type": "DOCUMENT", "markdown": "新正文"},
+        normalized_content="新正文",
+        content_hash="a" * 64,
+        file_id="new.md",
+        file_name="new.md",
+        file_ext=".md",
+    )
+
+    class _Session:
+        def __init__(self):
+            self.commits = 0
+
+        def exec(self, _statement):
+            return _Result(version)
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            return None
+
+    class _Service:
+        def save_draft(self, **_kwargs):
+            return saved
+
+    cleaned = []
+    monkeypatch.setattr(versions, "get_capabilities", lambda _session: SimpleNamespace(
+        phase=KnowledgeMigrationPhase.V2_ACTIVE,
+        management_mode="V2",
+        v2_write_enabled=True,
+    ))
+    monkeypatch.setattr(versions, "resolve_record", lambda *_args, **_kwargs: SimpleNamespace(id=11))
+    monkeypatch.setattr(versions, "record_tenant_id", lambda *_args, **_kwargs: 7)
+    monkeypatch.setattr(versions, "KnowledgeLifecycleService", lambda *_args: _Service())
+    monkeypatch.setattr(versions.settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        versions,
+        "cleanup_unreferenced_source_files",
+        lambda _session, file_ids: cleaned.append(tuple(file_ids)),
+    )
+    session = _Session()
+
+    response = asyncio.run(versions.replace_draft_source_file(
+        id=11,
+        session=session,
+        current_user=SimpleNamespace(id=1),
+        version_id=12,
+        revision=1,
+        file=UploadFile(filename="new.md", file=BytesIO(b"# new")),
+    ))
+
+    assert response["revision"] == 2
+    assert session.commits == 1
+    assert cleaned == [("old.md",)]

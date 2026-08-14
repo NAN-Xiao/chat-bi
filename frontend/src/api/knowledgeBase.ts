@@ -130,6 +130,18 @@ export interface KnowledgeBaseCreatePayload {
   knowledge_type: KnowledgeType
 }
 
+export interface KnowledgeRemovalResult {
+  id: number | string
+  archived: boolean
+  deleted: boolean
+  file_cleanup: {
+    deleted: number
+    missing: number
+    referenced: number
+    failed: number
+  }
+}
+
 const buildFormData = (payload: KnowledgeBaseSavePayload) => {
   const formData = new FormData()
   if (payload.id) formData.append('id', String(payload.id))
@@ -155,7 +167,10 @@ export const knowledgeBaseApi = {
         'Content-Type': 'multipart/form-data',
       },
     }),
-  delete: (id: number | string) => request.delete(`/knowledge-base/${id}`),
+  delete: (id: number | string) =>
+    request.delete<KnowledgeRemovalResult>(`/knowledge-base/${id}`),
+  permanentDelete: (id: number | string) =>
+    request.delete<KnowledgeRemovalResult>(`/knowledge-base/${id}/permanent`),
   restore: (id: number | string) =>
     request.post<KnowledgeBaseItem>(`/knowledge-base/${id}/restore`),
   setActive: (id: number | string, active: boolean) =>

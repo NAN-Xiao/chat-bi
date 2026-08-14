@@ -36,6 +36,7 @@ from apps.knowledge_base.schemas import (
     KnowledgePayloadAdapter,
     document_blocks_from_markdown,
 )
+from apps.knowledge_base.source_file_cleanup import cleanup_unreferenced_source_files
 from apps.knowledge_base.version_repository import (
     KnowledgeVersionRepository,
     SourceFileRef,
@@ -348,6 +349,7 @@ async def replace_draft_source_file(
                 status_code=404,
                 error_type="NOT_FOUND",
             )
+        old_file_id = getattr(version, "file_id", None)
         try:
             extension = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
         except Exception as exc:
@@ -389,6 +391,7 @@ async def replace_draft_source_file(
             ),
         )
         session.commit()
+        cleanup_unreferenced_source_files(session, (old_file_id,))
         return _version_response(saved)
     except KnowledgeBusinessError as error:
         session.rollback()

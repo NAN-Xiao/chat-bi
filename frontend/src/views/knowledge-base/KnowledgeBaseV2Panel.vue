@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ArrowDown,
+  Delete,
   Download,
   FolderDelete,
   Plus,
@@ -53,7 +54,9 @@ const listError = ref(false)
 const saving = ref(false)
 const sourceUploading = ref(false)
 const publishing = ref(false)
-const rowActionBusy = ref<Record<string, 'upload' | 'download' | 'restore' | 'active'>>({})
+type RowAction = 'upload' | 'download' | 'restore' | 'purge' | 'active'
+
+const rowActionBusy = ref<Record<string, RowAction>>({})
 const editorVisible = ref(false)
 const createVisible = ref(false)
 const createSourceFile = ref<File | null>(null)
@@ -417,10 +420,14 @@ async function archiveKnowledge(row: KnowledgeBaseItem) {
     '归档知识库',
     { confirmButtonText: '归档', cancelButtonText: '取消', type: 'warning' }
   )
-  await knowledgeBaseApi.delete(row.id)
+  const result = await knowledgeBaseApi.delete(row.id)
   if (selected.value?.id === row.id) editorVisible.value = false
   await loadItems()
-  ElMessage.success('知识库已归档')
+  if (result.file_cleanup.failed > 0) {
+    ElMessage.warning('未发布知识库已删除，部分源文件清理失败，请联系管理员处理')
+  } else {
+    ElMessage.success(result.archived ? '知识库已归档' : '未发布知识库已删除')
+  }
 }
 
 async function restoreKnowledge(row: KnowledgeBaseItem) {
@@ -436,6 +443,34 @@ async function restoreKnowledge(row: KnowledgeBaseItem) {
     if (selected.value?.id === row.id) editorVisible.value = false
     await loadItems()
     ElMessage.success('知识库已恢复并保持停用')
+  } finally {
+    setRowBusy(row)
+  }
+}
+
+async function permanentlyDeleteKnowledge(row: KnowledgeBaseItem) {
+  if (!row.archived || !row.can_manage || rowBusyState(row)) return
+  await ElMessageBox.prompt(
+    `此操作会永久删除“${row.name}”的全部版本、检索数据和无引用源文件，无法恢复。请输入完整知识库名称确认。`,
+    '永久删除知识库',
+    {
+      confirmButtonText: '永久删除',
+      cancelButtonText: '取消',
+      type: 'error',
+      inputPlaceholder: row.name,
+      inputValidator: (value) => value === row.name || '知识库名称不匹配',
+    }
+  )
+  setRowBusy(row, 'purge')
+  try {
+    const result = await knowledgeBaseApi.permanentDelete(row.id)
+    if (selected.value?.id === row.id) editorVisible.value = false
+    await loadItems()
+    if (result.file_cleanup.failed > 0) {
+      ElMessage.warning('知识库已永久删除，部分源文件清理失败，请联系管理员处理')
+    } else {
+      ElMessage.success('知识库已永久删除')
+    }
   } finally {
     setRowBusy(row)
   }
@@ -493,7 +528,7 @@ function rowBusyState(row: KnowledgeBaseItem) {
   return rowActionBusy.value[String(row.id)]
 }
 
-function setRowBusy(row: KnowledgeBaseItem, action?: 'upload' | 'download' | 'restore' | 'active') {
+function setRowBusy(row: KnowledgeBaseItem, action?: RowAction) {
   const key = String(row.id)
   if (action) rowActionBusy.value[key] = action
   else delete rowActionBusy.value[key]
@@ -895,7 +930,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <el-table-column label="更新时间" width="170">
         <template #default="{ row }">{{ row.update_time || '-' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="340" fixed="right">
         <template #default="{ row }">
           <div class="row-actions">
             <el-button text type="primary" :disabled="Boolean(rowBusyState(row))" @click.stop="openEditor(row)">{{ row.archived || !row.can_manage ? '查看' : '编辑' }}</el-button>
@@ -932,7 +967,10 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
               title="下载源文件"
               @click.stop="downloadRowSource(row)"
             >下载</el-button>
-            <el-button v-if="row.archived && row.can_manage" text type="primary" :icon="RefreshLeft" :loading="rowBusyState(row) === 'restore'" @click.stop="restoreKnowledge(row)">恢复</el-button>
+            <template v-if="row.archived && row.can_manage">
+              <el-button text type="primary" :icon="RefreshLeft" :loading="rowBusyState(row) === 'restore'" :disabled="Boolean(rowBusyState(row)) && rowBusyState(row) !== 'restore'" @click.stop="restoreKnowledge(row)">恢复</el-button>
+              <el-button text type="danger" :icon="Delete" :loading="rowBusyState(row) === 'purge'" :disabled="Boolean(rowBusyState(row)) && rowBusyState(row) !== 'purge'" @click.stop="permanentlyDeleteKnowledge(row)">永久删除</el-button>
+            </template>
             <el-button v-else-if="row.can_manage" text type="danger" :icon="FolderDelete" :disabled="Boolean(rowBusyState(row))" @click.stop="archiveKnowledge(row)">归档</el-button>
           </div>
         </template>
@@ -1031,6 +1069,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           </div>
           <div v-if="selected.archived && selected.can_manage" class="knowledge-lifecycle-actions">
             <el-button type="primary" :icon="RefreshLeft" :loading="rowBusyState(selected) === 'restore'" @click="restoreKnowledge(selected)">恢复知识库</el-button>
+            <el-button type="danger" :icon="Delete" :loading="rowBusyState(selected) === 'purge'" @click="permanentlyDeleteKnowledge(selected)">永久删除</el-button>
           </div>
           <div v-else-if="!selected.archived" class="knowledge-lifecycle-actions">
             <el-button v-if="canEdit && !draft" type="primary" plain :icon="Plus" @click="createEditingDraft">创建草稿</el-button>

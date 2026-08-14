@@ -45,6 +45,7 @@ from apps.knowledge_base.retrieval_models import (
     KnowledgeApplicabilityStatus,
     KnowledgeBaseApplicability,
 )
+from apps.knowledge_base.source_file_cleanup import cleanup_unreferenced_source_files
 from apps.knowledge_base.version_repository import KnowledgeVersionRepository
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.schemas.access_context import current_tenant_id
@@ -567,7 +568,51 @@ async def delete_knowledge_base(
             current_user=current_user,
         )
         session.commit()
-        return {"id": id, "archived": result is not None}
+        cleanup = cleanup_unreferenced_source_files(session, result.source_file_ids)
+        return {
+            "id": id,
+            "archived": result.archived,
+            "deleted": not result.archived,
+            "file_cleanup": cleanup.as_counts(),
+        }
+    except KnowledgeBusinessError as error:
+        session.rollback()
+        return serialize_error(error)
+    except Exception:
+        session.rollback()
+        return unexpected_error()
+
+
+@router.delete("/{id}/permanent")
+async def permanently_delete_knowledge_base(
+    id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    capabilities = get_capabilities(session)
+    from apps.knowledge_base.api._helpers import v2_write_error
+
+    blocked = v2_write_error(capabilities)
+    if blocked is not None:
+        return serialize_error(blocked)
+    try:
+        record = resolve_record(session, knowledge_base_id=id, user=current_user)
+        tenant_id = record_tenant_id(record, current_user)
+        result = KnowledgeLifecycleService(
+            KnowledgeVersionRepository(session)
+        ).permanently_delete_archived(
+            tenant_id=tenant_id,
+            knowledge_base_id=id,
+            current_user=current_user,
+        )
+        session.commit()
+        cleanup = cleanup_unreferenced_source_files(session, result.source_file_ids)
+        return {
+            "id": id,
+            "archived": False,
+            "deleted": True,
+            "file_cleanup": cleanup.as_counts(),
+        }
     except KnowledgeBusinessError as error:
         session.rollback()
         return serialize_error(error)

@@ -161,9 +161,20 @@ class _FakeRepo:
         self.overrides[(kwargs["tenant_id"], kwargs["knowledge_base_id"])] = kwargs
         return SimpleNamespace(**kwargs)
 
-    def delete_unpublished(self, *, record):
+    def delete_all(self, *, record):
+        file_ids = tuple(
+            sorted(
+                {
+                    str(item.file_id)
+                    for item in self.versions.values()
+                    if getattr(item, "file_id", None)
+                }
+                | ({str(record.file_id)} if getattr(record, "file_id", None) else set())
+            )
+        )
         self.versions.clear()
         self.record = None
+        return file_ids
 
 
 def _service(repo):
@@ -540,7 +551,7 @@ def test_unpublished_item_is_deleted_but_published_item_is_archived():
     result = service.archive_or_delete(
         tenant_id=7, knowledge_base_id=11, actor_id=1, current_user=_user()
     )
-    assert result is None
+    assert result.archived is False
     assert repo.record is None
 
     repo = _FakeRepo()
@@ -555,8 +566,8 @@ def test_unpublished_item_is_deleted_but_published_item_is_archived():
         tenant_id=7, knowledge_base_id=11, actor_id=1, current_user=_user()
     )
     assert archived.archived is True
-    assert archived.active is False
-    assert archived.current_version_id is None
+    assert archived.archived_record.active is False
+    assert archived.archived_record.current_version_id is None
     assert current.status == KnowledgeVersionStatus.ARCHIVED
 
 
@@ -586,7 +597,44 @@ def test_archiving_published_item_also_closes_a_normal_draft():
     )
     assert archived.archived is True
     assert draft.status == KnowledgeVersionStatus.ARCHIVED
-    assert archived.draft_version_id is None
+    assert archived.archived_record.draft_version_id is None
+
+
+def test_permanent_delete_requires_archive_and_returns_source_file_ids():
+    repo = _FakeRepo()
+    service = _service(repo)
+    draft = service.create_draft(
+        tenant_id=7, knowledge_base_id=11, payload=_payload(), actor_id=1, current_user=_user()
+    )
+    draft.file_id = "draft.md"
+    with pytest.raises(KnowledgeBusinessError) as caught:
+        service.permanently_delete_archived(
+            tenant_id=7, knowledge_base_id=11, current_user=_user()
+        )
+    assert caught.value.code == "KNOWLEDGE_PERMANENT_DELETE_REQUIRES_ARCHIVE"
+
+    repo.record.archived = True
+    result = service.permanently_delete_archived(
+        tenant_id=7, knowledge_base_id=11, current_user=_user()
+    )
+    assert result.archived is False
+    assert result.source_file_ids == ("draft.md",)
+    assert repo.record is None
+
+
+def test_permanent_delete_uses_existing_management_permission_boundary():
+    repo = _FakeRepo()
+    repo.record.archived = True
+
+    with pytest.raises(KnowledgeBusinessError) as caught:
+        _service(repo).permanently_delete_archived(
+            tenant_id=7,
+            knowledge_base_id=11,
+            current_user=_user(role="member"),
+        )
+
+    assert caught.value.code == "KNOWLEDGE_FORBIDDEN"
+    assert repo.record is not None
 
 
 def test_restore_uses_latest_previously_published_version_and_stays_inactive():
