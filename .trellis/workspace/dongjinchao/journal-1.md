@@ -164,3 +164,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: 修复 Jenkins SSR 构建挂起
+
+**Date**: 2026-08-14
+**Task**: 修复 Jenkins SSR 构建挂起
+**Branch**: `codex/fix-jenkins-ssr-install`
+
+### Summary
+
+锁定 g2-ssr 依赖，改用 npm ci 和 canvas 源码编译，增加 BuildKit npm 缓存、Jenkins 20 分钟超时及构建契约测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e753ec34` | (see git log) |
+
+### Status
+
+[OK] **Completed**
