@@ -3815,8 +3815,9 @@ defineExpose({
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: var(--workspace-panel-bg, var(--theme-panel-bg, #ffffff));
+  background: transparent;
   color: var(--workspace-text-primary, #1f2329);
+  pointer-events: none;
 }
 
 .chart-loading-ring {
