@@ -136,6 +136,7 @@ JSON_FIELD_PARSING_COLUMNS = [
     "field_display_name",
     "field_type",
     "description",
+    "semantic_type",
 ]
 JSON_FIELD_PARSING_HEADER_ALIASES = {
     "来源表": "source_table",
@@ -145,6 +146,7 @@ JSON_FIELD_PARSING_HEADER_ALIASES = {
     "字段显示名": "field_display_name",
     "类型": "field_type",
     "属性说明": "description",
+    "语义类型": "semantic_type",
 }
 JSON_OBSERVED_TYPE_KEY = "json_observed_type"
 EVENT_GROUP_MIN_WIDTHS = {
@@ -173,6 +175,7 @@ JSON_FIELD_PARSING_EXPORT_COLUMN_LABELS = {
     "field_display_name": "字段显示名",
     "field_type": "类型",
     "description": "属性说明",
+    "semantic_type": "语义类型",
 }
 
 EXPORT_COLUMN_LABELS = {
@@ -1602,6 +1605,7 @@ def _merge_json_sheet_field(
     field_item: TenantTrackingFieldBase,
     *,
     row_number: int,
+    semantic_type_explicit: bool,
 ) -> None:
     existing = next(
         (
@@ -1615,17 +1619,23 @@ def _merge_json_sheet_field(
     if existing is None:
         editor.fields.append(field_item)
         return
-    old_signature = (
+    old_source_signature = (
         _text(existing.source_field),
         _normalize_json_path(existing.json_path),
-        _text(existing.semantic_type),
     )
-    new_signature = (
+    new_source_signature = (
         _text(field_item.source_field),
         _normalize_json_path(field_item.json_path),
-        _text(field_item.semantic_type),
     )
-    if old_signature != new_signature:
+    old_semantic_type = _text(existing.semantic_type)
+    new_semantic_type = _text(field_item.semantic_type)
+    semantic_type_matches = (
+        old_semantic_type == new_semantic_type
+        if semantic_type_explicit
+        else _attribute_type_label(old_semantic_type)
+        == _attribute_type_label(new_semantic_type)
+    )
+    if old_source_signature != new_source_signature or not semantic_type_matches:
         raise ValueError(
             f"{JSON_FIELD_PARSING_SHEET} sheet 第 {row_number} 行："
             f"{field_item.table_name}.{field_item.field_name} "
@@ -1685,10 +1695,12 @@ def _parse_json_field_parsing_sheet(
             row_number=row_number,
         )
         observed_type = _text(row.get("field_type"))
+        explicit_semantic_type = _text(row.get("semantic_type"))
         normalized = dict(row)
         normalized["row_type"] = "dictionary_field"
         normalized["semantic_type"] = (
-            "text" if observed_type == "空值" else _semantic_type(observed_type)
+            explicit_semantic_type
+            or ("text" if observed_type == "空值" else _semantic_type(observed_type))
         )
         if observed_type == "空值":
             normalized[JSON_OBSERVED_TYPE_KEY] = observed_type
@@ -1705,6 +1717,7 @@ def _parse_json_field_parsing_sheet(
                 editor,
                 field_item,
                 row_number=row_number,
+                semantic_type_explicit=bool(explicit_semantic_type),
             )
             authoritative_keys.add((field_item.table_name, field_item.field_name))
     return skipped, authoritative_keys
@@ -2733,6 +2746,7 @@ def _json_field_parsing_rows(
                 "field_display_name": _first_alias(field_item),
                 "field_type": _json_field_type_for_export(field_item),
                 "description": _text(field_item.field_comment),
+                "semantic_type": _text(field_item.semantic_type),
             }
         )
     return sorted(
