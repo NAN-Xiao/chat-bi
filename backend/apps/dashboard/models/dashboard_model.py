@@ -381,7 +381,7 @@ class BaseDashboard(BaseModel):
     source: Optional[str] = None
     content_id: Optional[str] = None
     level: int = 0
-    create_by: int = 0
+    create_by: str | None = None
     is_default: Optional[bool] = False
     sort: Optional[int] = 0
 
