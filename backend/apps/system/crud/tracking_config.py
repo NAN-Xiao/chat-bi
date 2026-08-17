@@ -3,6 +3,7 @@
 """
 import copy
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,6 +36,57 @@ from common.utils.time import get_timestamp
 
 TRACKING_EVENT_MAPPING_PROMPT_BUDGET = 16_000
 TRACKING_FIELD_PROMPT_BUDGET = 16_000
+_DATASOURCE_REFERENCE_PATTERN = re.compile(
+    r"\bdatasource[\s_-]*id[`'\"]?\s*(?:=|:|：)\s*[`'\"]?(\d+)\b",
+    flags=re.IGNORECASE,
+)
+_DATASOURCE_KEY_PATTERN = re.compile(r"^datasource[\s_-]*id$", flags=re.IGNORECASE)
+
+
+def _nested_datasource_reference_ids(value: Any):
+    if isinstance(value, str):
+        for match in _DATASOURCE_REFERENCE_PATTERN.finditer(value):
+            yield int(match.group(1))
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str) and _DATASOURCE_KEY_PATTERN.fullmatch(key.strip()):
+                raw_id = str(item).strip() if not isinstance(item, bool) else ""
+                if raw_id.isdigit():
+                    yield int(raw_id)
+            yield from _nested_datasource_reference_ids(key)
+            yield from _nested_datasource_reference_ids(item)
+        return
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            yield from _nested_datasource_reference_ids(item)
+        return
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        yield from _nested_datasource_reference_ids(model_dump(mode="python"))
+
+
+def validate_tracking_datasource_references(
+        config: TenantTrackingConfigDTO | TenantTrackingConfigEditor,
+        datasource_id: int | None,
+) -> None:
+    """校验数据字典正文不能声明当前工作空间之外的数据源。"""
+    referenced_ids = set(_nested_datasource_reference_ids(config))
+    if not referenced_ids:
+        return
+    if datasource_id is None:
+        raise ValueError(
+            "当前工作空间未绑定数据源，数据字典内容不能声明 datasource_id="
+            + ",".join(str(value) for value in sorted(referenced_ids))
+            + "。"
+        )
+    mismatched_ids = referenced_ids - {int(datasource_id)}
+    if mismatched_ids:
+        raise ValueError(
+            "数据字典内容引用的数据源 "
+            + ",".join(str(value) for value in sorted(mismatched_ids))
+            + f" 与当前数据源 {int(datasource_id)} 不一致。"
+        )
 
 
 def validate_tracking_event_groups(
@@ -736,6 +788,10 @@ def get_tracking_config(
     dto.event_groups = [_event_group_dto(row) for row in event_groups]
     if dto.datasource_id is None and datasource_id is not None and (config is None or include_legacy):
         dto.datasource_id = int(datasource_id)
+    validate_tracking_datasource_references(
+        dto,
+        datasource_id if datasource_id is not None else dto.datasource_id,
+    )
     return dto
 
 
@@ -752,6 +808,7 @@ def save_tracking_config(
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：创建或保存系统管理需要的东西，让后续流程能继续往下走。
     """
+    validate_tracking_datasource_references(editor, datasource_id)
     requested_event_groups = list(editor.event_groups or [])
     if requested_event_groups and datasource_id is None:
         raise ValueError("事件分组必须在工作空间已绑定数据源后保存。")

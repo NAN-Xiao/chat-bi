@@ -1,13 +1,14 @@
 """
 脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
+import json
 import re
 from enum import Enum
 from typing import Any
 
 import sqlglot
-from sqlglot import exp
 from sqlalchemy import and_
+from sqlglot import exp
 
 from apps.datasource.crud.permission import (
     get_column_permission_scope,
@@ -15,9 +16,13 @@ from apps.datasource.crud.permission import (
     get_user_scoped_table_ids,
     is_normal_user,
 )
-from apps.datasource.crud.permission_errors import SqlPermissionScopeError, SqlSchemaScopeError
+from apps.datasource.crud.permission_errors import (
+    SqlPermissionScopeError,
+    SqlSchemaScopeError,
+)
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
-from apps.db.db import get_sqlglot_dialect
+from apps.datasource.utils.utils import aes_decrypt
+from apps.db.db import get_sqlglot_dialect, normalize_sql_safety_ds_type
 from common.core.deps import CurrentUser, SessionDep
 from common.sql_json_paths import extract_json_accesses, json_paths_intersect
 
@@ -54,13 +59,7 @@ def parse_sql_statements(
     return statements
 
 
-def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
-    """
-    是什么：extract_physical_tables 是一个可以复用的小步骤，负责数据源相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
-    """
-    tables: set[str] = set()
+def _physical_table_nodes(statements: list[exp.Expression]):
     for stmt in statements:
         cte_names = {
             normalize_identifier(cte.alias_or_name)
@@ -75,8 +74,75 @@ def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
                 and not normalize_identifier(table.catalog)
             )
             if table_name and not is_unqualified_cte_reference:
-                tables.add(table_name)
+                yield table
+
+
+def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
+    """
+    是什么：extract_physical_tables 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
+    """
+    tables: set[str] = set()
+    for table in _physical_table_nodes(statements):
+        tables.add(normalize_identifier(table.name))
     return tables
+
+
+def _datasource_relation_namespaces(datasource: CoreDatasource) -> tuple[set[str], set[str]]:
+    """返回当前连接允许的 catalog 和 schema/database 限定名。"""
+    try:
+        configuration = json.loads(aes_decrypt(getattr(datasource, "configuration", None)) or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SqlSchemaScopeError("当前数据源连接配置无效，无法校验 SQL 库或 Schema 限定名。") from exc
+
+    database = normalize_identifier(configuration.get("database"))
+    schema = normalize_identifier(configuration.get("dbSchema"))
+    username = normalize_identifier(configuration.get("username"))
+    ds_type = normalize_sql_safety_ds_type(getattr(datasource, "type", None))
+
+    if ds_type in {"mysql", "doris", "starrocks", "ck", "hive"}:
+        return set(), {database} - {""}
+    if ds_type in {"pg", "redshift", "kingbase", "excel"}:
+        return set(), {schema or "public"}
+    if ds_type == "sqlserver":
+        return {database} - {""}, {schema or "dbo"}
+    if ds_type == "oracle":
+        return set(), {schema or username} - {""}
+
+    return set(), ({schema, database} - {""})
+
+
+def validate_sql_relation_namespaces(
+        statements: list[exp.Expression],
+        datasource: CoreDatasource,
+) -> None:
+    """阻止 SQL 通过限定库名绕过当前数据源的 Schema 与权限边界。"""
+    qualified_tables = [
+        table
+        for table in _physical_table_nodes(statements)
+        if normalize_identifier(table.db) or normalize_identifier(table.catalog)
+    ]
+    if not qualified_tables:
+        return
+
+    allowed_catalogs, allowed_databases = _datasource_relation_namespaces(datasource)
+    violations: set[str] = set()
+    for table in qualified_tables:
+        catalog = normalize_identifier(table.catalog)
+        database = normalize_identifier(table.db)
+        table_name = normalize_identifier(table.name)
+        if (catalog and catalog not in allowed_catalogs) or (
+            database and database not in allowed_databases
+        ):
+            qualified_name = ".".join(part for part in (catalog, database, table_name) if part)
+            violations.add(qualified_name)
+
+    if violations:
+        raise SqlSchemaScopeError(
+            "SQL 引用了当前数据源之外的库或 Schema：" + ", ".join(sorted(violations)),
+            tables=violations,
+        )
 
 
 def build_permission_scope(
@@ -93,7 +159,7 @@ def build_permission_scope(
     做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     tables = session.query(CoreTable).filter(
-        and_(CoreTable.ds_id == datasource.id, CoreTable.checked == True)
+        and_(CoreTable.ds_id == datasource.id, CoreTable.checked.is_(True))
     ).all()
     table_ids = [table.id for table in tables]
     fields_by_table: dict[int, list[CoreField]] = {}
@@ -794,6 +860,7 @@ def validate_sql_scope(
     做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     statements = parse_sql_statements(sql, datasource.type)
+    validate_sql_relation_namespaces(statements, datasource)
     actual_tables = extract_physical_tables(statements)
     if not actual_tables:
         raise ValueError("SQL 解析失败，无法确认查询表范围")
@@ -833,6 +900,7 @@ def validate_sql_table_scope(
     做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     statements = parse_sql_statements(sql, datasource.type, fallback_to_generic=True)
+    validate_sql_relation_namespaces(statements, datasource)
     actual_tables = extract_physical_tables(statements)
     if not actual_tables:
         if allow_empty_tables:
