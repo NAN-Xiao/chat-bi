@@ -48,7 +48,7 @@ test('archive action distinguishes archive from unpublished hard delete cleanup'
   assert.match(source, /result\.archived \? '知识库已归档' : '未发布知识库已删除'/)
 })
 
-test('row upload validates the Markdown template contract and 50 MB limit', () => {
+test('row upload validates the Markdown document contract and 50 MB limit', () => {
   assert.match(panelSource, /accept="\.md,\.markdown"/)
   assert.match(panelSource, /await parseKnowledgeMarkdownFile\(file\)/)
   assert.match(panelSource, /file\.size > 50 \* 1024 \* 1024/)

@@ -8,7 +8,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from apps.knowledge_base.markdown_template import parse_knowledge_markdown_file
+from apps.knowledge_base.markdown_template import (
+    advance_markdown_fence,
+    parse_knowledge_markdown_file,
+)
 from apps.knowledge_base.normalizers import normalize_markdown, standardized_content
 from apps.knowledge_base.schemas import DocumentPayload, KnowledgePayload
 from common.core.config import settings
@@ -21,6 +24,7 @@ class ParsedKnowledge:
     normalized_content: str
     source_format: str
     sections: tuple[tuple[str, str], ...]
+    parser_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,7 @@ def parse_and_normalize_version(
     if payload is not None:
         content = standardized_content(payload, scope=scope)
         source_format = "payload"
+        parser_version = None
     else:
         if source is None:
             raise ValueError("知识源不能为空。")
@@ -51,14 +56,17 @@ def parse_and_normalize_version(
         extension = (file_ext or path.suffix).lower()
         if extension not in {".md", ".markdown"}:
             raise ValueError(f"不支持的知识源格式: {extension}")
-        content = parse_knowledge_markdown_file(path).markdown
+        parsed_markdown = parse_knowledge_markdown_file(path)
+        content = parsed_markdown.markdown
         source_format = "markdown"
+        parser_version = parsed_markdown.parser_version
         content = normalize_markdown(content)
     sections = tuple(_split_sections(content))
     return ParsedKnowledge(
         normalized_content=content,
         source_format=source_format,
         sections=sections,
+        parser_version=parser_version,
     )
 
 
@@ -126,7 +134,7 @@ def _split_sections(content: str) -> Iterable[tuple[str, str]]:
     heading_stack: list[str] = []
     section_lines: list[str] = []
     section_path = "正文"
-    fenced = False
+    active_fence: str | None = None
 
     def flush() -> tuple[str, str] | None:
         text = normalize_markdown("\n".join(section_lines))
@@ -136,7 +144,13 @@ def _split_sections(content: str) -> Iterable[tuple[str, str]]:
         return section_path, text
 
     for line in lines:
-        match = None if fenced else _HEADING.match(line)
+        previous_fence = active_fence
+        active_fence = advance_markdown_fence(line, active_fence)
+        match = (
+            _HEADING.match(line)
+            if previous_fence is None and active_fence is None
+            else None
+        )
         if match:
             previous = flush()
             if previous:
@@ -148,8 +162,6 @@ def _split_sections(content: str) -> Iterable[tuple[str, str]]:
             section_lines = [line]
         else:
             section_lines.append(line)
-        if re.match(r"^\s*(```|~~~)", line):
-            fenced = not fenced
     previous = flush()
     if previous:
         yield previous

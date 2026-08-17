@@ -7,23 +7,14 @@ from pathlib import Path
 import pytest
 
 from apps.knowledge_base.chunking import chunk_knowledge, parse_and_normalize_version
-from apps.knowledge_base.schemas import DocumentPayload
-
-
-def _template(markdown: str) -> str:
-    return (
-        "---\n"
-        "template_type: knowledge_document\n"
-        "template_version: 1\n"
-        "---\n"
-        f"{markdown.strip()}\n"
-    )
+from apps.knowledge_base.markdown_template import KNOWLEDGE_MARKDOWN_PARSER_VERSION
+from apps.knowledge_base.schemas import DocumentPayload, document_blocks_from_markdown
 
 
 def test_same_document_has_stable_normalized_content_and_chunks(tmp_path: Path):
     source = tmp_path / "knowledge.md"
     source.write_text(
-        _template("# 收入\n\n订单收入说明\n\n## SQL\n\n```sql\nselect sum(amount) from orders\n```"),
+        "# 收入\n\n订单收入说明\n\n## SQL\n\n```sql\nselect sum(amount) from orders\n```\n",
         encoding="utf-8",
     )
     first = parse_and_normalize_version(source)
@@ -31,7 +22,7 @@ def test_same_document_has_stable_normalized_content_and_chunks(tmp_path: Path):
     first_chunks = chunk_knowledge(source=source, chunk_size=40, overlap=8)
     second_chunks = chunk_knowledge(source=source, chunk_size=40, overlap=8)
     assert first.normalized_content == second.normalized_content
-    assert "template_type" not in first.normalized_content
+    assert first.parser_version == KNOWLEDGE_MARKDOWN_PARSER_VERSION == "markdown-v1"
     assert [(item.section_path, item.content_hash) for item in first_chunks] == [
         (item.section_path, item.content_hash) for item in second_chunks
     ]
@@ -73,6 +64,23 @@ def test_fenced_sql_comments_are_not_treated_as_headings():
     parsed = parse_and_normalize_version(payload=payload)
     assert sum("# keep this SQL comment" in content for _, content in parsed.sections) == 1
     assert all(path != "keep this SQL comment" for path, _ in parsed.sections)
+
+
+def test_different_fence_marker_inside_code_is_not_treated_as_a_close(tmp_path: Path):
+    source = tmp_path / "nested-fence-example.md"
+    source.write_text(
+        "# 标题\n\n## 章节\n\n```markdown\n~~~\n## 代码中的伪章节\n~~~\n```\n",
+        encoding="utf-8",
+    )
+
+    parsed = parse_and_normalize_version(source)
+    blocks = document_blocks_from_markdown(parsed.normalized_content)
+
+    assert any("## 代码中的伪章节" in content for _, content in parsed.sections)
+    assert all(path != "标题 / 代码中的伪章节" for path, _ in parsed.sections)
+    assert len(blocks) == 1
+    assert blocks[0]["title"] == "章节"
+    assert "## 代码中的伪章节" in blocks[0]["markdown"]
 
 
 @pytest.mark.parametrize("extension", [".docx", ".xlsx", ".txt"])

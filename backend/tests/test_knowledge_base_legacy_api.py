@@ -126,10 +126,10 @@ def test_knowledge_v2_management_accepts_explicit_disable(monkeypatch) -> None:
     ("filename", "content"),
     [
         ("legacy.docx", b"not markdown"),
-        ("legacy.md", b"# missing template marker"),
+        ("legacy.md", b"# missing second-level heading"),
     ],
 )
-def test_legacy_upload_rejects_non_template_files_before_writing(
+def test_legacy_upload_rejects_invalid_markdown_before_writing(
     monkeypatch,
     tmp_path,
     filename,

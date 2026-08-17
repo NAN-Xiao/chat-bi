@@ -200,20 +200,15 @@ inactive, and require the separate active endpoint before retrieval can use it.
 ### 2. Signatures
 - Create request: `POST /api/v1/knowledge-base/create` accepts name, description, visibility scope, and optional tenant context; `knowledge_type` is forbidden.
 - V2 replacement: `POST /api/v1/knowledge-base/{id}/draft/file` accepts `version_id`, `revision`, and one `.md` or `.markdown` file.
-- Template marker:
-  ```yaml
-  ---
-  template_type: knowledge_document
-  template_version: 1
-  ---
-  ```
+- Server-owned parser version: `markdown-v1`, persisted to `knowledge_base_version.parser_version` after a successful V2 source replacement.
 
 ### 3. Contracts
 - Public management APIs expose one ordinary-document model; `DOCUMENT` remains only as the fixed database and version-payload marker.
-- Uploaded source files must use `.md` or `.markdown`, strict UTF-8 (BOM allowed), and front matter containing exactly the supported contract values `template_type: knowledge_document` and `template_version: 1`.
-- The Markdown body starts with a non-empty H1, contains at least one non-empty H2 and meaningful body text, and has no unclosed fenced code block.
-- Front matter is stripped before converting the Markdown body to document blocks and never enters retrieval content.
-- Validation errors return a message beginning with `格式错误`; V2 uses error code `KNOWLEDGE_TEMPLATE_FORMAT_INVALID`.
+- Uploaded source files must use `.md` or `.markdown` and strict UTF-8 (BOM allowed). They are pure Markdown and must not require or generate `template_type`, `template_version`, or other platform metadata.
+- The document starts with a non-empty H1, contains at least one non-empty H2 and meaningful body text, and has no unclosed fenced code block.
+- Headings inside fenced code never satisfy the H2 contract or create document blocks. A fence closes only with the same marker character and at least the opening marker length, so a `~~~` example inside a backtick fence cannot alter section parsing.
+- Parser identity is server-owned. The client and Markdown content cannot select or override it; successful V2 replacement carries `markdown-v1` through `SourceFileRef.parser_version` into the version row.
+- Validation errors return a message beginning with `格式错误`; V2 uses error code `KNOWLEDGE_MARKDOWN_FORMAT_INVALID`.
 - Validation and parsing complete before draft CAS. Failure preserves the current payload, source reference, block structure, and revision and removes only the request's staged file.
 - Legacy replacement commits the new database reference before checking and deleting an unreferenced old source. If commit fails, delete the newly uploaded file and retain the old source.
 
@@ -223,18 +218,18 @@ inactive, and require the separate active endpoint before retrieval can use it.
 | --- | --- |
 | `.docx`, `.xlsx`, or another extension | `422`; message starts with `格式错误`; no draft mutation |
 | Invalid UTF-8 | `422`; message starts with `格式错误` and identifies UTF-8 |
-| Missing, malformed, duplicate, or wrong marker | `422`; V2 code is `KNOWLEDGE_TEMPLATE_FORMAT_INVALID` |
-| Unsupported template version | Reject; do not silently upgrade or downgrade |
 | Missing H1, H2, meaningful body, or closing fence | Reject before draft CAS |
-| Valid UTF-8 or UTF-8 BOM template | Strip front matter, replace document blocks, then advance revision |
+| Valid pure Markdown with UTF-8 or UTF-8 BOM | Replace document blocks, persist `markdown-v1`, then advance revision |
 
 ### 5. Good/Base/Bad Cases
-- Good: a downloaded template is filled in, uploaded, converted to ordinary document blocks, and published without storing front matter in retrieval content.
-- Base: UTF-8 BOM and CRLF line endings are normalized and accepted under the same versioned contract.
-- Bad: a client bypasses frontend validation with an Office file, duplicate YAML key, unknown version, or incomplete Markdown; the backend rejects it without changing payload, revision, or source reference.
+- Good: a downloaded content template or independently authored pure Markdown document is uploaded, converted to ordinary document blocks, and tagged with the server parser version.
+- Base: UTF-8 BOM and CRLF line endings are normalized and accepted under the same structure contract.
+- Bad: a client bypasses frontend validation with an Office file or incomplete Markdown; the backend rejects it without changing payload, revision, or source reference.
 
 ### 6. Tests Required
-- Backend and frontend contract tests cover UTF-8 BOM, invalid UTF-8, missing/wrong markers, unsupported versions, missing headings/body, and unclosed fences.
+- Backend and frontend contract tests cover pure Markdown, UTF-8 BOM, invalid UTF-8, missing headings/body, and unclosed fences.
+- Mixed-marker fence tests cover validation, section splitting, and document-block conversion so front/back behavior cannot drift.
+- V2 upload tests assert the server parser version reaches `SourceFileRef` and is persisted to `knowledge_base_version.parser_version`.
 - Upload regressions assert invalid input cannot reach draft save, cannot change revision or source state, and leaves no staged file.
 - UI source-upload tests cover create, row, and editor replacement entrances and assert no Word/Excel claim remains in any locale.
 
@@ -242,13 +237,16 @@ inactive, and require the separate active endpoint before retrieval can use it.
 
 #### Wrong
 ```python
-text = uploaded_bytes.decode("utf-8", errors="replace")
-save_draft(parse_any_supported_office_or_markdown(text))
+metadata, markdown = parse_front_matter(uploaded_bytes)
+if metadata["template_type"] != "knowledge_document":
+    raise ValueError("wrong template")
+save_draft(parser_version=str(metadata["template_version"]))
 ```
 
 #### Correct
 ```python
 parsed = parse_knowledge_markdown_bytes(uploaded_bytes)
 payload = payload.model_copy(update={"blocks": document_blocks_from_markdown(parsed.markdown)})
-save_draft(payload)
+source_file = SourceFileRef(file_id=file_id, parser_version=parsed.parser_version)
+save_draft(payload=payload, source_file=source_file)
 ```

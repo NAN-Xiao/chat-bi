@@ -8,7 +8,8 @@ import {
 } from '../src/views/knowledge-base/knowledgeMarkdownTemplates.ts'
 import {
   KnowledgeMarkdownFormatError,
-  parseKnowledgeMarkdownTemplate,
+  parseKnowledgeMarkdown,
+  parseKnowledgeMarkdownFile,
 } from '../src/views/knowledge-base/knowledgeMarkdownFormat.ts'
 
 test('提供四类标题切片友好的 Markdown 模板', () => {
@@ -27,12 +28,10 @@ test('提供四类标题切片友好的 Markdown 模板', () => {
   )
 
   for (const template of knowledgeMarkdownTemplates) {
-    const parsed = parseKnowledgeMarkdownTemplate(template.content)
-    assert.equal(parsed.templateType, 'knowledge_document')
-    assert.equal(parsed.templateVersion, 1)
-    assert.doesNotMatch(parsed.markdown, /template_type|template_version/)
-    assert.match(template.content, /^---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n/)
-    assert.match(template.content, /^#\s+\S/m)
+    const parsed = parseKnowledgeMarkdown(template.content)
+    assert.equal(parsed.markdown, template.content)
+    assert.doesNotMatch(template.content, /template_type|template_version/)
+    assert.match(template.content, /^#\s+\S/)
     assert.match(template.content, /^##\s+\S/m)
     assert.match(template.content, /填写提示/)
     assert.match(template.content, /请替换/)
@@ -47,20 +46,41 @@ test('提供四类标题切片友好的 Markdown 模板', () => {
   assert.match(businessTemplate.content, /```sql[\s\S]+```/)
 })
 
-test('严格拒绝缺少模板标记、未知版本和不完整 Markdown', () => {
+test('接受无平台元数据的纯 Markdown，并严格拒绝结构不完整的文档', () => {
+  assert.deepEqual(
+    parseKnowledgeMarkdown('\uFEFF# 标题\r\n\r\n## 章节\r\n\r\n正文'),
+    { markdown: '# 标题\n\n## 章节\n\n正文\n' }
+  )
+
   for (const source of [
-    '# 标题\n\n## 章节\n正文',
-    '---\ntemplate_type: bad\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n# 标题\n## 章节\n正文',
-    '---\ntemplate_type: knowledge_document\ntemplate_version: 2\n---\n# 标题\n## 章节\n正文',
-    '---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n## 缺少一级标题\n正文',
-    '---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n# 标题\n正文',
-    '---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n# 标题\n## 章节\n```sql\nselect 1',
+    '## 缺少一级标题\n正文',
+    '# 标题\n正文',
+    '# 标题\n## 章节',
+    '# 标题\n```markdown\n## 代码中的伪章节\n正文\n```',
+    '# 标题\n## 章节\n```sql\nselect 1',
+    '---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n# 标题\n## 章节\n正文',
   ]) {
     assert.throws(
-      () => parseKnowledgeMarkdownTemplate(source),
+      () => parseKnowledgeMarkdown(source),
       (error) => error instanceof KnowledgeMarkdownFormatError && error.message.startsWith('格式错误')
     )
   }
+})
+
+test('文件上传预检与后端保持 UTF-8、扩展名和混合围栏契约一致', async () => {
+  const valid = new File([
+    '# 标题\r\n\r\n## 章节\r\n\r\n```markdown\r\n~~~\r\n## 代码中的伪章节\r\n~~~\r\n```',
+  ], 'knowledge.markdown', { type: 'text/markdown' })
+  assert.match((await parseKnowledgeMarkdownFile(valid)).markdown, /## 代码中的伪章节/)
+
+  await assert.rejects(
+    parseKnowledgeMarkdownFile(new File([Uint8Array.of(0xff)], 'invalid.md')),
+    (error) => error instanceof KnowledgeMarkdownFormatError && /UTF-8/.test(error.message)
+  )
+  await assert.rejects(
+    parseKnowledgeMarkdownFile(new File(['# 标题\n## 章节\n正文'], 'invalid.txt')),
+    (error) => error instanceof KnowledgeMarkdownFormatError && error.message.startsWith('格式错误')
+  )
 })
 
 test('下载函数使用所选模板的 UTF-8 Markdown 内容和文件名', async () => {

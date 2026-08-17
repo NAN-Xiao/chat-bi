@@ -26,19 +26,20 @@ test('V2 create and edit flows expose the source upload control', () => {
   assert.doesNotMatch(panelSource, /\.docx|\.xlsx|Word|Excel/)
 })
 
-test('legacy and V2 upload selectors use the same strict Markdown contract', () => {
+test('legacy and V2 upload selectors use the same Markdown document contract', () => {
   assert.match(legacySource, /accept="\.md,\.markdown"/)
   assert.match(legacySource, /parseKnowledgeMarkdownFile\(rawFile\)/)
   assert.doesNotMatch(legacySource, /\.docx|\.xlsx/)
 })
 
-test('all knowledge upload locales describe only the strict Markdown format', () => {
+test('all knowledge upload locales describe only Markdown without requiring a template marker', () => {
   for (const { locale, messages } of localeFiles) {
     const knowledgeMessages = messages.knowledge_base
     for (const key of ['upload_tip', 'upload_invalid_type', 'file_required']) {
       const message = String(knowledgeMessages[key])
       assert.match(message, /Markdown|\.md/, `${locale}.${key} must name Markdown`)
       assert.doesNotMatch(message, /Word|Excel|\.docx|\.xlsx/i, `${locale}.${key} must not advertise Office files`)
+      assert.doesNotMatch(message, /downloaded template|下载模板|下載模板|다운로드한 템플릿/i)
     }
   }
 })

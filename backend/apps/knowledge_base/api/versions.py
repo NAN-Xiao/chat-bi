@@ -355,11 +355,11 @@ async def replace_draft_source_file(
             extension = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
         except Exception as exc:
             raise KnowledgeBusinessError(
-                code="KNOWLEDGE_TEMPLATE_FORMAT_INVALID",
-                message="格式错误：仅支持 .md 或 .markdown 模板文件。",
+                code="KNOWLEDGE_MARKDOWN_FORMAT_INVALID",
+                message="格式错误：仅支持 .md 或 .markdown 文件。",
                 status_code=422,
                 error_type="VALIDATION",
-                suggestion="请下载并使用 Markdown 模板。",
+                suggestion="请上传符合要求的 Markdown 文档。",
             ) from exc
         staged_file_id = f".knowledge-stage-{uuid.uuid4().hex}{extension}"
         staged_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, staged_file_id)
@@ -388,6 +388,7 @@ async def replace_draft_source_file(
                 file_id=staged_file_id,
                 file_name=Path(file.filename or staged_file_id).name,
                 file_ext=extension,
+                parser_version=parsed.parser_version,
             ),
         )
         session.commit()
@@ -403,11 +404,11 @@ async def replace_draft_source_file(
         if staged_file_id:
             AppFileUtils.delete_file(staged_file_id)
         return serialize_error(KnowledgeBusinessError(
-            code="KNOWLEDGE_TEMPLATE_FORMAT_INVALID",
+            code="KNOWLEDGE_MARKDOWN_FORMAT_INVALID",
             message=str(error),
             status_code=422,
             error_type="VALIDATION",
-            suggestion="请重新下载 Markdown 模板并按模板填写。",
+            suggestion="请检查 Markdown 标题、正文和代码块结构后重试。",
         ))
     except ValueError as error:
         session.rollback()

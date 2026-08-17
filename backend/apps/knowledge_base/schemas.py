@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
+from apps.knowledge_base.markdown_template import advance_markdown_fence
 
 ObjectType = Literal["SCHEMA", "TABLE", "FIELD", "JSON_PATH", "EVENT", "EVENT_PROPERTY"]
 
@@ -137,9 +138,15 @@ def document_blocks_from_markdown(markdown: str, *, legacy: bool = False) -> lis
     sections: list[tuple[str, list[str]]] = []
     title = "正文"
     lines: list[str] = []
-    fenced = False
+    active_fence: str | None = None
     for line in text.splitlines():
-        match = None if fenced else _DOCUMENT_HEADING.match(line)
+        previous_fence = active_fence
+        active_fence = advance_markdown_fence(line, active_fence)
+        match = (
+            _DOCUMENT_HEADING.match(line)
+            if previous_fence is None and active_fence is None
+            else None
+        )
         if match:
             if lines and any(item.strip() for item in lines):
                 sections.append((title, lines))
@@ -147,8 +154,6 @@ def document_blocks_from_markdown(markdown: str, *, legacy: bool = False) -> lis
             lines = []
         else:
             lines.append(line)
-        if re.match(r"^\s*(```|~~~)", line):
-            fenced = not fenced
     if lines and any(item.strip() for item in lines):
         sections.append((title, lines))
     if not sections:

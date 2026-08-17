@@ -1,13 +1,7 @@
-import { parse } from 'yaml'
-
-export const KNOWLEDGE_MARKDOWN_TEMPLATE_TYPE = 'knowledge_document'
-export const KNOWLEDGE_MARKDOWN_TEMPLATE_VERSION = 1
-export const KNOWLEDGE_MARKDOWN_FORMAT_ERROR = '格式错误：请使用下载的 Markdown 模板上传。'
+export const KNOWLEDGE_MARKDOWN_FORMAT_ERROR = '格式错误：请上传符合要求的 Markdown 文档。'
 
 export interface ParsedKnowledgeMarkdown {
   markdown: string
-  templateType: typeof KNOWLEDGE_MARKDOWN_TEMPLATE_TYPE
-  templateVersion: typeof KNOWLEDGE_MARKDOWN_TEMPLATE_VERSION
 }
 
 export class KnowledgeMarkdownFormatError extends Error {
@@ -17,18 +11,8 @@ export class KnowledgeMarkdownFormatError extends Error {
   }
 }
 
-export function knowledgeMarkdownFrontMatter(): string {
-  return [
-    '---',
-    `template_type: ${KNOWLEDGE_MARKDOWN_TEMPLATE_TYPE}`,
-    `template_version: ${KNOWLEDGE_MARKDOWN_TEMPLATE_VERSION}`,
-    '---',
-    '',
-  ].join('\n')
-}
-
 export function knowledgeMarkdownTemplateContent(markdown: string): string {
-  return `${knowledgeMarkdownFrontMatter()}${markdown.trim()}\n`
+  return `${markdown.trim()}\n`
 }
 
 export function isKnowledgeMarkdownFileName(fileName: string): boolean {
@@ -36,38 +20,11 @@ export function isKnowledgeMarkdownFileName(fileName: string): boolean {
   return normalized.endsWith('.md') || normalized.endsWith('.markdown')
 }
 
-export function parseKnowledgeMarkdownTemplate(source: string): ParsedKnowledgeMarkdown {
+export function parseKnowledgeMarkdown(source: string): ParsedKnowledgeMarkdown {
   const normalized = source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
-  if (!normalized.startsWith('---\n')) throw new KnowledgeMarkdownFormatError('缺少模板标记。')
-
-  const frontMatterEnd = normalized.indexOf('\n---\n', 4)
-  if (frontMatterEnd < 0) throw new KnowledgeMarkdownFormatError('模板标记未闭合。')
-
-  let metadata: unknown
-  try {
-    metadata = parse(normalized.slice(4, frontMatterEnd))
-  } catch {
-    throw new KnowledgeMarkdownFormatError('模板标记无效。')
-  }
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    throw new KnowledgeMarkdownFormatError('模板标记无效。')
-  }
-
-  const values = metadata as Record<string, unknown>
-  if (values.template_type !== KNOWLEDGE_MARKDOWN_TEMPLATE_TYPE) {
-    throw new KnowledgeMarkdownFormatError('模板类型不正确。')
-  }
-  if (values.template_version !== KNOWLEDGE_MARKDOWN_TEMPLATE_VERSION) {
-    throw new KnowledgeMarkdownFormatError('模板版本不支持。')
-  }
-
-  const markdown = normalized.slice(frontMatterEnd + 5).trim()
+  const markdown = normalized.trim()
   validateMarkdownStructure(markdown)
-  return {
-    markdown: `${markdown}\n`,
-    templateType: KNOWLEDGE_MARKDOWN_TEMPLATE_TYPE,
-    templateVersion: KNOWLEDGE_MARKDOWN_TEMPLATE_VERSION,
-  }
+  return { markdown: `${markdown}\n` }
 }
 
 export async function parseKnowledgeMarkdownFile(file: File): Promise<ParsedKnowledgeMarkdown> {
@@ -80,7 +37,7 @@ export async function parseKnowledgeMarkdownFile(file: File): Promise<ParsedKnow
   } catch {
     throw new KnowledgeMarkdownFormatError('文件必须使用 UTF-8 编码。')
   }
-  return parseKnowledgeMarkdownTemplate(source)
+  return parseKnowledgeMarkdown(source)
 }
 
 function validateMarkdownStructure(markdown: string): void {
@@ -89,33 +46,39 @@ function validateMarkdownStructure(markdown: string): void {
   if (!/^#\s+\S/.test(firstContent)) {
     throw new KnowledgeMarkdownFormatError('正文必须以一级标题开始。')
   }
-  if (!lines.some((line) => /^##\s+\S/.test(line.trim()))) {
+
+  let activeFence: string | null = null
+  let hasSecondLevelHeading = false
+  let hasMeaningfulBody = false
+  for (const line of lines) {
+    const value = line.trim()
+    const previousFence: string | null = activeFence
+    activeFence = advanceMarkdownFence(line, activeFence)
+    if (previousFence !== null) {
+      if (activeFence === previousFence && value) hasMeaningfulBody = true
+      continue
+    }
+    if (activeFence !== null) continue
+    if (/^##\s+\S/.test(value)) hasSecondLevelHeading = true
+    else if (value && !/^#{1,6}\s+/.test(value)) hasMeaningfulBody = true
+  }
+
+  if (!hasSecondLevelHeading) {
     throw new KnowledgeMarkdownFormatError('正文至少需要一个二级章节。')
   }
-  if (!hasMeaningfulBody(lines)) {
+  if (!hasMeaningfulBody) {
     throw new KnowledgeMarkdownFormatError('正文内容不能为空。')
   }
-  if (!hasClosedFences(lines)) {
+  if (activeFence !== null) {
     throw new KnowledgeMarkdownFormatError('代码块未闭合。')
   }
 }
 
-function hasMeaningfulBody(lines: string[]): boolean {
-  return lines.some((line) => {
-    const value = line.trim()
-    return Boolean(value)
-      && !/^#{1,6}\s+/.test(value)
-      && !/^(?:```|~~~)/.test(value)
-  })
-}
-
-function hasClosedFences(lines: string[]): boolean {
-  let activeFence: '```' | '~~~' | null = null
-  for (const line of lines) {
-    const marker = line.trimStart().match(/^(```|~~~)/)?.[1] as '```' | '~~~' | undefined
-    if (!marker) continue
-    if (activeFence === null) activeFence = marker
-    else if (activeFence === marker) activeFence = null
+function advanceMarkdownFence(line: string, activeFence: string | null): string | null {
+  if (activeFence === null) {
+    return line.match(/^[ \t]{0,3}(`{3,}|~{3,})/)?.[1] || null
   }
-  return activeFence === null
+  const closing = line.match(/^[ \t]{0,3}(`+|~+)[ \t]*$/)?.[1]
+  if (closing?.[0] === activeFence[0] && closing.length >= activeFence.length) return null
+  return activeFence
 }

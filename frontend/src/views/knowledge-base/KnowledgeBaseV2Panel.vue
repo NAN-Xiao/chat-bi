@@ -991,7 +991,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <div class="source-upload-inner">
               <el-icon><UploadFilled /></el-icon>
               <span>拖拽或点击上传源文件</span>
-              <small>仅支持下载模板格式的 Markdown（最大 50 MB）</small>
+              <small>仅支持符合内容结构要求的 Markdown（最大 50 MB）</small>
             </div>
           </el-upload>
           <div v-if="createSourceFile" class="selected-source-file">已选择：{{ createSourceFile.name }}</div>
@@ -1060,7 +1060,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <div class="source-upload-inner">
               <el-icon><UploadFilled /></el-icon>
               <span>{{ sourceUploading ? '正在解析源文件...' : '拖拽或点击上传源文件' }}</span>
-              <small>仅支持下载模板格式的 Markdown（.md / .markdown）</small>
+              <small>仅支持符合内容结构要求的 Markdown（.md / .markdown）</small>
             </div>
           </el-upload>
         </div>

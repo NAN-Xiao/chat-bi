@@ -1,17 +1,17 @@
 # 实施计划
 
-## 1. 建立严格模板格式契约
+## 1. 建立严格 Markdown 内容契约
 
-- [x] 新增前端模板格式解析/校验模块，集中定义 `knowledge_document`、版本 `1`、结构校验和用户提示。
-- [x] 为四个现有下载模板加入统一 front matter，并确保下载内容通过同一前端校验器。
-- [x] 新增后端 Markdown 模板校验模块，使用 PyYAML 安全解析并返回稳定错误类型。
-- [x] 增加共享 good/base/bad fixture 契约测试，覆盖 BOM、非法 UTF-8、缺少标记、重复键、错误类型、未知版本、缺少 H1/H2/正文及未闭合围栏。
+- [x] 新增前端 Markdown 格式解析/校验模块，集中定义结构校验和用户提示。
+- [x] 确保四个现有纯 Markdown 下载模板通过同一前端校验器。
+- [x] 新增后端 Markdown 内容结构校验模块并返回稳定错误类型。
+- [x] 增加共享 good/base/bad fixture 契约测试，覆盖纯 Markdown、BOM、非法 UTF-8、缺少 H1/H2/正文及未闭合围栏。
 
 ## 2. 统一上传入口为 Markdown
 
 - [x] 新建弹窗、列表行上传、编辑页替换源文件统一调用异步前端校验器，只接受 `.md / .markdown`。
 - [x] 更新 accept、提示和文件状态清理，确保校验失败不保留上一次选择。
-- [x] 后端 V2 和 legacy 上传入口统一限制扩展名，并在保存草稿前执行权威模板校验和 front matter 剥离。
+- [x] 后端 V2 和 legacy 上传入口统一限制扩展名，并在保存草稿前执行权威 Markdown 结构校验。
 - [x] 覆盖格式失败后 payload、revision、source reference 和暂存文件不变的回归测试。
 
 ## 3. 移除用户知识类型及运行时分支
@@ -34,9 +34,18 @@
 
 - [x] 使用当前 worktree 的隔离端口启动/验证前端、API、MCP 和 Worker，不接管其他 worktree 进程。
 - [x] 核对 `LLM_REQUEST_TIMEOUT=120`、`LLM_TASK_MAX_WAIT_SECONDS=900`、`LLM_MAX_RETRIES=1`。
-- [ ] 真实点击下载四种模板并逐一上传；验证无标记 Markdown、Word、Excel、未知版本和结构错误文件均显示“格式错误”。隔离端口无登录态，停在登录页。
+- [ ] 真实点击下载四种模板并逐一上传；验证纯 Markdown 可选中，Word、Excel 和结构错误文件均显示“格式错误”。隔离端口无登录态，停在登录页。
 - [ ] 验证创建、编辑知识块、替换源文件、校验、发布和下载源文件完整路径。隔离端口无登录态，未越权使用未知密码。
 - [ ] 检查登录后桌面和移动视口、页面级横向溢出、顶部操作区和列表操作列，保存并人工检查截图。
+
+## 6. 用户反馈：移除文档内平台元数据
+
+- [x] 下载模板和普通 Markdown 上传不再生成或要求 `template_type`、`template_version` front matter。
+- [x] 前后端共享纯 Markdown 内容结构契约，继续覆盖编码、标题、正文和围栏错误。
+- [x] 服务端使用 `markdown-v1` 自动标记解析器，并在 V2 源文件替换时写入 `knowledge_base_version.parser_version`。
+- [x] 修正运行时错误提示、错误码、测试与项目规范，并移除前端 `yaml` 直接依赖。
+- [x] 最终纠偏回归：前端知识库 42 passed；后端知识库 181 passed、7 skipped；混合围栏解析、文件级 UTF-8/扩展名、服务端解析器持久化、前端构建、Ruff、ESLint、compileall 与 `git diff --check` 通过。Mypy 仍受共享环境缺失 mypyc 模块阻塞。
+- [x] 主会话移除主检出文档样例中的平台 front matter 后，验证 `JSON字段解析_通用.md` 可直接通过前后端解析。
 
 ## Risk And Rollback Points
 

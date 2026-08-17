@@ -20,8 +20,13 @@ from apps.knowledge_base.lifecycle_models import (
     KnowledgePublishJob,
     KnowledgeVersionStatus,
 )
+from apps.knowledge_base.markdown_template import KNOWLEDGE_MARKDOWN_PARSER_VERSION
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseVisibilityScopeEnum
 from apps.knowledge_base.publish_jobs import finalize_publish_job, prepare_publish_job
+from apps.knowledge_base.version_repository import (
+    KnowledgeVersionRepository,
+    SourceFileRef,
+)
 
 
 class _Result:
@@ -86,10 +91,6 @@ def _prepare(session):
 
 def _valid_markdown(body: str = "有效正文") -> bytes:
     return (
-        "---\n"
-        "template_type: knowledge_document\n"
-        "template_version: 1\n"
-        "---\n"
         "# 标题\n\n"
         "## 章节\n\n"
         f"{body}\n"
@@ -322,8 +323,13 @@ def test_successful_source_upload_reclaims_only_the_previous_file(monkeypatch, t
         def rollback(self):
             return None
 
+    source_files: list[SourceFileRef] = []
+
     class _Service:
-        def save_draft(self, **_kwargs):
+        def save_draft(self, **kwargs):
+            source_file = kwargs["source_file"]
+            source_files.append(source_file)
+            saved.parser_version = source_file.parser_version
             return saved
 
     cleaned = []
@@ -353,8 +359,48 @@ def test_successful_source_upload_reclaims_only_the_previous_file(monkeypatch, t
     ))
 
     assert response["revision"] == 2
+    assert response["parser_version"] == KNOWLEDGE_MARKDOWN_PARSER_VERSION
+    assert source_files[0].parser_version == KNOWLEDGE_MARKDOWN_PARSER_VERSION == "markdown-v1"
     assert session.commits == 1
     assert cleaned == [("old.md",)]
+
+
+def test_repository_persists_source_parser_version_on_replacement():
+    version = SimpleNamespace(id=12, parser_version=KNOWLEDGE_MARKDOWN_PARSER_VERSION)
+
+    class _Session:
+        def __init__(self):
+            self.update_params = {}
+
+        def exec(self, statement):
+            if str(statement).lstrip().startswith("UPDATE"):
+                self.update_params = statement.compile().params
+                return SimpleNamespace(rowcount=1)
+            return _Result(version)
+
+        def flush(self):
+            return None
+
+    session = _Session()
+    saved = KnowledgeVersionRepository(session).save_draft_if_revision_matches(
+        tenant_id=7,
+        knowledge_base_id=11,
+        version_id=12,
+        expected_revision=1,
+        payload={"knowledge_type": "DOCUMENT", "blocks": []},
+        normalized_content="# 标题\n\n## 章节\n\n正文",
+        content_hash="a" * 64,
+        actor_id=1,
+        source_file=SourceFileRef(
+            file_id="new.md",
+            file_name="new.md",
+            file_ext=".md",
+            parser_version=KNOWLEDGE_MARKDOWN_PARSER_VERSION,
+        ),
+    )
+
+    assert saved is version
+    assert session.update_params["parser_version"] == "markdown-v1"
 
 
 def test_invalid_source_upload_is_atomic_and_removes_staged_file(monkeypatch, tmp_path: Path):
@@ -410,12 +456,12 @@ def test_invalid_source_upload_is_atomic_and_removes_staged_file(monkeypatch, tm
         current_user=SimpleNamespace(id=1),
         version_id=12,
         revision=4,
-        file=UploadFile(filename="invalid.md", file=BytesIO(b"# missing template marker")),
+        file=UploadFile(filename="invalid.md", file=BytesIO(b"# missing second-level heading")),
     ))
 
     payload = json.loads(response.body)
     assert response.status_code == 422
-    assert payload["code"] == "KNOWLEDGE_TEMPLATE_FORMAT_INVALID"
+    assert payload["code"] == "KNOWLEDGE_MARKDOWN_FORMAT_INVALID"
     assert payload["message"].startswith("格式错误")
     assert version.revision == 4
     assert version.payload == original_payload

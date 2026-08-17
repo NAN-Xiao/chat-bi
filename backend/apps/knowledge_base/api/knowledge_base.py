@@ -201,7 +201,7 @@ async def _save_upload(file: UploadFile) -> tuple[str, str, str]:
     except HTTPException as exc:
         raise HTTPException(
             status_code=422,
-            detail="格式错误：仅支持 .md 或 .markdown 模板文件。",
+            detail="格式错误：仅支持 .md 或 .markdown 文件。",
         ) from exc
     _, file_id = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
     save_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, file_id)
