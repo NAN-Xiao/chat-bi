@@ -10,7 +10,6 @@ from apps.knowledge_base.source_references import (
     TrackingStructuredRecords,
 )
 from apps.knowledge_base.structured_context import StructuredKnowledgeContextService
-from apps.knowledge_base.schemas import EventKnowledgePayload
 
 
 class _Result:
@@ -58,7 +57,7 @@ def test_tracking_adapter_filters_denied_events_without_writing(monkeypatch):
     assert result.json_fields == ()
 
 
-def test_structured_service_keeps_tracking_and_excludes_conflicting_platform_knowledge():
+def test_structured_service_uses_tracking_records_without_knowledge_type_projection():
     tracking_event = StructuredEventRecord(
         event_name="purchase",
         display_name="购买",
@@ -70,25 +69,11 @@ def test_structured_service_keeps_tracking_and_excludes_conflicting_platform_kno
         source_identity=("TRACKING_CONFIG", 12),
         source_hash="tracking-hash",
     )
-    payload = EventKnowledgePayload(
-        knowledge_type="EVENT",
-        event_name="purchase",
-        display_name="平台购买",
-        description="平台映射",
-        table_name="events",
-        event_name_field="event_name",
-        parameters=[],
-    )
     service = StructuredKnowledgeContextService(
-        tracking_loader=lambda *args, **kwargs: TrackingStructuredRecords(events=(tracking_event,)),
-        knowledge_loader=lambda *args, **kwargs: [
-            (
-                SimpleNamespace(id=40, tenant_id=1, visibility_scope="PLATFORM_PUBLIC"),
-                SimpleNamespace(id=41, payload=payload.model_dump(mode="json"), content_hash="knowledge-hash"),
-            )
-        ],
-        applicability_evaluator=lambda **kwargs: SimpleNamespace(eligible=True, warnings=()),
-        reference_loader=lambda *args, **kwargs: [],
+        tracking_loader=lambda *args, **kwargs: TrackingStructuredRecords(
+            events=(tracking_event,),
+            warnings=("tracking warning", "tracking warning"),
+        ),
     )
     result = service.load(
         session=_Session(),
@@ -97,4 +82,4 @@ def test_structured_service_keeps_tracking_and_excludes_conflicting_platform_kno
         permission_snapshot=_snapshot(),
     )
     assert [item.description for item in result.events] == ["旧事件字典"]
-    assert any("来源冲突" in warning for warning in result.warnings)
+    assert result.warnings == ("tracking warning",)

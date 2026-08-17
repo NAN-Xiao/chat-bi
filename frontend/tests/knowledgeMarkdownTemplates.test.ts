@@ -6,6 +6,10 @@ import {
   downloadKnowledgeMarkdownTemplate,
   knowledgeMarkdownTemplates,
 } from '../src/views/knowledge-base/knowledgeMarkdownTemplates.ts'
+import {
+  KnowledgeMarkdownFormatError,
+  parseKnowledgeMarkdownTemplate,
+} from '../src/views/knowledge-base/knowledgeMarkdownFormat.ts'
 
 test('提供四类标题切片友好的 Markdown 模板', () => {
   assert.deepEqual(
@@ -23,6 +27,11 @@ test('提供四类标题切片友好的 Markdown 模板', () => {
   )
 
   for (const template of knowledgeMarkdownTemplates) {
+    const parsed = parseKnowledgeMarkdownTemplate(template.content)
+    assert.equal(parsed.templateType, 'knowledge_document')
+    assert.equal(parsed.templateVersion, 1)
+    assert.doesNotMatch(parsed.markdown, /template_type|template_version/)
+    assert.match(template.content, /^---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n/)
     assert.match(template.content, /^#\s+\S/m)
     assert.match(template.content, /^##\s+\S/m)
     assert.match(template.content, /填写提示/)
@@ -36,6 +45,22 @@ test('提供四类标题切片友好的 Markdown 模板', () => {
   const businessTemplate = knowledgeMarkdownTemplates.find(({ id }) => id === 'business-sql')
   assert.ok(businessTemplate)
   assert.match(businessTemplate.content, /```sql[\s\S]+```/)
+})
+
+test('严格拒绝缺少模板标记、未知版本和不完整 Markdown', () => {
+  for (const source of [
+    '# 标题\n\n## 章节\n正文',
+    '---\ntemplate_type: bad\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n# 标题\n## 章节\n正文',
+    '---\ntemplate_type: knowledge_document\ntemplate_version: 2\n---\n# 标题\n## 章节\n正文',
+    '---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n## 缺少一级标题\n正文',
+    '---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n# 标题\n正文',
+    '---\ntemplate_type: knowledge_document\ntemplate_version: 1\n---\n# 标题\n## 章节\n```sql\nselect 1',
+  ]) {
+    assert.throws(
+      () => parseKnowledgeMarkdownTemplate(source),
+      (error) => error instanceof KnowledgeMarkdownFormatError && error.message.startsWith('格式错误')
+    )
+  }
 })
 
 test('下载函数使用所选模板的 UTF-8 Markdown 内容和文件名', async () => {
@@ -134,7 +159,7 @@ test('知识库管理页通过分组工具栏接入模板下拉入口', async ()
   assert.doesNotMatch(source, /:command="template"/)
   assert.match(source, /下载 Markdown 模板/)
   const panelActionsRule = source.match(/\.panel-actions\s*\{([^}]+)\}/)?.[1] || ''
-  assert.match(panelActionsRule, /flex:\s*1/)
+  assert.match(panelActionsRule, /width:\s*100%/)
   assert.match(panelActionsRule, /min-width:\s*0/)
   assert.match(panelActionsRule, /justify-content:\s*flex-end/)
   assert.match(panelActionsRule, /flex-wrap:\s*wrap/)
@@ -146,11 +171,11 @@ test('知识库管理页通过分组工具栏接入模板下拉入口', async ()
   assert.match(source, /\.knowledge-filter-scope \{ width: 150px; flex: 0 0 150px; \}/)
   assert.match(
     source,
-    /@media \(max-width: 1440px\)[^{]*\{[^}]*\.panel-header \{ align-items: flex-start; flex-direction: column; gap: 14px; \}[^}]*\.panel-heading \{ flex-basis: auto; min-width: 0; \}[^}]*\.panel-actions \{ width: 100%; justify-content: space-between; \}/s
+    /@media \(max-width: 1440px\)[^{]*\{[^}]*\.panel-actions \{ justify-content: space-between; \}/s
   )
   assert.match(
     source,
-    /@media \(max-width: 680px\)[\s\S]*\.knowledge-filter-input, \.knowledge-filter-scope, \.knowledge-filter-workspace \{ width: 100%; flex-basis: auto; \}/
+    /@media \(max-width: 680px\)[\s\S]*\.knowledge-filter-input, \.knowledge-filter-scope, \.knowledge-filter-workspace, \.knowledge-archive-filter \{ width: 100%; flex-basis: auto; \}/
   )
   assert.match(source, /\.panel-buttons \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); align-items: stretch; \}/)
   assert.match(
@@ -173,7 +198,7 @@ test('知识库管理使用双下拉并向普通成员开放只读入口', async
     assert.match(source, /workspaceFilterDisabled/)
     assert.match(source, /userStore\.isTenantAdminUser/)
   }
-  assert.match(v2Source, /row\.can_manage \? '编辑' : '查看'/)
+  assert.match(v2Source, /row\.archived \|\| !row\.can_manage \? '查看' : '编辑'/)
   assert.match(legacySource, /row\.can_manage \? '可管理' : '只读'/)
   const routeStart = routerSource.indexOf("path: 'knowledge-base'")
   const routeEnd = routeStart >= 0 ? routerSource.indexOf("path: 'prompt'", routeStart) : -1

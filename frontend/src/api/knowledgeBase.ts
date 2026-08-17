@@ -2,7 +2,6 @@ import { request } from '@/utils/request'
 
 export type KnowledgeBaseScope = 'ADMIN_PUBLIC' | 'PLATFORM_PUBLIC'
 export type KnowledgeBaseStatus = 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED'
-export type KnowledgeType = 'DOCUMENT' | 'BUSINESS' | 'EVENT' | 'JSON_FIELD'
 
 export interface KnowledgeBaseItem {
   id: number | string
@@ -23,7 +22,6 @@ export interface KnowledgeBaseItem {
   update_time?: string | null
   can_manage?: boolean
   archived?: boolean
-  knowledge_type?: KnowledgeType | null
   stable_key?: string | null
   draft_version_id?: number | null
   current_version_id?: number | null
@@ -127,7 +125,6 @@ export interface KnowledgeBaseCreatePayload {
   description?: string
   visibility_scope: KnowledgeBaseScope
   tenant_id?: number | string | null
-  knowledge_type: KnowledgeType
 }
 
 export interface KnowledgeRemovalResult {

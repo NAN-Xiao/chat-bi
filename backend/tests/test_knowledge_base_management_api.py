@@ -6,6 +6,7 @@ import asyncio
 from types import SimpleNamespace
 
 from apps import api as apps_api
+from apps.knowledge_base import cutover
 from apps.knowledge_base.api import knowledge_base, management, publish
 from apps.knowledge_base.api._helpers import v2_write_error
 from apps.knowledge_base.cutover import KnowledgeCapabilities
@@ -64,14 +65,25 @@ def test_active_route_is_registered_before_dynamic_id_route():
 
 def test_management_read_routes_are_mounted_on_application_api_router():
     methods_by_path: dict[str, set[str]] = {}
-    for route in apps_api.api_router.routes:
+    routes = []
+    pending = [apps_api.api_router]
+    while pending:
+        router = pending.pop()
+        for route in router.routes:
+            included = getattr(route, "original_router", None)
+            if included is not None:
+                pending.append(included)
+            else:
+                routes.append(route)
+    for route in routes:
         methods_by_path.setdefault(route.path, set()).update(route.methods or set())
 
     assert "GET" in methods_by_path["/knowledge-base/capabilities"]
     assert "GET" in methods_by_path["/knowledge-base/list"]
 
 
-def test_capabilities_response_is_database_phase_authoritative():
+def test_capabilities_response_is_database_phase_authoritative(monkeypatch):
+    monkeypatch.setattr(cutover.settings, "KNOWLEDGE_MANAGEMENT_V2_ENABLED", True)
     result = asyncio.run(
         management.knowledge_capabilities(
             session=_Session(KnowledgeMigrationPhase.LEGACY_OPEN),
@@ -79,7 +91,7 @@ def test_capabilities_response_is_database_phase_authoritative():
         )
     )
     assert result["phase"] == "LEGACY_OPEN"
-    assert result["management_mode"] == "LEGACY"
+    assert result["management_mode"] == "UPGRADING"
     assert result["v2_write_enabled"] is False
 
 

@@ -3,18 +3,16 @@
 """
 from __future__ import annotations
 
-import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from xml.etree import ElementTree as ET
 
 from sqlmodel import Session
 
 from apps.chat.curd.skill_object_projection import rebuild_all_skill_object_projections
 from apps.chat.curd.skill_object_references import SKILL_PROJECTOR_VERSION
 from apps.knowledge_base.backfill import run_backfill_v2
-from apps.knowledge_base.chunking import parse_and_normalize_version
+from apps.knowledge_base.markdown_template import parse_knowledge_markdown_file
 from apps.knowledge_base.models import KnowledgeBase, KnowledgeBaseStatusEnum
 from apps.knowledge_base.publisher import KnowledgePublisher
 from apps.knowledge_base.reconciliation import reconcile_publish_jobs
@@ -32,69 +30,6 @@ from common.core.task_queue import (
 from common.utils.file_utils import AppFileUtils
 
 
-def _decode_markdown(path: Path) -> str:
-    """
-    是什么：_decode_markdown 是一个可以复用的小步骤，负责后端业务相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    data = path.read_bytes()
-    for encoding in ("utf-8-sig", "utf-8"):
-        try:
-            return data.decode(encoding).strip()
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", errors="replace").strip()
-
-
-def _local_name(tag: str) -> str:
-    """
-    是什么：_local_name 是一个可以复用的小步骤，负责后端业务相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
-
-
-def _paragraph_text(paragraph: ET.Element) -> str:
-    """
-    是什么：_paragraph_text 是一个可以复用的小步骤，负责后端业务相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    parts: list[str] = []
-    for node in paragraph.iter():
-        name = _local_name(node.tag)
-        if name == "t":
-            parts.append(node.text or "")
-        elif name == "tab":
-            parts.append("\t")
-        elif name in {"br", "cr"}:
-            parts.append("\n")
-    return "".join(parts).strip()
-
-
-def _decode_docx(path: Path) -> str:
-    """
-    是什么：_decode_docx 是一个可以复用的小步骤，负责后端业务相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把后端业务里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    with zipfile.ZipFile(path) as archive:
-        try:
-            document_xml = archive.read("word/document.xml")
-        except KeyError as exc:
-            raise ValueError("Word document is missing word/document.xml") from exc
-
-    root = ET.fromstring(document_xml)
-    paragraphs = [
-        text
-        for text in (_paragraph_text(paragraph) for paragraph in root.iter() if _local_name(paragraph.tag) == "p")
-        if text
-    ]
-    return "\n".join(paragraphs).strip()
-
-
 def _extract_content(record: KnowledgeBase) -> str:
     """
     是什么：_extract_content 是一个可以复用的小步骤，负责后端业务相关的一件事。
@@ -108,14 +43,9 @@ def _extract_content(record: KnowledgeBase) -> str:
         raise ValueError("Knowledge base file does not exist")
 
     ext = (record.file_ext or path.suffix or "").lower()
-    if ext in {".md", ".markdown"}:
-        content = _decode_markdown(path)
-    elif ext == ".docx":
-        content = _decode_docx(path)
-    elif ext == ".xlsx":
-        content = parse_and_normalize_version(path, file_ext=ext).normalized_content
-    else:
+    if ext not in {".md", ".markdown"}:
         raise ValueError(f"Unsupported file type: {ext}")
+    content = parse_knowledge_markdown_file(path).markdown.strip()
     if not content:
         raise ValueError("Document content is empty")
     return content

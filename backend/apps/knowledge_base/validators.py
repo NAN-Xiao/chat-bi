@@ -8,11 +8,7 @@ import sqlglot
 from sqlglot import exp
 
 from apps.knowledge_base.schemas import (
-    BusinessKnowledgePayload,
-    BusinessSqlExample,
     DocumentPayload,
-    EventKnowledgePayload,
-    JsonFieldKnowledgePayload,
     KnowledgePayload,
     SemanticObjectReferenceInput,
     ValidationIssue,
@@ -21,7 +17,6 @@ from apps.knowledge_base.schemas import (
 from common.sql_json_paths import extract_json_accesses, normalize_json_path
 
 _SQL_BLOCK = re.compile(r"```sql\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
-_VALID_JSON_DATA_TYPES = {"boolean", "category", "date", "datetime", "decimal", "float", "identifier", "integer", "json", "number", "string", "text", "timestamp"}
 _WRITE_EXPRESSIONS = (exp.Alter, exp.Command, exp.Create, exp.Delete, exp.Drop, exp.Insert, exp.Merge, exp.Update)
 
 
@@ -58,16 +53,8 @@ class ValidationContext:
 def validate_payload(payload: KnowledgePayload, *, context: ValidationContext | None = None) -> ValidationReport:
     context = context or ValidationContext()
     errors: list[ValidationIssue] = []
-    warnings: list[ValidationIssue] = []
-    if isinstance(payload, DocumentPayload):
-        _validate_document(payload, context, errors)
-    elif isinstance(payload, BusinessKnowledgePayload):
-        _validate_business(payload, context, errors, warnings)
-    elif isinstance(payload, EventKnowledgePayload):
-        _validate_event(payload, context, errors)
-    elif isinstance(payload, JsonFieldKnowledgePayload):
-        _validate_json(payload, context, errors)
-    return ValidationReport(valid=not errors, errors=errors, warnings=warnings)
+    _validate_document(payload, context, errors)
+    return ValidationReport(valid=not errors, errors=errors, warnings=[])
 
 
 def _validate_document(payload: DocumentPayload, context: ValidationContext, errors: list[ValidationIssue]) -> None:
@@ -103,70 +90,7 @@ def _validate_document(payload: DocumentPayload, context: ValidationContext, err
         if any(_key(item) not in declared for item in _document_tables(markdown, context)):
             _error(errors, "KNOWLEDGE_DOCUMENT_OBJECT_NOT_DECLARED", "object_references", "文档中的物理对象必须显式声明。", "请声明文档引用的物理对象。")
         for index, sql in enumerate(sql_blocks):
-            _validate_sql(BusinessSqlExample(name=f"document-{index}", question="", sql=sql), payload.object_references, context, errors, f"markdown.sql_blocks[{index}]", valid_declarations=valid_declarations)
-
-
-def _validate_business(payload: BusinessKnowledgePayload, context: ValidationContext, errors: list[ValidationIssue], warnings: list[ValidationIssue]) -> None:
-    has_definition = bool((payload.term or "").strip() and payload.definition.strip())
-    has_example = any(item.question.strip() and item.sql.strip() for item in payload.examples)
-    if not has_definition and not has_example:
-        _error(errors, "KNOWLEDGE_BUSINESS_CONTENT_REQUIRED", None, "业务知识必须填写术语和定义，或至少提供一条问题与 SQL 示例。", "请补充业务定义或完整 SQL 示例。")
-    valid_declarations = _validate_related_objects(payload.related_objects, context, errors)
-    used: set[int] = set()
-    for index, item in enumerate(payload.examples):
-        _validate_sql(item, payload.related_objects, context, errors, f"examples[{index}].sql", used, valid_declarations)
-    for index, reference in enumerate(payload.related_objects):
-        if reference.object_type == "TABLE" and index not in used:
-            warnings.append(ValidationIssue(code="KNOWLEDGE_RELATED_OBJECT_UNUSED", message="声明的关联对象未被 SQL 示例使用。", field_path=f"related_objects[{index}]", error_type="WARNING", suggestion="确认该对象确有业务用途，或删除无用声明。"))
-
-
-def _validate_event(payload: EventKnowledgePayload, context: ValidationContext, errors: list[ValidationIssue]) -> None:
-    if not payload.event_name.strip():
-        _error(errors, "KNOWLEDGE_EVENT_NAME_REQUIRED", "event_name", "事件名称不能为空。", "请填写工作空间内唯一的事件名称。")
-    elif context.has_event_name(payload.event_name):
-        _error(errors, "KNOWLEDGE_EVENT_NAME_DUPLICATE", "event_name", "同一工作空间内事件名称必须唯一。", "请使用不同的事件名称。")
-    if not payload.event_name_field.strip():
-        _error(errors, "KNOWLEDGE_EVENT_FIELD_REQUIRED", "event_name_field", "事件名称字段不能为空。", "请从当前数据源目录选择事件名称字段。")
-    _validate_table_fields(context, None, payload.table_name, [("event_name_field", payload.event_name_field), ("event_time_field", payload.event_time_field)], errors, "KNOWLEDGE_EVENT_TABLE_NOT_FOUND", "KNOWLEDGE_EVENT_FIELD_NOT_FOUND")
-    seen: set[str] = set()
-    for index, parameter in enumerate(payload.parameters):
-        name = _key(parameter.name)
-        if not name:
-            _error(errors, "KNOWLEDGE_EVENT_PARAMETER_REQUIRED", f"parameters[{index}].name", "事件参数名称不能为空。", "请填写参数名称。")
-        elif name in seen:
-            _error(errors, "KNOWLEDGE_EVENT_PARAMETER_DUPLICATE", f"parameters[{index}].name", "同一事件内参数名称必须唯一。", "请删除或重命名重复参数。")
-        seen.add(name)
-        if not parameter.data_type.strip():
-            _error(errors, "KNOWLEDGE_EVENT_PARAMETER_TYPE_REQUIRED", f"parameters[{index}].data_type", "事件参数类型不能为空。", "请填写参数数据类型。")
-
-
-def _validate_json(payload: JsonFieldKnowledgePayload, context: ValidationContext, errors: list[ValidationIssue]) -> None:
-    if not payload.source_field.strip():
-        _error(errors, "KNOWLEDGE_JSON_HOST_FIELD_REQUIRED", "source_field", "JSON 宿主字段不能为空。", "请从当前数据源目录选择 JSON 宿主字段。")
-    if not payload.field_name.strip():
-        _error(errors, "KNOWLEDGE_JSON_FIELD_NAME_REQUIRED", "field_name", "JSON 字段名称不能为空。", "请填写 JSON 字段名称。")
-    _validate_table_fields(context, payload.schema_name, payload.table_name, [("source_field", payload.source_field)], errors, "KNOWLEDGE_JSON_TABLE_NOT_FOUND", "KNOWLEDGE_JSON_HOST_FIELD_NOT_FOUND")
-    json_path = normalize_json_path(payload.json_path)
-    if not json_path:
-        _error(errors, "KNOWLEDGE_JSON_PATH_INVALID", "json_path", "JSON Path 必须是静态合法路径。", "请使用形如 $.field 或 $[0] 的静态路径。")
-    if _key(payload.data_type) not in _VALID_JSON_DATA_TYPES:
-        _error(errors, "KNOWLEDGE_JSON_DATA_TYPE_INVALID", "data_type", "JSON 字段目标类型不受支持。", "请使用已支持的语义类型。")
-    if json_path:
-        _validate_json_expression(payload, json_path, context, errors)
-
-
-def _validate_table_fields(context: ValidationContext, schema: str | None, table: str, fields: list[tuple[str, str | None]], errors: list[ValidationIssue], table_code: str, field_code: str) -> None:
-    if not table.strip():
-        _error(errors, table_code, "table_name", "物理表不能为空。", "请从当前数据源目录选择物理表。")
-        return
-    known = context.table_fields(schema=schema, table=table)
-    if known == frozenset():
-        _error(errors, table_code, "table_name", "当前数据源目录中不存在指定物理表。", "请重新选择已同步的物理表。")
-        return
-    if known is not None:
-        for path, field_name in fields:
-            if field_name and field_name.strip() and _key(field_name) not in known:
-                _error(errors, field_code, path, "当前数据源目录中不存在指定字段。", "请重新选择已同步的字段。")
+            _validate_sql(sql, context.dialect, payload.object_references, errors, f"markdown.sql_blocks[{index}]", valid_declarations=valid_declarations)
 
 
 def _validate_related_objects(
@@ -215,15 +139,15 @@ def _validate_related_objects(
 
 
 def _validate_sql(
-    example: BusinessSqlExample,
+    sql: str,
+    dialect: str,
     declarations: list[SemanticObjectReferenceInput],
-    context: ValidationContext,
     errors: list[ValidationIssue],
     field_path: str,
     used: set[int] | None = None,
     valid_declarations: set[int] | None = None,
 ) -> None:
-    statement = _read_only_statement(example.sql, example.dialect or context.dialect)
+    statement = _read_only_statement(sql, dialect)
     if statement is None:
         _error(errors, "KNOWLEDGE_SQL_NOT_READ_ONLY", field_path, "SQL 示例必须是一条可解析的只读查询。", "请改为单条 SELECT 或 WITH 查询。")
         return
@@ -238,40 +162,7 @@ def _validate_sql(
             _error(errors, "KNOWLEDGE_SQL_OBJECT_NOT_DECLARED", field_path, "SQL 示例引用的物理对象必须显式声明。", "请在关联对象中声明 SQL 使用的表、Schema 或 Catalog。")
         elif used is not None:
             used.update(matched)
-    _validate_declared_sql_objects(statement, declared, example.dialect or context.dialect, errors, field_path, used)
-
-
-def _validate_json_expression(payload: JsonFieldKnowledgePayload, json_path: str, context: ValidationContext, errors: list[ValidationIssue]) -> None:
-    try:
-        statements = [item for item in sqlglot.parse(f"SELECT {payload.expression}", read=context.dialect) if item is not None]
-    except Exception:
-        statements = []
-    if len(statements) != 1 or not isinstance(statements[0], exp.Select):
-        _error(errors, "KNOWLEDGE_JSON_EXPRESSION_INVALID", "expression", "JSON 表达式无法按当前数据源方言解析。", "请使用当前方言支持的确定性 JSON 表达式。")
-        return
-    extraction = extract_json_accesses(statements[0], dialect=context.dialect)
-    expected = [item for item in extraction.accesses if _key(item.source_field) == _key(payload.source_field) and item.json_path == json_path]
-    unexpected = [item for item in extraction.accesses if _key(item.source_field) != _key(payload.source_field) or item.json_path != json_path]
-    columns = list(statements[0].find_all(exp.Column))
-    has_only_host_column = (
-        len(columns) == 1
-        and _key(columns[0].name) == _key(payload.source_field)
-        and not columns[0].table
-    )
-    has_disallowed_function = any(
-        isinstance(node, exp.Func) and not _is_json_expression_function(node, context.dialect)
-        for node in statements[0].walk()
-    )
-    if (
-        extraction.issues
-        or not expected
-        or unexpected
-        or any(statements[0].find_all(exp.Subquery))
-        or any(statements[0].find_all(exp.Table))
-        or not has_only_host_column
-        or has_disallowed_function
-    ):
-        _error(errors, "KNOWLEDGE_JSON_EXPRESSION_INVALID", "expression", "JSON 表达式必须引用声明的宿主字段和静态 JSON Path。", "请使用当前方言的静态 JSON 提取表达式。")
+    _validate_declared_sql_objects(statement, declared, dialect, errors, field_path, used)
 
 
 def _read_only_statement(sql: str, dialect: str) -> exp.Expression | None:

@@ -4,6 +4,10 @@ import test from 'node:test'
 
 const panelSource = readFileSync(new URL('./KnowledgeBaseV2Panel.vue', import.meta.url), 'utf8')
 const legacySource = readFileSync(new URL('./index.vue', import.meta.url), 'utf8')
+const localeFiles = ['en', 'ko-KR', 'zh-CN', 'zh-TW'].map((locale) => ({
+  locale,
+  messages: JSON.parse(readFileSync(new URL(`../../i18n/${locale}.json`, import.meta.url), 'utf8')),
+}))
 
 function asyncFunctionSource(name, nextName) {
   const start = panelSource.indexOf(`async function ${name}`)
@@ -17,13 +21,26 @@ test('V2 create and edit flows expose the source upload control', () => {
   assert.match(panelSource, /label="文档内容"/)
   assert.match(panelSource, /拖拽或点击上传源文件/)
   assert.match(panelSource, /knowledgeBaseApi\.replaceDraftFile/)
-  assert.match(panelSource, /accept="\.md,\.markdown,\.docx,\.xlsx"/)
-  assert.match(panelSource, /payload\.knowledge_type === 'DOCUMENT'/)
+  assert.match(panelSource, /accept="\.md,\.markdown"/)
+  assert.match(panelSource, /parseKnowledgeMarkdownFile\(file\)/)
+  assert.doesNotMatch(panelSource, /\.docx|\.xlsx|Word|Excel/)
 })
 
-test('legacy and V2 upload selectors support the same file extensions', () => {
-  assert.match(legacySource, /accept="\.md,\.markdown,\.docx,\.xlsx"/)
-  assert.match(legacySource, /name\.endsWith\('\.xlsx'\)/)
+test('legacy and V2 upload selectors use the same strict Markdown contract', () => {
+  assert.match(legacySource, /accept="\.md,\.markdown"/)
+  assert.match(legacySource, /parseKnowledgeMarkdownFile\(rawFile\)/)
+  assert.doesNotMatch(legacySource, /\.docx|\.xlsx/)
+})
+
+test('all knowledge upload locales describe only the strict Markdown format', () => {
+  for (const { locale, messages } of localeFiles) {
+    const knowledgeMessages = messages.knowledge_base
+    for (const key of ['upload_tip', 'upload_invalid_type', 'file_required']) {
+      const message = String(knowledgeMessages[key])
+      assert.match(message, /Markdown|\.md/, `${locale}.${key} must name Markdown`)
+      assert.doesNotMatch(message, /Word|Excel|\.docx|\.xlsx/i, `${locale}.${key} must not advertise Office files`)
+    }
+  }
 })
 
 test('create flow snapshots the file and awaits upload after opening a current draft', () => {

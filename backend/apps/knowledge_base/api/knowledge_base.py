@@ -19,6 +19,10 @@ from sqlalchemy import desc, or_
 from sqlmodel import select
 
 from apps.knowledge_base.api._helpers import validate_workspace_tenant
+from apps.knowledge_base.markdown_template import (
+    KnowledgeMarkdownFormatError,
+    parse_knowledge_markdown_bytes,
+)
 from apps.knowledge_base.models import (
     KnowledgeBase,
     KnowledgeBaseItem,
@@ -26,6 +30,7 @@ from apps.knowledge_base.models import (
     KnowledgeBaseVisibilityScopeEnum,
 )
 from apps.knowledge_base.repository import KnowledgeMigrationStateRepository
+from apps.knowledge_base.source_file_cleanup import cleanup_unreferenced_source_files
 from apps.knowledge_base.tasks import process_knowledge_base_document
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
@@ -45,7 +50,7 @@ from common.utils.file_utils import AppFileUtils
 
 router = APIRouter(tags=["KnowledgeBase"], prefix="/knowledge-base", include_in_schema=False)
 
-ALLOWED_EXTENSIONS = {".md", ".markdown", ".docx", ".xlsx"}
+ALLOWED_EXTENSIONS = {".md", ".markdown"}
 KNOWLEDGE_FILE_MAX_BYTES = settings.KNOWLEDGE_FILE_MAX_BYTES
 
 
@@ -191,17 +196,26 @@ async def _save_upload(file: UploadFile) -> tuple[str, str, str]:
     谁调用：同一个接口脚本里的路由函数或辅助逻辑会调用它。
     做了什么：创建或保存后端业务需要的东西，让后续流程能继续往下走。
     """
-    file_ext = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
+    try:
+        file_ext = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="格式错误：仅支持 .md 或 .markdown 模板文件。",
+        ) from exc
     _, file_id = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
     save_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, file_id)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    data = await AppFileUtils.read_upload_limited(
+        file,
+        limit_file_size=KNOWLEDGE_FILE_MAX_BYTES,
+    )
+    try:
+        parse_knowledge_markdown_bytes(data)
+    except KnowledgeMarkdownFormatError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     with open(save_path, "wb") as target:
-        target.write(
-            await AppFileUtils.read_upload_limited(
-                file,
-                limit_file_size=KNOWLEDGE_FILE_MAX_BYTES,
-            )
-        )
+        target.write(data)
     return file_id, file.filename or file_id, file_ext
 
 
@@ -306,6 +320,7 @@ async def save_knowledge_base(
             active=active,
             visibility_scope=scope,
             status=KnowledgeBaseStatusEnum.PENDING,
+            knowledge_type="DOCUMENT",
             create_time=now,
             update_time=now,
         )
@@ -316,21 +331,30 @@ async def save_knowledge_base(
     record.active = active
     record.update_time = now
 
+    uploaded_file_id: str | None = None
+    old_file_id: str | None = None
     if file is not None:
         old_file_id = record.file_id
         file_id, file_name, file_ext = await _save_upload(file)
+        uploaded_file_id = file_id
         record.file_id = file_id
         record.file_name = file_name
         record.file_ext = file_ext
         record.status = KnowledgeBaseStatusEnum.PENDING
         record.error_message = None
         record.task_id = None
-        if old_file_id and old_file_id != file_id:
-            AppFileUtils.delete_file(old_file_id)
 
-    session.add(record)
-    session.commit()
+    try:
+        session.add(record)
+        session.commit()
+    except Exception:
+        session.rollback()
+        if uploaded_file_id:
+            AppFileUtils.delete_file(uploaded_file_id)
+        raise
     session.refresh(record)
+    if old_file_id and old_file_id != uploaded_file_id:
+        cleanup_unreferenced_source_files(session, (old_file_id,))
 
     if should_process:
         KnowledgeMigrationStateRepository.lock_for_legacy_write(session)

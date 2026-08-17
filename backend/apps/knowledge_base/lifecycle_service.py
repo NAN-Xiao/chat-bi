@@ -347,7 +347,7 @@ class KnowledgeLifecycleService:
                         "message": "知识内容格式不正确，请修正后重新校验。",
                         "field_path": None,
                         "error_type": "ERROR",
-                        "suggestion": "检查知识类型和必填字段。",
+                        "suggestion": "检查知识文档内容和必填字段。",
                     }
                 ],
                 "warnings": [],

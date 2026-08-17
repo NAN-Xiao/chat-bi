@@ -191,3 +191,64 @@ inactive, and require the separate active endpoint before retrieval can use it.
 - Cover deterministic legacy normalization across line endings.
 - Cover chunk `source_block_id` persistence and citation serialization.
 - Frontend checks cover add, copy, reorder, enable/disable, delete, conflict comparison, local retry, and desktop/mobile horizontal overflow.
+
+## Scenario: Strict Markdown Knowledge Uploads
+
+### 1. Scope / Trigger
+- Applies to legacy knowledge uploads, V2 create-flow uploads, row uploads, and draft source replacement.
+
+### 2. Signatures
+- Create request: `POST /api/v1/knowledge-base/create` accepts name, description, visibility scope, and optional tenant context; `knowledge_type` is forbidden.
+- V2 replacement: `POST /api/v1/knowledge-base/{id}/draft/file` accepts `version_id`, `revision`, and one `.md` or `.markdown` file.
+- Template marker:
+  ```yaml
+  ---
+  template_type: knowledge_document
+  template_version: 1
+  ---
+  ```
+
+### 3. Contracts
+- Public management APIs expose one ordinary-document model; `DOCUMENT` remains only as the fixed database and version-payload marker.
+- Uploaded source files must use `.md` or `.markdown`, strict UTF-8 (BOM allowed), and front matter containing exactly the supported contract values `template_type: knowledge_document` and `template_version: 1`.
+- The Markdown body starts with a non-empty H1, contains at least one non-empty H2 and meaningful body text, and has no unclosed fenced code block.
+- Front matter is stripped before converting the Markdown body to document blocks and never enters retrieval content.
+- Validation errors return a message beginning with `格式错误`; V2 uses error code `KNOWLEDGE_TEMPLATE_FORMAT_INVALID`.
+- Validation and parsing complete before draft CAS. Failure preserves the current payload, source reference, block structure, and revision and removes only the request's staged file.
+- Legacy replacement commits the new database reference before checking and deleting an unreferenced old source. If commit fails, delete the newly uploaded file and retain the old source.
+
+### 4. Validation & Error Matrix
+
+| Input | Required behavior |
+| --- | --- |
+| `.docx`, `.xlsx`, or another extension | `422`; message starts with `格式错误`; no draft mutation |
+| Invalid UTF-8 | `422`; message starts with `格式错误` and identifies UTF-8 |
+| Missing, malformed, duplicate, or wrong marker | `422`; V2 code is `KNOWLEDGE_TEMPLATE_FORMAT_INVALID` |
+| Unsupported template version | Reject; do not silently upgrade or downgrade |
+| Missing H1, H2, meaningful body, or closing fence | Reject before draft CAS |
+| Valid UTF-8 or UTF-8 BOM template | Strip front matter, replace document blocks, then advance revision |
+
+### 5. Good/Base/Bad Cases
+- Good: a downloaded template is filled in, uploaded, converted to ordinary document blocks, and published without storing front matter in retrieval content.
+- Base: UTF-8 BOM and CRLF line endings are normalized and accepted under the same versioned contract.
+- Bad: a client bypasses frontend validation with an Office file, duplicate YAML key, unknown version, or incomplete Markdown; the backend rejects it without changing payload, revision, or source reference.
+
+### 6. Tests Required
+- Backend and frontend contract tests cover UTF-8 BOM, invalid UTF-8, missing/wrong markers, unsupported versions, missing headings/body, and unclosed fences.
+- Upload regressions assert invalid input cannot reach draft save, cannot change revision or source state, and leaves no staged file.
+- UI source-upload tests cover create, row, and editor replacement entrances and assert no Word/Excel claim remains in any locale.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```python
+text = uploaded_bytes.decode("utf-8", errors="replace")
+save_draft(parse_any_supported_office_or_markdown(text))
+```
+
+#### Correct
+```python
+parsed = parse_knowledge_markdown_bytes(uploaded_bytes)
+payload = payload.model_copy(update={"blocks": document_blocks_from_markdown(parsed.markdown)})
+save_draft(payload)
+```

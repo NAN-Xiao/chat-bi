@@ -34,6 +34,11 @@ import {
   knowledgeMarkdownTemplates,
 } from './knowledgeMarkdownTemplates'
 import {
+  KNOWLEDGE_MARKDOWN_FORMAT_ERROR,
+  isKnowledgeMarkdownFileName,
+  parseKnowledgeMarkdownFile,
+} from './knowledgeMarkdownFormat'
+import {
   defaultKnowledgePayload,
   createDocumentBlock,
   normalizeDocumentPayload,
@@ -63,13 +68,13 @@ const createSourceFile = ref<File | null>(null)
 const selected = ref<KnowledgeBaseItem | null>(null)
 const versions = ref<KnowledgeBaseVersion[]>([])
 const draft = ref<KnowledgeBaseVersion | null>(null)
-const payload = ref<KnowledgePayload>(defaultKnowledgePayload('DOCUMENT'))
+const payload = ref<KnowledgePayload>(defaultKnowledgePayload())
 const keyword = ref('')
 const archiveFilter = ref<'current' | 'archived'>('current')
 const scopeFilter = useKnowledgeScopeNavigation()
 const workspaceFilter = ref<string>(isPlatformAdmin.value ? '' : String(userStore.getTenantId || ''))
 const workspaces = ref<TenantInfo[]>([])
-const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope, knowledge_type: 'DOCUMENT' as KnowledgePayload['knowledge_type'] })
+const createForm = ref({ name: '', description: '', visibility_scope: 'ADMIN_PUBLIC' as KnowledgeBaseScope })
 const publishJob = ref<KnowledgePublishJob | null>(null)
 const draftConflict = ref(false)
 const documentConflict = ref<{
@@ -143,25 +148,11 @@ const workspaceKnowledgeEnabled = computed({
   },
 })
 
-function knowledgeTypeText(type?: string | null) {
-  if (type === 'BUSINESS') return '业务术语与 SQL'
-  if (type === 'EVENT') return '事件参数'
-  if (type === 'JSON_FIELD') return 'JSON 字段'
-  return '普通文档'
-}
-
 function processStatusText(status?: string | null) {
   if (status === 'READY') return '已完成'
   if (status === 'PROCESSING') return '处理中'
   if (status === 'FAILED') return '处理失败'
   return '待处理'
-}
-
-function defaultPayload(type?: string | null): KnowledgePayload {
-  const supported = type === 'BUSINESS' || type === 'EVENT' || type === 'JSON_FIELD'
-    ? type
-    : 'DOCUMENT'
-  return defaultKnowledgePayload(supported)
 }
 
 async function loadItems() {
@@ -192,23 +183,16 @@ function openCreate() {
     name: '',
     description: '',
     visibility_scope: scopeFilter.value,
-    knowledge_type: 'DOCUMENT',
   }
   createSourceFile.value = null
   createVisible.value = true
 }
 
-const handleCreateSourceChange: UploadProps['onChange'] = (uploadFile: UploadFile) => {
+const handleCreateSourceChange: UploadProps['onChange'] = async (uploadFile: UploadFile) => {
+  createSourceFile.value = null
   const file = uploadFile.raw
   if (!file) return
-  if (!isSupportedSourceFile(file)) {
-    ElMessage.warning('仅支持 .md、.markdown、.docx、.xlsx 文件')
-    return
-  }
-  if (file.size > 50 * 1024 * 1024) {
-    ElMessage.warning('源文件不能超过 50 MB')
-    return
-  }
+  if (!await validateSourceFile(file)) return
   createSourceFile.value = file
 }
 
@@ -236,7 +220,7 @@ async function createKnowledge() {
     await openEditor(item)
     if (sourceFile && selected.value) {
       if (!draft.value) {
-        await knowledgeBaseApi.createDraft(selected.value.id, defaultPayload('DOCUMENT'))
+        await knowledgeBaseApi.createDraft(selected.value.id, defaultKnowledgePayload())
         await loadVersions()
       }
       await replaceDraftSource(sourceFile)
@@ -306,12 +290,11 @@ async function loadVersions() {
   if (draft.value) payload.value = normalizeLoadedPayload(draft.value.payload)
   else if (currentVersion.value) payload.value = normalizeLoadedPayload(currentVersion.value.payload)
   else if (archivedPublishedVersion.value) payload.value = normalizeLoadedPayload(archivedPublishedVersion.value.payload)
-  else payload.value = defaultPayload(selected.value.knowledge_type)
+  else payload.value = defaultKnowledgePayload()
 }
 
 function normalizeLoadedPayload(value: Record<string, any>): KnowledgePayload {
-  if (value?.knowledge_type === 'DOCUMENT') return normalizeDocumentPayload(value)
-  return cloneDeep(value) as KnowledgePayload
+  return normalizeDocumentPayload(value)
 }
 
 function documentBlockChanged(local: DocumentBlock, server: DocumentBlock) {
@@ -341,7 +324,7 @@ function captureDocumentConflict(error: any, localBlock?: DocumentBlock) {
 }
 
 function restoreDeletedConflictBlock() {
-  if (!draft.value || payload.value.knowledge_type !== 'DOCUMENT' || !documentConflict.value?.localBlock) return
+  if (!draft.value || !documentConflict.value?.localBlock) return
   const serverPayload = normalizeDocumentPayload(documentConflict.value.details.server_payload || draft.value.payload)
   const localBlock = documentConflict.value.localBlock
   const restored = createDocumentBlock(localBlock.title, localBlock.markdown)
@@ -402,7 +385,7 @@ async function createEditingDraft() {
   const current = currentVersion.value
   draft.value = current
     ? await knowledgeBaseApi.rollback(selected.value.id, current.id)
-    : await knowledgeBaseApi.createDraft(selected.value.id, defaultPayload(selected.value.knowledge_type))
+    : await knowledgeBaseApi.createDraft(selected.value.id, defaultKnowledgePayload())
   await loadVersions()
   ElMessage.success('编辑草稿已创建')
 }
@@ -496,13 +479,7 @@ async function saveDraft() {
   if (!selected.value || !draft.value || !actionState.value.save) return false
   try {
     saving.value = true
-    const saved = payload.value.knowledge_type === 'DOCUMENT'
-      ? await saveDocumentDraft(cloneDeep(payload.value))
-      : Boolean(draft.value = await knowledgeBaseApi.saveDraft(selected.value.id, {
-          version_id: draft.value.id,
-          revision: draft.value.revision,
-          content: payload.value,
-        }))
+    const saved = await saveDocumentDraft(cloneDeep(payload.value))
     if (!saved) return false
     ElMessage.success('草稿已保存')
     draftConflict.value = false
@@ -520,8 +497,25 @@ async function saveDraft() {
 }
 
 function isSupportedSourceFile(file: File) {
-  const name = file.name.toLowerCase()
-  return ['.md', '.markdown', '.docx', '.xlsx'].some((suffix) => name.endsWith(suffix))
+  return isKnowledgeMarkdownFileName(file.name)
+}
+
+async function validateSourceFile(file: File) {
+  if (!isSupportedSourceFile(file)) {
+    ElMessage.error(`${KNOWLEDGE_MARKDOWN_FORMAT_ERROR}仅支持 .md 或 .markdown 文件。`)
+    return false
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    ElMessage.warning('源文件不能超过 50 MB')
+    return false
+  }
+  try {
+    await parseKnowledgeMarkdownFile(file)
+    return true
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : KNOWLEDGE_MARKDOWN_FORMAT_ERROR)
+    return false
+  }
 }
 
 function rowBusyState(row: KnowledgeBaseItem) {
@@ -535,15 +529,8 @@ function setRowBusy(row: KnowledgeBaseItem, action?: RowAction) {
 }
 
 async function uploadRowSource(row: KnowledgeBaseItem, file: File) {
-  if (!row.can_manage || row.knowledge_type !== 'DOCUMENT' || rowBusyState(row)) return
-  if (!isSupportedSourceFile(file)) {
-    ElMessage.warning('仅支持 .md、.markdown、.docx、.xlsx 文件')
-    return
-  }
-  if (file.size > 50 * 1024 * 1024) {
-    ElMessage.warning('源文件不能超过 50 MB')
-    return
-  }
+  if (!row.can_manage || rowBusyState(row)) return
+  if (!await validateSourceFile(file)) return
 
   setRowBusy(row, 'upload')
   try {
@@ -554,7 +541,7 @@ async function uploadRowSource(row: KnowledgeBaseItem, file: File) {
     if (!rowDraft) {
       rowDraft = row.current_version_id != null
         ? await knowledgeBaseApi.rollback(row.id, row.current_version_id)
-        : await knowledgeBaseApi.createDraft(row.id, defaultPayload('DOCUMENT'))
+        : await knowledgeBaseApi.createDraft(row.id, defaultKnowledgePayload())
     }
     await knowledgeBaseApi.replaceDraftFile(row.id, {
       version_id: rowDraft.id,
@@ -579,15 +566,8 @@ function rowSourceChangeHandler(row: KnowledgeBaseItem): NonNullable<UploadProps
 }
 
 async function replaceDraftSource(file: File) {
-  if (!selected.value || !draft.value || payload.value.knowledge_type !== 'DOCUMENT') return
-  if (!isSupportedSourceFile(file)) {
-    ElMessage.warning('仅支持 .md、.markdown、.docx、.xlsx 文件')
-    return
-  }
-  if (file.size > 50 * 1024 * 1024) {
-    ElMessage.warning('源文件不能超过 50 MB')
-    return
-  }
+  if (!selected.value || !draft.value) return
+  if (!await validateSourceFile(file)) return
   sourceUploading.value = true
   try {
     draft.value = await knowledgeBaseApi.replaceDraftFile(selected.value.id, {
@@ -666,7 +646,7 @@ async function refreshDraftAfterConflict() {
 }
 
 function loadServerConflictBlock() {
-  if (!documentConflict.value?.serverBlock || payload.value.knowledge_type !== 'DOCUMENT') return
+  if (!documentConflict.value?.serverBlock) return
   const serverBlock = documentConflict.value.serverBlock
   payload.value = {
     ...payload.value,
@@ -690,7 +670,7 @@ async function retryLocalConflictBlock() {
       enabled: localBlock.enabled,
     })
     const savedBlock = normalizeDocumentPayload(draft.value.payload).blocks.find((block) => block.id === localBlock.id)
-    if (payload.value.knowledge_type === 'DOCUMENT' && savedBlock) {
+    if (savedBlock) {
       payload.value = {
         ...payload.value,
         blocks: payload.value.blocks.map((block) => block.id === savedBlock.id ? savedBlock : block),
@@ -906,9 +886,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       @row-click="openEditor"
     >
       <el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip />
-      <el-table-column label="知识类型" width="150">
-        <template #default="{ row }">{{ knowledgeTypeText(row.knowledge_type) }}</template>
-      </el-table-column>
       <el-table-column label="知识范围" width="150">
         <template #default="{ row }">
           <el-tag size="small" :type="row.visibility_scope === 'PLATFORM_PUBLIC' ? 'warning' : 'primary'">
@@ -935,7 +912,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <div class="row-actions">
             <el-button text type="primary" :disabled="Boolean(rowBusyState(row))" @click.stop="openEditor(row)">{{ row.archived || !row.can_manage ? '查看' : '编辑' }}</el-button>
             <span
-              v-if="!row.archived && row.can_manage && row.knowledge_type === 'DOCUMENT'"
+              v-if="!row.archived && row.can_manage"
               class="row-source-upload"
               @click.stop
             >
@@ -943,7 +920,7 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
                 action="#"
                 :auto-upload="false"
                 :show-file-list="false"
-                accept=".md,.markdown,.docx,.xlsx"
+                accept=".md,.markdown"
                 :disabled="Boolean(rowBusyState(row))"
                 :on-change="rowSourceChangeHandler(row)"
               >
@@ -995,34 +972,26 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="名称" required><el-input v-model="createForm.name" maxlength="255" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="createForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" /></el-form-item>
-        <el-form-item label="知识类型" required>
-          <el-select v-model="createForm.knowledge_type">
-            <el-option label="普通文档" value="DOCUMENT" />
-            <el-option label="业务术语与 SQL" value="BUSINESS" />
-            <el-option label="事件参数" value="EVENT" />
-            <el-option label="JSON 字段" value="JSON_FIELD" />
-          </el-select>
-        </el-form-item>
         <el-form-item label="知识范围">
           <el-select v-model="createForm.visibility_scope" :disabled="!isPlatformAdmin">
             <el-option label="工作空间知识" value="ADMIN_PUBLIC" />
             <el-option v-if="isPlatformAdmin" label="平台公共知识" value="PLATFORM_PUBLIC" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="createForm.knowledge_type === 'DOCUMENT'" label="文档内容">
+        <el-form-item label="文档内容">
           <el-upload
             class="create-source-upload"
             drag
             action="#"
             :auto-upload="false"
             :show-file-list="false"
-            accept=".md,.markdown,.docx,.xlsx"
+            accept=".md,.markdown"
             :on-change="handleCreateSourceChange"
           >
             <div class="source-upload-inner">
               <el-icon><UploadFilled /></el-icon>
               <span>拖拽或点击上传源文件</span>
-              <small>支持 Markdown、Word、Excel（最大 50 MB）</small>
+              <small>仅支持下载模板格式的 Markdown（最大 50 MB）</small>
             </div>
           </el-upload>
           <div v-if="createSourceFile" class="selected-source-file">已选择：{{ createSourceFile.name }}</div>
@@ -1078,20 +1047,20 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
             <el-button type="primary" :loading="publishing" :disabled="!actionState.publish" @click="publishDraft">发布</el-button>
           </div>
         </div>
-        <div v-if="canEdit && draft && payload.knowledge_type === 'DOCUMENT'" class="source-upload-row">
+        <div v-if="canEdit && draft" class="source-upload-row">
           <el-upload
             drag
             action="#"
             :auto-upload="false"
             :show-file-list="false"
-            accept=".md,.markdown,.docx,.xlsx"
+            accept=".md,.markdown"
             :disabled="sourceUploading"
             :on-change="handleSourceFileChange"
           >
             <div class="source-upload-inner">
               <el-icon><UploadFilled /></el-icon>
               <span>{{ sourceUploading ? '正在解析源文件...' : '拖拽或点击上传源文件' }}</span>
-              <small>支持 Markdown、Word、Excel（.md / .markdown / .docx / .xlsx）</small>
+              <small>仅支持下载模板格式的 Markdown（.md / .markdown）</small>
             </div>
           </el-upload>
         </div>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -81,6 +82,18 @@ def _prepare(session):
         content_hash="a" * 64,
         actor_id=1,
     )
+
+
+def _valid_markdown(body: str = "有效正文") -> bytes:
+    return (
+        "---\n"
+        "template_type: knowledge_document\n"
+        "template_version: 1\n"
+        "---\n"
+        "# 标题\n\n"
+        "## 章节\n\n"
+        f"{body}\n"
+    ).encode()
 
 
 def test_duplicate_publish_returns_the_same_database_job():
@@ -259,7 +272,7 @@ def test_conflicting_source_upload_cleans_only_request_staged_file(monkeypatch, 
             current_user=SimpleNamespace(id=1),
             version_id=12,
             revision=1,
-            file=UploadFile(filename="new.md", file=BytesIO(b"new")),
+            file=UploadFile(filename="new.md", file=BytesIO(_valid_markdown("冲突正文"))),
         )
     )
     assert response.status_code == 409
@@ -336,9 +349,78 @@ def test_successful_source_upload_reclaims_only_the_previous_file(monkeypatch, t
         current_user=SimpleNamespace(id=1),
         version_id=12,
         revision=1,
-        file=UploadFile(filename="new.md", file=BytesIO(b"# new")),
+        file=UploadFile(filename="new.md", file=BytesIO(_valid_markdown("新正文"))),
     ))
 
     assert response["revision"] == 2
     assert session.commits == 1
     assert cleaned == [("old.md",)]
+
+
+def test_invalid_source_upload_is_atomic_and_removes_staged_file(monkeypatch, tmp_path: Path):
+    original_payload = {"knowledge_type": "DOCUMENT", "markdown": "旧正文"}
+    version = KnowledgeBaseVersion(
+        id=12,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=1,
+        revision=4,
+        status=KnowledgeVersionStatus.DRAFT,
+        payload=original_payload.copy(),
+        file_id="old.md",
+        file_name="old.md",
+        file_ext=".md",
+    )
+
+    class _Session:
+        def __init__(self):
+            self.commits = 0
+            self.rollbacks = 0
+
+        def exec(self, _statement):
+            return _Result(version)
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.rollbacks += 1
+
+    service_calls = 0
+
+    def lifecycle_service(*_args):
+        nonlocal service_calls
+        service_calls += 1
+        raise AssertionError("invalid templates must fail before draft CAS")
+
+    monkeypatch.setattr(versions, "get_capabilities", lambda _session: SimpleNamespace(
+        phase=KnowledgeMigrationPhase.V2_ACTIVE,
+        management_mode="V2",
+        v2_write_enabled=True,
+    ))
+    monkeypatch.setattr(versions, "resolve_record", lambda *_args, **_kwargs: SimpleNamespace(id=11))
+    monkeypatch.setattr(versions, "record_tenant_id", lambda *_args, **_kwargs: 7)
+    monkeypatch.setattr(versions, "KnowledgeLifecycleService", lifecycle_service)
+    monkeypatch.setattr(versions.settings, "UPLOAD_DIR", str(tmp_path))
+    session = _Session()
+
+    response = asyncio.run(versions.replace_draft_source_file(
+        id=11,
+        session=session,
+        current_user=SimpleNamespace(id=1),
+        version_id=12,
+        revision=4,
+        file=UploadFile(filename="invalid.md", file=BytesIO(b"# missing template marker")),
+    ))
+
+    payload = json.loads(response.body)
+    assert response.status_code == 422
+    assert payload["code"] == "KNOWLEDGE_TEMPLATE_FORMAT_INVALID"
+    assert payload["message"].startswith("格式错误")
+    assert version.revision == 4
+    assert version.payload == original_payload
+    assert version.file_id == "old.md"
+    assert session.commits == 0
+    assert session.rollbacks == 1
+    assert service_calls == 0
+    assert list(tmp_path.iterdir()) == []

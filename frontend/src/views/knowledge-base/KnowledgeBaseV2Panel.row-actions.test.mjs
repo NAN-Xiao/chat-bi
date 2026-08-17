@@ -22,7 +22,7 @@ test('row actions render edit, upload, download, and archive in order', () => {
   )
   assert.match(
     panelSource,
-    /v-if="!row\.archived && row\.can_manage && row\.knowledge_type === 'DOCUMENT'"/
+    /v-if="!row\.archived && row\.can_manage"/
   )
   assert.match(panelSource, /:icon="UploadFilled"[\s\S]*aria-label="上传源文件"/)
   assert.match(panelSource, /:icon="Download"[\s\S]*aria-label="下载源文件"/)
@@ -48,17 +48,22 @@ test('archive action distinguishes archive from unpublished hard delete cleanup'
   assert.match(source, /result\.archived \? '知识库已归档' : '未发布知识库已删除'/)
 })
 
-test('row upload validates the accepted formats and 50 MB limit', () => {
-  assert.match(panelSource, /accept="\.md,\.markdown,\.docx,\.xlsx"/)
-  assert.match(panelSource, /\['\.md', '\.markdown', '\.docx', '\.xlsx'\]/)
+test('row upload validates the Markdown template contract and 50 MB limit', () => {
+  assert.match(panelSource, /accept="\.md,\.markdown"/)
+  assert.match(panelSource, /await parseKnowledgeMarkdownFile\(file\)/)
   assert.match(panelSource, /file\.size > 50 \* 1024 \* 1024/)
+  assert.doesNotMatch(panelSource, /\.docx|\.xlsx/)
 })
 
 test('row upload uses a row-local exact draft and does not open or mutate editor state', () => {
   const source = functionSource('uploadRowSource', 'function rowSourceChangeHandler')
   assert.match(source, /knowledgeBaseApi\.version\(row\.id, row\.draft_version_id\)/)
   assert.match(source, /knowledgeBaseApi\.rollback\(row\.id, row\.current_version_id\)/)
-  assert.match(source, /knowledgeBaseApi\.createDraft\(row\.id, defaultPayload\('DOCUMENT'\)\)/)
+  assert.match(source, /knowledgeBaseApi\.createDraft\(row\.id, defaultKnowledgePayload\(\)\)/)
+  assert.ok(
+    source.indexOf('await validateSourceFile(file)') < source.indexOf('knowledgeBaseApi.createDraft'),
+    'format validation must finish before draft creation'
+  )
   assert.match(source, /version_id: rowDraft\.id,[\s\S]*revision: rowDraft\.revision/)
   assert.doesNotMatch(source, /knowledgeBaseApi\.versions|\.find\(/)
   assert.doesNotMatch(

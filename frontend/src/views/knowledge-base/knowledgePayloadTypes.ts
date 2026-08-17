@@ -25,66 +25,7 @@ export interface KnowledgeObjectReference {
   event_property_key?: string | null
 }
 
-export interface SqlExample {
-  name: string
-  question: string
-  sql: string
-  dialect?: string
-  notes?: string
-}
-
-export interface BusinessKnowledgePayload {
-  knowledge_type: 'BUSINESS'
-  term: string
-  aliases: string[]
-  definition: string
-  formula: string
-  constraints: string[]
-  related_objects: KnowledgeObjectReference[]
-  examples: SqlExample[]
-}
-
-export interface EventParameter {
-  name: string
-  display_name?: string
-  data_type: string
-  required?: boolean
-  description?: string
-  value_mappings?: Record<string, string>
-}
-
-export interface EventKnowledgePayload {
-  knowledge_type: 'EVENT'
-  event_name: string
-  display_name: string
-  aliases: string[]
-  description: string
-  table_name: string
-  event_name_field: string
-  event_time_field: string
-  parameters: EventParameter[]
-}
-
-export interface JsonFieldKnowledgePayload {
-  knowledge_type: 'JSON_FIELD'
-  schema_name: string
-  table_name: string
-  source_field: string
-  json_path: string
-  field_name: string
-  display_name: string
-  data_type: string
-  expression: string
-  aliases: string[]
-  description: string
-  value_mappings: Record<string, string>
-}
-
-export type KnowledgePayload =
-  | DocumentPayload
-  | BusinessKnowledgePayload
-  | EventKnowledgePayload
-  | JsonFieldKnowledgePayload
+export type KnowledgePayload = DocumentPayload
 
 function documentBlockId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -126,48 +67,7 @@ export function normalizeDocumentPayload(value: Record<string, any> | DocumentPa
   }
 }
 
-export function defaultKnowledgePayload(type: KnowledgePayload['knowledge_type']): KnowledgePayload {
-  if (type === 'BUSINESS') {
-    return {
-      knowledge_type: 'BUSINESS',
-      term: '',
-      aliases: [],
-      definition: '',
-      formula: '',
-      constraints: [],
-      related_objects: [],
-      examples: [],
-    }
-  }
-  if (type === 'EVENT') {
-    return {
-      knowledge_type: 'EVENT',
-      event_name: '',
-      display_name: '',
-      aliases: [],
-      description: '',
-      table_name: '',
-      event_name_field: '',
-      event_time_field: '',
-      parameters: [],
-    }
-  }
-  if (type === 'JSON_FIELD') {
-    return {
-      knowledge_type: 'JSON_FIELD',
-      schema_name: '',
-      table_name: '',
-      source_field: '',
-      json_path: '$.',
-      field_name: '',
-      display_name: '',
-      data_type: 'string',
-      expression: '',
-      aliases: [],
-      description: '',
-      value_mappings: {},
-    }
-  }
+export function defaultKnowledgePayload(): KnowledgePayload {
   return {
     knowledge_type: 'DOCUMENT',
     blocks: [createDocumentBlock()],
@@ -179,43 +79,9 @@ export function defaultKnowledgePayload(type: KnowledgePayload['knowledge_type']
 }
 
 export function serializeKnowledgeDraft(payload: KnowledgePayload): KnowledgePayload {
-  if (payload.knowledge_type === 'BUSINESS') {
-    return {
-      ...payload,
-      aliases: [...(payload.aliases || [])],
-      constraints: [...(payload.constraints || [])],
-      examples: (payload.examples || []).map((item) => ({ ...item })),
-    }
-  }
-  if (payload.knowledge_type === 'EVENT') {
-    return {
-      ...payload,
-      aliases: [...(payload.aliases || [])],
-      parameters: (payload.parameters || []).map((item) => ({ ...item })),
-    }
-  }
-  if (payload.knowledge_type === 'JSON_FIELD') {
-    return {
-      ...payload,
-      aliases: [...(payload.aliases || [])],
-      value_mappings: { ...(payload.value_mappings || {}) },
-      json_path: payload.json_path || '$.',
-    }
-  }
+  const normalized = normalizeDocumentPayload(payload)
   return {
-    ...normalizeDocumentPayload(payload),
-    blocks: normalizeDocumentPayload(payload).blocks.map((block) => ({ ...block })),
+    ...normalized,
+    blocks: normalized.blocks.map((block) => ({ ...block })),
   }
-}
-
-export function serializeEvent(payload: EventKnowledgePayload): EventKnowledgePayload {
-  return serializeKnowledgeDraft(payload) as EventKnowledgePayload
-}
-
-export function serializeJsonField(payload: JsonFieldKnowledgePayload): JsonFieldKnowledgePayload {
-  return serializeKnowledgeDraft(payload) as JsonFieldKnowledgePayload
-}
-
-export function applyParsedUpload(parsedMarkdown: string, _previousMarkdown: string): string {
-  return String(parsedMarkdown || '')
 }

@@ -15,12 +15,10 @@ const menuItemSource = readFileSync(join(directory, '../../components/layout/Men
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
 const layoutSource = readFileSync(join(directory, '../../components/layout/LayoutDsl.vue'), 'utf8')
 
-test('knowledge page keeps the four editors split behind one orchestration layer', () => {
+test('knowledge page exposes only the document editor behind one orchestration layer', () => {
   assert.match(pageSource, /KnowledgeBaseV2Panel/)
   assert.match(editorSource, /DocumentEditor/)
-  assert.match(editorSource, /BusinessKnowledgeEditor/)
-  assert.match(editorSource, /EventKnowledgeEditor/)
-  assert.match(editorSource, /JsonFieldKnowledgeEditor/)
+  assert.doesNotMatch(editorSource, /BusinessKnowledgeEditor|EventKnowledgeEditor|JsonFieldKnowledgeEditor/)
 })
 
 test('knowledge management expands to platform and workspace child menus', () => {
@@ -111,7 +109,7 @@ test('knowledge lifecycle actions stay in the knowledge-base header before the p
   const headerIndex = panelSource.indexOf('<div class="knowledge-editor-header">')
   const actionIndex = panelSource.indexOf('class="knowledge-lifecycle-actions"', headerIndex)
   const sourceUploadIndex = panelSource.indexOf(
-    '<div v-if="canEdit && draft && payload.knowledge_type === \'DOCUMENT\'" class="source-upload-row">',
+    '<div v-if="canEdit && draft" class="source-upload-row">',
     headerIndex
   )
   const editorIndex = panelSource.indexOf('<KnowledgePayloadEditor', headerIndex)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -179,66 +179,8 @@ def document_markdown(payload: DocumentPayload, *, enabled_only: bool = True) ->
     return "\n\n".join(sections)
 
 
-class BusinessSqlExample(BaseModel):
-    name: str
-    question: str
-    sql: str
-    dialect: str | None = None
-    notes: str = ""
-
-
-class BusinessKnowledgePayload(BaseModel):
-    knowledge_type: Literal["BUSINESS"]
-    term: str | None = None
-    aliases: list[str] = Field(default_factory=list)
-    definition: str = ""
-    formula: str = ""
-    constraints: list[str] = Field(default_factory=list)
-    related_objects: list[SemanticObjectReferenceInput] = Field(default_factory=list)
-    examples: list[BusinessSqlExample] = Field(default_factory=list)
-
-
-class EventParameter(BaseModel):
-    name: str
-    display_name: str = ""
-    data_type: str
-    required: bool = False
-    description: str = ""
-    value_mappings: dict[str, str] = Field(default_factory=dict)
-
-
-class EventKnowledgePayload(BaseModel):
-    knowledge_type: Literal["EVENT"]
-    event_name: str
-    display_name: str = ""
-    aliases: list[str] = Field(default_factory=list)
-    description: str = ""
-    table_name: str
-    event_name_field: str
-    event_time_field: str | None = None
-    parameters: list[EventParameter] = Field(default_factory=list)
-
-
-class JsonFieldKnowledgePayload(BaseModel):
-    knowledge_type: Literal["JSON_FIELD"]
-    schema_name: str | None = None
-    table_name: str
-    source_field: str
-    json_path: str
-    field_name: str
-    display_name: str = ""
-    data_type: str
-    expression: str
-    aliases: list[str] = Field(default_factory=list)
-    description: str = ""
-    value_mappings: dict[str, str] = Field(default_factory=dict)
-
-
-KnowledgePayload = Annotated[
-    DocumentPayload | BusinessKnowledgePayload | EventKnowledgePayload | JsonFieldKnowledgePayload,
-    Field(discriminator="knowledge_type"),
-]
-KnowledgePayloadAdapter = TypeAdapter(KnowledgePayload)
+KnowledgePayload = DocumentPayload
+KnowledgePayloadAdapter = TypeAdapter(DocumentPayload)
 
 
 class ValidationIssue(BaseModel):

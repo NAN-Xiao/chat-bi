@@ -59,5 +59,7 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 
 ## Knowledge Editor Conventions
 
-- Keep the document-style content shell in the shared `KnowledgeContentFrame.vue` component. DOCUMENT, BUSINESS, EVENT, and JSON_FIELD editors should compose their existing fields inside this frame instead of defining parallel border, title-bar, or body-spacing styles.
+- Keep the ordinary document editor's content shell in the shared `KnowledgeContentFrame.vue` component instead of defining parallel border, title-bar, or body-spacing styles.
 - DOCUMENT block creation and deletion are draft-only mutations. They update the payload owned by the editor, while persistence continues through the existing `saveDocumentStructure` flow so version conflicts remain explicit and server structure is never silently overwritten.
+- Knowledge management exposes one ordinary-document model. Do not restore user-visible knowledge-type selectors, columns, or specialized BUSINESS/EVENT/JSON_FIELD editors; `DOCUMENT` is only the fixed internal payload marker.
+- All three source-upload entrances accept only `.md` and `.markdown` files and must run the shared versioned template validator before issuing a create or replacement request. A rejected selection clears any previously pending file and shows an error beginning with `格式错误`.

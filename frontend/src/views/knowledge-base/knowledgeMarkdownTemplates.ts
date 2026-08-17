@@ -1,3 +1,5 @@
+import { knowledgeMarkdownTemplateContent } from './knowledgeMarkdownFormat.ts'
+
 export interface KnowledgeMarkdownTemplate {
   readonly id: 'document' | 'business-sql' | 'event-parameters' | 'table-fields-json-path'
   readonly label: string
@@ -10,7 +12,7 @@ export const knowledgeMarkdownTemplates = [
     id: 'document',
     label: '普通文档',
     fileName: '知识库-普通文档模板.md',
-    content: `# 示例文档标题（请替换）
+    content: knowledgeMarkdownTemplateContent(`# 示例文档标题（请替换）
 
 > 填写提示：使用标题组织独立主题。二级及以下标题会形成可检索的章节路径，请删除提示并替换示例内容。
 
@@ -34,13 +36,13 @@ export const knowledgeMarkdownTemplates = [
 
 - 例外情况：示例例外（请替换）。
 - 维护负责人：示例角色（请替换，不要填写账号密码等敏感信息）。
-`,
+`),
   },
   {
     id: 'business-sql',
     label: '业务术语与 SQL',
     fileName: '知识库-业务术语与SQL模板.md',
-    content: `# 业务术语与 SQL 示例
+    content: knowledgeMarkdownTemplateContent(`# 业务术语与 SQL 示例
 
 > 填写提示：每个业务术语使用一个二级标题，SQL 必须放在 sql 围栏代码块中。请替换示例表名、字段名和统计口径，并在知识库中声明实际引用对象。
 
@@ -86,13 +88,13 @@ ORDER BY statistic_date;
 - SQL 方言：示例为 PostgreSQL（请按目标数据源替换）。
 - 时间窗口：使用明确的开始时间和结束时间，避免隐含当前日期。
 - 数据权限：查询结果必须遵循当前工作空间和数据源权限。
-`,
+`),
   },
   {
     id: 'event-parameters',
     label: '事件参数',
     fileName: '知识库-事件参数模板.md',
-    content: `# 事件与事件参数说明
+    content: knowledgeMarkdownTemplateContent(`# 事件与事件参数说明
 
 > 填写提示：每个事件使用一个二级标题，每个参数使用一个三级标题。同一工作空间内事件名必须唯一，请删除提示并替换示例标识。
 
@@ -134,13 +136,13 @@ ORDER BY statistic_date;
 - 必填参数缺失时的处理方式：示例说明（请替换）。
 - 重复事件识别规则：示例规则（请替换）。
 - 延迟上报容忍范围：示例范围（请替换）。
-`,
+`),
   },
   {
     id: 'table-fields-json-path',
     label: '表字段与 JSON Path',
     fileName: '知识库-表字段与JSON-Path模板.md',
-    content: `# 表字段与 JSON Path 说明
+    content: knowledgeMarkdownTemplateContent(`# 表字段与 JSON Path 说明
 
 > 填写提示：每张表使用一个二级标题，普通字段和 JSON Path 使用三级或四级标题。请替换所有示例对象名，并在知识库中声明实际引用对象。
 
@@ -188,7 +190,7 @@ ORDER BY statistic_date;
 | --- | --- |
 | example_a | 示例来源 A（请替换） |
 | example_b | 示例来源 B（请替换） |
-`,
+`),
   },
 ] as const satisfies readonly KnowledgeMarkdownTemplate[]
 

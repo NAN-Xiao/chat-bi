@@ -20,6 +20,11 @@ import {
   type KnowledgePageMode,
 } from './knowledgePageMode'
 import { useKnowledgeScopeNavigation } from './knowledgeScopeNavigation'
+import {
+  KNOWLEDGE_MARKDOWN_FORMAT_ERROR,
+  isKnowledgeMarkdownFileName,
+  parseKnowledgeMarkdownFile,
+} from './knowledgeMarkdownFormat'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 
@@ -220,22 +225,29 @@ function closeForm() {
 }
 
 function isSupportedKnowledgeFile(file: File) {
-  const name = file.name.toLowerCase()
-  return name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.docx') || name.endsWith('.xlsx')
+  return isKnowledgeMarkdownFileName(file.name)
 }
 
 function setNameFromFile(file: File) {
   if (form.value.name.trim()) return
-  form.value.name = file.name.replace(/\.(md|markdown|docx|xlsx)$/i, '')
+  form.value.name = file.name.replace(/\.(md|markdown)$/i, '')
 }
 
-const beforeKnowledgeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile) => {
+const beforeKnowledgeUpload: UploadProps['beforeUpload'] = async (rawFile: UploadRawFile) => {
+  pendingFile.value = null
+  uploadFileName.value = ''
   if (!isSupportedKnowledgeFile(rawFile)) {
-    ElMessage.warning(t('knowledge_base.upload_invalid_type'))
+    ElMessage.error(`${KNOWLEDGE_MARKDOWN_FORMAT_ERROR}${t('knowledge_base.upload_invalid_type')}`)
     return false
   }
   if (rawFile.size > 50 * 1024 * 1024) {
     ElMessage.warning(t('knowledge_base.upload_too_large'))
+    return false
+  }
+  try {
+    await parseKnowledgeMarkdownFile(rawFile)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : KNOWLEDGE_MARKDOWN_FORMAT_ERROR)
     return false
   }
 
@@ -246,9 +258,9 @@ const beforeKnowledgeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFi
   return false
 }
 
-const handleKnowledgeFileChange: UploadProps['onChange'] = (uploadFile: UploadFile) => {
+const handleKnowledgeFileChange: UploadProps['onChange'] = async (uploadFile: UploadFile) => {
   if (uploadFile.raw) {
-    beforeKnowledgeUpload(uploadFile.raw)
+    await beforeKnowledgeUpload(uploadFile.raw)
   }
 }
 
@@ -490,7 +502,7 @@ onBeforeUnmount(() => {
               action="#"
               :auto-upload="false"
               :show-file-list="false"
-              accept=".md,.markdown,.docx,.xlsx"
+              accept=".md,.markdown"
               :on-change="handleKnowledgeFileChange"
             >
               <div class="knowledge-upload-inner">

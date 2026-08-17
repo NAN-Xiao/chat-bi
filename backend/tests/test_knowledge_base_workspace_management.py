@@ -6,7 +6,9 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from apps.knowledge_base.api import management
 from apps.knowledge_base.lifecycle_service import KnowledgeRemovalResult
@@ -257,41 +259,28 @@ def test_knowledge_type_is_fixed_when_the_record_is_created(monkeypatch):
     response = asyncio.run(
         management.create_knowledge_base(
             body=management.CreateKnowledgeBaseRequest(
-                name="Event knowledge",
+                name="Document knowledge",
                 visibility_scope=KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC,
                 tenant_id=7,
-                knowledge_type="EVENT",
             ),
             session=session,
             current_user=_user(tenant_id=7, role="admin"),
         )
     )
 
-    assert response["knowledge_type"] == "EVENT"
-    assert session.added[0].knowledge_type == "EVENT"
+    assert "knowledge_type" not in response
+    assert session.added[0].knowledge_type == "DOCUMENT"
 
 
-def test_create_rejects_unknown_knowledge_type(monkeypatch):
-    monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
-    session = _Session(active_tenant_id=7)
-
-    response = asyncio.run(
-        management.create_knowledge_base(
-            body=management.CreateKnowledgeBaseRequest(
-                name="Unknown knowledge",
-                visibility_scope=KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC,
-                tenant_id=7,
-                knowledge_type="UNKNOWN",
-            ),
-            session=session,
-            current_user=_user(tenant_id=7, role="admin"),
-        )
-    )
-
-    assert isinstance(response, JSONResponse)
-    assert response.status_code == 422
-    assert _response_json(response)["code"] == "KNOWLEDGE_TYPE_INVALID"
-    assert session.added == []
+def test_create_request_rejects_explicit_knowledge_type():
+    with pytest.raises(ValidationError) as error:
+        management.CreateKnowledgeBaseRequest.model_validate({
+            "name": "Old typed knowledge",
+            "visibility_scope": "ADMIN_PUBLIC",
+            "tenant_id": 7,
+            "knowledge_type": "EVENT",
+        })
+    assert error.value.errors()[0]["type"] == "extra_forbidden"
 
 
 def test_workspace_member_cannot_create_workspace_knowledge(monkeypatch):

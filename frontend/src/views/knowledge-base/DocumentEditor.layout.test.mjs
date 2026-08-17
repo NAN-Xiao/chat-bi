@@ -7,14 +7,6 @@ import test from 'node:test'
 const directory = dirname(fileURLToPath(import.meta.url))
 const editorSource = readFileSync(join(directory, 'editors/DocumentEditor.vue'), 'utf8')
 const frameSource = readFileSync(join(directory, 'editors/KnowledgeContentFrame.vue'), 'utf8')
-const structuredEditorNames = [
-  'BusinessKnowledgeEditor.vue',
-  'EventKnowledgeEditor.vue',
-  'JsonFieldKnowledgeEditor.vue',
-]
-const structuredEditorSources = structuredEditorNames.map((name) =>
-  readFileSync(join(directory, 'editors', name), 'utf8')
-)
 const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'utf8')
 
 test('document editor uses a directory with one active block detail', () => {
@@ -43,8 +35,8 @@ test('knowledge editing stays focused on block content', () => {
   assert.doesNotMatch(editorSource, /KnowledgeReferenceList|KnowledgeStringList|datasource_neutral/)
   const payloadEditorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
   assert.doesNotMatch(payloadEditorSource, /label="知识类型"|typeOptions|updateType/)
-  assert.match(panelSource, /createForm\.knowledge_type/)
-  assert.match(panelSource, /label="知识类型"/)
+  assert.doesNotMatch(panelSource, /createForm\.knowledge_type/)
+  assert.doesNotMatch(panelSource, /label="知识类型"|label="知识类型"/)
 })
 
 test('deleted block conflicts can preserve local content as a new block', () => {
@@ -54,13 +46,9 @@ test('deleted block conflicts can preserve local content as a new block', () => 
   assert.match(panelSource, /恢复为新知识块/)
 })
 
-test('all knowledge editors share the document-style content frame', () => {
+test('the document editor uses the shared content frame', () => {
   assert.match(editorSource, /import KnowledgeContentFrame from '.\/KnowledgeContentFrame\.vue'/)
   assert.match(editorSource, /<KnowledgeContentFrame/)
-  for (const source of structuredEditorSources) {
-    assert.match(source, /import KnowledgeContentFrame from '.\/KnowledgeContentFrame\.vue'/)
-    assert.match(source, /<KnowledgeContentFrame/)
-  }
   assert.match(frameSource, /class="knowledge-content-frame"/)
   assert.match(frameSource, /class="content-frame-header"/)
   assert.match(frameSource, /class="content-frame-body"/)
@@ -69,18 +57,6 @@ test('all knowledge editors share the document-style content frame', () => {
     editorSource,
     /class="knowledge-block"|class="block-header"|class="block-body"/
   )
-})
-
-test('structured editors keep their existing editing entry points', () => {
-  const [businessSource, eventSource, jsonSource] = structuredEditorSources
-  assert.match(businessSource, /modelValue\.term/)
-  assert.match(businessSource, /KnowledgeReferenceList/)
-  assert.match(businessSource, /KnowledgeSqlExamples/)
-  assert.match(eventSource, /modelValue\.event_name/)
-  assert.match(eventSource, /KnowledgeEventParameters/)
-  assert.match(jsonSource, /modelValue\.json_path/)
-  assert.match(jsonSource, /modelValue\.expression/)
-  assert.match(jsonSource, /parseMappings/)
 })
 
 test('document editor adds and confirms deletion of draft blocks', () => {

@@ -180,7 +180,6 @@ def serialize_record(record: KnowledgeBase, *, can_manage: bool) -> dict[str, An
         "create_time": record.create_time,
         "update_time": record.update_time,
         "archived": bool(record.archived),
-        "knowledge_type": record.knowledge_type,
         "stable_key": record.stable_key,
         "draft_version_id": record.draft_version_id,
         "current_version_id": record.current_version_id,

@@ -6,7 +6,6 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import delete
@@ -37,7 +36,6 @@ from apps.knowledge_base.publish_jobs import (
 from apps.knowledge_base.retrieval_models import KnowledgeBaseChunk
 from apps.knowledge_base.schemas import KnowledgePayloadAdapter
 from common.core.config import settings
-from common.utils.file_utils import AppFileUtils
 
 logger = logging.getLogger(__name__)
 
@@ -186,21 +184,6 @@ class KnowledgePublisher:
 
     def _chunk(self, payload: Any, version: Any, *, job_id: int) -> list[KnowledgeChunkDraft]:
         self._set_stage(job_id=job_id, stage="CHUNK")
-        if getattr(payload, "knowledge_type", None) == "DOCUMENT":
-            return self.chunker(
-                payload=payload,
-                chunk_size=settings.KNOWLEDGE_CHUNK_SIZE,
-                overlap=settings.KNOWLEDGE_CHUNK_OVERLAP,
-            )
-        if getattr(version, "file_id", None):
-            path = Path(AppFileUtils.get_file_path(version.file_id))
-            if path.is_file():
-                return self.chunker(
-                    source=path,
-                    file_ext=version.file_ext,
-                    chunk_size=settings.KNOWLEDGE_CHUNK_SIZE,
-                    overlap=settings.KNOWLEDGE_CHUNK_OVERLAP,
-                )
         return self.chunker(
             payload=payload,
             chunk_size=settings.KNOWLEDGE_CHUNK_SIZE,

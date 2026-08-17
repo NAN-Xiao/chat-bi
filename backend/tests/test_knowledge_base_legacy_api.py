@@ -7,7 +7,7 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
-from fastapi import BackgroundTasks, UploadFile
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 
 from apps.knowledge_base.api import knowledge_base as legacy_api
 from apps.knowledge_base.models import (
@@ -39,6 +39,7 @@ class _ApiSession:
         self.added: list[KnowledgeBase] = []
         self.deleted: list[KnowledgeBase] = []
         self.commits = 0
+        self.rollbacks = 0
 
     def get(self, _model, _record_id):
         return self.record
@@ -54,6 +55,9 @@ class _ApiSession:
 
     def commit(self) -> None:
         self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
 
     def refresh(self, _record: KnowledgeBase) -> None:
         return None
@@ -116,6 +120,79 @@ def test_knowledge_v2_management_accepts_explicit_disable(monkeypatch) -> None:
     )
 
     assert settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED is False
+
+
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        ("legacy.docx", b"not markdown"),
+        ("legacy.md", b"# missing template marker"),
+    ],
+)
+def test_legacy_upload_rejects_non_template_files_before_writing(
+    monkeypatch,
+    tmp_path,
+    filename,
+    content,
+) -> None:
+    monkeypatch.setattr(legacy_api.settings, "UPLOAD_DIR", str(tmp_path))
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(
+            legacy_api._save_upload(
+                UploadFile(filename=filename, file=BytesIO(content))
+            )
+        )
+    assert getattr(caught.value, "status_code", None) == 422
+    assert str(getattr(caught.value, "detail", "")).startswith("格式错误")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_legacy_source_replacement_keeps_old_file_until_commit(monkeypatch) -> None:
+    calls = {"save_upload": 0, "enqueue": 0, "delete_file": 0}
+    _install_api_dependencies(monkeypatch, calls)
+    deleted_files: list[str] = []
+    cleaned_files: list[tuple[str | None, ...]] = []
+    monkeypatch.setattr(
+        legacy_api.AppFileUtils,
+        "delete_file",
+        lambda file_id: deleted_files.append(str(file_id)),
+    )
+    monkeypatch.setattr(
+        legacy_api,
+        "cleanup_unreferenced_source_files",
+        lambda _session, file_ids: cleaned_files.append(tuple(file_ids)),
+    )
+    monkeypatch.setattr(
+        legacy_api.KnowledgeMigrationStateRepository,
+        "lock_for_legacy_write",
+        lambda _session: None,
+    )
+
+    class _FailingCommitSession(_ApiSession):
+        def commit(self) -> None:
+            super().commit()
+            raise RuntimeError("database commit failed")
+
+    session = _FailingCommitSession(_record())
+    with pytest.raises(RuntimeError, match="database commit failed"):
+        asyncio.run(
+            legacy_api.save_knowledge_base(
+                session=session,
+                current_user=SimpleNamespace(id=11),
+                background_tasks=BackgroundTasks(),
+                id=1,
+                name="Legacy document",
+                description="",
+                active=True,
+                visibility_scope=KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC.value,
+                file=UploadFile(filename="replacement.md", file=BytesIO(b"content")),
+                tenant_id=None,
+            )
+        )
+
+    assert session.rollbacks == 1
+    assert deleted_files == ["new.md"]
+    assert cleaned_files == []
 
 
 @pytest.mark.parametrize(
@@ -247,6 +324,7 @@ def test_legacy_open_keeps_queue_to_background_task_fallback(monkeypatch) -> Non
     )
 
     assert result.id == 1
+    assert result.knowledge_type == "DOCUMENT"
     assert result.task_id is None
     assert lock_calls == 2
     assert calls["save_upload"] == 1

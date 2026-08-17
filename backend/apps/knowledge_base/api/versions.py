@@ -28,6 +28,7 @@ from apps.knowledge_base.cutover import get_capabilities
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.lifecycle_service import KnowledgeLifecycleService
+from apps.knowledge_base.markdown_template import KnowledgeMarkdownFormatError
 from apps.knowledge_base.normalizers import normalize_payload
 from apps.knowledge_base.permissions import KnowledgePermissionService
 from apps.knowledge_base.retrieval_models import KnowledgeBaseWorkspaceOverride
@@ -132,7 +133,7 @@ def _payload(value: dict[str, Any]):
             message="知识内容格式不正确，请修正后重新提交。",
             status_code=422,
             error_type="VALIDATION",
-            suggestion="检查 knowledge_type 和对应类型的必填字段。",
+            suggestion="请检查普通文档知识块和对象引用字段。",
         ) from exc
 
 
@@ -354,11 +355,11 @@ async def replace_draft_source_file(
             extension = AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
         except Exception as exc:
             raise KnowledgeBusinessError(
-                code="KNOWLEDGE_SOURCE_FILE_INVALID",
-                message="源文件格式不支持。",
+                code="KNOWLEDGE_TEMPLATE_FORMAT_INVALID",
+                message="格式错误：仅支持 .md 或 .markdown 模板文件。",
                 status_code=422,
                 error_type="VALIDATION",
-                suggestion="请上传 Markdown、Word 或 Excel 文档。",
+                suggestion="请下载并使用 Markdown 模板。",
             ) from exc
         staged_file_id = f".knowledge-stage-{uuid.uuid4().hex}{extension}"
         staged_path = AppFileUtils.safe_path(settings.UPLOAD_DIR, staged_file_id)
@@ -370,12 +371,11 @@ async def replace_draft_source_file(
             )
         )
         payload = KnowledgePayloadAdapter.validate_python(version.payload)
-        if payload.knowledge_type == "DOCUMENT":
-            parsed = parse_and_normalize_version(staged_path, file_ext=extension)
-            payload = payload.model_copy(update={
-                "blocks": document_blocks_from_markdown(parsed.normalized_content),
-                "structure_revision": payload.structure_revision + 1,
-            })
+        parsed = parse_and_normalize_version(staged_path, file_ext=extension)
+        payload = payload.model_copy(update={
+            "blocks": document_blocks_from_markdown(parsed.normalized_content),
+            "structure_revision": payload.structure_revision + 1,
+        })
         saved = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).save_draft(
             tenant_id=tenant_id,
             knowledge_base_id=id,
@@ -398,6 +398,17 @@ async def replace_draft_source_file(
         if staged_file_id:
             AppFileUtils.delete_file(staged_file_id)
         return serialize_error(error)
+    except KnowledgeMarkdownFormatError as error:
+        session.rollback()
+        if staged_file_id:
+            AppFileUtils.delete_file(staged_file_id)
+        return serialize_error(KnowledgeBusinessError(
+            code="KNOWLEDGE_TEMPLATE_FORMAT_INVALID",
+            message=str(error),
+            status_code=422,
+            error_type="VALIDATION",
+            suggestion="请重新下载 Markdown 模板并按模板填写。",
+        ))
     except ValueError as error:
         session.rollback()
         if staged_file_id:

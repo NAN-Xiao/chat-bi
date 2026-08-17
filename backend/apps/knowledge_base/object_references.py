@@ -14,8 +14,6 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-import sqlglot
-
 from apps.datasource.crud.semantic_object_key import DeclaredObjectPath
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.object_sql import (
@@ -23,14 +21,11 @@ from apps.knowledge_base.object_sql import (
     extract_sql_object_paths,
 )
 from apps.knowledge_base.schemas import (
-    BusinessKnowledgePayload,
     DocumentPayload,
-    EventKnowledgePayload,
-    JsonFieldKnowledgePayload,
     KnowledgePayload,
     SemanticObjectReferenceInput,
 )
-from common.sql_json_paths import extract_json_accesses, normalize_json_path
+from common.sql_json_paths import normalize_json_path
 
 _SQL_BLOCK = re.compile(r"```sql\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
 
@@ -104,20 +99,7 @@ def project_version_references(
 ) -> list[ProjectedObjectReference]:
     """Project all explicit and AST references for one immutable version."""
     resolved_context = _context(context or projection_context)
-    if isinstance(payload, DocumentPayload):
-        references = _document_references(payload, resolved_context)
-    elif isinstance(payload, BusinessKnowledgePayload):
-        references = _business_references(payload, resolved_context)
-    elif isinstance(payload, EventKnowledgePayload):
-        references = _event_references(payload, resolved_context)
-    elif isinstance(payload, JsonFieldKnowledgePayload):
-        references = _json_field_references(payload, resolved_context)
-    else:
-        raise ObjectReferenceValidationError(
-            code="KNOWLEDGE_PAYLOAD_INVALID",
-            message="知识类型不支持对象引用投影。",
-        )
-    return _deduplicate(references)
+    return _deduplicate(_document_references(payload, resolved_context))
 
 
 def project_chunk_references(
@@ -131,12 +113,10 @@ def project_chunk_references(
     resolved_context = _context(context or projection_context)
     if not chunk_text:
         return project_version_references(payload, resolved_context)
-    if isinstance(payload, DocumentPayload):
-        blocks = _SQL_BLOCK.findall(chunk_text)
-        references = _explicit_references(payload.object_references, resolved_context, "EXPLICIT")
-        references.extend(_sql_references(blocks, resolved_context, source_kind="SQL_AST"))
-        return _deduplicate(references)
-    return project_version_references(payload, resolved_context)
+    blocks = _SQL_BLOCK.findall(chunk_text)
+    references = _explicit_references(payload.object_references, resolved_context, "EXPLICIT")
+    references.extend(_sql_references(blocks, resolved_context, source_kind="SQL_AST"))
+    return _deduplicate(references)
 
 
 def _context(value: ReferenceProjectionContext | Mapping[str, object] | None) -> ReferenceProjectionContext:
@@ -164,101 +144,6 @@ def _document_references(payload: DocumentPayload, context: ReferenceProjectionC
             )
         references.extend(_sql_references(blocks, context, source_kind="SQL_AST"))
     return _assert_sql_objects_declared(references)
-
-
-def _business_references(payload: BusinessKnowledgePayload, context: ReferenceProjectionContext) -> list[ProjectedObjectReference]:
-    references = _explicit_references(payload.related_objects, context, "EXPLICIT")
-    for index, example in enumerate(payload.examples):
-        ast_references = _sql_references(
-            [example.sql],
-            context,
-            source_kind="SQL_AST",
-            dialect=example.dialect or context.dialect,
-        )
-        _assert_ast_subset_of_explicit(
-            ast_references,
-            references,
-            field_path=f"examples[{index}].sql",
-        )
-        references.extend(ast_references)
-    return _deduplicate(references)
-
-
-def _event_references(payload: EventKnowledgePayload, context: ReferenceProjectionContext) -> list[ProjectedObjectReference]:
-    table = DeclaredObjectPath(object_type="TABLE", table=payload.table_name)
-    references = [_project(table, context, "STRUCTURED_PAYLOAD")]
-    fields = [payload.event_name_field, payload.event_time_field]
-    fields.extend(parameter.name for parameter in payload.parameters)
-    for field in fields:
-        if field:
-            references.append(
-                _project(
-                    DeclaredObjectPath(object_type="FIELD", table=payload.table_name, field=field),
-                    context,
-                    "STRUCTURED_PAYLOAD",
-                )
-            )
-    references.append(
-        _project(
-            DeclaredObjectPath(
-                object_type="EVENT",
-                table=payload.table_name,
-                field=payload.event_name_field,
-                event_name=payload.event_name,
-            ),
-            context,
-            "STRUCTURED_PAYLOAD",
-        )
-    )
-    for parameter in payload.parameters:
-        references.append(
-            _project(
-                DeclaredObjectPath(
-                    object_type="EVENT_PROPERTY",
-                    table=payload.table_name,
-                    field=parameter.name,
-                    event_name=payload.event_name,
-                    event_property_key=parameter.name,
-                ),
-                context,
-                "STRUCTURED_PAYLOAD",
-            )
-        )
-    return references
-
-
-def _json_field_references(payload: JsonFieldKnowledgePayload, context: ReferenceProjectionContext) -> list[ProjectedObjectReference]:
-    base = {
-        "schema": payload.schema_name,
-        "table": payload.table_name,
-    }
-    references = [
-        _project(DeclaredObjectPath(object_type="TABLE", **base), context, "STRUCTURED_PAYLOAD"),
-        _project(DeclaredObjectPath(object_type="FIELD", field=payload.source_field, **base), context, "STRUCTURED_PAYLOAD"),
-        _project(DeclaredObjectPath(object_type="JSON_PATH", field=payload.source_field, json_path=normalize_json_path(payload.json_path), **base), context, "STRUCTURED_PAYLOAD"),
-    ]
-    try:
-        statement = sqlglot.parse_one(f"SELECT {payload.expression}", read=context.dialect)
-        extraction = extract_json_accesses(statement, dialect=context.dialect)
-    except Exception as exc:
-        raise ObjectReferenceValidationError(
-            code="KNOWLEDGE_JSON_EXPRESSION_REFERENCE_MISMATCH",
-            message="JSON 表达式与声明的宿主字段或 JSON Path 不一致。",
-            field_path="expression",
-        ) from exc
-    expected_path = references[-1].declared_path
-    if extraction.issues or not any(
-        access.source_field.casefold() == str(payload.source_field).casefold()
-        and normalize_json_path(access.json_path) == normalize_json_path(payload.json_path)
-        for access in extraction.accesses
-    ):
-        raise ObjectReferenceValidationError(
-            code="KNOWLEDGE_JSON_EXPRESSION_REFERENCE_MISMATCH",
-            message="JSON 表达式与声明的宿主字段或 JSON Path 不一致。",
-            field_path="expression",
-        )
-    ast_references = [_project(expected_path, context, "SQL_AST")]
-    return _deduplicate([*references, *ast_references])
 
 
 def _explicit_references(

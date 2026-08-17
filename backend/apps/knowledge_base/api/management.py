@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel import select
 
 from apps.datasource.crud.permission_scope import (
@@ -67,11 +67,12 @@ class RetrievalPreviewRequest(BaseModel):
 
 
 class CreateKnowledgeBaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=255)
     description: str = Field(default="", max_length=4000)
     visibility_scope: KnowledgeBaseVisibilityScopeEnum = KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC
     tenant_id: int | None = Field(default=None, ge=1)
-    knowledge_type: str = "DOCUMENT"
 
 
 class SetKnowledgeBaseActiveRequest(BaseModel):
@@ -305,15 +306,6 @@ async def create_knowledge_base(
                 error_type="VALIDATION",
             )
         scope = KnowledgeBaseVisibilityScopeEnum(body.visibility_scope)
-        knowledge_type = str(body.knowledge_type or "").strip().upper()
-        if knowledge_type not in {"DOCUMENT", "BUSINESS", "EVENT", "JSON_FIELD"}:
-            raise KnowledgeBusinessError(
-                code="KNOWLEDGE_TYPE_INVALID",
-                message="知识类型不受支持。",
-                status_code=422,
-                field_path="knowledge_type",
-                error_type="VALIDATION",
-            )
         if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC and body.tenant_id is not None:
             raise KnowledgeBusinessError(
                 code="KNOWLEDGE_WORKSPACE_NOT_APPLICABLE",
@@ -347,7 +339,7 @@ async def create_knowledge_base(
             active=True,
             status=KnowledgeBaseStatusEnum.PENDING,
             stable_key=f"kb-{uuid4().hex}",
-            knowledge_type=knowledge_type,
+            knowledge_type="DOCUMENT",
             create_time=datetime.utcnow(),
             update_time=datetime.utcnow(),
         )
