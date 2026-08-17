@@ -23,6 +23,7 @@ import {
 import { buildReportInterpretationTarget } from '@/views/dashboard/preview/reportInterpretationTarget'
 import { shouldSubmitReportPromptOnEnter } from '@/views/dashboard/preview/reportPromptKeyboard'
 import { buildOrdinaryDashboardQuery } from '@/views/dashboard/utils/dashboardRouteMode'
+import { shouldConstrainPivotGroupValues } from '@/views/dashboard/utils/pivotGroupValues'
 import {
   getDashboardCanvasSourceKey,
   getPlatformTemplateCanvasSourceKey,
@@ -195,6 +196,7 @@ function rowsAfterStoredPivotFilters(viewInfo: any, rows: Record<string, any>[])
     pivot.enabled !== true ||
     pivot.group_enabled === false ||
     !groupField ||
+    !shouldConstrainPivotGroupValues(pivot) ||
     groupValues.length === 0
   ) {
     return rows
