@@ -1,0 +1,2799 @@
+[
+  {
+    "id": 1,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 7 天每日付费总额、付费用户数、ARPU、ARPPU 和付费渗透率趋势",
+    "topic": "付费概览 - 付费情况",
+    "source_charts": [
+      {
+        "chart_id": "7176d9a683f541a5a8600933320f9f6a",
+        "title": "付费情况",
+        "type": "line",
+        "fields": [
+          "日期",
+          "付费用户数",
+          "付费总额",
+          "ARPU",
+          "ARPPU",
+          "付费渗透率"
+        ]
+      }
+    ],
+    "time_scope": "latest_7d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 2,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 28 天每日充值总次数趋势",
+    "topic": "付费概览 - 日充值总次数",
+    "source_charts": [
+      {
+        "chart_id": "5a520df2676f4c6aa0eff72948bd8ff5",
+        "title": "日充值总次数",
+        "type": "line",
+        "fields": [
+          "日期",
+          "充值次数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 3,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 28 天每日充值用户数和新增充值用户数趋势",
+    "topic": "付费概览 - 日充值用户数",
+    "source_charts": [
+      {
+        "chart_id": "0261a2ed96924fec95d6a5d2835c4b2f",
+        "title": "日充值用户数",
+        "type": "line",
+        "fields": [
+          "日期",
+          "日充值用户数",
+          "日新增充值用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 4,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 30 天支付流程各事件次数分布",
+    "topic": "付费概览 - 支付流程事件分布",
+    "source_charts": [
+      {
+        "chart_id": "0446598a808048dd906c16c03347b952",
+        "title": "支付流程事件分布",
+        "type": "column",
+        "fields": [
+          "支付流程事件",
+          "事件次数"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 5,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 30 天各等级段人均付费金额对比",
+    "topic": "付费概览 - 各等级段人均付费金额",
+    "source_charts": [
+      {
+        "chart_id": "78a9cb8866ec4177a6bed463d18a100c",
+        "title": "各等级段人均付费金额",
+        "type": "column",
+        "fields": [
+          "等级段",
+          "人均付费金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 6,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 30 天累计充值金额 TOP20 账号及所属区服",
+    "topic": "付费概览 - 累计充值排名",
+    "source_charts": [
+      {
+        "chart_id": "98968f68c6dc4e429c6a98f07f7463aa",
+        "title": "累计充值排名",
+        "type": "bar",
+        "fields": [
+          "账号ID",
+          "付费总额",
+          "区服ID"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 7,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最新业务日前一日的付费总额、付费用户数、ARPU、ARPPU 和付费渗透率",
+    "topic": "付费概览 - 付费情况",
+    "source_charts": [
+      {
+        "chart_id": "7176d9a683f541a5a8600933320f9f6a",
+        "title": "付费情况",
+        "type": "line",
+        "fields": [
+          "日期",
+          "付费用户数",
+          "付费总额",
+          "ARPU",
+          "ARPPU",
+          "付费渗透率"
+        ]
+      }
+    ],
+    "time_scope": "previous_business_day",
+    "expected_answer_kind": "metric",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 8,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "本月每日充值次数变化趋势",
+    "topic": "付费概览 - 日充值总次数",
+    "source_charts": [
+      {
+        "chart_id": "5a520df2676f4c6aa0eff72948bd8ff5",
+        "title": "日充值总次数",
+        "type": "line",
+        "fields": [
+          "日期",
+          "充值次数"
+        ]
+      }
+    ],
+    "time_scope": "current_business_month",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 9,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 14 天每日付费金额与付费人数趋势",
+    "topic": "付费概览 - 付费情况",
+    "source_charts": [
+      {
+        "chart_id": "7176d9a683f541a5a8600933320f9f6a",
+        "title": "付费情况",
+        "type": "line",
+        "fields": [
+          "日期",
+          "付费用户数",
+          "付费总额",
+          "ARPU",
+          "ARPPU",
+          "付费渗透率"
+        ]
+      }
+    ],
+    "time_scope": "latest_14d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 10,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "70a9b8167124499999e3c14cfbece2c6",
+    "dashboard_name": "付费概览",
+    "datasource_id": 9,
+    "question": "最近 30 天支付流程各事件次数及占比",
+    "topic": "付费概览 - 支付流程事件分布",
+    "source_charts": [
+      {
+        "chart_id": "0446598a808048dd906c16c03347b952",
+        "title": "支付流程事件分布",
+        "type": "column",
+        "fields": [
+          "支付流程事件",
+          "事件次数"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 11,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 28 天 ARPU 与 ARPPU 按日趋势",
+    "topic": "核心看板 - ARPU与ARPPU",
+    "source_charts": [
+      {
+        "chart_id": "8936756a35974435b06ea07172e0c263",
+        "title": "ARPU与ARPPU",
+        "type": "column",
+        "fields": [
+          "dt",
+          "ARPU",
+          "ARPPU"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 12,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 28 天每日活跃用户数、付费用户数和付费率趋势",
+    "topic": "核心看板 - 日付费率",
+    "source_charts": [
+      {
+        "chart_id": "ee4148a54ef94edf848d228d180cd2e9",
+        "title": "日付费率",
+        "type": "line",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "付费用户数",
+          "每日付费率"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 13,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 28 天 DAU 趋势",
+    "topic": "核心看板 - DAU趋势",
+    "source_charts": [
+      {
+        "chart_id": "ab56ee393e4740768f7191f29b9a839a",
+        "title": "DAU趋势",
+        "type": "line",
+        "fields": [
+          "日期",
+          "DAU"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 14,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各国家新增用户趋势",
+    "topic": "核心看板 - 新增用户趋势",
+    "source_charts": [
+      {
+        "chart_id": "7ba49d5c48fc46348d562580cce85ca8",
+        "title": "新增用户趋势",
+        "type": "line",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "国家"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 15,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 30 天累计付费用户数趋势",
+    "topic": "核心看板 - 累计付费用户",
+    "source_charts": [
+      {
+        "chart_id": "7bb262de9db94711a693e4b5643fb714",
+        "title": "累计付费用户",
+        "type": "column",
+        "fields": [
+          "日期",
+          "累计付费用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 16,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道每日新增用户的 7 日移动平均趋势",
+    "topic": "核心看板 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "770319dcd39c452ca62b2c21f1befd73",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 17,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道累计付费金额排行",
+    "topic": "核心看板 - 渠道累计付费排行",
+    "source_charts": [
+      {
+        "chart_id": "06e6f08715f7478c8f2d5dfda4e649df",
+        "title": "渠道累计付费排行",
+        "type": "donut",
+        "fields": [
+          "累计付费金额",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 18,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各礼包购买次数及占比",
+    "topic": "核心看板 - 礼包购买情况",
+    "source_charts": [
+      {
+        "chart_id": "6fa7bbcc37cb472085b6e2556f155419",
+        "title": "礼包购买情况",
+        "type": "pie",
+        "fields": [
+          "购买次数",
+          "购买礼包ID"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 19,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最新业务日玩家等级区间分布",
+    "topic": "核心看板 - 当前等级分布",
+    "source_charts": [
+      {
+        "chart_id": "58969022165546e6baa36be023298cd2",
+        "title": "当前等级分布",
+        "type": "column",
+        "fields": [
+          "等级区间",
+          "用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 20,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "849356dd6e61432dbac036ebd47d2af7",
+    "dashboard_name": "核心看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道新增用户留存对比",
+    "topic": "核心看板 - 各渠道新增留存",
+    "source_charts": [
+      {
+        "chart_id": "20d12ec0a468470284ca44b557558c8a",
+        "title": "各渠道新增留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "用户注册用户数",
+          "第1日",
+          "第3日",
+          "第7日"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 21,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 28 天 DAU 按日趋势",
+    "topic": "活跃看板 - DAU",
+    "source_charts": [
+      {
+        "chart_id": "3878f780bc1f4b63935d21c1a4b5dede",
+        "title": "DAU",
+        "type": "line",
+        "fields": [
+          "日期",
+          "DAU"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 22,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 12 周 WAU 趋势",
+    "topic": "活跃看板 - WAU",
+    "source_charts": [
+      {
+        "chart_id": "ac7aa7d4b3df4f35999f6e77ad6336aa",
+        "title": "WAU",
+        "type": "line",
+        "fields": [
+          "周",
+          "WAU"
+        ]
+      }
+    ],
+    "time_scope": "latest_12w",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 23,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 6 个月 MAU 趋势",
+    "topic": "活跃看板 - MAU",
+    "source_charts": [
+      {
+        "chart_id": "5375a968f47645308a195a84a6d659b3",
+        "title": "MAU",
+        "type": "line",
+        "fields": [
+          "月份",
+          "MAU"
+        ]
+      }
+    ],
+    "time_scope": "latest_6m",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 24,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "本月活跃用户生命周期构成趋势",
+    "topic": "活跃看板 - 活跃用户生命周期构成",
+    "source_charts": [
+      {
+        "chart_id": "60b95cb8061547b5a0f73c68bf752965",
+        "title": "活跃用户生命周期构成",
+        "type": "line",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "生命周期"
+        ]
+      }
+    ],
+    "time_scope": "current_business_month",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 25,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道活跃用户数的 7 日移动平均趋势",
+    "topic": "活跃看板 - 活跃用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "cb97dd2417914635828584c0ad472d5c",
+        "title": "活跃用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 26,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各操作系统活跃用户数趋势",
+    "topic": "活跃看板 - 活跃用户数（按系统）",
+    "source_charts": [
+      {
+        "chart_id": "75a7568808344c49a3090d74a6b48a8f",
+        "title": "活跃用户数（按系统）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "系统"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 27,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 8 周用户每周登录天数分布",
+    "topic": "活跃看板 - 周登录天数分布",
+    "source_charts": [
+      {
+        "chart_id": "147a7b40b9364912bc84acabcc333e64",
+        "title": "周登录天数分布",
+        "type": "column",
+        "fields": [
+          "周",
+          "1天",
+          "2天",
+          "3天",
+          "4天",
+          "5天",
+          "6天",
+          "7天"
+        ]
+      }
+    ],
+    "time_scope": "latest_8w",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 28,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 30 天 DAU 与 WAU 变化对比",
+    "topic": "活跃看板 - DAU / 活跃看板 - WAU",
+    "source_charts": [
+      {
+        "chart_id": "3878f780bc1f4b63935d21c1a4b5dede",
+        "title": "DAU",
+        "type": "line",
+        "fields": [
+          "日期",
+          "DAU"
+        ]
+      },
+      {
+        "chart_id": "ac7aa7d4b3df4f35999f6e77ad6336aa",
+        "title": "WAU",
+        "type": "line",
+        "fields": [
+          "周",
+          "WAU"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 29,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道活跃用户排名",
+    "topic": "活跃看板 - 活跃用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "cb97dd2417914635828584c0ad472d5c",
+        "title": "活跃用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 30,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "435b7d52f4af447dbb877364345cd229",
+    "dashboard_name": "活跃看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各操作系统活跃用户占比",
+    "topic": "活跃看板 - 活跃用户数（按系统）",
+    "source_charts": [
+      {
+        "chart_id": "75a7568808344c49a3090d74a6b48a8f",
+        "title": "活跃用户数（按系统）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "系统"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 31,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道新增用户留存率对比",
+    "topic": "留存分析 - 各渠道新增留存",
+    "source_charts": [
+      {
+        "chart_id": "f4849278bb7f4bd5b9bc9bd58a27a4ed",
+        "title": "各渠道新增留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "用户注册用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 32,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道活跃用户留存率对比",
+    "topic": "留存分析 - 各渠道活跃留存",
+    "source_charts": [
+      {
+        "chart_id": "659d1a7c745546469be25532c244827c",
+        "title": "各渠道活跃留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "活跃用户数",
+          "次留",
+          "3留",
+          "7留"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 33,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道新增用户次日留存率趋势",
+    "topic": "留存分析 - 各渠道新增用户次日留存趋势",
+    "source_charts": [
+      {
+        "chart_id": "53ebf4fd8a3f4d2bb35cbf989dd5d142",
+        "title": "各渠道新增用户次日留存趋势",
+        "type": "line",
+        "fields": [
+          "日期",
+          "次日留存率",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 34,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道付费用户留存率对比",
+    "topic": "留存分析 - 各渠道付费留存",
+    "source_charts": [
+      {
+        "chart_id": "8760e428c5d646699580a56491456a6d",
+        "title": "各渠道付费留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "付费用户数",
+          "次留",
+          "3留",
+          "7留"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 35,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道新增付费用户留存率对比",
+    "topic": "留存分析 - 各渠道新增付费留存",
+    "source_charts": [
+      {
+        "chart_id": "9409cb5a8cbe47959d7cfb55b6abe3a0",
+        "title": "各渠道新增付费留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "新增付费用户数",
+          "次留",
+          "3留",
+          "7留"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 36,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天新增留存率最高的渠道排行",
+    "topic": "留存分析 - 各渠道新增留存",
+    "source_charts": [
+      {
+        "chart_id": "f4849278bb7f4bd5b9bc9bd58a27a4ed",
+        "title": "各渠道新增留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "用户注册用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 37,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天活跃留存率最高的渠道排行",
+    "topic": "留存分析 - 各渠道活跃留存",
+    "source_charts": [
+      {
+        "chart_id": "659d1a7c745546469be25532c244827c",
+        "title": "各渠道活跃留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "活跃用户数",
+          "次留",
+          "3留",
+          "7留"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 38,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 30 天新增用户次日留存率整体趋势",
+    "topic": "留存分析 - 各渠道新增用户次日留存趋势",
+    "source_charts": [
+      {
+        "chart_id": "53ebf4fd8a3f4d2bb35cbf989dd5d142",
+        "title": "各渠道新增用户次日留存趋势",
+        "type": "line",
+        "fields": [
+          "日期",
+          "次日留存率",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 39,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天付费留存与新增付费留存对比",
+    "topic": "留存分析 - 各渠道付费留存 / 留存分析 - 各渠道新增付费留存",
+    "source_charts": [
+      {
+        "chart_id": "8760e428c5d646699580a56491456a6d",
+        "title": "各渠道付费留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "付费用户数",
+          "次留",
+          "3留",
+          "7留"
+        ]
+      },
+      {
+        "chart_id": "9409cb5a8cbe47959d7cfb55b6abe3a0",
+        "title": "各渠道新增付费留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "新增付费用户数",
+          "次留",
+          "3留",
+          "7留"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 40,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "3cce6ad2532e435886e65030764772e1",
+    "dashboard_name": "留存分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道新增留存与活跃留存差异",
+    "topic": "留存分析 - 各渠道新增留存 / 留存分析 - 各渠道活跃留存",
+    "source_charts": [
+      {
+        "chart_id": "f4849278bb7f4bd5b9bc9bd58a27a4ed",
+        "title": "各渠道新增留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "用户注册用户数"
+        ]
+      },
+      {
+        "chart_id": "659d1a7c745546469be25532c244827c",
+        "title": "各渠道活跃留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "活跃用户数",
+          "次留",
+          "3留",
+          "7留"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 41,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道每日新增用户趋势",
+    "topic": "渠道分析 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "a4073b10b2d742eea6ffacc3fff18ff0",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 42,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道活跃用户数趋势",
+    "topic": "渠道分析 - 活跃用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "9270d524b85e40299b70c5df67952533",
+        "title": "活跃用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 43,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道付费用户数趋势",
+    "topic": "渠道分析 - 付费用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "af7281e9ca2a4a7d98703b94638f5db7",
+        "title": "付费用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "付费用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 44,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道付费金额趋势",
+    "topic": "渠道分析 - 付费金额（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "6ae3829f02b04319993d5ac2225465c9",
+        "title": "付费金额（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "付费金额",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 45,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道新增用户的次日、3 日和 7 日留存率对比",
+    "topic": "渠道分析 - 各渠道新增留存",
+    "source_charts": [
+      {
+        "chart_id": "a2bde4fa93d8437390426ce94515a5fc",
+        "title": "各渠道新增留存",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "用户注册用户数",
+          "第1日",
+          "第3日",
+          "第7日"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 46,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道累计新增用户数排行",
+    "topic": "渠道分析 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "a4073b10b2d742eea6ffacc3fff18ff0",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 47,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道活跃用户数排行",
+    "topic": "渠道分析 - 活跃用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "9270d524b85e40299b70c5df67952533",
+        "title": "活跃用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 48,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道付费用户数排行",
+    "topic": "渠道分析 - 付费用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "af7281e9ca2a4a7d98703b94638f5db7",
+        "title": "付费用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "付费用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 49,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道付费金额排行及占比",
+    "topic": "渠道分析 - 付费金额（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "6ae3829f02b04319993d5ac2225465c9",
+        "title": "付费金额（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "付费金额",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 50,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "8560dfb189f34e8bac6ef5b9541868b4",
+    "dashboard_name": "渠道分析",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道新增、活跃与付费用户对比",
+    "topic": "渠道分析 - 每日渠道新增用户 / 渠道分析 - 活跃用户数（按渠道） / 渠道分析 - 付费用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "a4073b10b2d742eea6ffacc3fff18ff0",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      },
+      {
+        "chart_id": "9270d524b85e40299b70c5df67952533",
+        "title": "活跃用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "活跃用户数",
+          "渠道"
+        ]
+      },
+      {
+        "chart_id": "af7281e9ca2a4a7d98703b94638f5db7",
+        "title": "付费用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "付费用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 51,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最新业务日每小时付费金额趋势",
+    "topic": "实时看板 - 每小时付费数据",
+    "source_charts": [
+      {
+        "chart_id": "b26188f2239f410fa6dcb3267835d681",
+        "title": "每小时付费数据",
+        "type": "bar",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 52,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最近 24 小时付费金额趋势",
+    "topic": "实时看板 - 24小时付费趋势",
+    "source_charts": [
+      {
+        "chart_id": "2ee2e6f9a19f4a90ad3613e57bd6a6ca",
+        "title": "24小时付费趋势",
+        "type": "line",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_24h",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 53,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最新业务日各小时付费金额排行",
+    "topic": "实时看板 - 每小时付费数据",
+    "source_charts": [
+      {
+        "chart_id": "b26188f2239f410fa6dcb3267835d681",
+        "title": "每小时付费数据",
+        "type": "bar",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 54,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最新业务日付费金额峰值出现在哪个小时",
+    "topic": "实时看板 - 每小时付费数据",
+    "source_charts": [
+      {
+        "chart_id": "b26188f2239f410fa6dcb3267835d681",
+        "title": "每小时付费数据",
+        "type": "bar",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "anomaly",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 55,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最新业务日 0 点至最后数据小时的付费金额变化",
+    "topic": "实时看板 - 每小时付费数据",
+    "source_charts": [
+      {
+        "chart_id": "b26188f2239f410fa6dcb3267835d681",
+        "title": "每小时付费数据",
+        "type": "bar",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 56,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最近 24 小时付费金额低于小时均值的时段",
+    "topic": "实时看板 - 24小时付费趋势",
+    "source_charts": [
+      {
+        "chart_id": "2ee2e6f9a19f4a90ad3613e57bd6a6ca",
+        "title": "24小时付费趋势",
+        "type": "line",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_24h",
+    "expected_answer_kind": "anomaly",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 57,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最近 24 小时相邻小时付费金额环比变化",
+    "topic": "实时看板 - 24小时付费趋势",
+    "source_charts": [
+      {
+        "chart_id": "2ee2e6f9a19f4a90ad3613e57bd6a6ca",
+        "title": "24小时付费趋势",
+        "type": "line",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_24h",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 58,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最近 24 小时付费金额最高的 5 个小时",
+    "topic": "实时看板 - 24小时付费趋势",
+    "source_charts": [
+      {
+        "chart_id": "2ee2e6f9a19f4a90ad3613e57bd6a6ca",
+        "title": "24小时付费趋势",
+        "type": "line",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_24h",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 59,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最新业务日上午与下午的付费金额对比",
+    "topic": "实时看板 - 每小时付费数据",
+    "source_charts": [
+      {
+        "chart_id": "b26188f2239f410fa6dcb3267835d681",
+        "title": "每小时付费数据",
+        "type": "bar",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 60,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "06983ff7cf7248f1a0baade2d723587c",
+    "dashboard_name": "实时看板",
+    "datasource_id": 9,
+    "question": "最近 24 小时累计付费金额随小时变化趋势",
+    "topic": "实时看板 - 24小时付费趋势",
+    "source_charts": [
+      {
+        "chart_id": "2ee2e6f9a19f4a90ad3613e57bd6a6ca",
+        "title": "24小时付费趋势",
+        "type": "line",
+        "fields": [
+          "小时",
+          "收入金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_24h",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 61,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各投放渠道每日新增用户趋势",
+    "topic": "投放看板 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "9e43d9cc51aa4eb09031fd6fdc5e5181",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 62,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道注册用户数与首日付费金额对比",
+    "topic": "投放看板 - 各渠道注册与付费",
+    "source_charts": [
+      {
+        "chart_id": "cd24e3dee331477f93bd144dce25ca1f",
+        "title": "各渠道注册与付费",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "账号注册用户数",
+          "首日付费金额",
+          "7日累计付费金额",
+          "累计付费金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 63,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道首日每注册用户付费金额排行",
+    "topic": "投放看板 - 各渠道注册与付费",
+    "source_charts": [
+      {
+        "chart_id": "cd24e3dee331477f93bd144dce25ca1f",
+        "title": "各渠道注册与付费",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "账号注册用户数",
+          "首日付费金额",
+          "7日累计付费金额",
+          "累计付费金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 64,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 14 天各投放渠道新增用户数及占比",
+    "topic": "投放看板 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "9e43d9cc51aa4eb09031fd6fdc5e5181",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_14d",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 65,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 30 天新增用户最多的投放渠道 TOP10",
+    "topic": "投放看板 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "9e43d9cc51aa4eb09031fd6fdc5e5181",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 66,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 28 天单渠道新增用户趋势对比",
+    "topic": "投放看板 - 单渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "e57321ca479a43eab57b7c163bc219f1",
+        "title": "单渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 67,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道注册用户数排行",
+    "topic": "投放看板 - 各渠道注册与付费",
+    "source_charts": [
+      {
+        "chart_id": "cd24e3dee331477f93bd144dce25ca1f",
+        "title": "各渠道注册与付费",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "账号注册用户数",
+          "首日付费金额",
+          "7日累计付费金额",
+          "累计付费金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 68,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道 7 日累计付费金额排行",
+    "topic": "投放看板 - 各渠道注册与付费",
+    "source_charts": [
+      {
+        "chart_id": "cd24e3dee331477f93bd144dce25ca1f",
+        "title": "各渠道注册与付费",
+        "type": "table",
+        "fields": [
+          "日期",
+          "渠道",
+          "账号注册用户数",
+          "首日付费金额",
+          "7日累计付费金额",
+          "累计付费金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 69,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "本月各投放渠道新增用户趋势",
+    "topic": "投放看板 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "9e43d9cc51aa4eb09031fd6fdc5e5181",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "current_business_month",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 70,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "bfdca1687f2c48b7bffc10bd9fcd5d75",
+    "dashboard_name": "投放看板",
+    "datasource_id": 9,
+    "question": "最近 7 天各投放渠道新增用户变化",
+    "topic": "投放看板 - 每日渠道新增用户",
+    "source_charts": [
+      {
+        "chart_id": "9e43d9cc51aa4eb09031fd6fdc5e5181",
+        "title": "每日渠道新增用户",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_7d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 71,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 28 天每日新增用户数趋势",
+    "topic": "新增看板 - 新增用户数",
+    "source_charts": [
+      {
+        "chart_id": "d938ef5f0e3f4d7fac7ae6077a043f10",
+        "title": "新增用户数",
+        "type": "line",
+        "fields": [
+          "日期",
+          "新增用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 72,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各渠道新增用户数趋势",
+    "topic": "新增看板 - 新增用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "a2f4ac39fa574552bcd6bc72f1e2d050",
+        "title": "新增用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 73,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 28 天各操作系统新增用户数趋势",
+    "topic": "新增看板 - 新增用户数（按系统）",
+    "source_charts": [
+      {
+        "chart_id": "dcafa18469924151997a3ffc5a162d04",
+        "title": "新增用户数（按系统）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "系统"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 74,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 30 天新增用户次日留存率趋势",
+    "topic": "新增看板 - 新增用户次日留存率",
+    "source_charts": [
+      {
+        "chart_id": "fe2b01a07b884b1bba62d3b8b1bf5620",
+        "title": "新增用户次日留存率",
+        "type": "line",
+        "fields": [
+          "日期",
+          "次日留存率"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 75,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 28 天新增用户首日付费金额趋势",
+    "topic": "新增看板 - 新增首日付费金额",
+    "source_charts": [
+      {
+        "chart_id": "5650a3689abf4b2ab639cd5b28a115aa",
+        "title": "新增首日付费金额",
+        "type": "line",
+        "fields": [
+          "日期",
+          "新增首日付费金额"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 76,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 7 天每日新增用户数趋势",
+    "topic": "新增看板 - 新增用户数",
+    "source_charts": [
+      {
+        "chart_id": "d938ef5f0e3f4d7fac7ae6077a043f10",
+        "title": "新增用户数",
+        "type": "line",
+        "fields": [
+          "日期",
+          "新增用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_7d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 77,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各渠道新增用户数排行及占比",
+    "topic": "新增看板 - 新增用户数（按渠道）",
+    "source_charts": [
+      {
+        "chart_id": "a2f4ac39fa574552bcd6bc72f1e2d050",
+        "title": "新增用户数（按渠道）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "渠道"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 78,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各操作系统新增用户数排行",
+    "topic": "新增看板 - 新增用户数（按系统）",
+    "source_charts": [
+      {
+        "chart_id": "dcafa18469924151997a3ffc5a162d04",
+        "title": "新增用户数（按系统）",
+        "type": "area",
+        "fields": [
+          "日期",
+          "新增用户数",
+          "系统"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 79,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "本月每日新增用户与首日付费金额对比",
+    "topic": "新增看板 - 新增用户数 / 新增看板 - 新增首日付费金额",
+    "source_charts": [
+      {
+        "chart_id": "d938ef5f0e3f4d7fac7ae6077a043f10",
+        "title": "新增用户数",
+        "type": "line",
+        "fields": [
+          "日期",
+          "新增用户数"
+        ]
+      },
+      {
+        "chart_id": "5650a3689abf4b2ab639cd5b28a115aa",
+        "title": "新增首日付费金额",
+        "type": "line",
+        "fields": [
+          "日期",
+          "新增首日付费金额"
+        ]
+      }
+    ],
+    "time_scope": "current_business_month",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 80,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "9fc56e59c92f434f95ddf5db95ffdf17",
+    "dashboard_name": "新增看板",
+    "datasource_id": 9,
+    "question": "最近 14 天新增用户数与次日留存率对比",
+    "topic": "新增看板 - 新增用户数 / 新增看板 - 新增用户次日留存率",
+    "source_charts": [
+      {
+        "chart_id": "d938ef5f0e3f4d7fac7ae6077a043f10",
+        "title": "新增用户数",
+        "type": "line",
+        "fields": [
+          "日期",
+          "新增用户数"
+        ]
+      },
+      {
+        "chart_id": "fe2b01a07b884b1bba62d3b8b1bf5620",
+        "title": "新增用户次日留存率",
+        "type": "line",
+        "fields": [
+          "日期",
+          "次日留存率"
+        ]
+      }
+    ],
+    "time_scope": "latest_14d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 81,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 7 天各英雄升级、升星次数与参与用户数对比",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_7d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 82,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最新业务日 SSR 英雄等级分布",
+    "topic": "养成看板 - SSR英雄的等级分布",
+    "source_charts": [
+      {
+        "chart_id": "3f199383717c410cb83d0e3e0d29ff6e",
+        "title": "SSR英雄的等级分布",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "英雄星级",
+          "全部用户",
+          "1-10",
+          "11-20",
+          "21+"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 83,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 28 天英雄升级次数排行",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 84,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 28 天英雄升星次数排行",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 85,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各英雄养成用户数对比",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 86,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 14 天各英雄升级次数、升级用户数、升星次数和升星用户数对比",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_14d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 87,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 28 天升级与升星合计次数最高的英雄 TOP10",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_28d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 88,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最新业务日 SSR 英雄各等级玩家数及占比",
+    "topic": "养成看板 - SSR英雄的等级分布",
+    "source_charts": [
+      {
+        "chart_id": "3f199383717c410cb83d0e3e0d29ff6e",
+        "title": "SSR英雄的等级分布",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "英雄星级",
+          "全部用户",
+          "1-10",
+          "11-20",
+          "21+"
+        ]
+      }
+    ],
+    "time_scope": "latest_business_day",
+    "expected_answer_kind": "composition",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 89,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 7 天英雄升级与升星次数对比",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_7d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 90,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "23530c49bf6342e7a14d296db984b655",
+    "dashboard_name": "养成看板",
+    "datasource_id": 9,
+    "question": "最近 30 天英雄养成活跃用户排行",
+    "topic": "养成看板 - 英雄养成情况",
+    "source_charts": [
+      {
+        "chart_id": "2a4676f86d7642faa0c21be327f9acbb",
+        "title": "英雄养成情况",
+        "type": "table",
+        "fields": [
+          "将领ID",
+          "升星次数",
+          "升星用户数",
+          "升级次数",
+          "升级用户数"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 91,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天 ROI 数据总览",
+    "topic": "ROI看板 - ROI数据总览",
+    "source_charts": [
+      {
+        "chart_id": "3c53b6bf5006492c93c7a809ff267ea9",
+        "title": "ROI数据总览",
+        "type": "table",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "首日收入",
+          "3日收入",
+          "首日ROI",
+          "3日ROI"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "metric",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 92,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各地区首日 ROI 与 3 日 ROI 趋势",
+    "topic": "ROI看板 - ROI地区总览",
+    "source_charts": [
+      {
+        "chart_id": "f6127cba43714110a02af256805c454f",
+        "title": "ROI地区总览",
+        "type": "area",
+        "fields": [
+          "日期",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 93,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各广告地区安装数、投放成本和单次安装成本对比",
+    "topic": "ROI看板 - ROI广告地区总览",
+    "source_charts": [
+      {
+        "chart_id": "2df551ca587d4f95857cccec6bec37e7",
+        "title": "ROI广告地区总览",
+        "type": "column",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "首日收入",
+          "3日收入",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": true
+  },
+  {
+    "id": 94,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各地区首日收入与 3 日收入对比",
+    "topic": "ROI看板 - ROI广告地区总览",
+    "source_charts": [
+      {
+        "chart_id": "2df551ca587d4f95857cccec6bec37e7",
+        "title": "ROI广告地区总览",
+        "type": "column",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "首日收入",
+          "3日收入",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 95,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天安装数与投放成本趋势",
+    "topic": "ROI看板 - 安装投放趋势",
+    "source_charts": [
+      {
+        "chart_id": "93a062421dca4dbc913aa1097628a51c",
+        "title": "安装投放趋势",
+        "type": "line",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 96,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各地区单次安装成本排行",
+    "topic": "ROI看板 - ROI广告地区总览",
+    "source_charts": [
+      {
+        "chart_id": "2df551ca587d4f95857cccec6bec37e7",
+        "title": "ROI广告地区总览",
+        "type": "column",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "首日收入",
+          "3日收入",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 97,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各地区首日 ROI 排行",
+    "topic": "ROI看板 - 图表",
+    "source_charts": [
+      {
+        "chart_id": "b902708ad2a44344ba59ed83001138bc",
+        "title": "图表",
+        "type": "grouped_column",
+        "fields": [
+          "日期",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 98,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各地区 3 日 ROI 排行",
+    "topic": "ROI看板 - 图表",
+    "source_charts": [
+      {
+        "chart_id": "b902708ad2a44344ba59ed83001138bc",
+        "title": "图表",
+        "type": "grouped_column",
+        "fields": [
+          "日期",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "ranking",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 99,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天首日 ROI 与 3 日 ROI 整体趋势",
+    "topic": "ROI看板 - 图表",
+    "source_charts": [
+      {
+        "chart_id": "b902708ad2a44344ba59ed83001138bc",
+        "title": "图表",
+        "type": "grouped_column",
+        "fields": [
+          "日期",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "trend",
+    "independent": true,
+    "selected_for_test": false
+  },
+  {
+    "id": 100,
+    "workspace": "unicorn",
+    "tenant_id": "7493583885482070016",
+    "dashboard_id": "dcb7645772724045bf3097811b2e9a14",
+    "dashboard_name": "ROI看板",
+    "datasource_id": 9,
+    "question": "最近 30 天各地区投放成本、收入与 ROI 综合对比",
+    "topic": "ROI看板 - ROI数据总览 / ROI看板 - ROI地区总览 / ROI看板 - ROI广告地区总览 / ROI看板 - 安装投放趋势 / ROI看板 - 图表",
+    "source_charts": [
+      {
+        "chart_id": "3c53b6bf5006492c93c7a809ff267ea9",
+        "title": "ROI数据总览",
+        "type": "table",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "首日收入",
+          "3日收入",
+          "首日ROI",
+          "3日ROI"
+        ]
+      },
+      {
+        "chart_id": "f6127cba43714110a02af256805c454f",
+        "title": "ROI地区总览",
+        "type": "area",
+        "fields": [
+          "日期",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      },
+      {
+        "chart_id": "2df551ca587d4f95857cccec6bec37e7",
+        "title": "ROI广告地区总览",
+        "type": "column",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "首日收入",
+          "3日收入",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      },
+      {
+        "chart_id": "93a062421dca4dbc913aa1097628a51c",
+        "title": "安装投放趋势",
+        "type": "line",
+        "fields": [
+          "日期",
+          "安装数",
+          "投放成本",
+          "单次安装成本",
+          "地区"
+        ]
+      },
+      {
+        "chart_id": "b902708ad2a44344ba59ed83001138bc",
+        "title": "图表",
+        "type": "grouped_column",
+        "fields": [
+          "日期",
+          "首日ROI",
+          "3日ROI",
+          "地区"
+        ]
+      }
+    ],
+    "time_scope": "latest_30d",
+    "expected_answer_kind": "comparison",
+    "independent": true,
+    "selected_for_test": false
+  }
+]
