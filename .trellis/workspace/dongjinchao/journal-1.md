@@ -164,3 +164,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: 修正知识库 Markdown 版本边界
+
+**Date**: 2026-08-17
+**Task**: 修正知识库 Markdown 版本边界
+**Branch**: `codex/unify-knowledge-document-type`
+
+### Summary
+
+移除上传文档中的 template_type 和 template_version 元数据，由服务端生成 markdown-v1 并写入知识库版本；同步修正 Markdown 围栏解析和 JSON 字段通用文档结构。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4102b866` | (see git log) |
+
+### Status
+
+[OK] **Completed**
