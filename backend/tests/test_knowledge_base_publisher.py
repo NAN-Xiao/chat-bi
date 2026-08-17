@@ -27,6 +27,15 @@ class _EmbeddingModel:
         return [[float(len(text)), 1.0] for text in texts]
 
 
+class _EmbeddingModelWithoutConfig:
+    def __init__(self):
+        self.batch_sizes: list[int] = []
+
+    def embed_documents(self, texts):
+        self.batch_sizes.append(len(texts))
+        return [[float(len(text)), 1.0] for text in texts]
+
+
 def _publisher(model):
     publisher = KnowledgePublisher(SimpleNamespace(), embedding_model=model)
     publisher._set_stage = lambda **_kwargs: None
@@ -35,10 +44,10 @@ def _publisher(model):
     return publisher
 
 
-def _chunks():
+def _chunks(count: int = 3):
     return [
         KnowledgeChunkDraft(i, "正文", f"chunk-{i}", str(i) * 64, 2)
-        for i in range(3)
+        for i in range(count)
     ]
 
 
@@ -61,3 +70,20 @@ def test_embedding_failure_is_propagated_before_any_artifact_is_persisted():
             SimpleNamespace(id=2),
             _chunks(),
         )
+
+
+def test_embedding_without_model_config_uses_application_batch_size(monkeypatch):
+    model = _EmbeddingModelWithoutConfig()
+    monkeypatch.setattr(
+        "apps.knowledge_base.publisher.settings.EMBEDDING_BATCH_SIZE",
+        10,
+    )
+
+    artifact = _publisher(model)._embed(
+        SimpleNamespace(id=1, revision=1, content_hash="x"),
+        SimpleNamespace(id=2),
+        _chunks(23),
+    )
+
+    assert model.batch_sizes == [10, 10, 3]
+    assert len(artifact.vectors) == 23

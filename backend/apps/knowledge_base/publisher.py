@@ -197,7 +197,16 @@ class KnowledgePublisher:
         if not texts:
             raise ValueError("知识内容为空，无法建立检索索引。")
         vectors: list[list[float]] = []
-        batch_size = max(1, int(getattr(getattr(model, "config", None), "batch_size", 32)))
+        batch_size = max(
+            1,
+            int(
+                getattr(
+                    getattr(model, "config", None),
+                    "batch_size",
+                    settings.EMBEDDING_BATCH_SIZE,
+                )
+            ),
+        )
         for start in range(0, len(texts), batch_size):
             self._assert_snapshot(int(job.id), int(job.revision), str(job.content_hash), int(version.id))
             batch = texts[start:start + batch_size]

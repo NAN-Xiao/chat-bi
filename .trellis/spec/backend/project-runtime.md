@@ -104,6 +104,77 @@ $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($DisableKnowledgeManagementV2) { "fal
 - Shared Redis state must use the scoped helpers in `backend/common/core/redis_client.py`; never introduce naked keys such as `dashboard:{id}` or `sql:{hash}`.
 - Keep datasource, tenant, user, and permission boundaries in cache and task state whenever those boundaries can affect the result.
 
+## Scenario: OpenAI-Compatible Embedding Batch Limit
+
+### 1. Scope / Trigger
+
+- Applies whenever API or Worker code sends one or more texts to an
+  OpenAI-compatible embedding endpoint, including knowledge publication,
+  semantic retrieval, Data Skill embedding, and datasource/table embedding.
+
+### 2. Signatures
+
+- Application setting: `Settings.EMBEDDING_BATCH_SIZE: int`.
+- Runtime environment: `EMBEDDING_BATCH_SIZE=<positive integer>`.
+- Release input: `SHUZHI_EMBEDDING_BATCH_SIZE=<positive integer>`.
+- Client entry point: `OpenAICompatibleEmbeddings.embed_documents(texts)`.
+
+### 3. Contracts
+
+- The conservative application and installer default is `10`; deployments may
+  explicitly choose another positive value supported by their provider.
+- Release configuration maps `SHUZHI_EMBEDDING_BATCH_SIZE` to
+  `EMBEDDING_BATCH_SIZE`. API and Worker processes in one deployment must receive
+  the same explicit value.
+- Inputs larger than the configured value are split into ordered batches. The
+  combined result preserves both input order and output cardinality.
+- The contract is provider-capability driven, not model-name driven. Do not add
+  special branches for `text-embedding-v4` or any business knowledge type.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Runtime value omitted in direct development startup | Use application default `10` |
+| Release input omitted | Stop environment generation with an explicit missing-variable error |
+| Input contains 23 texts and batch size is 10 | Send batches `10`, `10`, and `3` |
+| Provider rejects a configured batch | Propagate the upstream request error; do not silently retry smaller batches |
+| Provider returns a different vector count | Raise an explicit cardinality mismatch error |
+| Input is empty | Return an empty vector list without an HTTP request |
+
+### 5. Good/Base/Bad Cases
+
+- Good: API and Workers all run with `EMBEDDING_BATCH_SIZE=10`, and a 23-text
+  request returns 23 ordered vectors after three provider requests.
+- Base: a deployment explicitly configures a provider-supported value other than
+  10; every embedding path respects that value.
+- Bad: the API uses one value while Workers use another, a publisher falls back
+  to a literal `32`, or code catches HTTP 400 and silently retries smaller batches.
+
+### 6. Tests Required
+
+- Assert the settings default is 10 and an explicit positive environment value
+  is preserved.
+- Assert 23 inputs at batch size 10 produce request sizes `10, 10, 3` and ordered
+  output with the same cardinality.
+- Assert publisher paths without a model-local config use the shared setting.
+- Assert `installer/install.conf`, the installer template, and `Jenkinsfile`
+  propagate the release input into the runtime environment.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+batch_size = getattr(model.config, "batch_size", 32)
+```
+
+#### Correct
+
+```python
+batch_size = getattr(model.config, "batch_size", settings.EMBEDDING_BATCH_SIZE)
+```
+
 ## API Verification
 
 - Call the exact backend endpoint directly before testing a frontend workflow that depends on it.

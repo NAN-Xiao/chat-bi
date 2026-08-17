@@ -1,0 +1,1 @@
+{"file":".trellis/spec/backend/project-runtime.md","reason":"Embedding batch size is a shared API/Worker runtime and deployment contract."}
