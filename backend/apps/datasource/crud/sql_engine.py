@@ -34,6 +34,11 @@ from apps.system.crud.tracking_config import find_tracking_prompt_context
 from common.core.deps import CurrentUser, SessionDep
 
 
+BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE = (
+    "当前数据源无法建立所选工作空间的业务上下文，请重新选择已绑定且有权限的数据源。"
+)
+
+
 def _stable_digest(value: Any) -> str | None:
     if value in (None, "", [], {}):
         return None
@@ -152,6 +157,7 @@ class BusinessSqlContextService:
             embedding=embedding,
             table_list=table_list,
             data_skill_text=data_skill,
+            tenant_id=tenant_id,
         )
         tracking_config, tracking_summary = find_tracking_prompt_context(
             session,

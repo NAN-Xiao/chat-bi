@@ -60,7 +60,7 @@ from apps.chat.task.sql_repair import (
     build_sql_repair_message,
     validate_sql_for_datasource,
 )
-from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
+from apps.datasource.crud.datasource import get_datasource_list
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_DISPLAY_MESSAGE,
@@ -68,6 +68,7 @@ from apps.datasource.crud.permission_errors import (
 )
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access
 from apps.datasource.crud.sql_engine import (
+    BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE,
     BusinessSqlContext,
     BusinessSqlContextService,
     UnresolvedDashboardDateParametersError,
@@ -112,7 +113,7 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
-from common.error import SingleMessageError, AppDBError, ParseSQLResultError
+from common.error import SingleMessageError, AppDBError, DataUnavailableError, ParseSQLResultError
 from common.user_facing_errors import agent_guidance_for_error_type
 from common.utils.locale import I18n, I18nHelper
 from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
@@ -1733,15 +1734,9 @@ class LLMService:
                 _session,
                 CustomPromptTargetScopeEnum.SMART_QA,
             )
-            if context:
-                tables = list(context.allowed_tables)
-            else:
-                self.chat_question.db_schema, tables = get_ai_table_schema(
-                    session=_session,
-                    current_user=self.current_user,
-                    ds=self.ds,
-                    question=self.chat_question.question,
-                )
+            if context is None:
+                raise DataUnavailableError(BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE)
+            tables = list(context.allowed_tables)
 
         # AI 结构识别以工作空间数据字典为准，不通过样例数据探测物理表。
         self.chat_question.sample_data = ""

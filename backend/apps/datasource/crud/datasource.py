@@ -146,7 +146,10 @@ def _schema_metadata_tenant_id(
     做了什么：把数据源里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
     explicit_tenant_id = _coerce_tenant_id(tenant_id)
-    if explicit_tenant_id is not None and datasource_bound_to_tenant(session, int(ds.id), explicit_tenant_id):
+    if tenant_id not in (None, ""):
+        if explicit_tenant_id is None or not datasource_bound_to_tenant(
+                session, int(ds.id), explicit_tenant_id):
+            raise HTTPException(status_code=403, detail="当前数据源未绑定到所选工作空间")
         return explicit_tenant_id
 
     user_tenant_id = current_tenant_id(current_user)
@@ -754,7 +757,12 @@ def updateNum(session: SessionDep, ds: CoreDatasource):
     session.commit()
 
 
-def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> List[TableAndFields]:
+def get_table_obj_by_ds(
+        session: SessionDep,
+        current_user: CurrentUser,
+        ds: CoreDatasource,
+        tenant_id: int | None = None,
+) -> List[TableAndFields]:
     """
     是什么：get_table_obj_by_ds 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -766,8 +774,8 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
     tables = session.query(CoreTable).filter(
         and_(CoreTable.ds_id == ds.id, CoreTable.checked == True)
     ).all()
-    tenant_id = _schema_metadata_tenant_id(session, ds, current_user)
-    _apply_workspace_comments_to_tables(session, tenant_id, tables)
+    metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user, tenant_id)
+    _apply_workspace_comments_to_tables(session, metadata_tenant_id, tables)
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     schema = effective_db_schema(ds.type, conf)
 
@@ -791,7 +799,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
     for table in tables:
         # fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
         fields = fields_dict.get(table.id) or []
-        _apply_workspace_comments_to_fields(session, tenant_id, table, fields)
+        _apply_workspace_comments_to_fields(session, metadata_tenant_id, table, fields)
 
         # 执行列权限过滤字段
         fields = get_column_permission_fields(session=session, current_user=current_user, table=table, fields=fields,
@@ -1106,7 +1114,12 @@ def _dictionary_schema_from_workspace(
             return schema_str, [], dictionary_configured
         return "", [], dictionary_configured
 
-    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
+    table_objs = get_table_obj_by_ds(
+        session=session,
+        current_user=current_user,
+        ds=ds,
+        tenant_id=tenant_id,
+    )
     cached_by_table = {obj.table.table_name: obj for obj in table_objs}
     contain_rules = get_user_permission_rules(session, current_user, ds.id)
     scoped_table_ids = get_user_scoped_table_ids(session, current_user, ds.id, contain_rules)
@@ -1230,19 +1243,20 @@ def _dictionary_schema_from_workspace(
 
 def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
                         embedding: bool = True, table_list: list[str] = None,
-                        data_skill_text: str | None = None) -> tuple[str, list]:
+                        data_skill_text: str | None = None,
+                        tenant_id: int | None = None) -> tuple[str, list]:
     """
     是什么：为 AI 生成 SQL/分析计划提供结构上下文。
     做了什么：优先读取工作空间数据字典和字段注释；物理库只在执行 SQL 时使用，不在这里探测结构。
     """
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db_name = effective_db_schema(ds.type, conf)
-    tenant_id = _schema_metadata_tenant_id(session, ds, current_user)
+    metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user, tenant_id)
     dictionary_schema, dictionary_tables, dictionary_configured = _dictionary_schema_from_workspace(
         session=session,
         current_user=current_user,
         ds=ds,
-        tenant_id=tenant_id,
+        tenant_id=metadata_tenant_id,
         db_name=db_name,
         table_list=table_list,
         question=question,
@@ -1258,6 +1272,7 @@ def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: Core
         question=question,
         embedding=embedding,
         table_list=table_list,
+        tenant_id=metadata_tenant_id,
     )
     if schema:
         schema = schema.replace(
@@ -1269,14 +1284,21 @@ def get_ai_table_schema(session: SessionDep, current_user: CurrentUser, ds: Core
 
 
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
-                     embedding: bool = True, table_list: list[str] = None) -> tuple[str, list]:
+                     embedding: bool = True, table_list: list[str] = None,
+                     tenant_id: int | None = None) -> tuple[str, list]:
     """
     是什么：get_table_schema 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把数据源需要的数据找出来，整理成后面好用的样子。
     """
     schema_str = ""
-    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
+    metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user, tenant_id)
+    table_objs = get_table_obj_by_ds(
+        session=session,
+        current_user=current_user,
+        ds=ds,
+        tenant_id=metadata_tenant_id,
+    )
     if len(table_objs) == 0:
         return schema_str, []
     db_name = table_objs[0].schema
@@ -1342,8 +1364,7 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
             if not embedding_payload_is_current(table.get("embedding"))
         ]
         if missing_embedding_table_ids:
-            run_save_table_embeddings(missing_embedding_table_ids, tenant_id=_schema_metadata_tenant_id(session, ds, current_user))
-        metadata_tenant_id = _schema_metadata_tenant_id(session, ds, current_user)
+            run_save_table_embeddings(missing_embedding_table_ids, tenant_id=metadata_tenant_id)
         tables = calc_table_embedding(
             tables,
             question,
