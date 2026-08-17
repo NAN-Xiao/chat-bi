@@ -231,6 +231,64 @@ def test_structured_group_scope_distinguishes_time_fields_from_dimensions() -> N
     assert violation.missing_required_patterns == ("outer SELECT CROSS JOIN",)
 
 
+def test_intermediate_dedup_group_does_not_change_final_result_grain() -> None:
+    data_skill = _data_skill(
+        {
+            "match": "每日",
+            "when_sql_has_non_time_group_by": True,
+            "required_outer_select_cross_join": True,
+        }
+    )
+    sql = """
+        WITH date_spine AS (
+            SELECT dt FROM calendar
+        ), user_day_flags AS (
+            SELECT dt, uid, MAX(is_active) AS is_active
+            FROM events
+            GROUP BY dt, uid
+        ), daily_metrics AS (
+            SELECT dt, SUM(is_active) AS active_users
+            FROM user_day_flags
+            GROUP BY dt
+        )
+        SELECT d.dt, COALESCE(m.active_users, 0) AS active_users
+        FROM date_spine d
+        LEFT JOIN daily_metrics m ON m.dt = d.dt
+    """
+
+    assert llm._data_skill_sql_validation_violation("每日活跃用户趋势", sql, data_skill) is None
+
+
+def test_final_aggregate_dimension_still_requires_cross_join() -> None:
+    data_skill = _data_skill(
+        {
+            "match": "每日",
+            "when_sql_has_non_time_group_by": True,
+            "required_outer_select_cross_join": True,
+        }
+    )
+    sql = """
+        WITH date_spine AS (
+            SELECT dt FROM calendar
+        ), user_day_flags AS (
+            SELECT dt, uid, region_code, MAX(is_active) AS is_active
+            FROM events
+            GROUP BY dt, uid, region_code
+        ), daily_metrics AS (
+            SELECT dt, region_code, SUM(is_active) AS active_users
+            FROM user_day_flags
+            GROUP BY dt, region_code
+        )
+        SELECT d.dt, m.region_code, COALESCE(m.active_users, 0) AS active_users
+        FROM date_spine d
+        LEFT JOIN daily_metrics m ON m.dt = d.dt
+    """
+
+    violation = llm._data_skill_sql_validation_violation("每日各地区活跃用户趋势", sql, data_skill)
+    assert violation is not None
+    assert violation.missing_required_patterns == ("outer SELECT CROSS JOIN",)
+
+
 def test_outer_cross_join_requirement_ignores_cross_join_inside_cte() -> None:
     data_skill = _data_skill(
         {
@@ -249,6 +307,56 @@ def test_outer_cross_join_requirement_ignores_cross_join_inside_cte() -> None:
         )
         SELECT d.dt, m.region_code, COALESCE(m.value, 0)
         FROM date_series d
+        LEFT JOIN metrics m ON m.dt = d.dt
+    """
+
+    violation = llm._data_skill_sql_validation_violation("每日各地区趋势", sql, data_skill)
+    assert violation is not None
+    assert violation.missing_required_patterns == ("outer SELECT CROSS JOIN",)
+
+
+def test_consumed_date_generator_cross_join_is_not_a_dimension_scaffold() -> None:
+    data_skill = _data_skill(
+        {
+            "when_sql_has_non_time_group_by": True,
+            "required_outer_select_cross_join": True,
+        }
+    )
+    sql = """
+        WITH date_series AS (
+            SELECT DATE_ADD(p.start_date, INTERVAL n.value DAY) AS dt, n.value AS offset_day
+            FROM params p CROSS JOIN numbers n
+        ), metrics AS (
+            SELECT dt, region_code, COUNT(*) AS value
+            FROM events
+            GROUP BY dt, region_code
+        )
+        SELECT d.dt, m.region_code, COALESCE(m.value, 0)
+        FROM date_series d
+        LEFT JOIN metrics m ON m.dt = d.dt
+    """
+
+    violation = llm._data_skill_sql_validation_violation("每日各地区趋势", sql, data_skill)
+    assert violation is not None
+    assert violation.missing_required_patterns == ("outer SELECT CROSS JOIN",)
+
+
+def test_outer_unrelated_cross_join_cannot_borrow_metric_dimension() -> None:
+    data_skill = _data_skill(
+        {
+            "when_sql_has_non_time_group_by": True,
+            "required_outer_select_cross_join": True,
+        }
+    )
+    sql = """
+        WITH metrics AS (
+            SELECT dt, region_code, COUNT(*) AS value
+            FROM events
+            GROUP BY dt, region_code
+        )
+        SELECT d.dt, m.region_code, COALESCE(m.value, 0)
+        FROM date_series d
+        CROSS JOIN params p
         LEFT JOIN metrics m ON m.dt = d.dt
     """
 
@@ -289,6 +397,7 @@ def test_legacy_text_interface_formats_structured_violation() -> None:
 def test_check_sql_raises_shared_structured_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
     service = llm.LLMService.__new__(llm.LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: object()}
+    service.dashboard_date_filter_enabled = False
     service.chat_question = SimpleNamespace(
         question="查询 DAU",
         data_skill=_data_skill({"match": "DAU", "required_sql_contains": ["fact_events"]}),

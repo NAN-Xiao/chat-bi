@@ -336,58 +336,179 @@ def _parse_sql_statements_for_validation(sql_text: str) -> list[exp.Expression]:
     return []
 
 
-def _sql_has_non_time_group_by(sql_text: str) -> bool:
-    """判断 SQL 是否按时间字段之外的任意维度分组。"""
-    statements = _parse_sql_statements_for_validation(sql_text)
+def _select_sources(select: exp.Select) -> list[exp.Expression]:
+    """返回当前查询块直接读取的 FROM/JOIN 来源。"""
+    sources: list[exp.Expression] = []
+    from_clause = select.args.get("from_")
+    if from_clause is not None and from_clause.this is not None:
+        sources.append(from_clause.this)
+    sources.extend(
+        join.this
+        for join in select.args.get("joins") or []
+        if join.this is not None
+    )
+    return sources
 
-    for statement in statements:
-        for select in statement.find_all(exp.Select):
-            group = select.args.get("group")
-            if group is None or len(group.expressions) < 2:
+
+def _query_root_selects(query: exp.Expression) -> list[exp.Select]:
+    """取得一个 CTE/子查询自身的顶层 SELECT，不下钻其内部 CTE。"""
+    while isinstance(query, (exp.Subquery, exp.Paren)):
+        query = query.this
+    if isinstance(query, exp.Select):
+        return [query]
+    if isinstance(query, exp.SetOperation):
+        return [
+            *(_query_root_selects(query.this) if query.this is not None else []),
+            *(_query_root_selects(query.expression) if query.expression is not None else []),
+        ]
+    return []
+
+
+def _result_grain_selects(statement: exp.Expression) -> list[exp.Select]:
+    """查找决定最终结果粒度的最近聚合查询块。"""
+    root_selects = _query_root_selects(statement)
+    if not root_selects:
+        root_select = statement.find(exp.Select)
+        root_selects = [root_select] if root_select is not None else []
+
+    ctes = {
+        str(cte.alias_or_name or "").strip('"\x60[]').lower(): cte.this
+        for cte in statement.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    result: list[exp.Select] = []
+    visited_ctes: set[str] = set()
+
+    def visit_select(select: exp.Select) -> None:
+        if select.args.get("group") is not None:
+            result.append(select)
+            return
+        for source in _select_sources(select):
+            if isinstance(source, exp.Subquery):
+                for nested_select in _query_root_selects(source):
+                    visit_select(nested_select)
                 continue
-            if any(
-                not _TIME_GROUP_EXPRESSION_PATTERN.search(
-                    expression.sql(dialect="mysql", normalize=True)
+            if not isinstance(source, exp.Table):
+                continue
+            cte_name = str(source.name or "").strip('"\x60[]').lower()
+            if not cte_name or cte_name in visited_ctes or cte_name not in ctes:
+                continue
+            visited_ctes.add(cte_name)
+            for cte_select in _query_root_selects(ctes[cte_name]):
+                visit_select(cte_select)
+
+    for root_select in root_selects:
+        visit_select(root_select)
+    return result
+
+
+def _non_time_result_group_scope(sql_text: str) -> tuple[bool, set[str]]:
+    """返回最终结果粒度是否含非时间维度，以及这些维度的字段/输出名。"""
+    has_non_time_group = False
+    dimension_names: set[str] = set()
+    for statement in _parse_sql_statements_for_validation(sql_text):
+        for select in _result_grain_selects(statement):
+            group = select.args.get("group")
+            if group is None:
+                continue
+            for expression in group.expressions:
+                normalized = expression.sql(dialect="mysql", normalize=True)
+                if _TIME_GROUP_EXPRESSION_PATTERN.search(normalized):
+                    continue
+                has_non_time_group = True
+                dimension_names.update(
+                    str(column.name or "").strip('"\x60[]').lower()
+                    for column in expression.find_all(exp.Column)
+                    if column.name
                 )
-                for expression in group.expressions
-            ):
-                return True
+                if isinstance(expression, exp.Column) and expression.name:
+                    dimension_names.add(str(expression.name).strip('"\x60[]').lower())
+                for projection in select.expressions:
+                    projection_expression = projection.this if isinstance(projection, exp.Alias) else projection
+                    if projection_expression.sql(dialect="mysql", normalize=True) != normalized:
+                        continue
+                    output_name = str(projection.alias_or_name or "").strip('"\x60[]').lower()
+                    if output_name:
+                        dimension_names.add(output_name)
+    return has_non_time_group, dimension_names
+
+
+def _sql_has_non_time_group_by(sql_text: str) -> bool:
+    """判断最终结果粒度是否按时间字段之外的任意维度分组。"""
+    has_non_time_group, _dimension_names = _non_time_result_group_scope(sql_text)
+    return has_non_time_group
+
+
+def _select_cross_join_projects_dimension(
+    select: exp.Select,
+    dimension_names: set[str],
+) -> bool:
+    """确认查询块的 CROSS JOIN 实际向结果输出了业务维度。"""
+    joins = select.args.get("joins") or []
+    if not any(str(join.args.get("kind") or "").upper() == "CROSS" for join in joins):
+        return False
+
+    cross_sources: list[exp.Expression] = []
+    from_clause = select.args.get("from_")
+    if from_clause is not None and from_clause.this is not None:
+        cross_sources.append(from_clause.this)
+    cross_sources.extend(
+        join.this
+        for join in joins
+        if str(join.args.get("kind") or "").upper() == "CROSS" and join.this is not None
+    )
+    cross_source_aliases = {
+        str(source.alias_or_name or "").strip('"\x60[]').lower()
+        for source in cross_sources
+        if source.alias_or_name
+    }
+    for projection in select.expressions:
+        output_name = str(projection.alias_or_name or "").strip('"\x60[]').lower()
+        columns = list(projection.find_all(exp.Column))
+        if output_name in dimension_names and any(
+            not column.table
+            or str(column.table).strip('"\x60[]').lower() in cross_source_aliases
+            for column in columns
+        ):
+            return True
+        if any(
+            str(column.name or "").strip('"\x60[]').lower() in dimension_names
+            and (
+                not column.table
+                or str(column.table).strip('"\x60[]').lower() in cross_source_aliases
+            )
+            for column in columns
+        ):
+            return True
     return False
 
 
 def _sql_outer_select_has_cross_join(sql_text: str) -> bool:
     """检查最终查询使用的日期/小时维度骨架是否包含 CROSS JOIN。"""
+    has_non_time_group, dimension_names = _non_time_result_group_scope(sql_text)
+    if not has_non_time_group or not dimension_names:
+        return False
     for statement in _parse_sql_statements_for_validation(sql_text):
-        outer_select = statement if isinstance(statement, exp.Select) else statement.find(exp.Select)
-        if outer_select is None:
-            continue
-        for join in outer_select.args.get("joins") or []:
-            if str(join.args.get("kind") or "").upper() == "CROSS":
+        root_selects = _query_root_selects(statement)
+        if not root_selects:
+            outer_select = statement.find(exp.Select)
+            root_selects = [outer_select] if outer_select is not None else []
+        for outer_select in root_selects:
+            if _select_cross_join_projects_dimension(outer_select, dimension_names):
                 return True
-
-        from_clause = outer_select.args.get("from_")
-        outer_sources = []
-        if from_clause is not None and from_clause.this is not None:
-            outer_sources.append(from_clause.this)
-        outer_sources.extend(
-            join.this for join in outer_select.args.get("joins") or [] if join.this is not None
-        )
-        consumed_ctes = {
-            str(source.name or "").strip('"\x60[]').lower()
-            for source in outer_sources
-            if isinstance(source, exp.Table)
-        }
-        for cte in statement.find_all(exp.CTE):
-            if str(cte.alias_or_name or "").strip('"\x60[]').lower() not in consumed_ctes:
-                continue
-            cte_select = cte.this.find(exp.Select)
-            if cte_select is None or len(cte_select.named_selects) < 2:
-                continue
-            if any(
-                str(join.args.get("kind") or "").upper() == "CROSS"
-                for join in cte_select.args.get("joins") or []
-            ):
-                return True
+            consumed_ctes = {
+                str(source.name or "").strip('"\x60[]').lower()
+                for source in _select_sources(outer_select)
+                if isinstance(source, exp.Table)
+            }
+            for cte in statement.find_all(exp.CTE):
+                if str(cte.alias_or_name or "").strip('"\x60[]').lower() not in consumed_ctes:
+                    continue
+                if any(
+                    _select_cross_join_projects_dimension(cte_select, dimension_names)
+                    for cte_select in _query_root_selects(cte.this)
+                ):
+                    return True
     return False
 
 
