@@ -227,6 +227,13 @@ def test_execute_error_accepts_analyticdb_group_by_expression_text() -> None:
     assert classify_execute_sql_error(wrapped) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
 
 
+def test_execute_error_accepts_database_rejected_unsigned_cast() -> None:
+    wrapped = AppDBError("query failed")
+    wrapped.__cause__ = RuntimeError("target database does not support UNSIGNED cast target")
+
+    assert classify_execute_sql_error(wrapped) == SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT
+
+
 def test_mysql_date_format_grouping_rejects_mismatched_projection_expression() -> None:
     sql = """
     SELECT DATE_FORMAT(FROM_UNIXTIME(u.first_pay_time / 1000), '%Y-%m-%d') AS pay_date,
@@ -539,10 +546,40 @@ def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
     assert "完整 date_filter" in message
 
 
+def test_generic_dialect_repair_does_not_globally_forbid_unsigned() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="mysql",
+        failed_sql="SELECT CAST(dt AS UNSIGNED) FROM event",
+        error_message="syntax error near SELECT",
+        violation=None,
+        attempt=0,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "禁止 CAST(... AS UNSIGNED)" not in message
+    assert "拒绝当前 UNSIGNED 用法" not in message
+
+
+def test_dialect_repair_mentions_unsigned_only_after_database_rejects_it() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,
+        dialect="mysql",
+        failed_sql="SELECT CAST(dt AS UNSIGNED) FROM event",
+        error_message="database does not support UNSIGNED cast target",
+        violation=None,
+        attempt=0,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "目标数据库已在执行错误中拒绝当前 UNSIGNED 用法" in message
+
+
 @pytest.mark.parametrize(
     "sql",
     [
-        "SELECT CAST(dt AS UNSIGNED) FROM event",
         "WITH RECURSIVE days AS "
         "(SELECT 1 UNION ALL SELECT day_value + 1 FROM days) SELECT * FROM days",
         "SELECT DATE_FORMAT(dt, '%v') FROM event",
@@ -551,6 +588,14 @@ def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
 def test_mysql_compatible_sql_rejects_known_adb_incompatibilities(sql: str) -> None:
     with pytest.raises(SqlStructureValidationError):
         validate_mysql_compatible_sql(sql)
+
+
+def test_mysql_compatible_sql_allows_unsigned_casts_supported_by_mysql() -> None:
+    validate_mysql_compatible_sql(
+        "SELECT CAST({{dashboard_start_yyyymmdd}} AS UNSIGNED) AS start_dt, "
+        "CAST({{dashboard_end_yyyymmdd}} AS UNSIGNED) AS end_dt"
+    )
+    validate_sql_for_datasource("SELECT CAST(1 AS UNSIGNED) AS value", "mysql")
 
 
 def test_mysql_compatible_sql_requires_recursive_cte_column_aliases() -> None:

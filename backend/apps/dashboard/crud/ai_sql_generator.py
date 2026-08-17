@@ -53,7 +53,6 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     r"\b(?:curdate\s*\(|current_date\b|now\s*\(|current_timestamp\b|localtime\b|localtimestamp\b|getdate\s*\(|getutcdate\s*\()",
     flags=re.IGNORECASE,
 )
-_MYSQL_UNSIGNED_CAST_PATTERN = re.compile(r"\b(?:as|,)\s*unsigned\b", flags=re.IGNORECASE)
 
 
 class DashboardManualChartGraphState(TypedDict, total=False):
@@ -1327,19 +1326,8 @@ def _dashboard_sql_dialect_rules(sql_dialect: str | None, datasource: CoreDataso
         return [
             "MySQL/MariaDB 方言约束：不能使用 FULL OUTER JOIN；MySQL 不支持该语法。",
             "如果需要合并两个按日期/维度聚合的结果集，优先用一个 key_set CTE 通过 UNION/UNION ALL 去重收集日期或维度键，再分别 LEFT JOIN 各聚合结果；也可以在同一事实表中用 SUM/COUNT(DISTINCT CASE WHEN ...) 做条件聚合。",
-            "MySQL/MariaDB 兼容数据源不能使用 CAST(... AS UNSIGNED) 或 AS UNSIGNED；日期/数值转换优先使用已验证的 SIGNED 或 DECIMAL 写法，JSON 数值字段也不要强制转成 UNSIGNED。",
         ]
     return []
-
-
-def _dashboard_sql_dialect_issues(sql: str, sql_dialect: str | None, datasource: CoreDatasource | None) -> list[str]:
-    dialect_text = _dashboard_sql_dialect_text(sql_dialect, datasource)
-    issues: list[str] = []
-    if ("mysql" in dialect_text or "mariadb" in dialect_text) and _MYSQL_UNSIGNED_CAST_PATTERN.search(sql):
-        issues.append(
-            "当前 MySQL/MariaDB 兼容数据源不支持 UNSIGNED，请改用 SIGNED、DECIMAL 或无需转换的表达式。"
-        )
-    return _unique_text_items(issues)
 
 
 def _dashboard_config_prompt(
@@ -1895,15 +1883,6 @@ def _node_validate_sql(state: DashboardManualChartGraphState) -> dict[str, Any]:
         response.message = "生成 SQL 未满足看板日期参数要求。"
         response.advice = "请使用当前图表配置的起止日期参数重新生成。"
         response.issues = _unique_text_items(list(response.issues or []) + date_issues)
-    elif dialect_issues := _dashboard_sql_dialect_issues(
-        sql,
-        state.get("sql_dialect"),
-        state.get("datasource"),
-    ):
-        response.success = False
-        response.message = "生成 SQL 使用了当前 SQL 方言不支持的类型。"
-        response.advice = "请改用当前数据源兼容的 SIGNED、DECIMAL 或无需转换的表达式重新生成。"
-        response.issues = _unique_text_items(list(response.issues or []) + dialect_issues)
     elif json_issues := _json_subfield_sql_issues(
         sql,
         state.get("json_subfield_requirements") or [],

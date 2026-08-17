@@ -335,6 +335,55 @@ def test_recursive_cte_week_compatibility_followup_updates_platform_skill(monkey
     migration.upgrade()
 
 
+def test_mysql_unsigned_runtime_capability_followup_removes_global_ban(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration("162_platform_mysql_unsigned_runtime_capability.py")
+
+    assert migration.down_revision == "161platformskilltenantexclusion"
+    assert "mysql-unsigned-compat:v1" in migration.OLD_SECTION_MARKER
+    assert "mysql-unsigned-runtime-capability:v2" in migration.NEW_SECTION_MARKER
+    assert "不支持 `CAST(... AS UNSIGNED)`" in migration.OLD_GUIDANCE
+    assert "支持 `CAST(... AS SIGNED)` 和 `CAST(... AS UNSIGNED)`" in migration.NEW_GUIDANCE
+    assert "不得在执行前全局禁止" in migration.NEW_GUIDANCE
+    assert "实际执行错误明确拒绝" in migration.NEW_GUIDANCE
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert "embedding = NULL" in statement
+    assert "embedding_signature = NULL" in statement
+    assert params["old_marker"] == migration.OLD_SECTION_MARKER
+    assert params["new_marker"] == migration.NEW_SECTION_MARKER
+    assert params["old_guidance"] == migration.OLD_GUIDANCE
+    assert params["new_guidance"] == migration.NEW_GUIDANCE
+
+    migration.downgrade()
+
+    assert len(bind.executions) == 2
+    _statement, downgrade_params = bind.executions[1]
+    assert downgrade_params["old_marker"] == migration.NEW_SECTION_MARKER
+    assert downgrade_params["new_marker"] == migration.OLD_SECTION_MARKER
+    assert downgrade_params["old_guidance"] == migration.NEW_GUIDANCE
+    assert downgrade_params["new_guidance"] == migration.OLD_GUIDANCE
+
+
 def test_time_scaffold_performance_followup_updates_platform_skill(monkeypatch: pytest.MonkeyPatch) -> None:
     migration = _load_migration("157_platform_time_scaffold_performance_data_skill.py")
 

@@ -459,19 +459,6 @@ def validate_mysql_compatible_sql(sql: str) -> None:
     """在执行前拦截 AnalyticDB/MySQL 兼容源中可确定的方言和结构错误。"""
     source_sql = str(sql or "")
     try:
-        tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(source_sql)
-        has_unsigned_cast = any(
-            token.text.lower() == "unsigned"
-            and index > 0
-            and tokens[index - 1].text.lower() in {"as", ","}
-            for index, token in enumerate(tokens)
-        )
-        if has_unsigned_cast:
-            raise SqlStructureValidationError(
-                "MySQL/AnalyticDB 兼容数据源不支持 UNSIGNED 类型转换；请使用 SIGNED、DECIMAL "
-                "或移除不必要的转换。"
-            )
-
         statements = sqlglot.parse(_normalized_sql_for_structure_validation(source_sql), read="mysql")
     except SqlStructureValidationError:
         raise
@@ -666,13 +653,17 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         dialect_text = f"{context.dialect} {context.error_message}".lower()
         payload["repair_requirements"] = [
             "当前 SQL 必须在目标数据源方言下可解析并执行；只返回修复后的完整 SQL JSON。",
-            "MySQL/AnalyticDB 兼容数据源禁止 CAST(... AS UNSIGNED) 和 AS UNSIGNED，改用 SIGNED、DECIMAL 或不转换。",
             "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE；日期序列优先使用目标方言支持的非递归序列。只有能力元数据明确声明且已有执行样例验证支持递归时才可例外使用，并在自引用 CTE 名后写完整列清单 cte(col1, ...)。",
             "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；改用固定周边界或 INTERVAL (week_offset * 7) DAY。",
             "时间骨架不得直接按范围 JOIN 物理事实表；先按明确日期范围过滤事实表并按目标粒度聚合，再 LEFT JOIN 时间骨架。",
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
+        if "unsigned" in str(context.error_message or "").lower():
+            payload["repair_requirements"].insert(
+                1,
+                "目标数据库已在执行错误中拒绝当前 UNSIGNED 用法；请根据错误信息改用该引擎支持的 SIGNED、DECIMAL 或无需转换的表达式。",
+            )
         if "当前 schema 中不存在" in dialect_text or "无法解析的字段" in dialect_text:
             payload["repair_requirements"].extend([
                 "上一版 SQL 引用了当前 Schema 中不存在或无法解析的表/字段；必须根据当前 Schema 和 Data Skill 重新生成完整 SQL。",
