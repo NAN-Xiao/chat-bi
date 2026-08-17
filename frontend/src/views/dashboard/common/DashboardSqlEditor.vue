@@ -781,14 +781,12 @@ const dateExpressionEnabled = computed(
   () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters()
 )
 
-function shouldUseDashboardDateParameters(chartType: ChartTypes | string = form.chartType) {
-  const supportsConfiguredMetric =
-    chartType !== 'metric' || sqlBuilder.metricDateExpressionEnabled === true
-  return supportsConfiguredMetric && Boolean(sqlBuilder.timeField)
+function shouldUseDashboardDateParameters() {
+  return Boolean(sqlBuilder.timeField)
 }
 
-function syncDashboardDateParameterUsage(chartType: ChartTypes | string = form.chartType) {
-  const enabled = shouldUseDashboardDateParameters(chartType)
+function syncDashboardDateParameterUsage() {
+  const enabled = shouldUseDashboardDateParameters()
   sqlBuilder.dateExpressionPickerEnabled = enabled
   form.pivotDateParameterType = SQL_EDITOR_DATE_PARAMETER_TYPE
   dateExpressionConfigError.value = ''
@@ -2749,7 +2747,7 @@ async function generateBuilderAiSql() {
   if (nextChartType && chartTypes.some((item) => item.value === nextChartType)) {
     form.chartType = nextChartType
   }
-  syncDashboardDateParameterUsage(nextChartType || form.chartType)
+  syncDashboardDateParameterUsage()
   if (result.success) {
     ElMessage.success('已生成 SQL')
   } else {
