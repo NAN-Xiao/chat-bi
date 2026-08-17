@@ -36,3 +36,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: Fix knowledge publish embedding batch limit
+
+**Date**: 2026-08-17
+**Task**: Fix knowledge publish embedding batch limit
+**Branch**: `codex/fix-knowledge-publish-queue`
+
+### Summary
+
+Set the shared embedding batch limit to 10, propagate it through deployment configuration, and verify successful publication on the .193 test environment.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8e21ac5` | (see git log) |
+
+### Status
+
+[OK] **Completed**
