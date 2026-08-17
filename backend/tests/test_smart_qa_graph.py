@@ -914,7 +914,11 @@ def test_date_dimension_cross_join_inside_scaffold_cte_is_accepted() -> None:
     WITH date_spine(dt) AS (SELECT 1), dimensions(value) AS (SELECT 'a'),
     scaffold(dt, value) AS (
         SELECT d.dt, x.value FROM date_spine d CROSS JOIN dimensions x
-    ), metrics(dt, value, amount) AS (SELECT 1, 'a', 2)
+    ), metrics AS (
+        SELECT dt, value, COUNT(*) AS amount
+        FROM events
+        GROUP BY dt, value
+    )
     SELECT s.dt, s.value, COALESCE(m.amount, 0) AS amount
     FROM scaffold s LEFT JOIN metrics m ON m.dt = s.dt AND m.value = s.value
     """
