@@ -340,6 +340,7 @@ async function saveDocumentDraft(localPayload: DocumentPayload) {
   if (!selected.value || !draft.value) return false
   const serverPayload = normalizeDocumentPayload(draft.value.payload)
   const serverById = new Map(serverPayload.blocks.map((block) => [block.id, block]))
+  let persisted = false
   for (const localBlock of localPayload.blocks) {
     const serverBlock = serverById.get(localBlock.id)
     if (!serverBlock || !documentBlockChanged(localBlock, serverBlock)) continue
@@ -351,6 +352,7 @@ async function saveDocumentDraft(localPayload: DocumentPayload) {
         markdown: localBlock.markdown,
         enabled: localBlock.enabled,
       })
+      persisted = true
     } catch (error: any) {
       if (error?.response?.status === 409) {
         captureDocumentConflict(error, localBlock)
@@ -367,6 +369,7 @@ async function saveDocumentDraft(localPayload: DocumentPayload) {
         structure_revision: serverPayload.structure_revision,
         content: localPayload,
       })
+      persisted = true
     } catch (error: any) {
       if (error?.response?.status === 409) {
         captureDocumentConflict(error)
@@ -374,6 +377,13 @@ async function saveDocumentDraft(localPayload: DocumentPayload) {
       }
       throw error
     }
+  }
+  if (!persisted) {
+    draft.value = await knowledgeBaseApi.saveDraft(selected.value.id, {
+      version_id: draft.value.id,
+      revision: draft.value.revision,
+      content: localPayload,
+    })
   }
   payload.value = normalizeDocumentPayload(draft.value.payload)
   documentConflict.value = null
@@ -465,6 +475,7 @@ async function saveDraft() {
     saving.value = true
     const saved = await saveDocumentDraft(cloneDeep(payload.value))
     if (!saved) return false
+    await loadVersions()
     ElMessage.success('草稿已保存')
     draftConflict.value = false
     return true
