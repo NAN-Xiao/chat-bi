@@ -232,7 +232,10 @@ const initUsers = () => {
 
 const initOptions = () => {
   audit.getOptions().then((res: any) => {
-    filterOption.value[0].option = [...res]
+    filterOption.value[0].option = res.map((item: { id: string; name: string }) => ({
+      value: item.id,
+      label: item.name,
+    }))
   })
 }
 </script>
