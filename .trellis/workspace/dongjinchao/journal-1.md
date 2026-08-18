@@ -206,3 +206,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: 移除知识库参与检索开关
+
+**Date**: 2026-08-18
+**Task**: 移除知识库参与检索开关
+**Branch**: `codex/remove-knowledge-retrieval-toggle`
+
+### Summary
+
+移除知识库级参与检索开关；运行时仅按当前已发布版本且未归档判定检索资格；补充前后端回归测试并更新知识库 RAG 规格。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `91ab5bd4` | (see git log) |
+
+### Status
+
+[OK] **Completed**
