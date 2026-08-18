@@ -330,13 +330,23 @@ def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPa
     assert result["data"] == []
 
 
-def test_invalid_dashboard_date_template_has_chinese_display_message() -> None:
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        "dashboard_date_filter_invalid_template",
+        "dashboard_date_filter_migration_required",
+        "dashboard_date_filter_unconfigured",
+    ],
+)
+def test_expired_dashboard_date_filter_errors_have_unified_display_message(
+    error_type: str,
+) -> None:
     result = dashboard_service._failed_chart_result(
         "图表日期参数配置无效",
-        "dashboard_date_filter_invalid_template",
+        error_type,
     )
 
-    assert result["error_type"] == "dashboard_date_filter_invalid_template"
+    assert result["error_type"] == error_type
     assert result["message"] == "图表配置已过期，请重新配置"
     assert result["reason"] == "图表日期参数配置无效"
 

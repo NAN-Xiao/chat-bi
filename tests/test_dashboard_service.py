@@ -4220,7 +4220,7 @@ def test_project_viewer_cannot_share_other_users_dashboard(monkeypatch):
             )
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "You do not have permission to share this dashboard"
+    assert exc_info.value.detail == "没有分享该看板的权限"
 
 
 def test_list_shared_resources_marks_permission_status(monkeypatch):

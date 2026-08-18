@@ -147,7 +147,7 @@ def _require_platform_project_admin(user: CurrentUser) -> None:
     做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not is_platform_admin(user):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can manage projects")
+        raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以管理数据源项目")
 
 
 def _require_schema_metadata_admin(user: CurrentUser) -> None:

@@ -519,7 +519,7 @@ def list_external_mcp_tools(
         dashboard_id=dashboard_id,
     )
     if not external_mcp_bound_to_tenant(session, server_id, target_tenant_id):
-        raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+        raise HTTPException(status_code=403, detail="外部 MCP 数据源未绑定到当前工作空间")
     record = session.get(CoreExternalMcpServer, server_id)
     if record is None or int(getattr(record, "status", 1)) != 1:
         raise HTTPException(status_code=404, detail="External MCP datasource does not exist")

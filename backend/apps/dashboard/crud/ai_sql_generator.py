@@ -1716,7 +1716,7 @@ def _node_collect_context(state: DashboardManualChartGraphState) -> dict[str, An
     request = state["request"]
 
     if not request.datasource:
-        raise HTTPException(status_code=400, detail="Dashboard datasource is required")
+        raise HTTPException(status_code=400, detail="看板未配置数据源，请重新选择数据源")
 
     tenant_id = require_current_tenant_id(current_user)
     seed_datasource = session.get(CoreDatasource, int(request.datasource))

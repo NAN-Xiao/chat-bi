@@ -4265,7 +4265,7 @@ watch(
         if ((error as Error)?.message !== DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED) {
           throw error
         }
-        ElMessage.error('当前图表的日期配置尚未迁移，暂时无法编辑。')
+        ElMessage.error('图表配置已过期，请重新配置')
         visible.value = false
       }
     }

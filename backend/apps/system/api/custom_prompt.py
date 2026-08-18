@@ -155,7 +155,7 @@ def _require_prompt_manage(session: SessionDep, current_user: CurrentUser, promp
     if _is_platform_public_scope(getattr(prompt, "visibility_scope", None)):
         if _can_manage_platform_public_prompts(session, current_user):
             return
-        raise HTTPException(status_code=403, detail="Only SaaS admin can maintain SaaS Agents")
+        raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以维护 SaaS 智能体")
     if _can_manage_all_prompts(session, current_user):
         return
     if (
@@ -309,7 +309,7 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
         return
 
     if _is_platform_public_scope(info.visibility_scope):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can maintain SaaS Agents")
+        raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以维护 SaaS 智能体")
 
     if _is_user_private_scope(info.visibility_scope):
         info.tenant_id = current_tid
