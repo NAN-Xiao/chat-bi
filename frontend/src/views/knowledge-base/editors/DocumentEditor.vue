@@ -87,7 +87,13 @@ async function removeActiveBlock() {
         <el-tag size="small" type="info">{{ modelValue.blocks.length }}</el-tag>
       </div>
       <el-tooltip v-if="!readonly" content="新增知识块" placement="top">
-        <el-button :icon="Plus" circle aria-label="新增知识块" @click="addBlock" />
+        <el-button
+          class="block-icon-action"
+          :icon="Plus"
+          text
+          aria-label="新增知识块"
+          @click="addBlock"
+        />
       </el-tooltip>
     </div>
     <div class="block-workspace">
@@ -118,7 +124,13 @@ async function removeActiveBlock() {
         >
           <template v-if="!readonly" #actions>
             <el-tooltip content="删除知识块" placement="top">
-              <el-button :icon="Delete" circle aria-label="删除知识块" @click="removeActiveBlock" />
+              <el-button
+                class="block-icon-action"
+                :icon="Delete"
+                text
+                aria-label="删除知识块"
+                @click="removeActiveBlock"
+              />
             </el-tooltip>
           </template>
           <el-form label-position="top" :disabled="readonly" @submit.prevent>
@@ -159,6 +171,20 @@ async function removeActiveBlock() {
   color: #344054;
   font-size: 14px;
   font-weight: 600;
+}
+.block-icon-action {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: #667085;
+  background: transparent;
+}
+.block-icon-action:hover,
+.block-icon-action:focus-visible {
+  color: #2f6bff;
+  background: #eef3ff;
 }
 .block-workspace {
   display: grid;
