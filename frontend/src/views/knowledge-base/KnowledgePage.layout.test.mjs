@@ -169,6 +169,20 @@ test('saving a document draft always persists and resynchronizes its server stat
   assert.match(saveDraftSource, /if \(!saved\) return false[\s\S]*await loadVersions\(\)/)
 })
 
+test('saving a document draft always persists and resynchronizes its server status', () => {
+  const saveDocumentStart = panelSource.indexOf('async function saveDocumentDraft')
+  const saveDocumentEnd = panelSource.indexOf('\n}\n\nasync function createEditingDraft', saveDocumentStart)
+  const saveDocumentSource = panelSource.slice(saveDocumentStart, saveDocumentEnd)
+  const saveDraftStart = panelSource.indexOf('async function saveDraft')
+  const saveDraftEnd = panelSource.indexOf('\n}\n\nfunction isSupportedSourceFile', saveDraftStart)
+  const saveDraftSource = panelSource.slice(saveDraftStart, saveDraftEnd)
+
+  assert.ok(saveDocumentStart >= 0, 'document save function should exist')
+  assert.match(saveDocumentSource, /let persisted = false/)
+  assert.match(saveDocumentSource, /if \(!persisted\) \{[\s\S]*knowledgeBaseApi\.saveDraft\(/)
+  assert.match(saveDraftSource, /if \(!saved\) return false[\s\S]*await loadVersions\(\)/)
+})
+
 test('workspace management keeps a usable content width on mobile', () => {
   assert.match(layoutSource, /@media \(max-width: 680px\)/)
   assert.match(layoutSource, /\.workspace-admin-sidebar \{[\s\S]*?flex-basis: 64px/)

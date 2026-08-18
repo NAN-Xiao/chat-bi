@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"实现后按项目约定执行生产构建和浏览器级验证"}
+{"file": "frontend/src/views/knowledge-base/KnowledgeBaseV2Panel.vue", "reason": "修复文档草稿保存状态未刷新"}

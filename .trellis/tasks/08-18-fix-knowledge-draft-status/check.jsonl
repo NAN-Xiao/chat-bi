@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"前端构建、浏览器冒烟、响应式溢出和运行时验证要求"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"保存状态跨 UI、API 和版本服务的数据流检查"}
+{"file": "frontend/src/views/knowledge-base/KnowledgePage.layout.test.mjs", "reason": "保存状态回归断言"}
