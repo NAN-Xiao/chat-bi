@@ -213,12 +213,22 @@ def test_local_process_environment_exposes_knowledge_rollout_switches(
     assert "$EnableKnowledgeManagementV2" in content
     assert "$DisableKnowledgeManagementV2" in content
     assert "$EnableKnowledgeRuntimeContext" in content
+    assert "$DisableKnowledgeRuntimeContext" in content
     assert "$EnableKnowledgeRetrieval" in content
+    assert "$DisableKnowledgeRetrieval" in content
     assert "$env:KNOWLEDGE_MANAGEMENT_V2_ENABLED" in body
     assert "$env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED" in body
     assert "$env:KNOWLEDGE_RETRIEVAL_ENABLED" in body
     assert (
         'if ($DisableKnowledgeManagementV2) { "false" } else { "true" }'
+        in body
+    )
+    assert (
+        'if ($DisableKnowledgeRuntimeContext) { "false" } else { "true" }'
+        in body
+    )
+    assert (
+        'if ($DisableKnowledgeRetrieval) { "false" } else { "true" }'
         in body
     )
 
@@ -268,20 +278,81 @@ def test_stack_propagates_knowledge_rollout_switches_to_backend_and_worker():
         assert f"if (${option})" in worker_body
         assert f"$workerParams.{option} = $true" in worker_body
 
-    assert "if ($DisableKnowledgeManagementV2)" in backend_body
-    assert "$backendParams.DisableKnowledgeManagementV2 = $true" in backend_body
-    assert "if ($DisableKnowledgeManagementV2)" in worker_body
-    assert "$workerParams.DisableKnowledgeManagementV2 = $true" in worker_body
+    for option in (
+        "DisableKnowledgeManagementV2",
+        "DisableKnowledgeRuntimeContext",
+        "DisableKnowledgeRetrieval",
+    ):
+        assert f"if (${option})" in backend_body
+        assert f"$backendParams.{option} = $true" in backend_body
+        assert f"if (${option})" in worker_body
+        assert f"$workerParams.{option} = $true" in worker_body
 
 
 @pytest.mark.parametrize("script", [STACK_SCRIPT, BACKEND_SCRIPT, WORKER_SCRIPT])
-def test_local_scripts_reject_conflicting_knowledge_management_switches(
-    script: Path,
+@pytest.mark.parametrize(
+    ("enable_option", "disable_option", "label"),
+    [
+        (
+            "EnableKnowledgeManagementV2",
+            "DisableKnowledgeManagementV2",
+            "Knowledge management V2",
+        ),
+        (
+            "EnableKnowledgeRuntimeContext",
+            "DisableKnowledgeRuntimeContext",
+            "Knowledge runtime context",
+        ),
+        (
+            "EnableKnowledgeRetrieval",
+            "DisableKnowledgeRetrieval",
+            "Knowledge retrieval",
+        ),
+    ],
+)
+def test_local_scripts_reject_conflicting_knowledge_switches(
+    script: Path, enable_option: str, disable_option: str, label: str
 ):
     content = script.read_text(encoding="utf-8")
 
-    assert "$EnableKnowledgeManagementV2 -and $DisableKnowledgeManagementV2" in content
-    assert "cannot be enabled and disabled at the same time" in content
+    assert f"${enable_option} -and ${disable_option}" in content
+    assert f"{label} cannot be enabled and disabled at the same time" in content
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="本地启动脚本只在 Windows 上运行")
+@pytest.mark.parametrize("script", [STACK_SCRIPT, BACKEND_SCRIPT, WORKER_SCRIPT])
+@pytest.mark.parametrize(
+    ("enable_option", "disable_option", "label"),
+    [
+        (
+            "EnableKnowledgeManagementV2",
+            "DisableKnowledgeManagementV2",
+            "Knowledge management V2",
+        ),
+        (
+            "EnableKnowledgeRuntimeContext",
+            "DisableKnowledgeRuntimeContext",
+            "Knowledge runtime context",
+        ),
+        (
+            "EnableKnowledgeRetrieval",
+            "DisableKnowledgeRetrieval",
+            "Knowledge retrieval",
+        ),
+    ],
+)
+def test_local_scripts_fail_fast_for_conflicting_knowledge_switches(
+    script: Path, enable_option: str, disable_option: str, label: str
+):
+    result = _run_script(
+        script,
+        f"-{enable_option}",
+        f"-{disable_option}",
+    )
+
+    output = (result.stdout or "") + (result.stderr or "")
+    assert result.returncode != 0
+    assert f"{label} cannot be enabled and disabled at the same time" in output
 
 
 def test_worker_status_rejects_mismatched_managed_queue():

@@ -23,7 +23,9 @@ param(
     [switch]$EnableKnowledgeManagementV2,
     [switch]$DisableKnowledgeManagementV2,
     [switch]$EnableKnowledgeRuntimeContext,
+    [switch]$DisableKnowledgeRuntimeContext,
     [switch]$EnableKnowledgeRetrieval,
+    [switch]$DisableKnowledgeRetrieval,
     [switch]$SkipDatabase,
     [switch]$SkipRedis,
     [switch]$SkipNginx
@@ -33,6 +35,12 @@ $ErrorActionPreference = "Stop"
 
 if ($EnableKnowledgeManagementV2 -and $DisableKnowledgeManagementV2) {
     throw "Knowledge management V2 cannot be enabled and disabled at the same time."
+}
+if ($EnableKnowledgeRuntimeContext -and $DisableKnowledgeRuntimeContext) {
+    throw "Knowledge runtime context cannot be enabled and disabled at the same time."
+}
+if ($EnableKnowledgeRetrieval -and $DisableKnowledgeRetrieval) {
+    throw "Knowledge retrieval cannot be enabled and disabled at the same time."
 }
 
 $appSystemDbHost = "10.1.5.28"
@@ -331,8 +339,14 @@ function Start-Backend {
     if ($EnableKnowledgeRuntimeContext) {
         $backendParams.EnableKnowledgeRuntimeContext = $true
     }
+    if ($DisableKnowledgeRuntimeContext) {
+        $backendParams.DisableKnowledgeRuntimeContext = $true
+    }
     if ($EnableKnowledgeRetrieval) {
         $backendParams.EnableKnowledgeRetrieval = $true
+    }
+    if ($DisableKnowledgeRetrieval) {
+        $backendParams.DisableKnowledgeRetrieval = $true
     }
     & $backendScript @backendParams
 }
@@ -377,8 +391,14 @@ function Start-Workers {
     if ($EnableKnowledgeRuntimeContext) {
         $workerParams.EnableKnowledgeRuntimeContext = $true
     }
+    if ($DisableKnowledgeRuntimeContext) {
+        $workerParams.DisableKnowledgeRuntimeContext = $true
+    }
     if ($EnableKnowledgeRetrieval) {
         $workerParams.EnableKnowledgeRetrieval = $true
+    }
+    if ($DisableKnowledgeRetrieval) {
+        $workerParams.DisableKnowledgeRetrieval = $true
     }
     & $workerScript @workerParams
 }

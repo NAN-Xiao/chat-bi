@@ -87,7 +87,7 @@ def test_semantic_context_orders_authority_and_retrieval(monkeypatch):
     monkeypatch.setattr(
         semantic_context,
         "find_tracking_prompt_context",
-        lambda *args, **kwargs: trace.append("structured") or ("tracking", []),
+        lambda *args, **kwargs: trace.append("tracking") or ("tracking", []),
     )
     result = semantic_context.BusinessSemanticContextService.build(
         session=_Session(),
@@ -95,11 +95,22 @@ def test_semantic_context_orders_authority_and_retrieval(monkeypatch):
         tenant_id=2,
         datasource_id=10,
         question="收入",
+        structured_loader=lambda **kwargs: trace.append("structured")
+        or SimpleNamespace(text="structured knowledge", warnings=()),
         retrieval_service=_Retrieval(trace),
         audit_writer=lambda **kwargs: trace.append("audit"),
     )
 
-    assert trace == ["permission", "eligible_skills", "find_data_skills", "schema", "structured", "retrieval", "audit"]
+    assert trace == [
+        "permission",
+        "eligible_skills",
+        "find_data_skills",
+        "schema",
+        "tracking",
+        "structured",
+        "retrieval",
+        "audit",
+    ]
     assert result.semantic.knowledge_citations[0].chunk_id == 7
     assert result.semantic.retrieval_failure_type == "NO_ELIGIBLE_KNOWLEDGE"
     assert result.semantic.context_hash
@@ -129,6 +140,8 @@ def test_context_hash_changes_with_permission_or_knowledge_snapshot(monkeypatch)
         tenant_id=2,
         datasource_id=10,
         question="收入",
+        structured_loader=lambda **kwargs: SimpleNamespace(text="", warnings=()),
+        retrieval_service=_Retrieval([]),
     )
     changed = PermissionScopeSnapshot(**{**_snapshot().__dict__, "permission_version": "permission-2"})
     with_snapshot = semantic_context.BusinessSemanticContextService.build(
@@ -138,6 +151,8 @@ def test_context_hash_changes_with_permission_or_knowledge_snapshot(monkeypatch)
         datasource_id=10,
         question="收入",
         permission_snapshot=changed,
+        structured_loader=lambda **kwargs: SimpleNamespace(text="", warnings=()),
+        retrieval_service=_Retrieval([]),
     )
     assert with_snapshot.semantic.context_hash != base.semantic.context_hash
 

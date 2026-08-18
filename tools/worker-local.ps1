@@ -8,13 +8,21 @@ param(
     [switch]$EnableKnowledgeManagementV2,
     [switch]$DisableKnowledgeManagementV2,
     [switch]$EnableKnowledgeRuntimeContext,
-    [switch]$EnableKnowledgeRetrieval
+    [switch]$DisableKnowledgeRuntimeContext,
+    [switch]$EnableKnowledgeRetrieval,
+    [switch]$DisableKnowledgeRetrieval
 )
 
 $ErrorActionPreference = "Stop"
 
 if ($EnableKnowledgeManagementV2 -and $DisableKnowledgeManagementV2) {
     throw "Knowledge management V2 cannot be enabled and disabled at the same time."
+}
+if ($EnableKnowledgeRuntimeContext -and $DisableKnowledgeRuntimeContext) {
+    throw "Knowledge runtime context cannot be enabled and disabled at the same time."
+}
+if ($EnableKnowledgeRetrieval -and $DisableKnowledgeRetrieval) {
+    throw "Knowledge retrieval cannot be enabled and disabled at the same time."
 }
 
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
@@ -72,8 +80,8 @@ function Set-WorkerEnvironment {
     $env:LLM_TASK_MAX_WAIT_SECONDS = "900"
     $env:LLM_MAX_RETRIES = "1"
     $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($DisableKnowledgeManagementV2) { "false" } else { "true" }
-    $env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED = if ($EnableKnowledgeRuntimeContext) { "true" } else { "false" }
-    $env:KNOWLEDGE_RETRIEVAL_ENABLED = if ($EnableKnowledgeRetrieval) { "true" } else { "false" }
+    $env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED = if ($DisableKnowledgeRuntimeContext) { "false" } else { "true" }
+    $env:KNOWLEDGE_RETRIEVAL_ENABLED = if ($DisableKnowledgeRetrieval) { "false" } else { "true" }
 
     $env:BASE_DIR = "$runtimeRootForEnv/shuzhi"
     $env:UPLOAD_DIR = "$runtimeRootForEnv/file"

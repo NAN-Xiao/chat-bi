@@ -37,25 +37,24 @@ An HTTP 401 can still prove that the API process is listening; unexpected connec
 - Verify `LLM_REQUEST_TIMEOUT=120`, `LLM_TASK_MAX_WAIT_SECONDS=900`, and `LLM_MAX_RETRIES=1` after startup or restart.
 - Keep `MCP_ENABLED=false` for ordinary local backend and MCP startup unless MCP access controls are the subject of the test.
 
-## Scenario: Knowledge Management V2 Default
+## Scenario: Knowledge Management And Runtime Defaults
 
 ### 1. Scope / Trigger
 
-- Trigger: starting an API, MCP, or Worker that evaluates the knowledge-base management capability.
-- Knowledge management is available by default after the database reaches `V2_ACTIVE`; runtime context and retrieval remain separately controlled.
+- Trigger: starting an API, MCP, or Worker that evaluates knowledge-base management or builds AI context.
+- Knowledge management is available by default after the database reaches `V2_ACTIVE`; runtime context and retrieval are also enabled by default but remain independently controllable.
 
 ### 2. Signatures
 
-- Environment: `KNOWLEDGE_MANAGEMENT_V2_ENABLED=true|false`.
-- Local rollback switch: `-DisableKnowledgeManagementV2` on `tools/stack-local.ps1`, `tools/backend-local.ps1`, and `tools/worker-local.ps1`.
-- Compatibility switch: `-EnableKnowledgeManagementV2` remains accepted, but is not required for the default path.
+- Environment: `KNOWLEDGE_MANAGEMENT_V2_ENABLED=true|false`, `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=true|false`, and `KNOWLEDGE_RETRIEVAL_ENABLED=true|false`.
+- Local rollback switches: `-DisableKnowledgeManagementV2`, `-DisableKnowledgeRuntimeContext`, and `-DisableKnowledgeRetrieval` on `tools/stack-local.ps1`, `tools/backend-local.ps1`, and `tools/worker-local.ps1`.
+- Compatibility switches: the corresponding `-EnableKnowledge...` switches remain accepted, but are not required for the default path.
 
 ### 3. Contracts
 
-- `Settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED` defaults to `True` when the environment key is absent.
-- An explicit environment value of `false` overrides the Python default.
-- Local scripts set API and Worker management flags to `true` unless `-DisableKnowledgeManagementV2` is passed.
-- `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED` and `KNOWLEDGE_RETRIEVAL_ENABLED` continue to default to `false`.
+- All three knowledge flags default to `True` when their environment keys are absent.
+- An explicit environment value of `false` overrides the corresponding Python default without changing the other flags.
+- Local scripts set all three API, MCP, and Worker flags to `true` unless the corresponding `-DisableKnowledge...` switch is passed.
 - The database phase remains authoritative: `CUTOVER_BARRIER` is maintenance regardless of flags, while `V2_ACTIVE + management=true` returns management mode `V2`.
 
 ### 4. Validation & Error Matrix
@@ -67,20 +66,24 @@ An HTTP 401 can still prove that the API process is listening; unexpected connec
 | `-DisableKnowledgeManagementV2` | API and Worker management V2 disabled |
 | Enable and disable switches together | Stop with an explicit conflict error |
 | Direct process with `KNOWLEDGE_MANAGEMENT_V2_ENABLED=false` | Management V2 disabled |
-| Runtime/retrieval switches omitted | Runtime context and retrieval disabled |
+| Runtime/retrieval switches omitted | Runtime context and retrieval enabled |
+| `-DisableKnowledgeRuntimeContext` | Runtime structured context disabled; retrieval remains enabled |
+| `-DisableKnowledgeRetrieval` | Vector retrieval disabled; runtime structured context remains enabled |
+| Matching enable and disable switches together | Stop with an explicit conflict error |
+| Direct process with either runtime flag set to `false` | Only that runtime capability is disabled |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: the default stack starts API and Worker with management V2 enabled and capability returns `V2` in the `V2_ACTIVE` phase.
-- Base: an operator passes the disable switch during rollback; both API and Worker return maintenance behavior without changing the database phase.
-- Bad: API defaults to management enabled while Worker is forced to disabled, or a local script silently writes `false` merely because the legacy enable switch was omitted.
+- Good: the default stack starts API, MCP, and Worker with management, structured runtime context, and vector retrieval enabled.
+- Base: an operator disables one runtime capability during rollback; API, MCP, and Worker receive the same explicit `false` without changing the other capability.
+- Bad: API and Worker receive different runtime flags, or a local script silently writes `false` merely because a compatibility enable switch was omitted.
 
 ### 6. Tests Required
 
-- Settings test: assert the missing environment key resolves to `True` and explicit `false` resolves to `False`.
-- Script contract test: assert backend and Worker environment functions default to `true` and the disable switch produces `false`.
-- Stack propagation test: assert the disable switch is forwarded to both API and Worker scripts.
-- Conflict test: assert every local script rejects simultaneous enable and disable switches.
+- Settings test: assert all missing environment keys resolve to `True` and an explicit `false` affects only its matching flag.
+- Script contract test: assert backend and Worker environment functions default all three flags to `true` and each disable switch produces `false`.
+- Stack propagation test: assert all enable and disable switches are forwarded to both API/MCP and Worker scripts.
+- Conflict test: assert every local script rejects simultaneous matching enable and disable switches.
 - Capability test: assert `V2_ACTIVE` resolves to `V2` by default and to maintenance when explicitly disabled.
 
 ### 7. Wrong vs Correct
@@ -95,6 +98,8 @@ $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($EnableKnowledgeManagementV2) { "true
 
 ```powershell
 $env:KNOWLEDGE_MANAGEMENT_V2_ENABLED = if ($DisableKnowledgeManagementV2) { "false" } else { "true" }
+$env:KNOWLEDGE_RUNTIME_CONTEXT_ENABLED = if ($DisableKnowledgeRuntimeContext) { "false" } else { "true" }
+$env:KNOWLEDGE_RETRIEVAL_ENABLED = if ($DisableKnowledgeRetrieval) { "false" } else { "true" }
 ```
 
 ## Data Safety

@@ -102,14 +102,22 @@ def _install_api_dependencies(monkeypatch, calls: dict[str, int]) -> None:
     )
 
 
-def test_knowledge_v2_management_defaults_enabled_and_runtime_disabled() -> None:
+def test_knowledge_defaults_enabled_when_environment_is_absent(monkeypatch) -> None:
+    for name in (
+        "KNOWLEDGE_MANAGEMENT_V2_ENABLED",
+        "KNOWLEDGE_RUNTIME_CONTEXT_ENABLED",
+        "KNOWLEDGE_RETRIEVAL_ENABLED",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
     settings = Settings(
         _env_file=None,
         SECRET_KEY="test-secret",
     )
 
     assert settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED is True
-    assert settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED is False
+    assert settings.KNOWLEDGE_RUNTIME_CONTEXT_ENABLED is True
+    assert settings.KNOWLEDGE_RETRIEVAL_ENABLED is True
 
 
 def test_knowledge_v2_management_accepts_explicit_disable(monkeypatch) -> None:
@@ -120,6 +128,30 @@ def test_knowledge_v2_management_accepts_explicit_disable(monkeypatch) -> None:
     )
 
     assert settings.KNOWLEDGE_MANAGEMENT_V2_ENABLED is False
+
+
+@pytest.mark.parametrize(
+    ("disabled_name", "enabled_name"),
+    [
+        ("KNOWLEDGE_RUNTIME_CONTEXT_ENABLED", "KNOWLEDGE_RETRIEVAL_ENABLED"),
+        ("KNOWLEDGE_RETRIEVAL_ENABLED", "KNOWLEDGE_RUNTIME_CONTEXT_ENABLED"),
+    ],
+)
+def test_knowledge_runtime_flags_accept_independent_explicit_disable(
+    monkeypatch,
+    disabled_name,
+    enabled_name,
+) -> None:
+    monkeypatch.setenv(disabled_name, "false")
+    monkeypatch.delenv(enabled_name, raising=False)
+
+    settings = Settings(
+        _env_file=None,
+        SECRET_KEY="test-secret",
+    )
+
+    assert getattr(settings, disabled_name) is False
+    assert getattr(settings, enabled_name) is True
 
 
 @pytest.mark.parametrize(

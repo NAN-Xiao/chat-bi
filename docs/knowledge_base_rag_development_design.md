@@ -1310,10 +1310,11 @@ KNOWLEDGE_PUBLISH_RECONCILE_INTERVAL_SECONDS=60
 
 ```text
 KNOWLEDGE_MANAGEMENT_V2_ENABLED=true
-KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=false
+KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=true
+KNOWLEDGE_RETRIEVAL_ENABLED=true
 ```
 
-当前 release 默认开放 V2 管理能力；部署环境可显式设置 `KNOWLEDGE_MANAGEMENT_V2_ENABLED=false` 进入维护态，本地脚本使用 `-DisableKnowledgeManagementV2`。运行时上下文与检索仍独立灰度，默认保持关闭。
+当前 release 默认开放 V2 管理能力、结构化运行时上下文和向量检索；三个能力保持独立。部署环境可显式将对应环境变量设为 `false`，本地脚本分别使用 `-DisableKnowledgeManagementV2`、`-DisableKnowledgeRuntimeContext` 或 `-DisableKnowledgeRetrieval` 回滚单项能力。
 
 发布顺序：先执行纯 DDL，再滚动部署兼容版本，使所有 API、旧解析 Worker 和可能执行旧 BackgroundTask 的实例都识别迁移 phase 并在每次写回时参与数据库屏障；确认不存在旧 build 实例后，才在 `LEGACY_OPEN` 下运行幂等回填、增量追平和双读校验。切换时以数据库状态行锁进入 `CUTOVER_BARRIER`，暂时拒绝新旧写并让旧任务排空或失败关闭，完成最终增量和索引校验后原子切换 `V2_ACTIVE`，随后开放 V2 管理页面，最后灰度统一知识上下文。Skills 始终使用当前选择路径；关闭知识运行开关时回到现有 tracking/语义路径，不删除新知识数据。
 

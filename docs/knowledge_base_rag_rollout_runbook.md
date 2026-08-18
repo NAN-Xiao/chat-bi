@@ -4,8 +4,9 @@
 
 ## 一、发布前边界
 
-- 管理能力默认开启：`KNOWLEDGE_MANAGEMENT_V2_ENABLED=true`；运行时能力仍默认关闭：`KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=false`、`KNOWLEDGE_RETRIEVAL_ENABLED=false`。
+- 管理和运行时能力均默认开启：`KNOWLEDGE_MANAGEMENT_V2_ENABLED=true`、`KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=true`、`KNOWLEDGE_RETRIEVAL_ENABLED=true`。三个开关相互独立。
 - 需要回滚管理页面时，部署环境显式设置 `KNOWLEDGE_MANAGEMENT_V2_ENABLED=false`；本地脚本使用 `-DisableKnowledgeManagementV2`。关闭管理开关不会恢复旧版写入。
+- 需要单独回滚结构化上下文或向量检索时，部署环境显式设置对应开关为 `false`；本地脚本分别使用 `-DisableKnowledgeRuntimeContext` 或 `-DisableKnowledgeRetrieval`。
 - Skills 页面、个人空间 Skills、事件字典和数据字典原有写入逻辑不变。
 - 共享环境不得直接修改数据库 phase；必须完成备份、回填、投影、双读和队列检查后再切换。
 - 平台公共知识只能在消费工作空间当前绑定且授权的数据源中生效。
@@ -52,20 +53,20 @@ backend\.venv\Scripts\python.exe backend/scripts/knowledge_base_migrate.py activ
 
 任一步骤失败都停止切换，不执行强制覆盖或重复激活。
 
-## 四、管理能力灰度
+## 四、管理与运行时能力验证
 
 1. 先部署兼容版本，确认所有 API 实例和 Worker 均识别数据库 phase。
 2. 确认 `KNOWLEDGE_MANAGEMENT_V2_ENABLED` 使用默认值 `true`（或部署环境显式设为 `true`），调用 `/api/v1/knowledge-base/capabilities`，确认 `management_mode=V2` 后再开放页面。
-3. 首个观察窗口保持 `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=false`，验证列表、四类编辑、草稿并发、校验、发布、下载、回滚、平台公共知识适用性和权限页面。
-4. 观察窗口无阻断问题后，按工作空间白名单开启 `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED=true` 和 `KNOWLEDGE_RETRIEVAL_ENABLED=true`。
-5. 逐步扩大工作空间范围，持续观察发布失败、检索告警、适用性失败、权限拒绝、SQL 校验失败和响应延迟。
+3. 确认 `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED` 和 `KNOWLEDGE_RETRIEVAL_ENABLED` 使用默认值 `true`（或部署环境显式设为 `true`），验证列表、四类编辑、草稿并发、校验、发布、下载、回滚、平台公共知识适用性和权限页面。
+4. 使用已授权且存在 READY 发布版本的工作空间验证 Smart Q&A、AI 看板 SQL、综合分析助手和报告解读，确认结构化知识与知识块召回均遵守当前数据源和权限边界。
+5. 在观察窗口持续关注发布失败、检索告警、适用性失败、权限拒绝、embedding 调用、SQL 校验失败和响应延迟；需要隔离问题时只关闭对应运行时开关。
 
 运行时开关关闭时，AI 场景回到现有 tracking/Skill 逻辑，但不得降低数据库 phase、重新开放旧写入或删除 V2 数据。
 
 ## 五、回滚
 
 - 管理页面异常：部署环境设置 `KNOWLEDGE_MANAGEMENT_V2_ENABLED=false`；本地脚本传入 `-DisableKnowledgeManagementV2`。保留数据库 phase 和已发布数据，排查后再开放。
-- RAG 告警或回答回归：关闭 `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED`、`KNOWLEDGE_RETRIEVAL_ENABLED`，保留知识库管理和发布结果。
+- RAG 告警或回答回归：按影响范围将 `KNOWLEDGE_RUNTIME_CONTEXT_ENABLED` 或 `KNOWLEDGE_RETRIEVAL_ENABLED` 显式设为 `false`；本地分别使用 `-DisableKnowledgeRuntimeContext` 或 `-DisableKnowledgeRetrieval`。保留知识库管理和发布结果。
 - 发布作业异常：依据数据库 `knowledge_publish_job` 状态处理，不直接删除 Redis 任务；使用失败阶段和心跳信息重试或人工恢复。
 - 只有经过审批和备份确认，才允许执行数据库 phase 回退；回退必须使用迁移脚本，不得手工修改 phase 字段。
 
