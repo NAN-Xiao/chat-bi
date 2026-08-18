@@ -185,3 +185,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: 默认开启知识库运行时检索
+
+**Date**: 2026-08-18
+**Task**: 默认开启知识库运行时检索
+**Branch**: `codex/enable-knowledge-retrieval-default`
+
+### Summary
+
+默认开启结构化知识上下文和向量检索，同步本地 API、MCP、Worker 编排的显式关闭与冲突校验，并补充配置、脚本和语义上下文回归测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `90a0237d` | (see git log) |
+
+### Status
+
+[OK] **Completed**

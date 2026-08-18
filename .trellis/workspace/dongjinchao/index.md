@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
-- **Last Active**: 2026-08-17
+- **Total Sessions**: 9
+- **Last Active**: 2026-08-18
 <!-- @@@/auto:current-status -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-08-18 | 默认开启知识库运行时检索 | `90a0237d` | `codex/enable-knowledge-retrieval-default` |
 | 8 | 2026-08-17 | 修正知识库 Markdown 版本边界 | `4102b866` | `codex/unify-knowledge-document-type` |
 | 7 | 2026-08-13 | 调整知识库生命周期操作位置 | `c51e549f` | `release/release_2.0.0` |
 | 6 | 2026-08-13 | 合并 release 1.0.0 到 release 2.0.0 | `cbbec0e4bed4116cd450fcbc71e56f826039a61c`, `ac1c25e34b33e894dcec6d7781d86691da33356f`, `bb0178b5` | `release/release_2.0.0` |
