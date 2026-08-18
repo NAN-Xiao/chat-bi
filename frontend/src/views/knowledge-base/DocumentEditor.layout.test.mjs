@@ -74,6 +74,22 @@ test('document editor adds and confirms deletion of draft blocks', () => {
   assert.doesNotMatch(editorSource, /copyBlock|moveBlock|renameBlock/)
 })
 
+test('knowledge block actions use compact borderless icon buttons', () => {
+  assert.match(
+    editorSource,
+    /class="block-icon-action"[\s\S]*?:icon="Plus"[\s\S]*?text[\s\S]*?aria-label="新增知识块"/
+  )
+  assert.match(
+    editorSource,
+    /class="block-icon-action"[\s\S]*?:icon="Delete"[\s\S]*?text[\s\S]*?aria-label="删除知识块"/
+  )
+  assert.doesNotMatch(editorSource, /<el-button[^>]*\bcircle\b/)
+  assert.match(
+    editorSource,
+    /\.block-icon-action \{[^}]*width: 32px;[^}]*height: 32px;[^}]*border: 0;[^}]*border-radius: 4px;[^}]*background: transparent;/
+  )
+})
+
 test('document editor keeps the title bar and markdown content', () => {
   assert.doesNotMatch(editorSource, /el-form-item label="标题"/)
   assert.doesNotMatch(editorSource, /el-form-item label="检索状态"/)
