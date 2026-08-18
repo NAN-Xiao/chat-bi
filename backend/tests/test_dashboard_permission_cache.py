@@ -330,6 +330,17 @@ def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPa
     assert result["data"] == []
 
 
+def test_invalid_dashboard_date_template_has_chinese_display_message() -> None:
+    result = dashboard_service._failed_chart_result(
+        "图表日期参数配置无效",
+        "dashboard_date_filter_invalid_template",
+    )
+
+    assert result["error_type"] == "dashboard_date_filter_invalid_template"
+    assert result["message"] == "图表配置已过期，请重新配置"
+    assert result["reason"] == "图表日期参数配置无效"
+
+
 def test_preview_sql_cache_only_misses_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：命中任意数据权限时，cache_only 请求不能返回旧缓存。

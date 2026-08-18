@@ -39,7 +39,10 @@ from apps.dashboard.crud.dashboard_date_filter import (
     has_dashboard_date_filter_parameters,
     prepare_dashboard_date_filter,
 )
-from apps.dashboard.crud.dashboard_date_filter_legacy import resolve_dashboard_chart_date_filter
+from apps.dashboard.crud.dashboard_date_filter_legacy import (
+    INVALID_TEMPLATE_ERROR,
+    resolve_dashboard_chart_date_filter,
+)
 from apps.roi_dashboard.service import list_roi_workspace_config_rows
 from apps.external_mcp.crud import external_mcp_bound_to_tenant, get_bound_external_mcp_id_for_tenant
 from apps.datasource.crud.permission import (
@@ -77,6 +80,11 @@ import time
 import re
 
 from common.utils.tree_utils import build_tree_generic
+
+
+DASHBOARD_DATE_FILTER_INVALID_TEMPLATE_MESSAGE = (
+    "图表配置已过期，请重新配置"
+)
 
 
 def _first_scalar_value(value: Any):
@@ -2312,7 +2320,12 @@ def _failed_chart_result(message: str, error_type: str | None = None) -> dict[st
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    display_message = DASHBOARD_CHART_NO_PERMISSION_MESSAGE if error_type == PERMISSION_DENIED_ERROR_TYPE else message
+    if error_type == PERMISSION_DENIED_ERROR_TYPE:
+        display_message = DASHBOARD_CHART_NO_PERMISSION_MESSAGE
+    elif error_type == INVALID_TEMPLATE_ERROR:
+        display_message = DASHBOARD_DATE_FILTER_INVALID_TEMPLATE_MESSAGE
+    else:
+        display_message = message
     result = {
         'status': 'failed',
         'data': [],
