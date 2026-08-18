@@ -21,4 +21,3 @@
 - PASS: Mypy on `backend/common/core/config.py`. The repository virtual environment's compiled Mypy package is incomplete, so verification used the lockfile's pure-Python Mypy 1.20.2 wheel from a temporary tool directory with the repository virtual environment and worktree `PYTHONPATH`.
 - PASS: PowerShell parser validation for `backend-local.ps1`, `worker-local.ps1`, and `stack-local.ps1`.
 - PASS: `git diff --check`.
-
