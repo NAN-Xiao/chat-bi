@@ -637,7 +637,7 @@ def test_permanent_delete_uses_existing_management_permission_boundary():
     assert repo.record is not None
 
 
-def test_restore_uses_latest_previously_published_version_and_stays_inactive():
+def test_restore_uses_latest_previously_published_version_and_reenables_retrieval():
     repo = _FakeRepo()
     service = _service(repo)
     older = SimpleNamespace(
@@ -678,7 +678,7 @@ def test_restore_uses_latest_previously_published_version_and_stays_inactive():
     )
 
     assert restored.archived is False
-    assert restored.active is False
+    assert restored.active is True
     assert restored.current_version_id == latest.id
     assert restored.draft_version_id is None
     assert restored.publishing_version_id is None
@@ -716,49 +716,6 @@ def test_restore_is_idempotent_for_current_record():
     )
     assert result is repo.record
     assert result.current_version_id == 77
-
-
-def test_restored_knowledge_requires_explicit_activation():
-    repo = _FakeRepo()
-    repo.record.current_version_id = 77
-    repo.record.active = False
-
-    activated = _service(repo).set_active(
-        tenant_id=7,
-        knowledge_base_id=11,
-        active=True,
-        actor_id=9,
-        current_user=_user(),
-    )
-
-    assert activated.active is True
-    assert activated.update_by == 9
-
-
-def test_unpublished_or_archived_knowledge_cannot_be_enabled():
-    repo = _FakeRepo()
-    service = _service(repo)
-    with pytest.raises(KnowledgeBusinessError) as unpublished:
-        service.set_active(
-            tenant_id=7,
-            knowledge_base_id=11,
-            active=True,
-            actor_id=9,
-            current_user=_user(),
-        )
-    assert unpublished.value.code == "KNOWLEDGE_ACTIVE_VERSION_REQUIRED"
-
-    repo.record.archived = True
-    repo.record.current_version_id = 77
-    with pytest.raises(KnowledgeBusinessError) as archived:
-        service.set_active(
-            tenant_id=7,
-            knowledge_base_id=11,
-            active=True,
-            actor_id=9,
-            current_user=_user(),
-        )
-    assert archived.value.code == "KNOWLEDGE_ARCHIVED_READ_ONLY"
 
 
 def test_workspace_override_is_tenant_context_bound():

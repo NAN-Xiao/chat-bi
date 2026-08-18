@@ -59,7 +59,7 @@ const listError = ref(false)
 const saving = ref(false)
 const sourceUploading = ref(false)
 const publishing = ref(false)
-type RowAction = 'upload' | 'download' | 'restore' | 'purge' | 'active'
+type RowAction = 'upload' | 'download' | 'restore' | 'purge'
 
 const rowActionBusy = ref<Record<string, RowAction>>({})
 const editorVisible = ref(false)
@@ -416,7 +416,7 @@ async function archiveKnowledge(row: KnowledgeBaseItem) {
 async function restoreKnowledge(row: KnowledgeBaseItem) {
   if (!row.can_manage || rowBusyState(row)) return
   await ElMessageBox.confirm(
-    `恢复后“${row.name}”仍为停用状态，需要另行启用后才会参与检索。`,
+    `恢复后“${row.name}”的已发布版本将重新参与检索。`,
     '恢复知识库',
     { confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning' }
   )
@@ -425,7 +425,7 @@ async function restoreKnowledge(row: KnowledgeBaseItem) {
     await knowledgeBaseApi.restore(row.id)
     if (selected.value?.id === row.id) editorVisible.value = false
     await loadItems()
-    ElMessage.success('知识库已恢复并保持停用')
+    ElMessage.success('知识库已恢复并重新参与检索')
   } finally {
     setRowBusy(row)
   }
@@ -454,22 +454,6 @@ async function permanentlyDeleteKnowledge(row: KnowledgeBaseItem) {
     } else {
       ElMessage.success('知识库已永久删除')
     }
-  } finally {
-    setRowBusy(row)
-  }
-}
-
-async function updateKnowledgeActive(row: KnowledgeBaseItem, active: boolean) {
-  if (!row.can_manage || row.archived || rowBusyState(row)) return
-  setRowBusy(row, 'active')
-  try {
-    const updated = await knowledgeBaseApi.setActive(row.id, active)
-    row.active = updated.active
-    if (selected.value?.id === row.id) selected.value.active = updated.active
-    ElMessage.success(active ? '知识库已启用并参与检索' : '知识库已停用')
-  } catch (error) {
-    row.active = !active
-    throw error
   } finally {
     setRowBusy(row)
   }
@@ -952,19 +936,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="参与检索" width="110">
-        <template #default="{ row }">
-          <el-switch
-            v-if="!row.archived && row.can_manage"
-            v-model="row.active"
-            :disabled="!row.current_version_id || Boolean(rowBusyState(row))"
-            :loading="rowBusyState(row) === 'active'"
-            @change="updateKnowledgeActive(row, Boolean($event))"
-          />
-          <span v-else-if="row.archived" class="muted-text">不可用</span>
-          <span v-else>{{ row.active ? '已启用' : '已停用' }}</span>
-        </template>
-      </el-table-column>
       <template #empty><span class="empty-state">暂无知识库</span></template>
     </el-table>
 
@@ -1009,15 +980,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
           <div class="editor-toolbar">
             <el-tag>{{ selected.visibility_scope === 'PLATFORM_PUBLIC' ? '平台公共知识' : '工作空间知识' }}</el-tag>
             <el-tag v-if="selected.archived" type="info">已归档，只读</el-tag>
-            <span v-else class="knowledge-active-toggle">
-              参与检索
-              <el-switch
-                v-model="selected.active"
-                :disabled="!selected.can_manage || !selected.current_version_id || Boolean(rowBusyState(selected))"
-                :loading="rowBusyState(selected) === 'active'"
-                @change="updateKnowledgeActive(selected, Boolean($event))"
-              />
-            </span>
             <KnowledgeApplicabilityTag
               v-if="!selected.archived && selected.visibility_scope === 'PLATFORM_PUBLIC'"
               :state="applicability"
@@ -1151,7 +1113,6 @@ onBeforeUnmount(() => { if (publishTimer) window.clearInterval(publishTimer) })
 .source-upload-inner small { grid-column: 2; color: #667085; }
 .selected-source-file { margin-top: 8px; color: #475467; font-size: 12px; overflow-wrap: anywhere; }
 .workspace-override { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
-.knowledge-active-toggle { display: inline-flex; align-items: center; gap: 6px; color: #475467; }
 .version-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .validation-panel { margin-top: 14px; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 20px; }
 .validation-panel.is-error { color: #b42318; background: #fff1f3; }

@@ -57,10 +57,9 @@ def test_restore_route_is_registered_before_dynamic_id_route():
     assert paths.index("/knowledge-base/{id}/restore") < paths.index("/knowledge-base/{id}")
 
 
-def test_active_route_is_registered_before_dynamic_id_route():
+def test_v2_active_route_is_not_registered():
     paths = [route.path for route in management.router.routes]
-    assert "/knowledge-base/{id}/active" in paths
-    assert paths.index("/knowledge-base/{id}/active") < paths.index("/knowledge-base/{id}")
+    assert "/knowledge-base/{id}/active" not in paths
 
 
 def test_management_read_routes_are_mounted_on_application_api_router():

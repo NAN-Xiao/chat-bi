@@ -170,8 +170,6 @@ export const knowledgeBaseApi = {
     request.delete<KnowledgeRemovalResult>(`/knowledge-base/${id}/permanent`),
   restore: (id: number | string) =>
     request.post<KnowledgeBaseItem>(`/knowledge-base/${id}/restore`),
-  setActive: (id: number | string, active: boolean) =>
-    request.put<KnowledgeBaseItem>(`/knowledge-base/${id}/active`, { active }),
   createDraft: (id: number | string, payload: Record<string, any>) =>
     request.post<KnowledgeBaseVersion>(`/knowledge-base/${id}/draft`, { payload }),
   saveDraft: (

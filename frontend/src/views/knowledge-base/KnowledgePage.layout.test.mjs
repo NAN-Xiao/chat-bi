@@ -10,6 +10,7 @@ const panelSource = readFileSync(join(directory, 'KnowledgeBaseV2Panel.vue'), 'u
   /\r\n/g,
   '\n'
 )
+const knowledgeApiSource = readFileSync(join(directory, '../../api/knowledgeBase.ts'), 'utf8')
 const routerSource = readFileSync(join(directory, '../../router/index.ts'), 'utf8')
 const menuItemSource = readFileSync(join(directory, '../../components/layout/MenuItem.vue'), 'utf8')
 const editorSource = readFileSync(join(directory, 'KnowledgePayloadEditor.vue'), 'utf8')
@@ -89,10 +90,10 @@ test('knowledge management exposes archived records as restorable or permanently
   assert.match(panelSource, /knowledgeBaseApi\.permanentDelete\(row\.id\)/)
   assert.match(panelSource, /永久删除知识库/)
   assert.match(panelSource, /inputValidator: \(value\) => value === row\.name/)
-  assert.match(panelSource, /knowledgeBaseApi\.setActive\(row\.id, active\)/)
-  assert.match(panelSource, /label="参与检索"/)
-  assert.match(panelSource, /v-if="!row\.archived && row\.can_manage"/)
-  assert.match(panelSource, /v-else-if="row\.archived" class="muted-text">不可用/)
+  assert.doesNotMatch(panelSource, /knowledgeBaseApi\.setActive/)
+  assert.doesNotMatch(panelSource, /class="knowledge-active-toggle"/)
+  assert.doesNotMatch(knowledgeApiSource, /setActive\s*:/)
+  assert.match(panelSource, /已发布版本将重新参与检索/)
 })
 
 test('knowledge archive switching keeps a stable header and table layout', () => {
@@ -100,7 +101,7 @@ test('knowledge archive switching keeps a stable header and table layout', () =>
   assert.doesNotMatch(panelSource, /class="panel-title"/)
   assert.doesNotMatch(panelSource, /class="panel-subtitle"/)
   assert.match(panelSource, /<div class="panel-header">\s*<div class="panel-actions">/)
-  assert.match(panelSource, /<el-table-column label="参与检索" width="110">/)
+  assert.doesNotMatch(panelSource, /<el-table-column label="参与检索"/)
   assert.match(panelSource, /\.panel-action-slot\.is-placeholder \{ visibility: hidden; pointer-events: none; \}/)
   assert.match(panelSource, /\.panel-header \{ display: flex; width: 100%; margin-bottom: 18px; \}/)
 })

@@ -253,7 +253,6 @@ class KnowledgeRetrievalService:
                 KnowledgeBaseVersion.status == "PUBLISHED",
                 KnowledgeBase.current_version_id == KnowledgeBaseVersion.id,
                 KnowledgeBase.archived.is_(False),
-                KnowledgeBase.active.is_(True),
                 ~exists(
                     select(KnowledgeBaseWorkspaceOverride.id).where(
                         KnowledgeBaseWorkspaceOverride.tenant_id == int(tenant_id),

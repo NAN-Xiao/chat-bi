@@ -75,10 +75,6 @@ class CreateKnowledgeBaseRequest(BaseModel):
     tenant_id: int | None = Field(default=None, ge=1)
 
 
-class SetKnowledgeBaseActiveRequest(BaseModel):
-    active: bool
-
-
 def _applicability_response(*, knowledge_base_id: int, datasource_id: int, schema_hash: str, row=None, version_id: int | None = None):
     status = getattr(row, "status", None) if row is not None else KnowledgeApplicabilityStatus.STALE.value
     status = getattr(status, "value", status) or KnowledgeApplicabilityStatus.STALE.value
@@ -460,39 +456,6 @@ async def restore_knowledge_base(
         )
         session.commit()
         return serialize_record(restored, can_manage=True)
-    except KnowledgeBusinessError as error:
-        session.rollback()
-        return serialize_error(error)
-    except Exception:
-        session.rollback()
-        return unexpected_error()
-
-
-@router.put("/{id}/active")
-async def set_knowledge_base_active(
-    id: int,
-    body: SetKnowledgeBaseActiveRequest,
-    session: SessionDep,
-    current_user: CurrentUser,
-):
-    capabilities = get_capabilities(session)
-    from apps.knowledge_base.api._helpers import v2_write_error
-
-    blocked = v2_write_error(capabilities)
-    if blocked is not None:
-        return serialize_error(blocked)
-    try:
-        record = resolve_record(session, knowledge_base_id=id, user=current_user)
-        tenant_id = record_tenant_id(record, current_user)
-        updated = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).set_active(
-            tenant_id=tenant_id,
-            knowledge_base_id=id,
-            active=body.active,
-            actor_id=int(current_user.id),
-            current_user=current_user,
-        )
-        session.commit()
-        return serialize_record(updated, can_manage=True)
     except KnowledgeBusinessError as error:
         session.rollback()
         return serialize_error(error)

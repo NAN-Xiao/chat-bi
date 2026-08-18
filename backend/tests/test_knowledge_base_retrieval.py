@@ -179,6 +179,33 @@ def test_load_allowed_chunks_uses_sqlmodel_scalar_select():
     assert [item.id for item in rows] == [1]
 
 
+def test_candidate_query_uses_publication_lifecycle_instead_of_active_flag():
+    class _Result:
+        def all(self):
+            return []
+
+    class _Session:
+        statement = None
+
+        def exec(self, statement):
+            self.statement = statement
+            return _Result()
+
+    session = _Session()
+    KnowledgeRetrievalService._load_candidate_metadata(
+        session,
+        tenant_id=2,
+        datasource_id=10,
+        schema_hash="schema-1",
+    )
+    sql = str(session.statement).lower()
+
+    assert "knowledge_base_version.status" in sql
+    assert "knowledge_base.current_version_id" in sql
+    assert "knowledge_base.archived" in sql
+    assert "knowledge_base.active" not in sql
+
+
 def test_chunk_reference_inherits_version_resolution_for_existing_versions():
     class _Result:
         def __init__(self, value):

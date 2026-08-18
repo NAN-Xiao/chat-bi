@@ -33,7 +33,7 @@ test('row actions render edit, upload, download, and archive in order', () => {
 })
 
 test('permanent delete is limited to archived manageable rows and requires exact-name confirmation', () => {
-  const source = functionSource('permanentlyDeleteKnowledge', 'async function updateKnowledgeActive')
+  const source = functionSource('permanentlyDeleteKnowledge', 'async function saveDraft')
   assert.match(source, /if \(!row\.archived \|\| !row\.can_manage \|\| rowBusyState\(row\)\) return/)
   assert.match(source, /ElMessageBox\.prompt/)
   assert.match(source, /inputValidator: \(value\) => value === row\.name \|\| '知识库名称不匹配'/)

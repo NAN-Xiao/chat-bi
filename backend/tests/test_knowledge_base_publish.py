@@ -164,6 +164,7 @@ def test_finalize_second_version_supersedes_current_version():
         current_version_id=12,
         publishing_version_id=13,
         draft_version_id=13,
+        active=False,
     )
 
     class _FinalizeSession:
@@ -187,6 +188,7 @@ def test_finalize_second_version_supersedes_current_version():
     assert target.status == "PUBLISHED"
     assert record.current_version_id == 13
     assert record.publishing_version_id is None
+    assert record.active is True
 
 
 def test_download_uses_version_binding_and_does_not_expose_storage_id(monkeypatch, tmp_path: Path):

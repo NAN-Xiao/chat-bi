@@ -469,6 +469,7 @@ def finalize_publish_job(
     record.current_version_id = version.id
     record.draft_version_id = None
     record.publishing_version_id = None
+    record.active = True
     record.publish_by = job.create_by
     record.publish_time = resolved_now
     job.status = "SUCCEEDED"

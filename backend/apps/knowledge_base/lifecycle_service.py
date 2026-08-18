@@ -524,35 +524,8 @@ class KnowledgeLifecycleService:
         record.draft_version_id = None
         record.publishing_version_id = None
         record.archived = False
-        record.active = False
+        record.active = True
         record.publish_time = getattr(version, "publish_time", None)
-        record.update_by = actor_id
-        record.update_time = datetime.now()
-        return record
-
-    def set_active(
-        self,
-        *,
-        tenant_id: int,
-        knowledge_base_id: int,
-        active: bool,
-        actor_id: int | None,
-        current_user: Any | None = None,
-    ):
-        record = self.repository.lock_knowledge_base(
-            tenant_id=tenant_id, knowledge_base_id=knowledge_base_id
-        )
-        self.permissions.require_manage(current_user, record)
-        self._assert_not_archived(record)
-        if active and getattr(record, "current_version_id", None) is None:
-            raise KnowledgeBusinessError(
-                code="KNOWLEDGE_ACTIVE_VERSION_REQUIRED",
-                message="知识库尚无已发布版本，不能启用。",
-                status_code=409,
-                error_type="CONFLICT",
-                suggestion="请先完成知识发布后再启用。",
-            )
-        record.active = bool(active)
         record.update_by = actor_id
         record.update_time = datetime.now()
         return record

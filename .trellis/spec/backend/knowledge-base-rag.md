@@ -105,56 +105,63 @@ Fetch all workspace knowledge for a platform administrator, filter it in Vue, an
 #### Correct
 Send the selected authorized `tenant_id` to the list/create API, enforce it on the backend, and use the persisted knowledge record's tenant for subsequent lifecycle operations.
 
-## Scenario: Archived Knowledge Restoration
+## Scenario: Published Knowledge Retrieval Eligibility And Restoration
 
 ### 1. Scope / Trigger
-- Applies when a previously published V2 knowledge base is archived, inspected,
-  restored, or explicitly re-enabled for retrieval.
+- Applies to V2 publication, vector retrieval candidate selection, management UI, archive, inspection, and restoration.
 
 ### 2. Signatures
 - `GET /knowledge-base/list?archived=false|true&visibility_scope=...&tenant_id=...`
 - `POST /knowledge-base/{id}/restore`
-- `PUT /knowledge-base/{id}/active` with `{ "active": boolean }`
+- `KnowledgeRetrievalService._load_candidate_metadata(...)`
+- V2 does not expose `PUT /knowledge-base/{id}/active`; knowledge-level retrieval eligibility is not user-configurable.
 
 ### 3. Contracts
-- Management lists default to `archived=false`; archive views must request `archived=true` and retain the normal workspace and permission filters.
+- A knowledge base is lifecycle-eligible for retrieval only when `KnowledgeBase.current_version_id == KnowledgeBaseVersion.id`, that version has `status=PUBLISHED`, and `KnowledgeBase.archived=false`.
+- `knowledge_base.active` remains a legacy storage field until a separate schema cleanup, but V2 retrieval and management UI must not read it as an eligibility switch. Successful publication and restoration set it to `true` only to keep retained data coherent; archive sets it to `false`.
+- Existing workspace override, tenant/datasource/object permissions, visibility, applicability, schema epoch, index readiness, and embedding checks remain additional mandatory filters. Publication never bypasses them.
+- A new draft does not replace the current published version until publication succeeds. The prior current published version remains retrievable while a draft or publishing job exists.
+- Management lists default to `archived=false`; archive views must request `archived=true` and retain normal workspace and permission filters.
 - Archived records, version history, and retained source files remain readable, but lifecycle mutations are rejected until restoration.
-- Restore selects the newest `ARCHIVED` version with a non-null `publish_time`; a discarded unpublished draft must never become the restored current version.
-- Restore changes that version to `PUBLISHED`, sets `current_version_id`, clears draft/publishing pointers, and sets `archived=false` while keeping `active=false`.
-- Retrieval continues requiring both `archived=false` and `active=true`, so restoration alone never re-enables knowledge.
-- Managers must explicitly call the active endpoint after restore; archived or
-  unpublished knowledge cannot be enabled.
+- Restore selects the newest `ARCHIVED` version with a non-null `publish_time`; a discarded unpublished draft must never become the restored current version. It changes that version to `PUBLISHED`, restores the current pointer, clears draft/publishing pointers, sets `archived=false`, and immediately restores lifecycle retrieval eligibility.
 
 ### 4. Validation & Error Matrix
+- No current version, current version not `PUBLISHED`, or `archived=true` -> exclude from retrieval candidates.
+- `active=false` with a current `PUBLISHED` version and `archived=false` -> do not exclude on the legacy field; continue evaluating all other eligibility filters.
 - Archived lifecycle mutation before restore -> `409 KNOWLEDGE_ARCHIVED_READ_ONLY`.
 - Restore without an archived published version -> `409 KNOWLEDGE_RESTORE_VERSION_NOT_FOUND`.
-- Enable without `current_version_id` -> `409 KNOWLEDGE_ACTIVE_VERSION_REQUIRED`.
 - Cross-workspace or unauthorized access -> existing permission-boundary 403/404 response.
+- Call to removed V2 active route -> no matching V2 operation; clients must use publish/archive/restore lifecycle operations.
 
 ### 5. Good/Base/Bad Cases
-- Good: restore chooses the newest previously published version, remains
-  inactive, then an authorized manager explicitly enables it.
-- Base: archive list/detail/history are read-only and downloadable without
-  changing lifecycle state.
-- Bad: restore an archived draft with no `publish_time`, or silently set
-  `active=true` as part of restore.
+- Good: restore chooses the newest previously published version and it becomes retrievable immediately when all permission, applicability, and index checks pass.
+- Base: a knowledge base with a current published version and a newer draft continues serving only the current published version.
+- Bad: filter candidates with `KnowledgeBase.active.is_(True)`, expose an independent management switch, or retrieve an unpublished/archived version.
 
 ### 6. Tests Required
-- State-machine tests cover successful inactive restoration, discarded archived drafts, idempotent restore, and missing published history.
-- API tests assert the default/current archive filter, explicit archived
-  filtering, route registration, tenant-scoped restoration, and activation.
-- Frontend tests assert read-only archived details, retained history/download
-  access, manager-only restoration, and disabled activation without a current
-  published version.
+- Retrieval query tests assert the published status, current-version pointer, and non-archived predicates are present while `knowledge_base.active` is absent.
+- Publication tests start with `active=false` and assert successful finalization synchronizes it to `true` without using it as the retrieval authority.
+- State-machine tests cover automatic retrieval restoration, discarded archived drafts, idempotent restore, and missing published history.
+- API and frontend contract tests assert the V2 active route, API client method, list column, and editor switch are absent.
+- Browser checks cover current and archived views at desktop and mobile widths and verify no horizontal overflow after removing the column.
 
 ### 7. Wrong vs Correct
 #### Wrong
-Set `archived=false` and `active=true` directly, or choose the highest version
-number even when it is only a discarded draft.
+```python
+query.where(
+    KnowledgeBaseVersion.status == "PUBLISHED",
+    KnowledgeBase.active.is_(True),
+)
+```
 
 #### Correct
-Restore the newest archived version with a real `publish_time`, keep the record
-inactive, and require the separate active endpoint before retrieval can use it.
+```python
+query.where(
+    KnowledgeBaseVersion.status == "PUBLISHED",
+    KnowledgeBase.current_version_id == KnowledgeBaseVersion.id,
+    KnowledgeBase.archived.is_(False),
+)
+```
 
 ## Scenario: Multi-Block Knowledge Documents
 

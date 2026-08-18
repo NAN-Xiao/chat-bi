@@ -197,40 +197,6 @@ def test_permanent_delete_route_requires_archived_record_and_reports_file_cleanu
     assert session.commits == 1
 
 
-def test_active_route_explicitly_enables_current_knowledge(monkeypatch):
-    monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
-    record = SimpleNamespace(
-        id=44, tenant_id=7, name="Restored knowledge", description=None,
-        visibility_scope="ADMIN_PUBLIC", active=False, status="READY",
-        file_id=None, file_name=None, file_ext=None, error_message=None,
-        create_time=None, update_time=None, archived=False,
-        knowledge_type="DOCUMENT", stable_key="kb-44", draft_version_id=None,
-        current_version_id=88, publishing_version_id=None,
-    )
-    monkeypatch.setattr(management, "resolve_record", lambda *_args, **_kwargs: record)
-
-    class _Service:
-        def __init__(self, _repository):
-            pass
-
-        def set_active(self, **kwargs):
-            assert kwargs["active"] is True
-            record.active = True
-            return record
-
-    monkeypatch.setattr(management, "KnowledgeLifecycleService", _Service)
-    session = _Session()
-    response = asyncio.run(management.set_knowledge_base_active(
-        id=44,
-        body=management.SetKnowledgeBaseActiveRequest(active=True),
-        session=session,
-        current_user=_user(tenant_id=7, role="admin"),
-    ))
-
-    assert response["active"] is True
-    assert session.commits == 1
-
-
 def test_workspace_admin_can_create_only_current_workspace_knowledge(monkeypatch):
     monkeypatch.setattr(management, "get_capabilities", lambda _session: _capabilities())
     session = _Session(active_tenant_id=7)
