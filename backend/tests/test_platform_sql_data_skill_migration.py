@@ -56,6 +56,23 @@ def test_default_date_window_followup_migration_keeps_dashboard_template_tokens(
     assert "{{dashboard_end_yyyymmdd}}" in migration.DATE_SECTION
 
 
+def test_platform_date_skill_rules_do_not_exempt_date_bound_metrics() -> None:
+    root = Path(__file__).resolve().parents[2]
+    files = [
+        root / "tools" / "repair_data_skill_scope_conflicts.py",
+        root / "backend" / "alembic" / "versions" / "146_platform_sql_grouping_data_skill.py",
+        root / "backend" / "alembic" / "versions" / "147_refresh_platform_sql_grouping_data_skill.py",
+        root / "backend" / "alembic" / "versions" / "151_platform_default_date_window_data_skill.py",
+    ]
+    old_rule = "固定语义指标卡（例如明确限定“今日”或“本月”的单值指标）保持其自身语义，不将看板日期范围强加到该指标。"
+    new_rule = "指标卡只要查询或过滤日期字段，就必须使用成对看板日期 token 和完整 `date_filter`"
+
+    for path in files:
+        content = path.read_text(encoding="utf-8")
+        assert old_rule not in content, path
+        assert new_rule in content, path
+
+
 def test_followup_migration_refreshes_existing_platform_skill() -> None:
     original = _load_migration()
     followup = _load_migration("147_refresh_platform_sql_grouping_data_skill.py")
@@ -109,6 +126,42 @@ def test_alias_quoting_followup_migration_contains_dialect_and_scope_rules() -> 
     assert "ORDER BY `注册日期`, `地区`" in migration.ALIAS_SECTION
     assert "同一查询块" in migration.ALIAS_SECTION
     assert "上游 CTE 或子查询" in migration.ALIAS_SECTION
+
+
+def test_metric_date_contract_migration_replaces_existing_platform_skill_rule() -> None:
+    migration = _load_migration("163_platform_metric_date_contract.py")
+
+    assert migration.down_revision == "162platformmysqlunsignedruntime"
+    assert "指标卡只要查询或过滤日期字段" in migration.NEW_RULE
+    assert "固定日期字面量" in migration.NEW_RULE
+
+    class _Result:
+        rowcount = 1
+
+    class _Bind:
+        def __init__(self) -> None:
+            self.executions = []
+
+        def execute(self, statement, params):
+            self.executions.append((str(statement), params))
+            return _Result()
+
+    bind = _Bind()
+    migration.op.get_bind = lambda: bind
+    migration.upgrade()
+
+    assert len(bind.executions) == 1
+    statement, params = bind.executions[0]
+    assert "UPDATE custom_prompt" in statement
+    assert "embedding = NULL" in statement
+    assert params["old_rule"] == migration.OLD_RULE
+    assert params["new_rule"] == migration.NEW_RULE
+
+    migration.downgrade()
+    assert len(bind.executions) == 2
+    _statement, downgrade_params = bind.executions[1]
+    assert downgrade_params["old_rule"] == migration.NEW_RULE
+    assert downgrade_params["new_rule"] == migration.OLD_RULE
 
 
 def test_alias_quoting_followup_migration_appends_section_idempotently() -> None:

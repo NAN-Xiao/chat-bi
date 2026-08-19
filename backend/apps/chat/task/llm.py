@@ -2476,13 +2476,14 @@ class LLMService:
 
         original_sql = sql
         rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
+        dashboard_date_filter_enabled = getattr(self, "dashboard_date_filter_enabled", True)
         try:
-            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), original_sql)
-            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), rewritten_sql)
+            ensure_chat_date_filter_allowed(dashboard_date_filter_enabled, data.get("date_filter"), original_sql)
+            ensure_chat_date_filter_allowed(dashboard_date_filter_enabled, data.get("date_filter"), rewritten_sql)
         except ChatDateFilterConfigurationError as error:
             trigger_log_error(session, log)
             raise SingleMessageError("当前工作空间未启用看板日期参数，SQL 不得包含日期占位符或 date_filter") from error
-        if not self.dashboard_date_filter_enabled:
+        if not dashboard_date_filter_enabled:
             self.chat_date_pivot = None
             sql = original_sql
         else:

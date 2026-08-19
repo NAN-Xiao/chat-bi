@@ -1231,13 +1231,16 @@ def test_validate_sql_node_allows_mysql_unsigned_cast() -> None:
     assert not result.issues
 
 
-def test_metric_chart_does_not_require_dashboard_date_parameters() -> None:
+def test_metric_chart_can_use_dashboard_date_parameters() -> None:
     request = DashboardAiSqlGenerateRequest(
         datasource=1,
         chart_type="metric",
         context={
-            "chart": {"type": "metric"},
-            "time": {"field": {"table": "event", "field": "dt"}},
+                "chart": {"type": "metric"},
+                "time": {
+                    "field": {"table": "event", "field": "dt"},
+                    "dateParameterType": "yyyymmdd_number",
+                },
         },
     )
 
@@ -1250,15 +1253,24 @@ def test_metric_chart_does_not_require_dashboard_date_parameters() -> None:
     response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=True,
         chart_type="metric",
-        sql="SELECT COUNT(*) AS 今日销售额 FROM event WHERE dt = CURDATE()",
+        sql=(
+            "SELECT COUNT(*) AS 今日销售额 FROM event WHERE dt BETWEEN "
+            "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
+        ),
     )
     result = ai_sql_generator._node_validate_sql({
         "response": response,
-        "normalized_config": {"chart": {"type": "metric"}, "time": request.context["time"]},
+        "normalized_config": {
+            "chart": {"type": "metric"},
+            "time": {
+                "field": request.context["time"]["field"],
+                "date_parameter_type": "yyyymmdd_number",
+            },
+        },
         "graph_trace": [],
     })["response"]
 
-    assert "不生成看板日期参数或日期控件" in prompt
+    assert "日期占位符" in prompt
     assert result.success is True
 
 

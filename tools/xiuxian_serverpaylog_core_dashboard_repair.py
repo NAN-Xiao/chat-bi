@@ -82,9 +82,7 @@ WITH daily_pay AS (
         ) AS pay_amount,
         COUNT(DISTINCT e.uid) AS pay_users
     FROM `event` e
-    WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 28 DAY), '%Y%m%d') AS SIGNED)
-      AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000047
       AND e.event = 'ServerPayLog'
     GROUP BY e.dt
@@ -94,9 +92,7 @@ daily_active AS (
         e.dt,
         COUNT(DISTINCT e.uid) AS active_users
     FROM `event` e
-    WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 28 DAY), '%Y%m%d') AS SIGNED)
-      AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000047
       AND e.event = 'UserActive'
     GROUP BY e.dt
@@ -117,9 +113,7 @@ WITH new_users AS (
         e.dt,
         e.uid
     FROM `event` e
-    WHERE e.dt BETWEEN
-          CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
-      AND CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000047
       AND e.event = 'UserRegister'
     GROUP BY e.dt, e.uid

@@ -621,7 +621,7 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
     if context.reason is SqlRepairReason.DATE_FILTER_CONFIGURATION:
         payload["repair_requirements"] = [
             (
-                "具备时间字段的非 metric 图表必须返回完整 date_filter，SQL 日期边界必须使用与 "
+                "具备时间字段的图表（包括 metric）必须返回完整 date_filter，SQL 日期边界必须使用与 "
                 "date_parameter_type 匹配的看板日期 token；yyyymmdd_number 使用 "
                 "{{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}。"
             ),
@@ -631,7 +631,7 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
                 "不得省略日期过滤，也不得改为查询全历史。"
             ),
             (
-                "metric 图表不得返回 date_filter，也不得使用看板日期 token；保留用户要求的固定时间语义。"
+                "metric 只要涉及日期字段或日期条件，就必须使用日期 token 和完整 date_filter；只有完全无日期语义的全量累计指标才省略 date_filter。"
             ),
             (
                 "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、"

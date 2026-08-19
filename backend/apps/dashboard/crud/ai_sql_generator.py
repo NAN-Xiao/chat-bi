@@ -1186,8 +1186,7 @@ def _config_reference_table_names(normalized_config: dict[str, Any], formula_ir:
 
 def _uses_dashboard_date_parameters(chart_type: Any, time_config: dict[str, Any]) -> bool:
     return (
-        str(chart_type or "").strip().lower() != "metric"
-        and _field_table_name(time_config.get("field")) != ""
+        _field_table_name(time_config.get("field")) != ""
     )
 
 
@@ -1363,7 +1362,7 @@ def _dashboard_config_prompt(
         ]
         if uses_date_parameters and parameter_tokens
         else (
-            ["当前图表不包含可变时间范围，不生成看板日期参数或日期控件；若其为固定语义指标，必须保留原有时间含义。"]
+            ["当前图表不包含可变时间范围，不生成看板日期参数或日期控件；若其为明确固定语义指标，必须保留原有时间含义。"]
             if not uses_date_parameters
             else ["看板日期参数类型缺失，不能生成 SQL。"]
         )

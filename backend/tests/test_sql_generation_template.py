@@ -73,8 +73,9 @@ def test_first_generation_prompt_requires_date_filter_for_filtered_category_summ
     assert "即使最终 SELECT 不输出日期列" in rules
     assert "只要 SQL 使用看板日期 token 进行时间范围筛选" in rules
     assert "都必须返回 date_filter" in rules
-    assert "只有 SQL 完全不使用日期范围筛选和看板日期 token" in rules
-    assert "固定 metric 图表不得返回 date_filter，也不得使用看板日期 token" in rules
+    assert "只有完全不涉及日期字段或日期条件的全量累计指标" in rules
+    assert "metric 图表也适用" in rules
+    assert "禁止用固定日期字面量规避日期选择器" in rules
     assert "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW" in rules
     assert "即使用户没有明确给出时间窗口，也必须生成完整 date_filter" in rules
     assert "past_7_days" in rules

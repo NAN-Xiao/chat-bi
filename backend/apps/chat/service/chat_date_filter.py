@@ -37,6 +37,9 @@ _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN = re.compile(r"前天")
 _EXPLICIT_ABSOLUTE_DATE_PATTERN = re.compile(
     r"(?<!\d)\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日?)(?!\d)"
 )
+_SQL_DATE_LITERAL_PATTERN = re.compile(
+    r"(?<!\d)(?:(?:19|20)\d{6}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2})(?!\d)"
+)
 _EXPLICIT_NAMED_PERIOD_PATTERN = re.compile(r"本月")
 _EXPLICIT_RELATIVE_PERIOD_PATTERN = re.compile(
     r"(?:(?:最近|近)\s*(?:两|[1-9]\d{0,3})\s*(?:个\s*)?周|"
@@ -151,9 +154,13 @@ def _explicit_question_date_expression(question: str | None) -> dict[str, Any] |
     return None
 
 
-def _question_requires_date_filter(question: str | None, chart_type: str) -> bool:
+def _question_requires_date_filter(question: str | None, chart_type: str, sql: str = "") -> bool:
     if str(chart_type or "").strip().lower() == "metric":
-        return False
+        return (
+            question_date_scope(question) != "unspecified"
+            or bool(_SQL_DATE_LITERAL_PATTERN.search(sql))
+            or bool(_DATABASE_CURRENT_DATE_PATTERN.search(sql))
+        )
     if _TIME_SERIES_PATTERN.search(str(question or "")):
         return True
     return False
@@ -187,7 +194,7 @@ def normalize_chat_date_filter_for_question(
 
     expression = _explicit_question_date_expression(question)
     if not isinstance(payload, dict):
-        if _question_requires_date_filter(question, chart_type):
+        if _question_requires_date_filter(question, chart_type, sql):
             raise ChatDateFilterConfigurationError("missing_date_filter")
         return normalize_chat_date_filter(payload, sql, chart_type)
     if expression is None:
@@ -258,8 +265,6 @@ def normalize_chat_date_filter(payload: Any, sql: str, chart_type: str) -> dict[
         if has_tokens:
             raise ChatDateFilterConfigurationError("missing_date_filter")
         return None
-    if str(chart_type or "").strip().lower() == "metric":
-        raise ChatDateFilterConfigurationError("metric_chart")
     if not isinstance(payload, dict):
         raise ChatDateFilterConfigurationError("invalid_date_filter")
     if _DATABASE_CURRENT_DATE_PATTERN.search(sql):

@@ -707,25 +707,6 @@ def test_prepare_sql_response_format_error_repairs_then_revalidates(
             },
         ),
         (
-            "metric_chart",
-            {
-                "sql": (
-                    "SELECT COUNT(*) FROM event WHERE dt BETWEEN "
-                    "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
-                ),
-                "chart_type": "metric",
-                "date_filter": {
-                    "time_field": "dt",
-                    "date_parameter_type": "yyyymmdd_number",
-                    "date_expression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
-                },
-            },
-            {
-                "sql": "SELECT COUNT(*) FROM event WHERE dt = 20260730",
-                "chart_type": "metric",
-            },
-        ),
-        (
             "realtime_requires_hourly_time_series",
             {
                 "sql": "SELECT SUM(amount) FROM event_realtime",
@@ -791,12 +772,8 @@ def test_prepare_sql_date_filter_error_repairs_then_revalidates(
 
     assert service.repair_contexts[0].reason.value == "date_filter_configuration"
     assert service.saved_sql == [repaired_sql]
-    if date_error == "metric_chart":
-        assert service.chat_date_pivot is None
-        assert "{{dashboard_" not in repaired_sql
-    else:
-        assert service.chat_date_pivot["time_field"] == "dt"
-        assert "CURRENT_DATE" not in repaired_sql
+    assert service.chat_date_pivot["time_field"] == "dt"
+    assert "CURRENT_DATE" not in repaired_sql
     assert not any(event["type"] == "error" for event in _events(chunks))
 
 

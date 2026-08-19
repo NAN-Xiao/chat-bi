@@ -194,12 +194,12 @@ DATA_SKILLS: list[dict[str, str]] = [
 - `time` 是毫秒时间戳。小时维度直接使用：
   `FROM_UNIXTIME(e.time / 1000)`
 - `dt` 是业务日期分区，格式为 `YYYYMMDD` 数字。
-- 对实时查询，为避免跨日期分区边界漏数，`dt` 至少应覆盖当前日期及前一日期：
-  `e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)`
-- 业务今天的时间窗口使用：
-  `FROM_UNIXTIME(e.time / 1000) >= DATE(UTC_TIMESTAMP())`
+- 实时查询的 `dt` 分区必须使用当前看板选择范围：
+  `e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}`
+- 选择范围结束日的时间窗口使用：
+  `FROM_UNIXTIME(e.time / 1000) >= STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')`
   且
-  `FROM_UNIXTIME(e.time / 1000) < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')`
+  `FROM_UNIXTIME(e.time / 1000) < DATE_ADD(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), INTERVAL 1 DAY)`
 
 ## 实时看板 SQL 规则
 - 实时小时维度应基于事件时间取小时：
@@ -213,8 +213,8 @@ DATA_SKILLS: list[dict[str, str]] = [
 - 非递归小时骨架输出标签时，使用 `CONCAT(LPAD(CAST(hour_index AS CHAR), 2, '0'), ':00')`；不要把格式字符串误写进 `FROM_UNIXTIME` 的括号内。
 - flam ADS/MySQL 返回中文 SELECT 别名时可能变成 `??`，持久看板 SQL 字段必须使用 ASCII 别名：
   `time_label`、`hour_label`、`online_users`、`pay_count`、`cumulative_pay_count`；图表配置用中文 `name` 展示、英文 `value` 绑定字段。
-- ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板用 `tools/repair_flam_first_zombie_realtime_dashboard.py` 先探测最近可用业务日，再把 SQL 固化为常量 `dt`/业务日期窗口。
-- 实时付费优先展示业务今天；如果今天没有付费事件，回退到最近有付费事件的业务日。回退是为了展示“最近可用实时趋势”，不得虚构今天数据。
+- ADS 对动态 `MAX(dt)`、严格业务日 CTE 和跨分区时间函数过滤容易超时；持久实时看板必须直接使用看板起止日期 token 限定分区，不得在运行时探测或固化业务日期。
+- 实时付费展示看板结束日期对应的实时数据；该日期没有付费事件时返回空结果，不得静默回退到其他业务日。
 - 实时真实交易次数使用 `event='ServerPayLog'` 的订单行；支付流程事件只能作为独立流程事件量，不能命名为真实充值次数。
 - 累计真实交易次数应先按业务小时聚合，再对小时做累计求和。
 - 在线人数的业务字段是 `CCU.personal.ed_ccu`。如果当前数据行的 `personal` 没有 `ed_ccu`，应说明数据侧缺少当前在线人数值，不要把 CCU 事件条数或空 `uid` 去重数当成真实在线人数。
@@ -222,19 +222,19 @@ DATA_SKILLS: list[dict[str, str]] = [
 ## 禁止事项
 - 不要在 flam 实时问题里直接用 `CURDATE()` / `NOW()` 作为业务日口径。
 - 实时查询应遵循本 Data Skill 的日期规则。
-- 实时 SQL 的日期边界必须使用当前请求注入的受控日期参数或已确定的业务日期字面量；不得使用 `CURDATE()`、`NOW()`、`UTC_TIMESTAMP()` 或其它数据库当前时间函数。
+- 实时 SQL 的日期边界必须使用当前请求注入的 `{{dashboard_start_yyyymmdd}}` / `{{dashboard_end_yyyymmdd}}` 看板日期参数，并返回完整 `date_filter`；不得使用固定业务日期字面量、`CURDATE()`、`NOW()`、`UTC_TIMESTAMP()` 或其它数据库当前时间函数。
 - 不要把该日期规则套用到其他数据源。
 
 ## 实时看板持久 SQL
-以下 SQL 是本 Data Skill 对 `实时看板` 已保存组件的模板配置；修复脚本会基于当前数据把付费/在线日期固化后写入看板，避免打开看板时动态探测超时。
+以下 SQL 是本 Data Skill 对 `实时看板` 已保存组件的模板配置；所有日期边界由看板起止日期 token 注入。
 
 <!-- dashboard-sql:e3fe7e4819e64b71b76d9329a3023359 -->
 ```sql
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}}
+                   AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000038
       AND e.event = 'CCU'
       AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.ed_ccu')), '') IS NOT NULL
@@ -259,8 +259,8 @@ LIMIT 24
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}}
+                   AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000038
       AND e.event = 'ServerPayLog'
     GROUP BY e.dt
@@ -283,8 +283,8 @@ LIMIT 24
 WITH latest_dt AS (
     SELECT e.dt
     FROM `event` e
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}}
+                   AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000038
       AND e.event = 'ServerPayLog'
     GROUP BY e.dt
@@ -333,7 +333,7 @@ LIMIT 24
 - 默认只展示已成熟 cohort：近月看板以当前日前一完整分区为成熟截止，D1 默认窗口排除最近 1 天，D7 默认窗口排除最近 7 天，避免把未成熟 cohort 当 0%。
 - 用户问“最近 N 天新增用户留存/滞留情况”且未指定 D3/D7 时，默认按 D1 精确日留存理解；cohort 窗口应取最近 N 个已成熟注册日。例如系统日期为 2026-06-30 时，“最近三天新增用户留存”应统计注册日 2026-06-26、2026-06-27、2026-06-28，对应活跃观察日 2026-06-27、2026-06-28、2026-06-29；不要把 2026-06-29 注册 cohort 纳入 D1 留存分母。
 - flam ADS 对 `MAX(user.dt)` / `MAX(event.dt)` 这类大视图聚合较慢；非 `metric` 历史时序图必须以 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整 `dt` 分区窗口，并显式过滤 `prod = 110000038`。
-- 非 `metric` 历史时序图的 SQL 必须返回完整 `date_filter`：`{{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{{"version":1,"mode":"preset","preset":"past_7_days"}}}}`；SQL 的日期条件使用 `{{dashboard_start_yyyymmdd}}` 与 `{{dashboard_end_yyyymmdd}}`。用户指定范围时，`date_expression` 必须按用户范围生成。`metric` 图表不得返回 `date_filter` 或看板日期 token。
+- 涉及日期字段或日期条件的图表（包括 `metric` 指标卡）必须返回完整 `date_filter`：`{{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{{"version":1,"mode":"preset","preset":"past_7_days"}}}}`；SQL 的日期条件使用 `{{dashboard_start_yyyymmdd}}` 与 `{{dashboard_end_yyyymmdd}}`。用户指定范围时，`date_expression` 必须按用户范围生成。禁止以固定业务日字面量规避指标卡日期参数。
 
 ## 推荐输出
 - 默认优先使用中文 SQL 输出别名：`日期`、`新增用户数`、`次日留存用户数`、`次日留存率`；图表配置的 `value` 必须与 SQL 返回字段完全一致。
@@ -368,7 +368,7 @@ LIMIT 24
 
 ## 日期窗口
 - flam 的 ADS 视图对 `MAX(dt)`、`DISTINCT dt` 和先取最大分区的 CTE 计划较重；历史活跃、DAU/WAU/MAU、ARPU/ARPPU 这类近月趋势必须用 `{{dashboard_start_yyyymmdd}}` 至 `{{dashboard_end_yyyymmdd}}` 限定完整 `dt` 分区窗口，并显式过滤 `prod = 110000038` 和目标事件。
-- 非 `metric` 历史时序图必须返回 `date_filter`：`{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}}`；用户指定范围时按用户范围生成 `date_expression`。`metric` 图表必须省略 `date_filter` 及全部看板日期 token。
+- 涉及日期字段或日期条件的图表（包括 `metric` 指标卡）必须返回 `date_filter`：`{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}}`；用户指定范围时按用户范围生成 `date_expression`。指标卡不得以固定业务日字面量省略 `date_filter` 及看板日期 token。
 - DAU/活跃趋势在未指定日期范围时，遵循平台通用 Data Skill 的过去 7 个完整自然日默认范围；使用当前日前一完整分区作为结束边界，避免额外扫描事件视图获取最大分区。
 - 指标需要成熟 cohort 或最新快照语义时，使用当前日前一完整分区或排除对应成熟窗口，例如新增留存、7 日 LTV、当前等级分布；这类问题不能把未成熟 cohort 当 0。
 - 需要计算 D1/D3/D7 留存或 7 日 LTV 时，只展示成熟 cohort：D1 默认排除最近 1 天，D7 默认排除最近 7 天。
@@ -798,7 +798,7 @@ LIMIT 24
 - 招募情况使用 `event='HeroRecruit'`，招募池 ID 取 `personal.ed_cardType`，招募方式取 `personal.ed_recruitNumType`；`ONE` 映射为“单抽”，`TEN` 映射为“十连抽”，缺失或其它值归为“未知”。
 - 加速类型当前没有已验证字段映射；组件必须显示“待补充字段映射”，不得从 `ext.ed_detailReason`、`ext.ed_route` 或其他相邻字段猜测类型。
 - 主城升级漏斗使用最新快照主城等级阈值，而不是历史升级事件次数。
-- 三个“当日升级次数” `metric` 使用当前业务日的前一日作为最新完整业务日，并据此计算前一日和上周同日；不得返回 `date_filter` 或看板日期 token。示例中的 `20260730` 仅表示已由调用方确定的当前业务日，实际生成时必须替换为本次请求确定的日期字面量。
+- 三个“当日升级次数” `metric` 必须使用看板日期参数确定统计窗口，并返回完整 `date_filter`；SQL 使用 `{{dashboard_start_yyyymmdd}}` 和 `{{dashboard_end_yyyymmdd}}`，不得使用固定日期字面量或数据库当前日期函数规避日期参数。
 
 ## 禁止事项
 - 不要把最近 30 天所有用户快照合并后统计当前等级分布。
@@ -1024,8 +1024,6 @@ _DASHBOARD_END_DATE_SQL = (
 _DASHBOARD_START_DATE_SQL = (
     "STR_TO_DATE(CAST({{dashboard_start_yyyymmdd}} AS CHAR), '%Y%m%d')"
 )
-_REALTIME_BUSINESS_DATE_SQL = "DATE(UTC_TIMESTAMP())"
-_METRIC_EXAMPLE_BUSINESS_DATE_SQL = "STR_TO_DATE('20260730', '%Y%m%d')"
 _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     r"\b(?:CURDATE|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|"
     r"GETDATE|GETUTCDATE)\s*(?:\(\s*\))?",
@@ -1034,19 +1032,43 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
 
 
 def _tokenize_dashboard_sql_current_date(prompt: str) -> str:
-    """按看板语义替换旧日期函数，未知用法直接拒绝发布。"""
+    """按看板日期语义替换旧日期函数，未知用法直接拒绝发布。"""
+
+    def bound_metric_date_filters(view_id: str, sql: str) -> str:
+        if view_id not in _DASHBOARD_METRIC_DATE_VIEW_IDS:
+            return sql
+        date_range = (
+            "{field} BETWEEN {{{{dashboard_start_yyyymmdd}}}} "
+            "AND {{{{dashboard_end_yyyymmdd}}}} AND {field} = "
+        )
+        return re.sub(
+            r"(?P<clause>\b(?:WHERE|AND)\s+)(?P<field>[eu]\.dt)\s*=\s*(?=CAST\()",
+            lambda match: (
+                match.group("clause")
+                + date_range.format(field=match.group("field"))
+            ),
+            sql,
+            count=1,
+            flags=re.IGNORECASE,
+        )
 
     def replace_sql_block(match: re.Match[str]) -> str:
         view_id = match.group("view_id")
         sql = match.group("sql")
         current_date_match = _DATABASE_CURRENT_DATE_PATTERN.search(sql)
-        if view_id in _DASHBOARD_METRIC_DATE_VIEW_IDS:
-            sql = sql.replace(_DASHBOARD_START_DATE_SQL, _METRIC_EXAMPLE_BUSINESS_DATE_SQL)
-            sql = sql.replace(_DASHBOARD_END_DATE_SQL, _METRIC_EXAMPLE_BUSINESS_DATE_SQL)
-            sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_METRIC_EXAMPLE_BUSINESS_DATE_SQL, sql)
-        elif current_date_match is None:
-            return match.group(0)
-        elif view_id in _DASHBOARD_TOKEN_DATE_VIEW_IDS:
+        if current_date_match is None:
+            sql = bound_metric_date_filters(view_id, sql)
+            if view_id == "97337c8b63544de89f26d2719cc45e75":
+                sql = sql.replace(
+                    f"DATE_SUB({_DASHBOARD_END_DATE_SQL}, INTERVAL 60 DAY)",
+                    f"DATE_SUB({_DASHBOARD_START_DATE_SQL}, INTERVAL 30 DAY)",
+                )
+            return f"{match.group('header')}{sql}{match.group('footer')}"
+        elif (
+            view_id in _DASHBOARD_TOKEN_DATE_VIEW_IDS
+            or view_id in _DASHBOARD_REALTIME_DATE_VIEW_IDS
+            or view_id in _DASHBOARD_METRIC_DATE_VIEW_IDS
+        ):
             sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_DASHBOARD_END_DATE_SQL, sql)
             if view_id == "97337c8b63544de89f26d2719cc45e75":
                 sql = sql.replace(
@@ -1057,6 +1079,7 @@ def _tokenize_dashboard_sql_current_date(prompt: str) -> str:
             sql = _DATABASE_CURRENT_DATE_PATTERN.sub(_REALTIME_BUSINESS_DATE_SQL, sql)
         else:
             raise ValueError(f"Flam 看板 SQL 存在未分类的数据库当前日期函数: {view_id}")
+        sql = bound_metric_date_filters(view_id, sql)
         return f"{match.group('header')}{sql}{match.group('footer')}"
 
     return _DASHBOARD_SQL_BLOCK_PATTERN.sub(replace_sql_block, prompt)

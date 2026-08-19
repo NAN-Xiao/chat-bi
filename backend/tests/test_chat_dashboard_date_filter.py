@@ -281,16 +281,14 @@ def test_normalize_rejects_metric_for_explicit_realtime_time_series_question():
         )
 
 
-def test_normalize_allows_metric_for_explicit_realtime_scalar_question():
-    assert (
+def test_normalize_rejects_metric_for_explicit_realtime_scalar_without_date_filter():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
         normalize_chat_date_filter_for_question(
             "实时收入",
             None,
             "SELECT SUM(amount) FROM event_realtime",
             "metric",
         )
-        is None
-    )
 
 
 @pytest.mark.parametrize("question", ["统计今天的实时付费情况", "按渠道统计今天的实时付费"])
@@ -329,16 +327,24 @@ def test_normalize_rejects_missing_date_filter_for_explicit_recent_days_time_ser
         )
 
 
-def test_normalize_allows_missing_date_filter_for_explicit_today_metric():
-    assert (
+def test_normalize_rejects_missing_date_filter_for_explicit_today_metric():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
         normalize_chat_date_filter_for_question(
             "今天的付费总额",
             None,
             "SELECT SUM(amount) FROM event_realtime WHERE dt = 20260805",
             "metric",
         )
-        is None
-    )
+
+
+def test_normalize_rejects_fixed_date_metric_without_date_filter():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
+        normalize_chat_date_filter_for_question(
+            "充值人数",
+            None,
+            "SELECT COUNT(DISTINCT uid) FROM event WHERE dt = 20260818",
+            "metric",
+        )
 
 
 def test_normalize_rejects_missing_date_filter_for_unspecified_time_series():
@@ -385,7 +391,7 @@ def test_check_sql_rejects_explicit_today_time_series_without_date_filter(monkey
         )
 
 
-def test_check_sql_skips_invalid_date_filter_for_sample_workspace(monkeypatch):
+def test_check_sql_rejects_date_filter_when_workspace_disables_it(monkeypatch):
     monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
@@ -393,6 +399,7 @@ def test_check_sql_skips_invalid_date_filter_for_sample_workspace(monkeypatch):
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="趋势", data_skill="")
     service.chat_date_pivot = {"enabled": False, **DATE_FILTER}
+    service.dashboard_date_filter_enabled = False
     response = {
         "success": True,
         "sql": "SELECT channel, COUNT(*) FROM event GROUP BY channel",
@@ -405,15 +412,12 @@ def test_check_sql_skips_invalid_date_filter_for_sample_workspace(monkeypatch):
         def get(self, _model, _tenant_id):
             return SimpleNamespace(name=SAMPLE_TENANT_NAME)
 
-    sql, tables = service.check_sql(
-        session=SampleWorkspaceSession(),
-        res=__import__("json").dumps(response),
-        operate=OperationEnum.GENERATE_SQL,
-    )
-
-    assert sql == response["sql"]
-    assert tables == response["tables"]
-    assert service.chat_date_pivot is None
+    with pytest.raises(SingleMessageError, match="未启用看板日期参数"):
+        service.check_sql(
+            session=SampleWorkspaceSession(),
+            res=__import__("json").dumps(response),
+            operate=OperationEnum.GENERATE_SQL,
+        )
 
 
 def test_check_sql_keeps_invalid_date_filter_for_regular_workspace(monkeypatch):
@@ -477,9 +481,9 @@ def test_normalize_rejects_token_without_configuration():
         normalize_chat_date_filter(None, DATE_TEMPLATE_SQL, "line")
 
 
-def test_normalize_rejects_fixed_metric_date_configuration():
-    with pytest.raises(ChatDateFilterConfigurationError, match="metric_chart"):
-        normalize_chat_date_filter(DATE_FILTER, DATE_TEMPLATE_SQL, "metric")
+def test_normalize_allows_metric_date_configuration():
+    pivot = normalize_chat_date_filter(DATE_FILTER, DATE_TEMPLATE_SQL, "metric")
+    assert pivot["time_field"] == "dt"
 
 
 def test_normalize_rejects_current_date_function_for_date_filter():
