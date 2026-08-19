@@ -677,6 +677,33 @@ async function testSmartQaTaskStoreReportsTerminalCallbackErrors() {
   assert.deepEqual(errors, ['load failed'])
 }
 
+async function testSmartQaTaskStoreReportsFailedTerminalStatus() {
+  const { createSmartQaTaskStore } = loadTsModule('src/views/chat/answer/smartQaTaskStore.ts')
+  const errors = []
+  const store = createSmartQaTaskStore({
+    getTaskEvents: async () => ({
+      status: 'failed',
+      error: 'worker disconnected',
+      events: [],
+      next_offset: 0,
+      total: 0,
+    }),
+  })
+  const entry = store.ensureTask({
+    tenantId: 'tenant-a',
+    chatId: 81,
+    record: { id: 94, chat_id: 81, task_id: 'task-terminal-failed' },
+    callbacks: {
+      onError: async ({ error }) => errors.push(error),
+    },
+  })
+
+  await entry.promise
+
+  assert.equal(entry.status, 'failed')
+  assert.deepEqual(errors, ['worker disconnected'])
+}
+
 async function testSmartQaTaskStoreRemovesEntriesAfterEventRequestFailure() {
   const { buildSmartQaTaskKey, createSmartQaTaskStore } = loadTsModule(
     'src/views/chat/answer/smartQaTaskStore.ts'
@@ -909,7 +936,7 @@ function testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh() {
   const handlePayloadSource = chartAnswerSource.slice(handlePayloadStart, refreshRecordStart)
   const finishCaseSource = handlePayloadSource.match(/case 'finish':[\s\S]*?break/)?.[0]
   const attachTaskStart = chartAnswerSource.indexOf('function attachGlobalTask')
-  const attachTaskEnd = chartAnswerSource.indexOf('function stop()', attachTaskStart)
+  const attachTaskEnd = chartAnswerSource.indexOf('function stop(', attachTaskStart)
   const attachTaskSource = chartAnswerSource.slice(attachTaskStart, attachTaskEnd)
   const refreshCallbackSource = attachTaskSource.match(
     /refreshRecord:\s*async[\s\S]*?(?=\n\s*loadRecordData:)/
@@ -996,6 +1023,47 @@ function testSendMessageKeepsOriginalChatContextAcrossAsyncTaskStart() {
   )
 }
 
+function testUnmountCleanupDoesNotStopTheChatGeneration() {
+  const componentPaths = [
+    'src/views/chat/RecommendQuestion.vue',
+    'src/views/chat/RecommendQuestionQuick.vue',
+    'src/views/chat/answer/AnalysisAnswer.vue',
+    'src/views/chat/answer/PredictAnswer.vue',
+  ]
+
+  for (const relativePath of componentPaths) {
+    const source = fs.readFileSync(path.join(root, relativePath), 'utf8')
+    const unmountStart = source.indexOf('onBeforeUnmount(() => {')
+    assert.ok(unmountStart >= 0, `${relativePath} 应包含卸载清理`)
+    const unmountSource = source.slice(unmountStart, source.indexOf('\n})', unmountStart) + 3)
+    assert.match(
+      unmountSource,
+      /stop\(false\)/,
+      `${relativePath} 卸载时只能清理自身流，不能向父组件冒泡停止事件`
+    )
+  }
+
+  const chatIndexSource = fs.readFileSync(path.join(root, 'src/views/chat/index.vue'), 'utf8')
+  const stopStart = chatIndexSource.indexOf('function stop(func?:')
+  const stopEnd = chatIndexSource.indexOf('const showFloatPopover', stopStart)
+  const stopSource = chatIndexSource.slice(stopStart, stopEnd)
+  assert.equal(
+    (stopSource.match(/\.stop\(false\)/g) || []).length,
+    8,
+    '数据源或工作空间切换时的程序化清理不得冒泡成用户停止'
+  )
+  assert.doesNotMatch(
+    stopSource,
+    /\.stop\(\)/,
+    '父组件停止子流时必须明确区分清理和用户停止'
+  )
+  assert.match(
+    chatIndexSource,
+    /function recordTerminalMessage\(record\?: ChatRecord\)[\s\S]*record\?\.stopped \? t\('chat\.task_error\.stopped'\)/,
+    '用户主动停止也必须留下明确的终态消息，不能展示空白回答'
+  )
+}
+
 testFinalAnswerVisibilityRequiresTerminalRefresh()
 await testTerminalRecordsDoNotRestoreTasks()
 await testSchedulerHonorsConcurrencyAndPriority()
@@ -1008,6 +1076,7 @@ await testSmartQaTaskStoreDrainsUnreadEventsBeforeTerminalCallbacks()
 await testSmartQaTaskStoreWaitsForTerminalRecordRefresh()
 await testSmartQaTaskStoreBacksOffWhileTerminalRecordIsUnavailable()
 await testSmartQaTaskStoreReportsTerminalCallbackErrors()
+await testSmartQaTaskStoreReportsFailedTerminalStatus()
 await testSmartQaTaskStoreRemovesEntriesAfterEventRequestFailure()
 await testSmartQaTaskStoreCleansUpWhenTerminalErrorHandlerThrows()
 await testSmartQaTaskStoreDetachesCallbacksButKeepsPolling()
@@ -1016,3 +1085,4 @@ testChatTaskContextKeepsOldTaskOutOfCurrentChat()
 testChatMessageRenderKeySurvivesActiveRecordRefresh()
 testChartAnswerDefersPostAnswerActionsUntilTerminalRefresh()
 testSendMessageKeepsOriginalChatContextAcrossAsyncTaskStart()
+testUnmountCleanupDoesNotStopTheChatGeneration()

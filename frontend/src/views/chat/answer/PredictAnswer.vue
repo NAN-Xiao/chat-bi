@@ -277,7 +277,7 @@ function getChatData(recordId?: number) {
     })
 }
 
-function stop() {
+function stop(notifyParent = true) {
   stopFlag.value = true
   _loading.value = false
   if (currentController) {
@@ -290,11 +290,13 @@ function stop() {
       // Reader may already be released
     }
   }
-  emits('stop')
+  if (notifyParent) {
+    emits('stop')
+  }
 }
 
 onBeforeUnmount(() => {
-  stop()
+  stop(false)
 })
 
 onMounted(() => {

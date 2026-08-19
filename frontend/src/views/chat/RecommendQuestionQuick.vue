@@ -145,14 +145,16 @@ async function getRecommendQuestionsLLM(articles_number: number) {
   }
 }
 
-function stop() {
+function stop(notifyParent = true) {
   stopFlag.value = true
   loading.value = false
-  emits('stop')
+  if (notifyParent) {
+    emits('stop')
+  }
 }
 
 onBeforeUnmount(() => {
-  stop()
+  stop(false)
 })
 
 defineExpose({ getRecommendQuestions, id: () => props.recordId, stop, getRecommendQuestionsLLM })
