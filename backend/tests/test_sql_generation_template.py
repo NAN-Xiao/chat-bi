@@ -74,11 +74,24 @@ def test_first_generation_prompt_requires_date_filter_for_filtered_category_summ
     assert "只要 SQL 使用看板日期 token 进行时间范围筛选" in rules
     assert "都必须返回 date_filter" in rules
     assert "只有完全不涉及日期字段或日期条件的全量累计指标" in rules
-    assert "metric 图表也适用" in rules
+    assert "metric 图表只要涉及日期字段或日期条件，也必须返回" in rules
     assert "禁止用固定日期字面量规避日期选择器" in rules
+    assert "所有非 metric 图表都必须返回 time_scope、time_range 和 date_filter" in rules
+    assert "直接换算为具体 YYYY-MM-DD 起止日期" in rules
+    assert "time_range 必须与 date_filter.date_expression 的静态 range 完全一致" in rules
+    assert "SQL 日期边界必须使用与 date_parameter_type 一致的看板日期 token" in rules
     assert "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW" in rules
-    assert "即使用户没有明确给出时间窗口，也必须生成完整 date_filter" in rules
-    assert "past_7_days" in rules
+    assert "用户完全未指定时间时，time_scope=unspecified" in rules
+    assert "最近 7 个完整自然日" in rules
+    assert "近/最近/过去 N 天" in rules
+    assert "不含系统业务日期" in rules
+    assert "本周从周一开始并截止系统业务日期" in rules
+    assert "不得补到未来周日、未来月末" in rules
+    assert "SQL 中不得保留具体日期字面量" in rules
+    assert "单日范围也必须使用成对 token" in rules
+    assert "实时日期范围规则" in rules
+    assert "不得套用默认七天" in rules
+    assert "实时代表当前系统业务日并按小时统计" in rules
 
 
 def test_first_generation_prompt_requires_complete_time_scaffold_and_zero_fill() -> None:
