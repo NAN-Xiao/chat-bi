@@ -37,6 +37,7 @@ from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
     DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE,
     ensure_chat_date_filter_allowed,
+    has_dashboard_date_filter_parameters,
     normalize_chat_date_filter_contract,
     normalize_chat_date_filter_for_question,
     question_date_scope,
@@ -2576,6 +2577,8 @@ class LLMService:
 
     def render_chat_sql_for_execution(self, template_sql: str) -> str:
         """执行聊天 SQL 前，按已校验的日期配置临时渲染模板。"""
+        if has_dashboard_date_filter_parameters(template_sql) and self.chat_date_pivot is None:
+            raise SingleMessageError("日期参数配置无效：missing_date_filter")
         return render_chat_date_filter_sql(
             template_sql,
             getattr(self.ds, "type", None),

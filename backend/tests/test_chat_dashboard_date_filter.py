@@ -867,12 +867,12 @@ def test_llm_service_renders_date_template_only_for_execution():
     assert "BETWEEN" in execution_sql
 
 
-def test_llm_service_rejects_unrendered_date_template():
+def test_llm_service_refuses_to_execute_template_sql_without_date_pivot():
     service = object.__new__(LLMService)
     service.ds = SimpleNamespace(type="mysql")
     service.chat_date_pivot = None
 
-    with pytest.raises(ChatDateFilterConfigurationError, match="date_filter_render_incomplete"):
+    with pytest.raises(SingleMessageError, match="missing_date_filter"):
         service.render_chat_sql_for_execution(DATE_TEMPLATE_SQL)
 
 
