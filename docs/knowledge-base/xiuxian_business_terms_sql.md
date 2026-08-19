@@ -3,6 +3,18 @@
 
 > 适用范围：修仙工作空间 `datasource_id=6`（MySQL）。内容来源于活动 Data Skill `257, 269-279`，日期和按日补零规则引用 Skill `255`。本文只提供参考知识，不能覆盖当前数据源、权限、Schema、事件/JSON 映射或 Data Skill。
 
+## 工作空间级 Data Skill 核查
+
+2026-08-19 对修仙租户 `7482727237662281728` 的活动 Data Skill 做了只读核查：
+
+- 工作空间公开 Skill 共 13 条，均为 `visibility_scope=ADMIN_PUBLIC`、`specific_ds=true`，且仅绑定 `datasource_ids=[6]`。
+- `255` 是修仙日期分区、日期骨架和按日补零执行契约，继续由 Data Skill 执行，不作为独立业务术语复制到知识库。
+- `257`、`269-279` 是工作空间公开业务 Skill，共包含 45 个 SQL 代码块；本文从中提取稳定业务口径和代表性 SQL，不整段复制看板或执行提示词。
+- `256`“SQL 的 CTE 分层规则”为用户私有通用 Skill，未绑定特定数据源；`280`“示例：修仙资源获取与消耗统计口径”为用户私有且绑定 datasource 6。两者均为 `visibility_scope=USER_PRIVATE`，不复制到工作空间公开知识库。
+- 平台公共 Data Skill 只提供权限、日期、粒度、比例、实时/历史选表等通用执行约束，不属于修仙工作空间业务知识，因此不写入本文的业务条目。
+
+本次核查未发现遗漏的工作空间公开业务 Skill。后续若要沉淀 `280` 的资源获取与消耗口径，应由其所有者明确创建同等私有可见性的知识条目，不能转为工作空间公开知识。
+
 ## 1. 新增用户与系统归因
 
 ```yaml
@@ -15,9 +27,8 @@ constraints:
   - 系统归因必须使用注册事件字段，不能被后续活跃事件覆盖。
 related_objects:
   - table: event
-  - fields: [dt, uid, prod, event, deviceinfo, userinfo]
-  - json_paths: [deviceinfo.$._platform, userinfo.$._platformType]
-source_skills: [270]
+    fields: [dt, uid, prod, event, deviceinfo, userinfo]
+    json_paths: [deviceinfo.$._platform, userinfo.$._platformType]
 examples:
   - name: 每日分系统新增
     question: 指定日期范围内每天各系统的新增用户数是多少？
@@ -59,9 +70,8 @@ constraints:
   - 渠道成本和 ROI 需要额外确认成本字段和回收窗口。
 related_objects:
   - table: event
-  - fields: [dt, uid, prod, event, adinfo]
-  - json_paths: [adinfo.$.mediaSource, adinfo.$.campaignName]
-source_skills: [271]
+    fields: [dt, uid, prod, event, adinfo]
+    json_paths: [adinfo.$.mediaSource, adinfo.$.campaignName]
 examples:
   - name: 每日分渠道新增
     question: 指定日期范围内各渠道每天新增多少用户？
@@ -102,8 +112,7 @@ constraints:
   - 查询窗口跨越不完整周时，需要说明首尾周是否完整。
 related_objects:
   - table: event
-  - fields: [dt, uid, prod, event]
-source_skills: [272]
+    fields: [dt, uid, prod, event]
 examples:
   - name: WAU 趋势
     question: 指定日期范围内每周的 WAU 是多少？
@@ -135,9 +144,8 @@ constraints:
   - 分母为 0 时返回 NULL，不制造虚假 0 比率。
 related_objects:
   - table: event
-  - fields: [dt, uid, prod, event, personal]
-  - json_paths: [personal.$.money]
-source_skills: [257]
+    fields: [dt, uid, prod, event, personal]
+    json_paths: [personal.$.money]
 examples:
   - name: 每日 ARPU 与 ARPPU
     question: 指定日期范围内每天的 ARPU 和 ARPPU 是多少？
@@ -173,7 +181,7 @@ examples:
 ## 5. 实时充值人数
 
 ```yaml
-term: 看板结束日实时充值人数
+term: 实时充值人数
 aliases: [今日充值人数, 当前充值用户数]
 definition: 按看板结束日，从实时事件表统计触发 ServerPayLog 的去重充值用户数；当看板结束日代表当前自然日时可作为实时口径。
 formula: COUNT(DISTINCT uid)
@@ -182,8 +190,7 @@ constraints:
   - 完整历史区间必须使用历史事件表和对应 Data Skill。
 related_objects:
   - table: event_realtime
-  - fields: [dt, uid, prod, event]
-source_skills: [269]
+    fields: [dt, uid, prod, event]
 examples:
   - name: 今日实时充值人数
     question: 看板结束日截至当前时刻有多少充值用户？
@@ -212,9 +219,8 @@ constraints:
   - 日期骨架和按日补零遵循 Skill 255。
 related_objects:
   - table: event
-  - fields: [dt, uid, prod, event, adinfo]
-  - json_paths: [adinfo.$.mediaSource, adinfo.$.campaignName]
-source_skills: [274, 255]
+    fields: [dt, uid, prod, event, adinfo]
+    json_paths: [adinfo.$.mediaSource, adinfo.$.campaignName]
 examples:
   - name: 各渠道 D1/D3/D7 留存
     question: 最近 15 个自然日各渠道新增用户的 D1、D3、D7 留存率是多少？
@@ -298,9 +304,8 @@ constraints:
   - 快照日必须符合最新完整日规则。
 related_objects:
   - table: user
-  - fields: [dt, uid, prod, lastinfo]
-  - json_paths: [lastinfo.$.level]
-source_skills: [278]
+    fields: [dt, uid, prod, lastinfo]
+    json_paths: [lastinfo.$.level]
 examples:
   - name: 观察结束日等级分布
     question: 观察结束日的用户等级分布是什么？
@@ -344,9 +349,8 @@ constraints:
   - 英雄 ID 到名称的映射必须来自修仙工作空间字典。
 related_objects:
   - table: event
-  - fields: [dt, uid, event, personal]
-  - json_paths: [personal.$.ed_heroId]
-source_skills: [279]
+    fields: [dt, uid, prod, event, personal]
+    json_paths: [personal.$.ed_heroId]
 examples:
   - name: 英雄升级和升星排行
     question: 哪些英雄的升级和升星最活跃？
@@ -366,7 +370,4 @@ examples:
       GROUP BY `将领ID`
       ORDER BY (`升星次数` + `升级次数`) DESC;
 ```
-
-
-
 
