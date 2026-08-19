@@ -1,0 +1,29 @@
+{
+  "id": "xiuxian-skill-knowledge",
+  "name": "xiuxian-skill-knowledge",
+  "title": "整理修仙空间 Data Skill 口径对应 SQL 示例知识库",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "docs",
+  "package": null,
+  "priority": "P2",
+  "creator": "dongjinchao",
+  "assignee": "dongjinchao",
+  "createdAt": "2026-08-19",
+  "completedAt": "2026-08-19",
+  "branch": "codex/xiuxian-skill-knowledge",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "worktree_path": "D:\\AIWork3\\chat-bi_ver-xiuxian-skill-knowledge",
+    "source_skills": "255,257,269-279"
+  }
+}
