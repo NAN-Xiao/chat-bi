@@ -249,7 +249,7 @@
                     @error="onChartAnswerError"
                     @stop="onChatStop"
                   >
-                    <ErrorInfo :error="message.record?.error" class="error-container" />
+                    <ErrorInfo :error="recordTerminalMessage(message.record)" class="error-container" />
                     <template #tool>
                       <ChatTokenTime
                         :record-id="message.record?.id"
@@ -348,7 +348,7 @@
                     @error="onAnalysisAnswerError"
                     @stop="onChatStop"
                   >
-                    <ErrorInfo :error="message.record?.error" class="error-container" />
+                    <ErrorInfo :error="recordTerminalMessage(message.record)" class="error-container" />
                     <template #tool>
                       <ChatTokenTime
                         :record-id="message.record?.id"
@@ -375,7 +375,7 @@
                     @error="onPredictAnswerError"
                     @stop="onChatStop"
                   >
-                    <ErrorInfo :error="message.record?.error" class="error-container" />
+                    <ErrorInfo :error="recordTerminalMessage(message.record)" class="error-container" />
                     <template #tool>
                       <ChatTokenTime
                         :record-id="message.record?.id"
@@ -635,6 +635,12 @@ function isRecordTyping(record?: ChatRecord, index = -1) {
     isTyping: isTyping.value,
     isUnfinished: isUnfinishedAnswerRecord(record),
   })
+}
+function recordTerminalMessage(record?: ChatRecord) {
+  if (record?.error) {
+    return record.error
+  }
+  return record?.stopped ? t('chat.task_error.stopped') : undefined
 }
 type RenderedChatMessage = ChatMessage & { renderKey: string }
 const computedMessages = computed<Array<RenderedChatMessage>>(() => {
@@ -1615,37 +1621,37 @@ function stop(func?: (...p: any[]) => void, ...param: any[]) {
   if (recommendQuestionRef.value) {
     if (recommendQuestionRef.value instanceof Array) {
       for (let i = 0; i < recommendQuestionRef.value.length; i++) {
-        recommendQuestionRef.value[i].stop()
+        recommendQuestionRef.value[i].stop(false)
       }
     } else {
-      recommendQuestionRef.value.stop()
+      recommendQuestionRef.value.stop(false)
     }
   }
   if (chartAnswerRef.value) {
     if (chartAnswerRef.value instanceof Array) {
       for (let i = 0; i < chartAnswerRef.value.length; i++) {
-        chartAnswerRef.value[i].stop()
+        chartAnswerRef.value[i].stop(false)
       }
     } else {
-      chartAnswerRef.value.stop()
+      chartAnswerRef.value.stop(false)
     }
   }
   if (analysisAnswerRef.value) {
     if (analysisAnswerRef.value instanceof Array) {
       for (let i = 0; i < analysisAnswerRef.value.length; i++) {
-        analysisAnswerRef.value[i].stop()
+        analysisAnswerRef.value[i].stop(false)
       }
     } else {
-      analysisAnswerRef.value.stop()
+      analysisAnswerRef.value.stop(false)
     }
   }
   if (predictAnswerRef.value) {
     if (predictAnswerRef.value instanceof Array) {
       for (let i = 0; i < predictAnswerRef.value.length; i++) {
-        predictAnswerRef.value[i].stop()
+        predictAnswerRef.value[i].stop(false)
       }
     } else {
-      predictAnswerRef.value.stop()
+      predictAnswerRef.value.stop(false)
     }
   }
   if (func && typeof func === 'function') {

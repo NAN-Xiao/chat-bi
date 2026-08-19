@@ -598,13 +598,15 @@ function attachGlobalTask(currentRecord: ChatRecord, taskId: string, initialOffs
   return entry
 }
 
-function stop() {
+function stop(notifyParent = true) {
   const record = props.message?.record
   if (record) {
     smartQaTaskStore.pauseTask(taskKey(record))
   }
   pausePolling()
-  emits('stop')
+  if (notifyParent) {
+    emits('stop')
+  }
 }
 
 onBeforeUnmount(() => {
