@@ -11,43 +11,204 @@
 - `255` 是修仙日期分区、日期骨架和按日补零执行契约，继续由 Data Skill 执行，不作为独立业务术语复制到知识库。
 - `257`、`269-279` 是工作空间公开业务 Skill，共包含 45 个 SQL 代码块；本文从中提取稳定业务口径和代表性 SQL，不整段复制看板或执行提示词。
 - `256`“SQL 的 CTE 分层规则”为用户私有通用 Skill，未绑定特定数据源；`280`“示例：修仙资源获取与消耗统计口径”为用户私有且绑定 datasource 6。两者均为 `visibility_scope=USER_PRIVATE`，不复制到工作空间公开知识库。
-- 平台公共 Data Skill 的完整清单和对本文 SQL 示例的约束见下节，但不混入单个修仙业务 YAML 对象。
+- 平台通用规则已实例化为下方“语义口径与 SQL 示例”条目，但不混入单个修仙业务 YAML 对象的来源标识。
 
 本次核查未发现遗漏的工作空间公开业务 Skill。后续若要沉淀 `280` 的资源获取与消耗口径，应由其所有者明确创建同等私有可见性的知识条目，不能转为工作空间公开知识。
 
-## 平台级 Data Skill 核查
+## 平台通用语义口径与修仙 SQL 示例
 
-2026-08-19 对全部活动平台公共 Data Skill 做了只读核查，共 16 条；它们均为 `visibility_scope=PLATFORM_PUBLIC`、`specific_ds=false`、`datasource_ids=[]`，且不包含 SQL 代码块。平台 Skill 是所有已授权数据源共享的执行约束或工具能力，不能覆盖修仙工作空间 Skill 中已经确认的业务字段、事件和指标定义。
+以下知识条目将平台通用规则实例化到修仙 datasource 6。平台层只规定日期、粒度、分子分母、维度排序和实时/历史选表方法；具体物理表、字段、事件名及产品过滤来自修仙工作空间 Schema 与工作空间 Data Skill。它们不是可跨数据源复制的固定 SQL。
 
-### SQL 与分析通用约束
+平台权限、预测、图表输出和 MCP 工具规则不独立生成业务 SQL：权限规则是所有查询的前置门禁；预测必须另行具备成熟样本和预测配置；图表规则只约束结果字段；MCP 告警能力不访问修仙 MySQL 业务表。
 
-| 平台 Skill | 约束主题 | 对本文示例的适用规则 |
-| --- | --- | --- |
-| `170` 数据源上下文、权限与语义优先 | 数据源、权限、Schema 和语义优先级 | 仅在当前用户有权访问修仙 datasource 6 时使用本文，不得根据相似名称跨数据源引用对象。 |
-| `171` 时间字段、观察窗口与日期边界 | 业务时间、自然周期、成熟窗口和有界扫描 | 日期范围来自用户问题或看板参数；留存等未成熟 cohort 返回 NULL，不扩大为无界历史查询。 |
-| `172` 明细粒度、去重与预聚合 | 事件粒度、主体去重和多事实表关联 | 用户类指标按 `uid` 去重；事件次数和触发用户数分开；关联前先按目标粒度聚合。 |
-| `173` 比例指标、分子分母与百分比 | 留存率、付费率、ARPU/ARPPU 等非累加指标 | 明确分子、分母和统计窗口；分母为 0 时使用 NULL，不能制造业务含义不明的 0。 |
-| `185` 维度拆解、排序与 Top N | 维度分组、高基数和长尾处理 | 系统、渠道、等级、英雄等维度必须来自当前工作空间元数据；Top N 需保留明确排序指标。 |
-| `186` 事件/日志次数与主体数 | 事件次数、触发人数、去重键和事件属性 | `COUNT(*)` 表示事件次数，`COUNT(DISTINCT uid)` 表示触发用户数，两者不能互换。 |
-| `187` 漏斗步骤、路径与转化校验 | 步骤顺序、主体状态和转化单调性 | 本文没有独立漏斗 SQL；后续加入支付流程或行为漏斗时，必须先按主体确认步骤状态和顺序。 |
-| `188` 图表选择与结果字段结构 | 趋势、构成、指标卡、漏斗和表格字段 | 日期趋势返回稳定日期列和数值指标列；图表字段映射不能替换 SQL 的业务口径。 |
-| `190` 预测、成熟样本与置信表达 | 预测目标、成熟样本和外推边界 | 本文 SQL 示例只做历史统计，不应被当作预测结果；预测必须另行声明样本、窗口和置信限制。 |
-| `281` SQL 日期与分组规范 | 方言日期表达式、SELECT/GROUP BY 和输出别名 | 本文按 MySQL 生成日期表达式，投影、分组、排序表达式必须保持同一日期粒度。 |
-| `282` 当天实时事件与完整历史事件选表 | `event_realtime` 与 `event` 的选择 | 仅当前自然日、实时或当前时刻问题使用 `event_realtime`；完整历史日期使用 `event`，不得静默换表。 |
-| `283` 日期字段用途与范围筛选契约 | 日期字段角色、范围参数和实时日期策略 | `dt` 按当前修仙数据源配置作为日期分区字段；日期参数和实时策略以当前请求及工作空间配置为准。 |
+### P1. 有界日期范围与按日聚合
 
-以上平台 Skill 没有可直接抽取的 SQL 代码块，因此本文只记录其约束，不为其人为生成平台 SQL 示例。本文后续所有修仙 SQL 仍必须同时满足平台约束和当前工作空间 Data Skill；发生冲突时，以当前权限、数据源上下文以及更具体的修仙工作空间口径为准。
+```yaml
+term: 有界日期范围与按日聚合
+aliases: [日期范围查询, 按日趋势, 完整自然日趋势]
+definition: 使用已确认的业务日期分区字段限制事实明细扫描，并按相同业务日粒度完成筛选、分组、排序和展示。
+formula: 按 dt 闭区间过滤并 GROUP BY dt
+constraints:
+  - 修仙历史事件表的业务日期字段是 YYYYMMDD 数字分区 dt。
+  - 用户指定日期时使用用户范围；未指定时遵循当前平台和工作空间默认窗口。
+  - 可转存看板的趋势 SQL 使用成对的 dashboard 日期参数，不扫描 MAX(dt) 推断边界。
+  - WHERE 和 GROUP BY 使用原始 dt；展示时再转换为 YYYY-MM-DD。
+related_objects:
+  - table: event
+    fields: [dt, uid, prod, event]
+examples:
+  - name: 按日活跃用户趋势
+    question: 指定日期范围内每天有多少活跃用户？
+    dialect: mysql
+    sql: |
+      SELECT
+          DATE_FORMAT(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
+          COUNT(DISTINCT e.uid) AS `活跃用户数`
+      FROM `event` e
+      WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        AND e.prod = 110000047
+        AND e.event = 'UserActive'
+      GROUP BY e.dt
+      ORDER BY e.dt;
+    notes: 日期投影、分组和排序保持同一业务日粒度。
+```
 
-### 平台 MCP 工具能力
+### P2. 事件次数与触发用户数
 
-| 平台 Skill | 能力边界 |
-| --- | --- |
-| `248` SaaS ChatMon MCP 告警过滤项 | 查询当前工作空间绑定 MCP 支持的告警过滤枚举。 |
-| `249` SaaS ChatMon MCP 告警数量 | 通过 MCP 统计最近 1-7 天告警数量和分布。 |
-| `250` SaaS ChatMon MCP 告警搜索 | 通过 MCP 搜索轻量告警明细。 |
-| `251` SaaS ChatMon MCP 告警证据 | 根据告警搜索结果继续查询证据消息。 |
+```yaml
+term: 事件次数与触发用户数
+aliases: [行为次数与人数, 事件量与去重用户数]
+definition: 事件次数统计满足条件的明细事件行数，触发用户数统计满足条件的去重 uid；两个指标表达不同粒度，不能互换。
+formula: "事件次数=COUNT(*)；触发用户数=COUNT(DISTINCT uid)"
+constraints:
+  - 仅在工作空间字典确认事件名和事件明细表后使用。
+  - 事件次数不能替代活跃人数、付费人数、收入或留存等业务指标。
+  - 同一结果同时返回次数和人数时，字段名必须明确区分。
+related_objects:
+  - table: event
+    fields: [dt, uid, prod, event]
+examples:
+  - name: 英雄养成事件次数与人数
+    question: 指定日期范围内英雄升级和升星分别发生多少次、涉及多少用户？
+    dialect: mysql
+    sql: |
+      SELECT
+          e.event AS `养成事件`,
+          COUNT(*) AS `事件次数`,
+          COUNT(DISTINCT e.uid) AS `触发用户数`
+      FROM `event` e
+      WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        AND e.prod = 110000047
+        AND e.event IN ('HeroLevelUp', 'HeroStarUp')
+      GROUP BY e.event
+      ORDER BY `事件次数` DESC;
+```
 
-这 4 条是外部工具调用能力，不访问修仙 MySQL 业务表，也不生成本文的业务 SQL；只有当前工作空间实际绑定并授权对应 MCP 时才能使用。
+### P3. 比例指标的分子与分母
+
+```yaml
+term: 比例指标的分子与分母
+aliases: [比例口径, 百分比口径, 付费渗透率]
+definition: 比例指标必须在同一统计窗口和同一主体粒度下明确分子与分母；整体比例使用汇总后的分子除以汇总后的分母。
+formula: 活跃用户付费率=同时活跃且付费的去重用户数/活跃去重用户数*100
+constraints:
+  - 分子和分母均按 dt、uid 聚合后计算，避免事件明细行数放大比例。
+  - 分母为 0 时返回 NULL。
+  - 百分比返回 0-100 的数值，不拼接百分号文本。
+  - ServerPayLog 只用于确认付费用户，UserActive 用于确认活跃分母。
+related_objects:
+  - table: event
+    fields: [dt, uid, prod, event]
+examples:
+  - name: 每日活跃用户付费率
+    question: 指定日期范围内每天的活跃用户付费率是多少？
+    dialect: mysql
+    sql: |
+      WITH user_day_flags AS (
+          SELECT
+              e.dt,
+              e.uid,
+              MAX(CASE WHEN e.event = 'UserActive' THEN 1 ELSE 0 END) AS is_active,
+              MAX(CASE WHEN e.event = 'ServerPayLog' THEN 1 ELSE 0 END) AS is_payer
+          FROM `event` e
+          WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+            AND e.prod = 110000047
+            AND e.event IN ('UserActive', 'ServerPayLog')
+          GROUP BY e.dt, e.uid
+      )
+      SELECT
+          DATE_FORMAT(STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
+          SUM(is_active) AS `活跃用户数`,
+          SUM(CASE WHEN is_active = 1 AND is_payer = 1 THEN 1 ELSE 0 END) AS `活跃付费用户数`,
+          ROUND(
+              SUM(CASE WHEN is_active = 1 AND is_payer = 1 THEN 1 ELSE 0 END)
+              / NULLIF(SUM(is_active), 0) * 100,
+              2
+          ) AS `活跃用户付费率`
+      FROM user_day_flags
+      WHERE is_active = 1
+      GROUP BY dt
+      ORDER BY dt;
+```
+
+### P4. Top N 维度排序
+
+```yaml
+term: Top N 维度排序
+aliases: [维度排行, 高频项排行, 长尾维度限制]
+definition: 对高基数维度按明确指标降序排序并限制返回数量，避免无界展示全部维度值。
+formula: 按购买次数降序取前 N 个礼包 ID
+constraints:
+  - 维度字段及枚举含义必须来自当前工作空间元数据。
+  - 必须声明排序指标和 N 值；不能依赖数据库无序返回。
+  - 购买次数与购买人数分别使用事件行数和去重 uid。
+related_objects:
+  - table: event
+    fields: [dt, uid, prod, event, personal]
+    json_paths: [personal.$.productid]
+examples:
+  - name: 礼包购买次数 Top 10
+    question: 指定日期范围内购买次数最多的前 10 个礼包是什么？
+    dialect: mysql
+    sql: |
+      SELECT
+          NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')), '') AS `礼包ID`,
+          COUNT(*) AS `购买次数`,
+          COUNT(DISTINCT e.uid) AS `购买人数`
+      FROM `event` e
+      WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        AND e.prod = 110000047
+        AND e.event = 'ServerPayLog'
+        AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.productid')), '') IS NOT NULL
+      GROUP BY `礼包ID`
+      ORDER BY `购买次数` DESC
+      LIMIT 10;
+```
+
+### P5. 实时与完整历史事件选表
+
+```yaml
+term: 实时与完整历史事件选表
+aliases: [实时选表, 当天事件表, 历史事件表]
+definition: 未完成当前业务日的事件查询使用 event_realtime，已经结束的完整历史日期使用 event；两表不能静默互换。
+formula: "当前业务日事件→event_realtime；完整历史日事件→event"
+constraints:
+  - 只有“今天、当天、今日、实时、当前小时、当前分钟、当前整点”等明确语义触发实时选表。
+  - “截至当前”单独出现不能自动触发实时选表。
+  - event_realtime 不存在、无权限或缺少字段时应明确报错，不能改查 event。
+  - 跨日窗口包含今天时，只有工作空间确认两表字段语义一致后才能 UNION ALL 并在外层聚合。
+related_objects:
+  - table: event_realtime
+    fields: [dt, uid, prod, event]
+  - table: event
+    fields: [dt, uid, prod, event]
+examples:
+  - name: 当前业务日实时充值人数
+    question: 今天截至当前时刻有多少充值用户？
+    dialect: mysql
+    sql: |
+      SELECT
+          DATE_FORMAT(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
+          COUNT(DISTINCT e.uid) AS `充值人数`
+      FROM `event_realtime` e
+      WHERE e.dt = {{dashboard_end_yyyymmdd}}
+        AND e.prod = 110000047
+        AND e.event = 'ServerPayLog';
+    notes: dashboard_end_yyyymmdd 必须由当前请求解析为当前业务日。
+  - name: 完整历史日充值人数
+    question: 指定完整历史日期范围内每天有多少充值用户？
+    dialect: mysql
+    sql: |
+      SELECT
+          DATE_FORMAT(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS `日期`,
+          COUNT(DISTINCT e.uid) AS `充值人数`
+      FROM `event` e
+      WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        AND e.prod = 110000047
+        AND e.event = 'ServerPayLog'
+      GROUP BY e.dt
+      ORDER BY e.dt;
+```
 
 ## 1. 新增用户与系统归因
 
