@@ -37,10 +37,12 @@ from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
     DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE,
     ensure_chat_date_filter_allowed,
+    normalize_chat_date_filter_contract,
     normalize_chat_date_filter_for_question,
     question_date_scope,
     rewrite_chat_date_filter_literals,
     render_chat_date_filter_sql,
+    system_business_date,
 )
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
@@ -2198,8 +2200,8 @@ class LLMService:
         """
         if append_question:
             self.sql_message.append(HumanMessage(
-                self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                     change_title=self.change_title)))
+                self.chat_question.sql_user_question(current_time=f"{system_business_date().isoformat()}（系统业务日期）",
+                                                      change_title=self.change_title)))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -2475,23 +2477,30 @@ class LLMService:
             raise SingleMessageError("SQL query is empty")
 
         original_sql = sql
-        rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
         try:
+            rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
             ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), original_sql)
             ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), rewritten_sql)
         except ChatDateFilterConfigurationError as error:
             trigger_log_error(session, log)
+            if self.dashboard_date_filter_enabled:
+                raise SingleMessageError(f"日期参数配置无效：{error}") from error
             raise SingleMessageError("当前工作空间未启用看板日期参数，SQL 不得包含日期占位符或 date_filter") from error
         if not self.dashboard_date_filter_enabled:
             self.chat_date_pivot = None
             sql = original_sql
         else:
             try:
-                self.chat_date_pivot = normalize_chat_date_filter_for_question(
-                    self.chat_question.question,
+                self.chat_date_pivot = normalize_chat_date_filter_contract(
                     data.get("date_filter"),
                     rewritten_sql,
                     data.get("chart-type") or data.get("chart_type") or "",
+                    time_scope=data.get("time_scope"),
+                    time_range=data.get("time_range"),
+                    business_date=system_business_date(),
+                    requires_current_business_day=(
+                        question_date_scope(self.chat_question.question) == "current_day"
+                    ),
                 )
             except ChatDateFilterConfigurationError as error:
                 trigger_log_error(session, log)

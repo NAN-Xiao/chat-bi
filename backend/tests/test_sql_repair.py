@@ -526,7 +526,13 @@ def test_build_date_filter_repair_message_contains_explicit_contract() -> None:
     assert "date_filter" in message
     assert "CURDATE" in message
     assert "不得省略日期过滤" in message
-    assert "past_7_days" in message
+    assert "最近 7 个完整自然日" in message
+    assert "mode=static" in message
+    assert "不得返回动态 preset" in message
+    assert "近/最近/过去 N 天均截止系统业务日期前一天" in message
+    assert "不得补到未来周日或未来月末" in message
+    assert "SQL、time_range、date_expression 三者一致" in message
+    assert "非汇总实时问题的未指定日期范围必须使用系统业务日当天" in message
 
 
 def test_build_realtime_hourly_repair_message_requires_time_series() -> None:

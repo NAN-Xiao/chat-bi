@@ -96,7 +96,11 @@ _PREPARE_DATE_FILTER_CONFIGURATION_PATTERN = re.compile(
     r"realtime_requires_hourly_time_series|"
     r"missing_date_filter|invalid_date_filter|missing_time_field|"
     r"invalid_parameter_type|mixed_parameter_families|parameter_type_mismatch|"
-    r"incomplete_parameters|missing_date_expression|invalid_date_expression"
+    r"incomplete_parameters|missing_date_expression|invalid_date_expression|"
+    r"missing_time_scope|missing_time_range|invalid_time_range|"
+    r"time_range_exceeds_business_date|invalid_default_time_range|invalid_current_day_time_range|"
+    r"time_range_mismatch|"
+    r"sql_time_range_mismatch"
     r")",
     re.IGNORECASE,
 )
@@ -621,14 +625,33 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
     if context.reason is SqlRepairReason.DATE_FILTER_CONFIGURATION:
         payload["repair_requirements"] = [
             (
-                "具备时间字段的非 metric 图表必须返回完整 date_filter，SQL 日期边界必须使用与 "
+                "同一次响应必须返回 time_scope（explicit/unspecified）和具体 time_range.start_date/end_date；"
+                "日期格式必须为 YYYY-MM-DD。相对时间也必须直接换算为具体日期，不得只返回 unit/offset。"
+            ),
+            (
+                "time_range 必须与 date_filter.date_expression 的静态 range 完全一致；结束日期不得晚于提示词中的系统业务日期。"
+            ),
+            (
+                "所有非 metric 图表必须返回完整 date_filter，SQL 日期边界必须使用与 "
                 "date_parameter_type 匹配的看板日期 token；yyyymmdd_number 使用 "
                 "{{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}。"
             ),
             (
-                "问题要求趋势、走势、变化或按日/周/月/小时时间序列但未明确时间窗口时，必须默认使用最近七天，"
-                "date_expression 使用 {\"version\":1,\"mode\":\"preset\",\"preset\":\"past_7_days\"}；"
-                "不得省略日期过滤，也不得改为查询全历史。"
+                "用户完全未指定时间时，time_scope 必须为 unspecified，并返回系统业务日期之前最近 "
+                "7 个完整自然日（不含系统业务日期）的具体日期；date_expression 必须使用与 time_range "
+                "一致的静态 range，不得返回动态 preset、不得省略日期过滤或查询全历史。"
+            ),
+            (
+                "近/最近/过去 N 天均截止系统业务日期前一天；本周、本月只能截止系统业务日期，"
+                "不得补到未来周日或未来月末；上周、上月使用完整自然周或自然月。"
+            ),
+            (
+                "非汇总实时问题的未指定日期范围必须使用系统业务日当天的具体日期，不能套用默认七天；"
+                "实时汇总 metric 仍不得返回 date_filter 或 dashboard token。"
+            ),
+            (
+                "SQL 不得保留 date_filter 边界的具体日期字面量，必须使用成对 dashboard token；"
+                "单日范围也使用起止 token，并在返回前核对 SQL、time_range、date_expression 三者一致。"
             ),
             (
                 "metric 图表不得返回 date_filter，也不得使用看板日期 token；保留用户要求的固定时间语义。"
@@ -638,10 +661,8 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
                 "LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。"
             ),
             (
-                "日期表达式必须严格使用受支持的版本化结构：version=1；preset 只能是 "
-                "yesterday、today、previous_week、current_week、previous_month、current_month、"
-                "past_7_days、recent_7_days、past_30_days、recent_30_days、past_90_days 或 all_time；"
-                "本月使用 current_month，不要使用 this_month。"
+                "date_expression 必须严格使用 version=1、mode=range，start/end 均使用 "
+                "mode=static 和 YYYY-MM-DD 日期；不得返回 preset 或动态 offset。"
             ),
         ]
         if "realtime_requires_hourly_time_series" in context.error_message:
