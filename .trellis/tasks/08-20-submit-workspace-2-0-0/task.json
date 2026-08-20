@@ -1,0 +1,29 @@
+{
+  "id": "submit-workspace-2-0-0",
+  "name": "submit-workspace-2-0-0",
+  "title": "提交工作空间代码到 release 2.0.0",
+  "description": "整理当前工作空间中尚未进入远端 release/release_2.0.0 的相关 worktree 提交与文档代码，合并到独立发布分支，完成冲突处理、验证并推送。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "release-integration",
+  "package": null,
+  "priority": "P1",
+  "creator": "dongjinchao",
+  "assignee": "dongjinchao",
+  "createdAt": "2026-08-20",
+  "completedAt": null,
+  "branch": "codex/submit-workspace-2.0.0",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "worktree_path": "D:\\AIWork3\\chat-bi_ver-worktrees\\submit-workspace-2.0.0",
+    "selected_commits": "83946674,4e50596f,1a17dd0f,6541f584,611d68f4,22c9e53f,50e6f06c,menu-patch"
+  }
+}

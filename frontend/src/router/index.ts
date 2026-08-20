@@ -511,6 +511,7 @@ export const routes = [
           title: t('knowledge_base.admin_title'),
           iconActive: 'knowledge',
           iconDeActive: 'noKnowledge',
+          hidePopupTitle: true,
           tenantBusiness: true,
           platformOperation: true,
         },

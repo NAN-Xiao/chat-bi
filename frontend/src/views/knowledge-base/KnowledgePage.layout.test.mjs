@@ -34,6 +34,7 @@ test('knowledge management expands to platform and workspace child menus', () =>
     routerSource,
     /path:\s*'workspace'[\s\S]*title:\s*t\('knowledge_base\.workspace_knowledge_base'\)/
   )
+  assert.match(routerSource, /path:\s*'knowledge-base'[\s\S]*hidePopupTitle:\s*true/)
   assert.match(menuItemSource, /if \(children\?\.length\)/)
   assert.match(menuItemSource, /ElSubMenu/)
   assert.match(menuItemSource, /children\.map/)
