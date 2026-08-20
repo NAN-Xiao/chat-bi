@@ -718,10 +718,19 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         ]
     if (
         context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
+        and any(term in context.error_message for term in ("历史按小时", "完整 24 小时"))
+    ):
+        payload["repair_requirements"] = [
+            "历史完整日按小时查询必须生成固定 00:00 到 23:00 的 24 小时骨架，不得使用事实 MAX(time) 截断小时范围。",
+            "事实表必须先按看板日期、事件、产品和权限范围过滤并按小时聚合，再 LEFT JOIN 小时骨架。",
+            "所有缺失小时使用 COALESCE(..., 0) 补零；即使历史日完全没有事实，也必须保留 24 个小时。",
+        ]
+    elif (
+        context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
         and any(term in context.error_message for term in ("实时", "小时"))
     ):
         payload["repair_requirements"] = [
-            "实时小时趋势必须在看板起止日期范围内从当前事实 time 字段取 MAX(time)，并以该事件所在小时作为连续小时序列上界。",
+            "仅当天实时小时趋势允许取事实 MAX(time)；必须使用与指标聚合相同的日期、事件、产品和权限过滤，禁止全表取最大时间。",
             "小时序列必须从 00:00 开始；有其他分组维度时先构造小时序列 CROSS JOIN 维度集合，再 LEFT JOIN 小时聚合结果。",
             "小时序列和小时聚合必须使用相同日期范围，数值指标使用 COALESCE(..., 0)，不得使用 NOW、CURRENT_DATE 或固定 00-23 全日序列替代事实最大时间。",
         ]

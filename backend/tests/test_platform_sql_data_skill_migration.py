@@ -706,3 +706,166 @@ def test_realtime_sql_shape_followup_rejects_database_clock_and_recursive_hours(
         )
         is not None
     )
+
+
+def test_historical_hourly_followup_separates_complete_days_from_current_day() -> None:
+    migration = _load_migration("164_platform_historical_hourly_zero_fill.py")
+    historical_complete_sql = """
+        WITH hour_series AS (
+            SELECT 0 AS hour_offset UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        ), hourly_data AS (
+            SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_offset,
+                   SUM(e.amount) AS amount
+            FROM event e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+            GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000))
+        )
+        SELECT h.hour_offset, COALESCE(d.amount, 0) AS amount
+        FROM hour_series h
+        LEFT JOIN hourly_data d ON d.hour_offset = h.hour_offset
+    """
+    historical_clipped_sql = historical_complete_sql.replace(
+        "WITH hour_series AS (",
+        "WITH max_hour AS (SELECT MAX(time) AS max_hour_offset FROM event WHERE dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}), hour_series AS (",
+    ).replace(
+        "LEFT JOIN hourly_data d ON d.hour_offset = h.hour_offset",
+        "CROSS JOIN max_hour m LEFT JOIN hourly_data d ON d.hour_offset = h.hour_offset WHERE h.hour_offset <= m.max_hour_offset",
+    )
+    current_day_sql = historical_clipped_sql
+
+    assert migration.down_revision == "163platformmetricdatecontract"
+    assert "历史完整日按小时结果" in migration.ZERO_FILL_SECTION
+    assert "禁止全表取最大时间" in migration.ZERO_FILL_SECTION
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "按小时统计八月19日的充值金额",
+            historical_complete_sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+    violation = llm._data_skill_sql_validation_violation(
+        "按小时统计八月19日的充值金额",
+        historical_clipped_sql,
+        migration.ZERO_FILL_SECTION,
+    )
+    assert violation is not None
+    assert "历史按小时" in violation.message
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天实时按小时统计充值金额",
+            current_day_sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+
+
+def test_historical_hourly_followup_requires_full_day_scaffold_even_without_facts() -> None:
+    migration = _load_migration("164_platform_historical_hourly_zero_fill.py")
+    incomplete_sql = """
+        WITH hour_series AS (SELECT 0 AS hour_offset UNION ALL SELECT 9),
+        hourly_data AS (
+            SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_offset, COUNT(*) AS value
+            FROM event e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+            GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000))
+        )
+        SELECT h.hour_offset, COALESCE(d.value, 0) AS value
+        FROM hour_series h LEFT JOIN hourly_data d ON d.hour_offset = h.hour_offset
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "2026年8月19日每小时订单数",
+        incomplete_sql,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "complete hour sequence 0-23" in violation.missing_required_patterns
+    total_violation = llm._data_skill_sql_validation_violation(
+        "2026年8月19日每小时充值总额",
+        incomplete_sql,
+        migration.ZERO_FILL_SECTION,
+    )
+    assert total_violation is not None
+    assert "complete hour sequence 0-23" in total_violation.missing_required_patterns
+
+
+def test_current_day_hourly_followup_rejects_unscoped_max_time() -> None:
+    migration = _load_migration("164_platform_historical_hourly_zero_fill.py")
+    unscoped_sql = """
+        WITH max_hour AS (SELECT MAX(e.time) AS max_time FROM event_realtime e),
+        hour_series AS (SELECT 0 AS hour_offset UNION ALL SELECT 1),
+        hourly_data AS (
+            SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_offset, COUNT(*) AS value
+            FROM event_realtime e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+            GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000))
+        )
+        SELECT h.hour_offset, COALESCE(d.value, 0) AS value
+        FROM hour_series h CROSS JOIN max_hour m
+        LEFT JOIN hourly_data d ON d.hour_offset = h.hour_offset
+        WHERE h.hour_offset <= HOUR(FROM_UNIXTIME(m.max_time / 1000))
+    """
+
+    violation = llm._data_skill_sql_validation_violation(
+        "今天实时按小时统计订单数",
+        unscoped_sql,
+        migration.ZERO_FILL_SECTION,
+    )
+
+    assert violation is not None
+    assert "MAX(time) scoped by dashboard date range" in violation.missing_required_patterns
+
+
+def test_current_day_hourly_followup_accepts_scoped_qualified_max_time() -> None:
+    migration = _load_migration("164_platform_historical_hourly_zero_fill.py")
+    scoped_sql = """
+        WITH max_hour AS (
+            SELECT MAX(e.time) AS max_time
+            FROM event_realtime e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+        ), hour_series AS (SELECT 0 AS hour_offset UNION ALL SELECT 1),
+        hourly_data AS (
+            SELECT HOUR(FROM_UNIXTIME(e.time / 1000)) AS hour_offset, COUNT(*) AS value
+            FROM event_realtime e
+            WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
+            GROUP BY HOUR(FROM_UNIXTIME(e.time / 1000))
+        )
+        SELECT h.hour_offset, COALESCE(d.value, 0) AS value
+        FROM hour_series h CROSS JOIN max_hour m
+        LEFT JOIN hourly_data d ON d.hour_offset = h.hour_offset
+        WHERE h.hour_offset <= HOUR(FROM_UNIXTIME(m.max_time / 1000))
+    """
+
+    assert (
+        llm._data_skill_sql_validation_violation(
+            "今天实时按小时统计订单数",
+            scoped_sql,
+            migration.ZERO_FILL_SECTION,
+        )
+        is None
+    )
+
+
+def test_historical_hourly_followup_replaces_only_zero_fill_section() -> None:
+    migration = _load_migration("164_platform_historical_hourly_zero_fill.py")
+    original = (
+        "prefix\n"
+        + migration.SECTION_START_MARKER
+        + "\nold zero fill\n\n"
+        + migration.SECTION_END_MARKER
+        + "\nsuffix"
+    )
+
+    updated = migration.replace_zero_fill_section(original, migration.ZERO_FILL_SECTION)
+
+    assert updated.startswith("prefix\n" + migration.ZERO_FILL_SECTION)
+    assert updated.endswith(migration.SECTION_END_MARKER + "\nsuffix")
+    assert "old zero fill" not in updated

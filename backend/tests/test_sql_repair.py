@@ -552,6 +552,24 @@ def test_build_realtime_hourly_repair_message_requires_time_series() -> None:
     assert "完整 date_filter" in message
 
 
+def test_build_historical_hourly_repair_message_requires_full_day() -> None:
+    context = SqlRepairContext(
+        reason=SqlRepairReason.DATA_SKILL_VALIDATION,
+        dialect="mysql",
+        failed_sql="SELECT hour_offset FROM hour_series WHERE hour_offset <= max_hour",
+        error_message="历史按小时查询必须生成 00:00 到 23:00 的完整 24 小时骨架",
+        violation=None,
+        attempt=0,
+    )
+
+    message = build_sql_repair_message(context)
+
+    assert "固定 00:00 到 23:00 的 24 小时骨架" in message
+    assert "不得使用事实 MAX(time) 截断" in message
+    assert "即使历史日完全没有事实" in message
+    assert "仅当天实时小时趋势允许" not in message
+
+
 def test_generic_dialect_repair_does_not_globally_forbid_unsigned() -> None:
     context = SqlRepairContext(
         reason=SqlRepairReason.DATABASE_SYNTAX_OR_DIALECT,

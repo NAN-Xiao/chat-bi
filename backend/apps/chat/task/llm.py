@@ -309,6 +309,76 @@ def _rule_matches_sql_scope(
     return True
 
 
+def _sql_has_complete_hour_sequence(sql_text: str) -> bool:
+    """识别非递归 0-23 常量序列或等价的受限数字表小时骨架。"""
+    if re.search(
+        r"\b(?:generate_series|sequence)\s*\(\s*0\s*,\s*23\s*\)",
+        sql_text,
+        re.IGNORECASE,
+    ):
+        return True
+    if re.search(
+        r"\b(?:hour_index|hour_offset|hour)\s+between\s+0\s+and\s+23\b",
+        sql_text,
+        re.IGNORECASE,
+    ):
+        return True
+
+    literal_hours = {
+        int(match.group(1))
+        for match in re.finditer(r"\bselect\s+(\d{1,2})\b", sql_text, re.IGNORECASE)
+    }
+    return literal_hours.issuperset(range(24))
+
+
+def _max_time_queries_use_dashboard_date_range(sql_text: str) -> bool:
+    """确保包含 MAX(time) 的查询块自身使用成对看板日期边界。"""
+    start_token = "__dashboard_start_yyyymmdd__"
+    end_token = "__dashboard_end_yyyymmdd__"
+    normalized = re.sub(
+        r"\{\{\s*dashboard_start_yyyymmdd\s*\}\}",
+        start_token,
+        sql_text,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"\{\{\s*dashboard_end_yyyymmdd\s*\}\}",
+        end_token,
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    for dialect in ("mysql", "postgres", None):
+        try:
+            statements = sqlglot.parse(normalized, read=dialect)
+            break
+        except Exception:
+            statements = []
+    if not statements:
+        return False
+
+    found_max_time = False
+    for statement in statements:
+        for select in statement.find_all(exp.Select):
+            has_max_time = any(
+                maximum.find_ancestor(exp.Select) is select
+                and any(
+                    str(column.name or "").lower() == "time"
+                    for column in maximum.find_all(exp.Column)
+                )
+                for maximum in select.find_all(exp.Max)
+            )
+            if not has_max_time:
+                continue
+            found_max_time = True
+            where = select.args.get("where")
+            if where is None:
+                return False
+            where_sql = where.sql().lower()
+            if start_token not in where_sql or end_token not in where_sql:
+                return False
+    return found_max_time
+
+
 def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bool:
     """
     是什么：判断 SQL 是否命中 Data Skill 里的正则或普通文本模式。
@@ -541,6 +611,14 @@ def _required_sql_violations(
     ]
     if rule.get("required_outer_select_cross_join") and not _sql_outer_select_has_cross_join(sql_text):
         missing_patterns.append("outer SELECT CROSS JOIN")
+    if rule.get("required_complete_hour_sequence") and not _sql_has_complete_hour_sequence(
+        sql_text
+    ):
+        missing_patterns.append("complete hour sequence 0-23")
+    if rule.get("required_scoped_max_time") and not _max_time_queries_use_dashboard_date_range(
+        sql_text
+    ):
+        missing_patterns.append("MAX(time) scoped by dashboard date range")
     return tuple(missing_contains), tuple(missing_patterns)
 
 
