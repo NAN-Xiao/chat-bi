@@ -22,4 +22,4 @@
 - [x] Jenkins SSR 构建契约测试：3/3 通过。
 - [x] `git diff --cached --check` 通过后完成提交。
 - [ ] 前端生产构建：未通过，当前整合 worktree 缺少完整依赖安装；使用外部依赖路径运行 `vue-tsc` 时暴露仓库既有全量类型解析错误，未归因于本次变更。
-- [x] 未纳入远端 2.0.0 的整合提交已创建，等待推送。
+- [x] 整合提交已推送到 `codex/submit-workspace-2.0.0`，并快进更新远端 `release/release_2.0.0`。
