@@ -64,6 +64,23 @@ const errorResponseMessage = (data: any) => {
   }
 }
 
+const hydrateBlobErrorResponse = async (error: AxiosError) => {
+  const response = error.response
+  if (!response || typeof Blob === 'undefined' || !(response.data instanceof Blob)) return
+
+  try {
+    const text = await response.data.text()
+    if (!text) return
+    try {
+      response.data = JSON.parse(text)
+    } catch {
+      response.data = text
+    }
+  } catch {
+    // Keep the original Blob so status-based error handling remains available.
+  }
+}
+
 const statusErrorMessage = (status?: number) => {
   switch (status) {
     case 400:
@@ -367,6 +384,8 @@ class HttpService {
 
           return this.instance.request(config)
         }
+
+        await hydrateBlobErrorResponse(error)
 
         // Unified error handling
         if (!requestOptions.customError && !requestOptions.silent) {

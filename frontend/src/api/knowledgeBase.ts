@@ -227,7 +227,9 @@ export const knowledgeBaseApi = {
   version: (id: number | string, versionId: number | string) =>
     request.get<KnowledgeBaseVersion>(`/knowledge-base/${id}/versions/${versionId}`),
   download: (id: number | string, versionId: number | string) =>
-    request.download(`/knowledge-base/${id}/versions/${versionId}/download`),
+    request.download(`/knowledge-base/${id}/versions/${versionId}/download`, {
+      requestOptions: { customError: true },
+    }),
   publish: (
     id: number | string,
     payload: { version_id: number; revision: number; content_hash: string }

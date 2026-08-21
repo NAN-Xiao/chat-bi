@@ -37,6 +37,67 @@ An HTTP 401 can still prove that the API process is listening; unexpected connec
 - Verify `LLM_REQUEST_TIMEOUT=120`, `LLM_TASK_MAX_WAIT_SECONDS=900`, and `LLM_MAX_RETRIES=1` after startup or restart.
 - Keep `MCP_ENABLED=false` for ordinary local backend and MCP startup unless MCP access controls are the subject of the test.
 
+## Scenario: Shared Local File Artifacts Across Linked Worktrees
+
+### 1. Scope / Trigger
+
+- Trigger: starting API, MCP, Worker, or the standalone local development script from a Git linked worktree while the processes share the core application database.
+- Database file references are meaningful only when every process that can upload, publish, or download the referenced artifact uses the same physical file root.
+
+### 2. Signatures
+
+- Resolver: `Resolve-SharedRuntimeRoot -WorkspaceRoot <path>` in `tools/local-runtime-paths.ps1`.
+- Shared environment keys: `UPLOAD_DIR`, `EXCEL_PATH`, and `MCP_IMAGE_PATH`.
+- Worktree-private environment keys and state: `BASE_DIR`, `LOCAL_MODEL_PATH`, logs, PID files, and queue metadata.
+
+### 3. Contracts
+
+- Resolve the primary checkout from `git rev-parse --path-format=absolute --git-common-dir`; use the primary checkout's `.codex-runtime` for file artifacts.
+- API, MCP, Worker, and `tools/dev-local.ps1` must use the same resolver and directory mapping.
+- Keep process ownership and transient runtime state under the current worktree's `.codex-runtime` so one development stack cannot stop or overwrite another.
+- If Git common-dir resolution fails or does not identify a normal `.git` directory, use only the current workspace's `.codex-runtime`; do not search arbitrary worktrees or legacy storage roots.
+- Never reconstruct a missing uploaded source from normalized database content. The original file must be uploaded again.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| API and Worker run from the same linked worktree | Both receive identical shared file artifact roots |
+| A different linked worktree reads the shared database reference | It resolves the same primary-checkout file root |
+| Git common-dir lookup fails | Use the current workspace runtime root explicitly |
+| Database reference exists but physical source file is missing | Return the existing explicit source-file-not-found error |
+| Two local stacks run simultaneously | Their logs, PIDs, and queue metadata remain isolated |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a source uploaded by one linked worktree can be published by its Worker and downloaded by another API process because all three use the primary checkout artifact root.
+- Base: a normal non-worktree checkout resolves its own `.codex-runtime` as both the primary and shared artifact root.
+- Bad: each worktree stores `UPLOAD_DIR` under itself while sharing database rows, or the downloader silently generates a replacement file from normalized content.
+
+### 6. Tests Required
+
+- Execute the resolver inside a real linked worktree and assert it equals `<git-common-dir-parent>/.codex-runtime`.
+- Contract-test all local startup entry points for shared `UPLOAD_DIR`, `EXCEL_PATH`, and `MCP_IMAGE_PATH` mappings.
+- Assert `BASE_DIR`, `LOCAL_MODEL_PATH`, logs, PIDs, and queue metadata do not use the shared artifact root.
+- Exercise a real browser download whose file exists only in the primary checkout and confirm the API returns HTTP 200.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```powershell
+$env:UPLOAD_DIR = "$workspaceRootUnix/.codex-runtime/file"
+$env:BASE_DIR = "$workspaceRootUnix/.codex-runtime/shuzhi"
+```
+
+#### Correct
+
+```powershell
+$sharedRuntimeRoot = Resolve-SharedRuntimeRoot -WorkspaceRoot $workspaceRoot
+$env:UPLOAD_DIR = "$($sharedRuntimeRoot.Replace('\', '/'))/file"
+$env:BASE_DIR = "$workspaceRootUnix/.codex-runtime/shuzhi"
+```
+
 ## Scenario: Knowledge Management And Runtime Defaults
 
 ### 1. Scope / Trigger

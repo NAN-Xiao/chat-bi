@@ -12,6 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 STACK_SCRIPT = REPO_ROOT / "tools" / "stack-local.ps1"
 BACKEND_SCRIPT = REPO_ROOT / "tools" / "backend-local.ps1"
 WORKER_SCRIPT = REPO_ROOT / "tools" / "worker-local.ps1"
+DEV_SCRIPT = REPO_ROOT / "tools" / "dev-local.ps1"
+RUNTIME_PATHS_SCRIPT = REPO_ROOT / "tools" / "local-runtime-paths.ps1"
 
 
 def _powershell() -> str:
@@ -34,10 +36,78 @@ def _run_script(script: Path, *arguments: str) -> subprocess.CompletedProcess[st
     )
 
 
+def _run_powershell_command(command: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [_powershell(), "-NoProfile", "-Command", command],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+
+
 def _function_body(content: str, name: str) -> str:
     marker = f"function {name}"
     assert marker in content
     return content.split(marker, 1)[1].split("\nfunction ", 1)[0]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="本地启动脚本只在 Windows 上运行")
+def test_shared_runtime_root_resolves_to_primary_checkout():
+    common_dir = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout.strip()
+    expected = (Path(common_dir).resolve().parent / ".codex-runtime").resolve()
+    quoted_script = str(RUNTIME_PATHS_SCRIPT).replace("'", "''")
+    quoted_root = str(REPO_ROOT).replace("'", "''")
+
+    result = _run_powershell_command(
+        f". '{quoted_script}'; Resolve-SharedRuntimeRoot -WorkspaceRoot '{quoted_root}'"
+    )
+
+    assert result.returncode == 0, (result.stdout or "") + (result.stderr or "")
+    assert Path(result.stdout.strip()).resolve() == expected
+
+
+@pytest.mark.parametrize(
+    ("script", "environment_function"),
+    [
+        (BACKEND_SCRIPT, "Set-BackendEnvironment"),
+        (WORKER_SCRIPT, "Set-WorkerEnvironment"),
+        (DEV_SCRIPT, "Set-LocalAppEnvironment"),
+    ],
+)
+def test_local_processes_share_file_runtime_but_keep_process_runtime_private(
+    script: Path, environment_function: str
+):
+    content = script.read_text(encoding="utf-8")
+    body = _function_body(content, environment_function)
+
+    assert 'local-runtime-paths.ps1' in content
+    assert "Resolve-SharedRuntimeRoot" in content
+    assert "$env:UPLOAD_DIR" in body and "sharedRuntimeRoot" in body
+    assert "$env:MCP_IMAGE_PATH" in body and "sharedRuntimeRoot" in body
+    assert "$env:EXCEL_PATH" in body and "sharedRuntimeRoot" in body
+    assert "$env:BASE_DIR" in body
+    assert "$env:LOCAL_MODEL_PATH" in body
+    assert "$env:BASE_DIR = \"$sharedRuntimeRoot" not in body
+    assert "$env:LOCAL_MODEL_PATH = \"$sharedRuntimeRoot" not in body
+
+
+def test_dev_script_creates_shared_file_directories_only():
+    content = DEV_SCRIPT.read_text(encoding="utf-8")
+
+    for directory in ("file", "images", "excel"):
+        assert f'Join-Path $sharedRuntimeRoot "{directory}"' in content
+        assert f'Join-Path $runtimeRoot "{directory}"' not in content
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="本地启动脚本只在 Windows 上运行")

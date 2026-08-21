@@ -18,6 +18,9 @@ $workspaceRootUnix = $workspaceRoot.Replace("\", "/")
 $backendRoot = Join-Path $workspaceRoot "backend"
 $frontendRoot = Join-Path $workspaceRoot "frontend"
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
+. (Join-Path $PSScriptRoot "local-runtime-paths.ps1")
+$sharedRuntimeRoot = Resolve-SharedRuntimeRoot -WorkspaceRoot $workspaceRoot
+$sharedRuntimeRootUnix = $sharedRuntimeRoot.Replace("\", "/")
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
 
 $appSystemDbHost = "10.1.5.28"
@@ -29,9 +32,9 @@ $coreRedisPort = 6379
 
 New-Item -ItemType Directory -Force -Path $runtimeRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "shuzhi") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "file") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "images") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "excel") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $sharedRuntimeRoot "file") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $sharedRuntimeRoot "images") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $sharedRuntimeRoot "excel") | Out-Null
 
 function Get-PortOwner([int]$Port) {
     $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
@@ -105,9 +108,9 @@ function Set-LocalAppEnvironment {
     $env:FRONTEND_HOST = "http://localhost:$FrontendPort"
     $env:BACKEND_CORS_ORIGINS = "http://localhost:$FrontendPort,http://127.0.0.1:$FrontendPort"
     $env:BASE_DIR = "$workspaceRootUnix/.codex-runtime/shuzhi"
-    $env:UPLOAD_DIR = "$workspaceRootUnix/.codex-runtime/file"
-    $env:MCP_IMAGE_PATH = "$workspaceRootUnix/.codex-runtime/images"
-    $env:EXCEL_PATH = "$workspaceRootUnix/.codex-runtime/excel"
+    $env:UPLOAD_DIR = "$sharedRuntimeRootUnix/file"
+    $env:MCP_IMAGE_PATH = "$sharedRuntimeRootUnix/images"
+    $env:EXCEL_PATH = "$sharedRuntimeRootUnix/excel"
     $env:LOCAL_MODEL_PATH = "$workspaceRootUnix/.codex-runtime/models"
     $env:MCP_ENABLED = "false"
 }

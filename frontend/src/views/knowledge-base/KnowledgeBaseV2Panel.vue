@@ -47,6 +47,7 @@ import {
   type KnowledgePayload,
 } from './knowledgePayloadTypes'
 import { useKnowledgeScopeNavigation } from './knowledgeScopeNavigation'
+import { formatRequestErrorMessage } from '@/utils/request'
 
 const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
@@ -713,10 +714,23 @@ function downloadBlob(blob: Blob, fileName: string) {
   }
 }
 
+function showSourceDownloadError(error: unknown) {
+  const message = formatRequestErrorMessage(error, '源文件下载失败，请稍后重试')
+  ElMessage.error(
+    message.includes('知识源文件不存在')
+      ? '知识源文件不存在，请重新上传源文件后再发布。'
+      : message
+  )
+}
+
 async function downloadVersion(version: KnowledgeBaseVersion) {
   if (!selected.value) return
-  const blob = await knowledgeBaseApi.download(selected.value.id, version.id)
-  downloadBlob(blob, version.file_name || `knowledge-${version.version_number}`)
+  try {
+    const blob = await knowledgeBaseApi.download(selected.value.id, version.id)
+    downloadBlob(blob, version.file_name || `knowledge-${version.version_number}`)
+  } catch (error) {
+    showSourceDownloadError(error)
+  }
 }
 
 async function downloadRowSource(row: KnowledgeBaseItem) {
@@ -741,6 +755,8 @@ async function downloadRowSource(row: KnowledgeBaseItem) {
     }
     const blob = await knowledgeBaseApi.download(row.id, sourceVersion.id)
     downloadBlob(blob, sourceVersion.file_name)
+  } catch (error) {
+    showSourceDownloadError(error)
   } finally {
     setRowBusy(row)
   }

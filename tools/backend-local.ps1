@@ -36,6 +36,8 @@ if ($EnableKnowledgeRetrieval -and $DisableKnowledgeRetrieval) {
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $workspaceRoot "backend"
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
+. (Join-Path $PSScriptRoot "local-runtime-paths.ps1")
+$sharedRuntimeRoot = Resolve-SharedRuntimeRoot -WorkspaceRoot $workspaceRoot
 $replicaRuntime = Join-Path $runtimeRoot "backend-replicas"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $appSystemDbHost = "10.1.5.28"
@@ -171,6 +173,7 @@ function Wait-BackendReady([int]$Port, [int]$TimeoutSeconds = 60) {
 
 function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $runtimeRootForEnv = $runtimeRoot.Replace("\", "/")
+    $sharedRuntimeRootForEnv = $sharedRuntimeRoot.Replace("\", "/")
 
     $env:POSTGRES_SERVER = $appSystemDbHost
     $env:POSTGRES_PORT = [string]$appSystemDbPort
@@ -198,9 +201,9 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     }
 
     $env:BASE_DIR = "$runtimeRootForEnv/shuzhi"
-    $env:UPLOAD_DIR = "$runtimeRootForEnv/file"
-    $env:MCP_IMAGE_PATH = "$runtimeRootForEnv/images"
-    $env:EXCEL_PATH = "$runtimeRootForEnv/excel"
+    $env:UPLOAD_DIR = "$sharedRuntimeRootForEnv/file"
+    $env:MCP_IMAGE_PATH = "$sharedRuntimeRootForEnv/images"
+    $env:EXCEL_PATH = "$sharedRuntimeRootForEnv/excel"
     $env:LOCAL_MODEL_PATH = "$runtimeRootForEnv/models"
     $env:MCP_ENABLED = "false"
     $env:AUTO_RUN_MIGRATIONS = "false"

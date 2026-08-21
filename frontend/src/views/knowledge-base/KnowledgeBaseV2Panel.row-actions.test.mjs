@@ -88,6 +88,16 @@ test('row download checks the explicit draft before the explicit published versi
   )
   assert.match(source, /knowledgeBaseApi\.version\(row\.id, row\.current_version_id\)/)
   assert.match(source, /knowledgeBaseApi\.download\(row\.id, sourceVersion\.id\)/)
+  assert.match(source, /catch \(error\) \{\s*showSourceDownloadError\(error\)/)
+})
+
+test('source download failures show an actionable missing-file message', () => {
+  assert.match(
+    panelSource,
+    /message\.includes\('知识源文件不存在'\)[\s\S]*'知识源文件不存在，请重新上传源文件后再发布。'/
+  )
+  const versionSource = functionSource('downloadVersion', 'async function downloadRowSource')
+  assert.match(versionSource, /catch \(error\) \{\s*showSourceDownloadError\(error\)/)
 })
 
 test('blob downloads remove their anchors and defer object URL cleanup', () => {

@@ -28,6 +28,8 @@ if ($EnableKnowledgeRetrieval -and $DisableKnowledgeRetrieval) {
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $workspaceRoot "backend"
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
+. (Join-Path $PSScriptRoot "local-runtime-paths.ps1")
+$sharedRuntimeRoot = Resolve-SharedRuntimeRoot -WorkspaceRoot $workspaceRoot
 $workerRuntime = Join-Path $runtimeRoot "task-workers"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
 
@@ -56,6 +58,7 @@ function Get-QueueFile([int]$Index) {
 
 function Set-WorkerEnvironment {
     $runtimeRootForEnv = $runtimeRoot.Replace("\", "/")
+    $sharedRuntimeRootForEnv = $sharedRuntimeRoot.Replace("\", "/")
 
     $env:POSTGRES_SERVER = "10.1.5.28"
     $env:POSTGRES_PORT = "5432"
@@ -84,9 +87,9 @@ function Set-WorkerEnvironment {
     $env:KNOWLEDGE_RETRIEVAL_ENABLED = if ($DisableKnowledgeRetrieval) { "false" } else { "true" }
 
     $env:BASE_DIR = "$runtimeRootForEnv/shuzhi"
-    $env:UPLOAD_DIR = "$runtimeRootForEnv/file"
-    $env:MCP_IMAGE_PATH = "$runtimeRootForEnv/images"
-    $env:EXCEL_PATH = "$runtimeRootForEnv/excel"
+    $env:UPLOAD_DIR = "$sharedRuntimeRootForEnv/file"
+    $env:MCP_IMAGE_PATH = "$sharedRuntimeRootForEnv/images"
+    $env:EXCEL_PATH = "$sharedRuntimeRootForEnv/excel"
     $env:LOCAL_MODEL_PATH = "$runtimeRootForEnv/models"
     $env:MCP_ENABLED = "false"
 }

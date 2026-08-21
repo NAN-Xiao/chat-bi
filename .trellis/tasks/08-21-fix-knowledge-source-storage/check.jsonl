@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/project-runtime.md","reason":"核对 linked worktree 共享文件目录与日志、PID、队列隔离边界"}
+{"file":".trellis/spec/frontend/project-runtime.md","reason":"核对 Blob 错误解析、知识源缺失提示和浏览器下载质量门"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"核对数据库引用到 API、Worker、前端提示的完整错误数据流"}

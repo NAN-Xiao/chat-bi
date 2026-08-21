@@ -39,6 +39,65 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 - Save and inspect screenshots for affected primary pages when validating layout or other user-visible changes.
 - When a requirement changes a management navigation hierarchy, browser verification must cover the parent menu's expanded state, every expected child label, each child's target route, and the page state selected by that route. Testing an equivalent in-page filter does not prove that the requested sidebar hierarchy exists.
 
+## Scenario: Actionable Errors For Blob Downloads
+
+### 1. Scope / Trigger
+
+- Trigger: any Axios request with `responseType: 'blob'` whose backend may return a structured JSON or text error body.
+- Browsers expose the error body as a Blob, so ordinary object-field extraction cannot read `message`, `detail`, or `msg` until the Blob is decoded.
+
+### 2. Signatures
+
+- Shared formatter: `formatRequestErrorMessage(error, fallback)`.
+- Blob hydration occurs in the shared Axios response interceptor before automatic or caller-owned error handling.
+- A feature may set `requestOptions.customError: true` when it must replace a generic backend message with a more actionable workflow-specific instruction.
+
+### 3. Contracts
+
+- Decode a Blob error body to text, then parse JSON when possible; preserve plain non-HTML text otherwise.
+- If decoding fails or the body is empty, retain status-based error handling.
+- Do not show a Blob as `{}` or `[object Blob]`.
+- Caller-owned handling must catch the rejected Promise and display exactly one message; the shared interceptor must not also display a duplicate message.
+- A missing knowledge source file must tell the operator to upload the original source again and publish it; do not imply that republishing alone restores the file.
+
+### 4. Validation & Error Matrix
+
+| Response | Required behavior |
+| --- | --- |
+| HTTP 200 Blob | Start the normal browser download |
+| HTTP 404 JSON Blob with source-file-not-found message | Show the actionable re-upload-and-publish message |
+| HTTP error with plain-text Blob | Show normalized plain text |
+| Empty or undecodable Blob | Show the status-specific or caller fallback message |
+| Caller uses `customError: true` | Shared layer hydrates data but does not display a duplicate toast |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a knowledge source 404 displays `知识源文件不存在，请重新上传源文件后再发布。` and the click handler resolves without an unhandled Promise.
+- Base: a generic export 500 with an empty Blob displays the existing status-based service error.
+- Bad: the UI displays `{}`, the interceptor and component display two messages, or the component catches the error without decoding the Blob.
+
+### 6. Tests Required
+
+- Assert Blob hydration runs before unified error handling and attempts JSON parsing.
+- Assert feature-owned downloads opt into `customError` and catch both row and version download failures.
+- Through the real browser click path, verify an existing file returns 200 and a missing file shows the actionable visible message.
+- Check the console after the click for a new unhandled Promise rejection.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+const message = error.response?.data?.message || JSON.stringify(error.response?.data)
+```
+
+#### Correct
+
+```typescript
+await hydrateBlobErrorResponse(error)
+const message = formatRequestErrorMessage(error, '下载失败，请稍后重试')
+```
+
 ## Data And Rendering Rules
 
 - Use the currently selected and authorized datasource context; do not infer a datasource from question wording or semantic examples.
