@@ -43,7 +43,9 @@ const buildPivotConfigMatch = source.match(
 const initPivotConfigMatch = source.match(
   /function initPivotConfig\(pivot\?: any\) \{([\s\S]*?)\r?\n\}\r?\n\r?\nfunction buildPivotConfig/
 )
-const buildPivotGroupEnabledMatch = buildPivotConfigMatch?.[1].match(/group_enabled:\s*([^\r\n]+),/)
+const buildPivotGroupEnabledMatch = buildPivotConfigMatch?.[1].match(
+  /group_enabled:\s*Boolean\(([\s\S]*?)\),\r?\n\s*dimensions/
+)
 const pivotGroupFieldWatcherMatch = source.match(
   /watch\(\s*\(\) => activePivotGroupValueField\.value,([\s\S]*?)\r?\n\)\r?\n\r?\nwatch\(/
 )
@@ -593,6 +595,21 @@ assert.match(
   buildPivotGroupEnabledMatch?.[1] || '',
   /pivotGroupValues/,
   '保存分组可见项时必须同步启用分组，否则仪表盘会继续显示不分组'
+)
+assert.match(
+  buildPivotGroupEnabledMatch?.[1] || '',
+  /pivotGroupValueMode === 'custom'/,
+  '只有 custom 白名单中的非空分组值可以兼容启用旧分组，all 模式必须服从显式开关'
+)
+assert.match(
+  buildPivotConfigMatch[1],
+  /buildPersistedPivotGroupValueSelection\(form\.pivotGroupValueMode, pivotGroupValues\)/,
+  '保存透视配置必须区分动态 all 和固定 custom，不能把全选固化为当前枚举'
+)
+assert.match(
+  initPivotConfigMatch[1],
+  /form\.pivotGroupValueMode = normalizePivotGroupValueMode\(pivot\)/,
+  '初始化时必须恢复显式模式，并按旧非空列表兼容为 custom'
 )
 assert.match(
   showPivotGroupValueConfigMatch[1],

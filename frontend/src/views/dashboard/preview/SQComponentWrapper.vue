@@ -54,6 +54,7 @@ import {
   prepareDashboardChartRefreshState,
 } from '@/views/dashboard/utils/dashboardChartLifecycle'
 import { resolveDashboardMoveTargetDatasource } from '@/views/dashboard/utils/dashboardOptions.ts'
+import { shouldConstrainPivotGroupValues } from '@/views/dashboard/utils/pivotGroupValues'
 import {
   DEFAULT_DASHBOARD_LAYOUT_SURFACE,
   type DashboardLayoutSurface,
@@ -728,6 +729,7 @@ function rowsAfterStoredPivotFilters(viewInfo: any, rows: Record<string, any>[])
     pivot.enabled !== true ||
     pivot.group_enabled === false ||
     !groupField ||
+    !shouldConstrainPivotGroupValues(pivot) ||
     groupValues.length === 0
   ) {
     return rows

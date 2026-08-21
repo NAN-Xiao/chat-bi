@@ -4,6 +4,7 @@ from sqlglot import parse_one
 from apps.datasource.crud.sql_permission import validate_sql_columns
 from apps.system.crud.tracking_expression import compile_tracking_json_expression
 from common.sql_json_paths import (
+    canonical_json_field_name,
     extract_json_accesses,
     json_paths_intersect,
     normalize_json_path,
@@ -35,6 +36,24 @@ def test_numeric_json_object_key_uses_quoted_bracket_notation():
     assert normalize_json_path('$["1001"]') == '$["1001"]'
     assert json_paths_intersect("$.1001", '$["1001"]') is True
     assert json_paths_intersect("$.1001", '$["1002"]') is False
+
+
+@pytest.mark.parametrize(
+    ("json_path", "expected_name"),
+    [
+        ('$["1001"]', "abtest.1001"),
+        ("$[1001]", "abtest[1001]"),
+        ("$.items[0].sku", "payload.items[0].sku"),
+        ('$["a-b"]', 'payload["a-b"]'),
+    ],
+)
+def test_canonical_json_field_name_preserves_key_and_index_identity(
+    json_path,
+    expected_name,
+):
+    source_field = "abtest" if "1001" in json_path else "payload"
+
+    assert canonical_json_field_name(source_field, json_path) == expected_name
 
 
 def test_mysql_json_extract_returns_static_access():

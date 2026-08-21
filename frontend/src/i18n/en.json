@@ -1875,6 +1875,7 @@
       "http_504": "The data question service timed out. Try again later.",
       "data_unavailable": "The current data source does not contain the data required for this question.",
       "network": "A network error occurred. Check your connection and try again.",
+      "stopped": "The response was stopped.",
       "generic": "The data question task failed. Try again later."
     },
     "show_error_detail": "Show error info",

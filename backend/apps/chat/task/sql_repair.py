@@ -96,7 +96,11 @@ _PREPARE_DATE_FILTER_CONFIGURATION_PATTERN = re.compile(
     r"realtime_requires_hourly_time_series|"
     r"missing_date_filter|invalid_date_filter|missing_time_field|"
     r"invalid_parameter_type|mixed_parameter_families|parameter_type_mismatch|"
-    r"incomplete_parameters|missing_date_expression|invalid_date_expression"
+    r"incomplete_parameters|missing_date_expression|invalid_date_expression|"
+    r"missing_time_scope|missing_time_range|invalid_time_range|"
+    r"time_range_exceeds_business_date|invalid_default_time_range|invalid_current_day_time_range|"
+    r"time_range_mismatch|"
+    r"sql_time_range_mismatch"
     r")",
     re.IGNORECASE,
 )
@@ -459,19 +463,6 @@ def validate_mysql_compatible_sql(sql: str) -> None:
     """在执行前拦截 AnalyticDB/MySQL 兼容源中可确定的方言和结构错误。"""
     source_sql = str(sql or "")
     try:
-        tokens = sqlglot.Tokenizer(dialect="mysql").tokenize(source_sql)
-        has_unsigned_cast = any(
-            token.text.lower() == "unsigned"
-            and index > 0
-            and tokens[index - 1].text.lower() in {"as", ","}
-            for index, token in enumerate(tokens)
-        )
-        if has_unsigned_cast:
-            raise SqlStructureValidationError(
-                "MySQL/AnalyticDB 兼容数据源不支持 UNSIGNED 类型转换；请使用 SIGNED、DECIMAL "
-                "或移除不必要的转换。"
-            )
-
         statements = sqlglot.parse(_normalized_sql_for_structure_validation(source_sql), read="mysql")
     except SqlStructureValidationError:
         raise
@@ -634,27 +625,44 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
     if context.reason is SqlRepairReason.DATE_FILTER_CONFIGURATION:
         payload["repair_requirements"] = [
             (
-                "具备时间字段的非 metric 图表必须返回完整 date_filter，SQL 日期边界必须使用与 "
+                "具备时间字段的图表（包括 metric）必须返回完整 date_filter，SQL 日期边界必须使用与 "
                 "date_parameter_type 匹配的看板日期 token；yyyymmdd_number 使用 "
                 "{{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}。"
             ),
             (
-                "问题要求趋势、走势、变化或按日/周/月/小时时间序列但未明确时间窗口时，必须默认使用最近七天，"
-                "date_expression 使用 {\"version\":1,\"mode\":\"preset\",\"preset\":\"past_7_days\"}；"
-                "不得省略日期过滤，也不得改为查询全历史。"
+                "同一次响应必须返回 time_scope（explicit/unspecified）和具体 time_range.start_date/end_date；"
+                "日期格式必须为 YYYY-MM-DD。相对时间也必须直接换算为具体日期，不得只返回 unit/offset。"
             ),
             (
-                "metric 图表不得返回 date_filter，也不得使用看板日期 token；保留用户要求的固定时间语义。"
+                "time_range 必须与 date_filter.date_expression 的静态 range 完全一致；结束日期不得晚于提示词中的系统业务日期。"
+            ),
+            (
+                "用户完全未指定时间时，time_scope 必须为 unspecified，并返回系统业务日期之前最近 "
+                "7 个完整自然日（不含系统业务日期）的具体日期；date_expression 必须使用与 time_range "
+                "一致的静态 range，不得返回动态 preset、不得省略日期过滤或查询全历史。"
+            ),
+            (
+                "近/最近/过去 N 天均截止系统业务日期前一天；本周、本月只能截止系统业务日期，"
+                "不得补到未来周日或未来月末；上周、上月使用完整自然周或自然月。"
+            ),
+            (
+                "非汇总实时问题的未指定日期范围必须使用系统业务日当天的具体日期，不能套用默认七天；"
+                "实时汇总 metric 涉及日期语义，仍必须返回 date_filter 并使用 dashboard token。"
+            ),
+            (
+                "SQL 不得保留 date_filter 边界的具体日期字面量，必须使用成对 dashboard token；"
+                "单日范围也使用起止 token，并在返回前核对 SQL、time_range、date_expression 三者一致。"
+            ),
+            (
+                "metric 只要涉及日期字段或日期条件，就必须使用日期 token 和完整 date_filter；只有完全无日期语义的全量累计指标才省略 date_filter。"
             ),
             (
                 "date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、"
                 "LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。"
             ),
             (
-                "日期表达式必须严格使用受支持的版本化结构：version=1；preset 只能是 "
-                "yesterday、today、previous_week、current_week、previous_month、current_month、"
-                "past_7_days、recent_7_days、past_30_days、recent_30_days、past_90_days 或 all_time；"
-                "本月使用 current_month，不要使用 this_month。"
+                "date_expression 必须严格使用 version=1、mode=range，start/end 均使用 "
+                "mode=static 和 YYYY-MM-DD 日期；不得返回 preset 或动态 offset。"
             ),
         ]
         if "realtime_requires_hourly_time_series" in context.error_message:
@@ -666,13 +674,17 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         dialect_text = f"{context.dialect} {context.error_message}".lower()
         payload["repair_requirements"] = [
             "当前 SQL 必须在目标数据源方言下可解析并执行；只返回修复后的完整 SQL JSON。",
-            "MySQL/AnalyticDB 兼容数据源禁止 CAST(... AS UNSIGNED) 和 AS UNSIGNED，改用 SIGNED、DECIMAL 或不转换。",
             "MySQL/AnalyticDB 兼容数据源默认禁止 WITH RECURSIVE；日期序列优先使用目标方言支持的非递归序列。只有能力元数据明确声明且已有执行样例验证支持递归时才可例外使用，并在自引用 CTE 名后写完整列清单 cte(col1, ...)。",
             "AnalyticDB 不支持 INTERVAL <列或表达式> WEEK；改用固定周边界或 INTERVAL (week_offset * 7) DAY。",
             "时间骨架不得直接按范围 JOIN 物理事实表；先按明确日期范围过滤事实表并按目标粒度聚合，再 LEFT JOIN 时间骨架。",
             "JOIN 后的同名字段在 SELECT、GROUP BY、ORDER BY、HAVING 和连接条件中必须限定来源别名。",
             "周格式不要依赖 %v 或 %x；使用已验证的周起止日期表达式。",
         ]
+        if "unsigned" in str(context.error_message or "").lower():
+            payload["repair_requirements"].insert(
+                1,
+                "目标数据库已在执行错误中拒绝当前 UNSIGNED 用法；请根据错误信息改用该引擎支持的 SIGNED、DECIMAL 或无需转换的表达式。",
+            )
         if "当前 schema 中不存在" in dialect_text or "无法解析的字段" in dialect_text:
             payload["repair_requirements"].extend([
                 "上一版 SQL 引用了当前 Schema 中不存在或无法解析的表/字段；必须根据当前 Schema 和 Data Skill 重新生成完整 SQL。",
@@ -706,10 +718,19 @@ def build_sql_repair_message(context: SqlRepairContext) -> str:
         ]
     if (
         context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
+        and any(term in context.error_message for term in ("历史按小时", "完整 24 小时"))
+    ):
+        payload["repair_requirements"] = [
+            "历史完整日按小时查询必须生成固定 00:00 到 23:00 的 24 小时骨架，不得使用事实 MAX(time) 截断小时范围。",
+            "事实表必须先按看板日期、事件、产品和权限范围过滤并按小时聚合，再 LEFT JOIN 小时骨架。",
+            "所有缺失小时使用 COALESCE(..., 0) 补零；即使历史日完全没有事实，也必须保留 24 个小时。",
+        ]
+    elif (
+        context.reason is SqlRepairReason.DATA_SKILL_VALIDATION
         and any(term in context.error_message for term in ("实时", "小时"))
     ):
         payload["repair_requirements"] = [
-            "实时小时趋势必须在看板起止日期范围内从当前事实 time 字段取 MAX(time)，并以该事件所在小时作为连续小时序列上界。",
+            "仅当天实时小时趋势允许取事实 MAX(time)；必须使用与指标聚合相同的日期、事件、产品和权限过滤，禁止全表取最大时间。",
             "小时序列必须从 00:00 开始；有其他分组维度时先构造小时序列 CROSS JOIN 维度集合，再 LEFT JOIN 小时聚合结果。",
             "小时序列和小时聚合必须使用相同日期范围，数值指标使用 COALESCE(..., 0)，不得使用 NOW、CURRENT_DATE 或固定 00-23 全日序列替代事实最大时间。",
         ]

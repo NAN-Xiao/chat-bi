@@ -698,7 +698,7 @@ def validate_user_query_sql_or_raise(
         and getattr(datasource, "id", None) is not None
         and not has_datasource_access(session, current_user, datasource.id)
     ):
-        raise ValueError("You do not have permission to access this datasource")
+        raise ValueError("没有访问该数据源的权限")
     return prepare_query_sql(
         session=session,
         current_user=current_user,
@@ -740,7 +740,7 @@ def execute_user_query_or_raise(
         and getattr(datasource, "id", None) is not None
         and not has_datasource_access(session, current_user, datasource.id)
     ):
-        raise ValueError("You do not have permission to access this datasource")
+        raise ValueError("没有访问该数据源的权限")
 
     executed_sql, tables = prepare_query_sql(
         session=session,
@@ -914,7 +914,7 @@ def execute_user_query(
         if datasource is None:
             return _failed_query_result("项目不存在")
         if not datasource_access_checked and not has_datasource_access(session, current_user, datasource_id):
-            message = "You do not have permission to access this datasource"
+            message = "没有访问该数据源的权限"
             audit_permission_denied(
                 current_user=current_user,
                 datasource_id=datasource_id,

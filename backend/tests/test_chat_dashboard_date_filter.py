@@ -7,6 +7,7 @@ import pytest
 from apps.chat.service import chat_date_filter as chat_date_filter_service
 from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
+    normalize_chat_date_filter_contract,
     normalize_chat_date_filter_for_question,
     normalize_chat_date_filter,
     render_chat_date_filter_sql,
@@ -59,6 +60,42 @@ DATE_FILTER_WITH_MODEL_DEFAULT_PAST_28_DAYS = {
     "date_parameter_type": "yyyymmdd_number",
     "date_expression": {"version": 1, "mode": "preset", "preset": "past_28_days"},
 }
+STATIC_DATE_FILTER = {
+    "time_field": "dt",
+    "date_parameter_type": "yyyymmdd_number",
+    "date_expression": {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "static", "date": "2026-08-01"},
+        "end": {"mode": "static", "date": "2026-08-19"},
+    },
+}
+DEFAULT_STATIC_DATE_FILTER = {
+    "time_field": "dt",
+    "date_parameter_type": "yyyymmdd_number",
+    "date_expression": {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "static", "date": "2026-08-12"},
+        "end": {"mode": "static", "date": "2026-08-18"},
+    },
+}
+
+
+def _attach_time_contract(
+    response: dict,
+    date_filter: dict,
+    *,
+    scope: str,
+    start: str,
+    end: str,
+) -> dict:
+    return {
+        **response,
+        "time_scope": scope,
+        "time_range": {"start_date": start, "end_date": end},
+        "date_filter": date_filter,
+    }
 TODAY_DATE_FILTER = {
     "time_field": "dt",
     "date_parameter_type": "yyyymmdd_number",
@@ -75,6 +112,254 @@ def test_normalize_accepts_complete_past_seven_days_yyyymmdd_template():
     pivot = normalize_chat_date_filter(DATE_FILTER, DATE_TEMPLATE_SQL, "line")
 
     assert pivot == {"enabled": False, **DATE_FILTER}
+
+
+def test_concrete_time_contract_preserves_explicit_month_and_renders_yyyymmdd_number():
+    pivot = normalize_chat_date_filter_contract(
+        STATIC_DATE_FILTER,
+        DATE_TEMPLATE_SQL,
+        "line",
+        time_scope="explicit",
+        time_range={"start_date": "2026-08-01", "end_date": "2026-08-19"},
+        business_date=date(2026, 8, 19),
+    )
+
+    assert render_chat_date_filter_sql(
+        DATE_TEMPLATE_SQL,
+        "mysql",
+        pivot,
+        today=date(2026, 8, 19),
+    ).endswith("BETWEEN 20260801 AND 20260819")
+
+
+@pytest.mark.parametrize(
+    ("time_phrase", "start", "end"),
+    [
+        ("近 3 天", "2026-08-16", "2026-08-18"),
+        ("近 7 天", "2026-08-12", "2026-08-18"),
+        ("近 14 天", "2026-08-05", "2026-08-18"),
+        ("近 21 天", "2026-07-29", "2026-08-18"),
+        ("近 30 天", "2026-07-20", "2026-08-18"),
+        ("近 45 天", "2026-07-05", "2026-08-18"),
+        ("近 60 天", "2026-06-20", "2026-08-18"),
+        ("近 90 天", "2026-05-21", "2026-08-18"),
+        ("昨天", "2026-08-18", "2026-08-18"),
+        ("前天", "2026-08-17", "2026-08-17"),
+        ("本周", "2026-08-17", "2026-08-19"),
+        ("上周", "2026-08-10", "2026-08-16"),
+        ("本月", "2026-08-01", "2026-08-19"),
+        ("上月", "2026-07-01", "2026-07-31"),
+        ("8月1日到昨天", "2026-08-01", "2026-08-18"),
+    ],
+)
+def test_concrete_time_contract_accepts_llm_resolved_explicit_ranges(
+    time_phrase: str,
+    start: str,
+    end: str,
+):
+    date_filter = {
+        **STATIC_DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": start},
+            "end": {"mode": "static", "date": end},
+        },
+    }
+
+    pivot = normalize_chat_date_filter_contract(
+        date_filter,
+        DATE_TEMPLATE_SQL,
+        "line",
+        time_scope="explicit",
+        time_range={"start_date": start, "end_date": end},
+        business_date=date(2026, 8, 19),
+    )
+
+    assert pivot == {"enabled": False, **date_filter}
+
+
+def test_concrete_time_contract_renders_yyyymmdd_text_with_quotes():
+    text_filter = {**STATIC_DATE_FILTER, "date_parameter_type": "yyyymmdd_text"}
+    text_sql = (
+        "SELECT * FROM event WHERE dt BETWEEN "
+        "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
+    )
+    pivot = normalize_chat_date_filter_contract(
+        text_filter,
+        text_sql,
+        "line",
+        time_scope="explicit",
+        time_range={"start_date": "2026-08-01", "end_date": "2026-08-19"},
+        business_date=date(2026, 8, 19),
+    )
+
+    assert render_chat_date_filter_sql(
+        text_sql,
+        "mysql",
+        pivot,
+        today=date(2026, 8, 19),
+    ).endswith("BETWEEN '20260801' AND '20260819'")
+
+
+def test_rewrite_rejects_sql_literal_range_that_conflicts_with_contract():
+    from apps.chat.service.chat_date_filter import rewrite_chat_date_filter_literals
+
+    with pytest.raises(ChatDateFilterConfigurationError, match="sql_time_range_mismatch"):
+        rewrite_chat_date_filter_literals(
+            STATIC_DATE_FILTER,
+            "SELECT * FROM event WHERE dt BETWEEN 20260801 AND 20260818",
+        )
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        (
+            "SELECT * FROM event WHERE `e`.`dt` >= 20260801 AND `e`.`dt` <= 20260819",
+            "SELECT * FROM event WHERE `e`.`dt` >= {{dashboard_start_yyyymmdd}} AND `e`.`dt` <= {{dashboard_end_yyyymmdd}}",
+        ),
+        (
+            "SELECT * FROM event WHERE `e`.`dt` = 20260819",
+            "SELECT * FROM event WHERE `e`.`dt` BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}",
+        ),
+    ],
+)
+def test_rewrite_converts_comparison_date_literals_to_dashboard_tokens(sql: str, expected: str):
+    from apps.chat.service.chat_date_filter import rewrite_chat_date_filter_literals
+
+    if " = " in sql:
+        single_day_filter = {
+            **STATIC_DATE_FILTER,
+            "date_expression": {
+                "version": 1,
+                "mode": "range",
+                "start": {"mode": "static", "date": "2026-08-19"},
+                "end": {"mode": "static", "date": "2026-08-19"},
+            },
+        }
+        assert rewrite_chat_date_filter_literals(single_day_filter, sql) == expected
+    else:
+        assert rewrite_chat_date_filter_literals(STATIC_DATE_FILTER, sql) == expected
+
+
+def test_rewrite_converts_timestamp_exclusive_end_comparison_to_dashboard_tokens():
+    from apps.chat.service.chat_date_filter import rewrite_chat_date_filter_literals
+
+    timestamp_filter = {
+        "time_field": "time",
+        "date_parameter_type": "timestamp",
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-08-19"},
+            "end": {"mode": "static", "date": "2026-08-19"},
+        },
+    }
+    sql = (
+        "SELECT * FROM event_realtime WHERE `e`.`time` >= '2026-08-19 00:00:00' "
+        "AND `e`.`time` < '2026-08-20 00:00:00'"
+    )
+
+    assert rewrite_chat_date_filter_literals(timestamp_filter, sql) == (
+        "SELECT * FROM event_realtime WHERE `e`.`time` >= {{dashboard_start_timestamp}} "
+        "AND `e`.`time` < {{dashboard_end_exclusive_timestamp}}"
+    )
+
+
+def test_concrete_time_contract_rejects_range_after_business_date():
+    future_filter = {
+        **STATIC_DATE_FILTER,
+        "date_expression": {
+            **STATIC_DATE_FILTER["date_expression"],
+            "end": {"mode": "static", "date": "2026-08-31"},
+        },
+    }
+
+    with pytest.raises(ChatDateFilterConfigurationError, match="time_range_exceeds_business_date"):
+        normalize_chat_date_filter_contract(
+            future_filter,
+            DATE_TEMPLATE_SQL,
+            "line",
+            time_scope="explicit",
+            time_range={"start_date": "2026-08-01", "end_date": "2026-08-31"},
+            business_date=date(2026, 8, 19),
+        )
+
+
+def test_concrete_time_contract_requires_exact_default_seven_complete_days():
+    default_filter = {
+        **STATIC_DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-08-12"},
+            "end": {"mode": "static", "date": "2026-08-18"},
+        },
+    }
+
+    pivot = normalize_chat_date_filter_contract(
+        default_filter,
+        DATE_TEMPLATE_SQL,
+        "line",
+        time_scope="unspecified",
+        time_range={"start_date": "2026-08-12", "end_date": "2026-08-18"},
+        business_date=date(2026, 8, 19),
+    )
+
+    assert pivot == {"enabled": False, **default_filter}
+
+
+def test_concrete_time_contract_requires_current_business_day_for_realtime():
+    with pytest.raises(
+        ChatDateFilterConfigurationError,
+        match="invalid_current_day_time_range",
+    ):
+        normalize_chat_date_filter_contract(
+            DEFAULT_STATIC_DATE_FILTER,
+            DATE_TEMPLATE_SQL,
+            "line",
+            time_scope="unspecified",
+            time_range={"start_date": "2026-08-12", "end_date": "2026-08-18"},
+            business_date=date(2026, 8, 19),
+            requires_current_business_day=True,
+        )
+
+
+def test_concrete_time_contract_accepts_current_business_day_for_realtime():
+    current_day_filter = {
+        **STATIC_DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-08-19"},
+            "end": {"mode": "static", "date": "2026-08-19"},
+        },
+    }
+
+    pivot = normalize_chat_date_filter_contract(
+        current_day_filter,
+        DATE_TEMPLATE_SQL,
+        "line",
+        time_scope="explicit",
+        time_range={"start_date": "2026-08-19", "end_date": "2026-08-19"},
+        business_date=date(2026, 8, 19),
+        requires_current_business_day=True,
+    )
+
+    assert pivot == {"enabled": False, **current_day_filter}
+
+
+def test_concrete_time_contract_rejects_date_expression_mismatch():
+    with pytest.raises(ChatDateFilterConfigurationError, match="time_range_mismatch"):
+        normalize_chat_date_filter_contract(
+            STATIC_DATE_FILTER,
+            DATE_TEMPLATE_SQL,
+            "line",
+            time_scope="explicit",
+            time_range={"start_date": "2026-08-02", "end_date": "2026-08-19"},
+            business_date=date(2026, 8, 19),
+        )
 
 
 def test_normalize_uses_explicit_fourteen_day_question_range_instead_of_default():
@@ -281,16 +566,14 @@ def test_normalize_rejects_metric_for_explicit_realtime_time_series_question():
         )
 
 
-def test_normalize_allows_metric_for_explicit_realtime_scalar_question():
-    assert (
+def test_normalize_rejects_metric_for_explicit_realtime_scalar_without_date_filter():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
         normalize_chat_date_filter_for_question(
             "实时收入",
             None,
             "SELECT SUM(amount) FROM event_realtime",
             "metric",
         )
-        is None
-    )
 
 
 @pytest.mark.parametrize("question", ["统计今天的实时付费情况", "按渠道统计今天的实时付费"])
@@ -329,16 +612,24 @@ def test_normalize_rejects_missing_date_filter_for_explicit_recent_days_time_ser
         )
 
 
-def test_normalize_allows_missing_date_filter_for_explicit_today_metric():
-    assert (
+def test_normalize_rejects_missing_date_filter_for_explicit_today_metric():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
         normalize_chat_date_filter_for_question(
             "今天的付费总额",
             None,
             "SELECT SUM(amount) FROM event_realtime WHERE dt = 20260805",
             "metric",
         )
-        is None
-    )
+
+
+def test_normalize_rejects_fixed_date_metric_without_date_filter():
+    with pytest.raises(ChatDateFilterConfigurationError, match="missing_date_filter"):
+        normalize_chat_date_filter_for_question(
+            "充值人数",
+            None,
+            "SELECT COUNT(DISTINCT uid) FROM event WHERE dt = 20260818",
+            "metric",
+        )
 
 
 def test_normalize_rejects_missing_date_filter_for_unspecified_time_series():
@@ -367,6 +658,7 @@ def test_check_sql_rejects_explicit_today_time_series_without_date_filter(monkey
     monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.dashboard_date_filter_enabled = True
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="按小时统计今天的付费次数", data_skill="")
     service.chat_date_pivot = None
@@ -377,7 +669,7 @@ def test_check_sql_rejects_explicit_today_time_series_without_date_filter(monkey
         "chart-type": "line",
     }
 
-    with pytest.raises(SingleMessageError, match="missing_date_filter"):
+    with pytest.raises(SingleMessageError, match="missing_time_scope"):
         service.check_sql(
             session=object(),
             res=__import__("json").dumps(response),
@@ -385,20 +677,21 @@ def test_check_sql_rejects_explicit_today_time_series_without_date_filter(monkey
         )
 
 
-def test_check_sql_skips_invalid_date_filter_for_sample_workspace(monkeypatch):
+def test_check_sql_keeps_date_contract_disabled_for_sample_workspace(monkeypatch):
     monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.dashboard_date_filter_enabled = False
     service.current_user = SimpleNamespace(tenant_id=1)
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="趋势", data_skill="")
     service.chat_date_pivot = {"enabled": False, **DATE_FILTER}
+    service.dashboard_date_filter_enabled = False
     response = {
         "success": True,
         "sql": "SELECT channel, COUNT(*) FROM event GROUP BY channel",
         "tables": ["event"],
         "chart-type": "line",
-        "date_filter": DATE_FILTER,
     }
 
     class SampleWorkspaceSession:
@@ -412,25 +705,26 @@ def test_check_sql_skips_invalid_date_filter_for_sample_workspace(monkeypatch):
     )
 
     assert sql == response["sql"]
-    assert tables == response["tables"]
+    assert tables == ["event"]
     assert service.chat_date_pivot is None
 
 
 def test_check_sql_keeps_invalid_date_filter_for_regular_workspace(monkeypatch):
     monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
+    monkeypatch.setattr("apps.chat.task.llm.system_business_date", lambda: date(2026, 8, 19))
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.dashboard_date_filter_enabled = True
     service.current_user = SimpleNamespace(tenant_id=2)
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="趋势", data_skill="")
     service.chat_date_pivot = None
-    response = {
+    response = _attach_time_contract({
         "success": True,
         "sql": "SELECT channel, COUNT(*) FROM event GROUP BY channel",
         "tables": ["event"],
         "chart-type": "line",
-        "date_filter": DATE_FILTER,
-    }
+    }, DEFAULT_STATIC_DATE_FILTER, scope="unspecified", start="2026-08-12", end="2026-08-18")
 
     class RegularWorkspaceSession:
         def get(self, _model, _tenant_id):
@@ -444,19 +738,28 @@ def test_check_sql_keeps_invalid_date_filter_for_regular_workspace(monkeypatch):
         )
 
 
-def test_check_sql_uses_explicit_question_range_instead_of_llm_default():
+def test_check_sql_uses_llm_concrete_explicit_range():
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.dashboard_date_filter_enabled = True
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="过去15天各渠道D7留存率对比", data_skill="")
     service.chat_date_pivot = None
-    response = {
+    explicit_filter = {
+        **DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-08-04"},
+            "end": {"mode": "static", "date": "2026-08-18"},
+        },
+    }
+    response = _attach_time_contract({
         "success": True,
         "sql": DATE_TEMPLATE_SQL,
         "tables": ["event"],
         "chart-type": "line",
-        "date_filter": DATE_FILTER,
-    }
+    }, explicit_filter, scope="explicit", start="2026-08-04", end="2026-08-18")
 
     service.check_sql(
         session=object(),
@@ -467,8 +770,8 @@ def test_check_sql_uses_explicit_question_range_instead_of_llm_default():
     assert service.chat_date_pivot["date_expression"] == {
         "version": 1,
         "mode": "range",
-        "start": {"mode": "dynamic", "unit": "day", "offset": -15},
-        "end": {"mode": "dynamic", "unit": "day", "offset": -1},
+        "start": {"mode": "static", "date": "2026-08-04"},
+        "end": {"mode": "static", "date": "2026-08-18"},
     }
 
 
@@ -477,9 +780,9 @@ def test_normalize_rejects_token_without_configuration():
         normalize_chat_date_filter(None, DATE_TEMPLATE_SQL, "line")
 
 
-def test_normalize_rejects_fixed_metric_date_configuration():
-    with pytest.raises(ChatDateFilterConfigurationError, match="metric_chart"):
-        normalize_chat_date_filter(DATE_FILTER, DATE_TEMPLATE_SQL, "metric")
+def test_normalize_allows_metric_date_configuration():
+    pivot = normalize_chat_date_filter(DATE_FILTER, DATE_TEMPLATE_SQL, "metric")
+    assert pivot["time_field"] == "dt"
 
 
 def test_normalize_rejects_current_date_function_for_date_filter():
@@ -564,28 +867,29 @@ def test_llm_service_renders_date_template_only_for_execution():
     assert "BETWEEN" in execution_sql
 
 
-def test_llm_service_rejects_unrendered_date_template():
+def test_llm_service_refuses_to_execute_template_sql_without_date_pivot():
     service = object.__new__(LLMService)
     service.ds = SimpleNamespace(type="mysql")
     service.chat_date_pivot = None
 
-    with pytest.raises(ChatDateFilterConfigurationError, match="date_filter_render_incomplete"):
+    with pytest.raises(SingleMessageError, match="missing_date_filter"):
         service.render_chat_sql_for_execution(DATE_TEMPLATE_SQL)
 
 
-def test_check_sql_keeps_date_template_and_date_filter_pivot():
+def test_check_sql_keeps_date_template_and_date_filter_pivot(monkeypatch):
+    monkeypatch.setattr("apps.chat.task.llm.system_business_date", lambda: date(2026, 8, 19))
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.dashboard_date_filter_enabled = True
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="趋势", data_skill="")
     service.chat_date_pivot = None
-    response = {
+    response = _attach_time_contract({
         "success": True,
         "sql": DATE_TEMPLATE_SQL,
         "tables": ["event"],
         "chart-type": "line",
-        "date_filter": DATE_FILTER,
-    }
+    }, DEFAULT_STATIC_DATE_FILTER, scope="unspecified", start="2026-08-12", end="2026-08-18")
 
     sql, tables = service.check_sql(
         session=object(),
@@ -595,22 +899,31 @@ def test_check_sql_keeps_date_template_and_date_filter_pivot():
 
     assert sql == DATE_TEMPLATE_SQL
     assert tables == ["event"]
-    assert service.chat_date_pivot == {"enabled": False, **DATE_FILTER}
+    assert service.chat_date_pivot == {"enabled": False, **DEFAULT_STATIC_DATE_FILTER}
 
 
 def test_check_sql_rewrites_date_literals_to_template_for_declared_date_filter():
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.dashboard_date_filter_enabled = True
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="DAU趋势", data_skill="")
     service.chat_date_pivot = None
-    response = {
+    literal_filter = {
+        **DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-07-01"},
+            "end": {"mode": "static", "date": "2026-07-28"},
+        },
+    }
+    response = _attach_time_contract({
         "success": True,
         "sql": DATE_LITERAL_SQL,
         "tables": ["event"],
         "chart-type": "line",
-        "date_filter": DATE_FILTER,
-    }
+    }, literal_filter, scope="explicit", start="2026-07-01", end="2026-07-28")
 
     sql, tables = service.check_sql(
         session=object(),
@@ -620,42 +933,39 @@ def test_check_sql_rewrites_date_literals_to_template_for_declared_date_filter()
 
     assert sql == DATE_LITERAL_TEMPLATE_SQL
     assert tables == ["event"]
-    assert service.chat_date_pivot == {"enabled": False, **DATE_FILTER}
+    assert service.chat_date_pivot == {"enabled": False, **literal_filter}
 
 
-def test_check_sql_rewrites_declared_current_date_function_range_to_template():
+def test_check_sql_rejects_declared_current_date_function_with_concrete_contract(monkeypatch):
+    monkeypatch.setattr("apps.chat.task.llm.trigger_log_error", lambda *_args: None)
     service = object.__new__(LLMService)
     service.current_logs = {OperationEnum.GENERATE_SQL: None}
+    service.dashboard_date_filter_enabled = True
     service.ds = SimpleNamespace(type="mysql")
     service.chat_question = SimpleNamespace(question="最近14天每日付费金额趋势", data_skill="")
     service.chat_date_pivot = None
-    response = {
+    fourteen_day_filter = {
+        **DATE_FILTER,
+        "date_expression": {
+            "version": 1,
+            "mode": "range",
+            "start": {"mode": "static", "date": "2026-08-05"},
+            "end": {"mode": "static", "date": "2026-08-18"},
+        },
+    }
+    response = _attach_time_contract({
         "success": True,
         "sql": DATE_CURRENT_FUNCTION_SQL,
         "tables": ["event"],
         "chart-type": "line",
-        "date_filter": DATE_FILTER,
-    }
+    }, fourteen_day_filter, scope="explicit", start="2026-08-05", end="2026-08-18")
 
-    sql, tables = service.check_sql(
-        session=object(),
-        res=__import__("json").dumps(response),
-        operate=OperationEnum.GENERATE_SQL,
-    )
-
-    assert "CURDATE" not in sql.upper()
-    assert sql == (
-        "SELECT * FROM event "
-        "WHERE `e`.`dt` BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}} "
-        "AND `e`.`prod` = 110000047"
-    )
-    assert tables == ["event"]
-    assert service.chat_date_pivot["date_expression"] == {
-        "version": 1,
-        "mode": "range",
-        "start": {"mode": "dynamic", "unit": "day", "offset": -14},
-        "end": {"mode": "dynamic", "unit": "day", "offset": -1},
-    }
+    with pytest.raises(SingleMessageError, match="database_current_date"):
+        service.check_sql(
+            session=object(),
+            res=__import__("json").dumps(response),
+            operate=OperationEnum.GENERATE_SQL,
+        )
 
 
 def test_prepare_sql_saves_template_but_validates_rendered_sql(monkeypatch):
@@ -762,6 +1072,7 @@ def test_chat_sql_template_requires_date_filter_contract():
     )
 
     assert '"date_filter"' in source
-    assert '"past_7_days"' in source
+    assert '"time_scope"' in source
+    assert '"time_range"' in source
     assert "实时粒度规则" in source
     assert "不得把实时问题生成单行 SUM/COUNT 的 metric" in source

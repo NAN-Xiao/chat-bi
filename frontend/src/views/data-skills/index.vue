@@ -11,6 +11,7 @@ import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import { useUserStore } from '@/stores/user'
+import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 
 const props = withDefaults(
   defineProps<{
@@ -36,6 +37,7 @@ const skillKeyword = ref('')
 const datasourceOptions = ref<any[]>([])
 const scopeFilter = ref('')
 const datasourceFilter = ref<number | string>('')
+let skillLoadGeneration = 0
 
 const isAdminMode = computed(() => props.mode === 'admin')
 const isPlatformAdmin = computed(
@@ -236,6 +238,7 @@ const loadDatasourceOptions = async () => {
 }
 
 const loadSkills = async () => {
+  const generation = ++skillLoadGeneration
   skillLoading.value = true
   try {
     const queries = isAdminMode.value
@@ -244,12 +247,13 @@ const loadSkills = async () => {
     const responses: any[] = await Promise.all(
       queries.map((query) => dataSkillApi.getList(1, 100, query).catch(() => ({ data: [] })))
     )
+    if (generation !== skillLoadGeneration) return
     skillList.value = dedupeSkills(responses.flatMap((res: any) => res?.data || []))
       .filter(isVisibleInPersonalEntry)
       .filter((row: any) => isAdminMode.value || row?.active !== false || canManageSkill(row))
       .sort(sortBySourceAndTime)
   } finally {
-    skillLoading.value = false
+    if (generation === skillLoadGeneration) skillLoading.value = false
   }
 }
 
@@ -433,6 +437,25 @@ watch(scopeFilter, () => {
 
 watch(datasourceFilter, () => {
   loadSkills()
+})
+
+useEmitt({
+  name: WORKSPACE_CONTEXT_CHANGE_EVENT,
+  callback: async (event?: any) => {
+    if (event?.phase === 'changing') {
+      skillLoadGeneration += 1
+      skillList.value = []
+      datasourceOptions.value = []
+      skillLoading.value = false
+      return
+    }
+    if (event?.phase !== 'changed') return
+
+    if (isAdminMode.value) {
+      await loadDatasourceOptions()
+    }
+    loadSkills()
+  },
 })
 </script>
 

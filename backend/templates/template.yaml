@@ -163,18 +163,27 @@ template:
         </rule>
         <rule priority="high">
           请使用JSON格式返回你的回答:
-          若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段","message":"可选；当只能回答部分问题或需要提示缺失数据时填写","date_filter":{{"time_field":"时间字段","date_parameter_type":"date/yyyymmdd_number/yyyymmdd_text/timestamp","date_expression":{{"version":1,"mode":"preset","preset":"past_7_days"}}}}}}
+          若能生成，则返回格式如：{{"success":true,"time_scope":"explicit/unspecified","time_range":{{"start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD"}},"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段","message":"可选；当只能回答部分问题或需要提示缺失数据时填写","date_filter":{{"time_field":"时间字段","date_parameter_type":"date/yyyymmdd_number/yyyymmdd_text/timestamp","date_expression":{{"version":1,"mode":"range","start":{{"mode":"static","date":"YYYY-MM-DD"}},"end":{{"mode":"static","date":"YYYY-MM-DD"}}}}}}}}
           若不能生成，则返回格式如：{{"success":false,"message":"说明无法生成SQL的原因"}}
           返回内容必须是严格 JSON，不要包含 Markdown 或其他文本；由于 SQL 放在 JSON 字符串内，SQL 中的双引号必须转义为 \"，换行必须转义为 \n。
         </rule>
         <rule priority="high">
-          当 SQL 使用时间范围筛选的非 metric 图表时，必须返回 date_filter。即使最终 SELECT 不输出日期列，只要 SQL 使用看板日期 token 进行时间范围筛选（例如按分类维度汇总最近 N 天），都必须返回 date_filter。SQL 日期边界必须使用与 date_parameter_type 一致的看板日期 token；date_filter 必须包含 time_field、date_parameter_type 和 date_expression。用户未指定日期范围时，date_expression 必须为 {{"version":1,"mode":"preset","preset":"past_7_days"}}。用户明确指定“最近/近/过去 N 天”时，N 是正整数，必须保留该范围：N=7/30/90 时分别使用 past_7_days/past_30_days/past_90_days；其他 N 必须使用 {{"version":1,"mode":"range","start":{{"mode":"dynamic","unit":"day","offset":-N}},"end":{{"mode":"dynamic","unit":"day","offset":-1}}}}，表示截至昨天的 N 个完整自然日，例如最近14天的 start.offset 为 -14、end.offset 为 -1。固定 metric 图表不得返回 date_filter，也不得使用看板日期 token。只有 SQL 完全不使用日期范围筛选和看板日期 token 的无时间范围图表，才不得返回 date_filter。date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。
+          所有非 metric 图表都必须返回 time_scope、time_range 和 date_filter；metric 图表只要涉及日期字段或日期条件，也必须返回 time_scope、time_range、date_filter 并使用看板日期 token。即使最终 SELECT 不输出日期列，只要 SQL 使用看板日期 token 进行时间范围筛选，都必须返回 date_filter。只有完全不涉及日期字段或日期条件的全量累计指标，才可省略 date_filter。你必须根据 current-time 中的系统业务日期，在本次响应内将“上周、八月份、过去 N 天”等表达直接换算为具体 YYYY-MM-DD 起止日期；不得只返回 unit/offset。time_scope 在用户明确表达时间时为 explicit，完全未表达时间时为 unspecified。time_range 必须与 date_filter.date_expression 的静态 range 完全一致，结束日期不得晚于系统业务日期。SQL 日期边界必须使用与 date_parameter_type 一致的看板日期 token；指标卡只要查询或过滤日期字段，必须使用看板日期 token 和 date_filter，禁止用固定日期字面量规避日期选择器。date_filter 存在时不得使用 CURDATE、CURRENT_DATE、NOW、CURRENT_TIMESTAMP、LOCALTIME、LOCALTIMESTAMP、GETDATE 或 GETUTCDATE。
         </rule>
         <rule priority="high">
-          时间序列强制日期规则：问题包含“趋势、走势、变化、每日、每天、按天、按日、每周、按周、每月、按月、每小时、按小时”等时间序列表达时，即使用户没有明确给出时间窗口，也必须生成完整 date_filter，并使用最近七天（past_7_days）作为默认日期范围。SQL 必须使用 {{dashboard_start_yyyymmdd}} 和 {{dashboard_end_yyyymmdd}}；不得因为用户没有说“最近七天”就省略日期条件或查询全历史。明确的日期范围优先于默认七天。固定 metric 图表不适用本规则。
+          通用相对日期换算规则：“近/最近/过去 N 天”表示系统业务日期之前的 N 个完整自然日，不含系统业务日期；昨天和前天分别是系统业务日期前 1 天和前 2 天；本周从周一开始并截止系统业务日期，上周是上一个完整周一至周日；本月从当月 1 日开始并截止系统业务日期，上月是上一个完整自然月；“固定日期到昨天”等混合范围必须分别解析两个边界。任何范围都不得补到未来周日、未来月末或其他晚于系统业务日期的日期。
         </rule>
         <rule priority="high">
-          实时粒度规则：问题包含“实时”且未明确要求总额、总的、合计、汇总、总计、单值、指标卡、截至当前、截至目前或当前累计时，必须生成按时间字段分组的小时级非 metric 时间序列，chart-type 使用 line/area/column 等带维度图表，并返回完整 date_filter；不得把实时问题生成单行 SUM/COUNT 的 metric。只有用户明确要求上述汇总语义时，才允许生成单行 metric，且不得返回 date_filter。
+          日期输出自检：生成 JSON 前必须确认 time_range、date_expression 和 SQL 表达同一范围。SQL 中不得保留具体日期字面量作为 date_filter 的边界，必须将起止条件写成匹配 date_parameter_type 的成对 dashboard token；单日范围也必须使用成对 token 表达。
+        </rule>
+        <rule priority="high">
+          默认日期范围规则：凡按上述规则必须使用 date_filter 的图表，用户完全未指定时间时，time_scope=unspecified，并返回系统业务日期之前最近 7 个完整自然日（不含系统业务日期）的具体 time_range 和静态 date_expression；不得省略日期条件、查询全历史或返回动态 preset。问题包含“趋势、走势、变化、每日、每天、按天、按日、每周、按周、每月、按月、每小时、按小时”等时间序列表达时同样适用。明确的日期范围优先于默认七天。只有完全不涉及日期语义的全量累计 metric 才不适用本规则。
+        </rule>
+        <rule priority="high">
+          实时粒度规则：问题包含“实时”且未明确要求总额、总的、合计、汇总、总计、单值、指标卡、截至当前、截至目前或当前累计时，必须生成按时间字段分组的小时级非 metric 时间序列，chart-type 使用 line/area/column 等带维度图表，并返回完整 date_filter；不得把实时问题生成单行 SUM/COUNT 的 metric。只有用户明确要求上述汇总语义时，才允许生成单行 metric；该 metric 涉及日期字段或日期条件时仍必须返回完整 date_filter 并使用看板日期 token。
+        </rule>
+        <rule priority="high">
+          实时日期范围规则：实时代表当前系统业务日并按小时统计。问题只说“实时”或“今天实时”且未明确其他日期范围时，time_scope 必须为 explicit，time_range 为系统业务日当天（start_date=end_date=current-time 的日期），date_expression 使用相同日期的静态 range；不得套用默认七天。普通实时问题必须生成按小时分组的非 metric 图表，SQL 仍必须使用成对 dashboard 日期 token。
         </rule>
         <rule>
           如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、分组柱状图(grouped_column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、环形图(donut)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/grouped_column/bar/line/area/pie/donut/funnel/heatmap/scatter/sankey/treemap 中的一个

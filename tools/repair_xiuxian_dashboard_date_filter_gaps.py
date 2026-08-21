@@ -159,10 +159,10 @@ def configure_view(view: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         pivot.pop("date_expression", None)
     if "datasource" in config:
         result["datasource"] = config["datasource"]
-        source_config = result.setdefault("sourceConfig", {})
-        sql_config = source_config.setdefault("sql", {})
+        source_config = result.get("sourceConfig")
+        sql_config = source_config.get("sql") if isinstance(source_config, dict) else None
         if isinstance(sql_config, dict):
-            sql_config["datasource"] = config["datasource"]
+            sql_config.pop("datasource", None)
     return result
 
 

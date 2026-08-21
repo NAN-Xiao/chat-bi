@@ -37,10 +37,13 @@ from apps.chat.service.chat_date_filter import (
     ChatDateFilterConfigurationError,
     DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE,
     ensure_chat_date_filter_allowed,
+    has_dashboard_date_filter_parameters,
+    normalize_chat_date_filter_contract,
     normalize_chat_date_filter_for_question,
     question_date_scope,
     rewrite_chat_date_filter_literals,
     render_chat_date_filter_sql,
+    system_business_date,
 )
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
@@ -60,7 +63,7 @@ from apps.chat.task.sql_repair import (
     build_sql_repair_message,
     validate_sql_for_datasource,
 )
-from apps.datasource.crud.datasource import get_ai_table_schema, get_datasource_list
+from apps.datasource.crud.datasource import get_datasource_list
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_DISPLAY_MESSAGE,
@@ -68,6 +71,7 @@ from apps.datasource.crud.permission_errors import (
 )
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access
 from apps.datasource.crud.sql_engine import (
+    BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE,
     BusinessSqlContext,
     BusinessSqlContextService,
     UnresolvedDashboardDateParametersError,
@@ -112,7 +116,7 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
-from common.error import SingleMessageError, AppDBError, ParseSQLResultError
+from common.error import SingleMessageError, AppDBError, DataUnavailableError, ParseSQLResultError
 from common.user_facing_errors import agent_guidance_for_error_type
 from common.utils.locale import I18n, I18nHelper
 from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
@@ -305,6 +309,76 @@ def _rule_matches_sql_scope(
     return True
 
 
+def _sql_has_complete_hour_sequence(sql_text: str) -> bool:
+    """识别非递归 0-23 常量序列或等价的受限数字表小时骨架。"""
+    if re.search(
+        r"\b(?:generate_series|sequence)\s*\(\s*0\s*,\s*23\s*\)",
+        sql_text,
+        re.IGNORECASE,
+    ):
+        return True
+    if re.search(
+        r"\b(?:hour_index|hour_offset|hour)\s+between\s+0\s+and\s+23\b",
+        sql_text,
+        re.IGNORECASE,
+    ):
+        return True
+
+    literal_hours = {
+        int(match.group(1))
+        for match in re.finditer(r"\bselect\s+(\d{1,2})\b", sql_text, re.IGNORECASE)
+    }
+    return literal_hours.issuperset(range(24))
+
+
+def _max_time_queries_use_dashboard_date_range(sql_text: str) -> bool:
+    """确保包含 MAX(time) 的查询块自身使用成对看板日期边界。"""
+    start_token = "__dashboard_start_yyyymmdd__"
+    end_token = "__dashboard_end_yyyymmdd__"
+    normalized = re.sub(
+        r"\{\{\s*dashboard_start_yyyymmdd\s*\}\}",
+        start_token,
+        sql_text,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"\{\{\s*dashboard_end_yyyymmdd\s*\}\}",
+        end_token,
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    for dialect in ("mysql", "postgres", None):
+        try:
+            statements = sqlglot.parse(normalized, read=dialect)
+            break
+        except Exception:
+            statements = []
+    if not statements:
+        return False
+
+    found_max_time = False
+    for statement in statements:
+        for select in statement.find_all(exp.Select):
+            has_max_time = any(
+                maximum.find_ancestor(exp.Select) is select
+                and any(
+                    str(column.name or "").lower() == "time"
+                    for column in maximum.find_all(exp.Column)
+                )
+                for maximum in select.find_all(exp.Max)
+            )
+            if not has_max_time:
+                continue
+            found_max_time = True
+            where = select.args.get("where")
+            if where is None:
+                return False
+            where_sql = where.sql().lower()
+            if start_token not in where_sql or end_token not in where_sql:
+                return False
+    return found_max_time
+
+
 def _sql_pattern_matches(pattern_text: str, sql_text: str, sql_lower: str) -> bool:
     """
     是什么：判断 SQL 是否命中 Data Skill 里的正则或普通文本模式。
@@ -336,58 +410,179 @@ def _parse_sql_statements_for_validation(sql_text: str) -> list[exp.Expression]:
     return []
 
 
-def _sql_has_non_time_group_by(sql_text: str) -> bool:
-    """判断 SQL 是否按时间字段之外的任意维度分组。"""
-    statements = _parse_sql_statements_for_validation(sql_text)
+def _select_sources(select: exp.Select) -> list[exp.Expression]:
+    """返回当前查询块直接读取的 FROM/JOIN 来源。"""
+    sources: list[exp.Expression] = []
+    from_clause = select.args.get("from_")
+    if from_clause is not None and from_clause.this is not None:
+        sources.append(from_clause.this)
+    sources.extend(
+        join.this
+        for join in select.args.get("joins") or []
+        if join.this is not None
+    )
+    return sources
 
-    for statement in statements:
-        for select in statement.find_all(exp.Select):
-            group = select.args.get("group")
-            if group is None or len(group.expressions) < 2:
+
+def _query_root_selects(query: exp.Expression) -> list[exp.Select]:
+    """取得一个 CTE/子查询自身的顶层 SELECT，不下钻其内部 CTE。"""
+    while isinstance(query, (exp.Subquery, exp.Paren)):
+        query = query.this
+    if isinstance(query, exp.Select):
+        return [query]
+    if isinstance(query, exp.SetOperation):
+        return [
+            *(_query_root_selects(query.this) if query.this is not None else []),
+            *(_query_root_selects(query.expression) if query.expression is not None else []),
+        ]
+    return []
+
+
+def _result_grain_selects(statement: exp.Expression) -> list[exp.Select]:
+    """查找决定最终结果粒度的最近聚合查询块。"""
+    root_selects = _query_root_selects(statement)
+    if not root_selects:
+        root_select = statement.find(exp.Select)
+        root_selects = [root_select] if root_select is not None else []
+
+    ctes = {
+        str(cte.alias_or_name or "").strip('"\x60[]').lower(): cte.this
+        for cte in statement.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    result: list[exp.Select] = []
+    visited_ctes: set[str] = set()
+
+    def visit_select(select: exp.Select) -> None:
+        if select.args.get("group") is not None:
+            result.append(select)
+            return
+        for source in _select_sources(select):
+            if isinstance(source, exp.Subquery):
+                for nested_select in _query_root_selects(source):
+                    visit_select(nested_select)
                 continue
-            if any(
-                not _TIME_GROUP_EXPRESSION_PATTERN.search(
-                    expression.sql(dialect="mysql", normalize=True)
+            if not isinstance(source, exp.Table):
+                continue
+            cte_name = str(source.name or "").strip('"\x60[]').lower()
+            if not cte_name or cte_name in visited_ctes or cte_name not in ctes:
+                continue
+            visited_ctes.add(cte_name)
+            for cte_select in _query_root_selects(ctes[cte_name]):
+                visit_select(cte_select)
+
+    for root_select in root_selects:
+        visit_select(root_select)
+    return result
+
+
+def _non_time_result_group_scope(sql_text: str) -> tuple[bool, set[str]]:
+    """返回最终结果粒度是否含非时间维度，以及这些维度的字段/输出名。"""
+    has_non_time_group = False
+    dimension_names: set[str] = set()
+    for statement in _parse_sql_statements_for_validation(sql_text):
+        for select in _result_grain_selects(statement):
+            group = select.args.get("group")
+            if group is None:
+                continue
+            for expression in group.expressions:
+                normalized = expression.sql(dialect="mysql", normalize=True)
+                if _TIME_GROUP_EXPRESSION_PATTERN.search(normalized):
+                    continue
+                has_non_time_group = True
+                dimension_names.update(
+                    str(column.name or "").strip('"\x60[]').lower()
+                    for column in expression.find_all(exp.Column)
+                    if column.name
                 )
-                for expression in group.expressions
-            ):
-                return True
+                if isinstance(expression, exp.Column) and expression.name:
+                    dimension_names.add(str(expression.name).strip('"\x60[]').lower())
+                for projection in select.expressions:
+                    projection_expression = projection.this if isinstance(projection, exp.Alias) else projection
+                    if projection_expression.sql(dialect="mysql", normalize=True) != normalized:
+                        continue
+                    output_name = str(projection.alias_or_name or "").strip('"\x60[]').lower()
+                    if output_name:
+                        dimension_names.add(output_name)
+    return has_non_time_group, dimension_names
+
+
+def _sql_has_non_time_group_by(sql_text: str) -> bool:
+    """判断最终结果粒度是否按时间字段之外的任意维度分组。"""
+    has_non_time_group, _dimension_names = _non_time_result_group_scope(sql_text)
+    return has_non_time_group
+
+
+def _select_cross_join_projects_dimension(
+    select: exp.Select,
+    dimension_names: set[str],
+) -> bool:
+    """确认查询块的 CROSS JOIN 实际向结果输出了业务维度。"""
+    joins = select.args.get("joins") or []
+    if not any(str(join.args.get("kind") or "").upper() == "CROSS" for join in joins):
+        return False
+
+    cross_sources: list[exp.Expression] = []
+    from_clause = select.args.get("from_")
+    if from_clause is not None and from_clause.this is not None:
+        cross_sources.append(from_clause.this)
+    cross_sources.extend(
+        join.this
+        for join in joins
+        if str(join.args.get("kind") or "").upper() == "CROSS" and join.this is not None
+    )
+    cross_source_aliases = {
+        str(source.alias_or_name or "").strip('"\x60[]').lower()
+        for source in cross_sources
+        if source.alias_or_name
+    }
+    for projection in select.expressions:
+        output_name = str(projection.alias_or_name or "").strip('"\x60[]').lower()
+        columns = list(projection.find_all(exp.Column))
+        if output_name in dimension_names and any(
+            not column.table
+            or str(column.table).strip('"\x60[]').lower() in cross_source_aliases
+            for column in columns
+        ):
+            return True
+        if any(
+            str(column.name or "").strip('"\x60[]').lower() in dimension_names
+            and (
+                not column.table
+                or str(column.table).strip('"\x60[]').lower() in cross_source_aliases
+            )
+            for column in columns
+        ):
+            return True
     return False
 
 
 def _sql_outer_select_has_cross_join(sql_text: str) -> bool:
     """检查最终查询使用的日期/小时维度骨架是否包含 CROSS JOIN。"""
+    has_non_time_group, dimension_names = _non_time_result_group_scope(sql_text)
+    if not has_non_time_group or not dimension_names:
+        return False
     for statement in _parse_sql_statements_for_validation(sql_text):
-        outer_select = statement if isinstance(statement, exp.Select) else statement.find(exp.Select)
-        if outer_select is None:
-            continue
-        for join in outer_select.args.get("joins") or []:
-            if str(join.args.get("kind") or "").upper() == "CROSS":
+        root_selects = _query_root_selects(statement)
+        if not root_selects:
+            outer_select = statement.find(exp.Select)
+            root_selects = [outer_select] if outer_select is not None else []
+        for outer_select in root_selects:
+            if _select_cross_join_projects_dimension(outer_select, dimension_names):
                 return True
-
-        from_clause = outer_select.args.get("from_")
-        outer_sources = []
-        if from_clause is not None and from_clause.this is not None:
-            outer_sources.append(from_clause.this)
-        outer_sources.extend(
-            join.this for join in outer_select.args.get("joins") or [] if join.this is not None
-        )
-        consumed_ctes = {
-            str(source.name or "").strip('"\x60[]').lower()
-            for source in outer_sources
-            if isinstance(source, exp.Table)
-        }
-        for cte in statement.find_all(exp.CTE):
-            if str(cte.alias_or_name or "").strip('"\x60[]').lower() not in consumed_ctes:
-                continue
-            cte_select = cte.this.find(exp.Select)
-            if cte_select is None or len(cte_select.named_selects) < 2:
-                continue
-            if any(
-                str(join.args.get("kind") or "").upper() == "CROSS"
-                for join in cte_select.args.get("joins") or []
-            ):
-                return True
+            consumed_ctes = {
+                str(source.name or "").strip('"\x60[]').lower()
+                for source in _select_sources(outer_select)
+                if isinstance(source, exp.Table)
+            }
+            for cte in statement.find_all(exp.CTE):
+                if str(cte.alias_or_name or "").strip('"\x60[]').lower() not in consumed_ctes:
+                    continue
+                if any(
+                    _select_cross_join_projects_dimension(cte_select, dimension_names)
+                    for cte_select in _query_root_selects(cte.this)
+                ):
+                    return True
     return False
 
 
@@ -416,6 +611,14 @@ def _required_sql_violations(
     ]
     if rule.get("required_outer_select_cross_join") and not _sql_outer_select_has_cross_join(sql_text):
         missing_patterns.append("outer SELECT CROSS JOIN")
+    if rule.get("required_complete_hour_sequence") and not _sql_has_complete_hour_sequence(
+        sql_text
+    ):
+        missing_patterns.append("complete hour sequence 0-23")
+    if rule.get("required_scoped_max_time") and not _max_time_queries_use_dashboard_date_range(
+        sql_text
+    ):
+        missing_patterns.append("MAX(time) scoped by dashboard date range")
     return tuple(missing_contains), tuple(missing_patterns)
 
 
@@ -1747,15 +1950,9 @@ class LLMService:
                 _session,
                 CustomPromptTargetScopeEnum.SMART_QA,
             )
-            if context:
-                tables = list(context.allowed_tables)
-            else:
-                self.chat_question.db_schema, tables = get_ai_table_schema(
-                    session=_session,
-                    current_user=self.current_user,
-                    ds=self.ds,
-                    question=self.chat_question.question,
-                )
+            if context is None:
+                raise DataUnavailableError(BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE)
+            tables = list(context.allowed_tables)
 
         # AI 结构识别以工作空间数据字典为准，不通过样例数据探测物理表。
         self.chat_question.sample_data = ""
@@ -2096,8 +2293,8 @@ class LLMService:
         """
         if append_question:
             self.sql_message.append(HumanMessage(
-                self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                     change_title=self.change_title)))
+                self.chat_question.sql_user_question(current_time=f"{system_business_date().isoformat()}（系统业务日期）",
+                                                      change_title=self.change_title)))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -2373,23 +2570,31 @@ class LLMService:
             raise SingleMessageError("SQL query is empty")
 
         original_sql = sql
-        rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
+        dashboard_date_filter_enabled = getattr(self, "dashboard_date_filter_enabled", True)
         try:
-            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), original_sql)
-            ensure_chat_date_filter_allowed(self.dashboard_date_filter_enabled, data.get("date_filter"), rewritten_sql)
+            rewritten_sql = rewrite_chat_date_filter_literals(data.get("date_filter"), sql)
+            ensure_chat_date_filter_allowed(dashboard_date_filter_enabled, data.get("date_filter"), original_sql)
+            ensure_chat_date_filter_allowed(dashboard_date_filter_enabled, data.get("date_filter"), rewritten_sql)
         except ChatDateFilterConfigurationError as error:
             trigger_log_error(session, log)
+            if dashboard_date_filter_enabled:
+                raise SingleMessageError(f"日期参数配置无效：{error}") from error
             raise SingleMessageError("当前工作空间未启用看板日期参数，SQL 不得包含日期占位符或 date_filter") from error
-        if not self.dashboard_date_filter_enabled:
+        if not dashboard_date_filter_enabled:
             self.chat_date_pivot = None
             sql = original_sql
         else:
             try:
-                self.chat_date_pivot = normalize_chat_date_filter_for_question(
-                    self.chat_question.question,
+                self.chat_date_pivot = normalize_chat_date_filter_contract(
                     data.get("date_filter"),
                     rewritten_sql,
                     data.get("chart-type") or data.get("chart_type") or "",
+                    time_scope=data.get("time_scope"),
+                    time_range=data.get("time_range"),
+                    business_date=system_business_date(),
+                    requires_current_business_day=(
+                        question_date_scope(self.chat_question.question) == "current_day"
+                    ),
                 )
             except ChatDateFilterConfigurationError as error:
                 trigger_log_error(session, log)
@@ -2464,6 +2669,8 @@ class LLMService:
 
     def render_chat_sql_for_execution(self, template_sql: str) -> str:
         """执行聊天 SQL 前，按已校验的日期配置临时渲染模板。"""
+        if has_dashboard_date_filter_parameters(template_sql) and self.chat_date_pivot is None:
+            raise SingleMessageError("日期参数配置无效：missing_date_filter")
         return render_chat_date_filter_sql(
             template_sql,
             getattr(self.ds, "type", None),
@@ -2528,7 +2735,18 @@ class LLMService:
             )
 
         if self.chat_date_pivot is not None:
-            chart["pivot"] = copy.deepcopy(self.chat_date_pivot)
+            date_pivot = copy.deepcopy(self.chat_date_pivot)
+            chart["pivot"] = {
+                key: value
+                for key, value in date_pivot.items()
+                if key not in {"date_parameter_type", "date_expression"}
+            }
+            chart["configVersion"] = 2
+            chart["dateFilter"] = {
+                "enabled": True,
+                "parameterType": date_pivot["date_parameter_type"],
+                "expression": date_pivot["date_expression"],
+            }
 
         save_chart(session=session, chart=orjson.dumps(chart).decode(), record_id=self.record.id)
 

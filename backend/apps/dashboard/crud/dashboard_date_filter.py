@@ -440,15 +440,6 @@ def prepare_dashboard_date_filter(
     except Exception:
         return _unconfigured(source_sql, set(), "sql_parse_failed")
 
-    if "event_realtime" in {table.lower() for table in physical_tables}:
-        return DashboardDateFilterPreparation(
-            sql=source_sql,
-            start=None,
-            end=None,
-            physical_tables=physical_tables,
-            capability={"status": "realtime", "reason": "realtime_table"},
-        )
-
     if active_tokens and date_filter is None:
         return _unconfigured(source_sql, physical_tables, "missing_date_filter")
 

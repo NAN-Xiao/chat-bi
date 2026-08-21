@@ -109,6 +109,11 @@ import {
   withResolvedMetricSemantics,
 } from '@/views/dashboard/utils/metricSemantics.ts'
 import { inferPivotDimensions, type PivotDimension } from '@/views/dashboard/utils/pivotDimensions.ts'
+import {
+  normalizePivotGroupValueMode,
+  shouldConstrainPivotGroupValues,
+  type PivotGroupValueMode,
+} from '@/views/dashboard/utils/pivotGroupValues.ts'
 import { ArrowDown, ArrowLeft, ArrowRight, Calendar, Search } from '@element-plus/icons-vue'
 import {
   applyExternalMcpSnapshotResult,
@@ -302,7 +307,6 @@ type PivotQuickRange = {
   offset?: number
   range?: string
 }
-type PivotGroupValueSelectionMode = 'all' | 'custom'
 type PivotGroupValueOption = {
   value: string
   label: string
@@ -628,7 +632,7 @@ const pivotState = reactive({
 const pivotGroupValueSearch = ref('')
 const pivotGroupValueState = reactive<{
   key: string
-  mode: PivotGroupValueSelectionMode
+  mode: PivotGroupValueMode
   selectedValues: string[]
 }>({
   key: '',
@@ -826,12 +830,16 @@ const renderableChartData = computed(() => {
 const configuredPivotGroupValues = computed(() =>
   unique(Array.isArray(props.viewInfo?.pivot?.group_values) ? props.viewInfo.pivot.group_values : [])
 )
+const configuredPivotGroupValueMode = computed(() =>
+  normalizePivotGroupValueMode(props.viewInfo?.pivot)
+)
 const pivotGroupValueOptions = computed<PivotGroupValueOption[]>(() => {
   if (!pivotGroupValueFilterEnabled.value) {
     return []
   }
   const configured = configuredPivotGroupValues.value
-  const configuredSet = new Set(configured)
+  const constrainToConfigured = shouldConstrainPivotGroupValues(props.viewInfo?.pivot)
+  const configuredSet = constrainToConfigured ? new Set(configured) : new Set<string>()
   const counts = new Map<string, number>()
   const field = activePivotGroupField.value
   renderableChartData.value.forEach((row: Record<string, any>) => {
@@ -841,12 +849,14 @@ const pivotGroupValueOptions = computed<PivotGroupValueOption[]>(() => {
     }
     counts.set(value, (counts.get(value) || 0) + 1)
   })
-  configured.forEach((value) => {
+  if (constrainToConfigured) configured.forEach((value) => {
     if (value && !counts.has(value)) {
       counts.set(value, 0)
     }
   })
-  const values = configured.length > 0 ? configured.map((value) => [value, counts.get(value) || 0] as [string, number]) : Array.from(counts.entries())
+  const values = constrainToConfigured
+    ? configured.map((value) => [value, counts.get(value) || 0] as [string, number])
+    : Array.from(counts.entries())
   return values
     .map(([value, count]) => ({
       value,
@@ -893,7 +903,7 @@ const displayData = computed(() => {
   if (!pivotGroupValueFilterEnabled.value) {
     return rows
   }
-  if (configuredPivotGroupValues.value.length === 0 && pivotGroupValueState.mode === 'all') {
+  if (configuredPivotGroupValueMode.value === 'all' && pivotGroupValueState.mode === 'all') {
     return rows
   }
   const selected = selectedPivotGroupValueSet.value
@@ -1172,7 +1182,7 @@ function defaultPivotAggregation() {
   return defaultPivotAggregationForAxes(chartMetricAxes.value, props.viewInfo?.data?.data || [])
 }
 
-function resetPivotGroupValueSelection(mode: PivotGroupValueSelectionMode = 'all') {
+function resetPivotGroupValueSelection(mode: PivotGroupValueMode = 'all') {
   pivotGroupValueState.mode = mode
   pivotGroupValueState.selectedValues = mode === 'all'
     ? pivotGroupValueOptions.value.map((option) => option.value)
@@ -3811,8 +3821,9 @@ defineExpose({
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: var(--workspace-panel-bg, var(--theme-panel-bg, #ffffff));
+  background: transparent;
   color: var(--workspace-text-primary, #1f2329);
+  pointer-events: none;
 }
 
 .chart-loading-ring {

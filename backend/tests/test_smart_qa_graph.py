@@ -242,6 +242,10 @@ class FakeSmartQAService:
         self.table_name_list = ["orders"]
         self.change_title = False
         self.out_ds_instance = None
+        self.business_sql_context = SimpleNamespace(
+            schema="table orders(value numeric)",
+            allowed_tables=["orders"],
+        )
         self.sql_answer = sql_answer or _sql_answer()
         self.saved_sql: list[str] = []
         self.saved_data: list[dict[str, Any]] = []
@@ -480,12 +484,6 @@ def test_prepare_sql_parse_error_repairs_then_revalidates(monkeypatch: pytest.Mo
         return kwargs["sql"], {"orders"}
 
     monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
-    )
-
     chunks = list(
         graph.run_smart_qa_graph(
             service,
@@ -529,15 +527,6 @@ def test_schema_field_error_repairs_instead_of_returning_permission_denied(
         return kwargs["sql"], {"fact_payments"}
 
     monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: (
-            "table fact_payments(player_id, payment_source_channel)",
-            ["fact_payments"],
-        ),
-    )
-
     events = _events(list(graph.run_smart_qa_graph(
         service,
         in_chat=True,
@@ -581,12 +570,6 @@ def test_data_skill_violation_repairs_with_structured_context(monkeypatch: pytes
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], {"event"}),
     )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table event(event text, amount numeric)", ["event"]),
-    )
-
     list(
         graph.run_smart_qa_graph(
             service,
@@ -626,12 +609,6 @@ def test_prepare_sql_date_contract_error_repairs_then_revalidates(
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], {"event"}),
     )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table event(dt integer)", ["event"]),
-    )
-
     chunks = list(
         graph.run_smart_qa_graph(
             service,
@@ -667,11 +644,6 @@ def test_prepare_sql_response_format_error_repairs_then_revalidates(
         graph,
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], {"orders"}),
-    )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
     )
 
     chunks = list(
@@ -735,25 +707,6 @@ def test_prepare_sql_response_format_error_repairs_then_revalidates(
             },
         ),
         (
-            "metric_chart",
-            {
-                "sql": (
-                    "SELECT COUNT(*) FROM event WHERE dt BETWEEN "
-                    "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
-                ),
-                "chart_type": "metric",
-                "date_filter": {
-                    "time_field": "dt",
-                    "date_parameter_type": "yyyymmdd_number",
-                    "date_expression": {"version": 1, "mode": "preset", "preset": "past_7_days"},
-                },
-            },
-            {
-                "sql": "SELECT COUNT(*) FROM event WHERE dt = 20260730",
-                "chart_type": "metric",
-            },
-        ),
-        (
             "realtime_requires_hourly_time_series",
             {
                 "sql": "SELECT SUM(amount) FROM event_realtime",
@@ -808,12 +761,6 @@ def test_prepare_sql_date_filter_error_repairs_then_revalidates(
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], {"event"}),
     )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table event(dt bigint)", ["event"]),
-    )
-
     chunks = list(
         graph.run_smart_qa_graph(
             service,
@@ -825,12 +772,8 @@ def test_prepare_sql_date_filter_error_repairs_then_revalidates(
 
     assert service.repair_contexts[0].reason.value == "date_filter_configuration"
     assert service.saved_sql == [repaired_sql]
-    if date_error == "metric_chart":
-        assert service.chat_date_pivot is None
-        assert "{{dashboard_" not in repaired_sql
-    else:
-        assert service.chat_date_pivot["time_field"] == "dt"
-        assert "CURRENT_DATE" not in repaired_sql
+    assert service.chat_date_pivot["time_field"] == "dt"
+    assert "CURRENT_DATE" not in repaired_sql
     assert not any(event["type"] == "error" for event in _events(chunks))
 
 
@@ -856,12 +799,6 @@ def test_check_sql_structure_error_repairs_then_revalidates(
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], {"orders"}),
     )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(created_at datetime)", ["orders"]),
-    )
-
     chunks = list(
         graph.run_smart_qa_graph(
             service,
@@ -893,12 +830,6 @@ def test_validate_sql_structure_error_repairs_then_revalidates(
         return kwargs["sql"], {"orders"}
 
     monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(created_at datetime)", ["orders"]),
-    )
-
     chunks = list(
         graph.run_smart_qa_graph(
             service,
@@ -924,11 +855,6 @@ def test_execute_sql_dialect_error_repairs_then_executes_again(monkeypatch: pyte
         graph,
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], {"orders"}),
-    )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
     )
     attempts: list[str] = []
 
@@ -965,7 +891,11 @@ def test_date_dimension_cross_join_inside_scaffold_cte_is_accepted() -> None:
     WITH date_spine(dt) AS (SELECT 1), dimensions(value) AS (SELECT 'a'),
     scaffold(dt, value) AS (
         SELECT d.dt, x.value FROM date_spine d CROSS JOIN dimensions x
-    ), metrics(dt, value, amount) AS (SELECT 1, 'a', 2)
+    ), metrics AS (
+        SELECT dt, value, COUNT(*) AS amount
+        FROM events
+        GROUP BY dt, value
+    )
     SELECT s.dt, s.value, COALESCE(m.amount, 0) AS amount
     FROM scaffold s LEFT JOIN metrics m ON m.dt = s.dt AND m.value = s.value
     """
@@ -1009,11 +939,6 @@ def test_prepare_and_execute_share_two_attempt_budget(monkeypatch: pytest.Monkey
         return kwargs["sql"], {"orders"}
 
     monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", validate)
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(value numeric)", ["orders"]),
-    )
     service.execute_sql = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("syntax error near function"))
 
     chunks = list(
@@ -1398,11 +1323,6 @@ def test_missing_event_value_is_pruned_and_streamed_as_business_notice(monkeypat
     )
     monkeypatch.setattr(
         graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table daily_metrics(event_date date, dau int, pdau int)", ["daily_metrics"]),
-    )
-    monkeypatch.setattr(
-        graph,
         "_event_values_exist_in_datasource",
         lambda **kwargs: {
             value: value != "spaceship_upgrade_complete"
@@ -1517,11 +1437,6 @@ def test_schema_qualified_missing_event_is_rewritten_before_execute(monkeypatch:
         return kwargs["sql"], {"fact_sessions", "fact_payments", "fact_events"}
 
     monkeypatch.setattr(graph, "validate_user_query_sql_or_raise", _validate)
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table fact_sessions(...)\ntable fact_payments(...)", ["fact_sessions", "fact_payments"]),
-    )
     monkeypatch.setattr(
         graph,
         "_event_values_exist_in_datasource",
@@ -1646,11 +1561,6 @@ def test_existing_event_zero_values_are_not_pruned(monkeypatch: pytest.MonkeyPat
         graph,
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], {"daily_metrics", "fact_events"}),
-    )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table daily_metrics(event_date date, dau int, pdau int)", ["daily_metrics"]),
     )
     monkeypatch.setattr(
         graph,
@@ -2063,12 +1973,6 @@ def test_non_stream_full_chart_returns_json_result(monkeypatch: pytest.MonkeyPat
         "get_chat_chart_data",
         lambda session, record_id: {"fields": ["value"], "data": [{"value": 1}]},
     )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(value int)", ["orders"]),
-    )
-
     chunks = list(
         graph.run_smart_qa_graph(
             service,
@@ -2108,12 +2012,6 @@ def test_chart_generation_tolerates_reasoning_only_chunk(monkeypatch: pytest.Mon
         "validate_user_query_sql_or_raise",
         lambda **kwargs: (kwargs["sql"], ["orders"]),
     )
-    monkeypatch.setattr(
-        graph,
-        "get_ai_table_schema",
-        lambda **kwargs: ("table orders(value int)", ["orders"]),
-    )
-
     chunks = list(
         graph.run_smart_qa_graph(
             service,
@@ -2132,13 +2030,13 @@ def test_chart_generation_tolerates_reasoning_only_chunk(monkeypatch: pytest.Mon
     assert events[-1]["type"] == "finish"
 
 
-def test_choose_table_schema_uses_ai_dictionary_schema_without_sample_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_choose_table_schema_uses_business_context_without_sample_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     是什么：Smart Q&A 生成 SQL 前的结构识别走 AI 字典 schema，不再通过样例数据探测物理库。
     """
     service = llm.LLMService.__new__(llm.LLMService)
     service.record = SimpleNamespace(id=9001)
-    service.current_user = SimpleNamespace(id=1)
+    service.current_user = SimpleNamespace(id=1, tenant_id=2001)
     service.ds = SimpleNamespace(id=2)
     service.out_ds_instance = None
     service.chat_question = SimpleNamespace(question="次日 LTV", db_schema="", sample_data="old sample")
@@ -2146,11 +2044,16 @@ def test_choose_table_schema_uses_ai_dictionary_schema_without_sample_probe(monk
 
     monkeypatch.setattr(llm, "start_log", lambda **kwargs: SimpleNamespace(id=1))
     monkeypatch.setattr(llm, "end_log", lambda **kwargs: kwargs["log"])
-    monkeypatch.setattr(
-        llm,
-        "get_ai_table_schema",
-        lambda **kwargs: ("【AI schema source】workspace data dictionary\n# Table: user\n[(pay.pay2:number)]", ["user"]),
+    context = SimpleNamespace(
+        schema="【AI schema source】workspace data dictionary\n# Table: user\n[(pay.pay2:number)]",
+        allowed_tables=["user"],
     )
+
+    def _load_context(*_args, **_kwargs):
+        service.chat_question.db_schema = context.schema
+        return context
+
+    service.load_business_sql_context = _load_context
 
     def _should_not_probe_sample_data(*_args, **_kwargs):
         raise AssertionError("choose_table_schema should not query sample data")
@@ -2162,6 +2065,72 @@ def test_choose_table_schema_uses_ai_dictionary_schema_without_sample_probe(monk
     assert tables == ["user"]
     assert service.chat_question.db_schema.startswith("【AI schema source】workspace data dictionary")
     assert service.chat_question.sample_data == ""
+
+
+def test_choose_table_schema_rejects_missing_business_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = llm.LLMService.__new__(llm.LLMService)
+    service.record = SimpleNamespace(id=9001)
+    service.current_user = SimpleNamespace(id=1, tenant_id=2001)
+    service.ds = SimpleNamespace(id=2)
+    service.out_ds_instance = None
+    service.chat_question = SimpleNamespace(question="次日 LTV", db_schema="", sample_data="")
+    service.current_logs = {}
+    service.load_business_sql_context = lambda *_args, **_kwargs: None
+
+    monkeypatch.setattr(llm, "start_log", lambda **kwargs: SimpleNamespace(id=1))
+
+    with pytest.raises(DataUnavailableError) as exc_info:
+        service.choose_table_schema(object())
+
+    assert str(exc_info.value) == llm.BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE
+
+
+def test_generate_chart_rejects_service_without_business_context() -> None:
+    service = FakeSmartQAService()
+    service.business_sql_context = None
+    state = {
+        "service": service,
+        "in_chat": False,
+        "stream": False,
+        "return_img": False,
+        "json_result": {},
+        "result": {"fields": ["value"], "data": [{"value": 1}]},
+        "tables": ["orders"],
+        "chart_type": "table",
+    }
+
+    with pytest.raises(DataUnavailableError) as exc_info:
+        graph._generate_chart(state)
+
+    assert str(exc_info.value) == graph.BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE
+
+
+def test_generate_chart_preserves_external_datasource_schema_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[int, str, bool, list[str] | None]] = []
+
+    class _ExternalDatasource:
+        def get_db_schema(self, ds_id, question, embedding=True, table_list=None):
+            calls.append((ds_id, question, embedding, table_list))
+            return "table orders(value numeric)", ["orders"]
+
+    service = FakeSmartQAService()
+    service.out_ds_instance = _ExternalDatasource()
+    monkeypatch.setattr(graph, "_emit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(graph, "emit_chart_image", lambda *_args, **_kwargs: None)
+    state = {
+        "service": service,
+        "in_chat": False,
+        "stream": False,
+        "return_img": False,
+        "json_result": {},
+        "result": {"fields": ["value"], "data": [{"value": 1}]},
+        "tables": ["orders"],
+        "chart_type": "table",
+    }
+
+    graph._generate_chart(state)
+
+    assert calls == [(1, "test question", False, ["orders"])]
 
 
 def test_llm_service_routes_smart_qa_to_graph(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -142,10 +142,12 @@ def test_bound_datasource_requires_time_field_only_for_enabled_pivot(
         "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
     )
     non_pivot = {"enabled": False, "time_field": "", "date_parameter_type": "yyyymmdd_number"}
+    date_filter = DashboardDateFilterRequest(parameter_type="yyyymmdd_number")
     non_pivot_prepared = dashboard_service._prepare_dashboard_chart_query(
         SimpleNamespace(type="mysql"),
         sql,
         non_pivot,
+        date_filter=date_filter,
         require_time_field=dashboard_service._dashboard_requires_pivot_time_field(
             _session(), _user(), 1, non_pivot
         ),
@@ -154,6 +156,7 @@ def test_bound_datasource_requires_time_field_only_for_enabled_pivot(
         SimpleNamespace(type="mysql"),
         sql,
         {"enabled": True, "time_field": "", "date_parameter_type": "yyyymmdd_number"},
+        date_filter=date_filter,
         require_time_field=dashboard_service._dashboard_requires_pivot_time_field(
             _session(),
             _user(),
@@ -328,6 +331,27 @@ def test_preview_sql_checks_permission_before_cache(monkeypatch: pytest.MonkeyPa
     assert result["error_type"] == "permission_denied"
     assert result["message"] == "没有查看权限"
     assert result["data"] == []
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        "dashboard_date_filter_invalid_template",
+        "dashboard_date_filter_migration_required",
+        "dashboard_date_filter_unconfigured",
+    ],
+)
+def test_expired_dashboard_date_filter_errors_have_unified_display_message(
+    error_type: str,
+) -> None:
+    result = dashboard_service._failed_chart_result(
+        "图表日期参数配置无效",
+        error_type,
+    )
+
+    assert result["error_type"] == error_type
+    assert result["message"] == "图表配置已过期，请重新配置"
+    assert result["reason"] == "图表日期参数配置无效"
 
 
 def test_preview_sql_cache_only_misses_when_permissions_apply(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -542,14 +566,18 @@ def test_dashboard_payload_executes_complete_v1_date_filter_canvas(monkeypatch: 
                 "chart-1": {
                     "id": "chart-1",
                     "datasource": 1,
+                    "configVersion": 2,
                     "sql": (
                         "select dt from fact_payments where dt between "
                         "{{dashboard_start_yyyymmdd}} and {{dashboard_end_yyyymmdd}}"
                     ),
                     "pivot": {
                         "enabled": False,
-                        "date_parameter_type": "yyyymmdd_number",
-                        "date_expression": {
+                    },
+                    "dateFilter": {
+                        "enabled": True,
+                        "parameterType": "yyyymmdd_number",
+                        "expression": {
                             "version": 1,
                             "mode": "range",
                             "start": {"mode": "static", "date": "2026-05-01"},

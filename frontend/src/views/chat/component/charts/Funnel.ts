@@ -44,7 +44,7 @@ export class Funnel extends BaseG2Chart {
       transform: [{ type: 'symmetryY' }],
       axis: false,
       legend: false,
-      labels: this.showLabel && responsive.showPointLabels
+      labels: this.showLabel
         ? [
             {
               fontSize: responsive.structureLabelFontSize,

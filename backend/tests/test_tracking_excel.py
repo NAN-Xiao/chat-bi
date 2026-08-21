@@ -98,6 +98,7 @@ JSON_FIELD_PARSING_HEADERS = [
     "字段显示名",
     "类型",
     "属性说明",
+    "语义类型",
 ]
 SOURCE_TABLE_JSON_FIELD_PARSING_HEADERS = [
     "来源表",
@@ -119,6 +120,7 @@ def _json_overview_physical_schema() -> dict[str, PhysicalTableInfo]:
                 PhysicalFieldInfo("event", "varchar", "事件名"),
                 PhysicalFieldInfo("userinfo", "text", "用户信息 JSON"),
                 PhysicalFieldInfo("event_only", "text", "事件独有 JSON"),
+                PhysicalFieldInfo("abtest", "text", "实验分组 JSON"),
             ],
         ),
         "user": PhysicalTableInfo(
@@ -201,7 +203,12 @@ def test_json_field_parsing_sheet_imports_fields_and_prefers_event_table() -> No
     assert expression == "JSON_UNQUOTE(JSON_EXTRACT(`event`.`userinfo`, '$._appVersion'))"
 
 
-def _json_overview_with_event_field(*, event_type: str, overview_type: str) -> bytes:
+def _json_overview_with_event_field(
+    *,
+    event_type: str,
+    overview_type: str,
+    overview_semantic_type: str = "",
+) -> bytes:
     workbook = Workbook()
     event_sheet = workbook.active
     event_sheet.title = "event"
@@ -227,6 +234,7 @@ def _json_overview_with_event_field(*, event_type: str, overview_type: str) -> b
             "注册国家",
             overview_type,
             "注册国家说明",
+            overview_semantic_type,
         ]
     )
     output = BytesIO()
@@ -280,6 +288,43 @@ def test_json_field_parsing_sheet_rejects_generated_name_mismatch() -> None:
             physical_schema=_json_overview_physical_schema(),
             datasource_type="mysql",
         )
+
+
+def test_json_field_parsing_sheet_accepts_numeric_object_key_logical_name() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [["event", "abtest", '$["1001"]', "abtest.1001", "1001", "文本", "实验分组"]]
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="postgresql",
+    )
+
+    field = next(item for item in parsed.editor.fields if item.field_name == "abtest.1001")
+    assert field.source_field == "abtest"
+    assert field.json_path == '$["1001"]'
+
+
+def test_json_field_parsing_sheet_distinguishes_numeric_key_from_array_index() -> None:
+    parsed = parse_tracking_excel(
+        _json_overview_workbook(
+            [["event", "abtest", "$[1001]", "abtest[1001]", "", "文本", "数组元素"]]
+        ),
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=_json_overview_physical_schema(),
+        datasource_type="postgresql",
+    )
+
+    field = next(item for item in parsed.editor.fields if item.field_name == "abtest[1001]")
+    assert field.json_path == "$[1001]"
 
 
 def test_json_field_parsing_sheet_rejects_invalid_json_path() -> None:
@@ -463,6 +508,24 @@ def test_json_field_parsing_sheet_rejects_conflicting_table_definition() -> None
     with pytest.raises(ValueError, match="定义冲突"):
         parse_tracking_excel(
             _json_overview_with_event_field(event_type="数值", overview_type="文本"),
+            TenantTrackingConfigDTO(
+                tenant_id=2001,
+                enabled=True,
+                default_event_table="event",
+            ),
+            physical_schema=_json_overview_physical_schema(),
+            datasource_type="mysql",
+        )
+
+
+def test_json_field_parsing_sheet_rejects_explicit_semantic_type_conflict() -> None:
+    with pytest.raises(ValueError, match="定义冲突"):
+        parse_tracking_excel(
+            _json_overview_with_event_field(
+                event_type="文本",
+                overview_type="文本",
+                overview_semantic_type="country_code",
+            ),
             TenantTrackingConfigDTO(
                 tenant_id=2001,
                 enabled=True,
@@ -1795,6 +1858,7 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
         "广告组 ID",
         "文本",
         "广告组标识说明",
+        "text",
     ) in json_rows
     assert (
         "event",
@@ -1804,6 +1868,7 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
         None,
         "文本",
         "来源字段 adinfo 中的 JSON 属性 adId",
+        "text",
     ) in json_rows
     assert (
         "event",
@@ -1813,6 +1878,7 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
         None,
         "文本",
         "联盟ID",
+        "text",
     ) in json_rows
     assert (
         "user",
@@ -1822,6 +1888,7 @@ def test_template_exports_json_dictionary_fields_only_in_json_overview() -> None
         None,
         "文本",
         "昵称",
+        "text",
     ) in json_rows
 
     event_rows = _sheet_rows(workbook_bytes, "event")
@@ -1883,8 +1950,146 @@ def test_json_field_parsing_export_preserves_observed_null_type() -> None:
     ).getvalue()
 
     assert _sheet_rows(output, "JSON字段解析") == [
-        ("event", "allianceinfo", "$.power", "allianceinfo.power", None, "空值", None),
+        ("event", "allianceinfo", "$.power", "allianceinfo.power", None, "空值", None, "text"),
     ]
+
+
+def test_numeric_object_key_export_round_trips_with_stable_field_name() -> None:
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        default_event_table="event",
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event",
+                field_name="abtest.1001",
+                semantic_type="text",
+                source_field="abtest",
+                json_path="$.1001",
+            )
+        ],
+    )
+    physical_schema = {
+        "event": PhysicalTableInfo(
+            "event",
+            fields=[PhysicalFieldInfo("abtest", "text")],
+        )
+    }
+
+    output = tracking_config_excel(config, physical_schema=physical_schema).getvalue()
+
+    assert _sheet_rows(output, "JSON字段解析") == [
+        ("event", "abtest", '$["1001"]', "abtest.1001", None, "文本", None, "text"),
+    ]
+    parsed = parse_tracking_excel(
+        output,
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=physical_schema,
+        datasource_type="postgresql",
+    )
+    field = next(item for item in parsed.editor.fields if item.field_name == "abtest.1001")
+    assert field.json_path == '$["1001"]'
+
+
+def test_json_field_export_round_trip_preserves_precise_semantic_type_across_table_formats() -> None:
+    schema = {
+        table_name: PhysicalTableInfo(
+            table_name,
+            fields=[PhysicalFieldInfo("userinfo", "varchar")],
+        )
+        for table_name in ("event", "event_realtime")
+    }
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        default_event_table="event",
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name=table_name,
+                field_name="userinfo.country",
+                semantic_type="country_code",
+                source_field="userinfo",
+                json_path="$.country",
+            )
+            for table_name in schema
+        ],
+    )
+
+    output = tracking_config_excel(config, physical_schema=schema).getvalue()
+
+    assert _headers(output, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
+    assert {
+        (row[0], row[3], row[5], row[7])
+        for row in _sheet_rows(output, "JSON字段解析")
+    } == {
+        ("event", "userinfo.country", "文本", "country_code"),
+        ("event_realtime", "userinfo.country", "文本", "country_code"),
+    }
+
+    parsed = parse_tracking_excel(
+        output,
+        TenantTrackingConfigDTO(
+            tenant_id=2001,
+            enabled=True,
+            default_event_table="event",
+        ),
+        physical_schema=schema,
+        datasource_type="postgresql",
+    )
+
+    assert {
+        (field.table_name, field.field_name, field.semantic_type)
+        for field in parsed.editor.fields
+        if field.field_name == "userinfo.country"
+    } == {
+        ("event", "userinfo.country", "country_code"),
+        ("event_realtime", "userinfo.country", "country_code"),
+    }
+
+
+def test_legacy_json_overview_keeps_precise_semantic_type_from_table_sheet() -> None:
+    schema = {
+        "event_realtime": PhysicalTableInfo(
+            "event_realtime",
+            fields=[PhysicalFieldInfo("userinfo", "varchar")],
+        )
+    }
+    config = TenantTrackingConfigDTO(
+        tenant_id=2001,
+        fields=[
+            TenantTrackingFieldDTO(
+                tenant_id=2001,
+                table_name="event_realtime",
+                field_name="userinfo.country",
+                semantic_type="country_code",
+                source_field="userinfo",
+                json_path="$.country",
+            )
+        ],
+    )
+    output = tracking_config_excel(config, physical_schema=schema).getvalue()
+    workbook = load_workbook(BytesIO(output))
+    workbook["JSON字段解析"].delete_cols(8)
+    legacy_output = BytesIO()
+    workbook.save(legacy_output)
+
+    parsed = parse_tracking_excel(
+        legacy_output.getvalue(),
+        TenantTrackingConfigDTO(tenant_id=2001, enabled=True),
+        physical_schema=schema,
+        datasource_type="postgresql",
+    )
+
+    field = next(
+        item
+        for item in parsed.editor.fields
+        if item.field_name == "userinfo.country"
+    )
+    assert field.semantic_type == "country_code"
 
 
 def test_json_field_parsing_export_keeps_cross_table_source_definitions() -> None:
@@ -1923,8 +2128,8 @@ def test_json_field_parsing_export_keeps_cross_table_source_definitions() -> Non
 
     assert _headers(output, "JSON字段解析") == JSON_FIELD_PARSING_HEADERS
     assert _sheet_rows(output, "JSON字段解析") == [
-        ("event", "payload", "$.event_key", "payload.event_key", None, "文本", None),
-        ("user", "payload", "$.user_key", "payload.user_key", None, "文本", None),
+        ("event", "payload", "$.event_key", "payload.event_key", None, "文本", None, "text"),
+        ("user", "payload", "$.user_key", "payload.user_key", None, "文本", None, "text"),
     ]
 
     workbook = load_workbook(BytesIO(output))

@@ -95,7 +95,7 @@ SKILL = {
 - 当天查询生成非 `metric` 时间序列图时，SQL 必须依据当前 Schema 的日期字段及编码保存成对的 `{{{{dashboard_start_yyyymmdd}}}}` 和 `{{{{dashboard_end_yyyymmdd}}}}` token，不得保存固定 `yyyyMMdd` 日期。
 - 同一响应必须返回完整 `date_filter`，其中 `time_field` 和 `date_parameter_type` 来自当前 Schema，`date_expression` 必须是 `{{"version":1,"mode":"preset","preset":"today"}}`。
 - 实际业务日期只在执行阶段由看板日期参数渲染；保存和复制图表时继续保留 token 与 `preset=today`。
-- 不含“实时”的固定语义 `metric` 图表保持自身日期语义，不返回 `date_filter` 或看板日期 token。
+- `metric` 图表只要涉及日期字段或日期条件，就必须使用成对看板日期 token 并返回完整 `date_filter`；只有完全没有日期语义的全量累计指标才不返回日期参数。
 
 ## 禁止静默回退
 

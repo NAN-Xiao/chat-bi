@@ -36,6 +36,8 @@ from apps.dashboard.models.dashboard_model import (
     SharedDashboardUseRequest,
 )
 from apps.dashboard.crud.dashboard_date_filter import (
+    INVALID_TEMPLATE_ERROR,
+    MIGRATION_REQUIRED_ERROR,
     has_dashboard_date_filter_parameters,
     prepare_dashboard_date_filter,
     resolve_dashboard_chart_date_filter,
@@ -77,6 +79,14 @@ import time
 import re
 
 from common.utils.tree_utils import build_tree_generic
+
+
+DASHBOARD_DATE_FILTER_EXPIRED_MESSAGE = "图表配置已过期，请重新配置"
+DASHBOARD_DATE_FILTER_EXPIRED_ERROR_TYPES = frozenset({
+    INVALID_TEMPLATE_ERROR,
+    MIGRATION_REQUIRED_ERROR,
+    "dashboard_date_filter_unconfigured",
+})
 
 
 def _first_scalar_value(value: Any):
@@ -205,6 +215,94 @@ RECOMMENDED_DASHBOARD_NAME_CONFLICT_MESSAGE = "推荐看板中已存在同名看
 RECOMMENDED_DASHBOARD_NAME_UNIQUE_INDEX = "uq_core_dashboard_recommended_name"
 DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "图表数据正在后台刷新"
 DASHBOARD_CHART_NO_PERMISSION_MESSAGE = "没有查看权限"
+DASHBOARD_CHART_DATASOURCE_CONFLICT = "dashboard_chart_datasource_conflict"
+DASHBOARD_CHART_DATASOURCE_LEGACY_ONLY = "dashboard_chart_datasource_legacy_only"
+DASHBOARD_CHART_DATASOURCE_MISSING = "dashboard_chart_datasource_missing"
+DASHBOARD_CHART_DATASOURCE_ROLE_MISSING = "dashboard_chart_datasource_role_missing"
+
+
+class DashboardChartDatasourceConfigError(ValueError):
+    """图表执行数据源配置无法无歧义解析。"""
+
+    def __init__(self, error_type: str, message: str):
+        super().__init__(message)
+        self.error_type = error_type
+        self.message = message
+
+
+def _chart_sql_config(item: dict) -> dict | None:
+    source_config = item.get("sourceConfig")
+    if not isinstance(source_config, dict):
+        source_config = item.get("source_config")
+    if not isinstance(source_config, dict):
+        return None
+    sql_config = source_config.get("sql")
+    return sql_config if isinstance(sql_config, dict) else None
+
+
+def _chart_has_sql_source(item: dict) -> bool:
+    sql_config = _chart_sql_config(item)
+    if sql_config is not None and sql_config.get("sql") is not None:
+        return True
+    if "sql" in item and item.get("sql") is not None:
+        return True
+    sources = item.get("sources")
+    return isinstance(sources, list) and "sql" in sources
+
+
+def _chart_sql_text(item: dict) -> str:
+    sql_config = _chart_sql_config(item) or {}
+    return str(item.get("sql") or sql_config.get("sql") or "").strip()
+
+
+def _resolve_chart_datasource_config(
+        item: dict,
+        *,
+        require: bool = False,
+        normalize_duplicate: bool = False,
+) -> int | None:
+    """只解析外层执行数据源；内层旧字段仅用于去重和冲突诊断。"""
+    outer_datasource = _normalize_datasource_id(item.get("datasource"))
+    sql_config = _chart_sql_config(item)
+    inner_present = isinstance(sql_config, dict) and "datasource" in sql_config
+    inner_datasource = (
+        _normalize_datasource_id(sql_config.get("datasource"))
+        if inner_present
+        else None
+    )
+
+    if outer_datasource is not None and inner_datasource is not None:
+        if outer_datasource != inner_datasource:
+            raise DashboardChartDatasourceConfigError(
+                DASHBOARD_CHART_DATASOURCE_CONFLICT,
+                f"图表执行数据源配置冲突：viewInfo.datasource={outer_datasource}，"
+                f"sourceConfig.sql.datasource={inner_datasource}。请重新选择数据源并预览后保存。",
+            )
+        if normalize_duplicate:
+            sql_config.pop("datasource", None)
+    elif inner_datasource is not None:
+        raise DashboardChartDatasourceConfigError(
+            DASHBOARD_CHART_DATASOURCE_LEGACY_ONLY,
+            "图表只有旧版 sourceConfig.sql.datasource，必须完成数据源与 Schema 校验后迁移。",
+        )
+    elif inner_present and normalize_duplicate:
+        sql_config.pop("datasource", None)
+
+    if outer_datasource is None and require:
+        raise DashboardChartDatasourceConfigError(
+            DASHBOARD_CHART_DATASOURCE_MISSING,
+            "图表未配置执行数据源，请重新选择数据源并预览后保存。",
+        )
+    if outer_datasource is not None:
+        item["datasource"] = outer_datasource
+    return outer_datasource
+
+
+def _datasource_config_http_error(exc: DashboardChartDatasourceConfigError) -> HTTPException:
+    return HTTPException(
+        status_code=409 if exc.error_type == DASHBOARD_CHART_DATASOURCE_CONFLICT else 400,
+        detail={"error_type": exc.error_type, "message": exc.message},
+    )
 DASHBOARD_REFRESH_POLICY_DEFAULT = {
     "auto_refresh": True,
     "snapshot_max_age_hours": 3,
@@ -514,7 +612,7 @@ def _ensure_external_mcp_bound_to_current_tenant(
     是什么：_ensure_external_mcp_bound_to_current_tenant 校验第三方 MCP 外部数据源已绑定当前工作空间。
     """
     if external_mcp_server_id in (None, "", 0):
-        raise HTTPException(status_code=400, detail="External MCP datasource is required")
+        raise HTTPException(status_code=400, detail="看板未配置外部 MCP 数据源")
     try:
         normalized_external_mcp_id = int(external_mcp_server_id)
     except (TypeError, ValueError) as exc:
@@ -524,7 +622,7 @@ def _ensure_external_mcp_bound_to_current_tenant(
         normalized_external_mcp_id,
         _current_tenant_id(current_user),
     ):
-        raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+        raise HTTPException(status_code=403, detail="外部 MCP 数据源未绑定到当前工作空间")
     return normalized_external_mcp_id
 
 
@@ -684,7 +782,7 @@ def _require_edit_permission(session: SessionDep, current_user: CurrentUser, das
     做了什么：检查仪表盘里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not _can_edit_dashboard(session, current_user, dashboard):
-        raise HTTPException(status_code=403, detail="You do not have permission to modify this dashboard")
+        raise HTTPException(status_code=403, detail="没有修改该看板的权限")
 
 
 def _require_share_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
@@ -694,7 +792,7 @@ def _require_share_permission(session: SessionDep, current_user: CurrentUser, da
     做了什么：检查仪表盘里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not _can_share_dashboard(session, current_user, dashboard):
-        raise HTTPException(status_code=403, detail="You do not have permission to share this dashboard")
+        raise HTTPException(status_code=403, detail="没有分享该看板的权限")
 
 
 def _require_set_default_permission(current_user: CurrentUser):
@@ -740,12 +838,12 @@ def _ensure_datasource_access(session: SessionDep, current_user: CurrentUser, da
     datasource_id = _normalize_datasource_id(datasource)
     if datasource_id is None:
         if required:
-            raise HTTPException(status_code=400, detail="Dashboard datasource is required")
+            raise HTTPException(status_code=400, detail="看板未配置数据源，请重新选择数据源")
         return None
     if not session.get(CoreDatasource, datasource_id):
-        raise HTTPException(status_code=404, detail="Datasource does not exist")
+        raise HTTPException(status_code=404, detail="数据源不存在")
     if not has_datasource_access(session, current_user, datasource_id):
-        raise HTTPException(status_code=403, detail="You do not have permission to access this datasource")
+        raise HTTPException(status_code=403, detail="没有访问该数据源的权限")
     return datasource_id
 
 
@@ -817,7 +915,7 @@ def resolve_chart_execution_datasource(
         raise HTTPException(status_code=403, detail="当前空间未配置该图表执行数据源")
     if configured_roles[resolved_id] == "roi":
         if session.get(CoreDatasource, resolved_id) is None:
-            raise HTTPException(status_code=404, detail="Datasource does not exist")
+            raise HTTPException(status_code=404, detail="数据源不存在")
     else:
         _ensure_datasource_access(session, current_user, resolved_id, required=True)
     return resolved_id
@@ -832,7 +930,7 @@ def get_chart_execution_datasource_metadata(
     resolved_id = resolve_chart_execution_datasource(session, current_user, datasource_id)
     datasource = session.get(CoreDatasource, resolved_id)
     if datasource is None:
-        raise HTTPException(status_code=404, detail="Datasource does not exist")
+        raise HTTPException(status_code=404, detail="数据源不存在")
 
     tables = session.query(CoreTable).filter(CoreTable.ds_id == resolved_id).order_by(
         CoreTable.table_name.asc()
@@ -882,10 +980,10 @@ def _check_dashboard_view_permission(session: SessionDep, current_user: CurrentU
         return
     if _is_external_mcp_dashboard(dashboard):
         if not _external_mcp_dashboard_bound_to_current_tenant(session, current_user, dashboard):
-            raise HTTPException(status_code=403, detail="You do not have permission to access this external MCP dashboard")
+            raise HTTPException(status_code=403, detail="没有访问该外部 MCP 看板的权限")
         return
     if not _can_view_legacy_dashboard(current_user, dashboard):
-        raise HTTPException(status_code=403, detail="You do not have permission to access this dashboard")
+        raise HTTPException(status_code=403, detail="没有访问该看板的权限")
 
 
 def _load_dashboard_or_404(
@@ -917,7 +1015,7 @@ def _load_platform_template_or_404(
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     if not (_is_platform_admin_context(current_user) or is_platform_workspace_delegate(current_user)):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can use dashboard templates")
+        raise HTTPException(status_code=403, detail="仅平台管理员或工作空间代理可以使用看板模板")
     record = session.get(CoreDashboard, template_id)
     if (
         not record
@@ -1108,8 +1206,8 @@ def validate_dashboard_report_target(
     if not _can_view_dashboard_resource(session, current_user, record):
         raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
 
-    if datasource_id is None:
-        raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+    # 保留前端入参兼容性，实际权限仅以服务端保存的图表执行数据源为准。
+    _ = datasource_id
 
     requested_component_ids = {
         str(component_id).strip()
@@ -1127,11 +1225,13 @@ def validate_dashboard_report_target(
         view_info = canvas_view_info.get(component_id)
         if not isinstance(view_info, dict):
             raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+        if not _chart_has_sql_source(view_info):
+            continue
         try:
-            chart_datasource = _chart_datasource(view_info)
-            if chart_datasource != int(datasource_id):
-                raise HTTPException(status_code=403, detail=DASHBOARD_CHART_NO_PERMISSION_MESSAGE)
+            chart_datasource = _resolve_chart_datasource_config(view_info, require=True)
             resolve_chart_execution_datasource(session, current_user, chart_datasource)
+        except DashboardChartDatasourceConfigError as exc:
+            raise _datasource_config_http_error(exc) from exc
         except HTTPException as exc:
             if exc.status_code in {403, 404}:
                 raise HTTPException(
@@ -1269,27 +1369,71 @@ def _clone_dashboard_canvas_payload(
 
 
 def _clone_dashboard_canvas_payload_for_datasource(
+        session: SessionDep,
+        current_user: CurrentUser,
         component_data: str | bytes | None,
         canvas_style_data: str | bytes | None,
         canvas_view_info: str | bytes | None,
-        datasource_id: int | None,
 ) -> tuple[str, str, str]:
-    """
-    是什么：_clone_dashboard_canvas_payload_for_datasource 是一个可以复用的小步骤，负责仪表盘相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
+    """按图表的 bound/roi 角色映射目标数据源，并校验目标 Schema 与权限。"""
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
         component_data,
         canvas_style_data,
         canvas_view_info,
     )
-    if datasource_id is None:
-        return component_data, canvas_style_data, canvas_view_info
+    targets_by_role = {
+        role: datasource_id
+        for datasource_id, role in _configured_chart_execution_datasources(session, current_user)
+    }
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     for item in canvas_view_obj.values():
-        if isinstance(item, dict):
-            item["datasource"] = datasource_id
+        if not isinstance(item, dict) or not _chart_has_sql_source(item):
+            continue
+        sql = _chart_sql_text(item)
+        if not sql:
+            continue
+        role = str(item.get("executionDatasourceRole") or "").strip().lower()
+        if role not in {"bound", "roi"}:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": DASHBOARD_CHART_DATASOURCE_ROLE_MISSING,
+                    "message": "平台模板图表缺少执行数据源角色，请先从来源看板重新发布模板。",
+                },
+            )
+        target_datasource = targets_by_role.get(role)
+        if target_datasource is None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": DASHBOARD_CHART_DATASOURCE_ROLE_MISSING,
+                    "message": f"目标空间未配置 {role} 图表执行数据源。",
+                },
+            )
+        target_datasource = resolve_chart_execution_datasource(
+            session,
+            current_user,
+            target_datasource,
+        )
+        item["datasource"] = target_datasource
+        sql_config = _chart_sql_config(item)
+        if sql_config is not None:
+            sql_config.pop("datasource", None)
+        permission_failure, _permissions_apply = _dashboard_chart_permission_audit(
+            session,
+            current_user,
+            target_datasource,
+            sql,
+            item.get("pivot"),
+        )
+        if permission_failure is not None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_type": permission_failure.get("error_type") or "dashboard_chart_schema_mismatch",
+                    "message": permission_failure.get("message") or "目标数据源无法执行该图表 SQL。",
+                },
+            )
     return component_data, canvas_style_data, orjson.dumps(canvas_view_obj).decode()
 
 
@@ -1645,16 +1789,21 @@ def _dashboard_tree_nodes(
     return nodes
 
 
-def _chart_datasource(item: dict) -> int | None:
-    """
-    是什么：_chart_datasource 是一个可以复用的小步骤，负责仪表盘相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
-    """
-    item_datasource = _normalize_datasource_id(item.get('datasource'))
-    if item_datasource is not None:
-        item['datasource'] = item_datasource
-    return item_datasource
+def _chart_datasource(
+        record: CoreDashboard,
+        item: dict,
+        fallback_datasource: int | None = None,
+        *,
+        require: bool = False,
+        normalize_duplicate: bool = False,
+) -> int | None:
+    """返回图表自己的执行数据源，不从看板资产数据源静默补值。"""
+    _ = record, fallback_datasource
+    return _resolve_chart_datasource_config(
+        item,
+        require=require and _chart_has_sql_source(item),
+        normalize_duplicate=normalize_duplicate,
+    )
 
 
 _USER_PERMISSION_DENIED_MESSAGE = PERMISSION_DENIED_DISPLAY_MESSAGE
@@ -2170,7 +2319,12 @@ def _failed_chart_result(message: str, error_type: str | None = None) -> dict[st
     谁调用：后端其他代码在需要这个功能时会调用它。
     做了什么：把仪表盘里这一步需要处理的内容整理好，交给后面的代码继续用。
     """
-    display_message = DASHBOARD_CHART_NO_PERMISSION_MESSAGE if error_type == PERMISSION_DENIED_ERROR_TYPE else message
+    if error_type == PERMISSION_DENIED_ERROR_TYPE:
+        display_message = DASHBOARD_CHART_NO_PERMISSION_MESSAGE
+    elif error_type in DASHBOARD_DATE_FILTER_EXPIRED_ERROR_TYPES:
+        display_message = DASHBOARD_DATE_FILTER_EXPIRED_MESSAGE
+    else:
+        display_message = message
     result = {
         'status': 'failed',
         'data': [],
@@ -2979,6 +3133,9 @@ def _prepare_dashboard_template_canvas_view_info(canvas_view_info: str | bytes |
         if not isinstance(item, dict):
             continue
         item["datasource"] = None
+        sql_config = _chart_sql_config(item)
+        if sql_config is not None:
+            sql_config.pop("datasource", None)
         if item.get("sql") is not None or isinstance(item.get("chart"), dict):
             _mark_dashboard_chart_snapshot_ready(item)
             refreshed_at = item.get("snapshotRefreshedAt") or item["data"].get("snapshotRefreshedAt")
@@ -3024,36 +3181,65 @@ def _materialize_dashboard_template_canvas_view_info(
     是什么：把工作空间看板复制为平台模板时，固化一份源看板图表结果快照。
     """
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
+    configured_roles = dict(_configured_chart_execution_datasources(session, current_user))
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
-        item_datasource = _chart_datasource(item)
-        sql = item.get("sql")
-        if sql is not None and str(sql).strip() and item_datasource is not None:
+        sql = _chart_sql_text(item)
+        if sql:
+            try:
+                item_datasource = _chart_datasource(
+                    source,
+                    item,
+                    require=True,
+                    normalize_duplicate=True,
+                )
+            except DashboardChartDatasourceConfigError as exc:
+                raise _datasource_config_http_error(exc) from exc
+            role = configured_roles.get(item_datasource)
+            if role not in {"bound", "roi"}:
+                raise HTTPException(status_code=403, detail="当前空间未配置该图表执行数据源")
+            item["executionDatasourceRole"] = role
             permission_failure, _permissions_apply = _dashboard_chart_permission_audit(
                 session,
                 current_user,
                 item_datasource,
-                str(sql).strip(),
+                sql,
                 item.get("pivot"),
             )
             if permission_failure is not None:
-                _apply_dashboard_chart_result(item, permission_failure)
-                _mark_dashboard_chart_snapshot_refreshed(item)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error_type": permission_failure.get("error_type") or "dashboard_chart_schema_mismatch",
+                        "message": permission_failure.get("message") or "来源数据源无法执行该图表 SQL。",
+                    },
+                )
             else:
                 data_result = _execute_dashboard_chart_sql(
                     session,
                     current_user,
                     item_datasource,
-                    str(sql).strip(),
+                    sql,
                     item.get("pivot"),
                 )
+                if data_result.get("status") == "failed":
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error_type": data_result.get("error_type") or "dashboard_chart_execution_failed",
+                            "message": data_result.get("message") or "来源数据源执行图表 SQL 失败。",
+                        },
+                    )
                 _apply_dashboard_chart_result(item, data_result)
                 _mark_dashboard_chart_snapshot_refreshed(item, data_result.get("refreshed_at"))
         elif item.get("sql") is not None or isinstance(item.get("chart"), dict):
             _mark_dashboard_chart_snapshot_ready(item)
             _mark_dashboard_chart_snapshot_refreshed(item)
         item["datasource"] = None
+        sql_config = _chart_sql_config(item)
+        if sql_config is not None:
+            sql_config.pop("datasource", None)
     return orjson.dumps(canvas_view_obj).decode()
 
 
@@ -3293,10 +3479,16 @@ def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser,
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
-        item_sql = item.get('sql')
-        if not item_sql:
+        if not _chart_has_sql_source(item):
             continue
-        item_datasource = _normalize_datasource_id(item.get('datasource'))
+        try:
+            item_datasource = _resolve_chart_datasource_config(
+                item,
+                require=True,
+                normalize_duplicate=True,
+            )
+        except DashboardChartDatasourceConfigError as exc:
+            raise _datasource_config_http_error(exc) from exc
         item["datasource"] = resolve_chart_execution_datasource(
             session,
             current_user,
@@ -3324,6 +3516,11 @@ def _active_dashboard_filter():
         or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
         or_(CoreDashboard.status.is_(None), CoreDashboard.status.notin_(DASHBOARD_DRAFT_STATUSES)),
     )
+
+
+def _legacy_my_dashboard_filter():
+    """旧数据没有 my 树位置时，只把未发布为推荐看板的记录视为个人看板。"""
+    return or_(CoreDashboard.is_default == 0, CoreDashboard.is_default.is_(None))
 
 
 def _normalize_recommended_dashboard_name(name: str | None) -> str:
@@ -3821,7 +4018,7 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
         CoreDashboard.tenant_id == _current_tenant_id(current_user),
     ]
     if not my_tree_has_positions:
-        filters.append(or_(CoreDashboard.is_default == 0, CoreDashboard.node_type == "leaf"))
+        filters.append(_legacy_my_dashboard_filter())
     datasource_id = _normalize_datasource_id(dashboard.datasource)
     bound_external_mcp_id = get_bound_external_mcp_id_for_tenant(session, _current_tenant_id(current_user))
     external_mcp_filter = and_(
@@ -3983,9 +4180,19 @@ def _dashboard_payload(
                 item["mcp"]["dashboardId"] = record.id
             _mark_dashboard_chart_snapshot_ready(item)
             continue
-        else:
-            item_datasource = _chart_datasource(item)
-        if item.get('sql') is not None:
+        if _chart_has_sql_source(item):
+            try:
+                item_datasource = _chart_datasource(record, item, require=True)
+            except DashboardChartDatasourceConfigError as exc:
+                item["dateFilterCapability"] = {
+                    "status": "unconfigured",
+                    "reason": exc.error_type,
+                }
+                _apply_dashboard_chart_result(
+                    item,
+                    _failed_chart_result(exc.message, exc.error_type),
+                )
+                continue
             try:
                 item_datasource = resolve_chart_execution_datasource(
                     session,
@@ -4059,7 +4266,7 @@ def _dashboard_payload(
                 _clear_dashboard_chart_data(item)
                 continue
             if item_datasource is None:
-                _apply_dashboard_chart_result(item, _failed_chart_result("Dashboard datasource is required"))
+                _apply_dashboard_chart_result(item, _failed_chart_result("看板未配置数据源，请重新选择数据源"))
                 continue
             if _dashboard_pivot_enabled(item.get("pivot")):
                 data_result = _execute_dashboard_chart_sql(
@@ -4163,7 +4370,7 @@ def _clone_dashboard_record(
     datasource_id = _effective_dashboard_datasource(source)
     if _is_external_mcp_dashboard(source):
         if not _external_mcp_dashboard_bound_to_current_tenant(session, user, source):
-            raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+            raise HTTPException(status_code=403, detail="外部 MCP 数据源未绑定到当前工作空间")
     elif datasource_id is None:
         if require_datasource:
             raise HTTPException(status_code=400, detail="Default dashboard datasource is required")
@@ -4396,7 +4603,7 @@ def update_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDash
     record = _load_dashboard_or_404(session, dashboard.id, user)
     _require_edit_permission(session, user, record)
     if _is_external_mcp_dashboard(record) and not _external_mcp_dashboard_bound_to_current_tenant(session, user, record):
-        raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+        raise HTTPException(status_code=403, detail="外部 MCP 数据源未绑定到当前工作空间")
     if record.datasource:
         _ensure_datasource_access(session, user, record.datasource)
     record.name = dashboard.name
@@ -4462,7 +4669,7 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     _require_edit_permission(session, user, record)
     if _is_external_mcp_dashboard(record):
         if not _external_mcp_dashboard_bound_to_current_tenant(session, user, record):
-            raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+            raise HTTPException(status_code=403, detail="外部 MCP 数据源未绑定到当前工作空间")
         record.name = dashboard.name
         record.datasource = None
         record.external_mcp_server_id = record.external_mcp_server_id or dashboard.external_mcp_server_id
@@ -4550,7 +4757,7 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
         raise HTTPException(status_code=400, detail="Default dashboard must be a dashboard")
     if _is_external_mcp_dashboard(record):
         if not _external_mcp_dashboard_bound_to_current_tenant(session, user, record):
-            raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+            raise HTTPException(status_code=403, detail="外部 MCP 数据源未绑定到当前工作空间")
         effective_datasource = None
     else:
         effective_datasource = _effective_dashboard_datasource(record)
@@ -4882,7 +5089,7 @@ def list_platform_dashboard_templates(session: SessionDep, user: CurrentUser):
     做了什么：把仪表盘需要的数据找出来，整理成后面好用的样子。
     """
     if not (_is_platform_admin_context(user) or is_platform_workspace_delegate(user)):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can list dashboard templates")
+        raise HTTPException(status_code=403, detail="仅平台管理员或工作空间代理可以查看看板模板")
     statement = (
         select(CoreDashboard)
         .where(
@@ -4942,7 +5149,7 @@ def refresh_platform_dashboard_template(
     是什么：SaaS 后台手动刷新平台模板里的图表快照。
     """
     if not _is_platform_admin_context(user):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can refresh dashboard templates")
+        raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以刷新看板模板")
     template = _load_platform_template_or_404(session, template_id, user)
     _refresh_platform_template_snapshot_from_source(
         session,
@@ -4970,7 +5177,7 @@ def update_platform_dashboard_template(
     做了什么：把仪表盘相关的信息改成最新状态，并保存这些变化。
     """
     if not _is_platform_admin_context(user):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can edit dashboard templates")
+        raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以编辑看板模板")
     template = _load_platform_template_or_404(session, dashboard.id, user)
     if not dashboard.name or not dashboard.name.strip():
         raise HTTPException(status_code=400, detail="Dashboard template name is required")
@@ -5033,7 +5240,7 @@ def delete_platform_dashboard_template(
     做了什么：把仪表盘不再需要的数据、缓存或临时内容清理掉。
     """
     if not _is_platform_admin_context(user):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can delete dashboard templates")
+        raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以删除看板模板")
     template = _load_platform_template_or_404(session, template_id, user)
     template.delete_flag = 1
     template.delete_time = _now()
@@ -5063,10 +5270,11 @@ def _copy_single_platform_template_to_workspace_dashboard(
         return _dashboard_base_response(session, user, existing_dashboard, target_datasource_id)
 
     component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload_for_datasource(
+        session,
+        user,
         template.component_data,
         template.canvas_style_data,
         template.canvas_view_info,
-        target_datasource_id,
     )
     now = _now()
     operator_id = _asset_operator_id(session, user)
@@ -5256,7 +5464,7 @@ def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id:
         current_user,
         coreDashboard,
     ):
-        raise HTTPException(status_code=403, detail="External MCP datasource is not bound to current workspace")
+        raise HTTPException(status_code=403, detail="外部 MCP 数据源未绑定到当前工作空间")
     if coreDashboard.datasource:
         _ensure_datasource_access(session, current_user, coreDashboard.datasource)
     if _dashboard_delete_would_remove_default_leaf(session, current_user, coreDashboard):
@@ -5545,7 +5753,7 @@ def delete_shared_resource(session: SessionDep, current_user: CurrentUser, query
     """
     share = _load_shared_dashboard_or_404(session, query.id, current_user)
     if not _share_can_delete(current_user, share):
-        raise HTTPException(status_code=403, detail="You do not have permission to delete this shared dashboard")
+        raise HTTPException(status_code=403, detail="没有删除该分享看板的权限")
     now = int(time.time())
     operator_id = _asset_operator_id(session, current_user)
     for active_share in _active_shares_for_same_source(session, share):
@@ -5566,7 +5774,7 @@ def use_shared_resource(session: SessionDep, user: CurrentUser, request: SharedD
     share = _load_shared_dashboard_or_404(session, request.id, user)
     datasource_id = _normalize_datasource_id(share.datasource)
     if datasource_id is None or not _share_can_use(session, user, share):
-        raise HTTPException(status_code=403, detail="You do not have permission to use this shared dashboard")
+        raise HTTPException(status_code=403, detail="没有使用该分享看板的权限")
 
     now = int(time.time())
     operator_id = _asset_operator_id(session, user)

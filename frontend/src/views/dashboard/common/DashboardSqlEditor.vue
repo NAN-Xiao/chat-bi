@@ -25,6 +25,7 @@ import {
   isSelectableFieldOption,
   isTimeFieldOption,
 } from '@/views/dashboard/common/builderFieldPickerOptions.ts'
+import { metricFilterRecoveryCandidates } from '@/views/dashboard/common/metricFilterRecovery.ts'
 import {
   buildDashboardBuilderMetadataCacheKey,
   buildTrackingEventCatalogFromConfig,
@@ -62,6 +63,11 @@ import {
   inferPivotDimensions,
   isLikelyPivotDateField,
 } from '@/views/dashboard/utils/pivotDimensions.ts'
+import {
+  buildPersistedPivotGroupValueSelection,
+  normalizePivotGroupValueMode,
+  type PivotGroupValueMode,
+} from '@/views/dashboard/utils/pivotGroupValues.ts'
 import {
   buildDashboardDateFilterRequest,
   buildDashboardDateSourcePreviewPivot,
@@ -252,6 +258,7 @@ const form = reactive({
   pivotCustomStart: '',
   pivotCustomEnd: '',
   pivotDateParameterType: SQL_EDITOR_DATE_PARAMETER_TYPE as DashboardDateParameterType,
+  pivotGroupValueMode: 'all' as PivotGroupValueMode,
   pivotGroupValues: [] as string[],
   mcpServerId: '',
   mcpTool: '',
@@ -782,14 +789,12 @@ const dateExpressionEnabled = computed(
   () => hasSqlSource.value && sqlBuilder.dateExpressionPickerEnabled === true && shouldUseDashboardDateParameters()
 )
 
-function shouldUseDashboardDateParameters(chartType: ChartTypes | string = form.chartType) {
-  const supportsConfiguredMetric =
-    chartType !== 'metric' || sqlBuilder.metricDateExpressionEnabled === true
-  return supportsConfiguredMetric && Boolean(sqlBuilder.timeField)
+function shouldUseDashboardDateParameters() {
+  return Boolean(sqlBuilder.timeField)
 }
 
-function syncDashboardDateParameterUsage(chartType: ChartTypes | string = form.chartType) {
-  const enabled = shouldUseDashboardDateParameters(chartType)
+function syncDashboardDateParameterUsage() {
+  const enabled = shouldUseDashboardDateParameters()
   sqlBuilder.dateExpressionPickerEnabled = enabled
   form.pivotDateParameterType = SQL_EDITOR_DATE_PARAMETER_TYPE
   dateExpressionConfigError.value = ''
@@ -875,6 +880,9 @@ const previewDisplayData = computed(() => {
     rows = sourcePreview.data
   }
   if (!showPivotGroupValueConfig.value || !previewHasPivotGroupField.value) {
+    return rows
+  }
+  if (form.pivotGroupValueMode === 'all') {
     return rows
   }
   const field = activePivotGroupValueField.value
@@ -2096,13 +2104,14 @@ function recoverMissingMetricFiltersFromSql() {
     if (hasEffectiveBuilderFilters(item.filters || [])) {
       return
     }
-    const candidates = unique([
-      item.field,
-      metricMeasureField(item),
-      ...schemaFieldOptions.value
-        .filter((field) => field.table === fieldOptionByValue(item.field)?.table)
-        .map((field) => field.value),
-    ])
+    const metricFieldOption = fieldOptionByValue(item.field)
+    const candidates = metricFilterRecoveryCandidates({
+      metricField: item.field,
+      metricMeasureField: metricMeasureField(item),
+      metricFieldOption,
+      selectableFilterOptions: metricFilterFieldOptions(item),
+      schemaFieldOptions: schemaFieldOptions.value,
+    })
     const restored = candidates
       .map((field) => recoveredFilterFromSql(field))
       .find((filter) => filter && isEffectiveBuilderFilter(filter))
@@ -2755,7 +2764,7 @@ async function generateBuilderAiSql() {
   if (nextChartType && chartTypes.some((item) => item.value === nextChartType)) {
     form.chartType = nextChartType
   }
-  syncDashboardDateParameterUsage(nextChartType || form.chartType)
+  syncDashboardDateParameterUsage()
   if (result.success) {
     ElMessage.success('已生成 SQL')
   } else {
@@ -3070,6 +3079,7 @@ function normalizePivotSelections() {
   if (form.pivotGroupField && (!fields.length || !fields.includes(form.pivotGroupField))) form.pivotGroupField = ''
   if (!hasSelectableTimeField) {
     form.pivotEnabled = false
+    form.pivotGroupValueMode = 'all'
     form.pivotGroupValues = []
     form.pivotGroupEnabled = false
     return
@@ -3138,18 +3148,20 @@ function initPivotConfig(pivot?: any) {
     dateExpressionConfigError.value = ''
   }
   form.pivotGroupValues = []
+  form.pivotGroupValueMode = normalizePivotGroupValueMode(pivot)
   initializedPivotGroupValueField.value = ''
   normalizePivotSelections()
   if (!form.pivotEnabled) {
     form.pivotGroupValues = []
+    form.pivotGroupValueMode = 'all'
     initializedPivotGroupValueField.value = ''
     return
   }
-  form.pivotGroupValues = Array.isArray(pivot?.group_values)
+  form.pivotGroupValues = form.pivotGroupValueMode === 'custom' && Array.isArray(pivot?.group_values)
     ? unique(pivot.group_values.map(normalizePivotGroupValue))
     : pivotGroupValueOptions.value.map((item) => item.value)
   initializedPivotGroupValueField.value = activePivotGroupValueField.value
-  syncPivotGroupValues({ forceAll: !Array.isArray(pivot?.group_values) })
+  syncPivotGroupValues()
   if (!pivot?.granularity) {
     form.pivotGranularity = defaultPivotGranularity()
   }
@@ -3172,7 +3184,11 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
     metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
     metric_field: form.y[0] || '',
     group_field: groupField,
-    group_enabled: Boolean(groupField && (form.pivotGroupEnabled || pivotGroupValues.length > 0)),
+    group_enabled: Boolean(
+      groupField &&
+      (form.pivotGroupEnabled ||
+        (form.pivotGroupValueMode === 'custom' && pivotGroupValues.length > 0))
+    ),
     dimensions: inferredPivotDimensions(),
     granularity: form.pivotGranularity,
     range: form.pivotRange,
@@ -3181,7 +3197,10 @@ function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
     aggregation: defaultPivotAggregation(),
   })
   if (options.includeGroupValues !== false) {
-    config.group_values = pivotGroupValues
+    Object.assign(
+      config,
+      buildPersistedPivotGroupValueSelection(form.pivotGroupValueMode, pivotGroupValues)
+    )
   }
   return config
 }
@@ -3971,6 +3990,9 @@ function syncPivotGroupValues(options: { forceAll?: boolean } = {}) {
   const fieldChanged = initializedPivotGroupValueField.value !== field
   const selected = unique(form.pivotGroupValues.map(normalizePivotGroupValue))
   if (options.forceAll || fieldChanged) {
+    form.pivotGroupValueMode = 'all'
+    form.pivotGroupValues = sourceValues
+  } else if (form.pivotGroupValueMode === 'all') {
     form.pivotGroupValues = sourceValues
   } else {
     form.pivotGroupValues = selected.filter((value) => optionValues.includes(value))
@@ -3979,11 +4001,13 @@ function syncPivotGroupValues(options: { forceAll?: boolean } = {}) {
 }
 
 function selectAllPivotGroupValues() {
+  form.pivotGroupValueMode = 'all'
   syncPivotGroupValues({ forceAll: true })
   previewVersion.value += 1
 }
 
 function clearPivotGroupValues() {
+  form.pivotGroupValueMode = 'custom'
   form.pivotGroupValues = []
   previewVersion.value += 1
 }
@@ -3997,7 +4021,12 @@ function handlePivotGroupValuesChange(values: string[]) {
     clearPivotGroupValues()
     return
   }
-  form.pivotGroupValues = unique(values.map(normalizePivotGroupValue))
+  const selected = unique(values.map(normalizePivotGroupValue))
+  const available = pivotGroupValueOptions.value.map((item) => item.value)
+  const selectedSet = new Set(selected)
+  form.pivotGroupValueMode =
+    available.length > 0 && available.every((value) => selectedSet.has(value)) ? 'all' : 'custom'
+  form.pivotGroupValues = form.pivotGroupValueMode === 'all' ? available : selected
 }
 
 function resetFieldSelections() {
@@ -4117,6 +4146,26 @@ async function loadExecutionDatasources(viewInfo: any) {
     const options = await dashboardApi.execution_datasources()
     executionDatasourceOptions.value = Array.isArray(options) ? options : []
     const savedDatasourceId = normalizeExecutionDatasourceId(viewInfo?.datasource)
+    const legacyDatasourceId = normalizeExecutionDatasourceId(
+      chartSourceConfig(viewInfo)?.sql?.datasource
+    )
+    if (savedDatasourceId && legacyDatasourceId && savedDatasourceId !== legacyDatasourceId) {
+      const savedName = executionDatasourceOptions.value.find((item) => item.id === savedDatasourceId)?.name || savedDatasourceId
+      const legacyName = executionDatasourceOptions.value.find((item) => item.id === legacyDatasourceId)?.name || legacyDatasourceId
+      selectedExecutionDatasourceId.value = null
+      executionDatasourceError.value = `图表执行数据源配置冲突：外层为 ${savedName}，旧配置为 ${legacyName}。请重新选择数据源并预览后保存。`
+      return
+    }
+    if (!savedDatasourceId && legacyDatasourceId) {
+      selectedExecutionDatasourceId.value = null
+      executionDatasourceError.value = '图表只有旧版执行数据源配置，需完成数据源与 Schema 校验后迁移。'
+      return
+    }
+    if (!savedDatasourceId && !legacyDatasourceId && String(viewInfo?.sql || '').trim()) {
+      selectedExecutionDatasourceId.value = null
+      executionDatasourceError.value = '图表未配置执行数据源，请重新选择数据源并预览后保存。'
+      return
+    }
     if (savedDatasourceId && !executionDatasourceOptions.value.some((item) => item.id === savedDatasourceId)) {
       selectedExecutionDatasourceId.value = null
       executionDatasourceError.value = '当前图表选择的数据源已不在此空间可用范围内。'
@@ -4152,6 +4201,7 @@ function resetExecutionDatasourceDependentState() {
   form.pivotEnabled = false
   form.pivotTimeField = ''
   form.pivotGroupField = ''
+  form.pivotGroupValueMode = 'all'
   form.pivotGroupValues = []
   sourcePreview.fields = []
   sourcePreview.data = []
@@ -4206,6 +4256,7 @@ watch(
     sanitizePivotTimeField()
     if (form.pivotGroupField && !sourcePreview.fields.includes(form.pivotGroupField)) {
       form.pivotGroupField = ''
+      form.pivotGroupValueMode = 'all'
       form.pivotGroupValues = []
       form.pivotGroupEnabled = false
     }
@@ -4222,7 +4273,7 @@ watch(
         if ((error as Error)?.message !== DASHBOARD_DATE_FILTER_MIGRATION_REQUIRED) {
           throw error
         }
-        ElMessage.error('当前图表的日期配置尚未迁移，暂时无法编辑。')
+        ElMessage.error('图表配置已过期，请重新配置')
         visible.value = false
       }
     }
@@ -4628,7 +4679,12 @@ function validateBeforeApply() {
     ElMessage.warning(t('dashboard.pivot_required'))
     return false
   }
-  if (showPivotGroupValueConfig.value && form.pivotGroupEnabled && form.pivotGroupValues.length === 0) {
+  if (
+    showPivotGroupValueConfig.value &&
+    form.pivotGroupEnabled &&
+    form.pivotGroupValueMode === 'custom' &&
+    form.pivotGroupValues.length === 0
+  ) {
     ElMessage.warning(t('dashboard.pivot_group_values_required'))
     return false
   }
@@ -4695,7 +4751,12 @@ function writeEditorStateToViewInfo(options: {
   }
   const existingSourceConfig = chartSourceConfig(props.viewInfo)
   const { builder: _legacyBuilder, ...sourceConfigBase } = existingSourceConfig
+  const {
+    datasource: _legacySqlDatasource,
+    ...sourceSqlConfigBase
+  } = existingSourceConfig.sql || {}
   void _legacyBuilder
+  void _legacySqlDatasource
   props.viewInfo.sql = hasSqlSource.value ? form.sql.trim() : null
   const nextData: Record<string, any> = {
     ...(props.viewInfo.data || {}),
@@ -4754,8 +4815,7 @@ function writeEditorStateToViewInfo(options: {
       : null,
     sql: hasSqlSource.value
       ? {
-          ...(existingSourceConfig.sql || {}),
-          datasource: selectedExecutionDatasourceId.value,
+          ...sourceSqlConfigBase,
           sql: form.sql.trim(),
           builder: builderConfigForSave(),
           lastResult: sourceResultForSave('sql'),
@@ -5572,7 +5632,7 @@ function closeDrawer() {
         <el-form-item v-if="hasSqlSource" label="执行数据源">
           <el-select
             v-model="selectedExecutionDatasourceId"
-            :disabled="executionDatasourceOptions.length <= 1"
+            :disabled="executionDatasourceOptions.length <= 1 && !executionDatasourceError"
             @change="handleExecutionDatasourceChange"
           >
             <el-option

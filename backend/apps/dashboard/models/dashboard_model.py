@@ -4,7 +4,7 @@
 from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index, UniqueConstraint
 from typing import Any, Optional, List, Literal, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
 
 class CoreDashboard(SQLModel, table=True):
@@ -381,7 +381,7 @@ class BaseDashboard(BaseModel):
     source: Optional[str] = None
     content_id: Optional[str] = None
     level: int = 0
-    create_by: int = 0
+    create_by: str | None = None
     is_default: Optional[bool] = False
     sort: Optional[int] = 0
 
@@ -416,6 +416,7 @@ class DashboardPivotRequest(BaseModel):
     metric_aggregations: Dict[str, Literal["sum", "avg", "min", "max", "count"]] = Field(default_factory=dict)
     group_field: str = ''
     group_enabled: bool = True
+    group_value_mode: Literal["all", "custom"] = "all"
     group_values: List[str] = Field(default_factory=list)
     dimensions: List[Dict[str, Any]] = Field(default_factory=list)
     range_enabled: bool = True
@@ -424,6 +425,21 @@ class DashboardPivotRequest(BaseModel):
     custom_start: str = ''
     custom_end: str = ''
     aggregation: Literal["sum", "avg", "min", "max", "count"] = "sum"
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_group_value_selection(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        mode = normalized.get("group_value_mode")
+        group_values = normalized.get("group_values")
+        if mode not in {"all", "custom"}:
+            mode = "custom" if isinstance(group_values, list) and group_values else "all"
+        normalized["group_value_mode"] = mode
+        if mode == "all":
+            normalized["group_values"] = []
+        return normalized
 
 
 class DashboardSqlPreview(BaseModel):

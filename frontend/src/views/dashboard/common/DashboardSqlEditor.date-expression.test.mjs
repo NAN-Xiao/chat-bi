@@ -14,20 +14,28 @@ const cardSource = readFileSync(
 assert.match(source, /import DashboardDateExpressionPicker/)
 assert.match(source, /dateExpressionPickerEnabled/)
 assert.match(source, /metricDateExpressionEnabled:\s*false/)
+const dateParameterUsageSource = source.match(
+  /function shouldUseDashboardDateParameters\(\)[\s\S]*?\n}/
+)?.[0] || ''
 assert.match(
-  source,
-  /chartType\s*!==\s*'metric'\s*\|\|\s*sqlBuilder\.metricDateExpressionEnabled\s*===\s*true/,
-  '指标卡应仅在持久化配置显式启用时使用日期表达式控件',
+  dateParameterUsageSource,
+  /return Boolean\(sqlBuilder\.timeField\)/,
+  '所有包含时间字段的 SQL 图表都应使用日期表达式控件',
+)
+assert.doesNotMatch(
+  dateParameterUsageSource,
+  /chartType|metricDateExpressionEnabled/,
+  '指标卡日期表达式控件不得再受图表类型或历史开关限制',
 )
 assert.match(
   source,
   /metricDateExpressionEnabled:\s*sqlBuilder\.metricDateExpressionEnabled\s*===\s*true/,
-  '保存 builder 时应保留指标卡日期表达式开关',
+  '保存 builder 时应保留历史指标卡日期表达式字段',
 )
 assert.match(
   source,
   /sqlBuilder\.metricDateExpressionEnabled\s*=\s*value\.metricDateExpressionEnabled\s*===\s*true/,
-  '恢复 builder 时不应默认为所有指标卡启用新版控件',
+  '恢复 builder 时应保留历史指标卡日期表达式字段',
 )
 assert.match(
   source,

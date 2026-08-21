@@ -67,7 +67,7 @@ export class Scatter extends BaseG2Chart {
       interaction: {
         tooltip: { shared: false },
       },
-      labels: this.showLabel && responsive.showPointLabels
+      labels: this.showLabel
         ? [
             {
               text: (datum: any) =>

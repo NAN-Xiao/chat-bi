@@ -81,7 +81,7 @@ def _player_snapshot_skill() -> dict[str, str]:
     )
 
 
-def test_realtime_dashboard_sql_uses_explicit_utc8_business_date() -> None:
+def test_realtime_dashboard_sql_uses_dashboard_end_date() -> None:
     sql = """SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS dt
 FROM event_realtime
 WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"""
@@ -90,8 +90,8 @@ WHERE dt = CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"""
         block = seed.dashboard_sql_block(view_id, sql)
         assert "CURDATE()" not in block
         assert "{{dashboard_start_yyyymmdd}}" not in block
-        assert "{{dashboard_end_yyyymmdd}}" not in block
-        assert "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))" in block
+        assert "{{dashboard_end_yyyymmdd}}" in block
+        assert "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))" not in block
         assert "SELECT MAX(rt.dt)" not in block
 
 
@@ -104,7 +104,8 @@ def test_realtime_dashboard_sql_migrates_legacy_latest_partition_anchor() -> Non
         block = seed.dashboard_sql_block(view_id, f"SELECT {legacy_date} AS dt")
 
         assert "MAX(rt.dt)" not in block
-        assert "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))" in block
+        assert "{{dashboard_end_yyyymmdd}}" in block
+        assert "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))" not in block
 
 
 def test_unknown_realtime_dashboard_current_date_fails_closed() -> None:
@@ -474,7 +475,7 @@ def test_xiuxian_date_skill_documents_dashboard_tokens_for_28_day_trend() -> Non
     assert "{{dashboard_start_yyyymmdd}}" in prompt
     assert "{{dashboard_end_yyyymmdd}}" in prompt
     assert '"date_filter"' in prompt
-    assert "metric` 图表不得返回 `date_filter`" in prompt
+    assert "涉及日期字段或日期条件的 `metric` 图表必须返回 `date_filter`" in prompt
 
 
 def test_xiuxian_date_skill_rejects_database_date_anchored_28_day_spine() -> None:

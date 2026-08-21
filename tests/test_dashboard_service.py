@@ -983,6 +983,11 @@ def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(
         dashboard_service,
+        "_configured_chart_execution_datasources",
+        lambda *_args, **_kwargs: [(2, "bound")],
+    )
+    monkeypatch.setattr(
+        dashboard_service,
         "_dashboard_chart_permission_audit",
         lambda *args, **kwargs: (None, False),
     )
@@ -1033,6 +1038,7 @@ def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private
                     {
                         "chart-1": {
                             "datasource": 2,
+                            "executionDatasourceRole": "bound",
                             "sql": "select 1",
                             "status": "success",
                             "data": {"fields": ["v"], "data": [{"v": 1}]},
@@ -1448,6 +1454,11 @@ def test_platform_template_copy_to_workspace_creates_independent_workspace_dashb
     )
     monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *args, **kwargs: 3)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 3)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_chart_permission_audit",
+        lambda *_args, **_kwargs: (None, False),
+    )
 
     with Session(engine) as session:
         session.add(
@@ -1466,7 +1477,13 @@ def test_platform_template_copy_to_workspace_creates_independent_workspace_dashb
                 delete_flag=0,
                 component_data="[]",
                 canvas_style_data="{}",
-                canvas_view_info=json.dumps({"chart-1": {"datasource": None, "sql": "select 1"}}),
+                canvas_view_info=json.dumps({
+                    "chart-1": {
+                        "datasource": None,
+                        "executionDatasourceRole": "bound",
+                        "sql": "select 1",
+                    }
+                }),
             )
         )
         session.commit()
@@ -1516,6 +1533,11 @@ def test_platform_template_copy_to_workspace_deduplicates_templates_with_same_so
     )
     monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *args, **kwargs: 3)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 3)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_chart_permission_audit",
+        lambda *_args, **_kwargs: (None, False),
+    )
 
     with Session(engine) as session:
         session.add_all(
@@ -1536,7 +1558,13 @@ def test_platform_template_copy_to_workspace_deduplicates_templates_with_same_so
                     delete_flag=0,
                     component_data="[]",
                     canvas_style_data="{}",
-                    canvas_view_info=json.dumps({"chart-1": {"datasource": None, "sql": "select 1"}}),
+                    canvas_view_info=json.dumps({
+                        "chart-1": {
+                            "datasource": None,
+                            "executionDatasourceRole": "bound",
+                            "sql": "select 1",
+                        }
+                    }),
                 ),
                 CoreDashboard(
                     id="template-dashboard-b",
@@ -1554,7 +1582,13 @@ def test_platform_template_copy_to_workspace_deduplicates_templates_with_same_so
                     delete_flag=0,
                     component_data="[]",
                     canvas_style_data="{}",
-                    canvas_view_info=json.dumps({"chart-1": {"datasource": None, "sql": "select 2"}}),
+                    canvas_view_info=json.dumps({
+                        "chart-1": {
+                            "datasource": None,
+                            "executionDatasourceRole": "bound",
+                            "sql": "select 2",
+                        }
+                    }),
                 ),
             ]
         )
@@ -2298,7 +2332,7 @@ def test_list_resource_includes_legacy_dashboard_when_canvas_uses_selected_datas
     assert tree[0].datasource == 1
 
 
-def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
+def test_load_resource_rejects_chart_missing_datasource_without_dashboard_fallback(monkeypatch):
     _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
@@ -2341,10 +2375,10 @@ def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
         )
 
     canvas_view_info = json.loads(resource["canvas_view_info"])
-    assert chart_calls == [(1, "select 1")]
-    assert canvas_view_info["chart-1"]["datasource"] == 1
-    assert canvas_view_info["chart-1"]["status"] == "success"
-    assert canvas_view_info["chart-1"]["data"]["data"] == [{"value": 1}]
+    assert chart_calls == []
+    assert canvas_view_info["chart-1"]["datasource"] is None
+    assert canvas_view_info["chart-1"]["status"] == "failed"
+    assert canvas_view_info["chart-1"]["error_type"] == "dashboard_chart_datasource_missing"
 
 
 def test_load_resource_marks_refreshed_loading_chart_ready(monkeypatch):
@@ -2413,7 +2447,7 @@ def test_load_resource_marks_refreshed_loading_chart_ready(monkeypatch):
     assert chart["data"]["data"] == [{"step": "首次战斗", "rate": 97.58}]
 
 
-def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monkeypatch):
+def test_load_resource_keeps_chart_datasource_explicit_when_dashboard_is_legacy(monkeypatch):
     _allow_requested_chart_execution_datasource(monkeypatch)
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=True, tenant_id=1)
@@ -2462,8 +2496,9 @@ def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monk
 
     canvas_view_info = json.loads(resource["canvas_view_info"])
     assert resource["datasource"] == 1
-    assert chart_calls == [(1, "select 1"), (1, "select 2")]
-    assert canvas_view_info["chart-2"]["datasource"] == 1
+    assert chart_calls == [(1, "select 1")]
+    assert canvas_view_info["chart-2"]["datasource"] is None
+    assert canvas_view_info["chart-2"]["error_type"] == "dashboard_chart_datasource_missing"
 
 
 def test_project_editor_can_create_dashboard(monkeypatch):
@@ -4185,7 +4220,7 @@ def test_project_viewer_cannot_share_other_users_dashboard(monkeypatch):
             )
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "You do not have permission to share this dashboard"
+    assert exc_info.value.detail == "没有分享该看板的权限"
 
 
 def test_list_shared_resources_marks_permission_status(monkeypatch):

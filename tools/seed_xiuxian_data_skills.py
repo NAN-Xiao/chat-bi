@@ -91,7 +91,7 @@ _LEGACY_DATA_SKILLS: list[dict[str, str]] = [
 - “当前等级”“活跃用户分布”等当前快照分布问题必须使用截至昨天的最新完整历史日，不能因“当前”一词改查未完成当天的 `event_realtime`。
 - 用户未指定日期窗口时，默认查询最近 7 个完整自然日。
 - 可转存看板的非 `metric` 日期趋势必须使用 `{{dashboard_start_yyyymmdd}}` 和 `{{dashboard_end_yyyymmdd}}` 作为包含式整数边界，并返回完整 `"date_filter"`：`{"time_field":"dt","date_parameter_type":"yyyymmdd_number","date_expression":{"version":1,"mode":"preset","preset":"past_7_days"}}`。用户指定范围时，`date_expression` 必须按用户范围生成。
-- `metric` 图表不得返回 `date_filter` 或任何看板日期 token；固定业务日必须在生成 SQL 前确定为明确的 `YYYYMMDD` 字面量。
+- 涉及日期字段或日期条件的 `metric` 图表必须返回 `date_filter` 并使用成对看板日期 token；不得使用 `YYYYMMDD` 字面量省略 `date_filter`。
 - 日期骨架使用从 0 开始的偏移量时，必须先锚定 `{{dashboard_end_yyyymmdd}}`，再减 `day_offset`。
 - 下面 SQL 展示非 `metric` 日期趋势的统一边界写法。
 - 动态边界必须直接写入每个大表别名自己的 `WHERE` 或 `JOIN ON` 分区条件，禁止先生成单行 `bounds` CTE 后再通过 `JOIN` / `CROSS JOIN` 引用。
@@ -172,7 +172,7 @@ SELECT dt FROM date_spine ORDER BY dt
 
 SERVERPAYLOG_REPAIR_EXAMPLES = """## SQL 修复示例
 
-“等级段人均付费”和“最新完整数据日核心指标”均为固定 `metric` 示例，`20260729` 仅表示已由调用方确定的完整业务日；实际生成时必须替换为该次请求已确定的 `YYYYMMDD` 字面量，不得使用看板日期 token、`date_filter` 或数据库当前日期函数。
+“等级段人均付费”和“最新完整数据日核心指标”如果需要随看板日期选择变化，必须使用 `dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}` 并返回完整 `date_filter`；不得使用固定 `YYYYMMDD` 字面量或数据库当前日期函数规避日期参数。
 
 ```sql
 -- 修复示例：按渠道付费用户
@@ -208,13 +208,13 @@ WITH user_level AS (
             ELSE '30+'
         END AS level_band
     FROM `user` u
-    WHERE u.dt = 20260729
+    WHERE u.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND u.prod = 110000047
 ), user_payment AS (
     SELECT e.uid,
            SUM(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.personal, '$.money')), '') AS DECIMAL(18, 4))) AS pay_amount
     FROM `event` e
-    WHERE e.dt = 20260729
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000047
       AND e.event = 'ServerPayLog'
     GROUP BY e.uid
@@ -231,13 +231,13 @@ GROUP BY ul.level_band;
 WITH active_metrics AS (
     SELECT COUNT(DISTINCT e.uid) AS dau
     FROM `event` e
-    WHERE e.dt = 20260729
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000047
       AND e.event = 'UserActive'
 ), register_metrics AS (
     SELECT COUNT(DISTINCT e.uid) AS new_users
     FROM `event` e
-    WHERE e.dt = 20260729
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000047
       AND e.event = 'UserRegister'
 ), payment_metrics AS (
@@ -248,12 +248,12 @@ WITH active_metrics AS (
             2
         ) AS pay_amount
     FROM `event` e
-    WHERE e.dt = 20260729
+    WHERE e.dt BETWEEN {{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}
       AND e.prod = 110000047
       AND e.event = 'ServerPayLog'
 )
 SELECT
-    '2026-07-29' AS dt,
+    DATE_FORMAT(STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d'), '%Y-%m-%d') AS dt,
     a.dau AS `DAU`,
     r.new_users AS `新增用户数`,
     p.payers AS `付费用户数`,
@@ -340,7 +340,6 @@ _REALTIME_CURRENT_DATE_EVENTS = {
     "c3d6ca851f8150ba94d73a83ca18b438": "UserActive",
 }
 _REALTIME_CURRENT_DATE_VIEW_IDS = set(_REALTIME_CURRENT_DATE_EVENTS)
-_REALTIME_BUSINESS_DATE_SQL = "DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))"
 _DATABASE_CURRENT_DATE_PATTERN = re.compile(
     r"\b(?:CURDATE|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|LOCALTIME|LOCALTIMESTAMP|"
     r"GETDATE|GETUTCDATE)\s*(?:\(\s*\))?",
@@ -349,20 +348,21 @@ _DATABASE_CURRENT_DATE_PATTERN = re.compile(
 
 
 def _normalize_dashboard_sql_current_date(view_id: str, sql: str) -> str:
-    """实时 metric 使用明确 UTC+8 业务日，未知当前日期用法拒绝发布。"""
+    """把实时 metric 的当前日期依赖改为看板结束日期，未知用法拒绝发布。"""
 
     if view_id not in _REALTIME_CURRENT_DATE_VIEW_IDS:
         if _DATABASE_CURRENT_DATE_PATTERN.search(sql) is not None or "MAX(rt.dt)" in sql:
             raise ValueError(f"修仙看板 SQL 存在未分类的数据库当前日期函数: {view_id}")
         return sql
 
-    normalized = _DATABASE_CURRENT_DATE_PATTERN.sub(_REALTIME_BUSINESS_DATE_SQL, sql)
+    dashboard_end_date = "STR_TO_DATE(CAST({{dashboard_end_yyyymmdd}} AS CHAR), '%Y%m%d')"
+    normalized = _DATABASE_CURRENT_DATE_PATTERN.sub(dashboard_end_date, sql)
     event_name = _REALTIME_CURRENT_DATE_EVENTS[view_id]
     legacy_latest_dt = (
         "STR_TO_DATE(CAST((SELECT MAX(rt.dt) FROM event_realtime rt "
         f"WHERE rt.prod = 110000047 AND rt.event = '{event_name}') AS CHAR), '%Y%m%d')"
     )
-    return normalized.replace(legacy_latest_dt, _REALTIME_BUSINESS_DATE_SQL)
+    return normalized.replace(legacy_latest_dt, dashboard_end_date)
 
 
 def dashboard_sql_block(view_id: str, sql: str) -> str:
@@ -381,7 +381,7 @@ def _index_dashboard_drawers(dashboards: Sequence[Any]) -> dict[str, Any]:
             view_id = str(drawer.view_id)
             if view_id in drawers:
                 raise ValueError(f"推荐看板抽屉 view id 重复：{view_id}")
-            if not drawer.sql.strip() and view_id != EMPTY_DASHBOARD_VIEW_ID:
+            if not drawer.sql.strip():
                 raise ValueError(f"推荐看板抽屉 SQL 为空：{view_id}")
             drawers[view_id] = drawer
     if set(drawers) != set(EXPECTED_VIEW_IDS):

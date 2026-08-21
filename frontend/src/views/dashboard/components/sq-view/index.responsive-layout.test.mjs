@@ -37,6 +37,16 @@ assert.doesNotMatch(
   /:has\([^)]*(?:pivot-toolbar|date-expression-toolbar)[^)]*\)[^{]*\.chart-show-area\s*\{[^}]*height:/s
 )
 assert.doesNotMatch(style, /\.chart-loading-info\s*\{[^}]*min-height:\s*140px/s)
+assert.match(
+  style,
+  /\.chart-loading-info\s*\{[^}]*background:\s*transparent[^}]*pointer-events:\s*none/s,
+  '图表加载状态应保留提示但移除遮罩，不得覆盖内容或拦截交互'
+)
+assert.doesNotMatch(
+  style,
+  /\.chart-loading-info\s*\{[^}]*background:[^;}]*--workspace-panel-bg/s,
+  '页面背景变量不能让图表加载期间重新出现整块遮罩'
+)
 
 assert.match(source, /const frameSize = ref<InsightFrameSize \| null>\(null\)/)
 assert.match(source, /function measureCanonicalFrame\(\) \{[\s\S]*resolveCanonicalInsightFrame/)

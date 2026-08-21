@@ -8,7 +8,6 @@ export interface G2ResponsiveStyle {
   structureLabelFontSize: number
   legendPosition: 'bottom'
   legendItemFontSize: number
-  showPointLabels: boolean
   outerRadius: number
   maxCategoryAxisLabels: number
 }
@@ -46,7 +45,6 @@ export function resolveG2ResponsiveStyle(
       structureLabelFontSize: 9,
       legendPosition: 'bottom' as const,
       legendItemFontSize: 10,
-      showPointLabels: false,
       outerRadius: 0.7,
       maxCategoryAxisLabels: resolveMaxCategoryAxisLabels(context, 48, 6),
     }
@@ -58,7 +56,6 @@ export function resolveG2ResponsiveStyle(
       structureLabelFontSize: 10,
       legendPosition: 'bottom' as const,
       legendItemFontSize: 11,
-      showPointLabels: false,
       outerRadius: 0.76,
       maxCategoryAxisLabels: resolveMaxCategoryAxisLabels(context, 54, 10),
     }
@@ -69,7 +66,6 @@ export function resolveG2ResponsiveStyle(
     structureLabelFontSize: 11,
     legendPosition: 'bottom' as const,
     legendItemFontSize: 12,
-    showPointLabels: true,
     outerRadius: 0.8,
     maxCategoryAxisLabels: resolveMaxCategoryAxisLabels(context, 60, 16),
   }

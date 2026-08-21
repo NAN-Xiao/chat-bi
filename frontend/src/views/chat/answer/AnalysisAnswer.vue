@@ -189,7 +189,7 @@ const sendMessage = async () => {
     currentReader = null
   }
 }
-function stop() {
+function stop(notifyParent = true) {
   stopFlag.value = true
   _loading.value = false
   if (currentController) {
@@ -202,11 +202,13 @@ function stop() {
       // Reader may already be released
     }
   }
-  emits('stop')
+  if (notifyParent) {
+    emits('stop')
+  }
 }
 
 onBeforeUnmount(() => {
-  stop()
+  stop(false)
 })
 defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList.value, stop })
 </script>

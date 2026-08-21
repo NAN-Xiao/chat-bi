@@ -126,7 +126,7 @@ def _require_scope_manage(current_user: CurrentUser, scope: KnowledgeBaseVisibil
     """
     if scope == KnowledgeBaseVisibilityScopeEnum.PLATFORM_PUBLIC:
         if not _is_global_platform_admin(current_user):
-            raise HTTPException(status_code=403, detail="Only SaaS admin can maintain SaaS knowledge base")
+            raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以维护 SaaS 知识库")
         return
     if scope == KnowledgeBaseVisibilityScopeEnum.ADMIN_PUBLIC:
         if not _can_manage_workspace_public(current_user):

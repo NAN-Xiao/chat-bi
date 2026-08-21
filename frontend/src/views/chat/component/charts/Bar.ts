@@ -150,7 +150,7 @@ export class Bar extends BaseG2Chart {
           }
         }
       },
-      labels: this.showLabel && responsive.showPointLabels
+      labels: this.showLabel
         ? [
             {
               text: (data: any) => {

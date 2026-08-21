@@ -298,7 +298,7 @@ def _require_platform_admin(current_user: CurrentUser) -> None:
     做了什么：检查系统管理里的数据、权限或配置是否合法，不对就及时拦住。
     """
     if not is_platform_admin(current_user):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can manage tenants")
+        raise HTTPException(status_code=403, detail="仅 SaaS 管理员可以管理工作空间")
 
 
 def _require_current_tenant_admin(current_user: CurrentUser) -> None:

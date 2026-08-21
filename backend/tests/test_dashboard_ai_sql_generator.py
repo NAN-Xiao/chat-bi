@@ -297,9 +297,9 @@ def test_dashboard_prompt_for_mysql_forbids_full_outer_join() -> None:
     assert "条件聚合" in prompt
 
 
-def test_dashboard_prompt_for_mysql_forbids_unsigned_casts() -> None:
+def test_dashboard_prompt_for_mysql_does_not_globally_forbid_unsigned_casts() -> None:
     """
-    是什么：MySQL 数据源下手动图表 SQL 生成提示词要明确禁止 UNSIGNED 类型转换。
+    是什么：MySQL 数据源下手动图表 SQL 生成提示词不能错误禁止标准方言支持的 UNSIGNED。
     """
     prompt = ai_sql_generator._dashboard_config_prompt(
         DashboardAiSqlGenerateRequest(
@@ -317,13 +317,11 @@ def test_dashboard_prompt_for_mysql_forbids_unsigned_casts() -> None:
         datasource=SimpleNamespace(name="测试数据源", type="mysql", type_name="MySQL"),
         data_skill="",
         tracking_config="",
+        knowledge_context="",
         sql_dialect="mysql",
     )
 
-    assert "UNSIGNED" in prompt
-    assert "SIGNED" in prompt
-    assert "DECIMAL" in prompt
-    assert "不能使用 CAST(... AS UNSIGNED)" in prompt
+    assert "不能使用 CAST(... AS UNSIGNED)" not in prompt
 
 
 def test_dashboard_prompt_requires_tracking_event_prefilter_for_multiple_event_metrics() -> None:
@@ -1288,7 +1286,7 @@ def test_validate_sql_node_rejects_current_date_function_and_missing_date_tokens
     assert "看板日期参数" in result.message
 
 
-def test_validate_sql_node_rejects_mysql_unsigned_cast() -> None:
+def test_validate_sql_node_allows_mysql_unsigned_cast() -> None:
     response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=True,
         sql="SELECT CAST(DATE_FORMAT(NOW(), '%Y%m%d') AS UNSIGNED) AS dt",
@@ -1300,18 +1298,20 @@ def test_validate_sql_node_rejects_mysql_unsigned_cast() -> None:
         "graph_trace": [],
     })["response"]
 
-    assert result.success is False
-    assert "UNSIGNED" in result.message or any("UNSIGNED" in issue for issue in (result.issues or []))
-    assert "SIGNED" in result.advice
+    assert result.success is True
+    assert not result.issues
 
 
-def test_metric_chart_does_not_require_dashboard_date_parameters() -> None:
+def test_metric_chart_can_use_dashboard_date_parameters() -> None:
     request = DashboardAiSqlGenerateRequest(
         datasource=1,
         chart_type="metric",
         context={
-            "chart": {"type": "metric"},
-            "time": {"field": {"table": "event", "field": "dt"}},
+                "chart": {"type": "metric"},
+                "time": {
+                    "field": {"table": "event", "field": "dt"},
+                    "dateParameterType": "yyyymmdd_number",
+                },
         },
     )
 
@@ -1325,15 +1325,24 @@ def test_metric_chart_does_not_require_dashboard_date_parameters() -> None:
     response = ai_sql_generator.DashboardAiSqlGenerateResponse(
         success=True,
         chart_type="metric",
-        sql="SELECT COUNT(*) AS 今日销售额 FROM event WHERE dt = CURDATE()",
+        sql=(
+            "SELECT COUNT(*) AS 今日销售额 FROM event WHERE dt BETWEEN "
+            "{{dashboard_start_yyyymmdd}} AND {{dashboard_end_yyyymmdd}}"
+        ),
     )
     result = ai_sql_generator._node_validate_sql({
         "response": response,
-        "normalized_config": {"chart": {"type": "metric"}, "time": request.context["time"]},
+        "normalized_config": {
+            "chart": {"type": "metric"},
+            "time": {
+                "field": request.context["time"]["field"],
+                "date_parameter_type": "yyyymmdd_number",
+            },
+        },
         "graph_trace": [],
     })["response"]
 
-    assert "不生成看板日期参数或日期控件" in prompt
+    assert "日期占位符" in prompt
     assert result.success is True
 
 
@@ -1386,12 +1395,17 @@ def test_collect_context_uses_business_sql_context_service(monkeypatch: pytest.M
     )
     monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
 
-    result = ai_sql_generator._node_collect_context({
+    state = {
         "session": _Session(),
         "current_user": SimpleNamespace(id=1001, tenant_id=2001),
         "request": request,
         "graph_trace": [],
-    })
+    }
+    collected = ai_sql_generator._node_collect_context(state)
+    result = {
+        **collected,
+        **ai_sql_generator._node_build_business_sql_context({**state, **collected}),
+    }
 
     assert result["business_sql_context"] is business_context
     assert result["schema"] == business_context.schema
@@ -1455,12 +1469,17 @@ def test_collect_context_limits_business_schema_to_workspace_default_event_table
     monkeypatch.setattr(ai_sql_generator, "get_tracking_config", _tracking_config)
     monkeypatch.setattr(ai_sql_generator.BusinessSqlContextService, "build", staticmethod(_build))
 
-    result = ai_sql_generator._node_collect_context({
+    state = {
         "session": _Session(),
         "current_user": SimpleNamespace(id=1001, tenant_id=2001),
         "request": request,
         "graph_trace": [],
-    })
+    }
+    collected = ai_sql_generator._node_collect_context(state)
+    result = {
+        **collected,
+        **ai_sql_generator._node_build_business_sql_context({**state, **collected}),
+    }
 
     assert calls[0]["table_list"] == ["event"]
     assert result["allowed_tables"] == ["event"]

@@ -31,6 +31,7 @@ assert.match(
   '日期筛选写入必须固定使用 YYYYMMDD 数字参数类型'
 )
 assert.match(source, /normalizeDashboardChartConfig/)
+assert.match(source, /ElMessage\.error\('图表配置已过期，请重新配置'\)/)
 assert.match(source, /date_filter:\s*dashboardDateFilterRequestPayload\(\)/)
 assert.doesNotMatch(source, /date_parameter_type:\s*form\./)
 assert.doesNotMatch(source, /date_expression\s*:/)

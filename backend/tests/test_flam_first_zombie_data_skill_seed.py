@@ -93,13 +93,12 @@ def test_realtime_payment_components_use_realtime_event_table(view_id: str) -> N
     assert "ServerPayLog" in sql
 
 
-def test_realtime_payment_components_do_not_apply_fixed_utc8_offset() -> None:
+def test_realtime_payment_components_use_dashboard_end_date() -> None:
     blocks = _seed_dashboard_sql()
 
     for view_id in REALTIME_CURRENT_DATE_VIEW_IDS:
         sql = blocks[view_id]
-        assert "{{dashboard_start_yyyymmdd}}" not in sql
-        assert "{{dashboard_end_yyyymmdd}}" not in sql
+        assert "{{dashboard_end_yyyymmdd}}" in sql
         assert "INTERVAL 8 HOUR" not in sql
         assert "DATE_ADD(FROM_UNIXTIME" not in sql
         assert "FROM_UNIXTIME(e.time / 1000)" in sql
@@ -122,23 +121,28 @@ def test_realtime_tracking_time_field_does_not_apply_fixed_utc8_offset() -> None
     assert "FROM_UNIXTIME(`event`.`time` / 1000)" in time_field["expression"]
 
 
-def test_metric_components_use_fixed_example_date_without_dashboard_tokens() -> None:
+def test_metric_components_use_dashboard_dates_and_date_filter_guidance() -> None:
     import seed_flam_first_zombie_data_skills as seed
 
     blocks = _seed_dashboard_sql()
 
     for view_id in METRIC_CURRENT_DATE_VIEW_IDS:
         sql = blocks[view_id]
-        assert "{{dashboard_start_yyyymmdd}}" not in sql
-        assert "{{dashboard_end_yyyymmdd}}" not in sql
-        assert "STR_TO_DATE('20260730', '%Y%m%d')" in sql
+        assert "{{dashboard_start_yyyymmdd}}" in sql
+        assert "{{dashboard_end_yyyymmdd}}" in sql
+        assert "20260730" not in sql
+
+    comparison_sql = blocks["9325211a9f594376bf818cec639aa103"]
+    assert comparison_sql.count("{{dashboard_start_yyyymmdd}}") == 1
+    assert "INTERVAL 1 DAY" in comparison_sql
+    assert "INTERVAL 7 DAY" in comparison_sql
 
     prompt = next(
         skill["prompt"]
         for skill in seed.DATA_SKILLS
         if skill["name"] == "flam 主城建设与成长口径"
     )
-    assert "`20260730` 仅表示已由调用方确定的当前业务日" in prompt
+    assert "三个“当日升级次数” `metric` 必须使用看板日期参数确定统计窗口" in prompt
     assert "UTC+8 当前业务日" not in prompt
 
 

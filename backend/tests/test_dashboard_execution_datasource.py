@@ -9,6 +9,7 @@ import pytest
 from fastapi import HTTPException
 
 from apps.dashboard.crud import dashboard_service
+from apps.dashboard.models.dashboard_chart_config import DashboardDateFilterRequest
 from apps.dashboard.models.dashboard_model import CoreDashboard, DashboardSqlPreview
 from apps.datasource.crud import sql_engine_executor
 
@@ -78,7 +79,9 @@ def _report_target_dashboard(*, view_datasource: int | None) -> SimpleNamespace:
         tenant_id=2001,
         datasource=11,
         component_data=json.dumps([{"id": "chart-1", "component": "SQView"}]),
-        canvas_view_info=json.dumps({"chart-1": {"datasource": view_datasource}}),
+        canvas_view_info=json.dumps({
+            "chart-1": {"datasource": view_datasource, "sql": "select 1"}
+        }),
     )
 
 
@@ -104,10 +107,10 @@ def test_report_target_uses_saved_roi_drawer_datasource(
     assert resolved_ids == [22]
 
 
-def test_report_target_falls_back_to_dashboard_datasource_without_drawer_value(
+def test_report_target_rejects_missing_chart_datasource_without_fallback(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """没有抽屉数据源时，报表解读应回退到看板数据源。"""
+    """没有图表数据源时，报表解读不得回退到看板资产数据源。"""
     resolved_ids: list[int | None] = []
     record = _report_target_dashboard(view_datasource=None)
     monkeypatch.setattr(dashboard_service, "_load_dashboard_or_404", lambda *_args: record)
@@ -119,11 +122,14 @@ def test_report_target_falls_back_to_dashboard_datasource_without_drawer_value(
         lambda _session, _user, datasource_id: resolved_ids.append(datasource_id) or 11,
     )
 
-    dashboard_service.validate_dashboard_report_target(
-        _Session(), _user(), "dashboard-1", 22, ["chart-1"]
-    )
+    with pytest.raises(HTTPException) as error:
+        dashboard_service.validate_dashboard_report_target(
+            _Session(), _user(), "dashboard-1", 22, ["chart-1"]
+        )
 
-    assert resolved_ids == [11]
+    assert error.value.status_code == 400
+    assert error.value.detail["error_type"] == "dashboard_chart_datasource_missing"
+    assert resolved_ids == []
 
 
 def test_chart_execution_datasources_include_only_bound_and_roi(
@@ -269,7 +275,7 @@ def test_dashboard_sql_preview_skips_date_parameter_gate_for_unbound_datasource(
                 "{{dashboard_start_date}} and {{dashboard_end_date}}"
             ),
             pivot={"time_field": ""},
-            date_filter={"parameter_type": "date"},
+            date_filter=DashboardDateFilterRequest(parameter_type="date"),
             force_refresh=True,
         ),
     )
@@ -534,3 +540,168 @@ def test_canvas_validation_accepts_saved_roi_chart_datasource(
 
     assert calls == [22]
     assert json.loads(dashboard.canvas_view_info)["chart-1"]["datasource"] == 22
+
+
+def test_canvas_validation_removes_equal_legacy_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """旧内层数据源与外层相同时，只保留外层字段。"""
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: datasource_id,
+    )
+    dashboard = SimpleNamespace(canvas_view_info=json.dumps({
+        "chart-1": {
+            "datasource": 22,
+            "sql": "select 1",
+            "sourceConfig": {"sql": {"datasource": 22, "sql": "select 1"}},
+        }
+    }))
+
+    dashboard_service._validate_canvas_datasources(_Session(), _user(), dashboard)
+
+    chart = json.loads(dashboard.canvas_view_info)["chart-1"]
+    assert chart["datasource"] == 22
+    assert "datasource" not in chart["sourceConfig"]["sql"]
+
+
+def test_canvas_validation_rejects_conflicting_legacy_datasource(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """旧内层数据源与外层冲突时不得选择任一值。"""
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda *_args: pytest.fail("冲突配置不得进入候选数据源解析"),
+    )
+    dashboard = SimpleNamespace(canvas_view_info=json.dumps({
+        "chart-1": {
+            "datasource": 22,
+            "sql": "select 1",
+            "sourceConfig": {"sql": {"datasource": 11, "sql": "select 1"}},
+        }
+    }))
+
+    with pytest.raises(HTTPException) as error:
+        dashboard_service._validate_canvas_datasources(_Session(), _user(), dashboard)
+
+    assert error.value.status_code == 409
+    assert error.value.detail["error_type"] == "dashboard_chart_datasource_conflict"
+
+
+def test_dashboard_payload_blocks_conflicting_datasource_before_execution(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """刷新冲突图表时返回配置错误且绝不执行 SQL。"""
+    monkeypatch.setattr(dashboard_service, "_dashboard_refresh_policy_from_skills", lambda *_args: {})
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *_args: "")
+    monkeypatch.setattr(dashboard_service, "_can_edit_dashboard", lambda *_args: True)
+    monkeypatch.setattr(dashboard_service, "_can_share_dashboard", lambda *_args: True)
+    monkeypatch.setattr(dashboard_service, "_can_set_default_dashboard", lambda *_args: False)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *_args, **_kwargs: pytest.fail("冲突配置不得执行 SQL"),
+    )
+    record = CoreDashboard(
+        id="dashboard-conflict",
+        tenant_id=2001,
+        name="冲突看板",
+        pid="root",
+        datasource=11,
+        node_type="leaf",
+        type="dashboard",
+        canvas_style_data="{}",
+        component_data="[]",
+        canvas_view_info=json.dumps({
+            "chart-1": {
+                "datasource": 22,
+                "sql": "select 1",
+                "sourceConfig": {"sql": {"datasource": 11, "sql": "select 1"}},
+            }
+        }),
+        status=1,
+        delete_flag=0,
+    )
+
+    result = dashboard_service._dashboard_payload(
+        _Session(), _user(), record, default_context=True, include_data=True
+    )
+
+    chart = json.loads(result["canvas_view_info"])["chart-1"]
+    assert chart["status"] == "failed"
+    assert chart["error_type"] == "dashboard_chart_datasource_conflict"
+
+
+def test_template_copy_maps_chart_roles_and_validates_target_schema(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模板下发按 bound/roi 角色映射，每张 SQL 图表都校验目标数据源。"""
+    audited: list[tuple[int, str]] = []
+    monkeypatch.setattr(
+        dashboard_service,
+        "_configured_chart_execution_datasources",
+        lambda *_args: [(11, "bound"), (22, "roi")],
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "resolve_chart_execution_datasource",
+        lambda _session, _user, datasource_id: datasource_id,
+    )
+    monkeypatch.setattr(
+        dashboard_service,
+        "_dashboard_chart_permission_audit",
+        lambda _session, _user, datasource_id, sql, *_args: audited.append(
+            (datasource_id, sql)
+        ) or (None, False),
+    )
+    canvas = json.dumps({
+        "bound-chart": {
+            "datasource": None,
+            "executionDatasourceRole": "bound",
+            "sql": "select 1",
+            "sourceConfig": {"sql": {"datasource": 999, "sql": "select 1"}},
+        },
+        "roi-chart": {
+            "datasource": None,
+            "executionDatasourceRole": "roi",
+            "sql": "select 2",
+        },
+    })
+
+    _component, _style, mapped = dashboard_service._clone_dashboard_canvas_payload_for_datasource(
+        _Session(), _user(), "[]", "{}", canvas
+    )
+
+    result = json.loads(mapped)
+    assert result["bound-chart"]["datasource"] == 11
+    assert result["roi-chart"]["datasource"] == 22
+    assert "datasource" not in result["bound-chart"]["sourceConfig"]["sql"]
+    assert audited == [(11, "select 1"), (22, "select 2")]
+
+
+def test_template_copy_rejects_missing_target_roi_role(
+        monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """目标空间未配置 ROI 源时不得把 ROI 图表改投普通绑定源。"""
+    monkeypatch.setattr(
+        dashboard_service,
+        "_configured_chart_execution_datasources",
+        lambda *_args: [(11, "bound")],
+    )
+    canvas = json.dumps({
+        "roi-chart": {
+            "datasource": None,
+            "executionDatasourceRole": "roi",
+            "sql": "select 1",
+        }
+    })
+
+    with pytest.raises(HTTPException) as error:
+        dashboard_service._clone_dashboard_canvas_payload_for_datasource(
+            _Session(), _user(), "[]", "{}", canvas
+        )
+
+    assert error.value.detail["error_type"] == "dashboard_chart_datasource_role_missing"

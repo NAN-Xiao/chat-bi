@@ -14,7 +14,6 @@ const miniCartesian = resolveG2ResponsiveStyle(
   'cartesian'
 )
 assert.equal(miniCartesian.axisLabelFontSize, 9)
-assert.equal(miniCartesian.showPointLabels, false)
 assert.deepEqual(miniCartesian.padding, [4, 6, 18, 28])
 
 const miniCategoryAxis = resolveCategoryAxisResponsiveOptions(miniCartesian)

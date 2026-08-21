@@ -1,6 +1,7 @@
 """
 脚本说明：这个脚本封装数据源的增删改查和保存逻辑，让接口层不直接处理太多细节。
 """
+import json
 import re
 from enum import Enum
 from typing import Any
@@ -32,7 +33,8 @@ from apps.datasource.crud.metadata_permission_authority import (
 )
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from apps.system.models.tenant import TenantTrackingFieldModel
-from apps.db.db import get_sqlglot_dialect
+from apps.datasource.utils.utils import aes_decrypt
+from apps.db.db import get_sqlglot_dialect, normalize_sql_safety_ds_type
 from common.core.deps import CurrentUser, SessionDep
 from common.sql_json_paths import extract_json_accesses, json_paths_intersect, normalize_json_path
 
@@ -69,13 +71,7 @@ def parse_sql_statements(
     return statements
 
 
-def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
-    """
-    是什么：extract_physical_tables 是一个可以复用的小步骤，负责数据源相关的一件事。
-    谁调用：后端其他代码在需要这个功能时会调用它。
-    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
-    """
-    tables: set[str] = set()
+def _physical_table_nodes(statements: list[exp.Expression]):
     for stmt in statements:
         cte_names = {
             normalize_identifier(cte.alias_or_name)
@@ -90,7 +86,18 @@ def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
                 and not normalize_identifier(table.catalog)
             )
             if table_name and not is_unqualified_cte_reference:
-                tables.add(table_name)
+                yield table
+
+
+def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
+    """
+    是什么：extract_physical_tables 是一个可以复用的小步骤，负责数据源相关的一件事。
+    谁调用：后端其他代码在需要这个功能时会调用它。
+    做了什么：把数据源的原始内容拆开、转换或整理，变成程序更好处理的格式。
+    """
+    tables: set[str] = set()
+    for table in _physical_table_nodes(statements):
+        tables.add(normalize_identifier(table.name))
     return tables
 
 
@@ -568,6 +575,64 @@ def compile_event_constraints(
     else:
         where_expr.set("this", exp.and_(where_expr.this, denied_filter))
     return statement.sql(dialect=get_sqlglot_dialect(datasource.type))
+
+
+def _datasource_relation_namespaces(datasource: CoreDatasource) -> tuple[set[str], set[str]]:
+    """返回当前连接允许的 catalog 和 schema/database 限定名。"""
+    try:
+        configuration = json.loads(aes_decrypt(getattr(datasource, "configuration", None)) or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SqlSchemaScopeError("当前数据源连接配置无效，无法校验 SQL 库或 Schema 限定名。") from exc
+
+    database = normalize_identifier(configuration.get("database"))
+    schema = normalize_identifier(configuration.get("dbSchema"))
+    username = normalize_identifier(configuration.get("username"))
+    ds_type = normalize_sql_safety_ds_type(getattr(datasource, "type", None))
+
+    if ds_type in {"mysql", "doris", "starrocks", "ck", "hive"}:
+        return set(), {database} - {""}
+    if ds_type in {"pg", "redshift", "kingbase", "excel"}:
+        return set(), {schema or "public"}
+    if ds_type == "sqlserver":
+        return {database} - {""}, {schema or "dbo"}
+    if ds_type == "oracle":
+        return set(), {schema or username} - {""}
+
+    return set(), ({schema, database} - {""})
+
+
+def validate_sql_relation_namespaces(
+        statements: list[exp.Expression],
+        datasource: CoreDatasource,
+) -> None:
+    """阻止 SQL 通过限定库名绕过当前数据源的 Schema 与权限边界。"""
+    qualified_tables = [
+        table
+        for table in _physical_table_nodes(statements)
+        if normalize_identifier(table.db) or normalize_identifier(table.catalog)
+    ]
+    if not qualified_tables:
+        return
+
+    allowed_catalogs, allowed_databases = _datasource_relation_namespaces(datasource)
+    violations: set[str] = set()
+    for table in qualified_tables:
+        catalog = normalize_identifier(table.catalog)
+        database = normalize_identifier(table.db)
+        table_name = normalize_identifier(table.name)
+        if (catalog and catalog not in allowed_catalogs) or (
+            database and database not in allowed_databases
+        ):
+            qualified_name = ".".join(part for part in (catalog, database, table_name) if part)
+            violations.add(qualified_name)
+
+    if violations:
+        raise SqlSchemaScopeError(
+            "SQL 引用了当前数据源之外的库或 Schema：" + ", ".join(sorted(violations)),
+            tables=violations,
+        )
+
+
 def build_permission_scope(
         session: SessionDep,
         current_user: CurrentUser,
@@ -582,7 +647,7 @@ def build_permission_scope(
     做了什么：创建或保存数据源需要的东西，让后续流程能继续往下走。
     """
     tables = session.query(CoreTable).filter(
-        and_(CoreTable.ds_id == datasource.id, CoreTable.checked == True)
+        and_(CoreTable.ds_id == datasource.id, CoreTable.checked.is_(True))
     ).all()
     table_ids = [table.id for table in tables]
     fields_by_table: dict[int, list[CoreField]] = {}
@@ -673,7 +738,10 @@ def selected_table_aliases(select_expr: exp.Select, cte_names: set[str] | None =
     return aliases
 
 
-def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
+def cte_output_columns(
+        statement: exp.Expression,
+        permission_scope: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, set[str]]:
     """
     是什么：cte_output_columns 是一个可以复用的小步骤，负责数据源相关的一件事。
     谁调用：后端其他代码在需要这个功能时会调用它。
@@ -684,18 +752,17 @@ def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
         cte_name = normalize_identifier(cte.alias_or_name)
         if not cte_name:
             continue
-        columns: set[str] = set()
-        cte_selects = list(cte.this.find_all(exp.Select))
-        cte_selects.sort(key=lambda item: 0 if any(expr.alias for expr in item.expressions) else 1)
-        for cte_select in cte_selects:
-            for item in cte_select.expressions:
-                column_name = normalize_identifier(item.alias_or_name)
-                if column_name and column_name != "*":
-                    columns.add(column_name)
-            if not columns:
-                columns.update(_values_source_columns(cte_select))
-            if columns:
-                break
+        alias = cte.args.get("alias")
+        declared_columns = {
+            normalize_identifier(column.name)
+            for column in (alias.args.get("columns") if isinstance(alias, exp.TableAlias) else []) or []
+            if normalize_identifier(column.name)
+        }
+        columns = declared_columns or _query_output_columns(
+            cte.this,
+            permission_scope or {},
+            cte_columns,
+        )
         cte_columns[cte_name] = columns
     return cte_columns
 
@@ -751,8 +818,95 @@ def selected_cte_aliases(
     return aliases
 
 
-def selected_derived_aliases(select_expr: exp.Select) -> dict[str, set[str]]:
-    """Return explicitly declared columns for table functions and derived sources."""
+def _source_alias_columns(
+        qualifier: str,
+        selected_aliases: dict[str, str],
+        cte_aliases: dict[str, set[str]],
+        derived_aliases: dict[str, set[str]],
+        permission_scope: dict[str, dict[str, Any]],
+) -> set[str]:
+    normalized_qualifier = normalize_identifier(qualifier)
+    if normalized_qualifier in derived_aliases:
+        return set(derived_aliases[normalized_qualifier])
+    if normalized_qualifier in cte_aliases:
+        return set(cte_aliases[normalized_qualifier])
+    physical_table = selected_aliases.get(normalized_qualifier)
+    if physical_table is None:
+        return set()
+    return set(permission_scope.get(physical_table, {}).get("fields", set()))
+
+
+def _query_output_columns(
+        query: exp.Expression,
+        permission_scope: dict[str, dict[str, Any]],
+        cte_columns: dict[str, set[str]],
+        active_query_ids: set[int] | None = None,
+) -> set[str]:
+    """Infer the named columns exposed by a CTE or derived query."""
+    active_query_ids = set(active_query_ids or set())
+    if id(query) in active_query_ids:
+        return set()
+    active_query_ids.add(id(query))
+
+    if isinstance(query, exp.Subquery):
+        return _query_output_columns(query.this, permission_scope, cte_columns, active_query_ids)
+    if isinstance(query, exp.SetOperation):
+        return _query_output_columns(query.left, permission_scope, cte_columns, active_query_ids)
+    if not isinstance(query, exp.Select):
+        select_expr = query.find(exp.Select)
+        return (
+            _query_output_columns(select_expr, permission_scope, cte_columns, active_query_ids)
+            if select_expr is not None
+            else set()
+        )
+
+    cte_names = set(cte_columns)
+    selected_aliases = selected_table_aliases(query, cte_names)
+    cte_aliases = selected_cte_aliases(query, cte_columns)
+    derived_aliases = selected_derived_aliases(
+        query,
+        permission_scope,
+        cte_columns,
+        active_query_ids,
+    )
+    columns: set[str] = set()
+    for item in query.expressions:
+        star = item if isinstance(item, exp.Star) else item.this if isinstance(item, exp.Column) else None
+        if isinstance(star, exp.Star):
+            qualifier = item.table if isinstance(item, exp.Column) else ""
+            if qualifier:
+                columns.update(_source_alias_columns(
+                    qualifier,
+                    selected_aliases,
+                    cte_aliases,
+                    derived_aliases,
+                    permission_scope,
+                ))
+            else:
+                for source_alias in set(selected_aliases) | set(cte_aliases) | set(derived_aliases):
+                    columns.update(_source_alias_columns(
+                        source_alias,
+                        selected_aliases,
+                        cte_aliases,
+                        derived_aliases,
+                        permission_scope,
+                    ))
+            continue
+        column_name = normalize_identifier(item.alias_or_name)
+        if column_name and column_name != "*":
+            columns.add(column_name)
+    if not columns:
+        columns.update(_values_source_columns(query))
+    return columns
+
+
+def selected_derived_aliases(
+        select_expr: exp.Select,
+        permission_scope: dict[str, dict[str, Any]] | None = None,
+        cte_columns: dict[str, set[str]] | None = None,
+        active_query_ids: set[int] | None = None,
+) -> dict[str, set[str]]:
+    """Return columns exposed by derived queries and explicitly aliased table functions."""
     aliases: dict[str, set[str]] = {}
     sources = []
     from_expr = select_expr.args.get("from_")
@@ -769,11 +923,19 @@ def selected_derived_aliases(select_expr: exp.Select) -> dict[str, set[str]]:
         if not isinstance(alias, exp.TableAlias):
             continue
         alias_name = normalize_identifier(source.alias_or_name)
-        columns = {
+        declared_columns = {
             normalize_identifier(column.name)
             for column in alias.args.get("columns") or []
             if normalize_identifier(column.name)
         }
+        columns = declared_columns
+        if not columns and isinstance(source, exp.Subquery):
+            columns = _query_output_columns(
+                source.this,
+                permission_scope or {},
+                cte_columns or {},
+                active_query_ids,
+            )
         if alias_name and columns:
             aliases[alias_name] = columns
     return aliases
@@ -869,11 +1031,12 @@ def _select_scope(
         select_expr: exp.Select,
         cte_names: set[str],
         cte_columns: dict[str, set[str]],
+        permission_scope: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[dict[str, str], dict[str, set[str]], dict[str, set[str]]]:
     return (
         selected_table_aliases(select_expr, cte_names),
         selected_cte_aliases(select_expr, cte_columns),
-        selected_derived_aliases(select_expr),
+        selected_derived_aliases(select_expr, permission_scope, cte_columns),
     )
 
 
@@ -897,7 +1060,7 @@ def _resolve_correlated_column(
     if not qualifier:
         return _ColumnResolution.UNKNOWN
 
-    local_aliases = _select_scope(select_expr, cte_names, cte_columns)
+    local_aliases = _select_scope(select_expr, cte_names, cte_columns, permission_scope)
     if any(qualifier in aliases for aliases in local_aliases):
         return _ColumnResolution.UNKNOWN
 
@@ -906,6 +1069,7 @@ def _resolve_correlated_column(
             outer_select,
             cte_names,
             cte_columns,
+            permission_scope,
         )
         if not any(
                 qualifier in aliases
@@ -999,12 +1163,13 @@ def validate_sql_columns(
             for cte in statement.find_all(exp.CTE)
             if cte.alias_or_name
         }
-        cte_columns = cte_output_columns(statement)
+        cte_columns = cte_output_columns(statement, permission_scope)
         for select_expr in statement.find_all(exp.Select):
             selected_aliases, cte_aliases, derived_aliases = _select_scope(
                 select_expr,
                 cte_names,
                 cte_columns,
+                permission_scope,
             )
             output_aliases = _select_output_aliases(select_expr)
             json_extraction = extract_json_accesses(
@@ -1183,6 +1348,7 @@ def validate_sql_scope(
     做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     statements = parse_sql_statements(sql, datasource.type)
+    validate_sql_relation_namespaces(statements, datasource)
     actual_tables = extract_physical_tables(statements)
     if not actual_tables:
         raise ValueError("SQL 解析失败，无法确认查询表范围")
@@ -1222,6 +1388,7 @@ def validate_sql_table_scope(
     做了什么：检查数据源里的数据、权限或配置是否合法，不对就及时拦住。
     """
     statements = parse_sql_statements(sql, datasource.type, fallback_to_generic=True)
+    validate_sql_relation_namespaces(statements, datasource)
     actual_tables = extract_physical_tables(statements)
     if not actual_tables:
         if allow_empty_tables:

@@ -574,7 +574,7 @@ onMounted(() => {
 
   &:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    opacity: 1;
   }
 
   .trigger-icon {

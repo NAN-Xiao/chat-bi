@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from apps.dashboard.crud.dashboard_date_filter import (
     dashboard_date_parameter_tokens,
@@ -13,6 +14,7 @@ from apps.dashboard.crud.dashboard_date_filter import (
     prepare_dashboard_date_filter,
     validate_dashboard_date_parameter_sql,
 )
+from common.core.config import settings
 
 
 _DATABASE_CURRENT_DATE_PATTERN = re.compile(
@@ -36,6 +38,9 @@ _EXPLICIT_YESTERDAY_PATTERN = re.compile(r"(?:昨天|昨日)")
 _EXPLICIT_DAY_BEFORE_YESTERDAY_PATTERN = re.compile(r"前天")
 _EXPLICIT_ABSOLUTE_DATE_PATTERN = re.compile(
     r"(?<!\d)\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日?)(?!\d)"
+)
+_SQL_DATE_LITERAL_PATTERN = re.compile(
+    r"(?<!\d)(?:(?:19|20)\d{6}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2})(?!\d)"
 )
 _EXPLICIT_NAMED_PERIOD_PATTERN = re.compile(r"本月")
 _EXPLICIT_RELATIVE_PERIOD_PATTERN = re.compile(
@@ -61,6 +66,78 @@ QuestionDateScope = Literal["current_day", "explicit_other", "unspecified"]
 
 class ChatDateFilterConfigurationError(ValueError):
     """聊天 SQL 的日期模板配置不完整或不一致。"""
+
+
+def system_business_date() -> date:
+    """返回 Smart Q&A 统一使用的系统业务日期。"""
+    return datetime.now(ZoneInfo(settings.DASHBOARD_BUSINESS_TIMEZONE)).date()
+
+
+def _parse_contract_date(value: Any) -> date:
+    text = str(value or "").strip()
+    try:
+        parsed = date.fromisoformat(text)
+    except ValueError as error:
+        raise ChatDateFilterConfigurationError("invalid_time_range") from error
+    if parsed.isoformat() != text:
+        raise ChatDateFilterConfigurationError("invalid_time_range")
+    return parsed
+
+
+def _static_date_expression(start: date, end: date) -> dict[str, Any]:
+    return {
+        "version": 1,
+        "mode": "range",
+        "start": {"mode": "static", "date": start.isoformat()},
+        "end": {"mode": "static", "date": end.isoformat()},
+    }
+
+
+def normalize_chat_date_filter_contract(
+    payload: Any,
+    sql: str,
+    chart_type: str,
+    *,
+    time_scope: Any,
+    time_range: Any,
+    business_date: date | None = None,
+    requires_current_business_day: bool = False,
+) -> dict[str, Any] | None:
+    """校验同一次 LLM 响应中的具体日期契约，不重新解释用户自然语言。"""
+    if str(chart_type or "").strip().lower() == "metric":
+        return normalize_chat_date_filter(payload, sql, chart_type)
+    if time_scope not in {"explicit", "unspecified"}:
+        raise ChatDateFilterConfigurationError("missing_time_scope")
+    if not isinstance(time_range, dict):
+        raise ChatDateFilterConfigurationError("missing_time_range")
+
+    start = _parse_contract_date(time_range.get("start_date"))
+    end = _parse_contract_date(time_range.get("end_date"))
+    if start > end:
+        raise ChatDateFilterConfigurationError("invalid_time_range")
+
+    anchor = business_date or system_business_date()
+    if end > anchor:
+        raise ChatDateFilterConfigurationError("time_range_exceeds_business_date")
+    if requires_current_business_day:
+        if time_scope != "explicit" or (start, end) != (anchor, anchor):
+            raise ChatDateFilterConfigurationError("invalid_current_day_time_range")
+    elif time_scope == "unspecified":
+        expected_start = anchor - timedelta(days=7)
+        expected_end = anchor - timedelta(days=1)
+        if (start, end) != (expected_start, expected_end):
+            raise ChatDateFilterConfigurationError("invalid_default_time_range")
+
+    if not isinstance(payload, dict):
+        raise ChatDateFilterConfigurationError("missing_date_filter")
+    expected_expression = _static_date_expression(start, end)
+    if payload.get("date_expression") != expected_expression:
+        raise ChatDateFilterConfigurationError("time_range_mismatch")
+    parameter_type = str(payload.get("date_parameter_type") or "").strip()
+    tokens = dashboard_date_parameter_tokens(parameter_type)
+    if tokens is None or not all(token in sql for token in tokens):
+        raise ChatDateFilterConfigurationError("missing_parameters")
+    return normalize_chat_date_filter(payload, sql, chart_type)
 
 
 DASHBOARD_DATE_FILTER_DISABLED_GUIDANCE = """
@@ -151,9 +228,13 @@ def _explicit_question_date_expression(question: str | None) -> dict[str, Any] |
     return None
 
 
-def _question_requires_date_filter(question: str | None, chart_type: str) -> bool:
+def _question_requires_date_filter(question: str | None, chart_type: str, sql: str = "") -> bool:
     if str(chart_type or "").strip().lower() == "metric":
-        return False
+        return (
+            question_date_scope(question) != "unspecified"
+            or bool(_SQL_DATE_LITERAL_PATTERN.search(sql))
+            or bool(_DATABASE_CURRENT_DATE_PATTERN.search(sql))
+        )
     if _TIME_SERIES_PATTERN.search(str(question or "")):
         return True
     return False
@@ -187,7 +268,7 @@ def normalize_chat_date_filter_for_question(
 
     expression = _explicit_question_date_expression(question)
     if not isinstance(payload, dict):
-        if _question_requires_date_filter(question, chart_type):
+        if _question_requires_date_filter(question, chart_type, sql):
             raise ChatDateFilterConfigurationError("missing_date_filter")
         return normalize_chat_date_filter(payload, sql, chart_type)
     if expression is None:
@@ -211,7 +292,7 @@ def _date_literal_pattern(parameter_type: str) -> str | None:
 
 
 def rewrite_chat_date_filter_literals(payload: Any, sql: str) -> str:
-    """将已声明日期字段的 BETWEEN 边界保留为看板日期模板。"""
+    """校验并将已声明日期字段的 BETWEEN 字面量改写为看板日期模板。"""
     if not isinstance(payload, dict) or has_dashboard_date_filter_parameters(sql):
         return sql
 
@@ -226,29 +307,82 @@ def rewrite_chat_date_filter_literals(payload: Any, sql: str) -> str:
     field_pattern = rf"(?:(?:{_SQL_IDENTIFIER_PATTERN}\s*\.\s*)*)`?{re.escape(time_field)}`?"
     start_token, end_token = tokens
 
-    # 模型可能把明确的日期范围写成 CURDATE() 计算式；只改写声明时间字段的完整范围。
-    current_date_range_pattern = re.compile(
-        rf"(?P<field>{field_pattern})\s+BETWEEN\s+"
-        rf"(?P<start>.*?{_DATABASE_CURRENT_DATE_PATTERN.pattern}.*?)\s+AND\s+"
-        rf"(?P<end>.*?{_DATABASE_CURRENT_DATE_PATTERN.pattern}.*?)"
-        rf"(?=\s+(?:AND|OR|GROUP|ORDER|HAVING|LIMIT|UNION)\b|\s*$)",
-        re.IGNORECASE | re.DOTALL,
-    )
-    rewritten_sql = current_date_range_pattern.sub(
-        lambda match: f"{match.group('field')} BETWEEN {start_token} AND {end_token}",
-        sql,
-    )
-    if rewritten_sql != sql:
-        return rewritten_sql
+    if _DATABASE_CURRENT_DATE_PATTERN.search(sql):
+        expression = payload.get("date_expression")
+        if isinstance(expression, dict) and expression.get("mode") == "range":
+            raise ChatDateFilterConfigurationError("database_current_date")
 
     pattern = re.compile(
         rf"(?P<field>{field_pattern})\s+BETWEEN\s+(?P<start>{literal_pattern})\s+AND\s+(?P<end>{literal_pattern})",
         re.IGNORECASE,
     )
-    return pattern.sub(
-        lambda match: f"{match.group('field')} BETWEEN {start_token} AND {end_token}",
-        sql,
+    expression = payload.get("date_expression")
+    expected_literals: tuple[str, str] | None = None
+    if isinstance(expression, dict) and expression.get("mode") == "range":
+        raw_start = expression.get("start")
+        raw_end = expression.get("end")
+        if (
+            isinstance(raw_start, dict)
+            and raw_start.get("mode") == "static"
+            and isinstance(raw_end, dict)
+            and raw_end.get("mode") == "static"
+        ):
+            start_date = _parse_contract_date(raw_start.get("date"))
+            end_date = _parse_contract_date(raw_end.get("date"))
+            if parameter_type == "yyyymmdd_number":
+                expected_literals = (start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d"))
+            elif parameter_type == "yyyymmdd_text":
+                expected_literals = (
+                    f"'{start_date.strftime('%Y%m%d')}'",
+                    f"'{end_date.strftime('%Y%m%d')}'",
+                )
+            elif parameter_type == "date":
+                expected_literals = (f"'{start_date.isoformat()}'", f"'{end_date.isoformat()}'")
+            elif parameter_type == "timestamp":
+                expected_literals = (
+                    f"'{start_date.isoformat()} 00:00:00'",
+                    f"'{(end_date + timedelta(days=1)).isoformat()} 00:00:00'",
+                )
+
+    def replace_literal_range(match: re.Match[str]) -> str:
+        if expected_literals is not None:
+            actual = (match.group("start").replace('"', "'"), match.group("end").replace('"', "'"))
+            if actual != expected_literals:
+                raise ChatDateFilterConfigurationError("sql_time_range_mismatch")
+        return f"{match.group('field')} BETWEEN {start_token} AND {end_token}"
+
+    rewritten_sql = pattern.sub(replace_literal_range, sql)
+    if rewritten_sql != sql:
+        return rewritten_sql
+
+    comparison_pattern = re.compile(
+        rf"(?P<field>{field_pattern})\s*(?P<operator>>=|<=|<|=)\s*"
+        rf"(?P<literal>{literal_pattern})",
+        re.IGNORECASE,
     )
+
+    def replace_literal_comparison(match: re.Match[str]) -> str:
+        operator = match.group("operator")
+        literal = match.group("literal").replace('"', "'")
+        if expected_literals is not None:
+            start_literal, end_literal = expected_literals
+            if operator == ">=":
+                if literal != start_literal:
+                    raise ChatDateFilterConfigurationError("sql_time_range_mismatch")
+                replacement = start_token
+            elif operator in {"<=", "<"}:
+                if literal != end_literal:
+                    raise ChatDateFilterConfigurationError("sql_time_range_mismatch")
+                replacement = end_token
+            else:
+                if start_literal != end_literal or literal != start_literal:
+                    raise ChatDateFilterConfigurationError("sql_time_range_mismatch")
+                return f"{match.group('field')} BETWEEN {start_token} AND {end_token}"
+        else:
+            replacement = start_token if operator == ">=" else end_token
+        return f"{match.group('field')} {operator} {replacement}"
+
+    return comparison_pattern.sub(replace_literal_comparison, sql)
 
 
 def normalize_chat_date_filter(payload: Any, sql: str, chart_type: str) -> dict[str, Any] | None:
@@ -258,8 +392,6 @@ def normalize_chat_date_filter(payload: Any, sql: str, chart_type: str) -> dict[
         if has_tokens:
             raise ChatDateFilterConfigurationError("missing_date_filter")
         return None
-    if str(chart_type or "").strip().lower() == "metric":
-        raise ChatDateFilterConfigurationError("metric_chart")
     if not isinstance(payload, dict):
         raise ChatDateFilterConfigurationError("invalid_date_filter")
     if _DATABASE_CURRENT_DATE_PATTERN.search(sql):
@@ -296,10 +428,15 @@ def render_chat_date_filter_sql(
         if has_unresolved_dashboard_date_parameters(sql):
             raise ChatDateFilterConfigurationError("date_filter_render_incomplete")
         return sql
+    date_filter = {
+        "parameter_type": str(pivot.get("date_parameter_type") or "").strip(),
+        "expression": pivot.get("date_expression"),
+    }
     prepared = prepare_dashboard_date_filter(
         sql,
         ds_type=datasource_type,
         pivot=pivot,
+        date_filter=date_filter,
         today=today,
     )
     if prepared.capability.get("status") != "available":

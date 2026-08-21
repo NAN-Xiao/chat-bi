@@ -109,6 +109,32 @@ def normalize_json_path(value: Any, *, postgres: bool = False) -> str:
     return _format_json_path_segments(segments)
 
 
+def canonical_json_field_name(source_field: Any, json_path: Any) -> str:
+    """Build the stable logical field name without losing JSON key/index types."""
+    source = str(source_field or "").strip()
+    normalized_path = normalize_json_path(json_path)
+    segments = json_path_segments(normalized_path)
+    if not source or not segments:
+        return ""
+
+    parts = [source]
+    for segment in segments:
+        is_array_index = (
+            segment.startswith("[")
+            and segment.endswith("]")
+            and segment[1:-1].isdigit()
+        )
+        if is_array_index:
+            parts.append(segment)
+        elif _SIMPLE_JSON_KEY.fullmatch(segment) or segment.isdigit():
+            parts.append(f".{segment}")
+        elif '"' not in segment and "\\" not in segment:
+            parts.append(f'["{segment}"]')
+        else:
+            return ""
+    return "".join(parts)
+
+
 def json_paths_intersect(left: str, right: str) -> bool:
     left_segments = json_path_segments(normalize_json_path(left))
     right_segments = json_path_segments(normalize_json_path(right))

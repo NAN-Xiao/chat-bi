@@ -75,7 +75,7 @@ from apps.datasource.crud.permission_errors import (
     looks_like_permission_scope_error,
 )
 from apps.datasource.crud.sql_engine import (
-    get_ai_table_schema,
+    BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE,
     user_data_unavailable_message,
     validate_user_query_sql_or_raise,
 )
@@ -2378,22 +2378,18 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
         elif getattr(service, "business_sql_context", None) is not None:
             used_tables_schema = service.business_sql_context.schema
             _used_tables = service.business_sql_context.allowed_tables
-        elif hasattr(service, "load_business_sql_context"):
-            context = service.load_business_sql_context(
+        else:
+            load_context = getattr(service, "load_business_sql_context", None)
+            if not callable(load_context):
+                raise DataUnavailableError(BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE)
+            context = load_context(
                 session,
                 embedding=False,
             )
-            used_tables_schema = context.schema if context else ""
-            _used_tables = context.allowed_tables if context else []
-        else:
-            used_tables_schema, _used_tables = get_ai_table_schema(
-                session=session,
-                current_user=service.current_user,
-                ds=service.ds,
-                question=service.chat_question.question,
-                embedding=False,
-                table_list=tables,
-            )
+            if context is None:
+                raise DataUnavailableError(BUSINESS_SQL_CONTEXT_UNAVAILABLE_MESSAGE)
+            used_tables_schema = context.schema
+            _used_tables = context.allowed_tables
         AppLogUtil.info("used_tables_schema: \n" + used_tables_schema)
 
         full_chart_text = emit_stream_text(

@@ -124,7 +124,7 @@ export class Line extends BaseG2Chart {
       children: [
         {
           type: 'line',
-          labels: this.showLabel && responsive.showPointLabels
+          labels: this.showLabel
             ? [
                 {
                   text: (data: any) => {
