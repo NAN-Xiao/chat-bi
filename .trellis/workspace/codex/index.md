@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 4
 - **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~80 | Active |
+| `journal-1.md` | ~101 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-08-21 | 修复知识块删除确认框层级 | `9c0504e8` | `codex/fix-knowledge-block-delete-feedback` |
 | 3 | 2026-08-21 | 修复知识块删除反馈 | `d8f80e92` | `codex/fix-knowledge-block-delete-feedback` |
 | 2 | 2026-08-17 | Fix knowledge publish embedding batch limit | `f8e21ac5` | `codex/fix-knowledge-publish-queue` |
 | 1 | 2026-08-14 | 修复知识块列表独立滚动 | `8da18554` | `codex/fix-knowledge-panel-scroll` |

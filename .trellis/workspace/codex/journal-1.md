@@ -78,3 +78,24 @@ Set the shared embedding batch limit to 10, propagate it through deployment conf
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: 修复知识块删除确认框层级
+
+**Date**: 2026-08-21
+**Task**: 修复知识块删除确认框层级
+**Branch**: `codex/fix-knowledge-block-delete-feedback`
+
+### Summary
+
+统一知识块编辑器弹层组件库，修复确认框被抽屉遮挡，并通过真实点击、成功提示、测试、Lint 和构建验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c0504e8` | (see git log) |
+
+### Status
+
+[OK] **Completed**
