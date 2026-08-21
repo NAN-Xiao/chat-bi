@@ -57,3 +57,24 @@ Set the shared embedding batch limit to 10, propagate it through deployment conf
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: 修复知识块删除反馈
+
+**Date**: 2026-08-21
+**Task**: 修复知识块删除反馈
+**Branch**: `codex/fix-knowledge-block-delete-feedback`
+
+### Summary
+
+知识块删除确认后提示保存草稿，补充回归测试并完成构建、定向 lint 与运行时验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d8f80e92` | (see git log) |
+
+### Status
+
+[OK] **Completed**
