@@ -51,6 +51,7 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2
 ## UI Quality
 
 - Keep management views scannable: readable cards or dense tables, visible status/action columns, and pagination attached to the list it controls.
+- Use `element-plus-secondary` for imperative overlays (`ElMessageBox`, `ElMessage`, notifications) rendered from pages that use the secondary `ed-*` component system. Mixing an `element-plus` message box with an `element-plus-secondary` drawer creates independent z-index stacks: the dialog can exist in the DOM while remaining hidden behind the drawer overlay. Regression checks for drawer actions must assert visual visibility, not only that the dialog node or method call exists.
 - Avoid rendering long AI reports or logs in the first viewport of management consoles.
 - Verify that labels, buttons, and dynamic content fit their containers at both desktop and mobile widths.
 - Keep route metadata and page state synchronized when the same scope can be selected from both a sidebar child route and an in-page control. A child menu must not appear active while the page loads a different scope.

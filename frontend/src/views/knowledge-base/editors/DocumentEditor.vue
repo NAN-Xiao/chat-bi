@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Delete, Plus } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { computed, ref, watch } from 'vue'
 import {
   createDocumentBlock,

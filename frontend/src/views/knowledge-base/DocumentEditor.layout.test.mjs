@@ -60,6 +60,11 @@ test('the document editor uses the shared content frame', () => {
 })
 
 test('document editor adds and confirms deletion of draft blocks', () => {
+  assert.match(
+    editorSource,
+    /import \{ ElMessage, ElMessageBox \} from 'element-plus-secondary'/
+  )
+  assert.doesNotMatch(editorSource, /from 'element-plus'\s*$/m)
   assert.match(editorSource, /createDocumentBlock\(nextBlockTitle\(\)\)/)
   assert.match(editorSource, /updateBlocks\(\[\.\.\.props\.modelValue\.blocks, block\]\)/)
   assert.match(editorSource, /activeBlockId\.value = block\.id/)
