@@ -227,3 +227,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: 知识库版本保留上限
+
+**Date**: 2026-08-21
+**Task**: 知识库版本保留上限
+**Branch**: `codex/retain-latest-10-kb-versions`
+
+### Summary
+
+物理保留最近十个知识库版本，安全清理发布任务、派生索引和无引用源文件；完成后端、前端构建及真实 PostgreSQL 回滚事务验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `014d42c9` | (see git log) |
+
+### Status
+
+[OK] **Completed**
