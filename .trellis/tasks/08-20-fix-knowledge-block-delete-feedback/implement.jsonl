@@ -1,0 +1,2 @@
+{"file": "frontend/src/views/knowledge-base/editors/DocumentEditor.vue", "reason": "删除知识块并显示成功反馈的实现"}
+{"file": "frontend/src/views/knowledge-base/DocumentEditor.layout.test.mjs", "reason": "删除反馈回归断言"}

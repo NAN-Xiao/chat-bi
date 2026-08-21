@@ -69,6 +69,7 @@ test('document editor adds and confirms deletion of draft blocks', () => {
     editorSource,
     /activeBlockId\.value = blocks\[Math\.min\(removedIndex, blocks\.length - 1\)\]/
   )
+  assert.match(editorSource, /ElMessage\.success\('知识块已删除，请保存草稿'\)/)
   assert.match(editorSource, /v-if="!readonly" content="新增知识块"/)
   assert.match(editorSource, /v-if="!readonly" #actions/)
   assert.doesNotMatch(editorSource, /copyBlock|moveBlock|renameBlock/)

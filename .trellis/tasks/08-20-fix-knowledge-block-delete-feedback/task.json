@@ -1,0 +1,29 @@
+{
+  "id": "fix-knowledge-block-delete-feedback",
+  "name": "fix-knowledge-block-delete-feedback",
+  "title": "修复知识块删除无反馈",
+  "description": "知识块编辑器点击删除后用户看不到明确反馈，需修复删除交互并覆盖成功、取消、失败和不可删除边界。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-20",
+  "completedAt": null,
+  "branch": "codex/fix-knowledge-block-delete-feedback",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "verification": "19项聚焦测试通过；npm run build 通过；DocumentEditor.vue 定向 ESLint 通过；隔离分支前端 http://127.0.0.1:5174/ 加载且无控制台 error；全量 lint 曾受构建生成物影响出现 Invalid string length，未作为源码失败",
+    "worktree_path": "D:\\AIWork3\\chat-bi_ver-worktrees\\fix-knowledge-block-delete-feedback"
+  }
+}

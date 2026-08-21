@@ -76,6 +76,7 @@ async function removeActiveBlock() {
   const blocks = props.modelValue.blocks.filter((_, index) => index !== removedIndex)
   activeBlockId.value = blocks[Math.min(removedIndex, blocks.length - 1)]?.id || ''
   updateBlocks(blocks)
+  ElMessage.success('知识块已删除，请保存草稿')
 }
 </script>
 
