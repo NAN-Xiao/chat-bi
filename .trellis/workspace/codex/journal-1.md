@@ -99,3 +99,25 @@ Set the shared embedding batch limit to 10, propagate it through deployment conf
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: 修复知识源文件跨工作树下载
+
+**Date**: 2026-08-21
+**Task**: 修复知识源文件跨工作树下载
+**Branch**: `codex/fix-knowledge-source-storage`
+
+### Summary
+
+统一 2.0.0 linked worktree 的本地文件型运行目录，解码 Blob 下载错误并完成上传、发布、下载真实验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d84aecd6` | (see git log) |
+| `bdf06abd` | (see git log) |
+
+### Status
+
+[OK] **Completed**
