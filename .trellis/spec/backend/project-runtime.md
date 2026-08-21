@@ -170,6 +170,71 @@ $env:KNOWLEDGE_RETRIEVAL_ENABLED = if ($DisableKnowledgeRetrieval) { "false" } e
 - Shared Redis state must use the scoped helpers in `backend/common/core/redis_client.py`; never introduce naked keys such as `dashboard:{id}` or `sql:{hash}`.
 - Keep datasource, tenant, user, and permission boundaries in cache and task state whenever those boundaries can affect the result.
 
+## Scenario: Knowledge Version Retention
+
+### 1. Scope / Trigger
+
+- Trigger: creating a knowledge-base draft, creating a rollback draft, or changing version-history retention.
+- Each knowledge base physically retains at most 10 versions; this is a storage contract, not a frontend display limit.
+
+### 2. Signatures
+
+- Repository: `KnowledgeVersionRepository.prune_versions(tenant_id, knowledge_base_id, retain=10) -> tuple[str, ...]`.
+- Protected pointers: `current_version_id`, `draft_version_id`, and `publishing_version_id`.
+- Active publish-job statuses: `QUEUING`, `QUEUED`, and `RUNNING`.
+
+### 3. Contracts
+
+- Compute retention under the knowledge-base row lock and scope every query/delete by both tenant and knowledge-base ID.
+- Keep protected pointer/job versions first, then fill the retained set by descending `version_number` until it contains 10 versions.
+- Delete publish jobs for discarded versions before deleting the versions because `knowledge_publish_job.version_id` uses `ON DELETE RESTRICT`.
+- Version-owned chunks, applicability records, and reference projections use `ON DELETE CASCADE`; do not duplicate manual deletion for those tables.
+- Commit database deletion before passing discarded `file_id` values to `cleanup_unreferenced_source_files`.
+- Keep version numbers monotonic; never renumber retained versions or reuse deleted version numbers.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Version count is 10 or fewer | Do not query jobs or delete records/files |
+| Creating version 11 | Retain 10 protected/newest versions and delete the remainder |
+| Discarded version has completed/failed jobs | Delete those jobs before the version |
+| A candidate file is still referenced | Keep the physical file |
+| Physical file cleanup fails after commit | Log the failed IDs; keep the committed version result successful |
+| A pointer or active job references an older version | Protect it instead of deleting live state |
+
+### 5. Good/Base/Bad Cases
+
+- Good: the API creates a new draft, prunes in the same database transaction, commits, then reclaims only globally unreferenced source files.
+- Base: a knowledge base with exactly 10 versions creates no cleanup side effects until another version is created.
+- Bad: return only 10 rows in the API or slice the frontend array while old versions and vectors continue accumulating.
+
+### 6. Tests Required
+
+- Repository unit test: assert protected selection, tenant/knowledge scoping, job-before-version deletion, and returned file candidates.
+- PostgreSQL transaction test: assert 11 versions become 10, the `RESTRICT` job is removed, and `CASCADE` removes chunks; roll the fixture transaction back.
+- API test: assert normal draft creation and rollback creation both use the shared retention/commit path.
+- File test: assert shared files remain and cleanup failure cannot turn an already committed creation into an API failure.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+versions = versions[:10]
+```
+
+#### Correct
+
+```python
+source_file_ids = repository.prune_versions(
+    tenant_id=tenant_id,
+    knowledge_base_id=knowledge_base_id,
+)
+session.commit()
+cleanup_unreferenced_source_files(session, source_file_ids)
+```
+
 ## Scenario: OpenAI-Compatible Embedding Batch Limit
 
 ### 1. Scope / Trigger

@@ -405,6 +405,132 @@ def test_repository_persists_source_parser_version_on_replacement():
     assert session.update_params["parser_version"] == "markdown-v1"
 
 
+def test_created_version_commit_precedes_source_file_cleanup(monkeypatch):
+    events: list[str] = []
+
+    class _Repository:
+        def prune_versions(self, **_kwargs):
+            events.append("prune")
+            return ("old.md",)
+
+    class _Session:
+        def commit(self):
+            events.append("commit")
+
+    monkeypatch.setattr(
+        versions,
+        "cleanup_unreferenced_source_files",
+        lambda _session, _file_ids: events.append("cleanup")
+        or SimpleNamespace(failed=()),
+    )
+
+    versions._commit_created_version(
+        _Session(),
+        _Repository(),
+        tenant_id=7,
+        knowledge_base_id=11,
+    )
+
+    assert events == ["prune", "commit", "cleanup"]
+
+
+def test_created_version_stays_committed_when_source_cleanup_raises(monkeypatch):
+    events: list[str] = []
+
+    class _Repository:
+        def prune_versions(self, **_kwargs):
+            return ("old.md",)
+
+    class _Session:
+        def commit(self):
+            events.append("commit")
+
+    def _failed_cleanup(*_args):
+        events.append("cleanup_failed")
+        raise OSError("storage unavailable")
+
+    monkeypatch.setattr(versions, "cleanup_unreferenced_source_files", _failed_cleanup)
+
+    versions._commit_created_version(
+        _Session(),
+        _Repository(),
+        tenant_id=7,
+        knowledge_base_id=11,
+    )
+
+    assert events == ["commit", "cleanup_failed"]
+
+
+@pytest.mark.parametrize("route_name", ("create_draft", "rollback_draft"))
+def test_version_creation_routes_apply_retention_before_responding(monkeypatch, route_name):
+    created = KnowledgeBaseVersion(
+        id=12,
+        knowledge_base_id=11,
+        tenant_id=7,
+        version_number=11,
+        revision=1,
+        status=KnowledgeVersionStatus.DRAFT,
+        payload={"knowledge_type": "DOCUMENT", "blocks": []},
+    )
+    repository = SimpleNamespace()
+    committed: list[tuple[object, int, int]] = []
+
+    class _Service:
+        def create_draft(self, **_kwargs):
+            return created
+
+        def rollback_to_new_draft(self, **_kwargs):
+            return created
+
+    class _Session:
+        def rollback(self):
+            raise AssertionError("successful version creation must not roll back")
+
+    monkeypatch.setattr(
+        versions,
+        "get_capabilities",
+        lambda _session: SimpleNamespace(v2_write_enabled=True),
+    )
+    monkeypatch.setattr(
+        versions,
+        "resolve_record",
+        lambda *_args, **_kwargs: SimpleNamespace(id=11),
+    )
+    monkeypatch.setattr(versions, "record_tenant_id", lambda *_args: 7)
+    monkeypatch.setattr(versions, "KnowledgeVersionRepository", lambda _session: repository)
+    monkeypatch.setattr(versions, "KnowledgeLifecycleService", lambda _repository: _Service())
+    monkeypatch.setattr(versions, "_payload", lambda _payload: SimpleNamespace())
+    monkeypatch.setattr(
+        versions,
+        "_commit_created_version",
+        lambda session, used_repository, *, tenant_id, knowledge_base_id: committed.append(
+            (used_repository, tenant_id, knowledge_base_id)
+        ),
+    )
+
+    if route_name == "create_draft":
+        response = asyncio.run(
+            versions.create_draft(
+                id=11,
+                body=versions.DraftPayloadRequest(payload={}),
+                session=_Session(),
+                current_user=SimpleNamespace(id=1),
+            )
+        )
+    else:
+        response = asyncio.run(
+            versions.rollback_draft(
+                id=11,
+                body=versions.RollbackRequest(version_id=3),
+                session=_Session(),
+                current_user=SimpleNamespace(id=1),
+            )
+        )
+
+    assert response["version_number"] == 11
+    assert committed == [(repository, 7, 11)]
+
+
 def test_invalid_source_upload_is_atomic_and_removes_staged_file(monkeypatch, tmp_path: Path):
     original_payload = {"knowledge_type": "DOCUMENT", "markdown": "旧正文"}
     version = KnowledgeBaseVersion(

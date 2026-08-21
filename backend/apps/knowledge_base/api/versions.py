@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from apps.knowledge_base.api._helpers import (
     record_tenant_id,
@@ -45,6 +46,8 @@ from apps.knowledge_base.version_repository import (
 from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.file_utils import AppFileUtils
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     tags=["KnowledgeBase"],
@@ -173,6 +176,37 @@ def _version_response(version: KnowledgeBaseVersion) -> dict[str, Any]:
     }
 
 
+def _commit_created_version(
+    session: Session,
+    repository: KnowledgeVersionRepository,
+    *,
+    tenant_id: int,
+    knowledge_base_id: int,
+) -> None:
+    source_file_ids = repository.prune_versions(
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    session.commit()
+    if not source_file_ids:
+        return
+    try:
+        cleanup = cleanup_unreferenced_source_files(session, source_file_ids)
+    except Exception:
+        logger.exception(
+            "Failed to clean source files after pruning knowledge versions: knowledge_base_id=%s",
+            knowledge_base_id,
+        )
+        return
+    if cleanup.failed:
+        logger.error(
+            "Source file cleanup remained incomplete after pruning knowledge versions: "
+            "knowledge_base_id=%s failed=%s",
+            knowledge_base_id,
+            cleanup.failed,
+        )
+
+
 @router.post("/{id}/draft")
 async def create_draft(
     id: int,
@@ -188,7 +222,8 @@ async def create_draft(
         record = resolve_record(session, knowledge_base_id=id, user=current_user)
         payload = _payload(body.payload)
         tenant_id = record_tenant_id(record, current_user)
-        service = KnowledgeLifecycleService(KnowledgeVersionRepository(session))
+        repository = KnowledgeVersionRepository(session)
+        service = KnowledgeLifecycleService(repository)
         version = service.create_draft(
             tenant_id=tenant_id,
             knowledge_base_id=id,
@@ -196,7 +231,12 @@ async def create_draft(
             actor_id=int(current_user.id),
             current_user=current_user,
         )
-        session.commit()
+        _commit_created_version(
+            session,
+            repository,
+            tenant_id=tenant_id,
+            knowledge_base_id=id,
+        )
         return _version_response(version)
     except KnowledgeBusinessError as error:
         session.rollback()
@@ -604,14 +644,20 @@ async def rollback_draft(
     try:
         record = resolve_record(session, knowledge_base_id=id, user=current_user)
         tenant_id = record_tenant_id(record, current_user)
-        version = KnowledgeLifecycleService(KnowledgeVersionRepository(session)).rollback_to_new_draft(
+        repository = KnowledgeVersionRepository(session)
+        version = KnowledgeLifecycleService(repository).rollback_to_new_draft(
             tenant_id=tenant_id,
             knowledge_base_id=id,
             target_version_id=body.version_id,
             actor_id=int(current_user.id),
             current_user=current_user,
         )
-        session.commit()
+        _commit_created_version(
+            session,
+            repository,
+            tenant_id=tenant_id,
+            knowledge_base_id=id,
+        )
         return _version_response(version)
     except KnowledgeBusinessError as error:
         session.rollback()

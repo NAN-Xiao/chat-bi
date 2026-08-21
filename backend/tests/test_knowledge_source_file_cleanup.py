@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from apps.knowledge_base.lifecycle_models import KnowledgeBaseVersion
 from apps.knowledge_base.source_file_cleanup import cleanup_unreferenced_source_files
 from apps.knowledge_base.version_repository import KnowledgeVersionRepository
 
@@ -125,3 +126,91 @@ def test_repository_deletes_publish_jobs_before_versions_and_collects_files():
     assert publish_delete < version_delete
     assert record.draft_version_id is None
     assert session.deleted_record is record
+
+
+def test_repository_prunes_oldest_version_after_protecting_live_pointers():
+    versions = [
+        KnowledgeBaseVersion(
+            id=number,
+            knowledge_base_id=11,
+            tenant_id=7,
+            version_number=number,
+            status="SUPERSEDED",
+            file_id=f"version-{number}.md",
+        )
+        for number in range(1, 13)
+    ]
+
+    class _RepositorySession:
+        def __init__(self):
+            self.statements = []
+
+        def exec(self, statement):
+            self.statements.append(statement)
+            sql = str(statement)
+            if sql.lstrip().startswith("SELECT") and "knowledge_base_version" in sql:
+                return _Rows(tuple(reversed(versions)))
+            if sql.lstrip().startswith("SELECT") and "knowledge_publish_job" in sql:
+                return _Rows((2,))
+            return SimpleNamespace()
+
+        def flush(self):
+            return None
+
+    session = _RepositorySession()
+    repository = KnowledgeVersionRepository(session)
+    repository.lock_knowledge_base = lambda **_kwargs: SimpleNamespace(
+        current_version_id=1,
+        draft_version_id=12,
+        publishing_version_id=None,
+    )
+
+    source_file_ids = repository.prune_versions(
+        tenant_id=7,
+        knowledge_base_id=11,
+    )
+
+    assert source_file_ids == ("version-3.md", "version-4.md")
+    delete_statements = [
+        statement
+        for statement in session.statements
+        if str(statement).lstrip().startswith("DELETE")
+    ]
+    assert "DELETE FROM knowledge_publish_job" in str(delete_statements[0])
+    assert "DELETE FROM knowledge_base_version" in str(delete_statements[1])
+    for statement in delete_statements:
+        parameters = statement.compile().params
+        assert 11 in parameters.values()
+        assert 7 in parameters.values()
+        discarded_ids = next(
+            value for value in parameters.values() if isinstance(value, list)
+        )
+        assert set(discarded_ids) == {3, 4}
+
+
+def test_repository_does_not_query_jobs_when_history_is_within_limit():
+    class _RepositorySession:
+        def __init__(self):
+            self.calls = 0
+
+        def exec(self, _statement):
+            self.calls += 1
+            return _Rows(
+                tuple(
+                    KnowledgeBaseVersion(
+                        id=number,
+                        knowledge_base_id=11,
+                        tenant_id=7,
+                        version_number=number,
+                        status="SUPERSEDED",
+                    )
+                    for number in range(10, 0, -1)
+                )
+            )
+
+    session = _RepositorySession()
+    repository = KnowledgeVersionRepository(session)
+    repository.lock_knowledge_base = lambda **_kwargs: SimpleNamespace()
+
+    assert repository.prune_versions(tenant_id=7, knowledge_base_id=11) == ()
+    assert session.calls == 1

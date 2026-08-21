@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 from apps.knowledge_base.errors import KnowledgeBusinessError
 from apps.knowledge_base.lifecycle_models import (
     ACTIVE_DRAFT_STATUSES,
+    ACTIVE_PUBLISH_JOB_STATUSES,
     KnowledgeBaseVersion,
     KnowledgePublishJob,
     KnowledgeVersionStatus,
@@ -24,6 +25,8 @@ from apps.knowledge_base.lifecycle_models import (
 from apps.knowledge_base.models import KnowledgeBase
 from apps.knowledge_base.retrieval_models import KnowledgeBaseWorkspaceOverride
 from common.audit.models.log_model import OperationStatus, OperationType, SystemLog
+
+KNOWLEDGE_VERSION_RETENTION_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -172,6 +175,95 @@ class KnowledgeVersionRepository:
         record.update_time = datetime.now()
         self.session.flush()
         return version
+
+    def prune_versions(
+        self,
+        *,
+        tenant_id: int,
+        knowledge_base_id: int,
+        retain: int = KNOWLEDGE_VERSION_RETENTION_LIMIT,
+    ) -> tuple[str, ...]:
+        """Delete versions outside the bounded history and return source-file candidates."""
+        if retain < 1:
+            raise ValueError("retain must be at least 1")
+
+        record = self.lock_knowledge_base(
+            tenant_id=tenant_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+        versions = self.session.exec(
+            select(KnowledgeBaseVersion)
+            .where(
+                KnowledgeBaseVersion.knowledge_base_id == knowledge_base_id,
+                KnowledgeBaseVersion.tenant_id == tenant_id,
+            )
+            .order_by(KnowledgeBaseVersion.version_number.desc())
+        ).all()
+        if len(versions) <= retain:
+            return ()
+
+        protected_ids = {
+            int(version_id)
+            for version_id in (
+                record.current_version_id,
+                record.draft_version_id,
+                record.publishing_version_id,
+            )
+            if version_id is not None
+        }
+        protected_ids.update(
+            int(version_id)
+            for version_id in self.session.exec(
+                select(KnowledgePublishJob.version_id).where(
+                    KnowledgePublishJob.knowledge_base_id == knowledge_base_id,
+                    KnowledgePublishJob.tenant_id == tenant_id,
+                    KnowledgePublishJob.status.in_(ACTIVE_PUBLISH_JOB_STATUSES),
+                )
+            ).all()
+        )
+
+        keep_ids = {
+            int(version.id)
+            for version in versions
+            if int(version.id) in protected_ids
+        }
+        for version in versions:
+            if len(keep_ids) >= retain:
+                break
+            keep_ids.add(int(version.id))
+
+        discarded = tuple(
+            version for version in versions if int(version.id) not in keep_ids
+        )
+        discarded_ids = tuple(int(version.id) for version in discarded)
+        if not discarded_ids:
+            return ()
+
+        source_file_ids = tuple(
+            sorted(
+                {
+                    str(version.file_id)
+                    for version in discarded
+                    if getattr(version, "file_id", None)
+                }
+            )
+        )
+        self.session.exec(
+            delete(KnowledgePublishJob).where(
+                KnowledgePublishJob.knowledge_base_id == knowledge_base_id,
+                KnowledgePublishJob.tenant_id == tenant_id,
+                KnowledgePublishJob.version_id.in_(discarded_ids),
+            )
+        )
+        self.session.exec(
+            delete(KnowledgeBaseVersion).where(
+                KnowledgeBaseVersion.knowledge_base_id == knowledge_base_id,
+                KnowledgeBaseVersion.tenant_id == tenant_id,
+                KnowledgeBaseVersion.id.in_(discarded_ids),
+            )
+        )
+        self.session.flush()
+        return source_file_ids
 
     def save_draft_if_revision_matches(
         self,
