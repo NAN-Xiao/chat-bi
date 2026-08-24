@@ -342,3 +342,34 @@ AI 看板改为使用当前工作空间唯一绑定且有权限的数据源，�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: 修复用户主工作空间唯一性
+
+**Date**: 2026-08-24
+**Task**: 修复用户主工作空间唯一性
+**Branch**: `codex/fix-primary-workspace-uniqueness`
+
+### Summary
+
+统一主工作空间原子切换，增加数据库部分唯一索引和历史重复标记迁移修复。
+
+### Main Changes
+
+- 主工作空间切换会清除同一用户的其他活动主标记
+- 新增迁移修复历史重复标记并建立唯一索引
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `20bfb4a7` | (see git log) |
+
+### Testing
+
+- [OK] 定向业务测试 6 条通过，迁移测试 2 条通过
+- [OK] Ruff、Alembic heads 与差异检查通过
+
+### Status
+
+[OK] **Completed**
