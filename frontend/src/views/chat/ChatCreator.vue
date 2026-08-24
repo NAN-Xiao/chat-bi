@@ -64,9 +64,12 @@ const loading = ref(false)
 const statusLoading = ref(false)
 
 async function showDs() {
-  await datasourceContext
-    .loadDatasources(datasourceContext.datasources.length === 0)
-    .catch((e) => console.error(e))
+  try {
+    await datasourceContext.loadDatasources(datasourceContext.datasources.length === 0)
+  } catch (error) {
+    console.error('Failed to load datasource context before showing chat selector:', error)
+    return
+  }
   if (!selectAssistantDs.value && datasourceContext.datasourceId) {
     createChat(datasourceContext.datasourceId)
     return
