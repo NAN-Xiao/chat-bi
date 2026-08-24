@@ -121,3 +121,25 @@ Set the shared embedding batch limit to 10, propagate it through deployment conf
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: 修复登录后默认工作空间
+
+**Date**: 2026-08-24
+**Task**: 修复登录后默认工作空间
+**Branch**: `codex/fix-workspace-default`
+
+### Summary
+
+恢复未指定工作空间时按主成员关系自动解析默认工作空间，补充回归测试并合并推送到 release/release_2.0.0。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `93bbf19f` | (see git log) |
+| `5b67bb65` | (see git log) |
+
+### Status
+
+[OK] **Completed**
