@@ -1032,25 +1032,6 @@ function appendNoDatasourceAnswer(question: string) {
   scrollToBottom()
 }
 
-function appendDatasourceLoadErrorAnswer(question: string, error: unknown) {
-  const trimmedQuestion = question.trim()
-  if (!trimmedQuestion) {
-    return
-  }
-
-  const currentRecord = new ChatRecord()
-  currentRecord.create_time = new Date()
-  currentRecord.question = trimmedQuestion
-  currentRecord.local_answer = resolveSmartQaErrorMessage(error, t)
-  currentRecord.finish = true
-
-  currentChat.value.records.push(currentRecord)
-  inputMessage.value = ''
-  loading.value = false
-  isTyping.value = false
-  scrollToBottom()
-}
-
 function onNoDatasource() {
   appendNoDatasourceAnswer(inputMessage.value)
 }
@@ -1335,13 +1316,9 @@ const ensureChatReadyForSend = async () => {
     return assistantPrepareSend()
   }
 
-  try {
-    await datasourceContext.loadDatasources(datasourceContext.datasources.length === 0)
-  } catch (error) {
-    console.error('Failed to load datasource context before starting chat:', error)
-    appendDatasourceLoadErrorAnswer(inputMessage.value, error)
-    return false
-  }
+  await datasourceContext
+    .loadDatasources(datasourceContext.datasources.length === 0)
+    .catch((e) => console.error(e))
   if (!selectAssistantDs.value && datasourceContext.datasourceId) {
     const chat = await hiddenChatCreatorRef.value?.createChat(datasourceContext.datasourceId)
     return !!chat && currentChatId.value !== undefined

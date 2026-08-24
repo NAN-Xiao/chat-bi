@@ -130,7 +130,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
             false
           )
         } else {
-          this.clearDatasourceSelection()
+          this.clear(false)
         }
         this.tenantScopeId = requestTenantId
         this.initialized = true
@@ -190,17 +190,6 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
         persist
       )
       return true
-    },
-
-    clearDatasourceSelection() {
-      this.datasourceId = undefined
-      this.datasourceName = ''
-      this.datasourceType = ''
-      this.datasourceTypeName = ''
-      this.projectRole = ''
-      this.canCreateDashboard = false
-      this.canManageDashboard = false
-      this.canManageProject = false
     },
 
     async activateDatasourceById(id?: number | string, persist = false) {

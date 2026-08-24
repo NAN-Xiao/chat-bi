@@ -1,3 +1,0 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": "frontend/src/stores/datasourceContext.selection.test.mjs", "reason": "状态回归测试"}
-{"file": "frontend/src/views/chat/index.datasource-context.test.mjs", "reason": "Smart Q&A 回归测试"}

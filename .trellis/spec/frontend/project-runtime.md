@@ -127,8 +127,3 @@ const message = formatRequestErrorMessage(error, '下载失败，请稍后重试
 - All three source-upload entrances accept only `.md` and `.markdown` files and must run the shared Markdown structure validator before issuing a create or replacement request. A rejected selection clears any previously pending file and shows an error beginning with `格式错误`.
 - Downloaded content templates and ordinary uploads are pure Markdown. They must not require or generate platform metadata such as `template_type` or `template_version`.
 - Markdown upload validation must ignore headings inside fenced code and close a fence only with the same marker character and at least the opening marker length, matching backend block and section parsing.
-
-## Datasource Context State
-
-- Loading a successful datasource list and clearing the selected datasource are separate state transitions. If no cached selection matches the returned list, clear only the selection fields; preserve `datasources`, `tenantScopeId`, and `initialized` so callers can distinguish an empty successful list from a lost load result.
-- A failed datasource-context request must remain an error. Smart Q&A may show the explicit unbound-workspace message only after a successful request returns an empty list; request failures must use the normal error message path.
