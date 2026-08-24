@@ -107,6 +107,63 @@ const message = formatRequestErrorMessage(error, '下载失败，请稍后重试
 - Keep the Smart Q&A analysis/prediction actions and theme infrastructure compatible while their current product switches remain disabled.
 - Pure platform administrators do not have a current workspace datasource context. Platform-management flows must skip optional workspace datasource loading or applicability checks before performing their core management action. Workspace delegates and tenant users keep the datasource-scoped behavior. Add a regression assertion that the platform-admin guard executes before any datasource request, so a workspace-side `403` cannot interrupt platform knowledge editing or source upload.
 
+## Scenario: AI Dashboard Workspace Datasource Context
+
+### 1. Scope / Trigger
+
+- Trigger: Smart Q&A or AI dashboard initializes datasource state for the active workspace.
+
+### 2. Signatures
+
+- Frontend loader: `datasourceContext.loadDatasources(force, { tenantId?, workspaceSwitchId? })`.
+- Backend contract: `GET /api/v1/datasource/accessible/list`, scoped by `X-SHUZHI-TENANT-ID`.
+
+### 3. Contracts
+
+- For an ordinary workspace, the successful response contains only datasources bound to the request workspace and visible to the current user.
+- The current product model binds at most one ordinary datasource to a workspace. A sole returned item is therefore the authoritative AI dashboard datasource and must be activated without relying on browser cache or a selector dialog.
+- Clearing the active selection must preserve the successfully loaded list, `tenantScopeId`, and `initialized` state.
+
+### 4. Validation & Error Matrix
+
+| Result | Required behavior |
+| --- | --- |
+| One datasource | Activate it and create the chat against its ID |
+| Empty successful list | Show the explicit unbound-workspace state |
+| Request error | Preserve the request error; do not show the unbound state |
+| More than one datasource | Do not silently choose an arbitrary item |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a workspace with datasource `6` opens Smart Q&A with datasource `6` even when no cached selection exists.
+- Base: a genuinely unbound workspace keeps the existing unbound message.
+- Bad: `loadDatasources()` receives one item, calls the full store `clear()`, and the chat converts the erased list into an unbound message.
+
+### 6. Tests Required
+
+- Assert a sole response item becomes `datasourceId`.
+- Assert selection clearing does not empty `datasources` or reset initialization state.
+- Assert Smart Q&A load failures return before evaluating the empty-list branch.
+- Run workspace-switch regressions and the frontend production build.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+this.datasources = response
+if (!cachedDatasource) this.clear(false)
+```
+
+#### Correct
+
+```typescript
+this.datasources = response
+const datasource = currentDatasource || cachedDatasource || soleDatasource
+if (datasource) this.setDatasourceById(datasource.id)
+else this.clearDatasourceSelection()
+```
+
 ## UI Quality
 
 - Keep management views scannable: readable cards or dense tables, visible status/action columns, and pagination attached to the list it controls.

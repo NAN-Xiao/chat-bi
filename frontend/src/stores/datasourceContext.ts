@@ -78,9 +78,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       ) {
         return datasourceLoadPromise
       }
-      if (
-        (this.initialized && !force && this.tenantScopeId === requestTenantId)
-      ) {
+      if (this.initialized && !force && this.tenantScopeId === requestTenantId) {
         return
       }
       this.loading = true
@@ -106,9 +104,10 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
         }
         this.datasources = Array.isArray(res) ? res : []
         const tenantScopedCachedId = wsCache.get(this.cacheKey(requestTenantId))
-        const cachedId = tenantScopedCachedId === undefined || tenantScopedCachedId === null
-          ? undefined
-          : Number(tenantScopedCachedId)
+        const cachedId =
+          tenantScopedCachedId === undefined || tenantScopedCachedId === null
+            ? undefined
+            : Number(tenantScopedCachedId)
         const currentDatasource = this.datasourceId
           ? this.datasources.find((item) => Number(item.id) === Number(this.datasourceId))
           : undefined
@@ -116,7 +115,8 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
           currentDatasource ||
           (cachedId === undefined
             ? undefined
-            : this.datasources.find((item) => Number(item.id) === cachedId))
+            : this.datasources.find((item) => Number(item.id) === cachedId)) ||
+          (this.datasources.length === 1 ? this.datasources[0] : undefined)
         if (datasource) {
           this.setDatasource(
             Number(datasource.id),
@@ -130,7 +130,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
             false
           )
         } else {
-          this.clear(false)
+          this.clearDatasourceSelection()
         }
         this.tenantScopeId = requestTenantId
         this.initialized = true
@@ -190,6 +190,17 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
         persist
       )
       return true
+    },
+
+    clearDatasourceSelection() {
+      this.datasourceId = undefined
+      this.datasourceName = ''
+      this.datasourceType = ''
+      this.datasourceTypeName = ''
+      this.projectRole = ''
+      this.canCreateDashboard = false
+      this.canManageDashboard = false
+      this.canManageProject = false
     },
 
     async activateDatasourceById(id?: number | string, persist = false) {

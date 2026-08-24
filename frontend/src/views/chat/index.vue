@@ -1316,9 +1316,12 @@ const ensureChatReadyForSend = async () => {
     return assistantPrepareSend()
   }
 
-  await datasourceContext
-    .loadDatasources(datasourceContext.datasources.length === 0)
-    .catch((e) => console.error(e))
+  try {
+    await datasourceContext.loadDatasources(datasourceContext.datasources.length === 0)
+  } catch (error) {
+    console.error('Failed to load datasource context before starting chat:', error)
+    return false
+  }
   if (!selectAssistantDs.value && datasourceContext.datasourceId) {
     const chat = await hiddenChatCreatorRef.value?.createChat(datasourceContext.datasourceId)
     return !!chat && currentChatId.value !== undefined
