@@ -442,7 +442,7 @@ def test_sample_workspace_is_created_once():
         assert second.id == first.id
 
 
-def test_new_regular_user_requires_explicit_sample_workspace_context():
+def test_new_regular_user_enters_primary_sample_workspace_by_default():
     engine = _engine()
     with Session(engine) as session:
         membership = ensure_user_sample_workspace_membership(session, _user(100))
@@ -451,7 +451,9 @@ def test_new_regular_user_requires_explicit_sample_workspace_context():
         assert membership is not None
         assert membership.role == TENANT_ROLE_MEMBER
         assert membership.is_primary is True
-        assert tenant is None
+        assert tenant is not None
+        assert tenant.name == SAMPLE_TENANT_NAME
+        assert tenant.role == TENANT_ROLE_MEMBER
 
 
 def test_sample_workspace_role_follows_saas_role():
@@ -464,10 +466,25 @@ def test_sample_workspace_role_follows_saas_role():
         assert admin_membership.role == "admin"
 
 
-def test_user_without_requested_tenant_has_no_current_tenant():
+def test_default_workspace_context_prefers_primary_membership():
     engine = _engine()
     with Session(engine) as session:
-        ensure_user_sample_workspace_membership(session, _user(100))
+        session.add(TenantModel(id=200, name="Workspace B", status=1, plan="default"))
+        session.add(TenantModel(id=300, name="Workspace A", status=1, plan="default"))
+        session.flush()
+        assign_user_to_tenant(session, 100, tenant_id=200, role=TENANT_ROLE_MEMBER, is_primary=False)
+        assign_user_to_tenant(session, 100, tenant_id=300, role=TENANT_ROLE_ADMIN, is_primary=True)
+
+        tenant = resolve_current_tenant(session, _user(100))
+
+        assert tenant is not None
+        assert tenant.id == 300
+        assert tenant.role == TENANT_ROLE_ADMIN
+
+
+def test_user_without_membership_has_no_current_tenant():
+    engine = _engine()
+    with Session(engine) as session:
         tenant = resolve_current_tenant(session, _user(100))
 
         assert tenant is None

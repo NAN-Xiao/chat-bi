@@ -4,7 +4,9 @@
 import json
 
 from pydantic import BaseModel
-from sqlalchemy import column as sa_column, func, inspect, or_, table as sa_table
+from sqlalchemy import column as sa_column
+from sqlalchemy import func, inspect, or_
+from sqlalchemy import table as sa_table
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, select
 
@@ -1514,6 +1516,16 @@ def _tenant_context_from_membership(
     )
 
 
+def resolve_default_user_tenant_context(session: Session, user) -> TenantContext | None:
+    """Resolve the user's primary active workspace for an unscoped request."""
+    memberships = list_user_tenant_memberships(session, int(user.id))
+    if not memberships:
+        return None
+
+    tenant, membership = memberships[0]
+    return _tenant_context_from_membership(session, tenant, membership)
+
+
 def resolve_current_tenant(
     session: Session,
     user,
@@ -1571,7 +1583,7 @@ def resolve_current_tenant(
             role=TENANT_ROLE_OWNER,
         )
 
-    return None
+    return resolve_default_user_tenant_context(session, user)
 
 
 def attach_tenant_context(user, tenant: TenantContext | None, *, platform_workspace_delegate: bool = False):
