@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~375 | Active |
+| `journal-1.md` | ~395 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-08-24 | 完整关闭事件值映射 AI 上下文 | `e1978505` | `codex/fully-disable-event-value-mappings` |
 | 16 | 2026-08-24 | 修复用户主工作空间唯一性 | `20bfb4a7` | `codex/fix-primary-workspace-uniqueness` |
 | 15 | 2026-08-24 | 修复 AI 看板工作空间数据源上下文 | `8985743c` | `release/release_2.0.0` |
 | 14 | 2026-08-24 | 修复知识库检索查询污染 | `e31dbbc8` | `codex/fix-kb-retrieval-query` |
