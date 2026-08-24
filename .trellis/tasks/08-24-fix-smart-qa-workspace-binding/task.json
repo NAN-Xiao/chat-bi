@@ -1,0 +1,28 @@
+{
+  "id": "fix-smart-qa-workspace-binding",
+  "name": "fix-smart-qa-workspace-binding",
+  "title": "修复 Smart Q&A 工作空间数据源绑定状态",
+  "description": "排查并修复 Smart Q&A 在已绑定工作空间仍显示未绑定数据提示的问题，覆盖工作空间数据源上下文、后端可访问数据源响应和前端会话创建链路。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "dongjinchao",
+  "assignee": "dongjinchao",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/fix-smart-qa-workspace-binding",
+  "base_branch": "release/release_2.0.0",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "root_cause": "datasourceContext 在成功加载列表后因无缓存选中项调用 clear(false)，同时清空列表；请求失败路径又被 catch 后误判为空列表。"
+  }
+}
