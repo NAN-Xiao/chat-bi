@@ -269,3 +269,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: 关闭工作空间事件字典 AI 上下文通道
+
+**Date**: 2026-08-24
+**Task**: 关闭工作空间事件字典 AI 上下文通道
+**Branch**: `codex/disable-workspace-event-dictionary-prompt`
+
+### Summary
+
+统一移除工作空间事件字典的 Prompt、m-schema 与校验警告投影，禁止 Smart Q&A 回退扫描物理事件表，并保留事件管理能力。核心回归 123 passed，完整后端 1709 passed。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0eb2f0c0` | (see git log) |
+
+### Status
+
+[OK] **Completed**
