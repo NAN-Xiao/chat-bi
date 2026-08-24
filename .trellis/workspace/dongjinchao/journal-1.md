@@ -311,3 +311,34 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: 修复 AI 看板工作空间数据源上下文
+
+**Date**: 2026-08-24
+**Task**: 修复 AI 看板工作空间数据源上下文
+**Branch**: `release/release_2.0.0`
+
+### Summary
+
+AI 看板改为使用当前工作空间唯一绑定且有权限的数据源，区分空绑定与加载失败，并补充回归测试和前端规范。
+
+### Main Changes
+
+- 唯一绑定数据源自动成为 Smart Q&A 当前上下文
+- 加载失败不再伪装为工作空间未绑定
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8985743c` | (see git log) |
+
+### Testing
+
+- [OK] 20 项数据源和工作空间切换回归测试通过
+- [OK] 前端生产构建及专项检查通过
+
+### Status
+
+[OK] **Completed**
