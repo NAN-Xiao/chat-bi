@@ -118,16 +118,12 @@ BusinessSqlContextService.build(
 
 ### 7.2 检索问题构造
 
-RAG 查询应包含：
+RAG 查询只使用调用方已经构造好的规范化看板主意图，其中可包含：
 
 - 规范化后的看板意图、标题和图表类型。
 - 时间字段、指标、公式指标、分组和筛选配置。
-- `surface=dashboard_ai_sql`。
-- 当前用户授权后的 Schema 摘要。
-- 当前允许访问的数据表范围。
-- 已由 `find_data_skills` 选中的 Skill 摘要。
 
-已选 Skill 摘要只用于提升知识召回相关性，不改变 Skill 选择结果或优先级。
+`BusinessSemanticContextService` 只能清理该主意图的首尾空白，不得再把 `surface`、授权 Schema、允许表或已选 Skill 摘要拼入相关性查询。权限快照、Schema、表范围和 Skill 仍按各自职责约束候选、SQL 生成和下游执行，但不能改变知识块与主意图的相似度。主意图为空时必须返回现有 `EMPTY_QUERY` 结果，不能由辅助上下文补成非空查询。
 
 ### 7.3 权限与适用性边界
 
@@ -301,7 +297,7 @@ KNOWLEDGE_RETRIEVAL_ENABLED=true
 2. `<data-skill>` 中仍包含选中的 Skill 正文。
 3. RAG 正文进入独立 `<knowledge-context>`。
 4. 知识正文没有被拼入 `<data-skill>`。
-5. 检索查询包含规范化看板配置、授权 Schema/表和已选 Skill 摘要。
+5. 检索查询严格等于规范化看板主意图；授权 Schema、表和已选 Skill 变化不能改变查询或 query hash。
 6. 无结果时知识区块为空，Skills 继续生效。
 7. 无权限或不适用知识不会被召回。
 8. warning/failure type 能进入响应和快照。

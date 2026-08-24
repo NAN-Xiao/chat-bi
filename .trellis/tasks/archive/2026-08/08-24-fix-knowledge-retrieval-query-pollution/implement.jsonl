@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/knowledge-base-rag.md","reason":"Defines knowledge retrieval, permission, applicability, citation, and primary-intent query contracts."}
+{"file":".trellis/spec/backend/project-runtime.md","reason":"Defines backend test commands, linked-worktree runtime rules, and local verification gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Guides validation of the shared semantic-service boundary across assistant surfaces."}
+{"file": "backend/apps/datasource/crud/semantic_context.py", "reason": "Shared semantic-service boundary where the retrieval query is normalized and forwarded."}
+{"file": "backend/tests/test_business_semantic_context.py", "reason": "Regression coverage for exact query forwarding, auxiliary-context isolation, and EMPTY_QUERY."}
+{"file": "docs/dashboard_ai_sql_knowledge_skill_context_integration.md", "reason": "Current dashboard integration contract affected by the retrieval-query correction."}

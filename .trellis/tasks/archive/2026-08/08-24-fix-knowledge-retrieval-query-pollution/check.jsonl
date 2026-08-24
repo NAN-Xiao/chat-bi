@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/knowledge-base-rag.md","reason":"Verify the implementation preserves permission filters while isolating the relevance query."}
+{"file":".trellis/spec/backend/project-runtime.md","reason":"Use the repository backend quality commands and account for shared virtual-environment source paths."}
+{"file": "backend/apps/datasource/crud/semantic_context.py", "reason": "Verify only the relevance-query input changed while permission and downstream context behavior remain intact."}
+{"file": "backend/tests/test_business_semantic_context.py", "reason": "Verify the regression cases cover exact query/hash stability and blank input."}
+{"file": "docs/dashboard_ai_sql_knowledge_skill_context_integration.md", "reason": "Verify current documentation no longer prescribes Schema or Skill query pollution."}

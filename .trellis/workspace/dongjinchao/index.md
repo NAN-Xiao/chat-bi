@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~292 | Active |
+| `journal-1.md` | ~312 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-08-24 | 修复知识库检索查询污染 | `e31dbbc8` | `codex/fix-kb-retrieval-query` |
 | 13 | 2026-08-24 | 关闭工作空间事件字典 AI 上下文通道 | `0eb2f0c0` | `codex/disable-workspace-event-dictionary-prompt` |
 | 12 | 2026-08-24 | 移除知识库旧处理链路和状态字段 | `964a08ba` | `codex/remove-legacy-knowledge-status` |
 | 11 | 2026-08-21 | 知识库版本保留上限 | `014d42c9` | `codex/retain-latest-10-kb-versions` |
